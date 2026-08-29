@@ -281,8 +281,7 @@ or:
 The sum is:
 
 \[
-S =
-\frac{n(a_1+a_n)}{2}
+S = (a_1 + a_n) / 2
 \]
 
 which produces:
