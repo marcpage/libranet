@@ -65,25 +65,15 @@ The fundamental design principle is:
 
 The system therefore attempts to create the following relationship:
 
-\[
-\text{Contribution}
-\rightarrow
-\text{Karma}
-\rightarrow
-\text{Reputation}
-\rightarrow
-\text{Greater network participation}
-\]
+```text
+Contribution -> Karma -> Repuation -> Greater network participation
+```
 
 rather than:
 
-\[
-\text{Capital}
-\rightarrow
-\text{Karma}
-\rightarrow
-\text{Influence}
-\]
+```text
+Capital -> Karma -> Influence
+```
 
 The distinction is important.
 
