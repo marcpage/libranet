@@ -579,7 +579,9 @@ This introduces an element of randomness and uncertainty into the selection proc
 
 # 20. Unpredictable Transaction-Block Completion
 
-An important property of the system is that the time at which the next transaction block fills is indeterminate.
+A validation block is complete when the next transaction block is full and ready for validation.
+
+This is an important property of the system because the time at which the next transaction block fills is indeterminate.
 
 Validators therefore cannot know exactly when the competition will end.
 
