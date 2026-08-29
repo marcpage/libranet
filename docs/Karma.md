@@ -401,19 +401,15 @@ Instead, it is existing Karma transferred from the transaction originator to par
 
 Thus:
 
-\[
-\text{Block issuance}
-=
-\text{new Karma}
-\]
+```text
+Block issuance =  new Karma
+```
 
 while:
 
-\[
-\text{Transaction fee}
-=
-\text{existing Karma}
-\]
+```text
+Transaction fee = existing Karma
+```
 
 This distinction preserves the fixed-supply property of Karma.
 
@@ -425,15 +421,15 @@ Every transaction block must contain at least half of its transactions without a
 
 Therefore:
 
-\[
-N_{free} \geq \frac{N_{total}}{2}
-\]
+```text
+N_free >= N_total/2
+```
 
 and equivalently:
 
-\[
-N_{paid} \leq N_{free}
-\]
+```text
+N_paid <= N_free
+```
 
 No generation may contain more paid transactions than free transactions.
 
@@ -447,19 +443,17 @@ Without this requirement, transaction fees could become the primary determinant 
 
 The system could eventually evolve toward:
 
-\[
-\text{higher fee}
-\rightarrow
-\text{higher priority}
-\rightarrow
-\text{faster service}
-\]
+```text
+higher fee -> higher priority -> faster service
+```
 
 That would move Karma toward the economics of a conventional cryptocurrency.
 
 The free-transaction requirement deliberately prevents this from happening completely.
 
 At least half of the transactions in each block must remain fee-free.
+
+This prevents starving out fee-free transactions while allowing fees to give some priority.
 
 ---
 
@@ -503,15 +497,15 @@ It must maximize expected reward subject to the free-transaction requirement.
 
 Conceptually:
 
-\[
-\max(\text{fees})
-\]
+```
+max(fees)
+```
 
 subject to:
 
-\[
-N_{paid} \leq N_{free}
-\]
+```text
+N_paid <= N_free
+```
 
 This means transaction selection becomes a constrained optimization problem.
 
@@ -733,11 +727,9 @@ However, if its stake appears in the selected runner-up block and is subject to 
 
 Thus:
 
-\[
-\text{Consensus influence}
-<
-\text{economic exposure}
-\]
+```text
+Consensus influence < economic exposure
+```
 
 for a recent winner.
 
@@ -773,11 +765,9 @@ This prevents a stake from effectively being counted twice through its appearanc
 
 The uniqueness of signed stakes also provides an unambiguous relationship between:
 
-\[
-\text{stake}
-\rightarrow
-\text{author}
-\]
+```text
+stake -> author
+```
 
 ---
 
@@ -868,19 +858,9 @@ The validator may create another stake with greater value and attempt to constru
 
 This creates a dynamic strategy:
 
-\[
-\text{observe}
-\rightarrow
-\text{construct}
-\rightarrow
-\text{stake}
-\rightarrow
-\text{mine}
-\rightarrow
-\text{observe}
-\rightarrow
-\text{reconstruct}
-\]
+```text
+observe -> construct -> stake -> mine -> observe -> reconstruct
+```
 
 The protocol therefore becomes a continuously evolving competition rather than a single instantaneous auction.
 
@@ -916,15 +896,9 @@ The resulting reward is distributed among participants in the winning validation
 
 Thus:
 
-\[
-\text{Winning reward}
-=
-\text{new Karma}
-+
-\text{fees}
-+
-\text{applicable runner-up stake}
-\]
+```text
+Winning reward = new Karma + fees + applicable runner-up stake
+```
 
 subject to the protocol's rules concerning duplicate stakes and stake weighting.
 
@@ -952,19 +926,15 @@ A primary objective of the staking mechanism is to spread validation rewards acr
 
 The system should avoid a simple model in which:
 
-\[
-\text{largest computer}
-\rightarrow
-\text{largest reward}
-\]
+```text
+largest computer -> largest reward
+```
 
 or:
 
-\[
-\text{largest stake}
-\rightarrow
-\text{largest reward}
-\]
+```text
+largest stake -> largest reward
+```
 
 Instead, proof of work determines the quality of a candidate while stake determines its economic influence.
 
