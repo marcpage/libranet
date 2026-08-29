@@ -352,8 +352,6 @@ However, a decentralized token may acquire external exchange value regardless of
 
 The protocol therefore needs to consider the possibility that participants may attempt to buy, sell, or otherwise commoditize Karma.
 
-Whether Karma should be freely transferable is an important unresolved design question.
-
 ---
 
 # 11. Micro-Transactions
@@ -1111,12 +1109,7 @@ The following areas should be analyzed before finalizing the protocol.
 
 ## 38.1 Transferability
 
-Determine whether Karma should be:
-
-- non-transferable;
-- freely transferable;
-- partially transferable;
-- or transferable only under defined circumstances.
+Karma should be freely transferable.
 
 ---
 
@@ -1228,33 +1221,9 @@ The network needs a way to preserve fee-free access without making unlimited fre
 
 ## 38.12 Reputation aging
 
-Determine whether Karma should represent:
+Karma should represent the net value added to the network.
 
-- lifetime contribution;
-- recent contribution;
-- or both.
-
-A participant with enormous historical contribution but no recent activity may have a different trust profile from an actively contributing participant.
-
----
-
-## 38.13 Specialized reputation
-
-Investigate whether Karma should eventually be divided into reputation categories.
-
-For example:
-
-```text
-Total Karma
-    |
-    +-- Validation
-    +-- Storage
-    +-- Retrieval
-    +-- Distribution
-    +-- Authorship
-```
-
-A single reputation score is simpler, but specialized reputation may provide a more useful trust signal.
+As more net value is added, the Karma balance should go up. As more net value is taken, the Karma balance should decrease.
 
 ---
 
