@@ -222,12 +222,9 @@ where:
 
 Expressed entirely in Kismet:
 
-\[
-R_n =
-2,000,000,000,000,000
--
-200(n-1)
-\]
+```text
+R_n = 2,000,000,000,000,000 - 200(n-1)
+```
 
 Kismet.
 
