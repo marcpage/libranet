@@ -118,7 +118,7 @@ Karma should therefore be regarded as evidence of historical contribution rather
 The maximum Karma supply is:
 
 \[
-100,000,000,000,000\ Karma
+100,000,000,000,000 Karma
 \]
 
 or:
@@ -128,7 +128,7 @@ or:
 Each Karma is divisible into:
 
 \[
-100,000,000,000,000\ Kismet
+100,000,000,000,000 Kismet
 \]
 
 or:
@@ -138,19 +138,19 @@ or:
 Therefore:
 
 \[
-1\ Karma = 10^{14}\ Kismet
+1 Karma = 10^14 Kismet
 \]
 
 and:
 
 \[
-1\ Kismet = 10^{-14}\ Karma
+1 Kismet = 10^-14 Karma
 \]
 
 The theoretical maximum number of Kismet units is therefore:
 
 \[
-10^{28}
+10^28
 \]
 
 or:
@@ -197,13 +197,13 @@ New Karma is created through the generation of transaction blocks.
 The first transaction block generates:
 
 \[
-20\ Karma
+20 Karma
 \]
 
 The reward decreases by:
 
 \[
-200\ Kismet
+200 Kismet
 \]
 
 for each successive generation.
@@ -211,14 +211,14 @@ for each successive generation.
 The general formula is:
 
 \[
-R_n = 20\ Karma - (n-1)(200\ Kismet)
+R_n = 20 Karma - (n-1)(200 Kismet)
 \]
 
 where:
 
 - \(R_n\) is the newly generated Karma for generation \(n\);
 - \(n\) is the generation index;
-- \(1\ Karma = 100,000,000,000,000\ Kismet\).
+- \(1 Karma = 100,000,000,000,000 Kismet\).
 
 Expressed entirely in Kismet:
 
@@ -262,13 +262,13 @@ The issuance schedule forms an arithmetic series.
 The first positive reward is approximately:
 
 \[
-20\ Karma
+20 Karma
 \]
 
 and the final positive reward is:
 
 \[
-0.000000000002\ Karma
+0.000000000002 Karma
 \]
 
 The number of positive-reward generations is:
@@ -291,7 +291,7 @@ S =
 which produces:
 
 \[
-S = 100,000,000,000,000\ Karma
+S = 100,000,000,000,000 Karma
 \]
 
 Therefore the emission schedule naturally produces approximately:
@@ -715,7 +715,7 @@ Suppose a validator recently won and its stakes currently receive only 10% effec
 The validator might stake:
 
 \[
-10,000\ Karma
+10,000 Karma
 \]
 
 Its effective consensus weight may therefore be only:
@@ -731,7 +731,7 @@ If it wins again, its reduced effective weight limits its advantage.
 However, if its stake appears in the selected runner-up block and is subject to the protocol's loss mechanism, the validator may lose the full:
 
 \[
-10,000\ Karma.
+10,000 Karma.
 \]
 
 Thus:
@@ -1183,13 +1183,13 @@ Simulate networks of colluding identities and determine whether they can create 
 Determine whether:
 
 \[
-10,000\ Karma
+10,000 Karma
 \]
 
 as one stake behaves differently from:
 
 \[
-100 \times 100\ Karma
+100 \times 100 Karma
 \]
 
 as independent stakes.
