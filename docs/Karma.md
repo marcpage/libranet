@@ -732,7 +732,7 @@ This discourages participants from simply staking enormous amounts immediately a
 
 # 25. The Runner-Up Mechanism
 
-The winning validation block also identifies a runner-up validation block.
+Every validation block also identifies a runner-up validation block.
 
 The constructor of the winning validation block selects which candidate serves as the runner-up.
 
