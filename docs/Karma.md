@@ -79,7 +79,7 @@ The distinction is important.
 
 A participant possessing a large Karma balance is not necessarily "wealthy."
 
-The participant has accumulated a large historical record of recognized contribution.
+The participant has accumulated a large historical record of recognized more contribution than value received.
 
 ---
 
