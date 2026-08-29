@@ -508,15 +508,7 @@ N_paid <= N_free
 
 This means transaction selection becomes a constrained optimization problem.
 
-The exact implementation should define whether the 50% requirement applies to:
-
-- transaction count;
-- transaction size;
-- computational cost;
-- bandwidth consumption;
-- or another measure.
-
-This is particularly important if transactions can vary substantially in size or computational requirements.
+The 50% requirement applies to transaction count.
 
 ---
 
