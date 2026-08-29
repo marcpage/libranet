@@ -524,6 +524,30 @@ Each candidate contains signed stakes referencing the applicable transaction blo
 
 Participants then search for a proof-of-work solution for their candidate.
 
+```text
+------------------------------        ------------------------------
+|                            |        |                            |
+|   Validation Block N + 1   |  ----> |   Transaction Block N + 1  |
+|                            |        |                            |
+------------------------------        ------------------------------
+              |                               |
+              v                               |
+------------------------------                |
+|                            |                |
+|   Runner Up N + 1          |                |
+|                            |                |
+------------------------------                |
+                                              |
+             ----------------------------------
+             |
+             v
+--------------------------        --------------------------
+|                        |        |                        |
+|   Validation Block N   |  ----> |   Transaction Block N  |
+|                        |        |                        |
+--------------------------        --------------------------
+```
+
 ---
 
 # 18. Proof of Work
