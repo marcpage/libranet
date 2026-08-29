@@ -91,7 +91,7 @@ A node with:
 
 **100,000 Karma**
 
-has demonstrated substantially more recognized contribution than a node with:
+has demonstrated substantially more recognized net contribution than a node with:
 
 **0.001 Karma**
 
