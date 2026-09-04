@@ -6,7 +6,7 @@
 
 ## Abstract
 
-This document specifies Libranet, a peer-to-peer (P2P) protocol for node identity, transport, content-addressed storage, messaging ("drops"), and hosting of decentralized directory-bundle applications ("mini-websites") without reliance on a central server. It defines the normative requirements that a conforming implementation MUST, SHOULD, or MAY satisfy.
+This document specifies Libranet, a peer-to-peer (P2P) protocol for node identity, transport, content-addressed storage, sending data to a specific location ("drops"), and hosting of decentralized directory-bundle applications ("mini-websites") without reliance on a central server. It defines the normative requirements that a conforming implementation MUST, SHOULD, or MAY satisfy.
 
 This document covers the core network protocol. The Karma/Kismet dual-token incentive and reputation system is specified separately and is referenced here only where it constrains protocol behavior.
 
@@ -21,7 +21,7 @@ This is a working draft. Sections marked `TBD` are placeholders pending further 
 3. Node Identity
 4. Transport
 5. Content-Addressed Storage
-6. Drops (Messaging) and Prefix Matching
+6. Drops and Prefix Matching
 7. Directory Bundles (Application Layer)
 8. Security Considerations
 9. IANA / Namespace Considerations
@@ -41,7 +41,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 - Node: A participant in the Libranet network, addressable by a Node ID.
 - Node ID: A hash-derived identifier that uniquely names a node.
-- Drop: A message unit routed through the network via prefix matching.
+- Drop: A general-purpose unit of data placed at a location in the network via prefix matching, without regard to the specifics of its contents. Drops MAY be used for messaging, but messaging is one use among others.
 - Content Address: A hash-derived identifier that names an immutable piece of content.
 - Directory Bundle: A collection of content-addressed files, indexed by a manifest, that together form a hostable application ("mini-site").
 - Prefix Match: A routing decision based on the shared leading bits/characters between two identifiers.
@@ -71,7 +71,11 @@ TBD: exact hash function, input material (e.g., public key), and encoding (hex/b
 
 ### 4.2 Endpoint Conventions
 
-TBD: canonical URL/path layout for node endpoints (e.g., `/libranet/v1/...`) needs to be specified.
+- The endpoints for all programatic access will be under the top-level `/data`
+- Accessing specific data is specified by `/data/{hash algorithm}/{hash}`
+- Searches for partial prefix matches is specified by `/data/search/{hash}`
+  - The top hashes that match the most prefix bits are returned regardless of the algorithm
+- Any breaking changes to these will be added as different names under `/data` (`/data/search-advanced/...`)
 
 ## 5. Content-Addressed Storage
 
@@ -86,9 +90,12 @@ TBD: canonical URL/path layout for node endpoints (e.g., `/libranet/v1/...`) nee
 - Nodes SHOULD advertise which Content Addresses they hold.
 - Nodes MAY discard content they hold at their own discretion, subject to any obligations defined by the incentive layer (see companion Karma/Kismet document).
 
-## 6. Drops (Messaging) and Prefix Matching
+## 6. Drops and Prefix Matching
 
 ### 6.1 Drop Structure
+
+- A drop MUST be opaque with respect to its contents: routing and placement decisions MUST NOT depend on interpreting the payload.
+- A drop MUST carry a target identifier used for placement, independent of any semantic meaning of the payload.
 
 TBD: exact drop envelope fields (sender, target prefix, payload, TTL, signature) need to be defined here.
 
@@ -97,6 +104,12 @@ TBD: exact drop envelope fields (sender, target prefix, payload, TTL, signature)
 - Routing of a drop MUST be determined by comparing the drop's target identifier against candidate Node IDs using prefix matching.
 - A node forwarding a drop SHOULD forward it toward peers whose Node ID shares the longest matching prefix with the drop's target.
 - Prefix matching MAY also be used to express data locality (e.g., preferring storage/retrieval from nodes with nearby identifiers).
+
+### 6.3 Uses of Drops
+
+- Drops MAY be used to implement point-to-point or broadcast messaging between nodes.
+- Drops MAY be used as a general-purpose mechanism to place arbitrary data at a network location derived from an identifier, without the storing node needing to know the meaning of that data.
+- Implementations MUST NOT assume messaging is the only, or primary, use of drops when designing storage or routing logic.
 
 ## 7. Directory Bundles (Application Layer)
 
