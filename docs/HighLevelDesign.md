@@ -148,7 +148,7 @@ Search returns a ranked list of full hashes, and optional metadata, ordered by t
 
 ## 4.3 Maximum Object Size & Bundles
 
-Each uniquely addressable data URL has a hard maximum size of **1 MiB**. This limit applies to the content identified by the hash; where the compressed-retrieval fallback in §4.1.1 is used, it is the decompressed content that is subject to this limit.
+Each uniquely addressable data URL has a hard maximum size of **1 MiB**. This limit applies to the data transmitted; where the compressed-retrieval fallback in §4.1.1 is used, it is the compressed content that is subject to this limit.
 
 Larger content is represented by a **Bundle** - a special object that contains metadata plus the list of data URLs that together form the complete payload.
 
