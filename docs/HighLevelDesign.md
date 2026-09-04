@@ -2,7 +2,7 @@
 
 **Decentralized Peer-to-Peer Content Network over HTTP/HTTPS**
 
-Version 0.2 • September 2026
+Version 0.3 • September 2026
 
 ---
 
@@ -81,10 +81,10 @@ When a local node connects to a remote node over HTTP/HTTPS, the following order
 ## 3.3 Minimal HTTP API Surface
 
 | Method & Path                      | Purpose                                            |
-| ---------------------------------- | -------------------------------------------------- |
+| ----------------------------------- | --------------------------------------------------- |
 | `GET/PUT /data/nodes`              | Read or publish known address list                 |
 | `GET/PUT /data/seek`               | Read or publish hashes being sought                |
-| `GET /data/{algo}/{full-hash}`     | Retrieve exact content (≤ 1 MiB)                   |
+| `GET /data/{algo}/{full-hash}`     | Retrieve content (≤ 1 MiB); see §4.1.1 for the compressed-retrieval fallback |
 | `PUT /data/{algo}/{full-hash}`     | Store content under its content hash               |
 | `GET /data/search/{algo}/{prefix}` | Search by partial hash; returns ranked matches     |
 | `GET /{app-name}/…`                | Serve files from a registered directory-bundle app |
@@ -92,6 +92,14 @@ When a local node connects to a remote node over HTTP/HTTPS, the following order
 The `/data/...` paths constitute the programmatic interface.
 
 Special convenience paths such as `/data/pending` may be used to read or write the set of hashes a node is currently seeking.
+
+### 3.3.1 Reserved Top-Level Paths
+
+The following top-level path segments are reserved and may never be used as an application name (see §5.2):
+
+* `data` - the programmatic content-addressed interface described in this section.
+* `web` - reserved for future use.
+* `chaos` - reserved for future use.
 
 ---
 
@@ -113,6 +121,21 @@ Example:
 /data/sha256/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 ```
 
+### 4.1.1 Compressed Retrieval Fallback
+
+When a client requests `GET /data/{algo}/{full-hash}`, the hash of the bytes returned in the response body is not guaranteed to match `{full-hash}` directly.
+
+If the returned bytes do **not** hash to `{full-hash}`, the client must treat the response body as **zlib-compressed**. Decompressing the body with zlib must then yield content whose hash matches `{full-hash}`.
+
+In other words, a node serving an object may respond with either:
+
+* The raw content, whose hash is `{full-hash}`, or
+* A zlib-compressed representation of that content, which decompresses to content whose hash is `{full-hash}`.
+
+Clients should first check whether the raw response hashes to the requested value, and if not, fall back to zlib decompression before re-checking the hash. If neither the raw bytes nor the decompressed bytes match `{full-hash}`, the response is invalid and should be discarded.
+
+This allows serving nodes to reduce bandwidth for compressible content without requiring a separate content-addressing scheme for compressed variants.
+
 ## 4.2 Partial-Hash Search
 
 Partial-hash search is supported:
@@ -125,7 +148,7 @@ Search returns a ranked list of full hashes, and optional metadata, ordered by t
 
 ## 4.3 Maximum Object Size & Bundles
 
-Each uniquely addressable data URL has a hard maximum size of **1 MiB**.
+Each uniquely addressable data URL has a hard maximum size of **1 MiB**. This limit applies to the data transmitted; where the compressed-retrieval fallback in §4.1.1 is used, it is the compressed content that is subject to this limit.
 
 Larger content is represented by a **Bundle** - a special object that contains metadata plus the list of data URLs that together form the complete payload.
 
@@ -258,7 +281,7 @@ Other applications are reached via:
 /{app-name}
 ```
 
-The name `data` is reserved and may never be used as an application.
+The names `data`, `web`, and `chaos` are reserved (see §3.3.1) and may never be used as an application name.
 
 ## 5.3 Application Delivery
 
@@ -316,6 +339,7 @@ The four protocol layers provide complementary security properties:
 
 * Content addressing provides automatic integrity verification.
 * A content hash uniquely identifies the expected content.
+* The compressed-retrieval fallback (§4.1.1) preserves this integrity guarantee: a client always verifies the requested hash against either the raw or the decompressed bytes before trusting the content.
 * Prefix matching for drops deliberately trades computational work for the ability to place data at a predictable location.
 * Eviction hand-off to the two best-matching peers reduces the risk of data loss while preserving the directional locality property.
 
@@ -335,7 +359,19 @@ The protocol is organized into four layers:
 
 1. **Identity** - cryptographic node identities and request authentication.
 2. **Transport** - HTTP/HTTPS communication and the node handshake.
-3. **Distributed Storage** - content hashing, prefix-based placement, search, routing, storage priority, and replication through hand-off.
+3. **Distributed Storage** - content hashing, prefix-based placement, search, routing, storage priority, and replication through hand-off (including the compressed-retrieval fallback described in §4.1.1).
 4. **Applications** - directory bundles, application registration, application distribution, and browser-based access.
 
 The combination of content hashing, binary-prefix locality, and progressive directional routing yields a self-organizing substrate that can host both programmatic data exchange and full human-facing applications without requiring any central authority.
+
+---
+
+# 8. Reserved Path Registry
+
+For quick reference, the following top-level path segments are reserved at the root of the node's HTTP namespace and must not be used as application names:
+
+| Path      | Status            | Description                                      |
+| --------- | ----------------- | ------------------------------------------------- |
+| `/data`   | In use            | Programmatic content-addressed interface (§3-4)  |
+| `/web`    | Reserved (future) | Not yet defined                                   |
+| `/chaos`  | Reserved (future) | Not yet defined                                   |
