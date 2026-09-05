@@ -82,8 +82,8 @@ When a local node connects to a remote node over HTTP/HTTPS, the following order
 
 | Method & Path                      | Purpose                                            |
 | ----------------------------------- | --------------------------------------------------- |
-| `GET/PUT /data/nodes`              | Read or publish known address list                 |
-| `GET/PUT /data/seek`               | Read or publish hashes being sought                |
+| `GET/POST /data/nodes`             | Read or publish known address list                 |
+| `GET/POST /data/seek`              | Read or publish hashes being sought                |
 | `GET /data/{algo}/{full-hash}`     | Retrieve content (≤ 1 MiB); see §4.1.1 for the compressed-retrieval fallback |
 | `PUT /data/{algo}/{full-hash}`     | Store content under its content hash               |
 | `GET /data/search/{algo}/{prefix}` | Search by partial hash; returns ranked matches     |
@@ -226,7 +226,7 @@ Nodes advertise data they are currently seeking.
 The list of sought hashes can be read or published through:
 
 ```text
-GET/PUT /data/seek
+GET/POST /data/seek
 ```
 
 During the connection handshake, a node requests the remote node’s list of data hashes that it is currently seeking.
@@ -248,7 +248,7 @@ A node address consists of:
 The known address list can be read or published through:
 
 ```text
-GET/PUT /data/nodes
+GET/POST /data/nodes
 ```
 
 ---
