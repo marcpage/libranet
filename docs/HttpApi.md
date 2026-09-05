@@ -296,15 +296,6 @@ Example:
 
 The result list is ordered by the quality (defined as most matching leading bits) of the prefix match.
 
-## 6.2 Malicious Drop Bombing
-
-The search mechanism allows us to search for drop content.
-Hash the target identifier ("Messages for John Doe") and then search for the resulting hash.
-Real content could be lost in the noise if someone were to generate a lot of content targeted at that hash.
-The solution is to increase how many matching bits you generate for your targeted drop.
-This makes it prohibitively expensive to generate spam at an address.
-Addresses could also be ephemeral to minimize noise at a particular location (e.g. "Messages for John Doe 2025-05")
-
 ---
 
 # 7. Content Upload
@@ -451,6 +442,13 @@ Since `/data/search/{target-hash}` returns the best matches (longest prefix bit 
 
 The client that creates the drop content determines the tradeoff between compute time and target match.
 The client MAY have a time limit in which to compute the nonce.
+
+## 9.5 Malicious Drop Bombing
+
+Real content could be lost in the noise if someone were to generate a lot of content targeted at that hash.
+The solution is to increase how many matching bits you generate for your targeted drop.
+This makes it prohibitively expensive to generate spam at an address.
+Addresses could also be ephemeral to minimize noise at a particular location (e.g. "Messages for John Doe 2025-05")
 
 ---
 
@@ -719,7 +717,6 @@ The signature MUST identify the Libranet node identity.
 
 The signature MUST cover:
 - @method
-- @authority
 - @path
 - Libranet node identity
 - Content-Digest, when a message body is present
@@ -755,11 +752,13 @@ Since the node identifier is just the content hash of the public key, you can re
 Typical connection initiation:
 
 ```text
-PUT /data/sha256/abc123... HTTP/1.1  # push client node public key so they can validate you
-GET /data/sha256/def/456... HTTP/1.1  # fetch the key received in the response so client node can start validating authenticity
+PUT /data/sha256/abc123... HTTP/1.1  # push client node public key so the server can validate can validate client requests
+GET /data/sha256/def/456... HTTP/1.1  # fetch the key received in the response so client node can start validating server authenticity
 POST /data/nodes HTTP/1.1  # publish client node list of nodes
 GET /data/nodes HTTP/1.1  # fetch server node list of nodes
 GET /data/seek HTTP/1.1  # fetch the list of information the server node is seeking
+
+<series of PUT to satisfy any known requests in server's seek list>
 ```
 
 Server nodes MUST NOT break connection due to authentication failure until after at least the first two requests.
@@ -774,7 +773,7 @@ This allows the identity exchange to happen.
 
 # 12. Directory Bundles
 
-A directory bundle is a JSON object describing a directory and its contents.
+A [directory bundle](BundleSpecification.md#3-raw-directory-bundle) is a JSON object describing a directory and its contents.
 
 Directory bundles are stored in CAS and can be used to construct human-facing web applications.
 
@@ -856,6 +855,34 @@ Directory bundles may specify a specific `404` page file.
 Applications are defined on the local node.
 Each node will have its own list of application mappings.
 This allows someone to configure their specific view and applications on the Libranet.
+
+## 13.1. Password Protected Apps
+
+When a [password-protected directory bundle](BundleSpecification.md#6-password-protection) is requested for the first time, a standard HTTP Basic Authentication would be used.
+
+When a password protected app is encountered, the server node responds with:
+
+```text
+ HTTP/1.1 401 Unauthorized
+ WWW-Authenticate: Basic realm="myapp"
+ Content-Type: application/problem+json
+
+ {
+   "type": "https://libranet.org/problems/bundle-authentication-required",
+   "title": "Authentication required",
+   "status": 401
+ }
+```
+
+The browser would then prompt for a username and password and return that in a retry of the original URL with the authentication in the header:
+
+```text
+Authorization: Basic <base64(user:pass)>
+```
+
+The username and password would be concatenated and hashed using the hashing algorithm specified by the bundle.
+This would generate the key to decrypt the bundle.
+The bundle would then be expanded into a cache and would no longer have to prompt for the password.
 
 **TBD:**
 
@@ -1073,6 +1100,7 @@ Potentially relevant headers include:
 Content-Type
 Content-Length
 Content-Encoding
+Content-Digest
 ETag
 Last-Modified
 Cache-Control
@@ -1081,6 +1109,9 @@ Location
 Accept
 Accept-Encoding
 Authorization
+Signature-Input
+Signature
+Range
 ```
 
 Content-addressed responses have naturally strong cache semantics because the content identifier identifies the content itself.
@@ -1101,6 +1132,12 @@ The node communicates its endpoint through its node-list self-description. The s
 
 # 19. Range Requests
 
+Due to most data being limited to less than 1 MiB in size, range requests are generally not needed for `/data/...` requests.
+
+Nodes SHOULD support range requests to benefit data in applications (requests outside of `/data/...`).
+Nodes SHOULD support enough range requests mechanism to support streaming video from a `<video>` tag in html.
+
+Outside of `/data/...` requests the node 
 Large content may benefit from HTTP range requests.
 
 A node MAY support:
@@ -1112,8 +1149,6 @@ Range: bytes=...
 **TBD:**
 
 * Whether range requests are required.
-* Interaction with content verification.
-* Whether partial content can be verified independently.
 * `206 Partial Content` requirements.
 * Support for multipart ranges.
 
@@ -1195,12 +1230,12 @@ MUST NOT silently change incompatible semantics.
 Instead, an incompatible replacement would use a new endpoint such as:
 
 ```text
-/data/example-v2
+/data/example-advanced
 ```
 
 or another protocol-defined name.
 
-Existing endpoint semantics MUST remain stable within a protocol version.
+Existing endpoint semantics MUST remain stable.
 
 **TBD:**
 
@@ -1260,13 +1295,6 @@ CAS paths MUST resolve only to content addressed by the Libranet storage system.
 
 Libranet should prefer existing HTTP semantics and media types over creating new HTTP mechanisms.
 
-**TBD:**
-
-* Whether a Libranet-specific media type is required.
-* Whether a Libranet-specific HTTP authentication scheme is required.
-* Whether any HTTP header fields need registration.
-* Whether a URI scheme is required.
-
 ---
 
 # 25. Reference Endpoint Summary
@@ -1276,12 +1304,10 @@ The following table summarizes the currently proposed HTTP API.
 | Endpoint                     | Method  | Purpose                      | Status  |
 | ---------------------------- | ------- | ---------------------------- | ------- |
 | `/data/{algorithm}/{hash}`   | `GET`   | Retrieve CAS content         | Defined |
+| `/data/{algorithm}/{hash}`   | `PUT`   | Upload CAS content           | Defined |
 | `/data/{algorithm}/{hash}`   | `HEAD`  | Retrieve CAS metadata        | TBD     |
-| `/data/search/{prefix}`      | `GET`   | Search for matching hashes   | Defined |
-| `/data/{algorithm}`          | `POST`  | Upload content               | TBD     |
-| `/data/drop/{target-prefix}` | `POST`  | Create a drop                | TBD     |
-| `/data/peers`                | `GET`   | Retrieve peer information    | TBD     |
-| `/data/identity`             | `GET`   | Retrieve node identity       | TBD     |
+| `/data/search/{hash}`        | `GET`   | Search for matching hashes   | Defined |
+| `/data/nodes`                | `GET`   | Retrieve peer information    | Defined |
 | `/data/...`                  | Various | Additional programmatic APIs | TBD     |
 | `/`                          | `GET`   | Root web application         | Defined |
 | `/{application}/...`         | `GET`   | Directory-bundle application | Defined |
