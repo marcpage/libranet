@@ -70,7 +70,7 @@ Directory bundles can be exposed as HTTP applications.
 For example:
 
 ```text
-https://example.org/myapp/
+https://example.org/myapp
 ```
 
 may map to a directory bundle stored in the node's content-addressed storage.
@@ -85,7 +85,7 @@ A Libranet node MAY provide its API over HTTP, HTTPS, or both.
 
 HTTPS is RECOMMENDED when communication crosses an untrusted network.
 
-HTTP and HTTPS use the same Libranet URL structure unless otherwise specified.
+HTTP and HTTPS use the same Libranet URL structure.
 
 A node's advertised addresses identify the scheme and address that other nodes should use to establish a connection.
 
@@ -97,13 +97,15 @@ The protocol does not assume that TLS authentication establishes Libranet node i
 
 Libranet-level identity and authorization are separate from transport security.
 
+TLS connections may use self-signed certificates.
+Certificate chain validation and trust in a public or configured root CA are not required.
+The certificate is used to establish an encrypted TLS connection, but does not provide authenticated peer identity.
+The node identifier and signed headers validate authenticity and any certificates used for TLS are completely independent of the Node ID.
+
 **TBD:**
 
 * Required TLS versions.
 * Required cipher suites.
-* Certificate validation requirements.
-* Whether self-signed certificates are permitted.
-* Whether node identity is bound to TLS certificates.
 * Certificate discovery and rotation behavior.
 
 ---
@@ -118,19 +120,11 @@ The primary methods are:
 | --------- | --------------------------------------------------- |
 | `GET`     | Retrieve information or content                     |
 | `HEAD`    | Retrieve metadata without the response body         |
-| `POST`    | Submit a new object or request an operation         |
+| `POST`    | Requests like prefix search                         |
 | `PUT`     | Create or replace content at a specified identifier |
-| `DELETE`  | Remove or invalidate locally controlled content     |
-| `OPTIONS` | Discover supported operations                       |
 
 The exact method associated with each endpoint is defined below.
-
-**TBD:**
-
-* Whether all listed methods are required.
-* Whether `PATCH` is needed.
-* Whether unsupported methods MUST return `405 Method Not Allowed`.
-* Whether `OPTIONS` is required on all API endpoints.
+Unsupported methods MUST return `405 Method Not Allowed`.
 
 ---
 
@@ -143,7 +137,7 @@ A content identifier consists of:
 1. A hash algorithm identifier.
 2. The resulting hash value.
 
-The canonical URL form is:
+The canonical path part of the URL is:
 
 ```text
 /data/{hash-algorithm}/{hash}
@@ -184,23 +178,11 @@ The exact verification procedure is defined by the CAS specification.
 
 ### Content Type
 
-The content itself is opaque to CAS.
-
-The node MAY provide a more specific `Content-Type` when metadata associated with the content establishes its type.
-
-Otherwise:
+The content itself is opaque to CAS and MUST be:
 
 ```text
 application/octet-stream
 ```
-
-SHOULD be used.
-
-**TBD:**
-
-* Whether MIME type is stored as CAS metadata.
-* Whether `Content-Type` is cryptographically authenticated.
-* Whether content encoding is represented separately from content type.
 
 ---
 
@@ -208,48 +190,47 @@ SHOULD be used.
 
 If the requested content is not currently available locally, the node MAY attempt to retrieve it from another Libranet node.
 
-While retrieval is in progress, the node returns:
+While retrieval is in progress, the node MUST return:
 
 ```http
 HTTP/1.1 503 Service Unavailable
 ```
 
-The node MAY include a `Retry-After` header.
+The node MAY include a `Retry-After` header (which is assumed to be in seconds).
 
-A `503` response indicates that the content identifier is valid but the requested content is not currently available to the HTTP client.
+A `503` response indicates that the node will attempt to retrieve the data from another node.
 
 It does not indicate that the content identifier is invalid.
 
-**TBD:**
+When a `503` is returned, the node MAY:
 
-* Whether a node MUST attempt network retrieval.
-* Maximum retrieval duration.
-* Whether retrieval is synchronous or asynchronous.
-* `Retry-After` requirements.
-* Whether a separate status endpoint is required for asynchronous retrieval.
+- Put the request in it's `seek` list (for connecting clients to request and push results to us)
+- Forward the request to other connected nodes
+- Repeat the request to connected nodes if they in turn return a `503` (after the `Retry-After` period has elapsed)
+
+Configurable aspects limits:
+
+- Maximum retry count
+- Maximum wait before returning `503`
+- Maximum total attempt time (preparing for the next `503`)
+
+If Maximum total attempt time has been exceeded, a node MAY return `404`
+
+This gives a blend of asynchronous (through retries) as well as synchronous (if we can get the data in time) behavior.
 
 ---
 
 ## 5.3 Content Not Found
 
-If the node determines that the requested content does not exist in the network, it SHOULD return:
+If the node will not make an attempt to find the data on other nodes, it SHOULD return:
 
 ```http
 HTTP/1.1 404 Not Found
 ```
 
-However, a node generally cannot distinguish:
+A `404` response indicates that the node will not attempt to retrieve the data from another node.
 
-* content that does not exist;
-* content that exists but is temporarily unreachable.
-
-Therefore the precise conditions for returning `404` versus `503` require protocol definition.
-
-**TBD:**
-
-* Network-wide content existence semantics.
-* How nodes determine that content does not exist.
-* Whether `404` is limited to locally authoritative information.
+It does not indicate that the content identifier is invalid.
 
 ---
 
@@ -263,13 +244,12 @@ Recommended response:
 HTTP/1.1 400 Bad Request
 ```
 
-**TBD:**
+The hash algorithm may just be unknown, in which case it cannot validate the data and MUST return `400`.
+This does limit the spread of data when a new hash algorithm is introduced.
+When new algorithms support is added, new data SHOULD generally not be generated with the algorithm for a period of time to allow for support to be generally available.
 
-* Registered hash algorithm names.
-* Hash encoding.
-* Case sensitivity.
-* Maximum identifier length.
-* Canonicalization rules.
+Hashes SHOULD be lower-case, but nodes SHOULD accept upper-case and mixed-case.
+Hashes MUST be stored as hexadecimal.
 
 ---
 
@@ -280,20 +260,24 @@ Libranet supports prefix-based content discovery.
 The search endpoint is:
 
 ```text
-/data/search/{hash-prefix}
+/data/search/{hash}
 ```
 
-The prefix identifies matching hash values by their leading bits.
-
+The hash identifies matching hash values by their leading bits.
 The search MAY return hashes using multiple supported hash algorithms.
+The hash MAY be truncated, which could lead to poorer matching as precision of match would be lost.
 
 For example:
 
 ```http
-GET /data/search/101101001011 HTTP/1.1
+GET /data/search/0123456789abcdef... HTTP/1.1
 ```
 
 The node returns the best matching content hashes known to it.
+
+The node MUST have a configurable limit to the number of results it returns for search.
+The list MUST contain the hashes that match the most number of leading bits in the hash known to the node.
+The node MAY return hashes it is aware of but may not actually have locally.
 
 ## 6.1 Search Response
 
@@ -304,30 +288,22 @@ Example:
 ```json
 {
   "results": [
-    {
-      "algorithm": "sha256",
-      "hash": "..."
-    },
-    {
-      "algorithm": "sha512",
-      "hash": "..."
-    }
+    "/data/sha256/...",
+    "/data/sha512/..."
   ]
 }
 ```
 
-The result list is ordered by the quality of the prefix match.
+The result list is ordered by the quality (defined as most matching leading bits) of the prefix match.
 
-**TBD:**
+## 6.2 Malicious Drop Bombing
 
-* Exact JSON schema.
-* Whether the prefix is represented as hexadecimal, binary, or another encoding.
-* Maximum prefix length.
-* Maximum number of results.
-* Exact ranking algorithm.
-* Whether result ranking considers local availability.
-* Whether results include metadata.
-* Whether results may be streamed.
+The search mechanism allows us to search for drop content.
+Hash the target identifier ("Messages for John Doe") and then search for the resulting hash.
+Real content could be lost in the noise if someone were to generate a lot of content targeted at that hash.
+The solution is to increase how many matching bits you generate for your targeted drop.
+This makes it prohibitively expensive to generate spam at an address.
+Addresses could also be ephemeral to minimize noise at a particular location (e.g. "Messages for John Doe 2025-05")
 
 ---
 
@@ -342,69 +318,69 @@ A node MUST NOT claim that content exists at a content identifier unless the con
 A proposed upload interface is:
 
 ```http
-POST /data/{hash-algorithm}
+PUT /data/{hash-algorithm}/{hash}
 ```
 
 with the content supplied as the request body.
 
-Example:
+Content will be accepted from any valid connection.
 
-```http
-POST /data/sha256 HTTP/1.1
-Host: example.org
-Content-Type: application/octet-stream
-Content-Length: ...
+## 7.1 Content Validation
 
-<content>
-```
+The node calculates the hash for validation and rejects the request with `400` if the hash does not match.
+The node MUST take into account that the content MAY be zlib-compressed, in which case the hash is of the uncompressed content.
 
-The node calculates the hash and stores the content.
+The content MUST be less than 1 MiB in size.
+If the content is compressed, the compressed size should be less than 1 MiB in size.
 
-A successful response SHOULD identify the resulting content address.
+If the hash already exists, but the content differs (hash collision), all collision variants are kept and a random variant is returned.
 
-Example:
+If the hash already exists and the content is the same as an existing content for that hash, it can be safely discarded.
 
-```json
-{
-  "algorithm": "sha256",
-  "hash": "..."
-}
-```
+## 7.2 Content Storage
 
-**TBD:**
+Content MUST be validated before sending to other nodes.]
+Content validation MAY be delayed.
 
-* Whether uploads use `POST` or `PUT`.
-* Whether clients may supply the expected hash.
-* Maximum upload size.
-* Streaming requirements.
-* Duplicate-content behavior.
-* Required authentication.
-* Whether arbitrary clients may upload.
-* Whether uploads can be forwarded to other nodes.
-* Upload quotas and resource limits.
+The node SHOULD hold all duplicate versions from all sources until they are validated.
+The node SHOULD only remove duplicates after it has been validated that the content is actually duplicated.
+
+## 7.3 Valid Connections
+
+Nodes MAY restrict `/data` communication by clients to local connections if they do not have the node ID headers.
+Nodes MAY restrict `/data` communications in general if they do not have the node ID headers.
+
+## 7.4 Forwarding
+
+Nodes SHOULD forward uploads to the connected node with the best (most prefix bits) match of the content hash to the node ID.
+The node SHOULD NOT forward uploads if the content is duplicate of existing content on the node.
+
+This will contribute to (1) increasing the availability of data and (2) improve discoverability of the data.
+
+## 7.5 Limits
+
+Nodes MAY abruptly break connections with client nodes that appear to have abusive behavior.
+
+Abusive behavior MAY include, but is not limited to:
+
+- Low ratio of desired data (`/data/seek`) to undesired data
+- Excessive requests of the same content or search
+- Excessive accessing unsupported endpoints, protocols, or areas outside of `/data`
 
 ---
 
 # 8. Optional Compressed Storage
 
 A node MAY store content in compressed form.
+Compressed vs uncompressed content can be distinguished by the hash of the content.
 
-When zlib compression is used, the protocol may distinguish between:
+A node MUST expect that content may be original content or zlib compressed.
 
-1. The hash of the original content.
-2. The hash of the compressed representation.
+If the hash does not match the content, use zlib to uncompress the content.
+If the hash of the uncompressed content does not match the hash, the content is considered invalid and should be discarded.
 
-The content address normally identifies the original content.
-
-The node MUST ensure that decompression produces content matching the requested content hash.
-
-**TBD:**
-
-* Exact compression metadata format.
-* Whether compression is negotiated through HTTP.
-* Whether compressed representations receive independent content identifiers.
-* Whether clients may request compressed responses.
-* Whether zlib is mandatory, optional, or one of several supported compression formats.
+The zlib compression level is at the discretion of the author.
+The zlib compression level MAY be changed by any node.
 
 ---
 
@@ -419,7 +395,7 @@ The drop mechanism is intended to allow a sender to place data with a node or de
 The protocol constructs the drop payload by appending:
 
 1. A null byte.
-2. A nonce.
+2. A nonce (with no nulls in it)
 
 The resulting value is used to derive the target placement.
 
@@ -438,34 +414,43 @@ drop placement value
 
 The nonce allows the sender to search for a value whose hash satisfies the desired target prefix.
 
+The nonce is added before any compression.
+
 ## 9.1 Drop Endpoint
 
-**TBD**
+Drops are pushed like any other data.
 
-The exact HTTP endpoint for creating a drop has not yet been finalized.
-
-A proposed structure is:
-
-```text
-/data/drop/{target-prefix}
+```http
+PUT /data/{hash-algorithm}/{hash}
 ```
 
-**TBD:**
+## 9.2 Nonce Usage
 
-* Exact endpoint.
-* HTTP method.
-* Target-prefix encoding.
-* Drop payload format.
-* Nonce size.
-* Hash algorithm.
-* Maximum search difficulty.
-* Whether the sender or recipient performs the placement search.
-* Whether drops are stored permanently.
-* Drop expiration.
-* How a recipient retrieves a drop.
-* Whether drops are encrypted.
-* Replay protection.
-* Duplicate-drop behavior.
+The nonce may be of any length (including length of 0).
+The nonce cannot include any null bytes in it.
+
+The nonce is used as a proof-of-work.
+The more prefix bits that match the hash of the drop target the easier it will be to find.
+
+This means that there will be many iterations of selecting a nonce and hashing the final content to produce an appropriately sized prefix bit match.
+The more contention that is expected at the drop location, the more prefix bits should match.
+
+This minimizes random content matching the drop and discourages drop bombing due to the cost of creating each content.
+
+## 9.3 Drop Target
+
+Drops are determined by the SHA256 hash of a target string.
+
+For instance, messages for an individual could have a target string of "Messages: John Doe: 2025-05-02".
+The target string is hashed with SHA256. This becomes the target hash.
+
+## 9.4 Finding Drop Content
+
+The more prefix bits that the target hash has in common with the content hash, the more likely `/data/search/{target-hash}` will return the expected message.
+Since `/data/search/{target-hash}` returns the best matches (longest prefix bit matches), the more prefix bits match the target hash the more likely the drop will be found when requested.
+
+The client that creates the drop content determines the tradeoff between compute time and target match.
+The client MAY have a time limit in which to compute the nonce.
 
 ---
 
@@ -664,30 +649,63 @@ No manual address configuration is required when nodes are directly reachable us
 
 ## 10.5 Peer List Endpoint
 
-**TBD**
+Client nodes SHOULD publish their peer list shortly after connection.
+Client nodes MAY request a peer list of the server node.
 
-The exact endpoint and request/response schema for exchanging node lists has not yet been finalized.
+### Publish Peer List
 
-A proposed endpoint is:
+To publish the peer list, the client sends:
 
-```text
-/data/peers
+```
+POST /data/nodes HTTP/1.1
 ```
 
-**TBD:**
+With the body being the JSON list of nodes.
+The body MAY contain one or more `localhost` entries as mentioned previously.
 
-* Exact endpoint.
-* HTTP method.
-* Node-list JSON schema.
-* Maximum node-list size.
-* Maximum number of peer endpoints.
-* Node identity representation.
-* Endpoint representation.
-* Peer expiration.
-* Duplicate endpoint handling.
-* Peer ranking.
-* Whether node lists are exchanged automatically on every connection.
-* Whether a node may refuse to provide its node list.
+### Request Peer List
+
+To request the peer list, the client sends:
+
+```
+GET /data/nodes HTTP/1.1
+```
+
+The response body being the JSON list of nodes.
+The body MAY contain one or more `localhost` entries as mentioned previously.
+
+## 10.6 Peer List JSON Schema
+
+The peer list MUST be for the form {"nodes": {"node address": "node id"}.
+
+For example:
+
+```JSON
+{
+   "nodes": {
+    "http://localhost:8080": "sha256/...",
+    "http://192.188.14.22:4300": "sha256/...",
+    "https://libranet.duckdns.org:443": "sha256/..."
+   }
+}
+```
+
+The node list MAY be zlib-compressed (level at discretion of the node generating it).
+The node list MUST be less than 1 MiB in size.
+Missing `http` port is assumed to be `80` and missing `https` port is assumed to be `443`.
+The list SHOULD represent the last address the node was able to successfully connect to that identity.
+
+The list SHOULD prioritize nodes by (priority could be determined by, but not limited to):
+
+- Have more uptime
+- Have better transfer rates
+- Have provided more stable connections
+- Have higher net Karma value
+- Have maintained longer connections
+- Have returned results faster (searches and data requests)
+- Have had more successful request responses (data found more often)
+
+Prioritization SHOULD be used to determine what to include if the list will exceed the 1 MiB limit.
 
 ---
 
@@ -695,39 +713,62 @@ A proposed endpoint is:
 
 Each Libranet node has a cryptographic identity.
 
-The HTTP API needs to expose sufficient information for another node to determine the identity of the node it is communicating with.
+Every authenticated Libranet request MUST contain an HTTP Message Signature (per [RFC 9421](https://www.ietf.org/ietf-ftp/rfc/inline-errata/rfc9421.html))
 
-A proposed endpoint is:
+The signature MUST identify the Libranet node identity.
+
+The signature MUST cover:
+- @method
+- @authority
+- @path
+- Libranet node identity
+- Content-Digest, when a message body is present
+
+The signature MUST use the node's Libranet identity key.
+
+The node identity key is the authoritative proof of Libranet node identity.
+TLS certificate validation is independent of node authentication.
+
+## 11.1 Node Http Headers
+
+The headers identify the node being communicated with and validate its authenticity.
+Nodes MUST send [RFC 9421](https://www.ietf.org/ietf-ftp/rfc/inline-errata/rfc9421.html) compliant headers.
+Nodes MAY reject communication that does not have [RFC 9421](https://www.ietf.org/ietf-ftp/rfc/inline-errata/rfc9421.html) compliant headers.
+
+**Note**: Since the node identifier is **not** the actual key but a reference to the key, it would be common to request the actual key for the node identifier and then start validating signatures.
 
 ```text
-/data/identity
+PUT /data/sha256/abc123... HTTP/1.1
+Content-Type: application/octet-stream
+Content-Length: 1234
+Content-Digest: sha-256=:<base64-sha256-of-body>:
+Signature-Input: libranet=("@method" "@path" "content-digest");created=1757080000;keyid="sha256/def567..."
+Signature: libranet=:<base64-signature>:
+
+<binary body>
 ```
 
-A response might contain:
+### Fetching Node Public Key
 
-```json
-{
-  "identity": "...",
-  "public_key": "...",
-  "addresses": [
-    "https://example.org"
-  ]
-}
+Since the node identifier is just the content hash of the public key, you can request the public key for the node you are communicating with.
+
+Typical connection initiation:
+
+```text
+PUT /data/sha256/abc123... HTTP/1.1  # push client node public key so they can validate you
+GET /data/sha256/def/456... HTTP/1.1  # fetch the key received in the response so client node can start validating authenticity
+POST /data/nodes HTTP/1.1  # publish client node list of nodes
+GET /data/nodes HTTP/1.1  # fetch server node list of nodes
+GET /data/seek HTTP/1.1  # fetch the list of information the server node is seeking
 ```
 
-This example is illustrative only.
+Server nodes MUST NOT break connection due to authentication failure until after at least the first two requests.
+This allows the identity exchange to happen.
 
 **TBD:**
 
-* Identity format.
 * Public-key algorithm.
 * Public-key encoding.
-* Node identifier derivation.
-* Identity signing.
-* Identity rotation.
-* Multiple identities per node.
-* Relationship between node identity and HTTP/TLS identity.
-* Identity endpoint response schema.
 
 ---
 
@@ -752,7 +793,7 @@ A node can map an application name to a directory-bundle content identifier.
 For example:
 
 ```text
-https://example.org/docs/
+https://example.org/docs
 ```
 
 may resolve through:
@@ -778,9 +819,9 @@ An application name is mapped to a directory bundle.
 For example:
 
 ```text
-https://example.org/wiki/
-https://example.org/photos/
-https://example.org/project/
+https://example.org/wiki
+https://example.org/photos
+https://example.org/project
 ```
 
 may each represent a different directory bundle.
@@ -795,26 +836,34 @@ chaos
 
 The root application `/` is preconfigured.
 
-The root application MAY be remapped to a different directory-bundle path.
+The root application MAY be remapped to a different directory bundle.
 
 The root application MAY therefore serve a directory bundle without requiring a literal `/index.html` stored as the root object.
+
+Application names are case-insensitive.
+
+A trailing slash for the application is optional and maps to the default file in the directory bundle (`index.html` if unspecified in the bundle).
+
+If a directory bundle indicates that it is discoverable, then an index is generated whenever a directory within the bundle is referenced directly.
+
+The directory bundle MAY specify content type (if so, that is the type that should be used).
+If the directory bundle does not specify content type, the node MAY use an internal extension lookup table to determine content type.
+The node SHOULD make a best guess effort to determine content type.
+
+If a file requested is not in the bundle, a standard `404` error should be returned.
+Directory bundles may specify a specific `404` page file.
+
+Applications are defined on the local node.
+Each node will have its own list of application mappings.
+This allows someone to configure their specific view and applications on the Libranet.
 
 **TBD:**
 
 * Exact configuration format.
 * Default root application.
 * Application-name syntax.
-* Case sensitivity.
-* Trailing-slash behavior.
-* Path normalization.
-* Directory traversal prevention.
-* Default document behavior.
-* Content-type determination.
-* Missing-file behavior.
 * Redirect behavior.
 * Whether applications can reference other applications.
-* Maximum application depth.
-* Whether application mappings are local configuration or network state.
 
 ---
 
@@ -847,7 +896,7 @@ Likewise, `/data` MUST NOT be interpreted as an application name.
 
 # 15. Content Types
 
-The HTTP API uses standard MIME media types.
+The HTTP API (the `/data` prefixed paths) uses standard MIME media types.
 
 Common types include:
 
@@ -856,19 +905,11 @@ Common types include:
 | Raw binary data | `application/octet-stream` |
 | JSON            | `application/json`         |
 | Problem Details | `application/problem+json` |
-| HTML            | `text/html`                |
-| CSS             | `text/css`                 |
-| JavaScript      | `text/javascript`          |
-| Plain text      | `text/plain`               |
-| SVG             | `image/svg+xml`            |
 
 The node SHOULD determine the content type of files served through directory bundles from bundle metadata or an equivalent authenticated source.
 
 **TBD:**
 
-* Exact content-type metadata representation.
-* Whether content type is part of a bundle's authenticated data.
-* Default type for unknown extensions.
 * Whether content sniffing is prohibited.
 
 ---
@@ -882,18 +923,14 @@ The following status codes are expected to have defined Libranet semantics.
 | `200 OK`                    | Request completed successfully             |
 | `201 Created`               | New content or resource created            |
 | `204 No Content`            | Request completed without a response body  |
-| `301 Moved Permanently`     | Permanent HTTP redirect                    |
-| `302 Found`                 | Temporary HTTP redirect                    |
 | `400 Bad Request`           | Invalid request                            |
 | `401 Unauthorized`          | Authentication required or failed          |
 | `403 Forbidden`             | Request understood but not permitted       |
 | `404 Not Found`             | Requested resource is unavailable          |
 | `405 Method Not Allowed`    | HTTP method is not supported               |
-| `409 Conflict`              | Request conflicts with current state       |
 | `413 Content Too Large`     | Request exceeds permitted size             |
 | `429 Too Many Requests`     | Rate limit exceeded                        |
 | `500 Internal Server Error` | Unexpected node error                      |
-| `502 Bad Gateway`           | Upstream peer returned an invalid response |
 | `503 Service Unavailable`   | Resource temporarily unavailable           |
 | `504 Gateway Timeout`       | Upstream peer did not respond in time      |
 
@@ -1021,9 +1058,8 @@ Libranet MUST NOT define a new HTTP status code when an existing HTTP status cod
 
 ## 17.6. Reference
 
-The normative specification is:
-
-[RFC 9457 - Problem Details for HTTP APIs](https://www.rfc-editor.org/rfc/rfc9457.html)
+- [RFC 9457 - Problem Details for HTTP APIs](https://www.rfc-editor.org/rfc/rfc9457.html)
+- [RFC 9421 - HTTP Message Signatures](https://www.ietf.org/ietf-ftp/rfc/inline-errata/rfc9421.html)
 
 ---
 
