@@ -84,28 +84,34 @@ TBD: exact hash function, input material (e.g., public key), and encoding (hex/b
 - Every stored object MUST be addressed by a hash of its content (a Content Address).
 - A Content Address MUST change if and only if the underlying content changes.
 - Nodes MUST verify retrieved content against its claimed Content Address before treating it as valid.
+- Data MAY be zlib-compressed, in which case the Content Address is the hash of the original content, not the zlib-compressed content.
 
 ### 5.2 Storage and Retrieval
 
-- Nodes SHOULD advertise which Content Addresses they hold.
+- Nodes MUST return content it has stored locally when requested.
+- Nodes MAY request the content of other Nodes to fulfill the request.
+- Nodes MUST return an HTTP response of `503 Service Unavailable` if the data is not available locally, but is requesting the data from other Nodes.
+
+### 5.3 Routing
+
+- Nodes MUST prioritizing retaining content by how many prefix bits the hash matches with the Node ID.
+- Nodes SHOULD prioritize requesting content of Nodes whose ID matches more prefix bits with the requested hash.
+
+### 5.4 Disposing of Data
+
 - Nodes MAY discard content they hold at their own discretion, subject to any obligations defined by the incentive layer (see companion Karma/Kismet document).
+- Nodes SHOULD send content to multiple other Nodes and verify the transfer was complete before discarding content.
+- Nodes SHOULD prioritize discarding Content whose hash has the least prefix bits match with its ID.
+- Nodes MAY prioritize smaller Content as it is less expensive to acquire the data again.
 
 ## 6. Drops and Prefix Matching
 
 ### 6.1 Drop Structure
 
-- A drop MUST be opaque with respect to its contents: routing and placement decisions MUST NOT depend on interpreting the payload.
-- A drop MUST carry a target identifier used for placement, independent of any semantic meaning of the payload.
+- A drop MUST append a `null` byte and an arbitrary number of bytes as the nonce to adjust the Content Address to match some number of prefix bits.
+- A drop MAY expend extra compute cycles to match a higher number of bits to increase likelihood of it being found in a search.
 
-TBD: exact drop envelope fields (sender, target prefix, payload, TTL, signature) need to be defined here.
-
-### 6.2 Prefix Matching for Routing and Locality
-
-- Routing of a drop MUST be determined by comparing the drop's target identifier against candidate Node IDs using prefix matching.
-- A node forwarding a drop SHOULD forward it toward peers whose Node ID shares the longest matching prefix with the drop's target.
-- Prefix matching MAY also be used to express data locality (e.g., preferring storage/retrieval from nodes with nearby identifiers).
-
-### 6.3 Uses of Drops
+### 6.2 Uses of Drops
 
 - Drops MAY be used to implement point-to-point or broadcast messaging between nodes.
 - Drops MAY be used as a general-purpose mechanism to place arbitrary data at a network location derived from an identifier, without the storing node needing to know the meaning of that data.
@@ -115,13 +121,15 @@ TBD: exact drop envelope fields (sender, target prefix, payload, TTL, signature)
 
 ### 7.1 Bundle Structure
 
-- A directory bundle MUST consist of a manifest plus one or more content-addressed files referenced by that manifest.
-- The manifest MUST itself be content-addressed.
-- A directory bundle MUST be resolvable without requiring a central index or registry.
+- A directory bundle MUST consist of JSON content describing a directory (see [Directory Bundle](BundleSpecification.md#3-raw-directory-bundle))
 
 ### 7.2 Hosting and Resolution
 
-TBD: resolution flow from a human-facing name or identifier down to a manifest Content Address needs specification.
+- Apps MAY host a directory bundle at a name configured with the Node
+- App names MUST NOT be `data`, `web`, or `chaos`
+- Nodes MUST have a preconfigured `/` app
+- Nodes MUST allow the `/` app to be changed
+- Nodes MUST allow the app to be mapped to a Directory Bundle path
 
 ## 8. Security Considerations
 
@@ -129,11 +137,11 @@ This section is non-exhaustive and will be expanded.
 
 - Implementations MUST validate all Content Addresses on receipt (see Section 5.1).
 - Implementations MUST validate Node ID ownership proofs before granting identity-dependent privileges (see Section 3.2).
-- Prefix-matching routing introduces potential eclipse/Sybil concerns at identifier boundaries; mitigations are discussed jointly with the Karma/Kismet reputation system in the companion document.
 
 ## 9. IANA / Namespace Considerations
 
-TBD: whether Libranet requires reserved URI schemes, media types, or well-known paths.
+- Node MUST locally register app names (only valid for that Node).
+- Node MUST NOT allow apps to be registered as `data`, `web`, or `chaos`.
 
 ## 10. References
 
