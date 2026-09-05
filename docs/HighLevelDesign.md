@@ -91,7 +91,7 @@ When a local node connects to a remote node over HTTP/HTTPS, the following order
 
 The `/data/...` paths constitute the programmatic interface.
 
-Special convenience paths such as `/data/pending` may be used to read or write the set of hashes a node is currently seeking.
+The special convenience path `/data/seek` may be used to read or write the set of hashes a node is currently seeking.
 
 ### 3.3.1 Reserved Top-Level Paths
 
