@@ -288,8 +288,8 @@ Example:
 ```json
 {
   "results": [
-    "/data/sha256/...",
-    "/data/sha512/..."
+    "sha256/...",
+    "sha512/..."
   ]
 }
 ```
