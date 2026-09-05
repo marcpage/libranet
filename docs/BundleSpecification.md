@@ -40,11 +40,11 @@ readers perform plain byte comparison without normalizing.
     "hash": "9f86d0..."
   },
   "contents": [
-    "/data/sha256/9f86d0...",
-    "/data/sha1/1b4f0e..."
+    "sha256/9f86d0...",
+    "sha1/1b4f0e..."
   ],
   "versions": [
-    ["/data/sha256/aaa...", "/data/sha256/bbb..."]
+    ["sha256/aaa...", "sha256/bbb..."]
   ]
 }
 ```
@@ -59,7 +59,7 @@ readers perform plain byte comparison without normalizing.
     **fully reassembled file** (see §2.3).
 - **`contents`** — required. An ordered list of CAS paths, one per part of the
   file, in the order the parts appear in the reconstructed file. Example:
-  `["/data/sha256/...", "/data/sha256/...", ...]`.
+  `["sha256/...", "sha256/...", ...]`.
 - **`versions`** — optional. A list of previous versions of this file, each
   itself a list of CAS paths (i.e., the `contents` of a prior file bundle).
   - A single entry means this version is an **update** to that version.
@@ -77,9 +77,9 @@ algorithm**. A file's parts may be addressed under old algorithms (e.g.
 
 ```json
 "contents": [
-  "/data/sha1/abc123...",
-  "/data/sha256/def456...",
-  "/data/blake3/789ghi..."
+  "sha1/abc123...",
+  "sha256/def456...",
+  "blake3/789ghi..."
 ]
 ```
 
@@ -110,11 +110,11 @@ could not.
   "contents": {
     "README.md": {
       "metadata": { "size": 128, "algorithm": "sha256", "hash": "..." },
-      "contents": ["/data/sha256/..."]
+      "contents": ["sha256/..."]
     },
     "docs/Specification.md": {
       "metadata": { "algorithm": "sha256", "hash": "..." },
-      "contents": ["/data/sha256/..."]
+      "contents": ["sha256/..."]
     },
     "docs/old-spec-link": {
       "contents": "Specification.md"
@@ -123,8 +123,8 @@ could not.
       "metadata": { "created": "2026-01-01T00:00:00Z" }
     }
   },
-  "versions": ["/bundles/sha256/..."],
-  "extensions": ["/bundles/sha256/..."]
+  "versions": ["sha256/..."],
+  "extensions": ["sha256/..."]
 }
 ```
 
@@ -195,8 +195,13 @@ within an entry, and no special handling is needed when the entry types
 differ (e.g., a file entry in one layer vs. a directory-metadata entry in
 another at the same path) since the higher-priority entry simply wins outright.
 
-A `null` value for directory entry means the file should be deleted (not rendered).
-This is to allow the use of existing bundles, even when an entry needs to be deleted.
+A `null` value for a directory entry means the entry should be deleted (not
+rendered) when resolving `contents`. This allows a bundle to reuse an
+existing extension while removing individual entries it no longer wants,
+without needing to duplicate the rest of that extension's contents.
+The `null` entries can be completely ignored or removed after the full
+directory bundle contents is resolved.
+
 
 ### 4.3 Example
 
@@ -220,7 +225,7 @@ Resolution: resolve `B` → `{README.md: v1, LICENSE}`. Overlay `A` →
 
 ```json
 {
-  "signer": "data/sha256/8f3a...",
+  "signer": "sha256/8f3a...",
   "algorithm": "sha256",
   "hash": "c2b1...",
   "signature": "MEUCIQ...",
@@ -228,7 +233,7 @@ Resolution: resolve `B` → `{README.md: v1, LICENSE}`. Overlay `A` →
 }
 ```
 
-- **`signer`** — identifier for the public key of the signer.
+- **`signer`** — a relative CAS path pointing to the public key of the signer.
 - **`algorithm`** — hashing algorithm used to hash the bundle contents.
 - **`hash`** — the hash of `contents`.
 - **`signature`** — the signature over the hash.
@@ -346,7 +351,68 @@ Notes:
 
 ---
 
-## 7. Open Items / Not Yet Specified
+## 7. Per-Entry CAS Encryption
+
+In addition to whole-bundle password protection (§6), individual CAS
+references — anywhere a CAS path is used, including file `contents` parts,
+`versions` entries, `extensions` paths, and `signer` — may point at encrypted
+data using an extended path scheme:
+
+```
+{hash algorithm}/{encrypted data hash}/{encryption algorithm}/{encryption key}
+```
+
+This allows individual pieces of content to be encrypted while leaving the
+surrounding bundle structure (directory listings, filenames, metadata) fully
+readable — unlike §6, which encrypts the bundle structure but not the contents.
+
+### 7.1 Fields
+
+- **`{hash algorithm}`** / **`{encrypted data hash}`** — the algorithm and
+  hash of the data **after encryption** (i.e., of the ciphertext actually
+  stored at this address, not of the plaintext). This is critical for
+  verification: nodes may pass encrypted data around without knowing its
+  content, and must still be able to verify that the bytes they received
+  match the requested address.
+- **`{encryption algorithm}`** — the cipher/mode used, following the same
+  convention as the password-protection descriptor in §6 (e.g.
+  `AES256-CBC`), optionally including an IV suffix (`-IV:{hex}`). If no IV
+  is specified, it defaults to all-zero, consistent with §6.3.
+- **`{encryption key}`** — the decryption key, hex-encoded.
+
+### 7.2 Convergent key derivation
+
+The encryption key is derived from the **plaintext content** in a manner
+specific to the encryption algorithm in use, so that encrypting identical
+content always produces an identical key (and, combined with the default
+all-zero IV, identical ciphertext and therefore an identical CAS address —
+preserving deduplication, consistent with §6.3).
+
+For AES256-based encryption, SHA256 is the standard key-derivation
+candidate: `key = SHA256(plaintext)`.
+
+Not every encryption algorithm may fit neatly into a convergent-key
+paradigm. Key derivation is therefore defined **per algorithm**, not by a
+single universal rule — when support for a new encryption algorithm is
+added, its convergent-key derivation mechanism (if any) is determined at
+that time.
+
+### 7.3 Example
+
+```json
+"contents": [
+  "sha256/9f86d0...",
+  "sha256/1b4f0e.../AES256-CBC/a1b2c3d4e5f6..."
+]
+```
+
+Here the second part is stored encrypted; its address hash is of the
+ciphertext, and the trailing segments carry everything a holder of the full
+path needs to decrypt it.
+
+---
+
+## 8. Open Items / Not Yet Specified
 
 The following were identified during design discussion but not yet resolved:
 
