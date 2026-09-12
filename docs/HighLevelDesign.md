@@ -78,6 +78,11 @@ When a local node connects to a remote node over HTTP/HTTPS, the following order
 6. Begin requesting data that the local node itself is seeking.
 7. Periodically fetch the remote node request list and push data the node has.
 
+> A detailed treatment of this exchange — including bootstrap
+> authentication timing, unauthenticated-request rules, the guest/host
+> etiquette framing, and Karma-based connection management — is given in
+> the [Handshake Protocol](HandshakeProtocol.md) document.
+
 ## 3.3 Minimal HTTP API Surface
 
 | Method & Path                      | Purpose                                            |
@@ -235,6 +240,8 @@ If the local node holds any of those hashes, it pushes the corresponding data to
 
 A node periodically fetches the remote node request list and pushes data the remote node has requested.
 
+The JSON schema for this list is defined in HTTP API §10.7.1.
+
 ## 4.9 Node Discovery
 
 Nodes exchange lists of known node addresses.
@@ -250,6 +257,8 @@ The known address list can be read or published through:
 ```text
 GET/POST /data/nodes
 ```
+
+The JSON schema for this list is defined in HTTP API §10.6.
 
 ---
 

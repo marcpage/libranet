@@ -705,6 +705,54 @@ The list SHOULD prioritize nodes by (priority could be determined by, but not li
 
 Prioritization SHOULD be used to determine what to include if the list will exceed the 1 MiB limit.
 
+## 10.7 Outstanding Requests List (`/data/seek`)
+
+A node advertises the content it does not yet hold, so that connecting peers can add value by fulfilling those requests before drawing on the node's own resources.
+
+The outstanding requests list can be read or published through:
+
+```
+GET/POST /data/seek
+```
+
+### 10.7.1 Outstanding Requests JSON Schema
+
+The seek list MUST be of the form:
+
+```JSON
+{
+  "data": ["{algorithm}/{hash}", ...],
+  "search": ["{hash}", ...]
+}
+```
+
+For example:
+
+```JSON
+{
+  "data": ["sha256/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"],
+  "search": ["0123456789abcdef..."]
+}
+```
+
+- `data` lists exact content identifiers currently being sought via `GET /data/{algorithm}/{hash}`.
+- `search` lists hash prefixes currently being sought via `GET /data/search/{hash}`.
+
+The seek list MAY be zlib-compressed (level at the discretion of the node generating it).
+The seek list MUST be less than 1 MiB in size.
+
+### 10.7.2 Open Item: Pushing Search Results
+
+A `data` entry in the seek list names an exact content identifier, so it can be fulfilled directly via `PUT /data/{algorithm}/{hash}` (§7).
+
+A `search` entry names only a hash prefix. This specification currently defines how a client requests search results (§6), but does not yet define a mechanism for a node to push search-derived content, or the resulting matching hash(es), to a server that listed that prefix in its `search` entries.
+
+**TBD:**
+
+* Endpoint and method for pushing search-derived results.
+* Whether the pushed payload is the matching content itself (as with `data` entries), a list of matching hashes, or both.
+* Whether §7 (Content Upload) already covers this case as-is, or whether a distinct mechanism is required.
+
 ---
 
 # 11. Node Identity
@@ -1307,7 +1355,8 @@ The following table summarizes the currently proposed HTTP API.
 | `/data/{algorithm}/{hash}`   | `PUT`   | Upload CAS content           | Defined |
 | `/data/{algorithm}/{hash}`   | `HEAD`  | Retrieve CAS metadata        | TBD     |
 | `/data/search/{hash}`        | `GET`   | Search for matching hashes   | Defined |
-| `/data/nodes`                | `GET`   | Retrieve peer information    | Defined |
+| `/data/nodes`                | `GET`/`POST` | Retrieve/publish peer information | Defined |
+| `/data/seek`                 | `GET`/`POST` | Retrieve/publish outstanding requests | Defined |
 | `/data/...`                  | Various | Additional programmatic APIs | TBD     |
 | `/`                          | `GET`   | Root web application         | Defined |
 | `/{application}/...`         | `GET`   | Directory-bundle application | Defined |
@@ -1348,6 +1397,7 @@ The following areas remain unresolved and should be specified before implementat
 28. API compatibility and deprecation policy.
 29. Security requirements.
 30. HTTP-specific registrations.
+31. Mechanism for pushing search-derived results to satisfy `/data/seek` `search` entries.
 
 ---
 
