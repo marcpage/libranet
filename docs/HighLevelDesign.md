@@ -260,6 +260,21 @@ GET/POST /data/nodes
 
 The JSON schema for this list is defined in HTTP API §10.6.
 
+### 4.9.1 Optional Local Discovery (mDNS/DNS-SD)
+
+In addition to the `/data/nodes` exchange above, a node MAY support mDNS/DNS-SD ([RFC 6762](https://datatracker.ietf.org/doc/html/rfc6762)/[RFC 6763](https://www.rfc-editor.org/info/rfc6763/)) to discover other Libranet nodes on the same local network segment without prior configuration.
+
+- Local discovery via mDNS/DNS-SD is OPTIONAL. It is a bootstrapping convenience layered on top of the node-list mechanism in §4.9, not a replacement for it.
+- mDNS/DNS-SD is scoped to link-local multicast and does not provide discovery across the wider internet. Wide-area discovery still relies on `/data/nodes` exchange and node-list propagation (§4.9).
+- A node advertising itself via mDNS/DNS-SD SHOULD publish, at minimum, its node identifier and reachable address/port as service metadata, so a discovering peer can proceed directly to the handshake described in the Handshake Protocol.
+- Support for this discovery mechanism has no bearing on Karma or protocol conformance; it is a bootstrapping convenience only.
+
+**TBD:**
+
+- Service type name (e.g. `_libranet._tcp.local.`).
+- Exact service metadata (TXT record) schema.
+- Interaction with the eight-connection outgoing policy (§4.6) when local peers are discovered.
+
 ---
 
 # 5. Application Layer

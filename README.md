@@ -10,15 +10,21 @@ Libranet lets nodes discover each other, share content addressed by cryptographi
 
 ## Table of Contents
 
-- [Features](#features)
-- [Quick Overview](#quick-overview)
-- [Requirements](#requirements)
-- [Getting Started / Installation](#getting-started--installation)
-- [Example Usage](#example-usage)
-- [Documentation](#documentation)
-- [Status](#status)
-- [Not to be confused with](#not-to-be-confused-with)
-- [License](#license)
+- [Libranet](#libranet)
+  - [Table of Contents](#table-of-contents)
+  - [Features](#features)
+  - [Quick Overview](#quick-overview)
+  - [Requirements](#requirements)
+  - [Getting Started / Installation](#getting-started--installation)
+  - [Example Usage](#example-usage)
+    - [Fetch content by hash](#fetch-content-by-hash)
+    - [Search by hash prefix](#search-by-hash-prefix)
+    - [Serve a registered application](#serve-a-registered-application)
+    - [Publish a drop under a name](#publish-a-drop-under-a-name)
+  - [Documentation](#documentation)
+  - [Status](#status)
+  - [Not to be confused with](#not-to-be-confused-with)
+  - [License](#license)
 
 ---
 
@@ -26,7 +32,7 @@ Libranet lets nodes discover each other, share content addressed by cryptographi
 
 - **Content-addressed storage** — Data is identified and retrieved by its cryptographic hash
 - **Pure HTTP/HTTPS** — Works with standard web infrastructure; no custom protocols required
-- **Peer discovery** — Nodes automatically exchange address lists and interests
+- **Peer discovery** — Nodes automatically exchange address lists and interests, with optional mDNS/DNS-SD support for local-network discovery
 - **Prefix-based placement** — Leave data at predictable logical locations (“drops”)
 - **Directory bundles** — Package collections of files as mini-websites or applications
 - **Self-organizing storage** — Nodes prefer data that is “close” to their own identity, improving locality
