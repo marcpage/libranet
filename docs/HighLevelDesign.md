@@ -105,6 +105,7 @@ The following top-level path segments are reserved and may never be used as an a
 * `data` - the programmatic content-addressed interface described in this section.
 * `web` - reserved for future use.
 * `chaos` - reserved for future use.
+* `config` - the local-only node configuration and administration interface (see HTTP API §2.3).
 
 ---
 
@@ -305,7 +306,7 @@ Other applications are reached via:
 /{app-name}
 ```
 
-The names `data`, `web`, and `chaos` are reserved (see §3.3.1) and may never be used as an application name.
+The names `data`, `web`, `chaos`, and `config` are reserved (see §3.3.1) and may never be used as an application name.
 
 ## 5.3 Application Delivery
 
@@ -399,3 +400,4 @@ For quick reference, the following top-level path segments are reserved at the r
 | `/data`   | In use            | Programmatic content-addressed interface (§3-4)  |
 | `/web`    | Reserved (future) | Not yet defined                                   |
 | `/chaos`  | Reserved (future) | Not yet defined                                   |
+| `/config` | In use            | Local-only node configuration and administration interface (HTTP API §2.3) |

@@ -126,7 +126,7 @@ TBD: exact hash function, input material (e.g., public key), and encoding (hex/b
 ### 7.2 Hosting and Resolution
 
 - Apps MAY host a directory bundle at a name configured with the Node
-- App names MUST NOT be `data`, `web`, or `chaos`
+- App names MUST NOT be `data`, `web`, `chaos`, or `config`
 - Nodes MUST have a preconfigured `/` app
 - Nodes MUST allow the `/` app to be changed
 - Nodes MUST allow the app to be mapped to a Directory Bundle path
@@ -141,7 +141,7 @@ This section is non-exhaustive and will be expanded.
 ## 9. IANA / Namespace Considerations
 
 - Node MUST locally register app names (only valid for that Node).
-- Node MUST NOT allow apps to be registered as `data`, `web`, or `chaos`.
+- Node MUST NOT allow apps to be registered as `data`, `web`, `chaos`, or `config`.
 
 ## 10. References
 

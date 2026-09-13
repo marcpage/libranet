@@ -49,6 +49,7 @@ The following names are reserved and MUST NOT be used as application names:
 data
 web
 chaos
+config
 ```
 
 The root path `/` is itself a special application mapping.
@@ -76,6 +77,51 @@ https://example.org/myapp
 may map to a directory bundle stored in the node's content-addressed storage.
 
 The exact application routing mechanism is specified in the Directory Bundle and Web Application specifications.
+
+### 2.3 Local Configuration Interface
+
+`/config` is a pre-installed, reserved application, analogous to the root
+`/` application, that exposes the node's local administration surface
+(e.g. the directory backup/restore feature). It is distinct from both the
+peer-facing programmatic API and ordinary directory-bundle applications.
+
+`/config` MUST be bound only to loopback interfaces (e.g. `127.0.0.1`,
+`::1`). It MUST NOT be reachable via the peer-facing listener under any
+node configuration.
+
+`/config` MUST require HTTP Basic Authentication on every request.
+
+#### 2.3.1 Credential Capture
+
+A node has no `/config` credential configured until first access:
+
+* On the first request made to `/config`, the node captures the
+  username and password supplied in the request's `Authorization: Basic`
+  header and adopts it as the node's `/config` credential.
+* If multiple requests race to capture the credential before one has
+  been stored, the node MUST treat capture as atomic: whichever request's
+  credentials are persisted first wins, and all other concurrent
+  requests are authenticated (or rejected) against the winning
+  credential.
+* Once a credential has been captured, subsequent requests are
+  authenticated against it. A request with a missing or non-matching
+  `Authorization` header MUST receive `401 Unauthorized` with a
+  `WWW-Authenticate: Basic` challenge, per standard HTTP Basic
+  Authentication semantics.
+
+#### 2.3.2 Credential Storage
+
+Storage of the captured `/config` credential is implementation-defined.
+This credential is purely local to the node — it has no bearing on any
+other node, the wire protocol, or CAS content — so this specification
+does not mandate a hashing scheme, storage location, or format.
+
+If a `/config` credential is lost or forgotten, recovery requires
+removing the stored entry from the node's local configuration or
+keystore, after which the node reverts to the pre-capture state and the
+next request to `/config` re-triggers capture (§2.3.1). Each
+implementation SHOULD document where and how to do this for its
+platform.
 
 ---
 
@@ -879,6 +925,7 @@ The application name MUST NOT be:
 data
 web
 chaos
+config
 ```
 
 The root application `/` is preconfigured.
@@ -931,6 +978,12 @@ Authorization: Basic <base64(user:pass)>
 The username and password would be concatenated and hashed using the hashing algorithm specified by the bundle.
 This would generate the key to decrypt the bundle.
 The bundle would then be expanded into a cache and would no longer have to prompt for the password.
+
+Note: this Basic Authentication challenge is unrelated to the `/config`
+credential described in §2.3. This one decodes into a bundle-decryption
+password and applies to `/{app-name}` bundle apps; `/config`'s credential
+gates local node administration and is never used to derive a decryption
+key.
 
 **TBD:**
 
@@ -1360,6 +1413,7 @@ The following table summarizes the currently proposed HTTP API.
 | `/data/...`                  | Various | Additional programmatic APIs | TBD     |
 | `/`                          | `GET`   | Root web application         | Defined |
 | `/{application}/...`         | `GET`   | Directory-bundle application | Defined |
+| `/config`                    | Various | Local-only node configuration interface | Defined |
 
 ---
 
