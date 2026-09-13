@@ -14,6 +14,7 @@ Libranet lets nodes discover each other, share content addressed by cryptographi
   - [Table of Contents](#table-of-contents)
   - [Features](#features)
   - [Quick Overview](#quick-overview)
+    - [Hasn't this already been done?](#hasnt-this-already-been-done)
   - [Requirements](#requirements)
   - [Getting Started / Installation](#getting-started--installation)
   - [Example Usage](#example-usage)
@@ -52,6 +53,13 @@ Every piece of data in Libranet lives at a path like:
 Nodes talk to each other with ordinary HTTP requests. Larger content is split into **bundles**. Collections of files become **directory bundles**, which can be registered as applications and served like a normal website.
 
 The network is self-organizing: nodes keep data whose hash is close to their own identity and hand off other data when space runs low.
+
+### Hasn't this already been done?
+
+Several aspects of Libranet have been done before.
+There really isn't much new in Libranet, just a recombination of existing ideas.
+
+Libranet sits in a fairly specific spot — [IPFS](https://en.wikipedia.org/wiki/InterPlanetary_File_System)-like addressing and DHT-adjacent placement, [Freenet](https://freenet.org)-like prefix-locality caching, a [Filecoin](https://www.filecoin.io)/[Storj](https://www.storj.io)-like incentive layer (but reputation-flavored rather than financial), and a [ZeroNet](https://zeronet.io)-like "serve websites P2P" application layer — combined into one integrated spec rather than requiring you to stack separate projects together.
 
 ---
 
