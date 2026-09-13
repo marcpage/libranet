@@ -59,7 +59,7 @@ The network is self-organizing: nodes keep data whose hash is close to their own
 Several aspects of Libranet have been done before.
 There really isn't much new in Libranet, just a recombination of existing ideas.
 
-Libranet sits in a fairly specific spot — [IPFS](https://en.wikipedia.org/wiki/InterPlanetary_File_System)-like addressing and DHT-adjacent placement, [Freenet](https://freenet.org)-like prefix-locality caching, a [Filecoin](https://www.filecoin.io)/[Storj](https://www.storj.io)-like incentive layer (but reputation-flavored rather than financial), and a [ZeroNet](https://zeronet.io)-like "serve websites P2P" application layer — combined into one integrated spec rather than requiring you to stack separate projects together.
+Libranet sits in a fairly specific spot — [IPFS](https://en.wikipedia.org/wiki/InterPlanetary_File_System)-like addressing and [DHT](https://medium.com/pubky/mainline-dht-censorship-explained-b62763db39cb)-adjacent placement, [Freenet](https://freenet.org)-like prefix-locality caching, a [Filecoin](https://www.filecoin.io)/[Storj](https://www.storj.io)-like incentive layer (but reputation-flavored rather than financial), and a [ZeroNet](https://zeronet.io)-like "serve websites P2P" application layer — combined into one integrated spec rather than requiring you to stack separate projects together.
 
 ---
 
