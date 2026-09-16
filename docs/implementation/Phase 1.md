@@ -36,12 +36,12 @@ The modules:
   what happened. It does not itself validate, fetch, evict, or resolve
   bundles.
 - **Connection manager** — owns all outgoing peer connections: the
-  handshake/first-contact exchange, maintaining the 8-connection/4-bit
+  handshake/first-contact exchange, maintaining the 16-connection/4-bit
   peer mix, and fetching data on the fetcher module's behalf.
 - **Validator** — reacts to "PUT completed" messages, verifies content
   hashes, and promotes verified content from a node-specific directory
   into the shared source of truth.
-- **DB-owner** — the only process that touches SQLite. Owns node stats,
+- **Data stats** — the only process that touches SQLite. Owns node stats,
   data stats, the node list, and this node's own `/data/seek` list, and
   periodically derives the plain files the web server serves from that
   state.
@@ -54,9 +54,9 @@ The modules:
   space, and manages hand-off/deletion of low-priority content.
 
 Storage is a plain filesystem CAS: a shared source-of-truth directory
-plus one write directory per inbound connection, both laid out following
+plus one write directory per connection, both laid out following
 the URL path structure with the hash portion split into fixed-length
-prefix subdirectories (e.g. 3 characters) to bound directory size.
+prefix subdirectories (e.g. 4 characters) to bound directory size.
 
 Code follows SOLID principles with manual dependency injection
 (constructors take explicit arguments — queues, paths, clients — no DI
@@ -84,7 +84,7 @@ same tier can generally proceed in parallel.
 **Depends on:** nothing.
 
 - Repo/package layout: single package, subpackages per module area
-  (`webserver/`, `connection_manager/`, `validator/`, `db/`, `fetcher/`,
+  (`webserver/`, `connections/`, `validator/`, `stats/`, `fetcher/`,
   `unbundler/`, `eviction/`, `messaging/`, `cas/`, `bundle/`, `identity/`,
   `config/`, `supervisor.py` entry point).
 - `uv`-managed project, `pyproject.toml`, black/flake8/mypy configuration.
@@ -245,7 +245,7 @@ independent of the web server actually running.
 
 **Depends on:** Steps 1, 3.
 
-- SQLite schema for node stats, data stats, node-list entries, and this
+- SQLite schema for node stats, data stats, and this
   node's own outstanding `/data/seek` entries. This is the only process
   that opens the SQLite file.
 - Periodic derivation of plain served files from that state: the node
@@ -291,10 +291,10 @@ on the resolved addresses published and the served file contents.
   writes request bytes without waiting on responses, and a
   `selectors`-based receive thread that reads and parses responses as
   they arrive.
-- A request-id header convention, defined and always echoed back by
-  Libranet's own node implementations, used to correlate responses to
-  the requests that produced them (rather than relying solely on
-  per-connection FIFO ordering).
+- A X-Request-Path header convention, defined and always echoed back by
+  Libranet's own node implementations, used to debug. Responses are 
+  correlated to the requests that produced them by
+  per-connection FIFO ordering.
 - No handshake or peer-management logic yet at this step — just the
   ability to fire signed requests at a given address and receive parsed,
   correlated responses.
@@ -314,7 +314,7 @@ correct pipelined request/response correlation.
   exchange seek lists, push fulfillable content, request wanted
   content), using Step 10's client primitives.
 - Owns all outgoing peer connections; tracks the current connection mix.
-- Event-driven maintenance of the §4.6 policy (at least 8 connections,
+- Event-driven maintenance of the §4.6 policy (at least 16 connections,
   spread across distinct 4-bit identifier buckets): checks and reacts
   whenever a connection drops or a relevant message (e.g. updated node
   list from the DB-owner) arrives, rather than on a timer.
