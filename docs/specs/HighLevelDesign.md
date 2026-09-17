@@ -203,9 +203,9 @@ This policy naturally segments the data space into **directions** defined by the
 
 ## 4.6 Outgoing Connection Policy
 
-Every node maintains at least **eight** outgoing connections to other nodes.
+Every node maintains at least **sixteen** outgoing connections to other nodes.
 
-The eight peers are chosen so that their identifiers are unique in the first four bits of the identifier space, meaning they cover distinct 4-bit buckets.
+The sixteen peers are chosen so that their identifiers are unique in the first four bits of the identifier space, meaning they cover distinct 4-bit buckets.
 
 This guarantees a well-distributed view of the network and supports the directional search strategy described below.
 
@@ -274,7 +274,7 @@ In addition to the `/data/nodes` exchange above, a node MAY support mDNS/DNS-SD 
 
 - Service type name (e.g. `_libranet._tcp.local.`).
 - Exact service metadata (TXT record) schema.
-- Interaction with the eight-connection outgoing policy (§4.6) when local peers are discovered.
+- Interaction with the sixteen-connection outgoing policy (§4.6) when local peers are discovered.
 
 ---
 

@@ -8,8 +8,11 @@ arrive in Step 4.
 
 from __future__ import annotations
 from logging import Logger
-from sys import stderr
 from typing import Sequence
+
+# `sys.stderr` is looked up at call time, not imported by name, so output
+# follows any later redirection of the stream (e.g. pytest's capsys).
+import sys
 
 from libranet import cli
 from libranet.config.loader import ConfigError, load_config
@@ -39,7 +42,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
 
     except ConfigError as error:
-        print(error, file=stderr)
+        print(error, file=sys.stderr)
         return EXIT_CONFIG_ERROR
 
     if args.check_config:
@@ -50,7 +53,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         config.create_directories()
 
     except OSError as error:
-        print(f"Could not create node directories: {error}", file=stderr)
+        print(f"Could not create node directories: {error}", file=sys.stderr)
         return EXIT_CONFIG_ERROR
 
     logger = configure_logging(config.logging, ModuleName.SUPERVISOR)

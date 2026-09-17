@@ -7,7 +7,6 @@ anything.
 
 from __future__ import annotations
 
-import argparse
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from typing import Any, Sequence

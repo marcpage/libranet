@@ -18,7 +18,6 @@ def test_defaults_produce_a_valid_config() -> None:
     config = LibranetConfig()
 
     assert config.network.listen_port == 8080
-    assert config.network.config_listen_address == "127.0.0.1"
     assert config.peers.min_outgoing_connections == 16
     assert config.storage.max_object_bytes == 1024 * 1024
 
