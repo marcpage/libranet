@@ -257,6 +257,23 @@ independent of the web server actually running.
 - Node-list ordering for v1 uses a simple proxy (e.g. last successful
   connection) rather than Karma-weighted prioritization, which is
   deferred.
+- Stats kept for each data hash:
+  - External request count
+  - Internal request count
+  - Push count (number of times someone pushed to us)
+  - Delete Count
+  - Timestamp of last acquired (last time the id was uniquely added to the CAS)
+  - Previous time stored (add now - timestamp of last acquired when deleted)
+- Stats kept for each node id:
+  - Connection attempts
+  - Count of successful connections
+  - Remote disconnects
+  - Last connection timestamp
+  - Previous time connected (add now - last connection timestamp on disconnect)
+  - Total data bytes received
+  - Total data bytes sent
+  - Data found count (attempts to fetch data and it had it)
+  - Data not found count (attempts to fetch data and it did not have it)
 
 **Testable in isolation:** unit tests against a temp SQLite file and
 temp output directory, independent of any running web server.
