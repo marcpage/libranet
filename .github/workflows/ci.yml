@@ -57,7 +57,19 @@ jobs:
         run: uv sync --locked
 
       - name: pytest
-        run: uv run pytest
+        run: uv run pytest --cov --cov-report=term --cov-report=xml
+
+      - name: Coverage summary
+        if: ${{ !cancelled() }}
+        run: uv run coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: coverage.xml
+          if-no-files-found: ignore
 
       - name: Example config validates
         run: uv run libranet --config examples/libranet.yaml --check-config
