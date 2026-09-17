@@ -26,8 +26,8 @@ Directory Bundles with no format extensions of their own.
   Specification](BundleSpecification.md).
 - All configuration and triggering of backup/restore operations occurs
   through `/config`, per [HTTP API §2.3](HttpApi.md#23-local-configuration-interface).
-  This document assumes `/config`'s loopback binding and Basic
-  Authentication requirements and does not repeat them.
+  This document assumes `/config`'s loopback-source restriction and
+  Basic Authentication requirements and does not repeat them.
 - Backed-up content is stored and distributed exactly like any other CAS
   content (High-Level Design §4), including compressed-retrieval
   fallback, storage priority, and replication/hand-off. This document
@@ -145,7 +145,8 @@ already defined in [BundleSpecification.md
 
 ## 6. Security Considerations
 
-- Because `/config` is loopback-only and Basic Authentication protected
+- Because `/config` is served only to loopback-source requests and is
+  Basic Authentication protected
   (HTTP API §2.3), only a process with local access to the node and
   knowledge of the captured `/config` credential can configure or
   trigger a backup or restore job. This is the control point that

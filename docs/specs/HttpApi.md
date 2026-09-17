@@ -85,9 +85,21 @@ The exact application routing mechanism is specified in the Directory Bundle and
 (e.g. the directory backup/restore feature). It is distinct from both the
 peer-facing programmatic API and ordinary directory-bundle applications.
 
-`/config` MUST be bound only to loopback interfaces (e.g. `127.0.0.1`,
-`::1`). It MUST NOT be reachable via the peer-facing listener under any
-node configuration.
+`/config` is served by the same listener as every other endpoint; no
+separate listening address or binding is required. It is restricted by
+request behavior instead: a node MUST serve `/config` only to requests
+whose connecting (source) address is a loopback address (`127.0.0.0/8`
+or `::1`, including IPv4-mapped IPv6 forms such as `::ffff:127.0.0.1`).
+A `/config` request from any other source address MUST be refused with
+`403 Forbidden`, regardless of the credentials it carries, and MUST NOT
+trigger credential capture (§2.3.1).
+
+The check is made against the address of the TCP connection itself, not
+against any request header (e.g. `Host`, `Forwarded`,
+`X-Forwarded-For`). An operator who places a reverse proxy, tunnel, or
+port forward on the node's own host should be aware that remote requests
+relayed through it arrive from a loopback address and pass this check,
+leaving HTTP Basic Authentication as the only remaining protection.
 
 `/config` MUST require HTTP Basic Authentication on every request.
 

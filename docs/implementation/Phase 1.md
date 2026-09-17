@@ -376,9 +376,12 @@ JSON and fixture CAS content, independent of everything else.
   requested paths, not proactively for every registered application.
 - Content-type guessing via the stdlib `mimetypes` module when a bundle
   doesn't specify one.
-- `/config` requests are routed to the same web server module, dispatched
-  based on the request having arrived on the loopback-only listener,
-  distinct from `/{app-name}/...` handling.
+- `/config` requests are handled by the same web server and listener,
+  distinct from `/{app-name}/...` handling. The handler checks the
+  connection's source address and serves only loopback sources
+  (`ipaddress.ip_address(...).is_loopback`, after unwrapping any
+  IPv4-mapped IPv6 address); any other source gets `403 Forbidden` per
+  HttpApi §2.3.
 
 **Testable in isolation:** unbundler tests against fixture bundles and a
 temp source-of-truth directory; web server tests with a fake queue for
