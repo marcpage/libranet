@@ -48,6 +48,10 @@ class NetworkConfig(_Section):
     external_address: str | None = None
     external_port: int | None = Field(default=None, ge=1, le=65535)
 
+    # `Retry-After` sent with a `503` for content still being retrieved
+    # (HttpApi §5.2).
+    retry_after_seconds: int = Field(default=5, ge=0)
+
     def advertised_endpoint(self) -> str:
         """The endpoint string this node publishes in its own node list.
 
@@ -107,6 +111,9 @@ class StorageConfig(_Section):
     # Provisional default — see "Open Items" in the implementation plan.
     search_cache_ttl_seconds: float = Field(default=300.0, gt=0)
 
+    # HttpApi §6: the number of hashes one search returns must be capped.
+    search_max_results: int = Field(default=32, ge=1)
+
     @property
     def source_of_truth_dir(self) -> Path:
         """Verified content, shared by every module and served directly."""
@@ -116,6 +123,11 @@ class StorageConfig(_Section):
     def incoming_dir(self) -> Path:
         """Parent of the per-connection directories unverified writes land in."""
         return self.data_dir / "incoming"
+
+    @property
+    def search_cache_dir(self) -> Path:
+        """Cached ``/data/search`` result files (Steps 5 and 8)."""
+        return self.cache_dir / "search"
 
     @property
     def database_path(self) -> Path:

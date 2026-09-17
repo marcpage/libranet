@@ -23,6 +23,10 @@ network:
   external_address: null
   external_port: null
 
+  # Seconds a client is told to wait (Retry-After) before asking again for
+  # content this node is still retrieving from peers (HTTP API §5.2).
+  retry_after_seconds: 5
+
 peers:
   # At least one connection per 4-bit identifier bucket
   # (High-Level Design §4.6).
@@ -54,6 +58,8 @@ storage:
 
   # Provisional: how long a cached /data/search result stays valid.
   search_cache_ttl_seconds: 300.0
+  # Most hashes a single /data/search response lists (HTTP API §6).
+  search_max_results: 32
 
 identity:
   # Defaults to `keys/` under data_dir.

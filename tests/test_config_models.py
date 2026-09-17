@@ -39,6 +39,13 @@ def test_port_range_is_validated() -> None:
         NetworkConfig(listen_port=70000)
 
 
+def test_retry_after_defaults_to_five_and_may_not_be_negative() -> None:
+    assert NetworkConfig().retry_after_seconds == 5
+
+    with raises(ValidationError):
+        NetworkConfig(retry_after_seconds=-1)
+
+
 class TestAdvertisedEndpoint:
     """HttpApi §10.1 self-description rules."""
 
