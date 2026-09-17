@@ -32,7 +32,9 @@ logging:
     return path
 
 
-def test_check_config_prints_the_resolved_config(config_file: Path, capsys: CaptureFixture[str]) -> None:
+def test_check_config_prints_the_resolved_config(
+    config_file: Path, capsys: CaptureFixture[str]
+) -> None:
     status = main(["--config", str(config_file), "--check-config"])
 
     assert status == EXIT_OK
@@ -40,7 +42,9 @@ def test_check_config_prints_the_resolved_config(config_file: Path, capsys: Capt
     assert printed["network"]["listen_port"] == 8080
 
 
-def test_check_config_reflects_command_line_overrides(config_file: Path, capsys: CaptureFixture[str]) -> None:
+def test_check_config_reflects_command_line_overrides(
+    config_file: Path, capsys: CaptureFixture[str]
+) -> None:
     status = main(["--config", str(config_file), "--port", "9100", "--check-config"])
 
     assert status == EXIT_OK

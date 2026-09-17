@@ -81,7 +81,8 @@ def _read_document(path: Path, *, required: bool) -> dict[str, Any]:
 
     if not isinstance(parsed, dict):
         raise ConfigError(
-            f"Config file {path} must contain a mapping at the top level, " f"found {type(parsed).__name__}"
+            f"Config file {path} must contain a mapping at the top level, "
+            f"found {type(parsed).__name__}"
         )
 
     return parsed

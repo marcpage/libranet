@@ -52,7 +52,9 @@ def test_dispatch_drops_malformed_messages(
     assert "Dropping malformed message" in caplog.text
 
 
-def test_dispatch_pending_preserves_per_outbox_order(endpoints: dict[ModuleName, ModuleQueues]) -> None:
+def test_dispatch_pending_preserves_per_outbox_order(
+    endpoints: dict[ModuleName, ModuleQueues],
+) -> None:
     first = make_message(EventType.DATA_NOT_FOUND, ModuleName.WEBSERVER, {"n": 1})
     second = make_message(EventType.SEARCH_REQUESTED, ModuleName.WEBSERVER, {"n": 2})
     endpoints[ModuleName.WEBSERVER].outbox.put(first)
@@ -123,7 +125,9 @@ def test_modules_talk_through_a_running_dispatcher() -> None:
             sleep(0.01)
 
     finally:
-        endpoints[ModuleName.SUPERVISOR].outbox.put(make_message(EventType.SHUTDOWN, ModuleName.SUPERVISOR))
+        endpoints[ModuleName.SUPERVISOR].outbox.put(
+            make_message(EventType.SHUTDOWN, ModuleName.SUPERVISOR)
+        )
 
         for thread in threads:
             thread.join(timeout=5)

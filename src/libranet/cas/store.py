@@ -77,7 +77,9 @@ class CasStore:
         path = self.path_for(content_id)
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        with NamedTemporaryFile(dir=path.parent, prefix=f".{path.name}.", suffix=_TEMP_SUFFIX, delete=False) as temp:
+        with NamedTemporaryFile(
+            dir=path.parent, prefix=f".{path.name}.", suffix=_TEMP_SUFFIX, delete=False
+        ) as temp:
             temp_path = Path(temp.name)
 
             try:

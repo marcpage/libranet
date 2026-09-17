@@ -96,7 +96,10 @@ def _parse_seed_list(text: str, *, origin: str) -> tuple[SeedPeer, ...]:
             raise SeedError(f"Seed list {origin} has a non-string node address")
 
         if node_id is not None and not isinstance(node_id, str):
-            raise SeedError(f"Seed list {origin} entry {address!r} has a node id that is " f"neither a string nor null")
+            raise SeedError(
+                f"Seed list {origin} entry {address!r} has a node id that is "
+                f"neither a string nor null"
+            )
 
         peers.append(SeedPeer(address=address, node_id=node_id or None))
 

@@ -30,7 +30,11 @@ from libranet.logging_setup import get_logger
 from libranet.messaging.module import StopSignal
 from libranet.messaging.queues import START_METHOD, create_module_queues
 from libranet.modules import ModuleName
-from libranet.supervision.children import dispatcher_main, run_dispatcher_process, run_module_process
+from libranet.supervision.children import (
+    dispatcher_main,
+    run_dispatcher_process,
+    run_module_process,
+)
 from libranet.supervision.specs import DispatcherEntry, ModuleSpec
 
 DEFAULT_POLL_INTERVAL_SECONDS = 0.2
@@ -164,7 +168,9 @@ class ProcessSupervisor:
         """
         self._stop.set()
         running = [
-            (child, child.process) for child in (*self._modules.values(), self._dispatcher) if child.process is not None
+            (child, child.process)
+            for child in (*self._modules.values(), self._dispatcher)
+            if child.process is not None
         ]
         deadline = monotonic() + self._stop_timeout
 
@@ -226,7 +232,9 @@ class ProcessSupervisor:
                 return False
 
             if monotonic() >= deadline:
-                self._logger.error("Dispatcher not ready after %.1fs; terminating it", self._ready_timeout)
+                self._logger.error(
+                    "Dispatcher not ready after %.1fs; terminating it", self._ready_timeout
+                )
                 process.terminate()
                 return False
 
@@ -265,7 +273,12 @@ class ProcessSupervisor:
             self._logger.info("Started module %s (pid %s)", child.name, process.pid)
 
         else:
-            self._logger.info("Restarted module %s (pid %s, restart %d)", child.name, process.pid, child.starts - 1)
+            self._logger.info(
+                "Restarted module %s (pid %s, restart %d)",
+                child.name,
+                process.pid,
+                child.starts - 1,
+            )
 
     def _reap(self, child: _Child, now: float) -> None:
         """Collect a dead child's exit status and count the failure."""

@@ -88,7 +88,9 @@ def test_move_to_promotes_content(tmp_path: Path) -> None:
 
 def test_move_to_missing_raises(tmp_path: Path) -> None:
     with raises(ContentNotFoundError):
-        make_store(tmp_path).move_to(ContentId.for_data(b"x", "sha256"), CasStore(tmp_path / "other", 4))
+        make_store(tmp_path).move_to(
+            ContentId.for_data(b"x", "sha256"), CasStore(tmp_path / "other", 4)
+        )
 
 
 def test_iter_prefix(tmp_path: Path) -> None:
