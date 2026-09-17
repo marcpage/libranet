@@ -241,7 +241,7 @@ independent of the web server actually running.
 
 ---
 
-## Step 8 — SQLite / DB-Owner Module
+## Step 8 — Stats Module
 
 **Depends on:** Steps 1, 3.
 
