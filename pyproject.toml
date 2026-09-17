@@ -11,7 +11,7 @@ dependencies = ["platformdirs>=4.2", "pydantic>=2.7", "pyyaml>=6.0"]
 libranet = "libranet.supervisor:main"
 
 [project.urls]
-Homepage = "https://github.com/MarcAllenPage/libranet"
+Homepage = "https://github.com/marcpage/libranet"
 
 [dependency-groups]
 dev = [
