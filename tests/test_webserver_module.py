@@ -56,7 +56,7 @@ def test_module_serves_until_shutdown_and_publishes_misses(tmp_path: Path) -> No
     module = WebServerModule(
         ModuleName.WEBSERVER, queues, _config(tmp_path, port), poll_interval=0.01
     )
-    thread = Thread(target=module.run)
+    thread = Thread(target=module.run, daemon=True)
     thread.start()
 
     try:
@@ -93,12 +93,15 @@ def test_module_stops_on_the_stop_signal(tmp_path: Path) -> None:
         ModuleName.WEBSERVER, _queues(), _config(tmp_path, _free_port()), poll_interval=0.01
     )
     stop = Event()
-    thread = Thread(target=module.run, args=(stop,))
+    thread = Thread(target=module.run, args=(stop,), daemon=True)
     thread.start()
-    _wait_for_address(module)
 
-    stop.set()
-    thread.join(timeout=5)
+    try:
+        _wait_for_address(module)
+
+    finally:
+        stop.set()
+        thread.join(timeout=5)
 
     assert not thread.is_alive()
     assert module.server_address is None
