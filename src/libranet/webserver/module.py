@@ -3,7 +3,9 @@
 The HTTP server runs on a background thread for the module's lifetime, while
 :meth:`~libranet.messaging.module.ModuleBase.run` keeps the receive loop (and
 so shutdown handling) on the main thread. Request threads publish through
-:meth:`~libranet.messaging.module.ModuleBase.publish`.
+:meth:`~libranet.messaging.module.ModuleBase.publish`. Responses are signed
+with the node key, which the module loads from disk rather than receiving
+across the process boundary.
 """
 
 from __future__ import annotations
@@ -11,6 +13,9 @@ from logging import Logger
 from threading import Thread
 
 from libranet.config.models import LibranetConfig
+from libranet.identity.authentication import request_authenticator
+from libranet.identity.node_identity import load_node_identity
+from libranet.identity.signatures import MessageSigner
 from libranet.messaging.envelope import Message
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
@@ -45,15 +50,26 @@ class WebServerModule(ModuleBase):
         return str(host), int(port)
 
     def handle(self, message: Message) -> None:
-        """Never called: the read path subscribes to nothing."""
+        """Never called: the web server subscribes to nothing."""
 
     def on_start(self) -> None:
-        """Bind the listener and start serving; a bind failure crashes the module."""
+        """Bind the listener and start serving.
+
+        A bind failure or an unusable node key crashes the module.
+        """
         network = self._config.network
+        signer = MessageSigner(load_node_identity(self._config))
         self._server = LibranetHTTPServer(
             (network.listen_address, network.listen_port),
-            build_router(self._config.storage, network.retry_after_seconds, self.publish),
+            build_router(
+                self._config.storage,
+                network.retry_after_seconds,
+                self.publish,
+                request_authenticator(self._config),
+                allow_unsigned_api_reads=self._config.identity.allow_unsigned_api_reads,
+            ),
             self.logger,
+            signer,
         )
         self._thread = Thread(
             target=self._server.serve_forever, name=f"{self.name}-http", daemon=True

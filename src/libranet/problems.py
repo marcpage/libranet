@@ -19,6 +19,9 @@ PROBLEM_TYPE_BASE: Final = "https://libranet.org/problems/"
 INVALID_CONTENT_ADDRESS: Final = PROBLEM_TYPE_BASE + "invalid-content-address"
 INVALID_SEARCH_PREFIX: Final = PROBLEM_TYPE_BASE + "invalid-search-prefix"
 CONTENT_UNAVAILABLE: Final = PROBLEM_TYPE_BASE + "content-unavailable"
+CONTENT_TOO_LARGE: Final = PROBLEM_TYPE_BASE + "content-too-large"
+SIGNATURE_REQUIRED: Final = PROBLEM_TYPE_BASE + "signature-required"
+INVALID_SIGNATURE: Final = PROBLEM_TYPE_BASE + "invalid-signature"
 _STANDARD_MEMBERS: Final = frozenset({"type", "title", "status", "detail", "instance"})
 
 

@@ -1,10 +1,11 @@
 """Tests for the web server's path router."""
 
 from __future__ import annotations
+from dataclasses import replace
 from json import loads
 
 from libranet.problems import PROBLEM_CONTENT_TYPE
-from libranet.webserver.http_types import Request, Response
+from libranet.webserver.http_types import Request, RequestBody, Response
 from libranet.webserver.router import Router
 
 
@@ -57,3 +58,72 @@ def test_wrong_method_is_a_405_problem_listing_allowed_methods() -> None:
     assert response.status == 405
     assert response.headers["Allow"] == "GET, PUT"
     assert loads(response.body)["status"] == 405
+
+
+def test_handlers_receive_the_whole_request() -> None:
+    received: list[Request] = []
+
+    def record(request: Request) -> Response:
+        received.append(request)
+        return Response(200)
+
+    router = Router()
+    router.add("PUT", r"/upload/(?P<name>[^/]+)", record)
+    request = Request(
+        "PUT",
+        "/upload/a",
+        headers={"X-Test": "1"},
+        client_address="::1",
+        body=RequestBody.of(b"payload"),
+    )
+
+    router.dispatch(request)
+
+    (seen,) = received
+    assert seen.params == {"name": "a"}
+    assert seen.headers == {"X-Test": "1"}
+    assert seen.client_address == "::1"
+    assert seen.body is request.body
+
+
+def test_guard_sees_requests_before_routing() -> None:
+    seen: list[str] = []
+
+    def guard(request: Request) -> Request | Response:
+        seen.append(request.path)
+        return request
+
+    router = Router(guard)
+    router.add("GET", r"/items/(?P<name>[^/]+)", _echo)
+
+    assert router.dispatch(Request("GET", "/items/apple")).body == b"[('name', 'apple')]"
+    assert router.dispatch(Request("GET", "/nothing")).status == 404
+    assert seen == ["/items/apple", "/nothing"]
+
+
+def test_guard_can_refuse_any_request() -> None:
+    router = Router(lambda request: Response(401, close=True))
+    router.add("GET", r"/items/(?P<name>[^/]+)", _echo)
+
+    for path in ("/items/apple", "/nothing"):
+        response = router.dispatch(Request("GET", path))
+
+        assert response.status == 401
+        assert response.close
+
+
+def test_guard_can_amend_the_routed_request() -> None:
+    received: list[Request] = []
+
+    def record(request: Request) -> Response:
+        received.append(request)
+        return Response(200)
+
+    router = Router(lambda request: replace(request, client_address="guarded"))
+    router.add("GET", r"/items/(?P<name>[^/]+)", record)
+
+    router.dispatch(Request("GET", "/items/apple"))
+
+    (seen,) = received
+    assert seen.client_address == "guarded"
+    assert seen.params == {"name": "apple"}

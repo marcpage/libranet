@@ -88,7 +88,7 @@ TBD: exact hash function, input material (e.g., public key), and encoding (hex/b
 
 ### 5.2 Storage and Retrieval
 
-- Nodes MUST return content it has stored locally when requested.
+- Nodes MUST return locally stored content to any Node that requests it after proving ownership of its Node ID (see Section 3.2). Requests that carry no identity proof are handled as described in the Handshake Protocol, Section 2.1.
 - Nodes MAY request the content of other Nodes to fulfill the request.
 - Nodes MUST return an HTTP response of `503 Service Unavailable` if the data is not available locally, but is requesting the data from other Nodes.
 

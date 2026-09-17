@@ -7,6 +7,7 @@ from pytest import raises
 from pydantic import ValidationError
 
 from libranet.config.models import (
+    IdentityConfig,
     LibranetConfig,
     NetworkConfig,
     PeerConfig,
@@ -44,6 +45,14 @@ def test_retry_after_defaults_to_five_and_may_not_be_negative() -> None:
 
     with raises(ValidationError):
         NetworkConfig(retry_after_seconds=-1)
+
+
+def test_unsigned_api_reads_are_allowed_unless_disabled() -> None:
+    assert LibranetConfig().identity.allow_unsigned_api_reads is True
+
+    config = LibranetConfig.model_validate({"identity": {"allow_unsigned_api_reads": False}})
+
+    assert config.identity == IdentityConfig(allow_unsigned_api_reads=False)
 
 
 class TestAdvertisedEndpoint:

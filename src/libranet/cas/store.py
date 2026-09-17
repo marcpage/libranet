@@ -154,3 +154,12 @@ def source_of_truth_store(storage: StorageConfig) -> CasStore:
 def connection_store(storage: StorageConfig, connection_id: str) -> CasStore:
     """The unverified write store for one connection."""
     return CasStore(storage.connection_dir(connection_id), storage.hash_prefix_length)
+
+
+def node_store(storage: StorageConfig, node_id: ContentId) -> CasStore:
+    """The unverified write store for content received from ``node_id``.
+
+    Every connection with the same peer shares it, so a node's uploads are
+    kept apart from other nodes' until they are verified (HttpApi §7.2).
+    """
+    return connection_store(storage, f"{node_id.algorithm}-{node_id.hash}")

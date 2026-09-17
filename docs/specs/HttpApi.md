@@ -1062,6 +1062,7 @@ The following status codes are expected to have defined Libranet semantics.
 | --------------------------- | ------------------------------------------ |
 | `200 OK`                    | Request completed successfully             |
 | `201 Created`               | New content or resource created            |
+| `202 Accepted`              | Accepted, but processing not yet complete  |
 | `204 No Content`            | Request completed without a response body  |
 | `400 Bad Request`           | Invalid request                            |
 | `401 Unauthorized`          | Authentication required or failed          |

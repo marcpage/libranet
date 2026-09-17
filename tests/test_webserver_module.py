@@ -8,10 +8,14 @@ from socket import socket
 from threading import Event, Thread
 from time import monotonic, sleep
 
-from pytest import raises
+from pytest import mark, raises
 
 from libranet.cas.content_id import ContentId
-from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
+from libranet.cas.store import node_store, source_of_truth_store
+from libranet.config.models import IdentityConfig, LibranetConfig, NetworkConfig, StorageConfig
+from libranet.identity.keys import generate_private_key
+from libranet.identity.node_identity import NodeIdentity, load_node_identity
+from libranet.identity.signatures import MessageSigner, MessageVerifier
 from libranet.messaging.envelope import make_message
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
@@ -25,10 +29,11 @@ def _free_port() -> int:
         return int(probe.getsockname()[1])
 
 
-def _config(tmp_path: Path, port: int) -> LibranetConfig:
+def _config(tmp_path: Path, port: int, allow_unsigned_api_reads: bool = True) -> LibranetConfig:
     return LibranetConfig(
         network=NetworkConfig(listen_address="127.0.0.1", listen_port=port, retry_after_seconds=11),
         storage=StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache"),
+        identity=IdentityConfig(allow_unsigned_api_reads=allow_unsigned_api_reads),
     )
 
 
@@ -86,6 +91,77 @@ def test_module_serves_until_shutdown_and_publishes_misses(tmp_path: Path) -> No
     # The listening socket has been released.
     with socket() as probe:
         probe.bind(("127.0.0.1", port))
+
+
+def test_module_accepts_signed_uploads_and_signs_its_responses(tmp_path: Path) -> None:
+    queues = _queues()
+    config = _config(tmp_path, _free_port())
+    module = WebServerModule(ModuleName.WEBSERVER, queues, config, poll_interval=0.01)
+    stop = Event()
+    thread = Thread(target=module.run, args=(stop,), daemon=True)
+    thread.start()
+
+    try:
+        host, port = _wait_for_address(module)
+        identity = NodeIdentity.from_private_key(generate_private_key(), "sha256")
+        path = f"/data/{identity.node_id}"
+        headers = MessageSigner(identity).sign_request("PUT", path, {}, identity.public_key)
+        connection = HTTPConnection(host, port, timeout=5)
+        connection.request("PUT", path, body=identity.public_key, headers=headers)
+        response = connection.getresponse()
+        body = response.read()
+        connection.close()
+
+        assert response.status == 202
+        # The module signs with the node key stored under this config's data directory.
+        verifier = MessageVerifier(source_of_truth_store(config.storage), 5.0, 30.0)
+        signer = verifier.verify_response(response.status, dict(response.getheaders()), body)
+        assert signer == load_node_identity(config).node_id
+        assert queues.outbox.get(timeout=1)["event"] == EventType.PUT_COMPLETED
+        assert node_store(config.storage, identity.node_id).exists(identity.node_id)
+
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+    assert not thread.is_alive()
+
+
+@mark.parametrize("allow_unsigned_api_reads, unsigned_status", [(True, 503), (False, 401)])
+def test_module_follows_the_unsigned_api_read_setting(
+    tmp_path: Path, allow_unsigned_api_reads: bool, unsigned_status: int
+) -> None:
+    config = _config(tmp_path, _free_port(), allow_unsigned_api_reads)
+    module = WebServerModule(ModuleName.WEBSERVER, _queues(), config, poll_interval=0.01)
+    stop = Event()
+    thread = Thread(target=module.run, args=(stop,), daemon=True)
+    thread.start()
+
+    try:
+        host, port = _wait_for_address(module)
+        reader = NodeIdentity.from_private_key(generate_private_key(), "sha256")
+        reader.publish_public_key(source_of_truth_store(config.storage))
+        missing = ContentId.for_data(b"missing", "sha256")
+        signed = MessageSigner(reader).sign_request("GET", f"/data/{missing}", {})
+        # Signed for a different path by a known node, so the signature fails.
+        forged = MessageSigner(reader).sign_request("GET", "/elsewhere", {})
+        statuses = []
+
+        for headers in ({}, signed, forged):
+            connection = HTTPConnection(host, port, timeout=5)
+            connection.request("GET", f"/data/{missing}", headers=headers)
+            response = connection.getresponse()
+            response.read()
+            connection.close()
+            statuses.append(response.status)
+
+        assert statuses == [unsigned_status, 503, 401]
+
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+    assert not thread.is_alive()
 
 
 def test_module_stops_on_the_stop_signal(tmp_path: Path) -> None:

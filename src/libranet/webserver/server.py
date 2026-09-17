@@ -6,6 +6,14 @@
 behavior live in :class:`~libranet.webserver.router.Router` and its
 handlers. Every error the server itself raises (malformed requests,
 unknown methods, handler crashes) is also sent as Problem Details.
+
+A request body is handed to the handler unread. If the handler leaves it
+unread, the connection is closed after the response, since the body's bytes
+would otherwise be parsed as the next request.
+
+Every response, including the server's own errors, is signed with the node's
+key (HighLevelDesign §2.2), which is how a peer learns and authenticates this
+node's identity (HandshakeProtocol §3).
 """
 
 from __future__ import annotations
@@ -20,13 +28,23 @@ from urllib.parse import urlsplit
 from libranet import __version__
 from libranet.cas.store import source_of_truth_store
 from libranet.config.models import StorageConfig
+from libranet.identity.authentication import RequestAuthenticator
+from libranet.identity.signatures import MessageSigner
 from libranet.problems import Problem
 from libranet.webserver.data_handler import DATA_PATTERN, DataReadHandler
-from libranet.webserver.http_types import Request, Response, problem_response
+from libranet.webserver.data_write_handler import DataWriteHandler
+from libranet.webserver.http_types import (
+    IncompleteBodyError,
+    Request,
+    RequestBody,
+    Response,
+    problem_response,
+)
 from libranet.webserver.publishing import Publish
 from libranet.webserver.router import Router
 from libranet.webserver.search import LocalSearch, SearchCache
 from libranet.webserver.search_handler import SEARCH_PATTERN, SearchHandler
+from libranet.webserver.signature_guard import SignatureGuard
 
 # Idle keep-alive connections are dropped after this long, so they cannot
 # hold request threads forever.
@@ -36,14 +54,29 @@ IDLE_TIMEOUT_SECONDS = 60.0
 _BODILESS_STATUSES = frozenset({HTTPStatus.NO_CONTENT, HTTPStatus.NOT_MODIFIED})
 
 
-def build_router(storage: StorageConfig, retry_after_seconds: int, publish: Publish) -> Router:
-    """The node's routes, reading from the configured source of truth.
+def build_router(
+    storage: StorageConfig,
+    retry_after_seconds: int,
+    publish: Publish,
+    authenticator: RequestAuthenticator,
+    *,
+    allow_unsigned_api_reads: bool,
+) -> Router:
+    """The node's routes, serving the configured source of truth.
 
     ``retry_after_seconds`` is what ``503`` responses for missing content
-    tell clients to wait before retrying.
+    tell clients to wait before retrying. ``authenticator`` checks the
+    signature of every signed request; unsigned reads of the ``/data`` API
+    are served only if ``allow_unsigned_api_reads`` is set.
     """
     store = source_of_truth_store(storage)
-    router = Router()
+    router = Router(
+        SignatureGuard(
+            authenticator,
+            storage.max_object_bytes,
+            allow_unsigned_api_reads=allow_unsigned_api_reads,
+        )
+    )
     # The search route must precede the data route, whose pattern it also fits.
     router.add(
         "GET",
@@ -59,18 +92,25 @@ def build_router(storage: StorageConfig, retry_after_seconds: int, publish: Publ
         ),
     )
     router.add("GET", DATA_PATTERN, DataReadHandler(store, publish, retry_after_seconds))
+    router.add("PUT", DATA_PATTERN, DataWriteHandler(storage, store, authenticator, publish))
     return router
 
 
 class LibranetHTTPServer(ThreadingHTTPServer):
-    """A threading HTTP server that routes every request through ``router``."""
+    """A threading HTTP server that routes every request through ``router``.
+
+    ``signer`` signs every response with this node's key.
+    """
 
     daemon_threads = True
 
-    def __init__(self, address: tuple[str, int], router: Router, logger: Logger) -> None:
+    def __init__(
+        self, address: tuple[str, int], router: Router, logger: Logger, signer: MessageSigner
+    ) -> None:
         self.address_family = AF_INET6 if ":" in address[0] else AF_INET
         self.router = router
         self.logger = logger
+        self.signer = signer
         super().__init__(address, RequestHandler)
 
     def server_bind(self) -> None:
@@ -98,15 +138,31 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def _handle(self) -> None:
         path = urlsplit(self.path).path
+        body = self._request_body()
+
+        if body is None:
+            problem = Problem.for_status(
+                HTTPStatus.BAD_REQUEST, detail="Invalid Content-Length header.", instance=path
+            )
+            self._send(problem_response(problem), close=True)
+            return
+
         request = Request(
             method=self.command,
             path=path,
             headers=dict(self.headers.items()),
             client_address=str(self.client_address[0]),
+            body=body,
         )
 
         try:
             response = self.server.router.dispatch(request)
+
+        except IncompleteBodyError as error:
+            # The client stopped mid-body, so the connection is unusable (RFC 9112 §8).
+            self.log_error("%s", error)
+            self.close_connection = True
+            return
 
         except Exception:
             self.server.logger.exception("Handler failed for %s %s", self.command, path)
@@ -114,9 +170,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 Problem.for_status(HTTPStatus.INTERNAL_SERVER_ERROR, instance=path)
             )
 
-        # No handler reads a request body yet; an unread body would be parsed
-        # as the next request, so the connection cannot be reused.
-        self._send(response, close=self._has_body())
+        self._send(response, close=response.close or not body.consumed)
 
     do_GET = _handle
     do_HEAD = _handle
@@ -141,17 +195,36 @@ class RequestHandler(BaseHTTPRequestHandler):
         """Send the access log to the web server's logger rather than stderr."""
         self.server.logger.info("%s %s", self.address_string(), format % args)
 
-    def _has_body(self) -> bool:
-        length = self.headers.get("Content-Length", "0").strip()
-        return length != "0" or "Transfer-Encoding" in self.headers
+    def _request_body(self) -> RequestBody | None:
+        """The request's body, or ``None`` if its framing is invalid (RFC 9112 §6.3)."""
+        if "Transfer-Encoding" in self.headers:
+            return RequestBody(None, self.rfile)
+
+        lengths = {value.strip() for value in self.headers.get_all("Content-Length", [])}
+
+        if not lengths:
+            return RequestBody(0)
+
+        if len(lengths) != 1:
+            return None
+
+        (length,) = lengths
+
+        if not (length.isascii() and length.isdecimal()):
+            return None
+
+        return RequestBody(int(length), self.rfile)
 
     def _send(self, response: Response, *, close: bool = False) -> None:
+        omit_body = self.command == "HEAD" or response.status in _BODILESS_STATUSES
+        # Signed over the bytes actually sent, so the client can check what it received.
+        headers = self.server.signer.sign_response(
+            response.status, response.headers, b"" if omit_body else response.body
+        )
         self.send_response(response.status)
 
-        for name, value in response.headers.items():
+        for name, value in headers.items():
             self.send_header(name, value)
-
-        omit_body = self.command == "HEAD" or response.status in _BODILESS_STATUSES
 
         if response.status not in _BODILESS_STATUSES:
             self.send_header("Content-Length", str(len(response.body)))

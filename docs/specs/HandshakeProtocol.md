@@ -59,25 +59,19 @@ already be authenticated without a round trip.
 A node MAY omit identity headers entirely. Unauthenticated requests are
 handled as follows:
 
-- `GET` requests MUST be honored normally.
-- `PUT` requests MUST be rejected, since there is no identity to
-  attribute the pushed content or outstanding-request entry to.
-
-> **Open question:** HTTP API §7.3 currently states that a node **MAY**
-> restrict `/data` communications *in general* (not just `PUT`) from
-> clients without node-ID headers. That is a broader allowance than the
-> GET-always-honored rule above. The core Protocol Specification (§5.2)
-> states unconditionally that "Nodes MUST return content it has stored
-> locally when requested," with no authentication qualifier — which
-> supports treating GET-always-honored as the normative baseline, and
-> HTTP API §7.3's broader restriction as an optional, stricter local
-> policy layered on top rather than a conflicting rule. Worth confirming
-> that reading is intended.
+- `GET` requests outside `/data` (web applications and other
+  human-facing paths) MUST be honored normally.
+- `GET` requests within `/data` (the programmatic API) SHOULD be honored
+  normally. A node MAY refuse them as a stricter local policy, as HTTP
+  API §7.3 allows.
+- `PUT` requests (uploads) MUST always be rejected, whatever the node's
+  local policy, since there is no identity to attribute the pushed
+  content or outstanding-request entry to.
 
 If identity headers are present but the signature fails to verify, the
 connection MUST be terminated (§5.3), subject to the bootstrap grace
 period in §3.2. This is distinct from omitting authentication
-altogether, which is permitted for reads.
+altogether, which is permitted for reads as described above.
 
 ## 3. First-Contact Exchange
 
@@ -260,10 +254,12 @@ here rather than restated:
 Raised while cross-referencing the HTTP API spec; flagged for your
 review rather than resolved silently:
 
-1. **Scope of the no-headers restriction** — resolved in favor of
-   GET-always-honored as the baseline; see the note in §2.1. Protocol
-   Specification §5.2 states unconditionally that stored content MUST be
-   returned when requested.
+1. **Scope of the no-headers restriction** — resolved in §2.1:
+   unauthenticated `GET` requests outside `/data` are always honored,
+   HTTP API §7.3's restriction applies only within `/data`, and
+   unauthenticated uploads are always rejected. Protocol Specification
+   §5.2 now requires returning stored content only to nodes that have
+   proven their identity, and defers to §2.1 for everything else.
 2. **§3.2 of the High-Level Design** is now superseded by §3 of this
    document (see §1). Deliberately left as-is for now rather than
    trimmed to a pointer.

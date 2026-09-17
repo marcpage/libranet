@@ -156,6 +156,13 @@ class IdentityConfig(_Section):
     signature_max_age_seconds: float = Field(default=5.0, gt=0)
     signature_clock_skew_seconds: float = Field(default=30.0, ge=0)
 
+    # Serve reads (GET or HEAD) of the /data API to requests without a
+    # signature (HandshakeProtocol §2.1). When off, only nodes that sign
+    # their requests are served there (HttpApi §7.3). Either way, every
+    # signed request is checked and a failed signature closes the connection,
+    # and uploads always need a valid signature.
+    allow_unsigned_api_reads: bool = True
+
     def resolved_key_dir(self, storage: StorageConfig) -> Path:
         """Key directory, defaulting to ``keys/`` under the data directory."""
         return self.key_dir or (storage.data_dir / "keys")
