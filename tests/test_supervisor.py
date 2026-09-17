@@ -1,15 +1,17 @@
 """Tests for the supervisor entry point.
 
-Only the Step 1 behavior exists so far: load config, prepare directories,
-set up logging. Process spawning arrives in Step 4.
+Process management itself is covered in ``test_supervision.py``; these
+tests exercise the entry point around it.
 """
 
 from __future__ import annotations
 from json import loads
 from pathlib import Path
+from threading import Event, Timer
 
 from pytest import fixture, CaptureFixture
 
+from libranet.modules import SPAWNED_MODULES
 from libranet.supervisor import EXIT_CONFIG_ERROR, EXIT_OK, main
 
 
@@ -64,10 +66,30 @@ def test_invalid_config_is_an_error(tmp_path: Path, capsys: CaptureFixture[str])
 
 
 def test_run_creates_directories_and_a_log_file(config_file: Path, tmp_path: Path) -> None:
-    status = main(["--config", str(config_file)])
+    stop = Event()
+    stop.set()
+
+    status = main(["--config", str(config_file)], stop=stop)
 
     assert status == EXIT_OK
     assert (tmp_path / "data" / "cas").is_dir()
     assert (tmp_path / "data" / "incoming").is_dir()
     assert (tmp_path / "data" / "keys").is_dir()
     assert (tmp_path / "logs" / "libranet-supervisor.log").is_file()
+
+
+def test_run_spawns_every_module_until_stopped(config_file: Path, tmp_path: Path) -> None:
+    stop = Event()
+    timer = Timer(5.0, stop.set)
+    timer.start()
+
+    try:
+        status = main(["--config", str(config_file)], stop=stop)
+
+    finally:
+        timer.cancel()
+
+    assert status == EXIT_OK
+
+    for module in SPAWNED_MODULES:
+        assert (tmp_path / "logs" / f"libranet-{module}.log").is_file(), module

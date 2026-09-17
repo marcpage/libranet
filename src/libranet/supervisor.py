@@ -1,14 +1,18 @@
 """Node entry point.
 
-Step 1 scaffolding: this loads and validates configuration, prepares the
-data directories, sets up logging, and reports the modules it *will* run.
-Actual process spawning, the restart policy, and dispatcher special-casing
-arrive in Step 4.
+Loads and validates configuration, prepares the data directories, sets up
+logging, and then runs every module process under a
+:class:`~libranet.supervision.ProcessSupervisor` until ``SIGINT`` or
+``SIGTERM`` arrives.
 """
 
 from __future__ import annotations
+from contextlib import contextmanager
 from logging import Logger
-from typing import Sequence
+from signal import SIGINT, SIGTERM, signal
+from threading import Event
+from types import FrameType
+from typing import Generator, Sequence
 
 # `sys.stderr` is looked up at call time, not imported by name, so output
 # follows any later redirection of the stream (e.g. pytest's capsys).
@@ -19,14 +23,22 @@ from libranet.config.loader import ConfigError, load_config
 from libranet.config.models import LibranetConfig
 from libranet.config.seeds import SeedError, load_seed_peers
 from libranet.logging_setup import configure_logging
-from libranet.modules import SPAWNED_MODULES, ModuleName
+from libranet.messaging.module import StopSignal
+from libranet.modules import ModuleName
+from libranet.supervision.process_supervisor import ProcessSupervisor
+from libranet.supervision.registry import default_module_specs
 
 EXIT_OK = 0
 EXIT_CONFIG_ERROR = 2
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def main(argv: Sequence[str] | None = None, *, stop: StopSignal | None = None) -> int:
     """Run a node, or validate its configuration and exit.
+
+    Args:
+        argv: Command-line arguments, defaulting to ``sys.argv[1:]``.
+        stop: When given, the node runs until it is set instead of until a
+            signal arrives; if it is already set, no module is started.
 
     Returns:
         A process exit status: 0 on success, 2 for a configuration problem.
@@ -64,12 +76,37 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     _report_seed_peers(config, logger=logger)
 
-    # Step 4 replaces this with real `spawn`-based process management.
-    for module in SPAWNED_MODULES:
-        logger.info("Module not yet implemented, would spawn: %s", module)
+    supervisor = ProcessSupervisor(config, default_module_specs(), logger=logger)
 
-    logger.info("Nothing left to do at this step; exiting.")
+    if stop is not None:
+        supervisor.run(stop)
+
+    else:
+        stop_requested = Event()
+
+        with _stop_on_signals(stop_requested):
+            supervisor.run(stop_requested)
+
+    logger.info("Libranet supervisor stopped")
     return EXIT_OK
+
+
+@contextmanager
+def _stop_on_signals(stop: Event) -> Generator[None, None, None]:
+    """Set ``stop`` on ``SIGINT`` or ``SIGTERM`` while the context is active."""
+
+    def request_stop(signum: int, frame: FrameType | None) -> None:
+        stop.set()
+
+    previous = {number: signal(number, request_stop) for number in (SIGINT, SIGTERM)}
+
+    try:
+        yield
+
+    finally:
+        for number, handler in previous.items():
+            if handler is not None:
+                signal(number, handler)
 
 
 def _report_seed_peers(config: LibranetConfig, *, logger: Logger) -> None:

@@ -9,13 +9,13 @@ times out. Queues are unbounded for v1 — no backpressure handling yet.
 from __future__ import annotations
 from dataclasses import dataclass
 from multiprocessing import get_context
-from typing import Iterable, Protocol
+from typing import Final, Iterable, Protocol
 
 from libranet.messaging.envelope import Message
 from libranet.modules import ModuleName
 
 #: The start method the supervisor uses; queues must come from the same context.
-START_METHOD = "spawn"
+START_METHOD: Final = "spawn"
 
 
 class MessageQueue(Protocol):
