@@ -150,6 +150,12 @@ class IdentityConfig(_Section):
     # "Open Items" in the implementation plan.
     provisional_trust_attempts: int = Field(default=3, ge=0)
 
+    # RFC 9421 freshness (HandshakeProtocol §2): how old a signature's
+    # `created` time may be, plus the tolerance allowed for clock
+    # differences between peers. Provisional defaults.
+    signature_max_age_seconds: float = Field(default=5.0, gt=0)
+    signature_clock_skew_seconds: float = Field(default=30.0, ge=0)
+
     def resolved_key_dir(self, storage: StorageConfig) -> Path:
         """Key directory, defaulting to ``keys/`` under the data directory."""
         return self.key_dir or (storage.data_dir / "keys")
