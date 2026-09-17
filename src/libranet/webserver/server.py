@@ -13,6 +13,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from logging import Logger
 from socket import AF_INET, AF_INET6
+from socketserver import TCPServer
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -71,6 +72,17 @@ class LibranetHTTPServer(ThreadingHTTPServer):
         self.router = router
         self.logger = logger
         super().__init__(address, RequestHandler)
+
+    def server_bind(self) -> None:
+        """Bind without ``HTTPServer``'s reverse DNS lookup of the host.
+
+        ``socket.getfqdn`` can stall for seconds (notably on macOS), and the
+        name it finds is never used.
+        """
+        TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = str(host)
+        self.server_port = int(port)
 
 
 class RequestHandler(BaseHTTPRequestHandler):
