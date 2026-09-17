@@ -141,7 +141,9 @@ class ModuleBase(ABC):
                     self.handle(message)
 
                 except Exception:
-                    self._logger.exception("Module %s failed handling %s", self._name, event_of(message))
+                    self._logger.exception(
+                        "Module %s failed handling %s", self._name, event_of(message)
+                    )
 
         finally:
             self.on_stop()

@@ -124,23 +124,33 @@ def test_crashing_stub_raises_once_its_time_is_up() -> None:
         module.run(Event())
 
 
-def test_dispatcher_starts_before_every_module(make_supervisor: Callable[..., ProcessSupervisor]) -> None:
+def test_dispatcher_starts_before_every_module(
+    make_supervisor: Callable[..., ProcessSupervisor],
+) -> None:
     supervisor = make_supervisor()
 
     supervisor.poll()
 
-    assert supervisor.start_log == (ModuleName.DISPATCHER, ModuleName.WEBSERVER, ModuleName.VALIDATOR)
+    assert supervisor.start_log == (
+        ModuleName.DISPATCHER,
+        ModuleName.WEBSERVER,
+        ModuleName.VALIDATOR,
+    )
     assert _running(supervisor, ModuleName.DISPATCHER, ModuleName.WEBSERVER, ModuleName.VALIDATOR)
 
 
-def test_each_module_logs_to_its_own_file(make_supervisor: Callable[..., ProcessSupervisor], tmp_path: Path) -> None:
+def test_each_module_logs_to_its_own_file(
+    make_supervisor: Callable[..., ProcessSupervisor], tmp_path: Path
+) -> None:
     supervisor = make_supervisor()
     log = tmp_path / "logs" / "libranet-webserver.log"
 
     _poll_until(supervisor, lambda: log.is_file() and "Hello from stub module" in log.read_text())
 
 
-def test_crash_looping_module_keeps_being_restarted(make_supervisor: Callable[..., ProcessSupervisor]) -> None:
+def test_crash_looping_module_keeps_being_restarted(
+    make_supervisor: Callable[..., ProcessSupervisor],
+) -> None:
     crasher = ModuleSpec(ModuleName.FETCHER, partial(crashing_module_factory, crash_after=0.0))
     supervisor = make_supervisor((STUBS[0], crasher))
 
@@ -150,7 +160,9 @@ def test_crash_looping_module_keeps_being_restarted(make_supervisor: Callable[..
     assert supervisor.restart_count(ModuleName.WEBSERVER) == 0
 
 
-def test_restart_waits_for_the_backoff_delay(make_supervisor: Callable[..., ProcessSupervisor]) -> None:
+def test_restart_waits_for_the_backoff_delay(
+    make_supervisor: Callable[..., ProcessSupervisor],
+) -> None:
     crasher = ModuleSpec(ModuleName.FETCHER, partial(crashing_module_factory, crash_after=0.0))
     supervisor = make_supervisor((crasher,), restart_delay=60.0, max_restart_delay=60.0)
     supervisor.poll()
@@ -164,7 +176,9 @@ def test_restart_waits_for_the_backoff_delay(make_supervisor: Callable[..., Proc
     assert supervisor.restart_count(ModuleName.FETCHER) == 0
 
 
-def test_terminated_module_is_restarted(make_supervisor: Callable[..., ProcessSupervisor], tmp_path: Path) -> None:
+def test_terminated_module_is_restarted(
+    make_supervisor: Callable[..., ProcessSupervisor], tmp_path: Path
+) -> None:
     supervisor = make_supervisor()
     supervisor.poll()
     _wait_until(_has_started(tmp_path / "logs", ModuleName.WEBSERVER))
@@ -224,7 +238,9 @@ def test_shutdown_stops_every_process(make_supervisor: Callable[..., ProcessSupe
     assert supervisor.process_id(ModuleName.WEBSERVER) is None
 
 
-def test_run_returns_at_once_when_already_stopped(make_supervisor: Callable[..., ProcessSupervisor]) -> None:
+def test_run_returns_at_once_when_already_stopped(
+    make_supervisor: Callable[..., ProcessSupervisor],
+) -> None:
     supervisor = make_supervisor()
     stop = Event()
     stop.set()

@@ -25,7 +25,9 @@ class ReadySignal(Protocol):
 ModuleFactory = Callable[[ModuleName, LibranetConfig, ModuleQueues], ModuleBase]
 
 #: Runs the dispatcher inside its own process; must call ``ready.set()`` once up.
-DispatcherEntry = Callable[[LibranetConfig, Mapping[ModuleName, ModuleQueues], StopSignal, ReadySignal], None]
+DispatcherEntry = Callable[
+    [LibranetConfig, Mapping[ModuleName, ModuleQueues], StopSignal, ReadySignal], None
+]
 
 
 @dataclass(frozen=True)

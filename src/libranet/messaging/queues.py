@@ -44,4 +44,6 @@ def create_module_queues(
 ) -> dict[ModuleName, ModuleQueues]:
     """A fresh inbox/outbox pair for every module, usable across processes."""
     context = get_context(start_method)
-    return {module: ModuleQueues(inbox=context.Queue(), outbox=context.Queue()) for module in modules}
+    return {
+        module: ModuleQueues(inbox=context.Queue(), outbox=context.Queue()) for module in modules
+    }

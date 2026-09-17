@@ -46,7 +46,9 @@ def make_message(
     clashes = ENVELOPE_FIELDS.intersection(payload)
 
     if clashes:
-        raise InvalidMessageError(f"Payload may not use envelope fields: {', '.join(sorted(clashes))}")
+        raise InvalidMessageError(
+            f"Payload may not use envelope fields: {', '.join(sorted(clashes))}"
+        )
 
     message: Message = {
         EVENT_FIELD: EventType(event).value,
@@ -70,7 +72,9 @@ def validate_message(message: object) -> Message:
     missing = ENVELOPE_FIELDS.difference(message)
 
     if missing:
-        raise InvalidMessageError(f"Message is missing envelope fields: {', '.join(sorted(missing))}")
+        raise InvalidMessageError(
+            f"Message is missing envelope fields: {', '.join(sorted(missing))}"
+        )
 
     try:
         EventType(message[EVENT_FIELD])
@@ -86,7 +90,11 @@ def validate_message(message: object) -> Message:
 
     timestamp = message[TIMESTAMP_FIELD]
 
-    if isinstance(timestamp, bool) or not isinstance(timestamp, (int, float)) or not isfinite(timestamp):
+    if (
+        isinstance(timestamp, bool)
+        or not isinstance(timestamp, (int, float))
+        or not isfinite(timestamp)
+    ):
         raise InvalidMessageError(f"Invalid timestamp: {timestamp!r}")
 
     return message

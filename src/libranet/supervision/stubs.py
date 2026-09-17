@@ -51,7 +51,9 @@ class CrashingStubModule(StubModule):
             raise RuntimeError(f"Stub module {self.name} crashing on purpose")
 
 
-def stub_module_factory(name: ModuleName, config: LibranetConfig, queues: ModuleQueues) -> ModuleBase:
+def stub_module_factory(
+    name: ModuleName, config: LibranetConfig, queues: ModuleQueues
+) -> ModuleBase:
     """:data:`~libranet.supervision.specs.ModuleFactory` for :class:`StubModule`."""
     return StubModule(name, queues)
 

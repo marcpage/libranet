@@ -47,7 +47,9 @@ def module(queues: ModuleQueues) -> RecordingModule:
     return RecordingModule(queues)
 
 
-def _message(event: EventType, source: ModuleName = ModuleName.WEBSERVER, **payload: object) -> Message:
+def _message(
+    event: EventType, source: ModuleName = ModuleName.WEBSERVER, **payload: object
+) -> Message:
     return make_message(event, source, payload)
 
 
@@ -62,7 +64,9 @@ def test_publish_puts_an_enveloped_message_on_the_outbox(queues: ModuleQueues) -
     assert published["hash"] == "ab"
 
 
-def test_receive_filters_to_subscribed_events(module: RecordingModule, queues: ModuleQueues) -> None:
+def test_receive_filters_to_subscribed_events(
+    module: RecordingModule, queues: ModuleQueues
+) -> None:
     queues.inbox.put(_message(EventType.SEARCH_REQUESTED))
     queues.inbox.put(_message(EventType.DATA_NOT_FOUND, hash="01"))
 
@@ -91,7 +95,9 @@ def test_receive_drops_malformed_messages(
     assert "Dropping malformed message" in caplog.text
 
 
-def test_receive_times_out_when_nothing_is_wanted(module: RecordingModule, queues: ModuleQueues) -> None:
+def test_receive_times_out_when_nothing_is_wanted(
+    module: RecordingModule, queues: ModuleQueues
+) -> None:
     queues.inbox.put(_message(EventType.NODES_RECEIVED))
 
     assert module.receive(timeout=0.05) is None

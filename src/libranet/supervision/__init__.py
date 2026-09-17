@@ -5,7 +5,12 @@ passes each the validated config object, and restarts whatever exits,
 bringing the dispatcher back first.
 """
 
-from libranet.supervision.children import EXIT_CRASHED, dispatcher_main, run_dispatcher_process, run_module_process
+from libranet.supervision.children import (
+    EXIT_CRASHED,
+    dispatcher_main,
+    run_dispatcher_process,
+    run_module_process,
+)
 from libranet.supervision.process_supervisor import ProcessSupervisor
 from libranet.supervision.registry import default_module_specs
 from libranet.supervision.specs import DispatcherEntry, ModuleFactory, ModuleSpec, ReadySignal

@@ -23,7 +23,9 @@ class ContentId:
     hash: str
 
     @classmethod
-    def create(cls, algorithm: str, hash_value: str, registry: AlgorithmRegistry = DEFAULT_REGISTRY) -> ContentId:
+    def create(
+        cls, algorithm: str, hash_value: str, registry: AlgorithmRegistry = DEFAULT_REGISTRY
+    ) -> ContentId:
         """Validate and normalize an algorithm name and hash.
 
         Raises:
@@ -35,7 +37,8 @@ class ContentId:
 
         if len(normalized) != spec.hex_length or not _HEX_DIGITS.issuperset(normalized):
             raise InvalidContentIdError(
-                f"Invalid {spec.name} hash: expected {spec.hex_length} hexadecimal characters, got {hash_value!r}"
+                f"Invalid {spec.name} hash: expected {spec.hex_length} hexadecimal characters, "
+                f"got {hash_value!r}"
             )
 
         return cls(spec.name, normalized)
@@ -56,7 +59,9 @@ class ContentId:
         return cls.create(algorithm, hash_value, registry)
 
     @classmethod
-    def for_data(cls, data: bytes, algorithm: str, registry: AlgorithmRegistry = DEFAULT_REGISTRY) -> ContentId:
+    def for_data(
+        cls, data: bytes, algorithm: str, registry: AlgorithmRegistry = DEFAULT_REGISTRY
+    ) -> ContentId:
         """The identifier ``data`` has under ``algorithm``."""
         spec = registry.get(algorithm.lower())
         return cls(spec.name, spec.hexdigest(data))
