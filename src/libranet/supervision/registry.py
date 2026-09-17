@@ -1,20 +1,26 @@
 """Which factory builds each module a node runs.
 
-Every module is a stub for now; each later step swaps in its real factory
-here.
+Modules without real logic yet run as stubs; each later step swaps in its
+real factory here.
 """
 
 from __future__ import annotations
+from typing import Mapping
 
 from libranet.modules import SPAWNED_MODULES, ModuleName
-from libranet.supervision.specs import ModuleSpec
+from libranet.supervision.specs import ModuleFactory, ModuleSpec
 from libranet.supervision.stubs import stub_module_factory
+from libranet.webserver.module import webserver_module_factory
+
+_FACTORIES: Mapping[ModuleName, ModuleFactory] = {
+    ModuleName.WEBSERVER: webserver_module_factory,
+}
 
 
 def default_module_specs() -> tuple[ModuleSpec, ...]:
     """Specs for every spawned module except the dispatcher, in start order."""
     return tuple(
-        ModuleSpec(name=module, factory=stub_module_factory)
+        ModuleSpec(name=module, factory=_FACTORIES.get(module, stub_module_factory))
         for module in SPAWNED_MODULES
         if module != ModuleName.DISPATCHER
     )
