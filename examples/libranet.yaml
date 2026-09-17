@@ -68,6 +68,11 @@ identity:
   # Provisional: requests trusted while an unknown sender's public key is
   # still being fetched (Step 6).
   provisional_trust_attempts: 3
+  # Provisional: the longest a signed message may take to arrive (seconds
+  # since its signature was created), and the clock difference tolerated
+  # between this node and a peer (HandshakeProtocol §2).
+  signature_max_age_seconds: 5.0
+  signature_clock_skew_seconds: 30.0
 
 logging:
   level: "INFO"

@@ -22,6 +22,8 @@ from libranet import cli
 from libranet.config.loader import ConfigError, load_config
 from libranet.config.models import LibranetConfig
 from libranet.config.seeds import SeedError, load_seed_peers
+from libranet.identity.errors import IdentityError
+from libranet.identity.node_identity import load_node_identity
 from libranet.logging_setup import configure_logging
 from libranet.messaging.module import StopSignal
 from libranet.modules import ModuleName
@@ -68,9 +70,19 @@ def main(argv: Sequence[str] | None = None, *, stop: StopSignal | None = None) -
         print(f"Could not create node directories: {error}", file=sys.stderr)
         return EXIT_CONFIG_ERROR
 
+    # Created here, before any module starts, so the key is generated once
+    # and the public key is already servable from CAS.
+    try:
+        identity = load_node_identity(config)
+
+    except (IdentityError, ValueError, OSError) as error:
+        print(f"Could not load the node identity: {error}", file=sys.stderr)
+        return EXIT_CONFIG_ERROR
+
     logger = configure_logging(config.logging, ModuleName.SUPERVISOR)
     logger.info("Libranet supervisor starting (config: %s)", config_path)
     logger.info("Data directory: %s", config.storage.data_dir)
+    logger.info("Node id: %s", identity.node_id)
     logger.info("Listening on %s:%s", config.network.listen_address, config.network.listen_port)
     logger.info("Advertising endpoint %s", config.network.advertised_endpoint())
 

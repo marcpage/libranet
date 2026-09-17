@@ -5,7 +5,13 @@ description = "A decentralized peer-to-peer content network that runs over ordin
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.11"
-dependencies = ["platformdirs>=4.2", "pydantic>=2.7", "pyyaml>=6.0"]
+dependencies = [
+    "cryptography>=50.0.1",
+    "http-message-signatures>=2.0.1",
+    "platformdirs>=4.2",
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+]
 
 [project.scripts]
 libranet = "libranet.supervisor:main"
@@ -42,6 +48,12 @@ warn_unreachable = true
 disallow_untyped_defs = true
 no_implicit_optional = true
 show_error_codes = true
+# http-message-signatures ships py.typed but is only partly annotated.
+untyped_calls_exclude = ["http_message_signatures"]
+
+[[tool.mypy.overrides]]
+module = "http_message_signatures.*"
+implicit_reexport = true
 
 [[tool.mypy.overrides]]
 module = "tests.*"

@@ -85,6 +85,32 @@ def test_run_creates_directories_and_a_log_file(config_file: Path, tmp_path: Pat
     assert (tmp_path / "logs" / "libranet-supervisor.log").is_file()
 
 
+def test_run_creates_the_node_identity_and_publishes_its_key(
+    config_file: Path, tmp_path: Path
+) -> None:
+    stop = Event()
+    stop.set()
+
+    assert main(["--config", str(config_file)], stop=stop) == EXIT_OK
+    assert (tmp_path / "data" / "keys" / "node_private_key.pem").is_file()
+    assert len(list((tmp_path / "data" / "cas" / "data" / "sha256").glob("*/*"))) == 1
+    log = (tmp_path / "logs" / "libranet-supervisor.log").read_text(encoding="utf-8")
+    assert "Node id: sha256/" in log
+
+
+def test_unreadable_node_key_is_an_error(
+    config_file: Path, tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    key_path = tmp_path / "data" / "keys" / "node_private_key.pem"
+    key_path.parent.mkdir(parents=True)
+    key_path.write_bytes(b"garbage")
+    stop = Event()
+    stop.set()
+
+    assert main(["--config", str(config_file)], stop=stop) == EXIT_CONFIG_ERROR
+    assert "node identity" in capsys.readouterr().err
+
+
 def test_run_spawns_every_module_until_stopped(config_file: Path, tmp_path: Path) -> None:
     with socket() as probe:
         probe.bind(("127.0.0.1", 0))
