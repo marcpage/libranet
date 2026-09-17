@@ -1,0 +1,4 @@
+{
+  "_comment": "Initial peers, consulted only when this node knows no peers at all. Same schema as GET /data/nodes (HttpApi 10.6); a null id means the address is known but the node identifier is not. No public Libranet network exists yet, so this list ships empty.",
+  "nodes": {}
+}

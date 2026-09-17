@@ -1,0 +1,78 @@
+# Example Libranet node configuration.
+#
+# Every setting below is optional and shown with its default, so an absent
+# or empty config file starts a node on these values. Copy this file to the
+# platform config location (`libranet --check-config` prints the resolved
+# settings; `--config PATH` loads a file from anywhere) and edit what you
+# need.
+#
+# Unknown keys are rejected at startup, so a typo here is an error rather
+# than a setting that silently does nothing.
+
+network:
+  # Peer-facing listener.
+  listen_address: "0.0.0.0"
+  listen_port: 8080
+
+  # `/config` is loopback-only (HTTP API §2.3).
+  config_listen_address: "127.0.0.1"
+  config_listen_port: 8081
+
+  # How this node describes itself in /data/nodes (HTTP API §10.1). With
+  # neither address nor port set, it advertises
+  # `http://localhost:8080`, meaning "reach me at the address this
+  # connection came from". Set external_port when a gateway forwards a
+  # different port; set external_address when the node has a stable name.
+  external_scheme: "http"
+  external_address: null
+  external_port: null
+
+peers:
+  # At least one connection per 4-bit identifier bucket
+  # (High-Level Design §4.6).
+  min_outgoing_connections: 16
+  bucket_prefix_bits: 4
+  connect_timeout_seconds: 10.0
+  request_timeout_seconds: 30.0
+  # JSON file of initial peers, used only when this node knows no peers at
+  # all. Defaults to the (currently empty) list shipped with the package.
+  seed_file: null
+
+storage:
+  # Defaults to the platform data directory; the CAS, the SQLite file, and
+  # the node keys all live beneath it.
+  # data_dir: /var/lib/libranet
+  # cache_dir: /var/cache/libranet
+
+  # Leading hash characters used as a subdirectory name, bounding how large
+  # any one directory gets.
+  hash_prefix_length: 4
+
+  # A single stored object may not exceed 1 MiB (HTTP API §4).
+  max_object_bytes: 1048576
+
+  # Eviction (Step 15) starts handing off low-priority content once free
+  # space falls below this.
+  min_free_bytes: 1073741824
+  max_storage_bytes: null
+
+  # Provisional: how long a cached /data/search result stays valid.
+  search_cache_ttl_seconds: 300.0
+
+identity:
+  # Defaults to `keys/` under data_dir.
+  key_dir: null
+  hash_algorithm: "sha256"
+  # Provisional: requests trusted while an unknown sender's public key is
+  # still being fetched (Step 6).
+  provisional_trust_attempts: 3
+
+logging:
+  level: "INFO"
+  # Defaults to the platform log directory. Each module process writes its
+  # own file, e.g. libranet-webserver.log.
+  # directory: /var/log/libranet
+  file_name: "libranet.log"
+  max_bytes: 10485760
+  backup_count: 5
+  console: true
