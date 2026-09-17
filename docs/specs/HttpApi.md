@@ -388,7 +388,7 @@ If the hash already exists and the content is the same as an existing content fo
 
 ## 7.2 Content Storage
 
-Content MUST be validated before sending to other nodes.]
+Content MUST be validated before sending to other nodes.
 Content validation MAY be delayed.
 
 The node SHOULD hold all duplicate versions from all sources until they are validated.
