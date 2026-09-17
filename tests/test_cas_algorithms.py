@@ -5,8 +5,21 @@ from hashlib import sha256
 
 from pytest import raises
 
-from libranet.cas.algorithms import AlgorithmRegistry, DEFAULT_REGISTRY, Sha256Algorithm
+from libranet.cas.algorithms import AlgorithmRegistry, DEFAULT_REGISTRY, Hasher, Sha256Algorithm
 from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
+
+
+class Fake32Hasher:
+    """Incremental form of :class:`Fake32Algorithm`."""
+
+    def __init__(self) -> None:
+        self._inner = sha256()
+
+    def update(self, data: bytes, /) -> None:
+        self._inner.update(data)
+
+    def hexdigest(self) -> str:
+        return self._inner.hexdigest()[:32]
 
 
 class Fake32Algorithm:
@@ -23,9 +36,21 @@ class Fake32Algorithm:
     def hexdigest(self, data: bytes) -> str:
         return sha256(data).hexdigest()[:32]
 
+    def hasher(self) -> Hasher:
+        return Fake32Hasher()
+
 
 def test_sha256_digest_matches_hashlib() -> None:
     assert Sha256Algorithm().hexdigest(b"abc") == sha256(b"abc").hexdigest()
+
+
+def test_hasher_matches_the_one_shot_digest() -> None:
+    for algorithm in (Sha256Algorithm(), Fake32Algorithm()):
+        hasher = algorithm.hasher()
+        hasher.update(b"ab")
+        hasher.update(b"c")
+
+        assert hasher.hexdigest() == algorithm.hexdigest(b"abc")
 
 
 def test_default_registry_supports_only_sha256() -> None:

@@ -10,10 +10,12 @@ from typing import Mapping
 from libranet.modules import SPAWNED_MODULES, ModuleName
 from libranet.supervision.specs import ModuleFactory, ModuleSpec
 from libranet.supervision.stubs import stub_module_factory
+from libranet.validator.module import validator_module_factory
 from libranet.webserver.module import webserver_module_factory
 
 _FACTORIES: Mapping[ModuleName, ModuleFactory] = {
     ModuleName.WEBSERVER: webserver_module_factory,
+    ModuleName.VALIDATOR: validator_module_factory,
 }
 
 

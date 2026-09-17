@@ -12,6 +12,18 @@ from typing import Iterator, Protocol
 from libranet.cas.errors import UnknownAlgorithmError
 
 
+class Hasher(Protocol):
+    """A digest being computed over data fed to it a piece at a time."""
+
+    def update(self, data: bytes, /) -> None:
+        """Feed the next piece of data."""
+        ...
+
+    def hexdigest(self) -> str:
+        """Lower-case hexadecimal digest of everything fed so far."""
+        ...
+
+
 class HashAlgorithm(Protocol):
     """A content hash function, identified by its URL name."""
 
@@ -29,6 +41,10 @@ class HashAlgorithm(Protocol):
         """Lower-case hexadecimal digest of ``data``."""
         ...
 
+    def hasher(self) -> Hasher:
+        """A new incremental digest, for data not held in memory all at once."""
+        ...
+
 
 class Sha256Algorithm:
     """SHA-256, the only algorithm supported in v1."""
@@ -43,6 +59,9 @@ class Sha256Algorithm:
 
     def hexdigest(self, data: bytes) -> str:
         return sha256(data).hexdigest()
+
+    def hasher(self) -> Hasher:
+        return sha256()
 
 
 class AlgorithmRegistry:

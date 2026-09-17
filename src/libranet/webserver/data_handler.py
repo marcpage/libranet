@@ -24,6 +24,19 @@ DATA_PATTERN: Final = r"/data/(?P<algorithm>[^/]+)/(?P<hash>[^/]+)"
 _IMMUTABLE_CACHE_CONTROL: Final = "public, max-age=31536000, immutable"
 
 
+def invalid_address_response(error: InvalidContentIdError, request: Request) -> Response:
+    """The ``400`` for a ``/data/{algorithm}/{hash}`` path naming no valid id (HttpApi §5.4)."""
+    return problem_response(
+        Problem(
+            status=HTTPStatus.BAD_REQUEST,
+            title="Invalid content address",
+            type=INVALID_CONTENT_ADDRESS,
+            detail=str(error),
+            instance=request.path,
+        )
+    )
+
+
 class DataReadHandler:
     """Serves CAS content from one store, reporting misses."""
 
@@ -40,15 +53,7 @@ class DataReadHandler:
             content_id = ContentId.create(request.params["algorithm"], request.params["hash"])
 
         except InvalidContentIdError as error:
-            return problem_response(
-                Problem(
-                    status=HTTPStatus.BAD_REQUEST,
-                    title="Invalid content address",
-                    type=INVALID_CONTENT_ADDRESS,
-                    detail=str(error),
-                    instance=request.path,
-                )
-            )
+            return invalid_address_response(error, request)
 
         try:
             body = self._store.read(content_id)

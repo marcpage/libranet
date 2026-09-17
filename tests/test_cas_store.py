@@ -7,7 +7,7 @@ from pytest import raises
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError
-from libranet.cas.store import CasStore, connection_store, source_of_truth_store
+from libranet.cas.store import CasStore, connection_store, node_store, source_of_truth_store
 from libranet.config.models import StorageConfig
 
 
@@ -119,3 +119,16 @@ def test_stores_from_config(tmp_path: Path) -> None:
     assert truth.root == storage.source_of_truth_dir
     assert incoming.root == storage.connection_dir("conn-7")
     assert truth.prefix_length == incoming.prefix_length == 3
+
+
+def test_node_stores_are_separate_per_node(tmp_path: Path) -> None:
+    storage = StorageConfig(data_dir=tmp_path, hash_prefix_length=3)
+    first = ContentId.for_data(b"first node key", "sha256")
+    second = ContentId.for_data(b"second node key", "sha256")
+
+    store = node_store(storage, first)
+
+    assert store.root == storage.connection_dir(f"sha256-{first.hash}")
+    assert store.root.parent == storage.incoming_dir
+    assert store.prefix_length == 3
+    assert node_store(storage, second).root != store.root
