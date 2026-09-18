@@ -422,6 +422,43 @@ correct pipelined request/response correlation.
   (Step 8), which already records the first pair and holds the counters
   the second pair feeds: attempts, bytes transferred, and whether a peer
   had the data asked of it.
+- Identity comes first. Steps 1 and 2 wait for their responses, and the
+  peer's node id is the one its first response is signed with. Its public
+  key goes straight into the source of truth once it hashes to that id,
+  since everything after is verified against it. Only then does the
+  connection join the mix and steps 3–7 run, pipelined step by step. From
+  then on, every response must be signed by that node or the connection
+  closes (HandshakeProtocol §5.3). A peer that turns out to be this node,
+  or a node already connected, is closed.
+- The web server likewise stores a signer's pushed public key at once
+  (HandshakeProtocol §3 step 1), rather than through the validator, whose
+  delay could outlast the few requests an unknown signer is trusted
+  provisionally.
+- The mix draws on the derived node list, best first, and on the seed list
+  only while that names no peer. It takes the best peer in each uncovered
+  bucket until `min_outgoing_connections` buckets are covered, then any
+  peer until there are that many connections. It never closes a working
+  connection to rebalance. An endpoint rests for a configurable retry delay
+  after a failed attempt or after its connection closes; a rest ending is
+  one more event that triggers maintenance.
+- While connected, the peer's seek list is fetched again on a configurable
+  interval and anything newly fulfillable is pushed (HandshakeProtocol
+  §3.3), each item once per connection. The interval also keeps the
+  connection from idling out at the web server, which drops idle
+  connections after 60 seconds. A received node list loses the entries
+  naming this node or the peer, and its `localhost` entries are resolved to
+  the address dialed. The peer's seek list is acted on but not recorded.
+- Content received, whether fetched or asked for in step 7, is checked
+  against its id, then written to the peer's node-specific store and
+  announced as a `PUT` would be, for the validator.
+- A fetch asks the connected peers once each, best prefix match first
+  (HighLevelDesign §4.7), and answers `fetch.succeeded` or `fetch.failed`.
+  Revisiting peers, and dialing better-matching peers not connected, are
+  left for later.
+- Three events carry the remaining counters to the stats module:
+  `connection.failed` (an attempt to reach a known node id), `data.sent`
+  (content a peer accepted, with its size), and `fetch.attempted` (each
+  content request a peer answered, and whether it had the content).
 
 **Testable in isolation:** exercised against fixture peer servers
 (instances of Step 5's server); connection-mix logic can be tested with
@@ -738,4 +775,5 @@ the relevant step is built, not before starting:
   first publishes or first consumes one.
 - Default values for configurable parameters introduced above (search
   cache TTL, RFC 9421 provisional-trust attempt limit, list derivation
-  interval, seek-entry TTL, etc.).
+  interval, seek-entry TTL, peer retry delay, seek refresh interval,
+  etc.).

@@ -13,10 +13,13 @@ The payloads it consumes, by event:
 ``data.search_requested`` ``{"prefix", "cache_path"}`` (Step 5)
 ``data.stored``        ``{"algorithm", "hash", "node_id", "size"}`` (Step 7)
 ``data.rejected``      ``{"algorithm", "hash", "node_id"}`` (Step 7)
-``nodes.received``     ``{"nodes": {endpoint: node id}}`` (Step 9)
+``nodes.received``     ``{"nodes": {endpoint: node id}}`` (Steps 9 and 11)
 ``seek.received``      ``{"node_id", "data": [...], "search": [...]}`` (Step 9)
 ``connection.opened``  ``{"node_id", "endpoint"}`` (Step 11)
 ``connection.closed``  ``{"node_id", "remote"}`` (Step 11)
+``connection.failed``  ``{"node_id", "endpoint"}`` (Step 11)
+``data.sent``          ``{"algorithm", "hash", "node_id", "size"}`` (Step 11)
+``fetch.attempted``    ``{"algorithm", "hash", "node_id", "found"}`` (Step 11)
 
 A miss on ``GET /data/{algorithm}/{hash}`` and a ``GET /data/search/{prefix}``
 are both requests this node could not answer, so each becomes an entry in
@@ -65,6 +68,9 @@ class StatsModule(ModuleBase):
             EventType.SEEK_RECEIVED,
             EventType.CONNECTION_OPENED,
             EventType.CONNECTION_CLOSED,
+            EventType.CONNECTION_FAILED,
+            EventType.DATA_SENT,
+            EventType.FETCH_ATTEMPTED,
         }
     )
 
@@ -94,6 +100,9 @@ class StatsModule(ModuleBase):
             EventType.SEEK_RECEIVED: self._on_seek_received,
             EventType.CONNECTION_OPENED: self._on_connection_opened,
             EventType.CONNECTION_CLOSED: self._on_connection_closed,
+            EventType.CONNECTION_FAILED: self._on_connection_failed,
+            EventType.DATA_SENT: self._on_data_sent,
+            EventType.FETCH_ATTEMPTED: self._on_fetch_attempted,
         }
 
     @property
@@ -209,6 +218,19 @@ class StatsModule(ModuleBase):
     def _on_connection_closed(self, message: Message) -> None:
         self.database.record_connection_closed(
             ContentId.parse(message["node_id"]), remote=bool(message.get("remote", False))
+        )
+
+    def _on_connection_failed(self, message: Message) -> None:
+        self.database.record_connection_attempt(ContentId.parse(message["node_id"]))
+
+    def _on_data_sent(self, message: Message) -> None:
+        self.database.record_transfer(
+            ContentId.parse(message["node_id"]), sent=int(message["size"])
+        )
+
+    def _on_fetch_attempted(self, message: Message) -> None:
+        self.database.record_data_lookup(
+            ContentId.parse(message["node_id"]), found=bool(message["found"])
         )
 
     def _node_ids(self, nodes: Mapping[str, str]) -> dict[str, ContentId]:

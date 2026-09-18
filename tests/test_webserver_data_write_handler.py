@@ -169,15 +169,58 @@ def test_upper_case_address_is_stored_normalized(
 
 
 def test_unknown_signer_can_push_its_own_public_key(
-    router: Router, storage: StorageConfig, queues: ModuleQueues
+    router: Router, storage: StorageConfig, truth: CasStore, queues: ModuleQueues
 ) -> None:
     stranger = new_identity()
 
     response = router.dispatch(signed_request(stranger, stranger.public_key, stranger.node_id))
 
+    # Held at once rather than left for the validator, so the provisional
+    # limit (one request here) cannot run out before it is: the signer's
+    # next request is verified.
+    assert response.status == 201
+    assert truth.read(stranger.node_id) == stranger.public_key
+    assert not node_store(storage, stranger.node_id).exists(stranger.node_id)
+    assert published(queues) == []
+    assert router.dispatch(signed_request(stranger, CONTENT)).status == 202
+
+
+def test_someone_elses_public_key_goes_to_the_validator(
+    router: Router, storage: StorageConfig, truth: CasStore, known: NodeIdentity
+) -> None:
+    other = new_identity()
+
+    response = router.dispatch(signed_request(known, other.public_key, other.node_id))
+
     assert response.status == 202
-    assert node_store(storage, stranger.node_id).read(stranger.node_id) == stranger.public_key
-    assert published(queues)[0]["node_id"] == str(stranger.node_id)
+    assert not truth.exists(other.node_id)
+    assert node_store(storage, known.node_id).read(other.node_id) == other.public_key
+
+
+def test_a_signers_own_content_that_is_not_a_key_goes_to_the_validator(
+    router: Router, storage: StorageConfig, truth: CasStore
+) -> None:
+    # A signer claiming the id of arbitrary content, and pushing that content.
+    content_id = ContentId.for_data(b"not a key", "sha256")
+    posing = NodeIdentity(generate_private_key(), b"not a key", content_id)
+
+    response = router.dispatch(signed_request(posing, b"not a key", content_id))
+
+    assert response.status == 202
+    assert not truth.exists(content_id)
+    assert node_store(storage, content_id).read(content_id) == b"not a key"
+
+
+def test_own_key_upload_that_does_not_match_goes_to_the_validator(
+    router: Router, storage: StorageConfig, truth: CasStore
+) -> None:
+    stranger = new_identity()
+
+    response = router.dispatch(signed_request(stranger, b"not my key", stranger.node_id))
+
+    assert response.status == 202
+    assert not truth.exists(stranger.node_id)
+    assert node_store(storage, stranger.node_id).read(stranger.node_id) == b"not my key"
 
 
 def test_content_is_not_checked_against_its_address(
