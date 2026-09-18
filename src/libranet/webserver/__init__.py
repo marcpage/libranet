@@ -3,9 +3,11 @@
 Serves the content-addressed source of truth and the derived node and seek
 lists, writes incoming PUT bodies to a per-connection directory, and
 publishes messages about what happened, including the lists peers POST. It
-does not validate, fetch, evict, or resolve bundles itself.
+does not validate, fetch, evict, or resolve bundles itself, and serves
+`/config` only to clients on this machine.
 """
 
+from libranet.webserver.config_guard import local_config_guard
 from libranet.webserver.data_handler import DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
 from libranet.webserver.http_types import IncompleteBodyError, Request, RequestBody, Response
@@ -53,6 +55,7 @@ __all__ = [
     "build_router",
     "decode_list",
     "invalid_signature_response",
+    "local_config_guard",
     "normalize_prefix",
     "parse_node_list",
     "parse_seek_list",

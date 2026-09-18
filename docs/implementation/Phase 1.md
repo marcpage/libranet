@@ -610,6 +610,10 @@ JSON and fixture CAS content, independent of everything else.
   HttpApi §2.3. This step covers the source-address restriction only;
   Basic Authentication and the `/config` endpoints themselves are
   Step 18.
+- A remote `/config` request is refused before its signature is checked or
+  its body read, so no credentials it carries are ever looked at. The path is
+  percent-decoded and case-folded first, so no spelling of `/config` gets
+  past. The router now runs its guards in order, this one first.
 
 **Testable in isolation:** unbundler tests against fixture bundles and a
 temp source-of-truth directory; web server tests with a fake queue for
