@@ -453,10 +453,12 @@ correct pipelined request/response correlation.
 - Content received, whether asked for in step 7 or retrieved on demand, is
   checked against its id, then written to the peer's node-specific store
   and announced as a `PUT` would be, for the validator.
-- Steps 4 and 6, getting the peer's seek list and pushing, can be repeated
+- Steps 4 and 6, getting the peer's seek list and pushing, are repeated
   while a connection lasts (HandshakeProtocol §3.3), pushing each item at
-  most once per connection. When to repeat them is the connection manager's
-  choice.
+  most once per connection. The connection manager repeats them on a
+  configurable interval, never overlapping another exchange with the same
+  peer. The interval also keeps the connection from idling out at the web
+  server, which drops idle connections after 60 seconds.
 - The mix draws on the derived node list, best first, and on the seed list
   only while that names no peer. It takes the best peer in each uncovered
   bucket until `min_outgoing_connections` buckets are covered, then any
@@ -472,6 +474,12 @@ correct pipelined request/response correlation.
   `connection.closed` when that connection ends, with `remote` true unless
   this node chose to close it. `connection.failed` is published only for an
   attempt on a candidate whose node id was known beforehand.
+- A fetch asks the connected peers once each, best prefix match first
+  (HighLevelDesign §4.7), and answers `fetch.succeeded` (the content went
+  to the validator) or `fetch.failed` (no connected peer had it). A fetch
+  already under way for the same content is not started again. Revisiting
+  peers, and dialing better-matching peers not connected, are left for
+  later.
 
 **Testable in isolation:** exercised against fixture peer servers
 (instances of Step 5's server); connection-mix logic can be tested with
@@ -788,4 +796,5 @@ the relevant step is built, not before starting:
   first publishes or first consumes one.
 - Default values for configurable parameters introduced above (search
   cache TTL, RFC 9421 provisional-trust attempt limit, list derivation
-  interval, seek-entry TTL, peer retry delay, etc.).
+  interval, seek-entry TTL, peer retry delay, seek refresh interval,
+  etc.).
