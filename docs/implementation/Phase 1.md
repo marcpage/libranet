@@ -378,7 +378,7 @@ on the resolved addresses published and the served file contents.
   `selectors`-based receive thread that reads and parses responses as
   they arrive.
 - A X-Request-Path header convention, defined and always echoed back by
-  Libranet's own node implementations, used to debug. Responses are 
+  Libranet's own node implementations, used to debug. Responses are
   correlated to the requests that produced them by
   per-connection FIFO ordering.
 - No handshake or peer-management logic yet at this step — just the
@@ -496,6 +496,17 @@ fake peer/message inputs without real sockets.
   data, rather than opening any connections itself.
 - On success, the fetched content lands in a node-specific directory for
   the validator (Step 7) to pick up as usual — no separate write path.
+- A miss is covered by an earlier request for the same content made less
+  than the node's `Retry-After` period (`retry_after_seconds`) before it,
+  timed by when each miss was reported. A client that waits as told brings
+  a fresh attempt with each retry, while a burst of requests, or a peer
+  asking back for content this node is fetching, reaches the peers once
+  per period rather than once per request.
+- The outcome is only logged. Content that arrived is already with the
+  validator, and content no connected peer had stays in this node's seek
+  list (Step 8) for peers that connect later. Asking again after a failed
+  fetch without waiting for another miss is left for later, along with the
+  revisiting of peers Step 11 leaves out.
 
 **Testable in isolation:** unit tests with a fake connection-manager
 message exchange, asserting the fetcher requests the right hash and

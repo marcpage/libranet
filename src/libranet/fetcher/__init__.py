@@ -3,3 +3,10 @@
 Reacts to "requested but not found locally" messages by asking the
 connection manager to retrieve the data from peers.
 """
+
+from libranet.fetcher.module import FetcherModule, fetcher_module_factory
+
+__all__ = [
+    "FetcherModule",
+    "fetcher_module_factory",
+]
