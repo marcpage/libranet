@@ -2,7 +2,9 @@
 
 Nodes sign with Ed25519. A public key is published in its PEM
 SubjectPublicKeyInfo encoding, and those exact bytes are what the node
-identifier hashes (HighLevelDesign §2.1) and what CAS stores under it.
+identifier hashes (HighLevelDesign §2.1) and what CAS stores under it. Like
+any content, a key may be sent and stored zlib-compressed instead (HttpApi
+§8), so :func:`published_public_key` recognizes it either way.
 
 The private key and the backup secret (BackupSpecification §4.3) are plain
 files readable only by their owner. Each is created at most once: when two
@@ -14,6 +16,7 @@ from os import fdopen, link
 from pathlib import Path
 from secrets import token_bytes
 from tempfile import mkstemp
+from zlib import decompressobj, error as ZlibError
 
 from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
@@ -26,9 +29,14 @@ from cryptography.hazmat.primitives.serialization import (
     load_pem_public_key,
 )
 
+from libranet.cas.content_id import ContentId
 from libranet.identity.errors import KeyFileError
 
 BACKUP_SECRET_BYTES = 32
+
+# Node keys are a few hundred bytes. A key held compressed is never expanded
+# past this, so a small body cannot expand without bound.
+MAX_PUBLIC_KEY_BYTES = 64 * 1024
 _PRIVATE_DIR_MODE = 0o700
 _TEMP_SUFFIX = ".partial"
 
@@ -84,6 +92,37 @@ def decode_public_key(data: bytes) -> Ed25519PublicKey:
         raise KeyFileError("Public key has small order, so anyone can sign for it")
 
     return key
+
+
+def published_public_key(node_id: ContentId, data: bytes) -> Ed25519PublicKey:
+    """The node key ``data`` publishes for ``node_id``, whether as-is or zlib-compressed.
+
+    Raises:
+        KeyFileError: ``data`` is not the content ``node_id`` names, as-is or
+            decompressed, or that content is not a usable node key.
+    """
+    key = data if node_id.matches(data) else _decompressed(data, MAX_PUBLIC_KEY_BYTES)
+
+    if key is None or not node_id.matches(key):
+        raise KeyFileError(f"Data does not hash to {node_id}, as-is or decompressed")
+
+    return decode_public_key(key)
+
+
+def _decompressed(data: bytes, max_bytes: int) -> bytes | None:
+    """``data`` decompressed, or ``None`` unless it is one zlib stream of at most ``max_bytes``."""
+    decompressor = decompressobj()
+
+    try:
+        result = decompressor.decompress(data, max_bytes + 1)
+
+    except ZlibError:
+        return None
+
+    if len(result) > max_bytes or not decompressor.eof or decompressor.unused_data:
+        return None
+
+    return result
 
 
 def load_or_create_private_key(path: Path) -> Ed25519PrivateKey:

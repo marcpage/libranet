@@ -5,6 +5,7 @@ from base64 import encodebytes
 from pathlib import Path
 from stat import S_IMODE
 from sys import platform
+from zlib import compress
 
 from cryptography.hazmat.primitives.asymmetric.ec import SECP256R1, generate_private_key as ec_key
 from cryptography.hazmat.primitives.serialization import (
@@ -16,14 +17,17 @@ from cryptography.hazmat.primitives.serialization import (
 )
 from pytest import MonkeyPatch, mark, raises
 
+from libranet.cas.content_id import ContentId
 from libranet.identity.errors import KeyFileError
 from libranet.identity.keys import (
     BACKUP_SECRET_BYTES,
+    MAX_PUBLIC_KEY_BYTES,
     decode_public_key,
     encode_public_key,
     generate_private_key,
     load_or_create_backup_secret,
     load_or_create_private_key,
+    published_public_key,
     write_private_file,
 )
 
@@ -97,6 +101,50 @@ def test_small_order_public_keys_are_rejected(encoding: str, sign_bit: int) -> N
 def test_small_order_rejection_names_the_reason() -> None:
     with raises(KeyFileError, match="small order"):
         decode_public_key(raw_public_key_pem(bytes.fromhex(SMALL_ORDER_ENCODINGS[1])))
+
+
+@mark.parametrize("level", (0, 6, 9))
+def test_a_published_key_is_recognized_as_is_or_compressed(level: int) -> None:
+    encoded = encode_public_key(generate_private_key().public_key())
+    node_id = ContentId.for_data(encoded, "sha256")
+
+    assert encode_public_key(published_public_key(node_id, encoded)) == encoded
+    assert encode_public_key(published_public_key(node_id, compress(encoded, level))) == encoded
+
+
+def test_bytes_that_are_not_the_ids_content_are_not_its_key() -> None:
+    encoded = encode_public_key(generate_private_key().public_key())
+    node_id = ContentId.for_data(encoded, "sha256")
+    other = encode_public_key(generate_private_key().public_key())
+    compressed = compress(encoded)
+
+    for data in (
+        other,
+        compress(other),
+        b"",
+        compressed[:-1],  # a truncated stream
+        compressed + b"trailing",
+        compressed + compressed,
+    ):
+        with raises(KeyFileError, match="does not hash to"):
+            published_public_key(node_id, data)
+
+
+def test_a_compressed_key_is_not_expanded_past_the_limit() -> None:
+    # It does name this content, but no node key is anywhere near this large.
+    content = b"x" * (MAX_PUBLIC_KEY_BYTES + 1)
+    node_id = ContentId.for_data(content, "sha256")
+
+    with raises(KeyFileError, match="does not hash to"):
+        published_public_key(node_id, compress(content))
+
+
+def test_content_that_is_not_a_key_is_not_a_published_key() -> None:
+    node_id = ContentId.for_data(b"not a key", "sha256")
+
+    for data in (b"not a key", compress(b"not a key")):
+        with raises(KeyFileError, match="Not a PEM public key"):
+            published_public_key(node_id, data)
 
 
 def test_private_key_is_created_once_and_reloaded(tmp_path: Path) -> None:

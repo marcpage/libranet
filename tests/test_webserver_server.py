@@ -471,6 +471,27 @@ def test_uploaded_content_is_served_once_validated(
     assert _get(connection, f"/data/{identity.node_id}")[1] == identity.public_key
 
 
+def test_a_key_someone_else_pushed_compressed_still_verifies_its_owner(
+    connection: HTTPConnection, queues: ModuleQueues, storage: StorageConfig, store: CasStore
+) -> None:
+    owner, other = _new_identity(), _new_identity()
+    validator = ValidatorModule(ModuleName.VALIDATOR, ModuleQueues(Queue(), Queue()), storage)
+    compressed = compress(owner.public_key)
+
+    response, _ = _put(connection, owner.node_id, compressed, other)
+    assert response.status == 202
+    validator.handle(_published(queues)[0])
+    assert store.read(owner.node_id) == compressed
+
+    upload = b"sent by the key's owner"
+    response, _ = _put(connection, ContentId.for_data(upload, "sha256"), upload, owner)
+
+    # Refused as an invalid signature (and the connection closed) if the
+    # compressed key could not be used.
+    assert response.status == 202
+    assert response.getheader("Connection") is None
+
+
 def test_unsigned_upload_is_401_and_keeps_the_connection(
     connection: HTTPConnection, queues: ModuleQueues
 ) -> None:

@@ -29,6 +29,7 @@ from libranet.identity.keys import (
     generate_private_key,
     load_or_create_backup_secret,
     load_or_create_private_key,
+    published_public_key,
 )
 from libranet.identity.node_identity import NodeIdentity, load_node_identity
 from libranet.identity.signatures import (
@@ -63,6 +64,7 @@ __all__ = [
     "load_node_identity",
     "load_or_create_backup_secret",
     "load_or_create_private_key",
+    "published_public_key",
     "request_authenticator",
     "verify_content_digest",
 ]

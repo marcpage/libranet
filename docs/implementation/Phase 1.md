@@ -228,6 +228,10 @@ in CAS).
   public key is already in CAS, verify synchronously; otherwise trust
   the request provisionally until the key is obtained or a configurable
   attempt limit is reached.
+- A public key held in CAS may be stored zlib-compressed, as any content
+  may be sent and is kept as received (HttpApi §8), so it is decompressed,
+  up to a small cap, when read for verification. Otherwise one compressed
+  copy, pushed by anyone, would leave that node unverifiable for good.
 
 **Testable in isolation:** unit tests generating key pairs, signing
 requests, and verifying signatures/failure cases without any network
@@ -423,8 +427,8 @@ correct pipelined request/response correlation.
   the second pair feeds: attempts, bytes transferred, and whether a peer
   had the data asked of it.
 - The web server stores a signer's pushed public key at once
-  (HandshakeProtocol §3 step 1), provided it hashes to the signer's id and
-  is a public key, rather than through the validator. The rest of the
+  (HandshakeProtocol §3 step 1), provided it is the signer's public key,
+  sent as-is or compressed, rather than through the validator. The rest of the
   exchange is verified against it, and the validator's delay could
   outlast the few requests an unknown signer is trusted provisionally.
 - Three events carry the remaining counters to the stats module:

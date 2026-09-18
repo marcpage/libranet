@@ -4,6 +4,7 @@ from __future__ import annotations
 from base64 import b64encode, encodebytes
 from pathlib import Path
 from typing import Callable
+from zlib import compress
 
 from pytest import fixture, raises
 
@@ -235,6 +236,20 @@ def test_unknown_signer_is_only_reported_after_the_other_checks(
 
     with raises(InvalidSignatureError):
         make_verifier(empty, now=NOW + 3600).verify_request("PUT", PATH, headers, b"body")
+
+
+def test_a_key_stored_compressed_still_verifies(
+    signer: MessageSigner, identity: NodeIdentity, tmp_path: Path
+) -> None:
+    # Content is stored as it arrived, and a key may have arrived compressed.
+    store = CasStore(tmp_path / "compressed", 4)
+    store.write(identity.node_id, compress(identity.public_key))
+
+    verified = make_verifier(store).verify_request(
+        "GET", PATH, signer.sign_request("GET", PATH, {})
+    )
+
+    assert verified == identity.node_id
 
 
 def test_stored_key_that_does_not_match_its_id_is_rejected(

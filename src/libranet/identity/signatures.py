@@ -46,7 +46,7 @@ from libranet.identity.errors import (
     MissingSignatureError,
     UnknownKeyError,
 )
-from libranet.identity.keys import decode_public_key
+from libranet.identity.keys import published_public_key
 from libranet.identity.node_identity import NodeIdentity
 
 SIGNATURE_LABEL: Final = "libranet"
@@ -108,11 +108,9 @@ class _PublicKeyResolver(HTTPSignatureKeyResolver):
         except ContentNotFoundError:
             raise UnknownKeyError(node_id) from None
 
-        if not node_id.matches(public_key):
-            raise InvalidSignatureError(f"Stored public key does not hash to {node_id}")
-
+        # Held as it arrived, which may have been compressed.
         try:
-            return decode_public_key(public_key)
+            return published_public_key(node_id, public_key)
 
         except KeyFileError as error:
             raise InvalidSignatureError(f"Unusable public key for {node_id}: {error}") from error
