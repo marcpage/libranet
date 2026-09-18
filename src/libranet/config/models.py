@@ -80,6 +80,12 @@ class PeerConfig(_Section):
     # Provisional default.
     retry_delay_seconds: float = Field(default=60.0, gt=0)
 
+    # How often a connected peer's seek list is fetched again, so content it
+    # still wants can be pushed (HandshakeProtocol §3.3). Shorter than the
+    # 60-second idle timeout of this node's own web server, so it also keeps
+    # the connection open. Provisional default.
+    seek_refresh_seconds: float = Field(default=30.0, gt=0)
+
     # Path to a JSON seed list overriding the one shipped with the package.
     # Used only while the node knows no peers at all.
     seed_file: Path | None = None

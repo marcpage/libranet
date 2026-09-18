@@ -37,6 +37,11 @@ peers:
   # Provisional: how long a peer's address rests after connecting to it
   # failed, or after the connection to it closed, before it is tried again.
   retry_delay_seconds: 60.0
+  # Provisional: how often each connected peer's /data/seek list is fetched
+  # again so content it still wants can be pushed (Handshake Protocol §3.3).
+  # Keep it under the peers' idle timeout (60 seconds for this
+  # implementation) so the connection stays open.
+  seek_refresh_seconds: 30.0
   # JSON file of initial peers, used only when this node knows no peers at
   # all. Defaults to the (currently empty) list shipped with the package.
   seed_file: null

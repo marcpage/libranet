@@ -3,8 +3,8 @@
 Each fixture peer is this node's own web server over a temp CAS, with an
 identity of its own. The module connects and talks to peers on background
 threads, so tests wait for what it publishes. A fake clock stands in for
-retry delays, whose ends only :meth:`on_idle` checks; signatures still use
-real time.
+retry delays and seek refreshes, whose timers only :meth:`on_idle` checks;
+signatures still use real time.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from typing import Any, Callable, Iterator, Mapping, Sequence
 from pytest import LogCaptureFixture, MonkeyPatch, fixture, raises
 
 from libranet.cas.content_id import ContentId
-from libranet.cas.store import source_of_truth_store
+from libranet.cas.store import node_store, source_of_truth_store
 from libranet.config.models import IdentityConfig, LibranetConfig, PeerConfig, StorageConfig
 from libranet.connections.module import ConnectionsModule, connections_module_factory
 from libranet.identity.authentication import request_authenticator
@@ -36,7 +36,13 @@ from libranet.webserver.server import LibranetHTTPServer, RequestHandler, build_
 
 TIMEOUT = 5.0
 RETRY_DELAY = 30.0
+SEEK_REFRESH = 10.0
 
+HELD = b"content the client holds"
+HELD_ID = ContentId.for_data(HELD, "sha256")
+OFFERED = b"content one peer holds"
+OFFERED_ID = ContentId.for_data(OFFERED, "sha256")
+NOWHERE_ID = ContentId.for_data(b"content nobody holds", "sha256")
 OTHER_ID = ContentId.for_data(b"some other node's key", "sha256")
 
 
@@ -152,6 +158,7 @@ def config(tmp_path: Path) -> LibranetConfig:
             connect_timeout_seconds=TIMEOUT,
             request_timeout_seconds=TIMEOUT,
             retry_delay_seconds=RETRY_DELAY,
+            seek_refresh_seconds=SEEK_REFRESH,
             seed_file=write_seeds(tmp_path / "seeds.json", {}),
         ),
     )
@@ -221,6 +228,14 @@ def node_list(identity: NodeIdentity, *peers: FixturePeer) -> dict[str, str]:
 def closed_port() -> int:
     with create_server(("127.0.0.1", 0)) as listener:
         return int(listener.getsockname()[1])
+
+
+def fetch_request(content_id: ContentId) -> Message:
+    return make_message(
+        EventType.FETCH_REQUESTED,
+        ModuleName.FETCHER,
+        {"algorithm": content_id.algorithm, "hash": content_id.hash},
+    )
 
 
 # -- Keeping the peer mix --------------------------------------------------
@@ -481,6 +496,98 @@ def test_stopping_closes_every_connection(
     assert module.connected == {}
 
 
+def test_a_connected_peers_seek_list_is_refreshed(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    now: list[float],
+) -> None:
+    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    # Asking for this is the last step of first contact.
+    write_lists(config.storage, node_list(identity, peers[0]), [NOWHERE_ID])
+    module = modules.start(config)
+    bus.wait_for(EventType.FETCH_ATTEMPTED, hash=NOWHERE_ID.hash)
+    assert bus.events(EventType.DATA_SENT) == []
+
+    write_lists(peers[0].storage, {}, [HELD_ID])
+
+    def refreshed() -> bool:
+        now[0] += SEEK_REFRESH
+        module.on_idle()
+        return bool(bus.events(EventType.DATA_SENT))
+
+    wait_until(refreshed, "the peer's seek list to be refreshed")
+
+    (sent,) = bus.events(EventType.DATA_SENT)
+    assert (sent["hash"], sent["node_id"]) == (HELD_ID.hash, str(peers[0].node_id))
+    peers[0].bus.wait_for(EventType.PUT_COMPLETED, hash=HELD_ID.hash)
+
+
+# -- Fetching --------------------------------------------------------------
+
+
+def test_a_fetch_is_answered_by_the_peer_that_has_it(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+) -> None:
+    peers[1].store.write(OFFERED_ID, OFFERED)
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+
+    module.handle(fetch_request(OFFERED_ID))
+
+    (succeeded,) = bus.wait_for(EventType.FETCH_SUCCEEDED)
+    assert succeeded["node_id"] == str(peers[1].node_id)
+    assert (succeeded["algorithm"], succeeded["hash"]) == ("sha256", OFFERED_ID.hash)
+    assert node_store(config.storage, peers[1].node_id).read(OFFERED_ID) == OFFERED
+    bus.wait_for(EventType.PUT_COMPLETED, hash=OFFERED_ID.hash)
+    assert bus.events(EventType.FETCH_FAILED) == []
+
+
+def test_a_fetch_no_connected_peer_can_answer_fails(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+) -> None:
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+
+    module.handle(fetch_request(NOWHERE_ID))
+
+    (failed,) = bus.wait_for(EventType.FETCH_FAILED)
+    assert failed["hash"] == NOWHERE_ID.hash
+    attempts = bus.wait_for(EventType.FETCH_ATTEMPTED, count=2, hash=NOWHERE_ID.hash)
+    assert {message["node_id"] for message in attempts} == {str(peer.node_id) for peer in peers}
+    assert not any(message["found"] for message in attempts)
+
+
+def test_a_fetch_without_connections_fails_at_once(
+    modules: Modules, config: LibranetConfig, bus: Bus
+) -> None:
+    module = modules.start(config)
+
+    module.handle(fetch_request(OFFERED_ID))
+
+    (failed,) = bus.wait_for(EventType.FETCH_FAILED)
+    assert failed["hash"] == OFFERED_ID.hash
+
+
+def test_a_malformed_fetch_request_raises(modules: Modules, config: LibranetConfig) -> None:
+    module = modules.start(config)
+
+    with raises(KeyError):
+        module.handle(make_message(EventType.FETCH_REQUESTED, ModuleName.FETCHER, {}))
+
+
 # -- Lifecycle -------------------------------------------------------------
 
 
@@ -495,8 +602,11 @@ def test_stopping_a_module_that_never_started_is_harmless(
         module.exchange
 
 
-def test_the_module_subscribes_to_node_lists() -> None:
-    assert ConnectionsModule.subscriptions == {EventType.NODE_LIST_UPDATED}
+def test_the_module_subscribes_to_node_lists_and_fetches() -> None:
+    assert ConnectionsModule.subscriptions == {
+        EventType.NODE_LIST_UPDATED,
+        EventType.FETCH_REQUESTED,
+    }
 
 
 def test_factory_builds_a_connections_module(config: LibranetConfig, queues: ModuleQueues) -> None:

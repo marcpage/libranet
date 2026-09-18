@@ -1,9 +1,10 @@
 """The connection manager module process (Phase 1 Step 11).
 
 It owns every outgoing peer connection. It keeps up the peer mix of
-HighLevelDesign §4.6 (:mod:`~libranet.connections.peer_mix`), and holds the
-first-contact exchange with each new peer
-(:mod:`~libranet.connections.peer_exchange`).
+HighLevelDesign §4.6 (:mod:`~libranet.connections.peer_mix`), holds the
+first-contact exchange with each new peer and refreshes it while connected
+(:mod:`~libranet.connections.peer_exchange`), and fetches content on the
+fetcher's behalf.
 
 The mix is tended when something changes rather than on a timer: when the
 module starts, when the stats module announces a new node list, when a
@@ -15,7 +16,18 @@ in the same bucket is dialed, if one is known. Connecting and talking to
 peers happen on background threads, so the receive loop never waits on the
 network.
 
-For the stats module it publishes::
+A fetch (``fetch.requested`` ``{"algorithm", "hash"}``) asks the connected
+peers one at a time, those whose node id shares the most leading bits with
+the content's hash first (HighLevelDesign §4.7), until one sends it. Only
+peers already connected are asked, each once. The outcome is published for
+the fetcher::
+
+    fetch.succeeded  {"algorithm", "hash", "node_id"}
+    fetch.failed     {"algorithm", "hash"}
+
+``fetch.succeeded`` means the content went to the validator from ``node_id``;
+``fetch.failed`` means no connected peer had it. For the stats module it
+publishes::
 
     connection.opened  {"node_id", "endpoint"}
     connection.closed  {"node_id", "remote"}
@@ -27,13 +39,16 @@ only for a peer whose node id was known beforehand.
 """
 
 from __future__ import annotations
+from dataclasses import dataclass
 from functools import partial
 from logging import Logger
+from queue import SimpleQueue
 from threading import Lock, Thread
 from time import time
-from typing import Callable, ClassVar
+from typing import Callable, ClassVar, Final
 
 from libranet.cas.content_id import ContentId
+from libranet.cas.prefix import nearest
 from libranet.config.models import LibranetConfig
 from libranet.config.seeds import SeedError, load_seed_peers
 from libranet.connections.candidates import Candidate, node_list_candidates, seed_candidates
@@ -42,17 +57,36 @@ from libranet.connections.peer_exchange import PeerExchange
 from libranet.connections.peer_mix import choose_candidates
 from libranet.connections.peer_session import PeerSession
 from libranet.identity.node_identity import load_node_identity
-from libranet.messaging.envelope import Message
+from libranet.messaging.envelope import Message, event_of
 from libranet.messaging.events import EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 
+# Fetches under way at once. Each asks one peer at a time, so this also
+# bounds the requests fetching adds to all connections together.
+FETCH_WORKERS: Final = 8
+
+
+@dataclass
+class _Peer:
+    """A connected peer, and when its seek list is next due to be fetched again.
+
+    ``busy`` is set while a conversation with it is under way, so a refresh
+    never overlaps another.
+    """
+
+    session: PeerSession
+    refresh_at: float
+    busy: bool = True
+
 
 class ConnectionsModule(ModuleBase):
-    """Keeps this node connected to a spread of peers."""
+    """Keeps this node connected to a spread of peers and fetches from them."""
 
-    subscriptions: ClassVar[frozenset[EventType]] = frozenset({EventType.NODE_LIST_UPDATED})
+    subscriptions: ClassVar[frozenset[EventType]] = frozenset(
+        {EventType.NODE_LIST_UPDATED, EventType.FETCH_REQUESTED}
+    )
 
     def __init__(
         self,
@@ -72,13 +106,15 @@ class ConnectionsModule(ModuleBase):
         self._lock = Lock()
         self._running = False
         self._candidates: list[Candidate] = []
-        self._peers: dict[ContentId, PeerSession] = {}
+        self._peers: dict[ContentId, _Peer] = {}
         # Endpoints being dialed, with the node id each is expected to have.
         self._pending: dict[str, ContentId | None] = {}
         # Endpoints not to be dialed again until the time given.
         self._resting: dict[str, float] = {}
         # Endpoints that turned out to be this node itself.
         self._own_endpoints: set[str] = set()
+        self._fetching: set[ContentId] = set()
+        self._fetches: SimpleQueue[ContentId | None] = SimpleQueue()
 
     @property
     def exchange(self) -> PeerExchange:
@@ -92,7 +128,7 @@ class ConnectionsModule(ModuleBase):
     def connected(self) -> dict[ContentId, str]:
         """The peers connected right now, by node id, with the endpoint each was reached at."""
         with self._lock:
-            return {node_id: session.endpoint for node_id, session in self._peers.items()}
+            return {node_id: peer.session.endpoint for node_id, peer in self._peers.items()}
 
     def on_start(self) -> None:
         """Load this node's identity and start connecting to peers.
@@ -109,11 +145,14 @@ class ConnectionsModule(ModuleBase):
         with self._lock:
             self._running = True
 
+        for index in range(FETCH_WORKERS):
+            Thread(target=self._fetch_loop, name=f"{self.name}-fetch-{index}", daemon=True).start()
+
         self._reload_candidates()
         self._maintain()
 
     def on_idle(self) -> None:
-        """Dial again once endpoints have rested."""
+        """Refresh peers whose seek list is due, and dial again once endpoints have rested."""
         now = self._clock()
 
         with self._lock:
@@ -121,6 +160,16 @@ class ConnectionsModule(ModuleBase):
 
             for endpoint in rested:
                 del self._resting[endpoint]
+
+            due = [
+                peer for peer in self._peers.values() if not peer.busy and peer.refresh_at <= now
+            ]
+
+            for peer in due:
+                peer.busy = True
+
+        for peer in due:
+            self._start("refresh", partial(self._talk, peer, self.exchange.refresh))
 
         if rested:
             self._maintain()
@@ -132,16 +181,33 @@ class ConnectionsModule(ModuleBase):
         is never reported as opened.
         """
         with self._lock:
+            running = self._running
             self._running = False
-            sessions = list(self._peers.values())
+            peers = list(self._peers.values())
 
-        for session in sessions:
-            session.close()
+        if running:
+            for _ in range(FETCH_WORKERS):
+                self._fetches.put(None)
+
+        for peer in peers:
+            peer.session.close()
 
     def handle(self, message: Message) -> None:
-        """React to a new node list."""
-        self._reload_candidates()
-        self._maintain()
+        """React to a new node list or a fetch request; a malformed one raises and is logged."""
+        if event_of(message) == EventType.NODE_LIST_UPDATED:
+            self._reload_candidates()
+            self._maintain()
+            return
+
+        content_id = ContentId.create(message["algorithm"], message["hash"])
+
+        with self._lock:
+            if content_id in self._fetching:
+                return
+
+            self._fetching.add(content_id)
+
+        self._fetches.put(content_id)
 
     def _load_seeds(self) -> list[Candidate]:
         try:
@@ -176,7 +242,7 @@ class ConnectionsModule(ModuleBase):
                 self._pending.keys()
                 | self._resting.keys()
                 | self._own_endpoints
-                | {session.endpoint for session in self._peers.values()}
+                | {peer.session.endpoint for peer in self._peers.values()}
             )
             chosen = choose_candidates(
                 [
@@ -208,11 +274,11 @@ class ConnectionsModule(ModuleBase):
             self._attempt_failed(candidate, error)
             return
 
-        admitted = self._admit(candidate, session)
+        peer = self._admit(candidate, session)
         self._maintain()
 
-        if admitted:
-            self._first_contact(session)
+        if peer is not None:
+            self._talk(peer, self.exchange.first_contact)
 
     def _attempt_failed(self, candidate: Candidate, error: Exception) -> None:
         if isinstance(error, OSError):
@@ -235,13 +301,14 @@ class ConnectionsModule(ModuleBase):
 
         self._maintain()
 
-    def _admit(self, candidate: Candidate, session: PeerSession) -> bool:
+    def _admit(self, candidate: Candidate, session: PeerSession) -> _Peer | None:
         """Take a peer that has proven its node id into the mix, unless it is not wanted.
 
         It is not wanted if it is this node, if that node is already
         connected, or if the module is stopping.
         """
-        refusal = ""
+        now = self._clock()
+        peer: _Peer | None = None
 
         with self._lock:
             self._pending.pop(candidate.endpoint, None)
@@ -254,33 +321,34 @@ class ConnectionsModule(ModuleBase):
                 refusal = "it is this node"
 
             elif session.node_id in self._peers:
-                self._resting[candidate.endpoint] = (
-                    self._clock() + self._config.peers.retry_delay_seconds
-                )
+                self._resting[candidate.endpoint] = now + self._config.peers.retry_delay_seconds
                 refusal = f"{session.node_id} is already connected"
 
             else:
-                self._peers[session.node_id] = session
+                peer = _Peer(session, now + self._config.peers.seek_refresh_seconds)
+                self._peers[session.node_id] = peer
+                refusal = ""
 
-        if refusal:
+        if peer is None:
             self.logger.info("Closing the connection to %s: %s", candidate.endpoint, refusal)
             session.close()
-            return False
+            return None
 
         self.logger.info("Connected to %s at %s", session.node_id, session.endpoint)
         self.publish(
             EventType.CONNECTION_OPENED,
             {"node_id": str(session.node_id), "endpoint": session.endpoint},
         )
-        session.when_closed(partial(self._closed, session))
-        return True
+        session.when_closed(partial(self._closed, peer))
+        return peer
 
-    def _closed(self, session: PeerSession) -> None:
+    def _closed(self, peer: _Peer) -> None:
         """Take a peer whose connection has closed out of the mix, and replace it."""
+        session = peer.session
         remote = not session.closed_locally
 
         with self._lock:
-            if self._peers.get(session.node_id) is session:
+            if self._peers.get(session.node_id) is peer:
                 del self._peers[session.node_id]
 
             # Even when this node closed it (a response that failed
@@ -293,16 +361,70 @@ class ConnectionsModule(ModuleBase):
         )
         self._maintain()
 
-    def _first_contact(self, session: PeerSession) -> None:
-        """Hold the rest of the first-contact exchange with a newly admitted peer."""
+    def _talk(self, peer: _Peer, conversation: Callable[[PeerSession], None]) -> None:
+        """Hold ``conversation`` with ``peer``, then schedule its next refresh."""
         try:
-            self.exchange.first_contact(session)
+            conversation(peer.session)
 
         except OSError as error:
-            self.logger.info("Exchange with %s ended early: %s", session.endpoint, error)
+            self.logger.info("Exchange with %s ended early: %s", peer.session.endpoint, error)
 
         except Exception:
-            self.logger.exception("Exchange with %s failed", session.endpoint)
+            self.logger.exception("Exchange with %s failed", peer.session.endpoint)
+
+        finally:
+            with self._lock:
+                peer.busy = False
+                peer.refresh_at = self._clock() + self._config.peers.seek_refresh_seconds
+
+    def _fetch_loop(self) -> None:
+        """Fetch-worker thread: fetch requested content until told to stop."""
+        while (content_id := self._fetches.get()) is not None:
+            try:
+                self._fetch(content_id)
+
+            except Exception:
+                self.logger.exception("Fetching %s failed", content_id)
+                self.publish(
+                    EventType.FETCH_FAILED,
+                    {"algorithm": content_id.algorithm, "hash": content_id.hash},
+                )
+
+            finally:
+                with self._lock:
+                    self._fetching.discard(content_id)
+
+    def _fetch(self, content_id: ContentId) -> None:
+        """Ask connected peers for ``content_id``, best match first, until one sends it."""
+        payload = {"algorithm": content_id.algorithm, "hash": content_id.hash}
+
+        for session in self._by_match(content_id):
+            try:
+                found = self.exchange.retrieve(session, content_id)
+
+            except OSError as error:
+                self.logger.debug(
+                    "Could not ask %s for %s: %s", session.endpoint, content_id, error
+                )
+                continue
+
+            if found:
+                self.publish(
+                    EventType.FETCH_SUCCEEDED, {**payload, "node_id": str(session.node_id)}
+                )
+                return
+
+        self.publish(EventType.FETCH_FAILED, payload)
+
+    def _by_match(self, content_id: ContentId) -> list[PeerSession]:
+        """The connected peers, those whose id best matches ``content_id``'s hash first."""
+        with self._lock:
+            sessions = {node_id: peer.session for node_id, peer in self._peers.items()}
+
+        if not sessions:
+            return []
+
+        return [sessions[node_id] for node_id in nearest(content_id.hash, sessions, len(sessions))]
 
 
 def connections_module_factory(
