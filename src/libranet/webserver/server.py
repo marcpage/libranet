@@ -101,11 +101,20 @@ def build_router(
     )
     router.add("GET", DATA_PATTERN, DataReadHandler(store, publish, retry_after_seconds))
     router.add("PUT", DATA_PATTERN, DataWriteHandler(storage, store, authenticator, publish))
-    # A posted list is held to the same cap as every other request body.
+    # A posted list is held to the same cap as every other request body as
+    # sent, and to its own once decompressed.
     router.add("GET", NODES_PATH, ListFileHandler(storage.node_list_path, retry_after_seconds))
-    router.add("POST", NODES_PATH, NodeListHandler(storage.max_object_bytes, publish))
+    router.add(
+        "POST",
+        NODES_PATH,
+        NodeListHandler(storage.max_object_bytes, storage.max_decompressed_list_bytes, publish),
+    )
     router.add("GET", SEEK_PATH, ListFileHandler(storage.seek_list_path, retry_after_seconds))
-    router.add("POST", SEEK_PATH, SeekListHandler(storage.max_object_bytes, publish))
+    router.add(
+        "POST",
+        SEEK_PATH,
+        SeekListHandler(storage.max_object_bytes, storage.max_decompressed_list_bytes, publish),
+    )
     return router
 
 

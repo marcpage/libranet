@@ -101,8 +101,18 @@ class StorageConfig(_Section):
     # any one directory from growing without bound.
     hash_prefix_length: int = Field(default=4, ge=1, le=16)
 
-    # HttpApi §4: a single stored object is capped at 1 MiB.
+    # HighLevelDesign §4.3: a single object is capped at 1 MiB as stored and
+    # as transferred, which for compressed content means compressed. The
+    # protocol sets no limit on its size once decompressed.
     max_object_bytes: int = Field(default=MIB, ge=1)
+
+    # The 1 MiB cap on node and seek lists (HttpApi §10.6, §10.7.1) is on the
+    # bytes transferred, so a zlib-compressed list may expand past it once
+    # received. The protocol sets no limit on how far; this is a local
+    # safeguard, and may exceed max_object_bytes. A list sent uncompressed is
+    # bounded by max_object_bytes alone. Provisional default: lists are
+    # mostly hex, so 1 MiB sent is about 2 MiB of list.
+    max_decompressed_list_bytes: int = Field(default=4 * MIB, ge=1)
 
     # Eviction triggers once free space drops below this (Step 15).
     min_free_bytes: int = Field(default=1024 * MIB, ge=0)
@@ -201,9 +211,10 @@ class StatsConfig(_Section):
     # plan.
     derive_interval_seconds: float = Field(default=60.0, gt=0)
 
-    # HttpApi §10.6 and §10.7.1 cap both lists at 1 MiB. Entries are added in
-    # priority order until the next one would not fit, so the rendered file
-    # stays below this.
+    # HttpApi §10.6 and §10.7.1 cap both lists at 1 MiB as transferred, and
+    # this node serves them uncompressed, so the rendered file itself must
+    # stay below this. Entries are added in priority order until the next one
+    # would not fit.
     max_list_bytes: int = Field(default=MIB, ge=64)
 
     # An outstanding request this node never satisfied stops being advertised

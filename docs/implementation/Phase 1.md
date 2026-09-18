@@ -240,13 +240,17 @@ code.
 **Depends on:** Steps 2, 3, 5, 6.
 
 - `PUT /data/{algorithm}/{hash}` handler on the web server: enforces the
-  1 MiB size limit directly (reject oversized bodies before writing),
+  1 MiB size limit directly on the body as sent (reject oversized bodies
+  before writing; a compressed body may expand past it, since the limit
+  is on transferred and stored bytes only, High-Level Design §4.3),
   writes accepted bodies into the requesting connection's node-specific
   directory, and publishes a "PUT completed" message (path/hash).
 - Validator module: reacts to that message, verifies the content hash
   (including the zlib compressed-retrieval fallback per §4.1.1 — try
   raw bytes first, then zlib-decompressed), and on success moves the
-  content from the node-specific directory into the source of truth.
+  content from the node-specific directory into the source of truth
+  exactly as received, compressed or not, so what is stored stays within
+  the limit it was transferred under.
   Hash-collision handling (same hash, different content) is out of
   scope for v1 — assume no collisions.
 
@@ -276,7 +280,9 @@ list).
   rewritten on a configurable interval and replaced only when their
   contents actually change; a changed node list is announced on the bus
   for the connection manager (Step 11). Each is filled best-first and
-  stops short of the 1 MiB the HTTP API caps it at (§10.6, §10.7.1).
+  stops short of the 1 MiB the HTTP API caps a list at as transferred
+  (§10.6, §10.7.1). Both files are served uncompressed, so their whole
+  size counts against that cap.
 - Consumes the "search requested" messages from Step 5 to enrich cached
   search-result files with more/better-ranked ids, respecting the
   configurable TTL those files expire on: an already-expired file is left
@@ -338,13 +344,15 @@ temp output directory, independent of any running web server.
   consumes the messages they publish and already derives the files the
   `GET` handlers serve.
 - Both `POST`s need a signature, as uploads do (HandshakeProtocol §2.1):
-  a seek list is recorded against the node that signed it. Bodies share
-  the request-body size cap and may be zlib-compressed (HttpApi §10.6,
-  §10.7.1), with decompression stopped at that same cap. A body of the
-  wrong shape is `400`. A single unusable entry is dropped instead: an
-  endpoint that is not an `http`/`https` URL, or a seek entry that is not
-  a valid content id or hash prefix. The seek entries that remain are
-  lower-cased.
+  a seek list is recorded against the node that signed it. Bodies may be
+  zlib-compressed (HttpApi §10.6, §10.7.1). Their 1 MiB limit applies to
+  the bytes transferred, so bodies share the request-body size cap as
+  sent. The protocol sets no limit on a list's decompressed size; a
+  separate, configurable cap on it is a local safeguard only. A body of
+  the wrong shape is `400`. A single unusable entry is dropped instead:
+  an endpoint that is not an `http`/`https` URL, or a seek entry that is
+  not a valid content id or hash prefix. The seek entries that remain
+  are lower-cased.
 - `localhost` resolution unwraps an IPv4-mapped source address (how a
   dual-stack listener reports an IPv4 client), so peers without IPv6 can
   still use the stored endpoint.
@@ -514,11 +522,16 @@ read path).
 The write-side counterpart to Step 13, and the first half of what backup
 needs. Still a pure library — no processes, no sockets.
 
-- File bundle construction: split a local file into ≤ 1 MiB parts (per
-  High-Level Design §4.3), write each part into the CAS, and emit the
-  ordered `contents` list plus `metadata` (`created`, `modified`, `size`,
-  `writable`, `executable`) and the whole-file `algorithm`/`hash` over the
-  reassembled bytes (BundleSpecification §2.3).
+- File bundle construction: split a local file into parts that each fit
+  within 1 MiB as stored (High-Level Design §4.3), write each part into
+  the CAS, and emit the ordered `contents` list plus `metadata`
+  (`created`, `modified`, `size`, `writable`, `executable`) and the
+  whole-file `algorithm`/`hash` over the reassembled bytes
+  (BundleSpecification §2.3).
+- Part size: the 1 MiB limit is on the stored and transferred bytes, not
+  on a part's decompressed size. A part written uncompressed is therefore
+  at most 1 MiB, while one written compressed may be larger once
+  decompressed, as long as its compressed form fits.
 - Directory bundle construction: walk a local tree and emit full relative
   paths as keys without enumerating intermediate directories, symlinks as
   `{"contents": "<relative POSIX target>"}`, and metadata-only entries for
@@ -527,10 +540,11 @@ needs. Still a pure library — no processes, no sockets.
   bundle it supersedes (BundleSpecification §3.1), which is what makes
   re-backup an update rather than an unrelated bundle.
 - Bundle splitting: a directory bundle is itself a CAS object and is
-  therefore also bound by the 1 MiB limit. When the serialized (and, for
-  backups, compressed and encrypted) bundle would exceed it, the writer
-  splits `contents` across an `extensions` chain, which Step 13's resolver
-  already reads back. The exact split policy is an open item below.
+  therefore also bound by the 1 MiB limit on its stored form. When the
+  bundle as it will be stored (for backups, compressed and encrypted)
+  would exceed it, the writer splits `contents` across an `extensions`
+  chain, which Step 13's resolver already reads back. The exact split
+  policy is an open item below.
 - Password protection, both directions (BundleSpecification §6):
   - Encode: zlib-compress the serialized bundle, derive the key as a
     single-pass hash of the password, encrypt (AES-256-CBC), and append

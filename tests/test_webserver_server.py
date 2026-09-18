@@ -13,6 +13,7 @@ from queue import Empty, Queue
 from socket import SHUT_WR, create_connection
 from threading import Thread
 from typing import Callable, Iterator
+from zlib import compress
 
 from pytest import fixture, mark, raises
 
@@ -143,9 +144,15 @@ def _post(
     value: object,
     identity: NodeIdentity | None,
     sent: bytes | None = None,
+    *,
+    compressed: bool = False,
 ) -> tuple[HTTPResponse, bytes]:
-    """POST ``sent`` (default ``value`` as JSON) with a signature over ``value``, if ``identity``."""
+    """POST ``sent`` (default ``value`` as JSON) with a signature over ``value``, if ``identity``.
+
+    ``compressed`` zlib-compresses the JSON, and the signature covers it compressed.
+    """
     body = dumps(value).encode("utf-8")
+    body = compress(body) if compressed else body
     headers = (
         {} if identity is None else MessageSigner(identity).sign_request("POST", path, {}, body)
     )
@@ -820,6 +827,20 @@ def test_signed_seek_list_is_published_for_its_signer(
     assert message["event"] == EventType.SEEK_RECEIVED
     assert message["node_id"] == str(identity.node_id)
     assert (message["data"], message["search"]) == ([str(MISSING_ID)], [])
+
+
+def test_a_compressed_list_may_expand_past_the_transfer_limit(
+    connection: HTTPConnection, queues: ModuleQueues, storage: StorageConfig
+) -> None:
+    value = {"search": ["ab"] * 200_000}
+
+    assert len(dumps(value)) > storage.max_object_bytes
+
+    response, _ = _post(connection, "/data/seek", value, _new_identity(), compressed=True)
+
+    assert response.status == 202
+    (message,) = _published(queues)
+    assert message["search"] == value["search"]
 
 
 @mark.parametrize("allow_unsigned_api_reads", [True, False])

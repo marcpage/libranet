@@ -7,6 +7,7 @@ from pytest import raises
 from pydantic import ValidationError
 
 from libranet.config.models import (
+    MIB,
     IdentityConfig,
     LibranetConfig,
     NetworkConfig,
@@ -45,6 +46,17 @@ def test_retry_after_defaults_to_five_and_may_not_be_negative() -> None:
 
     with raises(ValidationError):
         NetworkConfig(retry_after_seconds=-1)
+
+
+def test_decompressed_lists_may_exceed_the_object_limit() -> None:
+    storage = StorageConfig()
+    larger = StorageConfig(max_decompressed_list_bytes=64 * MIB)
+
+    assert storage.max_decompressed_list_bytes == 4 * storage.max_object_bytes
+    assert larger.max_decompressed_list_bytes == 64 * MIB
+
+    with raises(ValidationError):
+        StorageConfig(max_decompressed_list_bytes=0)
 
 
 def test_unsigned_api_reads_are_allowed_unless_disabled() -> None:

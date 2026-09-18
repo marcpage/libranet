@@ -48,8 +48,15 @@ storage:
   # any one directory gets.
   hash_prefix_length: 4
 
-  # A single stored object may not exceed 1 MiB (HTTP API §4).
+  # A single object may not exceed 1 MiB as stored and as sent; compressed
+  # content may be larger once decompressed, since the protocol sets no
+  # limit on that (High-Level Design §4.3).
   max_object_bytes: 1048576
+  # Provisional: how large a node or seek list posted by a peer may be once
+  # decompressed. Its 1 MiB limit applies to the bytes sent, so a
+  # zlib-compressed list may expand past that (HTTP API §10.6, §10.7.1).
+  # The protocol sets no limit here; this is a local safeguard.
+  max_decompressed_list_bytes: 4194304
 
   # Eviction (Step 15) starts handing off low-priority content once free
   # space falls below this.
@@ -85,8 +92,9 @@ stats:
   # the statistics database. Each is replaced only when its contents
   # actually change. Provisional default.
   derive_interval_seconds: 60.0
-  # Neither list may reach 1 MiB (HTTP API §10.6, §10.7.1); entries are
-  # added best-first until the next one would not fit.
+  # Neither list may reach 1 MiB as sent (HTTP API §10.6, §10.7.1), and this
+  # node sends them uncompressed; entries are added best-first until the
+  # next one would not fit.
   max_list_bytes: 1048576
   # Provisional: how long content this node asked for and never received
   # stays in the /data/seek list it publishes.
