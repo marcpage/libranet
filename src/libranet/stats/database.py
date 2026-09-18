@@ -21,6 +21,7 @@ from types import TracebackType
 from typing import Any, Callable, Final, Iterable, Mapping
 
 from libranet.cas.content_id import ContentId
+from libranet.cas.prefix import nearest
 from libranet.stats.records import DataStats, NodeStats
 from libranet.stats.schema import OWN_NODE, SeekKind, apply_schema
 
@@ -111,14 +112,15 @@ class StatsDatabase:
         return None if row is None else DataStats.from_row(row)
 
     def content_ids_near(self, prefix: str, limit: int) -> list[ContentId]:
-        """Known identifiers whose hash neighbors ``prefix``, for a caller to rank.
+        """The ``limit`` known identifiers whose hash best matches ``prefix``.
 
-        Both neighborhoods are scanned — up to ``limit`` hashes at or above
-        ``prefix`` and ``limit`` below it — because the best match by leading
-        bits can lie on either side (``7`` and ``9`` are both one step from
-        ``8``, but only ``9`` shares its top bit). Everything outside those
-        two windows matches fewer leading digits than something inside them,
-        so ranking the result is enough to find the best matches known here.
+        Both sides of ``prefix`` are scanned — the nearest hashes at or above
+        it and the nearest below — because the best match by leading bits can
+        lie on either side (``7`` and ``9`` are both one step from ``8``, but
+        only ``9`` shares its top bit). Each side can supply the whole answer,
+        so each is scanned ``limit`` deep and the two are ranked together down
+        to ``limit`` results. A hash outside both windows matches fewer leading
+        digits than every hash inside them, so none can be missed.
         """
         if limit < 1:
             raise ValueError(f"limit must be at least 1, got {limit}")
@@ -132,7 +134,7 @@ class StatsDatabase:
             "ORDER BY hash DESC LIMIT :limit",
             {"prefix": prefix, "limit": limit},
         )
-        return [ContentId(row["algorithm"], row["hash"]) for row in rows]
+        return nearest(prefix, (ContentId(row["algorithm"], row["hash"]) for row in rows), limit)
 
     # -- Node statistics -------------------------------------------------
 

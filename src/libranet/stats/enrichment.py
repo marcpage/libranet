@@ -19,8 +19,9 @@ from typing import Final
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
+from libranet.cas.prefix import nearest
 from libranet.stats.database import StatsDatabase
-from libranet.webserver.search import SearchCache, matching_bits
+from libranet.webserver.search import SearchCache
 
 _SEPARATORS: Final = (",", ":")
 _RESULTS_FIELD: Final = "results"
@@ -50,22 +51,13 @@ class SearchEnricher:
 
         cached = _parse_results(body)
         known = set(self._database.content_ids_near(prefix, self._max_results))
-        merged = self._rank(prefix, cached | known)
+        merged = nearest(prefix, cached | known, self._max_results)
 
-        if merged == self._rank(prefix, cached):
+        if merged == nearest(prefix, cached, self._max_results):
             return False
 
         self._cache.save(prefix, _render_results(merged))
         return True
-
-    def _rank(self, prefix: str, candidates: set[ContentId]) -> list[ContentId]:
-        ranked = sorted(candidates, key=lambda content_id: self._rank_key(prefix, content_id))
-        return ranked[: self._max_results]
-
-    @staticmethod
-    def _rank_key(prefix: str, content_id: ContentId) -> tuple[int, str]:
-        """Best match first, ties broken by identifier so the order is stable."""
-        return -matching_bits(prefix, content_id.hash), str(content_id)
 
 
 def _parse_results(body: bytes) -> set[ContentId]:

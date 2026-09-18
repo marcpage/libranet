@@ -270,27 +270,43 @@ def test_stale_seek_entries_are_pruned(database: StatsDatabase, clock: FakeClock
     assert database.seek_values(SeekKind.SEARCH, NODE_ID) == []
 
 
-def test_nearby_content_ids_are_found_on_both_sides_of_a_prefix(
-    database: StatsDatabase,
-) -> None:
-    # `7f...` sorts below the query and `90...` above it, but `90...` is the
-    # closer match by leading bits — so both sides have to be offered.
-    for hash_value in ("7" + "f" * 63, "9" + "0" * 63):
+def store_hashes(database: StatsDatabase, *hashes: str) -> None:
+    """Make the database aware of each hash, as a request for it would."""
+    for hash_value in hashes:
         database.record_request(ContentId("sha256", hash_value), external=True)
 
-    found = database.content_ids_near("8" + "0" * 63, 1)
 
-    assert {content_id.hash[0] for content_id in found} == {"7", "9"}
+def test_a_match_above_the_prefix_can_beat_one_below_it(database: StatsDatabase) -> None:
+    # `7f...` is the nearest hash below the query and `90...` the nearest at
+    # or above it, but only `90...` shares the query's top bit.
+    store_hashes(database, "7" + "f" * 63, "9" + "0" * 63)
+
+    assert database.content_ids_near("8" + "0" * 63, 1) == [ContentId("sha256", "9" + "0" * 63)]
 
 
-def test_nearby_content_ids_scan_no_further_than_the_limit(database: StatsDatabase) -> None:
-    for index in range(10):
-        database.record_request(ContentId("sha256", f"{index}" + "0" * 63), external=True)
+def test_a_match_below_the_prefix_can_beat_one_above_it(database: StatsDatabase) -> None:
+    # The same the other way around: `80...` sorts below the query but shares
+    # a whole digit with it, while `ff...` shares one bit.
+    store_hashes(database, "8" + "0" * 63, "f" * 64)
 
-    found = database.content_ids_near("5" + "0" * 63, 2)
+    assert database.content_ids_near("88" + "0" * 62, 1) == [ContentId("sha256", "8" + "0" * 63)]
 
-    # Two at or above the query and two below it, nearest first on each side.
-    assert [content_id.hash[0] for content_id in found] == ["5", "6", "4", "3"]
+
+def test_a_nearby_scan_returns_no_more_than_the_limit(database: StatsDatabase) -> None:
+    store_hashes(database, *(f"{index}" + "0" * 63 for index in range(10)))
+
+    found = database.content_ids_near("5" + "0" * 63, 3)
+
+    # `5` matches exactly, `4` shares three bits of the first digit, `6` two.
+    assert [content_id.hash[0] for content_id in found] == ["5", "4", "6"]
+
+
+def test_a_nearby_scan_returns_everything_known_when_that_is_under_the_limit(
+    database: StatsDatabase,
+) -> None:
+    store_hashes(database, "5" + "0" * 63, "6" + "0" * 63)
+
+    assert len(database.content_ids_near("5" + "0" * 63, 8)) == 2
 
 
 def test_a_nearby_scan_needs_room_for_at_least_one_result(database: StatsDatabase) -> None:

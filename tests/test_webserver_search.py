@@ -9,7 +9,7 @@ from pytest import mark, raises
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.store import CasStore
-from libranet.webserver.search import LocalSearch, SearchCache, matching_bits, normalize_prefix
+from libranet.webserver.search import LocalSearch, SearchCache, normalize_prefix
 
 
 def _hash(prefix: str) -> str:
@@ -23,21 +23,6 @@ def _store(tmp_path: Path, *prefixes: str) -> CasStore:
         store.write(ContentId.create("sha256", _hash(prefix)), b"x")
 
     return store
-
-
-@mark.parametrize(
-    ("left", "right", "bits"),
-    [
-        ("ab", "ab", 8),
-        ("ab", "abcd", 8),
-        ("a0", "b0", 3),  # 1010 vs 1011
-        ("0", "8", 0),  # 0000 vs 1000
-        ("0", "1", 3),
-        ("", "ff", 0),
-    ],
-)
-def test_matching_bits(left: str, right: str, bits: int) -> None:
-    assert matching_bits(left, right) == bits
 
 
 def test_normalize_prefix_lower_cases() -> None:

@@ -15,7 +15,7 @@ from libranet.webserver.request_refusals import (
     unreadable_body_response,
 )
 from libranet.webserver.router import Guard, Handler, Router
-from libranet.webserver.search import LocalSearch, SearchCache, matching_bits, normalize_prefix
+from libranet.webserver.search import LocalSearch, SearchCache, normalize_prefix
 from libranet.webserver.search_handler import SearchHandler
 from libranet.webserver.server import LibranetHTTPServer, RequestHandler, build_router
 from libranet.webserver.signature_guard import SignatureGuard
@@ -39,7 +39,6 @@ __all__ = [
     "WebServerModule",
     "build_router",
     "invalid_signature_response",
-    "matching_bits",
     "normalize_prefix",
     "signature_required_response",
     "unreadable_body_response",
