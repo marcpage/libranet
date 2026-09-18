@@ -437,6 +437,23 @@ correct pipelined request/response correlation.
   content request a peer answered, and whether it had the content).
 - A Step 10 connection reports when it has closed, however it closed, so
   the connection manager can react to a drop as it happens.
+- Identity comes first. Steps 1 and 2 wait for their responses, and the
+  peer's node id is the one its first response is signed with. The peer's
+  public key goes straight into the source of truth, as sent, once it is
+  known to be that node's key, since everything after is verified against
+  it. Steps 3–7 then run, the requests of each step pipelined. From then
+  on, every response must be signed by that node or the connection closes
+  (HandshakeProtocol §5.3). Only `http` endpoints are dialed.
+- A received node list loses the entries naming this node or the peer: the
+  endpoint this node reached the peer at is the one worth keeping (HttpApi
+  §10.6). Its `localhost` entries are resolved to the address dialed. The
+  peer's seek list is acted on but not recorded.
+- Content received, whether asked for in step 7 or retrieved on demand, is
+  checked against its id, then written to the peer's node-specific store
+  and announced as a `PUT` would be, for the validator.
+- Steps 5 and 6 can be repeated while a connection lasts (HandshakeProtocol
+  §3.3), pushing each item at most once per connection. When to repeat them
+  is the connection manager's choice.
 
 **Testable in isolation:** exercised against fixture peer servers
 (instances of Step 5's server); connection-mix logic can be tested with
