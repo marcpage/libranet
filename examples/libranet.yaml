@@ -25,6 +25,7 @@ network:
 
   # Seconds a client is told to wait (Retry-After) before asking again for
   # content this node is still retrieving from peers (HTTP API §5.2).
+  # Peers are asked for the same content at most once per this period.
   retry_after_seconds: 5
 
 peers:

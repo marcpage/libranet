@@ -49,7 +49,8 @@ class NetworkConfig(_Section):
     external_port: int | None = Field(default=None, ge=1, le=65535)
 
     # `Retry-After` sent with a `503` for content still being retrieved
-    # (HttpApi §5.2).
+    # (HttpApi §5.2). The fetcher asks peers for the same content at most
+    # once per this period (Step 12).
     retry_after_seconds: int = Field(default=5, ge=0)
 
     def advertised_endpoint(self) -> str:
