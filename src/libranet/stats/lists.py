@@ -1,9 +1,10 @@
 """Rendering the plain node and seek lists the web server serves.
 
 Both bodies are capped: HttpApi §10.6 and §10.7.1 require each to stay under
-1 MiB, and say that priority decides what survives the cap. So entries are
-offered best-first and added while they fit, and the first one that does not
-fit ends the list.
+1 MiB as transferred, and say that priority decides what survives the cap.
+The web server sends these bodies uncompressed, so the whole rendered body
+counts. Entries are offered best-first and added while they fit, and the
+first one that does not fit ends the list.
 
 Size is tracked as it is built rather than by re-encoding after each entry,
 which would be quadratic on a list of thousands. Each entry is charged the

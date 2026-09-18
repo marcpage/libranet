@@ -10,6 +10,8 @@ signature (HandshakeProtocol §2.1): a posted seek list is recorded against
 the node that signed it. These handlers rely on the router's
 :class:`~libranet.webserver.signature_guard.SignatureGuard` to have checked
 that signature, so without the guard every ``POST`` is refused as unsigned.
+The body is capped at ``max_bytes`` as sent, and a compressed one at
+``max_decompressed_bytes`` once expanded, which may be the larger of the two.
 The list is checked and then published for the stats module to persist, and
 the answer is ``202`` without waiting for that::
 
@@ -87,6 +89,7 @@ class NodeListHandler:
     """
 
     max_bytes: int
+    max_decompressed_bytes: int
     publish: Publish
 
     def __call__(self, request: Request) -> Response:
@@ -96,7 +99,7 @@ class NodeListHandler:
             return signer
 
         try:
-            nodes = parse_node_list(decode_list(request.body.read(), self.max_bytes))
+            nodes = parse_node_list(decode_list(request.body.read(), self.max_decompressed_bytes))
 
         except InvalidListError as error:
             return _invalid_list_response(request, error)
@@ -118,6 +121,7 @@ class SeekListHandler:
     """Publishes a peer's seek list, attributed to the node that signed it."""
 
     max_bytes: int
+    max_decompressed_bytes: int
     publish: Publish
 
     def __call__(self, request: Request) -> Response:
@@ -127,7 +131,9 @@ class SeekListHandler:
             return signer
 
         try:
-            data, search = parse_seek_list(decode_list(request.body.read(), self.max_bytes))
+            data, search = parse_seek_list(
+                decode_list(request.body.read(), self.max_decompressed_bytes)
+            )
 
         except InvalidListError as error:
             return _invalid_list_response(request, error)

@@ -39,6 +39,11 @@ def test_decompression_stops_past_the_cap() -> None:
         decode_list(body, 100)
 
 
+def test_plain_json_is_not_held_to_the_decompressed_cap() -> None:
+    # A list sent as-is is bounded only by the cap on the body as sent.
+    assert decode_list(b'{"data":["' + b"0" * 200 + b'"]}', 100) == {"data": ["0" * 200]}
+
+
 @mark.parametrize(
     "body",
     [

@@ -1,9 +1,10 @@
 """Reading the node and seek lists peers ``POST`` (HttpApi §10.6, §10.7.1).
 
 Either list may arrive zlib-compressed, so a body that is not JSON is
-decompressed and read again. Decompression stops once the output passes the
-cap that applies to the body itself, so a small compressed body cannot
-expand without bound.
+decompressed and read again. The 1 MiB list limit applies to the body as
+sent, so a compressed list may expand past it, and the protocol sets no
+limit on how far. Decompression still stops at a separate, local cap, so a
+small body cannot expand without bound.
 
 A body of the wrong shape is refused outright. A single unusable entry is
 dropped instead, so it does not cost the peer the rest of its list, which is
@@ -24,12 +25,13 @@ class InvalidListError(ValueError):
     """A posted body is not a usable node list or seek list."""
 
 
-def decode_list(body: bytes, max_bytes: int) -> object:
+def decode_list(body: bytes, max_decompressed_bytes: int) -> object:
     """The JSON value ``body`` carries, either as-is or zlib-compressed.
 
     Raises:
         InvalidListError: ``body`` is neither JSON nor one complete zlib
-            stream of JSON, or it decompresses to more than ``max_bytes``.
+            stream of JSON, or it decompresses to more than
+            ``max_decompressed_bytes``.
     """
     try:
         return loads(body)
@@ -40,13 +42,13 @@ def decode_list(body: bytes, max_bytes: int) -> object:
     decompressor = decompressobj()
 
     try:
-        data = decompressor.decompress(body, max_bytes + 1)
+        data = decompressor.decompress(body, max_decompressed_bytes + 1)
 
     except ZlibError:
         raise InvalidListError("The body is neither JSON nor zlib-compressed JSON") from None
 
-    if len(data) > max_bytes:
-        raise InvalidListError(f"The body decompresses to more than {max_bytes} bytes")
+    if len(data) > max_decompressed_bytes:
+        raise InvalidListError(f"The body decompresses to more than {max_decompressed_bytes} bytes")
 
     if not decompressor.eof or decompressor.unused_data:
         raise InvalidListError("The body is neither JSON nor zlib-compressed JSON")

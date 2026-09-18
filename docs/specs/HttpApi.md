@@ -379,8 +379,9 @@ Content will be accepted from any valid connection.
 The node calculates the hash for validation and rejects the request with `400` if the hash does not match.
 The node MUST take into account that the content MAY be zlib-compressed, in which case the hash is of the uncompressed content.
 
-The content MUST be less than 1 MiB in size.
-If the content is compressed, the compressed size should be less than 1 MiB in size.
+The content as transferred MUST be less than 1 MiB in size.
+If the content is compressed, it is the compressed size that is subject to this limit.
+There is no limit on the size of the content once decompressed (HighLevelDesign §4.3).
 
 If the hash already exists, but the content differs (hash collision), all collision variants are kept and a random variant is returned.
 
@@ -430,6 +431,9 @@ If the hash of the uncompressed content does not match the hash, the content is 
 
 The zlib compression level is at the discretion of the author.
 The zlib compression level MAY be changed by any node.
+
+The 1 MiB limit applies to content as stored and as transferred, not to its size once decompressed (HighLevelDesign §4.3).
+Content larger than 1 MiB uncompressed MUST therefore be stored and transferred compressed, within the limit.
 
 ---
 
@@ -747,7 +751,8 @@ For example:
 ```
 
 The node list MAY be zlib-compressed (level at discretion of the node generating it).
-The node list MUST be less than 1 MiB in size.
+The node list MUST be less than 1 MiB in size as transferred; when it is compressed, this is the compressed size.
+There is no protocol limit on the size of the node list once decompressed.
 Missing `http` port is assumed to be `80` and missing `https` port is assumed to be `443`.
 The list SHOULD represent the last address the node was able to successfully connect to that identity.
 
@@ -797,7 +802,8 @@ For example:
 - `search` lists hash prefixes currently being sought via `GET /data/search/{hash}`.
 
 The seek list MAY be zlib-compressed (level at the discretion of the node generating it).
-The seek list MUST be less than 1 MiB in size.
+The seek list MUST be less than 1 MiB in size as transferred; when it is compressed, this is the compressed size.
+There is no protocol limit on the size of the seek list once decompressed.
 
 ### 10.7.2 Open Item: Pushing Search Results
 
@@ -1246,7 +1252,7 @@ The node communicates its endpoint through its node-list self-description. The s
 
 # 19. Range Requests
 
-Due to most data being limited to less than 1 MiB in size, range requests are generally not needed for `/data/...` requests.
+Because `/data/...` content is transferred in less than 1 MiB, range requests are generally not needed for `/data/...` requests.
 
 Nodes SHOULD support range requests to benefit data in applications (requests outside of `/data/...`).
 Nodes SHOULD support enough range requests mechanism to support streaming video from a `<video>` tag in html.
@@ -1310,6 +1316,7 @@ Potential limits include:
 
 * maximum request size;
 * maximum response size;
+* maximum decompressed size of compressed content (a local safeguard only: the protocol sets no limit on decompressed size, HighLevelDesign §4.3);
 * maximum URL length;
 * maximum header size;
 * maximum concurrent requests;

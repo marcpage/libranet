@@ -89,7 +89,7 @@ When a local node connects to a remote node over HTTP/HTTPS, the following order
 | ----------------------------------- | --------------------------------------------------- |
 | `GET/POST /data/nodes`             | Read or publish known address list                 |
 | `GET/POST /data/seek`              | Read or publish hashes being sought                |
-| `GET /data/{algo}/{full-hash}`     | Retrieve content (≤ 1 MiB); see §4.1.1 for the compressed-retrieval fallback |
+| `GET /data/{algo}/{full-hash}`     | Retrieve content (≤ 1 MiB as transmitted, §4.3); see §4.1.1 for the compressed-retrieval fallback |
 | `PUT /data/{algo}/{full-hash}`     | Store content under its content hash               |
 | `GET /data/search/{algo}/{prefix}` | Search by partial hash; returns ranked matches     |
 | `GET /{app-name}/…`                | Serve files from a registered directory-bundle app |
@@ -154,9 +154,11 @@ Search returns a ranked list of full hashes, and optional metadata, ordered by t
 
 ## 4.3 Maximum Object Size & Bundles
 
-Each uniquely addressable data URL has a hard maximum size of **1 MiB**. This limit applies to the data transmitted; where the compressed-retrieval fallback in §4.1.1 is used, it is the compressed content that is subject to this limit.
+Each uniquely addressable data URL has a hard maximum size of **1 MiB**. This limit applies only to the data as transmitted and as stored. Where content is zlib-compressed for transmission or storage (§4.1.1), it is the compressed bytes that are subject to this limit; content transmitted or stored uncompressed is subject to it directly.
 
-Larger content is represented by a **Bundle** - a special object that contains metadata plus the list of data URLs that together form the complete payload.
+There is no protocol limit on the size of content once decompressed. Content larger than 1 MiB uncompressed is a valid single object, provided it is transmitted and stored compressed to within the limit.
+
+Content that does not fit within the limit even when compressed is represented by a **Bundle** - a special object that contains metadata plus the list of data URLs that together form the complete payload. A bundle's reassembled content has no size limit either.
 
 A **Directory Bundle** is a specialized bundle that describes a hierarchical collection of files using relative path, metadata, and content hash.
 

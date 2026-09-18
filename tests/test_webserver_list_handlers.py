@@ -36,6 +36,7 @@ from libranet.webserver.list_handlers import (
 from libranet.webserver.router import Router
 
 MAX_BYTES = 512
+MAX_DECOMPRESSED_BYTES = 2048
 RETRY_AFTER_SECONDS = 9
 PEER_ADDRESS = "203.0.113.42"
 SENDER_ID = ContentId.for_data(b"the sender's public key", "sha256")
@@ -64,9 +65,9 @@ def router(node_list_path: Path, seek_list_path: Path, queues: ModuleQueues) -> 
     publish = StubModule(ModuleName.WEBSERVER, queues).publish
     router = Router()
     router.add("GET", NODES_PATH, ListFileHandler(node_list_path, RETRY_AFTER_SECONDS))
-    router.add("POST", NODES_PATH, NodeListHandler(MAX_BYTES, publish))
+    router.add("POST", NODES_PATH, NodeListHandler(MAX_BYTES, MAX_DECOMPRESSED_BYTES, publish))
     router.add("GET", SEEK_PATH, ListFileHandler(seek_list_path, RETRY_AFTER_SECONDS))
-    router.add("POST", SEEK_PATH, SeekListHandler(MAX_BYTES, publish))
+    router.add("POST", SEEK_PATH, SeekListHandler(MAX_BYTES, MAX_DECOMPRESSED_BYTES, publish))
     return router
 
 
@@ -214,6 +215,40 @@ def test_a_compressed_seek_list_is_accepted(router: Router, queues: ModuleQueues
 
     assert router.dispatch(request).status == 202
     assert published(queues)[0]["search"] == ["ab"]
+
+
+@mark.parametrize(
+    ("path", "value"),
+    [
+        (NODES_PATH, {"nodes": {f"http://192.0.2.{n}:8080": str(OTHER_ID) for n in range(15)}}),
+        (SEEK_PATH, {"search": ["abcd"] * 200}),
+    ],
+)
+def test_a_compressed_list_may_expand_past_the_transfer_cap(
+    router: Router, queues: ModuleQueues, path: str, value: dict[str, object]
+) -> None:
+    request = post(path, value, compressed=True)
+
+    assert request.body.length is not None and request.body.length <= MAX_BYTES
+    assert MAX_BYTES < len(dumps(value)) <= MAX_DECOMPRESSED_BYTES
+    assert router.dispatch(request).status == 202
+    (message,) = published(queues)
+    assert all(message[key] == entries for key, entries in value.items())
+
+
+@mark.parametrize("path", [NODES_PATH, SEEK_PATH])
+def test_a_compressed_list_past_the_decompressed_cap_is_400(
+    router: Router, queues: ModuleQueues, path: str
+) -> None:
+    value = {"search": ["abcd"] * 300}
+
+    assert len(dumps(value)) > MAX_DECOMPRESSED_BYTES
+
+    response = router.dispatch(post(path, value, compressed=True))
+
+    assert response.status == 400
+    assert problem_type(response) == INVALID_LIST
+    assert published(queues) == []
 
 
 @mark.parametrize("path", [NODES_PATH, SEEK_PATH])
