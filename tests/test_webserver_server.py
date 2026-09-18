@@ -818,6 +818,17 @@ def test_unsigned_reads_outside_the_api_are_always_honored(server: LibranetHTTPS
     assert body == b"<html>"
 
 
+def test_config_passes_a_local_client_on_to_its_routes(
+    connection: HTTPConnection, queues: ModuleQueues
+) -> None:
+    # The endpoints themselves come with Step 18; a remote client never gets this far.
+    response, body = _get(connection, "/config/backups")
+
+    assert response.status == 404
+    assert loads(body)["instance"] == "/config/backups"
+    assert _published(queues) == []
+
+
 def test_lists_are_503_until_derived_and_then_served_as_written(
     connection: HTTPConnection, storage: StorageConfig
 ) -> None:

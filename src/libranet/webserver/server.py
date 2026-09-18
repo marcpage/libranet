@@ -32,6 +32,7 @@ from libranet.config.models import StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.signatures import MessageSigner
 from libranet.problems import Problem
+from libranet.webserver.config_guard import local_config_guard
 from libranet.webserver.data_handler import DATA_PATTERN, DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
 from libranet.webserver.http_types import (
@@ -86,12 +87,15 @@ def build_router(
     is set.
     """
     store = source_of_truth_store(storage)
+    # A remote /config request is refused before its signature is checked or
+    # its body read.
     router = Router(
+        local_config_guard,
         SignatureGuard(
             authenticator,
             storage.max_object_bytes,
             allow_unsigned_api_reads=allow_unsigned_api_reads,
-        )
+        ),
     )
     # The search route must precede the data route, whose pattern it also fits.
     router.add(
