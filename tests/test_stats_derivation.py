@@ -82,24 +82,29 @@ def test_both_files_exist_even_with_nothing_to_report(deriver: ListDeriver) -> N
 
     assert loads(lists.node_list.read_bytes()) == {"nodes": {SELF_ENDPOINT: str(SELF_ID)}}
     assert loads(lists.seek_list.read_bytes()) == {"data": [], "search": []}
-    assert (lists.node_list_changed, lists.seek_list_changed) == (True, True)
+    assert lists.node_list_changed
 
 
 def test_a_derivation_that_changes_nothing_rewrites_nothing(
     deriver: ListDeriver, database: StatsDatabase
 ) -> None:
     first = deriver.derive()
-    written_at = first.node_list.stat().st_mtime_ns
+    written_at = (first.node_list.stat().st_mtime_ns, first.seek_list.stat().st_mtime_ns)
 
     unchanged = deriver.derive()
 
-    assert (unchanged.node_list_changed, unchanged.seek_list_changed) == (False, False)
-    assert unchanged.node_list.stat().st_mtime_ns == written_at
+    assert not unchanged.node_list_changed
+    assert (
+        unchanged.node_list.stat().st_mtime_ns,
+        unchanged.seek_list.stat().st_mtime_ns,
+    ) == written_at
 
     database.record_endpoint(PEER_ID, "http://203.0.113.9:4300")
     changed = deriver.derive()
 
-    assert (changed.node_list_changed, changed.seek_list_changed) == (True, False)
+    assert changed.node_list_changed
+    # A node list that changed leaves the untouched seek list alone.
+    assert changed.seek_list.stat().st_mtime_ns == written_at[1]
 
 
 def test_stale_outstanding_requests_stop_being_advertised(

@@ -21,12 +21,18 @@ from libranet.stats.schema import SeekKind
 
 @dataclass(frozen=True)
 class DerivedLists:
-    """Where the two derived files are, and which of them just changed."""
+    """The two files a derivation maintains, and whether the node list changed.
+
+    Only the node list carries a changed flag, because only it is announced:
+    a new one is the connection manager's cue to reconsider its peer mix
+    (Step 11). Nothing is published about the seek list — a peer reads it
+    from the file when it asks — so whether that file was rewritten is this
+    module's business alone.
+    """
 
     node_list: Path
     seek_list: Path
     node_list_changed: bool
-    seek_list_changed: bool
 
 
 class ListDeriver:
@@ -54,15 +60,12 @@ class ListDeriver:
     def derive(self) -> DerivedLists:
         """Rewrite whichever of the two files the database no longer agrees with."""
         self._database.prune_seek(self._stats.seek_entry_ttl_seconds)
+        node_list_changed = _write_if_changed(self._storage.node_list_path, self._node_list_body())
+        _write_if_changed(self._storage.seek_list_path, self._seek_list_body())
         return DerivedLists(
             node_list=self._storage.node_list_path,
             seek_list=self._storage.seek_list_path,
-            node_list_changed=_write_if_changed(
-                self._storage.node_list_path, self._node_list_body()
-            ),
-            seek_list_changed=_write_if_changed(
-                self._storage.seek_list_path, self._seek_list_body()
-            ),
+            node_list_changed=node_list_changed,
         )
 
     def _node_list_body(self) -> bytes:
