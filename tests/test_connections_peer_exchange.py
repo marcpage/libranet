@@ -562,11 +562,12 @@ def test_a_push_the_peer_refuses_is_not_counted_as_sent_or_tried_again(
     seek = dumps({"data": [str(HELD_ID)], "search": []}).encode()
     peer = RawPeer(
         [
-            signed(refusing, 201),  # step 1: this node's key
-            signed(refusing, 202),  # step 3: this node's node list
-            signed(refusing, 503),  # step 4: no node list yet
-            signed(refusing, 200, seek),  # step 5: it seeks what this node holds
-            signed(refusing, 413),  # step 6: but refuses it
+            # Answered in the order first contact asks.
+            signed(refusing, 201),  # this node's key
+            signed(refusing, 202),  # this node's node list
+            signed(refusing, 200, seek),  # its seek list: it seeks what this node holds
+            signed(refusing, 503),  # its node list: none yet
+            signed(refusing, 413),  # the push: but it refuses it
         ]
     )
     session = exchange.open(peer.endpoint)

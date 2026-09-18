@@ -92,13 +92,13 @@ is the convention:
 3. **`POST` node list** — the client publishes its known node addresses
    to `/data/nodes`, using the `{"nodes": {"<address>": "<node-id>"}}`
    schema defined in HTTP API §10.6.
-4. **`GET` node list** — the client fetches the server's known node
-   addresses from `/data/nodes`.
-5. **`GET` outstanding requests** — the client fetches the server's list
+4. **`GET` outstanding requests** — the client fetches the server's list
    of currently-sought hashes from `/data/seek` (§4.8 of the High-Level
    Design), using the `{"data": [...], "search": [...]}` schema defined
    in HTTP API §10.7.1.
-6. **`PUT` fulfillable items** — for any hashes from step 5 that the
+5. **`GET` node list** — the client fetches the server's known node
+   addresses from `/data/nodes`.
+6. **`PUT` fulfillable items** — for any hashes from step 4 that the
    client already holds, the client pushes the corresponding content to
    the server via `PUT /data/{algo}/{hash}`.
 7. **`GET` requested items** — the client requests the content it is
@@ -118,13 +118,14 @@ value.**
 
 - Keys are exchanged first because nothing else can be authenticated
   until identity is established.
-- Node lists are exchanged next, before any content, so that if the
-  connection drops immediately afterward, both sides still gained
-  something durable — additional peers to try — preserving overall
-  network reachability.
-- Outstanding requests are exchanged after node lists, and the client
-  offers content it can supply *before* asking the server to supply
-  anything, again leading with value rather than a request.
+- The client publishes its node list next, and both node lists are
+  exchanged before any content, so that if the connection drops
+  immediately afterward, both sides still gained something durable —
+  additional peers to try — preserving overall network reachability.
+- The client fetches the server's outstanding requests before the
+  server's node list, and offers content it can supply *before* asking
+  the server for any content, again leading with value rather than a
+  request.
 
 ### 3.2 Bootstrap Authentication Grace Period
 
@@ -186,7 +187,7 @@ generously to treat that client:
 
 - A server SHOULD keep a new client connected for at least the first
   dozen or so requests, regardless of Karma, to allow node-list exchange
-  to complete (§3, steps 3–4) and to give the client a chance to prove
+  to complete (§3, steps 3 and 5) and to give the client a chance to prove
   itself by fulfilling outstanding requests.
 - If a client has relatively lower Karma and is not providing value
   proportionate to what it requests — for example, fetching outstanding

@@ -867,8 +867,8 @@ Typical connection initiation:
 PUT /data/sha256/abc123... HTTP/1.1  # push client node public key so the server can validate can validate client requests
 GET /data/sha256/def/456... HTTP/1.1  # fetch the key received in the response so client node can start validating server authenticity
 POST /data/nodes HTTP/1.1  # publish client node list of nodes
-GET /data/nodes HTTP/1.1  # fetch server node list of nodes
 GET /data/seek HTTP/1.1  # fetch the list of information the server node is seeking
+GET /data/nodes HTTP/1.1  # fetch server node list of nodes
 
 <series of PUT to satisfy any known requests in server's seek list>
 ```

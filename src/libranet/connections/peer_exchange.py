@@ -7,17 +7,18 @@ any:
 2. ``GET`` the peer's public key, unless this node already holds it. Which
    key to ask for comes from the signature on the first response.
 3. ``POST`` this node's node list.
-4. ``GET`` the peer's node list.
-5. ``GET`` the peer's seek list.
+4. ``GET`` the peer's seek list.
+5. ``GET`` the peer's node list.
 6. ``PUT`` whatever the peer seeks that this node holds.
 7. ``GET`` whatever this node seeks, in case the peer holds it.
 
 :meth:`PeerExchange.open` connects and takes the first two steps, which
 establish who the peer is; :meth:`PeerExchange.first_contact` takes the
 rest. While the connection lasts, :meth:`PeerExchange.refresh` repeats steps
-5 and 6 (§3.3), and :meth:`PeerExchange.retrieve` is step 7 for a single
+4 and 6 (§3.3), and :meth:`PeerExchange.retrieve` is step 7 for a single
 content id, for fetching it on demand. Steps 1 and 2 wait for their
-responses; the requests of each later step are pipelined.
+responses. Steps 3 to 5 are sent together, pipelined, and so are the
+requests of step 6 and of step 7.
 
 The peer's public key goes straight into the source of truth, as sent, once
 it is known to be the peer's key, rather than through the validator, since
@@ -178,7 +179,7 @@ class PeerExchange:
         self._ask_for_sought(session)
 
     def refresh(self, session: PeerSession) -> None:
-        """Steps 5 and 6 again, for whatever the peer has come to seek since (§3.3).
+        """Steps 4 and 6 again, for whatever the peer has come to seek since (§3.3).
 
         Raises:
             OSError: as :meth:`first_contact`.
