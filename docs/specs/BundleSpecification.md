@@ -137,11 +137,18 @@ could not.
   requirement to explicitly enumerate intermediate directories**. A complete
   directory hierarchy can be represented without a single explicit directory
   entry.
+  Paths use `/` as the separator, and **no segment may be empty, `.`, or
+  `..`**. A path therefore cannot start or end with `/`, repeat a `/`, or
+  reach outside the directory root. Such spellings would also give one entry
+  more than one name, since readers compare paths byte for byte (§1). A
+  bundle holding such a path is malformed.
   - A **file entry** is a directory-`contents` value shaped like §2 (a
     `contents` array plus optional `metadata`).
   - A **symlink entry** is `{ "contents": "<relative POSIX-style target>" }`
     — the target is relative to the **symlink's own location**, following
-    POSIX symlink convention.
+    POSIX symlink convention. The target may use `.` and `..` to reach
+    other entries; the restriction on paths above applies only to
+    `contents` keys.
   - A **metadata-only entry** (no `contents` key at all) is used only when
     an author wants to attach metadata to a directory, and/or to assert that
     an otherwise-unreferenced directory exists (e.g., an empty directory).

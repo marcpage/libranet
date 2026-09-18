@@ -518,7 +518,7 @@ handles the eventual result correctly.
 
 **Depends on:** Step 2 (CAS reads).
 
-- Pure logic for the [Bundle Format Specification](BundleSpecification.md):
+- Pure logic for the [Bundle Format Specification](../specs/BundleSpecification.md):
   shape-based type discrimination (file vs. directory vs. symlink vs.
   metadata-only entries), the `extensions` resolution/overlay algorithm,
   and whole-file hash verification for multi-part files.
@@ -529,6 +529,59 @@ handles the eventual result correctly.
   backup feature depends on, are Step 17.
 - Signed bundles (BundleSpecification §5) are not exercised by this step;
   see the open items below.
+- A bundle is told apart by shape alone (§1). Bytes that are not UTF-8 JSON
+  are password-protected if they hold the `0x00` that ends §6's ciphertext,
+  and malformed otherwise; this step only recognizes them, and Step 17
+  decrypts them. A signed bundle, or a signed directory entry, is refused as
+  unsupported.
+- Structure is checked in full when a bundle is parsed. A known field of the
+  wrong type, `null` included, makes the whole bundle malformed, while
+  unknown fields are ignored, so later additions to the format do not break
+  this reader. A directory entry is a file, a symlink, a metadata-only
+  marker, or `null`; a nested directory bundle is malformed, since §3.1
+  defines none.
+- Entry paths must be relative, with no empty, `.`, or `..` segment, so no
+  entry can be written outside its directory (HttpApi §23), and no path has
+  two spellings for readers that compare bytes without normalizing (§1). A
+  bundle breaking this is malformed as a whole rather than losing the one
+  entry. Symlink targets must be relative (§3.1). Whether one points outside
+  the directory depends on where the link sits, so whoever follows or
+  recreates it checks that (Steps 14 and 20).
+- The shapes check the rules on their own values as they are built, rather
+  than leaving that to the parser, so a bundle Step 17 builds is held to the
+  same rules as one this step reads. The parser checks only that each JSON
+  field has the right type.
+- Bundles and parts are read from CAS as stored, raw or zlib-compressed
+  (HttpApi §8), and checked against their identifiers either way. A CAS path
+  under an algorithm this node lacks, or per-entry encrypted (§7), is
+  unsupported. CAS paths are checked only when followed, so one costs only
+  the file or extension that names it.
+- Bundle JSON has to be held whole to be parsed, so it is capped once
+  decompressed, at a local limit (16 MiB by default) the protocol does not
+  set (HttpApi §21).
+- Content not held locally is reported, not given up on: every missing
+  extension, or every missing part of a file, is named together, so the
+  caller (Steps 14 and 20) can have the fetcher retrieve all of it before
+  trying again.
+- Extensions are overlaid best-first, keeping the first entry found for each
+  path: the top-level bundle, then each extension followed by its own
+  extensions, in order. That gives §4.1's result, but reads each extension
+  once however many paths reach it, and does not recurse, so a long chain
+  cannot exhaust the stack. A `null` entry holds its path like any other and
+  is dropped at the end (§4.2). Content addressing rules out cycles, so the
+  number of distinct extensions (1,024 by default) is capped only to bound
+  the work a hostile bundle can cause.
+- The resolver is handed the function that loads each extension, so Step 17
+  can read back encrypted extension chains through it.
+- A file is written a part at a time, in `contents` order, to a writer the
+  caller supplies, since reassembled content has no size limit
+  (HighLevelDesign §4.3). Each part is checked against its own identifier,
+  and the whole file against the hash and size its metadata gives (§2.3).
+  Every part is known to be held before anything is written, but a check can
+  still fail partway, so the caller keeps what was written only if the call
+  succeeds.
+- A whole-file hash under an algorithm this node lacks makes the file
+  unsupported rather than unchecked.
 
 **Testable in isolation:** entirely unit-testable against fixture bundle
 JSON and fixture CAS content, independent of everything else.
