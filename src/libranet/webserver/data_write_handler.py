@@ -23,8 +23,9 @@ pushes first on contact (HandshakeProtocol §3). The rest of that exchange is
 checked against it, and a signer is trusted only provisionally, for a few
 requests, until it is held. Going through the validator could leave it
 unheld when that runs out. It is checked here, as the validator would: it
-must hash to the signer's id, which is also its content id. It must also be
-a public key, so this path cannot store anything else.
+must hash to the signer's id, which is also its content id, as sent or once
+decompressed. It must also be a public key, so this path cannot store
+anything else. Like any upload, it is stored as sent, compressed or not.
 """
 
 from __future__ import annotations
@@ -36,7 +37,7 @@ from libranet.cas.store import CasStore, node_store
 from libranet.config.models import StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.errors import KeyFileError
-from libranet.identity.keys import decode_public_key
+from libranet.identity.keys import published_public_key
 from libranet.messaging.events import EventType
 from libranet.webserver.data_handler import invalid_address_response
 from libranet.webserver.http_types import Request, Response
@@ -92,7 +93,7 @@ class DataWriteHandler:
         if self._source_of_truth.exists(content_id):
             return Response(HTTPStatus.NO_CONTENT)
 
-        if content_id == result.node_id and content_id.matches(body) and _is_public_key(body):
+        if content_id == result.node_id and _is_public_key(content_id, body):
             self._source_of_truth.write(content_id, body)
             return Response(HTTPStatus.CREATED)
 
@@ -108,10 +109,10 @@ class DataWriteHandler:
         return Response(HTTPStatus.ACCEPTED)
 
 
-def _is_public_key(data: bytes) -> bool:
-    """Whether ``data`` is a published node public key."""
+def _is_public_key(node_id: ContentId, data: bytes) -> bool:
+    """Whether ``data`` is the public key of ``node_id``, as-is or compressed."""
     try:
-        decode_public_key(data)
+        published_public_key(node_id, data)
 
     except KeyFileError:
         return False

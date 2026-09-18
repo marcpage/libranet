@@ -5,6 +5,7 @@ from io import BytesIO
 from json import loads
 from pathlib import Path
 from queue import Empty, Queue
+from zlib import compress
 
 from pytest import fixture
 
@@ -181,6 +182,21 @@ def test_unknown_signer_can_push_its_own_public_key(
     assert response.status == 201
     assert truth.read(stranger.node_id) == stranger.public_key
     assert not node_store(storage, stranger.node_id).exists(stranger.node_id)
+    assert published(queues) == []
+    assert router.dispatch(signed_request(stranger, CONTENT)).status == 202
+
+
+def test_unknown_signer_can_push_its_own_public_key_compressed(
+    router: Router, truth: CasStore, queues: ModuleQueues
+) -> None:
+    stranger = new_identity()
+    compressed = compress(stranger.public_key)
+
+    response = router.dispatch(signed_request(stranger, compressed, stranger.node_id))
+
+    assert response.status == 201
+    # Stored as sent, like any upload; the key is still read from it.
+    assert truth.read(stranger.node_id) == compressed
     assert published(queues) == []
     assert router.dispatch(signed_request(stranger, CONTENT)).status == 202
 
