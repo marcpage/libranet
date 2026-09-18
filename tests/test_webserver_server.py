@@ -1,4 +1,5 @@
 """End-to-end tests of the read, write, and list paths against a live server and a temp CAS.
+"""End-to-end tests of the read, write, and list paths against a live server and a temp CAS.
 
 Published messages land on a plain in-process queue, so no dispatcher runs.
 Every response is expected to be signed by the server's node key.
