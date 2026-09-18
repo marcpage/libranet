@@ -610,6 +610,62 @@ JSON and fixture CAS content, independent of everything else.
   HttpApi §2.3. This step covers the source-address restriction only;
   Basic Authentication and the `/config` endpoints themselves are
   Step 18.
+- A remote `/config` request is refused before its signature is checked or
+  its body read, so no credentials it carries are ever looked at. The path is
+  percent-decoded and case-folded first, so no spelling of `/config` gets
+  past. The router now runs its guards in order, this one first.
+- Applications are listed in the node's config, `applications`, mapping each
+  name to the content id of its directory bundle, with `/` naming the root
+  application. None are configured by default. Names are case-insensitive
+  and kept case-folded, and a reserved name, or anything but one path
+  segment, is refused when the config loads. The config cannot check the
+  content ids without depending on the CAS library, so a bad one stops the
+  web server as it starts, as a bad listen address does.
+- A request path is percent-decoded, `%2F` included, before it is split, so a
+  path means one thing however it is spelled. Its first segment names an
+  application if one of that name is configured; otherwise the path is the
+  root application's. A reserved name is never an application's, nor the
+  root application's first segment. `/{app-name}` redirects to
+  `/{app-name}/`, so relative links resolve within the application. A path
+  ending in `/` names that directory's `index.html`. Directories are never
+  listed: the "discoverable" flag HttpApi §13 mentions is not in the Bundle
+  Specification.
+- Resolved files are kept under the source of truth by the content id of the
+  application's bundle and a SHA-256 of the entry path, not at the request
+  path. A bundle never changes under its id, so pointing an application at
+  another bundle leaves nothing stale. Entry paths compare byte for byte
+  (BundleSpecification §1), and a filesystem that ignores case or Unicode
+  normalization could otherwise answer one path with another's file. No
+  filesystem path is ever built from request text.
+- The web server never waits. It serves a resolved file from disk, or
+  answers from what the unbundler last reported for the path, or else answers
+  `503` with `Retry-After` and asks the unbundler for it. The unbundler
+  reports each path it stores no file for: one the bundle lacks (`404`), a
+  directory or a symlink (`302` to where it leads), or a bundle or file that
+  cannot be served (`500`). The web server keeps the 4,096 most recently used
+  of these in memory, so such a path is answered from its second request on,
+  and made-up paths cannot grow the node's storage. Redirects are `302`,
+  since an application may be pointed at another bundle.
+- Content types come from the standard library's built-in table rather than
+  the host's, so every node guesses alike. A name marking the file as
+  compressed, such as `.tar.gz`, is served as `application/octet-stream`. A
+  resolved file is read whole into memory to be served and signed; streaming
+  it is left for later, with Range requests (§4).
+- Symlinks are followed in memory, as POSIX follows them: `..` climbs from
+  where a link actually led. A path that climbs above the bundle's root, or
+  follows more than 40 symlinks, names nothing, and nothing is followed or
+  created on disk (HttpApi §23). A path reaching a file through a symlink
+  redirects to the file's own path, so each file is written once however many
+  symlinks reach it.
+- Content not held, whether the bundle, an extension, or parts of a file, is
+  asked for with the same `data.not_found` a miss publishes, so the fetcher
+  retrieves it and it joins this node's seek list. A later request for the
+  path resolves it once everything is held.
+- A bundle that is malformed, signed, password-protected (see the open items
+  below), or not a directory bundle is reported unusable for every path. A
+  file that fails its checks is unusable alone. The unbundler keeps the
+  resolved directories of the 8 most recently used bundles in memory,
+  unusable ones included, so a bundle is read once for many paths.
 
 **Testable in isolation:** unbundler tests against fixture bundles and a
 temp source-of-truth directory; web server tests with a fake queue for

@@ -2,8 +2,9 @@
 
 Routes are tried in registration order and a pattern must match the whole
 path. A path no route matches is ``404``; a path that matches only under
-other methods is ``405`` with an ``Allow`` header (HttpApi §4). An optional
-guard sees every request before routing, and may refuse it outright.
+other methods is ``405`` with an ``Allow`` header (HttpApi §4). Guards see
+every request before routing, in the order given, and any of them may refuse
+it outright.
 """
 
 from __future__ import annotations
@@ -34,9 +35,9 @@ class Route:
 class Router:
     """Maps request methods and paths to handlers."""
 
-    def __init__(self, guard: Guard | None = None) -> None:
+    def __init__(self, *guards: Guard) -> None:
         self._routes: list[Route] = []
-        self._guard = guard
+        self._guards = guards
 
     def add(self, method: str, pattern: str, handler: Handler) -> None:
         """Route ``method`` requests whose whole path matches ``pattern``.
@@ -46,9 +47,9 @@ class Router:
         self._routes.append(Route(method.upper(), compile_pattern(pattern), handler))
 
     def dispatch(self, request: Request) -> Response:
-        """Run the handler for ``request``, or build the guard's or the 404/405 response."""
-        if self._guard is not None:
-            checked = self._guard(request)
+        """Run the handler for ``request``, or build a guard's or the 404/405 response."""
+        for guard in self._guards:
+            checked = guard(request)
 
             if isinstance(checked, Response):
                 return checked

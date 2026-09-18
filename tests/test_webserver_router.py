@@ -127,3 +127,39 @@ def test_guard_can_amend_the_routed_request() -> None:
     (seen,) = received
     assert seen.client_address == "guarded"
     assert seen.params == {"name": "apple"}
+
+
+def test_guards_run_in_order_each_seeing_what_the_last_passed_on() -> None:
+    seen: list[str] = []
+
+    def first(request: Request) -> Request | Response:
+        seen.append(f"first saw {request.client_address}")
+        return replace(request, client_address="amended")
+
+    def second(request: Request) -> Request | Response:
+        seen.append(f"second saw {request.client_address}")
+        return request
+
+    router = Router(first, second)
+    router.add("GET", r"/items/(?P<name>[^/]+)", _echo)
+
+    assert router.dispatch(Request("GET", "/items/apple", client_address="::1")).status == 200
+    assert seen == ["first saw ::1", "second saw amended"]
+
+
+def test_the_first_guard_to_refuse_stops_the_rest() -> None:
+    seen: list[str] = []
+
+    def refuse(request: Request) -> Request | Response:
+        seen.append("refuse")
+        return Response(403)
+
+    def later(request: Request) -> Request | Response:
+        seen.append("later")
+        return request
+
+    router = Router(refuse, later)
+    router.add("GET", r"/items/(?P<name>[^/]+)", _echo)
+
+    assert router.dispatch(Request("GET", "/items/apple")).status == 403
+    assert seen == ["refuse"]

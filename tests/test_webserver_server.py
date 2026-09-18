@@ -17,6 +17,7 @@ from zlib import compress
 
 from pytest import fixture, mark, raises
 
+from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore, node_store, source_of_truth_store
 from libranet.config.models import LibranetConfig, StorageConfig
@@ -40,6 +41,7 @@ from libranet.problems import (
 )
 from libranet.stats.module import StatsModule
 from libranet.supervision.stubs import StubModule
+from libranet.unbundler.resolved_files import ResolvedFiles
 from libranet.validator.module import ValidatorModule
 from libranet.webserver.http_types import Request, Response
 from libranet.webserver.server import REQUEST_PATH_HEADER, LibranetHTTPServer, build_router
@@ -48,6 +50,7 @@ CONTENT = b"hello libranet"
 CONTENT_ID = ContentId.for_data(CONTENT, "sha256")
 MISSING_ID = ContentId.for_data(b"not stored", "sha256")
 RETRY_AFTER_SECONDS = 7
+APP_BUNDLE_ID = ContentId.for_data(b"an application's directory bundle", "sha256")
 SERVER_IDENTITY = NodeIdentity.from_private_key(generate_private_key(), "sha256")
 
 
@@ -83,8 +86,18 @@ def allow_unsigned_api_reads() -> bool:
 
 
 @fixture
+def applications() -> dict[str, str]:
+    """The applications the server serves, by name; tests may parametrize it."""
+    return {}
+
+
+@fixture
 def server(
-    storage: StorageConfig, store: CasStore, queues: ModuleQueues, allow_unsigned_api_reads: bool
+    storage: StorageConfig,
+    store: CasStore,
+    queues: ModuleQueues,
+    allow_unsigned_api_reads: bool,
+    applications: dict[str, str],
 ) -> Iterator[LibranetHTTPServer]:
     publisher = StubModule(ModuleName.WEBSERVER, queues)
     server = LibranetHTTPServer(
@@ -95,6 +108,7 @@ def server(
             publisher.publish,
             request_authenticator(LibranetConfig(storage=storage)),
             allow_unsigned_api_reads=allow_unsigned_api_reads,
+            applications=applications,
         ),
         getLogger("test.webserver"),
         MessageSigner(SERVER_IDENTITY),
@@ -391,12 +405,13 @@ def test_handler_crash_is_a_500_problem(server: LibranetHTTPServer) -> None:
     def explode(request: Request) -> Response:
         raise RuntimeError("boom")
 
-    server.router.add("GET", "/boom", explode)
+    # Added under /data, since every other path is already the applications' route.
+    server.router.add("GET", "/data/boom", explode)
     host, port = server.server_address[:2]
     connection = HTTPConnection(str(host), int(port), timeout=5)
 
     try:
-        response, body = _get(connection, "/boom")
+        response, body = _get(connection, "/data/boom")
 
     finally:
         connection.close()
@@ -406,7 +421,7 @@ def test_handler_crash_is_a_500_problem(server: LibranetHTTPServer) -> None:
         "type": "about:blank",
         "title": "Internal Server Error",
         "status": 500,
-        "instance": "/boom",
+        "instance": "/data/boom",
     }
 
 
@@ -802,9 +817,13 @@ def test_uploads_always_need_a_valid_signature(
     assert len(_published(queues)) == 1
 
 
+@mark.parametrize("applications", [{"myapp": str(APP_BUNDLE_ID)}])
 @mark.parametrize("allow_unsigned_api_reads", [True, False])
-def test_unsigned_reads_outside_the_api_are_always_honored(server: LibranetHTTPServer) -> None:
-    server.router.add("GET", "/myapp/index.html", lambda request: Response(200, b"<html>"))
+def test_unsigned_reads_outside_the_api_are_always_honored(
+    server: LibranetHTTPServer, storage: StorageConfig
+) -> None:
+    resolved = ResolvedFiles(storage.resolved_files_dir, storage.hash_prefix_length)
+    write_atomically(resolved.path_for(APP_BUNDLE_ID, "index.html"), b"<html>")
     host, port = server.server_address[:2]
     connection = HTTPConnection(str(host), int(port), timeout=5)
 
@@ -815,7 +834,36 @@ def test_unsigned_reads_outside_the_api_are_always_honored(server: LibranetHTTPS
         connection.close()
 
     assert response.status == 200
+    assert response.getheader("Content-Type") == "text/html"
     assert body == b"<html>"
+
+
+@mark.parametrize("applications", [{"myapp": str(APP_BUNDLE_ID)}])
+def test_an_application_file_not_yet_resolved_is_asked_for(
+    connection: HTTPConnection, queues: ModuleQueues
+) -> None:
+    redirect, _ = _get(connection, "/MyApp")
+    response, body = _get(connection, "/MyApp/docs/")
+
+    assert redirect.status == 302
+    assert redirect.getheader("Location") == "/MyApp/"
+    assert response.status == 503
+    assert response.getheader("Retry-After") == str(RETRY_AFTER_SECONDS)
+    assert loads(body)["type"] == CONTENT_UNAVAILABLE
+    (asked,) = _published(queues)
+    assert asked["event"] == EventType.APP_PATH_NOT_FOUND
+    assert (asked["bundle"], asked["path"]) == (str(APP_BUNDLE_ID), "docs/index.html")
+
+
+def test_config_passes_a_local_client_on_to_its_routes(
+    connection: HTTPConnection, queues: ModuleQueues
+) -> None:
+    # The endpoints themselves come with Step 18; a remote client never gets this far.
+    response, body = _get(connection, "/config/backups")
+
+    assert response.status == 404
+    assert loads(body)["instance"] == "/config/backups"
+    assert _published(queues) == []
 
 
 def test_lists_are_503_until_derived_and_then_served_as_written(
