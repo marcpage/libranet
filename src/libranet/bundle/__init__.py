@@ -26,6 +26,7 @@ from libranet.bundle.shapes import (
     FileBundle,
     Metadata,
     Symlink,
+    is_entry_path,
 )
 
 __all__ = [
@@ -48,6 +49,7 @@ __all__ = [
     "UnsupportedBundleError",
     "content_chunks",
     "decode_bundle",
+    "is_entry_path",
     "load_bundle",
     "parse_bundle",
     "parse_cas_path",

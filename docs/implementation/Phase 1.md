@@ -614,6 +614,43 @@ JSON and fixture CAS content, independent of everything else.
   its body read, so no credentials it carries are ever looked at. The path is
   percent-decoded and case-folded first, so no spelling of `/config` gets
   past. The router now runs its guards in order, this one first.
+- Applications are listed in the node's config, `applications`, mapping each
+  name to the content id of its directory bundle, with `/` naming the root
+  application. None are configured by default. Names are case-insensitive
+  and kept case-folded, and a reserved name, or anything but one path
+  segment, is refused when the config loads. The config cannot check the
+  content ids without depending on the CAS library, so a bad one stops the
+  web server as it starts, as a bad listen address does.
+- A request path is percent-decoded, `%2F` included, before it is split, so a
+  path means one thing however it is spelled. Its first segment names an
+  application if one of that name is configured; otherwise the path is the
+  root application's. A reserved name is never an application's, nor the
+  root application's first segment. `/{app-name}` redirects to
+  `/{app-name}/`, so relative links resolve within the application. A path
+  ending in `/` names that directory's `index.html`. Directories are never
+  listed: the "discoverable" flag HttpApi §13 mentions is not in the Bundle
+  Specification.
+- Resolved files are kept under the source of truth by the content id of the
+  application's bundle and a SHA-256 of the entry path, not at the request
+  path. A bundle never changes under its id, so pointing an application at
+  another bundle leaves nothing stale. Entry paths compare byte for byte
+  (BundleSpecification §1), and a filesystem that ignores case or Unicode
+  normalization could otherwise answer one path with another's file. No
+  filesystem path is ever built from request text.
+- The web server never waits. It serves a resolved file from disk, or
+  answers from what the unbundler last reported for the path, or else answers
+  `503` with `Retry-After` and asks the unbundler for it. The unbundler
+  reports each path it stores no file for: one the bundle lacks (`404`), a
+  directory or a symlink (`302` to where it leads), or a bundle or file that
+  cannot be served (`500`). The web server keeps the 4,096 most recently used
+  of these in memory, so such a path is answered from its second request on,
+  and made-up paths cannot grow the node's storage. Redirects are `302`,
+  since an application may be pointed at another bundle.
+- Content types come from the standard library's built-in table rather than
+  the host's, so every node guesses alike. A name marking the file as
+  compressed, such as `.tar.gz`, is served as `application/octet-stream`. A
+  resolved file is read whole into memory to be served and signed; streaming
+  it is left for later, with Range requests (§4).
 
 **Testable in isolation:** unbundler tests against fixture bundles and a
 temp source-of-truth directory; web server tests with a fake queue for

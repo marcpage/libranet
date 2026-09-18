@@ -109,6 +109,17 @@ stats:
   # stays in the /data/seek list it publishes.
   seek_entry_ttl_seconds: 3600.0
 
+# Directory bundles served as web applications (HTTP API §13), none by
+# default. Each is reached at /{name}/ and named by the content id of its
+# bundle; the name "/" is the application served at the root, which also
+# answers every path no other application's name begins. Names ignore case,
+# and data, web, chaos, and config are reserved. Files are resolved from a
+# bundle as they are first requested, fetching from peers what this node
+# lacks.
+applications: {}
+#   "/": "sha256/<hash of a directory bundle>"
+#   wiki: "sha256/<hash of a directory bundle>"
+
 logging:
   level: "INFO"
   # Defaults to the platform log directory. Each module process writes its

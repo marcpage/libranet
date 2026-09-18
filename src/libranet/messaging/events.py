@@ -44,7 +44,7 @@ class EventType(StrEnum):
 
     # Application serving (Step 14).
     APP_PATH_NOT_FOUND = "app.path_not_found"  # webserver → unbundler
-    APP_PATH_RESOLVED = "app.path_resolved"  # unbundler → stats
+    APP_PATH_RESOLVED = "app.path_resolved"  # unbundler → webserver
 
     # Eviction hand-off (Step 15).
     EVICTION_NOTICE = "eviction.notice"  # eviction → connections

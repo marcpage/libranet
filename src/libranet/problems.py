@@ -23,6 +23,7 @@ CONTENT_TOO_LARGE: Final = PROBLEM_TYPE_BASE + "content-too-large"
 SIGNATURE_REQUIRED: Final = PROBLEM_TYPE_BASE + "signature-required"
 INVALID_SIGNATURE: Final = PROBLEM_TYPE_BASE + "invalid-signature"
 INVALID_LIST: Final = PROBLEM_TYPE_BASE + "invalid-list"
+UNUSABLE_BUNDLE: Final = PROBLEM_TYPE_BASE + "unusable-bundle"
 _STANDARD_MEMBERS: Final = frozenset({"type", "title", "status", "detail", "instance"})
 
 
