@@ -4,17 +4,30 @@ Owns the raw-socket client, the first-contact handshake, the 16-connection
 4-bit peer mix, and fetching data on the fetcher module's behalf.
 """
 
-from libranet.connections.errors import ConnectionClosedError, MalformedResponseError
+from libranet.connections.endpoints import PeerAddress, peer_address
+from libranet.connections.errors import (
+    ConnectionClosedError,
+    MalformedResponseError,
+    PeerAuthenticationError,
+)
 from libranet.connections.peer_connection import PeerConnection, open_connection
+from libranet.connections.peer_exchange import PeerExchange
+from libranet.connections.peer_session import PeerRequest, PeerSession
 from libranet.connections.request_encoding import encode_request
 from libranet.connections.response_parser import PeerResponse, ResponseParser
 
 __all__ = [
     "ConnectionClosedError",
     "MalformedResponseError",
+    "PeerAddress",
+    "PeerAuthenticationError",
     "PeerConnection",
+    "PeerExchange",
+    "PeerRequest",
     "PeerResponse",
+    "PeerSession",
     "ResponseParser",
     "encode_request",
     "open_connection",
+    "peer_address",
 ]

@@ -72,9 +72,9 @@ When a local node connects to a remote node over HTTP/HTTPS, the following order
 
 1. Push the sender’s public key so the remote can verify subsequent signatures.
 2. Push the local list of known node addresses, including identifier, address (IP or DNS), and port.
-3. Request the remote’s list of known node addresses.
-4. Request the list of data hashes the remote node is currently seeking.
-5. If the local node holds any of those sought hashes, push the corresponding data to the remote.
+3. Request the list of data hashes the remote node is currently seeking.
+4. Request the remote’s list of known node addresses.
+5. If the local node holds any of the sought hashes, push the corresponding data to the remote.
 6. Begin requesting data that the local node itself is seeking.
 7. Periodically fetch the remote node request list and push data the node has.
 
