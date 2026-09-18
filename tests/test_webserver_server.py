@@ -448,19 +448,27 @@ def test_uploaded_content_is_served_once_validated(
     identity = _new_identity()
     validator = ValidatorModule(ModuleName.VALIDATOR, ModuleQueues(Queue(), Queue()), storage)
 
-    # First contact: a peer pushes its own public key before anything else.
+    # First contact: a peer pushes its own public key before anything else,
+    # and it is held at once so the rest of the exchange can be verified.
     response, _ = _put(connection, identity.node_id, identity.public_key, identity)
+    assert response.status == 201
+    assert _published(queues) == []
+
+    upload = b"uploaded after the key"
+    upload_id = ContentId.for_data(upload, "sha256")
+    response, _ = _put(connection, upload_id, upload, identity)
     assert response.status == 202
 
-    response, _ = _get(connection, f"/data/{identity.node_id}")
+    response, _ = _get(connection, f"/data/{upload_id}")
     assert response.status == 503
 
     completed, *_ = _published(queues)
     validator.handle(completed)
-    response, body = _get(connection, f"/data/{identity.node_id}")
+    response, body = _get(connection, f"/data/{upload_id}")
 
     assert response.status == 200
-    assert body == identity.public_key
+    assert body == upload
+    assert _get(connection, f"/data/{identity.node_id}")[1] == identity.public_key
 
 
 def test_unsigned_upload_is_401_and_keeps_the_connection(

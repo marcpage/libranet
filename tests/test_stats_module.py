@@ -300,6 +300,36 @@ def test_connections_are_recorded_against_the_peer(module: StatsModule) -> None:
     assert module.database.known_endpoints() == [(PEER_ENDPOINT, str(PEER_ID))]
 
 
+def test_failed_attempts_sends_and_lookups_are_counted_against_the_peer(
+    module: StatsModule,
+) -> None:
+    content = {"algorithm": CONTENT_ID.algorithm, "hash": CONTENT_ID.hash, "node_id": str(PEER_ID)}
+    module.handle(
+        broadcast(
+            EventType.CONNECTION_FAILED,
+            {"node_id": str(PEER_ID), "endpoint": PEER_ENDPOINT},
+            ModuleName.CONNECTIONS,
+        )
+    )
+    module.handle(broadcast(EventType.DATA_SENT, {**content, "size": 12}, ModuleName.CONNECTIONS))
+
+    for found in (True, False, False):
+        module.handle(
+            broadcast(
+                EventType.FETCH_ATTEMPTED, {**content, "found": found}, ModuleName.CONNECTIONS
+            )
+        )
+
+    stats = module.database.node_stats(PEER_ID)
+
+    assert stats is not None
+    assert (stats.connection_attempts, stats.successful_connections) == (1, 0)
+    assert stats.bytes_sent == 12
+    assert (stats.data_found, stats.data_not_found) == (1, 2)
+    # An address that could not be reached is not one to publish.
+    assert module.database.known_endpoints() == []
+
+
 def test_a_node_list_that_changed_is_announced_once(
     module: StatsModule, queues: ModuleQueues
 ) -> None:

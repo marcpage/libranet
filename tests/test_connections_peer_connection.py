@@ -10,7 +10,7 @@ from logging import getLogger
 from pathlib import Path
 from queue import Queue
 from socket import AF_INET, AF_INET6, SHUT_WR, create_server, socket, socketpair
-from threading import Thread
+from threading import Event, Thread
 from time import monotonic, sleep
 from typing import Iterator, Mapping
 
@@ -310,6 +310,41 @@ def test_close_from_a_response_callback(pair: tuple[PeerConnection, socket]) -> 
 
     assert future.result(TIMEOUT).body == b"done"
     _wait_until_closed(connection)
+
+
+def test_close_callbacks_run_once_waiting_requests_have_failed(
+    pair: tuple[PeerConnection, socket],
+) -> None:
+    connection, peer = pair
+    future = connection.request("GET", "/")
+    _read_requests(peer, 1)
+    closed = Event()
+    seen: list[bool] = []
+
+    def on_closed() -> None:
+        seen.append(future.done())
+        closed.set()
+
+    connection.when_closed(on_closed)
+    assert not closed.is_set()
+
+    peer.close()
+
+    assert closed.wait(TIMEOUT)
+    assert seen == [True]
+    assert connection.closed
+
+
+def test_close_callback_added_after_closing_runs_at_once(
+    pair: tuple[PeerConnection, socket],
+) -> None:
+    connection, _ = pair
+    connection.close()
+    calls: list[str] = []
+
+    connection.when_closed(lambda: calls.append("closed"))
+
+    assert calls == ["closed"]
 
 
 def test_invalid_request_is_refused_before_it_is_queued(

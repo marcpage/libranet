@@ -28,14 +28,17 @@ class EventType(StrEnum):
     DATA_REJECTED = "data.rejected"  # validator → stats
 
     # Node and seek lists (Steps 8 and 9).
-    NODES_RECEIVED = "nodes.received"  # webserver → stats
+    NODES_RECEIVED = "nodes.received"  # webserver, connections → stats
     SEEK_RECEIVED = "seek.received"  # webserver → stats
     NODE_LIST_UPDATED = "nodes.updated"  # stats → connections
 
     # Outgoing connections and fetching (Steps 11 and 12).
     CONNECTION_OPENED = "connection.opened"  # connections → stats
     CONNECTION_CLOSED = "connection.closed"  # connections → stats
+    CONNECTION_FAILED = "connection.failed"  # connections → stats
+    DATA_SENT = "data.sent"  # connections → stats
     FETCH_REQUESTED = "fetch.requested"  # fetcher → connections
+    FETCH_ATTEMPTED = "fetch.attempted"  # connections → stats
     FETCH_SUCCEEDED = "fetch.succeeded"  # connections → fetcher
     FETCH_FAILED = "fetch.failed"  # connections → fetcher
 

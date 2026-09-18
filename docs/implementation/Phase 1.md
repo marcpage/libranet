@@ -422,6 +422,17 @@ correct pipelined request/response correlation.
   (Step 8), which already records the first pair and holds the counters
   the second pair feeds: attempts, bytes transferred, and whether a peer
   had the data asked of it.
+- The web server stores a signer's pushed public key at once
+  (HandshakeProtocol §3 step 1), provided it hashes to the signer's id and
+  is a public key, rather than through the validator. The rest of the
+  exchange is verified against it, and the validator's delay could
+  outlast the few requests an unknown signer is trusted provisionally.
+- Three events carry the remaining counters to the stats module:
+  `connection.failed` (an attempt to reach a known node id), `data.sent`
+  (content a peer accepted, with its size), and `fetch.attempted` (each
+  content request a peer answered, and whether it had the content).
+- A Step 10 connection reports when it has closed, however it closed, so
+  the connection manager can react to a drop as it happens.
 
 **Testable in isolation:** exercised against fixture peer servers
 (instances of Step 5's server); connection-mix logic can be tested with

@@ -17,7 +17,8 @@ response, a failed send, or the peer making no progress for the request
 timeout. Nothing is retried here; a failed request may or may not have
 reached the peer, and whether to try it elsewhere is the caller's choice.
 Every future is completed on the receive thread, so its callbacks run
-there and must not block.
+there and must not block. :meth:`PeerConnection.when_closed` callbacks run
+there too, once the connection has finished closing.
 """
 
 from __future__ import annotations
@@ -32,7 +33,7 @@ from socket import IPPROTO_TCP, SHUT_RDWR, TCP_NODELAY, create_connection, socke
 from threading import Lock, Thread, current_thread
 from time import monotonic
 from types import TracebackType
-from typing import Final, Mapping
+from typing import Callable, Final, Mapping
 
 from libranet.connections.errors import ConnectionClosedError, MalformedResponseError
 from libranet.connections.request_encoding import encode_request
@@ -85,6 +86,8 @@ class PeerConnection:
         self._closed = False
         self._failure: Exception = ConnectionClosedError(f"Connection to {host} closed")
         self._last_progress = monotonic()
+        # Completed once the receive thread has closed everything down.
+        self._finished: Future[None] = Future()
         # Bounds each whole send; receiving only ever reads what has arrived.
         sock.settimeout(request_timeout)
         self._sender = Thread(target=self._send_loop, name=f"send {host}", daemon=True)
@@ -159,6 +162,15 @@ class PeerConnection:
         if current_thread() is not self._receiver:
             self._receiver.join()
 
+    def when_closed(self, callback: Callable[[], None]) -> None:
+        """Call ``callback`` once the connection has closed, however it closed.
+
+        By then every waiting request has failed. It runs on the receive
+        thread, or at once on the calling thread if the connection has
+        already closed, and must not block.
+        """
+        self._finished.add_done_callback(lambda _: callback())
+
     def _fail(self, error: Exception) -> None:
         """Close the connection for ``error``, unless it has closed already.
 
@@ -229,6 +241,7 @@ class PeerConnection:
             self._fail_waiting()
             self._sender.join()
             self._socket.close()
+            self._finished.set_result(None)
 
     def _time_left(self) -> float | None:
         """Seconds until the oldest waiting request times out; ``None`` if none waits."""

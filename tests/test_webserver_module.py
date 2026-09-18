@@ -106,10 +106,12 @@ def test_module_accepts_signed_uploads_and_signs_its_responses(tmp_path: Path) -
     try:
         host, port = _wait_for_address(module)
         identity = NodeIdentity.from_private_key(generate_private_key(), "sha256")
-        path = f"/data/{identity.node_id}"
-        headers = MessageSigner(identity).sign_request("PUT", path, {}, identity.public_key)
+        upload = b"uploaded through the module"
+        upload_id = ContentId.for_data(upload, "sha256")
+        path = f"/data/{upload_id}"
+        headers = MessageSigner(identity).sign_request("PUT", path, {}, upload)
         connection = HTTPConnection(host, port, timeout=5)
-        connection.request("PUT", path, body=identity.public_key, headers=headers)
+        connection.request("PUT", path, body=upload, headers=headers)
         response = connection.getresponse()
         body = response.read()
         connection.close()
@@ -120,7 +122,7 @@ def test_module_accepts_signed_uploads_and_signs_its_responses(tmp_path: Path) -
         signer = verifier.verify_response(response.status, dict(response.getheaders()), body)
         assert signer == load_node_identity(config).node_id
         assert queues.outbox.get(timeout=1)["event"] == EventType.PUT_COMPLETED
-        assert node_store(config.storage, identity.node_id).exists(identity.node_id)
+        assert node_store(config.storage, identity.node_id).exists(upload_id)
 
     finally:
         stop.set()
