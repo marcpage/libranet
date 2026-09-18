@@ -10,7 +10,7 @@ class BundleError(Exception):
 
 
 class MalformedBundleError(BundleError, ValueError):
-    """The data is not a well-formed bundle (BundleSpecification)."""
+    """The data is not a well-formed bundle, or a shape was given values the format forbids."""
 
 
 class UnsupportedBundleError(BundleError):

@@ -76,7 +76,9 @@ def write_file(bundle: FileBundle, source: ContentSource, output: ByteSink) -> i
         raise BundleVerificationError(f"File is {size} bytes, not its size, {expected_size}")
 
     if hasher is not None and expected is not None and hasher.hexdigest() != expected.hash:
-        raise BundleVerificationError(f"File does not match its whole-file hash, {expected}")
+        raise BundleVerificationError(
+            f"File does not match its whole-file hash, {expected} vs {hasher.hexdigest()}"
+        )
 
     return size
 

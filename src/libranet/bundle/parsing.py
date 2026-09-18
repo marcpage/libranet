@@ -5,13 +5,13 @@ holding a ``signature`` is a signed one. Otherwise the type of ``contents``
 decides: an array is a file, an object a directory, a string a symlink, and
 no ``contents`` at all a metadata-only directory marker.
 
-Structure is checked in full when a bundle is parsed. A known field of the
-wrong type makes the whole bundle malformed, while unknown fields are
+Parsing checks that every known field has the right JSON type. A field of
+the wrong type makes the whole bundle malformed, while unknown fields are
 ignored, so later additions to the format do not break this reader. A
-directory's entries are files, symlinks, markers, or ``null`` (§4.2), each
-keyed by a relative POSIX path with no empty, ``.``, or ``..`` segment, so
-no resolved path can leave the directory it is written into. CAS paths are
-checked when followed instead (:mod:`libranet.bundle.shapes`).
+directory's entries are files, symlinks, markers, or ``null`` (§4.2). The
+rules on the values themselves, such as entry paths with no ``..`` segment,
+are checked by the shapes as they are built, and CAS paths only when
+followed (:mod:`libranet.bundle.shapes`).
 """
 
 from __future__ import annotations
@@ -36,8 +36,6 @@ from libranet.bundle.shapes import (
 # A password-protected bundle's ciphertext ends at its last 0x00, before the
 # descriptor (§6.1). JSON text never holds a raw 0x00 (§6.5).
 _DESCRIPTOR_SEPARATOR: Final = b"\0"
-_PATH_SEPARATOR: Final = "/"
-_UNUSABLE_SEGMENTS: Final = frozenset(("", ".", ".."))
 _ABSENT: Final = object()
 
 
@@ -101,7 +99,7 @@ def _entry(fields: dict[str, object], contents: object) -> Entry:
         )
 
     if isinstance(contents, str):
-        return Symlink(_symlink_target(contents))
+        return Symlink(contents)
 
     raise MalformedBundleError('"contents" must be an array, an object, or a string')
 
@@ -111,8 +109,6 @@ def _directory(fields: dict[str, object], contents: dict[str, object]) -> Direct
     entries: dict[str, Entry | None] = {}
 
     for path, value in contents.items():
-        _check_entry_path(path)
-
         try:
             entries[path] = None if value is None else _directory_entry(value)
 
@@ -145,20 +141,14 @@ def _metadata(fields: dict[str, object]) -> Metadata:
     if not isinstance(metadata, dict):
         raise MalformedBundleError('"metadata" must be an object')
 
-    algorithm = _optional_string(metadata, "algorithm")
-    hash_value = _optional_string(metadata, "hash")
-
-    if (algorithm is None) != (hash_value is None):
-        raise MalformedBundleError('"algorithm" and "hash" must be given together')
-
     return Metadata(
         created=_optional_string(metadata, "created"),
         modified=_optional_string(metadata, "modified"),
         size=_optional_size(metadata),
         writable=_flag(metadata, "writable"),
         executable=_flag(metadata, "executable"),
-        algorithm=algorithm,
-        hash=hash_value,
+        algorithm=_optional_string(metadata, "algorithm"),
+        hash=_optional_string(metadata, "hash"),
     )
 
 
@@ -182,8 +172,9 @@ def _optional_size(metadata: dict[str, object]) -> int | None:
 
     size = metadata["size"]
 
+    # Note: bool is a subclass of int, so need to make sure it is not a bool
     if not isinstance(size, int) or isinstance(size, bool) or size < 0:
-        raise MalformedBundleError('"size" must be a non-negative integer')
+        raise MalformedBundleError('"size" must be a positive integer')
 
     return size
 
@@ -214,21 +205,3 @@ def _file_versions(fields: dict[str, object]) -> tuple[tuple[str, ...], ...]:
         raise MalformedBundleError('"versions" must be an array of arrays of strings')
 
     return tuple(_strings(version, '"versions" entries') for version in versions)
-
-
-def _check_entry_path(path: str) -> None:
-    """Raises unless ``path`` is relative and names something inside its directory."""
-    segments = path.split(_PATH_SEPARATOR)
-
-    if "\0" in path or not _UNUSABLE_SEGMENTS.isdisjoint(segments):
-        raise MalformedBundleError(
-            f"Entry path must be relative, with no empty, '.', or '..' segment: {path!r}"
-        )
-
-
-def _symlink_target(target: str) -> str:
-    """``target``, if it is a non-empty relative path (§3.1)."""
-    if not target or target.startswith(_PATH_SEPARATOR) or "\0" in target:
-        raise MalformedBundleError(f"Symlink target must be a non-empty relative path: {target!r}")
-
-    return target

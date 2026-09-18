@@ -547,6 +547,10 @@ handles the eventual result correctly.
   entry. Symlink targets must be relative (§3.1). Whether one points outside
   the directory depends on where the link sits, so whoever follows or
   recreates it checks that (Steps 14 and 20).
+- The shapes check the rules on their own values as they are built, rather
+  than leaving that to the parser, so a bundle Step 17 builds is held to the
+  same rules as one this step reads. The parser checks only that each JSON
+  field has the right type.
 - Bundles and parts are read from CAS as stored, raw or zlib-compressed
   (HttpApi §8), and checked against their identifiers either way. A CAS path
   under an algorithm this node lacks, or per-entry encrypted (§7), is
