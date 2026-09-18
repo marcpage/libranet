@@ -27,9 +27,8 @@ from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import MessageSigner, MessageVerifier
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
-from libranet.request_path import REQUEST_PATH_HEADER
 from libranet.supervision.stubs import StubModule
-from libranet.webserver.server import LibranetHTTPServer, build_router
+from libranet.webserver.server import REQUEST_PATH_HEADER, LibranetHTTPServer, build_router
 
 CLIENT_IDENTITY = NodeIdentity.from_private_key(generate_private_key(), "sha256")
 CLIENT_SIGNER = MessageSigner(CLIENT_IDENTITY)

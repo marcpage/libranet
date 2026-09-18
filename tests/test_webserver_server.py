@@ -38,12 +38,11 @@ from libranet.problems import (
     PROBLEM_CONTENT_TYPE,
     SIGNATURE_REQUIRED,
 )
-from libranet.request_path import REQUEST_PATH_HEADER
 from libranet.stats.module import StatsModule
 from libranet.supervision.stubs import StubModule
 from libranet.validator.module import ValidatorModule
 from libranet.webserver.http_types import Request, Response
-from libranet.webserver.server import LibranetHTTPServer, build_router
+from libranet.webserver.server import REQUEST_PATH_HEADER, LibranetHTTPServer, build_router
 
 CONTENT = b"hello libranet"
 CONTENT_ID = ContentId.for_data(CONTENT, "sha256")

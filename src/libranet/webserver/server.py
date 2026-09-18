@@ -32,7 +32,6 @@ from libranet.config.models import StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.signatures import MessageSigner
 from libranet.problems import Problem
-from libranet.request_path import REQUEST_PATH_HEADER
 from libranet.webserver.data_handler import DATA_PATTERN, DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
 from libranet.webserver.http_types import (
@@ -58,6 +57,13 @@ from libranet.webserver.signature_guard import SignatureGuard
 # Idle keep-alive connections are dropped after this long, so they cannot
 # hold request threads forever.
 IDLE_TIMEOUT_SECONDS = 60.0
+
+# Every response to a request whose request line parsed echoes that
+# request's target (path and any query string) here. A pipelining client
+# matches responses by order alone and needn't rely on it, but can spot a
+# mismatch when debugging (Step 10). Other implementations need not send
+# it, and a proxy may rewrite paths.
+REQUEST_PATH_HEADER = "X-Request-Path"
 
 # Responses that must not carry a body, whatever the handler supplied.
 _BODILESS_STATUSES = frozenset({HTTPStatus.NO_CONTENT, HTTPStatus.NOT_MODIFIED})

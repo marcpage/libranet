@@ -26,7 +26,8 @@ from libranet.connections.errors import MalformedResponseError
 MAX_HEAD_BYTES: Final = 64 * 1024
 
 _LINE_END: Final = b"\r\n"
-_HEAD_END: Final = b"\r\n\r\n"
+# The last header line's line break, then the blank line's.
+_HEAD_END: Final = _LINE_END * 2
 _STATUS_LINE: Final = compile_pattern(r"HTTP/1\.([0-9]) ([0-9]{3})(?: (.*))?")
 # RFC 9110 §5.6.2.
 _TOKEN: Final = compile_pattern(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
