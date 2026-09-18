@@ -190,7 +190,14 @@ def test_stored_content_is_served(connection: HTTPConnection, queues: ModuleQueu
     assert response.getheader("Content-Type") == "application/octet-stream"
     assert response.getheader("Content-Length") == str(len(CONTENT))
     assert "immutable" in (response.getheader("Cache-Control") or "")
-    assert _published(queues) == []
+
+    (message,) = _published(queues)
+    assert message["event"] == EventType.DATA_REQUESTED
+    assert message["source"] == ModuleName.WEBSERVER
+    assert message["algorithm"] == "sha256"
+    assert message["hash"] == CONTENT_ID.hash
+    # The test client connects over loopback, so it is not a peer.
+    assert message["external"] is False
 
 
 def test_hash_case_and_query_string_are_ignored(connection: HTTPConnection) -> None:
@@ -214,7 +221,9 @@ def test_missing_content_is_503_and_published(
     assert problem["instance"] == f"/data/{MISSING_ID}"
     assert problem["retry_after"] == RETRY_AFTER_SECONDS
 
-    (message,) = _published(queues)
+    requested, message = _published(queues)
+    assert requested["event"] == EventType.DATA_REQUESTED
+    assert requested["hash"] == MISSING_ID.hash
     assert message["event"] == EventType.DATA_NOT_FOUND
     assert message["source"] == ModuleName.WEBSERVER
     assert message["algorithm"] == "sha256"
@@ -400,7 +409,7 @@ def test_uploaded_content_is_served_once_validated(
     response, _ = _get(connection, f"/data/{identity.node_id}")
     assert response.status == 503
 
-    completed, _ = _published(queues)
+    completed, *_ = _published(queues)
     validator.handle(completed)
     response, body = _get(connection, f"/data/{identity.node_id}")
 
@@ -682,7 +691,11 @@ def test_signing_nodes_are_served_when_unsigned_api_reads_are_refused(
     provisional, _ = _signed_get(connection, f"/data/{MISSING_ID}", _new_identity())
 
     assert provisional.status == 503
-    assert [message["event"] for message in _published(queues)] == [EventType.DATA_NOT_FOUND]
+    assert [message["event"] for message in _published(queues)] == [
+        EventType.DATA_REQUESTED,
+        EventType.DATA_REQUESTED,
+        EventType.DATA_NOT_FOUND,
+    ]
 
     forged, body = _signed_get(connection, f"/data/{CONTENT_ID}", known, signed_path="/data")
 

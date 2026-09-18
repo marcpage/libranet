@@ -8,13 +8,12 @@ better results it knows about.
 """
 
 from __future__ import annotations
-from os import replace
 from pathlib import Path
 from string import hexdigits
-from tempfile import NamedTemporaryFile
 from time import time
 from typing import Callable, Final
 
+from libranet.atomic_file import write_atomically
 from libranet.cas.algorithms import DEFAULT_REGISTRY, AlgorithmRegistry
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
@@ -145,21 +144,4 @@ class SearchCache:
 
     def save(self, prefix: str, body: bytes) -> Path:
         """Atomically replace the cached body for ``prefix``."""
-        path = self.path_for(prefix)
-        path.parent.mkdir(parents=True, exist_ok=True)
-
-        with NamedTemporaryFile(
-            dir=path.parent, prefix=f".{path.name}.", suffix=".partial", delete=False
-        ) as temp:
-            temp_path = Path(temp.name)
-
-            try:
-                temp.write(body)
-
-            except BaseException:
-                temp.close()
-                temp_path.unlink(missing_ok=True)
-                raise
-
-        replace(temp_path, path)
-        return path
+        return write_atomically(self.path_for(prefix), body)

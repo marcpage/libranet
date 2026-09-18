@@ -18,6 +18,7 @@ class EventType(StrEnum):
     SHUTDOWN = "shutdown"
 
     # Web server read path (Step 5).
+    DATA_REQUESTED = "data.requested"  # webserver → stats
     DATA_NOT_FOUND = "data.not_found"  # webserver → fetcher
     SEARCH_REQUESTED = "data.search_requested"  # webserver → stats
 

@@ -15,15 +15,14 @@ the rest of ``{root}`` free for resolved application paths (Step 14).
 from __future__ import annotations
 from os import replace
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from typing import Iterator
 
+from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError
 from libranet.config.models import StorageConfig
 
 DATA_SEGMENT = "data"
-_TEMP_SUFFIX = ".partial"
 
 
 class CasStore:
@@ -74,24 +73,7 @@ class CasStore:
         hold unverified uploads, and verification is the validator's job.
         The write is atomic: readers see either no file or the whole file.
         """
-        path = self.path_for(content_id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-
-        with NamedTemporaryFile(
-            dir=path.parent, prefix=f".{path.name}.", suffix=_TEMP_SUFFIX, delete=False
-        ) as temp:
-            temp_path = Path(temp.name)
-
-            try:
-                temp.write(data)
-
-            except BaseException:
-                temp.close()
-                temp_path.unlink(missing_ok=True)
-                raise
-
-        replace(temp_path, path)
-        return path
+        return write_atomically(self.path_for(content_id), data)
 
     def delete(self, content_id: ContentId) -> bool:
         """Remove ``content_id``; returns whether anything was removed."""
