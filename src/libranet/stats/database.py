@@ -306,9 +306,10 @@ class StatsDatabase:
         return self._connection.execute(statement, parameters)
 
     def _query(self, statement: str, parameters: Mapping[str, Any]) -> list[Row]:
-        rows: list[Row] = self._connection.execute(statement, parameters).fetchall()
+        # Annotated because `fetchall` is typed as returning `list[Any]`.
+        rows: list[Row] = self._execute(statement, parameters).fetchall()
         return rows
 
     def _query_one(self, statement: str, parameters: Mapping[str, Any]) -> Row | None:
-        row: Row | None = self._connection.execute(statement, parameters).fetchone()
+        row: Row | None = self._execute(statement, parameters).fetchone()
         return row
