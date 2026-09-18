@@ -47,13 +47,6 @@ from libranet.webserver.list_handlers import (
     NodeListHandler,
     SeekListHandler,
 )
-from libranet.webserver.list_handlers import (
-    NODES_PATH,
-    SEEK_PATH,
-    ListFileHandler,
-    NodeListHandler,
-    SeekListHandler,
-)
 from libranet.webserver.publishing import Publish
 from libranet.webserver.router import Router
 from libranet.webserver.search import LocalSearch, SearchCache
