@@ -38,6 +38,7 @@ from libranet.problems import (
     PROBLEM_CONTENT_TYPE,
     SIGNATURE_REQUIRED,
 )
+from libranet.request_path import REQUEST_PATH_HEADER
 from libranet.stats.module import StatsModule
 from libranet.supervision.stubs import StubModule
 from libranet.validator.module import ValidatorModule
@@ -351,6 +352,27 @@ def test_connection_is_kept_alive_across_requests(connection: HTTPConnection) ->
         assert response.status == 200
         assert response.getheader("Connection") is None
         assert body == CONTENT
+
+
+def test_responses_echo_the_request_target(connection: HTTPConnection) -> None:
+    for target in (
+        f"/data/{CONTENT_ID}",
+        f"/data/{MISSING_ID}",
+        f"/data/search/{CONTENT_ID.hash[:4]}?limit=1",
+        "/nowhere",
+    ):
+        response, _ = _get(connection, target)
+
+        assert response.getheader(REQUEST_PATH_HEADER) == target
+
+
+def test_request_line_that_does_not_parse_echoes_no_path(server: LibranetHTTPServer) -> None:
+    """Not even the path of the connection's previous request."""
+    reply = _exchange(server, b"GET /nowhere HTTP/1.1\r\nHost: x\r\n\r\nGET /a b HTTP/1.1\r\n\r\n")
+
+    refusal = reply.index(b"HTTP/1.1 400")
+    assert f"{REQUEST_PATH_HEADER}: /nowhere\r\n".encode() in reply[:refusal]
+    assert REQUEST_PATH_HEADER.encode() not in reply[refusal:]
 
 
 def test_unknown_methods_get_a_501_problem(server: LibranetHTTPServer) -> None:

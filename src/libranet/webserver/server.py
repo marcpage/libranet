@@ -13,7 +13,8 @@ would otherwise be parsed as the next request.
 
 Every response, including the server's own errors, is signed with the node's
 key (HighLevelDesign §2.2), which is how a peer learns and authenticates this
-node's identity (HandshakeProtocol §3).
+node's identity (HandshakeProtocol §3). Each one also echoes the request's
+target in ``X-Request-Path``, to help debug pipelined clients (Step 10).
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ from libranet.config.models import StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.signatures import MessageSigner
 from libranet.problems import Problem
+from libranet.request_path import REQUEST_PATH_HEADER
 from libranet.webserver.data_handler import DATA_PATTERN, DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
 from libranet.webserver.http_types import (
@@ -247,6 +249,11 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         for name, value in headers.items():
             self.send_header(name, value)
+
+        # The request line sets the command and path together, so a path is
+        # never echoed for a request that failed to parse before it.
+        if self.command:
+            self.send_header(REQUEST_PATH_HEADER, self.path)
 
         if response.status not in _BODILESS_STATUSES:
             self.send_header("Content-Length", str(len(response.body)))
