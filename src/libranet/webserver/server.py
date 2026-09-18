@@ -40,6 +40,13 @@ from libranet.webserver.http_types import (
     Response,
     problem_response,
 )
+from libranet.webserver.list_handlers import (
+    NODES_PATH,
+    SEEK_PATH,
+    ListFileHandler,
+    NodeListHandler,
+    SeekListHandler,
+)
 from libranet.webserver.publishing import Publish
 from libranet.webserver.router import Router
 from libranet.webserver.search import LocalSearch, SearchCache
@@ -62,12 +69,13 @@ def build_router(
     *,
     allow_unsigned_api_reads: bool,
 ) -> Router:
-    """The node's routes, serving the configured source of truth.
+    """The node's routes, serving the configured source of truth and derived lists.
 
-    ``retry_after_seconds`` is what ``503`` responses for missing content
-    tell clients to wait before retrying. ``authenticator`` checks the
-    signature of every signed request; unsigned reads of the ``/data`` API
-    are served only if ``allow_unsigned_api_reads`` is set.
+    ``retry_after_seconds`` is what ``503`` responses for missing content, or
+    for lists not derived yet, tell clients to wait before retrying.
+    ``authenticator`` checks the signature of every signed request; unsigned
+    reads of the ``/data`` API are served only if ``allow_unsigned_api_reads``
+    is set.
     """
     store = source_of_truth_store(storage)
     router = Router(
@@ -93,6 +101,11 @@ def build_router(
     )
     router.add("GET", DATA_PATTERN, DataReadHandler(store, publish, retry_after_seconds))
     router.add("PUT", DATA_PATTERN, DataWriteHandler(storage, store, authenticator, publish))
+    # A posted list is held to the same cap as every other request body.
+    router.add("GET", NODES_PATH, ListFileHandler(storage.node_list_path, retry_after_seconds))
+    router.add("POST", NODES_PATH, NodeListHandler(storage.max_object_bytes, publish))
+    router.add("GET", SEEK_PATH, ListFileHandler(storage.seek_list_path, retry_after_seconds))
+    router.add("POST", SEEK_PATH, SeekListHandler(storage.max_object_bytes, publish))
     return router
 
 

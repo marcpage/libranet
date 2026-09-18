@@ -1,4 +1,4 @@
-"""End-to-end tests of the read and write paths against a live server and a temp CAS.
+"""End-to-end tests of the read, write, and list paths against a live server and a temp CAS.
 
 Published messages land on a plain in-process queue, so no dispatcher runs.
 Every response is expected to be signed by the server's node key.
@@ -6,7 +6,7 @@ Every response is expected to be signed by the server's node key.
 
 from __future__ import annotations
 from http.client import HTTPConnection, HTTPResponse
-from json import loads
+from json import dumps, loads
 from logging import getLogger
 from pathlib import Path
 from queue import Empty, Queue
@@ -37,6 +37,7 @@ from libranet.problems import (
     PROBLEM_CONTENT_TYPE,
     SIGNATURE_REQUIRED,
 )
+from libranet.stats.module import StatsModule
 from libranet.supervision.stubs import StubModule
 from libranet.validator.module import ValidatorModule
 from libranet.webserver.http_types import Request, Response
@@ -132,6 +133,23 @@ def _put(
         {} if identity is None else MessageSigner(identity).sign_request("PUT", path, {}, body)
     )
     connection.request("PUT", path, body=body if sent is None else sent, headers=headers)
+    response = connection.getresponse()
+    return response, response.read()
+
+
+def _post(
+    connection: HTTPConnection,
+    path: str,
+    value: object,
+    identity: NodeIdentity | None,
+    sent: bytes | None = None,
+) -> tuple[HTTPResponse, bytes]:
+    """POST ``sent`` (default ``value`` as JSON) with a signature over ``value``, if ``identity``."""
+    body = dumps(value).encode("utf-8")
+    headers = (
+        {} if identity is None else MessageSigner(identity).sign_request("POST", path, {}, body)
+    )
+    connection.request("POST", path, body=body if sent is None else sent, headers=headers)
     response = connection.getresponse()
     return response, response.read()
 
@@ -741,3 +759,117 @@ def test_unsigned_reads_outside_the_api_are_always_honored(server: LibranetHTTPS
 
     assert response.status == 200
     assert body == b"<html>"
+
+
+def test_lists_are_503_until_derived_and_then_served_as_written(
+    connection: HTTPConnection, storage: StorageConfig
+) -> None:
+    response, body = _get(connection, "/data/nodes")
+
+    assert response.status == 503
+    assert response.getheader("Retry-After") == str(RETRY_AFTER_SECONDS)
+    assert loads(body)["status"] == 503
+
+    storage.derived_dir.mkdir(parents=True)
+    storage.node_list_path.write_bytes(b'{"nodes":{"http://localhost:8080":"sha256/abc"}}')
+    storage.seek_list_path.write_bytes(b'{"data":[],"search":["ab"]}')
+
+    for path, derived in (
+        ("/data/nodes", storage.node_list_path),
+        ("/data/seek", storage.seek_list_path),
+    ):
+        response, body = _get(connection, path)
+
+        assert response.status == 200
+        assert response.getheader("Content-Type") == "application/json"
+        assert body == derived.read_bytes()
+
+
+def test_signed_node_list_is_published_with_localhost_resolved(
+    connection: HTTPConnection, queues: ModuleQueues
+) -> None:
+    identity = _new_identity()
+    nodes = {
+        "http://localhost:4300": str(identity.node_id),
+        "http://192.0.2.9:8080": str(MISSING_ID),
+    }
+
+    response, reply = _post(connection, "/data/nodes", {"nodes": nodes}, identity)
+
+    assert response.status == 202
+    assert reply == b""
+    assert response.getheader("Connection") is None
+    (message,) = _published(queues)
+    assert message["event"] == EventType.NODES_RECEIVED
+    # The test client reaches the server from IPv4 loopback.
+    assert message["nodes"] == {
+        "http://127.0.0.1:4300": str(identity.node_id),
+        "http://192.0.2.9:8080": str(MISSING_ID),
+    }
+
+
+def test_signed_seek_list_is_published_for_its_signer(
+    connection: HTTPConnection, queues: ModuleQueues
+) -> None:
+    identity = _new_identity()
+
+    response, _ = _post(connection, "/data/seek", {"data": [str(MISSING_ID)]}, identity)
+
+    assert response.status == 202
+    (message,) = _published(queues)
+    assert message["event"] == EventType.SEEK_RECEIVED
+    assert message["node_id"] == str(identity.node_id)
+    assert (message["data"], message["search"]) == ([str(MISSING_ID)], [])
+
+
+@mark.parametrize("allow_unsigned_api_reads", [True, False])
+@mark.parametrize("path", ["/data/nodes", "/data/seek"])
+def test_list_posts_always_need_a_valid_signature(
+    connection: HTTPConnection, queues: ModuleQueues, path: str
+) -> None:
+    identity = _new_identity()
+    value: dict[str, object] = {"nodes": {}, "data": []}
+
+    refused, body = _post(connection, path, value, None)
+
+    assert refused.status == 401
+    assert loads(body)["type"] == SIGNATURE_REQUIRED
+    assert refused.getheader("Connection") is None
+
+    forged, body = _post(connection, path, value, identity, sent=b'{"nodes":{},"data":[]}  ')
+
+    assert forged.status == 401
+    assert loads(body)["type"] == INVALID_SIGNATURE
+    assert forged.getheader("Connection") == "close"
+    assert _published(queues) == []
+
+
+def test_posted_lists_reach_the_served_files_through_the_stats_module(
+    connection: HTTPConnection, queues: ModuleQueues, storage: StorageConfig
+) -> None:
+    peer = _new_identity()
+    _post(connection, "/data/nodes", {"nodes": {"http://localhost:4300": str(peer.node_id)}}, peer)
+    _post(connection, "/data/seek", {"data": [str(CONTENT_ID)]}, peer)
+    # A miss here puts an entry on this node's own seek list.
+    _get(connection, f"/data/{MISSING_ID}")
+
+    stats = StatsModule(
+        ModuleName.STATS, ModuleQueues(Queue(), Queue()), LibranetConfig(storage=storage)
+    )
+    stats.on_start()
+
+    try:
+        for message in _published(queues):
+            stats.handle(message)
+
+        stats.derive()
+
+    finally:
+        stats.on_stop()
+
+    _, nodes = _get(connection, "/data/nodes")
+    _, seek = _get(connection, "/data/seek")
+
+    assert loads(nodes)["nodes"]["http://127.0.0.1:4300"] == str(peer.node_id)
+    # The peer's own seek list is recorded, but only this node's is served.
+    assert loads(seek) == {"data": [str(MISSING_ID)], "search": []}

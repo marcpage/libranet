@@ -337,6 +337,19 @@ temp output directory, independent of any running web server.
 - Both `POST` handlers are the only new work here: Step 8 already
   consumes the messages they publish and already derives the files the
   `GET` handlers serve.
+- Both `POST`s need a signature, as uploads do (HandshakeProtocol §2.1):
+  a seek list is recorded against the node that signed it. Bodies share
+  the request-body size cap and may be zlib-compressed (HttpApi §10.6,
+  §10.7.1), with decompression stopped at that same cap. A body of the
+  wrong shape is `400`. A single unusable entry is dropped instead: an
+  endpoint that is not an `http`/`https` URL, or a seek entry that is not
+  a valid content id or hash prefix. The seek entries that remain are
+  lower-cased.
+- `localhost` resolution unwraps an IPv4-mapped source address (how a
+  dual-stack listener reports an IPv4 client), so peers without IPv6 can
+  still use the stored endpoint.
+- A `GET` that arrives before the stats module's first derivation gets
+  `503` with `Retry-After`.
 
 **Testable in isolation:** web server tests with a fake queue, asserting
 on the resolved addresses published and the served file contents.
