@@ -1,6 +1,6 @@
 # Libranet Python Implementation Plan
 
-Version 0.1 • September 2026
+Version 0.2 • September 2026
 
 ---
 
@@ -52,6 +52,11 @@ The modules:
   application path it doesn't have yet.
 - **Eviction** — reacts to "new data stored" messages, checks free
   space, and manages hand-off/deletion of low-priority content.
+- **Backup** — turns configured local directories into encrypted
+  Directory Bundles in the CAS, keeps them current as those directories
+  change, and restores a bundle back to a local directory on request.
+  This is the node's data-ingestion path: without it, a node has no way
+  to put real content of its own into the network.
 
 Storage is a plain filesystem CAS: a shared source-of-truth directory
 plus one write directory per connection, both laid out following
@@ -77,6 +82,12 @@ Each step is scoped so that:
 This is a suggested build order, not a rigid schedule — steps within the
 same tier can generally proceed in parallel.
 
+Step numbers are stable once assigned, so a step added after the initial
+pass takes the next free number rather than being inserted in dependency
+order. Steps 17–20 (backup and restore) were added that way: they depend
+only on Steps 1–14, so they can be built before or alongside Steps 15 and
+16.
+
 ---
 
 ## Step 1 — Project Scaffolding
@@ -85,8 +96,8 @@ same tier can generally proceed in parallel.
 
 - Repo/package layout: single package, subpackages per module area
   (`webserver/`, `connections/`, `validator/`, `stats/`, `fetcher/`,
-  `unbundler/`, `eviction/`, `messaging/`, `cas/`, `bundle/`, `identity/`,
-  `config/`, `supervisor.py` entry point).
+  `unbundler/`, `eviction/`, `backup/`, `messaging/`, `cas/`, `bundle/`,
+  `identity/`, `config/`, `supervisor.py` entry point).
 - `uv`-managed project, `pyproject.toml`, black/flake8/mypy configuration.
 - Pydantic config models; YAML config loading (human-edited config only,
   per the project's YAML-for-humans/JSON-for-everything-else
@@ -207,8 +218,8 @@ published to a fake queue.
 in CAS).
 
 - Node key generation using `cryptography` (PyCA); private key and the
-  (future) backup secret stored as plain, permissions-restricted files
-  on disk.
+  backup secret (BackupSpecification §4.2, consumed by Step 19) stored as
+  plain, permissions-restricted files on disk.
 - Integration of the `http-message-signatures` (pyauth) library, adapted
   to work against this project's raw-socket request/response objects
   (rather than its default `requests`-oriented integration), for both
@@ -408,7 +419,10 @@ handles the eventual result correctly.
   and whole-file hash verification for multi-part files.
 - No network or messaging code — this operates purely on bundle JSON and
   CAS reads.
-- Password-protected and signed bundles are not exercised by this step;
+- This step is the read path only: it resolves and verifies bundles that
+  already exist. Constructing bundles, and the password protection the
+  backup feature depends on, are Step 17.
+- Signed bundles (BundleSpecification §5) are not exercised by this step;
   see the open items below.
 
 **Testable in isolation:** entirely unit-testable against fixture bundle
@@ -435,8 +449,9 @@ JSON and fixture CAS content, independent of everything else.
   connection's source address and serves only loopback sources
   (`ipaddress.ip_address(...).is_loopback`, after unwrapping any
   IPv4-mapped IPv6 address); any other source gets `403 Forbidden` per
-  HttpApi §2.3. Step 5 already applies that same test to tell a local
-  request from a peer's, so this step reuses it rather than repeating it.
+  HttpApi §2.3. This step covers the source-address restriction only;
+  Basic Authentication and the `/config` endpoints themselves are
+  Step 18.
 
 **Testable in isolation:** unbundler tests against fixture bundles and a
 temp source-of-truth directory; web server tests with a fake queue for
@@ -478,6 +493,157 @@ affecting anything else.
 
 ---
 
+## Step 17 — Bundle Writing and Password Protection
+
+**Depends on:** Steps 2 (CAS writes), 13 (shared bundle shapes and the
+read path).
+
+The write-side counterpart to Step 13, and the first half of what backup
+needs. Still a pure library — no processes, no sockets.
+
+- File bundle construction: split a local file into ≤ 1 MiB parts (per
+  High-Level Design §4.3), write each part into the CAS, and emit the
+  ordered `contents` list plus `metadata` (`created`, `modified`, `size`,
+  `writable`, `executable`) and the whole-file `algorithm`/`hash` over the
+  reassembled bytes (BundleSpecification §2.3).
+- Directory bundle construction: walk a local tree and emit full relative
+  paths as keys without enumerating intermediate directories, symlinks as
+  `{"contents": "<relative POSIX target>"}`, and metadata-only entries for
+  otherwise-unreferenced (e.g. empty) directories.
+- `versions` chaining: a newly built bundle records the CAS path of the
+  bundle it supersedes (BundleSpecification §3.1), which is what makes
+  re-backup an update rather than an unrelated bundle.
+- Bundle splitting: a directory bundle is itself a CAS object and is
+  therefore also bound by the 1 MiB limit. When the serialized (and, for
+  backups, compressed and encrypted) bundle would exceed it, the writer
+  splits `contents` across an `extensions` chain, which Step 13's resolver
+  already reads back. The exact split policy is an open item below.
+- Password protection, both directions (BundleSpecification §6):
+  - Encode: zlib-compress the serialized bundle, derive the key as a
+    single-pass hash of the password, encrypt (AES-256-CBC), and append
+    `0x00` + the `PW-SHA256-AES256-CBC` descriptor string.
+  - Decode: strip optional drop-targeting bytes, detect plain JSON,
+    otherwise split on the last `0x00`, parse the descriptor, decrypt,
+    and tolerate an encoder that skipped compression (§6.5).
+  - The default all-zero IV is used, so identical content under an
+    identical password encrypts to identical bytes and dedups in CAS
+    (§6.3).
+
+**Testable in isolation:** round-trip a fixture tree through build →
+encrypt → decrypt → resolve and compare against the original; assert the
+determinism property (same input, same password, byte-identical
+ciphertext) that dedup depends on; assert part-splitting and bundle
+splitting at the size boundaries.
+
+---
+
+## Step 18 — `/config` Administration Surface
+
+**Depends on:** Steps 5 (router, Problem Details), 6 (local
+permissions-restricted secret files), 14 (the `/config` loopback
+restriction).
+
+Step 14 decides *who* may reach `/config`; this step is *what it does*.
+
+- HTTP Basic Authentication on every `/config` request, with
+  first-request credential capture per HttpApi §2.3.1: the first request's
+  `Authorization: Basic` credentials become the node's credential, capture
+  is atomic across the threading server's request threads (first write
+  wins, concurrent racers authenticate against the winner), and anything
+  missing or non-matching afterwards gets `401` with a
+  `WWW-Authenticate: Basic` challenge.
+- Credential storage (§2.3.2): a salted hash in a permissions-restricted
+  local file alongside the node private key and backup secret — never the
+  plaintext. Deleting that file reverts the node to the pre-capture state,
+  which is the documented recovery path.
+- JSON endpoints for the backup feature: list/create/remove backup jobs,
+  trigger a backup run now, and request a restore (bundle hash + target
+  directory + conflict behavior). These are the request/response shapes
+  BackupSpecification §7 leaves unspecified; errors use the Step 5 RFC
+  9457 helper.
+- The web server performs none of this work: each endpoint validates its
+  input, publishes a message, and returns immediately. Job and run state
+  read back by `GET` comes from messages the backup module publishes.
+
+**Testable in isolation:** web server tests with a fake queue — capture
+on first request, rejection afterwards, `403` still winning over `401`
+for non-loopback sources, and the exact messages published for each
+endpoint.
+
+---
+
+## Step 19 — Backup Module
+
+**Depends on:** Steps 2, 3, 4 (a new supervised module process), 6
+(backup secret), 17 (bundle writing and encryption), 18 (how jobs are
+configured).
+
+- New module process in `backup/`, spawned by the supervisor like any
+  other, reacting to the job-configuration and run-trigger messages from
+  Step 18.
+- A backup run walks the configured directory, builds the bundle with
+  Step 17, encrypts it with the node's backup secret (Step 6) — one
+  secret reused across every job, per BackupSpecification §4.2, so
+  identical content dedups across directories and across time — and
+  writes the parts and the encrypted bundle into the CAS.
+- Content goes straight into the source of truth rather than through a
+  node-specific directory and the validator: the module hashed the bytes
+  itself, so there is nothing to re-verify. It publishes the same "new
+  data stored" message the validator publishes, so eviction (Step 15) and
+  the stats module (Step 8) treat backup content like any other content.
+- Unchanged files cost nothing: a CAS existence check on each part means
+  a re-backup writes only what actually changed, and the new bundle
+  references the existing parts.
+- Job state — the configured directories and each one's current bundle
+  hash (BackupSpecification §3.3) — lives in a JSON state file owned by
+  this module, not in the stats SQLite file, preserving the "only the
+  stats module opens SQLite" invariant and keeping this step testable on
+  its own.
+- Change detection for v1 is periodic polling on a configurable interval
+  (size/mtime comparison against the previous run), behind an interface
+  narrow enough that a platform filesystem-notification backend can be
+  dropped in later without touching the rest of the module.
+- Backup content is ordinary CAS content in v1: it replicates, hands off,
+  and evicts like anything else. The local no-forward policy
+  BackupSpecification §6 permits is not implemented.
+
+**Testable in isolation:** run a job against a fixture tree in a temp
+directory with a temp CAS and a fake queue; mutate the tree and assert
+the second run writes only the changed parts, chains `versions`, and
+publishes one "new data stored" message per new object.
+
+---
+
+## Step 20 — Restore
+
+**Depends on:** Steps 13 (extension resolution), 17 (decrypt), 18
+(restore requests), 19 (the module this runs in, and the directory →
+bundle-hash mapping).
+
+- Reacts to the restore-request message from Step 18: load the bundle at
+  the requested hash, strip any drop-targeting bytes, decrypt it with the
+  backup secret, and resolve its `extensions` chain into a flat entry map.
+- Reassemble each file from its parts in `contents` order, verify the
+  whole-file hash (BundleSpecification §2.3) before the file is written,
+  then recreate symlinks, empty directories, and the recorded metadata
+  (modification time, `writable`/`executable` bits).
+- Missing parts are normal, not an error: a bundle may reference content
+  this node no longer holds. The restore publishes the same "data
+  requested, not found locally" message the web server publishes on a
+  miss, lets the fetcher (Step 12) retrieve it from peers, and resumes
+  when the content lands — reporting progress and unresolvable parts back
+  through `/config`.
+- Non-empty target directories: v1 refuses the restore unless the request
+  explicitly asks to overwrite, which is the safe end of the
+  implementation-defined behavior BackupSpecification §5 allows.
+
+**Testable in isolation:** restore a fixture encrypted bundle into a temp
+target directory and compare the tree to the original; assert the
+refusal on a non-empty target, and that a bundle referencing an absent
+part publishes a fetch request rather than failing outright.
+
+---
+
 ## 4. Deferred Past This Implementation Pass
 
 These are explicitly out of scope for the steps above, to be picked up
@@ -488,7 +654,13 @@ in later milestones:
   bundle apps).
 - Karma/Kismet incentive integration (node-list ordering uses a simple
   proxy instead).
-- The backup/restore feature (BackupSpecification.md) as a whole.
+- Signed bundles (BundleSpecification §5), and per-entry CAS encryption
+  (§7) unless the §5 open item on backup encryption scope settles
+  otherwise — backup encrypts whole bundles per §6.
+- A human-facing `/config` page (High-Level Design §5.5); Step 18 exposes
+  JSON endpoints only.
+- The local "don't forward my own backup content" policy
+  BackupSpecification §6 permits.
 - Hash-collision handling (same hash, different content) — v1 assumes no
   collisions occur.
 
@@ -498,10 +670,27 @@ Flagged during planning but not yet resolved — worth a decision before
 the relevant step is built, not before starting:
 
 - Password-protected (§6) and signed (§5) bundle support for
-  `/{app-name}/...` apps (§13.1) — the bundle library (Step 13) covers
-  plain file/directory bundles only so far; whether password-protected
-  apps are in scope for this pass, and if so how the decrypting password
-  is supplied, hasn't been discussed.
+  `/{app-name}/...` apps (HttpApi §13.1) — Step 17 builds the §6
+  encode/decode path for backups, but whether password-protected *apps*
+  are in scope, and if so how the Basic Auth credential reaches the
+  unbundler as a decryption key, hasn't been discussed. Signed bundles
+  remain untouched.
+- Whether backup must also encrypt the file-content CAS objects
+  (BundleSpecification §7), or only the bundle JSON (§6).
+  BackupSpecification §3.2 and §4 read as bundle-only, which hides the
+  names and structure but leaves the backed-up file bytes in CAS as
+  plaintext that anyone who learns or guesses a content hash can read.
+  Steps 17 and 19 assume bundle-only until this is settled.
+- The block-cipher padding scheme for BundleSpecification §6.1 — CBC
+  requires one, the spec doesn't name it, and both ends must agree on it
+  for the §6.3 byte-for-byte dedup property to hold.
+- How an oversized directory bundle is split across an `extensions` chain
+  on the write path (Step 17): how many entries per chunk, and how to
+  keep the split stable across re-backups so unchanged chunks still dedup.
+- Change-detection mechanism and default polling interval for backup jobs,
+  and whether old `versions` entries are ever pruned
+  (BackupSpecification §7).
+- Exact SQLite schema (tables/columns) for the DB-owner module.
 - Exact field names and payload shapes for each message/event type
   beyond the common envelope. Settled event by event, by whichever step
   first publishes or first consumes one.
