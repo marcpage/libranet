@@ -34,6 +34,9 @@ peers:
   bucket_prefix_bits: 4
   connect_timeout_seconds: 10.0
   request_timeout_seconds: 30.0
+  # Provisional: how long a peer's address rests after connecting to it
+  # failed, or after the connection to it closed, before it is tried again.
+  retry_delay_seconds: 60.0
   # JSON file of initial peers, used only when this node knows no peers at
   # all. Defaults to the (currently empty) list shipped with the package.
   seed_file: null

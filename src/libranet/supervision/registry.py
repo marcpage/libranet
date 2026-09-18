@@ -7,6 +7,7 @@ real factory here.
 from __future__ import annotations
 from typing import Mapping
 
+from libranet.connections.module import connections_module_factory
 from libranet.modules import SPAWNED_MODULES, ModuleName
 from libranet.supervision.specs import ModuleFactory, ModuleSpec
 from libranet.stats.module import stats_module_factory
@@ -18,6 +19,7 @@ _FACTORIES: Mapping[ModuleName, ModuleFactory] = {
     ModuleName.WEBSERVER: webserver_module_factory,
     ModuleName.VALIDATOR: validator_module_factory,
     ModuleName.STATS: stats_module_factory,
+    ModuleName.CONNECTIONS: connections_module_factory,
 }
 
 

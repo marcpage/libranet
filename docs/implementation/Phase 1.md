@@ -457,6 +457,21 @@ correct pipelined request/response correlation.
   while a connection lasts (HandshakeProtocol §3.3), pushing each item at
   most once per connection. When to repeat them is the connection manager's
   choice.
+- The mix draws on the derived node list, best first, and on the seed list
+  only while that names no peer. It takes the best peer in each uncovered
+  bucket until `min_outgoing_connections` buckets are covered, then any
+  peer until there are that many connections. It never closes a working
+  connection to rebalance. A connection joins the mix once the peer has
+  proven its node id; a peer that turns out to be this node, or a node
+  already connected, is closed instead.
+- An endpoint rests for a configurable retry delay after a failed attempt
+  or after its connection closes, so a peer that is down or turning this
+  node away is not dialed again and again. A rest ending is one more event
+  that triggers maintenance.
+- `connection.opened` is published once a peer has proven its node id, and
+  `connection.closed` when that connection ends, with `remote` true unless
+  this node chose to close it. `connection.failed` is published only for an
+  attempt on a candidate whose node id was known beforehand.
 
 **Testable in isolation:** exercised against fixture peer servers
 (instances of Step 5's server); connection-mix logic can be tested with
@@ -773,4 +788,4 @@ the relevant step is built, not before starting:
   first publishes or first consumes one.
 - Default values for configurable parameters introduced above (search
   cache TTL, RFC 9421 provisional-trust attempt limit, list derivation
-  interval, seek-entry TTL, etc.).
+  interval, seek-entry TTL, peer retry delay, etc.).
