@@ -166,11 +166,11 @@ class PeerExchange:
             OSError: the connection failed, or a response did not come from
                 the peer.
         """
-        _, nodes, seek = session.exchange(
+        _, seek, nodes = session.exchange(
             [
                 PeerRequest("POST", NODES_PATH, self._node_list(), _JSON_HEADERS),
-                PeerRequest("GET", NODES_PATH),
                 PeerRequest("GET", SEEK_PATH),
+                PeerRequest("GET", NODES_PATH),
             ]
         )
         self._receive_node_list(session, nodes)
