@@ -193,6 +193,10 @@ unit-tested, since it can be given a fake queue).
   path from here on.
 - `GET /data/{algorithm}/{hash}` handler: serve from the source-of-truth
   CAS directory (Step 2) if present.
+- Every request naming a well-formed content address publishes a "data
+  requested" message, hit or miss, flagged by whether the client's source
+  address was loopback, so the stats module (Step 8) can count peer
+  requests apart from this node's own.
 - On a local miss: always respond `503` immediately (never block/wait)
   and publish a "data requested, not found" message. (The consumer of
   that message — the fetcher — doesn't exist yet; the message is simply
@@ -254,20 +258,40 @@ independent of the web server actually running.
 
 ## Step 8 — Stats Module
 
-**Depends on:** Steps 1, 3.
+**Depends on:** Steps 1, 3, and — for what it records and derives — Step 2
+(content identifiers), Step 5 (the search cache files it enriches), and
+Step 6 (this node's own identifier, for its self-description in the node
+list).
 
 - SQLite schema for node stats, data stats, and this
   node's own outstanding `/data/seek` entries. This is the only process
-  that opens the SQLite file.
+  that opens the SQLite file. Four tables: `data_stats` and `node_stats`
+  hold the counters listed below, `node_endpoints` holds the address each
+  node id was last seen at, and `seek_entries` holds outstanding requests
+  — this node's own and the lists peers publish to it (Step 9) — keyed by
+  whose they are.
 - Periodic derivation of plain served files from that state: the node
   list (`/data/nodes`) and this node's own seek list (`/data/seek`),
-  written out for the web server to serve as static files.
+  written out for the web server to serve as static files. Both are
+  rewritten on a configurable interval and replaced only when their
+  contents actually change; a changed node list is announced on the bus
+  for the connection manager (Step 11). Each is filled best-first and
+  stops short of the 1 MiB the HTTP API caps it at (§10.6, §10.7.1).
 - Consumes the "search requested" messages from Step 5 to enrich cached
   search-result files with more/better-ranked ids, respecting the
-  configurable TTL those files expire on.
+  configurable TTL those files expire on: an already-expired file is left
+  for the web server to rebuild rather than refreshed here. Enrichment
+  may add ids this node knows of but does not hold, which HttpApi §6
+  allows.
+- A `GET` the node could not answer — a missing hash or any search —
+  becomes an entry in its own seek list, cleared when the content arrives
+  and otherwise aged out on a configurable TTL.
 - Node-list ordering for v1 uses a simple proxy (e.g. last successful
   connection) rather than Karma-weighted prioritization, which is
-  deferred.
+  deferred. The "last acquired" and "last connection" timestamps below
+  are not cleared when content is deleted or a connection drops: the
+  elapsed time accumulates into the matching "previous time" counter
+  while the timestamp stays available for ordering.
 - Stats kept for each data hash:
   - External request count
   - Internal request count
@@ -285,6 +309,12 @@ independent of the web server actually running.
   - Total data bytes sent
   - Data found count (attempts to fetch data and it had it)
   - Data not found count (attempts to fetch data and it did not have it)
+- Several of these counters are written by events later steps publish, so
+  this step subscribes to them and settles their payloads: connection
+  open/close from Step 11, and the received node and seek lists from
+  Step 9. The delete count (Step 15) and the per-node data found/not
+  found counts (Steps 11 and 12) have database methods waiting for the
+  step that reports them.
 
 **Testable in isolation:** unit tests against a temp SQLite file and
 temp output directory, independent of any running web server.
@@ -304,6 +334,9 @@ temp output directory, independent of any running web server.
 - `POST /data/seek` handler: publishes the received data for the
   DB-owner to persist (this endpoint is for a peer's own outstanding
   requests, distinct from this node's own seek list from Step 8).
+- Both `POST` handlers are the only new work here: Step 8 already
+  consumes the messages they publish and already derives the files the
+  `GET` handlers serve.
 
 **Testable in isolation:** web server tests with a fake queue, asserting
 on the resolved addresses published and the served file contents.
@@ -349,6 +382,10 @@ correct pipelined request/response correlation.
 - Handles fetch requests from the fetcher module (Step 12): given a
   hash, use existing or new outgoing connections to retrieve it and
   report the result back over the bus.
+- Publishes connection open/close and fetch outcomes for the stats module
+  (Step 8), which already records the first pair and holds the counters
+  the second pair feeds: attempts, bytes transferred, and whether a peer
+  had the data asked of it.
 
 **Testable in isolation:** exercised against fixture peer servers
 (instances of Step 5's server); connection-mix logic can be tested with
@@ -434,6 +471,8 @@ node's own identifier and stored content hashes).
 - Hand-off model: publishes an eviction notice for a candidate object;
   once two other nodes report they've received it, the eviction module
   deletes the local copy.
+- Reports each deletion for the stats module (Step 8), which keeps the
+  delete count and the time the content was held.
 
 **Testable in isolation:** unit tests with fake storage-stat inputs and
 fake acknowledgment messages, independent of real peer connections.
@@ -653,8 +692,8 @@ the relevant step is built, not before starting:
   (BackupSpecification §7).
 - Exact SQLite schema (tables/columns) for the DB-owner module.
 - Exact field names and payload shapes for each message/event type
-  beyond the common envelope.
+  beyond the common envelope. Settled event by event, by whichever step
+  first publishes or first consumes one.
 - Default values for configurable parameters introduced above (search
-  cache TTL, RFC 9421 provisional-trust attempt limit, etc.).
-- How often the DB-owner derives/rewrites the plain node-list and
-  seek-list files (on every change vs. periodic).
+  cache TTL, RFC 9421 provisional-trust attempt limit, list derivation
+  interval, seek-entry TTL, etc.).

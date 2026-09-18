@@ -80,6 +80,18 @@ identity:
   # and uploads (PUT) always require a valid signature.
   allow_unsigned_api_reads: true
 
+stats:
+  # How often the plain /data/nodes and /data/seek files are rewritten from
+  # the statistics database. Each is replaced only when its contents
+  # actually change. Provisional default.
+  derive_interval_seconds: 60.0
+  # Neither list may reach 1 MiB (HTTP API §10.6, §10.7.1); entries are
+  # added best-first until the next one would not fit.
+  max_list_bytes: 1048576
+  # Provisional: how long content this node asked for and never received
+  # stays in the /data/seek list it publishes.
+  seek_entry_ttl_seconds: 3600.0
+
 logging:
   level: "INFO"
   # Defaults to the platform log directory. Each module process writes its

@@ -134,6 +134,21 @@ class StorageConfig(_Section):
         """SQLite file owned exclusively by the data-stats module (Step 8)."""
         return self.data_dir / "libranet.sqlite3"
 
+    @property
+    def derived_dir(self) -> Path:
+        """Plain list files the stats module derives for the web server (Step 8)."""
+        return self.cache_dir / "lists"
+
+    @property
+    def node_list_path(self) -> Path:
+        """The derived body of ``GET /data/nodes`` (HttpApi §10.6)."""
+        return self.derived_dir / "nodes.json"
+
+    @property
+    def seek_list_path(self) -> Path:
+        """The derived body of ``GET /data/seek`` (HttpApi §10.7.1)."""
+        return self.derived_dir / "seek.json"
+
     def connection_dir(self, connection_id: str) -> Path:
         """Write directory for one connection, under :attr:`incoming_dir`."""
         return self.incoming_dir / connection_id
@@ -178,6 +193,24 @@ class IdentityConfig(_Section):
         return "backup_secret"
 
 
+class StatsConfig(_Section):
+    """The statistics database and the lists derived from it (Step 8)."""
+
+    # How often the node list and seek list files are rewritten from the
+    # database. Provisional default — see "Open Items" in the implementation
+    # plan.
+    derive_interval_seconds: float = Field(default=60.0, gt=0)
+
+    # HttpApi §10.6 and §10.7.1 cap both lists at 1 MiB. Entries are added in
+    # priority order until the next one would not fit, so the rendered file
+    # stays below this.
+    max_list_bytes: int = Field(default=MIB, ge=64)
+
+    # An outstanding request this node never satisfied stops being advertised
+    # in its own `/data/seek` list once it is this old. Provisional default.
+    seek_entry_ttl_seconds: float = Field(default=3600.0, gt=0)
+
+
 class LoggingConfig(_Section):
     """Centralized rotating-file logging setup."""
 
@@ -201,6 +234,7 @@ class LibranetConfig(_Section):
     peers: PeerConfig = Field(default_factory=PeerConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
     identity: IdentityConfig = Field(default_factory=IdentityConfig)
+    stats: StatsConfig = Field(default_factory=StatsConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
     def directories(self) -> tuple[Path, ...]:

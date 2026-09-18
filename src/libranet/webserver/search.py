@@ -8,20 +8,19 @@ better results it knows about.
 """
 
 from __future__ import annotations
-from os import replace
 from pathlib import Path
 from string import hexdigits
-from tempfile import NamedTemporaryFile
 from time import time
 from typing import Callable, Final
 
+from libranet.atomic_file import write_atomically
 from libranet.cas.algorithms import DEFAULT_REGISTRY, AlgorithmRegistry
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
+from libranet.cas.prefix import nearest
 from libranet.cas.store import CasStore
 
 _HEX_DIGITS: Final = frozenset(hexdigits)
-_BITS_PER_HEX_DIGIT: Final = 4
 _CACHE_SUFFIX: Final = ".json"
 
 
@@ -40,21 +39,6 @@ def normalize_prefix(text: str, registry: AlgorithmRegistry = DEFAULT_REGISTRY) 
         )
 
     return text.lower()
-
-
-def matching_bits(left: str, right: str) -> int:
-    """How many leading bits two lower-case hex strings share."""
-    bits = 0
-
-    for left_digit, right_digit in zip(left, right):
-        difference = int(left_digit, 16) ^ int(right_digit, 16)
-
-        if difference:
-            return bits + _BITS_PER_HEX_DIGIT - difference.bit_length()
-
-        bits += _BITS_PER_HEX_DIGIT
-
-    return bits
 
 
 class LocalSearch:
@@ -93,11 +77,7 @@ class LocalSearch:
             if len(candidates) >= self._max_results:
                 break
 
-        ranked = sorted(
-            candidates,
-            key=lambda content_id: (-matching_bits(prefix, content_id.hash), str(content_id)),
-        )
-        return ranked[: self._max_results]
+        return nearest(prefix, candidates, self._max_results)
 
 
 class SearchCache:
@@ -145,21 +125,4 @@ class SearchCache:
 
     def save(self, prefix: str, body: bytes) -> Path:
         """Atomically replace the cached body for ``prefix``."""
-        path = self.path_for(prefix)
-        path.parent.mkdir(parents=True, exist_ok=True)
-
-        with NamedTemporaryFile(
-            dir=path.parent, prefix=f".{path.name}.", suffix=".partial", delete=False
-        ) as temp:
-            temp_path = Path(temp.name)
-
-            try:
-                temp.write(body)
-
-            except BaseException:
-                temp.close()
-                temp_path.unlink(missing_ok=True)
-                raise
-
-        replace(temp_path, path)
-        return path
+        return write_atomically(self.path_for(prefix), body)

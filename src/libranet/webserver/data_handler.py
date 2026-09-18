@@ -4,6 +4,14 @@ Content in the source of truth has already been verified by the validator,
 so it is served as-is. On a local miss the handler never waits: it answers
 ``503`` at once and publishes :attr:`EventType.DATA_NOT_FOUND` so the
 fetcher can try to retrieve the content from peers (HttpApi §5.2).
+
+Every request for a well-formed content address, hit or miss, is announced
+for the stats module (Step 8) as::
+
+    data.requested  {"algorithm": "sha256", "hash": "<hex>", "external": true}
+
+``external`` is false when the request came from this machine, which is how
+a peer's interest in content is counted apart from this node's own.
 """
 
 from __future__ import annotations
@@ -15,6 +23,7 @@ from libranet.cas.errors import ContentNotFoundError, InvalidContentIdError
 from libranet.cas.store import CasStore
 from libranet.messaging.events import EventType
 from libranet.problems import CONTENT_UNAVAILABLE, INVALID_CONTENT_ADDRESS, Problem
+from libranet.webserver.client_origin import is_local_client
 from libranet.webserver.http_types import Request, Response, bytes_response, problem_response
 from libranet.webserver.publishing import Publish
 
@@ -54,6 +63,15 @@ class DataReadHandler:
 
         except InvalidContentIdError as error:
             return invalid_address_response(error, request)
+
+        self._publish(
+            EventType.DATA_REQUESTED,
+            {
+                "algorithm": content_id.algorithm,
+                "hash": content_id.hash,
+                "external": not is_local_client(request.client_address),
+            },
+        )
 
         try:
             body = self._store.read(content_id)

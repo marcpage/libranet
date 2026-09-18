@@ -77,6 +77,8 @@ def test_module_serves_until_shutdown_and_publishes_misses(tmp_path: Path) -> No
 
         assert response.status == 503
         assert response.getheader("Retry-After") == "11"
+        requested = queues.outbox.get(timeout=1)
+        assert requested["event"] == EventType.DATA_REQUESTED
         message = queues.outbox.get(timeout=1)
         assert message["event"] == EventType.DATA_NOT_FOUND
         assert message["source"] == ModuleName.WEBSERVER
