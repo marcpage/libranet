@@ -588,6 +588,24 @@ def test_a_malformed_fetch_request_raises(modules: Modules, config: LibranetConf
         module.handle(make_message(EventType.FETCH_REQUESTED, ModuleName.FETCHER, {}))
 
 
+def test_an_event_it_does_not_handle_is_not_taken_for_a_fetch(
+    modules: Modules, config: LibranetConfig, bus: Bus
+) -> None:
+    module = modules.start(config)
+    # Shaped like a fetch request, but meant for someone else.
+    notice = make_message(
+        EventType.EVICTION_NOTICE,
+        ModuleName.EVICTION,
+        {"algorithm": OFFERED_ID.algorithm, "hash": OFFERED_ID.hash},
+    )
+
+    with raises(KeyError):
+        module.handle(notice)
+
+    sleep(0.2)
+    assert bus.events(EventType.FETCH_FAILED) == []
+
+
 # -- Lifecycle -------------------------------------------------------------
 
 

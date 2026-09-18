@@ -45,7 +45,7 @@ from logging import Logger
 from queue import SimpleQueue
 from threading import Lock, Thread
 from time import time
-from typing import Callable, ClassVar, Final
+from typing import Callable, ClassVar, Final, Mapping
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.prefix import nearest
@@ -115,6 +115,10 @@ class ConnectionsModule(ModuleBase):
         self._own_endpoints: set[str] = set()
         self._fetching: set[ContentId] = set()
         self._fetches: SimpleQueue[ContentId | None] = SimpleQueue()
+        self._handlers: Mapping[EventType, Callable[[Message], None]] = {
+            EventType.NODE_LIST_UPDATED: self._on_node_list_updated,
+            EventType.FETCH_REQUESTED: self._on_fetch_requested,
+        }
 
     @property
     def exchange(self) -> PeerExchange:
@@ -185,7 +189,7 @@ class ConnectionsModule(ModuleBase):
             self._running = False
             peers = list(self._peers.values())
 
-        if running:
+        if running:  # tell worker threads to stop
             for _ in range(FETCH_WORKERS):
                 self._fetches.put(None)
 
@@ -193,12 +197,18 @@ class ConnectionsModule(ModuleBase):
             peer.session.close()
 
     def handle(self, message: Message) -> None:
-        """React to a new node list or a fetch request; a malformed one raises and is logged."""
-        if event_of(message) == EventType.NODE_LIST_UPDATED:
-            self._reload_candidates()
-            self._maintain()
-            return
+        """React to one subscribed broadcast; a malformed one raises and :meth:`run` logs it.
 
+        An event with no handler raises too, rather than being taken for one
+        it is not.
+        """
+        self._handlers[event_of(message)](message)
+
+    def _on_node_list_updated(self, message: Message) -> None:
+        self._reload_candidates()
+        self._maintain()
+
+    def _on_fetch_requested(self, message: Message) -> None:
         content_id = ContentId.create(message["algorithm"], message["hash"])
 
         with self._lock:
