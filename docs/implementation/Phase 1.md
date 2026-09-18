@@ -380,6 +380,21 @@ on the resolved addresses published and the served file contents.
 - No handshake or peer-management logic yet at this step — just the
   ability to fire signed requests at a given address and receive parsed,
   correlated responses.
+- The web server adds `X-Request-Path` to every response whose request
+  line it could parse, holding that request's path and any query string.
+  The client logs a response whose echo differs from its request, and
+  otherwise ignores the header: other implementations need not send it,
+  and a proxy may rewrite paths.
+- Each request is signed as it is queued and returns a future. Anything
+  that leaves later responses in doubt closes the connection and fails
+  every request still waiting on it: the peer closing it, a malformed
+  response, a failed send, or no progress for the configured request
+  timeout while a request waits. Nothing is retried at this layer, since a
+  failed request may or may not have reached the peer; Step 11 decides
+  whether to try another.
+- Response bodies may be framed by `Content-Length`, chunked, or the
+  connection closing, and are capped at a size the caller sets (the 1 MiB
+  object limit, as transferred, fits everything the `/data` API returns).
 
 **Testable in isolation:** point the client at a throwaway local test
 server (e.g. Step 5's server run against a fixture directory) and assert

@@ -13,7 +13,8 @@ would otherwise be parsed as the next request.
 
 Every response, including the server's own errors, is signed with the node's
 key (HighLevelDesign §2.2), which is how a peer learns and authenticates this
-node's identity (HandshakeProtocol §3).
+node's identity (HandshakeProtocol §3). Each one also echoes the request's
+target in ``X-Request-Path``, to help debug pipelined clients (Step 10).
 """
 
 from __future__ import annotations
@@ -56,6 +57,13 @@ from libranet.webserver.signature_guard import SignatureGuard
 # Idle keep-alive connections are dropped after this long, so they cannot
 # hold request threads forever.
 IDLE_TIMEOUT_SECONDS = 60.0
+
+# Every response to a request whose request line parsed echoes that
+# request's target (path and any query string) here. A pipelining client
+# matches responses by order alone and needn't rely on it, but can spot a
+# mismatch when debugging (Step 10). Other implementations need not send
+# it, and a proxy may rewrite paths.
+REQUEST_PATH_HEADER = "X-Request-Path"
 
 # Responses that must not carry a body, whatever the handler supplied.
 _BODILESS_STATUSES = frozenset({HTTPStatus.NO_CONTENT, HTTPStatus.NOT_MODIFIED})
@@ -247,6 +255,11 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         for name, value in headers.items():
             self.send_header(name, value)
+
+        # The request line sets the command and path together, so a path is
+        # never echoed for a request that failed to parse before it.
+        if self.command:
+            self.send_header(REQUEST_PATH_HEADER, self.path)
 
         if response.status not in _BODILESS_STATUSES:
             self.send_header("Content-Length", str(len(response.body)))
