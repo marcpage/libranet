@@ -16,7 +16,9 @@ any:
 establish who the peer is; :meth:`PeerExchange.first_contact` takes the
 rest. While the connection lasts, :meth:`PeerExchange.refresh` repeats steps
 4 and 6 (§3.3), and :meth:`PeerExchange.retrieve` is step 7 for a single
-content id, for fetching it on demand. Steps 1 and 2 wait for their
+content id, for fetching it on demand. :meth:`PeerExchange.hand_off` pushes
+one content id the peer did not ask for, for it to keep once this node lets
+it go (HighLevelDesign §4.5). Steps 1 and 2 wait for their
 responses. Steps 3 to 5 are sent together, pipelined, and so are the
 requests of step 6 and of step 7.
 
@@ -198,6 +200,19 @@ class PeerExchange:
         (response,) = session.exchange([PeerRequest("GET", _data_path(content_id))])
         return self._receive_content(session, content_id, response)
 
+    def hand_off(self, session: PeerSession, content_id: ContentId, body: bytes) -> bool:
+        """Push ``content_id``, stored as ``body``, for the peer to keep; whether it accepted it.
+
+        A peer that answers it already holds the content has accepted it.
+
+        Raises:
+            OSError: as :meth:`first_contact`.
+        """
+        (response,) = session.exchange(
+            [PeerRequest("PUT", _data_path(content_id), body, _OCTET_STREAM_HEADERS)]
+        )
+        return self._pushed(session, content_id, body, response)
+
     def _identify(self, connection: PeerConnection, endpoint: str) -> ContentId:
         """The node id the peer on ``connection`` proves it holds the key for."""
         response = connection.request(
@@ -342,13 +357,21 @@ class PeerExchange:
             )
 
             for (content_id, body), response in zip(held, responses):
-                session.pushed.add(content_id)
+                self._pushed(session, content_id, body, response)
 
-                if HTTPStatus.OK <= response.status < HTTPStatus.MULTIPLE_CHOICES:
-                    self._publish(
-                        EventType.DATA_SENT,
-                        {**_content_fields(content_id, session), "size": len(body)},
-                    )
+    def _pushed(
+        self, session: PeerSession, content_id: ContentId, body: bytes, response: PeerResponse
+    ) -> bool:
+        """Note that ``content_id`` was pushed to the peer; whether the peer accepted it."""
+        session.pushed.add(content_id)
+        accepted = HTTPStatus.OK <= response.status < HTTPStatus.MULTIPLE_CHOICES
+
+        if accepted:
+            self._publish(
+                EventType.DATA_SENT, {**_content_fields(content_id, session), "size": len(body)}
+            )
+
+        return accepted
 
     def _held(self, content_ids: Sequence[ContentId]) -> list[tuple[ContentId, bytes]]:
         """Those of ``content_ids`` this node holds, with their stored bytes."""

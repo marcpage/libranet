@@ -15,3 +15,5 @@ All python imports should import each symbol from the module instead of importin
 Do not directly interact with GitHub. Just inform me what needs to be done and I will do it.
 
 Never commit changes. I will review changes and commit them myself.
+
+If the changes proposed will be more than 1,000 new lines (including changed lines) of Python (not counting tests), then propose logical steps that can be progressively be committed that allows the PRs to have less than 1,000 new lines per change set.
