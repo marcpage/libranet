@@ -7,6 +7,10 @@
 ![GitHub Issues by label](https://img.shields.io/github/issues/marcpage/libranet/Bug?style=plastic)
 [![issues sheild](https://img.shields.io/github/issues-raw/marcpage/libranet?style=plastic)](https://github.com/marcpage/libranet/issues)
 
+[![Python](https://img.shields.io/static/v1?label=&message=Pure%20Python&color=white&style=plastic&logo=python)](https://python.org/)
+[![macOS](https://img.shields.io/static/v1?label=&message=macOS&color=white&logoColor=black&style=plastic&logo=apple)](https://apple.com/)
+[![Linux](https://img.shields.io/static/v1?label=&message=Linux&color=seashell&logoColor=black&style=plastic&logo=linux)](https://linux.org/)
+
 [![follow sheild](https://img.shields.io/github/followers/marcpage?label=Follow&style=social)](https://github.com/marcpage?tab=followers)
 [![watch sheild](https://img.shields.io/github/watchers/marcpage/libranet?label=Watch&style=social)](https://github.com/marcpage/libranet/watchers)
 
