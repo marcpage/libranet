@@ -1,11 +1,12 @@
 ![GitHub](https://img.shields.io/github/license/marcpage/libranet?style=plastic)
-![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/marcpage/libranet/ci.yml)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/marcpage/libranet/ci.yml?style=plastic)
 [![commit sheild](https://img.shields.io/github/last-commit/marcpage/libranet?style=plastic)](https://github.com/marcpage/libranet/commits)
 [![activity sheild](https://img.shields.io/github/commit-activity/m/marcpage/libranet?style=plastic)](https://github.com/marcpage/libranet/commits)
 ![GitHub top language](https://img.shields.io/github/languages/top/marcpage/libranet?style=plastic)
 [![size sheild](https://img.shields.io/github/languages/code-size/marcpage/libranet?style=plastic)](https://github.com/marcpage/libranet)
-![GitHub Issues by label](https://img.shields.io/github/issues/marcpage/libranet/Bug)
+![GitHub Issues by label](https://img.shields.io/github/issues/marcpage/libranet/Bug?style=plastic)
 [![issues sheild](https://img.shields.io/github/issues-raw/marcpage/libranet?style=plastic)](https://github.com/marcpage/libranet/issues)
+
 [![follow sheild](https://img.shields.io/github/followers/marcpage?label=Follow&style=social)](https://github.com/marcpage?tab=followers)
 [![watch sheild](https://img.shields.io/github/watchers/marcpage/libranet?label=Watch&style=social)](https://github.com/marcpage/libranet/watchers)
 
