@@ -26,6 +26,15 @@ _PATH_SEPARATOR: Final = "/"
 _UNUSABLE_SEGMENTS: Final = frozenset(("", ".", ".."))
 
 
+def is_entry_path(path: str) -> bool:
+    """Whether ``path`` may name a directory entry (§3.1).
+
+    It must be relative, with no empty, ``.``, or ``..`` segment, and hold no
+    NUL.
+    """
+    return "\0" not in path and _UNUSABLE_SEGMENTS.isdisjoint(path.split(_PATH_SEPARATOR))
+
+
 @dataclass(frozen=True)
 class Metadata:
     """What a bundle records about a file or directory (§2.1), all optional.
@@ -118,9 +127,7 @@ class DirectoryBundle:
 
     def __post_init__(self) -> None:
         for path in self.entries:
-            segments = path.split(_PATH_SEPARATOR)
-
-            if "\0" in path or not _UNUSABLE_SEGMENTS.isdisjoint(segments):
+            if not is_entry_path(path):
                 raise MalformedBundleError(
                     f"Entry path must be relative, with no empty, '.', or '..' segment: {path!r}"
                 )

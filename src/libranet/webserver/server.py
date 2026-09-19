@@ -23,7 +23,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from logging import Logger
 from socket import AF_INET, AF_INET6
 from socketserver import TCPServer
-from typing import Any
+from typing import Any, Mapping
 from urllib.parse import urlsplit
 
 from libranet import __version__
@@ -32,6 +32,9 @@ from libranet.config.models import StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.signatures import MessageSigner
 from libranet.problems import Problem
+from libranet.unbundler.resolved_files import ResolvedFiles
+from libranet.webserver.app_handler import APP_PATTERN, AppHandler, application_bundles
+from libranet.webserver.app_outcomes import ApplicationOutcomes
 from libranet.webserver.config_guard import local_config_guard
 from libranet.webserver.data_handler import DATA_PATTERN, DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
@@ -77,6 +80,8 @@ def build_router(
     authenticator: RequestAuthenticator,
     *,
     allow_unsigned_api_reads: bool,
+    applications: Mapping[str, str] | None = None,
+    app_outcomes: ApplicationOutcomes | None = None,
 ) -> Router:
     """The node's routes, serving the configured source of truth and derived lists.
 
@@ -84,7 +89,11 @@ def build_router(
     for lists not derived yet, tell clients to wait before retrying.
     ``authenticator`` checks the signature of every signed request; unsigned
     reads of the ``/data`` API are served only if ``allow_unsigned_api_reads``
-    is set.
+    is set. ``applications`` names each application's bundle, as configured,
+    and ``app_outcomes`` holds what the unbundler reported for their paths.
+
+    Raises:
+        InvalidContentIdError: an application's bundle is not a valid content id.
     """
     store = source_of_truth_store(storage)
     # A remote /config request is refused before its signature is checked or
@@ -126,6 +135,18 @@ def build_router(
         "POST",
         SEEK_PATH,
         SeekListHandler(storage.max_object_bytes, storage.max_decompressed_list_bytes, publish),
+    )
+    # Last, since its pattern fits every path outside the reserved names.
+    router.add(
+        "GET",
+        APP_PATTERN,
+        AppHandler(
+            application_bundles(applications or {}),
+            ResolvedFiles(storage.resolved_files_dir, storage.hash_prefix_length),
+            app_outcomes or ApplicationOutcomes(),
+            publish,
+            retry_after_seconds,
+        ),
     )
     return router
 

@@ -5,7 +5,13 @@ from __future__ import annotations
 from pytest import mark, raises
 
 from libranet.bundle.errors import MalformedBundleError
-from libranet.bundle.shapes import DirectoryBundle, DirectoryMarker, Metadata, Symlink
+from libranet.bundle.shapes import (
+    DirectoryBundle,
+    DirectoryMarker,
+    Metadata,
+    Symlink,
+    is_entry_path,
+)
 
 WHOLE_HASH = "c" * 64
 
@@ -31,6 +37,16 @@ def test_directory_keeps_relative_entry_paths() -> None:
 def test_directory_refuses_an_entry_path_that_could_leave_it(path: str) -> None:
     with raises(MalformedBundleError, match="Entry path"):
         DirectoryBundle(entries={"fine.txt": None, path: None})
+
+
+@mark.parametrize("path", ["a", "docs/spec.md", ".hidden", "a..b/c.", "caf\u00e9"])
+def test_an_entry_path_is_relative_with_named_segments(path: str) -> None:
+    assert is_entry_path(path)
+
+
+@mark.parametrize("path", ["", "/etc/hosts", "docs/", "a//b", "./a", "a/../b", "..", "a\0b"])
+def test_an_entry_path_has_no_empty_dot_or_dot_dot_segment(path: str) -> None:
+    assert not is_entry_path(path)
 
 
 @mark.parametrize("size", [None, 0, 4096])

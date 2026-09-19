@@ -29,11 +29,20 @@ def _free_port() -> int:
         return int(probe.getsockname()[1])
 
 
-def _config(tmp_path: Path, port: int, allow_unsigned_api_reads: bool = True) -> LibranetConfig:
+APP_BUNDLE_ID = ContentId.for_data(b"an application's directory bundle", "sha256")
+
+
+def _config(
+    tmp_path: Path,
+    port: int,
+    allow_unsigned_api_reads: bool = True,
+    applications: dict[str, str] | None = None,
+) -> LibranetConfig:
     return LibranetConfig(
         network=NetworkConfig(listen_address="127.0.0.1", listen_port=port, retry_after_seconds=11),
         storage=StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache"),
         identity=IdentityConfig(allow_unsigned_api_reads=allow_unsigned_api_reads),
+        applications=applications or {},
     )
 
 
@@ -168,6 +177,68 @@ def test_module_follows_the_unsigned_api_read_setting(
     assert not thread.is_alive()
 
 
+def _status(host: str, port: int, path: str) -> tuple[int, str | None]:
+    connection = HTTPConnection(host, port, timeout=5)
+    connection.request("GET", path)
+    response = connection.getresponse()
+    response.read()
+    connection.close()
+    return response.status, response.getheader("Location")
+
+
+def test_module_answers_application_paths_from_what_the_unbundler_reported(
+    tmp_path: Path,
+) -> None:
+    queues = _queues()
+    config = _config(tmp_path, _free_port(), applications={"wiki": str(APP_BUNDLE_ID)})
+    module = WebServerModule(ModuleName.WEBSERVER, queues, config, poll_interval=0.01)
+    stop = Event()
+    thread = Thread(target=module.run, args=(stop,), daemon=True)
+    thread.start()
+
+    try:
+        host, port = _wait_for_address(module)
+
+        assert _status(host, port, "/wiki/missing.html") == (503, None)
+        assert _status(host, port, "/wiki/docs") == (503, None)
+        asked = [queues.outbox.get(timeout=1) for _ in range(2)]
+        assert [message["event"] for message in asked] == [EventType.APP_PATH_NOT_FOUND] * 2
+        assert [message["path"] for message in asked] == ["missing.html", "docs"]
+
+        for payload in (
+            {"path": "missing.html", "outcome": "not_found"},
+            {"path": "docs", "outcome": "redirect", "location": "docs/"},
+            {"path": "stored.html", "outcome": "stored", "size": 3},
+        ):
+            queues.inbox.put(
+                make_message(
+                    EventType.APP_PATH_RESOLVED,
+                    ModuleName.UNBUNDLER,
+                    {"bundle": str(APP_BUNDLE_ID), **payload},
+                )
+            )
+
+        deadline = monotonic() + 5
+
+        while _status(host, port, "/wiki/docs") != (302, "/wiki/docs/") and monotonic() < deadline:
+            sleep(0.01)
+
+        assert _status(host, port, "/wiki/docs") == (302, "/wiki/docs/")
+        assert _status(host, port, "/wiki/missing.html") == (404, None)
+        # A stored file is looked for on disk, not remembered.
+        assert _status(host, port, "/wiki/stored.html") == (503, None)
+
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+    assert not thread.is_alive()
+
+
+def test_module_subscribes_to_what_the_unbundler_resolves() -> None:
+    assert WebServerModule.subscriptions == {EventType.APP_PATH_RESOLVED}
+
+
 def test_module_stops_on_the_stop_signal(tmp_path: Path) -> None:
     module = WebServerModule(
         ModuleName.WEBSERVER, _queues(), _config(tmp_path, _free_port()), poll_interval=0.01
@@ -184,6 +255,16 @@ def test_module_stops_on_the_stop_signal(tmp_path: Path) -> None:
         thread.join(timeout=5)
 
     assert not thread.is_alive()
+    assert module.server_address is None
+
+
+def test_an_application_bundle_that_is_no_content_id_stops_the_module(tmp_path: Path) -> None:
+    config = _config(tmp_path, _free_port(), applications={"wiki": "sha256/not-a-hash"})
+    module = WebServerModule(ModuleName.WEBSERVER, _queues(), config)
+
+    with raises(ValueError, match="sha256"):
+        module.run(Event())
+
     assert module.server_address is None
 
 

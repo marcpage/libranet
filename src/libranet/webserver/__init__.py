@@ -1,12 +1,20 @@
 """Peer-facing and `/config` HTTP endpoint (Phase 1 Steps 5, 7, 9, 14).
 
-Serves the content-addressed source of truth and the derived node and seek
-lists, writes incoming PUT bodies to a per-connection directory, and
-publishes messages about what happened, including the lists peers POST. It
-does not validate, fetch, evict, or resolve bundles itself, and serves
+Serves the content-addressed source of truth, the derived node and seek
+lists, and the files the unbundler resolves for applications. Writes incoming
+PUT bodies to a per-connection directory, and publishes messages about what
+happened, including the lists peers POST and the application files it lacks.
+It does not validate, fetch, evict, or resolve bundles itself, and serves
 `/config` only to clients on this machine.
 """
 
+from libranet.webserver.app_handler import (
+    APP_PATTERN,
+    AppHandler,
+    application_bundles,
+    content_type_for,
+)
+from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 from libranet.webserver.config_guard import local_config_guard
 from libranet.webserver.data_handler import DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
@@ -32,12 +40,16 @@ from libranet.webserver.server import LibranetHTTPServer, RequestHandler, build_
 from libranet.webserver.signature_guard import SignatureGuard
 
 __all__ = [
+    "APP_PATTERN",
+    "AppHandler",
+    "ApplicationOutcomes",
     "DataReadHandler",
     "DataWriteHandler",
     "Guard",
     "Handler",
     "IncompleteBodyError",
     "InvalidListError",
+    "KnownOutcome",
     "LibranetHTTPServer",
     "ListFileHandler",
     "LocalSearch",
@@ -52,7 +64,9 @@ __all__ = [
     "SeekListHandler",
     "SignatureGuard",
     "WebServerModule",
+    "application_bundles",
     "build_router",
+    "content_type_for",
     "decode_list",
     "invalid_signature_response",
     "local_config_guard",
