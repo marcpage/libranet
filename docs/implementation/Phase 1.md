@@ -651,6 +651,28 @@ JSON and fixture CAS content, independent of everything else.
   compressed, such as `.tar.gz`, is served as `application/octet-stream`. A
   resolved file is read whole into memory to be served and signed; streaming
   it is left for later, with Range requests (§4).
+- Symlinks are followed in memory, as POSIX follows them: `..` climbs from
+  where a link actually led. A path that climbs above the bundle's root, or
+  follows more than 40 symlinks, names nothing, and nothing is followed or
+  created on disk (HttpApi §23). A path reaching a file through a symlink
+  redirects to the file's own path, so each file is written once however many
+  symlinks reach it.
+- Content not held, whether the bundle, an extension, or parts of a file, is
+  asked for with the same `data.not_found` a miss publishes, so the fetcher
+  retrieves it and it joins this node's seek list. A later request for the
+  path resolves it once everything is held.
+- A bundle that is malformed, signed, password-protected (see the open items
+  below), or not a directory bundle is reported unusable for every path. A
+  file that fails its checks is unusable alone.
+- A bundle's directory, once its extensions are overlaid, is saved beside its
+  resolved files the first time it is resolved, as a flat directory bundle,
+  zlib-compressed. It never goes stale, so the bundle and its extensions are
+  read once, and are not needed again even once this node stops holding them
+  (Step 15). The directories of the 8 most recently used bundles are also
+  kept in memory. An unusable bundle is remembered only there, since a later
+  version of the node may be able to serve it. Writing a bundle back out as
+  JSON, the inverse of the parser, is added to the bundle library for this,
+  ahead of Step 17.
 
 **Testable in isolation:** unbundler tests against fixture bundles and a
 temp source-of-truth directory; web server tests with a fake queue for

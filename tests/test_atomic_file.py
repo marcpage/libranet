@@ -6,7 +6,7 @@ from typing import cast
 
 from pytest import raises
 
-from libranet.atomic_file import write_atomically
+from libranet.atomic_file import atomic_writer, write_atomically
 
 
 def test_missing_parent_directories_are_created(tmp_path: Path) -> None:
@@ -37,3 +37,25 @@ def test_a_failed_write_leaves_neither_target_nor_temporary(tmp_path: Path) -> N
 
     assert not path.exists()
     assert list(tmp_path.iterdir()) == []
+
+
+def test_a_writer_replaces_the_file_with_everything_written(tmp_path: Path) -> None:
+    path = write_atomically(tmp_path / "file.bin", b"old")
+
+    with atomic_writer(path) as file:
+        file.write(b"new, ")
+        file.write(b"in pieces")
+
+    assert path.read_bytes() == b"new, in pieces"
+    assert [entry.name for entry in tmp_path.iterdir()] == ["file.bin"]
+
+
+def test_a_writer_that_fails_leaves_the_file_as_it_was(tmp_path: Path) -> None:
+    path = write_atomically(tmp_path / "file.bin", b"old")
+
+    with raises(RuntimeError), atomic_writer(path) as file:
+        file.write(b"half of it")
+        raise RuntimeError("stopped part-way")
+
+    assert path.read_bytes() == b"old"
+    assert [entry.name for entry in tmp_path.iterdir()] == ["file.bin"]

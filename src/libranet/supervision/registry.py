@@ -13,6 +13,7 @@ from libranet.modules import SPAWNED_MODULES, ModuleName
 from libranet.supervision.specs import ModuleFactory, ModuleSpec
 from libranet.stats.module import stats_module_factory
 from libranet.supervision.stubs import stub_module_factory
+from libranet.unbundler.module import unbundler_module_factory
 from libranet.validator.module import validator_module_factory
 from libranet.webserver.module import webserver_module_factory
 
@@ -22,6 +23,7 @@ _FACTORIES: Mapping[ModuleName, ModuleFactory] = {
     ModuleName.STATS: stats_module_factory,
     ModuleName.CONNECTIONS: connections_module_factory,
     ModuleName.FETCHER: fetcher_module_factory,
+    ModuleName.UNBUNDLER: unbundler_module_factory,
 }
 
 

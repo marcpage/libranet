@@ -1,8 +1,8 @@
 """Bundle format library (Phase 1 Step 13).
 
 Shape-based bundle type discrimination, the `extensions` overlay algorithm,
-and whole-file hash verification for multi-part files. Operates purely on
-bundle JSON and CAS reads.
+and whole-file hash verification for multi-part files, plus writing a bundle
+back out as JSON. Operates purely on bundle JSON and CAS reads.
 """
 
 from libranet.bundle.content import ContentSource, content_chunks, parse_cas_path
@@ -18,6 +18,7 @@ from libranet.bundle.extensions import DEFAULT_MAX_EXTENSIONS, resolve_directory
 from libranet.bundle.loading import DEFAULT_MAX_BUNDLE_BYTES, load_bundle
 from libranet.bundle.parsing import decode_bundle, parse_bundle
 from libranet.bundle.reassembly import ByteSink, write_file
+from libranet.bundle.serialization import bundle_value, encode_bundle
 from libranet.bundle.shapes import (
     Bundle,
     DirectoryBundle,
@@ -47,8 +48,10 @@ __all__ = [
     "PasswordProtectedBundleError",
     "Symlink",
     "UnsupportedBundleError",
+    "bundle_value",
     "content_chunks",
     "decode_bundle",
+    "encode_bundle",
     "is_entry_path",
     "load_bundle",
     "parse_bundle",
