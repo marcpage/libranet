@@ -687,3 +687,54 @@ def test_retrieve_refuses_content_that_is_not_what_was_asked_for(
     assert not node_store(config.storage, peer.identity.node_id).exists(OFFERED_ID)
     (attempt,) = drain(queues, [])
     assert attempt["found"] is False
+
+
+# -- Handing content off ---------------------------------------------------
+
+
+def test_hand_off_pushes_content_the_peer_did_not_ask_for(
+    exchange: PeerExchange,
+    session: PeerSession,
+    peer: FixturePeer,
+    identity: NodeIdentity,
+    queues: ModuleQueues,
+) -> None:
+    assert exchange.hand_off(session, HELD_ID, HELD)
+
+    (sent,) = published(queues, EventType.DATA_SENT)
+    assert payload(sent) == {
+        "event": EventType.DATA_SENT,
+        **content_fields(HELD_ID, peer.identity.node_id),
+        "size": len(HELD),
+    }
+    assert node_store(peer.storage, identity.node_id).read(HELD_ID) == HELD
+    assert session.pushed == {HELD_ID}
+
+
+def test_a_peer_that_already_holds_what_is_handed_off_accepts_it(
+    exchange: PeerExchange, session: PeerSession, peer: FixturePeer, queues: ModuleQueues
+) -> None:
+    peer.store.write(HELD_ID, HELD)
+
+    assert exchange.hand_off(session, HELD_ID, HELD)
+
+    assert peer.published(EventType.PUT_COMPLETED) == []
+    assert len(published(queues, EventType.DATA_SENT)) == 1
+
+
+def test_a_hand_off_the_peer_refuses_is_not_accepted(
+    exchange: PeerExchange, config: LibranetConfig, queues: ModuleQueues
+) -> None:
+    refusing = new_identity()
+    refusing.publish_public_key(source_of_truth_store(config.storage))
+    peer = RawPeer([signed(refusing, 201), signed(refusing, 507)])
+    session = exchange.open(peer.endpoint)
+
+    try:
+        assert not exchange.hand_off(session, HELD_ID, HELD)
+
+    finally:
+        session.close()
+        peer.join()
+
+    assert published(queues, EventType.DATA_SENT) == []

@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Mapping
 
 from libranet.connections.module import connections_module_factory
+from libranet.eviction.module import eviction_module_factory
 from libranet.fetcher.module import fetcher_module_factory
 from libranet.modules import SPAWNED_MODULES, ModuleName
 from libranet.supervision.specs import ModuleFactory, ModuleSpec
@@ -24,6 +25,7 @@ _FACTORIES: Mapping[ModuleName, ModuleFactory] = {
     ModuleName.CONNECTIONS: connections_module_factory,
     ModuleName.FETCHER: fetcher_module_factory,
     ModuleName.UNBUNDLER: unbundler_module_factory,
+    ModuleName.EVICTION: eviction_module_factory,
 }
 
 
