@@ -9,10 +9,11 @@ file is created beside its target rather than in the system temp directory.
 """
 
 from __future__ import annotations
+from contextlib import contextmanager
 from os import replace
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Final
+from typing import IO, Final, Iterator
 
 #: Suffix of the temporary file, so a leftover from a crash is recognizable.
 TEMP_SUFFIX: Final = ".partial"
@@ -27,6 +28,24 @@ def write_atomically(path: Path, data: bytes) -> Path:
         OSError: a directory could not be created, or the file could not be
             written or renamed into place.
     """
+    with atomic_writer(path) as temp:
+        temp.write(data)
+
+    return path
+
+
+@contextmanager
+def atomic_writer(path: Path) -> Iterator[IO[bytes]]:
+    """A file to write the new contents of ``path`` to, a piece at a time.
+
+    It replaces ``path`` once the ``with`` block ends, and is discarded,
+    leaving ``path`` alone, if the block raises. Missing parent directories
+    are created.
+
+    Raises:
+        OSError: a directory could not be created, or the file could not be
+            written or renamed into place.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
 
     with NamedTemporaryFile(
@@ -35,7 +54,7 @@ def write_atomically(path: Path, data: bytes) -> Path:
         temp_path = Path(temp.name)
 
         try:
-            temp.write(data)
+            yield temp
 
         except BaseException:
             temp.close()
@@ -43,4 +62,3 @@ def write_atomically(path: Path, data: bytes) -> Path:
             raise
 
     replace(temp_path, path)
-    return path
