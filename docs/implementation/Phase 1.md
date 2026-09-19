@@ -663,9 +663,16 @@ JSON and fixture CAS content, independent of everything else.
   path resolves it once everything is held.
 - A bundle that is malformed, signed, password-protected (see the open items
   below), or not a directory bundle is reported unusable for every path. A
-  file that fails its checks is unusable alone. The unbundler keeps the
-  resolved directories of the 8 most recently used bundles in memory,
-  unusable ones included, so a bundle is read once for many paths.
+  file that fails its checks is unusable alone.
+- A bundle's directory, once its extensions are overlaid, is saved beside its
+  resolved files the first time it is resolved, as a flat directory bundle,
+  zlib-compressed. It never goes stale, so the bundle and its extensions are
+  read once, and are not needed again even once this node stops holding them
+  (Step 15). The directories of the 8 most recently used bundles are also
+  kept in memory. An unusable bundle is remembered only there, since a later
+  version of the node may be able to serve it. Writing a bundle back out as
+  JSON, the inverse of the parser, is added to the bundle library for this,
+  ahead of Step 17.
 
 **Testable in isolation:** unbundler tests against fixture bundles and a
 temp source-of-truth directory; web server tests with a fake queue for

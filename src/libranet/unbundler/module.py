@@ -34,9 +34,15 @@ A bundle that cannot be served, being malformed, unsupported,
 password-protected (BundleSpecification §6), or not a directory, is
 ``unusable`` for every path, as is a file that fails its checks.
 
-The directories of the most recently used bundles are kept, so a bundle is
-not read again for each path. Content addressing means neither they nor the
-files written go stale.
+A bundle's directory, once its extensions are overlaid, is saved beside its
+files the first time it is resolved, as a flat directory bundle,
+zlib-compressed. The bundle and its extensions are then read once, and are
+not needed again even if they stop being held. The directories of the most
+recently used bundles are also kept in memory, so the saved one is not read
+for each path either. Content addressing means none of these go stale.
+
+A bundle found unusable is remembered only in memory, not saved, since a
+later version of this node may be able to serve it.
 """
 
 from __future__ import annotations
@@ -45,12 +51,15 @@ from dataclasses import dataclass
 from logging import Logger
 from pathlib import Path
 from typing import Any, ClassVar, Final
+from zlib import compress, decompress, error as ZlibError
 
-from libranet.atomic_file import atomic_writer
-from libranet.bundle.errors import BundleError, MissingContentError
+from libranet.atomic_file import atomic_writer, write_atomically
+from libranet.bundle.errors import BundleError, MalformedBundleError, MissingContentError
 from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.loading import load_bundle
+from libranet.bundle.parsing import decode_bundle
 from libranet.bundle.reassembly import write_file
+from libranet.bundle.serialization import encode_bundle
 from libranet.bundle.shapes import Bundle, DirectoryBundle
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import source_of_truth_store
@@ -151,7 +160,10 @@ class UnbundlerModule(ModuleBase):
             self._report(bundle, path, PathOutcome.STORED, size=size)
 
     def _directory(self, bundle: ContentId) -> ResolvedDirectory | _Unusable:
-        """The directory ``bundle`` describes, from memory if it was used recently.
+        """The directory ``bundle`` describes.
+
+        It comes from memory if it was used recently, or else as saved on
+        disk, or else is read from the source of truth and saved.
 
         Raises:
             MissingContentError: the bundle or an extension is not held; this
@@ -163,7 +175,14 @@ class UnbundlerModule(ModuleBase):
             self._directories.move_to_end(bundle)
             return directory
 
-        directory = self._load(bundle)
+        directory = self._saved_directory(bundle)
+
+        if directory is None:
+            directory = self._load(bundle)
+
+            if isinstance(directory, ResolvedDirectory):
+                self._save_directory(bundle, directory)
+
         self._directories[bundle] = directory
 
         if len(self._directories) > self._max_cached_bundles:
@@ -191,6 +210,37 @@ class UnbundlerModule(ModuleBase):
         except BundleError as error:
             self.logger.warning("Bundle %s cannot be served: %s", bundle, error)
             return _Unusable(str(error))
+
+    def _saved_directory(self, bundle: ContentId) -> ResolvedDirectory | None:
+        """The directory saved for ``bundle``, if there is one.
+
+        A saved directory that cannot be read back is discarded, so it is
+        resolved again.
+        """
+        path = self._files.directory_for(bundle)
+
+        try:
+            saved = decode_bundle(decompress(path.read_bytes()))
+
+            if not isinstance(saved, DirectoryBundle):
+                raise MalformedBundleError("Not a directory bundle")
+
+        except FileNotFoundError:
+            return None
+
+        except (ZlibError, BundleError) as error:
+            self.logger.warning("Discarding the saved directory of %s: %s", bundle, error)
+            path.unlink(missing_ok=True)
+            return None
+
+        return ResolvedDirectory.of(
+            {entry_path: entry for entry_path, entry in saved.entries.items() if entry is not None}
+        )
+
+    def _save_directory(self, bundle: ContentId, directory: ResolvedDirectory) -> None:
+        """Save ``directory`` for ``bundle``, as a flat directory bundle."""
+        flat = encode_bundle(DirectoryBundle(directory.entries))
+        write_atomically(self._files.directory_for(bundle), compress(flat))
 
     def _load_extension(self, content_id: ContentId) -> Bundle:
         return load_bundle(content_id, self._source)

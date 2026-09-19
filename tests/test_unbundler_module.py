@@ -7,10 +7,13 @@ from logging import WARNING
 from pathlib import Path
 from queue import Empty, Queue
 from typing import Any
-from zlib import compress
+from zlib import compress, decompress
 
 from pytest import LogCaptureFixture, fixture, mark, raises
 
+from libranet.atomic_file import write_atomically
+from libranet.bundle.parsing import decode_bundle, parse_bundle
+from libranet.bundle.shapes import DirectoryBundle
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.store import CasStore, source_of_truth_store
@@ -145,6 +148,12 @@ def fetched(queues: ModuleQueues) -> list[ContentId]:
     messages = published(queues)
     assert {message["event"] for message in messages} <= {EventType.DATA_NOT_FOUND}
     return [ContentId.create(message["algorithm"], message["hash"]) for message in messages]
+
+
+def saved_directory(storage: StorageConfig, bundle: ContentId) -> Path:
+    """Where the unbundler saves the directory ``bundle`` describes."""
+    files = ResolvedFiles(storage.resolved_files_dir, storage.hash_prefix_length)
+    return files.directory_for(bundle)
 
 
 def written(storage: StorageConfig, bundle: ContentId, path: str) -> bytes | None:
@@ -321,6 +330,84 @@ def test_a_bundle_is_read_once_for_many_paths(
             unbundler.handle(request(bundle, path))
 
     assert len([record for record in caplog.records if "cannot be served" in record.message]) == 1
+
+
+def test_a_resolved_directory_is_saved_flat_and_compressed(
+    unbundler: UnbundlerModule, storage: StorageConfig, app_id: ContentId
+) -> None:
+    unbundler.handle(request(app_id, "index.html"))
+
+    saved = decode_bundle(decompress(saved_directory(storage, app_id).read_bytes()))
+
+    assert isinstance(saved, DirectoryBundle)
+    assert saved.extensions == ()
+    assert set(saved.entries) == {
+        "index.html",
+        "about.html",
+        "docs/guide.html",
+        "docs/latest",
+        "broken.html",
+    }
+    # The top-level bundle's entry, not the extension's beneath it.
+    assert saved.entries["index.html"] == parse_bundle(file_entry(INDEX))
+
+
+def test_a_saved_directory_needs_neither_bundle_nor_extensions_held(
+    unbundler: UnbundlerModule,
+    queues: ModuleQueues,
+    store: CasStore,
+    storage: StorageConfig,
+    app_id: ContentId,
+) -> None:
+    unbundler.handle(request(app_id, "index.html"))
+    published(queues)
+    store.delete(app_id)
+    store.delete(id_of(bundle_bytes(extension())))
+    restarted = UnbundlerModule(ModuleName.UNBUNDLER, queues, storage)
+
+    restarted.handle(request(app_id, "about.html"))
+    restarted.handle(request(app_id, "docs"))
+
+    assert resolved(queues) == [
+        {"path": "about.html", "outcome": "stored", "size": len(ABOUT)},
+        {"path": "docs", "outcome": "redirect", "location": "docs/"},
+    ]
+
+
+@mark.parametrize(
+    "saved",
+    [b"not zlib", compress(b"not a bundle"), compress(bundle_bytes({"contents": []}))],
+)
+def test_a_saved_directory_that_cannot_be_read_is_resolved_again(
+    unbundler: UnbundlerModule,
+    queues: ModuleQueues,
+    storage: StorageConfig,
+    app_id: ContentId,
+    caplog: LogCaptureFixture,
+    saved: bytes,
+) -> None:
+    write_atomically(saved_directory(storage, app_id), saved)
+
+    with caplog.at_level(WARNING):
+        unbundler.handle(request(app_id, "about.html"))
+
+    assert resolved(queues) == [{"path": "about.html", "outcome": "stored", "size": len(ABOUT)}]
+    assert any("Discarding the saved directory" in record.message for record in caplog.records)
+    resaved = decode_bundle(decompress(saved_directory(storage, app_id).read_bytes()))
+    assert isinstance(resaved, DirectoryBundle)
+
+
+def test_a_bundle_unusable_or_not_held_is_not_saved(
+    unbundler: UnbundlerModule, store: CasStore, storage: StorageConfig
+) -> None:
+    unusable = put(store, b"not a bundle")
+    not_held = id_of(bundle_bytes({"contents": {}}))
+
+    unbundler.handle(request(unusable, "index.html"))
+    unbundler.handle(request(not_held, "index.html"))
+
+    assert not saved_directory(storage, unusable).exists()
+    assert not saved_directory(storage, not_held).exists()
 
 
 def test_the_least_recently_used_bundle_is_forgotten_past_the_limit(
