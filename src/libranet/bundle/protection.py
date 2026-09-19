@@ -1,17 +1,22 @@
 """Password protection for whole bundles (BundleSpecification §6).
 
-A bundle's JSON is zlib-compressed and then encrypted with AES-256-CBC. The
-key is a single SHA-256 of the password (§6.2), and the IV is all zero
-unless the descriptor names one (§6.1). The ciphertext is followed by
-``0x00`` and a descriptor naming what was used, ``PW-SHA256-AES256-CBC``.
-That is the only descriptor this node writes, and the only one it reads, with
-or without an explicit IV.
+A bundle's JSON is zlib-compressed, then encrypted as a scheme prescribes,
+and followed by ``0x00`` and the scheme's descriptor (§6.1). A scheme is
+looked up by its descriptor, and knows its own key derivation, cipher, mode,
+IV length, and padding, so another can be added without changing what
+surrounds it. The only one this node writes or reads is
+``PW-SHA256-AES256-CBC``: AES-256-CBC keyed by a single SHA-256 of the
+password (§6.2), over the plaintext padded with PKCS#7. The IV is all zero
+unless the descriptor names one.
 
-The compressed bundle is padded to whole AES blocks with PKCS#7 (§6.1).
 Every node must pad alike for identical content under an identical password
 to encrypt to identical bytes, and so dedup in CAS (§6.3). The compression
 level is fixed for the same reason, although a different zlib build may
 still compress differently.
+
+Ciphertext does not compress, so a protected bundle is stored as it is, and
+one larger than the object limit (HighLevelDesign §4.3) is refused when it
+is made rather than when it is stored.
 
 Decrypting tolerates an encoder that skipped compression (§6.5). A bundle
 that is not protected at all is told apart before any of this, by being JSON
@@ -21,7 +26,7 @@ that is not protected at all is told apart before any of this, by being JSON
 from __future__ import annotations
 from hashlib import sha256
 from json import loads
-from typing import Final
+from typing import Final, Mapping, Protocol
 from zlib import compress, decompressobj, error as ZlibError
 
 from cryptography.hazmat.primitives.ciphers import Cipher
@@ -30,42 +35,122 @@ from cryptography.hazmat.primitives.ciphers.modes import CBC
 from cryptography.hazmat.primitives.padding import PKCS7
 
 from libranet.bundle.errors import (
+    BundleTooLargeError,
     IncorrectPasswordError,
     MalformedBundleError,
     UnsupportedBundleError,
 )
+from libranet.config.models import MIB
 
 # The ciphertext ends at the last 0x00, before the descriptor (§6.1), and a
 # drop's placement bytes follow a further 0x00 (§6.4). JSON text never holds
 # a raw 0x00 (§6.5).
 _SEPARATOR: Final = b"\0"
+
+# A descriptor names its scheme in four fields, "PW-{hash}-{cipher}-{mode}",
+# and may add a fifth, "IV:{hex}" (§6.1).
 _DESCRIPTOR_PREFIX: Final = "PW"
 _DESCRIPTOR_FIELD_SEPARATOR: Final = "-"
-_SUPPORTED_SCHEME: Final = ("SHA256", "AES256", "CBC")
+_SCHEME_FIELDS: Final = 4
 _IV_PREFIX: Final = "IV:"
-_DESCRIPTOR: Final = _DESCRIPTOR_FIELD_SEPARATOR.join(
-    (_DESCRIPTOR_PREFIX, *_SUPPORTED_SCHEME)
-).encode("ascii")
-
-_BLOCK_BYTES: Final = 16
-_DEFAULT_IV: Final = bytes(_BLOCK_BYTES)
 
 # Never changed once bundles are written with it, or identical bundles
 # written before and after would no longer dedup (§6.3).
 _COMPRESSION_LEVEL: Final = 9
 
 
-def protect(plaintext: bytes, password: bytes) -> bytes:
+class _Scheme(Protocol):
+    """A way to password-protect a bundle, named by its descriptor (§6.1)."""
+
+    @property
+    def descriptor(self) -> str:
+        """Its descriptor, without an IV, such as ``PW-SHA256-AES256-CBC``."""
+        ...
+
+    @property
+    def iv_bytes(self) -> int:
+        """How long its IV is. The default IV is that many zero bytes (§6.3)."""
+        ...
+
+    def encrypt(self, plaintext: bytes, password: bytes, iv: bytes) -> bytes:
+        """``plaintext`` padded as the scheme requires, and encrypted."""
+        ...
+
+    def decrypt(self, ciphertext: bytes, password: bytes, iv: bytes) -> bytes:
+        """``ciphertext`` decrypted, with its padding removed.
+
+        Raises:
+            MalformedBundleError: ``ciphertext`` cannot be this scheme's.
+            IncorrectPasswordError: ``password`` does not decrypt it.
+        """
+        ...
+
+
+class _Sha256Aes256Cbc:
+    """AES-256-CBC keyed by a single SHA-256 of the password, with PKCS#7 padding."""
+
+    _BLOCK_BITS: Final = AES256.block_size
+
+    @property
+    def descriptor(self) -> str:
+        return "PW-SHA256-AES256-CBC"
+
+    @property
+    def iv_bytes(self) -> int:
+        return self._BLOCK_BITS // 8
+
+    def encrypt(self, plaintext: bytes, password: bytes, iv: bytes) -> bytes:
+        padder = PKCS7(self._BLOCK_BITS).padder()
+        padded = padder.update(plaintext) + padder.finalize()
+        encryptor = self._cipher(password, iv).encryptor()
+        return encryptor.update(padded) + encryptor.finalize()
+
+    def decrypt(self, ciphertext: bytes, password: bytes, iv: bytes) -> bytes:
+        if not ciphertext or len(ciphertext) % (self._BLOCK_BITS // 8):
+            raise MalformedBundleError("Password-protected bundle is not whole AES blocks")
+
+        decryptor = self._cipher(password, iv).decryptor()
+        unpadder = PKCS7(self._BLOCK_BITS).unpadder()
+
+        try:
+            plaintext = unpadder.update(decryptor.update(ciphertext) + decryptor.finalize())
+            return plaintext + unpadder.finalize()
+
+        except ValueError:
+            raise IncorrectPasswordError("The password does not decrypt the bundle") from None
+
+    @staticmethod
+    def _cipher(password: bytes, iv: bytes) -> Cipher[CBC]:
+        return Cipher(AES256(sha256(password).digest()), CBC(iv))
+
+
+# The scheme this node writes, and every scheme it reads, by descriptor.
+_WRITTEN_SCHEME: Final[_Scheme] = _Sha256Aes256Cbc()
+_SCHEMES: Final[Mapping[str, _Scheme]] = {
+    scheme.descriptor: scheme for scheme in (_WRITTEN_SCHEME,)
+}
+
+
+def protect(plaintext: bytes, password: bytes, max_object_bytes: int = MIB) -> bytes:
     """``plaintext``, a bundle's JSON, password-protected with the default IV (§6.1).
 
     The same plaintext and password always give the same bytes (§6.3).
-    """
-    padder = PKCS7(_BLOCK_BYTES * 8).padder()
-    padded = padder.update(compress(plaintext, _COMPRESSION_LEVEL)) + padder.finalize()
-    encryptor = _cipher(password, _DEFAULT_IV).encryptor()
-    ciphertext = encryptor.update(padded) + encryptor.finalize()
 
-    return ciphertext + _SEPARATOR + _DESCRIPTOR
+    Raises:
+        BundleTooLargeError: the protected bundle is larger than
+            ``max_object_bytes``, so it could not be stored.
+    """
+    scheme = _WRITTEN_SCHEME
+    compressed = compress(plaintext, _COMPRESSION_LEVEL)
+    ciphertext = scheme.encrypt(compressed, password, bytes(scheme.iv_bytes))
+    protected = ciphertext + _SEPARATOR + scheme.descriptor.encode("ascii")
+
+    if len(protected) > max_object_bytes:
+        raise BundleTooLargeError(
+            f"Password-protected bundle is {len(protected)} bytes, over {max_object_bytes}"
+        )
+
+    return protected
 
 
 def unprotect(data: bytes, password: bytes, max_bytes: int) -> bytes:
@@ -77,29 +162,19 @@ def unprotect(data: bytes, password: bytes, max_bytes: int) -> bytes:
 
     Raises:
         IncorrectPasswordError: ``password`` does not decrypt ``data``.
-        UnsupportedBundleError: the descriptor names a scheme other than
-            ``PW-SHA256-AES256-CBC``, or the bundle is larger than
-            ``max_bytes`` once decompressed.
+        UnsupportedBundleError: the descriptor names a scheme this node
+            lacks, or the bundle is larger than ``max_bytes`` once
+            decompressed.
         MalformedBundleError: ``data`` is not ciphertext followed by a
-            descriptor.
+            descriptor, or the ciphertext cannot be the named scheme's.
     """
     ciphertext, separator, descriptor = data.rpartition(_SEPARATOR)
 
     if not separator:
         raise MalformedBundleError("Password-protected bundle has no descriptor")
 
-    if not ciphertext or len(ciphertext) % _BLOCK_BYTES:
-        raise MalformedBundleError("Password-protected bundle is not whole AES blocks")
-
-    decryptor = _cipher(password, _iv(descriptor)).decryptor()
-    unpadder = PKCS7(_BLOCK_BYTES * 8).unpadder()
-
-    try:
-        decrypted = unpadder.update(decryptor.update(ciphertext) + decryptor.finalize())
-        decrypted += unpadder.finalize()
-
-    except ValueError:
-        raise IncorrectPasswordError("The password does not decrypt the bundle") from None
+    scheme, iv = _scheme(descriptor)
+    decrypted = scheme.decrypt(ciphertext, password, iv)
 
     if _is_json(decrypted):
         return decrypted
@@ -117,18 +192,13 @@ def strip_targeting(data: bytes) -> bytes:
     return content if separator else data
 
 
-def _cipher(password: bytes, iv: bytes) -> Cipher[CBC]:
-    """AES-256-CBC keyed by a single SHA-256 of ``password`` (§6.2)."""
-    return Cipher(AES256(sha256(password).digest()), CBC(iv))
-
-
-def _iv(descriptor: bytes) -> bytes:
-    """The IV ``descriptor`` names, all zero if it names none (§6.1).
+def _scheme(descriptor: bytes) -> tuple[_Scheme, bytes]:
+    """The scheme ``descriptor`` names, and its IV: all zero if it names none (§6.1).
 
     Raises:
-        UnsupportedBundleError: it names a scheme other than SHA-256 keys and
-            AES-256-CBC.
-        MalformedBundleError: it is not a password-protection descriptor.
+        UnsupportedBundleError: it names a scheme this node lacks.
+        MalformedBundleError: it is not a password-protection descriptor, or
+            names an IV the scheme cannot use.
     """
     try:
         fields = descriptor.decode("ascii").split(_DESCRIPTOR_FIELD_SEPARATOR)
@@ -136,16 +206,18 @@ def _iv(descriptor: bytes) -> bytes:
     except UnicodeDecodeError:
         raise MalformedBundleError("Password descriptor is not ASCII") from None
 
-    scheme, options = tuple(fields[1:4]), fields[4:]
+    naming, options = fields[:_SCHEME_FIELDS], fields[_SCHEME_FIELDS:]
 
-    if fields[0] != _DESCRIPTOR_PREFIX or len(scheme) != len(_SUPPORTED_SCHEME) or len(options) > 1:
+    if fields[0] != _DESCRIPTOR_PREFIX or len(naming) != _SCHEME_FIELDS or len(options) > 1:
         raise MalformedBundleError(f"Not a password descriptor: {descriptor!r}")
 
-    if scheme != _SUPPORTED_SCHEME:
+    scheme = _SCHEMES.get(_DESCRIPTOR_FIELD_SEPARATOR.join(naming))
+
+    if scheme is None:
         raise UnsupportedBundleError(f"Unsupported password protection: {descriptor!r}")
 
     if not options:
-        return _DEFAULT_IV
+        return scheme, bytes(scheme.iv_bytes)
 
     prefix, iv_hex = options[0][: len(_IV_PREFIX)], options[0][len(_IV_PREFIX) :]
 
@@ -155,10 +227,10 @@ def _iv(descriptor: bytes) -> bytes:
     except ValueError:
         iv = b""
 
-    if prefix != _IV_PREFIX or len(iv) != _BLOCK_BYTES:
+    if prefix != _IV_PREFIX or len(iv) != scheme.iv_bytes:
         raise MalformedBundleError(f"Password descriptor has no valid IV: {descriptor!r}")
 
-    return iv
+    return scheme, iv
 
 
 def _is_json(data: bytes) -> bool:

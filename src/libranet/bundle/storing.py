@@ -59,13 +59,20 @@ def store_object(data: bytes, sink: ContentSink, max_object_bytes: int = MIB) ->
         BundleTooLargeError: ``data`` is not held, and is larger than
             ``max_object_bytes`` even compressed.
     """
-    content_id = _store_if_it_fits(data, sink, max_object_bytes)
+    content_id = ContentId.for_data(data, HASH_ALGORITHM)
 
-    if content_id is None:
+    if sink.exists(content_id):
+        return content_id
+
+    compressed = compress(data, _COMPRESSION_LEVEL)
+    stored = compressed if len(compressed) < len(data) else data
+
+    if len(stored) > max_object_bytes:
         raise BundleTooLargeError(
             f"{len(data)} bytes do not fit in {max_object_bytes} bytes, even compressed"
         )
 
+    sink.write(content_id, stored)
     return content_id
 
 
@@ -87,15 +94,14 @@ def store_bundle(
             fit in one alone, or with more chunks and extensions than
             ``max_extensions``, which readers do not follow.
     """
-    data = _encoded(bundle, password)
-
     if not isinstance(bundle, DirectoryBundle):
-        return store_object(data, sink, max_object_bytes)
+        return _store(bundle, sink, password, max_object_bytes)
 
-    content_id = _store_if_it_fits(data, sink, max_object_bytes)
+    try:
+        return _store(bundle, sink, password, max_object_bytes)
 
-    if content_id is not None:
-        return content_id
+    except BundleTooLargeError:
+        pass  # Split below, outside the handler, so errors splitting raise alone.
 
     margin = (max_object_bytes >> _SPLIT_MARGIN_SHIFT) + _SPLIT_MARGIN_BYTES
     chunks = split_entries(bundle.entries, max_object_bytes - margin)
@@ -107,32 +113,24 @@ def store_bundle(
         )
 
     stored_chunks = tuple(
-        str(store_object(_encoded(DirectoryBundle(chunk), password), sink, max_object_bytes))
-        for chunk in chunks
+        str(_store(DirectoryBundle(chunk), sink, password, max_object_bytes)) for chunk in chunks
     )
     top = DirectoryBundle({}, bundle.metadata, bundle.versions, stored_chunks + bundle.extensions)
 
-    return store_object(_encoded(top, password), sink, max_object_bytes)
+    return _store(top, sink, password, max_object_bytes)
 
 
-def _store_if_it_fits(data: bytes, sink: ContentSink, max_object_bytes: int) -> ContentId | None:
-    """Store ``data`` unless it is held; ``None`` if it is not held and does not fit."""
-    content_id = ContentId.for_data(data, HASH_ALGORITHM)
+def _store(
+    bundle: Bundle, sink: ContentSink, password: bytes | None, max_object_bytes: int
+) -> ContentId:
+    """Store ``bundle`` as one object: its JSON, password-protected if there is a password.
 
-    if sink.exists(content_id):
-        return content_id
-
-    compressed = compress(data, _COMPRESSION_LEVEL)
-    stored = compressed if len(compressed) < len(data) else data
-
-    if len(stored) > max_object_bytes:
-        return None
-
-    sink.write(content_id, stored)
-    return content_id
-
-
-def _encoded(bundle: Bundle, password: bytes | None) -> bytes:
-    """``bundle`` as it is stored: its JSON, password-protected if there is a password."""
+    Raises:
+        BundleTooLargeError: it does not fit in one object.
+    """
     encoded = encode_bundle(bundle)
-    return encoded if password is None else protect(encoded, password)
+
+    if password is not None:
+        encoded = protect(encoded, password, max_object_bytes)
+
+    return store_object(encoded, sink, max_object_bytes)

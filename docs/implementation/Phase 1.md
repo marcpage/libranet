@@ -830,7 +830,9 @@ needs. Still a pure library — no processes, no sockets.
   requires, and compressed at a fixed zlib level, so that identical bundles
   encrypt alike (§6.3). Even so, only nodes
   whose zlib compresses alike produce identical bytes. The key is a single
-  SHA-256 of the password bytes. Only `PW-SHA256-AES256-CBC` is written.
+  SHA-256 of the password bytes. Ciphertext does not compress, so a
+  protected bundle larger than the object limit is refused as it is made,
+  whoever stores it. Only `PW-SHA256-AES256-CBC` is written.
   It is also the only descriptor read, with or without an explicit IV, and
   any other is unsupported. A password that does not decrypt the bundle
   raises an error that is a kind of "password-protected", so a caller

@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives.padding import PKCS7
 from pytest import mark, raises
 
 from libranet.bundle.errors import (
+    BundleTooLargeError,
     IncorrectPasswordError,
     MalformedBundleError,
     UnsupportedBundleError,
@@ -67,6 +68,19 @@ def test_another_password_gives_other_bytes() -> None:
 def test_protected_bundle_is_not_utf8_json() -> None:
     with raises(ValueError):
         protect(PLAINTEXT, PASSWORD).decode("utf-8")
+
+
+def test_protected_bundle_of_exactly_the_object_limit_is_made() -> None:
+    size = len(protect(PLAINTEXT, PASSWORD))
+
+    assert len(protect(PLAINTEXT, PASSWORD, max_object_bytes=size)) == size
+
+
+def test_protected_bundle_past_the_object_limit_is_too_large() -> None:
+    size = len(protect(PLAINTEXT, PASSWORD))
+
+    with raises(BundleTooLargeError, match=f"{size} bytes, over {size - 1}"):
+        protect(PLAINTEXT, PASSWORD, max_object_bytes=size - 1)
 
 
 def test_protected_bundle_is_unprotected_with_its_password() -> None:
@@ -175,6 +189,14 @@ def test_descriptor_naming_another_scheme_is_unsupported(descriptor: bytes) -> N
 
     with raises(UnsupportedBundleError, match="Unsupported password protection"):
         unprotect(protected, PASSWORD, MAX_BYTES)
+
+
+@mark.parametrize("ciphertext", [b"", b"x" * 17])
+def test_descriptor_naming_another_scheme_is_unsupported_whatever_its_ciphertext(
+    ciphertext: bytes,
+) -> None:
+    with raises(UnsupportedBundleError, match="Unsupported password protection"):
+        unprotect(ciphertext + b"\0PW-SHA256-AES256-GCM", PASSWORD, MAX_BYTES)
 
 
 @mark.parametrize(
