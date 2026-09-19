@@ -23,9 +23,24 @@ class UnsupportedBundleError(BundleError):
 
 
 class PasswordProtectedBundleError(UnsupportedBundleError):
-    """The bundle is password-protected (BundleSpecification §6).
+    """The bundle is password-protected (BundleSpecification §6), and was read without a password."""
 
-    Decrypting it is the write-side library's job (Phase 1 Step 17).
+
+class IncorrectPasswordError(PasswordProtectedBundleError):
+    """The password given does not decrypt the password-protected bundle.
+
+    What it decrypts to is neither JSON nor a zlib stream. That is also what
+    damaged ciphertext looks like, but content read from CAS has already been
+    checked against its identifier.
+    """
+
+
+class BundleTooLargeError(BundleError):
+    """A bundle cannot be stored within the object limit (HighLevelDesign §4.3).
+
+    A directory bundle is split across extensions when it is too large, so
+    this means that one entry alone is too large, or that the split needs
+    more extensions than a reader follows.
     """
 
 
