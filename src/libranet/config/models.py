@@ -132,7 +132,11 @@ class StorageConfig(_Section):
     # mostly hex, so 1 MiB sent is about 2 MiB of list.
     max_decompressed_list_bytes: int = Field(default=4 * MIB, ge=1)
 
-    # Eviction triggers once free space drops below this (Step 15).
+    # Eviction (Step 15) hands content off to other nodes and deletes it once
+    # free space on the filesystem holding the source of truth drops below
+    # min_free_bytes (0 turns that off), or the content held exceeds
+    # max_storage_bytes (no limit when None). Resolved application files are
+    # not counted.
     min_free_bytes: int = Field(default=1024 * MIB, ge=0)
     max_storage_bytes: int | None = Field(default=None, ge=0)
 

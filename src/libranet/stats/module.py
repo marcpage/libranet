@@ -20,6 +20,7 @@ The payloads it consumes, by event:
 ``connection.failed``  ``{"node_id", "endpoint"}`` (Step 11)
 ``data.sent``          ``{"algorithm", "hash", "node_id", "size"}`` (Step 11)
 ``fetch.attempted``    ``{"algorithm", "hash", "node_id", "found"}`` (Step 11)
+``data.deleted``       ``{"algorithm", "hash", "size"}`` (Step 15)
 
 A miss on ``GET /data/{algorithm}/{hash}`` and a ``GET /data/search/{prefix}``
 are both requests this node could not answer, so each becomes an entry in
@@ -71,6 +72,7 @@ class StatsModule(ModuleBase):
             EventType.CONNECTION_FAILED,
             EventType.DATA_SENT,
             EventType.FETCH_ATTEMPTED,
+            EventType.DATA_DELETED,
         }
     )
 
@@ -103,6 +105,7 @@ class StatsModule(ModuleBase):
             EventType.CONNECTION_FAILED: self._on_connection_failed,
             EventType.DATA_SENT: self._on_data_sent,
             EventType.FETCH_ATTEMPTED: self._on_fetch_attempted,
+            EventType.DATA_DELETED: self._on_data_deleted,
         }
 
     @property
@@ -232,6 +235,9 @@ class StatsModule(ModuleBase):
         self.database.record_data_lookup(
             ContentId.parse(message["node_id"]), found=bool(message["found"])
         )
+
+    def _on_data_deleted(self, message: Message) -> None:
+        self.database.record_deleted(_content_id(message))
 
     def _node_ids(self, nodes: Mapping[str, str]) -> dict[str, ContentId]:
         """A received node list with its identifiers parsed, bad entries dropped.

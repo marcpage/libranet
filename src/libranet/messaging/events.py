@@ -49,3 +49,4 @@ class EventType(StrEnum):
     # Eviction hand-off (Step 15).
     EVICTION_NOTICE = "eviction.notice"  # eviction → connections
     EVICTION_ACKNOWLEDGED = "eviction.acknowledged"  # connections → eviction
+    DATA_DELETED = "data.deleted"  # eviction → stats

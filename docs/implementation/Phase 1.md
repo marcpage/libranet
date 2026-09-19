@@ -694,6 +694,32 @@ node's own identifier and stored content hashes).
   deletes the local copy.
 - Reports each deletion for the stats module (Step 8), which keeps the
   delete count and the time the content was held.
+- Storage is short when free space on the filesystem holding the source of
+  truth falls below `min_free_bytes`, or the content held grows past
+  `max_storage_bytes`, if set. Free space is measured at each check. Content
+  held is counted once, at start and only when it is limited, and then kept
+  up to date from what is stored and deleted, so no check lists the store.
+  Resolved application files (Step 14) are neither counted nor evicted.
+- Content sharing the fewest leading bits with the node id goes first, ties
+  in order of hash. Every object in a prefix directory that differs from the
+  node id within that prefix shares the same number of bits with it, so the
+  order is read a directory at a time, and only as far as needed. This
+  node's own public key is never evicted.
+- The eviction module asks the connection manager to hand each object off,
+  naming how many copies it needs (two). The connection manager pushes it to
+  its connected peers, best match first, until that many accept it, a peer
+  that already holds it included, and answers once with the peers that did.
+  Only peers already connected are offered it, as for a fetch (Step 11).
+- The local copy is deleted only once two peers have accepted it. A hand-off
+  that falls short keeps the content, and no new hand-off starts for the
+  peer retry delay (`retry_delay_seconds`), since the likely cause is too few
+  connected peers. The same object is offered first again. Finding nothing
+  left to hand off waits as long.
+- Hand-offs run up to 8 at a time, and only as many as would bring storage
+  within its limits once they succeed. One the connection manager never
+  answers is given up on after 10 minutes. A late answer still deletes the
+  content, since the peers named hold it either way. Both limits are
+  provisional defaults, not config.
 
 **Testable in isolation:** unit tests with fake storage-stat inputs and
 fake acknowledgment messages, independent of real peer connections.

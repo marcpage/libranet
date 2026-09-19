@@ -26,8 +26,18 @@ the fetcher::
     fetch.failed     {"algorithm", "hash"}
 
 ``fetch.succeeded`` means the content went to the validator from ``node_id``;
-``fetch.failed`` means no connected peer had it. For the stats module it
-publishes::
+``fetch.failed`` means no connected peer had it.
+
+A hand-off (``eviction.notice`` ``{"algorithm", "hash", "copies"}``) pushes
+content the eviction module means to delete to the connected peers, best
+match first, until ``copies`` of them accept it (HighLevelDesign §4.5). Only
+peers already connected are offered it, each once. The eviction module is
+told which accepted, best match first, and deletes its copy only if there
+are enough::
+
+    eviction.acknowledged  {"algorithm", "hash", "node_ids": ["sha256/<hex>", ...]}
+
+For the stats module it publishes::
 
     connection.opened  {"node_id", "endpoint"}
     connection.closed  {"node_id", "remote"}
@@ -48,7 +58,9 @@ from time import time
 from typing import Callable, ClassVar, Final, Mapping
 
 from libranet.cas.content_id import ContentId
+from libranet.cas.errors import ContentNotFoundError
 from libranet.cas.prefix import nearest
+from libranet.cas.store import source_of_truth_store
 from libranet.config.models import LibranetConfig
 from libranet.config.seeds import SeedError, load_seed_peers
 from libranet.connections.candidates import Candidate, node_list_candidates, seed_candidates
@@ -85,7 +97,7 @@ class ConnectionsModule(ModuleBase):
     """Keeps this node connected to a spread of peers and fetches from them."""
 
     subscriptions: ClassVar[frozenset[EventType]] = frozenset(
-        {EventType.NODE_LIST_UPDATED, EventType.FETCH_REQUESTED}
+        {EventType.NODE_LIST_UPDATED, EventType.FETCH_REQUESTED, EventType.EVICTION_NOTICE}
     )
 
     def __init__(
@@ -100,6 +112,7 @@ class ConnectionsModule(ModuleBase):
     ) -> None:
         super().__init__(name, queues, logger=logger, clock=clock, poll_interval=poll_interval)
         self._config = config
+        self._source_of_truth = source_of_truth_store(config.storage)
         self._exchange: PeerExchange | None = None
         self._seeds: list[Candidate] = []
         # Everything below is shared with the background threads, under the lock.
@@ -115,9 +128,11 @@ class ConnectionsModule(ModuleBase):
         self._own_endpoints: set[str] = set()
         self._fetching: set[ContentId] = set()
         self._fetches: SimpleQueue[ContentId | None] = SimpleQueue()
+        self._handing_off: set[ContentId] = set()
         self._handlers: Mapping[EventType, Callable[[Message], None]] = {
             EventType.NODE_LIST_UPDATED: self._on_node_list_updated,
             EventType.FETCH_REQUESTED: self._on_fetch_requested,
+            EventType.EVICTION_NOTICE: self._on_eviction_notice,
         }
 
     @property
@@ -218,6 +233,22 @@ class ConnectionsModule(ModuleBase):
             self._fetching.add(content_id)
 
         self._fetches.put(content_id)
+
+    def _on_eviction_notice(self, message: Message) -> None:
+        """Hand the content off on a thread of its own.
+
+        The eviction module bounds how many it asks for at once.
+        """
+        content_id = ContentId.create(message["algorithm"], message["hash"])
+        copies = int(message["copies"])
+
+        with self._lock:
+            if content_id in self._handing_off:
+                return
+
+            self._handing_off.add(content_id)
+
+        self._start("hand-off", partial(self._hand_off, content_id, copies))
 
     def _load_seeds(self) -> list[Candidate]:
         try:
@@ -425,6 +456,62 @@ class ConnectionsModule(ModuleBase):
                 return
 
         self.publish(EventType.FETCH_FAILED, payload)
+
+    def _hand_off(self, content_id: ContentId, copies: int) -> None:
+        """Hand-off thread: push ``content_id`` to peers until ``copies`` accept it, and say which.
+
+        The eviction module is always answered, so it never waits on a
+        hand-off that went wrong.
+        """
+        accepted: list[ContentId] = []
+
+        try:
+            accepted = self._accepting_peers(content_id, copies)
+
+        except Exception:
+            self.logger.exception("Handing off %s failed", content_id)
+
+        finally:
+            with self._lock:
+                self._handing_off.discard(content_id)
+
+            self.publish(
+                EventType.EVICTION_ACKNOWLEDGED,
+                {
+                    "algorithm": content_id.algorithm,
+                    "hash": content_id.hash,
+                    "node_ids": [str(node_id) for node_id in accepted],
+                },
+            )
+
+    def _accepting_peers(self, content_id: ContentId, copies: int) -> list[ContentId]:
+        """Offer ``content_id`` to connected peers, best match first, until ``copies`` accept it.
+
+        Returns those that did, in the order offered.
+        """
+        try:
+            body = self._source_of_truth.read(content_id)
+
+        except ContentNotFoundError:
+            self.logger.info("%s is not held, so cannot be handed off", content_id)
+            return []
+
+        accepted: list[ContentId] = []
+
+        for session in self._by_match(content_id):
+            if len(accepted) >= copies:
+                break
+
+            try:
+                if self.exchange.hand_off(session, content_id, body):
+                    accepted.append(session.node_id)
+
+            except OSError as error:
+                self.logger.debug(
+                    "Could not hand %s off to %s: %s", content_id, session.endpoint, error
+                )
+
+        return accepted
 
     def _by_match(self, content_id: ContentId) -> list[PeerSession]:
         """The connected peers, those whose id best matches ``content_id``'s hash first."""

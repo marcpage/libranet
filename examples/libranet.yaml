@@ -67,8 +67,12 @@ storage:
   # The protocol sets no limit here; this is a local safeguard.
   max_decompressed_list_bytes: 4194304
 
-  # Eviction (Step 15) starts handing off low-priority content once free
-  # space falls below this.
+  # Content is handed off to two other nodes and then deleted here, that
+  # which shares the fewest leading bits with this node's id first
+  # (High-Level Design §4.5), whenever free space on the disk holding it
+  # falls below min_free_bytes (0 turns that off), or the content held
+  # grows past max_storage_bytes (null for no limit). Resolved application
+  # files are not counted.
   min_free_bytes: 1073741824
   max_storage_bytes: null
 

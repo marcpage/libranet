@@ -13,16 +13,18 @@ from logging import INFO, getLogger
 from pathlib import Path
 from queue import Empty, Queue
 from socket import create_server
-from threading import Thread
+from threading import Event, Thread
 from time import monotonic, sleep, time
 from typing import Any, Callable, Iterator, Mapping, Sequence
 
 from pytest import LogCaptureFixture, MonkeyPatch, fixture, raises
 
 from libranet.cas.content_id import ContentId
+from libranet.cas.prefix import nearest
 from libranet.cas.store import node_store, source_of_truth_store
 from libranet.config.models import IdentityConfig, LibranetConfig, PeerConfig, StorageConfig
 from libranet.connections.module import ConnectionsModule, connections_module_factory
+from libranet.connections.peer_session import PeerSession
 from libranet.identity.authentication import request_authenticator
 from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity, load_node_identity
@@ -235,6 +237,14 @@ def fetch_request(content_id: ContentId) -> Message:
         EventType.FETCH_REQUESTED,
         ModuleName.FETCHER,
         {"algorithm": content_id.algorithm, "hash": content_id.hash},
+    )
+
+
+def eviction_notice(content_id: ContentId, copies: int = 2) -> Message:
+    return make_message(
+        EventType.EVICTION_NOTICE,
+        ModuleName.EVICTION,
+        {"algorithm": content_id.algorithm, "hash": content_id.hash, "copies": copies},
     )
 
 
@@ -593,17 +603,190 @@ def test_an_event_it_does_not_handle_is_not_taken_for_a_fetch(
 ) -> None:
     module = modules.start(config)
     # Shaped like a fetch request, but meant for someone else.
-    notice = make_message(
-        EventType.EVICTION_NOTICE,
-        ModuleName.EVICTION,
+    miss = make_message(
+        EventType.DATA_NOT_FOUND,
+        ModuleName.WEBSERVER,
         {"algorithm": OFFERED_ID.algorithm, "hash": OFFERED_ID.hash},
     )
 
     with raises(KeyError):
-        module.handle(notice)
+        module.handle(miss)
 
     sleep(0.2)
     assert bus.events(EventType.FETCH_FAILED) == []
+
+
+# -- Handing off -----------------------------------------------------------
+
+
+def test_a_hand_off_goes_to_the_best_matching_peers(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+) -> None:
+    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+
+    module.handle(eviction_notice(HELD_ID))
+
+    (answer,) = bus.wait_for(EventType.EVICTION_ACKNOWLEDGED)
+    best_first = nearest(HELD_ID.hash, [peer.node_id for peer in peers], 2)
+    assert (answer["algorithm"], answer["hash"]) == ("sha256", HELD_ID.hash)
+    assert answer["node_ids"] == [str(node_id) for node_id in best_first]
+    assert len(bus.events(EventType.DATA_SENT, hash=HELD_ID.hash)) == 2
+
+    for peer in peers:
+        peer.bus.wait_for(EventType.PUT_COMPLETED, hash=HELD_ID.hash)
+
+
+def test_a_hand_off_stops_once_enough_peers_accept(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+) -> None:
+    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+    best, other = (
+        next(peer for peer in peers if peer.node_id == node_id)
+        for node_id in nearest(HELD_ID.hash, [peer.node_id for peer in peers], 2)
+    )
+
+    module.handle(eviction_notice(HELD_ID, copies=1))
+
+    (answer,) = bus.wait_for(EventType.EVICTION_ACKNOWLEDGED)
+    assert answer["node_ids"] == [str(best.node_id)]
+    best.bus.wait_for(EventType.PUT_COMPLETED, hash=HELD_ID.hash)
+    assert other.bus.events(EventType.PUT_COMPLETED, hash=HELD_ID.hash) == []
+
+
+def test_a_peer_that_cannot_be_reached_is_passed_over(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+    best, other = nearest(HELD_ID.hash, [peer.node_id for peer in peers], 2)
+    hand_off = module.exchange.hand_off
+
+    def failing_for_best(session: PeerSession, content_id: ContentId, body: bytes) -> bool:
+        if session.node_id == best:
+            raise ConnectionResetError("gone")
+
+        return hand_off(session, content_id, body)
+
+    monkeypatch.setattr(module.exchange, "hand_off", failing_for_best)
+
+    module.handle(eviction_notice(HELD_ID))
+
+    (answer,) = bus.wait_for(EventType.EVICTION_ACKNOWLEDGED)
+    assert answer["node_ids"] == [str(other)]
+
+
+def test_a_hand_off_without_connected_peers_falls_short_at_once(
+    modules: Modules, config: LibranetConfig, bus: Bus
+) -> None:
+    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    module = modules.start(config)
+
+    module.handle(eviction_notice(HELD_ID))
+
+    (answer,) = bus.wait_for(EventType.EVICTION_ACKNOWLEDGED)
+    assert answer["node_ids"] == []
+
+
+def test_content_not_held_is_not_handed_off(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    caplog: LogCaptureFixture,
+) -> None:
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+
+    with caplog.at_level(INFO):
+        module.handle(eviction_notice(NOWHERE_ID))
+        (answer,) = bus.wait_for(EventType.EVICTION_ACKNOWLEDGED)
+
+    assert answer["node_ids"] == []
+    assert f"{NOWHERE_ID} is not held" in caplog.text
+    assert bus.events(EventType.DATA_SENT) == []
+
+
+def test_a_hand_off_that_goes_wrong_is_still_answered(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    monkeypatch: MonkeyPatch,
+    caplog: LogCaptureFixture,
+) -> None:
+    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+
+    def broken(session: PeerSession, content_id: ContentId, body: bytes) -> bool:
+        raise RuntimeError("broken")
+
+    monkeypatch.setattr(module.exchange, "hand_off", broken)
+
+    module.handle(eviction_notice(HELD_ID))
+
+    (answer,) = bus.wait_for(EventType.EVICTION_ACKNOWLEDGED)
+    assert answer["node_ids"] == []
+    assert f"Handing off {HELD_ID} failed" in caplog.text
+
+
+def test_a_hand_off_under_way_is_not_started_again(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+    gate = Event()
+    hand_off = module.exchange.hand_off
+
+    def held_up(session: PeerSession, content_id: ContentId, body: bytes) -> bool:
+        gate.wait(TIMEOUT)
+        return hand_off(session, content_id, body)
+
+    monkeypatch.setattr(module.exchange, "hand_off", held_up)
+
+    module.handle(eviction_notice(HELD_ID))
+    module.handle(eviction_notice(HELD_ID))
+    gate.set()
+
+    bus.wait_for(EventType.EVICTION_ACKNOWLEDGED)
+    sleep(0.2)
+    assert len(bus.events(EventType.EVICTION_ACKNOWLEDGED)) == 1
+
+    module.handle(eviction_notice(HELD_ID))
+
+    bus.wait_for(EventType.EVICTION_ACKNOWLEDGED, count=2)
 
 
 # -- Lifecycle -------------------------------------------------------------
@@ -620,10 +803,11 @@ def test_stopping_a_module_that_never_started_is_harmless(
         module.exchange
 
 
-def test_the_module_subscribes_to_node_lists_and_fetches() -> None:
+def test_the_module_subscribes_to_node_lists_fetches_and_hand_offs() -> None:
     assert ConnectionsModule.subscriptions == {
         EventType.NODE_LIST_UPDATED,
         EventType.FETCH_REQUESTED,
+        EventType.EVICTION_NOTICE,
     }
 
 

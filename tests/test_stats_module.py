@@ -202,6 +202,26 @@ def test_stored_content_is_counted_credited_and_no_longer_sought(
     assert seek_list(config)["data"] == []
 
 
+def test_deleted_content_is_counted_with_the_time_it_was_held(module: StatsModule) -> None:
+    module.handle(stored())
+    stats = module.database.data_stats(CONTENT_ID)
+    assert stats is not None and stats.last_acquired is not None
+
+    module.handle(
+        broadcast(
+            EventType.DATA_DELETED,
+            {"algorithm": CONTENT_ID.algorithm, "hash": CONTENT_ID.hash, "size": len(CONTENT)},
+            ModuleName.EVICTION,
+        )
+    )
+
+    deleted = module.database.data_stats(CONTENT_ID)
+    assert deleted is not None
+    assert deleted.deletes == 1
+    assert deleted.stored_seconds >= 0
+    assert deleted.last_acquired == stats.last_acquired
+
+
 def test_rejected_content_still_counts_as_a_push(module: StatsModule) -> None:
     module.handle(
         broadcast(
@@ -426,6 +446,7 @@ def test_the_database_is_closed_when_the_module_stops(
 
 def test_the_module_subscribes_to_what_it_records() -> None:
     assert EventType.DATA_REQUESTED in StatsModule.subscriptions
+    assert EventType.DATA_DELETED in StatsModule.subscriptions
     assert EventType.PUT_COMPLETED not in StatsModule.subscriptions
     assert EventType.NODE_LIST_UPDATED not in StatsModule.subscriptions
 
