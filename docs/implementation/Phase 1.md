@@ -781,6 +781,68 @@ needs. Still a pure library — no processes, no sockets.
   - The default all-zero IV is used, so identical content under an
     identical password encrypts to identical bytes and dedups in CAS
     (§6.3).
+- A file is cut into parts at every `max_object_bytes` (1 MiB) of its bytes,
+  so each part fits the limit even stored uncompressed. A part is stored
+  zlib-compressed at level 9, unless that does not make it smaller, as are
+  bundles. Cutting where parts compress to the limit instead would make
+  where they are cut depend on the zlib build.
+  At fixed offsets, a part's identifier depends only on the file's bytes, so
+  the same file gives the same parts on every node. An empty file has no
+  parts.
+- Every object is stored under its SHA-256, and only if it is not held
+  already, so storing an unchanged file or bundle again writes and
+  compresses nothing. The store is the caller's, so the backup module
+  (Step 19) can note each object written, to announce it as new data.
+- A file's metadata gives its size, its SHA-256 as reassembled, its
+  modification time, its creation time where the platform reports one
+  (Linux does not), and whether its owner may write or run it. Times are
+  UTC, to the microsecond.
+- A directory is walked without following symlinks, and without recursion.
+  A directory with no file or symlink anywhere beneath it gets a
+  metadata-only entry carrying its own metadata. No other directory gets an
+  entry, and the root's metadata is not recorded. The bundle that
+  supersedes another lists that bundle alone in `versions`.
+- A path that cannot be recorded is left out and reported with the reason,
+  and the walk goes on. That covers a path that cannot be opened or listed,
+  a socket, FIFO, or device, a name or symlink target that is not UTF-8
+  (§1), and a symlink with an absolute target (§3.1). Failing to list the
+  directory itself, to finish reading a file, or to store content stops the
+  build. A file is opened without following a symlink or waiting on a FIFO,
+  in case one has replaced it since the directory was listed.
+- A directory bundle is stored whole if it fits: compressed, and encrypted
+  when there is a password. Otherwise its entries are split, in order of
+  path, into chunks, each stored as a directory bundle of its own, protected
+  alike. The bundle stored in its place keeps its metadata and versions,
+  holds no entries, and lists the chunks as extensions ahead of any it
+  already had. The chunks sit side by side rather than in a chain, so a
+  changed chunk leaves the others' identifiers alone.
+- A chunk ends after an entry whose path hashes low enough, at odds in
+  proportion to the entry's size, so chunks average about half the limit. It
+  also ends early rather than pass the limit. Sizes are measured on
+  uncompressed JSON, so the split does not depend on zlib. Whether an entry
+  ends a chunk depends on that entry alone. Storing a changed directory
+  again therefore rewrites only the chunks holding changes, and the chunks
+  after an early end that moved, and the rest dedup.
+- An entry too large for one object even on its own, a file of about
+  26 GiB or more, is refused. So is a directory needing more than the 1,024
+  extensions a reader follows (Step 13), about 1.3 million files.
+- Protected bundles are padded with PKCS#7, as BundleSpecification §6.1 now
+  requires, and compressed at a fixed zlib level, so that identical bundles
+  encrypt alike (§6.3). Even so, only nodes
+  whose zlib compresses alike produce identical bytes. The key is a single
+  SHA-256 of the password bytes. Ciphertext does not compress, so a
+  protected bundle larger than the object limit is refused as it is made,
+  whoever stores it. Only `PW-SHA256-AES256-CBC` is written.
+  It is also the only descriptor read, with or without an explicit IV, and
+  any other is unsupported. A password that does not decrypt the bundle
+  raises an error that is a kind of "password-protected", so a caller
+  answering HttpApi §13.1's `401` catches one error for both.
+- Loading a bundle takes an optional password, and whether the bundle is a
+  drop (§6.4), and the resolver reads encrypted extensions through it. A
+  plain bundle loads even when a password is given (§6.5). A decrypted
+  bundle is held to the same 16 MiB cap once decompressed. The unbundler
+  passes no password, so password-protected applications stay unusable
+  (see the open items below).
 
 **Testable in isolation:** round-trip a fixture tree through build →
 encrypt → decrypt → resolve and compare against the original; assert the
@@ -934,9 +996,6 @@ the relevant step is built, not before starting:
   names and structure but leaves the backed-up file bytes in CAS as
   plaintext that anyone who learns or guesses a content hash can read.
   Steps 17 and 19 assume bundle-only until this is settled.
-- The block-cipher padding scheme for BundleSpecification §6.1 — CBC
-  requires one, the spec doesn't name it, and both ends must agree on it
-  for the §6.3 byte-for-byte dedup property to hold.
 - How an oversized directory bundle is split across an `extensions` chain
   on the write path (Step 17): how many entries per chunk, and how to
   keep the split stable across re-backups so unchanged chunks still dedup.

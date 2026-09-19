@@ -265,9 +265,10 @@ valid JSON** (in fact generally not valid UTF-8 text at all).
 ```
 plaintext   = JSON-serialized raw bundle (file or directory bundle)
 compressed  = zlib_compress(plaintext, level = author's choice)
+padded      = pkcs7_pad(compressed, cipher block size)   # 16 bytes for AES
 key         = hash_algorithm(password)          # single-pass hash, e.g. SHA256
 iv          = explicit IV, or all-zero bytes if not specified
-ciphertext  = cipher_encrypt(compressed, key, iv)   # e.g. AES-256-CBC
+ciphertext  = cipher_encrypt(padded, key, iv)   # e.g. AES-256-CBC
 
 payload = ciphertext
         + 0x00
@@ -278,6 +279,15 @@ payload = ciphertext
 Example descriptor strings:
 - `PW-SHA256-AES256-CBC` (default all-zero IV)
 - `PW-SHA256-AES256-CBC-IV:a1b2c3...` (explicit IV)
+
+Block ciphers such as AES encrypt whole blocks, so the compressed bundle is
+padded with **PKCS#7** ([RFC 5652 §6.3](https://www.rfc-editor.org/rfc/rfc5652#section-6.3))
+before it is encrypted. Padding adds from 1 byte up to a whole block, and
+every byte it adds holds the number of bytes added. A bundle that already
+fills its last block therefore gains a whole block, so the padding can
+always be removed unambiguously. Encoders must pad this way, since identical
+ciphertext (§6.3) depends on every encoder padding alike. Decoders remove
+the padding after decrypting.
 
 ### 6.2 Key derivation
 
@@ -297,8 +307,9 @@ for an attacker to correlate across bundles.
 ### 6.3 Determinism and deduplication
 
 The default IV (all-zero, when not explicitly specified) combined with
-deterministic key derivation means **encrypting identical content with an
-identical password always produces byte-for-byte identical ciphertext**.
+deterministic key derivation and padding (§6.1) means **encrypting
+identical content with an identical password always produces byte-for-byte
+identical ciphertext**.
 This is intentional: it allows two independently encrypted copies of the
 same (content, password) pair to resolve to the same CAS address, enabling
 natural deduplication consistent with the rest of the format's CAS-native
@@ -335,7 +346,12 @@ descriptor = input[idx+1:]         # e.g. "PW-SHA256-AES256-CBC-IV:a1b2..."
 parse descriptor -> hash_algorithm, cipher, mode, iv (all-zero if not specified)
 
 key = hash_algorithm(password)
-decrypted = cipher_decrypt(ciphertext, key, iv, cipher, mode)
+padded = cipher_decrypt(ciphertext, key, iv, cipher, mode)
+
+if not is_valid_pkcs7(padded):
+    fail("not the expected blob")  # most often, the wrong password
+
+decrypted = pkcs7_unpad(padded)
 
 if is_valid_json(decrypted):
     return parse_json(decrypted)   # encoder skipped compression
@@ -384,7 +400,9 @@ readable — unlike §6, which encrypts the bundle structure but not the content
 - **`{encryption algorithm}`** — the cipher/mode used, following the same
   convention as the password-protection descriptor in §6 (e.g.
   `AES256-CBC`), optionally including an IV suffix (`-IV:{hex}`). If no IV
-  is specified, it defaults to all-zero, consistent with §6.3.
+  is specified, it defaults to all-zero, consistent with §6.3. A mode that
+  encrypts whole blocks, such as CBC, pads the plaintext with **PKCS#7**
+  first, exactly as §6.1 describes.
 - **`{encryption key}`** — the decryption key, hex-encoded.
 
 ### 7.2 Convergent key derivation
@@ -392,8 +410,8 @@ readable — unlike §6, which encrypts the bundle structure but not the content
 The encryption key is derived from the **plaintext content** in a manner
 specific to the encryption algorithm in use, so that encrypting identical
 content always produces an identical key (and, combined with the default
-all-zero IV, identical ciphertext and therefore an identical CAS address —
-preserving deduplication, consistent with §6.3).
+all-zero IV and PKCS#7 padding, identical ciphertext and therefore an
+identical CAS address — preserving deduplication, consistent with §6.3).
 
 For AES256-based encryption, SHA256 is the standard key-derivation
 candidate: `key = SHA256(plaintext)`.
