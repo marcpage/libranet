@@ -1,0 +1,234 @@
+"""What the ``/config`` backup endpoints accept, and what identifies it.
+
+BackupSpecification §7 leaves the request shapes unspecified; these are this
+node's. A backup job names a local directory to back up
+(BackupSpecification §3.1) and, optionally, how often to look at it again.
+A restore names the bundle to restore, where to put it, and what to do if
+that directory is not empty (§5).
+
+Each request identifies itself, because the web server answers before any
+module has seen it and so cannot be told an identifier by the one that will
+do the work. An identifier is a prefix of the hash of what makes the request
+unique — the directory for a job, the bundle and directory for a restore —
+so configuring the same directory twice names the same job rather than a
+second one, and the caller can work out an identifier without asking.
+
+A directory is held to being absolute and already normalized, so one
+directory has one spelling and therefore one identifier. Whether it exists,
+or can be read, is for the backup module to report: the web server does not
+touch the filesystem on a request's behalf.
+"""
+
+from __future__ import annotations
+from dataclasses import dataclass
+from enum import StrEnum
+from hashlib import sha256
+from json import loads
+from math import isfinite
+from pathlib import PurePath
+from typing import Any, Final
+
+from libranet.cas.content_id import ContentId
+from libranet.cas.errors import InvalidContentIdError
+
+#: Hex characters of the hash a job or restore is named by.
+IDENTIFIER_LENGTH: Final = 16
+
+_PARENT_SEGMENT: Final = ".."
+
+
+class InvalidConfigRequestError(ValueError):
+    """A ``/config`` request body is not what its endpoint accepts."""
+
+
+class ConflictBehavior(StrEnum):
+    """What a restore does when its target directory is not empty (§5)."""
+
+    REFUSE = "refuse"
+    OVERWRITE = "overwrite"
+
+
+@dataclass(frozen=True)
+class BackupJobRequest:
+    """A directory to keep backed up, and how often to look at it.
+
+    ``interval_seconds`` left unset leaves the interval to the backup
+    module, whose default BackupSpecification §7 has not settled.
+    """
+
+    directory: str
+    interval_seconds: float | None = None
+
+    def __post_init__(self) -> None:
+        check_directory(self.directory)
+
+        if self.interval_seconds is None:
+            return
+
+        if not isfinite(self.interval_seconds) or self.interval_seconds <= 0:
+            raise ValueError(f"interval_seconds must be positive, got {self.interval_seconds}")
+
+    @classmethod
+    def create(cls, directory: str, interval_seconds: float | None = None) -> BackupJobRequest:
+        """The job for ``directory``, spelled as it will be stored.
+
+        Raises:
+            ValueError: the directory is not absolute and free of ``..``, or
+                the interval is not positive.
+        """
+        return cls(normalized_directory(directory), interval_seconds)
+
+    @property
+    def job_id(self) -> str:
+        """What names this job, derived from the directory alone."""
+        return identifier(self.directory)
+
+    def payload(self) -> dict[str, Any]:
+        """The message body announcing this job."""
+        return {
+            "job_id": self.job_id,
+            "directory": self.directory,
+            "interval_seconds": self.interval_seconds,
+        }
+
+
+@dataclass(frozen=True)
+class RestoreRequest:
+    """A backup bundle to rebuild, and where to rebuild it."""
+
+    bundle: ContentId
+    directory: str
+    on_conflict: ConflictBehavior = ConflictBehavior.REFUSE
+
+    def __post_init__(self) -> None:
+        check_directory(self.directory)
+
+    @classmethod
+    def create(
+        cls, bundle: ContentId, directory: str, on_conflict: ConflictBehavior
+    ) -> RestoreRequest:
+        """The restore of ``bundle`` into ``directory``, spelled as it will be stored.
+
+        Raises:
+            ValueError: the directory is not absolute and free of ``..``.
+        """
+        return cls(bundle, normalized_directory(directory), on_conflict)
+
+    @property
+    def restore_id(self) -> str:
+        """What names this restore, derived from the bundle and the directory."""
+        return identifier(str(self.bundle), self.directory)
+
+    def payload(self) -> dict[str, Any]:
+        """The message body asking for this restore."""
+        return {
+            "restore_id": self.restore_id,
+            "bundle": str(self.bundle),
+            "directory": self.directory,
+            "on_conflict": self.on_conflict.value,
+        }
+
+
+def identifier(*parts: str) -> str:
+    """A short, stable name for whatever ``parts`` describe."""
+    return sha256("\0".join(parts).encode("utf-8")).hexdigest()[:IDENTIFIER_LENGTH]
+
+
+def normalized_directory(directory: str) -> str:
+    """``directory`` with its redundant separators and ``.`` segments removed."""
+    return str(PurePath(directory))
+
+
+def check_directory(directory: str) -> None:
+    """Raise unless ``directory`` is an absolute, normalized local path.
+
+    Raises:
+        ValueError: it is relative, holds a ``..`` segment or a NUL, or is
+            not the spelling :func:`normalized_directory` gives.
+    """
+    path = PurePath(directory)
+
+    if not path.is_absolute():
+        raise ValueError(f"A directory must be an absolute path, got {directory!r}")
+
+    if "\0" in directory:
+        raise ValueError("A directory may not hold a NUL character")
+
+    if _PARENT_SEGMENT in path.parts:
+        raise ValueError(f"A directory may not hold a '..' segment, got {directory!r}")
+
+    if str(path) != directory:
+        raise ValueError(f"A directory must be spelled {str(path)!r}, got {directory!r}")
+
+
+def decode_request(body: bytes) -> object:
+    """The JSON value ``body`` carries.
+
+    Raises:
+        InvalidConfigRequestError: it is not JSON.
+    """
+    try:
+        return loads(body)
+
+    except ValueError as error:
+        raise InvalidConfigRequestError(f"The request body is not JSON: {error}") from None
+
+
+def parse_backup_job(value: object) -> BackupJobRequest:
+    """The backup job a ``{"directory", "interval_seconds"}`` object asks for.
+
+    Raises:
+        InvalidConfigRequestError: it is not such an object, or what it asks
+            for is not a usable job.
+    """
+    if not isinstance(value, dict):
+        raise InvalidConfigRequestError("A backup job must be a JSON object")
+
+    directory = value.get("directory")
+
+    if not isinstance(directory, str):
+        raise InvalidConfigRequestError('A backup job\'s "directory" must be a string')
+
+    interval = value.get("interval_seconds")
+
+    if interval is not None and (
+        isinstance(interval, bool) or not isinstance(interval, (int, float))
+    ):
+        raise InvalidConfigRequestError('A backup job\'s "interval_seconds" must be a number')
+
+    try:
+        return BackupJobRequest.create(directory, None if interval is None else float(interval))
+
+    except ValueError as error:
+        raise InvalidConfigRequestError(str(error)) from None
+
+
+def parse_restore(value: object) -> RestoreRequest:
+    """The restore a ``{"bundle", "directory", "on_conflict"}`` object asks for.
+
+    Raises:
+        InvalidConfigRequestError: it is not such an object, or what it asks
+            for is not a usable restore.
+    """
+    if not isinstance(value, dict):
+        raise InvalidConfigRequestError("A restore must be a JSON object")
+
+    bundle = value.get("bundle")
+    directory = value.get("directory")
+
+    if not isinstance(bundle, str) or not isinstance(directory, str):
+        raise InvalidConfigRequestError('A restore\'s "bundle" and "directory" must be strings')
+
+    on_conflict = value.get("on_conflict", ConflictBehavior.REFUSE.value)
+
+    if on_conflict not in tuple(ConflictBehavior):
+        behaviors = ", ".join(behavior.value for behavior in ConflictBehavior)
+        raise InvalidConfigRequestError(f'A restore\'s "on_conflict" must be one of: {behaviors}')
+
+    try:
+        return RestoreRequest.create(
+            ContentId.parse(bundle), directory, ConflictBehavior(on_conflict)
+        )
+
+    except (InvalidContentIdError, ValueError) as error:
+        raise InvalidConfigRequestError(str(error)) from None
