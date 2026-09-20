@@ -1,6 +1,6 @@
 # Libranet Python Implementation Plan
 
-Version 0.2 • September 2026
+Version 0.3 • September 2026
 
 ---
 
@@ -11,7 +11,7 @@ the first Python implementation of a Libranet node, and breaks the work
 into steps that can each be built and tested largely on their own, with
 each step layering on top of the ones before it. It is an implementation
 plan, not a protocol specification — see [High-Level
-Design](HighLevelDesign.md), [Protocol
+Design](../specs/HighLevelDesign.md), [Protocol
 Specification](../specs/ProtocolSpecification.md), [HTTP
 API](../specs/HttpApi.md), [Handshake Protocol](../specs/HandshakeProtocol.md), and [Bundle
 Specification](../specs/BundleSpecification.md) for the normative protocol
@@ -85,8 +85,11 @@ same tier can generally proceed in parallel.
 Step numbers are stable once assigned, so a step added after the initial
 pass takes the next free number rather than being inserted in dependency
 order. Steps 17–20 (backup and restore) were added that way: they depend
-only on Steps 1–14, so they can be built before or alongside Steps 15 and
-16.
+only on Steps 1–14, so they can be built before or alongside Step 15.
+
+Step 16, the optional mDNS/DNS-SD local discovery step, moved to [Phase
+2](Phase%202.md) unbuilt, keeping its number. The work that follows this
+implementation pass is planned there.
 
 ---
 
@@ -723,20 +726,6 @@ node's own identifier and stored content hashes).
 
 **Testable in isolation:** unit tests with fake storage-stat inputs and
 fake acknowledgment messages, independent of real peer connections.
-
----
-
-## Step 16 (Optional) — mDNS/DNS-SD Local Discovery
-
-**Depends on:** Step 11.
-
-- Optional local-network bootstrapping (HighLevelDesign §4.9.1) using the
-  `zeroconf` library, layered on top of the node-list mechanism — not a
-  replacement for it, and with no bearing on protocol conformance.
-
-**Testable in isolation:** can be developed and tested independently of
-the wide-area discovery path, and left out of a build entirely without
-affecting anything else.
 
 ---
 
