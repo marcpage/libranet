@@ -879,6 +879,25 @@ Step 14 decides *who* may reach `/config`; this step is *what it does*.
 - The web server performs none of this work: each endpoint validates its
   input, publishes a message, and returns immediately. Job and run state
   read back by `GET` comes from messages the backup module publishes.
+- Guards run loopback first, Basic Authentication second, signatures last,
+  so a remote request is refused `403` before its credentials are looked at,
+  and an unauthenticated one is challenged before any endpoint, signature
+  policy, or request body is reached. The authentication guard covers every
+  spelling of `/config` the loopback guard recognizes, and reads headers
+  only, so a challenged request leaves its body unread.
+- The credential captured is the whole `user:password` string RFC 7617
+  encodes, hashed together, so the stored file names nobody. The hash is
+  scrypt (cost 2^14, about 60 ms and 16 MiB a request) under a fresh
+  16-byte salt, and the cost, block size, and parallelism are stored beside
+  it, so they can be raised later without stranding credentials captured
+  under the old ones. Credentials that cannot be base64-decoded or are not
+  UTF-8 count as none sent, so a malformed header can never capture the
+  node's credential.
+- Capture is atomic because the credential file is created with the same
+  link that creates the node key (Step 6): whichever racing request creates
+  it wins, and the losers are checked against the winner. The file is read
+  on every request rather than cached, so deleting it reverts the node at
+  once rather than at the next restart.
 
 **Testable in isolation:** web server tests with a fake queue — capture
 on first request, rejection afterwards, `403` still winning over `401`

@@ -8,8 +8,10 @@ IPv4-mapped IPv6 form.
 
 Application names are case-insensitive (HttpApi §13), and the path is
 percent-decoded first, as the application route decodes it, so ``/Config``,
-``/%63onfig``, and ``/config%2Fbackups`` are refused too. Basic Authentication
-and the ``/config`` endpoints themselves are Step 18.
+``/%63onfig``, and ``/config%2Fbackups`` are refused too. Which paths this
+recognizes as ``/config``'s is what the Basic Authentication guard
+(:mod:`libranet.webserver.config_auth`) requires a credential for, so no
+spelling reaches an endpoint unauthenticated either.
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ CONFIG_APPLICATION: Final = "config"
 
 def local_config_guard(request: Request) -> Request | Response:
     """A :data:`~libranet.webserver.router.Guard` refusing ``/config`` to remote clients."""
-    if not _names_config(request.path) or is_local_client(request.client_address):
+    if not names_config(request.path) or is_local_client(request.client_address):
         return request
 
     return problem_response(
@@ -38,7 +40,7 @@ def local_config_guard(request: Request) -> Request | Response:
     )
 
 
-def _names_config(path: str) -> bool:
+def names_config(path: str) -> bool:
     """Whether ``path`` is ``/config`` or beneath it, however it is spelled."""
     first_segment = unquote(path.removeprefix("/")).partition("/")[0]
     return first_segment.casefold() == CONFIG_APPLICATION

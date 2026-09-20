@@ -128,6 +128,22 @@ This credential is purely local to the node — it has no bearing on any
 other node, the wire protocol, or CAS content — so this specification
 does not mandate a hashing scheme, storage location, or format.
 
+A node MUST NOT store the credential in any form the password can be
+recovered from, and SHOULD store it as the output of a key derivation
+function deliberately costly to evaluate — scrypt, Argon2, or PBKDF2 at a
+high iteration count — under a randomly generated salt. A fast digest such
+as a single-pass SHA-256 is not sufficient. The stored file outlives the
+running node in backups, filesystem snapshots, and disk images, and anyone
+holding a copy can test candidate passwords offline as quickly as their
+hardware allows.
+
+The reason to pay for that derivation reaches past this node. Unlike the
+node's own key material, the `/config` credential is chosen by a person
+rather than generated, and people reuse passwords, so one recovered from a
+stored artifact may open accounts that have nothing to do with Libranet. A
+node pays the derivation once per `/config` request, which is imperceptible
+for local administration, and an attacker pays it once per guess.
+
 If a `/config` credential is lost or forgotten, recovery requires
 removing the stored entry from the node's local configuration or
 keystore, after which the node reverts to the pre-capture state and the

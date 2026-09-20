@@ -34,6 +34,7 @@ from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.supervision.stubs import StubModule
+from libranet.webserver.config_credential import load_config_credential
 from libranet.webserver.server import LibranetHTTPServer, build_router
 
 LOGGER = getLogger("test.connections")
@@ -78,6 +79,7 @@ class FixturePeer:
                 StubModule(ModuleName.WEBSERVER, self.queues).publish,
                 request_authenticator(LibranetConfig(storage=self.storage)),
                 allow_unsigned_api_reads=True,
+                config_credential=load_config_credential(LibranetConfig(storage=self.storage)),
             ),
             getLogger("test.webserver"),
             MessageSigner(self.identity),

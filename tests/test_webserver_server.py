@@ -5,6 +5,7 @@ Every response is expected to be signed by the server's node key.
 """
 
 from __future__ import annotations
+from base64 import b64encode
 from http.client import HTTPConnection, HTTPResponse
 from json import dumps, loads
 from logging import getLogger
@@ -34,6 +35,7 @@ from libranet.modules import ModuleName
 from libranet.problems import (
     CONTENT_TOO_LARGE,
     CONTENT_UNAVAILABLE,
+    CREDENTIAL_REQUIRED,
     INVALID_CONTENT_ADDRESS,
     INVALID_SIGNATURE,
     PROBLEM_CONTENT_TYPE,
@@ -43,6 +45,8 @@ from libranet.stats.module import StatsModule
 from libranet.supervision.stubs import StubModule
 from libranet.unbundler.resolved_files import ResolvedFiles
 from libranet.validator.module import ValidatorModule
+from libranet.webserver.config_auth import CONFIG_REALM
+from libranet.webserver.config_credential import ConfigCredential, load_config_credential
 from libranet.webserver.http_types import Request, Response
 from libranet.webserver.server import REQUEST_PATH_HEADER, LibranetHTTPServer, build_router
 
@@ -92,12 +96,19 @@ def applications() -> dict[str, str]:
 
 
 @fixture
+def credential(storage: StorageConfig) -> ConfigCredential:
+    """Where this node's `/config` credential would be captured."""
+    return load_config_credential(LibranetConfig(storage=storage))
+
+
+@fixture
 def server(
     storage: StorageConfig,
     store: CasStore,
     queues: ModuleQueues,
     allow_unsigned_api_reads: bool,
     applications: dict[str, str],
+    credential: ConfigCredential,
 ) -> Iterator[LibranetHTTPServer]:
     publisher = StubModule(ModuleName.WEBSERVER, queues)
     server = LibranetHTTPServer(
@@ -108,6 +119,7 @@ def server(
             publisher.publish,
             request_authenticator(LibranetConfig(storage=storage)),
             allow_unsigned_api_reads=allow_unsigned_api_reads,
+            config_credential=credential,
             applications=applications,
         ),
         getLogger("test.webserver"),
@@ -855,13 +867,16 @@ def test_an_application_file_not_yet_resolved_is_asked_for(
     assert (asked["bundle"], asked["path"]) == (str(APP_BUNDLE_ID), "docs/index.html")
 
 
-def test_config_passes_a_local_client_on_to_its_routes(
+def test_config_passes_a_local_client_on_to_the_credential_challenge(
     connection: HTTPConnection, queues: ModuleQueues
 ) -> None:
-    # The endpoints themselves come with Step 18; a remote client never gets this far.
+    # A remote client never gets this far: it is refused with 403 instead.
     response, body = _get(connection, "/config/backups")
 
-    assert response.status == 404
+    assert response.status == 401
+    assert (
+        response.getheader("WWW-Authenticate") == 'Basic realm="Libranet /config", charset="UTF-8"'
+    )
     assert loads(body)["instance"] == "/config/backups"
     assert _published(queues) == []
 
@@ -992,3 +1007,82 @@ def test_posted_lists_reach_the_served_files_through_the_stats_module(
     assert loads(nodes)["nodes"]["http://127.0.0.1:4300"] == str(peer.node_id)
     # The peer's own seek list is recorded, but only this node's is served.
     assert loads(seek) == {"data": [str(MISSING_ID)], "search": []}
+
+
+CONFIG_USER = "admin"
+CONFIG_PASSWORD = "correct horse"
+CONFIG_CHALLENGE = f'Basic realm="{CONFIG_REALM}", charset="UTF-8"'
+
+
+def _credentials(user: str = CONFIG_USER, password: str = CONFIG_PASSWORD) -> dict[str, str]:
+    """The `Authorization` header a `/config` client sends."""
+    encoded = b64encode(f"{user}:{password}".encode("utf-8")).decode("ascii")
+    return {"Authorization": f"Basic {encoded}"}
+
+
+def _config(
+    connection: HTTPConnection,
+    path: str,
+    method: str = "GET",
+    headers: dict[str, str] | None = None,
+    body: bytes | None = None,
+) -> tuple[HTTPResponse, bytes]:
+    connection.request(method, path, body=body, headers=headers or {})
+    response = connection.getresponse()
+    return response, response.read()
+
+
+def test_the_first_config_request_captures_its_credentials_and_is_passed_on(
+    connection: HTTPConnection, credential: ConfigCredential
+) -> None:
+    # The endpoints behind the credential come next; this one reaches routing
+    # and finds nothing there.
+    response, body = _config(connection, "/config", headers=_credentials())
+
+    assert response.status == 404
+    assert loads(body)["instance"] == "/config"
+    assert credential.captured
+
+
+def test_config_requests_afterwards_are_checked_against_what_was_captured(
+    connection: HTTPConnection, queues: ModuleQueues
+) -> None:
+    _config(connection, "/config", headers=_credentials())
+    allowed, _ = _config(connection, "/config/backups", headers=_credentials())
+    refused, body = _config(connection, "/config/backups", headers=_credentials(password="guessed"))
+
+    assert allowed.status == 404
+    assert refused.status == 401
+    assert refused.getheader("WWW-Authenticate") == CONFIG_CHALLENGE
+    assert loads(body)["type"] == CREDENTIAL_REQUIRED
+    assert _published(queues) == []
+
+
+def test_a_config_request_without_credentials_is_challenged(
+    connection: HTTPConnection, credential: ConfigCredential
+) -> None:
+    response, body = _config(connection, "/config/backups")
+
+    assert response.status == 401
+    assert response.getheader("WWW-Authenticate") == CONFIG_CHALLENGE
+    assert response.getheader(REQUEST_PATH_HEADER) == "/config/backups"
+    assert loads(body)["type"] == CREDENTIAL_REQUIRED
+    assert not credential.captured
+
+
+def test_a_remote_config_request_is_refused_before_it_can_capture_anything(
+    server: LibranetHTTPServer, credential: ConfigCredential, queues: ModuleQueues
+) -> None:
+    # The live server only ever sees loopback clients, so the remote source
+    # address is put to the router directly.
+    request = Request(
+        "GET",
+        "/config/backups",
+        headers=_credentials(),
+        client_address="203.0.113.42",
+    )
+    response = server.router.dispatch(request)
+
+    assert response.status == 403
+    assert not credential.captured
+    assert _published(queues) == []

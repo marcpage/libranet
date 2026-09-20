@@ -28,6 +28,7 @@ from libranet.supervision.stubs import StubModule
 from libranet.unbundler.module import UnbundlerModule, unbundler_module_factory
 from libranet.unbundler.resolved_files import ResolvedFiles
 from libranet.webserver.http_types import Request
+from libranet.webserver.config_credential import load_config_credential
 from libranet.webserver.server import build_router
 
 INDEX = b"<html>home</html>"
@@ -460,6 +461,7 @@ def test_the_web_server_serves_what_the_unbundler_resolves(
         StubModule(ModuleName.WEBSERVER, web_queues).publish,
         request_authenticator(LibranetConfig(storage=storage)),
         allow_unsigned_api_reads=True,
+        config_credential=load_config_credential(LibranetConfig(storage=storage)),
         applications={"wiki": str(app_id)},
     )
     browse = Request("GET", "/wiki/docs/guide.html", client_address="127.0.0.1")

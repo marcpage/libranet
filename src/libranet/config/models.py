@@ -229,6 +229,11 @@ class IdentityConfig(_Section):
         """Secret backup file name"""
         return "backup_secret"
 
+    @property
+    def config_credential_path_name(self) -> str:
+        """Name of the file holding the salted hash of the `/config` credential (Step 18)"""
+        return "config_credential"
+
 
 class StatsConfig(_Section):
     """The statistics database and the lists derived from it (Step 8)."""
