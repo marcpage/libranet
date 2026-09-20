@@ -35,6 +35,8 @@ from libranet.problems import Problem
 from libranet.unbundler.resolved_files import ResolvedFiles
 from libranet.webserver.app_handler import APP_PATTERN, AppHandler, application_bundles
 from libranet.webserver.app_outcomes import ApplicationOutcomes
+from libranet.webserver.config_auth import ConfigAuthGuard
+from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_guard import local_config_guard
 from libranet.webserver.data_handler import DATA_PATTERN, DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
@@ -80,6 +82,7 @@ def build_router(
     authenticator: RequestAuthenticator,
     *,
     allow_unsigned_api_reads: bool,
+    config_credential: ConfigCredential,
     applications: Mapping[str, str] | None = None,
     app_outcomes: ApplicationOutcomes | None = None,
 ) -> Router:
@@ -89,17 +92,21 @@ def build_router(
     for lists not derived yet, tell clients to wait before retrying.
     ``authenticator`` checks the signature of every signed request; unsigned
     reads of the ``/data`` API are served only if ``allow_unsigned_api_reads``
-    is set. ``applications`` names each application's bundle, as configured,
-    and ``app_outcomes`` holds what the unbundler reported for their paths.
+    is set. ``config_credential`` is the ``/config`` credential every request
+    there is authenticated against. ``applications`` names each application's
+    bundle, as configured, and ``app_outcomes`` holds what the unbundler
+    reported for their paths.
 
     Raises:
         InvalidContentIdError: an application's bundle is not a valid content id.
     """
     store = source_of_truth_store(storage)
     # A remote /config request is refused before its signature is checked or
-    # its body read.
+    # its body read, and a local one must carry the node's credential before
+    # any endpoint or signature policy sees it.
     router = Router(
         local_config_guard,
+        ConfigAuthGuard(config_credential),
         SignatureGuard(
             authenticator,
             storage.max_object_bytes,

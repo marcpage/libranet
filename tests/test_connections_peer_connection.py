@@ -28,6 +28,7 @@ from libranet.identity.signatures import MessageSigner, MessageVerifier
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.supervision.stubs import StubModule
+from libranet.webserver.config_credential import load_config_credential
 from libranet.webserver.server import REQUEST_PATH_HEADER, LibranetHTTPServer, build_router
 
 CLIENT_IDENTITY = NodeIdentity.from_private_key(generate_private_key(), "sha256")
@@ -429,6 +430,7 @@ def server(storage: StorageConfig) -> Iterator[LibranetHTTPServer]:
             publisher.publish,
             request_authenticator(LibranetConfig(storage=storage)),
             allow_unsigned_api_reads=True,
+            config_credential=load_config_credential(LibranetConfig(storage=storage)),
         ),
         getLogger("test.webserver"),
         MessageSigner(SERVER_IDENTITY),

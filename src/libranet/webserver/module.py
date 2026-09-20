@@ -5,7 +5,7 @@ The HTTP server runs on a background thread for the module's lifetime, while
 so shutdown handling) on the main thread. Request threads publish through
 :meth:`~libranet.messaging.module.ModuleBase.publish`. Responses are signed
 with the node key, which the module loads from disk rather than receiving
-across the process boundary.
+across the process boundary, as it does the ``/config`` credential.
 
 The receive loop takes in what the unbundler found at application paths it
 stored no file for, ``app.path_resolved`` (see
@@ -29,6 +29,7 @@ from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.unbundler.outcomes import PathOutcome
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
+from libranet.webserver.config_credential import load_config_credential
 from libranet.webserver.server import LibranetHTTPServer, build_router
 
 
@@ -84,6 +85,7 @@ class WebServerModule(ModuleBase):
         is not a valid content id crashes the module.
         """
         network = self._config.network
+        identity = self._config.identity
         signer = MessageSigner(load_node_identity(self._config))
         self._server = LibranetHTTPServer(
             (network.listen_address, network.listen_port),
@@ -92,7 +94,8 @@ class WebServerModule(ModuleBase):
                 network.retry_after_seconds,
                 self.publish,
                 request_authenticator(self._config),
-                allow_unsigned_api_reads=self._config.identity.allow_unsigned_api_reads,
+                allow_unsigned_api_reads=identity.allow_unsigned_api_reads,
+                config_credential=load_config_credential(self._config),
                 applications=self._config.applications,
                 app_outcomes=self._app_outcomes,
             ),

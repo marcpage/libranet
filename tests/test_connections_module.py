@@ -34,6 +34,7 @@ from libranet.messaging.events import EventType
 from libranet.messaging.queues import MessageQueue, ModuleQueues
 from libranet.modules import ModuleName
 from libranet.supervision.stubs import StubModule
+from libranet.webserver.config_credential import load_config_credential
 from libranet.webserver.server import LibranetHTTPServer, RequestHandler, build_router
 
 TIMEOUT = 5.0
@@ -101,6 +102,7 @@ class FixturePeer:
                 StubModule(ModuleName.WEBSERVER, queues).publish,
                 request_authenticator(LibranetConfig(storage=self.storage)),
                 allow_unsigned_api_reads=True,
+                config_credential=load_config_credential(LibranetConfig(storage=self.storage)),
             ),
             getLogger("test.webserver"),
             MessageSigner(self.identity),
