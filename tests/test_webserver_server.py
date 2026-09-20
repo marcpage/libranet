@@ -1032,15 +1032,13 @@ def _config(
     return response, response.read()
 
 
-def test_the_first_config_request_captures_its_credentials_and_is_passed_on(
+def test_the_first_config_request_captures_its_credentials_and_is_served(
     connection: HTTPConnection, credential: ConfigCredential
 ) -> None:
-    # The endpoints behind the credential come next; this one reaches routing
-    # and finds nothing there.
     response, body = _config(connection, "/config", headers=_credentials())
 
-    assert response.status == 404
-    assert loads(body)["instance"] == "/config"
+    assert response.status == 200
+    assert "/config/backups" in {entry["path"] for entry in loads(body)["endpoints"]}
     assert credential.captured
 
 
@@ -1051,7 +1049,7 @@ def test_config_requests_afterwards_are_checked_against_what_was_captured(
     allowed, _ = _config(connection, "/config/backups", headers=_credentials())
     refused, body = _config(connection, "/config/backups", headers=_credentials(password="guessed"))
 
-    assert allowed.status == 404
+    assert allowed.status == 503
     assert refused.status == 401
     assert refused.getheader("WWW-Authenticate") == CONFIG_CHALLENGE
     assert loads(body)["type"] == CREDENTIAL_REQUIRED
@@ -1068,6 +1066,24 @@ def test_a_config_request_without_credentials_is_challenged(
     assert response.getheader(REQUEST_PATH_HEADER) == "/config/backups"
     assert loads(body)["type"] == CREDENTIAL_REQUIRED
     assert not credential.captured
+
+
+def test_a_config_endpoint_publishes_what_the_backup_module_will_act_on(
+    connection: HTTPConnection, queues: ModuleQueues
+) -> None:
+    response, body = _config(
+        connection,
+        "/config/backups",
+        "POST",
+        _credentials(),
+        dumps({"directory": "/home/me/documents"}).encode("utf-8"),
+    )
+
+    assert response.status == 202
+    (message,) = _published(queues)
+    assert message["event"] == EventType.BACKUP_JOB_CONFIGURED
+    assert message["job_id"] == loads(body)["job_id"]
+    assert message["directory"] == "/home/me/documents"
 
 
 def test_a_remote_config_request_is_refused_before_it_can_capture_anything(

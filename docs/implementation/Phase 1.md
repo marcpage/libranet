@@ -898,6 +898,36 @@ Step 14 decides *who* may reach `/config`; this step is *what it does*.
   it wins, and the losers are checked against the winner. The file is read
   on every request rather than cached, so deleting it reverts the node at
   once rather than at the next restart.
+- The endpoints, all answering `202` with the identifier the request will be
+  known by, and all publishing exactly one message:
+  `POST /config/backups` (`{"directory", "interval_seconds"}`),
+  `DELETE /config/backups/{job_id}`,
+  `POST /config/backups/{job_id}/run`, and
+  `POST /config/restores` (`{"bundle", "directory", "on_conflict"}`).
+  `GET /config` names them all, which also gives a browser somewhere to
+  land once it has prompted for the credential.
+- A request names itself rather than waiting to be told: a job's identifier
+  is a prefix of the hash of its directory, a restore's of its bundle and
+  target together. Configuring the same directory twice therefore names the
+  same job rather than a second one, and a caller can work an identifier out
+  without asking. A directory must be absolute, free of `..`, and already
+  normalized, so one directory has one spelling and so one identifier.
+- Whether a directory exists, or can be read, is the backup module's to
+  report: the web server checks the shape of a request and nothing on the
+  filesystem, so it never blocks a request thread on a stat and never
+  disagrees with what the module finds a moment later.
+- `GET /config/backups` and `GET /config/restores` serve the arrays of the
+  last `backup.state` message, as the backup module published them. Until
+  its first report — including whenever that module is not running — they
+  answer `503` with `Retry-After`, as a list not yet derived does, rather
+  than an empty array that would claim nothing is configured.
+- `on_conflict` is `refuse` or `overwrite`, defaulting to `refuse`, which is
+  the safe end of what BackupSpecification §5 leaves implementation-defined
+  and what Step 20 will act on.
+- New events: `backup.job_configured`, `backup.job_removed`,
+  `backup.run_requested`, and `backup.restore_requested` from the web
+  server, and `backup.state` back to it. The backup module is named in
+  `ModuleName` so those messages have a counterparty; Step 19 spawns it.
 
 **Testable in isolation:** web server tests with a fake queue — capture
 on first request, rejection afterwards, `403` still winning over `401`

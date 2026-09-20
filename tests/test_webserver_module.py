@@ -1,7 +1,9 @@
 """Tests for the web server module's lifecycle."""
 
 from __future__ import annotations
+from base64 import b64encode
 from http.client import HTTPConnection
+from json import loads
 from pathlib import Path
 from queue import Queue
 from socket import socket
@@ -20,6 +22,8 @@ from libranet.messaging.envelope import make_message
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
+from libranet.webserver.backup_state import JOBS_FIELD, RESTORES_FIELD
+from libranet.webserver.config_credential import load_config_credential
 from libranet.webserver.module import WebServerModule, webserver_module_factory
 
 
@@ -235,8 +239,66 @@ def test_module_answers_application_paths_from_what_the_unbundler_reported(
     assert not thread.is_alive()
 
 
-def test_module_subscribes_to_what_the_unbundler_resolves() -> None:
-    assert WebServerModule.subscriptions == {EventType.APP_PATH_RESOLVED}
+def _authorized(host: str, port: int, path: str, user: str = "admin") -> tuple[int, bytes]:
+    """A `/config` GET carrying Basic credentials for ``user``."""
+    encoded = b64encode(f"{user}:secret".encode("utf-8")).decode("ascii")
+    connection = HTTPConnection(host, port, timeout=5)
+    connection.request("GET", path, headers={"Authorization": f"Basic {encoded}"})
+    response = connection.getresponse()
+    body = response.read()
+    connection.close()
+    return response.status, body
+
+
+def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: Path) -> None:
+    queues = _queues()
+    config = _config(tmp_path, _free_port())
+    module = WebServerModule(ModuleName.WEBSERVER, queues, config, poll_interval=0.01)
+    stop = Event()
+    thread = Thread(target=module.run, args=(stop,), daemon=True)
+    thread.start()
+    job = {"job_id": "0123456789abcdef", "directory": "/home/me/documents", "state": "idle"}
+
+    try:
+        host, port = _wait_for_address(module)
+
+        # The first request captures the credential, which is then stored
+        # beside the node key; a later one offering another is refused.
+        assert _authorized(host, port, "/config")[0] == 200
+        assert load_config_credential(config).captured
+        assert _authorized(host, port, "/config", user="someone else")[0] == 401
+
+        # Nothing is readable back until the backup module reports.
+        assert _authorized(host, port, "/config/backups")[0] == 503
+
+        queues.inbox.put(
+            make_message(
+                EventType.BACKUP_STATE,
+                ModuleName.BACKUP,
+                {JOBS_FIELD: [job], RESTORES_FIELD: []},
+            )
+        )
+        deadline = monotonic() + 5
+
+        while _authorized(host, port, "/config/backups")[0] != 200 and monotonic() < deadline:
+            sleep(0.01)
+
+        status, body = _authorized(host, port, "/config/backups")
+        assert (status, loads(body)) == (200, {"jobs": [job]})
+        assert loads(_authorized(host, port, "/config/restores")[1]) == {"restores": []}
+
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+    assert not thread.is_alive()
+
+
+def test_module_subscribes_to_what_other_modules_report() -> None:
+    assert WebServerModule.subscriptions == {
+        EventType.APP_PATH_RESOLVED,
+        EventType.BACKUP_STATE,
+    }
 
 
 def test_module_stops_on_the_stop_signal(tmp_path: Path) -> None:

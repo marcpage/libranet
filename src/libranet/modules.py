@@ -1,10 +1,10 @@
 """The fixed set of processes a node runs.
 
 Every module area named in the implementation plan appears here exactly
-once. The supervisor spawns one process per member (Step 4), each message's
-envelope carries the name of the module that published it (Step 3), and each
-module logs through a logger named after its member (see
-:mod:`libranet.logging_setup`).
+once. The supervisor spawns one process per member of
+:data:`SPAWNED_MODULES` (Step 4), each message's envelope carries the name of
+the module that published it (Step 3), and each module logs through a logger
+named after its member (see :mod:`libranet.logging_setup`).
 """
 
 from __future__ import annotations
@@ -23,6 +23,9 @@ class ModuleName(StrEnum):
     FETCHER = "fetcher"
     UNBUNDLER = "unbundler"
     EVICTION = "eviction"
+    # Named here so the `/config` endpoints (Step 18) have a counterparty for
+    # the messages they publish; the process itself arrives with Step 19.
+    BACKUP = "backup"
 
 
 #: Modules the supervisor spawns, in the order it starts them. The dispatcher

@@ -35,9 +35,11 @@ from libranet.problems import Problem
 from libranet.unbundler.resolved_files import ResolvedFiles
 from libranet.webserver.app_handler import APP_PATTERN, AppHandler, application_bundles
 from libranet.webserver.app_outcomes import ApplicationOutcomes
+from libranet.webserver.backup_state import BackupState
 from libranet.webserver.config_auth import ConfigAuthGuard
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_guard import local_config_guard
+from libranet.webserver.config_handlers import config_routes
 from libranet.webserver.data_handler import DATA_PATTERN, DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
 from libranet.webserver.http_types import (
@@ -85,6 +87,7 @@ def build_router(
     config_credential: ConfigCredential,
     applications: Mapping[str, str] | None = None,
     app_outcomes: ApplicationOutcomes | None = None,
+    backup_state: BackupState | None = None,
 ) -> Router:
     """The node's routes, serving the configured source of truth and derived lists.
 
@@ -93,9 +96,10 @@ def build_router(
     ``authenticator`` checks the signature of every signed request; unsigned
     reads of the ``/data`` API are served only if ``allow_unsigned_api_reads``
     is set. ``config_credential`` is the ``/config`` credential every request
-    there is authenticated against. ``applications`` names each application's
-    bundle, as configured, and ``app_outcomes`` holds what the unbundler
-    reported for their paths.
+    there is authenticated against, and ``backup_state`` what the backup
+    module last reported for them to read back. ``applications`` names each
+    application's bundle, as configured, and ``app_outcomes`` holds what the
+    unbundler reported for their paths.
 
     Raises:
         InvalidContentIdError: an application's bundle is not a valid content id.
@@ -143,6 +147,13 @@ def build_router(
         SEEK_PATH,
         SeekListHandler(storage.max_object_bytes, storage.max_decompressed_list_bytes, publish),
     )
+    # The administration surface, which the guards above have already
+    # restricted to authenticated clients on this machine.
+    for method, pattern, handler in config_routes(
+        publish, backup_state or BackupState(), retry_after_seconds
+    ):
+        router.add(method, pattern, handler)
+
     # Last, since its pattern fits every path outside the reserved names.
     router.add(
         "GET",
