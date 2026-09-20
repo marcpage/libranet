@@ -1,4 +1,5 @@
 # Karma and Kismet
+
 ## A Decentralized Reputation and Contribution System
 
 **Technical White Paper - Draft v0.2**  
@@ -8,27 +9,46 @@
 
 ## Abstract
 
-Karma is a decentralized reputation and contribution accounting system designed to reward participants for providing value to a distributed network.
+Karma is a decentralized reputation and contribution accounting system designed
+to reward participants for providing value to a distributed network.
 
-Karma is intentionally different from a conventional cryptocurrency. It is not primarily intended to function as an exchange currency, store of financial wealth, or speculative asset. Its principal purpose is to provide a persistent, decentralized measurement of a participant's demonstrated contribution to the network.
+Karma is intentionally different from a conventional cryptocurrency. It is not
+primarily intended to function as an exchange currency, store of financial
+wealth, or speculative asset. Its principal purpose is to provide a persistent,
+decentralized measurement of a participant's demonstrated contribution to the
+network.
 
-Karma can be earned through activities including transaction validation, providing requested information, distributing information, demonstrating continued possession of information, and contributing original data.
+Karma can be earned through activities including transaction validation,
+providing requested information, distributing information, demonstrating
+continued possession of information, and contributing original data.
 
-The system has a maximum supply of **100 trillion Karma**. Each Karma is divisible into **100 trillion Kismet**, providing extremely fine-grained accounting for automated machine-to-machine rewards.
+The system has a maximum supply of **100 trillion Karma**. Each Karma is
+divisible into **100 trillion Kismet**, providing extremely fine-grained
+accounting for automated machine-to-machine rewards.
 
-Karma issuance begins at 20 Karma per transaction-block generation and declines by 200 Kismet per generation. This produces a linear issuance curve whose total positive issuance is approximately 100 trillion Karma.
+Karma issuance begins at 20 Karma per transaction-block generation and declines
+by 200 Kismet per generation. This produces a linear issuance curve whose total
+positive issuance is approximately 100 trillion Karma.
 
-The system also incorporates a stake-weighted validation mechanism designed to distribute validation rewards broadly rather than concentrating them exclusively among participants with the greatest computational resources or largest stakes. A participant that recently wins validation receives reduced effective stake weight in subsequent generations, creating an asymmetric incentive against repeatedly winning consecutive generations.
+The system also incorporates a stake-weighted validation mechanism designed to
+distribute validation rewards broadly rather than concentrating them exclusively
+among participants with the greatest computational resources or largest stakes.
+A participant that recently wins validation receives reduced effective stake
+weight in subsequent generations, creating an asymmetric incentive against
+repeatedly winning consecutive generations.
 
-The result is intended to be a system in which contribution creates reputation, reputation enables participation, and participation creates further opportunities to contribute.
+The result is intended to be a system in which contribution creates reputation,
+reputation enables participation, and participation creates further
+opportunities to contribute.
 
 ---
 
-# 1. Introduction
+## 1. Introduction
 
 Distributed networks face a fundamental coordination problem.
 
-Participants consume resources from the network while other participants provide those resources.
+Participants consume resources from the network while other participants provide
+those resources.
 
 A node may:
 
@@ -41,7 +61,8 @@ A node may:
 - respond to requests;
 - or perform other useful network services.
 
-Traditional decentralized systems often compensate participants through a conventional cryptocurrency.
+Traditional decentralized systems often compensate participants through a
+conventional cryptocurrency.
 
 Karma takes a different approach.
 
@@ -51,17 +72,19 @@ The fundamental question is not:
 
 Instead, the question is:
 
-> **"How much value has this node demonstrated that it contributes to the network?"**
+> **"How much value has this node demonstrated that it contributes to the
+> network?"**
 
 Karma is designed to provide a persistent answer to that question.
 
 ---
 
-# 2. Design Philosophy
+## 2. Design Philosophy
 
 The fundamental design principle is:
 
-> **Karma should be difficult to acquire without providing genuine value, while remaining easy to accumulate through genuine contribution.**
+> **Karma should be difficult to acquire without providing genuine value, while
+> remaining easy to accumulate through genuine contribution.**
 
 The system therefore attempts to create the following relationship:
 
@@ -79,21 +102,23 @@ The distinction is important.
 
 A participant possessing a large Karma balance is not necessarily "wealthy."
 
-The participant has accumulated a large historical record of recognized more contribution than value received.
+The participant has accumulated a large historical record of recognized more
+contribution than value received.
 
 ---
 
-# 3. Karma as Reputation
+## 3. Karma as Reputation
 
 Karma is primarily a reputation system.
 
 A node with:
 
-**100,000 Karma**
+- 100,000 Karma
 
-has demonstrated substantially more recognized net contribution than a node with:
+has demonstrated substantially more recognized net contribution than a node
+with:
 
-**0.001 Karma**
+- 0.001 Karma
 
 assuming both balances were honestly earned.
 
@@ -109,11 +134,12 @@ A high-Karma node could still:
 - fail to honor commitments;
 - or otherwise behave badly.
 
-Karma should therefore be regarded as evidence of historical contribution rather than absolute proof of trustworthiness.
+Karma should therefore be regarded as evidence of historical contribution rather
+than absolute proof of trustworthiness.
 
 ---
 
-# 4. Karma Supply
+## 4. Karma Supply
 
 The maximum Karma supply is:
 
@@ -157,17 +183,19 @@ or:
 
 **10 octillion Kismet.**
 
-The extremely small Kismet denomination permits the protocol to represent very small machine-to-machine rewards without requiring arbitrary rounding.
+The extremely small Kismet denomination permits the protocol to represent very
+small machine-to-machine rewards without requiring arbitrary rounding.
 
 ---
 
-# 5. Kismet
+## 5. Kismet
 
 Kismet is the smallest accounting unit of Karma.
 
 The large number of Kismet per Karma is intentional.
 
-A network node may perform a useful action whose appropriate reward is vastly smaller than one Karma.
+A network node may perform a useful action whose appropriate reward is vastly
+smaller than one Karma.
 
 For example:
 
@@ -186,11 +214,12 @@ These values are illustrative.
 
 The protocol can therefore recognize contributions at extremely fine resolution.
 
-Kismet also allows transaction fees to be very small without requiring the network to choose between "free" and "one full Karma."
+Kismet also allows transaction fees to be very small without requiring the
+network to choose between "free" and "one full Karma."
 
 ---
 
-# 6. Karma Issuance
+## 6. Karma Issuance
 
 New Karma is created through the generation of transaction blocks.
 
@@ -230,29 +259,31 @@ Kismet.
 
 ---
 
-# 7. Issuance Examples
+## 7. Issuance Examples
 
 The beginning of the issuance schedule is:
 
-| Generation | New Karma |
-|---:|---:|
-| 1 | 20.000000000000 |
-| 2 | 19.999999999998 |
-| 3 | 19.999999999996 |
-| 4 | 19.999999999994 |
-| 5 | 19.999999999992 |
-| 10 | 19.999999999982 |
-| 1,000 | 19.999999998002 |
-| 1,000,000 | 19.999998000002 |
+| Generation    | New Karma       |
+|--------------:|----------------:|
+| 1             | 20.000000000000 |
+| 2             | 19.999999999998 |
+| 3             | 19.999999999996 |
+| 4             | 19.999999999994 |
+| 5             | 19.999999999992 |
+| 10            | 19.999999999982 |
+| 1,000         | 19.999999998002 |
+| 1,000,000     | 19.999998000002 |
 | 1,000,000,000 | 19.998000000002 |
 
 The reduction is extremely gradual.
 
-The purpose is not to create a traditional "halving" schedule. Instead, the protocol provides a nearly constant reward at first, followed by a very long, predictable linear decline.
+The purpose is not to create a traditional "halving" schedule. Instead, the
+protocol provides a nearly constant reward at first, followed by a very long,
+predictable linear decline.
 
 ---
 
-# 8. Total Issuance
+## 8. Total Issuance
 
 The issuance schedule forms an arithmetic series.
 
@@ -294,13 +325,15 @@ Therefore the emission schedule naturally produces approximately:
 
 **100 trillion Karma.**
 
-This is significant because the maximum supply is not simply an arbitrary external cap. It corresponds directly to the cumulative issuance schedule.
+This is significant because the maximum supply is not simply an arbitrary
+external cap. It corresponds directly to the cumulative issuance schedule.
 
-Once the scheduled issuance reaches zero, no additional Karma is created through block generation.
+Once the scheduled issuance reaches zero, no additional Karma is created through
+block generation.
 
 ---
 
-# 9. Karma Creation Through Contribution
+## 9. Karma Creation Through Contribution
 
 Block issuance is only one mechanism associated with Karma.
 
@@ -324,7 +357,8 @@ A node that forwards useful information can receive Karma.
 
 A node can demonstrate that it continues to possess information entrusted to it.
 
-For example, a node holding a backup can periodically prove that it still possesses the backup.
+For example, a node holding a backup can periodically prove that it still
+possesses the backup.
 
 ### Authorship
 
@@ -334,7 +368,7 @@ The exact authorship mechanism remains an area for further investigation.
 
 ---
 
-# 10. Karma Is Not Intended as an Exchange System
+## 10. Karma Is Not Intended as an Exchange System
 
 Karma is not designed primarily as a replacement for conventional money.
 
@@ -348,17 +382,20 @@ Its purpose is to answer:
 
 This distinction should remain central to the protocol.
 
-However, a decentralized token may acquire external exchange value regardless of its intended purpose.
+However, a decentralized token may acquire external exchange value regardless of
+its intended purpose.
 
-The protocol therefore needs to consider the possibility that participants may attempt to buy, sell, or otherwise commoditize Karma.
+The protocol therefore needs to consider the possibility that participants may
+attempt to buy, sell, or otherwise commoditize Karma.
 
 ---
 
-# 11. Micro-Transactions
+## 11. Micro-Transactions
 
 Kismet allows nodes to recognize very small contributions.
 
-A node may automatically send a small amount of Karma to another node that provides a useful service.
+A node may automatically send a small amount of Karma to another node that
+provides a useful service.
 
 For example:
 
@@ -378,7 +415,8 @@ Node B:
     +----------------+
 ```
 
-The amounts may be so small that the transactions have no meaningful conventional monetary value.
+The amounts may be so small that the transactions have no meaningful
+conventional monetary value.
 
 Their purpose is to create a machine-readable record:
 
@@ -388,13 +426,14 @@ Over time, these micro-rewards accumulate into reputation.
 
 ---
 
-# 12. Transaction Fees
+## 12. Transaction Fees
 
 Transactions may optionally include a Karma fee.
 
 A fee is not newly created Karma.
 
-Instead, it is existing Karma transferred from the transaction originator to participants responsible for processing and validating the transaction.
+Instead, it is existing Karma transferred from the transaction originator to
+participants responsible for processing and validating the transaction.
 
 Thus:
 
@@ -412,9 +451,10 @@ This distinction preserves the fixed-supply property of Karma.
 
 ---
 
-# 13. The 50% Free-Transaction Requirement
+## 13. The 50% Free-Transaction Requirement
 
-Every transaction block must contain at least half of its transactions without a fee.
+Every transaction block must contain at least half of its transactions without a
+fee.
 
 Therefore:
 
@@ -430,13 +470,15 @@ N_paid <= N_free
 
 No generation may contain more paid transactions than free transactions.
 
-This creates a protocol-level guarantee that at least half of transaction capacity remains available to transactions that pay no fee.
+This creates a protocol-level guarantee that at least half of transaction
+capacity remains available to transactions that pay no fee.
 
 ---
 
-# 14. Why Free Transactions Matter
+## 14. Why Free Transactions Matter
 
-Without this requirement, transaction fees could become the primary determinant of access to the network.
+Without this requirement, transaction fees could become the primary determinant
+of access to the network.
 
 The system could eventually evolve toward:
 
@@ -446,15 +488,17 @@ higher fee -> higher priority -> faster service
 
 That would move Karma toward the economics of a conventional cryptocurrency.
 
-The free-transaction requirement deliberately prevents this from happening completely.
+The free-transaction requirement deliberately prevents this from happening
+completely.
 
 At least half of the transactions in each block must remain fee-free.
 
-This prevents starving out fee-free transactions while allowing fees to give some priority.
+This prevents starving out fee-free transactions while allowing fees to give
+some priority.
 
 ---
 
-# 15. An Unexpected Consequence
+## 15. An Unexpected Consequence
 
 The free-transaction requirement creates an unusual fee market.
 
@@ -462,7 +506,8 @@ Suppose a validator has room for 100 transactions.
 
 The protocol requires at least 50 to be free.
 
-The validator therefore has only 50 positions that can be selected primarily for their fee value.
+The validator therefore has only 50 positions that can be selected primarily for
+their fee value.
 
 If the transaction pool contains:
 
@@ -472,13 +517,15 @@ If the transaction pool contains:
 10,000 high-fee transactions
 ```
 
-the validator may choose the 50 highest-fee transactions and 50 free transactions.
+the validator may choose the 50 highest-fee transactions and 50 free
+transactions.
 
 The low-fee transactions may therefore be delayed.
 
 Consequently:
 
-> **A low-fee transaction may take longer to confirm than a completely free transaction.**
+> **A low-fee transaction may take longer to confirm than a completely free
+> transaction.**
 
 This is a deliberate and interesting consequence of the protocol's design.
 
@@ -486,7 +533,7 @@ The fee market is constrained rather than unlimited.
 
 ---
 
-# 16. Transaction Selection as an Optimization Problem
+## 16. Transaction Selection as an Optimization Problem
 
 A validator is not simply attempting to maximize fees.
 
@@ -494,7 +541,7 @@ It must maximize expected reward subject to the free-transaction requirement.
 
 Conceptually:
 
-```
+```text
 max(fees)
 ```
 
@@ -510,17 +557,20 @@ The 50% requirement applies to transaction count.
 
 ---
 
-# 17. Validation
+## 17. Validation
 
-Karma uses a combination of proof of work and staking to select validation blocks.
+Karma uses a combination of proof of work and staking to select validation
+blocks.
 
 A validation block is not an individual validator.
 
-It is a **collection of signed stakes associated with a particular transaction block**.
+It is a **collection of signed stakes associated with a particular transaction
+block**.
 
 Participants independently construct candidate validation blocks.
 
-Each candidate contains signed stakes referencing the applicable transaction block.
+Each candidate contains signed stakes referencing the applicable transaction
+block.
 
 Participants then search for a proof-of-work solution for their candidate.
 
@@ -550,13 +600,15 @@ Participants then search for a proof-of-work solution for their candidate.
 
 ---
 
-# 18. Proof of Work
+## 18. Proof of Work
 
 The proof-of-work mechanism uses a binary matching concept.
 
-Participants add random data, such as a nonce, to their candidate validation block and calculate its hash.
+Participants add random data, such as a nonce, to their candidate validation
+block and calculate its hash.
 
-The objective is to obtain a hash that matches as many leading binary digits as possible against the protocol's target.
+The objective is to obtain a hash that matches as many leading binary digits as
+possible against the protocol's target.
 
 Conceptually:
 
@@ -573,15 +625,18 @@ Match:
 
 The number of matching binary digits determines the proof-of-work quality.
 
-This differs from conventional proof-of-work systems in which a hash must generally fall below a numerical target.
+This differs from conventional proof-of-work systems in which a hash must
+generally fall below a numerical target.
 
-The binary matching mechanism creates a natural ranking of candidates without requiring participants to discover an exact predetermined value.
+The binary matching mechanism creates a natural ranking of candidates without
+requiring participants to discover an exact predetermined value.
 
 ---
 
-# 19. Why Proof of Work Is Combined With Stake
+## 19. Why Proof of Work Is Combined With Stake
 
-Pure proof of work would tend to favor participants with greater computational resources.
+Pure proof of work would tend to favor participants with greater computational
+resources.
 
 Pure stake would tend to favor participants with greater balances.
 
@@ -593,37 +648,47 @@ A validation candidate has:
 2. a collection of signed stakes;
 3. a total weighted stake.
 
-When the next transaction block becomes complete, the best candidate is selected using proof-of-work quality, with weighted stake providing the relevant tie-breaking influence.
+When the next transaction block becomes complete, the best candidate is selected
+using proof-of-work quality, with weighted stake providing the relevant
+tie-breaking influence.
 
-This introduces an element of randomness and uncertainty into the selection process.
+This introduces an element of randomness and uncertainty into the selection
+process.
 
 ---
 
-# 20. Unpredictable Transaction-Block Completion
+## 20. Unpredictable Transaction-Block Completion
 
-A validation block is complete when the next transaction block is full and ready for validation.
+A validation block is complete when the next transaction block is full and ready
+for validation.
 
-This is an important property of the system because the time at which the next transaction block fills is indeterminate.
+This is an important property of the system because the time at which the next
+transaction block fills is indeterminate.
 
 Validators therefore cannot know exactly when the competition will end.
 
-A participant may construct a candidate validation block and begin searching for a favorable nonce, but the candidate cannot simply be precomputed indefinitely.
+A participant may construct a candidate validation block and begin searching for
+a favorable nonce, but the candidate cannot simply be precomputed indefinitely.
 
-The signatures contained within the validation block must reference a valid transaction block.
+The signatures contained within the validation block must reference a valid
+transaction block.
 
 Consequently:
 
-> **A participant cannot fully precompute a future validation block before the applicable transaction block exists.**
+> **A participant cannot fully precompute a future validation block before the
+> applicable transaction block exists.**
 
-This limits certain forms of advance computation and creates a timing risk for participants attempting to optimize their validation strategy.
+This limits certain forms of advance computation and creates a timing risk for
+participants attempting to optimize their validation strategy.
 
 ---
 
-# 21. Recombinable Validation Blocks
+## 21. Recombinable Validation Blocks
 
 Validation blocks are collections of signed stakes.
 
-The signed stakes themselves can be incorporated into different candidate validation blocks.
+The signed stakes themselves can be incorporated into different candidate
+validation blocks.
 
 For example:
 
@@ -653,13 +718,15 @@ Candidate Block X:
 
 The signatures remain individually attributable to their creators.
 
-The candidate block constructor is therefore assembling a collection of independently signed commitments.
+The candidate block constructor is therefore assembling a collection of
+independently signed commitments.
 
 ---
 
-# 22. Validator Incentives
+## 22. Validator Incentives
 
-A validator wants to construct a candidate that has a strong probability of winning.
+A validator wants to construct a candidate that has a strong probability of
+winning.
 
 This creates an unusual incentive structure.
 
@@ -670,19 +737,24 @@ A participant's signed stake can potentially appear in:
 - the winning candidate;
 - or the runner-up candidate.
 
-The participant does not explicitly choose which candidate will ultimately contain its stake.
+The participant does not explicitly choose which candidate will ultimately
+contain its stake.
 
-Instead, participants construct candidates they believe are likely to win and search for proof-of-work solutions.
+Instead, participants construct candidates they believe are likely to win and
+search for proof-of-work solutions.
 
-Other participants may independently incorporate their signed stakes into their own candidate blocks.
+Other participants may independently incorporate their signed stakes into their
+own candidate blocks.
 
 ---
 
-# 23. Stake and Recent Winners
+## 23. Stake and Recent Winners
 
-The effective weight of a stake depends on how recently its creator last won a validation competition.
+The effective weight of a stake depends on how recently its creator last won a
+validation competition.
 
-All stakes belonging to a given participant in a particular generation have the same weighting.
+All stakes belonging to a given participant in a particular generation have the
+same weighting.
 
 For example, conceptually:
 
@@ -712,11 +784,12 @@ Continued participation without winning gradually restores effective weight.
 
 ---
 
-# 24. Asymmetric Risk
+## 24. Asymmetric Risk
 
 This mechanism deliberately creates asymmetric risk.
 
-Suppose a validator recently won and its stakes currently receive only 10% effective weight.
+Suppose a validator recently won and its stakes currently receive only 10%
+effective weight.
 
 The validator might stake:
 
@@ -734,7 +807,8 @@ Karma.
 
 If it wins again, its reduced effective weight limits its advantage.
 
-However, if its stake appears in the selected runner-up block and is subject to the protocol's loss mechanism, the validator may lose the full:
+However, if its stake appears in the selected runner-up block and is subject to
+the protocol's loss mechanism, the validator may lose the full:
 
 \[
 10,000 Karma.
@@ -748,17 +822,20 @@ Consensus influence < economic exposure
 
 for a recent winner.
 
-This discourages participants from simply staking enormous amounts immediately after winning.
+This discourages participants from simply staking enormous amounts immediately
+after winning.
 
 ---
 
-# 25. The Runner-Up Mechanism
+## 25. The Runner-Up Mechanism
 
 Every validation block also identifies a runner-up validation block.
 
-The constructor of the winning validation block selects which candidate serves as the runner-up.
+The constructor of the winning validation block selects which candidate serves
+as the runner-up.
 
-The combined stake of the selected runner-up may become part of the reward distributed by the winning block.
+The combined stake of the selected runner-up may become part of the reward
+distributed by the winning block.
 
 This creates a second layer of competition.
 
@@ -766,19 +843,24 @@ Participants are therefore not simply attempting to become:
 
 > "the best validation block."
 
-They must construct candidates that are attractive enough to win while considering the possibility that their stake may become part of the runner-up outcome.
+They must construct candidates that are attractive enough to win while
+considering the possibility that their stake may become part of the runner-up
+outcome.
 
 ---
 
-# 26. Duplicate Stakes
+## 26. Duplicate Stakes
 
 A stake is uniquely constructed and signed by its author.
 
-If the exact same stake appears in both the winning and runner-up blocks, it is not counted as part of the earnings.
+If the exact same stake appears in both the winning and runner-up blocks, it is
+not counted as part of the earnings.
 
-This prevents a stake from effectively being counted twice through its appearance in both candidate blocks.
+This prevents a stake from effectively being counted twice through its
+appearance in both candidate blocks.
 
-The uniqueness of signed stakes also provides an unambiguous relationship between:
+The uniqueness of signed stakes also provides an unambiguous relationship
+between:
 
 ```text
 stake -> author
@@ -786,23 +868,26 @@ stake -> author
 
 ---
 
-# 27. Block Size Limits
+## 27. Block Size Limits
 
 Validation blocks have a finite size.
 
-Consequently, only a limited number of signed stakes can be included in any candidate.
+Consequently, only a limited number of signed stakes can be included in any
+candidate.
 
 This creates a natural competition for inclusion.
 
-A participant constructing a candidate wants to include stakes that maximize the candidate's probability of winning.
+A participant constructing a candidate wants to include stakes that maximize the
+candidate's probability of winning.
 
 Other participants have the same objective.
 
-The result is a decentralized market for candidate construction in which participants independently decide which signed stakes to include.
+The result is a decentralized market for candidate construction in which
+participants independently decide which signed stakes to include.
 
 ---
 
-# 28. The Strategic Problem
+## 28. The Strategic Problem
 
 A validator faces a complicated decision.
 
@@ -838,11 +923,12 @@ Potentially greater coverage,
 but greater aggregate exposure.
 ```
 
-This creates a strategic optimization problem rather than a simple "more stake is always better" system.
+This creates a strategic optimization problem rather than a simple "more stake
+is always better" system.
 
 ---
 
-# 29. Multiple Stakes
+## 29. Multiple Stakes
 
 A participant may publish multiple independently signed stakes.
 
@@ -855,21 +941,26 @@ These stakes can potentially be included in:
 
 This creates a portfolio-like strategy.
 
-A participant can spread its exposure across multiple stakes rather than making a single all-or-nothing commitment.
+A participant can spread its exposure across multiple stakes rather than making
+a single all-or-nothing commitment.
 
-However, because multiple stakes can potentially appear in the same winning or runner-up block, publishing additional stakes does not eliminate risk.
+However, because multiple stakes can potentially appear in the same winning or
+runner-up block, publishing additional stakes does not eliminate risk.
 
 It may simply redistribute it.
 
 ---
 
-# 30. Adaptive Stake Placement
+## 30. Adaptive Stake Placement
 
-An especially interesting property is that a validator can continue creating stakes while the validation competition is underway.
+An especially interesting property is that a validator can continue creating
+stakes while the validation competition is underway.
 
-Suppose a validator observes that one of its stakes appears likely to be included in a runner-up candidate.
+Suppose a validator observes that one of its stakes appears likely to be
+included in a runner-up candidate.
 
-The validator may create another stake with greater value and attempt to construct a candidate that is more likely to win.
+The validator may create another stake with greater value and attempt to
+construct a candidate that is more likely to win.
 
 This creates a dynamic strategy:
 
@@ -877,29 +968,35 @@ This creates a dynamic strategy:
 observe -> construct -> stake -> mine -> observe -> reconstruct
 ```
 
-The protocol therefore becomes a continuously evolving competition rather than a single instantaneous auction.
+The protocol therefore becomes a continuously evolving competition rather than a
+single instantaneous auction.
 
 ---
 
-# 31. Why Timing Matters
+## 31. Why Timing Matters
 
-Because the transaction block fills at an indeterminate time, a participant does not know exactly how long it has to optimize its candidate.
+Because the transaction block fills at an indeterminate time, a participant does
+not know exactly how long it has to optimize its candidate.
 
-A participant attempting to exploit the system must therefore accept timing risk.
+A participant attempting to exploit the system must therefore accept timing
+risk.
 
 The strategy:
 
-> "Wait until I know exactly what everyone else is doing and then construct the optimal block"
+> "Wait until I know exactly what everyone else is doing and then construct the
+> optimal block"
 
-is limited because the participant does not know when the transaction block will become complete.
+is limited because the participant does not know when the transaction block will
+become complete.
 
 This is an important component of the protocol's game theory.
 
 ---
 
-# 32. Reward Distribution
+## 32. Reward Distribution
 
-The winning validation block receives a reward derived from the transaction generation.
+The winning validation block receives a reward derived from the transaction
+generation.
 
 The reward can include:
 
@@ -907,7 +1004,8 @@ The reward can include:
 2. transaction fees included in the transaction block;
 3. the applicable stake associated with the runner-up validation block.
 
-The resulting reward is distributed among participants in the winning validation block according to their effective weighted stake.
+The resulting reward is distributed among participants in the winning validation
+block according to their effective weighted stake.
 
 Thus:
 
@@ -919,25 +1017,30 @@ subject to the protocol's rules concerning duplicate stakes and stake weighting.
 
 ---
 
-# 33. Distribution Rather Than Winner-Take-All
+## 33. Distribution Rather Than Winner-Take-All
 
-The validation mechanism is deliberately designed so that the winning validation block contains multiple participants.
+The validation mechanism is deliberately designed so that the winning validation
+block contains multiple participants.
 
-The winner is therefore not necessarily a single node receiving the entire reward.
+The winner is therefore not necessarily a single node receiving the entire
+reward.
 
 Instead:
 
-> **The winning candidate is a cooperative collection of independently signed stakes.**
+> **The winning candidate is a cooperative collection of independently signed
+> stakes.**
 
 The reward is distributed according to the effective weights of those stakes.
 
-This provides an incentive for participants to construct candidates containing valuable stakes from other validators.
+This provides an incentive for participants to construct candidates containing
+valuable stakes from other validators.
 
 ---
 
-# 34. Broadening Reward Distribution
+## 34. Broadening Reward Distribution
 
-A primary objective of the staking mechanism is to spread validation rewards across many participants.
+A primary objective of the staking mechanism is to spread validation rewards
+across many participants.
 
 The system should avoid a simple model in which:
 
@@ -951,13 +1054,15 @@ or:
 largest stake -> largest reward
 ```
 
-Instead, proof of work determines the quality of a candidate while stake determines its economic influence.
+Instead, proof of work determines the quality of a candidate while stake
+determines its economic influence.
 
-The reduction in effective stake weight after winning further discourages persistent concentration.
+The reduction in effective stake weight after winning further discourages
+persistent concentration.
 
 ---
 
-# 35. Strengths
+## 35. Strengths
 
 The Karma design has several potentially significant strengths.
 
@@ -971,11 +1076,13 @@ Karma can provide a persistent measure of demonstrated network contribution.
 
 ### Long issuance period
 
-The linear emission curve provides predictable issuance across an extremely large number of generations.
+The linear emission curve provides predictable issuance across an extremely
+large number of generations.
 
 ### Natural supply relationship
 
-The approximately 100 trillion Karma total arises directly from the issuance schedule.
+The approximately 100 trillion Karma total arises directly from the issuance
+schedule.
 
 ### Free network access
 
@@ -987,7 +1094,8 @@ Nodes can automatically recognize useful services with Kismet-level payments.
 
 ### Distributed validation rewards
 
-A validation block contains multiple participants rather than awarding the entire reward to one miner.
+A validation block contains multiple participants rather than awarding the
+entire reward to one miner.
 
 ### Anti-concentration mechanism
 
@@ -995,31 +1103,36 @@ Recent winners receive reduced effective stake weight.
 
 ### Asymmetric risk
 
-Repeated participation after winning exposes a participant to greater downside relative to its effective consensus weight.
+Repeated participation after winning exposes a participant to greater downside
+relative to its effective consensus weight.
 
 ### Timing uncertainty
 
-Indeterminate transaction-block completion makes certain precomputed strategies more difficult.
+Indeterminate transaction-block completion makes certain precomputed strategies
+more difficult.
 
 ---
 
-# 36. Potential Weaknesses
+## 36. Potential Weaknesses
 
 The design also introduces substantial areas of risk.
 
-## 36.1 Sybil attacks
+### 36.1 Sybil attacks
 
 An attacker can create large numbers of identities.
 
-The fundamental defense is that reputation must be earned through actual contribution.
+The fundamental defense is that reputation must be earned through actual
+contribution.
 
-The remaining question is whether an attacker can cheaply manufacture that contribution.
+The remaining question is whether an attacker can cheaply manufacture that
+contribution.
 
 ---
 
-## 36.2 Circular reputation farming
+### 36.2 Circular reputation farming
 
-A participant controlling multiple identities may cause those identities to reward one another.
+A participant controlling multiple identities may cause those identities to
+reward one another.
 
 For example:
 
@@ -1029,13 +1142,14 @@ B → C
 C → A
 ```
 
-If these interactions create Karma without providing meaningful external value, an attacker may manufacture reputation.
+If these interactions create Karma without providing meaningful external value,
+an attacker may manufacture reputation.
 
 This is one of the most important attacks to model.
 
 ---
 
-## 36.3 Reputation laundering
+### 36.3 Reputation laundering
 
 If Karma is transferable, an attacker may attempt:
 
@@ -1049,59 +1163,70 @@ This may undermine the interpretation of Karma as identity-based reputation.
 
 ---
 
-## 36.4 Reputation concentration
+### 36.4 Reputation concentration
 
 Successful participants may accumulate increasingly large balances.
 
-Even with generational weighting, the system must determine whether a small number of participants can eventually acquire disproportionate influence.
+Even with generational weighting, the system must determine whether a small
+number of participants can eventually acquire disproportionate influence.
 
 ---
 
-## 36.5 Validation cartels
+### 36.5 Validation cartels
 
-Participants may cooperate to construct validation blocks that systematically favor members of a cartel.
+Participants may cooperate to construct validation blocks that systematically
+favor members of a cartel.
 
-The protocol needs to be analyzed under assumptions of both honest and adversarial cooperation.
+The protocol needs to be analyzed under assumptions of both honest and
+adversarial cooperation.
 
 ---
 
-## 36.6 Stake splitting
+### 36.6 Stake splitting
 
 Multiple stakes may allow participants to manipulate their exposure.
 
-The protocol must determine whether splitting one large stake into many smaller stakes provides an advantage.
+The protocol must determine whether splitting one large stake into many smaller
+stakes provides an advantage.
 
 ---
 
-## 36.7 Stake aggregation
+### 36.7 Stake aggregation
 
-Conversely, participants may benefit from combining stakes into large candidate positions.
+Conversely, participants may benefit from combining stakes into large candidate
+positions.
 
-The relationship between stake size, proof-of-work probability, block size, and runner-up exposure requires simulation.
+The relationship between stake size, proof-of-work probability, block size, and
+runner-up exposure requires simulation.
 
 ---
 
-## 36.8 Low-fee transaction starvation
+### 36.8 Low-fee transaction starvation
 
-The 50% free-transaction requirement creates the possibility that low-fee transactions could receive worse service than both free and high-fee transactions.
+The 50% free-transaction requirement creates the possibility that low-fee
+transactions could receive worse service than both free and high-fee
+transactions.
 
 This should be measured rather than assumed.
 
 ---
 
-## 36.9 Free-transaction spam
+### 36.9 Free-transaction spam
 
 An attacker may submit enormous numbers of zero-fee transactions.
 
-If free transactions are guaranteed block capacity, spam could potentially crowd out legitimate free transactions.
+If free transactions are guaranteed block capacity, spam could potentially crowd
+out legitimate free transactions.
 
-The protocol therefore needs an anti-spam mechanism that does not simply defeat the purpose of fee-free access.
+The protocol therefore needs an anti-spam mechanism that does not simply defeat
+the purpose of fee-free access.
 
 ---
 
-## 36.10 Authorship fraud
+### 36.10 Authorship fraud
 
-The protocol may be able to establish who first signed or published a piece of information.
+The protocol may be able to establish who first signed or published a piece of
+information.
 
 It cannot necessarily establish who actually created it.
 
@@ -1109,7 +1234,7 @@ This remains an unresolved problem.
 
 ---
 
-# 37. The Most Important Economic Question
+## 37. The Most Important Economic Question
 
 The central question for Karma is not:
 
@@ -1117,27 +1242,30 @@ The central question for Karma is not:
 
 It is:
 
-> **"Can someone obtain more Karma by manipulating the protocol than by genuinely contributing value?"**
+> **"Can someone obtain more Karma by manipulating the protocol than by
+> genuinely contributing value?"**
 
 This is the defining test of the reputation system.
 
-If genuine contribution is consistently the economically optimal strategy, Karma aligns participant incentives with network objectives.
+If genuine contribution is consistently the economically optimal strategy, Karma
+aligns participant incentives with network objectives.
 
-If manipulation is cheaper, rational participants will eventually discover and exploit it.
+If manipulation is cheaper, rational participants will eventually discover and
+exploit it.
 
 ---
 
-# 38. Areas for Further Investigation
+## 38. Areas for Further Investigation
 
 The following areas should be analyzed before finalizing the protocol.
 
-## 38.1 Transferability
+### 38.1 Transferability
 
 Karma should be freely transferable.
 
 ---
 
-## 38.2 Sybil economics
+### 38.2 Sybil economics
 
 Calculate the real cost of manufacturing reputation using:
 
@@ -1149,13 +1277,14 @@ Calculate the real cost of manufacturing reputation using:
 
 ---
 
-## 38.3 Circular activity
+### 38.3 Circular activity
 
-Simulate networks of colluding identities and determine whether they can create Karma without providing external value.
+Simulate networks of colluding identities and determine whether they can create
+Karma without providing external value.
 
 ---
 
-## 38.4 Stake splitting
+### 38.4 Stake splitting
 
 Determine whether:
 
@@ -1175,13 +1304,14 @@ If so, determine whether the difference is desirable.
 
 ---
 
-## 38.5 Proof-of-work advantage
+### 38.5 Proof-of-work advantage
 
-Model whether increasing computation produces a proportional advantage or whether it eventually overwhelms the stake component.
+Model whether increasing computation produces a proportional advantage or
+whether it eventually overwhelms the stake component.
 
 ---
 
-## 38.6 Stake concentration
+### 38.6 Stake concentration
 
 Model the behavior of participants controlling:
 
@@ -1193,29 +1323,33 @@ Model the behavior of participants controlling:
 
 of total Karma.
 
-Determine whether any participant can obtain disproportionate validation influence.
+Determine whether any participant can obtain disproportionate validation
+influence.
 
 ---
 
-## 38.7 Runner-up manipulation
+### 38.7 Runner-up manipulation
 
-Analyze whether participants can deliberately construct weak or strong runner-up candidates to manipulate the distribution of stake.
-
----
-
-## 38.8 Multiple-stake strategies
-
-Determine whether publishing many stakes produces a systematic advantage over publishing fewer stakes of equal aggregate value.
+Analyze whether participants can deliberately construct weak or strong runner-up
+candidates to manipulate the distribution of stake.
 
 ---
 
-## 38.9 Adaptive strategies
+### 38.8 Multiple-stake strategies
 
-Simulate validators that continuously observe the network and publish new stakes as the transaction block approaches completion.
+Determine whether publishing many stakes produces a systematic advantage over
+publishing fewer stakes of equal aggregate value.
 
 ---
 
-## 38.10 Free-transaction queue behavior
+### 38.9 Adaptive strategies
+
+Simulate validators that continuously observe the network and publish new stakes
+as the transaction block approaches completion.
+
+---
+
+### 38.10 Free-transaction queue behavior
 
 Measure confirmation times as a function of:
 
@@ -1231,27 +1365,30 @@ fee > 0
 
 especially for small fees.
 
-The objective should be to determine whether the protocol creates pathological fee bands in which a transaction paying slightly more receives worse service.
+The objective should be to determine whether the protocol creates pathological
+fee bands in which a transaction paying slightly more receives worse service.
 
 ---
 
-## 38.11 Free-transaction spam
+### 38.11 Free-transaction spam
 
 Determine the cost of filling the transaction pool with zero-fee transactions.
 
-The network needs a way to preserve fee-free access without making unlimited free spam economically attractive.
+The network needs a way to preserve fee-free access without making unlimited
+free spam economically attractive.
 
 ---
 
-## 38.12 Reputation aging
+### 38.12 Reputation aging
 
 Karma should represent the net value added to the network.
 
-As more net value is added, the Karma balance should go up. As more net value is taken, the Karma balance should decrease.
+As more net value is added, the Karma balance should go up. As more net value is
+taken, the Karma balance should decrease.
 
 ---
 
-# 39. Recommended Conceptual Model
+## 39. Recommended Conceptual Model
 
 The simplest conceptual model for Karma is:
 
@@ -1273,17 +1410,20 @@ The simplest conceptual model for Karma is:
                      MORE REWARDS
 ```
 
-The protocol therefore creates a feedback loop between contribution and participation.
+The protocol therefore creates a feedback loop between contribution and
+participation.
 
 The critical objective is ensuring that the feedback loop remains healthy.
 
 ---
 
-# 40. Conclusion
+## 40. Conclusion
 
-Karma is designed as a decentralized reputation system rather than a conventional exchange system.
+Karma is designed as a decentralized reputation system rather than a
+conventional exchange system.
 
-Its purpose is to recognize and quantify useful contribution to a distributed network.
+Its purpose is to recognize and quantify useful contribution to a distributed
+network.
 
 The system combines:
 
@@ -1298,13 +1438,16 @@ The system combines:
 - distributed validation rewards;
 - and reduced effective stake weight for recent winners.
 
-The resulting system is intentionally different from conventional proof-of-work and proof-of-stake cryptocurrencies.
+The resulting system is intentionally different from conventional proof-of-work
+and proof-of-stake cryptocurrencies.
 
 Its central economic proposition is:
 
-> **Contribution creates reputation, and reputation creates useful influence within the network.**
+> **Contribution creates reputation, and reputation creates useful influence
+> within the network.**
 
-The success of the design will ultimately depend on whether that relationship survives adversarial behavior.
+The success of the design will ultimately depend on whether that relationship
+survives adversarial behavior.
 
 The most important future work is therefore not simply cryptographic.
 
@@ -1324,4 +1467,8 @@ The protocol should be simulated under adversarial conditions including:
 - free-transaction spam;
 - and fee-market manipulation.
 
-If these simulations demonstrate that honest contribution remains the most effective strategy for accumulating meaningful reputation, Karma could provide a useful alternative to conventional token-based incentive systems: a decentralized mechanism for measuring and rewarding **who actually adds value to a network**.
+If these simulations demonstrate that honest contribution remains the most
+effective strategy for accumulating meaningful reputation, Karma could provide a
+useful alternative to conventional token-based incentive systems: a
+decentralized mechanism for measuring and rewarding **who actually adds value to
+a network**.

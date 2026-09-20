@@ -1,6 +1,6 @@
 # Libranet High-Level Design
 
-**Decentralized Peer-to-Peer Content Network over HTTP/HTTPS**
+Decentralized Peer-to-Peer Content Network over HTTP/HTTPS
 
 Version 0.3 • September 2026
 
@@ -8,45 +8,62 @@ Version 0.3 • September 2026
 
 ## 1. Introduction
 
-Libranet is a decentralized peer-to-peer network that uses standard HTTP and HTTPS connections for all data transfer. Nodes discover one another, exchange address lists and data interest, store and retrieve content by cryptographic content hash, and support human-facing applications through directory bundles served as mini-websites.
+Libranet is a decentralized peer-to-peer network that uses standard HTTP and
+HTTPS connections for all data transfer. Nodes discover one another, exchange
+address lists and data interest, store and retrieve content by cryptographic
+content hash, and support human-facing applications through directory bundles
+served as mini-websites.
 
-The design deliberately reuses ordinary web infrastructure so that any HTTP client or browser can interact with the network. Programmatic access uses authenticated headers; human access uses a conventional browser interface.
+The design deliberately reuses ordinary web infrastructure so that any HTTP
+client or browser can interact with the network. Programmatic access uses
+authenticated headers; human access uses a conventional browser interface.
 
 The protocol is organized into four layers:
 
 1. **Identity** - establishes cryptographic node identities and authentication.
 2. **Transport** - defines HTTP/HTTPS communication between nodes.
-3. **Distributed Storage** - defines content addressing, data placement, discovery, routing, storage, and replication.
-4. **Applications** - defines directory bundles, application registration, and the human-facing web interface.
+3. **Distributed Storage** - defines content addressing, data placement,
+   discovery, routing, storage, and replication.
+4. **Applications** - defines directory bundles, application registration, and
+   the human-facing web interface.
 
 ---
 
-# 2. Identity Layer
+## 2. Identity Layer
 
-## 2.1 Node Identity
+### 2.1 Node Identity
 
 Every node is identified by an asymmetric public key.
 
-The public key is hashed using a recommended algorithm of SHA-256. The resulting hash is the **node identifier**.
+The public key is hashed using a recommended algorithm of SHA-256. The resulting
+hash is the **node identifier**.
 
-The mapping `(hash → public key)` is stored in the node’s local data store under that hash. This keeps the identifier short while still allowing retrieval of the full public key when required.
+The mapping `(hash → public key)` is stored in the node’s local data store under
+that hash. This keeps the identifier short while still allowing retrieval of the
+full public key when required.
 
-Node identifiers are therefore short, collision-resistant, and do not expose the public key until the mapping is deliberately fetched.
+Node identifiers are therefore short, collision-resistant, and do not expose the
+public key until the mapping is deliberately fetched.
 
-## 2.2 Cryptographic Authentication
+### 2.2 Cryptographic Authentication
 
-All programmatic requests and responses carry the node identifier in HTTP headers together with a signed hash of the headers, authenticating that the peer is the claimed node.
+All programmatic requests and responses carry the node identifier in HTTP
+headers together with a signed hash of the headers, authenticating that the peer
+is the claimed node.
 
 All programmatic requests and responses include:
 
-* The node identifier of the sender.
-* A cryptographic signature over a canonical hash of the relevant headers and optionally the body, proving possession of the corresponding private key.
+- The node identifier of the sender.
+- A cryptographic signature over a canonical hash of the relevant headers and
+  optionally the body, proving possession of the corresponding private key.
 
-## 2.3 Security Considerations
+### 2.3 Security Considerations
 
-Node identifiers are hashes of public keys, providing short and collision-resistant identities.
+Node identifiers are hashes of public keys, providing short and
+collision-resistant identities.
 
-Header signatures authenticate the logical identity of the peer independently of the transport layer.
+Header signatures authenticate the logical identity of the peer independently of
+the transport layer.
 
 Content addressing by hash provides automatic integrity verification.
 
@@ -54,27 +71,31 @@ TLS (HTTPS) supplies transport confidentiality and authenticity.
 
 ---
 
-# 3. Transport Layer
+## 3. Transport Layer
 
-## 3.1 HTTP/HTTPS
+### 3.1 HTTP/HTTPS
 
 Libranet uses standard HTTP and HTTPS connections for all data transfer.
 
-The protocol deliberately reuses ordinary web infrastructure so that any HTTP client or browser can interact with the network.
+The protocol deliberately reuses ordinary web infrastructure so that any HTTP
+client or browser can interact with the network.
 
 Programmatic access uses authenticated HTTP headers.
 
 Human access uses a conventional browser interface.
 
-## 3.2 Connection & Handshake Protocol
+### 3.2 Connection & Handshake Protocol
 
-When a local node connects to a remote node over HTTP/HTTPS, the following ordered exchange occurs:
+When a local node connects to a remote node over HTTP/HTTPS, the following
+ordered exchange occurs:
 
 1. Push the sender’s public key so the remote can verify subsequent signatures.
-2. Push the local list of known node addresses, including identifier, address (IP or DNS), and port.
+2. Push the local list of known node addresses, including identifier, address
+   (IP or DNS), and port.
 3. Request the list of data hashes the remote node is currently seeking.
 4. Request the remote’s list of known node addresses.
-5. If the local node holds any of the sought hashes, push the corresponding data to the remote.
+5. If the local node holds any of the sought hashes, push the corresponding data
+   to the remote.
 6. Begin requesting data that the local node itself is seeking.
 7. Periodically fetch the remote node request list and push data the node has.
 
@@ -83,35 +104,39 @@ When a local node connects to a remote node over HTTP/HTTPS, the following order
 > etiquette framing, and Karma-based connection management — is given in
 > the [Handshake Protocol](HandshakeProtocol.md) document.
 
-## 3.3 Minimal HTTP API Surface
+### 3.3 Minimal HTTP API Surface
 
-| Method & Path                      | Purpose                                            |
-| ----------------------------------- | --------------------------------------------------- |
-| `GET/POST /data/nodes`             | Read or publish known address list                 |
-| `GET/POST /data/seek`              | Read or publish hashes being sought                |
+| Method & Path                      | Purpose                                                                                           |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `GET/POST /data/nodes`             | Read or publish known address list                                                                |
+| `GET/POST /data/seek`              | Read or publish hashes being sought                                                               |
 | `GET /data/{algo}/{full-hash}`     | Retrieve content (≤ 1 MiB as transmitted, §4.3); see §4.1.1 for the compressed-retrieval fallback |
-| `PUT /data/{algo}/{full-hash}`     | Store content under its content hash               |
-| `GET /data/search/{algo}/{prefix}` | Search by partial hash; returns ranked matches     |
-| `GET /{app-name}/…`                | Serve files from a registered directory-bundle app |
+| `PUT /data/{algo}/{full-hash}`     | Store content under its content hash                                                              |
+| `GET /data/search/{algo}/{prefix}` | Search by partial hash; returns ranked matches                                                    |
+| `GET /{app-name}/…`                | Serve files from a registered directory-bundle app                                                |
 
 The `/data/...` paths constitute the programmatic interface.
 
-The special convenience path `/data/seek` may be used to read or write the set of hashes a node is currently seeking.
+The special convenience path `/data/seek` may be used to read or write the set
+of hashes a node is currently seeking.
 
-### 3.3.1 Reserved Top-Level Paths
+#### 3.3.1 Reserved Top-Level Paths
 
-The following top-level path segments are reserved and may never be used as an application name (see §5.2):
+The following top-level path segments are reserved and may never be used as an
+application name (see §5.2):
 
-* `data` - the programmatic content-addressed interface described in this section.
-* `web` - reserved for future use.
-* `chaos` - reserved for future use.
-* `config` - the local-only node configuration and administration interface (see HTTP API §2.3).
+- `data` - the programmatic content-addressed interface described in this
+  section.
+- `web` - reserved for future use.
+- `chaos` - reserved for future use.
+- `config` - the local-only node configuration and administration interface (see
+  HTTP API §2.3).
 
 ---
 
-# 4. Distributed Storage Layer
+## 4. Distributed Storage Layer
 
-## 4.1 Data Identity
+### 4.1 Data Identity
 
 All data is addressed solely by the cryptographic hash of its content.
 
@@ -127,22 +152,30 @@ Example:
 /data/sha256/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 ```
 
-### 4.1.1 Compressed Retrieval Fallback
+#### 4.1.1 Compressed Retrieval Fallback
 
-When a client requests `GET /data/{algo}/{full-hash}`, the hash of the bytes returned in the response body is not guaranteed to match `{full-hash}` directly.
+When a client requests `GET /data/{algo}/{full-hash}`, the hash of the bytes
+returned in the response body is not guaranteed to match `{full-hash}` directly.
 
-If the returned bytes do **not** hash to `{full-hash}`, the client must treat the response body as **zlib-compressed**. Decompressing the body with zlib must then yield content whose hash matches `{full-hash}`.
+If the returned bytes do **not** hash to `{full-hash}`, the client must treat
+the response body as **zlib-compressed**. Decompressing the body with zlib must
+then yield content whose hash matches `{full-hash}`.
 
 In other words, a node serving an object may respond with either:
 
-* The raw content, whose hash is `{full-hash}`, or
-* A zlib-compressed representation of that content, which decompresses to content whose hash is `{full-hash}`.
+- The raw content, whose hash is `{full-hash}`, or
+- A zlib-compressed representation of that content, which decompresses to
+  content whose hash is `{full-hash}`.
 
-Clients should first check whether the raw response hashes to the requested value, and if not, fall back to zlib decompression before re-checking the hash. If neither the raw bytes nor the decompressed bytes match `{full-hash}`, the response is invalid and should be discarded.
+Clients should first check whether the raw response hashes to the requested
+value, and if not, fall back to zlib decompression before re-checking the hash.
+If neither the raw bytes nor the decompressed bytes match `{full-hash}`, the
+response is invalid and should be discarded.
 
-This allows serving nodes to reduce bandwidth for compressible content without requiring a separate content-addressing scheme for compressed variants.
+This allows serving nodes to reduce bandwidth for compressible content without
+requiring a separate content-addressing scheme for compressed variants.
 
-## 4.2 Partial-Hash Search
+### 4.2 Partial-Hash Search
 
 Partial-hash search is supported:
 
@@ -150,23 +183,35 @@ Partial-hash search is supported:
 /data/search/{hash_algorithm}/{prefix}
 ```
 
-Search returns a ranked list of full hashes, and optional metadata, ordered by the number of matching binary digits (longest common prefix).
+Search returns a ranked list of full hashes, and optional metadata, ordered by
+the number of matching binary digits (longest common prefix).
 
-## 4.3 Maximum Object Size & Bundles
+### 4.3 Maximum Object Size & Bundles
 
-Each uniquely addressable data URL has a hard maximum size of **1 MiB**. This limit applies only to the data as transmitted and as stored. Where content is zlib-compressed for transmission or storage (§4.1.1), it is the compressed bytes that are subject to this limit; content transmitted or stored uncompressed is subject to it directly.
+Each uniquely addressable data URL has a hard maximum size of **1 MiB**. This
+limit applies only to the data as transmitted and as stored. Where content is
+zlib-compressed for transmission or storage (§4.1.1), it is the compressed bytes
+that are subject to this limit; content transmitted or stored uncompressed is
+subject to it directly.
 
-There is no protocol limit on the size of content once decompressed. Content larger than 1 MiB uncompressed is a valid single object, provided it is transmitted and stored compressed to within the limit.
+There is no protocol limit on the size of content once decompressed. Content
+larger than 1 MiB uncompressed is a valid single object, provided it is
+transmitted and stored compressed to within the limit.
 
-Content that does not fit within the limit even when compressed is represented by a **Bundle** - a special object that contains metadata plus the list of data URLs that together form the complete payload. A bundle's reassembled content has no size limit either.
+Content that does not fit within the limit even when compressed is represented
+by a **Bundle** - a special object that contains metadata plus the list of data
+URLs that together form the complete payload. A bundle's reassembled content has
+no size limit either.
 
-A **Directory Bundle** is a specialized bundle that describes a hierarchical collection of files using relative path, metadata, and content hash.
+A **Directory Bundle** is a specialized bundle that describes a hierarchical
+collection of files using relative path, metadata, and content hash.
 
 Directory bundles enable mini-websites and Libranet applications.
 
-## 4.4 Prefix-Based Data Placement ("Drops")
+### 4.4 Prefix-Based Data Placement ("Drops")
 
-A sender who wishes to leave a message, or any data, at a known logical location proceeds as follows:
+A sender who wishes to leave a message, or any data, at a known logical location
+proceeds as follows:
 
 1. Compute the target hash of the drop name.
 
@@ -177,57 +222,76 @@ A sender who wishes to leave a message, or any data, at a known logical location
    a8cfcd74832004951b4408cdb0a5dbcd8c7e52d43f7fe244bf720582e05241da
    ```
 
-2. Take the real payload and append a null byte followed by random non-null bytes.
+2. Take the real payload and append a null byte followed by random non-null
+   bytes.
 
-3. Repeatedly adjust the random suffix until the content hash matches a desired number of leading binary digits of the target hash.
+3. Repeatedly adjust the random suffix until the content hash matches a desired
+   number of leading binary digits of the target hash.
 
-4. Publish the resulting blob under its full content hash via the normal `/data/...` path.
+4. Publish the resulting blob under its full content hash via the normal
+   `/data/...` path.
 
-A recipient interested in the drop `"John"` issues a search against a suitable prefix of the target hash.
+A recipient interested in the drop `"John"` issues a search against a suitable
+prefix of the target hash.
 
-The search returns candidate hashes ordered by the length of the matching binary prefix.
+The search returns candidate hashes ordered by the length of the matching binary
+prefix.
 
-This mechanism places data at a predictable logical location without requiring the exact full hash in advance.
+This mechanism places data at a predictable logical location without requiring
+the exact full hash in advance.
 
-## 4.5 Storage Priority and Eviction
+### 4.5 Storage Priority and Eviction
 
-Each node prioritizes retention of data whose content hash shares the longest binary prefix with the node’s own identifier.
+Each node prioritizes retention of data whose content hash shares the longest
+binary prefix with the node’s own identifier.
 
 The more leading bits that match, the higher the retention priority.
 
 When storage pressure requires eviction:
 
-* The node selects the lowest-priority objects for removal.
-* Before deletion it pushes each object to the two nodes whose identifiers best match the object’s hash.
-* Only after successful hand-off may the object be deleted locally.
+- The node selects the lowest-priority objects for removal.
+- Before deletion it pushes each object to the two nodes whose identifiers best
+  match the object’s hash.
+- Only after successful hand-off may the object be deleted locally.
 
-This policy naturally segments the data space into **directions** defined by the binary prefixes of node identifiers, improving locality of search and retrieval.
+This policy naturally segments the data space into **directions** defined by the
+binary prefixes of node identifiers, improving locality of search and retrieval.
 
-## 4.6 Outgoing Connection Policy
+### 4.6 Outgoing Connection Policy
 
 Every node maintains at least **sixteen** outgoing connections to other nodes.
 
-The sixteen peers are chosen so that their identifiers are unique in the first four bits of the identifier space, meaning they cover distinct 4-bit buckets.
+The sixteen peers are chosen so that their identifiers are unique in the first
+four bits of the identifier space, meaning they cover distinct 4-bit buckets.
 
-This guarantees a well-distributed view of the network and supports the directional search strategy described below.
+This guarantees a well-distributed view of the network and supports the
+directional search strategy described below.
 
-## 4.7 Request Routing Algorithm
+### 4.7 Request Routing Algorithm
 
-When a node receives a request for data, or a search, that it does not hold locally, it follows a progressive depth-first search ordered by binary-prefix match length:
+When a node receives a request for data, or a search, that it does not hold
+locally, it follows a progressive depth-first search ordered by binary-prefix
+match length:
 
-1. Sort known peers by the length of the common binary prefix with the requested hash, with the best match first.
+1. Sort known peers by the length of the common binary prefix with the requested
+   hash, with the best match first.
 2. Query the best-match peer. If it returns the data, finish.
 3. Query the second-best peer.
-4. Return to the first peer, as it may have fetched the data in the meantime, then the second, then the third, and so on.
+4. Return to the first peer, as it may have fetched the data in the meantime,
+   then the second, then the third, and so on.
 5. Each successive pass examines one additional peer deeper in the ordered list.
 
 For exact data requests, the process stops when the object is found.
 
-For search requests, the process continues until every known peer has been contacted at least once, after which the aggregated results are returned ordered by match quality.
+For search requests, the process continues until every known peer has been
+contacted at least once, after which the aggregated results are returned ordered
+by match quality.
 
-If a node cannot yet serve a requested object, it replies with a temporary "not available" status and immediately begins the routing algorithm above so that a subsequent retry is likely to succeed.
+If a node cannot yet serve a requested object, it replies with a temporary "not
+available" status and immediately begins the routing algorithm above so that a
+subsequent retry is likely to succeed.
 
-## 4.8 Data Interest
+### 4.8 Data Interest
 
 Nodes advertise data they are currently seeking.
 
@@ -237,23 +301,26 @@ The list of sought hashes can be read or published through:
 GET/POST /data/seek
 ```
 
-During the connection handshake, a node requests the remote node’s list of data hashes that it is currently seeking.
+During the connection handshake, a node requests the remote node’s list of data
+hashes that it is currently seeking.
 
-If the local node holds any of those hashes, it pushes the corresponding data to the remote node.
+If the local node holds any of those hashes, it pushes the corresponding data to
+the remote node.
 
-A node periodically fetches the remote node request list and pushes data the remote node has requested.
+A node periodically fetches the remote node request list and pushes data the
+remote node has requested.
 
 The JSON schema for this list is defined in HTTP API §10.7.1.
 
-## 4.9 Node Discovery
+### 4.9 Node Discovery
 
 Nodes exchange lists of known node addresses.
 
 A node address consists of:
 
-* Node identifier
-* Address, either IP or DNS
-* Port
+- Node identifier
+- Address, either IP or DNS
+- Port
 
 The known address list can be read or published through:
 
@@ -263,42 +330,55 @@ GET/POST /data/nodes
 
 The JSON schema for this list is defined in HTTP API §10.6.
 
-### 4.9.1 Optional Local Discovery (mDNS/DNS-SD)
+#### 4.9.1 Optional Local Discovery (mDNS/DNS-SD)
 
-In addition to the `/data/nodes` exchange above, a node MAY support mDNS/DNS-SD ([RFC 6762](https://datatracker.ietf.org/doc/html/rfc6762)/[RFC 6763](https://www.rfc-editor.org/info/rfc6763/)) to discover other Libranet nodes on the same local network segment without prior configuration.
+In addition to the `/data/nodes` exchange above, a node MAY support mDNS/DNS-SD
+([RFC 6762](https://datatracker.ietf.org/doc/html/rfc6762)/[RFC 6763](https://www.rfc-editor.org/info/rfc6763/))
+to discover other Libranet nodes on the same local network segment without prior
+configuration.
 
-- Local discovery via mDNS/DNS-SD is OPTIONAL. It is a bootstrapping convenience layered on top of the node-list mechanism in §4.9, not a replacement for it.
-- mDNS/DNS-SD is scoped to link-local multicast and does not provide discovery across the wider internet. Wide-area discovery still relies on `/data/nodes` exchange and node-list propagation (§4.9).
-- A node advertising itself via mDNS/DNS-SD SHOULD publish, at minimum, its node identifier and reachable address/port as service metadata, so a discovering peer can proceed directly to the handshake described in the Handshake Protocol.
-- Support for this discovery mechanism has no bearing on Karma or protocol conformance; it is a bootstrapping convenience only.
+- Local discovery via mDNS/DNS-SD is OPTIONAL. It is a bootstrapping convenience
+  layered on top of the node-list mechanism in §4.9, not a replacement for it.
+- mDNS/DNS-SD is scoped to link-local multicast and does not provide discovery
+  across the wider internet. Wide-area discovery still relies on `/data/nodes`
+  exchange and node-list propagation (§4.9).
+- A node advertising itself via mDNS/DNS-SD SHOULD publish, at minimum, its node
+  identifier and reachable address/port as service metadata, so a discovering
+  peer can proceed directly to the handshake described in the Handshake
+  Protocol.
+- Support for this discovery mechanism has no bearing on Karma or protocol
+  conformance; it is a bootstrapping convenience only.
 
 **TBD:**
 
 - Service type name (e.g. `_libranet._tcp.local.`).
 - Exact service metadata (TXT record) schema.
-- Interaction with the sixteen-connection outgoing policy (§4.6) when local peers are discovered.
+- Interaction with the sixteen-connection outgoing policy (§4.6) when local
+  peers are discovered.
 
 ---
 
-# 5. Application Layer
+## 5. Application Layer
 
-## 5.1 Directory Bundles
+### 5.1 Directory Bundles
 
 A Directory Bundle describes a hierarchical collection of files using:
 
-* Relative path
-* Metadata
-* Content hash
+- Relative path
+- Metadata
+- Content hash
 
 Directory bundles enable mini-websites and Libranet applications.
 
-Because the files referenced by a Directory Bundle are content-addressed, applications can be represented entirely by immutable content.
+Because the files referenced by a Directory Bundle are content-addressed,
+applications can be represented entirely by immutable content.
 
-## 5.2 Application Registration
+### 5.2 Application Registration
 
 A Directory Bundle can be registered as a Libranet application.
 
-Each node maintains a mapping from application name to the identifier, or content hash, of the corresponding directory bundle.
+Each node maintains a mapping from application name to the identifier, or
+content hash, of the corresponding directory bundle.
 
 The special application name `/` is the default home application.
 
@@ -308,9 +388,10 @@ Other applications are reached via:
 /{app-name}
 ```
 
-The names `data`, `web`, `chaos`, and `config` are reserved (see §3.3.1) and may never be used as an application name.
+The names `data`, `web`, `chaos`, and `config` are reserved (see §3.3.1) and may
+never be used as an application name.
 
-## 5.3 Application Delivery
+### 5.3 Application Delivery
 
 Applications are served from their registered Directory Bundles.
 
@@ -320,7 +401,8 @@ The browser accesses an application through:
 /{app-name}/…
 ```
 
-The node resolves the application name to its registered directory-bundle content hash and serves the files described by that bundle.
+The node resolves the application name to its registered directory-bundle
+content hash and serves the files described by that bundle.
 
 The default application is accessed through:
 
@@ -328,78 +410,97 @@ The default application is accessed through:
 /
 ```
 
-## 5.4 Application Distribution
+### 5.4 Application Distribution
 
-Because applications are themselves content-addressed Directory Bundles, an "app store" can simply publish catalogs of directory-bundle identifiers.
+Because applications are themselves content-addressed Directory Bundles, an "app
+store" can simply publish catalogs of directory-bundle identifiers.
 
-Users install an application by recording the mapping from the application name to the corresponding directory-bundle identifier on their local node.
+Users install an application by recording the mapping from the application name
+to the corresponding directory-bundle identifier on their local node.
 
 No central application server is required.
 
-## 5.5 Human Interface
+### 5.5 Human Interface
 
 The web browser is the primary human interface.
 
-Libranet applications are served using conventional web paths, allowing human-facing applications to operate as mini-websites.
+Libranet applications are served using conventional web paths, allowing
+human-facing applications to operate as mini-websites.
 
-The `/data/...` paths provide the programmatic interface used by Libranet nodes and other software.
+The `/data/...` paths provide the programmatic interface used by Libranet nodes
+and other software.
 
 ---
 
-# 6. Security Considerations
+## 6. Security Considerations
 
 The four protocol layers provide complementary security properties:
 
 ### Identity
 
-* Node identifiers are hashes of public keys.
-* Public-key signatures authenticate logical node identity.
-* Node identity is independent of the underlying network connection.
+- Node identifiers are hashes of public keys.
+- Public-key signatures authenticate logical node identity.
+- Node identity is independent of the underlying network connection.
 
 ### Transport
 
-* HTTPS provides transport confidentiality.
-* HTTPS can provide transport-level authenticity where applicable.
-* HTTP remains available where transport confidentiality is not required.
+- HTTPS provides transport confidentiality.
+- HTTPS can provide transport-level authenticity where applicable.
+- HTTP remains available where transport confidentiality is not required.
 
 ### Distributed Storage
 
-* Content addressing provides automatic integrity verification.
-* A content hash uniquely identifies the expected content.
-* The compressed-retrieval fallback (§4.1.1) preserves this integrity guarantee: a client always verifies the requested hash against either the raw or the decompressed bytes before trusting the content.
-* Prefix matching for drops deliberately trades computational work for the ability to place data at a predictable location.
-* Eviction hand-off to the two best-matching peers reduces the risk of data loss while preserving the directional locality property.
+- Content addressing provides automatic integrity verification.
+- A content hash uniquely identifies the expected content.
+- The compressed-retrieval fallback (§4.1.1) preserves this integrity guarantee:
+  a client always verifies the requested hash against either the raw or the
+  decompressed bytes before trusting the content.
+- Prefix matching for drops deliberately trades computational work for the
+  ability to place data at a predictable location.
+- Eviction hand-off to the two best-matching peers reduces the risk of data loss
+  while preserving the directional locality property.
 
 ### Applications
 
-* Applications are identified by content hashes.
-* Directory bundles are immutable once identified by their content hash.
-* Application catalogs can publish directory-bundle identifiers without requiring a central application server.
+- Applications are identified by content hashes.
+- Directory bundles are immutable once identified by their content hash.
+- Application catalogs can publish directory-bundle identifiers without
+  requiring a central application server.
 
 ---
 
-# 7. Summary
+## 7. Summary
 
-Libranet is a pure HTTP/HTTPS peer-to-peer network in which identity, discovery, interest advertisement, content addressing, storage prioritization, and application delivery are all expressed through simple hash-based paths and ordinary web requests.
+Libranet is a pure HTTP/HTTPS peer-to-peer network in which identity, discovery,
+interest advertisement, content addressing, storage prioritization, and
+application delivery are all expressed through simple hash-based paths and
+ordinary web requests.
 
 The protocol is organized into four layers:
 
 1. **Identity** - cryptographic node identities and request authentication.
 2. **Transport** - HTTP/HTTPS communication and the node handshake.
-3. **Distributed Storage** - content hashing, prefix-based placement, search, routing, storage priority, and replication through hand-off (including the compressed-retrieval fallback described in §4.1.1).
-4. **Applications** - directory bundles, application registration, application distribution, and browser-based access.
+3. **Distributed Storage** - content hashing, prefix-based placement, search,
+   routing, storage priority, and replication through hand-off (including the
+   compressed-retrieval fallback described in §4.1.1).
+4. **Applications** - directory bundles, application registration, application
+   distribution, and browser-based access.
 
-The combination of content hashing, binary-prefix locality, and progressive directional routing yields a self-organizing substrate that can host both programmatic data exchange and full human-facing applications without requiring any central authority.
+The combination of content hashing, binary-prefix locality, and progressive
+directional routing yields a self-organizing substrate that can host both
+programmatic data exchange and full human-facing applications without requiring
+any central authority.
 
 ---
 
-# 8. Reserved Path Registry
+## 8. Reserved Path Registry
 
-For quick reference, the following top-level path segments are reserved at the root of the node's HTTP namespace and must not be used as application names:
+For quick reference, the following top-level path segments are reserved at the
+root of the node's HTTP namespace and must not be used as application names:
 
-| Path      | Status            | Description                                      |
-| --------- | ----------------- | ------------------------------------------------- |
-| `/data`   | In use            | Programmatic content-addressed interface (§3-4)  |
-| `/web`    | Reserved (future) | Not yet defined                                   |
-| `/chaos`  | Reserved (future) | Not yet defined                                   |
+| Path      | Status            | Description                                                                |
+| --------- | ----------------- | -------------------------------------------------------------------------- |
+| `/data`   | In use            | Programmatic content-addressed interface (§3-4)                            |
+| `/web`    | Reserved (future) | Not yet defined                                                            |
+| `/chaos`  | Reserved (future) | Not yet defined                                                            |
 | `/config` | In use            | Local-only node configuration and administration interface (HTTP API §2.3) |
