@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-A **bundle** is a JSON container used to describe a file or directory, optionally
-signed and/or password-protected, and designed to work natively with
+A **bundle** is a JSON container used to describe a file or directory,
+optionally signed and/or password-protected, and designed to work natively with
 content-addressed storage (CAS).
 
 Bundles are **self-describing by structure**. There is no explicit `flavor` or
@@ -11,7 +11,7 @@ Bundles are **self-describing by structure**. There is no explicit `flavor` or
 purely from the shape of the data:
 
 | Shape | Meaning |
-|---|---|
+| --- | --- |
 | Top-level bytes are not valid JSON | Password-protected (encrypted) bundle |
 | Object with a `signature` key | Signed bundle |
 | Object with a `contents` array | File bundle |
@@ -19,10 +19,10 @@ purely from the shape of the data:
 | Object with a `contents` string | Symlink entry |
 | Object with no `contents` key | Metadata-only directory marker |
 
-All paths, filenames, and symlink targets are **case-sensitive** and
-**UTF-8 encoded**. NFC (composed) normalization is **recommended but not
-enforced** for these strings. Regardless, bundles should be internally consistent, and
-readers perform plain byte comparison without normalizing.
+All paths, filenames, and symlink targets are **case-sensitive** and **UTF-8
+encoded**. NFC (composed) normalization is **recommended but not enforced** for
+these strings. Regardless, bundles should be internally consistent, and readers
+perform plain byte comparison without normalizing.
 
 ---
 
@@ -172,7 +172,7 @@ adds files can extend the previous version rather than re-listing everything).
 Extensions may themselves have extensions, resolved recursively. Given a
 bundle with `extensions: [A, B, C]`:
 
-```
+```Python
 resolve(bundle):
     result = {}
 
@@ -209,10 +209,9 @@ without needing to duplicate the rest of that extension's contents.
 The `null` entries can be completely ignored or removed after the full
 directory bundle contents is resolved.
 
-
 ### 4.3 Example
 
-```
+```text
 top-level.contents:      { "README.md": v3 }
 top-level.extensions:    [A]
 
@@ -262,7 +261,7 @@ valid JSON** (in fact generally not valid UTF-8 text at all).
 
 ### 6.1 Encoding (write path)
 
-```
+```Python
 plaintext   = JSON-serialized raw bundle (file or directory bundle)
 compressed  = zlib_compress(plaintext, level = author's choice)
 padded      = pkcs7_pad(compressed, cipher block size)   # 16 bytes for AES
@@ -277,17 +276,19 @@ payload = ciphertext
 ```
 
 Example descriptor strings:
+
 - `PW-SHA256-AES256-CBC` (default all-zero IV)
 - `PW-SHA256-AES256-CBC-IV:a1b2c3...` (explicit IV)
 
 Block ciphers such as AES encrypt whole blocks, so the compressed bundle is
-padded with **PKCS#7** ([RFC 5652 §6.3](https://www.rfc-editor.org/rfc/rfc5652#section-6.3))
-before it is encrypted. Padding adds from 1 byte up to a whole block, and
-every byte it adds holds the number of bytes added. A bundle that already
-fills its last block therefore gains a whole block, so the padding can
-always be removed unambiguously. Encoders must pad this way, since identical
-ciphertext (§6.3) depends on every encoder padding alike. Decoders remove
-the padding after decrypting.
+padded with **PKCS#7**
+([RFC 5652 §6.3](https://www.rfc-editor.org/rfc/rfc5652#section-6.3)) before it
+is encrypted. Padding adds from 1 byte up to a whole block, and every byte it
+adds holds the number of bytes added. A bundle that already fills its last block
+therefore gains a whole block, so the padding can always be removed
+unambiguously. Encoders must pad this way, since identical ciphertext (§6.3)
+depends on every encoder padding alike. Decoders remove the padding after
+decrypting.
 
 ### 6.2 Key derivation
 
@@ -351,7 +352,7 @@ layer and is discarded before any decryption logic runs.
 
 ### 6.5 Decoding (read path)
 
-```
+```Python
 input = raw bytes at this address
 
 if expected_to_be_targeted:
@@ -390,6 +391,7 @@ fail("not the expected blob")
 ```
 
 Notes:
+
 - JSON text can never contain a raw `0x00` byte (only the escape sequence
   `\u0000`), so the null-byte search is never ambiguous with legitimate
   unencrypted JSON content.
@@ -406,7 +408,7 @@ references — anywhere a CAS path is used, including file `contents` parts,
 `versions` entries, `extensions` paths, and `signer` — may point at encrypted
 data using an extended path scheme:
 
-```
+```text
 {hash algorithm}/{encrypted data hash}/{encryption algorithm}/{encryption key}
 ```
 

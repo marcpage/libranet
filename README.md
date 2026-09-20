@@ -1,3 +1,5 @@
+# Libranet
+
 ![GitHub](https://img.shields.io/github/license/marcpage/libranet?style=plastic)
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/marcpage/libranet/ci.yml?style=plastic)
 [![commit sheild](https://img.shields.io/github/last-commit/marcpage/libranet?style=plastic)](https://github.com/marcpage/libranet/commits)
@@ -14,13 +16,15 @@
 [![follow sheild](https://img.shields.io/github/followers/marcpage?label=Follow&style=social)](https://github.com/marcpage?tab=followers)
 [![watch sheild](https://img.shields.io/github/watchers/marcpage/libranet?label=Watch&style=social)](https://github.com/marcpage/libranet/watchers)
 
-# Libranet
+**A decentralized peer-to-peer content network that runs over ordinary HTTP and
+HTTPS.**
 
-**A decentralized peer-to-peer content network that runs over ordinary HTTP and HTTPS.**
+Libranet lets nodes discover each other, share content addressed by
+cryptographic hash, and host simple web applications — all without central
+servers. Any browser or HTTP client can participate.
 
-Libranet lets nodes discover each other, share content addressed by cryptographic hash, and host simple web applications — all without central servers. Any browser or HTTP client can participate.
-
-**Current status:** Design phase (v0.1, September 2026). High-level design is complete; implementation is forthcoming. See [Status](#status) for details.
+**Current status:** Design phase (v0.1, September 2026). High-level design is
+complete; implementation is forthcoming. See [Status](#status) for details.
 
 ---
 
@@ -47,21 +51,37 @@ Libranet lets nodes discover each other, share content addressed by cryptographi
 
 ## Features
 
-- **Content-addressed storage** — Data is identified and retrieved by its cryptographic hash
-- **Pure HTTP/HTTPS** — Works with standard web infrastructure; no custom protocols required
-- **Peer discovery** — Nodes automatically exchange address lists and interests, with optional mDNS/DNS-SD support for local-network discovery
-- **Prefix-based placement** — Leave data at predictable logical locations (“drops”)
-- **Directory bundles** — Package collections of files as mini-websites or applications
-- **Self-organizing storage** — Nodes prefer data that is “close” to their own identity, improving locality
+- **Content-addressed storage** — Data is identified and retrieved by its
+  cryptographic hash
+- **Pure HTTP/HTTPS** — Works with standard web infrastructure; no custom
+  protocols required
+- **Peer discovery** — Nodes automatically exchange address lists and interests,
+  with optional mDNS/DNS-SD support for local-network discovery
+- **Prefix-based placement** — Leave data at predictable logical locations
+  (“drops”)
+- **Directory bundles** — Package collections of files as mini-websites or
+  applications
+- **Self-organizing storage** — Nodes prefer data that is “close” to their own
+  identity, improving locality
 - **Browser-friendly** — Human-facing apps are served as ordinary web pages
-- **Protocol fairness** — Protocol priority given to those who [add more net value to the network](docs/Karma.md)
+- **Protocol fairness** — Protocol priority given to those who
+  [add more net value to the network](docs/Karma.md)
 
 ### Hasn't this already been done?
 
 Several aspects of Libranet have been done before.
 There really isn't much new in Libranet, just a recombination of existing ideas.
 
-Libranet sits in a fairly specific spot — [IPFS](https://en.wikipedia.org/wiki/InterPlanetary_File_System)-like addressing and [DHT](https://medium.com/pubky/mainline-dht-censorship-explained-b62763db39cb)-adjacent placement, [Freenet](https://freenet.org)-like prefix-locality caching, a [Filecoin](https://www.filecoin.io)/[Storj](https://www.storj.io)-like incentive layer (but reputation-flavored rather than financial), and a [ZeroNet](https://zeronet.io)-like "serve websites P2P" application layer — combined into one integrated spec rather than requiring you to stack separate projects together.
+Libranet sits in a fairly specific spot —
+[IPFS](https://en.wikipedia.org/wiki/InterPlanetary_File_System)-like addressing
+and
+[DHT](https://medium.com/pubky/mainline-dht-censorship-explained-b62763db39cb)-adjacent
+placement, [Freenet](https://freenet.org)-like prefix-locality caching, a
+[Filecoin](https://www.filecoin.io)/[Storj](https://www.storj.io)-like incentive
+layer (but reputation-flavored rather than financial), and a
+[ZeroNet](https://zeronet.io)-like "serve websites P2P" application layer —
+combined into one integrated spec rather than requiring you to stack separate
+projects together.
 
 ---
 
@@ -69,13 +89,16 @@ Libranet sits in a fairly specific spot — [IPFS](https://en.wikipedia.org/wiki
 
 Every piece of data in Libranet lives at a path like:
 
-```
+```text
 /data/sha256/<content-hash>
 ```
 
-Nodes talk to each other with ordinary HTTP requests. Larger content is split into **bundles**. Collections of files become **directory bundles**, which can be registered as applications and served like a normal website.
+Nodes talk to each other with ordinary HTTP requests. Larger content is split
+into **bundles**. Collections of files become **directory bundles**, which can
+be registered as applications and served like a normal website.
 
-The network is self-organizing: nodes keep data whose hash is close to their own identity and hand off other data when space runs low.
+The network is self-organizing: nodes keep data whose hash is close to their own
+identity and hand off other data when space runs low.
 
 ---
 
@@ -94,7 +117,8 @@ Expected baseline (subject to change):
 
 *Coming soon.*
 
-No runnable implementation is available yet. When the first prototype is ready, this section will cover:
+No runnable implementation is available yet. When the first prototype is ready,
+this section will cover:
 
 1. Obtaining the software
 2. Generating a node identity
@@ -102,7 +126,8 @@ No runnable implementation is available yet. When the first prototype is ready, 
 4. Connecting to peers
 5. Publishing and retrieving content
 
-In the meantime, see the [High-Level Design](docs/HighLevelDesign.md) for the intended architecture and API.
+In the meantime, see the [High-Level Design](docs/HighLevelDesign.md) for the
+intended architecture and API.
 
 ---
 
@@ -111,11 +136,13 @@ In the meantime, see the [High-Level Design](docs/HighLevelDesign.md) for the in
 The examples below illustrate the intended HTTP surface once a node is running.
 
 ### Fetch content by hash
+
 ```http
 GET /data/sha256/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 ```
 
 ### Search by hash prefix
+
 ```http
 GET /data/search/sha256/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 ```
@@ -123,22 +150,26 @@ GET /data/search/sha256/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b
 Will return the data links that match the most leading digits of the hash.
 
 ### Serve a registered application
+
 ```http
 GET /my-app
 GET /my-app/index.html
 ```
 
 ### Publish a drop under a name
-Compute a content hash that shares a long binary prefix with the hash of a name (e.g. `"Alice"`), then publish the object under its full content hash. Recipients search by that prefix to discover the data.
+
+Compute a content hash that shares a long binary prefix with the hash of a name
+(e.g. `"Alice"`), then publish the object under its full content hash.
+Recipients search by that prefix to discover the data.
 
 ---
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [High-Level Design](docs/HighLevelDesign.md) | Full design |
-| [Fairness algorithm](docs/Karma.md) | Karma description |
+| Document                                     | Description       |
+|----------------------------------------------|-------------------|
+| [High-Level Design](docs/HighLevelDesign.md) | Full design       |
+| [Fairness algorithm](docs/Karma.md)          | Karma description |
 
 ---
 
@@ -153,16 +184,18 @@ Compute a content hash that shares a long binary prefix with the hash of a name 
 | Implementation    | Not started                    |
 | Public network    | Not yet available              |
 
-This repository currently contains the high-level design. Code and runnable software will appear in later releases.
+This repository currently contains the high-level design. Code and runnable
+software will appear in later releases.
 
 ---
 
 ## Not to be confused with
 
-Several other projects and organizations have used the name “Libranet” (or close variants). This project is unrelated to all of them:
+Several other projects and organizations have used the name “Libranet” (or close
+variants). This project is unrelated to all of them:
 
 | Name | What it is |
-|------|------------|
+| ------ | ------------ |
 | [**Libranet Linux**](https://en.wikipedia.org/wiki/Libranet) | Discontinued Debian-based commercial Linux distribution (1999–2005) from Libra Computer Systems Ltd (Canada) |
 | [**Libranet (MIT Media Lab)**](https://mlw.media.mit.edu/updates,/libranet/libranet-initial-concept.html) | 2014–2016 concept from the MIT Media Lab “Making / Learning / Work” project — library-based adult learning and job-seeking support |
 | [**LibraNet (LN)**](http://libranet.org/) | Hungarian private BitTorrent tracker focused on e-books, audiobooks, and lossless music |

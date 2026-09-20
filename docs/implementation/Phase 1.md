@@ -6,16 +6,16 @@ Version 0.3 • September 2026
 
 ## 1. Purpose
 
-This document captures the implementation-level design decisions made for
-the first Python implementation of a Libranet node, and breaks the work
-into steps that can each be built and tested largely on their own, with
-each step layering on top of the ones before it. It is an implementation
-plan, not a protocol specification — see [High-Level
-Design](../specs/HighLevelDesign.md), [Protocol
-Specification](../specs/ProtocolSpecification.md), [HTTP
-API](../specs/HttpApi.md), [Handshake Protocol](../specs/HandshakeProtocol.md), and [Bundle
-Specification](../specs/BundleSpecification.md) for the normative protocol
-behavior this code implements.
+This document captures the implementation-level design decisions made for the
+first Python implementation of a Libranet node, and breaks the work into steps
+that can each be built and tested largely on their own, with each step layering
+on top of the ones before it. It is an implementation plan, not a protocol
+specification — see [High-Level Design](../specs/HighLevelDesign.md),
+[Protocol Specification](../specs/ProtocolSpecification.md),
+[HTTP API](../specs/HttpApi.md),
+[Handshake Protocol](../specs/HandshakeProtocol.md), and
+[Bundle Specification](../specs/BundleSpecification.md) for the normative
+protocol behavior this code implements.
 
 ## 2. Architecture at a Glance
 
@@ -521,10 +521,11 @@ handles the eventual result correctly.
 
 **Depends on:** Step 2 (CAS reads).
 
-- Pure logic for the [Bundle Format Specification](../specs/BundleSpecification.md):
-  shape-based type discrimination (file vs. directory vs. symlink vs.
-  metadata-only entries), the `extensions` resolution/overlay algorithm,
-  and whole-file hash verification for multi-part files.
+- Pure logic for the
+  [Bundle Format Specification](../specs/BundleSpecification.md): shape-based
+  type discrimination (file vs. directory vs. symlink vs. metadata-only
+  entries), the `extensions` resolution/overlay algorithm, and whole-file hash
+  verification for multi-part files.
 - No network or messaging code — this operates purely on bundle JSON and
   CAS reads.
 - This step is the read path only: it resolves and verifies bundles that

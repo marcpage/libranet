@@ -24,10 +24,10 @@ Directory Bundles with no format extensions of their own.
 - Backups are represented as standard Directory Bundles; this document
   does not modify or extend the [Bundle Format
   Specification](BundleSpecification.md).
-- All configuration and triggering of backup/restore operations occurs
-  through `/config`, per [HTTP API §2.3](HttpApi.md#23-local-configuration-interface).
-  This document assumes `/config`'s loopback-source restriction and
-  Basic Authentication requirements and does not repeat them.
+- All configuration and triggering of backup/restore operations occurs through
+  `/config`, per [HTTP API §2.3](HttpApi.md#23-local-configuration-interface).
+  This document assumes `/config`'s loopback-source restriction and Basic
+  Authentication requirements and does not repeat them.
 - Backed-up content is stored and distributed exactly like any other CAS
   content (High-Level Design §4), including compressed-retrieval
   fallback, storage priority, and replication/hand-off. This document
