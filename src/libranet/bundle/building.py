@@ -116,7 +116,10 @@ class IgnoredPaths:
         if not self._identities:
             return False
 
-        status = item.stat(follow_symlinks=False)
+        return self.includes(item.stat(follow_symlinks=False))
+
+    def includes(self, status: stat_result) -> bool:
+        """Whether the file ``status`` describes is one of the paths."""
         return (status.st_dev, status.st_ino) in self._identities
 
     def check(self, root: Path) -> None:
