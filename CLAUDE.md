@@ -12,6 +12,10 @@ task.
 All python imports should import each symbol from the module instead of
 importing entire modules.
 
+Prefer methods on objects as opposed to functions.
+This includes class factory methods.
+Do not be extreme in this, but when it makes sense, use methods over functions.
+
 ## Interacting with GitHub and Git
 
 Do not directly interact with GitHub. Just inform me what needs to be done and I
