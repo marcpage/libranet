@@ -186,6 +186,11 @@ class StorageConfig(_Section):
         """Files the unbundler resolves from applications' bundles, to serve as-is (Step 14)."""
         return self.source_of_truth_dir / "resolved"
 
+    @property
+    def backup_jobs_path(self) -> Path:
+        """Backup jobs and each one's current bundle, owned by the backup module (Step 19)."""
+        return self.data_dir / "backup_jobs.json"
+
     def connection_dir(self, connection_id: str) -> Path:
         """Write directory for one connection, under :attr:`incoming_dir`."""
         return self.incoming_dir / connection_id
@@ -254,6 +259,14 @@ class StatsConfig(_Section):
     seek_entry_ttl_seconds: float = Field(default=3600.0, gt=0)
 
 
+class BackupConfig(_Section):
+    """Keeping local directories backed up into CAS (Step 19)."""
+
+    # How often a backup job's directory is looked at for changes, when the
+    # job was configured without an interval of its own. Provisional default.
+    interval_seconds: float = Field(default=3600.0, gt=0)
+
+
 class LoggingConfig(_Section):
     """Centralized rotating-file logging setup."""
 
@@ -278,6 +291,7 @@ class LibranetConfig(_Section):
     storage: StorageConfig = Field(default_factory=StorageConfig)
     identity: IdentityConfig = Field(default_factory=IdentityConfig)
     stats: StatsConfig = Field(default_factory=StatsConfig)
+    backup: BackupConfig = Field(default_factory=BackupConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
     # Directory bundles served as web applications (HttpApi §13), each at

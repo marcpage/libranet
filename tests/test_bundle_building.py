@@ -415,3 +415,127 @@ def test_skipped_paths_are_reported_in_order(tree: Path, store: RecordingStore) 
         symlink(f"/{name}", tree / name)
 
     assert list(build_directory(tree, store).skipped) == ["a", "b", "c"]
+
+
+def test_ignored_directory_is_left_out_as_though_absent(tree: Path, store: RecordingStore) -> None:
+    (tree / "outer" / "node").mkdir(parents=True)
+    (tree / "outer" / "node" / "file").write_bytes(b"node's own")
+    (tree / "keep").write_bytes(b"x")
+
+    build = build_directory(tree, store, ignore=[tree / "outer" / "node"])
+
+    assert set(build.bundle.entries) == {"keep", "outer"}
+    assert isinstance(build.bundle.entries["outer"], DirectoryMarker)
+    assert build.skipped == {}
+
+
+def test_ignored_file_is_left_out(tree: Path, store: RecordingStore) -> None:
+    (tree / "own").write_bytes(b"x")
+    (tree / "keep").write_bytes(b"y")
+
+    assert set(build_directory(tree, store, ignore=[tree / "own"]).bundle.entries) == {"keep"}
+
+
+def test_ignored_path_is_recognized_through_a_symlink(
+    tree: Path, store: RecordingStore, tmp_path: Path
+) -> None:
+    (tree / "node").mkdir()
+    (tree / "node" / "file").write_bytes(b"x")
+    symlink(tree / "node", tmp_path / "alias")
+
+    assert build_directory(tree, store, ignore=[tmp_path / "alias"]).bundle.entries == {}
+
+
+def test_ignoring_a_path_that_does_not_exist_changes_nothing(
+    tree: Path, store: RecordingStore, tmp_path: Path
+) -> None:
+    (tree / "file").write_bytes(b"x")
+
+    assert set(build_directory(tree, store, ignore=[tmp_path / "missing"]).bundle.entries) == {
+        "file"
+    }
+
+
+@mark.parametrize("relative", ["node", "node/inner"])
+def test_directory_that_is_or_lies_within_an_ignored_one_is_absent(
+    tree: Path, store: RecordingStore, relative: str
+) -> None:
+    (tree / "node" / "inner").mkdir(parents=True)
+
+    with raises(FileNotFoundError, match="Ignored"):
+        build_directory(tree / relative, store, ignore=[tree / "node"])
+
+
+def test_file_whose_metadata_is_unchanged_is_kept_without_being_read(
+    tree: Path, store: RecordingStore
+) -> None:
+    (tree / "file").write_bytes(b"as it was")
+    built = build_directory(tree, store).bundle.entries["file"]
+    assert isinstance(built, FileBundle)
+    # Parts the file could not have produced, so only an entry kept unread names them.
+    recorded = FileBundle((str(ContentId.for_data(b"elsewhere", "sha256")),), built.metadata)
+    store.writes.clear()
+
+    entries = build_directory(tree, store, previous={"file": recorded}).bundle.entries
+
+    assert entries["file"] is recorded
+    assert store.writes == []
+
+
+def test_file_whose_metadata_changed_but_bytes_did_not_keeps_its_parts(
+    tree: Path, store: RecordingStore
+) -> None:
+    (tree / "file").write_bytes(b"as it was")
+    built = build_directory(tree, store).bundle.entries["file"]
+    assert isinstance(built, FileBundle)
+    for part in built.parts:
+        store.delete(ContentId.parse(part))
+    store.writes.clear()
+    utime(tree / "file", ns=(WHOLE_SECOND_NS, WHOLE_SECOND_NS))
+
+    entry = build_directory(tree, store, previous={"file": built}).bundle.entries["file"]
+
+    assert isinstance(entry, FileBundle)
+    assert entry.parts == built.parts
+    assert entry.metadata.modified == "2026-09-01T08:30:00Z"
+    assert (entry.metadata.size, entry.metadata.hash) == (built.metadata.size, built.metadata.hash)
+    assert store.writes == []
+
+
+@mark.parametrize("data", [b"as it is", b"as it is now"])
+def test_file_whose_bytes_changed_is_built_afresh(
+    tree: Path, store: RecordingStore, data: bytes
+) -> None:
+    (tree / "file").write_bytes(b"as it was")
+    built = build_directory(tree, store).bundle.entries["file"]
+    assert isinstance(built, FileBundle)
+    (tree / "file").write_bytes(data)
+    utime(tree / "file", ns=(WHOLE_SECOND_NS, WHOLE_SECOND_NS))
+
+    entry = build_directory(tree, store, previous={"file": built}).bundle.entries["file"]
+
+    assert isinstance(entry, FileBundle)
+    assert entry.parts == (str(ContentId.for_data(data, "sha256")),)
+    assert entry.metadata.hash == sha256(data).hexdigest()
+
+
+def test_file_recorded_without_a_hash_is_built_afresh(tree: Path, store: RecordingStore) -> None:
+    (tree / "file").write_bytes(b"data")
+    utime(tree / "file", ns=(WHOLE_SECOND_NS, WHOLE_SECOND_NS))
+    recorded = FileBundle((str(ContentId.for_data(b"elsewhere", "sha256")),), Metadata(size=4))
+
+    entry = build_directory(tree, store, previous={"file": recorded}).bundle.entries["file"]
+
+    assert isinstance(entry, FileBundle)
+    assert entry.parts == (str(ContentId.for_data(b"data", "sha256")),)
+
+
+def test_file_that_was_something_else_is_built_afresh(tree: Path, store: RecordingStore) -> None:
+    (tree / "file").write_bytes(b"data")
+
+    entry = build_directory(tree, store, previous={"file": Symlink("elsewhere")}).bundle.entries[
+        "file"
+    ]
+
+    assert isinstance(entry, FileBundle)
+    assert reassembled(entry, store) == b"data"
