@@ -11,7 +11,10 @@ A file is written beside where it goes, under a temporary name, checked
 against its hash and size as it is written
 (:func:`~libranet.bundle.reassembly.write_file`), and only then renamed into
 place. A file that fails its checks leaves nothing behind, and one replacing
-another replaces it whole.
+another replaces it whole. A temporary name is random, and is taken only by
+creating the file or symlink under it, which fails if the name is already
+taken. Another name is then tried, so nothing already there is ever used or
+replaced.
 
 What is already there is left alone unless the restore may overwrite it. Then
 a file or a symlink in the way is replaced, but a directory never is, so
@@ -64,7 +67,7 @@ from stat import (
     S_IXUSR,
 )
 from types import TracebackType
-from typing import Final
+from typing import Callable, Final, TypeVar
 
 from libranet.atomic_file import TEMP_SUFFIX
 from libranet.bundle.building import IgnoredPaths
@@ -87,15 +90,20 @@ _NEW_FILE_MODE: Final = 0o666
 # or a symlink is there instead.
 _NOT_A_DIRECTORY: Final = frozenset({ENOTDIR, ELOOP})
 
-_READ_BITS: Final = S_IRUSR | S_IRGRP | S_IROTH
 _WRITE_BITS: Final = S_IWUSR | S_IWGRP | S_IWOTH
 _EXECUTE_BITS: Final = S_IXUSR | S_IXGRP | S_IXOTH
 
-# How far each read bit is from the execute bit of the same class.
-_READ_TO_EXECUTE_SHIFT: Final = 2
+# The read bit of the owner, the group, and others, each with its execute bit.
+_READ_AND_EXECUTE_BITS: Final = ((S_IRUSR, S_IXUSR), (S_IRGRP, S_IXGRP), (S_IROTH, S_IXOTH))
 
 _TEMPORARY_PREFIX: Final = ".restore-"
 _TEMPORARY_TOKEN_BYTES: Final = 8
+
+# Random names so rarely collide that finding this many taken in a row means
+# something else is wrong.
+_TEMPORARY_NAME_ATTEMPTS: Final = 100
+
+_Made = TypeVar("_Made")
 
 _EPOCH: Final = datetime(1970, 1, 1, tzinfo=timezone.utc)
 _MICROSECOND: Final = timedelta(microseconds=1)
@@ -189,8 +197,9 @@ class DirectoryWriter:
         """
         parent, name = self._parent_of(path)
         self._make_way(parent, name)
-        temporary = _temporary_name()
-        descriptor = open_file(temporary, _NEW_FILE_FLAGS, _NEW_FILE_MODE, dir_fd=parent)
+        temporary, descriptor = _under_temporary_name(
+            lambda candidate: open_file(candidate, _NEW_FILE_FLAGS, _NEW_FILE_MODE, dir_fd=parent)
+        )
 
         try:
             with fdopen(descriptor, "wb") as output:
@@ -212,8 +221,9 @@ class DirectoryWriter:
         """
         parent, name = self._parent_of(path)
         self._make_way(parent, name)
-        temporary = _temporary_name()
-        symlink(entry.target, temporary, dir_fd=parent)
+        temporary, _ = _under_temporary_name(
+            lambda candidate: symlink(entry.target, candidate, dir_fd=parent)
+        )
 
         try:
             rename(temporary, name, src_dir_fd=parent, dst_dir_fd=parent)
@@ -330,13 +340,38 @@ class DirectoryWriter:
             raise IsADirectoryError(EISDIR, "A directory is in the way")
 
 
+def _under_temporary_name(make: Callable[[str], _Made]) -> tuple[str, _Made]:
+    """The name ``make`` made something under, and what it returned.
+
+    ``make`` is tried with one temporary name after another until one is not
+    taken. It must fail with :class:`FileExistsError` for a name already
+    taken, as creating a file exclusively, or making a symlink, does.
+
+    Raises:
+        FileExistsError: every name tried was taken.
+        OSError: ``make`` failed otherwise.
+    """
+    for _ in range(_TEMPORARY_NAME_ATTEMPTS):
+        candidate = _temporary_name()
+
+        try:
+            return candidate, make(candidate)
+
+        except FileExistsError:
+            continue
+
+    raise FileExistsError(EEXIST, "No temporary name tried was free")
+
+
 def _temporary_name() -> str:
-    """A name for a file or symlink until it is complete, unlike any an entry is likely to have."""
+    """A random name for a file or symlink until it is complete,
+    unlike any an entry is likely to have."""
     return f"{_TEMPORARY_PREFIX}{token_hex(_TEMPORARY_TOKEN_BYTES)}{TEMP_SUFFIX}"
 
 
 def _set_metadata(descriptor: int, metadata: Metadata) -> None:
-    """Give the open file or directory the permissions and modification time ``metadata`` records."""
+    """Give the open file or directory the permissions and
+    modification time ``metadata`` records."""
     status = fstat(descriptor)
     fchmod(descriptor, _permissions(S_IMODE(status.st_mode), metadata))
     modified = _nanoseconds(metadata.modified)
@@ -350,7 +385,10 @@ def _permissions(mode: int, metadata: Metadata) -> int:
     permissions = mode & ~_EXECUTE_BITS
 
     if metadata.executable:
-        permissions |= (permissions & _READ_BITS) >> _READ_TO_EXECUTE_SHIFT
+        # Whoever may read it may also run it or, for a directory, search it.
+        for read, execute in _READ_AND_EXECUTE_BITS:
+            if permissions & read:
+                permissions |= execute
 
     if not metadata.writable:
         permissions &= ~_WRITE_BITS

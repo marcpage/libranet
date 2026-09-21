@@ -105,6 +105,19 @@ def test_a_file_gets_the_permissions_its_owner_had(
     assert S_IMODE((target / "script").stat().st_mode) == mode
 
 
+@mark.parametrize(("mask", "mode"), [(0o027, 0o750), (0o077, 0o700)])
+def test_only_those_who_may_read_a_file_may_run_it(
+    tmp_path: Path, store: CasStore, target: Path, mask: int, mode: int
+) -> None:
+    entry = file_entry(tmp_path, store, b"#!", writable=True, executable=True)
+    umask(mask)
+
+    with writer(target) as placing:
+        placing.place_file("script", entry, store)
+
+    assert S_IMODE((target / "script").stat().st_mode) == mode
+
+
 @mark.parametrize("modified", [None, "not a time", "2026-09-01T08:30:00"])
 def test_a_time_that_is_absent_or_unreadable_is_left_alone_and_one_without_a_zone_is_utc(
     tmp_path: Path, store: CasStore, target: Path, modified: str | None
@@ -351,3 +364,41 @@ def test_a_symlink_that_cannot_be_put_in_place_leaves_nothing_behind(
             placing.place_symlink("link", Symlink("elsewhere"))
 
     assert names(target) == set()
+
+
+def test_a_temporary_name_already_taken_is_passed_over_and_left_alone(
+    tmp_path: Path, store: CasStore, target: Path, monkeypatch: MonkeyPatch
+) -> None:
+    target.mkdir()
+    (target / "taken").write_bytes(b"someone else's")
+    candidates = iter(["taken", "taken", "free-1", "taken", "free-2"])
+    monkeypatch.setattr("libranet.backup.writing._temporary_name", candidates.__next__)
+    entry = file_entry(tmp_path, store, b"theirs")
+
+    with writer(target) as placing:
+        placing.place_file("file.txt", entry, store)
+        placing.place_symlink("link", Symlink("file.txt"))
+
+    assert (target / "taken").read_bytes() == b"someone else's"
+    assert (target / "file.txt").read_bytes() == b"theirs"
+    assert readlink(target / "link") == "file.txt"
+    assert names(target) == {"taken", "file.txt", "link"}
+
+
+def test_when_every_temporary_name_is_taken_nothing_is_written(
+    tmp_path: Path, store: CasStore, target: Path, monkeypatch: MonkeyPatch
+) -> None:
+    target.mkdir()
+    (target / "taken").write_bytes(b"someone else's")
+    monkeypatch.setattr("libranet.backup.writing._temporary_name", lambda: "taken")
+    entry = file_entry(tmp_path, store, b"theirs")
+
+    with writer(target) as placing:
+        with raises(FileExistsError):
+            placing.place_file("file.txt", entry, store)
+
+        with raises(FileExistsError):
+            placing.place_symlink("link", Symlink("file.txt"))
+
+    assert (target / "taken").read_bytes() == b"someone else's"
+    assert names(target) == {"taken"}
