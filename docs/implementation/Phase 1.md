@@ -1044,6 +1044,49 @@ bundle-hash mapping).
 - Non-empty target directories: v1 refuses the restore unless the request
   explicitly asks to overwrite, which is the safe end of the
   implementation-defined behavior BackupSpecification §5 allows.
+- A restore runs in the backup module in passes, each restoring whatever this
+  node holds, between messages as a backup does. A restore due goes ahead of
+  any backup.
+- The bundle is read with the backup secret, and read again as a drop (§6.4)
+  only if it cannot be read as it is, since a request does not say which it
+  is. A bundle that is not password-protected is restored too (§6.5).
+- A file is written under a temporary name beside where it goes, checked
+  against its whole-file hash and size as it is written, and renamed into
+  place only once it passes, so a file that fails leaves nothing behind.
+- Every path is walked from the target a directory at a time, and no symlink
+  is followed on the way, neither one the restore made nor one already there.
+  So nothing is written outside the target, whatever the bundle holds.
+- A symlink is left out if following it, through the bundle's other symlinks
+  as POSIX does, climbs above the target, or takes more than 40 hops. An entry
+  beneath a file or symlink the bundle also holds is left out, since Step 14
+  finds nothing there either. Left-out paths are counted and logged, and the
+  restore goes on. Running out of space or quota, an I/O error, or a
+  read-only filesystem fails the restore instead, as it would fail every
+  entry.
+- A file or directory gets its recorded modification time, and the
+  permissions a new one gets from the umask: without write access if its
+  owner could not write it, and with execute access wherever it is readable
+  if its owner could run or search it. Creation times are not set. A
+  directory's metadata-only entry is made last, deepest first, once nothing
+  beneath it waits.
+- A target that is not empty is refused before anything is read, and checked
+  again on each pass until the restore first writes there. With `overwrite`,
+  entries replace files and symlinks in their way but never a directory, and
+  whatever else the target holds is kept.
+- A pass restores every file whose parts are held, and asks for the rest with
+  `data.not_found`, as the unbundler does. A restore carries on 10 seconds
+  after content it waits on is stored, or at once when all of it is. It asks
+  again for all it lacks every half `stats.seek_entry_ttl_seconds`, so the
+  content stays in the seek list. Asking for a waiting restore again carries
+  it on at once, and asking for a finished one starts it over.
+- The node's own directories are never written in: a target within one fails,
+  and one within the target is left alone. `IgnoredPaths` (Step 19) gained a
+  check by `stat` result for this.
+- `backup.state` reports each restore's `restore_id`, `bundle`, `directory`,
+  `on_conflict`, `status` (`waiting`, `running`, `done`, or `failed`),
+  `error`, `requested_at`, `finished_at`, and counts of entries `restored`,
+  `skipped`, and objects `missing`. Restores are kept in memory only, so a
+  restart forgets them.
 
 **Testable in isolation:** restore a fixture encrypted bundle into a temp
 target directory and compare the tree to the original; assert the

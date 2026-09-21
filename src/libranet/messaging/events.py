@@ -19,12 +19,12 @@ class EventType(StrEnum):
 
     # Web server read path (Step 5).
     DATA_REQUESTED = "data.requested"  # webserver → stats
-    DATA_NOT_FOUND = "data.not_found"  # webserver → fetcher
+    DATA_NOT_FOUND = "data.not_found"  # webserver, unbundler, backup → fetcher, stats
     SEARCH_REQUESTED = "data.search_requested"  # webserver → stats
 
     # Web server write path and validation (Step 7).
     PUT_COMPLETED = "data.put_completed"  # webserver, connections → validator
-    DATA_STORED = "data.stored"  # validator, backup → eviction, stats
+    DATA_STORED = "data.stored"  # validator, backup → eviction, stats, backup
     DATA_REJECTED = "data.rejected"  # validator → stats
 
     # Node and seek lists (Steps 8 and 9).
@@ -46,7 +46,7 @@ class EventType(StrEnum):
     APP_PATH_NOT_FOUND = "app.path_not_found"  # webserver → unbundler
     APP_PATH_RESOLVED = "app.path_resolved"  # unbundler → webserver
 
-    # `/config` administration surface and the backup module (Steps 18, 19).
+    # `/config` administration surface and the backup module (Steps 18-20).
     BACKUP_JOB_CONFIGURED = "backup.job_configured"  # webserver → backup
     BACKUP_JOB_REMOVED = "backup.job_removed"  # webserver → backup
     BACKUP_RUN_REQUESTED = "backup.run_requested"  # webserver → backup
