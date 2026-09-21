@@ -64,6 +64,40 @@ class LatestBackup:
         if self.skipped < 0:
             raise ValueError(f"skipped must not be negative, got {self.skipped}")
 
+    @classmethod
+    def from_value(cls, value: object) -> LatestBackup:
+        """The latest backup a saved JSON object describes.
+
+        Raises:
+            ValueError: it is not a latest-backup object, or describes an
+                unusable one.
+        """
+        if not isinstance(value, dict):
+            raise ValueError('A backup job\'s "latest" must be an object')
+
+        skipped = value.get("skipped")
+
+        if not isinstance(skipped, int) or isinstance(skipped, bool):
+            raise ValueError('"skipped" must be an integer')
+
+        return cls(
+            ContentId.parse(_string(value, "bundle")),
+            _number(value, "made_at"),
+            _string(value, "fingerprint"),
+            _string(value, "entries_digest"),
+            skipped,
+        )
+
+    def value(self) -> dict[str, Any]:
+        """The JSON object this is saved as."""
+        return {
+            "bundle": str(self.bundle),
+            "made_at": self.made_at,
+            "fingerprint": self.fingerprint,
+            "entries_digest": self.entries_digest,
+            "skipped": self.skipped,
+        }
+
 
 @dataclass(frozen=True)
 class BackupJob:
@@ -81,6 +115,35 @@ class BackupJob:
     def directory(self) -> Path:
         """The directory kept backed up."""
         return Path(self.request.directory)
+
+    @classmethod
+    def from_value(cls, value: object) -> BackupJob:
+        """The job a saved JSON object describes.
+
+        Raises:
+            ValueError: it is not a job object, or describes an unusable job.
+        """
+        if not isinstance(value, dict):
+            raise ValueError("A backup job must be an object")
+
+        interval = value.get("interval_seconds")
+        latest = value.get("latest")
+
+        return cls(
+            BackupJobRequest(
+                _string(value, "directory"),
+                None if interval is None else _number(value, "interval_seconds"),
+            ),
+            None if latest is None else LatestBackup.from_value(latest),
+        )
+
+    def value(self) -> dict[str, Any]:
+        """The JSON object this job is saved as."""
+        return {
+            "directory": self.request.directory,
+            "interval_seconds": self.request.interval_seconds,
+            "latest": None if self.latest is None else self.latest.value(),
+        }
 
 
 def load_jobs(path: Path) -> dict[str, BackupJob]:
@@ -104,7 +167,7 @@ def load_jobs(path: Path) -> dict[str, BackupJob]:
         raise JobFileError(f'{path} must hold an object with a "jobs" array')
 
     try:
-        parsed = [_job(job) for job in jobs]
+        parsed = [BackupJob.from_value(job) for job in jobs]
 
     except ValueError as error:
         raise JobFileError(f"{path} holds an unusable backup job: {error}") from None
@@ -118,52 +181,8 @@ def save_jobs(path: Path, jobs: Iterable[BackupJob]) -> None:
     Raises:
         OSError: the file could not be written.
     """
-    value = {"jobs": [_job_value(job) for job in sorted(jobs, key=lambda job: job.directory)]}
+    value = {"jobs": [job.value() for job in sorted(jobs, key=lambda job: job.directory)]}
     write_atomically(path, dumps(value, indent=2).encode("utf-8"))
-
-
-def _job(value: object) -> BackupJob:
-    """The job a saved object describes.
-
-    Raises:
-        ValueError: it is not a job object, or describes an unusable job.
-    """
-    if not isinstance(value, dict):
-        raise ValueError("A backup job must be an object")
-
-    interval = value.get("interval_seconds")
-    latest = value.get("latest")
-
-    return BackupJob(
-        BackupJobRequest(
-            _string(value, "directory"),
-            None if interval is None else _number(value, "interval_seconds"),
-        ),
-        None if latest is None else _latest(latest),
-    )
-
-
-def _latest(value: object) -> LatestBackup:
-    """The latest backup a saved object describes.
-
-    Raises:
-        ValueError: it is not a latest-backup object, or describes an unusable one.
-    """
-    if not isinstance(value, dict):
-        raise ValueError('A backup job\'s "latest" must be an object')
-
-    skipped = value.get("skipped")
-
-    if not isinstance(skipped, int) or isinstance(skipped, bool):
-        raise ValueError('"skipped" must be an integer')
-
-    return LatestBackup(
-        ContentId.parse(_string(value, "bundle")),
-        _number(value, "made_at"),
-        _string(value, "fingerprint"),
-        _string(value, "entries_digest"),
-        skipped,
-    )
 
 
 def _string(value: dict[str, Any], key: str) -> str:
@@ -192,23 +211,3 @@ def _number(value: dict[str, Any], key: str) -> float:
         raise ValueError(f'"{key}" must be a number')
 
     return float(field)
-
-
-def _job_value(job: BackupJob) -> dict[str, Any]:
-    """The object ``job`` is saved as."""
-    return {
-        "directory": job.request.directory,
-        "interval_seconds": job.request.interval_seconds,
-        "latest": None if job.latest is None else _latest_value(job.latest),
-    }
-
-
-def _latest_value(latest: LatestBackup) -> dict[str, Any]:
-    """The object ``latest`` is saved as."""
-    return {
-        "bundle": str(latest.bundle),
-        "made_at": latest.made_at,
-        "fingerprint": latest.fingerprint,
-        "entries_digest": latest.entries_digest,
-        "skipped": latest.skipped,
-    }

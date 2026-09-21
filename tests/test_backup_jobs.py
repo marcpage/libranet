@@ -47,6 +47,17 @@ def test_jobs_are_read_back_as_saved(path: Path) -> None:
     assert load_jobs(path) == {job.job_id: job for job in jobs}
 
 
+@mark.parametrize(
+    "job",
+    [
+        BackupJob(BackupJobRequest("/home/me/notes")),
+        BackupJob(BackupJobRequest("/a", 60.0), LATEST),
+    ],
+)
+def test_a_job_is_read_back_from_the_value_it_is_saved_as(job: BackupJob) -> None:
+    assert BackupJob.from_value(job.value()) == job
+
+
 def test_jobs_are_saved_in_order_of_directory(path: Path) -> None:
     save_jobs(
         path,
