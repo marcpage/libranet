@@ -7,7 +7,7 @@ them in CAS within the object limit, and password protection (Step 17).
 Operates purely on bundle JSON, local files, and CAS reads and writes.
 """
 
-from libranet.bundle.building import DirectoryBuild, build_directory, build_file
+from libranet.bundle.building import DirectoryBuild, IgnoredPaths, build_directory, build_file
 from libranet.bundle.content import ContentSource, content_chunks, parse_cas_path
 from libranet.bundle.errors import (
     BundleError,
@@ -54,6 +54,7 @@ __all__ = [
     "DirectoryMarker",
     "Entry",
     "FileBundle",
+    "IgnoredPaths",
     "IncorrectPasswordError",
     "MalformedBundleError",
     "Metadata",

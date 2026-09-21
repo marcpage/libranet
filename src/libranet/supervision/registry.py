@@ -7,6 +7,7 @@ real factory here.
 from __future__ import annotations
 from typing import Mapping
 
+from libranet.backup.module import backup_module_factory
 from libranet.connections.module import connections_module_factory
 from libranet.eviction.module import eviction_module_factory
 from libranet.fetcher.module import fetcher_module_factory
@@ -26,6 +27,7 @@ _FACTORIES: Mapping[ModuleName, ModuleFactory] = {
     ModuleName.FETCHER: fetcher_module_factory,
     ModuleName.UNBUNDLER: unbundler_module_factory,
     ModuleName.EVICTION: eviction_module_factory,
+    ModuleName.BACKUP: backup_module_factory,
 }
 
 

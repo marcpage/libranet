@@ -12,6 +12,10 @@ task.
 All python imports should import each symbol from the module instead of
 importing entire modules.
 
+Prefer methods on objects as opposed to functions.
+This includes class factory methods.
+Do not be extreme in this, but when it makes sense, use methods over functions.
+
 ## Interacting with GitHub and Git
 
 Do not directly interact with GitHub. Just inform me what needs to be done and I
@@ -21,5 +25,5 @@ Never commit changes. I will review changes and commit them myself.
 
 If the changes proposed will be more than 1,000 new lines (including changed
 lines) of Python (not counting tests), then propose logical steps that can be
-progressively be committed that allows the PRs to have less than 1,000 new lines
+progressively committed that allows the PRs to have less than 1,000 new lines
 per change set.

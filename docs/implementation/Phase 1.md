@@ -960,6 +960,60 @@ configured).
 - Backup content is ordinary CAS content in v1: it replicates, hands off,
   and evicts like anything else. The local no-forward policy
   BackupSpecification §6 permits is not implemented.
+- A job's directory is looked at when it is configured, when the module
+  starts, and then every `interval_seconds`, or `backup.interval_seconds`
+  (provisionally an hour) for a job configured without one. Looking lists the
+  whole directory, hashing each path's type, permission bits, size, and
+  modification time into a fingerprint, and reads no file. Only a directory
+  whose fingerprint differs from its latest backup's is backed up.
+- A backup starts from what the job's last bundle holds, decrypted with the
+  backup secret. A file whose size, times, and permissions are as recorded is
+  kept without being read. A file whose metadata changed is hashed, and if its
+  whole-file hash is as recorded, it keeps its parts and only its metadata is
+  updated. Only a file whose bytes changed is split and stored again. A last
+  bundle that can no longer be read here, as when it has been evicted, means
+  every file is read, though parts already held are still not stored again.
+  `build_directory` (Step 17) gained a `previous` argument for this.
+- So a change that keeps a file's size, times, and permissions goes unnoticed,
+  by the fingerprint and by a backup alike, until the file's metadata changes
+  again.
+- The change detector is one method, from a directory to a fingerprint that
+  is only compared for equality. Filesystem notifications can replace polling
+  by giving a new fingerprint whenever an event arrives.
+- Asking for a backup (`POST /config/backups/{job_id}/run`) backs the
+  directory up even when its fingerprint is unchanged. A directory whose
+  entries are what they were keeps its bundle, rather than gaining a version
+  that records no change. A SHA-256 of the entries, without `versions`, is
+  kept with the job to tell.
+- Backups run one at a time in the module's receive loop, between messages:
+  a job asked for first, then the one longest due. A long backup holds up the
+  rest, and shutdown waits for it until the supervisor's `SIGTERM`, which
+  leaves the CAS and the jobs file whole.
+- Each object a backup writes is announced with `data.stored`, carrying this
+  node's own id as `node_id`, since this node is where it came from.
+- The jobs file, `backup_jobs.json` in the data directory, holds each job's
+  directory and interval, and its latest backup: the bundle, when it was made,
+  its fingerprint and entries digest, and how many paths it left out. It is
+  saved before the module acts on a change, so a failed save changes nothing.
+  A file that cannot be read stops the module, rather than letting it save
+  over the only record of which bundle holds each directory.
+- The backup secret is read, or first made, when a backup first needs it, so
+  a problem with it fails that job, and `/config` reports why.
+- `backup.state` reports each job's `job_id`, `directory`,
+  `interval_seconds`, `status` (`waiting`, `running`, or `failed`), `error`,
+  `checked_at`, `bundle`, `backed_up_at`, and `skipped`, a count of the paths
+  left out, which are logged. Times are seconds since the epoch. It is
+  published at start and whenever a job changes, and `restores` stays empty
+  until Step 20.
+- The node's own directories are ignored, when looking for changes and when
+  backing up: a directory holding them is backed up as though they were not
+  there, and a job's directory within one fails as though it did not exist. A
+  backup that took in the source of truth would take in what it stored the
+  time before, and grow without end. Ignored paths are known by device and
+  inode, not by name, so no symlink or other spelling reaches them.
+  `build_directory` (Step 17) gained an `ignore` argument for this.
+- Removing a job forgets its bundle but leaves its content in CAS.
+  Configuring the same directory again starts a new chain of versions.
 
 **Testable in isolation:** run a job against a fixture tree in a temp
 directory with a temp CAS and a fake queue; mutate the tree and assert

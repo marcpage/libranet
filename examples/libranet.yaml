@@ -113,6 +113,13 @@ stats:
   # stays in the /data/seek list it publishes.
   seek_entry_ttl_seconds: 3600.0
 
+backup:
+  # Provisional: how often each backup job's directory is looked at for
+  # changes, for a job configured through /config without an
+  # interval_seconds of its own. Looking lists the directory without reading
+  # any file; only a directory that changed is read and backed up again.
+  interval_seconds: 3600.0
+
 # Directory bundles served as web applications (HTTP API §13), none by
 # default. Each is reached at /{name}/ and named by the content id of its
 # bundle; the name "/" is the application served at the root, which also

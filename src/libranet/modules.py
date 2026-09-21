@@ -23,8 +23,6 @@ class ModuleName(StrEnum):
     FETCHER = "fetcher"
     UNBUNDLER = "unbundler"
     EVICTION = "eviction"
-    # Named here so the `/config` endpoints (Step 18) have a counterparty for
-    # the messages they publish; the process itself arrives with Step 19.
     BACKUP = "backup"
 
 
@@ -39,4 +37,5 @@ SPAWNED_MODULES: tuple[ModuleName, ...] = (
     ModuleName.FETCHER,
     ModuleName.UNBUNDLER,
     ModuleName.EVICTION,
+    ModuleName.BACKUP,
 )

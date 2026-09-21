@@ -25,6 +25,16 @@ and a symlink with an absolute target (§3.1). Only failing to list the
 directory itself, or failing partway through reading a file or storing
 content, stops the walk.
 
+Paths the caller names are ignored: the walk treats each, and everything
+beneath it, as though it were not there (:class:`IgnoredPaths`). A directory
+that is one of them, or lies within one, cannot be built at all.
+
+Building a directory again can start from what the bundle it supersedes
+holds. A file whose recorded metadata it still has is kept as it was, without
+being read. A file whose metadata changed is hashed, and if it still holds
+the bytes recorded, it keeps its parts and only its metadata is updated.
+Otherwise it is built afresh.
+
 Times are UTC, to the microsecond. A file's creation time is recorded only
 where the platform reports it, which Linux does not.
 """
@@ -32,6 +42,7 @@ where the platform reports it, which Linux does not.
 from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
+from errno import ENOENT
 from os import (
     O_NOFOLLOW,
     O_NONBLOCK,
@@ -46,9 +57,10 @@ from os import (
     set_blocking,
     stat_result,
 )
+from os.path import realpath
 from pathlib import Path
 from stat import S_ISREG, S_IWUSR, S_IXUSR
-from typing import BinaryIO, Final, Mapping
+from typing import BinaryIO, Final, Iterable, Mapping
 
 from libranet.bundle.errors import MalformedBundleError
 from libranet.bundle.shapes import (
@@ -75,6 +87,55 @@ _MICROSECONDS_PER_SECOND: Final = 1_000_000
 # its place since the directory was listed.
 _OPEN_FLAGS: Final = O_RDONLY | O_NOFOLLOW | O_NONBLOCK
 
+# How much of a file is read at once to hash it.
+_READ_BYTES: Final = 1 * MIB
+
+
+class IgnoredPaths:
+    """Paths a walk treats as though they were not there.
+
+    Each is known by the file it is, its device and inode, rather than by its
+    name, so it is recognized however it is reached: by another spelling,
+    through a symlink given as the path, or in another case on a filesystem
+    that ignores case. A path that does not exist is left out, as there is
+    nothing there to ignore.
+    """
+
+    def __init__(self, paths: Iterable[Path] = ()) -> None:
+        self._identities = frozenset(
+            identity for identity in map(_identity, paths) if identity is not None
+        )
+
+    def matches(self, item: DirEntry[str]) -> bool:
+        """Whether ``item`` is one of the paths.
+
+        Raises:
+            OSError: there are paths to ignore, and ``item`` could not be
+                looked at.
+        """
+        if not self._identities:
+            return False
+
+        status = item.stat(follow_symlinks=False)
+        return (status.st_dev, status.st_ino) in self._identities
+
+    def check(self, root: Path) -> None:
+        """Raise if ``root`` is one of the paths or lies within one, symlinks followed.
+
+        Raises:
+            FileNotFoundError: it does, so it is not there to walk.
+        """
+        if not self._identities:
+            return
+
+        resolved = Path(realpath(root))
+
+        for path in (resolved, *resolved.parents):
+            if _identity(path) in self._identities:
+                raise FileNotFoundError(
+                    ENOENT, "Ignored, as it is or lies within an ignored path", str(root)
+                )
+
 
 @dataclass(frozen=True)
 class DirectoryBuild:
@@ -100,17 +161,27 @@ def build_directory(
     sink: ContentSink,
     supersedes: ContentId | None = None,
     max_object_bytes: int = MIB,
+    *,
+    ignore: Iterable[Path] = (),
+    previous: Mapping[str, Entry] | None = None,
 ) -> DirectoryBuild:
     """The bundle for the directory at ``root``, every file's parts stored in ``sink``.
 
     ``supersedes`` is the bundle this one is a new version of, recorded in
     its ``versions`` (§3.1). The bundle itself is not stored
-    (:func:`~libranet.bundle.storing.store_bundle`).
+    (:func:`~libranet.bundle.storing.store_bundle`). Whatever ``ignore``
+    names is treated as though it were not there. ``previous`` is what the
+    bundle superseded holds, by path, for files to be kept from where they
+    have not changed.
 
     Raises:
-        OSError: ``root`` could not be listed, a file failed partway through
-            being read, or content could not be stored.
+        OSError: ``root`` could not be listed, is or lies within a path
+            ignored, a file failed partway through being read, or content
+            could not be stored.
     """
+    ignored = IgnoredPaths(ignore)
+    ignored.check(root)
+    earlier = previous or {}
     entries: dict[str, Entry] = {}
     directories: dict[str, Metadata] = {}
     skipped: dict[str, str] = {}
@@ -135,6 +206,9 @@ def build_directory(
             file: BinaryIO | None = None
 
             try:
+                if ignored.matches(item):
+                    continue
+
                 if not _is_utf8(item.name):
                     raise MalformedBundleError("Name is not UTF-8")
 
@@ -146,7 +220,13 @@ def build_directory(
                     pending.append((path + _PATH_SEPARATOR, Path(item.path)))
 
                 elif item.is_file(follow_symlinks=False):
-                    file = _open_regular_file(Path(item.path))
+                    kept = _unchanged(earlier.get(path), item)
+
+                    if kept is None:
+                        file = _open_regular_file(Path(item.path))
+
+                    else:
+                        entries[path] = kept
 
                 else:
                     raise MalformedBundleError("Not a file, a directory, or a symlink")
@@ -156,7 +236,7 @@ def build_directory(
 
             if file is not None:
                 with file:
-                    entries[path] = _file_bundle(file, sink, max_object_bytes)
+                    entries[path] = _file_bundle(file, sink, max_object_bytes, earlier.get(path))
 
     for path in directories.keys() - _ancestors(entries.keys() | directories.keys()):
         entries[path] = DirectoryMarker(directories[path])
@@ -165,6 +245,30 @@ def build_directory(
     return DirectoryBuild(
         DirectoryBundle(entries, versions=versions), dict(sorted(skipped.items()))
     )
+
+
+def _identity(path: Path) -> tuple[int, int] | None:
+    """The device and inode ``path`` names, symlinks followed; ``None`` if it names none."""
+    try:
+        status = path.stat()
+
+    except OSError:
+        return None
+
+    return status.st_dev, status.st_ino
+
+
+def _unchanged(earlier: Entry | None, item: DirEntry[str]) -> FileBundle | None:
+    """``earlier``, if it is a file whose recorded metadata the file ``item`` still has.
+
+    Raises:
+        OSError: ``item`` could not be looked at.
+    """
+    if not isinstance(earlier, FileBundle):
+        return None
+
+    recorded = earlier.metadata
+    return earlier if _as_recorded(item.stat(follow_symlinks=False), recorded) == recorded else None
 
 
 def _listing(directory: Path) -> list[DirEntry[str]]:
@@ -232,9 +336,20 @@ def _open_regular_file(path: Path) -> BinaryIO:
         raise
 
 
-def _file_bundle(file: BinaryIO, sink: ContentSink, max_object_bytes: int) -> FileBundle:
-    """The bundle for the open ``file``, its parts stored in ``sink`` as they are read."""
+def _file_bundle(
+    file: BinaryIO, sink: ContentSink, max_object_bytes: int, earlier: Entry | None = None
+) -> FileBundle:
+    """The bundle for the open ``file``, its parts stored in ``sink`` as they are read.
+
+    If ``earlier`` is a file that held the same bytes, it keeps its parts, and
+    nothing is stored.
+    """
     status = fstat(file.fileno())
+
+    if isinstance(earlier, FileBundle) and _holds(file, status, earlier.metadata):
+        return FileBundle(earlier.parts, _as_recorded(status, earlier.metadata))
+
+    file.seek(0)
     hasher = DEFAULT_REGISTRY.get(HASH_ALGORITHM).hasher()
     parts: list[str] = []
     size = 0
@@ -248,6 +363,29 @@ def _file_bundle(file: BinaryIO, sink: ContentSink, max_object_bytes: int) -> Fi
         _metadata(status), size=size, algorithm=HASH_ALGORITHM, hash=hasher.hexdigest()
     )
     return FileBundle(tuple(parts), metadata)
+
+
+def _holds(file: BinaryIO, status: stat_result, recorded: Metadata) -> bool:
+    """Whether the open ``file`` holds the bytes ``recorded``, by their whole-file hash.
+
+    It is read only if its size is the one recorded.
+    """
+    if recorded.size != status.st_size or recorded.algorithm != HASH_ALGORITHM:
+        return False
+
+    hasher = DEFAULT_REGISTRY.get(HASH_ALGORITHM).hasher()
+
+    while chunk := file.read(_READ_BYTES):
+        hasher.update(chunk)
+
+    return hasher.hexdigest() == recorded.hash
+
+
+def _as_recorded(status: stat_result, recorded: Metadata) -> Metadata:
+    """What ``status`` says of a file, with the whole-file hash ``recorded`` for its bytes."""
+    return replace(
+        _metadata(status), size=status.st_size, algorithm=recorded.algorithm, hash=recorded.hash
+    )
 
 
 def _metadata(status: stat_result) -> Metadata:
