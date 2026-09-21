@@ -88,7 +88,7 @@ _MICROSECONDS_PER_SECOND: Final = 1_000_000
 _OPEN_FLAGS: Final = O_RDONLY | O_NOFOLLOW | O_NONBLOCK
 
 # How much of a file is read at once to hash it.
-_READ_BYTES: Final = MIB
+_READ_BYTES: Final = 1 * MIB
 
 
 class IgnoredPaths:
