@@ -1,4 +1,4 @@
-"""One backup: a directory into an encrypted bundle in CAS (BackupSpecification §§3–4).
+"""One backup: a directory into an encrypted bundle in CAS (BackupSpecification §§3-4).
 
 The directory is built into a directory bundle (Step 17), each file's parts
 stored as they are read, and the bundle is stored password-protected with the
