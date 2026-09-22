@@ -1,12 +1,14 @@
-"""The backup module process (Phase 1 Step 19).
+"""The backup module process (Phase 1 Steps 19 and 20).
 
 It keeps the directories configured through ``/config`` (Step 18) backed up
 as encrypted directory bundles in the source of truth (BackupSpecification
-§3), as the web server asks::
+§3), and restores a backup bundle into a directory (§5), as the web server
+asks::
 
-    backup.job_configured  {"job_id", "directory", "interval_seconds"}
-    backup.job_removed     {"job_id"}
-    backup.run_requested   {"job_id"}
+    backup.job_configured     {"job_id", "directory", "interval_seconds"}
+    backup.job_removed        {"job_id"}
+    backup.run_requested      {"job_id"}
+    backup.restore_requested  {"restore_id", "bundle", "directory", "on_conflict"}
 
 A job's directory is looked at once it is configured, again when the module
 starts, and ``interval_seconds`` after each look, or ``backup.interval_seconds``
@@ -29,14 +31,30 @@ from.
 The node's own directories, as its config lists them, are ignored both when
 looking for changes and when backing up. Whatever holds them is backed up as
 though they were not there, and a job whose directory lies within one fails
-as though that directory did not exist.
+as though that directory did not exist. A restore never writes in them.
+
+A restore is carried on in passes (:mod:`libranet.backup.restores`), each
+restoring whatever it can from what this node holds. Content it lacks, whether
+the bundle, an extension, or a file's parts, is asked for as a miss would be::
+
+    data.not_found  {"algorithm", "hash"}
+
+so that the fetcher (Step 12) retrieves it and it joins this node's seek list.
+The restore carries on as that content is stored, and asks again for whatever
+it still lacks every half ``stats.seek_entry_ttl_seconds``, so that it stays
+in the seek list for peers that connect later. Asking for a restore that is
+still waiting carries it on at once. Asking for one that is done or has failed
+starts it again. Restores are kept in memory only, so a restart forgets them.
+A pass runs between two messages, as a backup does, and a restore due goes
+ahead of any backup.
 
 Jobs, and the bundle each was last backed up to, are kept in a file
 (:mod:`libranet.backup.jobs`). Removing a job forgets its bundle, but leaves
-the content in CAS. What every job is doing is reported whenever it changes,
-for the web server to serve at ``GET /config/backups``::
+the content in CAS. What every job and restore is doing is reported whenever
+it changes, for the web server to serve at ``GET /config/backups`` and ``GET
+/config/restores``::
 
-    backup.state  {"jobs": [...], "restores": []}
+    backup.state  {"jobs": [...], "restores": [...]}
 
 Each job is reported as::
 
@@ -46,12 +64,23 @@ Each job is reported as::
 ``status`` is ``waiting`` between looks, ``running`` during a backup, and
 ``failed`` if the last look or backup failed, with ``error`` saying why.
 ``bundle`` is the job's current bundle, made at ``backed_up_at``, and
-``skipped`` counts the paths it leaves out, which are logged. Times are
-seconds since the epoch, and ``null`` until there is one. Restores arrive
-with Step 20, so none is reported yet.
+``skipped`` counts the paths it leaves out, which are logged.
 
-The backup secret is read, or first made, when a backup first needs it
-(§4.2), so a problem with it fails the backup, where it is reported.
+Each restore is reported, in the order they were asked for, as::
+
+    {"restore_id", "bundle", "directory", "on_conflict", "status", "error",
+     "requested_at", "finished_at", "restored", "skipped", "missing"}
+
+``status`` is ``waiting`` between passes, ``running`` during one, ``done``
+once every entry is restored or left out, and ``failed`` if it could not go
+on, with ``error`` saying why. ``restored`` counts the entries restored so
+far, ``skipped`` those left out, which are logged, and ``missing`` the objects
+it waits on. Times are seconds since the epoch, and ``null`` until there is
+one.
+
+The backup secret is read, or first made, when a backup or restore first needs
+it (§4.2), so a problem with it fails that backup or restore, where it is
+reported.
 """
 
 from __future__ import annotations
@@ -59,11 +88,13 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from logging import Logger
 from time import time
-from typing import Any, Callable, ClassVar, Mapping
+from typing import Any, Callable, ClassVar, Final, Mapping
 
 from libranet.backup.changes import ChangeDetector, PollingDetector
 from libranet.backup.jobs import BackupJob, load_jobs, save_jobs
+from libranet.backup.restores import Restore
 from libranet.backup.runs import AnnouncingStore, back_up
+from libranet.bundle.building import IgnoredPaths
 from libranet.bundle.errors import BundleError
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import source_of_truth_store
@@ -76,7 +107,11 @@ from libranet.messaging.events import EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
-from libranet.webserver.config_requests import BackupJobRequest
+from libranet.webserver.config_requests import BackupJobRequest, ConflictBehavior, RestoreRequest
+
+# A restore asks again for what it lacks this many times in the life of a seek
+# entry, so it never ages out of the seek list.
+_ASKS_PER_SEEK_ENTRY_TTL: Final = 2
 
 
 class JobStatus(StrEnum):
@@ -99,13 +134,15 @@ class _Progress:
 
 
 class BackupModule(ModuleBase):
-    """Keeps configured directories backed up into the source of truth."""
+    """Keeps configured directories backed up into the source of truth, and restores them."""
 
     subscriptions: ClassVar[frozenset[EventType]] = frozenset(
         {
             EventType.BACKUP_JOB_CONFIGURED,
             EventType.BACKUP_JOB_REMOVED,
             EventType.BACKUP_RUN_REQUESTED,
+            EventType.RESTORE_REQUESTED,
+            EventType.DATA_STORED,
         }
     )
 
@@ -128,10 +165,13 @@ class BackupModule(ModuleBase):
         self._secret: bytes | None = None
         self._jobs: dict[str, BackupJob] = {}
         self._progress: dict[str, _Progress] = {}
+        self._restores: dict[str, Restore] = {}
         self._handlers: Mapping[EventType, Callable[[Message], None]] = {
             EventType.BACKUP_JOB_CONFIGURED: self._on_job_configured,
             EventType.BACKUP_JOB_REMOVED: self._on_job_removed,
             EventType.BACKUP_RUN_REQUESTED: self._on_run_requested,
+            EventType.RESTORE_REQUESTED: self._on_restore_requested,
+            EventType.DATA_STORED: self._on_data_stored,
         }
 
     @property
@@ -146,6 +186,11 @@ class BackupModule(ModuleBase):
     def jobs(self) -> Mapping[str, BackupJob]:
         """Every configured job, by id."""
         return self._jobs
+
+    @property
+    def restores(self) -> Mapping[str, Restore]:
+        """Every restore asked for since the module started, by id."""
+        return self._restores
 
     def on_start(self) -> None:
         """Read the saved jobs and report them; each is looked at once the module is idle.
@@ -166,16 +211,16 @@ class BackupModule(ModuleBase):
         self.logger.info("Keeping %d directories backed up", len(self._jobs))
 
     def on_idle(self) -> None:
-        """Look at the next job due."""
-        self._back_up_next()
+        """Carry on with the next restore or job due."""
+        self._work_next()
 
     def handle(self, message: Message) -> None:
-        """React to one ``/config`` request, then look at the next job due.
+        """React to one ``/config`` request, or content stored, then to the next restore or job due.
 
         A malformed message raises, and :meth:`run` logs it.
         """
         self._handlers[event_of(message)](message)
-        self._back_up_next()
+        self._work_next()
 
     def _on_job_configured(self, message: Message) -> None:
         request = BackupJobRequest(message["directory"], message.get("interval_seconds"))
@@ -212,6 +257,106 @@ class BackupModule(ModuleBase):
             return
 
         progress.requested = True
+
+    def _on_restore_requested(self, message: Message) -> None:
+        request = RestoreRequest(
+            ContentId.parse(message["bundle"]),
+            message["directory"],
+            ConflictBehavior(message["on_conflict"]),
+        )
+
+        if request.restore_id != message["restore_id"]:
+            raise ValueError(
+                f"Restore {message['restore_id']} does not name {request.bundle} "
+                f"into {request.directory}"
+            )
+
+        now = self._clock()
+        restore = self._restores.get(request.restore_id)
+
+        if restore is None or restore.finished:
+            self._restores.pop(request.restore_id, None)
+            self._restores[request.restore_id] = Restore(request, now, self._ask_interval())
+            self.logger.info("Restoring %s into %s", request.bundle, request.directory)
+
+        else:
+            restore.ask_again(request, now)
+            self.logger.info("Carrying on restoring %s into %s", request.bundle, request.directory)
+
+    def _on_data_stored(self, message: Message) -> None:
+        content_id = ContentId.create(message["algorithm"], message["hash"])
+        now = self._clock()
+        landed = [restore.landed(content_id, now) for restore in self._restores.values()]
+
+        if any(landed):
+            self._report()
+
+    def _work_next(self) -> None:
+        """Carry on with the restore longest due, if any, or else look at the next job due."""
+        now = self._clock()
+        due = [
+            (restore.due_at, restore_id)
+            for restore_id, restore in self._restores.items()
+            if restore.is_due(now)
+        ]
+
+        if due:
+            self._carry_on(self._restores[min(due)[-1]])
+
+        else:
+            self._back_up_next()
+
+    def _carry_on(self, restore: Restore) -> None:
+        """Restore whatever is held of what ``restore`` has left, and ask for what is lacked."""
+        request = restore.request
+        restore.begin()
+        self._report()
+
+        try:
+            restore_pass = restore.attempt(
+                self._store,
+                self._backup_secret(),
+                IgnoredPaths(self._config.directories()),
+                self._clock(),
+            )
+
+        except (OSError, BundleError, KeyFileError) as error:
+            restore.fail(error, self._clock())
+            self.logger.warning(
+                "Could not restore %s into %s: %s", request.bundle, request.directory, error
+            )
+
+        except Exception as error:
+            restore.fail(error, self._clock())
+            self.logger.exception("Restoring %s into %s failed", request.bundle, request.directory)
+
+        else:
+            for path, reason in restore_pass.skipped.items():
+                self.logger.warning("Left %s out of %s: %s", path, request.directory, reason)
+
+            for content_id in restore_pass.ask_for:
+                self.publish(
+                    EventType.DATA_NOT_FOUND,
+                    {"algorithm": content_id.algorithm, "hash": content_id.hash},
+                )
+
+            self._log_restore(restore)
+
+        self._report()
+
+    def _log_restore(self, restore: Restore) -> None:
+        request = restore.request
+
+        if restore.finished:
+            self.logger.info("Restored %s into %s", request.bundle, request.directory)
+            return
+
+        self.logger.info(
+            "Restoring %s into %s waits on %d objects not held here",
+            request.bundle,
+            request.directory,
+            len(restore.missing),
+        )
 
     def _back_up_next(self) -> None:
         """Look at the job a backup was asked for, or else the one longest due, if any."""
@@ -304,6 +449,10 @@ class BackupModule(ModuleBase):
         interval = job.request.interval_seconds
         return self._config.backup.interval_seconds if interval is None else interval
 
+    def _ask_interval(self) -> float:
+        """How often a restore asks again for what it lacks, so it stays in the seek list."""
+        return self._config.stats.seek_entry_ttl_seconds / _ASKS_PER_SEEK_ENTRY_TTL
+
     def _keep(self, jobs: dict[str, BackupJob]) -> None:
         """Save ``jobs``, then make them the jobs kept, so what is kept is always saved.
 
@@ -314,11 +463,14 @@ class BackupModule(ModuleBase):
         self._jobs = jobs
 
     def _report(self) -> None:
-        """Publish what every job is doing, for ``GET /config/backups``."""
+        """Publish what every job and restore is doing, for ``GET /config/backups`` and ``restores``."""
         jobs = sorted(self._jobs.values(), key=lambda job: job.directory)
         self.publish(
             EventType.BACKUP_STATE,
-            {"jobs": [self._job_report(job) for job in jobs], "restores": []},
+            {
+                "jobs": [self._job_report(job) for job in jobs],
+                "restores": [restore.report() for restore in self._restores.values()],
+            },
         )
 
     def _job_report(self, job: BackupJob) -> dict[str, Any]:

@@ -9,14 +9,16 @@ from pathlib import Path
 from queue import Empty, Queue
 from typing import Any
 
-from pytest import LogCaptureFixture, fixture, raises
+from pytest import LogCaptureFixture, MonkeyPatch, fixture, raises
 
 from libranet.backup.jobs import JobFileError, load_jobs
 from libranet.backup.module import BackupModule, backup_module_factory
+from libranet.backup.restores import Restore
 from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.reassembly import write_file
 from libranet.bundle.shapes import DirectoryBundle, FileBundle
+from libranet.bundle.storing import store_bundle
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore, source_of_truth_store
 from libranet.config.models import (
@@ -34,7 +36,7 @@ from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.supervision.registry import default_module_specs
 from libranet.webserver.backup_state import BackupReport
-from libranet.webserver.config_requests import BackupJobRequest
+from libranet.webserver.config_requests import BackupJobRequest, ConflictBehavior, RestoreRequest
 
 INTERVAL = 100.0
 START = 1_789_000_000.0
@@ -137,6 +139,49 @@ def configure(module: BackupModule, directory: Path, interval: float | None = No
 
 def job_id_of(directory: Path) -> str:
     return BackupJobRequest(str(directory)).job_id
+
+
+def restores(messages: list[Message]) -> list[list[dict[str, Any]]]:
+    """The restores each ``backup.state`` reported, in order."""
+    return [message["restores"] for message in of(messages, EventType.BACKUP_STATE)]
+
+
+def asked_for(messages: list[Message]) -> list[ContentId]:
+    return [
+        ContentId.create(message["algorithm"], message["hash"])
+        for message in of(messages, EventType.DATA_NOT_FOUND)
+    ]
+
+
+def restore(
+    module: BackupModule,
+    bundle: str,
+    directory: Path,
+    on_conflict: ConflictBehavior = ConflictBehavior.REFUSE,
+) -> str:
+    request = RestoreRequest(ContentId.parse(bundle), str(directory), on_conflict)
+    module.handle(asked(EventType.RESTORE_REQUESTED, **request.payload()))
+    return request.restore_id
+
+
+def fetched(content_id: ContentId, size: int) -> Message:
+    """The ``data.stored`` the validator publishes once it has stored what a peer sent."""
+    return make_message(
+        EventType.DATA_STORED,
+        ModuleName.VALIDATOR,
+        {
+            "algorithm": content_id.algorithm,
+            "hash": content_id.hash,
+            "node_id": f"sha256/{'0' * 64}",
+            "size": size,
+        },
+    )
+
+
+def backed_up_bundle(module: BackupModule, queues: ModuleQueues, tree: Path) -> str:
+    configure(module, tree)
+    bundle: str = reports(published(queues))[-1][0]["bundle"]
+    return bundle
 
 
 def secret_of(config: LibranetConfig) -> bytes:
@@ -593,3 +638,270 @@ def test_the_supervisor_runs_the_backup_module(
 
     assert factories[ModuleName.BACKUP] is backup_module_factory
     assert isinstance(backup_module_factory(ModuleName.BACKUP, config, queues), BackupModule)
+
+
+def test_a_restore_rebuilds_a_backed_up_directory_and_is_reported(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float], tree: Path, tmp_path: Path
+) -> None:
+    module = start(config, queues, now)
+    bundle = backed_up_bundle(module, queues, tree)
+    target = tmp_path / "restored"
+    restore_id = restore(module, bundle, target)
+    messages = published(queues)
+    states = restores(messages)
+
+    assert [state[0]["status"] for state in states] == ["running", "done"]
+    assert states[-1] == [
+        {
+            "restore_id": restore_id,
+            "bundle": bundle,
+            "directory": str(target),
+            "on_conflict": "refuse",
+            "status": "done",
+            "error": None,
+            "requested_at": START,
+            "finished_at": START,
+            "restored": 2,
+            "skipped": 0,
+            "missing": 0,
+        }
+    ]
+    assert (target / "readme.txt").read_bytes() == b"read me"
+    assert (target / "docs" / "notes.txt").read_bytes() == b"some notes"
+    assert asked_for(messages) == []
+
+    for message in of(messages, EventType.BACKUP_STATE):
+        BackupReport.from_message(message)
+
+
+def test_a_restore_asks_for_content_not_held_and_carries_on_once_it_lands(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tree: Path,
+    tmp_path: Path,
+    store: CasStore,
+) -> None:
+    module = start(config, queues, now)
+    bundle = backed_up_bundle(module, queues, tree)
+    part = ContentId.for_data(b"some notes", "sha256")
+    data = store.read(part)
+    store.delete(part)
+    target = tmp_path / "restored"
+    restore(module, bundle, target)
+    messages = published(queues)
+    waiting = restores(messages)[-1][0]
+
+    assert asked_for(messages) == [part]
+    assert (waiting["status"], waiting["restored"], waiting["missing"]) == ("waiting", 1, 1)
+    assert (target / "readme.txt").read_bytes() == b"read me"
+
+    store.write(part, data)
+    module.handle(fetched(part, len(data)))
+    states = restores(published(queues))
+
+    assert [(state[0]["status"], state[0]["missing"]) for state in states] == [
+        ("waiting", 0),
+        ("running", 0),
+        ("done", 0),
+    ]
+    assert (target / "docs" / "notes.txt").read_bytes() == b"some notes"
+
+
+def test_a_waiting_restore_asks_again_twice_in_the_life_of_a_seek_entry(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tree: Path,
+    tmp_path: Path,
+    store: CasStore,
+) -> None:
+    module = start(config, queues, now)
+    bundle = backed_up_bundle(module, queues, tree)
+    part = ContentId.for_data(b"some notes", "sha256")
+    store.delete(part)
+    restore(module, bundle, tmp_path / "restored")
+    published(queues)
+    ask_interval = config.stats.seek_entry_ttl_seconds / 2
+    now[0] += ask_interval - 1
+    module.on_idle()
+
+    assert asked_for(published(queues)) == []
+
+    now[0] += 1
+    module.on_idle()
+
+    assert asked_for(published(queues)) == [part]
+
+
+def test_asking_for_a_waiting_restore_again_carries_it_on_at_once(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tree: Path,
+    tmp_path: Path,
+    store: CasStore,
+) -> None:
+    module = start(config, queues, now)
+    bundle = backed_up_bundle(module, queues, tree)
+    part = ContentId.for_data(b"some notes", "sha256")
+    store.delete(part)
+    restore_id = restore(module, bundle, tmp_path / "restored")
+    published(queues)
+    now[0] += 1
+    restore(module, bundle, tmp_path / "restored")
+    messages = published(queues)
+
+    assert asked_for(messages) == [part]
+    assert restores(messages)[-1][0]["requested_at"] == START
+    assert list(module.restores) == [restore_id]
+
+
+def test_asking_for_a_finished_restore_starts_it_again(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float], tree: Path, tmp_path: Path
+) -> None:
+    module = start(config, queues, now)
+    bundle = backed_up_bundle(module, queues, tree)
+    target = tmp_path / "restored"
+    restore(module, bundle, target)
+    (target / "readme.txt").write_bytes(b"changed since")
+    now[0] += 1
+    restore(module, bundle, target)
+    refused = restores(published(queues))[-1][0]
+
+    assert (refused["status"], refused["requested_at"]) == ("failed", START + 1)
+    assert "Not empty" in refused["error"]
+
+    restore(module, bundle, target, ConflictBehavior.OVERWRITE)
+    overwritten = restores(published(queues))[-1][0]
+
+    assert (overwritten["status"], overwritten["on_conflict"]) == ("done", "overwrite")
+    assert (target / "readme.txt").read_bytes() == b"read me"
+
+
+def test_a_restore_due_goes_ahead_of_a_backup_due(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float], tree: Path, tmp_path: Path
+) -> None:
+    module = start(config, queues, now)
+    bundle = backed_up_bundle(module, queues, tree)
+    now[0] += INTERVAL
+    restore(module, bundle, tmp_path / "restored")
+    messages = published(queues)
+
+    assert restores(messages)[-1][0]["status"] == "done"
+    assert reports(messages)[-1][0]["checked_at"] == START
+
+    module.on_idle()
+
+    assert reports(published(queues))[-1][0]["checked_at"] == START + INTERVAL
+
+
+def test_content_stored_that_no_restore_waits_on_changes_nothing(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float]
+) -> None:
+    module = start(config, queues, now)
+    published(queues)
+    module.handle(fetched(ContentId.for_data(b"other", "sha256"), 5))
+
+    assert published(queues) == []
+
+
+def test_a_restore_id_that_does_not_name_its_request_is_refused(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float], tmp_path: Path
+) -> None:
+    module = start(config, queues, now)
+    published(queues)
+
+    with raises(ValueError):
+        module.handle(
+            asked(
+                EventType.RESTORE_REQUESTED,
+                restore_id="0" * 16,
+                bundle=f"sha256/{'0' * 64}",
+                directory=str(tmp_path / "restored"),
+                on_conflict="refuse",
+            )
+        )
+
+    assert module.restores == {}
+    assert published(queues) == []
+
+
+def test_a_bundle_the_backup_secret_does_not_open_fails_its_restore(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tmp_path: Path,
+    store: CasStore,
+    caplog: LogCaptureFixture,
+) -> None:
+    module = start(config, queues, now)
+    bundle = store_bundle(DirectoryBundle({}), store, b"another node's secret")
+
+    with caplog.at_level(WARNING):
+        restore(module, str(bundle), tmp_path / "restored")
+
+    failed = restores(published(queues))[-1][0]
+
+    assert (failed["status"], failed["finished_at"]) == ("failed", START)
+    assert "password" in failed["error"]
+    assert "Could not restore" in caplog.text
+
+
+def test_a_restore_never_writes_in_the_node_own_directories(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float], tree: Path
+) -> None:
+    module = start(config, queues, now)
+    bundle = backed_up_bundle(module, queues, tree)
+    target = config.storage.source_of_truth_dir / "restored"
+    restore(module, bundle, target)
+    failed = restores(published(queues))[-1][0]
+
+    assert failed["status"] == "failed"
+    assert "Ignored" in failed["error"]
+    assert not target.exists()
+
+
+def test_paths_a_restore_leaves_out_are_counted_and_logged(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tree: Path,
+    tmp_path: Path,
+    caplog: LogCaptureFixture,
+) -> None:
+    (tree / "up").symlink_to("..")
+    module = start(config, queues, now)
+    bundle = backed_up_bundle(module, queues, tree)
+
+    with caplog.at_level(WARNING):
+        restore(module, bundle, tmp_path / "restored")
+
+    done = restores(published(queues))[-1][0]
+
+    assert (done["status"], done["restored"], done["skipped"]) == ("done", 2, 1)
+    assert "Left up out of" in caplog.text
+    assert not (tmp_path / "restored" / "up").exists()
+
+
+def test_an_unexpected_restore_failure_fails_it_and_is_logged(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    caplog: LogCaptureFixture,
+) -> None:
+    def broken(*arguments: object) -> None:
+        raise RuntimeError()
+
+    monkeypatch.setattr(Restore, "attempt", broken)
+    module = start(config, queues, now)
+
+    with caplog.at_level(ERROR):
+        restore(module, f"sha256/{'0' * 64}", tmp_path / "restored")
+
+    failed = restores(published(queues))[-1][0]
+
+    assert (failed["status"], failed["error"]) == ("failed", "RuntimeError")
+    assert any(record.exc_info for record in caplog.records)
