@@ -349,14 +349,14 @@ class BackupModule(ModuleBase):
 
         if restore.finished:
             self.logger.info("Restored %s into %s", request.bundle, request.directory)
+            return
 
-        else:
-            self.logger.info(
-                "Restoring %s into %s waits on %d objects not held here",
-                request.bundle,
-                request.directory,
-                len(restore.missing),
-            )
+        self.logger.info(
+            "Restoring %s into %s waits on %d objects not held here",
+            request.bundle,
+            request.directory,
+            len(restore.missing),
+        )
 
     def _back_up_next(self) -> None:
         """Look at the job a backup was asked for, or else the one longest due, if any."""

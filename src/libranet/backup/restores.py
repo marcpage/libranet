@@ -272,8 +272,8 @@ class Restore:
         missing: list[ContentId] = []
         others = [path for path, entry in pending.items() if not isinstance(entry, DirectoryMarker)]
 
-        for path in sorted(others, key=_segments):
-            self._place(pending, path, writer, source, skipped, missing)
+        for path in sorted(others, key=lambda p: p.split(_SEPARATOR)):
+            missing.extend(self._place(pending, path, writer, source, skipped))
 
         waiting = _ancestors(
             path for path, entry in pending.items() if not isinstance(entry, DirectoryMarker)
@@ -285,7 +285,7 @@ class Restore:
         ]
 
         for path in sorted(directories, key=_deepest_first):
-            self._place(pending, path, writer, source, skipped, missing)
+            missing.extend(self._place(pending, path, writer, source, skipped))
 
         return list(dict.fromkeys(missing))
 
@@ -296,13 +296,13 @@ class Restore:
         writer: DirectoryWriter,
         source: ContentSource,
         skipped: dict[str, str],
-        missing: list[ContentId],
-    ) -> None:
+    ) -> list[ContentId]:
         """Restore the entry at ``path``, unless content it needs is not held.
 
         Raises:
             OSError: writing failed in a way that would fail every entry.
         """
+        missing: list[ContentId] = []
         entry = pending[path]
 
         try:
@@ -322,7 +322,7 @@ class Restore:
 
         except MissingContentError as error:
             missing.extend(error.content_ids)
-            return
+            return missing
 
         except (OSError, BundleError) as error:
             if isinstance(error, OSError) and error.errno in _STOPPING_ERRORS:
@@ -334,6 +334,7 @@ class Restore:
             self._restored += 1
 
         del pending[path]
+        return missing
 
     def _wait_on(self, missing: list[ContentId], now: float) -> tuple[ContentId, ...]:
         """Wait on ``missing``, if there is any, and return what is to be asked for now.
@@ -453,11 +454,6 @@ def _ancestors(paths: Iterable[str]) -> set[str]:
         ancestors.update(_SEPARATOR.join(segments[:depth]) for depth in range(1, len(segments)))
 
     return ancestors
-
-
-def _segments(path: str) -> list[str]:
-    """``path`` split into its names, to sort paths as a walk of their directories would."""
-    return path.split(_SEPARATOR)
 
 
 def _deepest_first(path: str) -> tuple[int, str]:
