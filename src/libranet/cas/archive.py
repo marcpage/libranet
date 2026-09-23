@@ -31,7 +31,7 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from threading import Lock
 from types import TracebackType
-from typing import IO, Final, Iterator
+from typing import IO, Final, Generator, Iterator
 from zipfile import ZIP_DEFLATED, ZIP_STORED, BadZipFile, ZipFile, ZipInfo
 from zlib import error as ZlibError
 
@@ -217,7 +217,7 @@ class ArchiveSink:
 
     @classmethod
     @contextmanager
-    def create(cls, path: Path) -> Iterator[ArchiveSink]:
+    def create(cls, path: Path) -> Generator[ArchiveSink, None, None]:
         """A sink writing the archive ``path``, which it replaces once the ``with`` block ends.
 
         What was written is discarded, leaving ``path`` alone, if the block
@@ -226,7 +226,12 @@ class ArchiveSink:
         Raises:
             OSError: the archive could not be written or moved into place.
         """
-        with atomic_writer(path) as file, cls(file) as sink:
+        # Pylint wants atomic_writer to catch GeneratorExit, which its
+        # `except BaseException` does, so the temporary file is always removed.
+        with (  # pylint: disable=contextmanager-generator-missing-cleanup
+            atomic_writer(path) as file,
+            cls(file) as sink,
+        ):
             yield sink
 
     def exists(self, content_id: ContentId) -> bool:
@@ -234,7 +239,8 @@ class ArchiveSink:
         return content_id in self._written
 
     def write(self, content_id: ContentId, data: bytes) -> None:
-        """Add ``data``, the content of ``content_id`` as is or zlib-compressed, unless it is held."""
+        """Add ``data``, the content of ``content_id`` as is or zlib-compressed,
+        unless it is held."""
         if content_id in self._written:
             return
 
