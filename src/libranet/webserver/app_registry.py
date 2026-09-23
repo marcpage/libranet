@@ -6,16 +6,19 @@ node runs, through ``/config/api/applications``, so it is kept in a file
 under the data directory rather than in the configuration file, which holds
 only what a node is started with::
 
-    {"applications": {"/": "sha256/<hex>", "wiki": "sha256/<hex>"},
-     "config_application": null}
+    {"applications": {"/": "sha256/<hex>", "config": "sha256/<hex>",
+                      "wiki": "sha256/<hex>"}}
 
 The name ``/`` is the application served at the root, which also answers
-every path no other application's name begins. ``config_application`` is the
-bundle serving ``/config`` itself, which nothing sets yet (Step 39).
+every path no other application's name begins. The name ``config`` is the
+application serving ``/config`` itself (HttpApi §2.3), which nothing serves
+from here yet (Step 39).
 
 Names ignore case, and are kept case-folded. Each is one path segment, or
-``/``, and never a name HttpApi §2 reserves. Each bundle is parsed as a
-content id, so a bad one is refused when it is registered.
+``/``, and never a name HttpApi §2 reserves, except ``config``: that one is
+reserved for the ``/config`` application, so it may name only that. Each
+bundle is parsed as a content id, so a bad one is refused when it is
+registered.
 
 Only the web server writes the file, and only through
 :class:`ApplicationRegistry`, which replaces it whole, so a crash leaves it as
@@ -38,8 +41,11 @@ from libranet.cas.content_id import ContentId
 # The application served at `/` (HttpApi §13).
 ROOT_APPLICATION: Final = "/"
 
-# Top-level names that are never an application's (HttpApi §2).
-RESERVED_APPLICATION_NAMES: Final = frozenset({"data", "web", "chaos", "config"})
+# The application serving `/config` itself (HttpApi §2.3).
+CONFIG_APPLICATION: Final = "config"
+
+# Top-level names that are never an ordinary application's (HttpApi §2).
+RESERVED_APPLICATION_NAMES: Final = frozenset({"data", "web", "chaos", CONFIG_APPLICATION})
 
 _UNUSABLE_SEGMENTS: Final = frozenset({"", ".", ".."})
 
@@ -53,8 +59,9 @@ class Application:
     """One application: its name, case-folded, and the bundle it serves.
 
     Raises:
-        ValueError: the name is not case-folded, is reserved, or is neither
-            one path segment nor ``/``.
+        ValueError: the name is not case-folded, is reserved for anything but
+            the ``/config`` application, or is neither one path segment nor
+            ``/``.
     """
 
     name: str
@@ -71,8 +78,8 @@ class Application:
         """The application ``name``, however it is cased, serving ``bundle``.
 
         Raises:
-            ValueError: the name is reserved, or is neither one path segment
-                nor ``/``.
+            ValueError: the name is reserved for anything but the ``/config``
+                application, or is neither one path segment nor ``/``.
         """
         _check_name(name)
         return cls(name.casefold(), bundle)
@@ -103,18 +110,17 @@ class Application:
 
 @dataclass(frozen=True)
 class RegisteredApplications:
-    """Every registered application's bundle, by name, and the bundle serving ``/config``.
+    """Every registered application's bundle, by name.
 
     Raises:
         ValueError: a name is not one an :class:`Application` may have.
     """
 
     bundles: Mapping[str, ContentId] = field(default_factory=dict)
-    config_application: ContentId | None = None
 
     def __post_init__(self) -> None:
         for name, bundle in self.bundles.items():
-            Application(name, bundle)
+            Application(name, bundle)  # validation of application
 
     @classmethod
     def from_value(cls, value: object) -> RegisteredApplications:
@@ -130,13 +136,9 @@ class RegisteredApplications:
             raise ValueError("The application registry must be a JSON object")
 
         applications = value.get("applications")
-        config_application = value.get("config_application")
 
         if not isinstance(applications, dict):
             raise ValueError('"applications" must be an object')
-
-        if config_application is not None and not isinstance(config_application, str):
-            raise ValueError('"config_application" must be a content id, or null')
 
         bundles: dict[str, ContentId] = {}
 
@@ -151,18 +153,11 @@ class RegisteredApplications:
 
             bundles[application.name] = application.bundle
 
-        return cls(
-            bundles, None if config_application is None else ContentId.parse(config_application)
-        )
+        return cls(bundles)
 
     def value(self) -> dict[str, Any]:
         """The JSON object this registry is saved as."""
-        return {
-            "applications": {name: str(self.bundles[name]) for name in sorted(self.bundles)},
-            "config_application": (
-                None if self.config_application is None else str(self.config_application)
-            ),
-        }
+        return {"applications": {name: str(self.bundles[name]) for name in sorted(self.bundles)}}
 
     def with_application(self, application: Application) -> RegisteredApplications:
         """These applications, with ``application`` in place of any other of its name."""
@@ -311,11 +306,12 @@ def _check_name(name: str) -> None:
     """Raise unless ``name``, case-folded, may name an application.
 
     Raises:
-        ValueError: it is reserved, or is neither one path segment nor ``/``.
+        ValueError: it is reserved for anything but the ``/config``
+            application, or is neither one path segment nor ``/``.
     """
     folded = name.casefold()
 
-    if folded in RESERVED_APPLICATION_NAMES:
+    if folded in RESERVED_APPLICATION_NAMES and folded != CONFIG_APPLICATION:
         raise ValueError(f"{name!r} is reserved and cannot name an application")
 
     if folded != ROOT_APPLICATION and (

@@ -317,7 +317,7 @@ def test_no_applications_are_listed_until_one_is_registered(router: Router) -> N
     response = router.dispatch(request("GET", APPLICATIONS_PATH))
 
     assert response.status == 200
-    assert json_body(response) == {"applications": {}, "config_application": None}
+    assert json_body(response) == {"applications": {}}
 
 
 def test_registering_an_application_serves_it_and_answers_with_its_name(
@@ -331,10 +331,23 @@ def test_registering_an_application_serves_it_and_answers_with_its_name(
     assert json_body(response) == {"name": "wiki", "bundle": str(APP_BUNDLE)}
     assert registry.applications().bundles == {"wiki": APP_BUNDLE}
     assert json_body(router.dispatch(request("GET", APPLICATIONS_PATH))) == {
-        "applications": {"wiki": str(APP_BUNDLE)},
-        "config_application": None,
+        "applications": {"wiki": str(APP_BUNDLE)}
     }
     assert published(queues) == []
+
+
+def test_the_config_application_is_registered_and_removed_like_any_other(
+    router: Router, registry: ApplicationRegistry
+) -> None:
+    registered = router.dispatch(
+        request("POST", APPLICATIONS_PATH, {"name": "Config", "bundle": str(APP_BUNDLE)})
+    )
+
+    assert registered.status == 200
+    assert json_body(registered) == {"name": "config", "bundle": str(APP_BUNDLE)}
+    assert registry.applications().bundles == {"config": APP_BUNDLE}
+    assert router.dispatch(request("DELETE", f"{APPLICATIONS_PATH}/config")).status == 204
+    assert registry.applications().bundles == {}
 
 
 def test_registering_a_name_again_serves_the_new_bundle(
@@ -349,7 +362,7 @@ def test_registering_a_name_again_serves_the_new_bundle(
 @mark.parametrize(
     "value",
     [
-        {"name": "config", "bundle": str(APP_BUNDLE)},
+        {"name": "chaos", "bundle": str(APP_BUNDLE)},
         {"name": "Data", "bundle": str(APP_BUNDLE)},
         {"name": "a/b", "bundle": str(APP_BUNDLE)},
         {"name": "wiki", "bundle": "sha256/not-a-hash"},

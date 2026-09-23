@@ -249,6 +249,16 @@ def test_a_reserved_name_is_never_an_applications_however_spelled(
     assert published.messages == []
 
 
+@mark.parametrize("path", ["/config", "/config/", "/Config/index.html", "/%63onfig/"])
+def test_the_config_application_is_never_served_as_an_ordinary_one(
+    handler: AppHandler, registry: ApplicationRegistry, published: Recorder, path: str
+) -> None:
+    registry.register(Application.create("config", WIKI_BUNDLE))
+
+    assert get(handler, path).status == 404
+    assert published.messages == []
+
+
 def test_without_a_root_application_other_paths_are_404(
     registry: ApplicationRegistry,
     files: ResolvedFiles,

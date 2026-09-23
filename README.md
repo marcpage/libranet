@@ -316,9 +316,9 @@ GET /wiki/index.html
 ```
 
 The name `/` registers the application served at the root. `data`, `web`,
-`chaos`, and `config` are reserved. `GET` the same path lists what is
-registered, and `DELETE /config/api/applications/wiki` removes one (the root
-is `%2F`).
+and `chaos` are reserved, and `config` is reserved for the `/config`
+application itself. `GET` the same path lists what is registered, and
+`DELETE /config/api/applications/wiki` removes one (the root is `%2F`).
 
 ### Publish a drop under a name
 

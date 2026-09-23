@@ -12,6 +12,7 @@ from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
 from libranet.config.models import StorageConfig
 from libranet.webserver.app_registry import (
+    CONFIG_APPLICATION,
     ROOT_APPLICATION,
     Application,
     ApplicationRegistry,
@@ -34,10 +35,9 @@ def registry(path: Path) -> ApplicationRegistry:
     return ApplicationRegistry(path)
 
 
-def saved(path: Path, applications: dict[str, str], config_application: str | None = None) -> None:
+def saved(path: Path, applications: dict[str, str]) -> None:
     """Write a registry file as an administrator editing it by hand might."""
-    value = {"applications": applications, "config_application": config_application}
-    write_atomically(path, dumps(value).encode("utf-8"))
+    write_atomically(path, dumps({"applications": applications}).encode("utf-8"))
 
 
 def test_the_registry_is_kept_under_the_data_directory(tmp_path: Path) -> None:
@@ -61,8 +61,7 @@ def test_a_registered_application_is_saved_and_read_back(
 
     assert registry.applications().bundles == {"/": ROOT_BUNDLE, "wiki": WIKI_BUNDLE}
     assert loads(path.read_bytes()) == {
-        "applications": {"/": str(ROOT_BUNDLE), "wiki": str(WIKI_BUNDLE)},
-        "config_application": None,
+        "applications": {"/": str(ROOT_BUNDLE), "wiki": str(WIKI_BUNDLE)}
     }
     assert ApplicationRegistry(path).applications() == registry.applications()
 
@@ -83,10 +82,19 @@ def test_registering_a_name_again_in_any_case_replaces_its_bundle(
     assert registry.applications().bundles == {"wiki": ROOT_BUNDLE}
 
 
-@mark.parametrize("name", ["data", "Config", "WEB", "chaos"])
+@mark.parametrize("name", ["data", "Data", "WEB", "chaos"])
 def test_a_reserved_name_is_refused(name: str) -> None:
     with raises(ValueError, match="reserved"):
         Application.create(name, WIKI_BUNDLE)
+
+
+@mark.parametrize("name", ["config", "Config", "CONFIG"])
+def test_config_names_the_config_application_alone(
+    registry: ApplicationRegistry, name: str
+) -> None:
+    registry.register(Application.create(name, CONFIG_BUNDLE))
+
+    assert registry.applications().bundles == {CONFIG_APPLICATION: CONFIG_BUNDLE}
 
 
 @mark.parametrize("name", ["", ".", "..", "a/b", "/wiki", "wiki/", "a\0b"])
@@ -102,7 +110,7 @@ def test_an_application_built_directly_must_already_be_case_folded() -> None:
 
 def test_registered_applications_hold_only_names_an_application_may_have() -> None:
     with raises(ValueError, match="reserved"):
-        RegisteredApplications({"config": WIKI_BUNDLE})
+        RegisteredApplications({"data": WIKI_BUNDLE})
 
     with raises(ValueError, match="case-folded"):
         RegisteredApplications({"Wiki": WIKI_BUNDLE})
@@ -205,20 +213,11 @@ def test_an_unchanged_file_is_not_read_again(registry: ApplicationRegistry, path
 def test_a_hand_edited_file_is_read_with_its_names_case_folded(
     registry: ApplicationRegistry, path: Path
 ) -> None:
-    saved(path, {"Wiki": str(WIKI_BUNDLE).upper()}, str(CONFIG_BUNDLE))
+    saved(path, {"Wiki": str(WIKI_BUNDLE).upper(), "Config": str(CONFIG_BUNDLE)})
 
-    assert registry.applications() == RegisteredApplications({"wiki": WIKI_BUNDLE}, CONFIG_BUNDLE)
-
-
-def test_the_config_application_is_kept_through_other_changes(
-    registry: ApplicationRegistry, path: Path
-) -> None:
-    saved(path, {}, str(CONFIG_BUNDLE))
-    registry.register(Application.create("wiki", WIKI_BUNDLE))
-    registry.remove("wiki")
-
-    assert registry.applications().config_application == CONFIG_BUNDLE
-    assert loads(path.read_bytes())["config_application"] == str(CONFIG_BUNDLE)
+    assert registry.applications() == RegisteredApplications(
+        {"wiki": WIKI_BUNDLE, "config": CONFIG_BUNDLE}
+    )
 
 
 @mark.parametrize(
@@ -241,10 +240,6 @@ def test_the_config_application_is_kept_through_other_changes(
                 {"applications": {"strasse": str(WIKI_BUNDLE), "Straße": str(ROOT_BUNDLE)}}
             ).encode("utf-8"),
             "named twice",
-        ),
-        (
-            dumps({"applications": {}, "config_application": 7}).encode("utf-8"),
-            "config_application",
         ),
     ],
 )
