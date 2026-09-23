@@ -1347,31 +1347,6 @@ answers when that application is unusable.
 
 ---
 
-## Step 40 — README
-
-**Issue:** #88. **Depends on:** Steps 33–39.
-
-The README says implementation has not started, and both its
-documentation links point at paths that moved. It is rewritten last, so
-it describes the node as it is once this pass is finished.
-
-- What is wrong: the status line and the status table, a Python version
-  that is neither what the project requires nor what CI tests, and links
-  to `docs/HighLevelDesign.md` and `docs/Karma.md`, which are under
-  `docs/specs/`.
-- What is missing: installing and running a node; the command-line flags;
-  where the configuration file lives and what the example documents;
-  `/config`, its first-request credential capture, and the page; backup
-  and restore; registering an application and building one; and the
-  supervisor, dispatcher and module processes the node actually is.
-- The documentation table lists two of nine documents. It lists all of
-  them, and is where Phase 2 Step 32's operator guide is linked.
-
-**Testable in isolation:** not code. Every command it gives is run
-against a clean checkout before it is committed.
-
----
-
 ## 4. Deferred Past This Implementation Pass
 
 These are explicitly out of scope for the steps above, to be picked up
