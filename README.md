@@ -249,11 +249,11 @@ It answers only on loopback, and the first request carrying
 reuse it after that.
 
 ```bash
-curl -u admin:secret http://127.0.0.1:8080/config
+curl -u admin:secret http://127.0.0.1:8080/config/api
 ```
 
 ```bash
-curl -u admin:secret -X POST http://127.0.0.1:8080/config/backups \
+curl -u admin:secret -X POST http://127.0.0.1:8080/config/api/backups \
   -H 'Content-Type: application/json' \
   -d '{"directory": "/home/alice/notes"}'
 ```
@@ -267,7 +267,7 @@ and writes a password-protected directory bundle naming them. `GET` the same
 path to see what came of it:
 
 ```bash
-curl -u admin:secret http://127.0.0.1:8080/config/backups
+curl -u admin:secret http://127.0.0.1:8080/config/api/backups
 ```
 
 ```json
@@ -287,7 +287,7 @@ read and backed up again. The node's own data directory is never backed up.
 ### Restore a backup
 
 ```bash
-curl -u admin:secret -X POST http://127.0.0.1:8080/config/restores \
+curl -u admin:secret -X POST http://127.0.0.1:8080/config/api/restores \
   -H 'Content-Type: application/json' \
   -d '{"bundle": "sha256/73e75f7d5ee3...0558d941",
        "directory": "/home/alice/restored",
@@ -295,17 +295,19 @@ curl -u admin:secret -X POST http://127.0.0.1:8080/config/restores \
 ```
 
 Files the node is missing are fetched from peers as the restore runs; `GET
-/config/restores` reports how many were restored, skipped, and still missing.
+/config/api/restores` reports how many were restored, skipped, and still
+missing.
 
 ### Serve a directory bundle as an application
 
-Name a bundle in the `applications` section of the config and it is served as
-an ordinary website, with files resolved out of the bundle — and fetched from
-peers when this node lacks them — as they are first requested:
+Register a bundle under a name and it is served as an ordinary website at once,
+with no restart, its files resolved out of the bundle — and fetched from peers
+when this node lacks them — as they are first requested:
 
-```yaml
-applications:
-  wiki: "sha256/<hash of a directory bundle>"
+```bash
+curl -u admin:secret -X POST http://127.0.0.1:8080/config/api/applications \
+  -H 'Content-Type: application/json' \
+  -d '{"name": "wiki", "bundle": "sha256/<hash of a directory bundle>"}'
 ```
 
 ```http
@@ -314,7 +316,9 @@ GET /wiki/index.html
 ```
 
 The name `/` registers the application served at the root. `data`, `web`,
-`chaos`, and `config` are reserved.
+`chaos`, and `config` are reserved. `GET` the same path lists what is
+registered, and `DELETE /config/api/applications/wiki` removes one (the root
+is `%2F`).
 
 ### Publish a drop under a name
 
@@ -336,8 +340,9 @@ ignored.
 [`examples/libranet.yaml`](examples/libranet.yaml) documents every setting at
 its default value — listener and advertised address, peer-mix size and
 timeouts, storage limits and eviction thresholds, identity and signature
-policy, backup interval, applications, and logging. Copy it and edit what you
-need.
+policy, backup interval, and logging. Copy it and edit what you need.
+Applications are not configured there: they are registered through `/config`
+while the node runs.
 
 ```bash
 uv run libranet --config examples/libranet.yaml --check-config

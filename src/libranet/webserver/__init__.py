@@ -1,4 +1,4 @@
-"""Peer-facing and `/config` HTTP endpoint (Phase 1 Steps 5, 7, 9, 14, 18).
+"""Peer-facing and `/config` HTTP endpoint (Phase 1 Steps 5, 7, 9, 14, 18, 35).
 
 Serves the content-addressed source of truth, the derived node and seek
 lists, and the files the unbundler resolves for applications. Writes incoming
@@ -8,16 +8,19 @@ It does not validate, fetch, evict, or resolve bundles itself.
 
 `/config` is the node's own administration surface: it is served only to
 authenticated clients on this machine, and its backup and restore endpoints
-publish a message each rather than doing any of that work here.
+publish a message each rather than doing any of that work here. Its
+application endpoints change the application registry, the file naming each
+application's bundle, which the web server owns.
 """
 
-from libranet.webserver.app_handler import (
-    APP_PATTERN,
-    AppHandler,
-    application_bundles,
-    content_type_for,
-)
+from libranet.webserver.app_handler import APP_PATTERN, AppHandler, content_type_for
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
+from libranet.webserver.app_registry import (
+    Application,
+    ApplicationRegistry,
+    RegisteredApplications,
+    RegistryFileError,
+)
 from libranet.webserver.backup_state import (
     BackupReport,
     BackupState,
@@ -32,6 +35,9 @@ from libranet.webserver.config_credential import (
 )
 from libranet.webserver.config_guard import local_config_guard, names_config
 from libranet.webserver.config_handlers import (
+    ApplicationListHandler,
+    ApplicationRegistrationHandler,
+    ApplicationRemovalHandler,
     BackupJobHandler,
     BackupJobRemovalHandler,
     BackupReportHandler,
@@ -74,7 +80,12 @@ from libranet.webserver.signature_guard import SignatureGuard
 __all__ = [
     "APP_PATTERN",
     "AppHandler",
+    "Application",
+    "ApplicationListHandler",
     "ApplicationOutcomes",
+    "ApplicationRegistrationHandler",
+    "ApplicationRegistry",
+    "ApplicationRemovalHandler",
     "BackupJobHandler",
     "BackupJobRemovalHandler",
     "BackupJobRequest",
@@ -99,6 +110,8 @@ __all__ = [
     "ListFileHandler",
     "LocalSearch",
     "NodeListHandler",
+    "RegisteredApplications",
+    "RegistryFileError",
     "Request",
     "RequestBody",
     "RequestHandler",
@@ -112,7 +125,6 @@ __all__ = [
     "SignatureGuard",
     "StoredCredential",
     "WebServerModule",
-    "application_bundles",
     "basic_credentials",
     "build_router",
     "config_index",

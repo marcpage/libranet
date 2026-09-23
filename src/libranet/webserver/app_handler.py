@@ -4,10 +4,12 @@ Every path outside the reserved names (HttpApi §2) belongs to an application.
 The path is percent-decoded before anything else, ``%2F`` becoming a ``/``
 like any other, so a name has only one meaning however it is spelled. Its
 first segment names the application, ignoring case, if one of that name is
-configured; otherwise the whole path is the root application's, if there is
-one. A reserved name is never an application's, nor the root application's
-first segment. ``/{app-name}`` is redirected to ``/{app-name}/``, so relative
-links in the application's pages resolve within it.
+registered (see :mod:`libranet.webserver.app_registry`); otherwise the whole
+path is the root application's, if there is one. The registry is consulted on
+every request, so a change to it is served at once. A reserved name is never
+an application's, nor the root application's first segment. ``/{app-name}``
+is redirected to ``/{app-name}/``, so relative links in the application's
+pages resolve within it.
 
 The rest of the path is an entry path in the application's bundle. One that
 is empty or ends in ``/`` names that directory's ``index.html``, and one no
@@ -33,17 +35,21 @@ from http import HTTPStatus
 from mimetypes import MimeTypes
 from pathlib import Path
 from re import escape
-from typing import Final, Mapping
+from typing import Final
 from urllib.parse import quote, unquote
 
 from libranet.bundle.shapes import is_entry_path
 from libranet.cas.content_id import ContentId
-from libranet.config.models import RESERVED_APPLICATION_NAMES, ROOT_APPLICATION
 from libranet.messaging.events import EventType
 from libranet.problems import CONTENT_UNAVAILABLE, UNUSABLE_BUNDLE, Problem
 from libranet.unbundler.outcomes import PathOutcome
 from libranet.unbundler.resolved_files import ResolvedFiles
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
+from libranet.webserver.app_registry import (
+    RESERVED_APPLICATION_NAMES,
+    ROOT_APPLICATION,
+    ApplicationRegistry,
+)
 from libranet.webserver.http_types import (
     OCTET_STREAM,
     Request,
@@ -64,15 +70,6 @@ DEFAULT_FILE: Final = "index.html"
 _MIME_TYPES: Final = MimeTypes()
 
 
-def application_bundles(applications: Mapping[str, str]) -> dict[str, ContentId]:
-    """The bundle of each configured application, by name.
-
-    Raises:
-        InvalidContentIdError: a bundle is not a valid content id.
-    """
-    return {name: ContentId.parse(bundle) for name, bundle in applications.items()}
-
-
 def content_type_for(entry_path: str) -> str:
     """The media type to serve the file at ``entry_path`` as, from its extension.
 
@@ -89,9 +86,14 @@ def content_type_for(entry_path: str) -> str:
 
 @dataclass(frozen=True)
 class AppHandler:
-    """Serves application files the unbundler has resolved, asking it for the rest."""
+    """Serves application files the unbundler has resolved, asking it for the rest.
 
-    applications: Mapping[str, ContentId]
+    A registry file that cannot be read raises
+    :class:`~libranet.webserver.app_registry.RegistryFileError`, which the
+    server logs and answers with ``500``.
+    """
+
+    registry: ApplicationRegistry
     files: ResolvedFiles
     outcomes: ApplicationOutcomes
     publish: Publish
@@ -144,10 +146,12 @@ class AppHandler:
         if name in RESERVED_APPLICATION_NAMES:
             return None
 
-        if name in self.applications:
-            return f"/{quote(first)}", self.applications[name], rest if slash else None
+        bundles = self.registry.applications().bundles
 
-        root = self.applications.get(ROOT_APPLICATION)
+        if name in bundles:
+            return f"/{quote(first)}", bundles[name], rest if slash else None
+
+        root = bundles.get(ROOT_APPLICATION)
         return None if root is None else ("", root, decoded)
 
     def _unavailable(self, request: Request) -> Response:

@@ -30,6 +30,7 @@ from libranet.supervision.stubs import StubModule
 from libranet.unbundler.module import UnbundlerModule, unbundler_module_factory
 from libranet.unbundler.resolved_files import ResolvedFiles
 from libranet.webserver.http_types import Request
+from libranet.webserver.app_registry import Application, ApplicationRegistry
 from libranet.webserver.config_credential import load_config_credential
 from libranet.webserver.server import build_router
 
@@ -485,6 +486,7 @@ def test_the_web_server_serves_what_the_unbundler_resolves(
     unbundler: UnbundlerModule, storage: StorageConfig, app_id: ContentId
 ) -> None:
     web_queues = ModuleQueues(inbox=Queue(), outbox=Queue())
+    ApplicationRegistry(storage.applications_path).register(Application.create("wiki", app_id))
     router = build_router(
         storage,
         5,
@@ -492,7 +494,6 @@ def test_the_web_server_serves_what_the_unbundler_resolves(
         request_authenticator(LibranetConfig(storage=storage)),
         allow_unsigned_api_reads=True,
         config_credential=load_config_credential(LibranetConfig(storage=storage)),
-        applications={"wiki": str(app_id)},
     )
     browse = Request("GET", "/wiki/docs/guide.html", client_address="127.0.0.1")
 

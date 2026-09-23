@@ -22,6 +22,7 @@ from libranet.messaging.envelope import make_message
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
+from libranet.webserver.app_registry import Application, ApplicationRegistry
 from libranet.webserver.backup_state import JOBS_FIELD, RESTORES_FIELD
 from libranet.webserver.config_credential import load_config_credential
 from libranet.webserver.module import WebServerModule, webserver_module_factory
@@ -36,17 +37,11 @@ def _free_port() -> int:
 APP_BUNDLE_ID = ContentId.for_data(b"an application's directory bundle", "sha256")
 
 
-def _config(
-    tmp_path: Path,
-    port: int,
-    allow_unsigned_api_reads: bool = True,
-    applications: dict[str, str] | None = None,
-) -> LibranetConfig:
+def _config(tmp_path: Path, port: int, allow_unsigned_api_reads: bool = True) -> LibranetConfig:
     return LibranetConfig(
         network=NetworkConfig(listen_address="127.0.0.1", listen_port=port, retry_after_seconds=11),
         storage=StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache"),
         identity=IdentityConfig(allow_unsigned_api_reads=allow_unsigned_api_reads),
-        applications=applications or {},
     )
 
 
@@ -194,7 +189,10 @@ def test_module_answers_application_paths_from_what_the_unbundler_reported(
     tmp_path: Path,
 ) -> None:
     queues = _queues()
-    config = _config(tmp_path, _free_port(), applications={"wiki": str(APP_BUNDLE_ID)})
+    config = _config(tmp_path, _free_port())
+    ApplicationRegistry(config.storage.applications_path).register(
+        Application.create("wiki", APP_BUNDLE_ID)
+    )
     module = WebServerModule(ModuleName.WEBSERVER, queues, config, poll_interval=0.01)
     stop = Event()
     thread = Thread(target=module.run, args=(stop,), daemon=True)
@@ -264,12 +262,12 @@ def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: P
 
         # The first request captures the credential, which is then stored
         # beside the node key; a later one offering another is refused.
-        assert _authorized(host, port, "/config")[0] == 200
+        assert _authorized(host, port, "/config/api")[0] == 200
         assert load_config_credential(config).captured
-        assert _authorized(host, port, "/config", user="someone else")[0] == 401
+        assert _authorized(host, port, "/config/api", user="someone else")[0] == 401
 
         # Nothing is readable back until the backup module reports.
-        assert _authorized(host, port, "/config/backups")[0] == 503
+        assert _authorized(host, port, "/config/api/backups")[0] == 503
 
         queues.inbox.put(
             make_message(
@@ -280,12 +278,12 @@ def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: P
         )
         deadline = monotonic() + 5
 
-        while _authorized(host, port, "/config/backups")[0] != 200 and monotonic() < deadline:
+        while _authorized(host, port, "/config/api/backups")[0] != 200 and monotonic() < deadline:
             sleep(0.01)
 
-        status, body = _authorized(host, port, "/config/backups")
+        status, body = _authorized(host, port, "/config/api/backups")
         assert (status, loads(body)) == (200, {"jobs": [job]})
-        assert loads(_authorized(host, port, "/config/restores")[1]) == {"restores": []}
+        assert loads(_authorized(host, port, "/config/api/restores")[1]) == {"restores": []}
 
     finally:
         stop.set()
@@ -320,14 +318,26 @@ def test_module_stops_on_the_stop_signal(tmp_path: Path) -> None:
     assert module.server_address is None
 
 
-def test_an_application_bundle_that_is_no_content_id_stops_the_module(tmp_path: Path) -> None:
-    config = _config(tmp_path, _free_port(), applications={"wiki": "sha256/not-a-hash"})
-    module = WebServerModule(ModuleName.WEBSERVER, _queues(), config)
+def test_a_registry_that_cannot_be_read_does_not_stop_the_module(tmp_path: Path) -> None:
+    config = _config(tmp_path, _free_port())
+    config.storage.applications_path.parent.mkdir(parents=True)
+    config.storage.applications_path.write_bytes(b"{not json")
+    module = WebServerModule(ModuleName.WEBSERVER, _queues(), config, poll_interval=0.01)
+    stop = Event()
+    thread = Thread(target=module.run, args=(stop,), daemon=True)
+    thread.start()
 
-    with raises(ValueError, match="sha256"):
-        module.run(Event())
+    try:
+        host, port = _wait_for_address(module)
 
-    assert module.server_address is None
+        assert _authorized(host, port, "/config/api/applications")[0] == 500
+        assert _status(host, port, "/wiki/") == (500, None)
+
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+    assert not thread.is_alive()
 
 
 def test_bind_failure_propagates_so_the_supervisor_restarts(tmp_path: Path) -> None:
