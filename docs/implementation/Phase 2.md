@@ -755,7 +755,6 @@ changes them:
   part of it — blocking superseded blocks — but implements no Karma.
 - Signed bundles (BundleSpecification §5) and per-entry CAS encryption
   (§7).
-- A human-facing `/config` page; the surface stays JSON.
 - The local "don't forward my own backup content" policy
   BackupSpecification §6 permits.
 - Hash-collision handling.

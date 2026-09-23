@@ -90,6 +90,18 @@ Web Application specifications.
 (e.g. the directory backup/restore feature). It is distinct from both the
 peer-facing programmatic API and ordinary directory-bundle applications.
 
+The namespace divides in two. `/config/api/...` carries the programmatic
+administration endpoints, with JSON request and response bodies. Every
+other path under `/config` belongs to the administration application
+itself — the pages and assets a browser loads. A node MAY serve that
+application from a directory bundle, as it serves any other application,
+or from resources shipped with the node software.
+
+The restrictions below apply to every path under `/config` without
+distinction, whichever half it falls in: the source-address check and
+HTTP Basic Authentication gate the pages exactly as they gate the
+endpoints.
+
 `/config` is served by the same listener as every other endpoint; no
 separate listening address or binding is required. It is restricted by
 request behavior instead: a node MUST serve `/config` only to requests
@@ -1581,7 +1593,8 @@ The following table summarizes the currently proposed HTTP API.
 | `/data/...`                  | Various      | Additional programmatic APIs            | TBD     |
 | `/`                          | `GET`        | Root web application                    | Defined |
 | `/{application}/...`         | `GET`        | Directory-bundle application            | Defined |
-| `/config`                    | Various      | Local-only node configuration interface | Defined |
+| `/config/api/...`            | Various      | Local-only administration endpoints     | Defined |
+| `/config/...`                | `GET`        | Local-only administration application   | Defined |
 
 ---
 
