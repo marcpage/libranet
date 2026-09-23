@@ -27,6 +27,7 @@ from typing import Any, Mapping
 from urllib.parse import urlsplit
 
 from libranet import __version__
+from libranet.cas.layered import LayeredSource
 from libranet.cas.store import source_of_truth_store
 from libranet.config.models import StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
@@ -88,6 +89,7 @@ def build_router(
     applications: Mapping[str, str] | None = None,
     app_outcomes: ApplicationOutcomes | None = None,
     backup_state: BackupState | None = None,
+    content: LayeredSource | None = None,
 ) -> Router:
     """The node's routes, serving the configured source of truth and derived lists.
 
@@ -99,12 +101,15 @@ def build_router(
     there is authenticated against, and ``backup_state`` what the backup
     module last reported for them to read back. ``applications`` names each
     application's bundle, as configured, and ``app_outcomes`` holds what the
-    unbundler reported for their paths.
+    unbundler reported for their paths. ``content`` is what ``/data`` reads and
+    searches: the source of truth, and then any content archives (Step 34). It
+    is the source of truth alone if none is given.
 
     Raises:
         InvalidContentIdError: an application's bundle is not a valid content id.
     """
     store = source_of_truth_store(storage)
+    content = LayeredSource(store) if content is None else content
     # A remote /config request is refused before its signature is checked or
     # its body read, and a local one must carry the node's credential before
     # any endpoint or signature policy sees it.
@@ -122,7 +127,7 @@ def build_router(
         "GET",
         SEARCH_PATTERN,
         SearchHandler(
-            search=LocalSearch(store, storage.search_max_results),
+            search=LocalSearch(content, storage.search_max_results),
             cache=SearchCache(
                 storage.search_cache_dir,
                 storage.search_cache_ttl_seconds,
@@ -131,7 +136,7 @@ def build_router(
             publish=publish,
         ),
     )
-    router.add("GET", DATA_PATTERN, DataReadHandler(store, publish, retry_after_seconds))
+    router.add("GET", DATA_PATTERN, DataReadHandler(content, publish, retry_after_seconds))
     router.add("PUT", DATA_PATTERN, DataWriteHandler(storage, store, authenticator, publish))
     # A posted list is held to the same cap as every other request body as
     # sent, and to its own once decompressed.

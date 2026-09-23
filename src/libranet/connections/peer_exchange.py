@@ -22,6 +22,9 @@ it go (HighLevelDesign §4.5). Steps 1 and 2 wait for their
 responses. Steps 3 to 5 are sent together, pipelined, and so are the
 requests of step 6 and of step 7.
 
+What this node holds, which step 6 pushes and step 7 does not ask for, is
+what it holds in the source of truth or its content archives (Step 34).
+
 The peer's public key goes straight into the source of truth, as sent, once
 it is known to be the peer's key, rather than through the validator, since
 every later response is verified against it at once. Content retrieved from
@@ -56,6 +59,7 @@ from typing import Callable, Final, Iterator, Mapping, Sequence, TypeVar
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError, InvalidContentIdError
+from libranet.cas.layered import LayeredSource
 from libranet.cas.store import node_store, source_of_truth_store
 from libranet.cas.verification import content_matches
 from libranet.config.models import LibranetConfig
@@ -114,6 +118,7 @@ class PeerExchange:
         self._logger = logger
         self._signer = MessageSigner(identity, clock)
         self._source_of_truth = source_of_truth_store(config.storage)
+        self._content = LayeredSource.open(config.storage)
         self._verifier = MessageVerifier(
             self._source_of_truth,
             config.identity.signature_max_age_seconds,
@@ -379,7 +384,7 @@ class PeerExchange:
 
         for content_id in content_ids:
             try:
-                held.append((content_id, self._source_of_truth.read(content_id)))
+                held.append((content_id, self._content.read(content_id)))
 
             except ContentNotFoundError:
                 continue
@@ -389,9 +394,7 @@ class PeerExchange:
     def _ask_for_sought(self, session: PeerSession) -> None:
         """Step 7: ask the peer for everything this node seeks and does not hold yet."""
         sought = [
-            content_id
-            for content_id in self._own_sought()
-            if not self._source_of_truth.exists(content_id)
+            content_id for content_id in self._own_sought() if not self._content.exists(content_id)
         ]
 
         for batch in _batches(sought):

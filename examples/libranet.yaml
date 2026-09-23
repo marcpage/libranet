@@ -81,6 +81,12 @@ storage:
   # Most hashes a single /data/search response lists (HTTP API §6).
   search_max_results: 32
 
+  # Zip files of CAS objects, each named `{algorithm}/{hash}`, served after
+  # the content stored here and before those shipped with the package. Their
+  # content is never evicted, nor counted against the limits above. One that
+  # cannot be opened stops the node.
+  archives: []
+
 identity:
   # Defaults to `keys/` under data_dir.
   key_dir: null

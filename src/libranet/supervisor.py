@@ -19,6 +19,8 @@ from typing import Generator, Sequence
 import sys
 
 from libranet import cli
+from libranet.cas.errors import ArchiveError
+from libranet.cas.layered import LayeredSource
 from libranet.config.loader import ConfigError, load_config
 from libranet.config.models import LibranetConfig
 from libranet.config.seeds import SeedError, load_seed_peers
@@ -79,12 +81,25 @@ def main(argv: Sequence[str] | None = None, *, stop: StopSignal | None = None) -
         print(f"Could not load the node identity: {error}", file=sys.stderr)
         return EXIT_CONFIG_ERROR
 
+    # Opened once here, before any module opens them for itself, so one that
+    # cannot be opened stops the node rather than leaving content missing.
+    try:
+        with LayeredSource.open(config.storage) as content:
+            archives = [archive.name for archive in content.archives]
+
+    except ArchiveError as error:
+        print(f"Could not open a content archive: {error}", file=sys.stderr)
+        return EXIT_CONFIG_ERROR
+
     logger = configure_logging(config.logging, ModuleName.SUPERVISOR)
     logger.info("Libranet supervisor starting (config: %s)", config_path)
     logger.info("Data directory: %s", config.storage.data_dir)
     logger.info("Node id: %s", identity.node_id)
     logger.info("Listening on %s:%s", config.network.listen_address, config.network.listen_port)
     logger.info("Advertising endpoint %s", config.network.advertised_endpoint())
+
+    for archive in archives:
+        logger.info("Serving content archive %s", archive)
 
     _report_seed_peers(config, logger=logger)
 

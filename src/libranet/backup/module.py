@@ -34,8 +34,9 @@ though they were not there, and a job whose directory lies within one fails
 as though that directory did not exist. A restore never writes in them.
 
 A restore is carried on in passes (:mod:`libranet.backup.restores`), each
-restoring whatever it can from what this node holds. Content it lacks, whether
-the bundle, an extension, or a file's parts, is asked for as a miss would be::
+restoring whatever it can from what this node holds, in the source of truth or
+its content archives (Step 34). Content it lacks, whether the bundle, an
+extension, or a file's parts, is asked for as a miss would be::
 
     data.not_found  {"algorithm", "hash"}
 
@@ -97,6 +98,7 @@ from libranet.backup.runs import AnnouncingStore, back_up
 from libranet.bundle.building import IgnoredPaths
 from libranet.bundle.errors import BundleError
 from libranet.cas.content_id import ContentId
+from libranet.cas.layered import LayeredSource
 from libranet.cas.store import source_of_truth_store
 from libranet.config.models import LibranetConfig
 from libranet.identity.errors import KeyFileError
@@ -161,6 +163,7 @@ class BackupModule(ModuleBase):
         self._config = config
         self._detector = detector or PollingDetector(config.directories())
         self._store = AnnouncingStore(source_of_truth_store(config.storage), self._announce)
+        self._content = LayeredSource.open(config.storage)
         self._node_id: ContentId | None = None
         self._secret: bytes | None = None
         self._jobs: dict[str, BackupJob] = {}
@@ -314,7 +317,7 @@ class BackupModule(ModuleBase):
 
         try:
             restore_pass = restore.attempt(
-                self._store,
+                self._content,
                 self._backup_secret(),
                 IgnoredPaths(self._config.directories()),
                 self._clock(),

@@ -23,6 +23,7 @@ from threading import Thread
 from typing import ClassVar
 
 from libranet.cas.content_id import ContentId
+from libranet.cas.layered import LayeredSource
 from libranet.config.models import LibranetConfig
 from libranet.identity.authentication import request_authenticator
 from libranet.identity.node_identity import load_node_identity
@@ -94,8 +95,9 @@ class WebServerModule(ModuleBase):
     def on_start(self) -> None:
         """Bind the listener and start serving.
 
-        A bind failure, an unusable node key, or an application whose bundle
-        is not a valid content id crashes the module.
+        A bind failure, an unusable node key, a content archive that cannot
+        be opened, or an application whose bundle is not a valid content id
+        crashes the module. The archives stay open for as long as the process runs.
         """
         network = self._config.network
         identity = self._config.identity
@@ -112,6 +114,7 @@ class WebServerModule(ModuleBase):
                 applications=self._config.applications,
                 app_outcomes=self._app_outcomes,
                 backup_state=self._backup_state,
+                content=LayeredSource.open(self._config.storage),
             ),
             self.logger,
             signer,

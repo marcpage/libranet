@@ -59,6 +59,14 @@ def test_decompressed_lists_may_exceed_the_object_limit() -> None:
         StorageConfig(max_decompressed_list_bytes=0)
 
 
+def test_no_content_archives_are_configured_by_default() -> None:
+    assert StorageConfig().archives == ()
+    assert StorageConfig.model_validate({"archives": ["a.zip", "/b.zip"]}).archives == (
+        Path("a.zip"),
+        Path("/b.zip"),
+    )
+
+
 def test_unsigned_api_reads_are_allowed_unless_disabled() -> None:
     assert LibranetConfig().identity.allow_unsigned_api_reads is True
 

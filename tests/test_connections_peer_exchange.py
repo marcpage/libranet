@@ -18,6 +18,7 @@ from zlib import compress
 
 from pytest import LogCaptureFixture, fixture, raises
 
+from libranet.cas.archive import ArchiveSink
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import node_store, source_of_truth_store
 from libranet.config.models import IdentityConfig, LibranetConfig, PeerConfig, StorageConfig
@@ -606,6 +607,45 @@ def test_first_contact_asks_for_what_this_node_seeks(
         {"event": EventType.FETCH_ATTEMPTED, **content_fields(NOWHERE_ID, peer_id), "found": False},
     ]
     assert node_store(config.storage, peer_id).read(OFFERED_ID) == OFFERED
+
+
+def test_archive_content_is_pushed_and_never_asked_for(
+    peer: FixturePeer,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    queues: ModuleQueues,
+    tmp_path: Path,
+) -> None:
+    archive = tmp_path / "held.zip"
+
+    with ArchiveSink.create(archive) as sink:
+        sink.write(HELD_ID, HELD)
+        sink.write(OFFERED_ID, OFFERED)
+
+    storage = config.storage.model_copy(update={"archives": (archive,)})
+    exchange = PeerExchange(
+        identity,
+        config.model_copy(update={"storage": storage}),
+        StubModule(ModuleName.CONNECTIONS, queues).publish,
+        LOGGER,
+    )
+    peer.store.write(OFFERED_ID, OFFERED)
+    peer.write_lists({}, [HELD_ID])
+    write_lists(storage, None, [OFFERED_ID, NOWHERE_ID])
+    session = exchange.open(peer.endpoint)
+
+    try:
+        exchange.first_contact(session)
+
+    finally:
+        session.close()
+
+    peer_id = peer.identity.node_id
+    exchanged = {EventType.DATA_SENT, EventType.FETCH_ATTEMPTED, EventType.PUT_COMPLETED}
+    assert [payload(message) for message in drain(queues, []) if message["event"] in exchanged] == [
+        {"event": EventType.DATA_SENT, **content_fields(HELD_ID, peer_id), "size": len(HELD)},
+        {"event": EventType.FETCH_ATTEMPTED, **content_fields(NOWHERE_ID, peer_id), "found": False},
+    ]
 
 
 def test_many_sought_items_are_asked_for_in_pipelined_runs(

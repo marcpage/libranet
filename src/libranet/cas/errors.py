@@ -21,3 +21,7 @@ class UnknownAlgorithmError(InvalidContentIdError):
 
 class ContentNotFoundError(CasError, FileNotFoundError):
     """The requested content is not present in the store."""
+
+
+class ArchiveError(CasError, OSError):
+    """A content archive cannot be opened or read, or holds something other than CAS objects."""

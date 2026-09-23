@@ -1,7 +1,8 @@
 """Local hash-prefix search and its TTL-bounded result cache (HttpApi §6).
 
-:class:`LocalSearch` scans the source-of-truth layout for the stored hashes
-sharing the most leading bits with a query. :class:`SearchCache` keeps each
+:class:`LocalSearch` scans what the node holds, in the source of truth and
+its content archives (Step 34), for the hashes sharing the most leading bits
+with a query. :class:`SearchCache` keeps each
 query's JSON response in a file that is reused until it is older than the
 configured TTL; the stats module (Step 8) may later rewrite those files with
 better results it knows about.
@@ -11,14 +12,13 @@ from __future__ import annotations
 from pathlib import Path
 from string import hexdigits
 from time import time
-from typing import Callable, Final
+from typing import Callable, Final, Iterator, Protocol
 
 from libranet.atomic_file import write_atomically
 from libranet.cas.algorithms import DEFAULT_REGISTRY, AlgorithmRegistry
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.prefix import nearest
-from libranet.cas.store import CasStore
 
 _HEX_DIGITS: Final = frozenset(hexdigits)
 _CACHE_SUFFIX: Final = ".json"
@@ -41,19 +41,32 @@ def normalize_prefix(text: str, registry: AlgorithmRegistry = DEFAULT_REGISTRY) 
     return text.lower()
 
 
+class PrefixSource(Protocol):
+    """Where held identifiers are found by hash prefix, such as the source of truth."""
+
+    @property
+    def prefix_length(self) -> int:
+        """Hash characters past which a longer prefix scans no less."""
+        ...
+
+    def iter_prefix(self, algorithm: str, hash_prefix: str) -> Iterator[ContentId]:
+        """Held identifiers under ``algorithm`` whose hash starts with ``hash_prefix``."""
+        ...
+
+
 class LocalSearch:
-    """Finds the stored identifiers closest to a prefix, across all algorithms."""
+    """Finds the held identifiers closest to a prefix, across all algorithms."""
 
     def __init__(
         self,
-        store: CasStore,
+        content: PrefixSource,
         max_results: int,
         registry: AlgorithmRegistry = DEFAULT_REGISTRY,
     ) -> None:
         if max_results < 1:
             raise ValueError(f"max_results must be at least 1, got {max_results}")
 
-        self._store = store
+        self._content = content
         self._max_results = max_results
         self._registry = registry
 
@@ -63,15 +76,15 @@ class LocalSearch:
         Starts with the prefix subdirectories the query falls in and widens
         one hex digit at a time until enough candidates are found. Every
         hash outside a scan shares fewer leading bits than every hash inside
-        it, so the top results of the last scan are the best stored matches.
+        it, so the top results of the last scan are the best held matches.
         """
         candidates: set[ContentId] = set()
 
-        for length in range(min(len(prefix), self._store.prefix_length), 0, -1):
+        for length in range(min(len(prefix), self._content.prefix_length), 0, -1):
             candidates = {
                 content_id
                 for algorithm in self._registry.names()
-                for content_id in self._store.iter_prefix(algorithm, prefix[:length])
+                for content_id in self._content.iter_prefix(algorithm, prefix[:length])
             }
 
             if len(candidates) >= self._max_results:

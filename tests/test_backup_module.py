@@ -19,6 +19,7 @@ from libranet.bundle.loading import load_bundle
 from libranet.bundle.reassembly import write_file
 from libranet.bundle.shapes import DirectoryBundle, FileBundle
 from libranet.bundle.storing import store_bundle
+from libranet.cas.archive import ArchiveSink
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore, source_of_truth_store
 from libranet.config.models import (
@@ -28,6 +29,7 @@ from libranet.config.models import (
     LoggingConfig,
     StorageConfig,
 )
+from libranet.eviction.priority import held_objects
 from libranet.identity.keys import load_or_create_backup_secret
 from libranet.identity.node_identity import load_node_identity
 from libranet.messaging.envelope import Message, make_message
@@ -672,6 +674,35 @@ def test_a_restore_rebuilds_a_backed_up_directory_and_is_reported(
 
     for message in of(messages, EventType.BACKUP_STATE):
         BackupReport.from_message(message)
+
+
+def test_a_restore_reads_content_held_only_in_an_archive(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tree: Path,
+    tmp_path: Path,
+    store: CasStore,
+) -> None:
+    bundle = backed_up_bundle(start(config, queues, now), queues, tree)
+    archive = tmp_path / "backup.zip"
+
+    with ArchiveSink.create(archive) as sink:
+        for content_id in [stored.content_id for stored in held_objects(store)]:
+            sink.write(content_id, store.read(content_id))
+            store.delete(content_id)
+
+    storage = config.storage.model_copy(update={"archives": (archive,)})
+    module = start(config.model_copy(update={"storage": storage}), queues, now)
+    published(queues)
+    target = tmp_path / "restored"
+    restore(module, bundle, target)
+    messages = published(queues)
+
+    assert restores(messages)[-1][0]["status"] == "done"
+    assert asked_for(messages) == []
+    assert (target / "readme.txt").read_bytes() == b"read me"
+    assert (target / "docs" / "notes.txt").read_bytes() == b"some notes"
 
 
 def test_a_restore_asks_for_content_not_held_and_carries_on_once_it_lands(
