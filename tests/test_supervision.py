@@ -6,18 +6,21 @@ are slower than the rest of the suite.
 
 from __future__ import annotations
 from functools import partial
+from logging import getLogger
+from multiprocessing import get_context
+from multiprocessing.process import BaseProcess
 from os import kill
 from pathlib import Path
 from queue import Queue
 from signal import SIGTERM
-from threading import Event
+from threading import Event, Timer
 from time import monotonic, sleep
 from typing import Any, Callable, Iterator
 
-from pytest import fixture, raises
+from pytest import LogCaptureFixture, MonkeyPatch, fixture, raises
 
 from libranet.config.models import LibranetConfig
-from libranet.messaging.queues import ModuleQueues
+from libranet.messaging.queues import START_METHOD, ModuleQueues
 from libranet.modules import SPAWNED_MODULES, ModuleName
 from libranet.supervision.process_supervisor import ProcessSupervisor
 from libranet.supervision.registry import default_module_specs
@@ -27,9 +30,11 @@ from libranet.supervision.stubs import (
     crashing_dispatcher_main,
     crashing_module_factory,
     stub_module_factory,
+    unready_dispatcher_main,
 )
 
 TIMEOUT_SECONDS = 20.0
+STOP_TIMEOUT_SECONDS = 0.5
 
 STUBS = (
     ModuleSpec(ModuleName.WEBSERVER, stub_module_factory),
@@ -89,6 +94,58 @@ def _has_started(log_dir: Path, name: ModuleName) -> Callable[[], bool]:
 
 def _running(supervisor: ProcessSupervisor, *names: ModuleName) -> bool:
     return all(supervisor.process_id(name) is not None for name in names)
+
+
+class _StubbornProcess:
+    """A child that nothing, not even ``SIGKILL``, makes exit."""
+
+    pid: int | None = None
+    exitcode: int | None = None
+
+    def __init__(self) -> None:
+        self.started = Event()
+        self.started_at = 0.0
+
+    def start(self) -> None:
+        self.started_at = monotonic()
+        self.started.set()
+
+    def is_alive(self) -> bool:
+        return True
+
+    def join(self, timeout: float | None = None) -> None:
+        assert timeout is not None, "waited with no timeout for a child that will never exit"
+        sleep(timeout)
+
+    def terminate(self) -> None:
+        pass
+
+    def kill(self) -> None:
+        pass
+
+    def close(self) -> None:
+        raise ValueError("Cannot close a process while it is still running")
+
+
+class _StubbornContext:
+    """The ``spawn`` context, except that one module's process never exits."""
+
+    def __init__(self, name: ModuleName, stubborn: _StubbornProcess) -> None:
+        self._real = get_context(START_METHOD)
+        self._name = f"libranet-{name}"
+        self._stubborn = stubborn
+
+    def __getattr__(self, attribute: str) -> object:
+        return getattr(self._real, attribute)
+
+    # Named as on a multiprocessing context, which the supervisor calls.
+    def Process(
+        self, *, target: Callable[..., object], args: tuple[object, ...], name: str, daemon: bool
+    ) -> BaseProcess | _StubbornProcess:
+        if name == self._name:
+            return self._stubborn
+
+        return self._real.Process(target=target, args=args, name=name, daemon=daemon)
 
 
 def test_default_specs_cover_every_module_but_the_dispatcher() -> None:
@@ -248,3 +305,37 @@ def test_run_returns_at_once_when_already_stopped(
     supervisor.run(stop)
 
     assert supervisor.start_log == ()
+
+
+def test_readiness_wait_ends_once_the_node_is_asked_to_stop(
+    make_supervisor: Callable[..., ProcessSupervisor],
+) -> None:
+    supervisor = make_supervisor(
+        dispatcher_entry=unready_dispatcher_main, ready_timeout=TIMEOUT_SECONDS
+    )
+    stop = Event()
+    Timer(0.5, stop.set).start()
+    started = monotonic()
+
+    supervisor.run(stop)
+
+    # Long before the dispatcher's readiness deadline.
+    assert monotonic() - started < TIMEOUT_SECONDS / 4
+    assert supervisor.start_log == (ModuleName.DISPATCHER,)
+
+
+def test_run_returns_although_a_child_will_not_exit(
+    make_supervisor: Callable[..., ProcessSupervisor],
+    monkeypatch: MonkeyPatch,
+    caplog: LogCaptureFixture,
+) -> None:
+    supervisor = make_supervisor(stop_timeout=STOP_TIMEOUT_SECONDS, logger=getLogger(__name__))
+    stubborn = _StubbornProcess()
+    monkeypatch.setattr(supervisor, "_context", _StubbornContext(ModuleName.WEBSERVER, stubborn))
+
+    # The node is asked to stop as soon as the child that will not exit starts.
+    supervisor.run(stubborn.started)
+
+    # A stop timeout each to let it stop, to terminate it, and to kill it.
+    assert monotonic() - stubborn.started_at < 3 * STOP_TIMEOUT_SECONDS + 1.0
+    assert "did not exit; leaving it" in caplog.text

@@ -2,11 +2,11 @@
 
 :class:`StubModule` stands in for every module until its own step replaces
 it. The crashing variants exist to demonstrate and test the supervisor's
-restart behavior.
+restart behavior, and the unready dispatcher its shutdown behavior.
 """
 
 from __future__ import annotations
-from time import monotonic
+from time import monotonic, sleep
 from typing import Mapping
 
 from libranet.config.models import LibranetConfig
@@ -78,3 +78,14 @@ def crashing_dispatcher_main(
 ) -> None:
     """A :data:`~libranet.supervision.specs.DispatcherEntry` that dies before it is ready."""
     raise RuntimeError("Stub dispatcher crashing on purpose")
+
+
+def unready_dispatcher_main(
+    config: LibranetConfig,
+    endpoints: Mapping[ModuleName, ModuleQueues],
+    stop: StopSignal,
+    ready: ReadySignal,
+) -> None:
+    """A :data:`~libranet.supervision.specs.DispatcherEntry` that never becomes ready."""
+    while not stop.is_set():
+        sleep(0.05)
