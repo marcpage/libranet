@@ -12,6 +12,8 @@ from threading import Event, Timer
 
 from pytest import fixture, CaptureFixture
 
+from libranet.cas.archive import ArchiveSink
+from libranet.cas.content_id import ContentId
 from libranet.modules import SPAWNED_MODULES
 from libranet.supervisor import EXIT_CONFIG_ERROR, EXIT_OK, main
 
@@ -109,6 +111,43 @@ def test_unreadable_node_key_is_an_error(
 
     assert main(["--config", str(config_file)], stop=stop) == EXIT_CONFIG_ERROR
     assert "node identity" in capsys.readouterr().err
+
+
+def with_archive(config_file: Path, archive: Path) -> Path:
+    """``config_file`` naming ``archive`` as a content archive."""
+    text = config_file.read_text(encoding="utf-8")
+    config_file.write_text(
+        text.replace("storage:\n", f"storage:\n  archives: [{archive}]\n"), encoding="utf-8"
+    )
+    return config_file
+
+
+def test_content_archives_are_logged(config_file: Path, tmp_path: Path) -> None:
+    archive = tmp_path / "held.zip"
+
+    with ArchiveSink.create(archive) as sink:
+        sink.write(ContentId.for_data(b"held", "sha256"), b"held")
+
+    stop = Event()
+    stop.set()
+
+    assert main(["--config", str(with_archive(config_file, archive))], stop=stop) == EXIT_OK
+    log = (tmp_path / "logs" / "libranet-supervisor.log").read_text(encoding="utf-8")
+    assert f"Serving content archive {archive}" in log
+
+
+def test_a_content_archive_that_cannot_be_opened_is_an_error(
+    config_file: Path, tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    archive = tmp_path / "missing.zip"
+    stop = Event()
+    stop.set()
+
+    status = main(["--config", str(with_archive(config_file, archive))], stop=stop)
+
+    assert status == EXIT_CONFIG_ERROR
+    assert f"Could not open a content archive: Cannot open {archive}" in capsys.readouterr().err
+    assert not (tmp_path / "logs" / "libranet-supervisor.log").exists()
 
 
 def test_run_spawns_every_module_until_stopped(config_file: Path, tmp_path: Path) -> None:

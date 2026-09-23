@@ -19,7 +19,9 @@ from zlib import compress
 from pytest import fixture, mark, raises
 
 from libranet.atomic_file import write_atomically
+from libranet.cas.archive import ArchiveSink, ArchiveSource
 from libranet.cas.content_id import ContentId
+from libranet.cas.layered import LayeredSource
 from libranet.cas.store import CasStore, node_store, source_of_truth_store
 from libranet.config.models import LibranetConfig, StorageConfig
 from libranet.identity.authentication import request_authenticator
@@ -309,6 +311,41 @@ def test_search_scans_caches_and_publishes(
     assert message["event"] == EventType.SEARCH_REQUESTED
     assert message["prefix"] == prefix.lower()
     assert message["cache_path"] == str(cache_file)
+
+
+def test_data_and_search_read_content_archives(
+    storage: StorageConfig,
+    store: CasStore,
+    queues: ModuleQueues,
+    credential: ConfigCredential,
+    tmp_path: Path,
+) -> None:
+    archived = ContentId.for_data(b"archived", "sha256")
+    path = tmp_path / "held.zip"
+
+    with ArchiveSink.create(path) as sink:
+        sink.write(archived, b"archived")
+
+    with ArchiveSource.open(path) as archive:
+        router = build_router(
+            storage,
+            RETRY_AFTER_SECONDS,
+            StubModule(ModuleName.WEBSERVER, queues).publish,
+            request_authenticator(LibranetConfig(storage=storage)),
+            allow_unsigned_api_reads=True,
+            config_credential=credential,
+            content=LayeredSource(store, [archive]),
+        )
+        data = router.dispatch(Request("GET", f"/data/{archived}", client_address="127.0.0.1"))
+        stored = router.dispatch(Request("GET", f"/data/{CONTENT_ID}", client_address="127.0.0.1"))
+        found = router.dispatch(
+            Request("GET", f"/data/search/{archived.hash[:8]}", client_address="127.0.0.1")
+        )
+
+    assert (data.status, data.body) == (200, b"archived")
+    assert (stored.status, stored.body) == (200, CONTENT)
+    assert loads(found.body) == {"results": [str(archived)]}
+    assert EventType.DATA_NOT_FOUND not in {message["event"] for message in _published(queues)}
 
 
 def test_search_serves_a_fresh_cache_file(

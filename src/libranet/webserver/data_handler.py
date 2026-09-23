@@ -1,7 +1,9 @@
 """``GET /data/{algorithm}/{hash}``: serve verified content (HttpApi §5).
 
-Content in the source of truth has already been verified by the validator,
-so it is served as-is. On a local miss the handler never waits: it answers
+Content is read from the source of truth, and then from the node's content
+archives (Step 34). What the source of truth holds has been verified by the
+validator, and an archive is trusted as the node's own files are, so either
+is served as-is. On a local miss the handler never waits: it answers
 ``503`` at once and publishes :attr:`EventType.DATA_NOT_FOUND` so the
 fetcher can try to retrieve the content from peers (HttpApi §5.2).
 
@@ -18,9 +20,9 @@ from __future__ import annotations
 from http import HTTPStatus
 from typing import Final
 
+from libranet.bundle.content import ContentSource
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError, InvalidContentIdError
-from libranet.cas.store import CasStore
 from libranet.messaging.events import EventType
 from libranet.problems import CONTENT_UNAVAILABLE, INVALID_CONTENT_ADDRESS, Problem
 from libranet.webserver.client_origin import is_local_client
@@ -47,13 +49,13 @@ def invalid_address_response(error: InvalidContentIdError, request: Request) -> 
 
 
 class DataReadHandler:
-    """Serves CAS content from one store, reporting misses."""
+    """Serves the CAS content ``content`` holds, reporting misses."""
 
-    def __init__(self, store: CasStore, publish: Publish, retry_after_seconds: int) -> None:
+    def __init__(self, content: ContentSource, publish: Publish, retry_after_seconds: int) -> None:
         if retry_after_seconds < 0:
             raise ValueError(f"retry_after_seconds must not be negative, got {retry_after_seconds}")
 
-        self._store = store
+        self._content = content
         self._publish = publish
         self._retry_after_seconds = retry_after_seconds
 
@@ -74,7 +76,7 @@ class DataReadHandler:
         )
 
         try:
-            body = self._store.read(content_id)
+            body = self._content.read(content_id)
 
         except ContentNotFoundError:
             return self._not_found(content_id, request)

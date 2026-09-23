@@ -14,10 +14,12 @@ from pytest import LogCaptureFixture, fixture, mark, raises
 from libranet.atomic_file import write_atomically
 from libranet.bundle.parsing import decode_bundle, parse_bundle
 from libranet.bundle.shapes import DirectoryBundle
+from libranet.cas.archive import ArchiveSink
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.store import CasStore, source_of_truth_store
 from libranet.config.models import LibranetConfig, StorageConfig
+from libranet.eviction.priority import held_objects
 from libranet.identity.authentication import request_authenticator
 from libranet.messaging.envelope import Message, make_message
 from libranet.messaging.events import EventType
@@ -184,6 +186,34 @@ def test_a_requested_file_is_written_for_the_web_server(
 
     assert written(storage, app_id, path) == content
     assert resolved(queues) == [{"path": path, "outcome": "stored", "size": len(content)}]
+
+
+def test_an_application_held_only_in_an_archive_is_resolved(
+    storage: StorageConfig,
+    store: CasStore,
+    queues: ModuleQueues,
+    app_id: ContentId,
+    tmp_path: Path,
+) -> None:
+    archive = tmp_path / "app.zip"
+    held = [stored.content_id for stored in held_objects(store)]
+
+    with ArchiveSink.create(archive) as sink:
+        for content_id in held:
+            sink.write(content_id, store.read(content_id))
+            store.delete(content_id)
+
+    archived = storage.model_copy(update={"archives": (archive,)})
+    unbundler = UnbundlerModule(ModuleName.UNBUNDLER, queues, archived)
+
+    unbundler.handle(request(app_id, "docs/guide.html"))
+
+    content = FIRST_HALF + SECOND_HALF
+    assert written(storage, app_id, "docs/guide.html") == content
+    assert resolved(queues) == [
+        {"path": "docs/guide.html", "outcome": "stored", "size": len(content)}
+    ]
+    assert not any(store.exists(content_id) for content_id in held)
 
 
 def test_only_the_requested_file_is_written(

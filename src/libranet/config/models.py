@@ -146,6 +146,12 @@ class StorageConfig(_Section):
     # HttpApi §6: the number of hashes one search returns must be capped.
     search_max_results: int = Field(default=32, ge=1)
 
+    # Zip files of CAS objects, each named `{algorithm}/{hash}`, read after
+    # the source of truth and before those shipped with the package (Step
+    # 34). Their content is never evicted, nor counted as content held. One
+    # that cannot be opened stops the node.
+    archives: tuple[Path, ...] = ()
+
     @property
     def source_of_truth_dir(self) -> Path:
         """Verified content, shared by every module and served directly."""

@@ -6,11 +6,12 @@ names a bundle and an entry path in it::
 
     app.path_not_found  {"bundle": "sha256/<hex>", "path": "docs/index.html"}
 
-The bundle is loaded from the source of truth and its extensions overlaid
-(Step 13), and the path looked up in it (:mod:`libranet.unbundler.lookup`). A
-file is reassembled from its parts, checked, and written where the web server
-serves it from (:mod:`libranet.unbundler.resolved_files`), so the next request
-for the path is served straight from disk. What happened is reported for the
+The bundle is loaded from the source of truth, or from the node's content
+archives (Step 34), and its extensions overlaid (Step 13), and the path looked
+up in it (:mod:`libranet.unbundler.lookup`). A file is reassembled from its
+parts, checked, and written where the web server serves it from
+(:mod:`libranet.unbundler.resolved_files`), so the next request for the path
+is served straight from disk. What happened is reported for the
 web server to answer later requests with::
 
     app.path_resolved  {"bundle", "path", "outcome": "stored", "size": 1234}
@@ -62,7 +63,7 @@ from libranet.bundle.reassembly import write_file
 from libranet.bundle.serialization import encode_bundle
 from libranet.bundle.shapes import Bundle, DirectoryBundle
 from libranet.cas.content_id import ContentId
-from libranet.cas.store import source_of_truth_store
+from libranet.cas.layered import LayeredSource
 from libranet.config.models import LibranetConfig, StorageConfig
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
@@ -103,7 +104,7 @@ class UnbundlerModule(ModuleBase):
             raise ValueError(f"max_cached_bundles must be at least 1, got {max_cached_bundles}")
 
         super().__init__(name, queues, logger=logger, poll_interval=poll_interval)
-        self._source = source_of_truth_store(storage)
+        self._source = LayeredSource.open(storage)
         self._files = ResolvedFiles(storage.resolved_files_dir, storage.hash_prefix_length)
         self._max_cached_bundles = max_cached_bundles
         # Least recently used first.
