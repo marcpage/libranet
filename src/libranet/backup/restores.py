@@ -204,7 +204,7 @@ class Restore:
         self._missing.clear()
 
     def report(self) -> dict[str, Any]:
-        """What the restore is doing, as ``GET /config/restores`` serves it."""
+        """What the restore is doing, as ``GET /config/api/restores`` serves it."""
         request = self._request
         return {
             "restore_id": request.restore_id,

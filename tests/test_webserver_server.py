@@ -47,9 +47,10 @@ from libranet.stats.module import StatsModule
 from libranet.supervision.stubs import StubModule
 from libranet.unbundler.resolved_files import ResolvedFiles
 from libranet.validator.module import ValidatorModule
+from libranet.webserver.app_registry import Application, ApplicationRegistry
 from libranet.webserver.config_auth import CONFIG_REALM
 from libranet.webserver.config_credential import ConfigCredential, load_config_credential
-from libranet.webserver.http_types import Request, Response
+from libranet.webserver.http_types import Request, RequestBody, Response
 from libranet.webserver.server import REQUEST_PATH_HEADER, LibranetHTTPServer, build_router
 
 CONTENT = b"hello libranet"
@@ -92,9 +93,15 @@ def allow_unsigned_api_reads() -> bool:
 
 
 @fixture
-def applications() -> dict[str, str]:
-    """The applications the server serves, by name; tests may parametrize it."""
+def applications() -> dict[str, ContentId]:
+    """The applications registered when the server starts, by name; tests may parametrize it."""
     return {}
+
+
+@fixture
+def registry(storage: StorageConfig) -> ApplicationRegistry:
+    """The registry the server reads, from its own copy, as another writer of the file would."""
+    return ApplicationRegistry(storage.applications_path)
 
 
 @fixture
@@ -109,9 +116,13 @@ def server(
     store: CasStore,
     queues: ModuleQueues,
     allow_unsigned_api_reads: bool,
-    applications: dict[str, str],
+    applications: dict[str, ContentId],
+    registry: ApplicationRegistry,
     credential: ConfigCredential,
 ) -> Iterator[LibranetHTTPServer]:
+    for name, bundle in applications.items():
+        registry.register(Application.create(name, bundle))
+
     publisher = StubModule(ModuleName.WEBSERVER, queues)
     server = LibranetHTTPServer(
         ("127.0.0.1", 0),
@@ -122,7 +133,6 @@ def server(
             request_authenticator(LibranetConfig(storage=storage)),
             allow_unsigned_api_reads=allow_unsigned_api_reads,
             config_credential=credential,
-            applications=applications,
         ),
         getLogger("test.webserver"),
         MessageSigner(SERVER_IDENTITY),
@@ -866,7 +876,7 @@ def test_uploads_always_need_a_valid_signature(
     assert len(_published(queues)) == 1
 
 
-@mark.parametrize("applications", [{"myapp": str(APP_BUNDLE_ID)}])
+@mark.parametrize("applications", [{"myapp": APP_BUNDLE_ID}])
 @mark.parametrize("allow_unsigned_api_reads", [True, False])
 def test_unsigned_reads_outside_the_api_are_always_honored(
     server: LibranetHTTPServer, storage: StorageConfig
@@ -887,7 +897,7 @@ def test_unsigned_reads_outside_the_api_are_always_honored(
     assert body == b"<html>"
 
 
-@mark.parametrize("applications", [{"myapp": str(APP_BUNDLE_ID)}])
+@mark.parametrize("applications", [{"myapp": APP_BUNDLE_ID}])
 def test_an_application_file_not_yet_resolved_is_asked_for(
     connection: HTTPConnection, queues: ModuleQueues
 ) -> None:
@@ -908,13 +918,13 @@ def test_config_passes_a_local_client_on_to_the_credential_challenge(
     connection: HTTPConnection, queues: ModuleQueues
 ) -> None:
     # A remote client never gets this far: it is refused with 403 instead.
-    response, body = _get(connection, "/config/backups")
+    response, body = _get(connection, "/config/api/backups")
 
     assert response.status == 401
     assert (
         response.getheader("WWW-Authenticate") == 'Basic realm="Libranet /config", charset="UTF-8"'
     )
-    assert loads(body)["instance"] == "/config/backups"
+    assert loads(body)["instance"] == "/config/api/backups"
     assert _published(queues) == []
 
 
@@ -1072,19 +1082,21 @@ def _config(
 def test_the_first_config_request_captures_its_credentials_and_is_served(
     connection: HTTPConnection, credential: ConfigCredential
 ) -> None:
-    response, body = _config(connection, "/config", headers=_credentials())
+    response, body = _config(connection, "/config/api", headers=_credentials())
 
     assert response.status == 200
-    assert "/config/backups" in {entry["path"] for entry in loads(body)["endpoints"]}
+    assert "/config/api/backups" in {entry["path"] for entry in loads(body)["endpoints"]}
     assert credential.captured
 
 
 def test_config_requests_afterwards_are_checked_against_what_was_captured(
     connection: HTTPConnection, queues: ModuleQueues
 ) -> None:
-    _config(connection, "/config", headers=_credentials())
-    allowed, _ = _config(connection, "/config/backups", headers=_credentials())
-    refused, body = _config(connection, "/config/backups", headers=_credentials(password="guessed"))
+    _config(connection, "/config/api", headers=_credentials())
+    allowed, _ = _config(connection, "/config/api/backups", headers=_credentials())
+    refused, body = _config(
+        connection, "/config/api/backups", headers=_credentials(password="guessed")
+    )
 
     assert allowed.status == 503
     assert refused.status == 401
@@ -1096,11 +1108,11 @@ def test_config_requests_afterwards_are_checked_against_what_was_captured(
 def test_a_config_request_without_credentials_is_challenged(
     connection: HTTPConnection, credential: ConfigCredential
 ) -> None:
-    response, body = _config(connection, "/config/backups")
+    response, body = _config(connection, "/config/api/backups")
 
     assert response.status == 401
     assert response.getheader("WWW-Authenticate") == CONFIG_CHALLENGE
-    assert response.getheader(REQUEST_PATH_HEADER) == "/config/backups"
+    assert response.getheader(REQUEST_PATH_HEADER) == "/config/api/backups"
     assert loads(body)["type"] == CREDENTIAL_REQUIRED
     assert not credential.captured
 
@@ -1110,7 +1122,7 @@ def test_a_config_endpoint_publishes_what_the_backup_module_will_act_on(
 ) -> None:
     response, body = _config(
         connection,
-        "/config/backups",
+        "/config/api/backups",
         "POST",
         _credentials(),
         dumps({"directory": "/home/me/documents"}).encode("utf-8"),
@@ -1130,7 +1142,7 @@ def test_a_remote_config_request_is_refused_before_it_can_capture_anything(
     # address is put to the router directly.
     request = Request(
         "GET",
-        "/config/backups",
+        "/config/api/backups",
         headers=_credentials(),
         client_address="203.0.113.42",
     )
@@ -1139,3 +1151,92 @@ def test_a_remote_config_request_is_refused_before_it_can_capture_anything(
     assert response.status == 403
     assert not credential.captured
     assert _published(queues) == []
+
+
+def test_the_config_index_and_endpoints_moved_beneath_config_api(
+    connection: HTTPConnection,
+) -> None:
+    for path in ("/config", "/config/backups", "/config/restores"):
+        response, _ = _config(connection, path, headers=_credentials())
+
+        assert response.status == 404
+
+
+def test_an_application_registered_through_config_is_served_at_once(
+    connection: HTTPConnection, storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    registered, body = _config(
+        connection,
+        "/config/api/applications",
+        "POST",
+        _credentials(),
+        dumps({"name": "Wiki", "bundle": str(APP_BUNDLE_ID)}).encode("utf-8"),
+    )
+
+    assert registered.status == 200
+    assert loads(body) == {"name": "wiki", "bundle": str(APP_BUNDLE_ID)}
+
+    asked, _ = _get(connection, "/wiki/")
+    (message,) = _published(queues)
+    resolved = ResolvedFiles(storage.resolved_files_dir, storage.hash_prefix_length)
+    write_atomically(resolved.path_for(APP_BUNDLE_ID, "index.html"), b"<html>")
+    served, page = _get(connection, "/wiki/")
+
+    assert asked.status == 503
+    assert (message["event"], message["bundle"]) == (
+        EventType.APP_PATH_NOT_FOUND,
+        str(APP_BUNDLE_ID),
+    )
+    assert (served.status, page) == (200, b"<html>")
+
+    removed, _ = _config(connection, "/config/api/applications/WIKI", "DELETE", _credentials())
+    gone, _ = _get(connection, "/wiki/")
+
+    assert removed.status == 204
+    assert gone.status == 404
+
+
+@mark.parametrize(
+    "client_address, headers, status",
+    [("203.0.113.42", _credentials(), 403), ("127.0.0.1", {}, 401)],
+)
+def test_the_registry_is_changed_only_by_an_authenticated_local_client(
+    server: LibranetHTTPServer,
+    registry: ApplicationRegistry,
+    client_address: str,
+    headers: dict[str, str],
+    status: int,
+) -> None:
+    # The live server only ever sees loopback clients, so the requests are put
+    # to the router directly.
+    body = RequestBody.of(dumps({"name": "wiki", "bundle": str(APP_BUNDLE_ID)}).encode("utf-8"))
+    response = server.router.dispatch(
+        Request(
+            "POST",
+            "/config/api/applications",
+            headers=headers,
+            client_address=client_address,
+            body=body,
+        )
+    )
+
+    assert response.status == status
+    assert not body.consumed
+    assert not registry.path.exists()
+
+
+def test_a_registry_that_cannot_be_read_leaves_the_rest_of_the_node_served(
+    connection: HTTPConnection, registry: ApplicationRegistry
+) -> None:
+    write_atomically(registry.path, b"{not json")
+
+    data, _ = _get(connection, f"/data/{CONTENT_ID}")
+    application, _ = _get(connection, "/wiki/")
+    index, _ = _config(connection, "/config/api", headers=_credentials())
+    listing, body = _config(connection, "/config/api/applications", headers=_credentials())
+
+    assert data.status == 200
+    assert application.status == 500
+    assert index.status == 200
+    assert listing.status == 500
+    assert str(registry.path) in loads(body)["detail"]

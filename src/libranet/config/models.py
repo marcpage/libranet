@@ -12,9 +12,9 @@ marked as such.
 
 from __future__ import annotations
 from pathlib import Path
-from typing import Final, Literal
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from libranet.config import paths
 
@@ -23,12 +23,6 @@ MIB = 1024 * 1024
 Scheme = Literal["http", "https"]
 
 LogLevel = Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"]
-
-# The application served at `/` (HttpApi §13).
-ROOT_APPLICATION: Final = "/"
-
-# Top-level names that are never an application's (HttpApi §2).
-RESERVED_APPLICATION_NAMES: Final = frozenset({"data", "web", "chaos", "config"})
 
 
 class _Section(BaseModel):
@@ -197,6 +191,11 @@ class StorageConfig(_Section):
         """Backup jobs and each one's current bundle, owned by the backup module (Step 19)."""
         return self.data_dir / "backup_jobs.json"
 
+    @property
+    def applications_path(self) -> Path:
+        """The application registry, owned by the web server (Step 35)."""
+        return self.data_dir / "applications.json"
+
     def connection_dir(self, connection_id: str) -> Path:
         """Write directory for one connection, under :attr:`incoming_dir`."""
         return self.incoming_dir / connection_id
@@ -299,35 +298,6 @@ class LibranetConfig(_Section):
     stats: StatsConfig = Field(default_factory=StatsConfig)
     backup: BackupConfig = Field(default_factory=BackupConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
-
-    # Directory bundles served as web applications (HttpApi §13), each at
-    # /{name}/, by the content id of its bundle ("sha256/<hex>"). The name "/"
-    # is the application served at the root. Names are case-insensitive, and
-    # are kept case-folded. The content ids are checked by the web server.
-    applications: dict[str, str] = Field(default_factory=dict)
-
-    @field_validator("applications")
-    @classmethod
-    def _application_names(cls, applications: dict[str, str]) -> dict[str, str]:
-        named: dict[str, str] = {}
-
-        for name, bundle in applications.items():
-            folded = name.casefold()
-
-            if folded in RESERVED_APPLICATION_NAMES:
-                raise ValueError(f"{name!r} is reserved and cannot name an application")
-
-            if folded != ROOT_APPLICATION and (
-                folded in ("", ".", "..") or "/" in folded or "\0" in folded
-            ):
-                raise ValueError(f"Application name {name!r} must be one path segment, or '/'")
-
-            if folded in named:
-                raise ValueError(f"Application {name!r} is named twice, ignoring case")
-
-            named[folded] = bundle
-
-        return named
 
     def directories(self) -> tuple[Path, ...]:
         """Every directory the node needs to exist before it starts."""

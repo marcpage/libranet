@@ -126,16 +126,9 @@ backup:
   # any file; only a directory that changed is read and backed up again.
   interval_seconds: 3600.0
 
-# Directory bundles served as web applications (HTTP API §13), none by
-# default. Each is reached at /{name}/ and named by the content id of its
-# bundle; the name "/" is the application served at the root, which also
-# answers every path no other application's name begins. Names ignore case,
-# and data, web, chaos, and config are reserved. Files are resolved from a
-# bundle as they are first requested, fetching from peers what this node
-# lacks.
-applications: {}
-#   "/": "sha256/<hash of a directory bundle>"
-#   wiki: "sha256/<hash of a directory bundle>"
+# Applications are not configured here. Which directory bundle each one
+# serves is changed while the node runs, through /config/api/applications,
+# and kept in applications.json under data_dir.
 
 logging:
   level: "INFO"

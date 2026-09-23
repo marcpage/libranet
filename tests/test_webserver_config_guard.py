@@ -17,6 +17,11 @@ CONFIG_PATHS = [
     "/Config/backups",
     "/%63onfig",
     "/config%2Fbackups",
+    "/config/api",
+    "/config/api/backups",
+    "/config/api/applications",
+    "/config/api/applications/%2F",
+    "/CONFIG/api/restores",
 ]
 
 

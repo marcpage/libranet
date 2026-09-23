@@ -95,9 +95,11 @@ class WebServerModule(ModuleBase):
     def on_start(self) -> None:
         """Bind the listener and start serving.
 
-        A bind failure, an unusable node key, a content archive that cannot
-        be opened, or an application whose bundle is not a valid content id
-        crashes the module. The archives stay open for as long as the process runs.
+        A bind failure, an unusable node key, or a content archive that
+        cannot be opened crashes the module. The archives stay open for as
+        long as the process runs. An application registry that cannot be read
+        does not: requests that need it are answered ``500`` until it is
+        fixed, and the rest of the node's API is served meanwhile.
         """
         network = self._config.network
         identity = self._config.identity
@@ -111,7 +113,6 @@ class WebServerModule(ModuleBase):
                 request_authenticator(self._config),
                 allow_unsigned_api_reads=identity.allow_unsigned_api_reads,
                 config_credential=load_config_credential(self._config),
-                applications=self._config.applications,
                 app_outcomes=self._app_outcomes,
                 backup_state=self._backup_state,
                 content=LayeredSource.open(self._config.storage),

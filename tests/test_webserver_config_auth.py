@@ -93,7 +93,18 @@ def test_the_header_is_found_however_it_is_capitalized(guard: ConfigAuthGuard) -
 
 
 @mark.parametrize(
-    "path", ["/config", "/config/", "/config/backups", "/Config/restores", "/%63onfig"]
+    "path",
+    [
+        "/config",
+        "/config/",
+        "/config/backups",
+        "/Config/restores",
+        "/%63onfig",
+        "/config/api",
+        "/config/api/applications",
+        "/config/api/applications/%2F",
+        "/Config/API/backups",
+    ],
 )
 def test_every_spelling_of_config_needs_the_credential(guard: ConfigAuthGuard, path: str) -> None:
     response = guard(config_request(path=path))

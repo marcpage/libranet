@@ -3,7 +3,7 @@
 from __future__ import annotations
 from pathlib import Path
 
-from pytest import mark, raises
+from pytest import raises
 from pydantic import ValidationError
 
 from libranet.config.models import (
@@ -156,32 +156,8 @@ def test_create_directories_is_idempotent(tmp_path: Path) -> None:
     assert config.storage.source_of_truth_dir.is_dir()
 
 
-BUNDLE = "sha256/" + "ab" * 32
-
-
-class TestApplications:
-    def test_none_are_configured_by_default(self) -> None:
-        assert LibranetConfig().applications == {}
-
-    def test_names_are_kept_case_folded(self) -> None:
-        config = LibranetConfig(applications={"/": BUNDLE, "Wiki": BUNDLE, "STRASSE": BUNDLE})
-
-        assert config.applications == {"/": BUNDLE, "wiki": BUNDLE, "strasse": BUNDLE}
-
-    @mark.parametrize("name", ["data", "Config", "WEB", "chaos"])
-    def test_a_reserved_name_is_refused(self, name: str) -> None:
-        with raises(ValidationError, match="reserved"):
-            LibranetConfig(applications={name: BUNDLE})
-
-    @mark.parametrize("name", ["", ".", "..", "a/b", "/wiki", "wiki/", "a\0b"])
-    def test_a_name_must_be_one_path_segment(self, name: str) -> None:
-        with raises(ValidationError, match="one path segment"):
-            LibranetConfig(applications={name: BUNDLE})
-
-    def test_a_name_may_not_be_given_twice_in_different_cases(self) -> None:
-        with raises(ValidationError, match="named twice"):
-            LibranetConfig(applications={"wiki": BUNDLE, "Wiki": BUNDLE})
-
-    def test_names_that_differ_only_by_unicode_case_folding_clash(self) -> None:
-        with raises(ValidationError, match="named twice"):
-            LibranetConfig(applications={"strasse": BUNDLE, "Stra\u00dfe": BUNDLE})
+def test_applications_are_no_longer_configured_here() -> None:
+    # They moved to the registry /config/api/applications changes (Step 35).
+    # A configuration still naming them fails, rather than being ignored.
+    with raises(ValidationError, match="applications"):
+        LibranetConfig.model_validate({"applications": {"wiki": "sha256/" + "ab" * 32}})

@@ -16,14 +16,12 @@ spelling reaches an endpoint unauthenticated either.
 
 from __future__ import annotations
 from http import HTTPStatus
-from typing import Final
 from urllib.parse import unquote
 
 from libranet.problems import Problem
+from libranet.webserver.app_registry import CONFIG_APPLICATION
 from libranet.webserver.client_origin import is_local_client
 from libranet.webserver.http_types import Request, Response, problem_response
-
-CONFIG_APPLICATION: Final = "config"
 
 
 def local_config_guard(request: Request) -> Request | Response:

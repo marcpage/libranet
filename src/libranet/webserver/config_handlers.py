@@ -1,24 +1,41 @@
-"""The ``/config`` JSON endpoints for backups and restores (HttpApi §2.3.3).
+"""The ``/config/api`` JSON endpoints (HttpApi §2.3), for backups, restores, and applications.
 
-The web server does none of this work. Each endpoint checks its own input,
-publishes one message, and answers ``202`` at once with the identifier the
-request will be known by::
+Every endpoint is beneath ``/config/api``, leaving the rest of ``/config`` to
+the administration application's own pages.
 
-    POST   /config/backups             backup.job_configured
-    DELETE /config/backups/{job_id}    backup.job_removed
-    POST   /config/backups/{job_id}/run
-                                       backup.run_requested
-    POST   /config/restores            backup.restore_requested
+The web server does none of the backup work. Each backup endpoint checks its
+own input, publishes one message, and answers ``202`` at once with the
+identifier the request will be known by::
+
+    POST   /config/api/backups             backup.job_configured
+    DELETE /config/api/backups/{job_id}    backup.job_removed
+    POST   /config/api/backups/{job_id}/run
+                                           backup.run_requested
+    POST   /config/api/restores            backup.restore_requested
 
 What those jobs and restores are doing is read back with ``GET
-/config/backups`` and ``GET /config/restores``, and comes from the reports
-the backup module publishes (see :mod:`libranet.webserver.backup_state`).
-Before its first report there is nothing to read, and the answer is ``503``
-with a ``Retry-After``, as for a list that has not been derived yet.
+/config/api/backups`` and ``GET /config/api/restores``, and comes from the
+reports the backup module publishes (see
+:mod:`libranet.webserver.backup_state`). Before its first report there is
+nothing to read, and the answer is ``503`` with a ``Retry-After``, as for a
+list that has not been derived yet.
 
-``GET /config`` names the endpoints, so a client — or an administrator whose
-browser has just prompted for a username and password — has somewhere to
-start.
+The application registry is the web server's own (see
+:mod:`libranet.webserver.app_registry`), so its endpoints change it
+themselves, and the change is served from the next request on::
+
+    GET    /config/api/applications          what the registry holds
+    POST   /config/api/applications          register {"name", "bundle"}
+    DELETE /config/api/applications/{name}   stop serving one
+
+A name in a path is percent-encoded as one segment, so the root application,
+``/``, is ``/config/api/applications/%2F``. A registry file that cannot be
+read is ``500``, saying why, and is never saved over: fixing or removing it
+by hand is the way back.
+
+``GET /config/api`` names the endpoints, so a client — or an administrator
+whose browser has just prompted for a username and password — has somewhere
+to start.
 
 Bodies here are small JSON objects, so they are held to their own limit
 rather than the object limit peers' uploads use. A body an endpoint has no
@@ -29,9 +46,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from http import HTTPStatus
 from typing import Final
+from urllib.parse import unquote
 
 from libranet.messaging.events import EventType
 from libranet.problems import INVALID_CONFIG_REQUEST, Problem
+from libranet.webserver.app_registry import Application, ApplicationRegistry, RegistryFileError
 from libranet.webserver.backup_state import JOBS_FIELD, RESTORES_FIELD, BackupState
 from libranet.webserver.config_requests import (
     IDENTIFIER_LENGTH,
@@ -45,21 +64,24 @@ from libranet.webserver.publishing import Publish
 from libranet.webserver.router import Handler
 from libranet.webserver.request_refusals import unreadable_body_response
 
-CONFIG_PATH: Final = "/config"
-BACKUPS_PATH: Final = "/config/backups"
-RESTORES_PATH: Final = "/config/restores"
-BACKUP_JOB_PATTERN: Final = rf"/config/backups/(?P<job_id>[0-9a-f]{{{IDENTIFIER_LENGTH}}})"
+CONFIG_API_PATH: Final = "/config/api"
+BACKUPS_PATH: Final = CONFIG_API_PATH + "/backups"
+RESTORES_PATH: Final = CONFIG_API_PATH + "/restores"
+APPLICATIONS_PATH: Final = CONFIG_API_PATH + "/applications"
+BACKUP_JOB_PATTERN: Final = BACKUPS_PATH + rf"/(?P<job_id>[0-9a-f]{{{IDENTIFIER_LENGTH}}})"
 BACKUP_RUN_PATTERN: Final = BACKUP_JOB_PATTERN + "/run"
+APPLICATION_PATTERN: Final = APPLICATIONS_PATH + "/(?P<name>[^/]+)"
 
-# How the same two paths are written where a person reads them.
-BACKUP_JOB_TEMPLATE: Final = "/config/backups/{job_id}"
+# How the same paths are written where a person reads them.
+BACKUP_JOB_TEMPLATE: Final = BACKUPS_PATH + "/{job_id}"
 BACKUP_RUN_TEMPLATE: Final = BACKUP_JOB_TEMPLATE + "/run"
+APPLICATION_TEMPLATE: Final = APPLICATIONS_PATH + "/{name}"
 
-# A job or restore request is a small object of a few strings. Anything
+# A job, restore, or application request is a small object of a few strings. Anything
 # larger is a mistake, and is refused before it is read.
 MAX_CONFIG_BODY_BYTES: Final = 64 * 1024
 
-#: What ``GET /config`` answers: every endpoint this node serves under it.
+#: What ``GET /config/api`` answers: every endpoint this node serves under it.
 ENDPOINTS: Final = (
     {"method": "GET", "path": BACKUPS_PATH, "description": "Configured backup jobs"},
     {"method": "POST", "path": BACKUPS_PATH, "description": "Configure a backup job"},
@@ -67,11 +89,14 @@ ENDPOINTS: Final = (
     {"method": "POST", "path": BACKUP_RUN_TEMPLATE, "description": "Back up a job now"},
     {"method": "GET", "path": RESTORES_PATH, "description": "Requested restores"},
     {"method": "POST", "path": RESTORES_PATH, "description": "Restore a backup bundle"},
+    {"method": "GET", "path": APPLICATIONS_PATH, "description": "Registered applications"},
+    {"method": "POST", "path": APPLICATIONS_PATH, "description": "Register an application"},
+    {"method": "DELETE", "path": APPLICATION_TEMPLATE, "description": "Remove an application"},
 )
 
 
 def config_index(request: Request) -> Response:
-    """``GET /config``: what this node's administration surface offers."""
+    """``GET /config/api``: what this node's administration surface offers."""
     return json_response({"endpoints": list(ENDPOINTS)})
 
 
@@ -101,7 +126,7 @@ class BackupReportHandler:
 
 @dataclass(frozen=True)
 class BackupJobHandler:
-    """``POST /config/backups``: configure a directory to keep backed up."""
+    """``POST /config/api/backups``: configure a directory to keep backed up."""
 
     publish: Publish
 
@@ -123,7 +148,7 @@ class BackupJobHandler:
 
 @dataclass(frozen=True)
 class BackupJobRemovalHandler:
-    """``DELETE /config/backups/{job_id}``: stop backing a directory up.
+    """``DELETE /config/api/backups/{job_id}``: stop backing a directory up.
 
     A job this node never had is accepted like any other: the web server
     holds no job state to check it against, and the backup module reports
@@ -145,7 +170,7 @@ class BackupJobRemovalHandler:
 
 @dataclass(frozen=True)
 class BackupRunHandler:
-    """``POST /config/backups/{job_id}/run``: back a job's directory up now."""
+    """``POST /config/api/backups/{job_id}/run``: back a job's directory up now."""
 
     publish: Publish
 
@@ -162,7 +187,7 @@ class BackupRunHandler:
 
 @dataclass(frozen=True)
 class RestoreHandler:
-    """``POST /config/restores``: rebuild a backup bundle into a directory."""
+    """``POST /config/api/restores``: rebuild a backup bundle into a directory."""
 
     publish: Publish
 
@@ -182,7 +207,90 @@ class RestoreHandler:
         return json_response({"restore_id": restore.restore_id}, HTTPStatus.ACCEPTED)
 
 
-def invalid_request_response(request: Request, error: InvalidConfigRequestError) -> Response:
+@dataclass(frozen=True)
+class ApplicationListHandler:
+    """``GET /config/api/applications``: every registered application, by name."""
+
+    registry: ApplicationRegistry
+
+    def __call__(self, request: Request) -> Response:
+        try:
+            return json_response(self.registry.applications().value())
+
+        except RegistryFileError as error:
+            return _unreadable_registry_response(request, error)
+
+
+@dataclass(frozen=True)
+class ApplicationRegistrationHandler:
+    """``POST /config/api/applications``: serve a bundle as an application.
+
+    An application already of that name, however it is cased, is served
+    from the new bundle instead. The answer is the application as
+    registered, its name case-folded.
+    """
+
+    registry: ApplicationRegistry
+
+    def __call__(self, request: Request) -> Response:
+        body = _body_or_refusal(request)
+
+        if isinstance(body, Response):
+            return body
+
+        try:
+            application = Application.from_value(decode_request(body))
+
+        except ValueError as error:
+            return invalid_request_response(request, error)
+
+        try:
+            self.registry.register(application)
+
+        except RegistryFileError as error:
+            return _unreadable_registry_response(request, error)
+
+        return json_response(application.value())
+
+
+@dataclass(frozen=True)
+class ApplicationRemovalHandler:
+    """``DELETE /config/api/applications/{name}``: stop serving an application.
+
+    Unlike a backup job, whether one of that name is registered is known
+    here, so one that is not is ``404``.
+    """
+
+    registry: ApplicationRegistry
+
+    def __call__(self, request: Request) -> Response:
+        body = _body_or_refusal(request)
+
+        if isinstance(body, Response):
+            return body
+
+        try:
+            removed = self.registry.remove(unquote(request.params["name"], errors="strict"))
+
+        except UnicodeDecodeError:
+            removed = False
+
+        except RegistryFileError as error:
+            return _unreadable_registry_response(request, error)
+
+        if not removed:
+            return problem_response(
+                Problem.for_status(
+                    HTTPStatus.NOT_FOUND,
+                    detail="No application of this name is registered.",
+                    instance=request.path,
+                )
+            )
+
+        return Response(HTTPStatus.NO_CONTENT)
+
+
+def invalid_request_response(request: Request, error: ValueError) -> Response:
     """The ``400`` for a body an endpoint cannot act on."""
     return problem_response(
         Problem(
@@ -195,6 +303,15 @@ def invalid_request_response(request: Request, error: InvalidConfigRequestError)
     )
 
 
+def _unreadable_registry_response(request: Request, error: RegistryFileError) -> Response:
+    """The ``500`` for a registry file that must be fixed by hand before it can be changed."""
+    return problem_response(
+        Problem.for_status(
+            HTTPStatus.INTERNAL_SERVER_ERROR, detail=str(error), instance=request.path
+        )
+    )
+
+
 def _body_or_refusal(request: Request) -> bytes | Response:
     """``request``'s body, or the response refusing it unread."""
     refusal = unreadable_body_response(request, MAX_CONFIG_BODY_BYTES)
@@ -202,15 +319,21 @@ def _body_or_refusal(request: Request) -> bytes | Response:
 
 
 def config_routes(
-    publish: Publish, state: BackupState, retry_after_seconds: int
+    publish: Publish,
+    state: BackupState,
+    registry: ApplicationRegistry,
+    retry_after_seconds: int,
 ) -> tuple[tuple[str, str, Handler], ...]:
-    """Every ``/config`` route, as ``(method, pattern, handler)`` in route order."""
+    """Every ``/config/api`` route, as ``(method, pattern, handler)`` in route order."""
     return (
-        ("GET", CONFIG_PATH, config_index),
+        ("GET", CONFIG_API_PATH, config_index),
         ("GET", BACKUPS_PATH, BackupReportHandler(state, JOBS_FIELD, retry_after_seconds)),
         ("POST", BACKUPS_PATH, BackupJobHandler(publish)),
         ("GET", RESTORES_PATH, BackupReportHandler(state, RESTORES_FIELD, retry_after_seconds)),
         ("POST", RESTORES_PATH, RestoreHandler(publish)),
         ("POST", BACKUP_RUN_PATTERN, BackupRunHandler(publish)),
         ("DELETE", BACKUP_JOB_PATTERN, BackupJobRemovalHandler(publish)),
+        ("GET", APPLICATIONS_PATH, ApplicationListHandler(registry)),
+        ("POST", APPLICATIONS_PATH, ApplicationRegistrationHandler(registry)),
+        ("DELETE", APPLICATION_PATTERN, ApplicationRemovalHandler(registry)),
     )

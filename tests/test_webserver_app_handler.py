@@ -10,19 +10,14 @@ from pytest import fixture, mark, raises
 
 from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
-from libranet.cas.errors import InvalidContentIdError
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.problems import CONTENT_UNAVAILABLE, PROBLEM_CONTENT_TYPE, UNUSABLE_BUNDLE
 from libranet.unbundler.outcomes import PathOutcome
 from libranet.unbundler.resolved_files import ResolvedFiles
-from libranet.webserver.app_handler import (
-    APP_PATTERN,
-    AppHandler,
-    application_bundles,
-    content_type_for,
-)
+from libranet.webserver.app_handler import APP_PATTERN, AppHandler, content_type_for
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
+from libranet.webserver.app_registry import Application, ApplicationRegistry, RegistryFileError
 from libranet.webserver.http_types import OCTET_STREAM, Request, Response
 
 ROOT_BUNDLE = ContentId.for_data(b"the root application's bundle", "sha256")
@@ -56,19 +51,34 @@ def published() -> Recorder:
     return Recorder()
 
 
+@fixture
+def registry(tmp_path: Path) -> ApplicationRegistry:
+    return ApplicationRegistry(tmp_path / "applications.json")
+
+
 def handler_for(
     applications: Mapping[str, ContentId],
+    registry: ApplicationRegistry,
     files: ResolvedFiles,
     outcomes: ApplicationOutcomes,
     published: Recorder,
 ) -> AppHandler:
-    return AppHandler(applications, files, outcomes, published, RETRY_AFTER_SECONDS)
+    """A handler serving ``applications``, once they are registered in ``registry``."""
+    for name, bundle in applications.items():
+        registry.register(Application.create(name, bundle))
+
+    return AppHandler(registry, files, outcomes, published, RETRY_AFTER_SECONDS)
 
 
 @fixture
-def handler(files: ResolvedFiles, outcomes: ApplicationOutcomes, published: Recorder) -> AppHandler:
+def handler(
+    registry: ApplicationRegistry,
+    files: ResolvedFiles,
+    outcomes: ApplicationOutcomes,
+    published: Recorder,
+) -> AppHandler:
     applications = {"/": ROOT_BUNDLE, "wiki": WIKI_BUNDLE, "strasse": WIKI_BUNDLE}
-    return handler_for(applications, files, outcomes, published)
+    return handler_for(applications, registry, files, outcomes, published)
 
 
 def get(handler: AppHandler, path: str) -> Response:
@@ -239,10 +249,23 @@ def test_a_reserved_name_is_never_an_applications_however_spelled(
     assert published.messages == []
 
 
-def test_without_a_root_application_other_paths_are_404(
-    files: ResolvedFiles, outcomes: ApplicationOutcomes, published: Recorder
+@mark.parametrize("path", ["/config", "/config/", "/Config/index.html", "/%63onfig/"])
+def test_the_config_application_is_never_served_as_an_ordinary_one(
+    handler: AppHandler, registry: ApplicationRegistry, published: Recorder, path: str
 ) -> None:
-    handler = handler_for({"wiki": WIKI_BUNDLE}, files, outcomes, published)
+    registry.register(Application.create("config", WIKI_BUNDLE))
+
+    assert get(handler, path).status == 404
+    assert published.messages == []
+
+
+def test_without_a_root_application_other_paths_are_404(
+    registry: ApplicationRegistry,
+    files: ResolvedFiles,
+    outcomes: ApplicationOutcomes,
+    published: Recorder,
+) -> None:
+    handler = handler_for({"wiki": WIKI_BUNDLE}, registry, files, outcomes, published)
 
     assert get(handler, "/").status == 404
     assert get(handler, "/page.html").status == 404
@@ -305,10 +328,31 @@ def test_the_route_takes_every_path_but_the_reserved_names(path: str, matches: b
     assert (fullmatch(APP_PATTERN, path) is not None) == matches
 
 
-def test_configured_bundles_are_parsed_as_content_ids() -> None:
-    bundles = application_bundles({"/": str(ROOT_BUNDLE).upper().replace("SHA256", "sha256")})
+def test_a_change_to_the_registry_is_served_from_the_next_request(
+    handler: AppHandler, registry: ApplicationRegistry, files: ResolvedFiles
+) -> None:
+    resolve(files, ROOT_BUNDLE, "photos/index.html", b"the root's")
+    resolve(files, WIKI_BUNDLE, "index.html", b"the wiki's")
 
-    assert bundles == {"/": ROOT_BUNDLE}
+    assert get(handler, "/photos/").body == b"the root's"
 
-    with raises(InvalidContentIdError):
-        application_bundles({"wiki": "sha256/not-a-hash"})
+    registry.register(Application.create("photos", WIKI_BUNDLE))
+
+    assert get(handler, "/photos/").body == b"the wiki's"
+
+    registry.remove("photos")
+
+    assert get(handler, "/photos/").body == b"the root's"
+
+
+def test_a_registry_that_cannot_be_read_is_raised_for_the_server_to_answer(
+    handler: AppHandler, registry: ApplicationRegistry, published: Recorder
+) -> None:
+    write_atomically(registry.path, b"{not json")
+
+    with raises(RegistryFileError):
+        get(handler, "/wiki/")
+
+    # A reserved name is refused before the registry is looked at.
+    assert get(handler, "/data/nodes").status == 404
+    assert published.messages == []

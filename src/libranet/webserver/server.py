@@ -23,7 +23,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from logging import Logger
 from socket import AF_INET, AF_INET6
 from socketserver import TCPServer
-from typing import Any, Mapping
+from typing import Any
 from urllib.parse import urlsplit
 
 from libranet import __version__
@@ -34,8 +34,9 @@ from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.signatures import MessageSigner
 from libranet.problems import Problem
 from libranet.unbundler.resolved_files import ResolvedFiles
-from libranet.webserver.app_handler import APP_PATTERN, AppHandler, application_bundles
+from libranet.webserver.app_handler import APP_PATTERN, AppHandler
 from libranet.webserver.app_outcomes import ApplicationOutcomes
+from libranet.webserver.app_registry import ApplicationRegistry
 from libranet.webserver.backup_state import BackupState
 from libranet.webserver.config_auth import ConfigAuthGuard
 from libranet.webserver.config_credential import ConfigCredential
@@ -86,7 +87,6 @@ def build_router(
     *,
     allow_unsigned_api_reads: bool,
     config_credential: ConfigCredential,
-    applications: Mapping[str, str] | None = None,
     app_outcomes: ApplicationOutcomes | None = None,
     backup_state: BackupState | None = None,
     content: LayeredSource | None = None,
@@ -99,17 +99,16 @@ def build_router(
     reads of the ``/data`` API are served only if ``allow_unsigned_api_reads``
     is set. ``config_credential`` is the ``/config`` credential every request
     there is authenticated against, and ``backup_state`` what the backup
-    module last reported for them to read back. ``applications`` names each
-    application's bundle, as configured, and ``app_outcomes`` holds what the
+    module last reported for them to read back. Applications are served as
+    the registry in ``storage``'s data directory names them, which
+    ``/config/api/applications`` changes, and ``app_outcomes`` holds what the
     unbundler reported for their paths. ``content`` is what ``/data`` reads and
     searches: the source of truth, and then any content archives (Step 34). It
     is the source of truth alone if none is given.
-
-    Raises:
-        InvalidContentIdError: an application's bundle is not a valid content id.
     """
     store = source_of_truth_store(storage)
     content = LayeredSource(store) if content is None else content
+    registry = ApplicationRegistry(storage.applications_path)
     # A remote /config request is refused before its signature is checked or
     # its body read, and a local one must carry the node's credential before
     # any endpoint or signature policy sees it.
@@ -155,7 +154,7 @@ def build_router(
     # The administration surface, which the guards above have already
     # restricted to authenticated clients on this machine.
     for method, pattern, handler in config_routes(
-        publish, backup_state or BackupState(), retry_after_seconds
+        publish, backup_state or BackupState(), registry, retry_after_seconds
     ):
         router.add(method, pattern, handler)
 
@@ -164,7 +163,7 @@ def build_router(
         "GET",
         APP_PATTERN,
         AppHandler(
-            application_bundles(applications or {}),
+            registry,
             ResolvedFiles(storage.resolved_files_dir, storage.hash_prefix_length),
             app_outcomes or ApplicationOutcomes(),
             publish,

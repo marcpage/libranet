@@ -52,8 +52,8 @@ ahead of any backup.
 Jobs, and the bundle each was last backed up to, are kept in a file
 (:mod:`libranet.backup.jobs`). Removing a job forgets its bundle, but leaves
 the content in CAS. What every job and restore is doing is reported whenever
-it changes, for the web server to serve at ``GET /config/backups`` and ``GET
-/config/restores``::
+it changes, for the web server to serve at ``GET /config/api/backups`` and
+``GET /config/api/restores``::
 
     backup.state  {"jobs": [...], "restores": [...]}
 
@@ -466,7 +466,7 @@ class BackupModule(ModuleBase):
         self._jobs = jobs
 
     def _report(self) -> None:
-        """Publish what every job and restore is doing, for ``GET /config/backups`` and ``restores``."""
+        """Publish what every job and restore is doing, for ``GET /config/api/backups`` and ``restores``."""
         jobs = sorted(self._jobs.values(), key=lambda job: job.directory)
         self.publish(
             EventType.BACKUP_STATE,
