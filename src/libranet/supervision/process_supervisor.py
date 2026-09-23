@@ -108,7 +108,12 @@ class ProcessSupervisor:
         self._stop_timeout = stop_timeout
 
         self._context = get_context(START_METHOD)
+        # Children watch ``_stop``, which only :meth:`shutdown` sets. The node's
+        # signal handler sets the signal :meth:`run` is given instead, so a
+        # child never sees a signal meant for the supervisor. Until then,
+        # ``_stop`` stands in for it; :meth:`_stopping` checks both.
         self._stop = self._context.Event()
+        self._stop_requested: StopSignal = self._stop
         self._queues = create_module_queues(names, START_METHOD)
         self._dispatcher = _Child(ModuleName.DISPATCHER)
         self._modules = {name: _Child(name) for name in names}
@@ -133,10 +138,11 @@ class ProcessSupervisor:
         if stop.is_set():
             return
 
+        self._stop_requested = stop
         self._logger.info("Supervising the dispatcher and %d modules", len(self._modules))
 
         try:
-            while not stop.is_set():
+            while not self._stopping():
                 self.poll()
                 sleep(self._poll_interval)
 
@@ -147,9 +153,10 @@ class ProcessSupervisor:
         """One supervision pass: start anything due, and notice anything that died.
 
         The first call starts every process. Blocks while waiting for a
-        (re)started dispatcher to come up.
+        (re)started dispatcher to come up, until it does, fails, or the node
+        is asked to stop.
         """
-        if self._stop.is_set():
+        if self._stopping():
             return
 
         if not self._ensure_dispatcher():
@@ -186,12 +193,15 @@ class ProcessSupervisor:
             if process.is_alive():
                 self._logger.error("Module %s ignored SIGTERM; killing", child.name)
                 process.kill()
-                process.join()
+                process.join(self._stop_timeout)
 
-            process.close()
-            child.process = None
+            self._release(child, process)
 
         self._logger.info("All module processes stopped")
+
+    def _stopping(self) -> bool:
+        """Whether the node was asked to stop, or has been shut down."""
+        return self._stop.is_set() or self._stop_requested.is_set()
 
     def _child(self, name: ModuleName) -> _Child:
         if name == ModuleName.DISPATCHER:
@@ -224,7 +234,7 @@ class ProcessSupervisor:
         deadline = monotonic() + self._ready_timeout
 
         while not ready.wait(_READY_CHECK_INTERVAL_SECONDS):
-            if self._stop.is_set():
+            if self._stopping():
                 return False
 
             if not process.is_alive():
@@ -284,7 +294,7 @@ class ProcessSupervisor:
         """Collect a dead child's exit status and count the failure."""
         process = child.process
         assert process is not None
-        process.join()
+        process.join(self._stop_timeout)
         uptime = now - child.started_at
         child.failures = 1 if uptime >= self._stable_after else child.failures + 1
         self._logger.warning(
@@ -294,7 +304,22 @@ class ProcessSupervisor:
             uptime,
             child.failures,
         )
-        process.close()
+        self._release(child, process)
+
+    def _release(self, child: _Child, process: BaseProcess) -> None:
+        """Empty ``child``'s slot, closing ``process`` unless it has not exited.
+
+        A process still running after every wait for it is left rather than
+        waited on further, so that it cannot hold up the supervisor.
+        """
+        if process.is_alive():
+            self._logger.error(
+                "Module %s (pid %s) did not exit; leaving it", child.name, process.pid
+            )
+
+        else:
+            process.close()
+
         child.process = None
 
     def _backoff(self, failures: int) -> float:
