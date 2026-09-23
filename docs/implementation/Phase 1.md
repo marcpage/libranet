@@ -91,6 +91,14 @@ Step 16, the optional mDNS/DNS-SD local discovery step, moved to [Phase
 2](Phase%202.md) unbuilt, keeping its number. The work that follows this
 implementation pass is planned there.
 
+Steps 33–40 were added after Phase 2 was planned, and so take the next
+free numbers after its. They are the rest of what the MVP needs to be
+usable by a person: a node that says what it is, a page to administer it,
+a way to build an application, and a README that describes any of it.
+Each names the issue it comes from, as Phase 2's steps do. They depend on
+each other in the order they are numbered, except Step 33, which is
+independent of all of them.
+
 ---
 
 ## Step 1 — Project Scaffolding
@@ -1095,6 +1103,275 @@ part publishes a fetch request rather than failing outright.
 
 ---
 
+## Step 33 — Bounded Shutdown
+
+**Issue:** #94. **Depends on:** Step 4.
+
+A node stopped with `pkill` once ignored both `SIGTERM` and `SIGINT` and
+had to be force-killed, its main thread waiting on a lock. It has not
+reproduced. The handler is not the cause: it only sets an event, and
+nothing waits on that event, so the main thread never holds its lock.
+Two unbounded waits on the main thread are better candidates, and are
+worth closing whether or not they were this one.
+
+- The supervisor keeps two stop flags: children watch a `multiprocessing`
+  event, which `shutdown()` sets, and the signal handler sets a
+  `threading` one. They stay separate — a child has no business seeing a
+  signal meant for the supervisor — but nothing waits on one while
+  ignoring the other.
+- The dispatcher's readiness wait polls for up to 30 seconds and checks
+  only the `multiprocessing` flag, so a signal arriving while the
+  dispatcher starts is ignored until it is ready or the deadline passes.
+  The dispatcher is restarted from the same poll as everything else, so
+  this is reachable on a running node, not only at startup. The run loop
+  keeps the stop signal it was given where that wait can see it, and the
+  wait gives up as soon as it is set.
+- Reaping a dead child joins it with no timeout, and shutdown joins again
+  with no timeout after `kill()`. Neither should be able to block the
+  loop that notices the node was asked to stop. Both take a timeout, and
+  a child that outlives it is logged and left rather than waited on.
+
+**Testable in isolation:** a supervisor with a fake child that will not
+exit, asserting the run loop returns within the stop timeout once the
+flag is set; and a readiness wait that returns at once when the stop
+signal is set while the dispatcher is still starting.
+
+---
+
+## Step 34 — Zip Content Sources
+
+**Issue:** #91. **Depends on:** Steps 2, 13, 14.
+
+Content a node always holds, that eviction can never take, and that can
+be shipped with the software: a zip file of CAS objects, searched after
+the source of truth. It is what makes a default application possible on a
+node that has never spoken to a peer, and Steps 37 and 39 are its first
+users.
+
+- The bundle library already reads through a two-method protocol
+  (`exists`, `read`), and Step 19's announcing store is the precedent for
+  wrapping one. A read-only archive implements the same protocol, plus
+  prefix iteration, so search reaches it too.
+- Members are named `{algorithm}/{hash}`, and the index is built when the
+  archive opens, so a lookup costs no scan of the archive.
+- A layered source holds the source-of-truth store and the archives in
+  order and answers from the first that holds the content. The store is
+  always first, so nothing an archive carries can shadow verified content.
+- The whole read path takes the layered source: `GET
+  /data/{algorithm}/{hash}`, `/data/search`, the unbundler, and restore.
+  The fetcher counts archive content as held, so peers are never asked
+  for what is already here.
+- Eviction is not changed. It walks the store's directories directly, so
+  archive content is invisible to it and is never handed off or deleted,
+  and does not count against `min_free_bytes` or `max_storage_bytes`. It
+  is not this node's to reclaim.
+- Writing one is the same protocol the other way: an archive sink, so
+  Step 37's build script and Step 38's export endpoint write archives
+  with the code that already writes bundles.
+- Archives come from the configuration and from those shipped inside the
+  package. One that cannot be opened stops the node as a bad listen
+  address does, rather than leaving content silently missing.
+
+**Testable in isolation:** a temp archive built by the sink and read back
+by the source; a layered source over a store and two archives, asserting
+order, prefix iteration across both, and that eviction's walk does not
+see archive content.
+
+---
+
+## Step 35 — The Application Registry
+
+**Issue:** #89. **Depends on:** Steps 14, 18.
+
+Installing an application should not mean editing a file and restarting.
+The name-to-bundle map moves out of the configuration into state
+`/config` owns, and the `/config` endpoints move under `/config/api/` so
+the page in Step 36 can have the rest of the namespace.
+
+- `applications` leaves the config models and the example file. It
+  becomes a registry file under the data directory, written only by the
+  registry and atomically, as the backup job list is. The division is
+  that the configuration file holds what a node is started with, and the
+  registry holds what an administrator changes while it runs.
+- This is a breaking change. Unknown keys are forbidden, so a
+  configuration still naming `applications` fails at startup rather than
+  ignoring it, which is the right way to find out.
+- The name rules move with it unchanged: case-folded, one path segment or
+  `/`, never a reserved name, never named twice ignoring case. The
+  registry also parses each content id, which the config could not do
+  without depending on the CAS library — so a bad one is refused where it
+  is set, rather than stopping the web server at the next startup.
+- The web server re-reads the file when its modification time changes, as
+  it re-reads the `/config` credential on every request, so a change
+  takes effect at once, without a restart and without a message
+  round-trip.
+- The registry also holds the content id of the application serving
+  `/config` itself, which Step 39 points at a bundle.
+- The endpoints move: `/config/backups`, `/config/restores` and the rest
+  become `/config/api/...`. Both guards match on the first path segment,
+  so all of them stay loopback-only and authenticated. `GET /config`
+  stops being the JSON index; `GET /config/api` is.
+- New endpoints beside the backup ones: list the applications, register
+  one by name and content id, and remove one.
+
+**Testable in isolation:** registry tests over a temp file — the name
+rules, atomic replacement, and re-reading after a change; web server
+tests with a fake queue for the new endpoints, and for the moved paths
+still being refused from a non-loopback source and challenged without
+credentials.
+
+---
+
+## Step 36 — The `/config` Page
+
+**Issue:** #89. **Depends on:** Step 35.
+
+High-Level Design §5.5 makes the browser the human interface, and Step 18
+left a JSON index as the thing a browser lands on. This is the page.
+
+- One self-contained HTML file, styles and script inline. Every response
+  is signed, so each separate asset would cost a signature; one file
+  costs one.
+- It is served from the installed package, not from a bundle. Step 39
+  converts it once Step 38 can build one, and this step is written
+  knowing it will be replaced.
+- `GET /config`, and any path beneath it that `/config/api/` does not
+  claim, serve the page. The API routes are registered first.
+- What it drives, all through `/config/api/`: backup jobs listed, added,
+  removed and run now; restores listed and requested; applications
+  listed, registered and removed; and what the node is — its identity,
+  where it listens, and what it advertises.
+- It has to show that a list is not yet known. The backup lists answer
+  `503` with `Retry-After` until the backup module's first report, which
+  does not mean no jobs are configured, and the page says which it is
+  rather than showing an empty table.
+- A content type carrying a charset is new here; every other response
+  this node sends is bytes or JSON.
+
+**Testable in isolation:** web server tests asserting the page is served
+and its content type, and that a non-loopback source still gets `403` and
+an unauthenticated one `401` before the page is reached.
+
+---
+
+## Step 37 — The Default Root Application
+
+**Issue:** #90. **Depends on:** Steps 34, 35.
+
+A node with nothing configured answers `404` at `/`. It should say what
+it is.
+
+- A minimal page: that the node is running, its identity and advertised
+  endpoint, and links to `/config` and the documentation. Not a content
+  browser, and not node statistics — those are `/config`'s, or later
+  work.
+- It ships as a directory bundle inside an archive in the package, built
+  by a script in the repository from the page's directory, using the
+  bundle writer (Step 17) and the archive sink (Step 34). The output is
+  stable: bundle JSON is written with sorted keys and escaped to ASCII,
+  so the same directory gives the same content id every time.
+- The registry seeds `/` with that content id when it first writes its
+  file. An administrator can point `/` elsewhere, or remove it.
+- Nothing about serving it is special. The unbundler resolves it from the
+  archive through the layered source, like any other application.
+
+**Testable in isolation:** the shipped archive opens, its bundle parses
+and resolves, and a web server over a temp data directory serves the page
+at `/` with nothing in the CAS.
+
+---
+
+## Step 38 — Building Applications
+
+**Issue:** #92. **Depends on:** Steps 17, 19, 34, 35.
+
+Everything needed to turn a directory into an application exists as a
+library, and has only ever been called by backup. This exposes it: make a
+bundle from a directory, update it when the directory changes, and export
+it as an archive another node can be shipped.
+
+- The web server does none of the work, as ever. Each endpoint checks its
+  input, publishes one message, and answers `202` with the identifier the
+  request will be known by, derived from its arguments the way a job's
+  and a restore's are. The backup module does the work: it already walks
+  directories, writes bundles, and owns the ignore rules.
+- Making one: a directory in, a content id out, and a `{dirname}.bundle`
+  file written beside the directory recording it. Unlike a backup it is
+  not encrypted with the node's backup secret; a password given with the
+  request protects it (BundleSpecification §6), and none leaves it plain.
+- Updating is making one again where that file already exists: the new
+  bundle records the one it supersedes in `versions`, which the writer
+  already supports. Chaining an update as an `extensions` layer instead
+  is Phase 2 Step 31, and this step does not anticipate it.
+- Exporting: an archive holding the bundle, every extension of it, and
+  every part of every file it names — everything needed to serve it and
+  nothing else. It is written with Step 34's sink, so what that step
+  reads and what this writes are one format by construction.
+- Reading back what was built, and the page's controls for all of it,
+  come with the endpoints.
+
+**Open question:** whether a bundle built here should be registered as an
+application in the same request, or whether building and installing stay
+two steps. Two steps is assumed.
+
+**Testable in isolation:** module tests over a temp directory — build,
+change a file, build again, and assert the `versions` chain and that
+unchanged parts were reused; export, and read the archive back with Step
+34's source.
+
+---
+
+## Step 39 — `/config` as an Application
+
+**Issue:** #93. **Depends on:** Steps 36, 37, 38.
+
+HttpApi §2.3 calls `/config` a pre-installed, reserved application,
+analogous to the root `/` application. Step 36 served it from the package
+because nothing could build a bundle yet. Now something can.
+
+- The page is built into a bundle and archive by the script Step 37 uses,
+  and shipped the same way.
+- The registry's `/config` pointer names it, and paths beneath `/config`
+  that `/config/api/` does not claim are served by the application
+  handler against that bundle. Step 36's handler is removed.
+- Nothing about access changes. The loopback guard and Basic
+  Authentication still run first, on every path beneath `/config`, before
+  anything is resolved or read.
+- An administrator can point `/config` at their own bundle. A node whose
+  `/config` application is missing or unusable still answers
+  `/config/api/`, so it can always be pointed back.
+
+**Testable in isolation:** web server tests serving `/config` from a
+fixture bundle in a temp archive, and asserting `/config/api/` still
+answers when that application is unusable.
+
+---
+
+## Step 40 — README
+
+**Issue:** #88. **Depends on:** Steps 33–39.
+
+The README says implementation has not started, and both its
+documentation links point at paths that moved. It is rewritten last, so
+it describes the node as it is once this pass is finished.
+
+- What is wrong: the status line and the status table, a Python version
+  that is neither what the project requires nor what CI tests, and links
+  to `docs/HighLevelDesign.md` and `docs/Karma.md`, which are under
+  `docs/specs/`.
+- What is missing: installing and running a node; the command-line flags;
+  where the configuration file lives and what the example documents;
+  `/config`, its first-request credential capture, and the page; backup
+  and restore; registering an application and building one; and the
+  supervisor, dispatcher and module processes the node actually is.
+- The documentation table lists two of nine documents. It lists all of
+  them, and is where Phase 2 Step 32's operator guide is linked.
+
+**Testable in isolation:** not code. Every command it gives is run
+against a clean checkout before it is committed.
+
+---
+
 ## 4. Deferred Past This Implementation Pass
 
 These are explicitly out of scope for the steps above, to be picked up
@@ -1108,8 +1385,6 @@ in later milestones:
 - Signed bundles (BundleSpecification §5), and per-entry CAS encryption
   (§7) unless the §5 open item on backup encryption scope settles
   otherwise — backup encrypts whole bundles per §6.
-- A human-facing `/config` page (High-Level Design §5.5); Step 18 exposes
-  JSON endpoints only.
 - The local "don't forward my own backup content" policy
   BackupSpecification §6 permits.
 - Hash-collision handling (same hash, different content) — v1 assumes no

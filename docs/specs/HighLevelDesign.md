@@ -380,6 +380,9 @@ A Directory Bundle can be registered as a Libranet application.
 Each node maintains a mapping from application name to the identifier, or
 content hash, of the corresponding directory bundle.
 
+That mapping is node-local mutable state, administered through `/config`
+while the node runs, rather than settings fixed in its configuration file.
+
 The special application name `/` is the default home application.
 
 Other applications are reached via:
