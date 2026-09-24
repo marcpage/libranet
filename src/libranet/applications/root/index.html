@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Libranet node</title>
+<style>
+  :root {
+    --background: #f6f6f4;
+    --surface: #ffffff;
+    --text: #1d1d1b;
+    --muted: #5d5d58;
+    --border: #d8d8d2;
+    --accent: #2a5db0;
+    --good: #1f7a3d;
+    --bad: #b3261e;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --background: #161615;
+      --surface: #1f1f1d;
+      --text: #ececea;
+      --muted: #a8a8a2;
+      --border: #3a3a36;
+      --accent: #7ea9f0;
+      --good: #6cc98a;
+      --bad: #f2877e;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  main { max-width: 44rem; margin: 0 auto; padding: 2.5rem 1rem; }
+  h1 { font-size: 1.5rem; margin: 0; }
+  h2 { font-size: 1.15rem; margin: 0 0 0.75rem; }
+  a { color: var(--accent); }
+
+  .running { color: var(--good); font-weight: 600; margin: 0.25rem 0 0; }
+  .running::before { content: "\25CF\00A0"; }
+
+  section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin: 1.25rem 0;
+  }
+
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.35rem 1.25rem; margin: 0; }
+  dt { color: var(--muted); }
+  dd { margin: 0; min-width: 0; }
+
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    word-break: break-all;
+  }
+
+  /* A node id: one click selects all of it. */
+  .id { user-select: all; }
+
+  .note, footer { color: var(--muted); }
+  .note { display: block; }
+  .error { color: var(--bad); }
+  ul { margin: 0; padding-left: 1.25rem; }
+  li + li { margin-top: 0.5rem; }
+  footer { font-size: 0.9rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Libranet node</h1>
+  <p class="running">This node is running.</p>
+
+  <section>
+    <h2>This node</h2>
+    <dl>
+      <dt>Node id</dt>
+      <dd id="node-id"><span class="note">Asking the node&hellip;</span></dd>
+      <dt>Advertised endpoint</dt>
+      <dd id="endpoint"><span class="note">Asking the node&hellip;</span></dd>
+    </dl>
+    <noscript><p class="note">Showing what this node is needs JavaScript.</p></noscript>
+  </section>
+
+  <section>
+    <h2>Where next</h2>
+    <ul>
+      <li>
+        <a href="/config">Administration</a> &mdash; back up and restore
+        directories, and install applications. It opens only in a browser on
+        this node's own machine, with the node's credential.
+      </li>
+      <li>
+        <a href="https://github.com/marcpage/libranet#readme">Documentation</a>
+        &mdash; what Libranet is, and how to run a node.
+      </li>
+      <li>
+        <a href="https://github.com/marcpage/libranet/tree/main/docs/specs">Specifications</a>
+        &mdash; the protocol, the HTTP API, and the bundle format.
+      </li>
+    </ul>
+  </section>
+
+  <footer>
+    This is the page every node starts with at <code>/</code>. Its
+    administrator can serve another application here instead.
+  </footer>
+</main>
+<script>
+"use strict";
+
+// What the node list waits for when a 503 does not say.
+const DEFAULT_RETRY_SECONDS = 5;
+
+function byId(id) {
+  return document.getElementById(id);
+}
+
+function make(tag, text, className) {
+  const element = document.createElement(tag);
+  element.textContent = text;
+
+  if (className) {
+    element.className = className;
+  }
+
+  return element;
+}
+
+function note(id, text, className) {
+  byId(id).replaceChildren(make("span", text, className || "note"));
+}
+
+// Every response this node sends is signed, and the signature names the
+// node that signed it (HttpApi 11).
+function signerOf(response) {
+  const match = /;keyid="([^"]+)"/.exec(response.headers.get("Signature-Input") || "");
+  return match ? match[1] : null;
+}
+
+function retryAfter(response) {
+  const seconds = Number(response.headers.get("Retry-After"));
+  return seconds > 0 ? seconds : DEFAULT_RETRY_SECONDS;
+}
+
+function sleep(seconds) {
+  return new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+}
+
+function isLocalhost(endpoint) {
+  try {
+    return new URL(endpoint).hostname === "localhost";
+  } catch (error) {
+    return false;
+  }
+}
+
+function showNodeId(nodeId) {
+  if (nodeId) {
+    byId("node-id").replaceChildren(make("code", nodeId, "id"));
+  } else {
+    note("node-id", "The node did not sign its answer.", "error");
+  }
+}
+
+function showEndpoint(endpoint) {
+  const shown = byId("endpoint");
+  shown.replaceChildren(make("code", endpoint));
+
+  if (isLocalhost(endpoint)) {
+    shown.append(make("span", "Peers are told to use whichever address they reached this node at.", "note"));
+  }
+}
+
+// The node list names this node first, beside the endpoint it advertises
+// (HttpApi 10.1), and is answered 503 until it is first derived.
+async function describeNode() {
+  for (;;) {
+    let response;
+
+    try {
+      response = await fetch("/data/nodes", { cache: "no-store" });
+    } catch (error) {
+      note("node-id", "The node could not be reached.", "error");
+      note("endpoint", "The node could not be reached.", "error");
+      return;
+    }
+
+    const nodeId = signerOf(response);
+    showNodeId(nodeId);
+
+    if (response.status === 503) {
+      note("endpoint", "Not known yet.");
+      await sleep(retryAfter(response));
+      continue;
+    }
+
+    if (response.status === 401) {
+      note("endpoint", "This node shares its node list only with other nodes.");
+      return;
+    }
+
+    if (!response.ok) {
+      note("endpoint", `The node list could not be read (${response.status}).`, "error");
+      return;
+    }
+
+    const nodes = (await response.json()).nodes || {};
+    const endpoint = Object.keys(nodes).find((address) => nodes[address] === nodeId);
+
+    if (endpoint) {
+      showEndpoint(endpoint);
+    } else {
+      note("endpoint", "The node list does not name this node.", "error");
+    }
+
+    return;
+  }
+}
+
+describeNode();
+</script>
+</body>
+</html>

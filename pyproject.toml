@@ -35,6 +35,12 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/libranet"]
+# A wheel carries the applications the node ships built, not their directories.
+exclude = ["/src/libranet/applications/*/"]
+
+# hatch_build.py builds them with the package's own bundle library.
+[tool.hatch.build.targets.wheel.hooks.custom]
+require-runtime-dependencies = true
 
 [tool.black]
 line-length = 100

@@ -178,6 +178,9 @@ curl http://127.0.0.1:8080/data/nodes
 from" — the node advertises a real address once one is configured. Every
 response is signed, so `Signature` and `Signature-Input` headers accompany it.
 
+A browser pointed at `http://127.0.0.1:8080/` gets the same answer as a page,
+with links to the node's administration page and to this documentation.
+
 `Ctrl-C` stops the node and every process under it.
 
 ---
@@ -318,8 +321,9 @@ GET /wiki/
 GET /wiki/index.html
 ```
 
-The name `/` registers the application served at the root. `data`, `web`,
-and `chaos` are reserved, and `config` is reserved for the `/config`
+The name `/` registers the application served at the root. A new node serves
+its own page there, shipped with it, so it needs nothing from peers. `data`,
+`web`, and `chaos` are reserved, and `config` is reserved for the `/config`
 application itself. `GET` the same path lists what is registered, and
 `DELETE /config/api/applications/wiki` removes one (the root is `%2F`).
 
@@ -410,6 +414,13 @@ against Python 3.11 and 3.14. It also verifies that
 The layout is one package per module area under
 [`src/libranet/`](src/libranet/), with a matching `tests/test_<area>_<file>.py`
 for each source file.
+
+The applications a node ships with, such as the page at `/`, are directories
+under [`src/libranet/applications/`](src/libranet/applications/). Run from the
+source, the node builds them in memory as it starts, so a changed page is
+served once it restarts. `uv build` builds them into the wheel instead, as a
+content archive, through [`hatch_build.py`](hatch_build.py); nothing built is
+written to the source tree.
 
 ---
 
