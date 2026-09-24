@@ -3,7 +3,7 @@ endpoints, and the clock faked."""
 
 from __future__ import annotations
 from io import BytesIO
-from logging import ERROR, WARNING
+from logging import ERROR, INFO, WARNING
 from os import mkfifo
 from pathlib import Path
 from queue import Empty, Queue
@@ -11,9 +11,11 @@ from typing import Any
 
 from pytest import LogCaptureFixture, MonkeyPatch, fixture, raises
 
+from libranet.backup.builds import Build, BuildRecord
 from libranet.backup.jobs import JobFileError, load_jobs
 from libranet.backup.module import BackupModule, backup_module_factory
 from libranet.backup.restores import Restore
+from libranet.bundle.building import build_directory
 from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.reassembly import write_file
@@ -38,7 +40,13 @@ from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.supervision.registry import default_module_specs
 from libranet.webserver.backup_state import BackupReport
-from libranet.webserver.config_requests import BackupJobRequest, ConflictBehavior, RestoreRequest
+from libranet.webserver.config_requests import (
+    BackupJobRequest,
+    BuildRequest,
+    ConflictBehavior,
+    Password,
+    RestoreRequest,
+)
 
 INTERVAL = 100.0
 START = 1_789_000_000.0
@@ -936,3 +944,299 @@ def test_an_unexpected_restore_failure_fails_it_and_is_logged(
 
     assert (failed["status"], failed["error"]) == ("failed", "RuntimeError")
     assert any(record.exc_info for record in caplog.records)
+
+
+def builds(messages: list[Message]) -> list[list[dict[str, Any]]]:
+    """The builds each ``backup.state`` reported, in order."""
+    return [message["builds"] for message in of(messages, EventType.BACKUP_STATE)]
+
+
+def build(module: BackupModule, directory: Path, password: str | None = None) -> str:
+    request = BuildRequest(str(directory), Password.optional(password))
+    module.handle(asked(EventType.BUILD_REQUESTED, **request.payload()))
+    return request.build_id
+
+
+def built_bundle(module: BackupModule, queues: ModuleQueues, tree: Path) -> str:
+    build(module, tree)
+    bundle: str = builds(published(queues))[-1][-1]["bundle"]
+    return bundle
+
+
+def test_the_module_hears_build_requests() -> None:
+    assert EventType.BUILD_REQUESTED in BackupModule.subscriptions
+
+
+def test_a_build_is_made_at_once_recorded_beside_its_directory_and_reported(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float], tree: Path, store: CasStore
+) -> None:
+    module = start(config, queues, now)
+    published(queues)
+    build_id = build(module, tree)
+    messages = published(queues)
+    states = builds(messages)
+    final = states[-1][0]
+
+    assert [state[0]["status"] for state in states] == ["waiting", "running", "done"]
+    assert final == {
+        "build_id": build_id,
+        "directory": str(tree),
+        "protected": False,
+        "status": "done",
+        "error": None,
+        "requested_at": START,
+        "finished_at": START,
+        "bundle": final["bundle"],
+        "previous": None,
+        "skipped": 0,
+    }
+    assert BuildRecord.load(BuildRecord.beside(tree)) == BuildRecord(
+        ContentId.parse(final["bundle"])
+    )
+    # Plain, so it can be served once registered.
+    top = load_bundle(ContentId.parse(final["bundle"]), store)
+    assert isinstance(top, DirectoryBundle)
+    assert set(top.entries) == {"readme.txt", "docs/notes.txt"}
+
+    for message in of(messages, EventType.BACKUP_STATE):
+        BackupReport.from_message(message)
+
+
+def test_every_object_a_build_stores_is_announced_from_this_node(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float], tree: Path, store: CasStore
+) -> None:
+    module = start(config, queues, now)
+    node_id = load_node_identity(config).node_id
+    build(module, tree)
+    announced = of(published(queues), EventType.DATA_STORED)
+
+    assert sorted(stored_ids(announced)) == sorted(set(store.iter_prefix("sha256", "")) - {node_id})
+    assert all(message["node_id"] == str(node_id) for message in announced)
+
+
+def test_building_again_starts_over_and_reports_the_bundle_superseded(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float], tree: Path, store: CasStore
+) -> None:
+    module = start(config, queues, now)
+    first = built_bundle(module, queues, tree)
+    (tree / "readme.txt").write_bytes(b"read me again")
+    now[0] += 1
+    build_id = build(module, tree)
+    final = builds(published(queues))[-1]
+
+    assert [build["build_id"] for build in final] == [build_id]
+    assert (final[0]["requested_at"], final[0]["previous"]) == (START + 1, first)
+    assert final[0]["bundle"] != first
+    top = load_bundle(ContentId.parse(final[0]["bundle"]), store)
+    assert isinstance(top, DirectoryBundle)
+    assert top.versions == (first,)
+
+
+def test_building_an_unchanged_directory_again_keeps_its_bundle(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tree: Path,
+    caplog: LogCaptureFixture,
+) -> None:
+    module = start(config, queues, now)
+    first = built_bundle(module, queues, tree)
+
+    with caplog.at_level(INFO):
+        build(module, tree)
+
+    final = builds(published(queues))[-1][0]
+
+    assert (final["bundle"], final["previous"]) == (first, first)
+    assert "unchanged since it was built" in caplog.text
+
+
+def test_a_build_finishes_when_it_is_done_rather_than_when_it_began(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tree: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    def slow(*arguments: Any, **options: Any) -> Any:
+        now[0] += 5
+        return build_directory(*arguments, **options)
+
+    monkeypatch.setattr("libranet.backup.builds.build_directory", slow)
+    module = start(config, queues, now)
+    build(module, tree)
+    done = builds(published(queues))[-1][0]
+
+    assert (done["requested_at"], done["finished_at"]) == (START, START + 5)
+
+
+def test_a_build_with_a_password_never_reports_or_logs_it(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tree: Path,
+    store: CasStore,
+    caplog: LogCaptureFixture,
+) -> None:
+    module = start(config, queues, now)
+
+    with caplog.at_level(0):
+        build(module, tree, "correct horse")
+
+    messages = published(queues)
+    final = builds(messages)[-1][0]
+
+    assert (final["status"], final["protected"]) == ("done", True)
+    assert "correct horse" not in repr(messages)
+    assert "correct horse" not in caplog.text
+    top = load_bundle(ContentId.parse(final["bundle"]), store, password=b"correct horse")
+    assert isinstance(top, DirectoryBundle)
+
+
+def test_a_build_that_cannot_be_made_fails_and_says_why(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tmp_path: Path,
+    caplog: LogCaptureFixture,
+) -> None:
+    module = start(config, queues, now)
+
+    with caplog.at_level(WARNING):
+        build(module, tmp_path / "missing")
+
+    failed = builds(published(queues))[-1][0]
+
+    assert (failed["status"], failed["bundle"]) == ("failed", None)
+    assert "No such file" in failed["error"]
+    assert "Could not build" in caplog.text
+
+
+def test_a_build_beside_a_file_that_is_not_its_record_fails_and_keeps_the_file(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float], tree: Path
+) -> None:
+    BuildRecord.beside(tree).write_bytes(b"my own notes")
+    module = start(config, queues, now)
+    build(module, tree)
+    failed = builds(published(queues))[-1][0]
+
+    assert failed["status"] == "failed"
+    assert "Cannot read a build record" in failed["error"]
+    assert BuildRecord.beside(tree).read_bytes() == b"my own notes"
+
+
+def test_a_directory_within_the_node_own_directories_cannot_be_built(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float]
+) -> None:
+    directory = config.storage.source_of_truth_dir / "site"
+    directory.mkdir(parents=True)
+    module = start(config, queues, now)
+    build(module, directory)
+    failed = builds(published(queues))[-1][0]
+
+    assert failed["status"] == "failed"
+    assert "Ignored" in failed["error"]
+    assert not BuildRecord.beside(directory).exists()
+
+
+def test_a_build_id_that_does_not_name_its_directory_is_refused(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float], tree: Path
+) -> None:
+    module = start(config, queues, now)
+    published(queues)
+
+    with raises(ValueError):
+        module.handle(
+            asked(EventType.BUILD_REQUESTED, build_id="0" * 16, directory=str(tree), password=None)
+        )
+
+    assert module.builds == {}
+    assert published(queues) == []
+
+
+def test_an_unexpected_build_failure_fails_it_and_is_logged(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tree: Path,
+    monkeypatch: MonkeyPatch,
+    caplog: LogCaptureFixture,
+) -> None:
+    def broken(*arguments: object) -> None:
+        raise RuntimeError()
+
+    monkeypatch.setattr(Build, "run", broken)
+    module = start(config, queues, now)
+
+    with caplog.at_level(ERROR):
+        build(module, tree)
+
+    failed = builds(published(queues))[-1][0]
+
+    assert (failed["status"], failed["error"]) == ("failed", "RuntimeError")
+    assert any(record.exc_info for record in caplog.records)
+
+
+def test_paths_a_build_leaves_out_are_counted_and_logged(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tree: Path,
+    caplog: LogCaptureFixture,
+) -> None:
+    mkfifo(tree / "pipe")
+    module = start(config, queues, now)
+
+    with caplog.at_level(WARNING):
+        build(module, tree)
+
+    done = builds(published(queues))[-1][0]
+
+    assert (done["status"], done["skipped"]) == ("done", 1)
+    assert "Left pipe out of the build of" in caplog.text
+
+
+def test_a_build_goes_ahead_of_a_backup_due(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float], tree: Path, tmp_path: Path
+) -> None:
+    module = start(config, queues, now)
+    backed_up_bundle(module, queues, tree)
+    now[0] += INTERVAL
+    site = tmp_path / "site"
+    site.mkdir()
+    build(module, site)
+    messages = published(queues)
+
+    assert builds(messages)[-1][0]["status"] == "done"
+    assert reports(messages)[-1][0]["checked_at"] == START
+
+    module.on_idle()
+
+    assert reports(published(queues))[-1][0]["checked_at"] == START + INTERVAL
+
+
+def test_a_restore_due_goes_ahead_of_a_build(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tree: Path,
+    tmp_path: Path,
+    store: CasStore,
+) -> None:
+    module = start(config, queues, now)
+    bundle = backed_up_bundle(module, queues, tree)
+    store.delete(ContentId.for_data(b"some notes", "sha256"))
+    restore(module, bundle, tmp_path / "restored")
+    now[0] += config.stats.seek_entry_ttl_seconds
+    site = tmp_path / "site"
+    site.mkdir()
+    build(module, site)
+    messages = published(queues)
+
+    # The restore due carries on first, and the build waits its turn.
+    assert [state[0]["status"] for state in restores(messages)][-2:] == ["running", "waiting"]
+    assert builds(messages)[-1][0]["status"] == "waiting"
+
+    module.on_idle()
+
+    assert builds(published(queues))[-1][0]["status"] == "done"

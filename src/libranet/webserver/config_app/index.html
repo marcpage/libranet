@@ -64,6 +64,7 @@
   .state, .result { margin: 0.5rem 0; }
   .error, .error-text { color: var(--bad); }
   .error-text { font-size: 0.9em; }
+  .note { color: var(--muted); font-size: 0.9em; }
 
   code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em; }
 
@@ -196,6 +197,51 @@
       </div>
       <p class="hint">A name already registered, however it is cased, serves the new bundle
       instead.</p>
+      <p class="result" role="status" hidden></p>
+    </form>
+  </section>
+
+  <section aria-labelledby="builds-heading">
+    <h2 id="builds-heading">Builds</h2>
+    <p class="hint">Each makes a directory on this machine into a bundle, and records the
+    bundle's content id beside the directory, in <code>{name}.bundle</code>. Building it again
+    makes a new version, which names the one before. A bundle is served only once it is
+    registered as an application. Builds are forgotten when the node restarts, but the record
+    beside each directory is kept.</p>
+    <p class="state" id="builds-state">Loading…</p>
+    <div class="table-wrap">
+      <table id="builds-table" aria-labelledby="builds-heading" hidden>
+        <thead>
+          <tr>
+            <th scope="col">Directory</th>
+            <th scope="col">Status</th>
+            <th scope="col">Requested</th>
+            <th scope="col">Finished</th>
+            <th scope="col">Bundle</th>
+            <th scope="col">Skipped</th>
+            <th scope="col"><span class="visually-hidden">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="result" id="builds-message" role="status" hidden></p>
+    <form id="build-form">
+      <h3>Build a directory</h3>
+      <div class="fields">
+        <label class="wide">Directory
+          <input id="build-directory" required autocomplete="off" spellcheck="false"
+                 placeholder="/home/alice/site">
+        </label>
+        <label>Password (optional)
+          <input id="build-password" type="password" autocomplete="new-password">
+        </label>
+        <button type="submit">Build</button>
+      </div>
+      <p class="hint">Leave the password empty to build a bundle that can be served as an
+      application; a password-protected one cannot be served yet. Anyone who learns a protected
+      bundle's content id can try passwords against it without limit, so use a long, random
+      one.</p>
       <p class="result" role="status" hidden></p>
     </form>
   </section>
@@ -659,6 +705,133 @@ onSubmit(byId("application-form"), async () => {
   return [`${servedAt(result.value.name)} now serves ${result.value.bundle}.`, false];
 });
 
+// ---- Builds ----
+
+const buildsMessage = byId("builds-message");
+
+// Puts `value` in each field named, and brings the last one into view, ready to type in.
+function fill(values, focus) {
+  for (const [id, value] of Object.entries(values)) {
+    byId(id).value = value;
+  }
+
+  const field = byId(focus);
+  field.focus();
+  field.scrollIntoView({ block: "center" });
+}
+
+function lastSegment(directory) {
+  return directory.split("/").filter((segment) => segment).pop() || "";
+}
+
+function buildRow(build) {
+  const statusCell = cell(status(build.status));
+
+  if (build.error) {
+    statusCell.append(make("div", build.error, "error-text"));
+  }
+
+  const bundleCell = build.bundle ? cell(contentId(build.bundle)) : make("td", "—");
+
+  if (build.bundle && build.previous === build.bundle) {
+    bundleCell.append(make("div", "Unchanged since the last build", "note"));
+  } else if (build.bundle && build.previous) {
+    const superseded = make("div", "Supersedes ", "note");
+    superseded.append(contentId(build.previous));
+    bundleCell.append(superseded);
+  }
+
+  if (build.protected) {
+    bundleCell.append(make("div", "Password-protected", "note"));
+  }
+
+  const directory = build.directory;
+  const actions = cell();
+  actions.className = "actions";
+
+  if (build.status === "done" || build.status === "failed") {
+    actions.append(
+      button("Build again", `Build ${directory} again`, "secondary", buildsMessage, () =>
+        buildAgain(build),
+      ),
+    );
+  }
+
+  if (build.bundle && !build.protected) {
+    const description = `Register the bundle built from ${directory} as an application`;
+    actions.append(
+      button("Register…", description, "secondary", buildsMessage, () =>
+        prepareRegistration(build),
+      ),
+    );
+  }
+
+  const row = make("tr");
+  row.append(
+    make("td", directory),
+    statusCell,
+    make("td", formatTime(build.requested_at)),
+    make("td", formatTime(build.finished_at)),
+    bundleCell,
+    make("td", formatCount(build.skipped), "number"),
+    actions,
+  );
+  return row;
+}
+
+// The page is never told a build's password, so building a protected one again needs it anew.
+async function buildAgain(build) {
+  if (build.protected) {
+    fill({ "build-directory": build.directory }, "build-password");
+    return [`Give the password to build ${build.directory} again.`, false];
+  }
+
+  const result = await call("POST", "/builds", { directory: build.directory });
+
+  if (!result.ok) {
+    return [failure(result), true];
+  }
+
+  builds.schedule(SOON_SECONDS);
+  return [`${build.directory} will be built again.`, false];
+}
+
+function prepareRegistration(build) {
+  const name = lastSegment(build.directory).toLowerCase();
+  fill({ "application-bundle": build.bundle, "application-name": name }, "application-name");
+  return [`The registration form above now names the bundle built from ${build.directory}.`, false];
+}
+
+const builds = new ListView({
+  path: "/builds",
+  table: byId("builds-table"),
+  state: byId("builds-state"),
+  entries: arrayOf("builds"),
+  row: buildRow,
+  empty: "No builds have been requested since the node started.",
+  unknown: "The backup module has not reported yet, so which builds were requested is not known.",
+  refresh: REFRESH_SECONDS,
+});
+
+onSubmit(byId("build-form"), async () => {
+  const request = { directory: byId("build-directory").value };
+  const password = byId("build-password").value;
+
+  if (password !== "") {
+    request.password = password;
+  }
+
+  const result = await call("POST", "/builds", request);
+
+  if (!result.ok) {
+    return [failure(result), true];
+  }
+
+  byId("build-form").reset();
+  builds.schedule(SOON_SECONDS);
+  return [`${request.directory} will be built, as build ${result.value.build_id}.`, false];
+});
+
 // ---- Backup jobs ----
 
 const backupsMessage = byId("backups-message");
@@ -838,7 +1011,7 @@ onSubmit(byId("restore-form"), async () => {
 
 // ---- Start ----
 
-const views = [applications, backups, restores];
+const views = [applications, builds, backups, restores];
 
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) {

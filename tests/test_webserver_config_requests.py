@@ -1,4 +1,4 @@
-"""Tests for what the ``/config`` backup endpoints accept."""
+"""Tests for what the ``/config`` backup and build endpoints accept."""
 
 from __future__ import annotations
 
@@ -8,16 +8,20 @@ from libranet.cas.content_id import ContentId
 from libranet.webserver.config_requests import (
     IDENTIFIER_LENGTH,
     BackupJobRequest,
+    BuildRequest,
     ConflictBehavior,
     InvalidConfigRequestError,
+    Password,
     RestoreRequest,
     decode_request,
     parse_backup_job,
+    parse_build,
     parse_restore,
 )
 
 DIRECTORY = "/home/me/documents"
 BUNDLE = ContentId.for_data(b"a backup bundle", "sha256")
+SITE = "/home/me/site"
 
 
 def test_a_job_names_its_directory_and_how_often_to_look() -> None:
@@ -145,3 +149,68 @@ def test_a_request_cannot_be_built_around_a_directory_it_would_misname(directory
 
     with raises(ValueError):
         RestoreRequest(BUNDLE, directory)
+
+    with raises(ValueError):
+        BuildRequest(directory)
+
+
+def test_a_build_names_its_directory_and_passes_its_password_on() -> None:
+    build = parse_build({"directory": SITE, "password": "correct horse"})
+
+    assert build.directory == SITE
+    assert build.password == Password("correct horse")
+    assert build.payload() == {
+        "build_id": build.build_id,
+        "directory": SITE,
+        "password": "correct horse",
+    }
+
+
+def test_a_build_without_a_password_leaves_its_bundle_plain() -> None:
+    build = parse_build({"directory": SITE})
+
+    assert build.password is None
+    assert build.payload()["password"] is None
+
+
+@mark.parametrize("spelled", ["/home/me//site", "/home/me/./site", "/home/me/site/"])
+def test_a_build_is_named_by_its_directory_alone(spelled: str) -> None:
+    build = parse_build({"directory": spelled, "password": "one"})
+    other = parse_build({"directory": "/home/me/blog"})
+
+    assert build.directory == SITE
+    assert build.build_id == parse_build({"directory": SITE}).build_id
+    assert build.build_id != other.build_id
+    assert len(build.build_id) == IDENTIFIER_LENGTH
+
+
+@mark.parametrize(
+    "value",
+    [
+        [],
+        {},
+        {"directory": 7},
+        {"directory": "site"},
+        {"directory": "/"},
+        {"directory": "/home/me/../site"},
+        {"directory": SITE, "password": ""},
+        {"directory": SITE, "password": 1234},
+        {"directory": SITE, "password": "\ud800"},
+    ],
+)
+def test_a_build_this_node_cannot_act_on_is_refused(value: object) -> None:
+    with raises(InvalidConfigRequestError):
+        parse_build(value)
+
+
+def test_a_password_is_never_shown() -> None:
+    build = BuildRequest(SITE, Password("hunter2"))
+
+    assert "hunter2" not in repr(build)
+    assert "hunter2" not in build.build_id
+
+
+def test_a_password_is_taken_as_utf8() -> None:
+    assert Password("pässwörd").encoded == "pässwörd".encode("utf-8")
+    assert Password.optional(None) is None
+    assert Password.optional("pw") == Password("pw")

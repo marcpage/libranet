@@ -1,4 +1,4 @@
-"""The ``/config/api`` JSON endpoints (HttpApi §2.3), for backups, restores, and applications.
+"""The ``/config/api`` JSON endpoints (HttpApi §2.3): backups, restores, builds, applications.
 
 Every endpoint is beneath ``/config/api``, leaving the rest of ``/config`` to
 the administration application's own pages.
@@ -16,10 +16,16 @@ identifier the request will be known by::
     POST   /config/api/backups/{job_id}/run
                                            backup.run_requested
     POST   /config/api/restores            backup.restore_requested
+    POST   /config/api/builds              backup.build_requested
 
-What those jobs and restores are doing is read back with ``GET
-/config/api/backups`` and ``GET /config/api/restores``, and comes from the
-reports the backup module publishes (see
+A build makes a bundle of a directory, or a new version of the one made
+before (Step 38). It may carry a password protecting the bundle, which is
+passed on to the backup module and never answered or reported. Building
+and registering stay two steps: a bundle built is served only once it is
+registered as an application.
+
+What those jobs, restores, and builds are doing is read back with
+``GET /config/api/backups``, ``restores``, and ``builds``, and comes from the reports the backup module publishes (see
 :mod:`libranet.webserver.backup_state`). Before its first report there is
 nothing to read, and the answer is ``503`` with a ``Retry-After``, as for a
 list that has not been derived yet.
@@ -57,12 +63,18 @@ from libranet.config.models import NetworkConfig
 from libranet.messaging.events import EventType
 from libranet.problems import INVALID_CONFIG_REQUEST, Problem
 from libranet.webserver.app_registry import Application, ApplicationRegistry, RegistryFileError
-from libranet.webserver.backup_state import JOBS_FIELD, RESTORES_FIELD, BackupState
+from libranet.webserver.backup_state import (
+    BUILDS_FIELD,
+    JOBS_FIELD,
+    RESTORES_FIELD,
+    BackupState,
+)
 from libranet.webserver.config_requests import (
     IDENTIFIER_LENGTH,
     InvalidConfigRequestError,
     decode_request,
     parse_backup_job,
+    parse_build,
     parse_restore,
 )
 from libranet.webserver.http_types import Request, Response, json_response, problem_response
@@ -74,6 +86,7 @@ CONFIG_API_PATH: Final = "/config/api"
 NODE_PATH: Final = CONFIG_API_PATH + "/node"
 BACKUPS_PATH: Final = CONFIG_API_PATH + "/backups"
 RESTORES_PATH: Final = CONFIG_API_PATH + "/restores"
+BUILDS_PATH: Final = CONFIG_API_PATH + "/builds"
 APPLICATIONS_PATH: Final = CONFIG_API_PATH + "/applications"
 BACKUP_JOB_PATTERN: Final = BACKUPS_PATH + rf"/(?P<job_id>[0-9a-f]{{{IDENTIFIER_LENGTH}}})"
 BACKUP_RUN_PATTERN: Final = BACKUP_JOB_PATTERN + "/run"
@@ -84,8 +97,8 @@ BACKUP_JOB_TEMPLATE: Final = BACKUPS_PATH + "/{job_id}"
 BACKUP_RUN_TEMPLATE: Final = BACKUP_JOB_TEMPLATE + "/run"
 APPLICATION_TEMPLATE: Final = APPLICATIONS_PATH + "/{name}"
 
-# A job, restore, or application request is a small object of a few strings. Anything
-# larger is a mistake, and is refused before it is read.
+# A job, restore, build, or application request is a small object of a few
+# strings. Anything larger is a mistake, and is refused before it is read.
 MAX_CONFIG_BODY_BYTES: Final = 64 * 1024
 
 #: What ``GET /config/api`` answers: every endpoint this node serves under it.
@@ -97,6 +110,8 @@ ENDPOINTS: Final = (
     {"method": "POST", "path": BACKUP_RUN_TEMPLATE, "description": "Back up a job now"},
     {"method": "GET", "path": RESTORES_PATH, "description": "Requested restores"},
     {"method": "POST", "path": RESTORES_PATH, "description": "Restore a backup bundle"},
+    {"method": "GET", "path": BUILDS_PATH, "description": "Requested builds"},
+    {"method": "POST", "path": BUILDS_PATH, "description": "Build a directory into a bundle"},
     {"method": "GET", "path": APPLICATIONS_PATH, "description": "Registered applications"},
     {"method": "POST", "path": APPLICATIONS_PATH, "description": "Register an application"},
     {"method": "DELETE", "path": APPLICATION_TEMPLATE, "description": "Remove an application"},
@@ -243,6 +258,28 @@ class RestoreHandler:
 
 
 @dataclass(frozen=True)
+class BuildHandler:
+    """``POST /config/api/builds``: make a bundle of a directory, or a new version of it."""
+
+    publish: Publish
+
+    def __call__(self, request: Request) -> Response:
+        body = _body_or_refusal(request)
+
+        if isinstance(body, Response):
+            return body
+
+        try:
+            build = parse_build(decode_request(body))
+
+        except InvalidConfigRequestError as error:
+            return invalid_request_response(request, error)
+
+        self.publish(EventType.BUILD_REQUESTED, build.payload())
+        return json_response({"build_id": build.build_id}, HTTPStatus.ACCEPTED)
+
+
+@dataclass(frozen=True)
 class ApplicationListHandler:
     """``GET /config/api/applications``: every registered application, by name."""
 
@@ -368,6 +405,8 @@ def config_routes(
         ("POST", BACKUPS_PATH, BackupJobHandler(publish)),
         ("GET", RESTORES_PATH, BackupReportHandler(state, RESTORES_FIELD, retry_after_seconds)),
         ("POST", RESTORES_PATH, RestoreHandler(publish)),
+        ("GET", BUILDS_PATH, BackupReportHandler(state, BUILDS_FIELD, retry_after_seconds)),
+        ("POST", BUILDS_PATH, BuildHandler(publish)),
         ("POST", BACKUP_RUN_PATTERN, BackupRunHandler(publish)),
         ("DELETE", BACKUP_JOB_PATTERN, BackupJobRemovalHandler(publish)),
         ("GET", APPLICATIONS_PATH, ApplicationListHandler(registry)),

@@ -31,6 +31,7 @@ from libranet.webserver.backup_state import BackupReport, BackupState
 from libranet.webserver.config_handlers import (
     APPLICATIONS_PATH,
     BACKUPS_PATH,
+    BUILDS_PATH,
     CONFIG_API_PATH,
     MAX_CONFIG_BODY_BYTES,
     NODE_PATH,
@@ -38,7 +39,11 @@ from libranet.webserver.config_handlers import (
     NodeDescription,
     config_routes,
 )
-from libranet.webserver.config_requests import BackupJobRequest, RestoreRequest
+from libranet.webserver.config_requests import (
+    BackupJobRequest,
+    BuildRequest,
+    RestoreRequest,
+)
 from libranet.webserver.http_types import JSON_CONTENT_TYPE, Request, RequestBody, Response
 from libranet.webserver.router import Router
 
@@ -48,11 +53,14 @@ DIRECTORY = "/home/me/documents"
 BUNDLE = ContentId.for_data(b"a backup bundle", "sha256")
 JOB_ID = BackupJobRequest(DIRECTORY).job_id
 RESTORE_ID = RestoreRequest(BUNDLE, DIRECTORY).restore_id
+SITE = "/home/me/site"
+BUILD_ID = BuildRequest(SITE).build_id
 JOB_PATH = f"{BACKUPS_PATH}/{JOB_ID}"
 WIKI_PATH = f"{APPLICATIONS_PATH}/wiki"
 APP_BUNDLE = ContentId.for_data(b"an application's bundle", "sha256")
 JOB_ENTRY = {"job_id": JOB_ID, "directory": DIRECTORY, "state": "idle"}
 RESTORE_ENTRY = {"restore_id": RESTORE_ID, "directory": DIRECTORY, "state": "running"}
+BUILD_ENTRY = {"build_id": BUILD_ID, "directory": SITE, "status": "done"}
 NODE_ID = ContentId.for_data(b"this node's public key", "sha256")
 NETWORK = NetworkConfig(listen_address="0.0.0.0", listen_port=8080, external_port=4300)
 
@@ -137,6 +145,8 @@ def test_the_index_names_every_endpoint(router: Router) -> None:
         ("POST", "/config/api/backups/{job_id}/run"),
         ("GET", "/config/api/restores"),
         ("POST", "/config/api/restores"),
+        ("GET", "/config/api/builds"),
+        ("POST", "/config/api/builds"),
         ("GET", "/config/api/applications"),
         ("POST", "/config/api/applications"),
         ("DELETE", "/config/api/applications/{name}"),
@@ -215,6 +225,31 @@ def test_asking_for_a_restore_publishes_what_to_restore_and_where(
     assert message["on_conflict"] == "overwrite"
 
 
+def test_asking_for_a_build_publishes_the_directory_and_password(
+    router: Router, queues: ModuleQueues
+) -> None:
+    response = router.dispatch(
+        request("POST", BUILDS_PATH, {"directory": SITE, "password": "correct horse"})
+    )
+
+    assert response.status == 202
+    # The password is passed on to the backup module, but never answered.
+    assert json_body(response) == {"build_id": BUILD_ID}
+    (message,) = published(queues)
+    assert message["event"] == EventType.BUILD_REQUESTED
+    assert (message["build_id"], message["directory"]) == (BUILD_ID, SITE)
+    assert message["password"] == "correct horse"
+
+
+def test_a_build_without_a_password_publishes_none(router: Router, queues: ModuleQueues) -> None:
+    response = router.dispatch(request("POST", BUILDS_PATH, {"directory": f"{SITE}/"}))
+
+    assert response.status == 202
+    assert json_body(response) == {"build_id": BUILD_ID}
+    (message,) = published(queues)
+    assert (message["directory"], message["password"]) == (SITE, None)
+
+
 @mark.parametrize(
     "path,value",
     [
@@ -223,6 +258,10 @@ def test_asking_for_a_restore_publishes_what_to_restore_and_where(
         (BACKUPS_PATH, []),
         (RESTORES_PATH, {"bundle": "not-a-content-id", "directory": DIRECTORY}),
         (RESTORES_PATH, {"bundle": str(BUNDLE), "directory": DIRECTORY, "on_conflict": "merge"}),
+        (BUILDS_PATH, {"directory": "site"}),
+        (BUILDS_PATH, {"directory": "/"}),
+        (BUILDS_PATH, {"directory": SITE, "password": ""}),
+        (BUILDS_PATH, {"directory": SITE, "password": 1234}),
     ],
 )
 def test_a_request_this_node_cannot_act_on_publishes_nothing(
@@ -235,7 +274,7 @@ def test_a_request_this_node_cannot_act_on_publishes_nothing(
     assert published(queues) == []
 
 
-@mark.parametrize("path", [BACKUPS_PATH, RESTORES_PATH])
+@mark.parametrize("path", [BACKUPS_PATH, RESTORES_PATH, BUILDS_PATH])
 def test_a_body_that_is_not_json_publishes_nothing(
     router: Router, queues: ModuleQueues, path: str
 ) -> None:
@@ -247,7 +286,16 @@ def test_a_body_that_is_not_json_publishes_nothing(
 
 
 @mark.parametrize(
-    "path", [BACKUPS_PATH, RESTORES_PATH, f"{JOB_PATH}/run", JOB_PATH, APPLICATIONS_PATH, WIKI_PATH]
+    "path",
+    [
+        BACKUPS_PATH,
+        RESTORES_PATH,
+        BUILDS_PATH,
+        f"{JOB_PATH}/run",
+        JOB_PATH,
+        APPLICATIONS_PATH,
+        WIKI_PATH,
+    ],
 )
 def test_an_oversized_body_is_refused_unread(
     router: Router, queues: ModuleQueues, path: str
@@ -263,7 +311,7 @@ def test_an_oversized_body_is_refused_unread(
 
 
 def test_state_is_unavailable_until_the_backup_module_reports(router: Router) -> None:
-    for path in (BACKUPS_PATH, RESTORES_PATH):
+    for path in (BACKUPS_PATH, RESTORES_PATH, BUILDS_PATH):
         response = router.dispatch(request("GET", path))
 
         assert response.status == 503
@@ -273,12 +321,13 @@ def test_state_is_unavailable_until_the_backup_module_reports(router: Router) ->
 def test_state_read_back_is_what_the_backup_module_reported(
     router: Router, state: BackupState
 ) -> None:
-    state.report(BackupReport((JOB_ENTRY,), (RESTORE_ENTRY,)))
+    state.report(BackupReport((JOB_ENTRY,), (RESTORE_ENTRY,), (BUILD_ENTRY,)))
 
     assert json_body(router.dispatch(request("GET", BACKUPS_PATH))) == {"jobs": [JOB_ENTRY]}
     assert json_body(router.dispatch(request("GET", RESTORES_PATH))) == {
         "restores": [RESTORE_ENTRY]
     }
+    assert json_body(router.dispatch(request("GET", BUILDS_PATH))) == {"builds": [BUILD_ENTRY]}
 
 
 def test_reading_state_back_publishes_nothing(
@@ -287,6 +336,7 @@ def test_reading_state_back_publishes_nothing(
     state.report(BackupReport((JOB_ENTRY,), ()))
     router.dispatch(request("GET", BACKUPS_PATH))
     router.dispatch(request("GET", RESTORES_PATH))
+    router.dispatch(request("GET", BUILDS_PATH))
     router.dispatch(request("GET", CONFIG_API_PATH))
 
     assert published(queues) == []
@@ -298,6 +348,7 @@ def test_reading_state_back_publishes_nothing(
         ("PUT", BACKUPS_PATH),
         ("GET", JOB_PATH),
         ("DELETE", RESTORES_PATH),
+        ("PUT", BUILDS_PATH),
         ("POST", CONFIG_API_PATH),
         ("POST", NODE_PATH),
         ("PUT", APPLICATIONS_PATH),
@@ -320,6 +371,7 @@ def test_a_method_an_endpoint_does_not_serve_is_refused(
         f"{BACKUPS_PATH}/{JOB_ID}extra",
         f"{BACKUPS_PATH}/{JOB_ID}/run/again",
         f"{WIKI_PATH}/",
+        f"{BUILDS_PATH}/{BUILD_ID}",
         "/config/unknown",
         "/config/api/unknown",
         # Where the endpoints were before they moved beneath /config/api.

@@ -1,4 +1,4 @@
-"""What the backup module last said its jobs and restores were doing.
+"""What the backup module last said its jobs, restores, and builds were doing.
 
 The web server does no backup work and keeps no job state of its own, so
 what a ``GET`` reads back is whatever the backup module (Step 19) last
@@ -23,6 +23,7 @@ from libranet.messaging.envelope import Message
 #: Payload members of a ``backup.state`` message, and the endpoint each backs.
 JOBS_FIELD = "jobs"
 RESTORES_FIELD = "restores"
+BUILDS_FIELD = "builds"
 
 
 class InvalidBackupReportError(ValueError):
@@ -31,32 +32,41 @@ class InvalidBackupReportError(ValueError):
 
 @dataclass(frozen=True)
 class BackupReport:
-    """One report of every configured job and every requested restore.
+    """One report of every configured job, and every requested restore and build.
 
     The entries are passed to clients as the backup module published them,
-    so it alone decides what it says about a job or a restore.
+    so it alone decides what it says about each.
     """
 
     jobs: tuple[Mapping[str, Any], ...] = ()
     restores: tuple[Mapping[str, Any], ...] = ()
+    builds: tuple[Mapping[str, Any], ...] = ()
 
     @classmethod
     def from_message(cls, message: Message) -> BackupReport:
         """The report ``message`` carries.
 
         Raises:
-            InvalidBackupReportError: either list is missing, is not an
-                array, or holds anything but objects.
+            InvalidBackupReportError: a list is missing, is not an array, or
+                holds anything but objects.
         """
-        return cls(_entries(message, JOBS_FIELD), _entries(message, RESTORES_FIELD))
+        return cls(
+            _entries(message, JOBS_FIELD),
+            _entries(message, RESTORES_FIELD),
+            _entries(message, BUILDS_FIELD),
+        )
 
     def entries(self, field: str) -> tuple[Mapping[str, Any], ...]:
-        """The report's ``jobs`` or ``restores``.
+        """The report's ``jobs``, ``restores``, or ``builds``.
 
         Raises:
-            KeyError: ``field`` names neither.
+            KeyError: ``field`` names none of them.
         """
-        return {JOBS_FIELD: self.jobs, RESTORES_FIELD: self.restores}[field]
+        return {
+            JOBS_FIELD: self.jobs,
+            RESTORES_FIELD: self.restores,
+            BUILDS_FIELD: self.builds,
+        }[field]
 
 
 class BackupState:
