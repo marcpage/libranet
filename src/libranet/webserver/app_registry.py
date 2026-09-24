@@ -14,6 +14,11 @@ every path no other application's name begins. The name ``config`` is the
 application serving ``/config`` itself (HttpApi §2.3), which nothing serves
 from here yet (Step 39).
 
+Until the file is first written, the web server's registry holds the
+applications shipped with the node (Step 37), and the first change saves them
+along with it. So a new node serves a page at ``/``, which an administrator
+may point elsewhere, or remove.
+
 Names ignore case, and are kept case-folded. Each is one path segment, or
 ``/``, and never a name HttpApi §2 reserves, except ``config``: that one is
 reserved for the ``/config`` application, so it may name only that. Each
@@ -35,6 +40,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Final, Mapping
 
+from libranet.applications.packaged import PackagedApplications
 from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
 
@@ -155,6 +161,16 @@ class RegisteredApplications:
 
         return cls(bundles)
 
+    @classmethod
+    def packaged(cls) -> RegisteredApplications:
+        """The applications shipped with the node, built into its package or from source (Step 37).
+
+        Raises:
+            OSError: they were not built, and the package does not hold one.
+            ValueError: they cannot be read, or built whole.
+        """
+        return cls(PackagedApplications.shipped().bundles)
+
     def value(self) -> dict[str, Any]:
         """The JSON object this registry is saved as."""
         return {"applications": {name: str(self.bundles[name]) for name in sorted(self.bundles)}}
@@ -175,15 +191,19 @@ class RegisteredApplications:
 class ApplicationRegistry:
     """The registry file at ``path``, read again whenever it changes.
 
+    Until the file is first written, the registry holds ``initial``, none if
+    it is not given, and the first change saves those along with it.
+
     It may be shared by request threads. A change is read, made, and saved
     under a lock only this process sees, so only one process may make them.
     """
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, initial: RegisteredApplications | None = None) -> None:
         self._path = path
+        self._initial = RegisteredApplications() if initial is None else initial
         self._lock = Lock()
         self._version: _FileVersion | None = None
-        self._applications = RegisteredApplications()
+        self._applications = self._initial
 
     @property
     def path(self) -> Path:
@@ -191,7 +211,7 @@ class ApplicationRegistry:
         return self._path
 
     def applications(self) -> RegisteredApplications:
-        """What the file holds now; nothing, if it has never been written.
+        """What the file holds now; what the registry started with, if it has never been written.
 
         Raises:
             RegistryFileError: the file cannot be read, or does not hold a
@@ -244,7 +264,7 @@ class ApplicationRegistry:
 
         except FileNotFoundError:
             self._version = None
-            self._applications = RegisteredApplications()
+            self._applications = self._initial
 
         except OSError as error:
             raise RegistryFileError(

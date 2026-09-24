@@ -1,4 +1,4 @@
-"""Peer-facing and `/config` HTTP endpoint (Phase 1 Steps 5, 7, 9, 14, 18, 35, 36).
+"""Peer-facing and `/config` HTTP endpoint (Phase 1 Steps 5, 7, 9, 14, 18, 35-37).
 
 Serves the content-addressed source of truth, the derived node and seek
 lists, and the files the unbundler resolves for applications. Writes incoming
@@ -10,8 +10,9 @@ It does not validate, fetch, evict, or resolve bundles itself.
 authenticated clients on this machine, and its backup and restore endpoints
 publish a message each rather than doing any of that work here. Its
 application endpoints change the application registry, the file naming each
-application's bundle, which the web server owns. A browser there gets a page
-that drives all of them.
+application's bundle, which the web server owns, and which names the page
+shipped with the node at `/` until an administrator changes it. A browser
+there gets a page that drives all of them.
 """
 
 from libranet.webserver.app_handler import APP_PATTERN, AppHandler, content_type_for

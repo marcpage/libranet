@@ -33,9 +33,9 @@ from collections import OrderedDict
 from logging import Logger
 from typing import Callable, ClassVar, Mapping
 
+from libranet.applications.packaged import PackagedApplications
 from libranet.bundle.content import ContentSource
 from libranet.cas.content_id import ContentId
-from libranet.cas.layered import LayeredSource
 from libranet.config.models import LibranetConfig
 from libranet.messaging.envelope import TIMESTAMP_FIELD, Message, event_of
 from libranet.messaging.events import EventType
@@ -139,5 +139,8 @@ def fetcher_module_factory(
     archives stay open for as long as the process runs.
     """
     return FetcherModule(
-        name, queues, config.network.retry_after_seconds, LayeredSource.open(config.storage)
+        name,
+        queues,
+        config.network.retry_after_seconds,
+        PackagedApplications.shipped().open_content(config.storage),
     )

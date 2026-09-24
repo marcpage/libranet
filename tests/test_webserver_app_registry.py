@@ -8,6 +8,7 @@ from threading import Thread
 
 from pytest import fixture, mark, raises
 
+from libranet.applications.packaged import PackagedApplications
 from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
 from libranet.config.models import StorageConfig
@@ -289,3 +290,45 @@ def test_changes_from_many_threads_are_all_kept(registry: ApplicationRegistry) -
         thread.join()
 
     assert sorted(registry.applications().bundles) == sorted(names)
+
+
+def test_a_registry_holds_what_it_starts_with_until_its_file_is_written(path: Path) -> None:
+    initial = RegisteredApplications({ROOT_APPLICATION: ROOT_BUNDLE})
+    registry = ApplicationRegistry(path, initial)
+
+    assert registry.applications() == initial
+    assert not path.exists()
+
+    registry.register(Application.create("wiki", WIKI_BUNDLE))
+
+    assert loads(path.read_bytes()) == {
+        "applications": {"/": str(ROOT_BUNDLE), "wiki": str(WIKI_BUNDLE)}
+    }
+
+
+def test_removing_what_a_registry_starts_with_is_saved(path: Path) -> None:
+    initial = RegisteredApplications({ROOT_APPLICATION: ROOT_BUNDLE})
+
+    assert ApplicationRegistry(path, initial).remove(ROOT_APPLICATION)
+    assert loads(path.read_bytes()) == {"applications": {}}
+    # A written file is what is served, whatever a registry starts with.
+    assert ApplicationRegistry(path, initial).applications() == RegisteredApplications()
+
+
+def test_a_registry_starts_again_from_the_beginning_if_its_file_is_removed(path: Path) -> None:
+    initial = RegisteredApplications({ROOT_APPLICATION: ROOT_BUNDLE})
+    registry = ApplicationRegistry(path, initial)
+    saved(path, {"wiki": str(WIKI_BUNDLE)})
+
+    assert registry.applications().bundles == {"wiki": WIKI_BUNDLE}
+
+    path.unlink()
+
+    assert registry.applications() == initial
+
+
+def test_the_packaged_applications_are_those_the_node_ships() -> None:
+    assert RegisteredApplications.packaged() == RegisteredApplications(
+        PackagedApplications.build().bundles
+    )
+    assert set(RegisteredApplications.packaged().bundles) == {ROOT_APPLICATION}

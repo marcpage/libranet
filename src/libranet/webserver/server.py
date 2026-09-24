@@ -36,7 +36,7 @@ from libranet.problems import Problem
 from libranet.unbundler.resolved_files import ResolvedFiles
 from libranet.webserver.app_handler import APP_PATTERN, AppHandler
 from libranet.webserver.app_outcomes import ApplicationOutcomes
-from libranet.webserver.app_registry import ApplicationRegistry
+from libranet.webserver.app_registry import ApplicationRegistry, RegisteredApplications
 from libranet.webserver.backup_state import BackupState
 from libranet.webserver.config_auth import ConfigAuthGuard
 from libranet.webserver.config_credential import ConfigCredential
@@ -102,16 +102,17 @@ def build_router(
     is set. ``config_credential`` is the ``/config`` credential every request
     there is authenticated against, ``node`` what ``/config/api/node`` says
     this node is, and ``backup_state`` what the backup module last reported
-    for them to read back. Applications are served as
-    the registry in ``storage``'s data directory names them, which
-    ``/config/api/applications`` changes, and ``app_outcomes`` holds what the
-    unbundler reported for their paths. ``content`` is what ``/data`` reads and
-    searches: the source of truth, and then any content archives (Step 34). It
-    is the source of truth alone if none is given.
+    for them to read back. Applications are served as the registry in
+    ``storage``'s data directory names them, which
+    ``/config/api/applications`` changes, and as the node ships them until it
+    does. ``app_outcomes`` holds what the unbundler reported for their
+    paths. ``content`` is what ``/data`` reads and searches: the source of
+    truth, and then any content archives (Step 34). It is the source of truth
+    alone if none is given.
     """
     store = source_of_truth_store(storage)
     content = LayeredSource(store) if content is None else content
-    registry = ApplicationRegistry(storage.applications_path)
+    registry = ApplicationRegistry(storage.applications_path, RegisteredApplications.packaged())
     # A remote /config request is refused before its signature is checked or
     # its body read, and a local one must carry the node's credential before
     # any endpoint or signature policy sees it.

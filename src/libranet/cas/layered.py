@@ -11,9 +11,11 @@ Only reading is layered. Content is stored, and evicted, in the source of
 truth alone, so archive content is never handed off or deleted, and is not
 counted against the node's storage limits.
 
-Archives come from the configuration, in the order it lists them, and then
-from those shipped in the package, in name order. Each process that reads
-content opens them for itself, and keeps them open while it runs.
+Archives come from the configuration, in the order it lists them, then from
+those shipped in the package, in name order, and then from any the process
+built in memory, such as the applications shipped with the node (Step 37).
+Each process that reads content opens them for itself, and keeps them open
+while it runs.
 """
 
 from __future__ import annotations
@@ -60,9 +62,14 @@ class LayeredSource:
 
     @classmethod
     def open(
-        cls, storage: StorageConfig, packaged: Traversable = PACKAGED_ARCHIVES
+        cls,
+        storage: StorageConfig,
+        packaged: Traversable = PACKAGED_ARCHIVES,
+        built: Sequence[ArchiveSource] = (),
     ) -> LayeredSource:
-        """The source of truth, then the archives ``storage`` names, then those in ``packaged``.
+        """The source of truth, then the archives ``storage`` names, those in ``packaged``, and ``built``.
+
+        ``built`` are archives already open, which closing this source closes.
 
         Raises:
             ArchiveError: an archive cannot be opened, or holds something
@@ -75,7 +82,7 @@ class LayeredSource:
             ]
             opened.pop_all()
 
-        return cls(source_of_truth_store(storage), archives)
+        return cls(source_of_truth_store(storage), (*archives, *built))
 
     @property
     def archives(self) -> tuple[ArchiveSource, ...]:

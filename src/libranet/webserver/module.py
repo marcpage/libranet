@@ -22,8 +22,8 @@ from logging import Logger
 from threading import Thread
 from typing import ClassVar
 
+from libranet.applications.packaged import PackagedApplications
 from libranet.cas.content_id import ContentId
-from libranet.cas.layered import LayeredSource
 from libranet.config.models import LibranetConfig
 from libranet.identity.authentication import request_authenticator
 from libranet.identity.node_identity import load_node_identity
@@ -97,11 +97,12 @@ class WebServerModule(ModuleBase):
         """Bind the listener and start serving.
 
         A bind failure, an unusable node key, a content archive that cannot
-        be opened, or an installation missing the ``/config`` page crashes
-        the module. The archives stay open for as
-        long as the process runs. An application registry that cannot be read
-        does not: requests that need it are answered ``500`` until it is
-        fixed, and the rest of the node's API is served meanwhile.
+        be opened, or an installation missing the ``/config`` page or an
+        application it ships crashes the module. The
+        archives stay open for as long as the process runs. An application
+        registry that cannot be read does not: requests that need it are
+        answered ``500`` until it is fixed, and the rest of the node's API is
+        served meanwhile.
         """
         network = self._config.network
         identity = self._config.identity
@@ -119,7 +120,7 @@ class WebServerModule(ModuleBase):
                 node=NodeDescription(node.node_id, network),
                 app_outcomes=self._app_outcomes,
                 backup_state=self._backup_state,
-                content=LayeredSource.open(self._config.storage),
+                content=PackagedApplications.shipped().open_content(self._config.storage),
             ),
             self.logger,
             signer,

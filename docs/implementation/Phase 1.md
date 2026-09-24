@@ -1166,8 +1166,8 @@ users.
   and does not count against `min_free_bytes` or `max_storage_bytes`. It
   is not this node's to reclaim.
 - Writing one is the same protocol the other way: an archive sink, so
-  Step 37's build script and Step 38's export endpoint write archives
-  with the code that already writes bundles.
+  Step 37's build of the applications a node ships and Step 38's export
+  endpoint write archives with the code that already writes bundles.
 - Archives come from the configuration and from those shipped inside the
   package. One that cannot be opened stops the node as a bad listen
   address does, rather than leaving content silently missing.
@@ -1265,19 +1265,28 @@ it is.
   endpoint, and links to `/config` and the documentation. Not a content
   browser, and not node statistics — those are `/config`'s, or later
   work.
-- It ships as a directory bundle inside an archive in the package, built
-  by a script in the repository from the page's directory, using the
-  bundle writer (Step 17) and the archive sink (Step 34). The output is
-  stable: bundle JSON is written with sorted keys and escaped to ASCII,
-  so the same directory gives the same content id every time.
+- The repository keeps the page's directory, and nothing built from it.
+  A wheel carries it built: a build hook makes a directory bundle with the
+  bundle writer (Step 17), writes it and its parts with the archive sink
+  (Step 34) into the package's content archives, and records its content
+  id beside it. Run from its source, the package holds neither, so each
+  process that reads content builds the page in memory as it starts, and
+  reads it after every archive on disk.
+- The build is stable. Only each file's path and bytes are recorded, not
+  the times and permissions an installation gives it; hidden files are
+  left out; and bundle JSON is written with sorted keys and escaped to
+  ASCII. So every process, and every node running the same version,
+  builds the same content id.
 - The registry seeds `/` with that content id when it first writes its
   file. An administrator can point `/` elsewhere, or remove it.
 - Nothing about serving it is special. The unbundler resolves it from the
   archive through the layered source, like any other application.
 
-**Testable in isolation:** the shipped archive opens, its bundle parses
-and resolves, and a web server over a temp data directory serves the page
-at `/` with nothing in the CAS.
+**Testable in isolation:** the build gives the same content id whatever
+the files' times and permissions, its bundle parses and resolves through
+the layered source, built in memory or written as a wheel carries it, and
+a web server over a temp data directory serves the page at `/` with
+nothing in the CAS.
 
 ---
 
@@ -1329,8 +1338,8 @@ HttpApi §2.3 calls `/config` a pre-installed, reserved application,
 analogous to the root `/` application. Step 36 served it from the package
 because nothing could build a bundle yet. Now something can.
 
-- The page is built into a bundle and archive by the script Step 37 uses,
-  and shipped the same way.
+- The page's directory sits beside the root application's, and is built
+  as Step 37's is: into the wheel, or in memory when run from source.
 - The registry's `/config` pointer names it, and paths beneath `/config`
   that `/config/api/` does not claim are served by the application
   handler against that bundle. Step 36's handler is removed.
