@@ -41,7 +41,8 @@ from libranet.webserver.backup_state import BackupState
 from libranet.webserver.config_auth import ConfigAuthGuard
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_guard import local_config_guard
-from libranet.webserver.config_handlers import config_routes
+from libranet.webserver.config_handlers import NodeDescription, config_routes
+from libranet.webserver.config_page import CONFIG_PAGE_PATTERN, ConfigPageHandler
 from libranet.webserver.data_handler import DATA_PATTERN, DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
 from libranet.webserver.http_types import (
@@ -87,6 +88,7 @@ def build_router(
     *,
     allow_unsigned_api_reads: bool,
     config_credential: ConfigCredential,
+    node: NodeDescription,
     app_outcomes: ApplicationOutcomes | None = None,
     backup_state: BackupState | None = None,
     content: LayeredSource | None = None,
@@ -98,8 +100,9 @@ def build_router(
     ``authenticator`` checks the signature of every signed request; unsigned
     reads of the ``/data`` API are served only if ``allow_unsigned_api_reads``
     is set. ``config_credential`` is the ``/config`` credential every request
-    there is authenticated against, and ``backup_state`` what the backup
-    module last reported for them to read back. Applications are served as
+    there is authenticated against, ``node`` what ``/config/api/node`` says
+    this node is, and ``backup_state`` what the backup module last reported
+    for them to read back. Applications are served as
     the registry in ``storage``'s data directory names them, which
     ``/config/api/applications`` changes, and ``app_outcomes`` holds what the
     unbundler reported for their paths. ``content`` is what ``/data`` reads and
@@ -154,9 +157,12 @@ def build_router(
     # The administration surface, which the guards above have already
     # restricted to authenticated clients on this machine.
     for method, pattern, handler in config_routes(
-        publish, backup_state or BackupState(), registry, retry_after_seconds
+        publish, backup_state or BackupState(), registry, node, retry_after_seconds
     ):
         router.add(method, pattern, handler)
+
+    # Every other path beneath /config is the administration page's.
+    router.add("GET", CONFIG_PAGE_PATTERN, ConfigPageHandler.packaged())
 
     # Last, since its pattern fits every path outside the reserved names.
     router.add(

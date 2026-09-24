@@ -21,7 +21,13 @@ from pytest import LogCaptureFixture, fixture, raises
 from libranet.cas.archive import ArchiveSink
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import node_store, source_of_truth_store
-from libranet.config.models import IdentityConfig, LibranetConfig, PeerConfig, StorageConfig
+from libranet.config.models import (
+    IdentityConfig,
+    LibranetConfig,
+    NetworkConfig,
+    PeerConfig,
+    StorageConfig,
+)
 from libranet.connections.errors import ConnectionClosedError, PeerAuthenticationError
 from libranet.connections.peer_connection import open_connection
 from libranet.connections.peer_exchange import PIPELINE_DEPTH, PeerExchange
@@ -36,6 +42,7 @@ from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.supervision.stubs import StubModule
 from libranet.webserver.config_credential import load_config_credential
+from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.server import LibranetHTTPServer, build_router
 
 LOGGER = getLogger("test.connections")
@@ -81,6 +88,7 @@ class FixturePeer:
                 request_authenticator(LibranetConfig(storage=self.storage)),
                 allow_unsigned_api_reads=True,
                 config_credential=load_config_credential(LibranetConfig(storage=self.storage)),
+                node=NodeDescription(self.identity.node_id, NetworkConfig()),
             ),
             getLogger("test.webserver"),
             MessageSigner(self.identity),

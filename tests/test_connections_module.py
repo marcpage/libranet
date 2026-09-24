@@ -22,7 +22,13 @@ from pytest import LogCaptureFixture, MonkeyPatch, fixture, raises
 from libranet.cas.content_id import ContentId
 from libranet.cas.prefix import nearest
 from libranet.cas.store import node_store, source_of_truth_store
-from libranet.config.models import IdentityConfig, LibranetConfig, PeerConfig, StorageConfig
+from libranet.config.models import (
+    IdentityConfig,
+    LibranetConfig,
+    NetworkConfig,
+    PeerConfig,
+    StorageConfig,
+)
 from libranet.connections.module import ConnectionsModule, connections_module_factory
 from libranet.connections.peer_session import PeerSession
 from libranet.identity.authentication import request_authenticator
@@ -35,6 +41,7 @@ from libranet.messaging.queues import MessageQueue, ModuleQueues
 from libranet.modules import ModuleName
 from libranet.supervision.stubs import StubModule
 from libranet.webserver.config_credential import load_config_credential
+from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.server import LibranetHTTPServer, RequestHandler, build_router
 
 TIMEOUT = 5.0
@@ -103,6 +110,7 @@ class FixturePeer:
                 request_authenticator(LibranetConfig(storage=self.storage)),
                 allow_unsigned_api_reads=True,
                 config_credential=load_config_credential(LibranetConfig(storage=self.storage)),
+                node=NodeDescription(self.identity.node_id, NetworkConfig()),
             ),
             getLogger("test.webserver"),
             MessageSigner(self.identity),

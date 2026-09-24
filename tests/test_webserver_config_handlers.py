@@ -14,6 +14,7 @@ from queue import Empty, Queue
 from pytest import fixture, mark
 
 from libranet.cas.content_id import ContentId
+from libranet.config.models import NetworkConfig
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
@@ -32,7 +33,9 @@ from libranet.webserver.config_handlers import (
     BACKUPS_PATH,
     CONFIG_API_PATH,
     MAX_CONFIG_BODY_BYTES,
+    NODE_PATH,
     RESTORES_PATH,
+    NodeDescription,
     config_routes,
 )
 from libranet.webserver.config_requests import BackupJobRequest, RestoreRequest
@@ -50,6 +53,8 @@ WIKI_PATH = f"{APPLICATIONS_PATH}/wiki"
 APP_BUNDLE = ContentId.for_data(b"an application's bundle", "sha256")
 JOB_ENTRY = {"job_id": JOB_ID, "directory": DIRECTORY, "state": "idle"}
 RESTORE_ENTRY = {"restore_id": RESTORE_ID, "directory": DIRECTORY, "state": "running"}
+NODE_ID = ContentId.for_data(b"this node's public key", "sha256")
+NETWORK = NetworkConfig(listen_address="0.0.0.0", listen_port=8080, external_port=4300)
 
 
 @fixture
@@ -72,7 +77,9 @@ def router(queues: ModuleQueues, state: BackupState, registry: ApplicationRegist
     publish = StubModule(ModuleName.WEBSERVER, queues).publish
     router = Router()
 
-    for method, pattern, handler in config_routes(publish, state, registry, RETRY_AFTER_SECONDS):
+    for method, pattern, handler in config_routes(
+        publish, state, registry, NodeDescription(NODE_ID, NETWORK), RETRY_AFTER_SECONDS
+    ):
         router.add(method, pattern, handler)
 
     return router
@@ -123,6 +130,7 @@ def test_the_index_names_every_endpoint(router: Router) -> None:
     assert response.status == 200
     assert isinstance(body, dict)
     assert {(entry["method"], entry["path"]) for entry in body["endpoints"]} == {
+        ("GET", "/config/api/node"),
         ("GET", "/config/api/backups"),
         ("POST", "/config/api/backups"),
         ("DELETE", "/config/api/backups/{job_id}"),
@@ -133,6 +141,20 @@ def test_the_index_names_every_endpoint(router: Router) -> None:
         ("POST", "/config/api/applications"),
         ("DELETE", "/config/api/applications/{name}"),
     }
+
+
+def test_the_node_is_described_as_it_was_started(router: Router, queues: ModuleQueues) -> None:
+    response = router.dispatch(request("GET", NODE_PATH))
+
+    assert response.status == 200
+    assert json_body(response) == {
+        "node_id": str(NODE_ID),
+        "listen_address": "0.0.0.0",
+        "listen_port": 8080,
+        # With no external address, `localhost` means the address a peer reached it at.
+        "advertised_endpoint": "http://localhost:4300",
+    }
+    assert published(queues) == []
 
 
 def test_configuring_a_job_publishes_it_and_answers_with_its_name(
@@ -277,6 +299,7 @@ def test_reading_state_back_publishes_nothing(
         ("GET", JOB_PATH),
         ("DELETE", RESTORES_PATH),
         ("POST", CONFIG_API_PATH),
+        ("POST", NODE_PATH),
         ("PUT", APPLICATIONS_PATH),
         ("GET", WIKI_PATH),
     ],

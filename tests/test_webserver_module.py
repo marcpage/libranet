@@ -266,6 +266,19 @@ def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: P
         assert load_config_credential(config).captured
         assert _authorized(host, port, "/config/api", user="someone else")[0] == 401
 
+        # The page, and what the node is, as the module was started with it.
+        assert _authorized(host, port, "/config")[1].startswith(b"<!doctype html>")
+        status, body = _authorized(host, port, "/config/api/node")
+        assert (status, loads(body)) == (
+            200,
+            {
+                "node_id": str(load_node_identity(config).node_id),
+                "listen_address": "127.0.0.1",
+                "listen_port": port,
+                "advertised_endpoint": f"http://localhost:{port}",
+            },
+        )
+
         # Nothing is readable back until the backup module reports.
         assert _authorized(host, port, "/config/api/backups")[0] == 503
 

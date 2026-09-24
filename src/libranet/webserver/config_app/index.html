@@ -1,0 +1,853 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Libranet node administration</title>
+<style>
+  :root {
+    --background: #f6f6f4;
+    --surface: #ffffff;
+    --text: #1d1d1b;
+    --muted: #5d5d58;
+    --border: #d8d8d2;
+    --accent: #2a5db0;
+    --accent-text: #ffffff;
+    --good: #1f7a3d;
+    --busy: #8a5a00;
+    --bad: #b3261e;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --background: #161615;
+      --surface: #1f1f1d;
+      --text: #ececea;
+      --muted: #a8a8a2;
+      --border: #3a3a36;
+      --accent: #7ea9f0;
+      --accent-text: #0e1a2e;
+      --good: #6cc98a;
+      --busy: #e0b04f;
+      --bad: #f2877e;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  header, main, footer { max-width: 76rem; margin: 0 auto; padding: 0 1rem; }
+  header { padding-top: 1.5rem; }
+  h1 { font-size: 1.5rem; margin: 0; }
+  h2 { font-size: 1.15rem; margin: 0 0 0.35rem; }
+  h3 { font-size: 1rem; margin: 0 0 0.5rem; }
+  a { color: var(--accent); }
+
+  section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin: 1.25rem 0;
+  }
+
+  .subtitle, .hint { color: var(--muted); }
+  .subtitle { margin: 0.25rem 0 0; }
+  .hint { margin: 0 0 0.75rem; }
+  .state, .result { margin: 0.5rem 0; }
+  .error, .error-text { color: var(--bad); }
+  .error-text { font-size: 0.9em; }
+
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em; }
+
+  /* A content id: one click selects all of it, and a copy is whole however it is cut short. */
+  .id {
+    display: inline-block;
+    max-width: 15rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+    user-select: all;
+  }
+
+  .id.whole { max-width: none; white-space: normal; word-break: break-all; }
+
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.35rem 1.25rem; margin: 0; }
+  dt { color: var(--muted); }
+  dd { margin: 0; }
+
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-size: 0.85rem; font-weight: 600; color: var(--muted); }
+  td.number { font-variant-numeric: tabular-nums; }
+  td.actions { white-space: nowrap; text-align: right; }
+  td.actions button { margin-left: 0.3rem; padding: 0.2rem 0.55rem; font-size: 0.85rem; }
+
+  .status { font-weight: 600; }
+  .status-waiting { color: var(--muted); }
+  .status-running { color: var(--busy); }
+  .status-done { color: var(--good); }
+  .status-failed { color: var(--bad); }
+
+  form { border-top: 1px solid var(--border); margin-top: 1rem; padding-top: 1rem; }
+  .fields { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end; margin-bottom: 0.5rem; }
+  label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; color: var(--muted); }
+  label.wide { flex: 1 1 22rem; }
+
+  input, select {
+    font: inherit;
+    color: var(--text);
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.4rem 0.55rem;
+  }
+
+  button {
+    font: inherit;
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    padding: 0.4rem 0.9rem;
+    background: var(--accent);
+    color: var(--accent-text);
+    cursor: pointer;
+  }
+
+  button.secondary { background: transparent; color: var(--accent); }
+  button.danger { background: transparent; color: var(--bad); border-color: var(--bad); }
+  button:disabled { opacity: 0.6; cursor: progress; }
+
+  footer { color: var(--muted); font-size: 0.85rem; padding-bottom: 2rem; }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Libranet node</h1>
+  <p class="subtitle">Administration, served only to this machine.</p>
+</header>
+
+<main>
+  <noscript>
+    <section><p>This page needs JavaScript. The endpoints it uses are listed at
+    <a href="/config/api">/config/api</a>.</p></section>
+  </noscript>
+
+  <section aria-labelledby="node-heading">
+    <h2 id="node-heading">This node</h2>
+    <p class="state" id="node-state">Loading…</p>
+    <dl id="node-details" hidden>
+      <dt>Identity</dt>
+      <dd><code class="id whole" id="node-id"></code></dd>
+      <dt>Listens on</dt>
+      <dd id="node-listen"></dd>
+      <dt>Advertises</dt>
+      <dd id="node-advertised"></dd>
+    </dl>
+  </section>
+
+  <section aria-labelledby="applications-heading">
+    <h2 id="applications-heading">Applications</h2>
+    <p class="hint">Each serves a directory bundle as a website at <code>/{name}/</code>. The
+    root application, named <code>/</code>, also answers every path no other one claims.</p>
+    <p class="state" id="applications-state">Loading…</p>
+    <div class="table-wrap">
+      <table id="applications-table" aria-labelledby="applications-heading" hidden>
+        <thead>
+          <tr>
+            <th scope="col">Served at</th>
+            <th scope="col">Bundle</th>
+            <th scope="col"><span class="visually-hidden">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="result" id="applications-message" role="status" hidden></p>
+    <form id="application-form">
+      <h3>Register an application</h3>
+      <div class="fields">
+        <label>Name
+          <input id="application-name" required autocomplete="off" spellcheck="false"
+                 placeholder="wiki, or / for the root">
+        </label>
+        <label class="wide">Bundle
+          <input id="application-bundle" required autocomplete="off" spellcheck="false"
+                 placeholder="sha256/…">
+        </label>
+        <button type="submit">Register</button>
+      </div>
+      <p class="hint">A name already registered, however it is cased, serves the new bundle
+      instead.</p>
+      <p class="result" role="status" hidden></p>
+    </form>
+  </section>
+
+  <section aria-labelledby="backups-heading">
+    <h2 id="backups-heading">Backup jobs</h2>
+    <p class="hint">Each keeps a directory on this machine backed up into the network as an
+    encrypted bundle.</p>
+    <p class="state" id="backups-state">Loading…</p>
+    <div class="table-wrap">
+      <table id="backups-table" aria-labelledby="backups-heading" hidden>
+        <thead>
+          <tr>
+            <th scope="col">Directory</th>
+            <th scope="col">Status</th>
+            <th scope="col">Every</th>
+            <th scope="col">Last looked</th>
+            <th scope="col">Backed up</th>
+            <th scope="col">Bundle</th>
+            <th scope="col">Skipped</th>
+            <th scope="col"><span class="visually-hidden">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="result" id="backups-message" role="status" hidden></p>
+    <form id="backup-form">
+      <h3>Back up a directory</h3>
+      <div class="fields">
+        <label class="wide">Directory
+          <input id="backup-directory" required autocomplete="off" spellcheck="false"
+                 placeholder="/home/alice/notes">
+        </label>
+        <label>Look every (seconds)
+          <input id="backup-interval" type="number" min="1" step="any" placeholder="default">
+        </label>
+        <button type="submit">Add job</button>
+      </div>
+      <p class="hint">The directory must be an absolute path. Adding one again sets how often
+      it is looked at, and keeps its backups.</p>
+      <p class="result" role="status" hidden></p>
+    </form>
+  </section>
+
+  <section aria-labelledby="restores-heading">
+    <h2 id="restores-heading">Restores</h2>
+    <p class="hint">Each rebuilds a backup bundle into a directory, fetching from peers whatever
+    this node lacks. They are forgotten when the node restarts.</p>
+    <p class="state" id="restores-state">Loading…</p>
+    <div class="table-wrap">
+      <table id="restores-table" aria-labelledby="restores-heading" hidden>
+        <thead>
+          <tr>
+            <th scope="col">Bundle</th>
+            <th scope="col">Directory</th>
+            <th scope="col">If not empty</th>
+            <th scope="col">Status</th>
+            <th scope="col">Requested</th>
+            <th scope="col">Finished</th>
+            <th scope="col">Progress</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <form id="restore-form">
+      <h3>Restore a backup</h3>
+      <div class="fields">
+        <label class="wide">Bundle
+          <input id="restore-bundle" required autocomplete="off" spellcheck="false"
+                 placeholder="sha256/…">
+        </label>
+        <label class="wide">Into directory
+          <input id="restore-directory" required autocomplete="off" spellcheck="false"
+                 placeholder="/home/alice/restored">
+        </label>
+        <label>If the directory is not empty
+          <select id="restore-conflict">
+            <option value="refuse">Refuse</option>
+            <option value="overwrite">Overwrite</option>
+          </select>
+        </label>
+        <button type="submit">Restore</button>
+      </div>
+      <p class="result" role="status" hidden></p>
+    </form>
+  </section>
+</main>
+
+<footer>
+  <p>Scripts use the same endpoints as this page. <a href="/config/api">/config/api</a> lists
+  them.</p>
+</footer>
+
+<script>
+"use strict";
+
+// Everything this page reads or changes is beneath here.
+const API = "/config/api";
+
+// How often a list that changes on its own is read again.
+const REFRESH_SECONDS = 5;
+
+// How long after asking for a change to read back what came of it.
+const SOON_SECONDS = 1;
+
+const STATUSES = new Set(["waiting", "running", "done", "failed"]);
+
+function byId(id) {
+  return document.getElementById(id);
+}
+
+function make(tag, text, className) {
+  const node = document.createElement(tag);
+
+  if (text !== undefined && text !== null) {
+    node.textContent = String(text);
+  }
+
+  if (className) {
+    node.className = className;
+  }
+
+  return node;
+}
+
+function cell(...children) {
+  const node = make("td");
+  node.append(...children);
+  return node;
+}
+
+function contentId(id) {
+  const node = make("code", id, "id");
+  node.title = id;
+  return node;
+}
+
+function show(element, message, isError = false) {
+  element.textContent = message;
+  element.classList.toggle("error", isError);
+  element.hidden = !message;
+}
+
+function formatTime(seconds) {
+  return typeof seconds === "number" ? new Date(seconds * 1000).toLocaleString() : "—";
+}
+
+function formatDuration(seconds) {
+  if (typeof seconds !== "number") {
+    return "—";
+  }
+
+  for (const [unit, size] of [["d", 86400], ["h", 3600], ["min", 60]]) {
+    if (seconds >= size && seconds % size === 0) {
+      return `${seconds / size} ${unit}`;
+    }
+  }
+
+  return `${seconds} s`;
+}
+
+function formatCount(count) {
+  return typeof count === "number" ? String(count) : "—";
+}
+
+function status(value) {
+  const known = STATUSES.has(value);
+  return make("span", known ? value : "unknown", known ? `status status-${value}` : "status");
+}
+
+// One request to the node. `value` is the body read as JSON, or null.
+async function call(method, path, body) {
+  const init = { method, cache: "no-store", headers: {} };
+
+  if (body !== undefined) {
+    init.headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(body);
+  }
+
+  const response = await fetch(API + path, init);
+  const text = await response.text();
+  let value = null;
+
+  try {
+    value = text ? JSON.parse(text) : null;
+  } catch (error) {
+    value = null;
+  }
+
+  return { status: response.status, ok: response.ok, headers: response.headers, value };
+}
+
+// What to tell the administrator about a response that is not what was asked for.
+function failure(result) {
+  if (result.status === 401) {
+    return "The node did not accept this page's credentials. Reload the page to sign in again.";
+  }
+
+  const problem = result.value || {};
+  return problem.detail || problem.title || `The node answered ${result.status}.`;
+}
+
+function unreachable(error) {
+  return `The node could not be reached: ${error.message}`;
+}
+
+function retryAfter(headers) {
+  const seconds = Number.parseInt(headers.get("Retry-After") || "", 10);
+  return Number.isFinite(seconds) && seconds >= 0 ? Math.max(seconds, 1) : REFRESH_SECONDS;
+}
+
+// Runs `action` with `control` disabled, and says what it returned in `message`.
+// An action returns [text, isError], or nothing if it was called off.
+async function perform(control, message, action) {
+  control.disabled = true;
+
+  try {
+    const outcome = await action();
+
+    if (outcome) {
+      show(message, ...outcome);
+    }
+  } catch (error) {
+    show(message, unreachable(error), true);
+  } finally {
+    control.disabled = false;
+  }
+}
+
+function button(label, description, className, message, action) {
+  const node = make("button", label, className);
+  node.type = "button";
+  node.setAttribute("aria-label", description);
+  node.addEventListener("click", () => perform(node, message, action));
+  return node;
+}
+
+function onSubmit(form, action) {
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    perform(form.querySelector("button[type=submit]"), form.querySelector(".result"), action);
+  });
+}
+
+// A table read from one endpoint, which says so when the list is not known yet,
+// rather than showing it empty.
+class ListView {
+  constructor({ path, table, state, entries, row, empty, unknown, refresh }) {
+    this.path = path;
+    this.table = table;
+    this.state = state;
+    this.entries = entries;
+    this.row = row;
+    this.empty = empty;
+    this.unknown = unknown;
+    this.refresh = refresh;
+    this.timer = null;
+    this.dueAt = 0;
+    this.sequence = 0;
+    this.overdue = false;
+  }
+
+  async load() {
+    clearTimeout(this.timer);
+    this.timer = null;
+    this.overdue = false;
+    const sequence = ++this.sequence;
+    let result;
+
+    try {
+      result = await call("GET", this.path);
+    } catch (error) {
+      if (sequence === this.sequence) {
+        this.fail(unreachable(error));
+        this.schedule(REFRESH_SECONDS);
+      }
+
+      return;
+    }
+
+    // A later read has begun, and what it finds is newer.
+    if (sequence !== this.sequence) {
+      return;
+    }
+
+    if (result.status === 503 && this.unknown) {
+      const seconds = retryAfter(result.headers);
+      this.table.hidden = true;
+      show(this.state, `${this.unknown} Asking again in ${seconds} s.`);
+      this.schedule(seconds);
+      return;
+    }
+
+    const entries = result.ok ? this.entries(result.value) : null;
+
+    if (entries === null) {
+      this.fail(result.ok ? "The node's answer is not a list this page can show." : failure(result));
+
+      // Credentials the node refuses stay refused until the page is reloaded.
+
+      if (result.status !== 401) {
+        this.schedule(REFRESH_SECONDS);
+      }
+
+      return;
+    }
+
+    this.table.tBodies[0].replaceChildren(...entries.map((entry) => this.row(entry)));
+    this.table.hidden = entries.length === 0;
+    show(this.state, entries.length === 0 ? this.empty : "");
+
+    if (this.refresh) {
+      this.schedule(this.refresh);
+    }
+  }
+
+  fail(message) {
+    this.table.hidden = true;
+    show(this.state, message, true);
+  }
+
+  // Reads the list again in `seconds`, unless a read is already due sooner.
+  schedule(seconds) {
+    const dueAt = Date.now() + seconds * 1000;
+
+    if (this.timer !== null && this.dueAt <= dueAt) {
+      return;
+    }
+
+    clearTimeout(this.timer);
+    this.dueAt = dueAt;
+    this.timer = setTimeout(() => {
+      this.timer = null;
+
+      if (document.hidden) {
+        this.overdue = true;
+      } else {
+        this.load();
+      }
+    }, seconds * 1000);
+  }
+
+  resume() {
+    if (this.overdue) {
+      this.load();
+    }
+  }
+}
+
+function arrayOf(field) {
+  return (value) => (value && Array.isArray(value[field]) ? value[field] : null);
+}
+
+// ---- This node ----
+
+function listenText(address, port) {
+  const host = String(address).includes(":") ? `[${address}]` : address;
+  const everywhere = address === "0.0.0.0" || address === "::";
+  return `${host}:${port}${everywhere ? " (every interface)" : ""}`;
+}
+
+function isLocalhost(endpoint) {
+  try {
+    return new URL(endpoint).hostname === "localhost";
+  } catch (error) {
+    return false;
+  }
+}
+
+async function loadNode() {
+  const state = byId("node-state");
+  let result;
+
+  try {
+    result = await call("GET", "/node");
+  } catch (error) {
+    show(state, unreachable(error), true);
+    return;
+  }
+
+  if (!result.ok || !result.value) {
+    show(state, failure(result), true);
+    return;
+  }
+
+  const node = result.value;
+  const advertised = byId("node-advertised");
+  byId("node-id").textContent = node.node_id;
+  byId("node-listen").textContent = listenText(node.listen_address, node.listen_port);
+  advertised.replaceChildren(make("code", node.advertised_endpoint));
+
+  if (isLocalhost(node.advertised_endpoint)) {
+    const meaning = "Peers are told to use whichever address they reached this node at.";
+    advertised.append(make("div", meaning, "hint"));
+  }
+
+  show(state, "");
+  byId("node-details").hidden = false;
+}
+
+// ---- Applications ----
+
+const applicationsMessage = byId("applications-message");
+
+function servedAt(name) {
+  return name === "/" ? "/" : `/${name}/`;
+}
+
+function applicationRow([name, bundle]) {
+  const path = servedAt(name);
+  const link = make("a", path);
+  link.href = name === "/" ? "/" : `/${encodeURIComponent(name)}/`;
+  const row = make("tr");
+  const actions = cell(
+    button("Remove", `Stop serving ${path}`, "danger", applicationsMessage, () =>
+      removeApplication(name, path),
+    ),
+  );
+  actions.className = "actions";
+  row.append(cell(link, name === "/" ? " (root)" : ""), cell(contentId(bundle)), actions);
+  return row;
+}
+
+async function removeApplication(name, path) {
+  if (!confirm(`Stop serving ${path}?`)) {
+    return null;
+  }
+
+  const result = await call("DELETE", `/applications/${encodeURIComponent(name)}`);
+  applications.load();
+  return result.ok ? [`${path} is no longer served.`, false] : [failure(result), true];
+}
+
+const applications = new ListView({
+  path: "/applications",
+  table: byId("applications-table"),
+  state: byId("applications-state"),
+  entries: (value) =>
+    value && value.applications && typeof value.applications === "object"
+      ? Object.entries(value.applications).sort(([one], [other]) => one.localeCompare(other))
+      : null,
+  row: applicationRow,
+  empty: "No applications are registered.",
+});
+
+onSubmit(byId("application-form"), async () => {
+  const request = {
+    name: byId("application-name").value.trim(),
+    bundle: byId("application-bundle").value.trim(),
+  };
+  const result = await call("POST", "/applications", request);
+
+  if (!result.ok) {
+    return [failure(result), true];
+  }
+
+  byId("application-form").reset();
+  applications.load();
+  return [`${servedAt(result.value.name)} now serves ${result.value.bundle}.`, false];
+});
+
+// ---- Backup jobs ----
+
+const backupsMessage = byId("backups-message");
+
+function jobRow(job) {
+  const statusCell = cell(status(job.status));
+
+  if (job.error) {
+    statusCell.append(make("div", job.error, "error-text"));
+  }
+
+  const directory = job.directory;
+  const actions = cell(
+    button("Back up now", `Back up ${directory} now`, "secondary", backupsMessage, () =>
+      runJob(job),
+    ),
+  );
+
+  if (job.bundle) {
+    const description = `Restore the latest backup of ${directory}`;
+    actions.append(
+      button("Restore…", description, "secondary", backupsMessage, () => prepareRestore(job)),
+    );
+  }
+
+  actions.append(
+    button("Remove", `Stop backing up ${directory}`, "danger", backupsMessage, () =>
+      removeJob(job),
+    ),
+  );
+  actions.className = "actions";
+  const row = make("tr");
+  row.append(
+    make("td", job.directory),
+    statusCell,
+    make("td", formatDuration(job.interval_seconds)),
+    make("td", formatTime(job.checked_at)),
+    make("td", formatTime(job.backed_up_at)),
+    job.bundle ? cell(contentId(job.bundle)) : make("td", "—"),
+    make("td", formatCount(job.skipped), "number"),
+    actions,
+  );
+  return row;
+}
+
+async function runJob(job) {
+  const result = await call("POST", `/backups/${encodeURIComponent(job.job_id)}/run`);
+
+  if (!result.ok) {
+    return [failure(result), true];
+  }
+
+  backups.schedule(SOON_SECONDS);
+  return [`A backup of ${job.directory} was asked for.`, false];
+}
+
+async function removeJob(job) {
+  const latest = job.bundle
+    ? ` This node forgets its latest backup, ${job.bundle}, so note it first if you may restore it.`
+    : "";
+
+  if (!confirm(`Stop backing up ${job.directory}?${latest}`)) {
+    return null;
+  }
+
+  const result = await call("DELETE", `/backups/${encodeURIComponent(job.job_id)}`);
+
+  if (!result.ok) {
+    return [failure(result), true];
+  }
+
+  backups.schedule(SOON_SECONDS);
+  return [`${job.directory} will no longer be backed up.`, false];
+}
+
+function prepareRestore(job) {
+  const directory = byId("restore-directory");
+  byId("restore-bundle").value = job.bundle;
+  directory.focus();
+  directory.scrollIntoView({ block: "center" });
+  return [`The restore form below now names the latest backup of ${job.directory}.`, false];
+}
+
+const backups = new ListView({
+  path: "/backups",
+  table: byId("backups-table"),
+  state: byId("backups-state"),
+  entries: arrayOf("jobs"),
+  row: jobRow,
+  empty: "No backup jobs are configured.",
+  unknown:
+    "The backup module has not reported yet, so which jobs are configured is not known. " +
+    "That does not mean there are none.",
+  refresh: REFRESH_SECONDS,
+});
+
+onSubmit(byId("backup-form"), async () => {
+  const request = { directory: byId("backup-directory").value };
+  const interval = byId("backup-interval").value;
+
+  if (interval !== "") {
+    request.interval_seconds = Number(interval);
+  }
+
+  const result = await call("POST", "/backups", request);
+
+  if (!result.ok) {
+    return [failure(result), true];
+  }
+
+  byId("backup-form").reset();
+  backups.schedule(SOON_SECONDS);
+  return [`${request.directory} will be backed up, as job ${result.value.job_id}.`, false];
+});
+
+// ---- Restores ----
+
+function restoreRow(restore) {
+  const statusCell = cell(status(restore.status));
+
+  if (restore.error) {
+    statusCell.append(make("div", restore.error, "error-text"));
+  }
+
+  const progress =
+    `${formatCount(restore.restored)} restored, ${formatCount(restore.skipped)} skipped, ` +
+    `waiting on ${formatCount(restore.missing)}`;
+  const row = make("tr");
+  row.append(
+    cell(contentId(restore.bundle)),
+    make("td", restore.directory),
+    make("td", restore.on_conflict === "overwrite" ? "Overwrite" : "Refuse"),
+    statusCell,
+    make("td", formatTime(restore.requested_at)),
+    make("td", formatTime(restore.finished_at)),
+    make("td", progress),
+  );
+  return row;
+}
+
+const restores = new ListView({
+  path: "/restores",
+  table: byId("restores-table"),
+  state: byId("restores-state"),
+  entries: arrayOf("restores"),
+  row: restoreRow,
+  empty: "No restores have been requested since the node started.",
+  unknown:
+    "The backup module has not reported yet, so which restores were requested is not known.",
+  refresh: REFRESH_SECONDS,
+});
+
+onSubmit(byId("restore-form"), async () => {
+  const request = {
+    bundle: byId("restore-bundle").value.trim(),
+    directory: byId("restore-directory").value,
+    on_conflict: byId("restore-conflict").value,
+  };
+
+  if (
+    request.on_conflict === "overwrite" &&
+    !confirm(`Overwrite what ${request.directory} holds with the backup's files?`)
+  ) {
+    return null;
+  }
+
+  const result = await call("POST", "/restores", request);
+
+  if (!result.ok) {
+    return [failure(result), true];
+  }
+
+  byId("restore-form").reset();
+  restores.schedule(SOON_SECONDS);
+  return [`Restore ${result.value.restore_id} was requested.`, false];
+});
+
+// ---- Start ----
+
+const views = [applications, backups, restores];
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) {
+    views.forEach((view) => view.resume());
+  }
+});
+
+loadNode();
+views.forEach((view) => view.load());
+</script>
+</body>
+</html>

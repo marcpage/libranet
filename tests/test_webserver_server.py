@@ -23,7 +23,7 @@ from libranet.cas.archive import ArchiveSink, ArchiveSource
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
 from libranet.cas.store import CasStore, node_store, source_of_truth_store
-from libranet.config.models import LibranetConfig, StorageConfig
+from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
 from libranet.identity.authentication import request_authenticator
 from libranet.identity.content_digest import CONTENT_DIGEST_HEADER
 from libranet.identity.errors import InvalidSignatureError, UnknownKeyError
@@ -50,6 +50,8 @@ from libranet.validator.module import ValidatorModule
 from libranet.webserver.app_registry import Application, ApplicationRegistry
 from libranet.webserver.config_auth import CONFIG_REALM
 from libranet.webserver.config_credential import ConfigCredential, load_config_credential
+from libranet.webserver.config_handlers import NodeDescription
+from libranet.webserver.config_page import HTML_CONTENT_TYPE, ConfigPageHandler
 from libranet.webserver.http_types import Request, RequestBody, Response
 from libranet.webserver.server import REQUEST_PATH_HEADER, LibranetHTTPServer, build_router
 
@@ -59,6 +61,7 @@ MISSING_ID = ContentId.for_data(b"not stored", "sha256")
 RETRY_AFTER_SECONDS = 7
 APP_BUNDLE_ID = ContentId.for_data(b"an application's directory bundle", "sha256")
 SERVER_IDENTITY = NodeIdentity.from_private_key(generate_private_key(), "sha256")
+SERVER_NODE = NodeDescription(SERVER_IDENTITY.node_id, NetworkConfig())
 
 
 @fixture
@@ -133,6 +136,7 @@ def server(
             request_authenticator(LibranetConfig(storage=storage)),
             allow_unsigned_api_reads=allow_unsigned_api_reads,
             config_credential=credential,
+            node=SERVER_NODE,
         ),
         getLogger("test.webserver"),
         MessageSigner(SERVER_IDENTITY),
@@ -344,6 +348,7 @@ def test_data_and_search_read_content_archives(
             request_authenticator(LibranetConfig(storage=storage)),
             allow_unsigned_api_reads=True,
             config_credential=credential,
+            node=SERVER_NODE,
             content=LayeredSource(store, [archive]),
         )
         data = router.dispatch(Request("GET", f"/data/{archived}", client_address="127.0.0.1"))
@@ -1153,13 +1158,60 @@ def test_a_remote_config_request_is_refused_before_it_can_capture_anything(
     assert _published(queues) == []
 
 
-def test_the_config_index_and_endpoints_moved_beneath_config_api(
+def test_the_config_page_is_served_at_config_and_every_path_beneath_it(
+    connection: HTTPConnection, queues: ModuleQueues
+) -> None:
+    page = ConfigPageHandler.packaged().page
+
+    # Where the endpoints were before they moved beneath /config/api, too.
+    for path in ("/config", "/config/", "/config/backups", "/config/restores/a/b"):
+        response, body = _config(connection, path, headers=_credentials())
+
+        assert response.status == 200
+        assert response.getheader("Content-Type") == HTML_CONTENT_TYPE
+        assert body == page
+
+    assert _published(queues) == []
+
+
+def test_a_config_api_path_no_endpoint_serves_is_not_the_page(
     connection: HTTPConnection,
 ) -> None:
-    for path in ("/config", "/config/backups", "/config/restores"):
-        response, _ = _config(connection, path, headers=_credentials())
+    response, body = _config(connection, "/config/api/unknown", headers=_credentials())
 
-        assert response.status == 404
+    assert response.status == 404
+    assert response.getheader("Content-Type") == PROBLEM_CONTENT_TYPE
+    assert loads(body)["instance"] == "/config/api/unknown"
+
+
+def test_the_node_is_described_as_it_was_started(connection: HTTPConnection) -> None:
+    response, body = _config(connection, "/config/api/node", headers=_credentials())
+
+    assert response.status == 200
+    assert loads(body) == SERVER_NODE.value()
+    assert loads(body)["node_id"] == str(SERVER_IDENTITY.node_id)
+
+
+@mark.parametrize(
+    "client_address, headers, status",
+    [("203.0.113.42", _credentials(), 403), ("127.0.0.1", {}, 401)],
+)
+def test_the_config_page_is_served_only_to_an_authenticated_local_client(
+    server: LibranetHTTPServer,
+    credential: ConfigCredential,
+    client_address: str,
+    headers: dict[str, str],
+    status: int,
+) -> None:
+    # The live server only ever sees loopback clients, so the requests are put
+    # to the router directly.
+    response = server.router.dispatch(
+        Request("GET", "/config", headers=headers, client_address=client_address)
+    )
+
+    assert response.status == status
+    assert response.headers["Content-Type"] == PROBLEM_CONTENT_TYPE
+    assert not credential.captured
 
 
 def test_an_application_registered_through_config_is_served_at_once(

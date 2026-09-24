@@ -18,7 +18,7 @@ from libranet.cas.archive import ArchiveSink
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.store import CasStore, source_of_truth_store
-from libranet.config.models import LibranetConfig, StorageConfig
+from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
 from libranet.eviction.priority import held_objects
 from libranet.identity.authentication import request_authenticator
 from libranet.messaging.envelope import Message, make_message
@@ -32,6 +32,7 @@ from libranet.unbundler.resolved_files import ResolvedFiles
 from libranet.webserver.http_types import Request
 from libranet.webserver.app_registry import Application, ApplicationRegistry
 from libranet.webserver.config_credential import load_config_credential
+from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.server import build_router
 
 INDEX = b"<html>home</html>"
@@ -494,6 +495,7 @@ def test_the_web_server_serves_what_the_unbundler_resolves(
         request_authenticator(LibranetConfig(storage=storage)),
         allow_unsigned_api_reads=True,
         config_credential=load_config_credential(LibranetConfig(storage=storage)),
+        node=NodeDescription(ContentId.for_data(b"a node's public key", "sha256"), NetworkConfig()),
     )
     browse = Request("GET", "/wiki/docs/guide.html", client_address="127.0.0.1")
 
