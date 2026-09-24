@@ -1,4 +1,8 @@
-"""Tests for the applications shipped with the node, and the root page among them."""
+"""Tests for the applications shipped with the node, and the root page among them.
+
+Which way they were shipped, built into a wheel or run from source, is known
+only to the layered source, and is tested through it.
+"""
 
 from __future__ import annotations
 from io import BytesIO
@@ -25,6 +29,7 @@ from libranet.bundle.loading import load_bundle
 from libranet.bundle.reassembly import write_file
 from libranet.bundle.shapes import DirectoryBundle, DirectoryMarker, FileBundle, Metadata, Symlink
 from libranet.cas.content_id import ContentId
+from libranet.cas.errors import ArchiveError
 from libranet.cas.layered import LayeredSource
 from libranet.cas.store import source_of_truth_store
 from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
@@ -45,7 +50,7 @@ ROOT_PAGE_SOURCE = PACKAGED_APPLICATIONS / "root" / "index.html"
 
 
 @fixture(scope="module")
-def shipped() -> PackagedApplications:
+def built() -> PackagedApplications:
     return PackagedApplications.build()
 
 
@@ -55,15 +60,15 @@ def storage(tmp_path: Path) -> StorageConfig:
 
 
 @fixture
-def content(shipped: PackagedApplications, storage: StorageConfig) -> Iterator[LayeredSource]:
-    """An empty source of truth, then every archive, then the applications shipped."""
-    with shipped.open_content(storage) as source:
+def content(storage: StorageConfig) -> Iterator[LayeredSource]:
+    """An empty source of truth, then every archive, then the applications, run from source."""
+    with LayeredSource.open(storage) as source:
         yield source
 
 
 @fixture
-def root_bundle(shipped: PackagedApplications) -> ContentId:
-    return shipped.bundles[ROOT_APPLICATION]
+def root_bundle(built: PackagedApplications) -> ContentId:
+    return built.bundles[ROOT_APPLICATION]
 
 
 @fixture
@@ -100,16 +105,16 @@ def published(queues: ModuleQueues) -> list[Message]:
             return messages
 
 
-def test_the_node_ships_the_root_application_alone(shipped: PackagedApplications) -> None:
-    assert set(SHIPPED_APPLICATIONS) == set(shipped.bundles) == {ROOT_APPLICATION}
+def test_the_node_ships_the_root_application_alone(built: PackagedApplications) -> None:
+    assert set(SHIPPED_APPLICATIONS) == set(built.bundles) == {ROOT_APPLICATION}
 
 
-def test_every_process_builds_the_same_applications(shipped: PackagedApplications) -> None:
-    assert PackagedApplications.build() == shipped
+def test_every_build_is_the_same(built: PackagedApplications) -> None:
+    assert PackagedApplications.build() == built
 
 
 def test_times_permissions_and_hidden_files_leave_the_content_id_alone(
-    tmp_path: Path, shipped: PackagedApplications
+    tmp_path: Path, built: PackagedApplications
 ) -> None:
     applications = shipped_copy(tmp_path)
     page = applications / "root" / "index.html"
@@ -119,7 +124,7 @@ def test_times_permissions_and_hidden_files_leave_the_content_id_alone(
     (applications / "root" / ".hidden").mkdir()
     (applications / "root" / ".hidden" / "notes.txt").write_bytes(b"not shipped")
 
-    assert PackagedApplications.build(applications).bundles == shipped.bundles
+    assert PackagedApplications.build(applications).bundles == built.bundles
 
 
 def test_a_bundle_records_only_what_a_files_bytes_decide(
@@ -145,21 +150,20 @@ def test_an_empty_directory_and_a_symlink_are_kept_without_times(
     applications = shipped_copy(tmp_path)
     (applications / "root" / "empty").mkdir()
     symlink("index.html", applications / "root" / "home.html")
-    built = PackagedApplications.build(applications)
 
-    with built.open_content(storage) as content:
-        bundle = load_bundle(built.bundles[ROOT_APPLICATION], content)
+    with LayeredSource.open(storage, tmp_path / "no-archives", applications) as content:
+        bundle = load_bundle(content.applications[ROOT_APPLICATION], content)
 
     assert isinstance(bundle, DirectoryBundle)
     assert bundle.entries["empty"] == DirectoryMarker()
     assert bundle.entries["home.html"] == Symlink("index.html")
 
 
-def test_a_changed_page_is_a_new_bundle(tmp_path: Path, shipped: PackagedApplications) -> None:
+def test_a_changed_page_is_a_new_bundle(tmp_path: Path, built: PackagedApplications) -> None:
     applications = shipped_copy(tmp_path)
     (applications / "root" / "index.html").write_bytes(b"<!doctype html><p>changed</p>")
 
-    assert PackagedApplications.build(applications).bundles != shipped.bundles
+    assert PackagedApplications.build(applications).bundles != built.bundles
 
 
 def test_an_application_that_cannot_be_built_whole_is_an_error(tmp_path: Path) -> None:
@@ -175,46 +179,51 @@ def test_a_missing_application_is_an_error(tmp_path: Path) -> None:
         PackagedApplications.build(tmp_path, {ROOT_APPLICATION: "root"})
 
 
-def test_the_applications_are_read_after_every_archive_and_never_stored(
-    storage: StorageConfig, content: LayeredSource, root_bundle: ContentId, root_page: bytes
+def test_run_from_source_they_are_built_as_the_content_is_opened(
+    storage: StorageConfig,
+    content: LayeredSource,
+    built: PackagedApplications,
+    root_bundle: ContentId,
+    root_page: bytes,
 ) -> None:
-    assert content.archives[-1].name.startswith("the applications shipped with the node")
+    assert content.applications == built.bundles
+    assert content.archives[-1].name == (
+        "the applications shipped with the node, built from their source"
+    )
     assert content.exists(root_bundle)
     assert not source_of_truth_store(storage).exists(root_bundle)
     assert root_page == ROOT_PAGE_SOURCE.read_bytes()
 
 
-def test_run_from_source_they_are_built_from_their_directories(
-    tmp_path: Path, shipped: PackagedApplications
-) -> None:
-    assert PackagedApplications.shipped() == shipped
-    assert PackagedApplications.shipped(tmp_path / "no-archives") == shipped
-
-
-def test_a_wheel_carries_them_built_and_a_node_reads_them_from_its_archives(
-    tmp_path: Path, storage: StorageConfig, shipped: PackagedApplications, root_bundle: ContentId
+def test_a_wheel_carries_them_built_and_nothing_is_built_as_its_content_is_opened(
+    tmp_path: Path, storage: StorageConfig, built: PackagedApplications, root_bundle: ContentId
 ) -> None:
     archives = tmp_path / "archives"
-    written = shipped.write(archives)
-    from_package = PackagedApplications.shipped(archives, tmp_path / "no-sources")
+    written = built.write(archives)
 
-    assert [path.name for path in written] == [BUILT_ARCHIVE, BUILT_BUNDLES]
-    assert from_package == PackagedApplications(shipped.bundles)
-    assert from_package.archive is None
-    # The package's archives hold them, so nothing is built in memory.
-    with from_package.open_content(storage) as content:
-        assert content.archives == ()
-
-    with LayeredSource.open(storage, packaged=archives) as content:
+    # With no sources to build from, only what the wheel carries can be read.
+    with LayeredSource.open(storage, archives, tmp_path / "no-sources") as content:
+        assert [path.name for path in written] == [BUILT_ARCHIVE, BUILT_BUNDLES]
+        assert content.applications == built.bundles
         assert [archive.name for archive in content.archives] == [str(written[0])]
         assert index_page(root_bundle, content) == ROOT_PAGE_SOURCE.read_bytes()
 
 
+def test_the_file_naming_built_bundles_reads_back_as_written(
+    tmp_path: Path, built: PackagedApplications
+) -> None:
+    _, bundles = built.write(tmp_path)
+
+    assert PackagedApplications.from_value(loads(bundles.read_bytes())) == PackagedApplications(
+        built.bundles
+    )
+
+
 def test_only_applications_built_in_memory_can_be_written(
-    tmp_path: Path, shipped: PackagedApplications
+    tmp_path: Path, built: PackagedApplications
 ) -> None:
     with raises(ValueError, match="built in memory"):
-        PackagedApplications(shipped.bundles).write(tmp_path)
+        PackagedApplications(built.bundles).write(tmp_path)
 
 
 @mark.parametrize(
@@ -227,13 +236,20 @@ def test_only_applications_built_in_memory_can_be_written(
         (b"{not json", "Expecting property name"),
     ],
 )
-def test_a_file_naming_built_bundles_that_is_not_usable_is_an_error(
-    tmp_path: Path, contents: bytes, message: str
+def test_a_file_naming_built_bundles_that_is_not_usable_stops_opening(
+    tmp_path: Path, storage: StorageConfig, contents: bytes, message: str
 ) -> None:
     write_atomically(tmp_path / BUILT_BUNDLES, contents)
 
-    with raises(ValueError, match=message):
-        PackagedApplications.shipped(tmp_path)
+    with raises(ArchiveError, match=message):
+        LayeredSource.open(storage, tmp_path)
+
+
+def test_applications_that_cannot_be_built_stop_opening(
+    tmp_path: Path, storage: StorageConfig
+) -> None:
+    with raises(ArchiveError, match="applications shipped with the node are unusable"):
+        LayeredSource.open(storage, tmp_path / "no-archives", tmp_path / "no-sources")
 
 
 def test_the_root_page_is_one_self_contained_document(root_page: bytes) -> None:
@@ -272,6 +288,7 @@ def test_a_new_node_serves_the_root_page_with_nothing_in_the_cas(
         allow_unsigned_api_reads=True,
         config_credential=load_config_credential(LibranetConfig(storage=storage)),
         node=NodeDescription(ContentId.for_data(b"a node's public key", "sha256"), NetworkConfig()),
+        content=LayeredSource.open(storage),
     )
     browse = Request("GET", "/", client_address="203.0.113.42")
 
@@ -293,3 +310,17 @@ def test_a_new_node_serves_the_root_page_with_nothing_in_the_cas(
     # Nothing was stored, and the registry file was not written.
     assert not source_of_truth_store(storage).exists(root_bundle)
     assert not storage.applications_path.exists()
+
+
+def test_a_router_given_no_content_ships_no_applications(storage: StorageConfig) -> None:
+    router = build_router(
+        storage,
+        5,
+        StubModule(ModuleName.WEBSERVER, ModuleQueues(inbox=Queue(), outbox=Queue())).publish,
+        request_authenticator(LibranetConfig(storage=storage)),
+        allow_unsigned_api_reads=True,
+        config_credential=load_config_credential(LibranetConfig(storage=storage)),
+        node=NodeDescription(ContentId.for_data(b"a node's public key", "sha256"), NetworkConfig()),
+    )
+
+    assert router.dispatch(Request("GET", "/", client_address="127.0.0.1")).status == 404

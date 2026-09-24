@@ -47,12 +47,7 @@ from libranet.stats.module import StatsModule
 from libranet.supervision.stubs import StubModule
 from libranet.unbundler.resolved_files import ResolvedFiles
 from libranet.validator.module import ValidatorModule
-from libranet.webserver.app_registry import (
-    ROOT_APPLICATION,
-    Application,
-    ApplicationRegistry,
-    RegisteredApplications,
-)
+from libranet.webserver.app_registry import Application, ApplicationRegistry
 from libranet.webserver.config_auth import CONFIG_REALM
 from libranet.webserver.config_credential import ConfigCredential, load_config_credential
 from libranet.webserver.config_handlers import NodeDescription
@@ -678,7 +673,7 @@ def test_every_routed_response_is_signed_over_what_was_sent(
         lambda: _get(connection, f"/data/{CONTENT_ID}"),
         lambda: _get(connection, f"/data/{MISSING_ID}"),
         lambda: _get(connection, f"/data/search/{CONTENT_ID.hash[:4]}"),
-        lambda: _get(connection, "/data/nowhere"),
+        lambda: _get(connection, "/nowhere"),
         lambda: _get(connection, f"/data/{CONTENT_ID}", method="HEAD"),
         lambda: _put(connection, ContentId.for_data(upload, "sha256"), upload, uploader),
         lambda: _put(connection, CONTENT_ID, CONTENT, uploader),
@@ -831,8 +826,7 @@ def test_unsigned_api_reads_can_be_refused(
 
     # Refused reads were never handled: no retrieval or search was requested.
     assert _published(queues) == []
-    # A read outside /data is passed on, here to the root application.
-    assert _get(connection, "/elsewhere")[0].status == 503
+    assert _get(connection, "/elsewhere")[0].status == 404
 
 
 @mark.parametrize("allow_unsigned_api_reads", [False])
@@ -1249,15 +1243,9 @@ def test_an_application_registered_through_config_is_served_at_once(
 
     removed, _ = _config(connection, "/config/api/applications/WIKI", "DELETE", _credentials())
     gone, _ = _get(connection, "/wiki/")
-    (fallen_through,) = _published(queues)
 
-    # Its paths are the root application's once more.
     assert removed.status == 204
-    assert gone.status == 503
-    assert (fallen_through["bundle"], fallen_through["path"]) == (
-        str(RegisteredApplications.packaged().bundles[ROOT_APPLICATION]),
-        "wiki/index.html",
-    )
+    assert gone.status == 404
 
 
 @mark.parametrize(

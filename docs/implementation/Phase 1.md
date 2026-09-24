@@ -1271,7 +1271,8 @@ it is.
   (Step 34) into the package's content archives, and records its content
   id beside it. Run from its source, the package holds neither, so each
   process that reads content builds the page in memory as it starts, and
-  reads it after every archive on disk.
+  reads it after every archive on disk. The layered source is the one
+  place that knows which, and names the bundles for the registry.
 - The build is stable. Only each file's path and bytes are recorded, not
   the times and permissions an installation gives it; hidden files are
   left out; and bundle JSON is written with sorted keys and escaped to

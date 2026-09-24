@@ -8,7 +8,6 @@ from threading import Thread
 
 from pytest import fixture, mark, raises
 
-from libranet.applications.packaged import PackagedApplications
 from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
 from libranet.config.models import StorageConfig
@@ -325,10 +324,3 @@ def test_a_registry_starts_again_from_the_beginning_if_its_file_is_removed(path:
     path.unlink()
 
     assert registry.applications() == initial
-
-
-def test_the_packaged_applications_are_those_the_node_ships() -> None:
-    assert RegisteredApplications.packaged() == RegisteredApplications(
-        PackagedApplications.build().bundles
-    )
-    assert set(RegisteredApplications.packaged().bundles) == {ROOT_APPLICATION}

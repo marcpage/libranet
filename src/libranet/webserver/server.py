@@ -104,15 +104,18 @@ def build_router(
     this node is, and ``backup_state`` what the backup module last reported
     for them to read back. Applications are served as the registry in
     ``storage``'s data directory names them, which
-    ``/config/api/applications`` changes, and as the node ships them until it
-    does. ``app_outcomes`` holds what the unbundler reported for their
-    paths. ``content`` is what ``/data`` reads and searches: the source of
-    truth, and then any content archives (Step 34). It is the source of truth
-    alone if none is given.
+    ``/config/api/applications`` changes, and as ``content`` says the node
+    ships them until it does. ``app_outcomes`` holds what the unbundler
+    reported for their paths. ``content`` is what ``/data`` reads and
+    searches: the source of truth, then any content archives (Step 34), and
+    the applications the node ships (Step 37). It is the source of truth
+    alone, shipping nothing, if none is given.
     """
     store = source_of_truth_store(storage)
     content = LayeredSource(store) if content is None else content
-    registry = ApplicationRegistry(storage.applications_path, RegisteredApplications.packaged())
+    registry = ApplicationRegistry(
+        storage.applications_path, RegisteredApplications(content.applications)
+    )
     # A remote /config request is refused before its signature is checked or
     # its body read, and a local one must carry the node's credential before
     # any endpoint or signature policy sees it.

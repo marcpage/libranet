@@ -1,22 +1,14 @@
 """The applications shipped with the node (Phase 1 Step 37).
 
 Each is a directory beside this module, kept in the repository as it is
-written. Nothing built from one is kept there; it is built in one of two
-places, and a node tells which by whether its package holds the result:
-
-- A wheel carries each application built. ``hatch_build.py``, at the root of
-  the repository, builds them as the wheel is built, and adds their objects
-  to the package's content archives as ``applications.zip``, with their
-  content ids in ``applications.json`` beside it. Their directories are left
-  out of the wheel. The archive is read as any archive the package ships
-  (Step 34).
-- Run from its source, as an editable install is, the package holds neither
-  file, so each process that reads content builds the applications from
-  their directories as it starts, in memory. Their objects are read as an
-  archive's are, after every archive on disk. So a changed page is served
-  once the node restarts, with no step between.
-
-Either way their objects are never stored, handed off, or evicted.
+written. Nothing built from one is kept there. A wheel carries the
+applications built: ``hatch_build.py``, at the root of the repository,
+builds them as the wheel is built and writes them as the package's content
+archives expect (:meth:`PackagedApplications.write`), and their directories
+are left out of the wheel. Run from its source, the package holds nothing
+built, and they are built in memory instead. Which of the two a node is
+running is known only to :class:`~libranet.cas.layered.LayeredSource`,
+which reads them either way.
 
 A bundle records only what a file's path and bytes decide. The times and
 permissions a checkout or an installation gives its files are left out, as
@@ -27,9 +19,8 @@ of the same source build the same content ids, as does every process.
 
 from __future__ import annotations
 from dataclasses import dataclass
-from importlib.resources.abc import Traversable
 from io import BytesIO
-from json import dumps, loads
+from json import dumps
 from pathlib import Path
 from typing import Any, Final, Mapping
 
@@ -37,10 +28,8 @@ from libranet.atomic_file import write_atomically
 from libranet.bundle.building import build_directory
 from libranet.bundle.shapes import DirectoryBundle, DirectoryMarker, Entry, FileBundle, Metadata
 from libranet.bundle.storing import store_bundle
-from libranet.cas.archive import ArchiveSink, ArchiveSource
+from libranet.cas.archive import ArchiveSink
 from libranet.cas.content_id import ContentId
-from libranet.cas.layered import PACKAGED_ARCHIVES, LayeredSource
-from libranet.config.models import StorageConfig
 
 #: Where the applications shipped with the node are, as written.
 PACKAGED_APPLICATIONS: Final = Path(__file__).resolve().parent
@@ -58,9 +47,6 @@ BUILT_BUNDLES: Final = "applications.json"
 # What every hidden file's name begins with.
 _HIDDEN: Final = "."
 
-# How the archive of objects built in memory is named in errors.
-_ARCHIVE_NAME: Final = "the applications shipped with the node, built from their source"
-
 
 @dataclass(frozen=True)
 class PackagedApplications:
@@ -72,24 +58,6 @@ class PackagedApplications:
 
     bundles: Mapping[str, ContentId]
     archive: bytes | None = None
-
-    @classmethod
-    def shipped(
-        cls, archives: Traversable = PACKAGED_ARCHIVES, sources: Path = PACKAGED_APPLICATIONS
-    ) -> PackagedApplications:
-        """The applications as ``archives`` holds them built, or else built now from ``sources``.
-
-        Raises:
-            OSError: they were not built, and a directory could not be read.
-            ValueError: the file naming their bundles is not usable, or they
-                were not built and one cannot be built whole.
-        """
-        built = archives / BUILT_BUNDLES
-
-        if not built.is_file():
-            return cls.build(sources)
-
-        return cls.from_value(loads(built.read_bytes()))
 
     @classmethod
     def build(
@@ -144,19 +112,6 @@ class PackagedApplications:
             write_atomically(
                 directory / BUILT_BUNDLES, (dumps(self.value(), indent=2) + "\n").encode("utf-8")
             ),
-        )
-
-    def open_content(self, storage: StorageConfig) -> LayeredSource:
-        """The source of truth, every content archive, and these applications if built in memory.
-
-        Raises:
-            ArchiveError: an archive cannot be opened.
-        """
-        if self.archive is None:
-            return LayeredSource.open(storage)
-
-        return LayeredSource.open(
-            storage, built=(ArchiveSource(BytesIO(self.archive), _ARCHIVE_NAME),)
         )
 
 

@@ -150,10 +150,12 @@ def test_configured_archives_come_before_packaged_ones(tmp_path: Path) -> None:
     configured = write_archive(tmp_path / "configured.zip", {id_of(FIRST): FIRST})
 
     with LayeredSource.open(storage_for(tmp_path, configured), packaged) as content:
+        # The applications the node ships, run from source, come last.
         assert [archive.name for archive in content.archives] == [
             str(configured),
             str(packaged / "a.zip"),
             str(packaged / "b.zip"),
+            "the applications shipped with the node, built from their source",
         ]
         assert content.read(id_of(FIRST)) == FIRST
         assert content.read(id_of(SECOND)) == SECOND
@@ -169,7 +171,13 @@ def test_packaged_archives_are_the_zip_files_in_name_order(tmp_path: Path) -> No
 
 def test_the_packaged_archives_open(tmp_path: Path) -> None:
     with LayeredSource.open(storage_for(tmp_path)) as content:
-        assert len(content.archives) == len(packaged_archives(PACKAGED_ARCHIVES))
+        assert [archive.name for archive in content.archives[:-1]] == [
+            str(archive) for archive in packaged_archives(PACKAGED_ARCHIVES)
+        ]
+
+
+def test_a_source_built_directly_ships_no_applications(tmp_path: Path) -> None:
+    assert LayeredSource(source_of_truth_store(storage_for(tmp_path))).applications == {}
 
 
 def test_an_archive_that_cannot_be_opened_stops_opening(tmp_path: Path) -> None:

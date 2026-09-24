@@ -40,7 +40,6 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Final, Mapping
 
-from libranet.applications.packaged import PackagedApplications
 from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
 
@@ -160,16 +159,6 @@ class RegisteredApplications:
             bundles[application.name] = application.bundle
 
         return cls(bundles)
-
-    @classmethod
-    def packaged(cls) -> RegisteredApplications:
-        """The applications shipped with the node, built into its package or from source (Step 37).
-
-        Raises:
-            OSError: they were not built, and the package does not hold one.
-            ValueError: they cannot be read, or built whole.
-        """
-        return cls(PackagedApplications.shipped().bundles)
 
     def value(self) -> dict[str, Any]:
         """The JSON object this registry is saved as."""

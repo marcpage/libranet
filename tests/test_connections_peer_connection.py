@@ -471,7 +471,7 @@ def test_pipelined_requests_to_a_live_server_get_their_own_responses(
         ("GET", f"/data/{MISSING_ID}", b""),
         ("PUT", f"/data/{upload_id}", upload),
         ("GET", f"/data/search/{CONTENT_ID.hash[:4]}?limit=1", b""),
-        ("GET", "/data/nowhere", b""),
+        ("GET", "/nowhere", b""),
         ("HEAD", f"/data/{CONTENT_ID}", b""),
         ("GET", f"/data/{CONTENT_ID}", b""),
     ]

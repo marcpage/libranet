@@ -57,9 +57,9 @@ from logging import Logger
 from time import time
 from typing import Callable, Final, Iterator, Mapping, Sequence, TypeVar
 
-from libranet.applications.packaged import PackagedApplications
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError, InvalidContentIdError
+from libranet.cas.layered import LayeredSource
 from libranet.cas.store import node_store, source_of_truth_store
 from libranet.cas.verification import content_matches
 from libranet.config.models import LibranetConfig
@@ -118,7 +118,7 @@ class PeerExchange:
         self._logger = logger
         self._signer = MessageSigner(identity, clock)
         self._source_of_truth = source_of_truth_store(config.storage)
-        self._content = PackagedApplications.shipped().open_content(config.storage)
+        self._content = LayeredSource.open(config.storage)
         self._verifier = MessageVerifier(
             self._source_of_truth,
             config.identity.signature_max_age_seconds,

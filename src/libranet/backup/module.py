@@ -91,7 +91,6 @@ from logging import Logger
 from time import time
 from typing import Any, Callable, ClassVar, Final, Mapping
 
-from libranet.applications.packaged import PackagedApplications
 from libranet.backup.changes import ChangeDetector, PollingDetector
 from libranet.backup.jobs import BackupJob, load_jobs, save_jobs
 from libranet.backup.restores import Restore
@@ -99,6 +98,7 @@ from libranet.backup.runs import AnnouncingStore, back_up
 from libranet.bundle.building import IgnoredPaths
 from libranet.bundle.errors import BundleError
 from libranet.cas.content_id import ContentId
+from libranet.cas.layered import LayeredSource
 from libranet.cas.store import source_of_truth_store
 from libranet.config.models import LibranetConfig
 from libranet.identity.errors import KeyFileError
@@ -163,7 +163,7 @@ class BackupModule(ModuleBase):
         self._config = config
         self._detector = detector or PollingDetector(config.directories())
         self._store = AnnouncingStore(source_of_truth_store(config.storage), self._announce)
-        self._content = PackagedApplications.shipped().open_content(config.storage)
+        self._content = LayeredSource.open(config.storage)
         self._node_id: ContentId | None = None
         self._secret: bytes | None = None
         self._jobs: dict[str, BackupJob] = {}
