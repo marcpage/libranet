@@ -18,7 +18,7 @@ from pytest import LogCaptureFixture, fixture, mark, raises, skip
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore, source_of_truth_store
-from libranet.config.models import LibranetConfig, StorageConfig
+from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
 from libranet.connections.errors import ConnectionClosedError, MalformedResponseError
 from libranet.connections.peer_connection import PeerConnection, open_connection
 from libranet.identity.authentication import request_authenticator
@@ -29,6 +29,7 @@ from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.supervision.stubs import StubModule
 from libranet.webserver.config_credential import load_config_credential
+from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.server import REQUEST_PATH_HEADER, LibranetHTTPServer, build_router
 
 CLIENT_IDENTITY = NodeIdentity.from_private_key(generate_private_key(), "sha256")
@@ -431,6 +432,7 @@ def server(storage: StorageConfig) -> Iterator[LibranetHTTPServer]:
             request_authenticator(LibranetConfig(storage=storage)),
             allow_unsigned_api_reads=True,
             config_credential=load_config_credential(LibranetConfig(storage=storage)),
+            node=NodeDescription(SERVER_IDENTITY.node_id, NetworkConfig()),
         ),
         getLogger("test.webserver"),
         MessageSigner(SERVER_IDENTITY),

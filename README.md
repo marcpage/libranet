@@ -248,6 +248,9 @@ It answers only on loopback, and the first request carrying
 `Authorization: Basic` sets the node's credential — pick one on first use and
 reuse it after that.
 
+Open `http://127.0.0.1:8080/config` in a browser for a page that does
+everything below. Scripts use the same JSON endpoints, beneath `/config/api`:
+
 ```bash
 curl -u admin:secret http://127.0.0.1:8080/config/api
 ```
@@ -435,7 +438,6 @@ Deliberately deferred, and specified but not yet built:
   uses a simpler proxy for now
 - mDNS/DNS-SD discovery on the local network
 - Signed bundles, and per-file encryption inside a bundle
-- A human-facing `/config` page — the endpoints are JSON only
 
 There is no bootstrap network: a node ships with an empty seed list, so nodes
 currently find each other only through peers you configure yourself.

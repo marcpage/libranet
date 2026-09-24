@@ -1,4 +1,4 @@
-"""Peer-facing and `/config` HTTP endpoint (Phase 1 Steps 5, 7, 9, 14, 18, 35).
+"""Peer-facing and `/config` HTTP endpoint (Phase 1 Steps 5, 7, 9, 14, 18, 35, 36).
 
 Serves the content-addressed source of truth, the derived node and seek
 lists, and the files the unbundler resolves for applications. Writes incoming
@@ -10,7 +10,8 @@ It does not validate, fetch, evict, or resolve bundles itself.
 authenticated clients on this machine, and its backup and restore endpoints
 publish a message each rather than doing any of that work here. Its
 application endpoints change the application registry, the file naming each
-application's bundle, which the web server owns.
+application's bundle, which the web server owns. A browser there gets a page
+that drives all of them.
 """
 
 from libranet.webserver.app_handler import APP_PATTERN, AppHandler, content_type_for
@@ -42,10 +43,13 @@ from libranet.webserver.config_handlers import (
     BackupJobRemovalHandler,
     BackupReportHandler,
     BackupRunHandler,
+    NodeDescription,
+    NodeHandler,
     RestoreHandler,
     config_index,
     config_routes,
 )
+from libranet.webserver.config_page import ConfigPageHandler
 from libranet.webserver.config_requests import (
     BackupJobRequest,
     ConflictBehavior,
@@ -95,6 +99,7 @@ __all__ = [
     "BackupState",
     "ConfigAuthGuard",
     "ConfigCredential",
+    "ConfigPageHandler",
     "ConflictBehavior",
     "CredentialFileError",
     "DataReadHandler",
@@ -109,6 +114,8 @@ __all__ = [
     "LibranetHTTPServer",
     "ListFileHandler",
     "LocalSearch",
+    "NodeDescription",
+    "NodeHandler",
     "NodeListHandler",
     "RegisteredApplications",
     "RegistryFileError",

@@ -3,6 +3,10 @@
 Every endpoint is beneath ``/config/api``, leaving the rest of ``/config`` to
 the administration application's own pages.
 
+``GET /config/api/node`` says what this node is: its identity, the address
+and port it listens on, and the endpoint it advertises to peers
+(HttpApi §10.1), as it was started with them.
+
 The web server does none of the backup work. Each backup endpoint checks its
 own input, publishes one message, and answers ``202`` at once with the
 identifier the request will be known by::
@@ -33,9 +37,9 @@ A name in a path is percent-encoded as one segment, so the root application,
 read is ``500``, saying why, and is never saved over: fixing or removing it
 by hand is the way back.
 
-``GET /config/api`` names the endpoints, so a client — or an administrator
-whose browser has just prompted for a username and password — has somewhere
-to start.
+``GET /config/api`` names the endpoints, so a client has somewhere to start.
+A browser has the administration page instead (see
+:mod:`libranet.webserver.config_page`).
 
 Bodies here are small JSON objects, so they are held to their own limit
 rather than the object limit peers' uploads use. A body an endpoint has no
@@ -45,9 +49,11 @@ use for is still read, so the connection stays usable.
 from __future__ import annotations
 from dataclasses import dataclass
 from http import HTTPStatus
-from typing import Final
+from typing import Any, Final
 from urllib.parse import unquote
 
+from libranet.cas.content_id import ContentId
+from libranet.config.models import NetworkConfig
 from libranet.messaging.events import EventType
 from libranet.problems import INVALID_CONFIG_REQUEST, Problem
 from libranet.webserver.app_registry import Application, ApplicationRegistry, RegistryFileError
@@ -65,6 +71,7 @@ from libranet.webserver.router import Handler
 from libranet.webserver.request_refusals import unreadable_body_response
 
 CONFIG_API_PATH: Final = "/config/api"
+NODE_PATH: Final = CONFIG_API_PATH + "/node"
 BACKUPS_PATH: Final = CONFIG_API_PATH + "/backups"
 RESTORES_PATH: Final = CONFIG_API_PATH + "/restores"
 APPLICATIONS_PATH: Final = CONFIG_API_PATH + "/applications"
@@ -83,6 +90,7 @@ MAX_CONFIG_BODY_BYTES: Final = 64 * 1024
 
 #: What ``GET /config/api`` answers: every endpoint this node serves under it.
 ENDPOINTS: Final = (
+    {"method": "GET", "path": NODE_PATH, "description": "What this node is and where it listens"},
     {"method": "GET", "path": BACKUPS_PATH, "description": "Configured backup jobs"},
     {"method": "POST", "path": BACKUPS_PATH, "description": "Configure a backup job"},
     {"method": "DELETE", "path": BACKUP_JOB_TEMPLATE, "description": "Remove a backup job"},
@@ -98,6 +106,33 @@ ENDPOINTS: Final = (
 def config_index(request: Request) -> Response:
     """``GET /config/api``: what this node's administration surface offers."""
     return json_response({"endpoints": list(ENDPOINTS)})
+
+
+@dataclass(frozen=True)
+class NodeDescription:
+    """What this node is: its identity, where it listens, and what it advertises."""
+
+    node_id: ContentId
+    network: NetworkConfig
+
+    def value(self) -> dict[str, Any]:
+        """The JSON object ``GET /config/api/node`` answers."""
+        return {
+            "node_id": str(self.node_id),
+            "listen_address": self.network.listen_address,
+            "listen_port": self.network.listen_port,
+            "advertised_endpoint": self.network.advertised_endpoint(),
+        }
+
+
+@dataclass(frozen=True)
+class NodeHandler:
+    """``GET /config/api/node``: what this node is, and where it is reached."""
+
+    node: NodeDescription
+
+    def __call__(self, request: Request) -> Response:
+        return json_response(self.node.value())
 
 
 @dataclass(frozen=True)
@@ -322,11 +357,13 @@ def config_routes(
     publish: Publish,
     state: BackupState,
     registry: ApplicationRegistry,
+    node: NodeDescription,
     retry_after_seconds: int,
 ) -> tuple[tuple[str, str, Handler], ...]:
     """Every ``/config/api`` route, as ``(method, pattern, handler)`` in route order."""
     return (
         ("GET", CONFIG_API_PATH, config_index),
+        ("GET", NODE_PATH, NodeHandler(node)),
         ("GET", BACKUPS_PATH, BackupReportHandler(state, JOBS_FIELD, retry_after_seconds)),
         ("POST", BACKUPS_PATH, BackupJobHandler(publish)),
         ("GET", RESTORES_PATH, BackupReportHandler(state, RESTORES_FIELD, retry_after_seconds)),

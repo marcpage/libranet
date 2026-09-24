@@ -37,6 +37,7 @@ from libranet.unbundler.outcomes import PathOutcome
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 from libranet.webserver.backup_state import BackupReport, BackupState
 from libranet.webserver.config_credential import load_config_credential
+from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.server import LibranetHTTPServer, build_router
 
 
@@ -95,15 +96,17 @@ class WebServerModule(ModuleBase):
     def on_start(self) -> None:
         """Bind the listener and start serving.
 
-        A bind failure, an unusable node key, or a content archive that
-        cannot be opened crashes the module. The archives stay open for as
+        A bind failure, an unusable node key, a content archive that cannot
+        be opened, or an installation missing the ``/config`` page crashes
+        the module. The archives stay open for as
         long as the process runs. An application registry that cannot be read
         does not: requests that need it are answered ``500`` until it is
         fixed, and the rest of the node's API is served meanwhile.
         """
         network = self._config.network
         identity = self._config.identity
-        signer = MessageSigner(load_node_identity(self._config))
+        node = load_node_identity(self._config)
+        signer = MessageSigner(node)
         self._server = LibranetHTTPServer(
             (network.listen_address, network.listen_port),
             build_router(
@@ -113,6 +116,7 @@ class WebServerModule(ModuleBase):
                 request_authenticator(self._config),
                 allow_unsigned_api_reads=identity.allow_unsigned_api_reads,
                 config_credential=load_config_credential(self._config),
+                node=NodeDescription(node.node_id, network),
                 app_outcomes=self._app_outcomes,
                 backup_state=self._backup_state,
                 content=LayeredSource.open(self._config.storage),
