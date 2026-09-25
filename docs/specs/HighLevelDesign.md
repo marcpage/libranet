@@ -356,6 +356,29 @@ configuration.
 - Interaction with the sixteen-connection outgoing policy (§4.6) when local
   peers are discovered.
 
+### 4.10 Pushing New Data
+
+A node moves the data it receives or creates, other than data intended to be
+private, in the direction of the node whose identifier best matches the data's
+hash. It pushes each new object over its best outgoing connection (§4.6): the
+one to the peer whose identifier shares the longest binary prefix with the
+object's hash.
+
+- A node MAY push data it creates, and SHOULD push it unless the data is
+  intended to be private. Newly created data that is intended to be shared,
+  such as a backup (BackupSpecification §6) or a newly added application
+  (§5.2), SHOULD be pushed to the single best outgoing connection.
+- Data the node receives from another node SHOULD be pushed on to the best
+  outgoing connection, whether it was pushed to the node (including eviction
+  hand-offs and handshake pushes) or the node fetched it.
+- The node pushes even when its own identifier is the better match, since the
+  peer may be connected to a node better still.
+- A node need not push data back to the node it came from, and does not push
+  on data it already held. Either ends the chain.
+
+Pushing toward the best match carries data to the nodes that prioritize
+retaining it (§4.5) and that request routing asks first (§4.7).
+
 ---
 
 ## 5. Application Layer
@@ -484,8 +507,9 @@ The protocol is organized into four layers:
 1. **Identity** - cryptographic node identities and request authentication.
 2. **Transport** - HTTP/HTTPS communication and the node handshake.
 3. **Distributed Storage** - content hashing, prefix-based placement, search,
-   routing, storage priority, and replication through hand-off (including the
-   compressed-retrieval fallback described in §4.1.1).
+   routing, storage priority, and replication through pushing new data and
+   hand-off (including the compressed-retrieval fallback described in
+   §4.1.1).
 4. **Applications** - directory bundles, application registration, application
    distribution, and browser-based access.
 

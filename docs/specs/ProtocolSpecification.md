@@ -153,6 +153,24 @@ TBD: exact hash function, input material (e.g., public key), and encoding
 - Nodes MAY prioritize smaller Content as it is less expensive to acquire the
   data again.
 
+### 5.5 Pushing New Content
+
+- In general, Nodes SHOULD move content they receive or create, other than
+  content intended to be private, in the direction of the Node whose ID
+  matches the most prefix bits with the content's hash. A Node's best outgoing
+  connection for content is the one whose Node ID matches the most prefix bits
+  with the content's hash.
+- Nodes MAY push content they create to other Nodes. Nodes SHOULD push content
+  they create that is not intended to be private to the single best outgoing
+  connection.
+- Nodes SHOULD push content they receive from another Node, whether it was
+  pushed to them or they fetched it, to the best outgoing connection.
+- Nodes SHOULD push to the best outgoing connection even when their own Node ID
+  matches more prefix bits with the content's hash.
+- Nodes need not push content when the best outgoing connection is to the Node
+  the content came from.
+- Nodes SHOULD NOT push on content that duplicates content they already hold.
+
 ## 6. Drops and Prefix Matching
 
 ### 6.1 Drop Structure
