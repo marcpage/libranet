@@ -64,6 +64,12 @@ Directory Bundles with no format extensions of their own.
   prior bundle as a `versions` entry (BundleSpecification.md §3.1) on the
   new bundle, consistent with the update/merge semantics already defined
   for `versions`.
+- A change to metadata only (no file's contents, no path, and no symlink
+  target changed) does not require a new bundle; the node MAY defer it to
+  the next bundle it constructs for a content change. Until then the
+  current bundle, and a restore of it (§5), carries metadata as of the
+  last content change. Metadata here is everything a bundle records under
+  `metadata` (BundleSpecification.md §2.1), extended attributes included.
 - Because file contents are content-addressed, only files that actually
   changed produce new CAS objects; unchanged files' existing CAS entries
   are simply referenced again by the new bundle, avoiding redundant
@@ -139,6 +145,9 @@ already defined in [BundleSpecification.md
   described by the decrypted Directory Bundle at the specified target
   path, resolving any `extensions` (BundleSpecification.md §4) as part
   of reconstruction.
+- A restore reproduces metadata as the bundle records it, which may be as
+  of the directory's last content change rather than its most recent
+  backup run (§3.3).
 - If the target directory is non-empty, the exact conflict-resolution
   behavior (overwrite, merge, fail) is implementation-defined and SHOULD
   be surfaced as a choice through `/config`.
