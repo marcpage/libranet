@@ -13,6 +13,7 @@ the supervisor only resorts to it when a child ignores ``SIGTERM``.
 
 from __future__ import annotations
 from logging import Logger
+from multiprocessing.queues import Queue as ProcessQueue
 from signal import SIG_IGN, SIGINT, SIGTERM, signal
 from types import FrameType
 from typing import Callable, Mapping
@@ -51,6 +52,14 @@ def dispatcher_main(
     dispatcher = Dispatcher(endpoints)
     ready.set()
     dispatcher.run(stop)
+
+    # The supervisor stops the dispatcher only once every module has exited,
+    # so nothing will read what it broadcast last. Waiting to flush that into
+    # full pipes would keep this process from exiting.
+    if stop.is_set():
+        for queues in endpoints.values():
+            if isinstance(queues.inbox, ProcessQueue):
+                queues.inbox.cancel_join_thread()
 
 
 def run_module_process(

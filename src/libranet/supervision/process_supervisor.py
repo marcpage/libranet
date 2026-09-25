@@ -23,7 +23,7 @@ from logging import Logger
 from multiprocessing import get_context
 from multiprocessing.process import BaseProcess
 from time import monotonic, sleep
-from typing import Sequence
+from typing import Iterable, Sequence
 
 from libranet.config.models import LibranetConfig
 from libranet.logging_setup import get_logger
@@ -113,6 +113,8 @@ class ProcessSupervisor:
         # child never sees a signal meant for the supervisor. Until then,
         # ``_stop`` stands in for it; :meth:`_stopping` checks both.
         self._stop = self._context.Event()
+        # The dispatcher has its own, set once every module has exited.
+        self._dispatcher_stop = self._context.Event()
         self._stop_requested: StopSignal = self._stop
         self._queues = create_module_queues(names, START_METHOD)
         self._dispatcher = _Child(ModuleName.DISPATCHER)
@@ -170,15 +172,19 @@ class ProcessSupervisor:
     def shutdown(self) -> None:
         """Stop every child: ask nicely, then ``SIGTERM``, then ``SIGKILL``.
 
-        Modules are stopped before the dispatcher so nothing they publish on
-        the way out is stranded.
+        Modules are stopped before the dispatcher, which reads their outboxes
+        until they have exited. A module cannot exit until whatever it
+        published on the way out has been read.
         """
         self._stop.set()
-        running = [
-            (child, child.process)
-            for child in (*self._modules.values(), self._dispatcher)
-            if child.process is not None
-        ]
+        self._stop_children(self._modules.values())
+        self._dispatcher_stop.set()
+        self._stop_children([self._dispatcher])
+        self._logger.info("All module processes stopped")
+
+    def _stop_children(self, children: Iterable[_Child]) -> None:
+        """Wait for ``children``, already asked to stop, escalating to ``SIGTERM`` and ``SIGKILL``."""
+        running = [(child, child.process) for child in children if child.process is not None]
         deadline = monotonic() + self._stop_timeout
 
         for _, process in running:
@@ -196,8 +202,6 @@ class ProcessSupervisor:
                 process.join(self._stop_timeout)
 
             self._release(child, process)
-
-        self._logger.info("All module processes stopped")
 
     def _stopping(self) -> bool:
         """Whether the node was asked to stop, or has been shut down."""
@@ -226,7 +230,13 @@ class ProcessSupervisor:
         ready = self._context.Event()
         process = self._context.Process(
             target=run_dispatcher_process,
-            args=(self._dispatcher_entry, self._config, self._queues, self._stop, ready),
+            args=(
+                self._dispatcher_entry,
+                self._config,
+                self._queues,
+                self._dispatcher_stop,
+                ready,
+            ),
             name=f"libranet-{ModuleName.DISPATCHER}",
             daemon=True,
         )
