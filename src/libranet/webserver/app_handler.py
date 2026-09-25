@@ -11,6 +11,14 @@ an application's, nor the root application's first segment. ``/{app-name}``
 is redirected to ``/{app-name}/``, so relative links in the application's
 pages resolve within it.
 
+The one exception is ``config``: the application the registry names
+``config`` serves every path beneath ``/config`` but ``/config/api``'s own,
+however it is spelled (HttpApi §2.3). The guards (see
+:mod:`libranet.webserver.config_guard`) have refused a remote or
+unauthenticated client before its path is looked at. Whatever bundle it
+serves, a file from it may load only what this node serves, and no other
+site may frame it.
+
 The rest of the path is an entry path in the application's bundle. One that
 is empty or ends in ``/`` names that directory's ``index.html``, and one no
 bundle could hold (BundleSpecification §3.1) is ``404`` at once.
@@ -46,10 +54,12 @@ from libranet.unbundler.outcomes import PathOutcome
 from libranet.unbundler.resolved_files import ResolvedFiles
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 from libranet.webserver.app_registry import (
+    CONFIG_APPLICATION,
     RESERVED_APPLICATION_NAMES,
     ROOT_APPLICATION,
     ApplicationRegistry,
 )
+from libranet.webserver.config_guard import names_config
 from libranet.webserver.http_types import (
     OCTET_STREAM,
     Request,
@@ -64,6 +74,22 @@ from libranet.webserver.publishing import Publish
 APP_PATTERN: Final = r"/(?!(?i:{names})(?:/|$)).*".format(
     names="|".join(escape(name) for name in sorted(RESERVED_APPLICATION_NAMES))
 )
+
+# The first segment beneath /config that is the API's, never the application's.
+_CONFIG_API: Final = "api"
+
+# `/config`, in any case, and every path beneath it but the API's.
+CONFIG_APP_PATTERN: Final = r"/(?i:{name})(?:/(?!{api}(?:/|$)).*)?".format(
+    name=escape(CONFIG_APPLICATION), api=_CONFIG_API
+)
+
+# What a file the /config application serves may load: its own files, inline
+# script and styles, and requests to this node. No other site may frame it.
+CONFIG_APP_POLICY: Final = (
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+    "base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+)
+_CONFIG_APP_HEADERS: Final = {"Content-Security-Policy": CONFIG_APP_POLICY}
 
 DEFAULT_FILE: Final = "index.html"
 
@@ -118,7 +144,8 @@ class AppHandler:
         body = _read(self.files.path_for(bundle, entry_path))
 
         if body is not None:
-            return bytes_response(body, content_type_for(entry_path))
+            headers = _CONFIG_APP_HEADERS if names_config(request.path) else None
+            return bytes_response(body, content_type_for(entry_path), headers)
 
         known = self.outcomes.recall(bundle, entry_path)
 
@@ -142,8 +169,11 @@ class AppHandler:
 
         first, slash, rest = decoded.partition("/")
         name = first.casefold()
+        reserved = name in RESERVED_APPLICATION_NAMES
 
-        if name in RESERVED_APPLICATION_NAMES:
+        # Of the reserved names, only config's is an application's, and never
+        # beneath /config/api, which is the API's however it is spelled.
+        if reserved and (name != CONFIG_APPLICATION or rest.partition("/")[0] == _CONFIG_API):
             return None
 
         bundles = self.registry.applications().bundles
@@ -152,7 +182,7 @@ class AppHandler:
             return f"/{quote(first)}", bundles[name], rest if slash else None
 
         root = bundles.get(ROOT_APPLICATION)
-        return None if root is None else ("", root, decoded)
+        return None if root is None or reserved else ("", root, decoded)
 
     def _unavailable(self, request: Request) -> Response:
         """The ``503`` for a file the unbundler has been asked for."""

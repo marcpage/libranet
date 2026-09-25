@@ -47,8 +47,8 @@ read is ``500``, saying why, and is never saved over: fixing or removing it
 by hand is the way back.
 
 ``GET /config/api`` names the endpoints, so a client has somewhere to start.
-A browser has the administration page instead (see
-:mod:`libranet.webserver.config_page`).
+A browser has the ``/config`` application instead, served like any other
+(see :mod:`libranet.webserver.app_handler`).
 
 Bodies here are small JSON objects, so they are held to their own limit
 rather than the object limit peers' uploads use. A body an endpoint has no

@@ -711,7 +711,7 @@ function applicationRow([name, bundle]) {
   const row = make("tr");
   const actions = cell(
     button("Remove", `Stop serving ${path}`, "danger", applicationsMessage, () =>
-      removeApplication(name, path),
+      removeApplication(name, path, bundle),
     ),
   );
   actions.className = "actions";
@@ -719,8 +719,15 @@ function applicationRow([name, bundle]) {
   return row;
 }
 
-async function removeApplication(name, path) {
-  if (!confirm(`Stop serving ${path}?`)) {
+async function removeApplication(name, path, bundle) {
+  // This page is the "config" application's, so removing it removes the page.
+  const warning =
+    name === "config"
+      ? `\n\nThis page is served from it. To put it back, register ${bundle} ` +
+        `as "config" through ${API}/applications.`
+      : "";
+
+  if (!confirm(`Stop serving ${path}?${warning}`)) {
     return null;
   }
 

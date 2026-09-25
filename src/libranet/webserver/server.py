@@ -34,7 +34,7 @@ from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.signatures import MessageSigner
 from libranet.problems import Problem
 from libranet.unbundler.resolved_files import ResolvedFiles
-from libranet.webserver.app_handler import APP_PATTERN, AppHandler
+from libranet.webserver.app_handler import APP_PATTERN, CONFIG_APP_PATTERN, AppHandler
 from libranet.webserver.app_outcomes import ApplicationOutcomes
 from libranet.webserver.app_registry import ApplicationRegistry, RegisteredApplications
 from libranet.webserver.backup_state import BackupState
@@ -42,7 +42,6 @@ from libranet.webserver.config_auth import ConfigAuthGuard
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_guard import local_config_guard
 from libranet.webserver.config_handlers import NodeDescription, config_routes
-from libranet.webserver.config_page import CONFIG_PAGE_PATTERN, ConfigPageHandler
 from libranet.webserver.data_handler import DATA_PATTERN, DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
 from libranet.webserver.http_types import (
@@ -102,8 +101,8 @@ def build_router(
     is set. ``config_credential`` is the ``/config`` credential every request
     there is authenticated against, ``node`` what ``/config/api/node`` says
     this node is, and ``backup_state`` what the backup module last reported
-    for them to read back. Applications are served as the registry in
-    ``storage``'s data directory names them, which
+    for them to read back. Applications, ``/config``'s among them, are
+    served as the registry in ``storage``'s data directory names them, which
     ``/config/api/applications`` changes, and as ``content`` says the node
     ships them until it does. ``app_outcomes`` holds what the unbundler
     reported for their paths. ``content`` is what ``/data`` reads and
@@ -165,21 +164,17 @@ def build_router(
     ):
         router.add(method, pattern, handler)
 
-    # Every other path beneath /config is the administration page's.
-    router.add("GET", CONFIG_PAGE_PATTERN, ConfigPageHandler.packaged())
-
-    # Last, since its pattern fits every path outside the reserved names.
-    router.add(
-        "GET",
-        APP_PATTERN,
-        AppHandler(
-            registry,
-            ResolvedFiles(storage.resolved_files_dir, storage.hash_prefix_length),
-            app_outcomes or ApplicationOutcomes(),
-            publish,
-            retry_after_seconds,
-        ),
+    applications = AppHandler(
+        registry,
+        ResolvedFiles(storage.resolved_files_dir, storage.hash_prefix_length),
+        app_outcomes or ApplicationOutcomes(),
+        publish,
+        retry_after_seconds,
     )
+    # Every other path beneath /config is the /config application's.
+    router.add("GET", CONFIG_APP_PATTERN, applications)
+    # Last, since its pattern fits every path outside the reserved names.
+    router.add("GET", APP_PATTERN, applications)
     return router
 
 

@@ -51,7 +51,6 @@ from libranet.webserver.app_registry import Application, ApplicationRegistry
 from libranet.webserver.config_auth import CONFIG_REALM
 from libranet.webserver.config_credential import ConfigCredential, load_config_credential
 from libranet.webserver.config_handlers import NodeDescription
-from libranet.webserver.config_page import HTML_CONTENT_TYPE, ConfigPageHandler
 from libranet.webserver.http_types import Request, RequestBody, Response
 from libranet.webserver.server import REQUEST_PATH_HEADER, LibranetHTTPServer, build_router
 
@@ -1158,20 +1157,26 @@ def test_a_remote_config_request_is_refused_before_it_can_capture_anything(
     assert _published(queues) == []
 
 
-def test_the_config_page_is_served_at_config_and_every_path_beneath_it(
+@mark.parametrize("applications", [{"config": APP_BUNDLE_ID}])
+def test_every_path_beneath_config_but_the_apis_is_the_config_applications(
     connection: HTTPConnection, queues: ModuleQueues
 ) -> None:
-    page = ConfigPageHandler.packaged().page
-
+    redirect, _ = _config(connection, "/config", headers=_credentials())
     # Where the endpoints were before they moved beneath /config/api, too.
-    for path in ("/config", "/config/", "/config/backups", "/config/restores/a/b"):
-        response, body = _config(connection, path, headers=_credentials())
+    statuses = [
+        _config(connection, path, headers=_credentials())[0].status
+        for path in ("/config/", "/config/backups", "/config/restores/a/b")
+    ]
 
-        assert response.status == 200
-        assert response.getheader("Content-Type") == HTML_CONTENT_TYPE
-        assert body == page
-
-    assert _published(queues) == []
+    assert redirect.status == 302
+    assert redirect.getheader("Location") == "/config/"
+    assert statuses == [503, 503, 503]
+    assert [
+        (message["event"], message["bundle"], message["path"]) for message in _published(queues)
+    ] == [
+        (EventType.APP_PATH_NOT_FOUND, str(APP_BUNDLE_ID), path)
+        for path in ("index.html", "backups", "restores/a/b")
+    ]
 
 
 def test_a_config_api_path_no_endpoint_serves_is_not_the_page(
@@ -1192,13 +1197,17 @@ def test_the_node_is_described_as_it_was_started(connection: HTTPConnection) -> 
     assert loads(body)["node_id"] == str(SERVER_IDENTITY.node_id)
 
 
+@mark.parametrize("applications", [{"config": APP_BUNDLE_ID}])
+@mark.parametrize("path", ["/config", "/config/", "/Config/index.html", "/%63onfig/"])
 @mark.parametrize(
     "client_address, headers, status",
     [("203.0.113.42", _credentials(), 403), ("127.0.0.1", {}, 401)],
 )
-def test_the_config_page_is_served_only_to_an_authenticated_local_client(
+def test_the_config_application_is_served_only_to_an_authenticated_local_client(
     server: LibranetHTTPServer,
     credential: ConfigCredential,
+    queues: ModuleQueues,
+    path: str,
     client_address: str,
     headers: dict[str, str],
     status: int,
@@ -1206,12 +1215,14 @@ def test_the_config_page_is_served_only_to_an_authenticated_local_client(
     # The live server only ever sees loopback clients, so the requests are put
     # to the router directly.
     response = server.router.dispatch(
-        Request("GET", "/config", headers=headers, client_address=client_address)
+        Request("GET", path, headers=headers, client_address=client_address)
     )
 
     assert response.status == status
     assert response.headers["Content-Type"] == PROBLEM_CONTENT_TYPE
     assert not credential.captured
+    # Nothing was resolved, or asked of the unbundler.
+    assert _published(queues) == []
 
 
 def test_an_application_registered_through_config_is_served_at_once(
