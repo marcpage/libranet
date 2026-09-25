@@ -27,7 +27,7 @@ shutdown waits for it.
 
 Every object a backup or a build stores is announced as the validator
 announces one it stores, so eviction and stats treat that content like any
-other::
+other, and the connection manager pushes it to a peer (HttpApi §7.4)::
 
     data.stored  {"algorithm", "hash", "node_id", "size"}
 

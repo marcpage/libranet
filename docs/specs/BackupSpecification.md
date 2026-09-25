@@ -158,12 +158,12 @@ already defined in [BundleSpecification.md
   any peer that learns their hash. Confidentiality rests entirely on the
   secrecy of the backup secret (§4.2/§4.3), not on any access
   restriction at the CAS layer.
-- The backup feature does not currently restrict replication of backup
-  bundle content to other nodes (High-Level Design §4.5, HTTP API §7.4).
-  Encrypted backup content may propagate through the network like any
-  other CAS object. This is considered acceptable given §4's encryption
-  guarantee, but a node MAY additionally choose, as local policy, not to
-  forward or hand off content it recognizes as its own backup data.
+- Backup content is not intended to be private: §4's encryption keeps it
+  confidential wherever it is held. A node SHOULD push the content a backup
+  creates like any other shared content (High-Level Design §4.10, HTTP API
+  §7.4), and it hands off like any other CAS object (High-Level Design
+  §4.5). A node MAY still choose, as local policy, not to push or hand off
+  content it recognizes as its own backup data.
 
 ## 7. Open Items / Not Yet Specified
 

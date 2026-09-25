@@ -458,11 +458,31 @@ Nodes MAY restrict `/data` communication by clients to local connections if they
 do not have the node ID headers. Nodes MAY restrict `/data` communications in
 general if they do not have the node ID headers.
 
-### 7.4 Forwarding
+### 7.4 Pushing New Content
 
-Nodes SHOULD forward uploads to the connected node with the best (most prefix
-bits) match of the content hash to the node ID. The node SHOULD NOT forward
-uploads if the content is duplicate of existing content on the node.
+In general, a node SHOULD move content it receives or creates, other than
+content intended to be private, in the direction of the node whose ID best
+matches the content hash. It does so by uploading the content over its best
+outgoing connection (HighLevelDesign §4.6): the one to the node whose ID has the
+best (most prefix bits) match with the content hash.
+
+A node MAY push content it creates. If the content is not intended to be
+private, the node SHOULD push it. Newly created content that is intended to be
+shared SHOULD be pushed to the single best outgoing connection. Content created
+by a backup (BackupSpecification §6) or by adding an application
+(HighLevelDesign §5.2) is intended to be shared.
+
+Content the node receives from another node SHOULD be pushed on to the best
+outgoing connection, once it has been validated (§7.2). This includes content
+uploaded to the node, content handed off to it on eviction (HighLevelDesign
+§4.5), content pushed to it during the handshake (HandshakeProtocol §3), and
+content it fetched from another node.
+
+A node pushes to its best outgoing connection even when its own ID matches the
+content hash better, since that node may be connected to a better match. The
+node need not push content when the best outgoing connection is to the node the
+content came from. The node SHOULD NOT push on content that is created or
+received that the node had before the creation or receiving the data.
 
 This will contribute to (1) increasing the availability of data and (2) improve
 discoverability of the data.
