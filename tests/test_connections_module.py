@@ -9,7 +9,7 @@ signatures still use real time.
 
 from __future__ import annotations
 from json import dumps
-from logging import INFO, getLogger
+from logging import DEBUG, INFO, getLogger
 from pathlib import Path
 from queue import Empty, Queue
 from socket import create_server
@@ -20,7 +20,7 @@ from typing import Any, Callable, Iterator, Mapping, Sequence
 from pytest import LogCaptureFixture, MonkeyPatch, fixture, raises
 
 from libranet.cas.content_id import ContentId
-from libranet.cas.prefix import nearest
+from libranet.cas.prefix import matching_bits, nearest
 from libranet.cas.store import node_store, source_of_truth_store
 from libranet.config.models import (
     IdentityConfig,
@@ -256,6 +256,47 @@ def eviction_notice(content_id: ContentId, copies: int = 2) -> Message:
         ModuleName.EVICTION,
         {"algorithm": content_id.algorithm, "hash": content_id.hash, "copies": copies},
     )
+
+
+def stored(content_id: ContentId, source: ContentId) -> Message:
+    """Content newly stored from ``source``, as the validator announces it."""
+    return make_message(
+        EventType.DATA_STORED,
+        ModuleName.VALIDATOR,
+        {"algorithm": content_id.algorithm, "hash": content_id.hash, "node_id": str(source)},
+    )
+
+
+def node_list_updated(config: LibranetConfig) -> Message:
+    return make_message(
+        EventType.NODE_LIST_UPDATED, ModuleName.STATS, {"path": str(config.storage.node_list_path)}
+    )
+
+
+def best_and_other(
+    content_id: ContentId, peers: Sequence[FixturePeer]
+) -> tuple[FixturePeer, FixturePeer]:
+    """The two fixture peers, the one whose id best matches ``content_id``'s hash first."""
+    best, other = (
+        next(peer for peer in peers if peer.node_id == node_id)
+        for node_id in nearest(content_id.hash, [peer.node_id for peer in peers], 2)
+    )
+    return best, other
+
+
+def content_nearer_to(node_id: ContentId, others: Sequence[ContentId]) -> tuple[ContentId, bytes]:
+    """Content whose hash matches ``node_id`` better than it matches any of ``others``."""
+    index = 0
+
+    while True:
+        data = f"content near {node_id}, try {index}".encode()
+        content_id = ContentId.for_data(data, "sha256")
+        bits = matching_bits(content_id.hash, node_id.hash)
+
+        if all(matching_bits(content_id.hash, other.hash) < bits for other in others):
+            return content_id, data
+
+        index += 1
 
 
 # -- Keeping the peer mix --------------------------------------------------
@@ -799,6 +840,237 @@ def test_a_hand_off_under_way_is_not_started_again(
     bus.wait_for(EventType.EVICTION_ACKNOWLEDGED, count=2)
 
 
+# -- Pushing new content ---------------------------------------------------
+
+
+def test_new_content_is_pushed_to_the_best_matching_peer_alone(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+) -> None:
+    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+    best, other = best_and_other(HELD_ID, peers)
+
+    module.handle(stored(HELD_ID, identity.node_id))
+
+    best.bus.wait_for(EventType.PUT_COMPLETED, hash=HELD_ID.hash)
+    (sent,) = bus.wait_for(EventType.DATA_SENT, hash=HELD_ID.hash)
+    assert sent["node_id"] == str(best.node_id)
+    assert other.bus.events(EventType.PUT_COMPLETED, hash=HELD_ID.hash) == []
+
+
+def test_content_received_is_pushed_on_to_the_best_matching_peer(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+) -> None:
+    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+    best, other = best_and_other(HELD_ID, peers)
+
+    module.handle(stored(HELD_ID, other.node_id))
+
+    best.bus.wait_for(EventType.PUT_COMPLETED, hash=HELD_ID.hash)
+
+
+def test_content_is_not_pushed_back_to_the_peer_it_came_from(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    caplog: LogCaptureFixture,
+) -> None:
+    caplog.set_level(DEBUG, logger="libranet")
+    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+    best, _ = best_and_other(HELD_ID, peers)
+
+    module.handle(stored(HELD_ID, best.node_id))
+
+    wait_until(lambda: f"Not pushing {HELD_ID} back" in caplog.text, "the push to be skipped")
+    assert bus.events(EventType.DATA_SENT) == []
+
+
+def test_new_content_is_pushed_even_when_this_node_matches_it_better(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+) -> None:
+    content_id, data = content_nearer_to(identity.node_id, [peer.node_id for peer in peers])
+    source_of_truth_store(config.storage).write(content_id, data)
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+    best, _ = best_and_other(content_id, peers)
+
+    module.handle(stored(content_id, identity.node_id))
+
+    best.bus.wait_for(EventType.PUT_COMPLETED, hash=content_id.hash)
+
+
+def test_new_content_waits_for_a_connection_to_open(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    caplog: LogCaptureFixture,
+) -> None:
+    caplog.set_level(DEBUG, logger="libranet")
+    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    module = modules.start(config)
+
+    module.handle(stored(HELD_ID, identity.node_id))
+    wait_until(lambda: f"No peer to push {HELD_ID} to yet" in caplog.text, "the push to wait")
+
+    write_lists(config.storage, node_list(identity, peers[0]))
+    module.handle(node_list_updated(config))
+
+    peers[0].bus.wait_for(EventType.PUT_COMPLETED, hash=HELD_ID.hash)
+
+
+def test_a_push_goes_to_a_peer_that_connected_while_it_was_under_way(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    write_lists(config.storage, node_list(identity, peers[0]))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED)
+    hand_off = module.exchange.hand_off
+
+    def unreachable_first(session: PeerSession, content_id: ContentId, body: bytes) -> bool:
+        if session.node_id != peers[0].node_id:
+            return hand_off(session, content_id, body)
+
+        if peers[1].node_id not in module.connected:
+            write_lists(config.storage, node_list(identity, *peers))
+            module.handle(node_list_updated(config))
+            wait_until(lambda: peers[1].node_id in module.connected, "the second peer")
+
+        raise ConnectionResetError("gone")
+
+    monkeypatch.setattr(module.exchange, "hand_off", unreachable_first)
+
+    module.handle(stored(HELD_ID, identity.node_id))
+
+    peers[1].bus.wait_for(EventType.PUT_COMPLETED, hash=HELD_ID.hash)
+
+
+def test_a_peer_that_cannot_be_reached_is_passed_over_for_a_push(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+    best, other = best_and_other(HELD_ID, peers)
+    hand_off = module.exchange.hand_off
+
+    def failing_for_best(session: PeerSession, content_id: ContentId, body: bytes) -> bool:
+        if session.node_id == best.node_id:
+            raise ConnectionResetError("gone")
+
+        return hand_off(session, content_id, body)
+
+    monkeypatch.setattr(module.exchange, "hand_off", failing_for_best)
+
+    module.handle(stored(HELD_ID, identity.node_id))
+
+    other.bus.wait_for(EventType.PUT_COMPLETED, hash=HELD_ID.hash)
+
+
+def test_a_push_the_best_peer_refuses_goes_no_further(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    monkeypatch: MonkeyPatch,
+    caplog: LogCaptureFixture,
+) -> None:
+    caplog.set_level(DEBUG, logger="libranet")
+    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+    best, _ = best_and_other(HELD_ID, peers)
+    offered: list[ContentId] = []
+
+    def refusing(session: PeerSession, content_id: ContentId, body: bytes) -> bool:
+        offered.append(session.node_id)
+        return False
+
+    monkeypatch.setattr(module.exchange, "hand_off", refusing)
+
+    module.handle(stored(HELD_ID, identity.node_id))
+
+    wait_until(lambda: f"refused {HELD_ID}" in caplog.text, "the push to be refused")
+    assert offered == [best.node_id]
+
+
+def test_content_no_longer_held_is_not_pushed(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    bus: Bus,
+    caplog: LogCaptureFixture,
+) -> None:
+    caplog.set_level(INFO, logger="libranet")
+    module = modules.start(config)
+
+    module.handle(stored(NOWHERE_ID, identity.node_id))
+
+    wait_until(lambda: f"{NOWHERE_ID} is no longer held" in caplog.text, "the push to be dropped")
+    assert bus.events(EventType.DATA_SENT) == []
+
+
+def test_a_push_that_goes_wrong_is_logged(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    monkeypatch: MonkeyPatch,
+    caplog: LogCaptureFixture,
+) -> None:
+    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+
+    def broken(session: PeerSession, content_id: ContentId, body: bytes) -> bool:
+        raise RuntimeError("broken")
+
+    monkeypatch.setattr(module.exchange, "hand_off", broken)
+
+    module.handle(stored(HELD_ID, identity.node_id))
+
+    wait_until(lambda: f"Pushing {HELD_ID} failed" in caplog.text, "the failure to be logged")
+
+
 # -- Lifecycle -------------------------------------------------------------
 
 
@@ -813,11 +1085,12 @@ def test_stopping_a_module_that_never_started_is_harmless(
         module.exchange
 
 
-def test_the_module_subscribes_to_node_lists_fetches_and_hand_offs() -> None:
+def test_the_module_subscribes_to_node_lists_fetches_hand_offs_and_new_content() -> None:
     assert ConnectionsModule.subscriptions == {
         EventType.NODE_LIST_UPDATED,
         EventType.FETCH_REQUESTED,
         EventType.EVICTION_NOTICE,
+        EventType.DATA_STORED,
     }
 
 

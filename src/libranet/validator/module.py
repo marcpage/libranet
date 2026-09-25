@@ -6,8 +6,8 @@ and promoting valid content from the sender's node-specific store into the
 source of truth exactly as received, compressed or not (HttpApi §8). Every
 checked upload is removed from the node-specific store.
 
-Outcomes are published for the eviction and stats modules, with these
-payloads::
+Outcomes are published for the eviction and stats modules, and stored
+content for the connection manager to push on, with these payloads::
 
     data.stored    {"algorithm": "sha256", "hash": "<hex>", "node_id": "sha256/<hex>", "size": 123}
     data.rejected  {"algorithm": "sha256", "hash": "<hex>", "node_id": "sha256/<hex>"}

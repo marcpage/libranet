@@ -24,7 +24,7 @@ class EventType(StrEnum):
 
     # Web server write path and validation (Step 7).
     PUT_COMPLETED = "data.put_completed"  # webserver, connections → validator
-    DATA_STORED = "data.stored"  # validator, backup → eviction, stats, backup
+    DATA_STORED = "data.stored"  # validator, backup → eviction, stats, backup, connections
     DATA_REJECTED = "data.rejected"  # validator → stats
 
     # Node and seek lists (Steps 8 and 9).

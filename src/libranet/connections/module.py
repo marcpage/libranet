@@ -37,6 +37,17 @@ are enough::
 
     eviction.acknowledged  {"algorithm", "hash", "node_ids": ["sha256/<hex>", ...]}
 
+New content (``data.stored`` ``{"algorithm", "hash", "node_id"}``), whether
+this node created it or received it from ``node_id``, is pushed to the one
+connected peer whose node id best matches its hash (HttpApi §7.4). It goes
+there even when this node's own id matches the hash better, since that peer
+may be connected to a better match still, but not when that peer is where it
+came from. A peer that cannot be reached is passed over for the next best;
+one that refuses the content is not. Content that finds no peer to go to
+waits, in memory, until a connection opens. ``data.stored`` announces only
+content this node did not hold before, so what it held already is never
+pushed on.
+
 For the stats module it publishes::
 
     connection.opened  {"node_id", "endpoint"}
@@ -79,6 +90,18 @@ from libranet.modules import ModuleName
 # bounds the requests fetching adds to all connections together.
 FETCH_WORKERS: Final = 8
 
+# Pushes of new content under way at once. Each sends one body to one peer
+# at a time, so this also bounds the bodies pushing holds in memory.
+PUSH_WORKERS: Final = 8
+
+
+@dataclass(frozen=True)
+class _NewContent:
+    """Content this node has just stored, and the node it came from, which may be this one."""
+
+    content_id: ContentId
+    source: ContentId
+
 
 @dataclass
 class _Peer:
@@ -97,7 +120,12 @@ class ConnectionsModule(ModuleBase):
     """Keeps this node connected to a spread of peers and fetches from them."""
 
     subscriptions: ClassVar[frozenset[EventType]] = frozenset(
-        {EventType.NODE_LIST_UPDATED, EventType.FETCH_REQUESTED, EventType.EVICTION_NOTICE}
+        {
+            EventType.NODE_LIST_UPDATED,
+            EventType.FETCH_REQUESTED,
+            EventType.EVICTION_NOTICE,
+            EventType.DATA_STORED,
+        }
     )
 
     def __init__(
@@ -129,10 +157,15 @@ class ConnectionsModule(ModuleBase):
         self._fetching: set[ContentId] = set()
         self._fetches: SimpleQueue[ContentId | None] = SimpleQueue()
         self._handing_off: set[ContentId] = set()
+        self._pushes: SimpleQueue[_NewContent | None] = SimpleQueue()
+        # New content no peer was connected to take, by content id, with the
+        # node each came from: pushed once a connection opens.
+        self._unpushed: dict[ContentId, ContentId] = {}
         self._handlers: Mapping[EventType, Callable[[Message], None]] = {
             EventType.NODE_LIST_UPDATED: self._on_node_list_updated,
             EventType.FETCH_REQUESTED: self._on_fetch_requested,
             EventType.EVICTION_NOTICE: self._on_eviction_notice,
+            EventType.DATA_STORED: self._on_data_stored,
         }
 
     @property
@@ -166,6 +199,9 @@ class ConnectionsModule(ModuleBase):
 
         for index in range(FETCH_WORKERS):
             Thread(target=self._fetch_loop, name=f"{self.name}-fetch-{index}", daemon=True).start()
+
+        for index in range(PUSH_WORKERS):
+            Thread(target=self._push_loop, name=f"{self.name}-push-{index}", daemon=True).start()
 
         self._reload_candidates()
         self._maintain()
@@ -208,6 +244,9 @@ class ConnectionsModule(ModuleBase):
             for _ in range(FETCH_WORKERS):
                 self._fetches.put(None)
 
+            for _ in range(PUSH_WORKERS):
+                self._pushes.put(None)
+
         for peer in peers:
             peer.session.close()
 
@@ -249,6 +288,14 @@ class ConnectionsModule(ModuleBase):
             self._handing_off.add(content_id)
 
         self._start("hand-off", partial(self._hand_off, content_id, copies))
+
+    def _on_data_stored(self, message: Message) -> None:
+        self._pushes.put(
+            _NewContent(
+                ContentId.create(message["algorithm"], message["hash"]),
+                ContentId.parse(message["node_id"]),
+            )
+        )
 
     def _load_seeds(self) -> list[Candidate]:
         try:
@@ -319,6 +366,7 @@ class ConnectionsModule(ModuleBase):
         self._maintain()
 
         if peer is not None:
+            self._push_unpushed()
             self._talk(peer, self.exchange.first_contact)
 
     def _attempt_failed(self, candidate: Candidate, error: Exception) -> None:
@@ -512,6 +560,69 @@ class ConnectionsModule(ModuleBase):
                 )
 
         return accepted
+
+    def _push_loop(self) -> None:
+        """Push-worker thread: push new content until told to stop."""
+        while (new := self._pushes.get()) is not None:
+            try:
+                self._push(new)
+
+            except Exception:
+                self.logger.exception("Pushing %s failed", new.content_id)
+
+    def _push(self, new: _NewContent) -> None:
+        """Push ``new`` to the best connected peer, unless that is where it came from.
+
+        A peer that cannot be reached is passed over for the next best.
+        Content that no connected peer was there to take waits for a
+        connection to open.
+        """
+        try:
+            body = self._source_of_truth.read(new.content_id)
+
+        except ContentNotFoundError:
+            self.logger.info("%s is no longer held, so cannot be pushed", new.content_id)
+            return
+
+        tried: set[ContentId] = set()
+
+        for session in self._by_match(new.content_id):
+            if session.node_id == new.source:
+                self.logger.debug("Not pushing %s back to %s", new.content_id, new.source)
+                return
+
+            tried.add(session.node_id)
+
+            try:
+                if not self.exchange.hand_off(session, new.content_id, body):
+                    self.logger.debug("%s refused %s", session.endpoint, new.content_id)
+
+                return
+
+            except OSError as error:
+                self.logger.debug(
+                    "Could not push %s to %s: %s", new.content_id, session.endpoint, error
+                )
+
+        with self._lock:
+            waiting = self._peers.keys() <= tried
+
+            if waiting:
+                self._unpushed[new.content_id] = new.source
+
+        if waiting:
+            self.logger.debug("No peer to push %s to yet", new.content_id)
+
+        else:  # a peer connected meanwhile
+            self._pushes.put(new)
+
+    def _push_unpushed(self) -> None:
+        """Push the new content that was waiting for a peer, now that one is connected."""
+        with self._lock:
+            unpushed, self._unpushed = self._unpushed, {}
+
+        for content_id, source in unpushed.items():
+            self._pushes.put(_NewContent(content_id, source))
 
     def _by_match(self, content_id: ContentId) -> list[PeerSession]:
         """The connected peers, those whose id best matches ``content_id``'s hash first."""

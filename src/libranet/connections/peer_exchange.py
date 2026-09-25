@@ -17,8 +17,9 @@ establish who the peer is; :meth:`PeerExchange.first_contact` takes the
 rest. While the connection lasts, :meth:`PeerExchange.refresh` repeats steps
 4 and 6 (§3.3), and :meth:`PeerExchange.retrieve` is step 7 for a single
 content id, for fetching it on demand. :meth:`PeerExchange.hand_off` pushes
-one content id the peer did not ask for, for it to keep once this node lets
-it go (HighLevelDesign §4.5). Steps 1 and 2 wait for their
+one content id the peer did not ask for, for it to keep: content this node
+is letting go (HighLevelDesign §4.5), or new content (§4.10). Steps 1 and 2
+wait for their
 responses. Steps 3 to 5 are sent together, pipelined, and so are the
 requests of step 6 and of step 7.
 
