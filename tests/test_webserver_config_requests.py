@@ -10,6 +10,7 @@ from libranet.webserver.config_requests import (
     BackupJobRequest,
     BuildRequest,
     ConflictBehavior,
+    ExportRequest,
     InvalidConfigRequestError,
     Password,
     RestoreRequest,
@@ -22,6 +23,7 @@ from libranet.webserver.config_requests import (
 DIRECTORY = "/home/me/documents"
 BUNDLE = ContentId.for_data(b"a backup bundle", "sha256")
 SITE = "/home/me/site"
+ARCHIVE = "/home/me/site.zip"
 
 
 def test_a_job_names_its_directory_and_how_often_to_look() -> None:
@@ -153,6 +155,9 @@ def test_a_request_cannot_be_built_around_a_directory_it_would_misname(directory
     with raises(ValueError):
         BuildRequest(directory)
 
+    with raises(ValueError):
+        ExportRequest(BUNDLE, directory)
+
 
 def test_a_build_names_its_directory_and_passes_its_password_on() -> None:
     build = parse_build({"directory": SITE, "password": "correct horse"})
@@ -203,11 +208,71 @@ def test_a_build_this_node_cannot_act_on_is_refused(value: object) -> None:
         parse_build(value)
 
 
+def test_an_export_names_the_bundle_the_archive_and_the_conflict_behavior() -> None:
+    export = ExportRequest.from_value(
+        {"bundle": str(BUNDLE), "archive": ARCHIVE, "on_conflict": "overwrite", "password": "pw"}
+    )
+
+    assert (export.bundle, export.archive) == (BUNDLE, ARCHIVE)
+    assert export.on_conflict is ConflictBehavior.OVERWRITE
+    assert export.password == Password("pw")
+    assert export.payload() == {
+        "export_id": export.export_id,
+        "bundle": str(BUNDLE),
+        "archive": ARCHIVE,
+        "on_conflict": "overwrite",
+        "password": "pw",
+    }
+
+
+def test_an_export_refuses_to_replace_a_file_unless_asked_otherwise() -> None:
+    export = ExportRequest.from_value({"bundle": str(BUNDLE), "archive": ARCHIVE})
+
+    assert export.on_conflict is ConflictBehavior.REFUSE
+    assert export.password is None
+
+
+def test_an_export_is_named_by_its_bundle_and_its_archive_alone() -> None:
+    export = ExportRequest.from_value({"bundle": str(BUNDLE), "archive": ARCHIVE})
+    elsewhere = ExportRequest.from_value({"bundle": str(BUNDLE), "archive": "/tmp/site.zip"})
+    other_bundle = ExportRequest.from_value(
+        {"bundle": str(ContentId.for_data(b"another bundle", "sha256")), "archive": ARCHIVE}
+    )
+    protected = ExportRequest.from_value(
+        {"bundle": str(BUNDLE), "archive": ARCHIVE, "on_conflict": "overwrite", "password": "pw"}
+    )
+
+    assert export.export_id == protected.export_id
+    assert len({export.export_id, elsewhere.export_id, other_bundle.export_id}) == 3
+
+
+@mark.parametrize(
+    "value",
+    [
+        [],
+        {},
+        {"bundle": str(BUNDLE)},
+        {"archive": ARCHIVE},
+        {"bundle": "not-a-content-id", "archive": ARCHIVE},
+        {"bundle": str(BUNDLE), "archive": "site.zip"},
+        {"bundle": str(BUNDLE), "archive": "/"},
+        {"bundle": str(BUNDLE), "archive": ARCHIVE, "on_conflict": "merge"},
+        {"bundle": str(BUNDLE), "archive": ARCHIVE, "password": ""},
+        {"bundle": str(BUNDLE), "archive": ARCHIVE, "password": ["pw"]},
+    ],
+)
+def test_an_export_this_node_cannot_act_on_is_refused(value: object) -> None:
+    with raises(InvalidConfigRequestError):
+        ExportRequest.from_value(value)
+
+
 def test_a_password_is_never_shown() -> None:
     build = BuildRequest(SITE, Password("hunter2"))
+    export = ExportRequest(BUNDLE, ARCHIVE, password=Password("hunter2"))
 
     assert "hunter2" not in repr(build)
-    assert "hunter2" not in build.build_id
+    assert "hunter2" not in repr(export)
+    assert "hunter2" not in build.build_id + export.export_id
 
 
 def test_a_password_is_taken_as_utf8() -> None:

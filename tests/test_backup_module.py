@@ -12,6 +12,7 @@ from typing import Any
 from pytest import LogCaptureFixture, MonkeyPatch, fixture, raises
 
 from libranet.backup.builds import Build, BuildRecord
+from libranet.backup.exports import Export
 from libranet.backup.jobs import JobFileError, load_jobs
 from libranet.backup.module import BackupModule, backup_module_factory
 from libranet.backup.restores import Restore
@@ -21,7 +22,7 @@ from libranet.bundle.loading import load_bundle
 from libranet.bundle.reassembly import write_file
 from libranet.bundle.shapes import DirectoryBundle, FileBundle
 from libranet.bundle.storing import store_bundle
-from libranet.cas.archive import ArchiveSink
+from libranet.cas.archive import ArchiveSink, ArchiveSource
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore, source_of_truth_store
 from libranet.config.models import (
@@ -44,6 +45,7 @@ from libranet.webserver.config_requests import (
     BackupJobRequest,
     BuildRequest,
     ConflictBehavior,
+    ExportRequest,
     Password,
     RestoreRequest,
 )
@@ -951,10 +953,29 @@ def builds(messages: list[Message]) -> list[list[dict[str, Any]]]:
     return [message["builds"] for message in of(messages, EventType.BACKUP_STATE)]
 
 
+def exports(messages: list[Message]) -> list[list[dict[str, Any]]]:
+    """The exports each ``backup.state`` reported, in order."""
+    return [message["exports"] for message in of(messages, EventType.BACKUP_STATE)]
+
+
 def build(module: BackupModule, directory: Path, password: str | None = None) -> str:
     request = BuildRequest(str(directory), Password.optional(password))
     module.handle(asked(EventType.BUILD_REQUESTED, **request.payload()))
     return request.build_id
+
+
+def export(
+    module: BackupModule,
+    bundle: str,
+    archive: Path,
+    on_conflict: ConflictBehavior = ConflictBehavior.REFUSE,
+    password: str | None = None,
+) -> str:
+    request = ExportRequest(
+        ContentId.parse(bundle), str(archive), on_conflict, Password.optional(password)
+    )
+    module.handle(asked(EventType.EXPORT_REQUESTED, **request.payload()))
+    return request.export_id
 
 
 def built_bundle(module: BackupModule, queues: ModuleQueues, tree: Path) -> str:
@@ -963,8 +984,8 @@ def built_bundle(module: BackupModule, queues: ModuleQueues, tree: Path) -> str:
     return bundle
 
 
-def test_the_module_hears_build_requests() -> None:
-    assert EventType.BUILD_REQUESTED in BackupModule.subscriptions
+def test_the_module_hears_build_and_export_requests() -> None:
+    assert {EventType.BUILD_REQUESTED, EventType.EXPORT_REQUESTED} <= BackupModule.subscriptions
 
 
 def test_a_build_is_made_at_once_recorded_beside_its_directory_and_reported(
@@ -1196,6 +1217,165 @@ def test_paths_a_build_leaves_out_are_counted_and_logged(
     assert "Left pipe out of the build of" in caplog.text
 
 
+def test_an_export_writes_an_archive_holding_all_a_bundle_needs(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float], tree: Path, tmp_path: Path
+) -> None:
+    module = start(config, queues, now)
+    bundle = built_bundle(module, queues, tree)
+    archive = tmp_path / "tree.zip"
+    export_id = export(module, bundle, archive)
+    messages = published(queues)
+    states = exports(messages)
+
+    assert [state[0]["status"] for state in states] == ["waiting", "running", "done"]
+    assert states[-1] == [
+        {
+            "export_id": export_id,
+            "bundle": bundle,
+            "archive": str(archive),
+            "on_conflict": "refuse",
+            "status": "done",
+            "error": None,
+            "requested_at": START,
+            "finished_at": START,
+            "objects": 3,
+        }
+    ]
+    assert asked_for(messages) == []
+
+    with ArchiveSource.open(archive) as opened:
+        assert ContentId.parse(bundle) in set(opened.iter_prefix("sha256", ""))
+
+
+def test_an_export_reads_content_held_only_in_an_archive(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tree: Path,
+    tmp_path: Path,
+    store: CasStore,
+) -> None:
+    bundle = built_bundle(start(config, queues, now), queues, tree)
+    shipped = tmp_path / "shipped.zip"
+
+    with ArchiveSink.create(shipped) as sink:
+        for content_id in [stored.content_id for stored in held_objects(store)]:
+            sink.write(content_id, store.read(content_id))
+            store.delete(content_id)
+
+    storage = config.storage.model_copy(update={"archives": (shipped,)})
+    module = start(config.model_copy(update={"storage": storage}), queues, now)
+    published(queues)
+    export(module, bundle, tmp_path / "again.zip")
+
+    assert exports(published(queues))[-1][0]["status"] == "done"
+
+
+def test_an_export_lacking_content_fails_and_asks_for_it(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tree: Path,
+    tmp_path: Path,
+    store: CasStore,
+) -> None:
+    module = start(config, queues, now)
+    bundle = built_bundle(module, queues, tree)
+    part = ContentId.for_data(b"some notes", "sha256")
+    store.delete(part)
+    archive = tmp_path / "tree.zip"
+    export(module, bundle, archive)
+    messages = published(queues)
+    failed = exports(messages)[-1][0]
+
+    assert (failed["status"], failed["error"]) == ("failed", "Lacks 1 of the objects it needs")
+    assert asked_for(messages) == [part]
+    assert not archive.exists()
+
+
+def test_an_export_that_cannot_be_written_fails_and_says_why(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tree: Path,
+    tmp_path: Path,
+    caplog: LogCaptureFixture,
+) -> None:
+    module = start(config, queues, now)
+    bundle = built_bundle(module, queues, tree)
+    archive = tmp_path / "tree.zip"
+    archive.write_bytes(b"something else")
+
+    with caplog.at_level(WARNING):
+        export(module, bundle, archive)
+
+    failed = exports(published(queues))[-1][0]
+
+    assert failed["status"] == "failed"
+    assert "may not overwrite" in failed["error"]
+    assert "Could not export" in caplog.text
+    assert archive.read_bytes() == b"something else"
+
+
+def test_an_export_never_writes_in_the_node_own_directories(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float], tree: Path
+) -> None:
+    module = start(config, queues, now)
+    bundle = built_bundle(module, queues, tree)
+    archive = config.storage.source_of_truth_dir / "tree.zip"
+    export(module, bundle, archive)
+    failed = exports(published(queues))[-1][0]
+
+    assert failed["status"] == "failed"
+    assert "Ignored" in failed["error"]
+    assert not archive.exists()
+
+
+def test_an_export_id_that_does_not_name_its_request_is_refused(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float], tmp_path: Path
+) -> None:
+    module = start(config, queues, now)
+    published(queues)
+
+    with raises(ValueError):
+        module.handle(
+            asked(
+                EventType.EXPORT_REQUESTED,
+                export_id="0" * 16,
+                bundle=f"sha256/{'0' * 64}",
+                archive=str(tmp_path / "site.zip"),
+                on_conflict="refuse",
+                password=None,
+            )
+        )
+
+    assert module.exports == {}
+    assert published(queues) == []
+
+
+def test_an_unexpected_export_failure_fails_it_and_is_logged(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    caplog: LogCaptureFixture,
+) -> None:
+    def broken(*arguments: object) -> None:
+        raise RuntimeError()
+
+    monkeypatch.setattr(Export, "run", broken)
+    module = start(config, queues, now)
+
+    with caplog.at_level(ERROR):
+        export(module, f"sha256/{'0' * 64}", tmp_path / "site.zip")
+
+    failed = exports(published(queues))[-1][0]
+
+    assert (failed["status"], failed["error"]) == ("failed", "RuntimeError")
+    assert any(record.exc_info for record in caplog.records)
+
+
 def test_a_build_goes_ahead_of_a_backup_due(
     config: LibranetConfig, queues: ModuleQueues, now: list[float], tree: Path, tmp_path: Path
 ) -> None:
@@ -1215,7 +1395,7 @@ def test_a_build_goes_ahead_of_a_backup_due(
     assert reports(published(queues))[-1][0]["checked_at"] == START + INTERVAL
 
 
-def test_a_restore_due_goes_ahead_of_a_build(
+def test_a_restore_due_goes_ahead_of_a_build_and_builds_and_exports_run_in_turn(
     config: LibranetConfig,
     queues: ModuleQueues,
     now: list[float],
@@ -1237,6 +1417,16 @@ def test_a_restore_due_goes_ahead_of_a_build(
     assert [state[0]["status"] for state in restores(messages)][-2:] == ["running", "waiting"]
     assert builds(messages)[-1][0]["status"] == "waiting"
 
-    module.on_idle()
+    export(module, bundle, tmp_path / "backup.zip")
+    messages = published(queues)
 
-    assert builds(published(queues))[-1][0]["status"] == "done"
+    # The build, asked for first, runs next, and the export waits its turn.
+    assert builds(messages)[-1][0]["status"] == "done"
+    assert exports(messages)[-1][0]["status"] == "waiting"
+
+    module.on_idle()
+    failed = exports(published(queues))[-1][0]
+
+    # A backup bundle is protected with the backup secret, which no request gives.
+    assert failed["status"] == "failed"
+    assert "password" in failed["error"].lower()

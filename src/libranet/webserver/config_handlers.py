@@ -17,15 +17,18 @@ identifier the request will be known by::
                                            backup.run_requested
     POST   /config/api/restores            backup.restore_requested
     POST   /config/api/builds              backup.build_requested
+    POST   /config/api/exports             backup.export_requested
 
 A build makes a bundle of a directory, or a new version of the one made
-before (Step 38). It may carry a password protecting the bundle, which is
-passed on to the backup module and never answered or reported. Building
+before, and an export writes a bundle and all it needs into a content
+archive (Step 38). Either may carry a password protecting the bundle, which
+is passed on to the backup module and never answered or reported. Building
 and registering stay two steps: a bundle built is served only once it is
 registered as an application.
 
-What those jobs, restores, and builds are doing is read back with
-``GET /config/api/backups``, ``restores``, and ``builds``, and comes from the reports the backup module publishes (see
+What those jobs, restores, builds, and exports are doing is read back with
+``GET /config/api/backups``, ``restores``, ``builds``, and ``exports``, and
+comes from the reports the backup module publishes (see
 :mod:`libranet.webserver.backup_state`). Before its first report there is
 nothing to read, and the answer is ``503`` with a ``Retry-After``, as for a
 list that has not been derived yet.
@@ -65,12 +68,14 @@ from libranet.problems import INVALID_CONFIG_REQUEST, Problem
 from libranet.webserver.app_registry import Application, ApplicationRegistry, RegistryFileError
 from libranet.webserver.backup_state import (
     BUILDS_FIELD,
+    EXPORTS_FIELD,
     JOBS_FIELD,
     RESTORES_FIELD,
     BackupState,
 )
 from libranet.webserver.config_requests import (
     IDENTIFIER_LENGTH,
+    ExportRequest,
     InvalidConfigRequestError,
     decode_request,
     parse_backup_job,
@@ -87,6 +92,7 @@ NODE_PATH: Final = CONFIG_API_PATH + "/node"
 BACKUPS_PATH: Final = CONFIG_API_PATH + "/backups"
 RESTORES_PATH: Final = CONFIG_API_PATH + "/restores"
 BUILDS_PATH: Final = CONFIG_API_PATH + "/builds"
+EXPORTS_PATH: Final = CONFIG_API_PATH + "/exports"
 APPLICATIONS_PATH: Final = CONFIG_API_PATH + "/applications"
 BACKUP_JOB_PATTERN: Final = BACKUPS_PATH + rf"/(?P<job_id>[0-9a-f]{{{IDENTIFIER_LENGTH}}})"
 BACKUP_RUN_PATTERN: Final = BACKUP_JOB_PATTERN + "/run"
@@ -97,7 +103,7 @@ BACKUP_JOB_TEMPLATE: Final = BACKUPS_PATH + "/{job_id}"
 BACKUP_RUN_TEMPLATE: Final = BACKUP_JOB_TEMPLATE + "/run"
 APPLICATION_TEMPLATE: Final = APPLICATIONS_PATH + "/{name}"
 
-# A job, restore, build, or application request is a small object of a few
+# A job, restore, build, export, or application request is a small object of a few
 # strings. Anything larger is a mistake, and is refused before it is read.
 MAX_CONFIG_BODY_BYTES: Final = 64 * 1024
 
@@ -112,6 +118,8 @@ ENDPOINTS: Final = (
     {"method": "POST", "path": RESTORES_PATH, "description": "Restore a backup bundle"},
     {"method": "GET", "path": BUILDS_PATH, "description": "Requested builds"},
     {"method": "POST", "path": BUILDS_PATH, "description": "Build a directory into a bundle"},
+    {"method": "GET", "path": EXPORTS_PATH, "description": "Requested exports"},
+    {"method": "POST", "path": EXPORTS_PATH, "description": "Export a bundle as an archive"},
     {"method": "GET", "path": APPLICATIONS_PATH, "description": "Registered applications"},
     {"method": "POST", "path": APPLICATIONS_PATH, "description": "Register an application"},
     {"method": "DELETE", "path": APPLICATION_TEMPLATE, "description": "Remove an application"},
@@ -280,6 +288,28 @@ class BuildHandler:
 
 
 @dataclass(frozen=True)
+class ExportHandler:
+    """``POST /config/api/exports``: write a bundle, and all it needs, into a content archive."""
+
+    publish: Publish
+
+    def __call__(self, request: Request) -> Response:
+        body = _body_or_refusal(request)
+
+        if isinstance(body, Response):
+            return body
+
+        try:
+            export = ExportRequest.from_value(decode_request(body))
+
+        except InvalidConfigRequestError as error:
+            return invalid_request_response(request, error)
+
+        self.publish(EventType.EXPORT_REQUESTED, export.payload())
+        return json_response({"export_id": export.export_id}, HTTPStatus.ACCEPTED)
+
+
+@dataclass(frozen=True)
 class ApplicationListHandler:
     """``GET /config/api/applications``: every registered application, by name."""
 
@@ -407,6 +437,8 @@ def config_routes(
         ("POST", RESTORES_PATH, RestoreHandler(publish)),
         ("GET", BUILDS_PATH, BackupReportHandler(state, BUILDS_FIELD, retry_after_seconds)),
         ("POST", BUILDS_PATH, BuildHandler(publish)),
+        ("GET", EXPORTS_PATH, BackupReportHandler(state, EXPORTS_FIELD, retry_after_seconds)),
+        ("POST", EXPORTS_PATH, ExportHandler(publish)),
         ("POST", BACKUP_RUN_PATTERN, BackupRunHandler(publish)),
         ("DELETE", BACKUP_JOB_PATTERN, BackupJobRemovalHandler(publish)),
         ("GET", APPLICATIONS_PATH, ApplicationListHandler(registry)),
