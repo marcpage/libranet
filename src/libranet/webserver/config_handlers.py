@@ -75,11 +75,11 @@ from libranet.webserver.backup_state import (
 )
 from libranet.webserver.config_requests import (
     IDENTIFIER_LENGTH,
+    ExportRequest,
     InvalidConfigRequestError,
     decode_request,
     parse_backup_job,
     parse_build,
-    parse_export,
     parse_restore,
 )
 from libranet.webserver.http_types import Request, Response, json_response, problem_response
@@ -300,7 +300,7 @@ class ExportHandler:
             return body
 
         try:
-            export = parse_export(decode_request(body))
+            export = ExportRequest.from_value(decode_request(body))
 
         except InvalidConfigRequestError as error:
             return invalid_request_response(request, error)

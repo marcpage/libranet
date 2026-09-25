@@ -242,6 +242,42 @@ class ExportRequest:
         """
         return cls(bundle, normalized_directory(archive), on_conflict, Password.optional(password))
 
+    @classmethod
+    def from_value(cls, value: object) -> ExportRequest:
+        """The export a ``{"bundle", "archive", "on_conflict", "password"}`` object asks for.
+
+        Raises:
+            InvalidConfigRequestError: it is not such an object, or what it asks
+                for is not a usable export.
+        """
+        if not isinstance(value, dict):
+            raise InvalidConfigRequestError("An export must be a JSON object")
+
+        bundle = value.get("bundle")
+        archive = value.get("archive")
+
+        if not isinstance(bundle, str) or not isinstance(archive, str):
+            raise InvalidConfigRequestError('An export\'s "bundle" and "archive" must be strings')
+
+        on_conflict = value.get("on_conflict", ConflictBehavior.REFUSE.value)
+
+        if on_conflict not in tuple(ConflictBehavior):
+            behaviors = ", ".join(behavior.value for behavior in ConflictBehavior)
+            raise InvalidConfigRequestError(
+                f'An export\'s "on_conflict" must be one of: {behaviors}'
+            )
+
+        try:
+            return cls.create(
+                ContentId.parse(bundle),
+                archive,
+                ConflictBehavior(on_conflict),
+                _password(value, "An export"),
+            )
+
+        except (InvalidContentIdError, ValueError) as error:
+            raise InvalidConfigRequestError(str(error)) from None
+
     @property
     def export_id(self) -> str:
         """What names this export, derived from the bundle and the archive."""
@@ -402,40 +438,6 @@ def parse_build(value: object) -> BuildRequest:
         return BuildRequest.create(directory, _password(value, "A build"))
 
     except ValueError as error:
-        raise InvalidConfigRequestError(str(error)) from None
-
-
-def parse_export(value: object) -> ExportRequest:
-    """The export a ``{"bundle", "archive", "on_conflict", "password"}`` object asks for.
-
-    Raises:
-        InvalidConfigRequestError: it is not such an object, or what it asks
-            for is not a usable export.
-    """
-    if not isinstance(value, dict):
-        raise InvalidConfigRequestError("An export must be a JSON object")
-
-    bundle = value.get("bundle")
-    archive = value.get("archive")
-
-    if not isinstance(bundle, str) or not isinstance(archive, str):
-        raise InvalidConfigRequestError('An export\'s "bundle" and "archive" must be strings')
-
-    on_conflict = value.get("on_conflict", ConflictBehavior.REFUSE.value)
-
-    if on_conflict not in tuple(ConflictBehavior):
-        behaviors = ", ".join(behavior.value for behavior in ConflictBehavior)
-        raise InvalidConfigRequestError(f'An export\'s "on_conflict" must be one of: {behaviors}')
-
-    try:
-        return ExportRequest.create(
-            ContentId.parse(bundle),
-            archive,
-            ConflictBehavior(on_conflict),
-            _password(value, "An export"),
-        )
-
-    except (InvalidContentIdError, ValueError) as error:
         raise InvalidConfigRequestError(str(error)) from None
 
 

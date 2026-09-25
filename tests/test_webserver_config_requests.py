@@ -17,7 +17,6 @@ from libranet.webserver.config_requests import (
     decode_request,
     parse_backup_job,
     parse_build,
-    parse_export,
     parse_restore,
 )
 
@@ -210,7 +209,7 @@ def test_a_build_this_node_cannot_act_on_is_refused(value: object) -> None:
 
 
 def test_an_export_names_the_bundle_the_archive_and_the_conflict_behavior() -> None:
-    export = parse_export(
+    export = ExportRequest.from_value(
         {"bundle": str(BUNDLE), "archive": ARCHIVE, "on_conflict": "overwrite", "password": "pw"}
     )
 
@@ -227,19 +226,19 @@ def test_an_export_names_the_bundle_the_archive_and_the_conflict_behavior() -> N
 
 
 def test_an_export_refuses_to_replace_a_file_unless_asked_otherwise() -> None:
-    export = parse_export({"bundle": str(BUNDLE), "archive": ARCHIVE})
+    export = ExportRequest.from_value({"bundle": str(BUNDLE), "archive": ARCHIVE})
 
     assert export.on_conflict is ConflictBehavior.REFUSE
     assert export.password is None
 
 
 def test_an_export_is_named_by_its_bundle_and_its_archive_alone() -> None:
-    export = parse_export({"bundle": str(BUNDLE), "archive": ARCHIVE})
-    elsewhere = parse_export({"bundle": str(BUNDLE), "archive": "/tmp/site.zip"})
-    other_bundle = parse_export(
+    export = ExportRequest.from_value({"bundle": str(BUNDLE), "archive": ARCHIVE})
+    elsewhere = ExportRequest.from_value({"bundle": str(BUNDLE), "archive": "/tmp/site.zip"})
+    other_bundle = ExportRequest.from_value(
         {"bundle": str(ContentId.for_data(b"another bundle", "sha256")), "archive": ARCHIVE}
     )
-    protected = parse_export(
+    protected = ExportRequest.from_value(
         {"bundle": str(BUNDLE), "archive": ARCHIVE, "on_conflict": "overwrite", "password": "pw"}
     )
 
@@ -264,7 +263,7 @@ def test_an_export_is_named_by_its_bundle_and_its_archive_alone() -> None:
 )
 def test_an_export_this_node_cannot_act_on_is_refused(value: object) -> None:
     with raises(InvalidConfigRequestError):
-        parse_export(value)
+        ExportRequest.from_value(value)
 
 
 def test_a_password_is_never_shown() -> None:
