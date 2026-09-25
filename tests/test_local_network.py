@@ -1,21 +1,89 @@
-"""The local network script: key choice, node configs, node lists, and log following."""
+"""The local network script: key choice, node configs, node lists, log following, and stopping."""
 
 from __future__ import annotations
 from json import loads
 from logging import INFO, Formatter, LogRecord
 from pathlib import Path
+from select import select
+from signal import SIGINT, SIGKILL
+from subprocess import DEVNULL, PIPE, Popen
+from sys import executable
+from typing import Iterator
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from pytest import MonkeyPatch, fixture
 
 from libranet.config.loader import load_config
 from libranet.config.models import LoggingConfig
 from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity
-from local_network import DISTINCT_DIGITS, ConnectionLog, LocalNetwork, NodePlace, choose_keys
+from local_network import (
+    DISTINCT_DIGITS,
+    ConnectionLog,
+    LocalNetwork,
+    NodePlace,
+    NodeProcess,
+    RunningNetwork,
+    choose_keys,
+)
 
 ALGORITHM = "sha256"
 PEER = "sha256/" + "ab" * 32
 OTHER_PEER = "sha256/" + "cd" * 32
+
+# Stand-ins for a node's supervisor. Each prints a line once its SIGINT
+# handling is in place, so a test never signals it too early.
+OBEDIENT = "import time; print(flush=True); time.sleep(60)"
+STUBBORN = (
+    "import signal, time; signal.signal(signal.SIGINT, signal.SIG_IGN); "
+    "print(flush=True); time.sleep(60)"
+)
+# A supervisor with a module process. The module shares the supervisor's
+# stdout, so that pipe stays open while either one is alive.
+WITH_MODULE = (
+    "import subprocess, sys, time; "
+    "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); "
+    "print(flush=True); time.sleep(60)"
+)
+
+
+class StandInNodes:
+    """Runs stand-in node processes, and kills whatever a test leaves running."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self._started: list[NodeProcess] = []
+
+    def network(self, *programs: str) -> RunningNetwork:
+        """A running network whose nodes run ``programs``, each ready for its signal."""
+        network = LocalNetwork.create(self.root, len(programs), 18400)
+        running = RunningNetwork(network, self.root)
+
+        for node, program in zip(network.nodes, programs):
+            process = Popen(
+                [executable, "-c", program], stdout=PIPE, stderr=DEVNULL, start_new_session=True
+            )
+            assert process.stdout is not None
+            process.stdout.readline()
+            log = ConnectionLog(node.place.connections_log_path)
+            running.processes.append(NodeProcess(node, process, log))
+
+        self._started.extend(running.processes)
+        return running
+
+    def close(self) -> None:
+        """Kill every stand-in and close its pipe."""
+        for process in self._started:
+            process.kill()
+            assert process.process.stdout is not None
+            process.process.stdout.close()
+
+
+@fixture
+def stand_ins(tmp_path: Path) -> Iterator[StandInNodes]:
+    nodes = StandInNodes(tmp_path)
+    yield nodes
+    nodes.close()
 
 
 def _first_digit(key: Ed25519PrivateKey) -> int:
@@ -172,3 +240,51 @@ def test_a_log_not_written_yet_tracks_nothing(tmp_path: Path) -> None:
     log.poll()
 
     assert log.connected == set()
+
+
+def _exited_within(process: NodeProcess, seconds: float) -> bool:
+    """Whether every process sharing ``process``'s stdout exits within ``seconds``."""
+    stdout = process.process.stdout
+    assert stdout is not None
+    readable, _, _ = select([stdout], [], [], seconds)
+    return bool(readable) and stdout.read() == b""
+
+
+def test_killing_a_node_kills_its_modules_too(stand_ins: StandInNodes) -> None:
+    process = stand_ins.network(WITH_MODULE).processes[0]
+
+    process.kill()
+
+    assert process.process.returncode == -SIGKILL
+    assert _exited_within(process, 5.0)
+
+
+def test_a_node_that_does_not_stop_in_time_is_killed(
+    stand_ins: StandInNodes, monkeypatch: MonkeyPatch
+) -> None:
+    monkeypatch.setattr("local_network._STOP_TIMEOUT_SECONDS", 0.2)
+    running = stand_ins.network(OBEDIENT, STUBBORN)
+
+    running.stop()
+
+    assert [process.process.returncode for process in running.processes] == [-SIGINT, -SIGKILL]
+
+
+def test_only_a_few_nodes_stop_at_once(stand_ins: StandInNodes, monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr("local_network._STOP_TIMEOUT_SECONDS", 0.2)
+    monkeypatch.setattr("local_network._STOP_WINDOW", 2)
+    running = stand_ins.network(STUBBORN, STUBBORN, STUBBORN)
+    request_stop = NodeProcess.request_stop
+    requested: list[NodeProcess] = []
+    stopping_at_each_request: list[int] = []
+
+    def counting_request_stop(process: NodeProcess) -> None:
+        requested.append(process)
+        stopping_at_each_request.append(sum(other.running for other in requested))
+        request_stop(process)
+
+    monkeypatch.setattr(NodeProcess, "request_stop", counting_request_stop)
+
+    running.stop()
+
+    assert stopping_at_each_request == [1, 2, 1]

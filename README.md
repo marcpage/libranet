@@ -371,7 +371,8 @@ Connections [##################################------] 274/320
 `out` counts the node's connections to peers against the sixteen it aims for,
 one per bucket; `in` counts the other nodes connected to it. Open any URL in a
 browser to use that node. `Ctrl-C` stops every node and deletes the network's
-files.
+files. Nodes stop four at a time, so a large network takes a while; a second
+`Ctrl-C` kills whatever is left at once.
 
 `--count` sets how many nodes run and `--base-port` the port of the first.
 `--dir DIR` keeps the network's files in `DIR`, and a later run with the same

@@ -24,12 +24,12 @@ from argparse import ArgumentParser, Namespace
 from dataclasses import dataclass
 from functools import cached_property
 from json import dumps
-from os import fstat
+from os import fstat, killpg
 from pathlib import Path
 from re import compile as compile_pattern
 from shutil import rmtree
-from signal import SIGHUP, SIGINT, SIGTERM, default_int_handler, signal
-from subprocess import DEVNULL, STDOUT, Popen, TimeoutExpired
+from signal import SIGHUP, SIGINT, SIGKILL, SIGTERM, default_int_handler, signal
+from subprocess import DEVNULL, STDOUT, Popen
 from sys import executable, stdout
 from tempfile import mkdtemp
 from time import monotonic, sleep
@@ -68,6 +68,10 @@ _DERIVE_INTERVAL_SECONDS: Final = 5.0
 _START_SPACING_SECONDS: Final = 1.0
 _START_TIMEOUT_SECONDS: Final = 120.0
 _STOP_TIMEOUT_SECONDS: Final = 30.0
+# Stopping a node wakes every one of its processes, and an idle network can
+# be larger than memory, so only a few nodes stop at a time.
+_STOP_WINDOW: Final = 4
+_STOP_POLL_SECONDS: Final = 0.1
 _REQUEST_TIMEOUT_SECONDS: Final = 10.0
 _REFRESH_SECONDS: Final = 1.0
 _BAR_WIDTH: Final = 40
@@ -275,6 +279,7 @@ class NodeProcess:
         self.node = node
         self.process = process
         self.log = log
+        self._stop_deadline: float | None = None
 
     @classmethod
     def launch(cls, node: LocalNode) -> NodeProcess:
@@ -302,6 +307,35 @@ class NodeProcess:
     def peers(self) -> frozenset[str]:
         """The node ids the node is connected to; none once it has exited."""
         return frozenset(self.log.connected) if self.running else frozenset()
+
+    @property
+    def overdue(self) -> bool:
+        """Whether the node was asked to stop and is still running past its time."""
+        return (
+            self._stop_deadline is not None and monotonic() > self._stop_deadline and self.running
+        )
+
+    def request_stop(self) -> None:
+        """Signal the node to stop, starting the time it has to do so."""
+        self.process.send_signal(SIGINT)
+        self._stop_deadline = monotonic() + _STOP_TIMEOUT_SECONDS
+
+    def kill(self) -> None:
+        """Kill the node along with any of its module processes still running.
+
+        The node's session is a process group, whose id is the supervisor's
+        pid, holding its modules too; killing the supervisor alone would
+        orphan them.
+        """
+        # Once the supervisor is reaped, its pid, and so the group id, may be reused.
+        if self.process.returncode is None:
+            try:
+                killpg(self.process.pid, SIGKILL)
+
+            except ProcessLookupError:
+                pass
+
+        self.process.wait()
 
     def serving(self, opener: OpenerDirector) -> bool:
         """Whether the node answers ``GET /data/nodes``, which it does once its lists exist."""
@@ -434,23 +468,26 @@ class RunningNetwork:
             sleep(_REFRESH_SECONDS)
 
     def stop(self) -> None:
-        """Signal every node to stop, and kill any that does not stop in time."""
-        running = [process for process in self.processes if process.running]
-        print(f"\nStopping {len(running)} nodes", flush=True)
+        """Stop the nodes a few at a time, killing any that does not stop in time."""
+        waiting = [process for process in self.processes if process.running]
+        print(f"\nStopping {len(waiting)} nodes", flush=True)
+        stopping: list[NodeProcess] = []
 
-        for process in running:
-            process.process.send_signal(SIGINT)
+        while waiting or stopping:
+            while waiting and len(stopping) < _STOP_WINDOW:
+                process = waiting.pop(0)
+                print(f"Stopping node {process.node.place.index}", flush=True)
+                process.request_stop()
+                stopping.append(process)
 
-        deadline = monotonic() + _STOP_TIMEOUT_SECONDS
+            sleep(_STOP_POLL_SECONDS)
 
-        for process in running:
-            try:
-                process.process.wait(timeout=max(0.0, deadline - monotonic()))
+            for process in stopping:
+                if process.overdue:
+                    print(f"Killing node {process.node.place.index}", flush=True)
+                    process.kill()
 
-            except TimeoutExpired:
-                print(f"Killing node {process.node.place.index}", flush=True)
-                process.process.kill()
-                process.process.wait()
+            stopping = [process for process in stopping if process.running]
 
 
 def parse_args(argv: Sequence[str] | None = None) -> Namespace:
@@ -508,7 +545,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         except KeyboardInterrupt:
             for process in running.processes:
-                process.process.kill()
+                process.kill()
 
     # A failed run keeps its files, so the logs that explain it can be read.
     if args.dir is None and status == 0:
