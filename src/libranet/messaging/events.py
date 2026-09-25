@@ -52,6 +52,7 @@ class EventType(StrEnum):
     BACKUP_RUN_REQUESTED = "backup.run_requested"  # webserver → backup
     RESTORE_REQUESTED = "backup.restore_requested"  # webserver → backup
     BUILD_REQUESTED = "backup.build_requested"  # webserver → backup
+    EXPORT_REQUESTED = "backup.export_requested"  # webserver → backup
     BACKUP_STATE = "backup.state"  # backup → webserver
 
     # Eviction hand-off (Step 15).

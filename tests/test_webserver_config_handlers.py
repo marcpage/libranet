@@ -33,6 +33,7 @@ from libranet.webserver.config_handlers import (
     BACKUPS_PATH,
     BUILDS_PATH,
     CONFIG_API_PATH,
+    EXPORTS_PATH,
     MAX_CONFIG_BODY_BYTES,
     NODE_PATH,
     RESTORES_PATH,
@@ -42,6 +43,7 @@ from libranet.webserver.config_handlers import (
 from libranet.webserver.config_requests import (
     BackupJobRequest,
     BuildRequest,
+    ExportRequest,
     RestoreRequest,
 )
 from libranet.webserver.http_types import JSON_CONTENT_TYPE, Request, RequestBody, Response
@@ -54,13 +56,16 @@ BUNDLE = ContentId.for_data(b"a backup bundle", "sha256")
 JOB_ID = BackupJobRequest(DIRECTORY).job_id
 RESTORE_ID = RestoreRequest(BUNDLE, DIRECTORY).restore_id
 SITE = "/home/me/site"
+ARCHIVE = "/home/me/site.zip"
 BUILD_ID = BuildRequest(SITE).build_id
+EXPORT_ID = ExportRequest(BUNDLE, ARCHIVE).export_id
 JOB_PATH = f"{BACKUPS_PATH}/{JOB_ID}"
 WIKI_PATH = f"{APPLICATIONS_PATH}/wiki"
 APP_BUNDLE = ContentId.for_data(b"an application's bundle", "sha256")
 JOB_ENTRY = {"job_id": JOB_ID, "directory": DIRECTORY, "state": "idle"}
 RESTORE_ENTRY = {"restore_id": RESTORE_ID, "directory": DIRECTORY, "state": "running"}
 BUILD_ENTRY = {"build_id": BUILD_ID, "directory": SITE, "status": "done"}
+EXPORT_ENTRY = {"export_id": EXPORT_ID, "archive": ARCHIVE, "status": "waiting"}
 NODE_ID = ContentId.for_data(b"this node's public key", "sha256")
 NETWORK = NetworkConfig(listen_address="0.0.0.0", listen_port=8080, external_port=4300)
 
@@ -147,6 +152,8 @@ def test_the_index_names_every_endpoint(router: Router) -> None:
         ("POST", "/config/api/restores"),
         ("GET", "/config/api/builds"),
         ("POST", "/config/api/builds"),
+        ("GET", "/config/api/exports"),
+        ("POST", "/config/api/exports"),
         ("GET", "/config/api/applications"),
         ("POST", "/config/api/applications"),
         ("DELETE", "/config/api/applications/{name}"),
@@ -250,6 +257,26 @@ def test_a_build_without_a_password_publishes_none(router: Router, queues: Modul
     assert (message["directory"], message["password"]) == (SITE, None)
 
 
+def test_asking_for_an_export_publishes_what_to_export_and_where(
+    router: Router, queues: ModuleQueues
+) -> None:
+    response = router.dispatch(
+        request(
+            "POST",
+            EXPORTS_PATH,
+            {"bundle": str(BUNDLE), "archive": ARCHIVE, "on_conflict": "overwrite"},
+        )
+    )
+
+    assert response.status == 202
+    assert json_body(response) == {"export_id": EXPORT_ID}
+    (message,) = published(queues)
+    assert message["event"] == EventType.EXPORT_REQUESTED
+    assert (message["export_id"], message["bundle"]) == (EXPORT_ID, str(BUNDLE))
+    assert (message["archive"], message["on_conflict"]) == (ARCHIVE, "overwrite")
+    assert message["password"] is None
+
+
 @mark.parametrize(
     "path,value",
     [
@@ -262,6 +289,10 @@ def test_a_build_without_a_password_publishes_none(router: Router, queues: Modul
         (BUILDS_PATH, {"directory": "/"}),
         (BUILDS_PATH, {"directory": SITE, "password": ""}),
         (BUILDS_PATH, {"directory": SITE, "password": 1234}),
+        (EXPORTS_PATH, {"bundle": str(BUNDLE)}),
+        (EXPORTS_PATH, {"bundle": str(BUNDLE), "archive": "site.zip"}),
+        (EXPORTS_PATH, {"bundle": "sha256/not-a-hash", "archive": ARCHIVE}),
+        (EXPORTS_PATH, {"bundle": str(BUNDLE), "archive": ARCHIVE, "on_conflict": "merge"}),
     ],
 )
 def test_a_request_this_node_cannot_act_on_publishes_nothing(
@@ -274,7 +305,7 @@ def test_a_request_this_node_cannot_act_on_publishes_nothing(
     assert published(queues) == []
 
 
-@mark.parametrize("path", [BACKUPS_PATH, RESTORES_PATH, BUILDS_PATH])
+@mark.parametrize("path", [BACKUPS_PATH, RESTORES_PATH, BUILDS_PATH, EXPORTS_PATH])
 def test_a_body_that_is_not_json_publishes_nothing(
     router: Router, queues: ModuleQueues, path: str
 ) -> None:
@@ -291,6 +322,7 @@ def test_a_body_that_is_not_json_publishes_nothing(
         BACKUPS_PATH,
         RESTORES_PATH,
         BUILDS_PATH,
+        EXPORTS_PATH,
         f"{JOB_PATH}/run",
         JOB_PATH,
         APPLICATIONS_PATH,
@@ -311,7 +343,7 @@ def test_an_oversized_body_is_refused_unread(
 
 
 def test_state_is_unavailable_until_the_backup_module_reports(router: Router) -> None:
-    for path in (BACKUPS_PATH, RESTORES_PATH, BUILDS_PATH):
+    for path in (BACKUPS_PATH, RESTORES_PATH, BUILDS_PATH, EXPORTS_PATH):
         response = router.dispatch(request("GET", path))
 
         assert response.status == 503
@@ -321,13 +353,14 @@ def test_state_is_unavailable_until_the_backup_module_reports(router: Router) ->
 def test_state_read_back_is_what_the_backup_module_reported(
     router: Router, state: BackupState
 ) -> None:
-    state.report(BackupReport((JOB_ENTRY,), (RESTORE_ENTRY,), (BUILD_ENTRY,)))
+    state.report(BackupReport((JOB_ENTRY,), (RESTORE_ENTRY,), (BUILD_ENTRY,), (EXPORT_ENTRY,)))
 
     assert json_body(router.dispatch(request("GET", BACKUPS_PATH))) == {"jobs": [JOB_ENTRY]}
     assert json_body(router.dispatch(request("GET", RESTORES_PATH))) == {
         "restores": [RESTORE_ENTRY]
     }
     assert json_body(router.dispatch(request("GET", BUILDS_PATH))) == {"builds": [BUILD_ENTRY]}
+    assert json_body(router.dispatch(request("GET", EXPORTS_PATH))) == {"exports": [EXPORT_ENTRY]}
 
 
 def test_reading_state_back_publishes_nothing(
@@ -337,6 +370,7 @@ def test_reading_state_back_publishes_nothing(
     router.dispatch(request("GET", BACKUPS_PATH))
     router.dispatch(request("GET", RESTORES_PATH))
     router.dispatch(request("GET", BUILDS_PATH))
+    router.dispatch(request("GET", EXPORTS_PATH))
     router.dispatch(request("GET", CONFIG_API_PATH))
 
     assert published(queues) == []
@@ -349,6 +383,7 @@ def test_reading_state_back_publishes_nothing(
         ("GET", JOB_PATH),
         ("DELETE", RESTORES_PATH),
         ("PUT", BUILDS_PATH),
+        ("DELETE", EXPORTS_PATH),
         ("POST", CONFIG_API_PATH),
         ("POST", NODE_PATH),
         ("PUT", APPLICATIONS_PATH),
@@ -372,6 +407,7 @@ def test_a_method_an_endpoint_does_not_serve_is_refused(
         f"{BACKUPS_PATH}/{JOB_ID}/run/again",
         f"{WIKI_PATH}/",
         f"{BUILDS_PATH}/{BUILD_ID}",
+        f"{EXPORTS_PATH}/{EXPORT_ID}",
         "/config/unknown",
         "/config/api/unknown",
         # Where the endpoints were before they moved beneath /config/api.

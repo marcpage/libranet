@@ -5,15 +5,16 @@ node's. A backup job names a local directory to back up
 (BackupSpecification §3.1) and, optionally, how often to look at it again.
 A restore names the bundle to restore, where to put it, and what to do if
 that directory is not empty (§5). A build (Step 38) names a directory to make
-a bundle of, and may give a password protecting the bundle
-(BundleSpecification §6).
+a bundle of, and an export a bundle and the archive to write it to; either
+may give a password protecting the bundle (BundleSpecification §6).
 
 Each request identifies itself, because the web server answers before any
 module has seen it and so cannot be told an identifier by the one that will
 do the work. An identifier is a prefix of the hash of what makes the request
 unique — the directory for a job or a build, the bundle and directory for a
-restore — so configuring the same directory twice names the same job rather
-than a second one, and the caller can work out an identifier without asking. A password is never part of one.
+restore, the bundle and archive for an export — so configuring the same
+directory twice names the same job rather than a second one, and the caller
+can work out an identifier without asking. A password is never part of one.
 
 A path is held to being absolute and already normalized, so one path has one
 spelling and therefore one identifier. Whether it exists, or can be read, is
@@ -208,6 +209,55 @@ class BuildRequest:
         }
 
 
+@dataclass(frozen=True)
+class ExportRequest:
+    """A bundle to write, with all it needs, into a content archive (Step 34), and where.
+
+    ``password`` opens the bundle, if it is protected. ``on_conflict`` says
+    whether a file already at ``archive`` may be replaced.
+    """
+
+    bundle: ContentId
+    archive: str
+    on_conflict: ConflictBehavior = ConflictBehavior.REFUSE
+    password: Password | None = None
+
+    def __post_init__(self) -> None:
+        check_path(self.archive, "An archive")
+        check_named(self.archive, "An archive")
+
+    @classmethod
+    def create(
+        cls,
+        bundle: ContentId,
+        archive: str,
+        on_conflict: ConflictBehavior,
+        password: str | None = None,
+    ) -> ExportRequest:
+        """The export of ``bundle`` to ``archive``, spelled as it will be stored.
+
+        Raises:
+            ValueError: the archive is not absolute and free of ``..``, or is
+                the root, or the password is not usable.
+        """
+        return cls(bundle, normalized_directory(archive), on_conflict, Password.optional(password))
+
+    @property
+    def export_id(self) -> str:
+        """What names this export, derived from the bundle and the archive."""
+        return identifier(str(self.bundle), self.archive)
+
+    def payload(self) -> dict[str, Any]:
+        """The message body asking for this export."""
+        return {
+            "export_id": self.export_id,
+            "bundle": str(self.bundle),
+            "archive": self.archive,
+            "on_conflict": self.on_conflict.value,
+            "password": None if self.password is None else self.password.text,
+        }
+
+
 def identifier(*parts: str) -> str:
     """A short, stable name for whatever ``parts`` describe."""
     return sha256("\0".join(parts).encode("utf-8")).hexdigest()[:IDENTIFIER_LENGTH]
@@ -352,6 +402,40 @@ def parse_build(value: object) -> BuildRequest:
         return BuildRequest.create(directory, _password(value, "A build"))
 
     except ValueError as error:
+        raise InvalidConfigRequestError(str(error)) from None
+
+
+def parse_export(value: object) -> ExportRequest:
+    """The export a ``{"bundle", "archive", "on_conflict", "password"}`` object asks for.
+
+    Raises:
+        InvalidConfigRequestError: it is not such an object, or what it asks
+            for is not a usable export.
+    """
+    if not isinstance(value, dict):
+        raise InvalidConfigRequestError("An export must be a JSON object")
+
+    bundle = value.get("bundle")
+    archive = value.get("archive")
+
+    if not isinstance(bundle, str) or not isinstance(archive, str):
+        raise InvalidConfigRequestError('An export\'s "bundle" and "archive" must be strings')
+
+    on_conflict = value.get("on_conflict", ConflictBehavior.REFUSE.value)
+
+    if on_conflict not in tuple(ConflictBehavior):
+        behaviors = ", ".join(behavior.value for behavior in ConflictBehavior)
+        raise InvalidConfigRequestError(f'An export\'s "on_conflict" must be one of: {behaviors}')
+
+    try:
+        return ExportRequest.create(
+            ContentId.parse(bundle),
+            archive,
+            ConflictBehavior(on_conflict),
+            _password(value, "An export"),
+        )
+
+    except (InvalidContentIdError, ValueError) as error:
         raise InvalidConfigRequestError(str(error)) from None
 
 

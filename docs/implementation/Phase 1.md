@@ -1309,20 +1309,35 @@ it as an archive another node can be shipped.
   file written beside the directory recording it. Unlike a backup it is
   not encrypted with the node's backup secret; a password given with the
   request protects it (BundleSpecification §6), and none leaves it plain.
+  `POST /config/api/builds` takes the directory and the password, if any.
+  The password is passed on to the backup module, and never answered,
+  reported, or logged.
+- The record is `{"bundle": "sha256/<hex>"}`, replaced whole. A file of
+  that name that is not a record fails the build rather than be replaced.
 - Updating is making one again where that file already exists: the new
   bundle records the one it supersedes in `versions`, which the writer
-  already supports. Chaining an update as an `extensions` layer instead
-  is Phase 2 Step 31, and this step does not anticipate it.
+  already supports. Files are kept from it as a backup keeps them, and
+  when nothing changed, the same entries protected alike, the bundle is
+  kept, as a backup's is. Chaining an update as an `extensions` layer
+  instead is Phase 2 Step 31, and this step does not anticipate it.
 - Exporting: an archive holding the bundle, every extension of it, and
   every part of every file it names — everything needed to serve it and
   nothing else. It is written with Step 34's sink, so what that step
   reads and what this writes are one format by construction.
+  `POST /config/api/exports` takes the bundle, the archive's path, whether
+  a file already there may be replaced, and the bundle's password, if it
+  has one. Content the node lacks fails the export and is asked for from
+  peers, so asking again once it arrives can succeed. As with a restore,
+  nothing is written in the node's own directories.
 - Reading back what was built, and the page's controls for all of it,
-  come with the endpoints.
+  come with the endpoints. `GET /config/api/builds` and `exports` serve
+  the backup module's report, which keeps them in memory, as it keeps
+  restores. Builds and exports run one at a time, after any restore due
+  and ahead of any backup, in the order they were asked for.
 
-**Open question:** whether a bundle built here should be registered as an
-application in the same request, or whether building and installing stay
-two steps. Two steps is assumed.
+**Decided:** building and installing stay two steps. A bundle built here
+is served only once it is registered, and the page offers to register a
+finished build.
 
 **Testable in isolation:** module tests over a temp directory — build,
 change a file, build again, and assert the `versions` chain and that

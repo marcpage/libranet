@@ -2,11 +2,13 @@
 
 Turns configured local directories into encrypted directory bundles in the
 source of truth, keeps them current as those directories change, and restores
-a backup bundle into a local directory. Builds a directory into a bundle.
+a backup bundle into a local directory. Builds a directory into a bundle, and
+exports a bundle as a content archive.
 """
 
 from libranet.backup.builds import RECORD_SUFFIX, Build, BuildRecord, BuildRecordError
 from libranet.backup.changes import ChangeDetector, PollingDetector
+from libranet.backup.exports import Export
 from libranet.backup.jobs import BackupJob, JobFileError, LatestBackup, load_jobs, save_jobs
 from libranet.backup.module import BackupModule, JobStatus, backup_module_factory
 from libranet.backup.restores import RESUME_DELAY_SECONDS, Restore, RestorePass, RestoreStatus
@@ -28,6 +30,7 @@ __all__ = [
     "BuildRecordError",
     "ChangeDetector",
     "DirectoryWriter",
+    "Export",
     "JobFileError",
     "JobStatus",
     "LatestBackup",

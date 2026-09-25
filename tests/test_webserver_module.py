@@ -25,6 +25,7 @@ from libranet.modules import ModuleName
 from libranet.webserver.app_registry import Application, ApplicationRegistry
 from libranet.webserver.backup_state import (
     BUILDS_FIELD,
+    EXPORTS_FIELD,
     JOBS_FIELD,
     RESTORES_FIELD,
 )
@@ -290,7 +291,7 @@ def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: P
             make_message(
                 EventType.BACKUP_STATE,
                 ModuleName.BACKUP,
-                {JOBS_FIELD: [job], RESTORES_FIELD: [], BUILDS_FIELD: []},
+                {JOBS_FIELD: [job], RESTORES_FIELD: [], BUILDS_FIELD: [], EXPORTS_FIELD: []},
             )
         )
         deadline = monotonic() + 5
@@ -302,6 +303,7 @@ def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: P
         assert (status, loads(body)) == (200, {"jobs": [job]})
         assert loads(_authorized(host, port, "/config/api/restores")[1]) == {"restores": []}
         assert loads(_authorized(host, port, "/config/api/builds")[1]) == {"builds": []}
+        assert loads(_authorized(host, port, "/config/api/exports")[1]) == {"exports": []}
 
     finally:
         stop.set()

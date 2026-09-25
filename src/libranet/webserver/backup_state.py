@@ -1,4 +1,4 @@
-"""What the backup module last said its jobs, restores, and builds were doing.
+"""What the backup module last said its jobs, restores, builds, and exports were doing.
 
 The web server does no backup work and keeps no job state of its own, so
 what a ``GET`` reads back is whatever the backup module (Step 19) last
@@ -24,6 +24,7 @@ from libranet.messaging.envelope import Message
 JOBS_FIELD = "jobs"
 RESTORES_FIELD = "restores"
 BUILDS_FIELD = "builds"
+EXPORTS_FIELD = "exports"
 
 
 class InvalidBackupReportError(ValueError):
@@ -32,7 +33,7 @@ class InvalidBackupReportError(ValueError):
 
 @dataclass(frozen=True)
 class BackupReport:
-    """One report of every configured job, and every requested restore and build.
+    """One report of every configured job, and every requested restore, build, and export.
 
     The entries are passed to clients as the backup module published them,
     so it alone decides what it says about each.
@@ -41,6 +42,7 @@ class BackupReport:
     jobs: tuple[Mapping[str, Any], ...] = ()
     restores: tuple[Mapping[str, Any], ...] = ()
     builds: tuple[Mapping[str, Any], ...] = ()
+    exports: tuple[Mapping[str, Any], ...] = ()
 
     @classmethod
     def from_message(cls, message: Message) -> BackupReport:
@@ -54,10 +56,11 @@ class BackupReport:
             _entries(message, JOBS_FIELD),
             _entries(message, RESTORES_FIELD),
             _entries(message, BUILDS_FIELD),
+            _entries(message, EXPORTS_FIELD),
         )
 
     def entries(self, field: str) -> tuple[Mapping[str, Any], ...]:
-        """The report's ``jobs``, ``restores``, or ``builds``.
+        """The report's ``jobs``, ``restores``, ``builds``, or ``exports``.
 
         Raises:
             KeyError: ``field`` names none of them.
@@ -66,6 +69,7 @@ class BackupReport:
             JOBS_FIELD: self.jobs,
             RESTORES_FIELD: self.restores,
             BUILDS_FIELD: self.builds,
+            EXPORTS_FIELD: self.exports,
         }[field]
 
 

@@ -246,6 +246,58 @@
     </form>
   </section>
 
+  <section aria-labelledby="exports-heading">
+    <h2 id="exports-heading">Exports</h2>
+    <p class="hint">Each writes a bundle, and everything needed to serve it, into a content
+    archive. A node started with the archive among its <code>storage.archives</code> holds the
+    bundle, and serves it once it is registered there. Exports are forgotten when the node
+    restarts.</p>
+    <p class="state" id="exports-state">Loading…</p>
+    <div class="table-wrap">
+      <table id="exports-table" aria-labelledby="exports-heading" hidden>
+        <thead>
+          <tr>
+            <th scope="col">Bundle</th>
+            <th scope="col">Archive</th>
+            <th scope="col">If it exists</th>
+            <th scope="col">Status</th>
+            <th scope="col">Requested</th>
+            <th scope="col">Finished</th>
+            <th scope="col">Objects</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <form id="export-form">
+      <h3>Export a bundle</h3>
+      <div class="fields">
+        <label class="wide">Bundle
+          <input id="export-bundle" required autocomplete="off" spellcheck="false"
+                 placeholder="sha256/…">
+        </label>
+        <label class="wide">Archive
+          <input id="export-archive" required autocomplete="off" spellcheck="false"
+                 placeholder="/home/alice/site.zip">
+        </label>
+        <label>If the archive exists
+          <select id="export-conflict">
+            <option value="refuse">Refuse</option>
+            <option value="overwrite">Overwrite</option>
+          </select>
+        </label>
+        <label>Password (optional)
+          <input id="export-password" type="password" autocomplete="off">
+        </label>
+        <button type="submit">Export</button>
+      </div>
+      <p class="hint">A password-protected bundle needs its password to be read, and stays
+      protected in the archive. Content this node lacks fails the export, and is asked for from
+      peers, so exporting again once it has arrived can succeed.</p>
+      <p class="result" role="status" hidden></p>
+    </form>
+  </section>
+
   <section aria-labelledby="backups-heading">
     <h2 id="backups-heading">Backup jobs</h2>
     <p class="hint">Each keeps a directory on this machine backed up into the network as an
@@ -766,6 +818,13 @@ function buildRow(build) {
     );
   }
 
+  if (build.bundle) {
+    const description = `Export the bundle built from ${directory}`;
+    actions.append(
+      button("Export…", description, "secondary", buildsMessage, () => prepareExport(build)),
+    );
+  }
+
   const row = make("tr");
   row.append(
     make("td", directory),
@@ -802,6 +861,12 @@ function prepareRegistration(build) {
   return [`The registration form above now names the bundle built from ${build.directory}.`, false];
 }
 
+function prepareExport(build) {
+  const values = { "export-bundle": build.bundle, "export-archive": `${build.directory}.zip` };
+  fill(values, build.protected ? "export-password" : "export-archive");
+  return [`The export form below now names the bundle built from ${build.directory}.`, false];
+}
+
 const builds = new ListView({
   path: "/builds",
   table: byId("builds-table"),
@@ -830,6 +895,66 @@ onSubmit(byId("build-form"), async () => {
   byId("build-form").reset();
   builds.schedule(SOON_SECONDS);
   return [`${request.directory} will be built, as build ${result.value.build_id}.`, false];
+});
+
+// ---- Exports ----
+
+function exportRow(entry) {
+  const statusCell = cell(status(entry.status));
+
+  if (entry.error) {
+    statusCell.append(make("div", entry.error, "error-text"));
+  }
+
+  const row = make("tr");
+  row.append(
+    cell(contentId(entry.bundle)),
+    make("td", entry.archive),
+    make("td", entry.on_conflict === "overwrite" ? "Overwrite" : "Refuse"),
+    statusCell,
+    make("td", formatTime(entry.requested_at)),
+    make("td", formatTime(entry.finished_at)),
+    make("td", formatCount(entry.objects), "number"),
+  );
+  return row;
+}
+
+const exports = new ListView({
+  path: "/exports",
+  table: byId("exports-table"),
+  state: byId("exports-state"),
+  entries: arrayOf("exports"),
+  row: exportRow,
+  empty: "No exports have been requested since the node started.",
+  unknown: "The backup module has not reported yet, so which exports were requested is not known.",
+  refresh: REFRESH_SECONDS,
+});
+
+onSubmit(byId("export-form"), async () => {
+  const request = {
+    bundle: byId("export-bundle").value.trim(),
+    archive: byId("export-archive").value,
+    on_conflict: byId("export-conflict").value,
+  };
+  const password = byId("export-password").value;
+
+  if (password !== "") {
+    request.password = password;
+  }
+
+  if (request.on_conflict === "overwrite" && !confirm(`Replace ${request.archive} if it exists?`)) {
+    return null;
+  }
+
+  const result = await call("POST", "/exports", request);
+
+  if (!result.ok) {
+    return [failure(result), true];
+  }
+
+  byId("export-form").reset();
+  exports.schedule(SOON_SECONDS);
+  return [`Export ${result.value.export_id} was requested.`, false];
 });
 
 // ---- Backup jobs ----
@@ -1011,7 +1136,7 @@ onSubmit(byId("restore-form"), async () => {
 
 // ---- Start ----
 
-const views = [applications, builds, backups, restores];
+const views = [applications, builds, exports, backups, restores];
 
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) {

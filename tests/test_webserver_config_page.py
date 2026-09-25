@@ -65,5 +65,5 @@ def test_the_page_calls_only_endpoints_the_node_serves(page: str) -> None:
     served = {entry["path"].removeprefix(CONFIG_API_PATH) for entry in ENDPOINTS}
     called = set(findall(r'(?:call\("[A-Z]+", |path: )[`"](/[a-z]+)', page))
 
-    assert called == {"/node", "/applications", "/builds", "/backups", "/restores"}
+    assert called == {"/node", "/applications", "/builds", "/exports", "/backups", "/restores"}
     assert called <= served

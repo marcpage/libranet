@@ -1,4 +1,4 @@
-"""Work the backup module does once, when asked: builds (Phase 1 Step 38).
+"""Work the backup module does once, when asked: builds and exports (Phase 1 Step 38).
 
 Unlike a restore, which goes on in passes until done, a task is done or fails
 the first time it runs. Asking for it again starts it over. Tasks are kept in
@@ -20,7 +20,7 @@ class TaskStatus(StrEnum):
 
 
 class Task:
-    """A build asked for at ``requested_at``, and how it went."""
+    """A build or an export asked for at ``requested_at``, and how it went."""
 
     def __init__(self, requested_at: float) -> None:
         self._requested_at = requested_at
