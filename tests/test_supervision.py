@@ -6,7 +6,7 @@ are slower than the rest of the suite.
 
 from __future__ import annotations
 from functools import partial
-from logging import getLogger
+from logging import INFO, getLogger
 from multiprocessing import get_context
 from multiprocessing.process import BaseProcess
 from os import kill
@@ -29,6 +29,7 @@ from libranet.supervision.stubs import (
     CrashingStubModule,
     crashing_dispatcher_main,
     crashing_module_factory,
+    farewell_module_factory,
     stub_module_factory,
     unready_dispatcher_main,
 )
@@ -293,6 +294,24 @@ def test_shutdown_stops_every_process(make_supervisor: Callable[..., ProcessSupe
     assert not _running(supervisor, ModuleName.VALIDATOR)
     supervisor.poll()
     assert supervisor.process_id(ModuleName.WEBSERVER) is None
+
+
+def test_messages_published_while_stopping_do_not_hold_up_shutdown(
+    make_supervisor: Callable[..., ProcessSupervisor], caplog: LogCaptureFixture
+) -> None:
+    # The farewell module publishes far more than a pipe holds as it stops.
+    modules = (
+        ModuleSpec(ModuleName.CONNECTIONS, farewell_module_factory),
+        ModuleSpec(ModuleName.WEBSERVER, stub_module_factory),
+    )
+    supervisor = make_supervisor(modules, logger=getLogger(__name__))
+    caplog.set_level(INFO, logger=__name__)
+    supervisor.poll()
+
+    supervisor.shutdown()
+
+    assert "did not stop in time" not in caplog.text
+    assert "All module processes stopped" in caplog.text
 
 
 def test_run_returns_at_once_when_already_stopped(

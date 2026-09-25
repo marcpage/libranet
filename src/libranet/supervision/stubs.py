@@ -2,7 +2,8 @@
 
 :class:`StubModule` stands in for every module until its own step replaces
 it. The crashing variants exist to demonstrate and test the supervisor's
-restart behavior, and the unready dispatcher its shutdown behavior.
+restart behavior, and the farewell module and unready dispatcher its
+shutdown behavior.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from typing import Mapping
 
 from libranet.config.models import LibranetConfig
 from libranet.messaging.envelope import Message
+from libranet.messaging.events import EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase, StopSignal
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
@@ -51,6 +53,22 @@ class CrashingStubModule(StubModule):
             raise RuntimeError(f"Stub module {self.name} crashing on purpose")
 
 
+class FarewellStubModule(StubModule):
+    """A stub that publishes a burst of messages as it stops.
+
+    Like the connections module, which reports each connection it closes on
+    the way out.
+    """
+
+    def __init__(self, name: ModuleName, queues: ModuleQueues, *, farewells: int) -> None:
+        super().__init__(name, queues)
+        self._farewells = farewells
+
+    def on_stop(self) -> None:
+        for number in range(self._farewells):
+            self.publish(EventType.CONNECTION_CLOSED, {"farewell": number})
+
+
 def stub_module_factory(
     name: ModuleName, config: LibranetConfig, queues: ModuleQueues
 ) -> ModuleBase:
@@ -68,6 +86,17 @@ def crashing_module_factory(
 ) -> ModuleBase:
     """Factory for :class:`CrashingStubModule`; bind options with ``functools.partial``."""
     return CrashingStubModule(name, queues, crash_after=crash_after, poll_interval=poll_interval)
+
+
+def farewell_module_factory(
+    name: ModuleName,
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    *,
+    farewells: int = 2000,
+) -> ModuleBase:
+    """Factory for :class:`FarewellStubModule`; bind options with ``functools.partial``."""
+    return FarewellStubModule(name, queues, farewells=farewells)
 
 
 def crashing_dispatcher_main(
