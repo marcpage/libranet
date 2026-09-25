@@ -338,6 +338,46 @@ under its full content hash. Recipients search by that prefix to discover the
 data. The proof-of-work in finding the nonce is what makes drop-bombing
 expensive.
 
+### Run a local test network
+
+[`scripts/local_network.py`](scripts/local_network.py) starts a network of
+nodes on this machine for trying Libranet out by hand. It is not part of the
+installed package, so run it from a clone:
+
+```bash
+uv run python scripts/local_network.py
+```
+
+It starts 20 nodes on `127.0.0.1`, on ports 18400 to 18419, and tells each one
+about all the others by posting it a node list. The first sixteen get keys
+whose node ids start with the hex digits `0` to `f` in turn, so every
+identifier bucket holds a node; the other four get random keys. It then shows
+each node's URL and connections, updated as they change:
+
+```text
+Libranet local network: 20 nodes in /tmp/libranet-k3v9x2
+Ctrl-C stops every node.
+
+Connections [##################################------] 274/320
+
+  #  URL                       node id           out   in
+  0  http://127.0.0.1:18400    04493b6b71ff    16/16   15
+  1  http://127.0.0.1:18401    1c546f6facc2    16/16   14
+  2  http://127.0.0.1:18402    2214b7267367    16/16   16
+...
+ 19  http://127.0.0.1:18419    a90213c4e8d1    11/16   13
+```
+
+`out` counts the node's connections to peers against the sixteen it aims for,
+one per bucket; `in` counts the other nodes connected to it. Open any URL in a
+browser to use that node. `Ctrl-C` stops every node and deletes the network's
+files.
+
+`--count` sets how many nodes run and `--base-port` the port of the first.
+`--dir DIR` keeps the network's files in `DIR`, and a later run with the same
+`DIR` brings back the same nodes. Each idle node uses about 320 MB of memory,
+so 20 of them need a machine with several gigabytes to spare.
+
 ---
 
 ## Configuration
