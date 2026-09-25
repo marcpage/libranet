@@ -481,8 +481,8 @@ content it fetched from another node.
 A node pushes to its best outgoing connection even when its own ID matches the
 content hash better, since that node may be connected to a better match. The
 node need not push content when the best outgoing connection is to the node the
-content came from. The node SHOULD NOT push on content that is a duplicate of
-existing content on the node.
+content came from. The node SHOULD NOT push on content that is created or received
+that the node had before the creation or receiving the data.
 
 This will contribute to (1) increasing the availability of data and (2) improve
 discoverability of the data.

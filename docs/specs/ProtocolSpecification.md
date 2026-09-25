@@ -168,8 +168,9 @@ TBD: exact hash function, input material (e.g., public key), and encoding
 - Nodes SHOULD push to the best outgoing connection even when their own Node ID
   matches more prefix bits with the content's hash.
 - Nodes need not push content when the best outgoing connection is to the Node
-  the content came from.
-- Nodes SHOULD NOT push on content that duplicates content they already hold.
+  the content just came from.
+- Nodes SHOULD NOT push content that is duplicate of content the node already
+  holds.
 
 ## 6. Drops and Prefix Matching
 
