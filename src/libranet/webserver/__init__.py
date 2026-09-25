@@ -44,6 +44,7 @@ from libranet.webserver.config_handlers import (
     BackupJobRemovalHandler,
     BackupReportHandler,
     BackupRunHandler,
+    BuildHandler,
     NodeDescription,
     NodeHandler,
     RestoreHandler,
@@ -53,10 +54,13 @@ from libranet.webserver.config_handlers import (
 from libranet.webserver.config_page import ConfigPageHandler
 from libranet.webserver.config_requests import (
     BackupJobRequest,
+    BuildRequest,
     ConflictBehavior,
     InvalidConfigRequestError,
+    Password,
     RestoreRequest,
     parse_backup_job,
+    parse_build,
     parse_restore,
 )
 from libranet.webserver.data_handler import DataReadHandler
@@ -98,6 +102,8 @@ __all__ = [
     "BackupReportHandler",
     "BackupRunHandler",
     "BackupState",
+    "BuildHandler",
+    "BuildRequest",
     "ConfigAuthGuard",
     "ConfigCredential",
     "ConfigPageHandler",
@@ -118,6 +124,7 @@ __all__ = [
     "NodeDescription",
     "NodeHandler",
     "NodeListHandler",
+    "Password",
     "RegisteredApplications",
     "RegistryFileError",
     "Request",
@@ -145,6 +152,7 @@ __all__ = [
     "names_config",
     "normalize_prefix",
     "parse_backup_job",
+    "parse_build",
     "parse_node_list",
     "parse_restore",
     "parse_seek_list",

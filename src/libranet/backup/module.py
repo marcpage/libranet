@@ -1,14 +1,17 @@
-"""The backup module process (Phase 1 Steps 19 and 20).
+"""The backup module process (Phase 1 Steps 19, 20, and 38).
 
 It keeps the directories configured through ``/config`` (Step 18) backed up
 as encrypted directory bundles in the source of truth (BackupSpecification
-§3), and restores a backup bundle into a directory (§5), as the web server
-asks::
+§3), restores a backup bundle into a directory (§5), and builds a directory
+into a bundle (Step 38), as the web server asks::
 
     backup.job_configured     {"job_id", "directory", "interval_seconds"}
     backup.job_removed        {"job_id"}
     backup.run_requested      {"job_id"}
     backup.restore_requested  {"restore_id", "bundle", "directory", "on_conflict"}
+    backup.build_requested    {"build_id", "directory", "password"}
+
+``password`` is ``null`` for none. It is never logged or reported.
 
 A job's directory is looked at once it is configured, again when the module
 starts, and ``interval_seconds`` after each look, or ``backup.interval_seconds``
@@ -20,8 +23,9 @@ directory again sets its interval anew and keeps its backups. Backups run one
 at a time, each between two messages, so a long one holds up the rest, and
 shutdown waits for it.
 
-Every object a backup stores is announced as the validator announces one it
-stores, so eviction and stats treat backup content like any other::
+Every object a backup or a build stores is announced as the validator
+announces one it stores, so eviction and stats treat that content like any
+other::
 
     data.stored  {"algorithm", "hash", "node_id", "size"}
 
@@ -49,13 +53,20 @@ starts it again. Restores are kept in memory only, so a restart forgets them.
 A pass runs between two messages, as a backup does, and a restore due goes
 ahead of any backup.
 
+A build (:mod:`libranet.backup.builds`) makes a bundle of a directory, or a
+new version of the one it made before, and records its content id beside the
+directory. It is done, or fails, the first time it runs, between two
+messages, after any restore due and ahead of any backup, in the order they
+were asked for. Asking for one again starts it over. Like restores, builds
+are kept in memory only.
+
 Jobs, and the bundle each was last backed up to, are kept in a file
 (:mod:`libranet.backup.jobs`). Removing a job forgets its bundle, but leaves
 the content in CAS. What every job and restore is doing is reported whenever
-it changes, for the web server to serve at ``GET /config/api/backups`` and
-``GET /config/api/restores``::
+it changes, for the web server to serve at ``GET /config/api/backups``,
+``restores``, and ``builds``::
 
-    backup.state  {"jobs": [...], "restores": [...]}
+    backup.state  {"jobs": [...], "restores": [...], "builds": [...]}
 
 Each job is reported as::
 
@@ -76,8 +87,19 @@ Each restore is reported, in the order they were asked for, as::
 once every entry is restored or left out, and ``failed`` if it could not go
 on, with ``error`` saying why. ``restored`` counts the entries restored so
 far, ``skipped`` those left out, which are logged, and ``missing`` the objects
-it waits on. Times are seconds since the epoch, and ``null`` until there is
-one.
+it waits on.
+
+Each build is reported, in the order they were asked for, as::
+
+    {"build_id", "directory", "protected", "status", "error", "requested_at",
+     "finished_at", "bundle", "previous", "skipped"}
+
+``status`` is ``waiting`` until it runs, ``running`` while it does, and then
+``done`` or ``failed``, with ``error`` saying why. A build's ``protected``
+says whether a password was given, ``bundle`` is the one the directory is
+built as, ``previous`` the one recorded before, the same if nothing changed,
+and ``skipped`` counts the paths left out, which are logged. Times are
+seconds since the epoch, and ``null`` until there is one.
 
 The backup secret is read, or first made, when a backup or restore first needs
 it (§4.2), so a problem with it fails that backup or restore, where it is
@@ -91,10 +113,12 @@ from logging import Logger
 from time import time
 from typing import Any, Callable, ClassVar, Final, Mapping
 
+from libranet.backup.builds import Build, BuildRecordError
 from libranet.backup.changes import ChangeDetector, PollingDetector
 from libranet.backup.jobs import BackupJob, load_jobs, save_jobs
 from libranet.backup.restores import Restore
 from libranet.backup.runs import AnnouncingStore, back_up
+from libranet.backup.tasks import TaskStatus
 from libranet.bundle.building import IgnoredPaths
 from libranet.bundle.errors import BundleError
 from libranet.cas.content_id import ContentId
@@ -109,7 +133,13 @@ from libranet.messaging.events import EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
-from libranet.webserver.config_requests import BackupJobRequest, ConflictBehavior, RestoreRequest
+from libranet.webserver.config_requests import (
+    BackupJobRequest,
+    BuildRequest,
+    ConflictBehavior,
+    Password,
+    RestoreRequest,
+)
 
 # A restore asks again for what it lacks this many times in the life of a seek
 # entry, so it never ages out of the seek list.
@@ -144,6 +174,7 @@ class BackupModule(ModuleBase):
             EventType.BACKUP_JOB_REMOVED,
             EventType.BACKUP_RUN_REQUESTED,
             EventType.RESTORE_REQUESTED,
+            EventType.BUILD_REQUESTED,
             EventType.DATA_STORED,
         }
     )
@@ -169,11 +200,13 @@ class BackupModule(ModuleBase):
         self._jobs: dict[str, BackupJob] = {}
         self._progress: dict[str, _Progress] = {}
         self._restores: dict[str, Restore] = {}
+        self._builds: dict[str, Build] = {}
         self._handlers: Mapping[EventType, Callable[[Message], None]] = {
             EventType.BACKUP_JOB_CONFIGURED: self._on_job_configured,
             EventType.BACKUP_JOB_REMOVED: self._on_job_removed,
             EventType.BACKUP_RUN_REQUESTED: self._on_run_requested,
             EventType.RESTORE_REQUESTED: self._on_restore_requested,
+            EventType.BUILD_REQUESTED: self._on_build_requested,
             EventType.DATA_STORED: self._on_data_stored,
         }
 
@@ -194,6 +227,11 @@ class BackupModule(ModuleBase):
     def restores(self) -> Mapping[str, Restore]:
         """Every restore asked for since the module started, by id."""
         return self._restores
+
+    @property
+    def builds(self) -> Mapping[str, Build]:
+        """Every build asked for since the module started, by id."""
+        return self._builds
 
     def on_start(self) -> None:
         """Read the saved jobs and report them; each is looked at once the module is idle.
@@ -286,6 +324,17 @@ class BackupModule(ModuleBase):
             restore.ask_again(request, now)
             self.logger.info("Carrying on restoring %s into %s", request.bundle, request.directory)
 
+    def _on_build_requested(self, message: Message) -> None:
+        request = BuildRequest(message["directory"], Password.optional(message["password"]))
+
+        if request.build_id != message["build_id"]:
+            raise ValueError(f"Build {message['build_id']} does not name {request.directory}")
+
+        self._builds.pop(request.build_id, None)
+        self._builds[request.build_id] = Build(request, self._clock())
+        self._report()
+        self.logger.info("Building %s", request.directory)
+
     def _on_data_stored(self, message: Message) -> None:
         content_id = ContentId.create(message["algorithm"], message["hash"])
         now = self._clock()
@@ -295,16 +344,21 @@ class BackupModule(ModuleBase):
             self._report()
 
     def _work_next(self) -> None:
-        """Carry on with the restore longest due, if any, or else look at the next job due."""
+        """Carry on with the restore longest due, if any, or else run the build
+        asked for first, or else look at the next job due."""
         now = self._clock()
         due = [
             (restore.due_at, restore_id)
             for restore_id, restore in self._restores.items()
             if restore.is_due(now)
         ]
+        waiting = [build for build in self._builds.values() if build.status is TaskStatus.WAITING]
 
         if due:
             self._carry_on(self._restores[min(due)[-1]])
+
+        elif waiting:
+            self._build(min(waiting, key=lambda build: build.requested_at))
 
         else:
             self._back_up_next()
@@ -360,6 +414,42 @@ class BackupModule(ModuleBase):
             request.directory,
             len(restore.missing),
         )
+
+    def _build(self, build: Build) -> None:
+        """Build a directory into a bundle, as ``build`` asks."""
+        directory = build.request.directory
+        build.begin()
+        self._report()
+
+        try:
+            skipped = build.run(
+                self._store,
+                self._config.storage.max_object_bytes,
+                self._config.directories(),
+                self._clock,
+            )
+
+        except (OSError, BundleError, BuildRecordError) as error:
+            build.fail(error, self._clock())
+            self.logger.warning("Could not build %s: %s", directory, error)
+
+        except Exception as error:
+            build.fail(error, self._clock())
+            self.logger.exception("Building %s failed", directory)
+
+        else:
+            for path, reason in skipped.items():
+                self.logger.warning("Left %s out of the build of %s: %s", path, directory, reason)
+
+            if build.bundle == build.previous:
+                self.logger.info(
+                    "%s is unchanged since it was built as %s", directory, build.bundle
+                )
+
+            else:
+                self.logger.info("Built %s as %s", directory, build.bundle)
+
+        self._report()
 
     def _back_up_next(self) -> None:
         """Look at the job a backup was asked for, or else the one longest due, if any."""
@@ -466,13 +556,14 @@ class BackupModule(ModuleBase):
         self._jobs = jobs
 
     def _report(self) -> None:
-        """Publish what every job and restore is doing, for ``GET /config/api/backups`` and ``restores``."""
+        """Publish what every job, restore, and build is doing, for ``GET /config/api``."""
         jobs = sorted(self._jobs.values(), key=lambda job: job.directory)
         self.publish(
             EventType.BACKUP_STATE,
             {
                 "jobs": [self._job_report(job) for job in jobs],
                 "restores": [restore.report() for restore in self._restores.values()],
+                "builds": [build.report() for build in self._builds.values()],
             },
         )
 
