@@ -97,7 +97,7 @@ class WebServerModule(ModuleBase):
         """Bind the listener and start serving.
 
         A bind failure, an unusable node key, a content archive that cannot
-        be opened, or an installation missing the ``/config`` page crashes
+        be opened, or shipped applications that cannot be read or built crash
         the module. The archives stay open for as
         long as the process runs. An application registry that cannot be read
         does not: requests that need it are answered ``500`` until it is

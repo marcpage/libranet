@@ -36,8 +36,9 @@ PACKAGED_APPLICATIONS: Final = Path(__file__).resolve().parent
 
 #: Each application shipped, by the name it is registered under, and the
 #: directory beside this module it is built from. ``/`` is the root
-#: application (HttpApi §13).
-SHIPPED_APPLICATIONS: Final = {"/": "root"}
+#: application (HttpApi §13), and ``config`` the one serving ``/config``
+#: (HttpApi §2.3).
+SHIPPED_APPLICATIONS: Final = {"/": "root", "config": "config"}
 
 #: What a wheel's content archives name the applications' objects, and the
 #: file giving their content ids.

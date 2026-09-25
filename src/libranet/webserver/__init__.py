@@ -10,12 +10,17 @@ It does not validate, fetch, evict, or resolve bundles itself.
 authenticated clients on this machine, and its backup and restore endpoints
 publish a message each rather than doing any of that work here. Its
 application endpoints change the application registry, the file naming each
-application's bundle, which the web server owns, and which names the page
-shipped with the node at `/` until an administrator changes it. A browser
-there gets a page that drives all of them.
+application's bundle, which the web server owns, and which names the pages
+shipped with the node at `/` and at `/config` until an administrator changes
+them. The one at `/config` drives all of them.
 """
 
-from libranet.webserver.app_handler import APP_PATTERN, AppHandler, content_type_for
+from libranet.webserver.app_handler import (
+    APP_PATTERN,
+    CONFIG_APP_PATTERN,
+    AppHandler,
+    content_type_for,
+)
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 from libranet.webserver.app_registry import (
     Application,
@@ -52,7 +57,6 @@ from libranet.webserver.config_handlers import (
     config_index,
     config_routes,
 )
-from libranet.webserver.config_page import ConfigPageHandler
 from libranet.webserver.config_requests import (
     BackupJobRequest,
     BuildRequest,
@@ -90,6 +94,7 @@ from libranet.webserver.signature_guard import SignatureGuard
 
 __all__ = [
     "APP_PATTERN",
+    "CONFIG_APP_PATTERN",
     "AppHandler",
     "Application",
     "ApplicationListHandler",
@@ -108,7 +113,6 @@ __all__ = [
     "BuildRequest",
     "ConfigAuthGuard",
     "ConfigCredential",
-    "ConfigPageHandler",
     "ConflictBehavior",
     "CredentialFileError",
     "DataReadHandler",

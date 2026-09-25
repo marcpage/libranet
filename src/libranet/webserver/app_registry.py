@@ -11,13 +11,15 @@ only what a node is started with::
 
 The name ``/`` is the application served at the root, which also answers
 every path no other application's name begins. The name ``config`` is the
-application serving ``/config`` itself (HttpApi §2.3), which nothing serves
-from here yet (Step 39).
+application serving ``/config`` itself (HttpApi §2.3): every path beneath it
+but ``/config/api``'s own.
 
 Until the file is first written, the web server's registry holds the
 applications shipped with the node (Step 37), and the first change saves them
-along with it. So a new node serves a page at ``/``, which an administrator
-may point elsewhere, or remove.
+along with it. So a new node serves a page at ``/``, and the administration
+page at ``/config`` (Step 39), either of which an administrator may point
+elsewhere, or remove. ``/config/api`` answers whatever ``config`` names, so it
+can always be pointed back.
 
 Names ignore case, and are kept case-folded. Each is one path segment, or
 ``/``, and never a name HttpApi §2 reserves, except ``config``: that one is

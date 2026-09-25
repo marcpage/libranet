@@ -15,13 +15,20 @@ from libranet.messaging.events import EventType
 from libranet.problems import CONTENT_UNAVAILABLE, PROBLEM_CONTENT_TYPE, UNUSABLE_BUNDLE
 from libranet.unbundler.outcomes import PathOutcome
 from libranet.unbundler.resolved_files import ResolvedFiles
-from libranet.webserver.app_handler import APP_PATTERN, AppHandler, content_type_for
+from libranet.webserver.app_handler import (
+    APP_PATTERN,
+    CONFIG_APP_PATTERN,
+    CONFIG_APP_POLICY,
+    AppHandler,
+    content_type_for,
+)
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 from libranet.webserver.app_registry import Application, ApplicationRegistry, RegistryFileError
 from libranet.webserver.http_types import OCTET_STREAM, Request, Response
 
 ROOT_BUNDLE = ContentId.for_data(b"the root application's bundle", "sha256")
 WIKI_BUNDLE = ContentId.for_data(b"the wiki's bundle", "sha256")
+CONFIG_BUNDLE = ContentId.for_data(b"the /config application's bundle", "sha256")
 RETRY_AFTER_SECONDS = 9
 
 
@@ -249,11 +256,76 @@ def test_a_reserved_name_is_never_an_applications_however_spelled(
     assert published.messages == []
 
 
-@mark.parametrize("path", ["/config", "/config/", "/Config/index.html", "/%63onfig/"])
-def test_the_config_application_is_never_served_as_an_ordinary_one(
-    handler: AppHandler, registry: ApplicationRegistry, published: Recorder, path: str
+@mark.parametrize(
+    "path, entry_path",
+    [
+        ("/config/", "index.html"),
+        ("/Config/index.html", "index.html"),
+        ("/%63onfig/", "index.html"),
+        ("/config/API/x.html", "API/x.html"),
+        ("/config/apis/", "apis/index.html"),
+    ],
+)
+def test_the_config_application_serves_config_however_spelled(
+    handler: AppHandler,
+    registry: ApplicationRegistry,
+    files: ResolvedFiles,
+    published: Recorder,
+    path: str,
+    entry_path: str,
 ) -> None:
-    registry.register(Application.create("config", WIKI_BUNDLE))
+    registry.register(Application.create("config", CONFIG_BUNDLE))
+    resolve(files, CONFIG_BUNDLE, entry_path, b"the administration page")
+
+    response = get(handler, path)
+
+    assert response.status == 200
+    assert response.body == b"the administration page"
+    assert response.headers["Content-Security-Policy"] == CONFIG_APP_POLICY
+    assert "frame-ancestors 'none'" in CONFIG_APP_POLICY
+    assert published.messages == []
+
+
+def test_only_the_config_applications_files_are_held_to_its_policy(
+    handler: AppHandler, registry: ApplicationRegistry, files: ResolvedFiles
+) -> None:
+    registry.register(Application.create("config", CONFIG_BUNDLE))
+    resolve(files, CONFIG_BUNDLE, "index.html", b"the administration page")
+    resolve(files, WIKI_BUNDLE, "index.html", b"the wiki")
+
+    redirect = get(handler, "/config")
+
+    assert redirect.status == 302
+    assert redirect.headers["Location"] == "/config/"
+    assert "Content-Security-Policy" in get(handler, "/config/").headers
+    assert "Content-Security-Policy" not in get(handler, "/wiki/").headers
+
+
+@mark.parametrize(
+    "path", ["/config/api", "/config/api/", "/%63onfig/api/backups", "/config/%61pi/x.html"]
+)
+def test_the_config_application_never_serves_the_apis_paths(
+    handler: AppHandler,
+    registry: ApplicationRegistry,
+    files: ResolvedFiles,
+    published: Recorder,
+    path: str,
+) -> None:
+    registry.register(Application.create("config", CONFIG_BUNDLE))
+
+    for entry_path in ("api/index.html", "api/backups", "api/x.html"):
+        resolve(files, CONFIG_BUNDLE, entry_path, b"not an endpoint")
+
+    assert get(handler, path).status == 404
+    assert published.messages == []
+
+
+@mark.parametrize("path", ["/config", "/config/", "/Config/page.html", "/%63onfig/"])
+def test_without_a_config_application_config_is_404_and_never_the_roots(
+    handler: AppHandler, files: ResolvedFiles, published: Recorder, path: str
+) -> None:
+    resolve(files, ROOT_BUNDLE, "config/index.html", b"the root's")
+    resolve(files, ROOT_BUNDLE, "config/page.html", b"the root's")
 
     assert get(handler, path).status == 404
     assert published.messages == []
@@ -326,6 +398,33 @@ def test_a_served_file_carries_its_guessed_content_type(
 )
 def test_the_route_takes_every_path_but_the_reserved_names(path: str, matches: bool) -> None:
     assert (fullmatch(APP_PATTERN, path) is not None) == matches
+
+
+@mark.parametrize(
+    "path, matches",
+    [
+        ("/config", True),
+        ("/config/", True),
+        ("/config/backups", True),
+        ("/config/a/b/c", True),
+        ("/config/apis", True),
+        ("/config/x/api", True),
+        ("/config/API/x", True),
+        ("/Config/", True),
+        ("/CONFIG/index.html", True),
+        ("/config/api", False),
+        ("/config/api/", False),
+        ("/config/api/unknown", False),
+        ("/Config/api/backups", False),
+        ("/configure", False),
+        ("/", False),
+        ("/wiki/", False),
+    ],
+)
+def test_the_config_route_takes_config_and_every_path_beneath_it_but_the_apis(
+    path: str, matches: bool
+) -> None:
+    assert (fullmatch(CONFIG_APP_PATTERN, path) is not None) == matches
 
 
 def test_a_change_to_the_registry_is_served_from_the_next_request(

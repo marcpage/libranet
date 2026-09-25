@@ -1,10 +1,11 @@
-"""Tests for the applications shipped with the node, and the root page among them.
+"""Tests for the applications shipped with the node, and the root and ``/config`` pages.
 
 Which way they were shipped, built into a wheel or run from source, is known
 only to the layered source, and is tested through it.
 """
 
 from __future__ import annotations
+from base64 import b64encode
 from io import BytesIO
 from json import loads
 from os import chmod, symlink, utime
@@ -40,13 +41,16 @@ from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.supervision.stubs import StubModule
 from libranet.unbundler.module import UnbundlerModule
-from libranet.webserver.app_registry import ROOT_APPLICATION
+from libranet.webserver.app_handler import CONFIG_APP_POLICY
+from libranet.webserver.app_registry import CONFIG_APPLICATION, ROOT_APPLICATION
 from libranet.webserver.config_credential import load_config_credential
-from libranet.webserver.config_handlers import NodeDescription
+from libranet.webserver.config_handlers import CONFIG_API_PATH, ENDPOINTS, NodeDescription
 from libranet.webserver.http_types import Request
 from libranet.webserver.server import build_router
 
 ROOT_PAGE_SOURCE = PACKAGED_APPLICATIONS / "root" / "index.html"
+CONFIG_PAGE_SOURCE = PACKAGED_APPLICATIONS / "config" / "index.html"
+CONFIG_CREDENTIALS = {"Authorization": "Basic " + b64encode(b"admin:secret").decode("ascii")}
 
 
 @fixture(scope="module")
@@ -76,6 +80,11 @@ def root_page(content: LayeredSource, root_bundle: ContentId) -> bytes:
     return index_page(root_bundle, content)
 
 
+@fixture
+def config_page(content: LayeredSource, built: PackagedApplications) -> str:
+    return index_page(built.bundles[CONFIG_APPLICATION], content).decode("utf-8")
+
+
 def index_page(bundle_id: ContentId, content: LayeredSource) -> bytes:
     """The ``index.html`` of the application ``bundle_id``, read through ``content``."""
     bundle = load_bundle(bundle_id, content)
@@ -91,7 +100,10 @@ def index_page(bundle_id: ContentId, content: LayeredSource) -> bytes:
 
 def shipped_copy(tmp_path: Path) -> Path:
     """A copy of the applications' directories to change."""
-    return copytree(PACKAGED_APPLICATIONS / "root", tmp_path / "applications" / "root").parent
+    for source in SHIPPED_APPLICATIONS.values():
+        copytree(PACKAGED_APPLICATIONS / source, tmp_path / "applications" / source)
+
+    return tmp_path / "applications"
 
 
 def published(queues: ModuleQueues) -> list[Message]:
@@ -105,8 +117,8 @@ def published(queues: ModuleQueues) -> list[Message]:
             return messages
 
 
-def test_the_node_ships_the_root_application_alone(built: PackagedApplications) -> None:
-    assert set(SHIPPED_APPLICATIONS) == set(built.bundles) == {ROOT_APPLICATION}
+def test_the_node_ships_the_root_and_config_applications(built: PackagedApplications) -> None:
+    assert set(SHIPPED_APPLICATIONS) == set(built.bundles) == {ROOT_APPLICATION, CONFIG_APPLICATION}
 
 
 def test_every_build_is_the_same(built: PackagedApplications) -> None:
@@ -193,6 +205,9 @@ def test_run_from_source_they_are_built_as_the_content_is_opened(
     assert content.exists(root_bundle)
     assert not source_of_truth_store(storage).exists(root_bundle)
     assert root_page == ROOT_PAGE_SOURCE.read_bytes()
+    assert index_page(built.bundles[CONFIG_APPLICATION], content) == (
+        CONFIG_PAGE_SOURCE.read_bytes()
+    )
 
 
 def test_a_wheel_carries_them_built_and_nothing_is_built_as_its_content_is_opened(
@@ -270,9 +285,51 @@ def test_the_root_page_links_to_config_and_the_documentation(root_page: bytes) -
     assert all(link.startswith("https://github.com/marcpage/libranet") for link in links[1:])
 
 
-def test_a_new_node_serves_the_root_page_with_nothing_in_the_cas(
-    storage: StorageConfig, root_bundle: ContentId
+def test_the_config_page_is_one_self_contained_document(config_page: str) -> None:
+    assert config_page.startswith("<!doctype html>")
+    # Nothing is loaded from a file of its own, or from anywhere else.
+    assert "<link" not in config_page
+    assert findall(r"\bsrc\s*=", config_page) == []
+    assert "url(" not in config_page
+    assert all(
+        link.startswith("/") and not link.startswith("//")
+        for link in findall(r'\bhref="([^"]*)"', config_page)
+    )
+
+
+def test_the_config_page_calls_only_endpoints_the_node_serves(config_page: str) -> None:
+    served = {entry["path"].removeprefix(CONFIG_API_PATH) for entry in ENDPOINTS}
+    called = set(findall(r'(?:call\("[A-Z]+", |path: )[`"](/[a-z]+)', config_page))
+
+    assert called == {"/node", "/applications", "/builds", "/exports", "/backups", "/restores"}
+    assert called <= served
+
+
+@mark.parametrize(
+    "application, path, source, client_address, headers, policy",
+    [
+        (ROOT_APPLICATION, "/", ROOT_PAGE_SOURCE, "203.0.113.42", {}, None),
+        (
+            CONFIG_APPLICATION,
+            "/config/",
+            CONFIG_PAGE_SOURCE,
+            "127.0.0.1",
+            CONFIG_CREDENTIALS,
+            CONFIG_APP_POLICY,
+        ),
+    ],
+)
+def test_a_new_node_serves_each_shipped_page_with_nothing_in_the_cas(
+    storage: StorageConfig,
+    built: PackagedApplications,
+    application: str,
+    path: str,
+    source: Path,
+    client_address: str,
+    headers: dict[str, str],
+    policy: str | None,
 ) -> None:
+    bundle = built.bundles[application]
     web_queues = ModuleQueues(inbox=Queue(), outbox=Queue())
     unbundler = UnbundlerModule(
         ModuleName.UNBUNDLER,
@@ -290,7 +347,7 @@ def test_a_new_node_serves_the_root_page_with_nothing_in_the_cas(
         node=NodeDescription(ContentId.for_data(b"a node's public key", "sha256"), NetworkConfig()),
         content=LayeredSource.open(storage),
     )
-    browse = Request("GET", "/", client_address="203.0.113.42")
+    browse = Request("GET", path, headers=headers, client_address=client_address)
 
     first = router.dispatch(browse)
     (asked,) = published(web_queues)
@@ -301,14 +358,15 @@ def test_a_new_node_serves_the_root_page_with_nothing_in_the_cas(
     assert loads(first.body)["retry_after"] == 5
     assert (asked["event"], asked["bundle"], asked["path"]) == (
         EventType.APP_PATH_NOT_FOUND,
-        str(root_bundle),
+        str(bundle),
         "index.html",
     )
     assert second.status == 200
     assert second.headers["Content-Type"] == "text/html"
-    assert second.body == ROOT_PAGE_SOURCE.read_bytes()
+    assert second.headers.get("Content-Security-Policy") == policy
+    assert second.body == source.read_bytes()
     # Nothing was stored, and the registry file was not written.
-    assert not source_of_truth_store(storage).exists(root_bundle)
+    assert not source_of_truth_store(storage).exists(bundle)
     assert not storage.applications_path.exists()
 
 

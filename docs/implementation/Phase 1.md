@@ -1358,7 +1358,17 @@ because nothing could build a bundle yet. Now something can.
   as Step 37's is: into the wheel, or in memory when run from source.
 - The registry's `/config` pointer names it, and paths beneath `/config`
   that `/config/api/` does not claim are served by the application
-  handler against that bundle. Step 36's handler is removed.
+  handler against that bundle. Step 36's handler is removed. As for any
+  application, the name ignores case and percent-encoding, `/config` is
+  redirected to `/config/`, and a file's first request answers `503`
+  while the unbundler resolves it. Nothing the bundle holds beneath
+  `api/` is served, however the path is spelled, so no file can pass for
+  an endpoint, and with no `/config` application it is `404`, never the
+  root application's.
+- Step 36's `Content-Security-Policy` stays, sent with every file the
+  `/config` application serves: it loads only what this node serves, and
+  no other site may frame it. It allows the node's own files as well as
+  inline ones, since an administrator's bundle may be more than one file.
 - Nothing about access changes. The loopback guard and Basic
   Authentication still run first, on every path beneath `/config`, before
   anything is resolved or read.

@@ -324,8 +324,11 @@ GET /wiki/index.html
 The name `/` registers the application served at the root. A new node serves
 its own page there, shipped with it, so it needs nothing from peers. `data`,
 `web`, and `chaos` are reserved, and `config` is reserved for the `/config`
-application itself. `GET` the same path lists what is registered, and
-`DELETE /config/api/applications/wiki` removes one (the root is `%2F`).
+application itself, the administration page, which a new node also ships.
+Registering another bundle as `config` replaces that page; `/config/api` keeps
+answering whatever it names, so it can always be pointed back. `GET` the same
+path lists what is registered, and `DELETE /config/api/applications/wiki`
+removes one (the root is `%2F`).
 
 ### Publish a drop under a name
 

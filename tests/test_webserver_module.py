@@ -12,6 +12,7 @@ from time import monotonic, sleep
 
 from pytest import mark, raises
 
+from libranet.applications.packaged import PackagedApplications
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import node_store, source_of_truth_store
 from libranet.config.models import IdentityConfig, LibranetConfig, NetworkConfig, StorageConfig
@@ -22,7 +23,7 @@ from libranet.messaging.envelope import make_message
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
-from libranet.webserver.app_registry import Application, ApplicationRegistry
+from libranet.webserver.app_registry import CONFIG_APPLICATION, Application, ApplicationRegistry
 from libranet.webserver.backup_state import (
     BUILDS_FIELD,
     EXPORTS_FIELD,
@@ -271,8 +272,15 @@ def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: P
         assert load_config_credential(config).captured
         assert _authorized(host, port, "/config/api", user="someone else")[0] == 401
 
-        # The page, and what the node is, as the module was started with it.
-        assert _authorized(host, port, "/config")[1].startswith(b"<!doctype html>")
+        # The page the node ships, which the unbundler is asked for, and what
+        # the node is, as the module was started with it.
+        assert _authorized(host, port, "/config/")[0] == 503
+        asked = queues.outbox.get(timeout=1)
+        assert (asked["event"], asked["bundle"], asked["path"]) == (
+            EventType.APP_PATH_NOT_FOUND,
+            str(PackagedApplications.build().bundles[CONFIG_APPLICATION]),
+            "index.html",
+        )
         status, body = _authorized(host, port, "/config/api/node")
         assert (status, loads(body)) == (
             200,
