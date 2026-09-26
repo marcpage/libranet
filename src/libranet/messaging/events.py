@@ -25,7 +25,8 @@ class EventType(StrEnum):
 
     # Web server write path and validation (Step 7).
     PUT_COMPLETED = "data.put_completed"  # webserver, connections → validator
-    DATA_STORED = "data.stored"  # validator, backup → eviction, stats, backup, connections
+    # validator, backup, webserver, connections → eviction, stats, backup, connections
+    DATA_STORED = "data.stored"
     DATA_REJECTED = "data.rejected"  # validator → stats
 
     # Node and seek lists (Steps 8 and 9).
@@ -62,6 +63,10 @@ class EventType(StrEnum):
     EVICTION_NOTICE = "eviction.notice"  # eviction → connections
     EVICTION_ACKNOWLEDGED = "eviction.acknowledged"  # connections → eviction
     DATA_DELETED = "data.deleted"  # eviction → stats
+
+    # What to let go of first (Phase 2 Step 28).
+    EVICTION_CANDIDATES_REQUESTED = "eviction.candidates_requested"  # eviction → stats
+    EVICTION_CANDIDATES = "eviction.candidates"  # stats → eviction
 
 
 class AddressSource(StrEnum):

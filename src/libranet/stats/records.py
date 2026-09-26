@@ -24,8 +24,10 @@ class DataStats:
     internal_requests: int = 0
     pushes: int = 0
     deletes: int = 0
+    last_requested: float | None = None
     last_acquired: float | None = None
     stored_seconds: float = 0.0
+    size: int | None = None
 
     @classmethod
     def from_row(cls, row: Row) -> DataStats:
@@ -36,8 +38,10 @@ class DataStats:
             internal_requests=row["internal_requests"],
             pushes=row["pushes"],
             deletes=row["deletes"],
+            last_requested=row["last_requested"],
             last_acquired=row["last_acquired"],
             stored_seconds=row["stored_seconds"],
+            size=row["size"],
         )
 
     @property

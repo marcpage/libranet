@@ -27,10 +27,11 @@ from pathlib import Path
 from sqlite3 import Connection, Cursor, Row, connect
 from time import time
 from types import TracebackType
-from typing import Any, Callable, Final, Iterable, Mapping
+from typing import Any, Callable, Collection, Final, Iterable, Mapping
 
 from libranet.cas.content_id import ContentId
-from libranet.cas.prefix import nearest
+from libranet.cas.prefix import matching_bits, nearest
+from libranet.eviction.priority import EvictionScorer, HeldObject
 from libranet.messaging.events import AddressSource
 from libranet.stats.records import DataStats, NodeAddress, NodeStats
 from libranet.stats.schema import OWN_NODE, SeekKind, apply_schema
@@ -66,6 +67,27 @@ _STRONGER_SOURCE: Final = (
 # The order a node's addresses are tried in: those that have worked, the
 # most recently first, then the rest, the most recently learned first.
 _TRY_ORDER: Final = "last_success IS NULL, last_success DESC, last_learned DESC, endpoint"
+
+# The rows of content held, but for the public key of the node named by
+# `:algorithm` and `:hash`: what eviction chooses from (Phase 2 Step 28).
+# They are read in table order, `NOT INDEXED`: the index of held hashes
+# would visit every one too, but out of order, which is several times slower
+# once the table outgrows SQLite's cache.
+_HELD_ROWS: Final = (
+    "data_stats NOT INDEXED "
+    "WHERE size IS NOT NULL AND NOT (algorithm = :algorithm AND hash = :hash)"
+)
+
+# Every request for content, local and remote.
+_REQUESTS: Final = f"{_EXTERNAL_REQUESTS} + {_INTERNAL_REQUESTS}"
+
+# When content was last used: requested, or acquired if that was later.
+_LAST_USED: Final = (
+    "MAX(COALESCE(last_requested, last_acquired), COALESCE(last_acquired, last_requested))"
+)
+
+# The name the eviction score is given inside SQL.
+_SCORE: Final = "eviction_score"
 
 
 class StatsDatabase:
@@ -104,24 +126,36 @@ class StatsDatabase:
     # -- Data statistics -------------------------------------------------
 
     def record_request(self, content_id: ContentId, *, external: bool) -> None:
-        """Count one request for ``content_id`` from a peer or from this machine."""
-        self._add_to_data(content_id, _EXTERNAL_REQUESTS if external else _INTERNAL_REQUESTS, 1)
+        """Count one request for ``content_id``, just made, from a peer or from this machine."""
+        column = _EXTERNAL_REQUESTS if external else _INTERNAL_REQUESTS
+        self._execute(
+            f"INSERT INTO data_stats (algorithm, hash, {column}, last_requested) "
+            "VALUES (:algorithm, :hash, 1, :now) "
+            f"ON CONFLICT (algorithm, hash) DO UPDATE SET {column} = {column} + 1, "
+            "last_requested = :now",
+            {"algorithm": content_id.algorithm, "hash": content_id.hash, "now": self._clock()},
+        )
 
     def record_push(self, content_id: ContentId) -> None:
         """Count one upload of ``content_id`` to this node, valid or not."""
         self._add_to_data(content_id, _PUSHES, 1)
 
-    def record_acquired(self, content_id: ContentId) -> None:
-        """Note that ``content_id`` was just added to the source of truth."""
+    def record_acquired(self, content_id: ContentId, size: int) -> None:
+        """Note that ``content_id`` was just added to the source of truth, as ``size`` bytes."""
         self._execute(
-            "INSERT INTO data_stats (algorithm, hash, last_acquired) "
-            "VALUES (:algorithm, :hash, :now) "
-            "ON CONFLICT (algorithm, hash) DO UPDATE SET last_acquired = :now",
-            {"algorithm": content_id.algorithm, "hash": content_id.hash, "now": self._clock()},
+            "INSERT INTO data_stats (algorithm, hash, last_acquired, size) "
+            "VALUES (:algorithm, :hash, :now, :size) "
+            "ON CONFLICT (algorithm, hash) DO UPDATE SET last_acquired = :now, size = :size",
+            {
+                "algorithm": content_id.algorithm,
+                "hash": content_id.hash,
+                "now": self._clock(),
+                "size": size,
+            },
         )
 
     def record_deleted(self, content_id: ContentId) -> None:
-        """Count one deletion of ``content_id`` and add how long it was held.
+        """Count one deletion of ``content_id``, which is no longer held, and add how long it was.
 
         ``last_acquired`` is left as it was: it is the last time the content
         was acquired, which stays true after the copy is gone.
@@ -129,8 +163,69 @@ class StatsDatabase:
         self._execute(
             "INSERT INTO data_stats (algorithm, hash, deletes) VALUES (:algorithm, :hash, 1) "
             "ON CONFLICT (algorithm, hash) DO UPDATE SET deletes = deletes + 1, "
-            "stored_seconds = stored_seconds + COALESCE(:now - last_acquired, 0)",
+            "stored_seconds = stored_seconds + COALESCE(:now - last_acquired, 0), size = NULL",
             {"algorithm": content_id.algorithm, "hash": content_id.hash, "now": self._clock()},
+        )
+
+    def eviction_order(
+        self, node_id: ContentId, limit: int, exclude: Collection[ContentId] = ()
+    ) -> list[HeldObject]:
+        """Up to ``limit`` of the objects held, in the order to let them go (HighLevelDesign §4.5).
+
+        Each is ranked by its :class:`~libranet.eviction.priority.EvictionScorer`
+        score, measured against what is held now, and ties go in order of
+        hash, then algorithm. The public key of ``node_id``, this node, and
+        whatever ``exclude`` names are left out. SQLite calls the scorer for
+        every object held, so this reads every row of content held.
+        """
+        if limit < 1:
+            raise ValueError(f"limit must be at least 1, got {limit}")
+
+        own = {"algorithm": node_id.algorithm, "hash": node_id.hash}
+        self._connection.create_function(_SCORE, 4, self._eviction_scorer(node_id).score)
+        rows = self._query(
+            f"SELECT algorithm, hash, size FROM {_HELD_ROWS} "
+            f"ORDER BY {_SCORE}(size, {_REQUESTS}, {_LAST_USED}, hash) DESC, hash, algorithm "
+            "LIMIT :limit",
+            {**own, "limit": limit + len(exclude)},
+        )
+        excluded = set(exclude)
+        ranked = (HeldObject(ContentId(row["algorithm"], row["hash"]), row["size"]) for row in rows)
+        return [held for held in ranked if held.content_id not in excluded][:limit]
+
+    def _eviction_scorer(self, node_id: ContentId) -> EvictionScorer:
+        """What an object held is scored against: the extremes of all held now.
+
+        The held hash matching the most leading bits of the node id's is one
+        of the two either side of it in order of hash, so only those two are
+        compared, rather than every hash held.
+        """
+        own = {"algorithm": node_id.algorithm, "hash": node_id.hash}
+        now = self._clock()
+        extremes = self._query_one(
+            f"SELECT MIN({_LAST_USED}) AS least_recent, MAX({_REQUESTS}) AS most_requests "
+            f"FROM {_HELD_ROWS}",
+            own,
+        )
+        neighbors = self._query(
+            "SELECT hash FROM data_stats WHERE size IS NOT NULL AND hash > :hash "
+            "ORDER BY hash ASC LIMIT 1",
+            own,
+        ) + self._query(
+            "SELECT hash FROM data_stats WHERE size IS NOT NULL AND hash < :hash "
+            "ORDER BY hash DESC LIMIT 1",
+            own,
+        )
+        least_recent = None if extremes is None else extremes["least_recent"]
+        most_requests = None if extremes is None else extremes["most_requests"]
+        return EvictionScorer(
+            node_hash=node_id.hash,
+            now=now,
+            longest_unused=0.0 if least_recent is None else now - least_recent,
+            most_requests=most_requests or 0,
+            most_matching_bits=max(
+                (matching_bits(node_id.hash, row["hash"]) for row in neighbors), default=0
+            ),
         )
 
     def data_stats(self, content_id: ContentId) -> DataStats | None:

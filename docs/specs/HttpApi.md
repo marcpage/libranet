@@ -433,9 +433,10 @@ The node calculates the hash for validation and rejects the request with `400`
 if the hash does not match. The node MUST take into account that the content MAY
 be zlib-compressed, in which case the hash is of the uncompressed content.
 
-The content as transferred MUST be less than 1 MiB in size. If the content is
-compressed, it is the compressed size that is subject to this limit. There is no
-limit on the size of the content once decompressed (HighLevelDesign §4.3).
+The content as transferred MUST be less than or equal to 1 MiB in size. If the
+content is compressed, it is the compressed size that is subject to this limit.
+There is no limit on the size of the content once decompressed (HighLevelDesign
+§4.3).
 
 If the hash already exists, but the content differs (hash collision), all
 collision variants are kept and a random variant is returned.
@@ -1422,8 +1423,8 @@ source IP address.
 
 ## 19. Range Requests
 
-Because `/data/...` content is transferred in less than 1 MiB, range requests
-are generally not needed for `/data/...` requests.
+Because `/data/...` content is transferred in at most 1 MiB, range requests are
+generally not needed for `/data/...` requests.
 
 Nodes SHOULD support range requests to benefit data in applications (requests
 outside of `/data/...`). Nodes SHOULD support enough range requests mechanism to

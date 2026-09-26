@@ -243,9 +243,20 @@ the exact full hash in advance.
 ### 4.5 Storage Priority and Eviction
 
 Each node prioritizes retention of data whose content hash shares the longest
-binary prefix with the node’s own identifier.
+binary prefix with the node’s own identifier, and of data that is in use. Four
+things set an object’s retention priority:
 
-The more leading bits that match, the higher the retention priority.
+- **Node match:** the more leading bits of its hash match the node’s
+  identifier, the higher the priority.
+- **Recency:** the more recently it was requested, or acquired if it never has
+  been, the higher.
+- **Frequency:** the more often it has been requested, the higher.
+- **Size:** the larger it is, the higher. A small object is quicker to fetch
+  again and to move to another node.
+
+How the four are weighed against each other is up to the node. Weighing them
+together means content in frequent use can be kept even when it matches few
+bits, and content matching many bits can still go when nothing uses it.
 
 When storage pressure requires eviction:
 
@@ -261,8 +272,9 @@ matches it without multiplying it, which matters most where several nodes share
 one disk. The peer that accepts it pushes it on toward a better match still
 (§4.10).
 
-This policy naturally segments the data space into **directions** defined by the
-binary prefixes of node identifiers, improving locality of search and retrieval.
+Node match, and handing off toward the best match, naturally segment the data
+space into **directions** defined by the binary prefixes of node identifiers,
+improving locality of search and retrieval.
 
 ### 4.6 Outgoing Connection Policy
 

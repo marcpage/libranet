@@ -8,9 +8,13 @@ Four tables cover what the implementation plan asks a node to remember:
 
 ``data_stats``
     One row per content identifier the node has heard of, whether or not it
-    holds the content. ``last_acquired`` is when the id was last added to
-    the source of truth, and ``stored_seconds`` accumulates how long copies
-    of it were held before being deleted.
+    holds the content. ``last_requested`` is when it was last asked for, and
+    ``last_acquired`` when it was last added to the source of truth.
+    ``size`` is its size as stored while this node holds it, and ``NULL``
+    otherwise (Phase 2 Step 28): what the node holds is known from the
+    content announced as stored, less what is reported deleted.
+    ``stored_seconds`` accumulates how long copies of it were held before
+    being deleted.
 
 ``node_stats``
     One row per peer node id. ``last_connected`` is when the last successful
@@ -64,14 +68,19 @@ SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
         internal_requests INTEGER NOT NULL DEFAULT 0,
         pushes INTEGER NOT NULL DEFAULT 0,
         deletes INTEGER NOT NULL DEFAULT 0,
+        last_requested REAL,
         last_acquired REAL,
         stored_seconds REAL NOT NULL DEFAULT 0,
+        size INTEGER,
         PRIMARY KEY (algorithm, hash)
     )
     """,
     # Searches match on the hash alone, across every algorithm, and scan a
     # range of it rather than a single value.
     "CREATE INDEX IF NOT EXISTS data_stats_by_hash ON data_stats (hash)",
+    # Ranking what to evict looks only at content held, and finds the held
+    # hashes on either side of the node id's.
+    "CREATE INDEX IF NOT EXISTS data_stats_held ON data_stats (hash) WHERE size IS NOT NULL",
     """
     CREATE TABLE IF NOT EXISTS node_stats (
         node_id TEXT PRIMARY KEY,

@@ -1,5 +1,5 @@
-"""Tests for the eviction module, with the test standing in for the validator and the
-connection manager, and free space faked."""
+"""Tests for the eviction module, with the test standing in for the validator, the stats
+module, and the connection manager, and free space faked."""
 
 from __future__ import annotations
 from logging import INFO
@@ -20,11 +20,12 @@ from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.supervision.registry import default_module_specs
 
-HASH_BITS = 256
 RETRY_DELAY = 60.0
 TIMEOUT = 300.0
+CANDIDATES_TIMEOUT = 30.0
 SIZE = 10
 PEERS = [ContentId.for_data(f"peer {index}'s key".encode(), "sha256") for index in range(3)]
+CONTENT = [ContentId.for_data(f"content {index}".encode(), "sha256") for index in range(5)]
 
 
 @fixture
@@ -82,6 +83,7 @@ class Modules:
             poll_interval=0.01,
             free_bytes=lambda: self._free[0],
             hand_off_timeout_seconds=TIMEOUT,
+            candidates_timeout_seconds=CANDIDATES_TIMEOUT,
             **options,
         )
         self.built.append(module)
@@ -96,12 +98,6 @@ def modules(queues: ModuleQueues, now: list[float], free: list[int]) -> Iterator
 
     for module in modules.built:
         module.on_stop()
-
-
-def sharing(node_id: ContentId, bits: int, variant: int = 0) -> ContentId:
-    """A content id whose hash shares exactly ``bits`` leading bits with ``node_id``'s."""
-    value = int(node_id.hash, 16) ^ (1 << (HASH_BITS - 1 - bits)) ^ variant
-    return ContentId("sha256", f"{value:064x}")
 
 
 def hold(store: CasStore, *content_ids: ContentId, size: int = SIZE) -> None:
@@ -131,6 +127,20 @@ def stored(content_id: ContentId, size: int = SIZE) -> Message:
     )
 
 
+def candidates(*content_ids: ContentId, size: int = SIZE) -> Message:
+    """The stats module's answer, listing ``content_ids`` in the order to let them go."""
+    return make_message(
+        EventType.EVICTION_CANDIDATES,
+        ModuleName.STATS,
+        {
+            "objects": [
+                {"algorithm": content_id.algorithm, "hash": content_id.hash, "size": size}
+                for content_id in content_ids
+            ]
+        },
+    )
+
+
 def acknowledged(content_id: ContentId, *holders: ContentId) -> Message:
     return make_message(
         EventType.EVICTION_ACKNOWLEDGED,
@@ -155,8 +165,15 @@ def published(queues: ModuleQueues) -> list[Message]:
 
 
 def events(queues: ModuleQueues) -> list[tuple[EventType, str]]:
-    """What was published since last asked, as each event and the hash it names."""
-    return [(message["event"], message["hash"]) for message in published(queues)]
+    """What was published since last asked, as each event and the hash it names, if any."""
+    return [(message["event"], message.get("hash", "")) for message in published(queues)]
+
+
+def requested(queues: ModuleQueues) -> tuple[int, list[str]]:
+    """The one request to stats since last asked: the bytes to free, and what it leaves out."""
+    (request,) = published(queues)
+    assert request["event"] == EventType.EVICTION_CANDIDATES_REQUESTED
+    return request["bytes"], request["exclude"]
 
 
 def handed_off(queues: ModuleQueues) -> list[ContentId]:
@@ -170,106 +187,258 @@ def handed_off(queues: ModuleQueues) -> list[ContentId]:
 # -- When content is let go ------------------------------------------------
 
 
-def test_nothing_is_handed_off_while_storage_is_within_its_limits(
+def test_nothing_is_asked_for_while_storage_is_within_its_limits(
     modules: Modules,
     config: LibranetConfig,
     store: CasStore,
     node_id: ContentId,
     queues: ModuleQueues,
 ) -> None:
-    hold(store, *(sharing(node_id, bits) for bits in (0, 8, 40)))
+    hold(store, *CONTENT[:3])
 
     modules.start(capped(config, store, node_id, 3 * SIZE))
 
     assert published(queues) == []
 
 
-def test_storage_already_over_at_start_hands_off_the_lowest_priority_content(
+def test_storage_already_over_at_start_asks_stats_what_to_let_go_of(
     modules: Modules,
     config: LibranetConfig,
     store: CasStore,
     node_id: ContentId,
     queues: ModuleQueues,
 ) -> None:
-    far, middle, near = (sharing(node_id, bits) for bits in (0, 8, 40))
-    hold(store, near, far, middle)
+    hold(store, *CONTENT[:3])
 
-    # 15 bytes over: two objects make that up.
     modules.start(capped(config, store, node_id, 15))
 
-    assert handed_off(queues) == [far, middle]
+    assert requested(queues) == (15, [])
 
 
-def test_stored_content_is_counted_and_can_start_a_hand_off(
+def test_what_stats_lists_first_is_handed_off_until_it_would_free_enough(
     modules: Modules,
     config: LibranetConfig,
     store: CasStore,
     node_id: ContentId,
     queues: ModuleQueues,
 ) -> None:
-    near, far = sharing(node_id, 40), sharing(node_id, 1)
-    hold(store, near)
+    hold(store, *CONTENT[:3])
+    module = modules.start(capped(config, store, node_id, 15))
+    requested(queues)
+
+    # 15 bytes over: two objects make that up.
+    module.handle(candidates(CONTENT[2], CONTENT[0], CONTENT[1]))
+
+    assert handed_off(queues) == [CONTENT[2], CONTENT[0]]
+
+
+def test_stored_content_is_counted_and_can_start_eviction(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+) -> None:
+    hold(store, CONTENT[0])
     module = modules.start(capped(config, store, node_id, SIZE))
     assert published(queues) == []
 
-    hold(store, far)
-    module.handle(stored(far))
+    hold(store, CONTENT[1])
+    module.handle(stored(CONTENT[1]))
 
-    assert handed_off(queues) == [far]
+    assert requested(queues) == (SIZE, [])
 
 
-def test_too_little_free_space_starts_hand_offs(
+def test_too_little_free_space_starts_eviction(
     modules: Modules,
     config: LibranetConfig,
-    store: CasStore,
-    node_id: ContentId,
     queues: ModuleQueues,
     free: list[int],
 ) -> None:
-    far, near = sharing(node_id, 0), sharing(node_id, 40)
-    hold(store, near, far)
     free[0] = 95
     storage = config.storage.model_copy(update={"min_free_bytes": 100})
 
     modules.start(config.model_copy(update={"storage": storage}))
 
-    assert handed_off(queues) == [far]
+    assert requested(queues) == (5, [])
 
 
-def test_this_nodes_own_key_is_never_let_go(
+def test_this_nodes_own_key_is_never_let_go_even_if_listed(
     modules: Modules,
     config: LibranetConfig,
     store: CasStore,
     node_id: ContentId,
     queues: ModuleQueues,
-    caplog: LogCaptureFixture,
 ) -> None:
-    modules.start(capped(config, store, node_id, -1))
+    hold(store, CONTENT[0])
+    module = modules.start(capped(config, store, node_id, 0))
+    requested(queues)
 
-    assert published(queues) == []
+    module.handle(candidates(node_id, CONTENT[0]))
+
+    assert handed_off(queues) == [CONTENT[0]]
     assert store.exists(node_id)
-    assert "with nothing left to let go of" in caplog.text
 
 
-def test_finding_nothing_to_let_go_of_waits_before_looking_again(
+def test_nothing_left_to_let_go_of_waits_before_asking_again(
     modules: Modules,
     config: LibranetConfig,
     store: CasStore,
     node_id: ContentId,
     queues: ModuleQueues,
     now: list[float],
+    caplog: LogCaptureFixture,
 ) -> None:
     module = modules.start(capped(config, store, node_id, -1))
-    content_id = sharing(node_id, 0)
-    hold(store, content_id)
+    assert requested(queues) == (1, [])
 
-    module.handle(stored(content_id))
+    module.handle(candidates())
+
+    assert "with nothing left to let go of" in caplog.text
+    hold(store, CONTENT[0])
+    module.handle(stored(CONTENT[0]))
     assert published(queues) == []
 
     now[0] += RETRY_DELAY
     module.on_idle()
 
-    assert handed_off(queues) == [content_id]
+    assert requested(queues) == (1 + SIZE, [])
+
+
+# -- The list stats sends ----------------------------------------------------
+
+
+def test_once_the_list_runs_out_more_is_asked_for_leaving_out_what_is_under_way(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+) -> None:
+    hold(store, *CONTENT[:3])
+    module = modules.start(capped(config, store, node_id, 5))
+    assert requested(queues) == (25, [])
+
+    module.handle(candidates(CONTENT[0]))
+
+    notice, request = published(queues)
+    assert (notice["event"], notice["hash"]) == (EventType.EVICTION_NOTICE, CONTENT[0].hash)
+    assert request["event"] == EventType.EVICTION_CANDIDATES_REQUESTED
+    assert (request["bytes"], request["exclude"]) == (15, [str(CONTENT[0])])
+
+
+def test_only_one_request_to_stats_is_outstanding_at_a_time(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+) -> None:
+    hold(store, CONTENT[0])
+    module = modules.start(capped(config, store, node_id, 0))
+    requested(queues)
+
+    hold(store, CONTENT[1])
+    module.handle(stored(CONTENT[1]))
+
+    assert published(queues) == []
+
+
+def test_a_request_stats_never_answers_is_made_again(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+    now: list[float],
+    caplog: LogCaptureFixture,
+) -> None:
+    hold(store, CONTENT[0])
+    module = modules.start(capped(config, store, node_id, 0))
+    requested(queues)
+
+    now[0] += CANDIDATES_TIMEOUT - 1
+    module.on_idle()
+    assert published(queues) == []
+
+    now[0] += 1
+    module.on_idle()
+
+    assert "never said what to let go of" in caplog.text
+    assert requested(queues) == (SIZE, [])
+
+
+def test_an_empty_list_while_hand_offs_are_under_way_waits_for_their_answers(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+) -> None:
+    hold(store, *CONTENT[:2])
+    module = modules.start(capped(config, store, node_id, 5))
+    requested(queues)
+    module.handle(candidates(CONTENT[0]))
+    assert events(queues) == [
+        (EventType.EVICTION_NOTICE, CONTENT[0].hash),
+        (EventType.EVICTION_CANDIDATES_REQUESTED, ""),
+    ]
+
+    module.handle(candidates())
+    assert published(queues) == []
+
+    module.handle(acknowledged(CONTENT[0], PEERS[0], PEERS[1]))
+
+    assert events(queues) == [
+        (EventType.DATA_DELETED, CONTENT[0].hash),
+        (EventType.EVICTION_CANDIDATES_REQUESTED, ""),
+    ]
+
+
+def test_an_empty_list_once_storage_is_within_its_limits_is_no_cause_to_wait(
+    modules: Modules,
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    free: list[int],
+    caplog: LogCaptureFixture,
+) -> None:
+    free[0] = 95
+    storage = config.storage.model_copy(update={"min_free_bytes": 100})
+    module = modules.start(config.model_copy(update={"storage": storage}))
+    requested(queues)
+    free[0] = 100
+
+    module.handle(candidates())
+
+    assert "nothing left to let go of" not in caplog.text
+    free[0] = 95
+    module.handle(stored(CONTENT[0]))
+    assert requested(queues) == (5, [])
+
+
+def test_a_list_left_over_once_storage_is_within_its_limits_is_dropped(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    queues: ModuleQueues,
+    free: list[int],
+) -> None:
+    hold(store, *CONTENT[:2])
+    free[0] = 95
+    storage = config.storage.model_copy(update={"min_free_bytes": 100})
+    module = modules.start(config.model_copy(update={"storage": storage}))
+    requested(queues)
+    module.handle(candidates(CONTENT[0], CONTENT[1]))
+    assert handed_off(queues) == [CONTENT[0]]
+    free[0] = 100
+    module.handle(acknowledged(CONTENT[0], PEERS[0], PEERS[1]))
+    assert events(queues) == [(EventType.DATA_DELETED, CONTENT[0].hash)]
+
+    # Short again later: stats is asked afresh rather than the old list used.
+    free[0] = 95
+    module.handle(stored(CONTENT[2]))
+
+    assert requested(queues) == (5, [])
 
 
 # -- How many at once ------------------------------------------------------
@@ -282,35 +451,41 @@ def test_hand_offs_under_way_count_towards_what_is_freed(
     node_id: ContentId,
     queues: ModuleQueues,
 ) -> None:
-    far, middle, near = (sharing(node_id, bits) for bits in (0, 8, 40))
-    hold(store, far, middle, near)
+    hold(store, *CONTENT[:3])
     module = modules.start(capped(config, store, node_id, 15))
-    assert handed_off(queues) == [far, middle]
+    requested(queues)
+    module.handle(candidates(*CONTENT[:3]))
+    assert handed_off(queues) == CONTENT[:2]
 
     # One byte more to make up, which the two under way already cover.
-    arrived = sharing(node_id, 9)
-    hold(store, arrived, size=1)
-    module.handle(stored(arrived, 1))
+    hold(store, CONTENT[3], size=1)
+    module.handle(stored(CONTENT[3], 1))
 
     assert published(queues) == []
 
 
-def test_no_more_than_the_most_hand_offs_run_at_once(
+def test_no_more_than_the_most_hand_offs_run_at_once_the_rest_of_the_list_waiting(
     modules: Modules,
     config: LibranetConfig,
     store: CasStore,
     node_id: ContentId,
     queues: ModuleQueues,
 ) -> None:
-    content = [sharing(node_id, bits) for bits in range(5)]
-    hold(store, *content)
-
+    hold(store, *CONTENT)
     module = modules.start(capped(config, store, node_id, 0), max_hand_offs=2)
-    assert handed_off(queues) == content[:2]
+    requested(queues)
+    module.handle(candidates(*CONTENT))
+    assert handed_off(queues) == CONTENT[:2]
 
-    module.handle(stored(content[0]))
-
+    module.handle(stored(CONTENT[0]))
     assert published(queues) == []
+
+    module.handle(acknowledged(CONTENT[0], PEERS[0], PEERS[1]))
+
+    assert events(queues) == [
+        (EventType.DATA_DELETED, CONTENT[0].hash),
+        (EventType.EVICTION_NOTICE, CONTENT[2].hash),
+    ]
 
 
 # -- Answers from the connection manager -----------------------------------
@@ -323,20 +498,22 @@ def test_content_enough_peers_hold_is_deleted_and_reported(
     node_id: ContentId,
     queues: ModuleQueues,
 ) -> None:
-    far, near = sharing(node_id, 0), sharing(node_id, 40)
-    hold(store, far, near)
+    first, kept = CONTENT[:2]
+    hold(store, first, kept)
     module = modules.start(capped(config, store, node_id, SIZE))
-    assert handed_off(queues) == [far]
+    requested(queues)
+    module.handle(candidates(first, kept))
+    assert handed_off(queues) == [first]
     held = module.pressure.held_bytes
 
-    module.handle(acknowledged(far, PEERS[0], PEERS[1]))
+    module.handle(acknowledged(first, PEERS[0], PEERS[1]))
 
-    assert not store.exists(far)
-    assert store.exists(near)
+    assert not store.exists(first)
+    assert store.exists(kept)
     assert module.pressure.held_bytes == held - SIZE
     (deleted,) = published(queues)
     assert deleted["event"] == EventType.DATA_DELETED
-    assert (deleted["algorithm"], deleted["hash"], deleted["size"]) == ("sha256", far.hash, SIZE)
+    assert (deleted["algorithm"], deleted["hash"], deleted["size"]) == ("sha256", first.hash, SIZE)
 
 
 def test_deleting_carries_on_while_storage_is_still_over(
@@ -346,9 +523,11 @@ def test_deleting_carries_on_while_storage_is_still_over(
     node_id: ContentId,
     queues: ModuleQueues,
 ) -> None:
-    first, second, third = (sharing(node_id, bits) for bits in (0, 8, 40))
+    first, second, third = CONTENT[:3]
     hold(store, first, second, third)
     module = modules.start(capped(config, store, node_id, 15), max_hand_offs=1)
+    requested(queues)
+    module.handle(candidates(first, second, third))
     assert handed_off(queues) == [first]
 
     module.handle(acknowledged(first, PEERS[0], PEERS[1]))
@@ -373,18 +552,20 @@ def test_a_hand_off_that_falls_short_keeps_the_content_and_waits(
     now: list[float],
     caplog: LogCaptureFixture,
 ) -> None:
-    far, near = sharing(node_id, 0), sharing(node_id, 40)
-    hold(store, far, near)
+    first, second = CONTENT[:2]
+    hold(store, first, second)
     module = modules.start(capped(config, store, node_id, SIZE))
-    assert handed_off(queues) == [far]
+    requested(queues)
+    module.handle(candidates(first, second))
+    assert handed_off(queues) == [first]
 
     with caplog.at_level(INFO):
         # The same peer named twice is still one copy.
-        module.handle(acknowledged(far, PEERS[0], PEERS[0]))
+        module.handle(acknowledged(first, PEERS[0], PEERS[0]))
 
-    assert f"1 of the 2 peers needed took {far}" in caplog.text
-    assert store.exists(far)
-    module.handle(stored(near, 0))
+    assert f"1 of the 2 peers needed took {first}" in caplog.text
+    assert store.exists(first)
+    module.handle(stored(second, 0))
     now[0] += RETRY_DELAY - 1
     module.on_idle()
     assert published(queues) == []
@@ -392,7 +573,8 @@ def test_a_hand_off_that_falls_short_keeps_the_content_and_waits(
     now[0] += 1
     module.on_idle()
 
-    assert handed_off(queues) == [far]
+    # The list carries on; stats lists what was kept again when next asked.
+    assert handed_off(queues) == [second]
 
 
 def test_waiting_ends_with_the_next_stored_content_too(
@@ -403,19 +585,21 @@ def test_waiting_ends_with_the_next_stored_content_too(
     queues: ModuleQueues,
     now: list[float],
 ) -> None:
-    far, near = sharing(node_id, 0), sharing(node_id, 40)
-    hold(store, far, near)
+    first, second = CONTENT[:2]
+    hold(store, first, second)
     module = modules.start(capped(config, store, node_id, SIZE))
-    assert handed_off(queues) == [far]
-    module.handle(acknowledged(far))
+    requested(queues)
+    module.handle(candidates(first))
+    assert handed_off(queues) == [first]
+    module.handle(acknowledged(first))
 
     now[0] += RETRY_DELAY
-    module.handle(stored(near, 0))
+    module.handle(stored(second, 0))
 
-    assert handed_off(queues) == [far]
+    assert requested(queues) == (SIZE, [])
 
 
-def test_an_unanswered_hand_off_is_given_up_and_asked_for_again(
+def test_an_unanswered_hand_off_is_given_up_and_stats_asked_again(
     modules: Modules,
     config: LibranetConfig,
     store: CasStore,
@@ -424,10 +608,11 @@ def test_an_unanswered_hand_off_is_given_up_and_asked_for_again(
     now: list[float],
     caplog: LogCaptureFixture,
 ) -> None:
-    far = sharing(node_id, 0)
-    hold(store, far)
+    hold(store, CONTENT[0])
     module = modules.start(capped(config, store, node_id, 0))
-    assert handed_off(queues) == [far]
+    requested(queues)
+    module.handle(candidates(CONTENT[0]))
+    assert handed_off(queues) == [CONTENT[0]]
 
     now[0] += TIMEOUT - 1
     module.on_idle()
@@ -437,7 +622,7 @@ def test_an_unanswered_hand_off_is_given_up_and_asked_for_again(
     module.on_idle()
 
     assert "went unanswered" in caplog.text
-    assert handed_off(queues) == [far]
+    assert requested(queues) == (SIZE, [])
 
 
 def test_a_late_answer_still_deletes_the_content(
@@ -445,37 +630,36 @@ def test_a_late_answer_still_deletes_the_content(
     config: LibranetConfig,
     store: CasStore,
     queues: ModuleQueues,
-    node_id: ContentId,
     now: list[float],
     free: list[int],
 ) -> None:
-    far = sharing(node_id, 0)
-    hold(store, far)
+    hold(store, CONTENT[0])
     free[0] = 95
     storage = config.storage.model_copy(update={"min_free_bytes": 100})
     module = modules.start(config.model_copy(update={"storage": storage}))
-    assert handed_off(queues) == [far]
+    requested(queues)
+    module.handle(candidates(CONTENT[0]))
+    assert handed_off(queues) == [CONTENT[0]]
     # Space was freed some other way before the hand-off was given up on.
     free[0] = 100
     now[0] += TIMEOUT
     module.on_idle()
     assert published(queues) == []
 
-    module.handle(acknowledged(far, PEERS[0], PEERS[2]))
+    module.handle(acknowledged(CONTENT[0], PEERS[0], PEERS[2]))
 
-    assert not store.exists(far)
-    assert events(queues) == [(EventType.DATA_DELETED, far.hash)]
+    assert not store.exists(CONTENT[0])
+    assert events(queues) == [(EventType.DATA_DELETED, CONTENT[0].hash)]
 
 
 def test_an_answer_for_content_no_longer_held_deletes_nothing(
     modules: Modules,
     config: LibranetConfig,
-    node_id: ContentId,
     queues: ModuleQueues,
 ) -> None:
     module = modules.start(config)
 
-    module.handle(acknowledged(sharing(node_id, 0), PEERS[0], PEERS[1]))
+    module.handle(acknowledged(CONTENT[0], PEERS[0], PEERS[1]))
 
     assert published(queues) == []
 
@@ -491,6 +675,9 @@ def test_a_malformed_broadcast_raises(modules: Modules, config: LibranetConfig) 
 
     with raises(KeyError):
         module.handle(make_message(EventType.EVICTION_ACKNOWLEDGED, ModuleName.CONNECTIONS, {}))
+
+    with raises(KeyError):
+        module.handle(make_message(EventType.EVICTION_CANDIDATES, ModuleName.STATS, {}))
 
 
 def test_an_event_it_does_not_handle_raises(modules: Modules, config: LibranetConfig) -> None:
@@ -525,11 +712,17 @@ def test_unusable_settings_are_refused(config: LibranetConfig, queues: ModuleQue
     with raises(ValueError, match="hand_off_timeout_seconds"):
         EvictionModule(ModuleName.EVICTION, queues, config, RETRY_DELAY, hand_off_timeout_seconds=0)
 
+    with raises(ValueError, match="candidates_timeout_seconds"):
+        EvictionModule(
+            ModuleName.EVICTION, queues, config, RETRY_DELAY, candidates_timeout_seconds=0
+        )
+
 
 def test_the_module_subscribes_to_stored_content_and_answers() -> None:
     assert EvictionModule.subscriptions == {
         EventType.DATA_STORED,
         EventType.EVICTION_ACKNOWLEDGED,
+        EventType.EVICTION_CANDIDATES,
     }
 
 

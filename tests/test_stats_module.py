@@ -10,6 +10,7 @@ from typing import Any, Iterator, Mapping
 from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.cas.content_id import ContentId
+from libranet.cas.store import source_of_truth_store
 from libranet.config.models import (
     IdentityConfig,
     LibranetConfig,
@@ -30,6 +31,7 @@ CONTENT_ID = ContentId.for_data(CONTENT, "sha256")
 OTHER_ID = ContentId.for_data(b"other content", "sha256")
 PEER_ID = ContentId.for_data(b"a peer's public key", "sha256")
 PEER_ENDPOINT = "http://203.0.113.9:4300"
+NOW = 1_000_000.0
 SELF_ENDPOINT = "http://localhost:9099"
 
 
@@ -229,6 +231,7 @@ def test_stored_content_is_counted_credited_and_no_longer_sought(
     assert data is not None and peer is not None
     assert data.pushes == 1
     assert data.last_acquired is not None
+    assert data.size == len(CONTENT)
     assert peer.bytes_received == len(CONTENT)
     assert seek_list(config)["data"] == []
 
@@ -251,6 +254,7 @@ def test_deleted_content_is_counted_with_the_time_it_was_held(module: StatsModul
     assert deleted.deletes == 1
     assert deleted.stored_seconds >= 0
     assert deleted.last_acquired == stats.last_acquired
+    assert deleted.size is None
 
 
 def test_rejected_content_still_counts_as_a_push(module: StatsModule) -> None:
@@ -269,7 +273,154 @@ def test_rejected_content_still_counts_as_a_push(module: StatsModule) -> None:
     stats = module.database.data_stats(CONTENT_ID)
 
     assert stats is not None
-    assert (stats.pushes, stats.last_acquired) == (1, None)
+    assert (stats.pushes, stats.last_acquired, stats.size) == (1, None, None)
+
+
+# -- What to let go of first (Phase 2 Step 28) --------------------------------
+
+
+def unmatched(node_id: ContentId, variant: int) -> ContentId:
+    """A content id sharing no leading bit with ``node_id``, told apart by ``variant``."""
+    value = int(node_id.hash, 16) ^ (1 << 255) ^ variant
+    return ContentId("sha256", f"{value:064x}")
+
+
+def hold(module: StatsModule, config: LibranetConfig, content_id: ContentId, size: int) -> None:
+    """Store ``size`` bytes as ``content_id``, and announce it."""
+    source_of_truth_store(config.storage).write(content_id, b"x" * size)
+    module.handle(stored(content_id, size))
+
+
+def candidates_requested(byte_count: int, *exclude: ContentId) -> Message:
+    return broadcast(
+        EventType.EVICTION_CANDIDATES_REQUESTED,
+        {"bytes": byte_count, "exclude": [str(content_id) for content_id in exclude]},
+        ModuleName.EVICTION,
+    )
+
+
+def offered(queues: ModuleQueues) -> list[tuple[ContentId, int]]:
+    """The content the module last listed for eviction, and each size."""
+    answers = [
+        message
+        for message in published(queues)
+        if message["event"] == EventType.EVICTION_CANDIDATES
+    ]
+    assert answers, "no eviction.candidates was published"
+    return [
+        (ContentId.create(entry["algorithm"], entry["hash"]), entry["size"])
+        for entry in answers[-1]["objects"]
+    ]
+
+
+@fixture
+def node_id(config: LibranetConfig) -> ContentId:
+    return load_node_identity(config).node_id
+
+
+@fixture
+def still(config: LibranetConfig, queues: ModuleQueues) -> Iterator[StatsModule]:
+    """A stats module whose clock stands still.
+
+    Content held is ranked against the longest any of it has gone unused, so
+    even the microseconds between stores would otherwise decide the order.
+    """
+    module = StatsModule(ModuleName.STATS, queues, config, clock=lambda: NOW, poll_interval=0.01)
+    module.on_start()
+
+    try:
+        yield module
+
+    finally:
+        module.on_stop()
+
+
+def test_content_held_is_offered_best_first_until_the_bytes_asked_are_covered(
+    still: StatsModule, config: LibranetConfig, queues: ModuleQueues, node_id: ContentId
+) -> None:
+    # Alike but for size, so smallest first.
+    large, small, middle = (unmatched(node_id, variant) for variant in (1, 2, 3))
+    hold(still, config, large, 30)
+    hold(still, config, small, 10)
+    hold(still, config, middle, 20)
+
+    still.handle(candidates_requested(25))
+
+    assert offered(queues) == [(small, 10), (middle, 20)]
+
+
+def test_content_being_handed_off_already_is_not_offered(
+    still: StatsModule, config: LibranetConfig, queues: ModuleQueues, node_id: ContentId
+) -> None:
+    first, second = unmatched(node_id, 1), unmatched(node_id, 2)
+    hold(still, config, first, 10)
+    hold(still, config, second, 20)
+
+    still.handle(candidates_requested(1_000, first))
+
+    assert offered(queues) == [(second, 20)]
+
+
+def test_no_more_than_the_most_candidates_are_offered(
+    config: LibranetConfig, queues: ModuleQueues, node_id: ContentId
+) -> None:
+    module = StatsModule(
+        ModuleName.STATS, queues, config, clock=lambda: NOW, poll_interval=0.01, max_candidates=2
+    )
+    module.on_start()
+
+    try:
+        content = [unmatched(node_id, variant) for variant in (1, 2, 3)]
+
+        for size, content_id in enumerate(content, start=1):
+            hold(module, config, content_id, size)
+
+        module.handle(candidates_requested(1_000))
+
+        assert offered(queues) == [(content[0], 1), (content[1], 2)]
+
+    finally:
+        module.on_stop()
+
+
+def test_content_gone_from_the_store_is_recorded_as_deleted_not_offered(
+    still: StatsModule,
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    node_id: ContentId,
+    caplog: LogCaptureFixture,
+) -> None:
+    gone, kept = unmatched(node_id, 1), unmatched(node_id, 2)
+    hold(still, config, gone, 10)
+    hold(still, config, kept, 20)
+    source_of_truth_store(config.storage).path_for(gone).unlink()
+
+    with caplog.at_level(INFO):
+        still.handle(candidates_requested(1_000))
+
+    assert offered(queues) == [(kept, 20)]
+    assert f"{gone} is gone from the store" in caplog.text
+    stats = still.database.data_stats(gone)
+    assert stats is not None
+    assert (stats.size, stats.deletes) == (None, 1)
+
+
+def test_this_nodes_own_key_is_never_offered(
+    still: StatsModule, config: LibranetConfig, queues: ModuleQueues, node_id: ContentId
+) -> None:
+    hold(still, config, node_id, 113)
+
+    still.handle(candidates_requested(1_000))
+
+    assert offered(queues) == []
+
+
+def test_with_nothing_held_nothing_is_offered(still: StatsModule, queues: ModuleQueues) -> None:
+    still.handle(requested())
+
+    still.handle(candidates_requested(1_000))
+
+    assert offered(queues) == []
 
 
 def test_a_received_node_list_gives_candidates_not_yet_published(
@@ -656,6 +807,7 @@ def test_the_module_subscribes_to_what_it_records() -> None:
     assert EventType.DATA_DELETED in StatsModule.subscriptions
     assert EventType.ADDRESS_VERIFIED in StatsModule.subscriptions
     assert EventType.NODE_UNREACHED in StatsModule.subscriptions
+    assert EventType.EVICTION_CANDIDATES_REQUESTED in StatsModule.subscriptions
     assert EventType.PUT_COMPLETED not in StatsModule.subscriptions
     assert EventType.NODE_LIST_UPDATED not in StatsModule.subscriptions
 
@@ -667,3 +819,10 @@ def test_factory_builds_a_stats_module_for_the_configured_node(
 
     assert isinstance(module, StatsModule)
     assert module.name == ModuleName.STATS
+
+
+def test_offering_no_candidates_at_all_is_refused(
+    config: LibranetConfig, queues: ModuleQueues
+) -> None:
+    with raises(ValueError, match="max_candidates"):
+        StatsModule(ModuleName.STATS, queues, config, max_candidates=0)
