@@ -982,16 +982,9 @@ Proposed, for review:
   serves a resolved file directly when one is there — so it is what
   publishes the access. `data.requested` is per content id and does not
   fit; an application access names an application and a path.
-
-**Open questions:**
-
-- Whether the month is a provisional default or configuration.
-- Whether reclaiming runs only under storage pressure or also on a slow
-  timer, since a resolved tree for an application nobody has opened in a
-  year is pure waste even on a node with room.
-- Whether resolved files should now be *counted* toward storage limits,
-  having been excluded in Phase 1. Counting them makes pressure honest;
-  not counting them keeps the numbers about content.
+- The month expiration is a configuration default (30 days).
+- Reclaiming only happens under storage pressure.
+- Resolved files should not be counted toward storage limits since it is a cache.
 
 **Testable in isolation:** resolve a fixture bundle into a temp resolved
 directory, advance a fake clock past the threshold, deliver the pressure
