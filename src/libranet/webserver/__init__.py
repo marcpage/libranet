@@ -79,7 +79,7 @@ from libranet.webserver.list_bodies import (
     parse_seek_list,
 )
 from libranet.webserver.list_handlers import ListFileHandler, NodeListHandler, SeekListHandler
-from libranet.webserver.localhost_resolution import resolve_endpoint
+from libranet.webserver.localhost_resolution import NodeListSender, resolve_endpoint
 from libranet.webserver.module import WebServerModule, webserver_module_factory
 from libranet.webserver.request_refusals import (
     invalid_signature_response,
@@ -132,6 +132,7 @@ __all__ = [
     "NodeDescription",
     "NodeHandler",
     "NodeListHandler",
+    "NodeListSender",
     "Password",
     "RegisteredApplications",
     "RegistryFileError",

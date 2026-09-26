@@ -35,8 +35,9 @@ peers:
   bucket_prefix_bits: 4
   connect_timeout_seconds: 10.0
   request_timeout_seconds: 30.0
-  # Provisional: how long a peer's address rests after connecting to it
-  # failed, or after the connection to it closed, before it is tried again.
+  # Provisional: how long a peer rests after connecting to it failed at
+  # every address known for it, or after the connection to it closed, before
+  # it is tried again.
   retry_delay_seconds: 60.0
   # Provisional: how often each connected peer's /data/seek list is fetched
   # again so content it still wants can be pushed (Handshake Protocol §3.3).
@@ -46,6 +47,14 @@ peers:
   # JSON file of initial peers, used only when this node knows no peers at
   # all. Defaults to the (currently empty) list shipped with the package.
   seed_file: null
+  # Look up names (reverse DNS) for the addresses peers connect from, and
+  # try each name found as another address for that peer: a name can
+  # outlast an address. Each lookup tells your DNS resolver an address this
+  # node talks to.
+  reverse_dns: true
+  # Provisional: how long a name found for an address, or finding none, is
+  # remembered before the address is looked up again.
+  reverse_dns_cache_seconds: 3600.0
 
 storage:
   # Defaults to the platform data directory; the CAS, the SQLite file, and
@@ -118,6 +127,14 @@ stats:
   # Provisional: how long content this node asked for and never received
   # stays in the /data/seek list it publishes.
   seek_entry_ttl_seconds: 3600.0
+  # Provisional: the most addresses kept for any one peer. Past it, those
+  # that have never worked are forgotten first, relayed ones before the rest.
+  max_addresses_per_node: 16
+  # Provisional: an address that has never worked is forgotten once this
+  # many attempts in a row to reach its peer there have failed. One that has
+  # worked is kept however often it fails, so a peer that is offline for a
+  # while is not forgotten.
+  max_address_failures: 5
 
 backup:
   # Provisional: how often each backup job's directory is looked at for

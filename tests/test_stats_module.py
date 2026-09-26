@@ -18,7 +18,7 @@ from libranet.config.models import (
 )
 from libranet.identity.node_identity import load_node_identity
 from libranet.messaging.envelope import Message, make_message
-from libranet.messaging.events import EventType
+from libranet.messaging.events import AddressSource, EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.stats.module import StatsModule, stats_module_factory
@@ -100,12 +100,18 @@ def node_list(config: LibranetConfig) -> dict[str, str]:
     return nodes
 
 
+def candidates(config: LibranetConfig) -> dict[str, list[str]]:
+    """The candidate list, as node id to endpoints."""
+    nodes = loads(config.storage.candidate_list_path.read_bytes())["nodes"]
+    return {node["node_id"]: node["endpoints"] for node in nodes}
+
+
 def seek_list(config: LibranetConfig) -> dict[str, list[str]]:
     seek: dict[str, list[str]] = loads(config.storage.seek_list_path.read_bytes())
     return seek
 
 
-def test_starting_opens_the_database_and_writes_both_lists(
+def test_starting_opens_the_database_and_writes_every_list(
     module: StatsModule, config: LibranetConfig, queues: ModuleQueues
 ) -> None:
     identity = load_node_identity(config)
@@ -113,7 +119,31 @@ def test_starting_opens_the_database_and_writes_both_lists(
     assert config.storage.database_path.is_file()
     assert node_list(config) == {SELF_ENDPOINT: str(identity.node_id)}
     assert seek_list(config) == {"data": [], "search": []}
-    assert [message["event"] for message in published(queues)] == [EventType.NODE_LIST_UPDATED]
+    assert candidates(config) == {}
+    (message,) = published(queues)
+    assert message["event"] == EventType.NODE_LIST_UPDATED
+    assert message["path"] == str(config.storage.candidate_list_path)
+
+
+def test_a_node_whose_ports_differ_publishes_both_for_itself(
+    config: LibranetConfig, queues: ModuleQueues
+) -> None:
+    network = NetworkConfig(listen_port=9099, external_port=4300)
+    module = StatsModule(
+        ModuleName.STATS, queues, config.model_copy(update={"network": network}), poll_interval=0.01
+    )
+    module.on_start()
+
+    try:
+        node_id = str(load_node_identity(config).node_id)
+
+        assert node_list(config) == {
+            "http://localhost:4300": node_id,
+            "http://localhost:9099": node_id,
+        }
+
+    finally:
+        module.on_stop()
 
 
 def test_requests_are_counted_by_origin(module: StatsModule) -> None:
@@ -241,7 +271,7 @@ def test_rejected_content_still_counts_as_a_push(module: StatsModule) -> None:
     assert (stats.pushes, stats.last_acquired) == (1, None)
 
 
-def test_a_received_node_list_joins_the_one_this_node_publishes(
+def test_a_received_node_list_gives_candidates_not_yet_published(
     module: StatsModule, config: LibranetConfig
 ) -> None:
     module.handle(
@@ -253,7 +283,34 @@ def test_a_received_node_list_joins_the_one_this_node_publishes(
     )
     module.derive()
 
-    assert node_list(config)[PEER_ENDPOINT] == str(PEER_ID)
+    assert candidates(config) == {str(PEER_ID): [PEER_ENDPOINT]}
+    assert PEER_ENDPOINT not in node_list(config)
+    (address,) = module.database.node_addresses(PEER_ID)
+    assert address.source == AddressSource.RELAYED
+
+
+def test_a_received_node_list_says_how_each_address_was_learned(module: StatsModule) -> None:
+    named = "http://peer.example.org:4300"
+    relayed = "http://198.51.100.7:8080"
+    module.handle(
+        broadcast(
+            EventType.NODES_RECEIVED,
+            {
+                "nodes": {PEER_ENDPOINT: str(PEER_ID), named: str(PEER_ID), relayed: str(PEER_ID)},
+                "sources": {PEER_ENDPOINT: "observed", named: "reverse_dns"},
+            },
+            ModuleName.CONNECTIONS,
+        )
+    )
+
+    sources = {
+        address.endpoint: address.source for address in module.database.node_addresses(PEER_ID)
+    }
+    assert sources == {
+        PEER_ENDPOINT: AddressSource.OBSERVED,
+        named: AddressSource.REVERSE_DNS,
+        relayed: AddressSource.RELAYED,
+    }
 
 
 def test_unusable_node_list_entries_are_dropped_without_losing_the_rest(
@@ -268,8 +325,7 @@ def test_unusable_node_list_entries_are_dropped_without_losing_the_rest(
     )
     module.derive()
 
-    assert PEER_ENDPOINT in node_list(config)
-    assert "http://198.51.100.7:8080" not in node_list(config)
+    assert candidates(config) == {str(PEER_ID): [PEER_ENDPOINT]}
 
 
 def test_a_peers_seek_list_is_kept_apart_from_this_nodes(
@@ -317,7 +373,7 @@ def test_connections_are_recorded_against_the_peer(module: StatsModule) -> None:
 
     assert stats is not None
     assert (stats.successful_connections, stats.remote_disconnects) == (1, 1)
-    assert module.database.known_endpoints() == [(PEER_ENDPOINT, str(PEER_ID))]
+    assert module.database.last_good_endpoints() == [(PEER_ENDPOINT, str(PEER_ID))]
 
 
 def test_failed_attempts_sends_and_lookups_are_counted_against_the_peer(
@@ -347,10 +403,66 @@ def test_failed_attempts_sends_and_lookups_are_counted_against_the_peer(
     assert stats.bytes_sent == 12
     assert (stats.data_found, stats.data_not_found) == (1, 2)
     # An address that could not be reached is not one to publish.
-    assert module.database.known_endpoints() == []
+    assert module.database.node_addresses(PEER_ID) == []
 
 
-def test_a_node_list_that_changed_is_announced_once(
+def test_a_failed_attempt_is_counted_against_the_address_tried(module: StatsModule) -> None:
+    module.handle(
+        broadcast(
+            EventType.NODES_RECEIVED, {"nodes": {PEER_ENDPOINT: str(PEER_ID)}}, ModuleName.WEBSERVER
+        )
+    )
+    module.handle(
+        broadcast(
+            EventType.CONNECTION_FAILED,
+            {"node_id": str(PEER_ID), "endpoint": PEER_ENDPOINT},
+            ModuleName.CONNECTIONS,
+        )
+    )
+
+    (address,) = module.database.node_addresses(PEER_ID)
+    assert (address.attempts, address.consecutive_failures) == (1, 1)
+
+
+def test_an_address_that_answered_as_another_node_is_recorded_for_both(
+    module: StatsModule, config: LibranetConfig
+) -> None:
+    stale_id = ContentId.for_data(b"a node that moved away", "sha256")
+    module.handle(
+        broadcast(
+            EventType.NODES_RECEIVED,
+            {"nodes": {PEER_ENDPOINT: str(stale_id)}},
+            ModuleName.WEBSERVER,
+        )
+    )
+    # The connection manager expected `stale_id` there, and the peer answered,
+    # already connected at another address.
+    module.handle(
+        broadcast(
+            EventType.CONNECTION_FAILED,
+            {"node_id": str(stale_id), "endpoint": PEER_ENDPOINT},
+            ModuleName.CONNECTIONS,
+        )
+    )
+    module.handle(
+        broadcast(
+            EventType.ADDRESS_VERIFIED,
+            {"node_id": str(PEER_ID), "endpoint": PEER_ENDPOINT},
+            ModuleName.CONNECTIONS,
+        )
+    )
+    module.derive()
+
+    (stale,) = module.database.node_addresses(stale_id)
+    (answered,) = module.database.node_addresses(PEER_ID)
+    assert (stale.consecutive_failures, stale.successes) == (1, 0)
+    assert (answered.source, answered.successes) == (AddressSource.DIALED, 1)
+    # The duplicate connection was closed at once, so it counts as none.
+    assert module.database.node_stats(PEER_ID) is None
+    assert node_list(config)[PEER_ENDPOINT] == str(PEER_ID)
+
+
+def test_a_candidate_list_that_changed_is_announced_once(
     module: StatsModule, queues: ModuleQueues
 ) -> None:
     published(queues)
@@ -380,7 +492,7 @@ def test_the_lists_are_rederived_once_the_interval_passes(
     module.on_start()
 
     try:
-        module.database.record_endpoint(PEER_ID, PEER_ENDPOINT)
+        module.database.record_address_worked(PEER_ID, PEER_ENDPOINT)
         module.on_idle()
 
         assert PEER_ENDPOINT not in node_list(config)
@@ -447,6 +559,7 @@ def test_the_database_is_closed_when_the_module_stops(
 def test_the_module_subscribes_to_what_it_records() -> None:
     assert EventType.DATA_REQUESTED in StatsModule.subscriptions
     assert EventType.DATA_DELETED in StatsModule.subscriptions
+    assert EventType.ADDRESS_VERIFIED in StatsModule.subscriptions
     assert EventType.PUT_COMPLETED not in StatsModule.subscriptions
     assert EventType.NODE_LIST_UPDATED not in StatsModule.subscriptions
 

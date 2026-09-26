@@ -64,6 +64,19 @@ class NetworkConfig(_Section):
         port = self.external_port or self.listen_port
         return f"{self.external_scheme}://{host}:{port}"
 
+    def own_endpoints(self) -> tuple[str, ...]:
+        """Every endpoint this node publishes for itself in its node list, best first.
+
+        The first is :meth:`advertised_endpoint`. When that is anything but
+        ``http://localhost:{listen_port}``, that is published too, so a peer
+        on the same network reaches this node directly rather than through
+        whatever a gateway forwards (Phase 2 Step 23). It is always HTTP,
+        since that is all this node listens for.
+        """
+        advertised = self.advertised_endpoint()
+        direct = f"http://localhost:{self.listen_port}"
+        return (advertised,) if advertised == direct else (advertised, direct)
+
 
 class PeerConfig(_Section):
     """Outgoing connection policy (HighLevelDesign §4.6, Phase 1 Step 11)."""
@@ -76,9 +89,9 @@ class PeerConfig(_Section):
     connect_timeout_seconds: float = Field(default=10.0, gt=0)
     request_timeout_seconds: float = Field(default=30.0, gt=0)
 
-    # How long an endpoint rests after an attempt to connect to it fails, or
-    # after its connection closes, before it is dialed again.
-    # Provisional default.
+    # How long a peer rests after attempts to connect to it fail at every
+    # address known for it, or after its connection closes, before it is
+    # dialed again. Provisional default.
     retry_delay_seconds: float = Field(default=60.0, gt=0)
 
     # How often a connected peer's seek list is fetched again, so content it
@@ -90,6 +103,15 @@ class PeerConfig(_Section):
     # Path to a JSON seed list overriding the one shipped with the package.
     # Used only while the node knows no peers at all.
     seed_file: Path | None = None
+
+    # Look up names (reverse DNS) for the addresses peers are observed at,
+    # and try each name found as another address of the same peer (Phase 2
+    # Step 23). Each lookup tells the resolver an address this node talks to.
+    reverse_dns: bool = True
+
+    # How long a name found for an address, or finding none, is remembered
+    # before the address is looked up again. Provisional default.
+    reverse_dns_cache_seconds: float = Field(default=3600.0, gt=0)
 
     @model_validator(mode="after")
     def _connections_fit_buckets(self) -> PeerConfig:
@@ -182,6 +204,11 @@ class StorageConfig(_Section):
         return self.derived_dir / "seek.json"
 
     @property
+    def candidate_list_path(self) -> Path:
+        """Every known address of every peer, for the connection manager (Phase 2 Step 23)."""
+        return self.derived_dir / "candidates.json"
+
+    @property
     def resolved_files_dir(self) -> Path:
         """Files the unbundler resolves from applications' bundles, to serve as-is (Step 14)."""
         return self.source_of_truth_dir / "resolved"
@@ -262,6 +289,18 @@ class StatsConfig(_Section):
     # An outstanding request this node never satisfied stops being advertised
     # in its own `/data/seek` list once it is this old. Provisional default.
     seek_entry_ttl_seconds: float = Field(default=3600.0, gt=0)
+
+    # Most addresses kept for any one peer node. Past it, addresses that have
+    # never worked go first, relayed ones before the rest and the longest
+    # since last learned first; then those that have, the longest since they
+    # last worked first. Provisional default.
+    max_addresses_per_node: int = Field(default=16, ge=1)
+
+    # An address that has never worked is forgotten once this many attempts
+    # in a row to reach its node there have failed. One that has worked is
+    # kept however often it fails, so a node offline for a while is not
+    # forgotten; only the cap above removes it. Provisional default.
+    max_address_failures: int = Field(default=5, ge=1)
 
 
 class BackupConfig(_Section):

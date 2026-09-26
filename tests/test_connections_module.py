@@ -8,11 +8,12 @@ signatures still use real time.
 """
 
 from __future__ import annotations
+from contextlib import suppress
 from json import dumps
-from logging import DEBUG, INFO, getLogger
+from logging import DEBUG, INFO, Logger, getLogger
 from pathlib import Path
 from queue import Empty, Queue
-from socket import create_server
+from socket import SHUT_RDWR, create_server, socket
 from threading import Event, Thread
 from time import monotonic, sleep, time
 from typing import Any, Callable, Iterator, Mapping, Sequence
@@ -31,6 +32,7 @@ from libranet.config.models import (
 )
 from libranet.connections.module import ConnectionsModule, connections_module_factory
 from libranet.connections.peer_session import PeerSession
+from libranet.connections.reverse_dns import ResolveNames
 from libranet.identity.authentication import request_authenticator
 from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity, load_node_identity
@@ -42,6 +44,7 @@ from libranet.modules import ModuleName
 from libranet.supervision.stubs import StubModule
 from libranet.webserver.config_credential import load_config_credential
 from libranet.webserver.config_handlers import NodeDescription
+from libranet.webserver.router import Router
 from libranet.webserver.server import LibranetHTTPServer, RequestHandler, build_router
 
 TIMEOUT = 5.0
@@ -91,6 +94,27 @@ class Bus:
         return self.events(event, **fields)
 
 
+class DroppableServer(LibranetHTTPServer):
+    """This node's web server, able to drop every connection it has accepted."""
+
+    def __init__(
+        self, address: tuple[str, int], router: Router, logger: Logger, signer: MessageSigner
+    ) -> None:
+        super().__init__(address, router, logger, signer)
+        self.accepted: list[socket] = []
+
+    def process_request(self, request: socket | tuple[bytes, socket], client_address: Any) -> None:
+        if isinstance(request, socket):
+            self.accepted.append(request)
+
+        super().process_request(request, client_address)
+
+    def drop_connections(self) -> None:
+        for accepted in self.accepted:
+            with suppress(OSError):
+                accepted.shutdown(SHUT_RDWR)
+
+
 class FixturePeer:
     """This node's web server on a free local port, with an identity of its own."""
 
@@ -101,7 +125,7 @@ class FixturePeer:
         self.identity.publish_public_key(self.store)
         queues = ModuleQueues(inbox=Queue(), outbox=Queue())
         self.bus = Bus(queues.outbox)
-        self.server = LibranetHTTPServer(
+        self.server = DroppableServer(
             ("127.0.0.1", 0),
             build_router(
                 self.storage,
@@ -137,11 +161,29 @@ class FixturePeer:
 def write_lists(
     storage: StorageConfig, nodes: Mapping[str, str] | None, sought: Sequence[ContentId] = ()
 ) -> None:
-    """Derived node and seek lists, as the stats module would write them."""
+    """Derived node, seek, and candidate lists, as the stats module would write them.
+
+    Each node's candidate endpoints are those ``nodes`` names it at, in order.
+    """
     storage.derived_dir.mkdir(parents=True, exist_ok=True)
 
     if nodes is not None:
         storage.node_list_path.write_text(dumps({"nodes": nodes}))
+        endpoints: dict[str, list[str]] = {}
+
+        for endpoint, node_id in nodes.items():
+            endpoints.setdefault(node_id, []).append(endpoint)
+
+        storage.candidate_list_path.write_text(
+            dumps(
+                {
+                    "nodes": [
+                        {"node_id": node_id, "endpoints": listed}
+                        for node_id, listed in endpoints.items()
+                    ]
+                }
+            )
+        )
 
     storage.seek_list_path.write_text(dumps({"data": [str(c) for c in sought], "search": []}))
 
@@ -200,6 +242,11 @@ def now() -> list[float]:
     return [time()]
 
 
+def no_names(address: str) -> Sequence[str]:
+    """A reverse DNS lookup that finds nothing, so tests never touch real DNS."""
+    return ()
+
+
 class Modules:
     """Builds connection managers over the test's queues, stopping each at the end."""
 
@@ -208,13 +255,16 @@ class Modules:
         self._now = now
         self.built: list[ConnectionsModule] = []
 
-    def start(self, config: LibranetConfig) -> ConnectionsModule:
+    def start(
+        self, config: LibranetConfig, resolve_names: ResolveNames = no_names
+    ) -> ConnectionsModule:
         module = ConnectionsModule(
             ModuleName.CONNECTIONS,
             self._queues,
             config,
             clock=lambda: self._now[0],
             poll_interval=0.01,
+            resolve_names=resolve_names,
         )
         self.built.append(module)
         module.on_start()
@@ -269,7 +319,9 @@ def stored(content_id: ContentId, source: ContentId) -> Message:
 
 def node_list_updated(config: LibranetConfig) -> Message:
     return make_message(
-        EventType.NODE_LIST_UPDATED, ModuleName.STATS, {"path": str(config.storage.node_list_path)}
+        EventType.NODE_LIST_UPDATED,
+        ModuleName.STATS,
+        {"path": str(config.storage.candidate_list_path)},
     )
 
 
@@ -352,13 +404,7 @@ def test_a_new_node_list_brings_new_connections(
     assert module.connected == {}
 
     write_lists(config.storage, node_list(identity, peers[0]))
-    module.handle(
-        make_message(
-            EventType.NODE_LIST_UPDATED,
-            ModuleName.STATS,
-            {"path": str(config.storage.node_list_path)},
-        )
-    )
+    module.handle(node_list_updated(config))
 
     bus.wait_for(EventType.CONNECTION_OPENED, node_id=str(peers[0].node_id))
 
@@ -405,29 +451,54 @@ def test_an_unusable_seed_list_leaves_nothing_to_dial(
     assert module.connected == {}
 
 
-def test_an_unreachable_peer_rests_before_it_is_dialed_again(
+def test_a_node_is_dialed_at_each_endpoint_in_turn_until_one_reaches_it(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+) -> None:
+    dead = f"http://127.0.0.1:{closed_port()}"
+    node_id = str(peers[0].node_id)
+    write_lists(config.storage, {**node_list(identity), dead: node_id, peers[0].endpoint: node_id})
+
+    module = modules.start(config)
+
+    (opened,) = bus.wait_for(EventType.CONNECTION_OPENED)
+    assert (opened["node_id"], opened["endpoint"]) == (node_id, peers[0].endpoint)
+    (failed,) = bus.events(EventType.CONNECTION_FAILED)
+    assert (failed["node_id"], failed["endpoint"]) == (node_id, dead)
+    assert module.connected == {peers[0].node_id: peers[0].endpoint}
+
+
+def test_an_unreachable_peer_rests_once_every_endpoint_has_failed(
     modules: Modules,
     config: LibranetConfig,
     identity: NodeIdentity,
     bus: Bus,
     now: list[float],
 ) -> None:
-    endpoint = f"http://127.0.0.1:{closed_port()}"
-    write_lists(config.storage, {**node_list(identity), endpoint: str(OTHER_ID)})
+    endpoints = [f"http://127.0.0.1:{closed_port()}" for _ in range(2)]
+    write_lists(
+        config.storage,
+        {**node_list(identity), **{endpoint: str(OTHER_ID) for endpoint in endpoints}},
+    )
 
     module = modules.start(config)
 
-    (failed,) = bus.wait_for(EventType.CONNECTION_FAILED)
-    assert (failed["node_id"], failed["endpoint"]) == (str(OTHER_ID), endpoint)
+    failed = bus.wait_for(EventType.CONNECTION_FAILED, count=2)
+    assert [(message["node_id"], message["endpoint"]) for message in failed] == [
+        (str(OTHER_ID), endpoint) for endpoint in endpoints
+    ]
 
     module.on_idle()
     sleep(0.2)
-    assert len(bus.events(EventType.CONNECTION_FAILED)) == 1
+    assert len(bus.events(EventType.CONNECTION_FAILED)) == 2
 
     now[0] += RETRY_DELAY
     module.on_idle()
 
-    bus.wait_for(EventType.CONNECTION_FAILED, count=2)
+    bus.wait_for(EventType.CONNECTION_FAILED, count=4)
 
 
 def test_an_unreachable_seed_of_unknown_id_is_not_reported(
@@ -478,35 +549,130 @@ def test_an_endpoint_that_is_this_node_is_not_dialed_again(
     assert bus.events(EventType.CONNECTION_FAILED) == []
 
 
-def test_a_second_endpoint_for_a_connected_node_is_closed(
+class Twins:
+    """One identity at two endpoints: ``first`` listed as itself, ``second`` under a stale id."""
+
+    def __init__(self, root: Path) -> None:
+        self.first = FixturePeer(root / "first")
+        self.second = FixturePeer(root / "second", self.first.identity)
+
+    @property
+    def node_id(self) -> ContentId:
+        return self.first.node_id
+
+    def stop(self) -> None:
+        self.first.stop()
+        self.second.stop()
+
+
+@fixture
+def twins(tmp_path: Path) -> Iterator[Twins]:
+    twins = Twins(tmp_path / "twins")
+    yield twins
+    twins.stop()
+
+
+def connect_twin_then_list_its_double(
+    modules: Modules, config: LibranetConfig, identity: NodeIdentity, twins: Twins, bus: Bus
+) -> ConnectionsModule:
+    """Connect the first twin, then learn the second's endpoint under a stale node id."""
+    write_lists(config.storage, node_list(identity, twins.first))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED)
+
+    write_lists(
+        config.storage,
+        {**node_list(identity, twins.first), twins.second.endpoint: str(OTHER_ID)},
+    )
+    module.handle(node_list_updated(config))
+    bus.wait_for(EventType.ADDRESS_VERIFIED)
+    return module
+
+
+def test_an_endpoint_answering_as_a_connected_node_is_closed_and_recorded_for_both(
     modules: Modules,
     config: LibranetConfig,
     identity: NodeIdentity,
+    twins: Twins,
     bus: Bus,
-    tmp_path: Path,
     caplog: LogCaptureFixture,
 ) -> None:
     caplog.set_level(INFO, logger="libranet")
-    twin = FixturePeer(tmp_path / "twin")
-    double = FixturePeer(tmp_path / "double", twin.identity)
-    # The node list still has an old node id for the second endpoint.
-    write_lists(
-        config.storage,
-        {**node_list(identity, twin), double.endpoint: str(OTHER_ID)},
+
+    module = connect_twin_then_list_its_double(modules, config, identity, twins, bus)
+
+    (failed,) = bus.events(EventType.CONNECTION_FAILED)
+    assert (failed["node_id"], failed["endpoint"]) == (str(OTHER_ID), twins.second.endpoint)
+    (verified,) = bus.events(EventType.ADDRESS_VERIFIED)
+    assert (verified["node_id"], verified["endpoint"]) == (
+        str(twins.node_id),
+        twins.second.endpoint,
     )
+    assert len(bus.events(EventType.CONNECTION_OPENED)) == 1
+    assert module.connected == {twins.node_id: twins.first.endpoint}
+    assert "is already connected" in caplog.text
 
-    try:
-        module = modules.start(config)
-        wait_until(lambda: "is already connected" in caplog.text, "the duplicate to be closed")
-        (opened,) = bus.wait_for(EventType.CONNECTION_OPENED)
 
-    finally:
-        twin.stop()
-        double.stop()
+def test_an_endpoint_answering_as_a_connected_node_is_not_dialed_while_it_stays_connected(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    twins: Twins,
+    bus: Bus,
+    now: list[float],
+) -> None:
+    module = connect_twin_then_list_its_double(modules, config, identity, twins, bus)
 
-    assert opened["node_id"] == str(twin.node_id)
-    assert list(module.connected) == [twin.node_id]
-    assert bus.events(EventType.CONNECTION_FAILED) == []
+    now[0] += RETRY_DELAY
+    module.on_idle()
+    sleep(0.2)
+
+    assert len(bus.events(EventType.CONNECTION_FAILED)) == 1
+    assert len(bus.events(EventType.ADDRESS_VERIFIED)) == 1
+    assert module.connected == {twins.node_id: twins.first.endpoint}
+
+
+def test_an_endpoint_answering_as_a_connected_node_is_dialed_once_that_connection_ends(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    twins: Twins,
+    bus: Bus,
+    now: list[float],
+) -> None:
+    module = connect_twin_then_list_its_double(modules, config, identity, twins, bus)
+    now[0] += RETRY_DELAY
+    module.on_idle()
+
+    twins.first.server.drop_connections()
+
+    bus.wait_for(EventType.CONNECTION_CLOSED)
+    _, reopened = bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+    assert (reopened["node_id"], reopened["endpoint"]) == (
+        str(twins.node_id),
+        twins.second.endpoint,
+    )
+    assert len(bus.events(EventType.CONNECTION_FAILED, node_id=str(OTHER_ID))) == 2
+    assert module.connected == {twins.node_id: twins.second.endpoint}
+
+
+def test_an_endpoint_answering_as_a_node_not_connected_is_admitted_as_that_node(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+) -> None:
+    write_lists(config.storage, {**node_list(identity), peers[0].endpoint: str(OTHER_ID)})
+
+    module = modules.start(config)
+
+    (opened,) = bus.wait_for(EventType.CONNECTION_OPENED)
+    assert (opened["node_id"], opened["endpoint"]) == (str(peers[0].node_id), peers[0].endpoint)
+    (failed,) = bus.events(EventType.CONNECTION_FAILED)
+    assert (failed["node_id"], failed["endpoint"]) == (str(OTHER_ID), peers[0].endpoint)
+    assert module.connected == {peers[0].node_id: peers[0].endpoint}
+    assert bus.events(EventType.ADDRESS_VERIFIED) == []
 
 
 def test_a_connection_the_peer_closes_is_reported_and_rests(
@@ -1071,6 +1237,70 @@ def test_a_push_that_goes_wrong_is_logged(
     wait_until(lambda: f"Pushing {HELD_ID} failed" in caplog.text, "the failure to be logged")
 
 
+# -- Reverse DNS -----------------------------------------------------------
+
+
+def nodes_received(nodes: Mapping[str, str], sources: Mapping[str, str]) -> Message:
+    return make_message(
+        EventType.NODES_RECEIVED, ModuleName.WEBSERVER, {"nodes": nodes, "sources": sources}
+    )
+
+
+def test_addresses_peers_were_observed_at_are_looked_up(
+    modules: Modules, config: LibranetConfig, bus: Bus
+) -> None:
+    asked: list[str] = []
+
+    def names(address: str) -> Sequence[str]:
+        asked.append(address)
+        return ["peer.example.org"] if address == "203.0.113.9" else []
+
+    module = modules.start(config, names)
+
+    module.handle(
+        nodes_received(
+            {
+                "http://203.0.113.9:4300": str(OTHER_ID),
+                "http://198.51.100.7:8080": str(OTHER_ID),
+                "http://198.51.100.8:8080": str(OTHER_ID),
+            },
+            {
+                "http://203.0.113.9:4300": "observed",
+                "http://198.51.100.7:8080": "advertised",
+            },
+        )
+    )
+
+    (named,) = bus.wait_for(EventType.NODES_RECEIVED)
+    assert named["nodes"] == {"http://peer.example.org:4300": str(OTHER_ID)}
+    assert named["sources"] == {"http://peer.example.org:4300": "reverse_dns"}
+    # Only the observed address was looked up.
+    assert asked == ["203.0.113.9"]
+
+
+def test_reverse_dns_can_be_switched_off(
+    modules: Modules, config: LibranetConfig, bus: Bus
+) -> None:
+    asked: list[str] = []
+
+    def names(address: str) -> Sequence[str]:
+        asked.append(address)
+        return ["peer.example.org"]
+
+    module = modules.start(with_peers(config, reverse_dns=False), names)
+
+    module.handle(
+        nodes_received(
+            {"http://203.0.113.9:4300": str(OTHER_ID)},
+            {"http://203.0.113.9:4300": "observed"},
+        )
+    )
+
+    sleep(0.2)
+    assert bus.events(EventType.NODES_RECEIVED) == []
+    assert asked == []
+
+
 # -- Lifecycle -------------------------------------------------------------
 
 
@@ -1088,6 +1318,7 @@ def test_stopping_a_module_that_never_started_is_harmless(
 def test_the_module_subscribes_to_node_lists_fetches_hand_offs_and_new_content() -> None:
     assert ConnectionsModule.subscriptions == {
         EventType.NODE_LIST_UPDATED,
+        EventType.NODES_RECEIVED,
         EventType.FETCH_REQUESTED,
         EventType.EVICTION_NOTICE,
         EventType.DATA_STORED,

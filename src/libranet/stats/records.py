@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from sqlite3 import Row
 
 from libranet.cas.content_id import ContentId
+from libranet.messaging.events import AddressSource
 
 
 @dataclass(frozen=True)
@@ -74,4 +75,34 @@ class NodeStats:
             bytes_sent=row["bytes_sent"],
             data_found=row["data_found"],
             data_not_found=row["data_not_found"],
+        )
+
+
+@dataclass(frozen=True)
+class NodeAddress:
+    """What is known about one place a peer node may be reached."""
+
+    node_id: ContentId
+    endpoint: str
+    source: AddressSource
+    last_learned: float
+    first_success: float | None = None
+    last_success: float | None = None
+    attempts: int = 0
+    successes: int = 0
+    consecutive_failures: int = 0
+
+    @classmethod
+    def from_row(cls, row: Row) -> NodeAddress:
+        """Build a snapshot from a ``node_addresses`` row."""
+        return cls(
+            node_id=ContentId.parse(row["node_id"]),
+            endpoint=row["endpoint"],
+            source=AddressSource(row["source"]),
+            last_learned=row["last_learned"],
+            first_success=row["first_success"],
+            last_success=row["last_success"],
+            attempts=row["attempts"],
+            successes=row["successes"],
+            consecutive_failures=row["consecutive_failures"],
         )

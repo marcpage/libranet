@@ -476,29 +476,47 @@ def test_first_contact_swaps_node_lists(
     exchange.first_contact(session)
 
     (learned,) = published(queues, EventType.NODES_RECEIVED)
+    # `localhost` is resolved to the address the socket reached, and the
+    # peer's own entry is kept as one it was observed at.
     assert learned["nodes"] == {
+        "http://127.0.0.1:4300": str(peer.identity.node_id),
         "http://198.51.100.7:8080": str(OTHER_ID),
         "http://127.0.0.1:9999": str(THIRD_ID),
     }
+    assert learned["sources"] == {"http://127.0.0.1:4300": "observed"}
     (told,) = peer.published(EventType.NODES_RECEIVED)
     assert told["nodes"] == {
         "http://127.0.0.1:8080": str(identity.node_id),
         "http://192.0.2.1:8080": str(OTHER_ID),
     }
+    assert told["sources"] == {"http://127.0.0.1:8080": "observed"}
 
 
-def test_a_node_list_naming_no_other_peer_publishes_nothing(
+def test_a_peers_advertised_entries_are_kept_as_its_own(
+    exchange: PeerExchange,
+    session: PeerSession,
+    peer: FixturePeer,
+    queues: ModuleQueues,
+) -> None:
+    peer.write_lists({"http://peer.example.org:4300": str(peer.identity.node_id)})
+
+    exchange.first_contact(session)
+
+    (learned,) = published(queues, EventType.NODES_RECEIVED)
+    assert learned["nodes"] == {"http://peer.example.org:4300": str(peer.identity.node_id)}
+    assert learned["sources"] == {"http://peer.example.org:4300": "advertised"}
+
+
+def test_a_node_list_naming_no_usable_node_publishes_nothing(
     exchange: PeerExchange,
     session: PeerSession,
     peer: FixturePeer,
     identity: NodeIdentity,
     queues: ModuleQueues,
 ) -> None:
-    # Every entry is dropped: the peer itself, this node, and an endpoint
-    # that cannot be dialed.
+    # Every entry is dropped: this node, and an endpoint that cannot be dialed.
     peer.write_lists(
         {
-            "http://localhost:4300": str(peer.identity.node_id),
             "http://203.0.113.5:8080": str(identity.node_id),
             "ftp://198.51.100.8": str(OTHER_ID),
         }
@@ -516,6 +534,31 @@ def test_before_the_first_derivation_this_node_sends_itself_alone(
 
     (told,) = peer.published(EventType.NODES_RECEIVED)
     assert told["nodes"] == {"http://127.0.0.1:8080": str(identity.node_id)}
+
+
+def test_before_the_first_derivation_this_node_sends_every_endpoint_it_has(
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peer: FixturePeer,
+    queues: ModuleQueues,
+) -> None:
+    forwarded = config.model_copy(update={"network": NetworkConfig(external_port=4300)})
+    exchange = PeerExchange(
+        identity, forwarded, StubModule(ModuleName.CONNECTIONS, queues).publish, LOGGER
+    )
+    session = exchange.open(peer.endpoint)
+
+    try:
+        exchange.first_contact(session)
+
+    finally:
+        session.close()
+
+    (told,) = peer.published(EventType.NODES_RECEIVED)
+    assert told["nodes"] == {
+        "http://127.0.0.1:4300": str(identity.node_id),
+        "http://127.0.0.1:8080": str(identity.node_id),
+    }
 
 
 def test_lists_a_peer_has_not_derived_yet_are_skipped(

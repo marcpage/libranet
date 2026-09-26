@@ -269,8 +269,9 @@ Settled in the issue:
   databases to migrate.
 - **Two outputs instead of one.** The *published* node list is what
   `/data/nodes` serves and the handshake POSTs: this node's own entries
-  first, then addresses that worked the last time they were tried, best
-  first, within `stats.max_list_bytes`. The *internal candidate list* is
+  first, then each node's last known good address, the one it was last
+  reached at, if that worked the last time it was tried, best first,
+  within `stats.max_list_bytes`. The *internal candidate list* is
   for the connection manager alone: every known address, grouped by node,
   the ones that have worked first by last success, then the untested ones
   by how recently they were learned. Stats owns and documents the
@@ -283,10 +284,10 @@ Settled in the issue:
   — so LAN peers reach the node directly while outsiders come through the
   forwarded port. A receiver treats a `localhost` entry as unverified
   until it has dialed it itself.
-- **Bounds.** The number of addresses kept per node is capped; addresses
-  that have not worked in a long time, or have failed many times in a
-  row, are dropped. Both are `StatsConfig` settings with provisional
-  defaults, documented in `examples/libranet.yaml`.
+- **Bounds.** The number of addresses kept per node is capped, and an
+  address that has never worked is dropped once it has failed many times
+  in a row. Both are `StatsConfig` settings with provisional defaults,
+  documented in `examples/libranet.yaml`.
 - **Observed IPs on both sides.** The web server already replaces
   `localhost` in a POSTed list with the connection's source IP. The
   connection manager does the same: `PeerConnection` records the peer's
@@ -327,28 +328,120 @@ Settled in the issue:
   work: stats keeps one endpoint per id, so the stale entry never goes
   away and the address is redialed every retry delay to be closed again.
 
-**Open questions:**
+Ruled when the step was built, where the issue left room:
 
-- Stats counts `successful_connections` per node from
-  `connection.opened`, so recording a verified address for a duplicate
-  that was immediately closed must not count as a connection — and
-  `connection.failed` today means only "failed before any identity was
-  proven". How those two facts reach stats (a new event, or new fields on
-  the existing ones) is chosen when the step is built, and the choice is
-  recorded here.
-- Whether changes to the internal candidate list reuse `nodes.updated` or
-  get an event of their own.
-- Provisional defaults for the two new bounds.
+- **HttpApi §10.6 stands.** A node list names each node at its last known
+  good address, not at every address that has worked. A node's other
+  addresses are kept and tried, but only that one is published.
+- **Failures drop only addresses that have never worked.** An address
+  that has worked is kept however often it fails, and only the per-node
+  cap removes it. There is no age limit: a node offline for a month would
+  come back to find every address for it gone.
+- **Two self entries whenever they differ.** This node publishes
+  `advertised_endpoint()`, and `http://localhost:<listen_port>` too
+  whenever that is a different string, including when `external_address`
+  is set, so LAN peers need not go through the gateway. The second is
+  always `http`, since that is all the node listens for.
+- **Reverse DNS can be switched off,** since a PTR query tells the
+  resolver which addresses this node talks to: `peers.reverse_dns`, on by
+  default. Results are cached for `peers.reverse_dns_cache_seconds`, an
+  hour by default, a name found or none.
+
+Open questions, resolved:
+
+- **How the duplicate and wrong-node cases reach stats.**
+  `connection.failed` keeps its shape. Its meaning widens to "dialing
+  this endpoint did not reach this node", which covers an endpoint that
+  answered as another node. A new event, `address.verified`
+  `{"node_id", "endpoint"}`, is an endpoint that reached a node already
+  connected at another, whose connection was closed at once. It marks the
+  address as working and counts nothing in `node_stats`. A field on
+  `connection.opened` would have said the same, but stats expects a
+  `connection.closed` after every `connection.opened`, and a duplicate
+  never has one.
+- **The candidate list reuses `nodes.updated`.** Its `path` now names the
+  candidate list, and it is published when that file changes. The
+  connection manager is its only subscriber. Nothing announces a change to
+  the published list, which is read from its file when it is needed.
+- **Defaults:** 16 addresses per node (`stats.max_addresses_per_node`),
+  and 5 failures in a row (`stats.max_address_failures`).
 
 **Change sets**, in order, each independently reviewable:
 
-1. **Stats:** the per-address table, the bounds, per-address recording
-   from connection events, and the two outputs.
-2. **Connection manager:** candidates as node ids with ordered addresses,
-   walking them, per-node retry, and reading the internal candidate list.
-3. **Observed IPs:** the peer IP on `PeerConnection`, keeping the peer's
-   own entries, and marking observed entries in `nodes.received`.
-4. **Reverse DNS:** the lookup worker, its cache, and recording the names.
+1. **Stats and walking:** the per-address table, the bounds, per-address
+   recording from connection events, the two outputs, and the connection
+   manager reading the candidate list, walking a node's addresses,
+   retrying per node, and following the rules for an address that answers
+   as somebody else. The issue proposed stats and the connection manager
+   as two sets, but stats alone would stop discovery: the published list
+   would hold only addresses that have worked, and the unchanged connection
+   manager dials from it. Until set 2, every entry of a received node list
+   is recorded as relayed.
+2. **Observed IPs and reverse DNS:** the peer IP on `PeerConnection`,
+   keeping the peer's own entries, saying in `nodes.received` how each
+   entry was learned, and the lookup worker, its cache, and recording the
+   names.
+
+My calls, not yet reviewed:
+
+- **The candidate list** is `candidates.json` beside the node list, shaped
+  `{"nodes": [{"node_id", "endpoints": [...]}]}`, and documented in
+  `stats/derivation.py`. Nodes come in the order of their best address:
+  those reached, the most recently reached first, then the rest, the most
+  recently learned of first.
+- **One source per address,** the strongest it was learned from: dialed,
+  then observed, advertised, reverse DNS, and relayed. `AddressSource`
+  sits beside `EventType` in `messaging/events.py`, since the web server,
+  the connection manager, and stats all spell it.
+- **Over the cap,** addresses that have never worked go first, relayed
+  ones before the rest, the longest since last learned first; then those
+  that have worked, the longest since they last worked first. Addresses
+  are pruned when the lists are derived, as outstanding requests are.
+- **A failure at an address stats does not know** counts against the
+  node alone. An address becomes known by being learned or by being
+  reached.
+- **Every address tried counts one `node_stats.connection_attempts`,** so
+  a walk that fails twice and then connects counts three.
+- **A walk stops at an endpoint that reaches the node expected,** even one
+  already connected, and at one whose answering node is taken in. In the
+  second case the candidate does not rest: the endpoint now in use is left
+  out, so the next time the mix is tended, its other addresses are dialed.
+- **A closed connection rests its node, and its endpoint too,** since a
+  seed dialed without its node id is told apart by its endpoint.
+- **Endpoints that turned out to be this node stay in memory,** as before,
+  since stats keeps no addresses for this node.
+- **One class builds `nodes.received` from a received list** for both the
+  web server and the handshake: `NodeListSender`, in
+  `webserver/localhost_resolution.py`. Its `sources` names only the
+  sender's own entries, `observed` if resolved from `localhost` and
+  `advertised` if not, and an entry it leaves out was relayed. A
+  `localhost` entry naming some other node is resolved as before but
+  counts as relayed.
+- **The peer's IP is read when the connection is made,** from
+  `getpeername`. When it is not known, the peer's `localhost` entries are
+  dropped, as a dialed name's were.
+- **One reverse DNS worker,** `ReverseLookup` in
+  `connections/reverse_dns.py`, runs in the connection manager, which now
+  subscribes to `nodes.received` and looks up each observed entry, the web
+  server's and its own. Names go out as `nodes.received` marked
+  `reverse_dns`. Every name a lookup returns is used, aliases too.
+- **The cache saves queries, not messages.** An address observed again
+  while its names are cached gets them published again, which only moves
+  on when they were last learned. Expired entries are dropped whenever an
+  address is looked up.
+
+- An address that has worked for one node and now answers as another is
+  still an address that has worked for the first. It is kept, tried after
+  the ones that work, and removed only by the cap.
+- An address that never worked is dropped after its failures, but a peer
+  that relays it again brings it back with a clean count. A limit on that
+  belongs with Step 26's node-level rule.
+- `/data/nodes` used to relay every address this node had heard of. It
+  now names only nodes this node has reached, so a new node's list names
+  itself alone until its first connection opens.
+- The name of a loopback address is `localhost`, which in a node list
+  means the sender. A loopback address is never looked up, and a name
+  `localhost` found for any address is never published.
 
 **Testable in isolation:** stats tests feed broadcasts to `StatsModule`
 or `StatsDatabase` against a temp SQLite file; connection tests run
@@ -527,10 +620,11 @@ happens when there are not enough peers to fill either.
 
 This step and Step 23 are two halves of one rule and should be written
 together, or one straight after the other. Step 23 already records
-consecutive failures per address and drops an address that has failed too
-many times; this step is the node-level counterpart — when every address
-of a node is exhausted, stop dialing the node. Written apart, they will
-disagree.
+consecutive failures per address and drops an address that has never
+worked once it has failed too many times in a row, while one that has
+worked is kept however often it fails; this step is the node-level
+counterpart — when every address of a node is exhausted, stop dialing the
+node. Written apart, they will disagree.
 
 **Open questions:**
 
@@ -1498,7 +1592,8 @@ either step is built:
   give-up.
 - **One rule for giving up, not two** (Steps 23 and 26) — per-address
   consecutive failures and per-node attempt caps have to be designed
-  together.
+  together. Step 23's half is decided: failures drop only addresses that
+  have never worked, and nothing ages an address out.
 - **Whether a zero factor should zero the eviction score** (Step 28) —
   the difference between a formula that evicts and one that does not.
 - **How stats hands candidate lists to other modules** (Steps 28, 29,

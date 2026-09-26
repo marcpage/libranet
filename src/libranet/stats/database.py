@@ -22,6 +22,7 @@ values are text, and callers pass them normalized, as
 """
 
 from __future__ import annotations
+from itertools import groupby
 from pathlib import Path
 from sqlite3 import Connection, Cursor, Row, connect
 from time import time
@@ -30,7 +31,8 @@ from typing import Any, Callable, Final, Iterable, Mapping
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.prefix import nearest
-from libranet.stats.records import DataStats, NodeStats
+from libranet.messaging.events import AddressSource
+from libranet.stats.records import DataStats, NodeAddress, NodeStats
 from libranet.stats.schema import OWN_NODE, SeekKind, apply_schema
 
 # Column names used to build the upsert statements below. They are private
@@ -46,8 +48,28 @@ _DATA_FOUND: Final = "data_found"
 _DATA_NOT_FOUND: Final = "data_not_found"
 
 
+def _source_rank(expression: str) -> str:
+    """SQL for the rank of the source ``expression`` names, weakest lowest."""
+    cases = " ".join(
+        f"WHEN '{source.value}' THEN {rank}" for rank, source in enumerate(AddressSource)
+    )
+    return f"CASE {expression} {cases} END"
+
+
+# The stronger of an address's recorded source and the one it was just
+# learned from again. Built from the enum's own values, never caller input.
+_STRONGER_SOURCE: Final = (
+    f"CASE WHEN {_source_rank('excluded.source')} > {_source_rank('source')} "
+    "THEN excluded.source ELSE source END"
+)
+
+# The order a node's addresses are tried in: those that have worked, the
+# most recently first, then the rest, the most recently learned first.
+_TRY_ORDER: Final = "last_success IS NULL, last_success DESC, last_learned DESC, endpoint"
+
+
 class StatsDatabase:
-    """Node and data statistics, the node list, and outstanding requests.
+    """Node and data statistics, where nodes may be reached, and outstanding requests.
 
     Usable as a context manager, which closes the connection on exit.
     """
@@ -154,8 +176,7 @@ class StatsDatabase:
         """Count a connection to ``node_id`` that was established.
 
         A connection that opened was also attempted, so both counters move.
-        ``endpoint`` is remembered as the address that identity was last
-        reached at, which is what this node publishes for it (HttpApi §10.6).
+        ``endpoint``, where it was reached, is an address that worked.
         """
         self._execute(
             "INSERT INTO node_stats (node_id, connection_attempts, successful_connections, "
@@ -167,7 +188,7 @@ class StatsDatabase:
         )
 
         if endpoint is not None:
-            self.record_endpoint(node_id, endpoint)
+            self.record_address_worked(node_id, endpoint)
 
     def record_connection_closed(self, node_id: ContentId, *, remote: bool) -> None:
         """Note a connection to ``node_id`` ending, and how long it lasted.
@@ -202,39 +223,134 @@ class StatsDatabase:
         )
         return None if row is None else NodeStats.from_row(row)
 
-    # -- The node list ---------------------------------------------------
+    # -- Where nodes may be reached --------------------------------------
 
-    def record_endpoint(self, node_id: ContentId, endpoint: str) -> None:
-        """Remember ``endpoint`` as where ``node_id`` was last seen."""
-        self._execute(
-            "INSERT INTO node_endpoints (node_id, endpoint, last_seen) "
-            "VALUES (:node_id, :endpoint, :now) "
-            "ON CONFLICT (node_id) DO UPDATE SET endpoint = :endpoint, last_seen = :now",
-            {"node_id": str(node_id), "endpoint": endpoint, "now": self._clock()},
+    def record_addresses(self, addresses: Mapping[str, ContentId], source: AddressSource) -> None:
+        """Remember addresses learned from ``source``, keyed endpoint to node id.
+
+        An address already known is learned again: when it was learned
+        moves on, and its source becomes ``source`` if that is stronger.
+        """
+        self._connection.executemany(
+            "INSERT INTO node_addresses (node_id, endpoint, source, last_learned) "
+            "VALUES (:node_id, :endpoint, :source, :now) "
+            "ON CONFLICT (node_id, endpoint) DO UPDATE SET last_learned = :now, "
+            f"source = {_STRONGER_SOURCE}",
+            [
+                {
+                    "node_id": str(node_id),
+                    "endpoint": endpoint,
+                    "source": source.value,
+                    "now": self._clock(),
+                }
+                for endpoint, node_id in addresses.items()
+            ],
         )
 
-    def record_endpoints(self, endpoints: Mapping[str, ContentId]) -> None:
-        """Remember a whole received node list, keyed endpoint to node id."""
-        for endpoint, node_id in endpoints.items():
-            self.record_endpoint(node_id, endpoint)
+    def record_address_worked(self, node_id: ContentId, endpoint: str) -> None:
+        """Note that dialing ``endpoint`` reached ``node_id``, which proved its identity.
 
-    def known_endpoints(self, exclude: ContentId | None = None) -> list[tuple[str, str]]:
-        """Known ``(endpoint, node id)`` pairs, best first, minus ``exclude``.
+        This is the one way an address becomes one that has worked. It
+        counts nothing in the node's own statistics, since a connection that
+        reached the node may still not have been kept.
+        """
+        self._execute(
+            "INSERT INTO node_addresses (node_id, endpoint, source, last_learned, "
+            "first_success, last_success, attempts, successes) "
+            "VALUES (:node_id, :endpoint, :source, :now, :now, :now, 1, 1) "
+            "ON CONFLICT (node_id, endpoint) DO UPDATE SET source = :source, "
+            "first_success = COALESCE(first_success, :now), last_success = :now, "
+            "attempts = attempts + 1, successes = successes + 1, consecutive_failures = 0",
+            {
+                "node_id": str(node_id),
+                "endpoint": endpoint,
+                "source": AddressSource.DIALED.value,
+                "now": self._clock(),
+            },
+        )
 
-        Order is the v1 proxy for peer quality the implementation plan calls
-        for: most recently connected first, then most recently seen. Nodes
-        never connected to sort last but are still offered, since a node that
-        knows no peers has to start somewhere.
+    def record_address_failed(self, node_id: ContentId, endpoint: str) -> None:
+        """Count a failed attempt to reach ``node_id`` at ``endpoint``, if that address is known."""
+        self._execute(
+            "UPDATE node_addresses SET attempts = attempts + 1, "
+            "consecutive_failures = consecutive_failures + 1 "
+            "WHERE node_id = :node_id AND endpoint = :endpoint",
+            {"node_id": str(node_id), "endpoint": endpoint},
+        )
+
+    def node_addresses(self, node_id: ContentId) -> list[NodeAddress]:
+        """Every known address of ``node_id``, in the order they are tried."""
+        rows = self._query(
+            f"SELECT * FROM node_addresses WHERE node_id = :node_id ORDER BY {_TRY_ORDER}",
+            {"node_id": str(node_id)},
+        )
+        return [NodeAddress.from_row(row) for row in rows]
+
+    def last_good_endpoints(self, exclude: ContentId | None = None) -> list[tuple[str, str]]:
+        """Each node's last known good ``(endpoint, node id)``, best first, minus ``exclude``.
+
+        A node's last known good endpoint is the one it was last reached at
+        (HttpApi §10.6). It is left out if it has failed since, so only
+        addresses that worked the last time they were tried are listed.
+        Best is the most recently reached.
         """
         rows = self._query(
-            "SELECT node_endpoints.endpoint AS endpoint, node_endpoints.node_id AS node_id "
-            "FROM node_endpoints "
-            "LEFT JOIN node_stats ON node_stats.node_id = node_endpoints.node_id "
-            "WHERE node_endpoints.node_id <> :exclude "
-            "ORDER BY COALESCE(node_stats.last_connected, 0) DESC, node_endpoints.last_seen DESC",
+            "SELECT endpoint, node_id FROM ("
+            "SELECT endpoint, node_id, last_success, consecutive_failures, "
+            "ROW_NUMBER() OVER (PARTITION BY node_id ORDER BY last_success DESC, endpoint) "
+            "AS place FROM node_addresses "
+            "WHERE last_success IS NOT NULL AND node_id <> :exclude) "
+            "WHERE place = 1 AND consecutive_failures = 0 "
+            "ORDER BY last_success DESC, endpoint",
             {"exclude": OWN_NODE if exclude is None else str(exclude)},
         )
         return [(row["endpoint"], row["node_id"]) for row in rows]
+
+    def candidate_endpoints(self, exclude: ContentId | None = None) -> list[tuple[str, list[str]]]:
+        """Every known node id but ``exclude``, with its endpoints in the order to try them.
+
+        Nodes that have been reached come first, the most recently reached
+        first, then the rest, the most recently learned first.
+        """
+        rows = self._query(
+            "SELECT node_id, endpoint, "
+            "MAX(last_success) OVER (PARTITION BY node_id) AS node_success, "
+            "MAX(last_learned) OVER (PARTITION BY node_id) AS node_learned "
+            "FROM node_addresses WHERE node_id <> :exclude "
+            "ORDER BY node_success IS NULL, node_success DESC, node_learned DESC, node_id, "
+            f"{_TRY_ORDER}",
+            {"exclude": OWN_NODE if exclude is None else str(exclude)},
+        )
+        return [
+            (node_id, [row["endpoint"] for row in node_rows])
+            for node_id, node_rows in groupby(rows, key=lambda row: str(row["node_id"]))
+        ]
+
+    def prune_addresses(self, max_per_node: int, max_failures: int) -> int:
+        """Forget addresses not worth trying again.
+
+        An address that has never worked goes once ``max_failures``
+        attempts in a row have failed. Then each node keeps at most
+        ``max_per_node``: those that have worked are kept first, the most
+        recently reached first, then the rest, any not merely relayed first,
+        the most recently learned first.
+
+        Returns:
+            How many addresses were dropped.
+        """
+        failing = self._execute(
+            "DELETE FROM node_addresses "
+            "WHERE last_success IS NULL AND consecutive_failures >= :max_failures",
+            {"max_failures": max_failures},
+        )
+        surplus = self._execute(
+            "DELETE FROM node_addresses WHERE rowid IN ("
+            "SELECT rowid FROM (SELECT rowid, ROW_NUMBER() OVER (PARTITION BY node_id ORDER BY "
+            "last_success IS NULL, last_success DESC, source = :relayed, last_learned DESC, "
+            "endpoint) AS place FROM node_addresses) WHERE place > :max_per_node)",
+            {"relayed": AddressSource.RELAYED.value, "max_per_node": max_per_node},
+        )
+        return failing.rowcount + surplus.rowcount
 
     # -- Outstanding requests --------------------------------------------
 

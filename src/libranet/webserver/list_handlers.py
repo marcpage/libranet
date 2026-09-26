@@ -15,11 +15,14 @@ The body is capped at ``max_bytes`` as sent, and a compressed one at
 The list is checked and then published for the stats module to persist, and
 the answer is ``202`` without waiting for that::
 
-    nodes.received  {"nodes": {"http://203.0.113.42:4300": "sha256/<hex>"}}
+    nodes.received  {"nodes": {"http://203.0.113.42:4300": "sha256/<hex>"},
+                     "sources": {"http://203.0.113.42:4300": "observed"}}
     seek.received   {"node_id": "sha256/<hex>", "data": ["sha256/<hex>"], "search": ["<hex>"]}
 
 Every ``localhost`` endpoint in a received node list is resolved to the
-address the request came from before the list is published (HttpApi §10.2).
+address the request came from before the list is published (HttpApi §10.2),
+and ``sources`` says which entries were the signer's own
+(:class:`~libranet.webserver.localhost_resolution.NodeListSender`).
 """
 
 from __future__ import annotations
@@ -44,7 +47,7 @@ from libranet.webserver.list_bodies import (
     parse_node_list,
     parse_seek_list,
 )
-from libranet.webserver.localhost_resolution import resolve_endpoint
+from libranet.webserver.localhost_resolution import NodeListSender
 from libranet.webserver.publishing import Publish
 from libranet.webserver.request_refusals import (
     signature_required_response,
@@ -86,6 +89,7 @@ class NodeListHandler:
     An entry whose endpoint cannot be stored is dropped (see
     :func:`~libranet.webserver.localhost_resolution.resolve_endpoint`). If
     two entries end up with the same endpoint, the later one is kept.
+    Entries naming the signer are marked as its own.
     """
 
     max_bytes: int
@@ -104,15 +108,8 @@ class NodeListHandler:
         except InvalidListError as error:
             return _invalid_list_response(request, error)
 
-        resolved: dict[str, str] = {}
-
-        for endpoint, node_id in nodes.items():
-            stored = resolve_endpoint(endpoint, request.client_address)
-
-            if stored is not None:
-                resolved[stored] = str(node_id)
-
-        self.publish(EventType.NODES_RECEIVED, {"nodes": resolved})
+        sender = NodeListSender(signer, request.client_address)
+        self.publish(EventType.NODES_RECEIVED, sender.received(nodes))
         return Response(HTTPStatus.ACCEPTED)
 
 

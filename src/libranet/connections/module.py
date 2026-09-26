@@ -7,14 +7,28 @@ first-contact exchange with each new peer and refreshes it while connected
 fetcher's behalf.
 
 The mix is tended when something changes rather than on a timer: when the
-module starts, when the stats module announces a new node list, when a
-connection opens, fails, or closes, and when an endpoint's retry delay ends.
-An endpoint rests for ``retry_delay_seconds`` after an attempt to connect to
-it fails, or after its connection closes, so a peer that is down or turning
-this node away is not dialed again and again. Meanwhile another peer
-in the same bucket is dialed, if one is known. Connecting and talking to
-peers happen on background threads, so the receive loop never waits on the
-network.
+module starts, when the stats module announces a new candidate list, when a
+connection opens, fails, or closes, and when a node's retry delay ends. A
+node is dialed at each of its endpoints in turn, in the order the candidate
+list gives them, until one reaches it (Phase 2 Step 23). The node rests for
+``retry_delay_seconds`` once none has, or after its connection closes, so a
+peer that is down or turning this node away is not dialed again and again.
+Meanwhile another peer in the same bucket is dialed, if one is known. A seed
+whose node id is unknown rests by its endpoint instead. Connecting and
+talking to peers happen on background threads, so the receive loop never
+waits on the network.
+
+Each address a peer was observed at (``nodes.received`` marking it
+``observed``), whether by this module or by the web server, is looked up in
+reverse DNS on a worker thread, unless ``peers.reverse_dns`` is off, and any
+names found are published as more addresses of that peer
+(:mod:`~libranet.connections.reverse_dns`).
+
+An endpoint that answers as a node other than the one expected did not reach
+the node expected there, and did reach the node that answered. That node is
+taken into the mix if it is not connected yet. If it is, the new connection
+is closed, and the endpoint is not dialed again while the first connection
+lasts; after that, it is a route to that node like any other.
 
 A fetch (``fetch.requested`` ``{"algorithm", "hash"}``) asks the connected
 peers one at a time, those whose node id shares the most leading bits with
@@ -53,10 +67,15 @@ For the stats module it publishes::
     connection.opened  {"node_id", "endpoint"}
     connection.closed  {"node_id", "remote"}
     connection.failed  {"node_id", "endpoint"}
+    address.verified   {"node_id", "endpoint"}
 
 A connection is opened once the peer has proven its node id, and ``remote``
 is true unless this node chose to close it. A failed attempt is published
-only for a peer whose node id was known beforehand.
+for each endpoint that did not reach the node expected there, whether
+nothing answered or some other node did, and only for a node whose id was
+known beforehand. ``address.verified`` is an endpoint that reached a node
+already connected at another, whose connection was closed at once, so it
+counts as no connection.
 """
 
 from __future__ import annotations
@@ -74,14 +93,15 @@ from libranet.cas.prefix import nearest
 from libranet.cas.store import source_of_truth_store
 from libranet.config.models import LibranetConfig
 from libranet.config.seeds import SeedError, load_seed_peers
-from libranet.connections.candidates import Candidate, node_list_candidates, seed_candidates
+from libranet.connections.candidates import Candidate, candidate_list, seed_candidates
 from libranet.connections.endpoints import peer_address
 from libranet.connections.peer_exchange import PeerExchange
 from libranet.connections.peer_mix import choose_candidates
 from libranet.connections.peer_session import PeerSession
+from libranet.connections.reverse_dns import ResolveNames, ReverseLookup, host_names
 from libranet.identity.node_identity import load_node_identity
 from libranet.messaging.envelope import Message, event_of
-from libranet.messaging.events import EventType
+from libranet.messaging.events import AddressSource, EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
@@ -122,6 +142,7 @@ class ConnectionsModule(ModuleBase):
     subscriptions: ClassVar[frozenset[EventType]] = frozenset(
         {
             EventType.NODE_LIST_UPDATED,
+            EventType.NODES_RECEIVED,
             EventType.FETCH_REQUESTED,
             EventType.EVICTION_NOTICE,
             EventType.DATA_STORED,
@@ -137,23 +158,29 @@ class ConnectionsModule(ModuleBase):
         logger: Logger | None = None,
         clock: Callable[[], float] = time,
         poll_interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
+        resolve_names: ResolveNames = host_names,
     ) -> None:
         super().__init__(name, queues, logger=logger, clock=clock, poll_interval=poll_interval)
         self._config = config
         self._source_of_truth = source_of_truth_store(config.storage)
         self._exchange: PeerExchange | None = None
+        self._resolve_names = resolve_names
+        self._lookup: ReverseLookup | None = None
         self._seeds: list[Candidate] = []
         # Everything below is shared with the background threads, under the lock.
         self._lock = Lock()
         self._running = False
         self._candidates: list[Candidate] = []
         self._peers: dict[ContentId, _Peer] = {}
-        # Endpoints being dialed, with the node id each is expected to have.
-        self._pending: dict[str, ContentId | None] = {}
-        # Endpoints not to be dialed again until the time given.
-        self._resting: dict[str, float] = {}
+        # Candidates being dialed, by their keys.
+        self._pending: dict[ContentId | str, Candidate] = {}
+        # Candidate keys not to be dialed again until the time given.
+        self._resting: dict[ContentId | str, float] = {}
         # Endpoints that turned out to be this node itself.
         self._own_endpoints: set[str] = set()
+        # Endpoints that reached a node connected at another endpoint, with
+        # that node: not dialed again while that connection lasts.
+        self._duplicates: dict[str, ContentId] = {}
         self._fetching: set[ContentId] = set()
         self._fetches: SimpleQueue[ContentId | None] = SimpleQueue()
         self._handing_off: set[ContentId] = set()
@@ -163,6 +190,7 @@ class ConnectionsModule(ModuleBase):
         self._unpushed: dict[ContentId, ContentId] = {}
         self._handlers: Mapping[EventType, Callable[[Message], None]] = {
             EventType.NODE_LIST_UPDATED: self._on_node_list_updated,
+            EventType.NODES_RECEIVED: self._on_nodes_received,
             EventType.FETCH_REQUESTED: self._on_fetch_requested,
             EventType.EVICTION_NOTICE: self._on_eviction_notice,
             EventType.DATA_STORED: self._on_data_stored,
@@ -203,18 +231,28 @@ class ConnectionsModule(ModuleBase):
         for index in range(PUSH_WORKERS):
             Thread(target=self._push_loop, name=f"{self.name}-push-{index}", daemon=True).start()
 
+        if self._config.peers.reverse_dns:
+            self._lookup = ReverseLookup(
+                self.publish,
+                self.logger,
+                self._config.peers.reverse_dns_cache_seconds,
+                resolve=self._resolve_names,
+                clock=self._clock,
+            )
+            self._lookup.start(f"{self.name}-reverse-dns")
+
         self._reload_candidates()
         self._maintain()
 
     def on_idle(self) -> None:
-        """Refresh peers whose seek list is due, and dial again once endpoints have rested."""
+        """Refresh peers whose seek list is due, and dial again once candidates have rested."""
         now = self._clock()
 
         with self._lock:
-            rested = [endpoint for endpoint, until in self._resting.items() if until <= now]
+            rested = [key for key, until in self._resting.items() if until <= now]
 
-            for endpoint in rested:
-                del self._resting[endpoint]
+            for key in rested:
+                del self._resting[key]
 
             due = [
                 peer for peer in self._peers.values() if not peer.busy and peer.refresh_at <= now
@@ -247,6 +285,9 @@ class ConnectionsModule(ModuleBase):
             for _ in range(PUSH_WORKERS):
                 self._pushes.put(None)
 
+            if self._lookup is not None:
+                self._lookup.stop()
+
         for peer in peers:
             peer.session.close()
 
@@ -261,6 +302,17 @@ class ConnectionsModule(ModuleBase):
     def _on_node_list_updated(self, message: Message) -> None:
         self._reload_candidates()
         self._maintain()
+
+    def _on_nodes_received(self, message: Message) -> None:
+        """Look up names for the addresses peers were observed at."""
+        if self._lookup is None:
+            return
+
+        nodes: Mapping[str, str] = message["nodes"]
+
+        for endpoint, source in message.get("sources", {}).items():
+            if source == AddressSource.OBSERVED:
+                self._lookup.look_up(nodes[endpoint], endpoint)
 
     def _on_fetch_requested(self, message: Message) -> None:
         content_id = ContentId.create(message["algorithm"], message["hash"])
@@ -306,17 +358,20 @@ class ConnectionsModule(ModuleBase):
             return []
 
     def _reload_candidates(self) -> None:
-        """Read the node list afresh, falling back to the seeds while it names no peer."""
-        candidates = node_list_candidates(
-            self._config.storage.node_list_path, self.exchange.node_id
-        )
+        """Read the candidate list afresh, falling back to the seeds while it names no peer.
+
+        Endpoints this node cannot dial are left out, and so is a candidate
+        left with none.
+        """
+        candidates = candidate_list(self._config.storage.candidate_list_path, self.exchange.node_id)
+        dialable = [
+            usable
+            for candidate in candidates or self._seeds
+            if (usable := candidate.keeping(_dialable)) is not None
+        ]
 
         with self._lock:
-            self._candidates = [
-                candidate
-                for candidate in candidates or self._seeds
-                if peer_address(candidate.endpoint) is not None
-            ]
+            self._candidates = dialable
 
     def _maintain(self) -> None:
         """Dial whatever the peer mix is short of."""
@@ -326,91 +381,139 @@ class ConnectionsModule(ModuleBase):
             if not self._running:
                 return
 
-            unavailable = (
-                self._pending.keys()
-                | self._resting.keys()
-                | self._own_endpoints
-                | {peer.session.endpoint for peer in self._peers.values()}
-            )
             chosen = choose_candidates(
-                [
-                    candidate
-                    for candidate in self._candidates
-                    if candidate.endpoint not in unavailable
-                ],
-                [*self._peers, *self._pending.values()],
+                self._available(),
+                [*self._peers, *(candidate.node_id for candidate in self._pending.values())],
                 peers.min_outgoing_connections,
                 peers.bucket_prefix_bits,
             )
 
             for candidate in chosen:
-                self._pending[candidate.endpoint] = candidate.node_id
+                self._pending[candidate.key] = candidate
 
         for candidate in chosen:
             self._start("connect", partial(self._connect, candidate))
+
+    def _available(self) -> list[Candidate]:
+        """The candidates that may be dialed now, each with only the endpoints that may be.
+
+        A candidate being dialed or resting may not. Nor may an endpoint
+        that is this node, is in use by a connection or one being opened, or
+        reaches a node connected at another endpoint. Called under the lock.
+        """
+        unusable = (
+            self._own_endpoints
+            | {peer.session.endpoint for peer in self._peers.values()}
+            | {endpoint for pending in self._pending.values() for endpoint in pending.endpoints}
+            | {endpoint for endpoint, node_id in self._duplicates.items() if node_id in self._peers}
+        )
+        available: list[Candidate] = []
+
+        for candidate in self._candidates:
+            if candidate.key in self._pending or candidate.key in self._resting:
+                continue
+
+            usable = candidate.keeping(lambda endpoint: endpoint not in unusable)
+
+            if usable is not None:
+                available.append(usable)
+
+        return available
 
     def _start(self, purpose: str, job: Callable[[], None]) -> None:
         """Run ``job`` on its own thread, which never holds up the process exiting."""
         Thread(target=job, name=f"{self.name}-{purpose}", daemon=True).start()
 
     def _connect(self, candidate: Candidate) -> None:
-        """Dial ``candidate``, take it into the mix, then finish the first-contact exchange."""
-        try:
-            session = self.exchange.open(candidate.endpoint)
+        """Dial ``candidate``, take a peer it reaches into the mix, then finish the first-contact exchange.
 
-        except Exception as error:
-            self._attempt_failed(candidate, error)
-            return
+        The candidate rests if no peer was taken in, unless its node was
+        connected meanwhile at another endpoint.
+        """
+        peer = self._walk(candidate)
 
-        peer = self._admit(candidate, session)
+        with self._lock:
+            self._pending.pop(candidate.key, None)
+
+            if peer is None and candidate.node_id not in self._peers:
+                self._resting[candidate.key] = (
+                    self._clock() + self._config.peers.retry_delay_seconds
+                )
+
         self._maintain()
 
         if peer is not None:
             self._push_unpushed()
             self._talk(peer, self.exchange.first_contact)
 
-    def _attempt_failed(self, candidate: Candidate, error: Exception) -> None:
+    def _walk(self, candidate: Candidate) -> _Peer | None:
+        """Dial ``candidate``'s endpoints in turn until one reaches a peer taken into the mix.
+
+        It stops early at an endpoint that reaches the node expected, even if
+        that node is not taken in, and when the module is stopping.
+        """
+        for endpoint in candidate.endpoints:
+            try:
+                session = self.exchange.open(endpoint)
+
+            except Exception as error:
+                self._attempt_failed(candidate, endpoint, error)
+                continue
+
+            if candidate.node_id is not None and session.node_id != candidate.node_id:
+                self.logger.info(
+                    "%s answered as %s, not %s", endpoint, session.node_id, candidate.node_id
+                )
+                self._publish_failed(candidate.node_id, endpoint)
+
+            peer = self._admit(session)
+
+            if peer is not None or session.node_id == candidate.node_id:
+                return peer
+
+            with self._lock:
+                if not self._running:
+                    return None
+
+        return None
+
+    def _attempt_failed(self, candidate: Candidate, endpoint: str, error: Exception) -> None:
         if isinstance(error, OSError):
-            self.logger.info("Could not connect to %s: %s", candidate.endpoint, error)
+            self.logger.info("Could not connect to %s: %s", endpoint, error)
 
         else:
-            self.logger.error("Connecting to %s failed", candidate.endpoint, exc_info=error)
-
-        with self._lock:
-            self._pending.pop(candidate.endpoint, None)
-            self._resting[candidate.endpoint] = (
-                self._clock() + self._config.peers.retry_delay_seconds
-            )
+            self.logger.error("Connecting to %s failed", endpoint, exc_info=error)
 
         if candidate.node_id is not None:
-            self.publish(
-                EventType.CONNECTION_FAILED,
-                {"node_id": str(candidate.node_id), "endpoint": candidate.endpoint},
-            )
+            self._publish_failed(candidate.node_id, endpoint)
 
-        self._maintain()
+    def _publish_failed(self, node_id: ContentId, endpoint: str) -> None:
+        """Tell stats that dialing ``endpoint`` did not reach ``node_id``."""
+        self.publish(EventType.CONNECTION_FAILED, {"node_id": str(node_id), "endpoint": endpoint})
 
-    def _admit(self, candidate: Candidate, session: PeerSession) -> _Peer | None:
+    def _admit(self, session: PeerSession) -> _Peer | None:
         """Take a peer that has proven its node id into the mix, unless it is not wanted.
 
         It is not wanted if it is this node, if that node is already
-        connected, or if the module is stopping.
+        connected, or if the module is stopping. A node already connected
+        was reached at this endpoint all the same, which stats is told, and
+        the endpoint is not dialed again while the first connection lasts.
         """
         now = self._clock()
         peer: _Peer | None = None
+        duplicate = False
 
         with self._lock:
-            self._pending.pop(candidate.endpoint, None)
-
             if not self._running:
                 refusal = "the module is stopping"
 
             elif session.node_id == self.exchange.node_id:
-                self._own_endpoints.add(candidate.endpoint)
+                self._own_endpoints.add(session.endpoint)
                 refusal = "it is this node"
 
             elif session.node_id in self._peers:
-                self._resting[candidate.endpoint] = now + self._config.peers.retry_delay_seconds
+                self._duplicates[session.endpoint] = session.node_id
+                duplicate = True
                 refusal = f"{session.node_id} is already connected"
 
             else:
@@ -419,8 +522,15 @@ class ConnectionsModule(ModuleBase):
                 refusal = ""
 
         if peer is None:
-            self.logger.info("Closing the connection to %s: %s", candidate.endpoint, refusal)
+            self.logger.info("Closing the connection to %s: %s", session.endpoint, refusal)
             session.close()
+
+            if duplicate:
+                self.publish(
+                    EventType.ADDRESS_VERIFIED,
+                    {"node_id": str(session.node_id), "endpoint": session.endpoint},
+                )
+
             return None
 
         self.logger.info("Connected to %s at %s", session.node_id, session.endpoint)
@@ -439,10 +549,19 @@ class ConnectionsModule(ModuleBase):
         with self._lock:
             if self._peers.get(session.node_id) is peer:
                 del self._peers[session.node_id]
+                # What reached it at another endpoint is a route to it again.
+                self._duplicates = {
+                    endpoint: node_id
+                    for endpoint, node_id in self._duplicates.items()
+                    if node_id != session.node_id
+                }
 
             # Even when this node closed it (a response that failed
-            # verification), or it would be dialed straight back.
-            self._resting[session.endpoint] = self._clock() + self._config.peers.retry_delay_seconds
+            # verification), or it would be dialed straight back. By its
+            # endpoint too, for a seed dialed without knowing its node id.
+            rest_until = self._clock() + self._config.peers.retry_delay_seconds
+            self._resting[session.node_id] = rest_until
+            self._resting[session.endpoint] = rest_until
 
         self.logger.info("Connection to %s at %s closed", session.node_id, session.endpoint)
         self.publish(
@@ -633,6 +752,11 @@ class ConnectionsModule(ModuleBase):
             return []
 
         return [sessions[node_id] for node_id in nearest(content_id.hash, sessions, len(sessions))]
+
+
+def _dialable(endpoint: str) -> bool:
+    """Whether this node can dial ``endpoint`` at all."""
+    return peer_address(endpoint) is not None
 
 
 def connections_module_factory(

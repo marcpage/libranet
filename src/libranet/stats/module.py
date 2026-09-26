@@ -2,8 +2,8 @@
 
 It is the only process that opens the SQLite file. Everything it records
 arrives as a broadcast from another module, and everything it publishes
-leaves as one of the two derived list files plus a notice that the node list
-changed. Between derivations it does nothing but record, so a burst of
+leaves as one of the derived list files plus a notice that the candidate
+list changed. Between derivations it does nothing but record, so a burst of
 requests costs one small statement each.
 
 The payloads it consumes, by event:
@@ -13,11 +13,13 @@ The payloads it consumes, by event:
 ``data.search_requested`` ``{"prefix", "cache_path"}`` (Step 5)
 ``data.stored``        ``{"algorithm", "hash", "node_id", "size"}`` (Step 7)
 ``data.rejected``      ``{"algorithm", "hash", "node_id"}`` (Step 7)
-``nodes.received``     ``{"nodes": {endpoint: node id}}`` (Steps 9 and 11)
+``nodes.received``     ``{"nodes": {endpoint: node id}, "sources": {endpoint: source}}``
+                       (Steps 9 and 11; Phase 2 Step 23)
 ``seek.received``      ``{"node_id", "data": [...], "search": [...]}`` (Step 9)
 ``connection.opened``  ``{"node_id", "endpoint"}`` (Step 11)
 ``connection.closed``  ``{"node_id", "remote"}`` (Step 11)
 ``connection.failed``  ``{"node_id", "endpoint"}`` (Step 11)
+``address.verified``   ``{"node_id", "endpoint"}`` (Phase 2 Step 23)
 ``data.sent``          ``{"algorithm", "hash", "node_id", "size"}`` (Step 11)
 ``fetch.attempted``    ``{"algorithm", "hash", "node_id", "found"}`` (Step 11)
 ``data.deleted``       ``{"algorithm", "hash", "size"}`` (Step 15)
@@ -27,9 +29,19 @@ are both requests this node could not answer, so each becomes an entry in
 its own seek list until the content arrives or the entry ages out. Storing
 content clears its entry.
 
-It publishes ``nodes.updated`` — ``{"path": "<node list file>"}`` — whenever
-the derived node list changes, which is the connection manager's cue to
-reconsider its peer mix (Step 11).
+Addresses are kept per node (Phase 2 Step 23). Each entry of a received
+node list is an address learned from the source ``sources`` names for it,
+or else relayed from another node. ``connection.opened`` and
+``address.verified`` each say an address reached its node; only the first
+counts a connection, since ``address.verified`` is a connection closed at
+once, its node being connected already by another address.
+``connection.failed`` is an attempt that did not reach the node at that
+address, whether nothing answered or some other node did.
+
+It publishes ``nodes.updated`` — ``{"path": "<candidate list file>"}`` —
+whenever the derived candidate list changes, which is the connection
+manager's cue to reconsider its peer mix (Step 11). The candidate list's
+shape is documented in :mod:`libranet.stats.derivation`.
 """
 
 from __future__ import annotations
@@ -42,7 +54,7 @@ from libranet.cas.errors import CasError
 from libranet.config.models import LibranetConfig
 from libranet.identity.node_identity import load_node_identity
 from libranet.messaging.envelope import Message, event_of
-from libranet.messaging.events import EventType
+from libranet.messaging.events import AddressSource, EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
@@ -70,6 +82,7 @@ class StatsModule(ModuleBase):
             EventType.CONNECTION_OPENED,
             EventType.CONNECTION_CLOSED,
             EventType.CONNECTION_FAILED,
+            EventType.ADDRESS_VERIFIED,
             EventType.DATA_SENT,
             EventType.FETCH_ATTEMPTED,
             EventType.DATA_DELETED,
@@ -103,6 +116,7 @@ class StatsModule(ModuleBase):
             EventType.CONNECTION_OPENED: self._on_connection_opened,
             EventType.CONNECTION_CLOSED: self._on_connection_closed,
             EventType.CONNECTION_FAILED: self._on_connection_failed,
+            EventType.ADDRESS_VERIFIED: self._on_address_verified,
             EventType.DATA_SENT: self._on_data_sent,
             EventType.FETCH_ATTEMPTED: self._on_fetch_attempted,
             EventType.DATA_DELETED: self._on_data_deleted,
@@ -137,7 +151,7 @@ class StatsModule(ModuleBase):
             self._database,
             storage,
             self._config.stats,
-            self._config.network.advertised_endpoint(),
+            self._config.network.own_endpoints(),
             identity.node_id,
         )
         self._enricher = SearchEnricher(
@@ -168,13 +182,13 @@ class StatsModule(ModuleBase):
         self._enricher = None
 
     def derive(self) -> None:
-        """Rewrite the derived lists and announce a node list that changed."""
+        """Rewrite the derived lists and announce a candidate list that changed."""
         self._derived_at = self._clock()
         lists = self.deriver.derive()
 
-        if lists.node_list_changed:
-            self.publish(EventType.NODE_LIST_UPDATED, {"path": str(lists.node_list)})
-            self.logger.debug("Node list rewritten at %s", lists.node_list)
+        if lists.candidate_list_changed:
+            self.publish(EventType.NODE_LIST_UPDATED, {"path": str(lists.candidate_list)})
+            self.logger.debug("Candidate list rewritten at %s", lists.candidate_list)
 
     def handle(self, message: Message) -> None:
         """Record one broadcast; a malformed one raises and :meth:`run` logs it."""
@@ -206,7 +220,15 @@ class StatsModule(ModuleBase):
         self.database.record_push(_content_id(message))
 
     def _on_nodes_received(self, message: Message) -> None:
-        self.database.record_endpoints(self._node_ids(message["nodes"]))
+        sources: Mapping[str, str] = message.get("sources", {})
+        learned: dict[AddressSource, dict[str, ContentId]] = {}
+
+        for endpoint, node_id in self._node_ids(message["nodes"]).items():
+            source = AddressSource(sources.get(endpoint, AddressSource.RELAYED))
+            learned.setdefault(source, {})[endpoint] = node_id
+
+        for source, addresses in learned.items():
+            self.database.record_addresses(addresses, source)
 
     def _on_seek_received(self, message: Message) -> None:
         node_id = ContentId.parse(message["node_id"])
@@ -224,7 +246,14 @@ class StatsModule(ModuleBase):
         )
 
     def _on_connection_failed(self, message: Message) -> None:
-        self.database.record_connection_attempt(ContentId.parse(message["node_id"]))
+        node_id = ContentId.parse(message["node_id"])
+        self.database.record_connection_attempt(node_id)
+        self.database.record_address_failed(node_id, message["endpoint"])
+
+    def _on_address_verified(self, message: Message) -> None:
+        self.database.record_address_worked(
+            ContentId.parse(message["node_id"]), message["endpoint"]
+        )
 
     def _on_data_sent(self, message: Message) -> None:
         self.database.record_transfer(

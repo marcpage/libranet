@@ -95,6 +95,26 @@ class TestAdvertisedEndpoint:
 
         assert network.advertised_endpoint() == "https://libranet.example.org:443"
 
+    def test_a_node_reached_as_it_listens_publishes_one_endpoint(self) -> None:
+        assert NetworkConfig().own_endpoints() == ("http://localhost:8080",)
+
+    def test_a_forwarded_port_is_published_with_the_listen_port(self) -> None:
+        network = NetworkConfig(listen_port=8080, external_port=4300)
+
+        assert network.own_endpoints() == ("http://localhost:4300", "http://localhost:8080")
+
+    def test_an_external_address_is_published_with_the_listen_port(self) -> None:
+        network = NetworkConfig(
+            external_scheme="https",
+            external_address="libranet.example.org",
+            external_port=443,
+        )
+
+        assert network.own_endpoints() == (
+            "https://libranet.example.org:443",
+            "http://localhost:8080",
+        )
+
 
 class TestPeerPolicy:
     def test_connections_may_not_exceed_available_buckets(self) -> None:

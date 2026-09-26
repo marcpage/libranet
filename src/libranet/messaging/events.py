@@ -4,7 +4,8 @@ One enum, shared by every module, so a publisher and its subscribers can
 never disagree on spelling. Each member notes who publishes it and who is
 expected to react. Payload fields beyond the common envelope are still an
 open item in the implementation plan and are settled by the step that first
-publishes each event.
+publishes each event. A payload value that more than one module spells gets
+an enum here too.
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ class EventType(StrEnum):
     NODES_RECEIVED = "nodes.received"  # webserver, connections → stats
     SEEK_RECEIVED = "seek.received"  # webserver → stats
     NODE_LIST_UPDATED = "nodes.updated"  # stats → connections
+    ADDRESS_VERIFIED = "address.verified"  # connections → stats (Phase 2 Step 23)
 
     # Outgoing connections and fetching (Steps 11 and 12).
     CONNECTION_OPENED = "connection.opened"  # connections → stats
@@ -59,3 +61,17 @@ class EventType(StrEnum):
     EVICTION_NOTICE = "eviction.notice"  # eviction → connections
     EVICTION_ACKNOWLEDGED = "eviction.acknowledged"  # connections → eviction
     DATA_DELETED = "data.deleted"  # eviction → stats
+
+
+class AddressSource(StrEnum):
+    """How this node learned an address of a peer (Phase 2 Step 23).
+
+    Stats keeps the strongest source it has seen for each address: the
+    members are listed weakest first.
+    """
+
+    RELAYED = "relayed"  # in the node list of some other node
+    REVERSE_DNS = "reverse_dns"  # a name found for an observed address
+    ADVERTISED = "advertised"  # in the node's own node list, as its own
+    OBSERVED = "observed"  # a `localhost` entry resolved to the connection's address
+    DIALED = "dialed"  # this node reached the node there
