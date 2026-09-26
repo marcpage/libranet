@@ -9,10 +9,10 @@ meaningful and saves the candidate list's reader from reacting to a rewrite
 that says nothing new.
 
 The candidate list names every node this node knows an address for, but
-itself, with every address it knows, in the order to try them. Nodes that
-have been reached come first, the most recently reached first, then the
-rest, the most recently learned of first; each node's addresses follow the
-same rule::
+itself and those it has given up on for now (Phase 2 Step 26), with every
+address it knows, in the order to try them. Nodes that have been reached
+come first, the most recently reached first, then the rest, the most
+recently learned of first; each node's addresses follow the same rule::
 
     {"nodes": [{"node_id": "sha256/<hex>", "endpoints": ["http://203.0.113.9:4300", ...]}]}
 """
@@ -82,8 +82,7 @@ class ListDeriver:
         _write_if_changed(self._storage.node_list_path, self._node_list_body())
         _write_if_changed(self._storage.seek_list_path, self._seek_list_body())
         candidate_list_changed = _write_if_changed(
-            self._storage.candidate_list_path,
-            render_candidate_list(self._database.candidate_endpoints(exclude=self._node_id)),
+            self._storage.candidate_list_path, render_candidate_list(self._candidates())
         )
         return DerivedLists(
             node_list=self._storage.node_list_path,
@@ -97,6 +96,17 @@ class ListDeriver:
         entries = [(endpoint, str(self._node_id)) for endpoint in self._endpoints]
         entries.extend(self._database.last_good_endpoints(exclude=self._node_id))
         return render_node_list(entries, self._stats.max_list_bytes)
+
+    def _candidates(self) -> list[tuple[str, list[str]]]:
+        """Every peer to try, with its endpoints, but those given up on for now."""
+        given_up = self._database.given_up_nodes(
+            self._stats.max_node_failures, self._stats.node_cool_off_seconds
+        )
+        return [
+            (node_id, endpoints)
+            for node_id, endpoints in self._database.candidate_endpoints(exclude=self._node_id)
+            if node_id not in given_up
+        ]
 
     def _seek_list_body(self) -> bytes:
         return render_seek_list(

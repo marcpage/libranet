@@ -15,9 +15,11 @@ list gives them, until one reaches it (Phase 2 Step 23). The node rests for
 ``retry_delay_seconds`` once none has, or after its connection closes, so a
 peer that is down or turning this node away is not dialed again and again.
 Meanwhile another peer in the same bucket is dialed, if one is known. A seed
-whose node id is unknown rests by its endpoint instead. Connecting and
-talking to peers happen on background threads, so the receive loop never
-waits on the network.
+whose node id is unknown rests by its endpoint instead. Stats counts the
+times in a row a node was reached at none of its endpoints, and gives up on
+it for a while after enough of them by leaving it out of the candidate list
+(Phase 2 Step 26). Connecting and talking to peers happen on background
+threads, so the receive loop never waits on the network.
 
 Each address a peer was observed at (``nodes.received`` marking it
 ``observed``), whether by this module or by the web server, is looked up in
@@ -68,15 +70,17 @@ For the stats module it publishes::
     connection.opened  {"node_id", "endpoint"}
     connection.closed  {"node_id", "remote"}
     connection.failed  {"node_id", "endpoint"}
+    node.unreached     {"node_id"}
     address.verified   {"node_id", "endpoint"}
 
 A connection is opened once the peer has proven its node id, and ``remote``
 is true unless this node chose to close it. A failed attempt is published
 for each endpoint that did not reach the node expected there, whether
 nothing answered or some other node did, and only for a node whose id was
-known beforehand. ``address.verified`` is an endpoint that reached a node
-already connected at another, whose connection was closed at once, so it
-counts as no connection.
+known beforehand. ``node.unreached`` follows once every endpoint a node was
+dialed at has failed, unless the node was connected meanwhile at another.
+``address.verified`` is an endpoint that reached a node already connected at
+another, whose connection was closed at once, so it counts as no connection.
 """
 
 from __future__ import annotations
@@ -447,7 +451,8 @@ class ConnectionsModule(ModuleBase):
         """Dial ``candidate``'s endpoints in turn until one reaches a peer taken into the mix.
 
         It stops early at an endpoint that reaches the node expected, even if
-        that node is not taken in, and when the module is stopping.
+        that node is not taken in, and when the module is stopping. Stats is
+        told of a walk that reached the node expected at none of them.
         """
         for endpoint in candidate.endpoints:
             try:
@@ -472,6 +477,7 @@ class ConnectionsModule(ModuleBase):
                 if not self._running:
                     return None
 
+        self._publish_unreached(candidate)
         return None
 
     def _attempt_failed(self, candidate: Candidate, endpoint: str, error: Exception) -> None:
@@ -487,6 +493,22 @@ class ConnectionsModule(ModuleBase):
     def _publish_failed(self, node_id: ContentId, endpoint: str) -> None:
         """Tell stats that dialing ``endpoint`` did not reach ``node_id``."""
         self.publish(EventType.CONNECTION_FAILED, {"node_id": str(node_id), "endpoint": endpoint})
+
+    def _publish_unreached(self, candidate: Candidate) -> None:
+        """Tell stats that ``candidate`` was reached at none of the endpoints it was dialed at.
+
+        Not for a seed whose node id is unknown, which stats has nothing to
+        count against, nor for a node connected meanwhile at another
+        endpoint, nor while the module is stopping.
+        """
+        if candidate.node_id is None:
+            return
+
+        with self._lock:
+            if not self._running or candidate.node_id in self._peers:
+                return
+
+        self.publish(EventType.NODE_UNREACHED, {"node_id": str(candidate.node_id)})
 
     def _admit(self, session: PeerSession) -> _Peer | None:
         """Take a peer that has proven its node id into the mix, unless it is not wanted.

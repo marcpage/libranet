@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 from json import dumps, loads
+from logging import INFO
 from pathlib import Path
 from queue import Empty, Queue
 from typing import Any, Iterator, Mapping
 
-from pytest import LogCaptureFixture, fixture, raises
+from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.config.models import (
@@ -462,6 +463,100 @@ def test_an_address_that_answered_as_another_node_is_recorded_for_both(
     assert node_list(config)[PEER_ENDPOINT] == str(PEER_ID)
 
 
+def unreached() -> Message:
+    """The peer, dialed at every address it was to be tried at, reached at none."""
+    return broadcast(EventType.NODE_UNREACHED, {"node_id": str(PEER_ID)}, ModuleName.CONNECTIONS)
+
+
+def give_up_on_the_peer(module: StatsModule, config: LibranetConfig) -> None:
+    """Fail to reach the peer, at an address that has worked, as often as it takes."""
+    module.database.record_address_worked(PEER_ID, PEER_ENDPOINT)
+
+    for _ in range(config.stats.max_node_failures):
+        module.handle(unreached())
+
+
+def test_a_node_is_given_up_on_at_once_after_enough_failed_attempts(
+    module: StatsModule,
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    caplog: LogCaptureFixture,
+) -> None:
+    caplog.set_level(INFO, logger="libranet")
+    module.database.record_address_worked(PEER_ID, PEER_ENDPOINT)
+    module.derive()
+    published(queues)
+
+    for _ in range(config.stats.max_node_failures - 1):
+        module.handle(unreached())
+
+    assert candidates(config) == {str(PEER_ID): [PEER_ENDPOINT]}
+    assert published(queues) == []
+
+    module.handle(unreached())
+
+    assert candidates(config) == {}
+    (message,) = published(queues)
+    assert message["event"] == EventType.NODE_LIST_UPDATED
+    assert f"Giving up on {PEER_ID}" in caplog.text
+
+
+@mark.parametrize("source", [AddressSource.ADVERTISED, AddressSource.OBSERVED])
+def test_a_node_list_naming_its_sender_starts_the_senders_count_again(
+    module: StatsModule, config: LibranetConfig, source: AddressSource
+) -> None:
+    give_up_on_the_peer(module, config)
+
+    module.handle(
+        broadcast(
+            EventType.NODES_RECEIVED,
+            {"nodes": {PEER_ENDPOINT: str(PEER_ID)}, "sources": {PEER_ENDPOINT: source.value}},
+            ModuleName.WEBSERVER,
+        )
+    )
+    module.derive()
+
+    assert candidates(config) == {str(PEER_ID): [PEER_ENDPOINT]}
+
+
+def test_a_node_merely_relayed_or_named_in_reverse_dns_stays_given_up_on(
+    module: StatsModule, config: LibranetConfig
+) -> None:
+    named = "http://peer.example.org:4300"
+    give_up_on_the_peer(module, config)
+
+    module.handle(
+        broadcast(
+            EventType.NODES_RECEIVED,
+            {
+                "nodes": {PEER_ENDPOINT: str(PEER_ID), named: str(PEER_ID)},
+                "sources": {named: "reverse_dns"},
+            },
+            ModuleName.CONNECTIONS,
+        )
+    )
+    module.derive()
+
+    assert candidates(config) == {}
+
+
+def test_reaching_a_node_starts_its_count_again(
+    module: StatsModule, config: LibranetConfig
+) -> None:
+    give_up_on_the_peer(module, config)
+
+    module.handle(
+        broadcast(
+            EventType.CONNECTION_OPENED,
+            {"node_id": str(PEER_ID), "endpoint": PEER_ENDPOINT},
+            ModuleName.CONNECTIONS,
+        )
+    )
+    module.derive()
+
+    assert candidates(config) == {str(PEER_ID): [PEER_ENDPOINT]}
+
+
 def test_a_candidate_list_that_changed_is_announced_once(
     module: StatsModule, queues: ModuleQueues
 ) -> None:
@@ -560,6 +655,7 @@ def test_the_module_subscribes_to_what_it_records() -> None:
     assert EventType.DATA_REQUESTED in StatsModule.subscriptions
     assert EventType.DATA_DELETED in StatsModule.subscriptions
     assert EventType.ADDRESS_VERIFIED in StatsModule.subscriptions
+    assert EventType.NODE_UNREACHED in StatsModule.subscriptions
     assert EventType.PUT_COMPLETED not in StatsModule.subscriptions
     assert EventType.NODE_LIST_UPDATED not in StatsModule.subscriptions
 

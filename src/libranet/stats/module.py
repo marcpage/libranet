@@ -19,6 +19,7 @@ The payloads it consumes, by event:
 ``connection.opened``  ``{"node_id", "endpoint"}`` (Step 11)
 ``connection.closed``  ``{"node_id", "remote"}`` (Step 11)
 ``connection.failed``  ``{"node_id", "endpoint"}`` (Step 11)
+``node.unreached``     ``{"node_id"}`` (Phase 2 Step 26)
 ``address.verified``   ``{"node_id", "endpoint"}`` (Phase 2 Step 23)
 ``data.sent``          ``{"algorithm", "hash", "node_id", "size"}`` (Step 11)
 ``fetch.attempted``    ``{"algorithm", "hash", "node_id", "found"}`` (Step 11)
@@ -38,6 +39,16 @@ once, its node being connected already by another address.
 ``connection.failed`` is an attempt that did not reach the node at that
 address, whether nothing answered or some other node did.
 
+``node.unreached`` is an attempt that dialed a node at every address it was
+to be tried at and reached it at none (Phase 2 Step 26). After
+``stats.max_node_failures`` of them in a row, the node is given up on: it is
+left out of the candidate list, derived again at once, until
+``stats.node_cool_off_seconds`` have passed since the last, and then tried
+once more. Its addresses and statistics are kept. Reaching the node starts
+the count again, and so does hearing from it: a node list whose sender
+names itself, the entries ``sources`` marks ``advertised`` or ``observed``.
+A node list that merely relays the node does not.
+
 It publishes ``nodes.updated`` — ``{"path": "<candidate list file>"}`` —
 whenever the derived candidate list changes, which is the connection
 manager's cue to reconsider its peer mix (Step 11). The candidate list's
@@ -47,7 +58,7 @@ shape is documented in :mod:`libranet.stats.derivation`.
 from __future__ import annotations
 from logging import Logger
 from time import time
-from typing import Callable, ClassVar, Mapping, TypeVar
+from typing import Callable, ClassVar, Final, Mapping, TypeVar
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import CasError
@@ -66,6 +77,9 @@ from libranet.webserver.search import SearchCache, normalize_prefix
 
 _Component = TypeVar("_Component")
 
+# How a node list marks the entries in which its sender names itself.
+_SENDERS_OWN: Final = frozenset({AddressSource.ADVERTISED, AddressSource.OBSERVED})
+
 
 class StatsModule(ModuleBase):
     """Records what the node sees and derives the lists it publishes."""
@@ -82,6 +96,7 @@ class StatsModule(ModuleBase):
             EventType.CONNECTION_OPENED,
             EventType.CONNECTION_CLOSED,
             EventType.CONNECTION_FAILED,
+            EventType.NODE_UNREACHED,
             EventType.ADDRESS_VERIFIED,
             EventType.DATA_SENT,
             EventType.FETCH_ATTEMPTED,
@@ -116,6 +131,7 @@ class StatsModule(ModuleBase):
             EventType.CONNECTION_OPENED: self._on_connection_opened,
             EventType.CONNECTION_CLOSED: self._on_connection_closed,
             EventType.CONNECTION_FAILED: self._on_connection_failed,
+            EventType.NODE_UNREACHED: self._on_node_unreached,
             EventType.ADDRESS_VERIFIED: self._on_address_verified,
             EventType.DATA_SENT: self._on_data_sent,
             EventType.FETCH_ATTEMPTED: self._on_fetch_attempted,
@@ -230,6 +246,15 @@ class StatsModule(ModuleBase):
         for source, addresses in learned.items():
             self.database.record_addresses(addresses, source)
 
+        self.database.record_heard_from(
+            {
+                node_id
+                for source, addresses in learned.items()
+                if source in _SENDERS_OWN
+                for node_id in addresses.values()
+            }
+        )
+
     def _on_seek_received(self, message: Message) -> None:
         node_id = ContentId.parse(message["node_id"])
         self.database.record_seek(SeekKind.DATA, message.get("data", ()), node_id)
@@ -249,6 +274,21 @@ class StatsModule(ModuleBase):
         node_id = ContentId.parse(message["node_id"])
         self.database.record_connection_attempt(node_id)
         self.database.record_address_failed(node_id, message["endpoint"])
+
+    def _on_node_unreached(self, message: Message) -> None:
+        """Count the failure, and give up on the node at once if that makes enough in a row."""
+        node_id = ContentId.parse(message["node_id"])
+        failures = self.database.record_node_unreached(node_id)
+        stats = self._config.stats
+
+        if failures >= stats.max_node_failures:
+            self.logger.info(
+                "Giving up on %s for %s seconds after %d failed attempts in a row",
+                node_id,
+                stats.node_cool_off_seconds,
+                failures,
+            )
+            self.derive()
 
     def _on_address_verified(self, message: Message) -> None:
         self.database.record_address_worked(

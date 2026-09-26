@@ -16,7 +16,10 @@ Four tables cover what the implementation plan asks a node to remember:
     One row per peer node id. ``last_connected`` is when the last successful
     connection to it was established and is never cleared, so it also serves
     as the v1 node-list priority; ``connected_seconds`` accumulates the time
-    those connections lasted.
+    those connections lasted. ``consecutive_failures`` counts the attempts in
+    a row to reach it, each dialing every address it was to be tried at,
+    that reached it at none, and ``last_failure`` is when the last of them
+    ended (Phase 2 Step 26).
 
 ``node_addresses``
     Every place a node id may be reached, keyed by node id and endpoint
@@ -80,7 +83,9 @@ SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
         bytes_received INTEGER NOT NULL DEFAULT 0,
         bytes_sent INTEGER NOT NULL DEFAULT 0,
         data_found INTEGER NOT NULL DEFAULT 0,
-        data_not_found INTEGER NOT NULL DEFAULT 0
+        data_not_found INTEGER NOT NULL DEFAULT 0,
+        consecutive_failures INTEGER NOT NULL DEFAULT 0,
+        last_failure REAL
     )
     """,
     """
