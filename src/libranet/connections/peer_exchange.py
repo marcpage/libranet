@@ -39,10 +39,13 @@ What the exchange learns is published::
     data.sent           {"algorithm", "hash", "node_id", "size"}
     fetch.attempted     {"algorithm", "hash", "node_id", "found"}
     data.put_completed  {"algorithm", "hash", "node_id"}
+    data.stored         {"algorithm", "hash", "node_id", "size"}
 
 ``data.sent`` is content the peer accepted; ``fetch.attempted`` is each
 content request the peer answered, and whether it sent the content;
 ``data.put_completed`` is content it did send, for the validator.
+``data.stored`` is the peer's public key, stored, as the validator announces
+content it stores (Phase 2 Step 28).
 
 A received node list loses its entries naming this node. A ``localhost``
 endpoint is resolved to the peer's IP address, as this node's socket saw it
@@ -277,11 +280,13 @@ class PeerExchange:
         return node_id
 
     def _hold_public_key(self, node_id: ContentId, response: PeerResponse, endpoint: str) -> None:
-        """Store the public key ``response`` carries for ``node_id``, as sent.
+        """Store the public key ``response`` carries for ``node_id``, as sent, and announce it.
 
         It may be sent compressed (HttpApi §8), and is kept that way, like
         any content. Anything else that hashes to ``node_id`` is refused, so
-        nothing but a key reaches the source of truth unannounced.
+        nothing but a key reaches the source of truth without the validator.
+        It is announced as the validator announces what it stores, so that
+        it counts as content held (Phase 2 Step 28).
 
         Raises:
             PeerAuthenticationError: ``response`` does not carry that key.
@@ -300,6 +305,15 @@ class PeerExchange:
             ) from error
 
         self._source_of_truth.write(node_id, response.body)
+        self._publish(
+            EventType.DATA_STORED,
+            {
+                "algorithm": node_id.algorithm,
+                "hash": node_id.hash,
+                "node_id": str(node_id),
+                "size": len(response.body),
+            },
+        )
 
     def _node_list(self) -> bytes:
         """This node's node list, as the stats module last derived it.

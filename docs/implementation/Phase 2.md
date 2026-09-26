@@ -817,8 +817,8 @@ dropped, and that a request is held off for
 
 ## Step 28 — Scored Eviction
 
-**Issue:** #68, whose body settles the scoring. **Depends on:** Phase 1
-Steps 8, 15.
+**Issue:** #68, whose body settles the scoring; HighLevelDesign §4.5 now
+names its four factors. **Depends on:** Phase 1 Steps 8, 15.
 
 Phase 1 evicts on one criterion: the content sharing the fewest leading
 bits with the node id goes first. That keeps the right content in
@@ -838,44 +838,108 @@ Settled in the issue:
     on the node, so rarely-used content scores higher.
   - *Size* — one minus the size over 1 MiB, so smaller content scores
     higher: it is cheap to fetch again and cheap to move.
-  - *Node match* — one minus the fraction of node-id bits matched.
+  - *Node match* — one minus the fraction of node-id bits matched. *A
+    ruling below measures it against the best match held instead.*
 - A perfect score, near 1.0, is a one-byte object, least recently
   accessed, accessed once, matching no bits.
 
-Consequences to work through when building it:
+Ruled before building:
 
-- **Phase 1's read-as-far-as-needed trick does not survive.**
-  `eviction/priority.py` finds the worst content a prefix directory at a
-  time and stops early, which works only because the criterion is
-  positional. Three of the four factors need node-wide maxima, so the
-  list can only come from something that sees every object — the stats
-  module. How much of it is produced at a time needs a bound, and the
-  hand-off machinery of Phase 1 Step 15 (eight at a time, two copies
-  each, or one after Step 46) is unchanged underneath it.
-- **A zero factor zeroes the product.** Content accessed this instant,
-  or matching every bit of the node id, or exactly 1 MiB as stored,
-  scores zero and is never evicted, whatever the other three say. That
-  may be intended; it also means a node full of 1 MiB objects has nothing
-  to evict. Whether each factor gets a floor, or the terms are weighted
-  and summed instead of multiplied, is the one real decision in this
-  step.
-- **Content with no recorded access needs a defined score** — never
-  accessed is not the same as accessed long ago, and `data_stats` rows
-  exist for content the node has only heard of.
-- **`data_stats` has no last-access column.** It counts
-  `external_requests`, `internal_requests`, and `pushes`, and records
-  `last_acquired`. Which of those count as an "access" for the score, and
-  the new column, are part of this step.
+- **No factor can zero the score.** Each counts as `0.01 + 0.99 × factor`
+  before the four are multiplied (`FACTOR_FLOOR`, a provisional constant,
+  not configuration). Backup splits files into 1 MiB parts, and a part
+  that does not compress is stored at exactly 1,048,576 bytes, so its size
+  factor is zero: under a plain product most of a typical node's bytes
+  would tie at zero however much they are used. The floor keeps the order
+  within each factor, and lets an unused 1 MiB part go before a busy one.
+- **Node match is measured against the best match held**: one minus the
+  bits matched over the most any held object matches, this node's own key
+  aside, as the two usage factors are measured against the node's
+  extremes. Over all 256 bits, as the issue has it, content matching 0 to
+  20 bits scores between 1.0 and 0.92, and node match would stop
+  mattering.
+- **An access is a request**: every `data.requested`, from a peer or from
+  this machine, hit or miss, which `external_requests` and
+  `internal_requests` already count. A new `last_requested` column says
+  when the last one was. Pushes do not count; an application served from
+  resolved files is Step 29's.
+- **Content never requested counts as last used when it was acquired**,
+  so content handed to this node a moment ago is not the first it hands
+  on.
+- **The list reaches the eviction module as a request and its answer**,
+  which Steps 29 and 30 are to reuse. Eviction asks whenever it has more
+  to free than content to hand off; stats scores what is held at that
+  moment and answers with the best, enough to cover the bytes asked for,
+  up to a cap:
 
-**Open questions:**
+  ```text
+  eviction.candidates_requested  {"bytes", "exclude": ["sha256/<hex>", ...]}
+  eviction.candidates            {"objects": [{"algorithm", "hash", "size"}, ...]}
+  ```
 
-- The floor-or-weights decision above.
-- How the list reaches the eviction module: a new event carrying a batch,
-  or another derived file like the node and seek lists. Stats already
-  derives files on an interval, and eviction is event-driven off storage
-  pressure, which argues for a request/response pair of events.
-- Whether this node's own public key, never evicted in Phase 1, stays a
-  special case or simply scores zero on node match.
+- **Stats knows what is held from announcements alone.** `data.stored`,
+  which carries each object's size, adds it to a new `size` column, and
+  `data.deleted` clears it; `NULL` means not held. The store is not
+  walked. Content held before the stats database is deleted, as this
+  step's new columns require, is never offered for eviction, and no
+  migration is provided.
+- **Only this node's own public key is exempt**, as in Phase 1. Peers'
+  keys reached the source of truth unannounced, so both places that store
+  one — the handshake's fetch in `PeerExchange` and a peer's `PUT` of its
+  own key — now publish `data.stored` like any new content. The push of
+  new content (#119) then forwards each new key once, to this node's best
+  peer.
+- **HighLevelDesign §4.5 names the four factors**, and leaves how they
+  are weighed to the node. Alongside, HttpApi §7.1 now says content MUST
+  be less than or equal to 1 MiB, as the code always had it, and §19
+  agrees.
+
+My calls, not yet reviewed:
+
+- **Last used is the later of the last request and the last
+  acquisition**, so content fetched long after it was asked for starts
+  fresh as well.
+- **The extremes are those of the content held**, measured afresh for
+  each request, and an extreme of zero sets its factor to one for every
+  object. Size is the size as stored, which is what a hand-off frees.
+  Request counts are lifetime totals, and survive eviction and fetching
+  again.
+- **Ties go in order of hash, then algorithm**, as in Phase 1.
+- **An answer lists at most 256 objects** (`DEFAULT_MAX_CANDIDATES`),
+  stopping once their sizes cover the bytes asked for, and leaves out
+  what eviction is already handing off. Eviction asks again once it has
+  handed them all off, drops a list not used up once storage is back
+  within its limits, and asks again if stats has not answered in 60
+  seconds (`DEFAULT_CANDIDATES_TIMEOUT_SECONDS`). Both are constructor
+  defaults, as Step 15's limits are.
+- **After a hand-off falls short, eviction carries on down its list**
+  once the wait is over, where Phase 1 offered the same object first; it
+  comes back when stats next lists it. An empty answer while hand-offs
+  are under way waits for them to be answered before asking again.
+- **Stats checks that each object it lists is still in the store**, and
+  records one that is gone as deleted instead of listing it. Otherwise a
+  file removed by hand, or a crash between deleting a file and reporting
+  it, would head every list, each hand-off of it failing and pausing
+  eviction.
+- **The score is defined once, in Python** (`EvictionScorer` in
+  `eviction/priority.py`), and SQLite calls it for each row held to sort
+  them, so each answer reads every row of content held: measured at 0.3
+  seconds for 100,000 objects held and 3.5 seconds for a million, during
+  which stats records nothing else. The rows are read in table order;
+  through the index of held hashes it was four times slower at 500,000.
+  The best node match is found from the two held hashes either side of the
+  node id's, not from every hash held. `lowest_priority_first` is gone.
+
+Seen in a live run of three nodes, the first capped at 300,000 bytes:
+requested content was kept, and the rest handed off and deleted. But the
+first objects stats listed were two public keys, the second node's and
+that of the client pushing the content, as the smallest content held and
+never requested. Deleting the second node's key closed the first node's
+connection to it at its next response ("Public key not held locally"), so
+the next hand-offs fell short until it reconnected and fetched the key
+again, 10 seconds later. The client's next `PUT` was refused `401` once its
+provisional allowance ran out. With only this node's own key exempt,
+peers' keys go first whenever storage runs short.
 
 **Testable in isolation:** the scoring is a pure function over a row per
 object — table-driven tests including every factor at its extremes.
@@ -1711,22 +1775,24 @@ either step is built:
   ages an address out. Step 26 counts failed walks per node, which relays
   cannot reset, and gives up on a node for a cool-off.
 - **Whether a zero factor should zero the eviction score** (Step 28) —
-  the difference between a formula that evicts and one that does not.
+  settled: it does not. Each factor counts for at least 0.01.
 - **How stats hands candidate lists to other modules** (Steps 28, 29,
-  30) — a derived file like the node list, or a request/response pair of
-  events. All three steps want the same answer.
+  30) — settled by Step 28: a request and its answer, as events, rather
+  than a derived file. Steps 29 and 30 are to reuse it.
 - **`extensions` for two purposes** (Step 31 and Phase 1 §5) — size
   splitting and update chaining share one mechanism.
-- **What counts as an "access"** (Steps 28 and 29) — `data_stats` counts
-  external requests, internal requests, and pushes today, and application
-  accesses are not recorded at all.
-- **Six steps change a specification** (Steps 16, 27, 41, 46, 49, and
-  52) — as with the push of new content (#119), the specification change
-  is agreed and written first. Five are made: HighLevelDesign §4.9.1 for
-  the local discovery service and what is done with it (Step 16),
-  HighLevelDesign §4.7 for a data request's two passes, how the second is
-  paced, and the pause after one that found nothing (Step 27),
-  HighLevelDesign §4.5 and §6 for a single hand-off copy (Step 46),
+- **What counts as an "access"** (Steps 28 and 29) — settled for
+  content by Step 28: a request, from a peer or from this machine, hit or
+  miss. Pushes do not count. Application accesses, not recorded at all
+  yet, are Step 29's.
+- **Seven steps change a specification** (Steps 16, 27, 28, 41, 46, 49,
+  and 52) — as with the push of new content (#119), the specification
+  change is agreed and written first. Six are made: HighLevelDesign
+  §4.9.1 for the local discovery service and what is done with it (Step
+  16), HighLevelDesign §4.7 for a data request's two passes, how the
+  second is paced, and the pause after one that found nothing (Step 27),
+  HighLevelDesign §4.5 for the four factors of retention priority (Step
+  28), HighLevelDesign §4.5 and §6 for a single hand-off copy (Step 46),
   BundleSpecification §2.4 for extended attributes (Step 52), and
   BackupSpecification §3.3 and §5 for holding back metadata-only changes
   (Step 49). HttpApi §2.3, if `/config` moves to an origin of its own, is

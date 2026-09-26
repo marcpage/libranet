@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 from pathlib import Path
-from typing import Iterator
+from typing import Collection, Iterator
 
-from pytest import fixture, raises
+from pytest import fixture, mark, raises
 
 from libranet.cas.content_id import ContentId
+from libranet.config.models import MIB
+from libranet.eviction.priority import HeldObject
 from libranet.messaging.events import AddressSource
 from libranet.stats.database import StatsDatabase
 from libranet.stats.schema import SeekKind
@@ -82,6 +84,17 @@ def test_requests_are_counted_by_where_they_came_from(database: StatsDatabase) -
     assert stats.requests == 3
 
 
+def test_a_request_records_when_it_was_made(database: StatsDatabase, clock: FakeClock) -> None:
+    database.record_request(CONTENT_ID, external=True)
+    clock.advance(30)
+    database.record_request(CONTENT_ID, external=False)
+
+    stats = database.data_stats(CONTENT_ID)
+
+    assert stats is not None
+    assert stats.last_requested == clock.now
+
+
 def test_pushes_are_counted(database: StatsDatabase) -> None:
     database.record_push(CONTENT_ID)
     database.record_push(CONTENT_ID)
@@ -92,25 +105,27 @@ def test_pushes_are_counted(database: StatsDatabase) -> None:
     assert stats.pushes == 2
 
 
-def test_acquiring_records_when_it_happened(database: StatsDatabase, clock: FakeClock) -> None:
-    database.record_acquired(CONTENT_ID)
+def test_acquiring_records_when_it_happened_and_its_size(
+    database: StatsDatabase, clock: FakeClock
+) -> None:
+    database.record_acquired(CONTENT_ID, 12)
     clock.advance(30)
-    database.record_acquired(CONTENT_ID)
+    database.record_acquired(CONTENT_ID, 10)
 
     stats = database.data_stats(CONTENT_ID)
 
     assert stats is not None
-    assert stats.last_acquired == clock.now
+    assert (stats.last_acquired, stats.size) == (clock.now, 10)
 
 
 def test_deleting_accumulates_how_long_content_was_held(
     database: StatsDatabase, clock: FakeClock
 ) -> None:
-    database.record_acquired(CONTENT_ID)
+    database.record_acquired(CONTENT_ID, 12)
     clock.advance(60)
     database.record_deleted(CONTENT_ID)
     clock.advance(10)
-    database.record_acquired(CONTENT_ID)
+    database.record_acquired(CONTENT_ID, 12)
     clock.advance(5)
     database.record_deleted(CONTENT_ID)
 
@@ -121,6 +136,7 @@ def test_deleting_accumulates_how_long_content_was_held(
     assert stats.stored_seconds == 65
     # The last time it was acquired stays true after the copy is gone.
     assert stats.last_acquired == clock.now - 5
+    assert stats.size is None
 
 
 def test_deleting_content_never_acquired_adds_no_time(database: StatsDatabase) -> None:
@@ -130,6 +146,15 @@ def test_deleting_content_never_acquired_adds_no_time(database: StatsDatabase) -
 
     assert stats is not None
     assert (stats.deletes, stats.stored_seconds, stats.last_acquired) == (1, 0, None)
+
+
+def test_content_merely_heard_of_is_not_held(database: StatsDatabase) -> None:
+    database.record_request(CONTENT_ID, external=True)
+    database.record_push(OTHER_ID)
+
+    for content_id in (CONTENT_ID, OTHER_ID):
+        stats = database.data_stats(content_id)
+        assert stats is not None and stats.size is None
 
 
 def test_an_opened_connection_counts_as_an_attempt_too(
@@ -527,6 +552,137 @@ def test_a_nearby_scan_returns_everything_known_when_that_is_under_the_limit(
 def test_a_nearby_scan_needs_room_for_at_least_one_result(database: StatsDatabase) -> None:
     with raises(ValueError, match="limit must be at least 1"):
         database.content_ids_near("5", 0)
+
+
+# -- What to let go of first (Phase 2 Step 28) --------------------------------
+
+
+def hash_id(start: str) -> ContentId:
+    """The sha256 content id whose hash is ``start`` followed by zeros."""
+    return ContentId("sha256", start.ljust(64, "0"))
+
+
+# A node id sharing no leading bits with any hash starting `0` to `7`, so
+# content there ranks on everything but node match.
+NODE = hash_id("8")
+
+
+def acquire(database: StatsDatabase, *content_ids: ContentId, size: int = 100) -> None:
+    for content_id in content_ids:
+        database.record_acquired(content_id, size)
+
+
+def eviction_order(
+    database: StatsDatabase,
+    node_id: ContentId = NODE,
+    limit: int = 10,
+    exclude: Collection[ContentId] = (),
+) -> list[ContentId]:
+    return [held.content_id for held in database.eviction_order(node_id, limit, exclude)]
+
+
+def test_nothing_held_leaves_nothing_to_let_go_of(database: StatsDatabase) -> None:
+    database.record_request(CONTENT_ID, external=True)
+
+    assert eviction_order(database) == []
+
+
+def test_only_content_held_is_listed_with_its_size(database: StatsDatabase) -> None:
+    acquire(database, CONTENT_ID, size=7)
+    acquire(database, OTHER_ID, size=9)
+    database.record_deleted(OTHER_ID)
+    database.record_request(hash_id("1"), external=True)
+
+    assert database.eviction_order(NODE, 10) == [HeldObject(CONTENT_ID, 7)]
+
+
+def test_this_nodes_own_key_and_what_is_excluded_are_left_out(database: StatsDatabase) -> None:
+    acquire(database, NODE, CONTENT_ID, OTHER_ID)
+
+    assert eviction_order(database, exclude=[OTHER_ID]) == [CONTENT_ID]
+
+
+def test_no_more_than_the_limit_is_listed_what_is_excluded_taking_no_place(
+    database: StatsDatabase,
+) -> None:
+    acquire(database, *(hash_id(digit) for digit in "0123"))
+
+    # Alike in every factor, so in order of hash.
+    assert eviction_order(database, limit=2, exclude=[hash_id("0")]) == [hash_id("1"), hash_id("2")]
+
+
+def test_content_unused_longest_goes_first(database: StatsDatabase, clock: FakeClock) -> None:
+    earlier, later = hash_id("2"), hash_id("1")
+    acquire(database, earlier)
+    clock.advance(100)
+    acquire(database, later)
+
+    assert eviction_order(database) == [earlier, later]
+
+
+def test_content_counts_as_used_when_requested_or_acquired_whichever_was_later(
+    database: StatsDatabase, clock: FakeClock
+) -> None:
+    arrived_late, asked_mid, asked_late = hash_id("1"), hash_id("2"), hash_id("0")
+    database.record_request(arrived_late, external=True)
+    acquire(database, asked_mid, asked_late)
+    clock.advance(50)
+    database.record_request(asked_mid, external=True)
+    clock.advance(40)
+    database.record_request(asked_late, external=True)
+    clock.advance(10)
+    acquire(database, arrived_late)
+
+    # Last used 50 s, 10 s, and 0 s ago, each requested once.
+    assert eviction_order(database) == [asked_mid, asked_late, arrived_late]
+
+
+def test_content_requested_least_goes_first_local_requests_counting_too(
+    database: StatsDatabase,
+) -> None:
+    local, remote, never = hash_id("1"), hash_id("2"), hash_id("3")
+    acquire(database, local, remote, never)
+    database.record_request(local, external=False)
+    database.record_request(remote, external=True)
+
+    assert eviction_order(database) == [never, local, remote]
+
+
+def test_smaller_content_goes_first(database: StatsDatabase) -> None:
+    large, small = hash_id("1"), hash_id("2")
+    acquire(database, large, size=MIB)
+    acquire(database, small, size=10)
+
+    assert eviction_order(database) == [small, large]
+
+
+@mark.parametrize(
+    "node_hash, best",
+    [
+        ("8", "8001"),  # the best match held sorts after the node id
+        ("8" + "f" * 63, "8ffe"),  # and before it
+    ],
+)
+def test_the_best_match_held_counts_as_matching_every_bit(
+    database: StatsDatabase, node_hash: str, best: str
+) -> None:
+    node_id = hash_id(node_hash)
+    # Sharing 15 bits with the node id, 0 bits, and 1 bit.
+    match, requested_once, requested_most = hash_id(best), hash_id("0"), hash_id("c")
+    acquire(database, node_id, match, requested_once, requested_most)
+    database.record_request(requested_once, external=True)
+
+    for _ in range(4):
+        database.record_request(requested_most, external=True)
+
+    # Measured against this node's own key, which matches all 256 bits, the
+    # best match would be let go of first.
+    assert eviction_order(database, node_id) == [requested_once, match, requested_most]
+
+
+def test_ranking_needs_room_for_at_least_one(database: StatsDatabase) -> None:
+    with raises(ValueError, match="limit must be at least 1"):
+        database.eviction_order(NODE, 0)
 
 
 def test_a_closed_database_cannot_be_used(tmp_path: Path) -> None:

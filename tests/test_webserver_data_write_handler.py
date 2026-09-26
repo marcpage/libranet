@@ -126,6 +126,29 @@ def published(queues: ModuleQueues) -> list[Message]:
             return messages
 
 
+def announced(queues: ModuleQueues) -> list[dict[str, object]]:
+    """Each ``data.stored`` published since last asked, without its envelope."""
+    return [
+        {
+            key: value
+            for key, value in message.items()
+            if key not in {"event", "source", "timestamp"}
+        }
+        for message in published(queues)
+        if message["event"] == EventType.DATA_STORED
+    ]
+
+
+def stored_payload(signer: NodeIdentity, size: int) -> dict[str, object]:
+    """What announcing ``signer``'s own public key, stored as ``size`` bytes, says."""
+    return {
+        "algorithm": signer.node_id.algorithm,
+        "hash": signer.node_id.hash,
+        "node_id": str(signer.node_id),
+        "size": size,
+    }
+
+
 def problem_type(response: Response) -> str:
     assert response.headers["Content-Type"] == PROBLEM_CONTENT_TYPE
     problem = loads(response.body)
@@ -182,7 +205,8 @@ def test_unknown_signer_can_push_its_own_public_key(
     assert response.status == 201
     assert truth.read(stranger.node_id) == stranger.public_key
     assert not node_store(storage, stranger.node_id).exists(stranger.node_id)
-    assert published(queues) == []
+    # Announced as stored, as the validator announces what it stores.
+    assert announced(queues) == [stored_payload(stranger, len(stranger.public_key))]
     assert router.dispatch(signed_request(stranger, CONTENT)).status == 202
 
 
@@ -197,7 +221,7 @@ def test_unknown_signer_can_push_its_own_public_key_compressed(
     assert response.status == 201
     # Stored as sent, like any upload; the key is still read from it.
     assert truth.read(stranger.node_id) == compressed
-    assert published(queues) == []
+    assert announced(queues) == [stored_payload(stranger, len(compressed))]
     assert router.dispatch(signed_request(stranger, CONTENT)).status == 202
 
 

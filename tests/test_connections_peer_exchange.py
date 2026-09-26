@@ -167,8 +167,12 @@ def exchange(identity: NodeIdentity, config: LibranetConfig, queues: ModuleQueue
 
 
 @fixture
-def session(exchange: PeerExchange, peer: FixturePeer) -> Iterator[PeerSession]:
+def session(
+    exchange: PeerExchange, peer: FixturePeer, queues: ModuleQueues
+) -> Iterator[PeerSession]:
     session = exchange.open(peer.endpoint)
+    # Opening announces the peer's key as stored, which is tested on its own.
+    drain(queues, [])
     yield session
     session.close()
 
@@ -193,6 +197,7 @@ def test_first_contact_proves_the_peers_identity_and_swaps_keys(
     peer: FixturePeer,
     config: LibranetConfig,
     identity: NodeIdentity,
+    queues: ModuleQueues,
 ) -> None:
     session = exchange.open(peer.endpoint)
 
@@ -206,13 +211,20 @@ def test_first_contact_proves_the_peers_identity_and_swaps_keys(
         assert peer.store.read(identity.node_id) == identity.public_key
         (asked,) = peer.published(EventType.DATA_REQUESTED)
         assert asked["hash"] == peer.identity.node_id.hash
+        # The key is announced as stored, as the validator announces what it stores.
+        (announced,) = published(queues, EventType.DATA_STORED)
+        assert payload(announced) == {
+            "event": EventType.DATA_STORED,
+            **content_fields(peer.identity.node_id, peer.identity.node_id),
+            "size": len(peer.identity.public_key),
+        }
 
     finally:
         session.close()
 
 
 def test_a_key_already_held_is_not_asked_for(
-    exchange: PeerExchange, peer: FixturePeer, config: LibranetConfig
+    exchange: PeerExchange, peer: FixturePeer, config: LibranetConfig, queues: ModuleQueues
 ) -> None:
     peer.identity.publish_public_key(source_of_truth_store(config.storage))
 
@@ -221,10 +233,11 @@ def test_a_key_already_held_is_not_asked_for(
 
     assert opened.node_id == peer.identity.node_id
     assert peer.published(EventType.DATA_REQUESTED) == []
+    assert published(queues, EventType.DATA_STORED) == []
 
 
 def test_a_compressed_public_key_is_held_as_sent(
-    exchange: PeerExchange, tmp_path: Path, config: LibranetConfig
+    exchange: PeerExchange, tmp_path: Path, config: LibranetConfig, queues: ModuleQueues
 ) -> None:
     peer = FixturePeer(tmp_path / "compressing")
     compressed = compress(peer.identity.public_key)
@@ -240,6 +253,8 @@ def test_a_compressed_public_key_is_held_as_sent(
 
     assert session.node_id == peer.identity.node_id
     assert source_of_truth_store(config.storage).read(peer.identity.node_id) == compressed
+    (announced,) = published(queues, EventType.DATA_STORED)
+    assert announced["size"] == len(compressed)
 
 
 def test_a_peer_that_does_not_send_its_key_is_refused(

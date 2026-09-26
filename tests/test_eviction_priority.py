@@ -1,19 +1,26 @@
-"""Tests for the order in which held content is let go, over a temp CAS."""
+"""Tests for the eviction score, and for listing what a temp CAS holds."""
 
 from __future__ import annotations
-from itertools import islice
 from pathlib import Path
-from typing import Iterator
 
-from pytest import MonkeyPatch, fixture
+from pytest import approx, fixture, mark
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.prefix import matching_bits
 from libranet.cas.store import DATA_SEGMENT, CasStore
-from libranet.eviction.priority import HeldObject, held_objects, lowest_priority_first
+from libranet.config.models import MIB
+from libranet.eviction.priority import FACTOR_FLOOR, EvictionScorer, HeldObject, held_objects
 
 HASH_BITS = 256
 NODE_ID = ContentId.for_data(b"this node's public key", "sha256")
+NOW = 1_000_000.0
+LONGEST_UNUSED = 100.0
+MOST_REQUESTS = 10
+MOST_BITS = 16
+
+# Scored against a node whose held content was unused 100 s at most,
+# requested 10 times at most, and matches the node id by 16 bits at most.
+SCORER = EvictionScorer(NODE_ID.hash, NOW, LONGEST_UNUSED, MOST_REQUESTS, MOST_BITS)
 
 
 def sharing(bits: int, variant: int = 0, node_id: ContentId = NODE_ID) -> ContentId:
@@ -23,6 +30,11 @@ def sharing(bits: int, variant: int = 0, node_id: ContentId = NODE_ID) -> Conten
     """
     value = int(node_id.hash, 16) ^ (1 << (HASH_BITS - 1 - bits)) ^ variant
     return ContentId("sha256", f"{value:064x}")
+
+
+def floored(factor: float) -> float:
+    """What ``factor`` counts for in a score."""
+    return FACTOR_FLOOR + (1 - FACTOR_FLOOR) * factor
 
 
 @fixture
@@ -35,10 +47,6 @@ def hold(store: CasStore, *content_ids: ContentId, size: int = 3) -> None:
         store.write(content_id, b"x" * size)
 
 
-def ids(objects: list[HeldObject]) -> list[ContentId]:
-    return [held.content_id for held in objects]
-
-
 def test_sharing_builds_ids_of_the_priority_asked_for() -> None:
     assert [matching_bits(NODE_ID.hash, sharing(bits).hash) for bits in (0, 3, 17, 255)] == [
         0,
@@ -46,6 +54,101 @@ def test_sharing_builds_ids_of_the_priority_asked_for() -> None:
         17,
         255,
     ]
+
+
+# -- The score ---------------------------------------------------------------
+
+
+def test_one_byte_unused_longest_never_requested_matching_nothing_scores_about_one() -> None:
+    score = SCORER.score(1, 0, NOW - LONGEST_UNUSED, sharing(0).hash)
+
+    assert score == approx(1.0, abs=1e-5)
+    assert score < 1.0
+
+
+@mark.parametrize(
+    "size, requests, unused, bits",
+    [
+        (1, 0, 0.0, 0),  # used just now
+        (1, MOST_REQUESTS, LONGEST_UNUSED, 0),  # requested the most
+        (MIB, 0, LONGEST_UNUSED, 0),  # as large as an object may be
+        (1, 0, LONGEST_UNUSED, MOST_BITS),  # the best match held
+    ],
+)
+def test_one_factor_at_its_worst_counts_for_the_floor_not_zero(
+    size: int, requests: int, unused: float, bits: int
+) -> None:
+    score = SCORER.score(size, requests, NOW - unused, sharing(bits).hash)
+
+    assert score == approx(FACTOR_FLOOR, rel=1e-5)
+
+
+def test_every_factor_at_its_worst_is_the_floor_to_the_fourth() -> None:
+    score = SCORER.score(MIB, MOST_REQUESTS, NOW, sharing(MOST_BITS).hash)
+
+    assert score == approx(FACTOR_FLOOR**4)
+
+
+@mark.parametrize(
+    "size, requests, unused, bits, factor",
+    [
+        (1, 0, LONGEST_UNUSED / 4, 0, 0.25),
+        (1, MOST_REQUESTS // 2, LONGEST_UNUSED, 0, 0.5),
+        (MIB // 4, 0, LONGEST_UNUSED, 0, 0.75),
+        (1, 0, LONGEST_UNUSED, MOST_BITS // 4, 0.75),
+    ],
+)
+def test_each_factor_is_a_fraction_of_the_extreme_held(
+    size: int, requests: int, unused: float, bits: int, factor: float
+) -> None:
+    score = SCORER.score(size, requests, NOW - unused, sharing(bits).hash)
+
+    assert score == approx(floored(factor), rel=1e-5)
+
+
+def test_an_extreme_of_zero_leaves_its_factor_at_one() -> None:
+    # Nothing held was ever requested, or unused for any time, or matches a bit.
+    scorer = EvictionScorer(NODE_ID.hash, NOW, 0.0, 0, 0)
+
+    assert scorer.score(1, 0, NOW, sharing(0).hash) == approx(1.0, abs=1e-5)
+
+
+def test_when_it_was_last_used_unknown_counts_as_unused_longest() -> None:
+    assert SCORER.score(1, 0, None, sharing(0).hash) == approx(1.0, abs=1e-5)
+
+
+@mark.parametrize(
+    "size, requests, last_used, bits",
+    [
+        (1, 0, NOW + 60, 0),  # used after now, as the clock sees it
+        (1, MOST_REQUESTS + 5, NOW - LONGEST_UNUSED, 0),
+        (2 * MIB, 0, NOW - LONGEST_UNUSED, 0),
+        (1, 0, NOW - LONGEST_UNUSED, 255),  # this node's own key matches every bit
+    ],
+)
+def test_a_factor_beyond_its_extreme_is_kept_within_its_range(
+    size: int, requests: int, last_used: float, bits: int
+) -> None:
+    assert SCORER.score(size, requests, last_used, sharing(bits).hash) == approx(
+        FACTOR_FLOOR, rel=1e-5
+    )
+
+
+def test_an_unused_object_of_one_mib_goes_before_a_busy_one() -> None:
+    unused = SCORER.score(MIB, 0, NOW - LONGEST_UNUSED, sharing(2).hash)
+    busy = SCORER.score(MIB, 9, NOW - 1, sharing(0).hash)
+
+    assert unused > busy > 0
+
+
+def test_matching_more_bits_keeps_content_longer() -> None:
+    scores = [SCORER.score(1_000, 3, NOW - 50, sharing(bits).hash) for bits in (0, 4, 8, 12)]
+
+    assert scores == sorted(scores, reverse=True)
+    assert len(set(scores)) == len(scores)
+
+
+# -- What a store holds ------------------------------------------------------
 
 
 def test_every_held_object_is_listed_with_its_size(store: CasStore) -> None:
@@ -64,54 +167,6 @@ def test_every_held_object_is_listed_with_its_size(store: CasStore) -> None:
 
 def test_an_empty_store_holds_nothing(store: CasStore) -> None:
     assert list(held_objects(store)) == []
-    assert list(lowest_priority_first(store, NODE_ID)) == []
-
-
-def test_what_shares_the_fewest_bits_with_the_node_goes_first(store: CasStore) -> None:
-    order = [sharing(0), sharing(1), sharing(5), sharing(15), sharing(16), sharing(40)]
-    hold(store, *reversed(order))
-
-    assert ids(list(lowest_priority_first(store, NODE_ID))) == order
-
-
-def test_within_the_nodes_own_prefix_directory_each_object_is_ranked(store: CasStore) -> None:
-    # All three share the node id's first four hex digits, so one directory.
-    order = [sharing(16), sharing(30), sharing(200)]
-    hold(store, sharing(200), sharing(16), sharing(30))
-
-    assert ids(list(lowest_priority_first(store, NODE_ID))) == order
-
-
-def test_content_alike_in_priority_goes_in_order_of_hash(store: CasStore) -> None:
-    alike = [sharing(0, variant) for variant in (5, 1, 3)]
-    # Sharing no bits either, but in another prefix directory.
-    first = sharing(0).hash
-    other = ContentId("sha256", first[:3] + ("1" if first[3] == "0" else "0") + "0" * 60)
-    hold(store, *alike, other)
-
-    assert ids(list(lowest_priority_first(store, NODE_ID))) == sorted(
-        [*alike, other], key=lambda content_id: content_id.hash
-    )
-
-
-def test_objects_are_read_only_as_far_as_they_are_wanted(
-    store: CasStore, monkeypatch: MonkeyPatch
-) -> None:
-    hold(store, sharing(0), sharing(1), sharing(2))
-    read: list[Path] = []
-    iterdir = Path.iterdir
-
-    def recording(path: Path) -> Iterator[Path]:
-        read.append(path)
-        return iterdir(path)
-
-    monkeypatch.setattr(Path, "iterdir", recording)
-    (first,) = islice(lowest_priority_first(store, NODE_ID), 1)
-    monkeypatch.undo()
-
-    prefix_directories = [path for path in read if path.parent.name == "sha256"]
-    assert first.content_id == sharing(0)
-    assert prefix_directories == [store.path_for(sharing(0)).parent]
 
 
 def test_what_is_not_stored_content_is_skipped(store: CasStore) -> None:
@@ -136,12 +191,11 @@ def test_what_is_not_stored_content_is_skipped(store: CasStore) -> None:
     (data / "md5" / held.hash[:4] / held.hash).write_bytes(b"unknown algorithm")
 
     assert list(held_objects(store)) == [HeldObject(held, 3)]
-    assert list(lowest_priority_first(store, NODE_ID)) == [HeldObject(held, 3)]
 
 
 def test_the_prefix_length_of_the_store_is_used(tmp_path: Path) -> None:
     store = CasStore(tmp_path / "cas", 1)
-    order = [sharing(0), sharing(2), sharing(4), sharing(9)]
-    hold(store, *reversed(order))
+    content = [sharing(0), sharing(2), sharing(4), sharing(9)]
+    hold(store, *content)
 
-    assert ids(list(lowest_priority_first(store, NODE_ID))) == order
+    assert sorted(held.content_id for held in held_objects(store)) == sorted(content)

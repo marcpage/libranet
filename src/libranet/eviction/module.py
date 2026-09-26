@@ -2,10 +2,31 @@
 
 It keeps the node within its storage limits
 (:mod:`~libranet.eviction.pressure`), checking after each ``data.stored``
-from the validator rather than on a timer. What it lets go of goes lowest
-retention priority first (:mod:`~libranet.eviction.priority`), and nothing
-is deleted until two other nodes hold it (HighLevelDesign §4.5). For each
-object it would let go of, it asks the connection manager to hand it off::
+from the validator rather than on a timer. What it lets go of goes highest
+eviction score first (:mod:`~libranet.eviction.priority`), and nothing is
+deleted until two other nodes hold it (HighLevelDesign §4.5).
+
+The scores are measured from what the stats module records, so stats ranks
+the content and this module asks it for some whenever it has more to let go
+of than it has content to hand off (Phase 2 Step 28)::
+
+    eviction.candidates_requested  {"bytes", "exclude": ["sha256/<hex>", ...]}
+
+``bytes`` is how much more is to be freed, and ``exclude`` the content
+already being handed off. Stats answers with the held content to let go of
+first, best first, as much of it as covers ``bytes``, up to a limit::
+
+    eviction.candidates            {"objects": [{"algorithm", "hash", "size"}, ...]}
+
+The list is worked through, and more is asked for once it runs out. A list
+not used up by the time storage is back within its limits is dropped, since
+it would be out of date the next time. An empty list, with nothing being
+handed off, means there is nothing left to let go of. A request stats never
+answers, as when it restarts, is given up on after
+``candidates_timeout_seconds``.
+
+For each object it would let go of, it asks the connection manager to hand
+it off::
 
     eviction.notice        {"algorithm", "hash", "copies": 2}
 
@@ -23,8 +44,9 @@ was held::
 
 Fewer means the hand-off fell short, most likely for want of connected
 peers, so no new hand-off starts for ``retry_delay_seconds``. The object is
-kept, and is the first offered again; a peer that took it already answers
-that it holds it. Finding nothing left to let go of waits as long.
+kept, and is offered again when stats next lists it; a peer that took it
+already answers that it holds it. Finding nothing left to let go of waits as
+long.
 
 Hand-offs run a few at a time, and only as many as would bring storage back
 within its limits once they succeed. One the connection manager never
@@ -36,6 +58,7 @@ the node's signatures.
 """
 
 from __future__ import annotations
+from collections import deque
 from dataclasses import dataclass
 from logging import Logger
 from time import time
@@ -45,7 +68,7 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.store import source_of_truth_store
 from libranet.config.models import LibranetConfig
 from libranet.eviction.pressure import FreeBytes, StoragePressure
-from libranet.eviction.priority import HeldObject, lowest_priority_first
+from libranet.eviction.priority import HeldObject
 from libranet.identity.node_identity import load_node_identity
 from libranet.messaging.envelope import Message, event_of
 from libranet.messaging.events import EventType
@@ -64,6 +87,10 @@ DEFAULT_MAX_HAND_OFFS: Final = 8
 # with each taking its full request timeout.
 DEFAULT_HAND_OFF_TIMEOUT_SECONDS: Final = 600.0
 
+# Provisional default: how long the stats module may take to answer with
+# content to let go of. Ranking it reads every row of content held.
+DEFAULT_CANDIDATES_TIMEOUT_SECONDS: Final = 60.0
+
 
 @dataclass(frozen=True)
 class _HandOff:
@@ -77,7 +104,7 @@ class EvictionModule(ModuleBase):
     """Hands off and deletes the content this node has least claim to keep, as storage runs short."""
 
     subscriptions: ClassVar[frozenset[EventType]] = frozenset(
-        {EventType.DATA_STORED, EventType.EVICTION_ACKNOWLEDGED}
+        {EventType.DATA_STORED, EventType.EVICTION_ACKNOWLEDGED, EventType.EVICTION_CANDIDATES}
     )
 
     def __init__(
@@ -93,6 +120,7 @@ class EvictionModule(ModuleBase):
         free_bytes: FreeBytes | None = None,
         max_hand_offs: int = DEFAULT_MAX_HAND_OFFS,
         hand_off_timeout_seconds: float = DEFAULT_HAND_OFF_TIMEOUT_SECONDS,
+        candidates_timeout_seconds: float = DEFAULT_CANDIDATES_TIMEOUT_SECONDS,
     ) -> None:
         if retry_delay_seconds < 0:
             raise ValueError(f"retry_delay_seconds must not be negative, got {retry_delay_seconds}")
@@ -105,21 +133,32 @@ class EvictionModule(ModuleBase):
                 f"hand_off_timeout_seconds must be positive, got {hand_off_timeout_seconds}"
             )
 
+        if candidates_timeout_seconds <= 0:
+            raise ValueError(
+                f"candidates_timeout_seconds must be positive, got {candidates_timeout_seconds}"
+            )
+
         super().__init__(name, queues, logger=logger, clock=clock, poll_interval=poll_interval)
         self._config = config
         self._retry_delay = retry_delay_seconds
         self._free_bytes = free_bytes
         self._max_hand_offs = max_hand_offs
         self._hand_off_timeout = hand_off_timeout_seconds
+        self._candidates_timeout = candidates_timeout_seconds
         self._store = source_of_truth_store(config.storage)
         self._node_id: ContentId | None = None
         self._pressure: StoragePressure | None = None
         self._handing_off: dict[ContentId, _HandOff] = {}
+        # What stats last ranked first to let go of, not yet handed off.
+        self._candidates: deque[HeldObject] = deque()
+        # When stats was asked for more, while it has not answered.
+        self._asked_at: float | None = None
         # No new hand-off starts before this time.
         self._paused_until = 0.0
         self._handlers: Mapping[EventType, Callable[[Message], None]] = {
             EventType.DATA_STORED: self._on_data_stored,
             EventType.EVICTION_ACKNOWLEDGED: self._on_eviction_acknowledged,
+            EventType.EVICTION_CANDIDATES: self._on_eviction_candidates,
         }
 
     @property
@@ -150,7 +189,7 @@ class EvictionModule(ModuleBase):
         self._evict()
 
     def on_idle(self) -> None:
-        """Give up on hand-offs gone unanswered, and carry on once a wait is over."""
+        """Give up on hand-offs and requests gone unanswered, and carry on once a wait is over."""
         now = self._clock()
         overdue = [
             content_id
@@ -162,12 +201,18 @@ class EvictionModule(ModuleBase):
             del self._handing_off[content_id]
             self.logger.warning("The hand-off of %s went unanswered", content_id)
 
+        unanswered = self._asked_at is not None and now - self._asked_at >= self._candidates_timeout
+
+        if unanswered:
+            self._asked_at = None
+            self.logger.warning("The stats module never said what to let go of")
+
         resumed = 0 < self._paused_until <= now
 
         if resumed:
             self._paused_until = 0.0
 
-        if overdue or resumed:
+        if overdue or unanswered or resumed:
             self._evict()
 
     def handle(self, message: Message) -> None:
@@ -201,32 +246,77 @@ class EvictionModule(ModuleBase):
         self._delete(content_id)
         self._evict()
 
+    def _on_eviction_candidates(self, message: Message) -> None:
+        """Hand off what stats ranks first to let go of, or wait if it lists nothing.
+
+        With nothing listed but hand-offs still under way, stats is asked
+        again only once one of them is answered.
+        """
+        self._asked_at = None
+        self._candidates = deque(
+            HeldObject(ContentId.create(entry["algorithm"], entry["hash"]), int(entry["size"]))
+            for entry in message["objects"]
+        )
+
+        if self._candidates:
+            self._evict()
+            return
+
+        if self._handing_off:
+            return
+
+        excess = self.pressure.excess()
+
+        if excess:
+            self._paused_until = self._clock() + self._retry_delay
+            self.logger.warning(
+                "Storage is %d bytes over its limits, with nothing left to let go of", excess
+            )
+
     def _evict(self) -> None:
-        """Start hand-offs until those under way would bring storage back within its limits."""
+        """Start hand-offs until those under way would bring storage back within its limits.
+
+        What is handed off is taken from the list stats last sent, and more
+        is asked for once that runs out.
+        """
         if self._clock() < self._paused_until or len(self._handing_off) >= self._max_hand_offs:
             return
 
         excess = self.pressure.excess()
-        freeing = sum(hand_off.size for hand_off in self._handing_off.values())
 
-        if freeing >= excess:
+        if not excess:
+            self._candidates.clear()
             return
 
-        for held in lowest_priority_first(self._store, self.node_id):
+        freeing = sum(hand_off.size for hand_off in self._handing_off.values())
+
+        while freeing < excess and len(self._handing_off) < self._max_hand_offs:
+            if not self._candidates:
+                self._ask_for_candidates(excess - freeing)
+                return
+
+            held = self._candidates.popleft()
+
             if held.content_id == self.node_id or held.content_id in self._handing_off:
                 continue
 
             self._hand_off(held)
             freeing += held.size
 
-            if freeing >= excess or len(self._handing_off) >= self._max_hand_offs:
-                return
+    def _ask_for_candidates(self, byte_count: int) -> None:
+        """Ask stats for enough content to free ``byte_count`` bytes, unless already asking."""
+        if self._asked_at is not None:
+            return
 
-        if not self._handing_off:
-            self._paused_until = self._clock() + self._retry_delay
-            self.logger.warning(
-                "Storage is %d bytes over its limits, with nothing left to let go of", excess
-            )
+        self._asked_at = self._clock()
+        self.publish(
+            EventType.EVICTION_CANDIDATES_REQUESTED,
+            {
+                "bytes": byte_count,
+                "exclude": [str(content_id) for content_id in self._handing_off],
+            },
+        )
+        self.logger.debug("Asked for content to free %d bytes", byte_count)
 
     def _hand_off(self, held: HeldObject) -> None:
         content_id = held.content_id

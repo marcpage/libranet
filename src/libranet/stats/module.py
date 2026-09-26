@@ -3,8 +3,9 @@
 It is the only process that opens the SQLite file. Everything it records
 arrives as a broadcast from another module, and everything it publishes
 leaves as one of the derived list files plus a notice that the candidate
-list changed. Between derivations it does nothing but record, so a burst of
-requests costs one small statement each.
+list changed, or as an answer to the eviction module. Between derivations
+it does nothing but record, so a burst of requests costs one small statement
+each.
 
 The payloads it consumes, by event:
 
@@ -24,11 +25,25 @@ The payloads it consumes, by event:
 ``data.sent``          ``{"algorithm", "hash", "node_id", "size"}`` (Step 11)
 ``fetch.attempted``    ``{"algorithm", "hash", "node_id", "found"}`` (Step 11)
 ``data.deleted``       ``{"algorithm", "hash", "size"}`` (Step 15)
+``eviction.candidates_requested`` ``{"bytes", "exclude"}`` (Phase 2 Step 28)
 
 A miss on ``GET /data/{algorithm}/{hash}`` and a ``GET /data/search/{prefix}``
 are both requests this node could not answer, so each becomes an entry in
 its own seek list until the content arrives or the entry ages out. Storing
 content clears its entry.
+
+What the node holds is what ``data.stored`` announced, with its size, less
+what ``data.deleted`` reported gone. Asked by the eviction module for
+content to let go of, it answers with the held content that scores highest
+(:class:`~libranet.eviction.priority.EvictionScorer`), best first, leaving
+out what ``exclude`` names, until the sizes listed add up to ``bytes`` or
+the list reaches ``max_candidates`` entries::
+
+    eviction.candidates    {"objects": [{"algorithm", "hash", "size"}, ...]}
+
+Content no longer in the source of truth, though no ``data.deleted`` said
+so, as when its file was removed by hand, is recorded as deleted rather than
+listed, so eviction is never sent after content that is gone.
 
 Addresses are kept per node (Phase 2 Step 23). Each entry of a received
 node list is an address learned from the source ``sources`` names for it,
@@ -62,7 +77,9 @@ from typing import Callable, ClassVar, Final, Mapping, TypeVar
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import CasError
+from libranet.cas.store import source_of_truth_store
 from libranet.config.models import LibranetConfig
+from libranet.eviction.priority import HeldObject
 from libranet.identity.node_identity import load_node_identity
 from libranet.messaging.envelope import Message, event_of
 from libranet.messaging.events import AddressSource, EventType
@@ -79,6 +96,10 @@ _Component = TypeVar("_Component")
 
 # How a node list marks the entries in which its sender names itself.
 _SENDERS_OWN: Final = frozenset({AddressSource.ADVERTISED, AddressSource.OBSERVED})
+
+# Provisional default: the most objects one answer to the eviction module
+# lists. It asks again when it has handed them all off.
+DEFAULT_MAX_CANDIDATES: Final = 256
 
 
 class StatsModule(ModuleBase):
@@ -101,6 +122,7 @@ class StatsModule(ModuleBase):
             EventType.DATA_SENT,
             EventType.FETCH_ATTEMPTED,
             EventType.DATA_DELETED,
+            EventType.EVICTION_CANDIDATES_REQUESTED,
         }
     )
 
@@ -113,9 +135,16 @@ class StatsModule(ModuleBase):
         logger: Logger | None = None,
         clock: Callable[[], float] = time,
         poll_interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
+        max_candidates: int = DEFAULT_MAX_CANDIDATES,
     ) -> None:
+        if max_candidates < 1:
+            raise ValueError(f"max_candidates must be at least 1, got {max_candidates}")
+
         super().__init__(name, queues, logger=logger, clock=clock, poll_interval=poll_interval)
         self._config = config
+        self._max_candidates = max_candidates
+        self._store = source_of_truth_store(config.storage)
+        self._node_id: ContentId | None = None
         self._database: StatsDatabase | None = None
         self._deriver: ListDeriver | None = None
         self._enricher: SearchEnricher | None = None
@@ -136,6 +165,7 @@ class StatsModule(ModuleBase):
             EventType.DATA_SENT: self._on_data_sent,
             EventType.FETCH_ATTEMPTED: self._on_fetch_attempted,
             EventType.DATA_DELETED: self._on_data_deleted,
+            EventType.EVICTION_CANDIDATES_REQUESTED: self._on_candidates_requested,
         }
 
     @property
@@ -162,6 +192,7 @@ class StatsModule(ModuleBase):
         """
         storage = self._config.storage
         identity = load_node_identity(self._config)
+        self._node_id = identity.node_id
         self._database = StatsDatabase(storage.database_path, clock=self._clock)
         self._deriver = ListDeriver(
             self._database,
@@ -225,12 +256,11 @@ class StatsModule(ModuleBase):
 
     def _on_data_stored(self, message: Message) -> None:
         content_id = _content_id(message)
+        size = int(message["size"])
         self.database.record_push(content_id)
-        self.database.record_acquired(content_id)
+        self.database.record_acquired(content_id, size)
         self.database.clear_seek(SeekKind.DATA, str(content_id))
-        self.database.record_transfer(
-            ContentId.parse(message["node_id"]), received=int(message["size"])
-        )
+        self.database.record_transfer(ContentId.parse(message["node_id"]), received=size)
 
     def _on_data_rejected(self, message: Message) -> None:
         self.database.record_push(_content_id(message))
@@ -307,6 +337,41 @@ class StatsModule(ModuleBase):
 
     def _on_data_deleted(self, message: Message) -> None:
         self.database.record_deleted(_content_id(message))
+
+    def _on_candidates_requested(self, message: Message) -> None:
+        """Tell the eviction module what to let go of first, enough to free the bytes it asks."""
+        wanted = int(message["bytes"])
+        exclude = {ContentId.parse(text) for text in message.get("exclude", ())}
+        chosen: list[HeldObject] = []
+        covered = 0
+
+        for held in self.database.eviction_order(
+            _started(self._node_id), self._max_candidates, exclude
+        ):
+            if not self._store.exists(held.content_id):
+                self.database.record_deleted(held.content_id)
+                self.logger.info("%s is gone from the store, so no longer held", held.content_id)
+                continue
+
+            chosen.append(held)
+            covered += held.size
+
+            if covered >= wanted:
+                break
+
+        self.publish(
+            EventType.EVICTION_CANDIDATES,
+            {
+                "objects": [
+                    {
+                        "algorithm": held.content_id.algorithm,
+                        "hash": held.content_id.hash,
+                        "size": held.size,
+                    }
+                    for held in chosen
+                ]
+            },
+        )
 
     def _node_ids(self, nodes: Mapping[str, str]) -> dict[str, ContentId]:
         """A received node list with its identifiers parsed, bad entries dropped.

@@ -25,7 +25,11 @@ requests, until it is held. Going through the validator could leave it
 unheld when that runs out. It is checked here, as the validator would: it
 must hash to the signer's id, which is also its content id, as sent or once
 decompressed. It must also be a public key, so this path cannot store
-anything else. Like any upload, it is stored as sent, compressed or not.
+anything else. Like any upload, it is stored as sent, compressed or not. It
+is announced as the validator announces what it stores, so that it counts
+as content held (Phase 2 Step 28)::
+
+    data.stored  {"algorithm", "hash", "node_id": "sha256/<hex>", "size"}
 """
 
 from __future__ import annotations
@@ -95,6 +99,15 @@ class DataWriteHandler:
 
         if content_id == result.node_id and _is_public_key(content_id, body):
             self._source_of_truth.write(content_id, body)
+            self._publish(
+                EventType.DATA_STORED,
+                {
+                    "algorithm": content_id.algorithm,
+                    "hash": content_id.hash,
+                    "node_id": str(result.node_id),
+                    "size": len(body),
+                },
+            )
             return Response(HTTPStatus.CREATED)
 
         node_store(self._storage, result.node_id).write(content_id, body)

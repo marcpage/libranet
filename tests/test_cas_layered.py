@@ -13,7 +13,7 @@ from libranet.cas.layered import PACKAGED_ARCHIVES, LayeredSource, packaged_arch
 from libranet.cas.store import CasStore, source_of_truth_store
 from libranet.config.models import StorageConfig
 from libranet.eviction.pressure import StoragePressure
-from libranet.eviction.priority import held_objects, lowest_priority_first
+from libranet.eviction.priority import held_objects
 from libranet.webserver.search import LocalSearch
 
 STORED = b"stored in the source of truth"
@@ -129,14 +129,10 @@ def test_eviction_sees_only_the_store(tmp_path: Path) -> None:
     storage = storage_for(tmp_path, write_archive(tmp_path / "a.zip", {id_of(FIRST): FIRST}))
     store = source_of_truth_store(storage)
     store.write(id_of(STORED), STORED)
-    node_id = id_of(b"a node")
 
     with LayeredSource.open(storage, tmp_path / "none") as content:
         assert content.exists(id_of(FIRST))
         assert [held.content_id for held in held_objects(store)] == [id_of(STORED)]
-        assert [held.content_id for held in lowest_priority_first(store, node_id)] == [
-            id_of(STORED)
-        ]
         assert StoragePressure.of(storage, lambda: 1 << 40).held_bytes == len(STORED)
 
 

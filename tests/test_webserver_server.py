@@ -527,10 +527,11 @@ def test_uploaded_content_is_served_once_validated(
     validator = ValidatorModule(ModuleName.VALIDATOR, ModuleQueues(Queue(), Queue()), storage)
 
     # First contact: a peer pushes its own public key before anything else,
-    # and it is held at once so the rest of the exchange can be verified.
+    # and it is held at once so the rest of the exchange can be verified. It
+    # is announced as stored rather than handed to the validator.
     response, _ = _put(connection, identity.node_id, identity.public_key, identity)
     assert response.status == 201
-    assert _published(queues) == []
+    assert [message["event"] for message in _published(queues)] == [EventType.DATA_STORED]
 
     upload = b"uploaded after the key"
     upload_id = ContentId.for_data(upload, "sha256")
