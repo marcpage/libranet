@@ -110,7 +110,7 @@ class NodeListHandler:
             stored = resolve_endpoint(endpoint, request.client_address)
 
             if stored is not None:
-                resolved[stored] = node_id
+                resolved[stored] = str(node_id)
 
         self.publish(EventType.NODES_RECEIVED, {"nodes": resolved})
         return Response(HTTPStatus.ACCEPTED)

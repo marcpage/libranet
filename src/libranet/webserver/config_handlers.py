@@ -94,7 +94,7 @@ RESTORES_PATH: Final = CONFIG_API_PATH + "/restores"
 BUILDS_PATH: Final = CONFIG_API_PATH + "/builds"
 EXPORTS_PATH: Final = CONFIG_API_PATH + "/exports"
 APPLICATIONS_PATH: Final = CONFIG_API_PATH + "/applications"
-BACKUP_JOB_PATTERN: Final = BACKUPS_PATH + rf"/(?P<job_id>[0-9a-f]{{{IDENTIFIER_LENGTH}}})"
+BACKUP_JOB_PATTERN: Final = BACKUPS_PATH + rf"/(?P<job_id>[0-9a-fA-F]{{{IDENTIFIER_LENGTH}}})"
 BACKUP_RUN_PATTERN: Final = BACKUP_JOB_PATTERN + "/run"
 APPLICATION_PATTERN: Final = APPLICATIONS_PATH + "/(?P<name>[^/]+)"
 
@@ -221,7 +221,7 @@ class BackupJobRemovalHandler:
         if isinstance(body, Response):
             return body
 
-        job_id = request.params["job_id"]
+        job_id = request.params["job_id"].lower()
         self.publish(EventType.BACKUP_JOB_REMOVED, {"job_id": job_id})
         return json_response({"job_id": job_id}, HTTPStatus.ACCEPTED)
 
@@ -238,7 +238,7 @@ class BackupRunHandler:
         if isinstance(body, Response):
             return body
 
-        job_id = request.params["job_id"]
+        job_id = request.params["job_id"].lower()
         self.publish(EventType.BACKUP_RUN_REQUESTED, {"job_id": job_id})
         return json_response({"job_id": job_id}, HTTPStatus.ACCEPTED)
 

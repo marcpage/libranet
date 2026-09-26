@@ -459,8 +459,14 @@ def test_the_least_recently_used_bundle_is_forgotten_past_the_limit(
 
 
 def test_a_message_naming_no_valid_bundle_raises(unbundler: UnbundlerModule) -> None:
+    message = make_message(
+        EventType.APP_PATH_NOT_FOUND,
+        ModuleName.WEBSERVER,
+        {"bundle": "sha256/not-a-hash", "path": "index.html"},
+    )
+
     with raises(InvalidContentIdError):
-        unbundler.handle(request(ContentId("sha256", "not-a-hash"), "index.html"))
+        unbundler.handle(message)
 
 
 def test_the_bundle_cache_must_hold_at_least_one(

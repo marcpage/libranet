@@ -19,7 +19,7 @@ from typing import Iterator
 
 from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
-from libranet.cas.errors import ContentNotFoundError
+from libranet.cas.errors import ContentNotFoundError, InvalidContentIdError
 from libranet.config.models import StorageConfig
 
 DATA_SEGMENT = "data"
@@ -110,7 +110,8 @@ class CasStore:
         """Stored identifiers under ``algorithm`` whose hash starts with ``hash_prefix``.
 
         ``hash_prefix`` must already be lower-case hex. Only the prefix
-        subdirectories that can match are scanned.
+        subdirectories that can match are scanned. A file whose name is not
+        a lower-case hash is not one this store wrote, and is skipped.
         """
         algorithm_dir = self._root / DATA_SEGMENT / algorithm
 
@@ -124,8 +125,16 @@ class CasStore:
                 continue
 
             for entry in sorted(prefix_dir.iterdir()):
-                if entry.name.startswith(hash_prefix) and entry.is_file():
-                    yield ContentId(algorithm, entry.name)
+                if not entry.name.startswith(hash_prefix) or not entry.is_file():
+                    continue
+
+                try:
+                    content_id = ContentId(algorithm, entry.name)
+
+                except InvalidContentIdError:
+                    continue
+
+                yield content_id
 
 
 def source_of_truth_store(storage: StorageConfig) -> CasStore:

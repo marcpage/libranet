@@ -59,16 +59,24 @@ def test_bodies_that_are_not_json_are_refused(body: bytes) -> None:
         decode_list(body, 100)
 
 
-def test_node_list_entries_are_returned_as_sent() -> None:
-    nodes = {"http://localhost:4300": str(NODE_ID), "http://192.0.2.9:80": "anything"}
+def test_node_list_ids_are_parsed_and_normalized() -> None:
+    nodes = {"http://localhost:4300": str(NODE_ID), "http://192.0.2.9:80": str(NODE_ID).upper()}
 
-    assert parse_node_list({"nodes": nodes}) == nodes
+    assert parse_node_list({"nodes": nodes}) == {
+        "http://localhost:4300": NODE_ID,
+        "http://192.0.2.9:80": NODE_ID,
+    }
 
 
-def test_node_list_entries_without_a_string_id_are_dropped() -> None:
-    parsed = parse_node_list({"nodes": {"http://192.0.2.9:80": 7, "http://192.0.2.10:80": "x"}})
+def test_node_list_entries_without_a_usable_id_are_dropped() -> None:
+    nodes = {
+        "http://192.0.2.9:80": 7,
+        "http://192.0.2.10:80": "x",
+        "http://192.0.2.11:80": "md5/" + "0" * 32,
+        "http://192.0.2.12:80": str(NODE_ID),
+    }
 
-    assert parsed == {"http://192.0.2.10:80": "x"}
+    assert parse_node_list({"nodes": nodes}) == {"http://192.0.2.12:80": NODE_ID}
 
 
 @mark.parametrize("value", [None, [], "nodes", {}, {"nodes": []}, {"nodes": "x"}])

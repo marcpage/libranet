@@ -59,7 +59,7 @@ from time import time
 from typing import Callable, Final, Iterator, Mapping, Sequence, TypeVar
 
 from libranet.cas.content_id import ContentId
-from libranet.cas.errors import ContentNotFoundError, InvalidContentIdError
+from libranet.cas.errors import ContentNotFoundError
 from libranet.cas.layered import LayeredSource
 from libranet.cas.store import node_store, source_of_truth_store
 from libranet.cas.verification import content_matches
@@ -306,13 +306,7 @@ class PeerExchange:
         source = "" if address is None else address.host
         received: dict[str, str] = {}
 
-        for endpoint, text in nodes.items():
-            try:
-                node_id = ContentId.parse(text)
-
-            except InvalidContentIdError:
-                continue
-
+        for endpoint, node_id in nodes.items():
             resolved = resolve_endpoint(endpoint, source)
 
             if resolved is not None and node_id not in (self._identity.node_id, session.node_id):

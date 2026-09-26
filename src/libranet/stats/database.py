@@ -11,6 +11,14 @@ whether they are inserting or updating. The connection runs in autocommit
 mode, which keeps one statement one transaction — the right granularity when
 every write is an independent observation and a crash should lose at most
 the last one.
+
+Identifiers are normalized on the way in. Every method that writes one
+takes a :class:`ContentId`, which holds only the lower-case form HttpApi
+§5.4 stores, so an identifier read back from a row is already normalized
+and is rebuilt without being checked against its algorithm again. Seek
+values are text, and callers pass them normalized, as
+:func:`~libranet.webserver.list_bodies.parse_seek_list` and
+:func:`~libranet.webserver.search.normalize_prefix` leave them.
 """
 
 from __future__ import annotations
@@ -235,8 +243,9 @@ class StatsDatabase:
     ) -> None:
         """Record outstanding requests, this node's own unless ``node_id`` is given.
 
-        Re-recording a request already listed refreshes when it was asked
-        for, so content that keeps being wanted keeps being advertised.
+        ``values`` must already be normalized. Re-recording a request already
+        listed refreshes when it was asked for, so content that keeps being
+        wanted keeps being advertised.
         """
         self._connection.executemany(
             "INSERT INTO seek_entries (node_id, kind, value, requested_at) "

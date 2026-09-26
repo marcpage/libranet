@@ -36,19 +36,9 @@ def node_list_candidates(path: Path, own_id: ContentId) -> list[Candidate]:
     except (OSError, ValueError):
         return []
 
-    candidates: list[Candidate] = []
-
-    for endpoint, text in nodes.items():
-        try:
-            node_id = ContentId.parse(text)
-
-        except InvalidContentIdError:
-            continue
-
-        if node_id != own_id:
-            candidates.append(Candidate(endpoint, node_id))
-
-    return candidates
+    return [
+        Candidate(endpoint, node_id) for endpoint, node_id in nodes.items() if node_id != own_id
+    ]
 
 
 def seed_candidates(seeds: tuple[SeedPeer, ...]) -> list[Candidate]:
