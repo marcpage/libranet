@@ -12,6 +12,7 @@ from libranet.config.models import (
     LibranetConfig,
     NetworkConfig,
     PeerConfig,
+    StatsConfig,
     StorageConfig,
 )
 
@@ -46,6 +47,18 @@ def test_retry_after_defaults_to_five_and_may_not_be_negative() -> None:
 
     with raises(ValidationError):
         NetworkConfig(retry_after_seconds=-1)
+
+
+def test_a_peer_is_given_up_on_after_five_failures_for_a_day() -> None:
+    stats = StatsConfig()
+
+    assert (stats.max_node_failures, stats.node_cool_off_seconds) == (5, 86400.0)
+
+    with raises(ValidationError):
+        StatsConfig(max_node_failures=0)
+
+    with raises(ValidationError):
+        StatsConfig(node_cool_off_seconds=0)
 
 
 def test_decompressed_lists_may_exceed_the_object_limit() -> None:

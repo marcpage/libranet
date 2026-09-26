@@ -197,6 +197,62 @@ def test_fetch_outcomes_are_counted_per_node(database: StatsDatabase) -> None:
     assert (stats.data_found, stats.data_not_found) == (1, 2)
 
 
+def test_failed_walks_are_counted_in_a_row_until_the_node_is_reached(
+    database: StatsDatabase, clock: FakeClock
+) -> None:
+    assert database.record_node_unreached(NODE_ID) == 1
+    clock.advance(60)
+    assert database.record_node_unreached(NODE_ID) == 2
+
+    stats = database.node_stats(NODE_ID)
+
+    assert stats is not None
+    assert (stats.consecutive_failures, stats.last_failure) == (2, clock.now)
+
+    database.record_connection_opened(NODE_ID, FIRST)
+
+    stats = database.node_stats(NODE_ID)
+
+    assert stats is not None
+    assert stats.consecutive_failures == 0
+    assert database.record_node_unreached(NODE_ID) == 1
+
+
+def test_a_node_heard_from_starts_its_count_again(database: StatsDatabase) -> None:
+    for _ in range(3):
+        database.record_node_unreached(NODE_ID)
+
+    database.record_heard_from([NODE_ID, OTHER_NODE_ID])
+
+    stats = database.node_stats(NODE_ID)
+
+    assert stats is not None
+    assert stats.consecutive_failures == 0
+    # Hearing from a node counts nothing else about it.
+    assert database.node_stats(OTHER_NODE_ID) is None
+
+
+def test_a_node_is_given_up_on_until_its_cool_off_ends(
+    database: StatsDatabase, clock: FakeClock
+) -> None:
+    for _ in range(2):
+        database.record_node_unreached(NODE_ID)
+
+    database.record_node_unreached(OTHER_NODE_ID)
+
+    assert database.given_up_nodes(max_failures=2, cool_off_seconds=100) == {str(NODE_ID)}
+
+    clock.advance(99)
+    assert database.given_up_nodes(max_failures=2, cool_off_seconds=100) == {str(NODE_ID)}
+
+    clock.advance(1)
+    assert database.given_up_nodes(max_failures=2, cool_off_seconds=100) == set()
+
+    # The one more try fails too, which starts another cool-off.
+    database.record_node_unreached(NODE_ID)
+    assert database.given_up_nodes(max_failures=2, cool_off_seconds=100) == {str(NODE_ID)}
+
+
 def test_a_node_keeps_every_address_it_is_learned_at(
     database: StatsDatabase, clock: FakeClock
 ) -> None:

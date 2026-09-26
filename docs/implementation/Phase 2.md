@@ -623,26 +623,81 @@ worked is kept however often it fails; this step is the node-level
 counterpart — when every address of a node is exhausted, stop dialing the
 node. Written apart, they will disagree.
 
-**Open questions:**
+Ruled before building:
 
-- Whether the cap counts consecutive failures or attempts ever made.
-  Consecutive is the useful one, given Step 23 records it.
-- Whether a give-up survives a restart. It does if it lives in stats,
-  which is where the counts are; it does not if the connection manager
-  keeps it in memory. Surviving is right for a dead peer and wrong for a
-  node that was offline for an hour, which argues for a long cool-off
-  rather than a permanent stop.
-- What clears the count: a successful connection obviously; also an
-  inbound connection from that node (Step 24), and possibly the peer
-  reappearing in a freshly received node list.
-- Whether an exhausted node is dropped from the candidate list or kept
-  and skipped. Keeping it costs a row and keeps the history that says not
-  to bother.
+- **One failure is one walk:** the node was dialed at every address it
+  was to be tried at, and none reached it. Walks are counted per node, in
+  a row, in `node_stats`, and reaching the node starts the count again.
+  Step 23's per-address rule is unchanged, and still decides which
+  addresses are kept. A relayed address cannot reset the node's count,
+  which is the limit on re-relayed dead addresses that Step 23 left to
+  this step.
+- **After the cap, a long cool-off, kept in stats.** A node given up on is
+  left out of the candidate list until the cool-off has passed since its
+  last failed walk, then it gets one more walk, and a failure starts
+  another cool-off. Its addresses and statistics are kept. Stats holds
+  the count, so a restart does not reset it. A dead node costs one walk a
+  day, and one that was offline for an afternoon is found again within a
+  day.
+- **Reaching the node or hearing from it clears the count.** Hearing from
+  it means a node list it sends naming itself, which a peer dialing in
+  POSTs first thing (HandshakeProtocol §3). Stats sees it as the entries
+  `sources` marks `advertised` or `observed`. A list that merely relays
+  the node does not clear it. Step 24, which would have reported inbound
+  peers with an event of their own, was dropped, so this is how an
+  inbound peer clears a give-up.
+- **Failures count even while this node has no connection open.** A node
+  that loses its own network for a few minutes gives up on every peer it
+  knows, and gets each one back when that peer contacts it or its
+  cool-off ends.
+- **No migration.** The count and the time of the last failure are two
+  new `node_stats` columns. Nothing has shipped (Step 23), so a stats
+  database from before this step must be deleted, and until it is, the
+  stats module fails on start.
+- **Two settings, in `stats`,** beside Step 23's
+  `stats.max_address_failures`, since stats applies them when it derives
+  the candidate list: `stats.max_node_failures` (5) and
+  `stats.node_cool_off_seconds` (86400, a day).
 
-**Testable in isolation:** connection-manager tests against a fixture
-peer that refuses connections, with a fake clock, asserting the node
-stops being dialed after the configured number of failures and is dialed
-again once whatever clears the count happens.
+My calls, not yet reviewed:
+
+- **A new event, `node.unreached` `{"node_id"}`,** goes from the
+  connection manager to stats when a walk ends without reaching the node
+  expected at any endpoint. It is not published for a seed whose node id
+  is unknown, for a node connected meanwhile at another endpoint, or while
+  the module is stopping. A walk cut short because an endpoint answered as
+  another node, which was taken in, is not over: the node's other
+  endpoints are dialed the next time the mix is tended, and that walk is
+  the one that counts.
+- **Stats derives the lists at once when a node is given up on,** so the
+  connection manager hears of it before the node's retry delay ends, and
+  the cap is exact. A node whose count is cleared, or whose cool-off ends,
+  comes back at the next regular derivation, within
+  `stats.derive_interval_seconds`.
+- **Seeds are never given up on.** The seed list is read from its file,
+  not derived, and it is used whenever the candidate list names no peer,
+  including when every known peer has been given up on. The seeds are
+  then dialed every `peers.retry_delay_seconds`, as when no peer is known,
+  even a seed that is itself given up on. A live run of two nodes, one the
+  other's only seed, showed exactly this.
+- **The count keeps going past the cap,** so a node given up on shows how
+  many walks in a row have failed, and `last_failure` is kept after the
+  count is cleared.
+- **The published node list needs no change.** Each walk counts a failure
+  at every address it tried, so a node given up on has no address that
+  worked the last time it was tried.
+- **A peer that accepts a connection and then closes it** was reached
+  each time, so it is never given up on. It rests for
+  `peers.retry_delay_seconds` after each close, as before.
+
+**Testable in isolation:** stats tests count walks against a fake clock
+and assert when a node is given up on, cleared, and let back after its
+cool-off. Connection-manager tests assert one `node.unreached` for each
+walk that reached the node at no endpoint, and none otherwise. One test
+runs the stats module and the connection manager together against an
+endpoint nothing listens on, with a fake clock: the node stops being
+dialed after the configured number of walks, and is dialed again once its
+cool-off ends, or once a node list it sends arrives.
 
 ---
 
@@ -1585,12 +1640,12 @@ ones that cut across more than one step, and so want deciding before
 either step is built:
 
 - **What an inbound connection is worth** (Step 24) — it changes the peer
-  mix, and Step 26 needs to know whether an inbound connection clears a
-  give-up.
-- **One rule for giving up, not two** (Steps 23 and 26) — per-address
-  consecutive failures and per-node attempt caps have to be designed
-  together. Step 23's half is decided: failures drop only addresses that
-  have never worked, and nothing ages an address out.
+  mix. Step 26 settled its own part: a node list an inbound peer sends
+  naming itself clears a give-up.
+- **One rule for giving up, not two** (Steps 23 and 26) — settled. Step
+  23's failures drop only addresses that have never worked, and nothing
+  ages an address out. Step 26 counts failed walks per node, which relays
+  cannot reset, and gives up on a node for a cool-off.
 - **Whether a zero factor should zero the eviction score** (Step 28) —
   the difference between a formula that evicts and one that does not.
 - **How stats hands candidate lists to other modules** (Steps 28, 29,

@@ -209,3 +209,25 @@ def test_addresses_not_worth_trying_are_pruned_before_deriving(
     assert candidates(lists) == [
         {"node_id": str(PEER_ID), "endpoints": ["http://peer.example:4300"]}
     ]
+
+
+def test_a_node_given_up_on_is_left_out_of_the_candidate_list_but_not_forgotten(
+    database: StatsDatabase, storage: StorageConfig
+) -> None:
+    deriver = ListDeriver(
+        database, storage, StatsConfig(max_node_failures=2), [SELF_ENDPOINT], SELF_ID
+    )
+    database.record_address_worked(PEER_ID, "http://203.0.113.9:4300")
+    database.record_address_worked(OTHER_PEER_ID, "http://198.51.100.7:8080")
+
+    for _ in range(2):
+        database.record_node_unreached(PEER_ID)
+
+    lists = deriver.derive()
+
+    assert candidates(lists) == [
+        {"node_id": str(OTHER_PEER_ID), "endpoints": ["http://198.51.100.7:8080"]}
+    ]
+    assert [address.endpoint for address in database.node_addresses(PEER_ID)] == [
+        "http://203.0.113.9:4300"
+    ]

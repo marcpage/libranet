@@ -315,6 +315,18 @@ class StatsConfig(_Section):
     # forgotten; only the cap above removes it. Provisional default.
     max_address_failures: int = Field(default=5, ge=1)
 
+    # A peer is given up on once this many attempts in a row to reach it,
+    # each dialing every address it was to be tried at, have failed: it is
+    # left out of the candidate list for `node_cool_off_seconds`, then tried
+    # once more. Reaching it, or a node list it sends naming itself, starts
+    # the count again. Its addresses and statistics are kept (Phase 2 Step
+    # 26). Provisional default.
+    max_node_failures: int = Field(default=5, ge=1)
+
+    # How long a peer given up on is left out before it is tried again.
+    # Provisional default.
+    node_cool_off_seconds: float = Field(default=86400.0, gt=0)
+
 
 class BackupConfig(_Section):
     """Keeping local directories backed up into CAS (Step 19)."""

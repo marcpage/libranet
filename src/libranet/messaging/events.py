@@ -38,6 +38,7 @@ class EventType(StrEnum):
     CONNECTION_OPENED = "connection.opened"  # connections → stats
     CONNECTION_CLOSED = "connection.closed"  # connections → stats
     CONNECTION_FAILED = "connection.failed"  # connections → stats
+    NODE_UNREACHED = "node.unreached"  # connections → stats (Phase 2 Step 26)
     DATA_SENT = "data.sent"  # connections → stats
     FETCH_REQUESTED = "fetch.requested"  # fetcher → connections
     FETCH_ATTEMPTED = "fetch.attempted"  # connections → stats

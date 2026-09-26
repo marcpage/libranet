@@ -18,7 +18,7 @@ from threading import Event, Thread
 from time import monotonic, sleep, time
 from typing import Any, Callable, Iterator, Mapping, Sequence
 
-from pytest import LogCaptureFixture, MonkeyPatch, fixture, raises
+from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.prefix import matching_bits, nearest
@@ -28,6 +28,7 @@ from libranet.config.models import (
     LibranetConfig,
     NetworkConfig,
     PeerConfig,
+    StatsConfig,
     StorageConfig,
 )
 from libranet.connections.module import ConnectionsModule, connections_module_factory
@@ -41,6 +42,7 @@ from libranet.messaging.envelope import Message, make_message
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import MessageQueue, ModuleQueues
 from libranet.modules import ModuleName
+from libranet.stats.module import StatsModule
 from libranet.supervision.stubs import StubModule
 from libranet.webserver.config_credential import load_config_credential
 from libranet.webserver.config_handlers import NodeDescription
@@ -520,6 +522,7 @@ def test_a_node_is_dialed_at_each_endpoint_in_turn_until_one_reaches_it(
     (failed,) = bus.events(EventType.CONNECTION_FAILED)
     assert (failed["node_id"], failed["endpoint"]) == (node_id, dead)
     assert module.connected == {peers[0].node_id: peers[0].endpoint}
+    assert bus.events(EventType.NODE_UNREACHED) == []
 
 
 def test_an_unreachable_peer_rests_once_every_endpoint_has_failed(
@@ -541,6 +544,9 @@ def test_an_unreachable_peer_rests_once_every_endpoint_has_failed(
     assert [(message["node_id"], message["endpoint"]) for message in failed] == [
         (str(OTHER_ID), endpoint) for endpoint in endpoints
     ]
+    # One attempt at the node, however many endpoints it tried.
+    (unreached,) = bus.wait_for(EventType.NODE_UNREACHED)
+    assert unreached["node_id"] == str(OTHER_ID)
 
     module.on_idle()
     sleep(0.2)
@@ -550,6 +556,7 @@ def test_an_unreachable_peer_rests_once_every_endpoint_has_failed(
     module.on_idle()
 
     bus.wait_for(EventType.CONNECTION_FAILED, count=4)
+    bus.wait_for(EventType.NODE_UNREACHED, count=2)
 
 
 def test_an_unreachable_seed_of_unknown_id_is_not_reported(
@@ -566,8 +573,64 @@ def test_an_unreachable_seed_of_unknown_id_is_not_reported(
     modules.start(with_peers(config, seed_file=seeds))
 
     wait_until(lambda: f"Could not connect to {endpoint}" in caplog.text, "the attempt to fail")
+    sleep(0.2)
     # Stats count attempts per node id, and this one has none to count against.
     assert bus.events(EventType.CONNECTION_FAILED) == []
+    assert bus.events(EventType.NODE_UNREACHED) == []
+
+
+@mark.parametrize("comeback", ["its cool-off ends", "it sends its node list"])
+def test_a_node_that_stays_unreachable_is_given_up_on_until_it_may_be_back(
+    modules: Modules, config: LibranetConfig, bus: Bus, now: list[float], comeback: str
+) -> None:
+    # Stats and the connection manager together, as a node runs them.
+    giving_up = config.model_copy(update={"stats": StatsConfig(max_node_failures=2)})
+    endpoint = f"http://127.0.0.1:{closed_port()}"
+    stats = StatsModule(
+        ModuleName.STATS,
+        ModuleQueues(inbox=Queue(), outbox=Queue()),
+        giving_up,
+        clock=lambda: now[0],
+        poll_interval=0.01,
+    )
+    stats.on_start()
+
+    try:
+        stats.database.record_address_worked(OTHER_ID, endpoint)
+        stats.derive()
+        module = modules.start(giving_up)
+        stats.handle(bus.wait_for(EventType.NODE_UNREACHED)[-1])
+        now[0] += RETRY_DELAY
+        module.on_idle()
+        stats.handle(bus.wait_for(EventType.NODE_UNREACHED, count=2)[-1])
+
+        # Stats has given up on the node, so its new candidate list leaves it out.
+        module.handle(node_list_updated(giving_up))
+        now[0] += RETRY_DELAY
+        module.on_idle()
+        sleep(0.2)
+        assert len(bus.events(EventType.NODE_UNREACHED)) == 2
+
+        if comeback == "its cool-off ends":
+            now[0] += giving_up.stats.node_cool_off_seconds
+            stats.on_idle()
+
+        else:
+            stats.handle(
+                make_message(
+                    EventType.NODES_RECEIVED,
+                    ModuleName.WEBSERVER,
+                    {"nodes": {endpoint: str(OTHER_ID)}, "sources": {endpoint: "advertised"}},
+                )
+            )
+            stats.derive()
+
+        module.handle(node_list_updated(giving_up))
+
+        bus.wait_for(EventType.NODE_UNREACHED, count=3)
+
+    finally:
+        stats.on_stop()
 
 
 def test_an_endpoint_that_is_this_node_is_not_dialed_again(
@@ -724,6 +787,8 @@ def test_an_endpoint_answering_as_a_node_not_connected_is_admitted_as_that_node(
     assert (failed["node_id"], failed["endpoint"]) == (str(OTHER_ID), peers[0].endpoint)
     assert module.connected == {peers[0].node_id: peers[0].endpoint}
     assert bus.events(EventType.ADDRESS_VERIFIED) == []
+    # The walk stopped there, so the node expected has not yet been tried everywhere.
+    assert bus.events(EventType.NODE_UNREACHED) == []
 
 
 def test_a_connection_the_peer_closes_is_reported_and_rests(

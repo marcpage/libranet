@@ -141,6 +141,12 @@ stats:
   # worked is kept however often it fails, so a peer that is offline for a
   # while is not forgotten.
   max_address_failures: 5
+  # Provisional: a peer is given up on once this many attempts in a row to
+  # reach it, at every address known for it, have failed. It is not dialed
+  # for node_cool_off_seconds (a day), then it is tried once more. Reaching
+  # it, or the peer connecting to this node, starts the count again.
+  max_node_failures: 5
+  node_cool_off_seconds: 86400.0
 
 backup:
   # Provisional: how often each backup job's directory is looked at for

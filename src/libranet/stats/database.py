@@ -175,15 +175,17 @@ class StatsDatabase:
     def record_connection_opened(self, node_id: ContentId, endpoint: str | None = None) -> None:
         """Count a connection to ``node_id`` that was established.
 
-        A connection that opened was also attempted, so both counters move.
-        ``endpoint``, where it was reached, is an address that worked.
+        A connection that opened was also attempted, so both counters move,
+        and the node was reached, so its failures in a row start again from
+        none. ``endpoint``, where it was reached, is an address that worked.
         """
         self._execute(
             "INSERT INTO node_stats (node_id, connection_attempts, successful_connections, "
             "last_connected) VALUES (:node_id, 1, 1, :now) "
             "ON CONFLICT (node_id) DO UPDATE SET "
             "connection_attempts = connection_attempts + 1, "
-            "successful_connections = successful_connections + 1, last_connected = :now",
+            "successful_connections = successful_connections + 1, last_connected = :now, "
+            "consecutive_failures = 0",
             {"node_id": str(node_id), "now": self._clock()},
         )
 
@@ -216,12 +218,56 @@ class StatsDatabase:
         """Count one attempt to fetch data from ``node_id`` by its outcome."""
         self._add_to_node(node_id, _DATA_FOUND if found else _DATA_NOT_FOUND, 1)
 
+    def record_node_unreached(self, node_id: ContentId) -> int:
+        """Count an attempt that dialed ``node_id`` at every address it was to be tried at.
+
+        None of them reached it. The count runs until the node is reached,
+        or heard from (:meth:`record_heard_from`).
+
+        Returns:
+            How many such attempts there have now been in a row.
+        """
+        self._execute(
+            "INSERT INTO node_stats (node_id, consecutive_failures, last_failure) "
+            "VALUES (:node_id, 1, :now) "
+            "ON CONFLICT (node_id) DO UPDATE SET "
+            "consecutive_failures = consecutive_failures + 1, last_failure = :now",
+            {"node_id": str(node_id), "now": self._clock()},
+        )
+        stats = self.node_stats(node_id)
+        return 0 if stats is None else stats.consecutive_failures
+
+    def record_heard_from(self, node_ids: Iterable[ContentId]) -> None:
+        """Note that each of ``node_ids`` sent a node list naming itself just now.
+
+        It is up, so its failures in a row start again from none. A node
+        with no statistics yet has none to clear.
+        """
+        self._connection.executemany(
+            "UPDATE node_stats SET consecutive_failures = 0 WHERE node_id = :node_id",
+            [{"node_id": str(node_id)} for node_id in node_ids],
+        )
+
     def node_stats(self, node_id: ContentId) -> NodeStats | None:
         """What is known about ``node_id``, or ``None`` if nothing is."""
         row = self._query_one(
             "SELECT * FROM node_stats WHERE node_id = :node_id", {"node_id": str(node_id)}
         )
         return None if row is None else NodeStats.from_row(row)
+
+    def given_up_nodes(self, max_failures: int, cool_off_seconds: float) -> set[str]:
+        """The node ids not to dial for now, as text.
+
+        A node is given up on once ``max_failures`` or more attempts in a
+        row have failed to reach it, until ``cool_off_seconds`` have passed
+        since the last of them ended.
+        """
+        rows = self._query(
+            "SELECT node_id FROM node_stats "
+            "WHERE consecutive_failures >= :max_failures AND last_failure > :cutoff",
+            {"max_failures": max_failures, "cutoff": self._clock() - cool_off_seconds},
+        )
+        return {row["node_id"] for row in rows}
 
     # -- Where nodes may be reached --------------------------------------
 

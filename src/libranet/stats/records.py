@@ -60,6 +60,8 @@ class NodeStats:
     bytes_sent: int = 0
     data_found: int = 0
     data_not_found: int = 0
+    consecutive_failures: int = 0
+    last_failure: float | None = None
 
     @classmethod
     def from_row(cls, row: Row) -> NodeStats:
@@ -75,6 +77,8 @@ class NodeStats:
             bytes_sent=row["bytes_sent"],
             data_found=row["data_found"],
             data_not_found=row["data_not_found"],
+            consecutive_failures=row["consecutive_failures"],
+            last_failure=row["last_failure"],
         )
 
 
