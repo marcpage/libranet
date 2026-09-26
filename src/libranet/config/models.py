@@ -106,6 +106,12 @@ class PeerConfig(_Section):
     # the connection open. Provisional default.
     seek_refresh_seconds: float = Field(default=30.0, gt=0)
 
+    # Once a search of the connected peers for content has found nothing, how
+    # long before a new request for it starts another (HighLevelDesign §4.7).
+    # Longer than any Retry-After peers send, or searches for content no node
+    # holds restart each other for ever (Phase 2 Step 27). Provisional default.
+    failed_search_hold_seconds: float = Field(default=300.0, gt=0)
+
     # Path to a JSON seed list overriding the one shipped with the package.
     # Used only while the node knows no peers at all.
     seed_file: Path | None = None

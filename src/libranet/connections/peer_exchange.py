@@ -16,7 +16,7 @@ any:
 establish who the peer is; :meth:`PeerExchange.first_contact` takes the
 rest. While the connection lasts, :meth:`PeerExchange.refresh` repeats steps
 4 and 6 (§3.3), and :meth:`PeerExchange.retrieve` is step 7 for a single
-content id, for fetching it on demand. :meth:`PeerExchange.hand_off` pushes
+content id, for searching for it on demand (HighLevelDesign §4.7). :meth:`PeerExchange.hand_off` pushes
 one content id the peer did not ask for, for it to keep: content this node
 is letting go (HighLevelDesign §4.5), or new content (§4.10). Steps 1 and 2
 wait for their
@@ -54,6 +54,7 @@ defined yet (HttpApi §10.7.2).
 """
 
 from __future__ import annotations
+from dataclasses import dataclass
 from http import HTTPStatus
 from json import dumps, loads
 from logging import Logger
@@ -96,6 +97,18 @@ _JSON_HEADERS: Final[Mapping[str, str]] = {"Content-Type": JSON_CONTENT_TYPE}
 
 _Item = TypeVar("_Item")
 _Parsed = TypeVar("_Parsed")
+
+
+@dataclass(frozen=True)
+class Retrieval:
+    """How a peer answered a request for content.
+
+    ``retry_after`` is the seconds a peer that did not send it asked to be
+    left before being asked again, when it said (HttpApi §5.2).
+    """
+
+    found: bool
+    retry_after: int | None = None
 
 
 class PeerExchange:
@@ -197,8 +210,8 @@ class PeerExchange:
         (seek,) = session.exchange([PeerRequest("GET", SEEK_PATH)])
         self._push(session, self._sought_by(session, seek))
 
-    def retrieve(self, session: PeerSession, content_id: ContentId) -> bool:
-        """Ask the peer for ``content_id``; whether it sent it.
+    def retrieve(self, session: PeerSession, content_id: ContentId) -> Retrieval:
+        """Ask the peer for ``content_id``; whether it sent it, and if not, when to ask again.
 
         Content sent is handed to the validator before this returns.
 
@@ -206,7 +219,11 @@ class PeerExchange:
             OSError: as :meth:`first_contact`.
         """
         (response,) = session.exchange([PeerRequest("GET", _data_path(content_id))])
-        return self._receive_content(session, content_id, response)
+
+        if self._receive_content(session, content_id, response):
+            return Retrieval(found=True)
+
+        return Retrieval(found=False, retry_after=response.retry_after)
 
     def hand_off(self, session: PeerSession, content_id: ContentId, body: bytes) -> bool:
         """Push ``content_id``, stored as ``body``, for the peer to keep; whether it accepted it.

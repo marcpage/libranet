@@ -703,8 +703,8 @@ cool-off ends, or once a node list it sends arrives.
 
 ## Step 27 — Directed Search for Data
 
-**Issue:** #59, whose body settles the algorithm. **Depends on:** Phase 1
-Steps 11, 12; Step 22.
+**Issue:** #59, whose two passes HighLevelDesign §4.7 now describes.
+**Depends on:** Phase 1 Steps 11, 12; Step 22.
 
 Part of this exists. `ConnectionsModule._fetch` already walks connected
 peers best-match-first and stops at the first that has the content, and
@@ -724,30 +724,94 @@ Settled in the issue:
   catch a peer that acquired the content while the first pass was going
   on.
 - After two passes with nothing found, the search stops. The content is
-  not asked for again until a new request for it arrives.
+  not asked for again until a new request for it arrives. *A ruling below
+  holds off a new request for a while.*
 - A request for content already being searched for is ignored rather than
   queued: the search under way will answer it.
 
-**Open questions:**
+Ruled before building:
 
-- Whether the second pass asks peers that connected during the first pass
-  and were therefore never asked, or only re-asks the ones that said no.
-  Re-asking everyone is simpler and matches "see if anyone got it".
-- Whether the per-request map is bounded, and how an abandoned search is
-  forgotten — the map is keyed by content id and grows with every miss,
-  so it needs a cap or a TTL like the fetcher's `ask_interval_seconds`
-  cache.
-- Whether a peer that failed at the transport level (an `OSError`, not a
-  404) counts as asked.
-- How this interacts with the seek list: content nobody had stays in this
-  node's `/data/seek` list today, which is how a peer connecting later
-  gets asked. Stopping after two passes must not stop that.
+- **§4.7 is amended to the issue's two passes.** It had described passes
+  that go one peer deeper each time (the best two, then the best three,
+  and so on), and had not said when a data request that finds nothing
+  stops. Its deepening passes stay for search requests, which are not
+  built.
+- **The second pass asks a peer again only once the `Retry-After` of its
+  `503` has passed** (HttpApi §5.2), or this node's own
+  `network.retry_after_seconds` if it gave none. A search waiting for its
+  second pass holds no fetch worker.
+- **Every connected peer is asked.** Each ask goes to the best-matching
+  peer connected at that moment that the pass has not asked yet, so one
+  that connects during the search takes its place in the order, and the
+  second pass asks every peer whatever it answered before.
+- **A search that found nothing is held for a fixed time,**
+  `peers.failed_search_hold_seconds` (300). Until then, a new request for
+  the content starts no search; it is still answered `503`, and the
+  content stays in the seek list. After that, a request starts a fresh
+  search. §4.7 says so too, since it is a rule for the network rather
+  than a local choice.
+
+How the hold was arrived at. Every node asked for content it lacks
+answers `503` and starts a search of its own, and the fetcher forwards a
+miss at most once per `network.retry_after_seconds`. Once searches last
+longer than that, a node still searching asks one whose search has just
+ended, which starts again and in turn restarts others, so a search for
+content nobody has never ends. Phase 1 escaped it only because a walk
+ends well inside the fetcher's window.
+
+- The first rulings were §4.7's deepening passes, each paced by the
+  peers' `Retry-After` (about 2.5 minutes with 32 peers), and a hold as
+  long as the search ran. A live run of five nodes restarted five or six
+  searches on each node over 165 seconds before dying out, and a
+  simulation of 40 to 100 nodes never stopped. A search set off near the
+  end of another runs about as long, so it reaches that node just as its
+  hold ends.
+- With deepening passes, a peer deep in a neighbor's order is first asked
+  late in that neighbor's search, so a hold has to outlast the longest
+  search anywhere, about 31 times the largest `Retry-After`. In the
+  simulation, holds of 2 or 3 times the search, 300 or 600 seconds, and a
+  hold that lasts while requests keep coming all looped once some nodes
+  sent a `Retry-After` of 30 seconds. Only an hour always stopped.
+- With two passes, every peer is asked within the first walk, and every
+  mix simulated, with `Retry-After` from 5 to 60 seconds, went quiet
+  within about one `Retry-After`, each node searching once, even with a
+  60-second hold. That, and about 64 asks per node per miss rather than
+  530, is why the user ruled for the issue's two passes.
+
+My calls, not yet reviewed:
+
+- **A search that asked no peer is not held,** since there is nothing to
+  loop with: a node with no connection, as at startup, searches again as
+  soon as the content is asked for again.
+- **A peer whose ask fails at the transport level counts as asked for
+  that pass.** Any such failure closes the connection, so the peer drops
+  out anyway; if it has connected again by the second pass, it is asked
+  then.
+- **The second pass waits for the peers' `Retry-After`, but no longer
+  than this node's own,** and a peer still not due when its turn comes is
+  passed over. A peer that asks to be left longer does not stretch the
+  search, and is never asked early.
+- **Content stored by any route ends its search** (`data.stored`), and
+  clears a hold on it. Nothing is published for the fetcher then.
+- **A search that raises ends as one that found nothing,** hold
+  included, as `fetch.failed` did before.
+- **A `Retry-After` is read only as a number of seconds**
+  (`PeerResponse.retry_after`); an HTTP date counts as none.
+  `PeerExchange.retrieve` returns a `Retrieval`, whether the peer sent the
+  content and, if not, its `Retry-After`.
+- **Searches resume from `on_idle`,** as resting candidates and seek-list
+  refreshes do, so under a steady stream of messages a second pass can
+  start late, never early.
+- **The seek list is untouched.** The content stays in it until it
+  arrives or its entry ages out, so first contact still asks new peers
+  for it. Prefix searches are out of scope, and batching is Step 45.
 
 **Testable in isolation:** module tests with several fixture peers at
-known node ids, asserting the ask order, that a peer answering 404 is not
-asked again in the same pass, that the second pass happens, that a third
-does not, and that a duplicate request while a search is running is
-dropped.
+known node ids and a fake clock, asserting the ask order of each pass,
+that the second pass waits for the peers' `Retry-After` and then asks
+every peer again, that a duplicate request while a search is running is
+dropped, and that a request is held off for
+`peers.failed_search_hold_seconds`, then starts a fresh one.
 
 ---
 
@@ -1656,10 +1720,12 @@ either step is built:
 - **What counts as an "access"** (Steps 28 and 29) — `data_stats` counts
   external requests, internal requests, and pushes today, and application
   accesses are not recorded at all.
-- **Five steps change a specification** (Steps 16, 41, 46, 49, and
+- **Six steps change a specification** (Steps 16, 27, 41, 46, 49, and
   52) — as with the push of new content (#119), the specification change
-  is agreed and written first. Four are made: HighLevelDesign §4.9.1 for
+  is agreed and written first. Five are made: HighLevelDesign §4.9.1 for
   the local discovery service and what is done with it (Step 16),
+  HighLevelDesign §4.7 for a data request's two passes, how the second is
+  paced, and the pause after one that found nothing (Step 27),
   HighLevelDesign §4.5 and §6 for a single hand-off copy (Step 46),
   BundleSpecification §2.4 for extended attributes (Step 52), and
   BackupSpecification §3.3 and §5 for holding back metadata-only changes

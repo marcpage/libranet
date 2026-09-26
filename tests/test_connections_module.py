@@ -32,6 +32,7 @@ from libranet.config.models import (
     StorageConfig,
 )
 from libranet.connections.module import ConnectionsModule, connections_module_factory
+from libranet.connections.peer_exchange import Retrieval
 from libranet.connections.peer_session import PeerSession
 from libranet.connections.reverse_dns import ResolveNames
 from libranet.identity.authentication import request_authenticator
@@ -52,6 +53,8 @@ from libranet.webserver.server import LibranetHTTPServer, RequestHandler, build_
 TIMEOUT = 5.0
 RETRY_DELAY = 30.0
 SEEK_REFRESH = 10.0
+# The Retry-After a fixture peer sends with a 503.
+PEER_RETRY_AFTER = 7
 
 HELD = b"content the client holds"
 HELD_ID = ContentId.for_data(HELD, "sha256")
@@ -131,7 +134,7 @@ class FixturePeer:
             ("127.0.0.1", 0),
             build_router(
                 self.storage,
-                7,
+                PEER_RETRY_AFTER,
                 StubModule(ModuleName.WEBSERVER, queues).publish,
                 request_authenticator(LibranetConfig(storage=self.storage)),
                 allow_unsigned_api_reads=True,
@@ -199,6 +202,15 @@ def peers(tmp_path: Path) -> Iterator[list[FixturePeer]]:
         peer.stop()
 
 
+@fixture
+def four_peers(tmp_path: Path) -> Iterator[list[FixturePeer]]:
+    peers = [FixturePeer(tmp_path / f"one-of-four-{index}") for index in range(4)]
+    yield peers
+
+    for peer in peers:
+        peer.stop()
+
+
 def write_seeds(path: Path, seeds: Mapping[str, str | None]) -> Path:
     path.write_text(dumps({"nodes": seeds}))
     return path
@@ -222,6 +234,12 @@ def config(tmp_path: Path) -> LibranetConfig:
 
 def with_peers(config: LibranetConfig, **settings: Any) -> LibranetConfig:
     return config.model_copy(update={"peers": config.peers.model_copy(update=settings)})
+
+
+def with_retry_after(config: LibranetConfig, seconds: int) -> LibranetConfig:
+    """``config`` with the ``Retry-After`` this node sends, and leaves a peer that names none."""
+    network = config.network.model_copy(update={"retry_after_seconds": seconds})
+    return config.model_copy(update={"network": network})
 
 
 @fixture
@@ -345,6 +363,28 @@ def best_and_other(
         for node_id in nearest(content_id.hash, [peer.node_id for peer in peers], 2)
     )
     return best, other
+
+
+def by_match(content_id: ContentId, peers: Sequence[FixturePeer]) -> list[str]:
+    """The node ids of ``peers``, the one that best matches ``content_id``'s hash first."""
+    node_ids = [peer.node_id for peer in peers]
+    return [str(node_id) for node_id in nearest(content_id.hash, node_ids, len(node_ids))]
+
+
+def asked(bus: Bus, content_id: ContentId) -> list[str]:
+    """The peers asked for ``content_id`` so far, in the order they answered."""
+    return [
+        message["node_id"]
+        for message in bus.events(EventType.FETCH_ATTEMPTED, hash=content_id.hash)
+    ]
+
+
+def wait_for_second_pass(caplog: LogCaptureFixture, content_id: ContentId, times: int = 1) -> None:
+    """Wait until searches for ``content_id`` have waited ``times`` times for their second pass."""
+    wait_until(
+        lambda: caplog.text.count(f"The search for {content_id} asks again in") >= times,
+        "the search to wait for its second pass",
+    )
 
 
 def content_nearer_to(node_id: ContentId, others: Sequence[ContentId]) -> tuple[ContentId, bytes]:
@@ -899,17 +939,23 @@ def test_a_fetch_no_connected_peer_can_answer_fails(
     identity: NodeIdentity,
     peers: list[FixturePeer],
     bus: Bus,
+    now: list[float],
+    caplog: LogCaptureFixture,
 ) -> None:
+    caplog.set_level(DEBUG, logger="libranet")
     write_lists(config.storage, node_list(identity, *peers))
-    module = modules.start(config)
+    module = modules.start(with_retry_after(config, PEER_RETRY_AFTER))
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)
 
     module.handle(fetch_request(NOWHERE_ID))
+    wait_for_second_pass(caplog, NOWHERE_ID)
+    now[0] += PEER_RETRY_AFTER
+    module.on_idle()
 
     (failed,) = bus.wait_for(EventType.FETCH_FAILED)
     assert failed["hash"] == NOWHERE_ID.hash
-    attempts = bus.wait_for(EventType.FETCH_ATTEMPTED, count=2, hash=NOWHERE_ID.hash)
-    assert {message["node_id"] for message in attempts} == {str(peer.node_id) for peer in peers}
+    attempts = bus.events(EventType.FETCH_ATTEMPTED, hash=NOWHERE_ID.hash)
+    assert [message["node_id"] for message in attempts] == by_match(NOWHERE_ID, peers) * 2
     assert not any(message["found"] for message in attempts)
 
 
@@ -947,6 +993,256 @@ def test_an_event_it_does_not_handle_is_not_taken_for_a_fetch(
 
     sleep(0.2)
     assert bus.events(EventType.FETCH_FAILED) == []
+
+
+def test_the_second_pass_asks_every_peer_again_once_its_retry_after_has_passed(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    four_peers: list[FixturePeer],
+    bus: Bus,
+    now: list[float],
+    caplog: LogCaptureFixture,
+) -> None:
+    caplog.set_level(DEBUG, logger="libranet")
+    three = four_peers[:3]
+    write_lists(config.storage, node_list(identity, *three))
+    # Longer than the peers' own, so theirs is what the second pass waits for.
+    module = modules.start(with_retry_after(config, PEER_RETRY_AFTER + 3))
+    bus.wait_for(EventType.CONNECTION_OPENED, count=3)
+    best = by_match(NOWHERE_ID, three)
+
+    module.handle(fetch_request(NOWHERE_ID))
+
+    wait_for_second_pass(caplog, NOWHERE_ID)
+    assert asked(bus, NOWHERE_ID) == best
+
+    now[0] += PEER_RETRY_AFTER - 1
+    module.on_idle()
+    sleep(0.2)
+    assert asked(bus, NOWHERE_ID) == best
+
+    now[0] += 1
+    module.on_idle()
+    (failed,) = bus.wait_for(EventType.FETCH_FAILED)
+
+    assert failed["hash"] == NOWHERE_ID.hash
+    assert asked(bus, NOWHERE_ID) == best + best
+
+
+def test_the_second_pass_waits_no_longer_than_this_nodes_own_retry_after(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    four_peers: list[FixturePeer],
+    bus: Bus,
+    now: list[float],
+    caplog: LogCaptureFixture,
+) -> None:
+    caplog.set_level(DEBUG, logger="libranet")
+    three = four_peers[:3]
+    write_lists(config.storage, node_list(identity, *three))
+    module = modules.start(with_retry_after(config, PEER_RETRY_AFTER - 2))
+    bus.wait_for(EventType.CONNECTION_OPENED, count=3)
+    module.handle(fetch_request(NOWHERE_ID))
+    wait_for_second_pass(caplog, NOWHERE_ID)
+
+    now[0] += PEER_RETRY_AFTER - 2
+    module.on_idle()
+
+    bus.wait_for(EventType.FETCH_FAILED)
+    # Every peer asked to be left longer, so each is passed over.
+    assert asked(bus, NOWHERE_ID) == by_match(NOWHERE_ID, three)
+
+
+def test_with_no_retry_after_of_its_own_a_search_never_waits(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    four_peers: list[FixturePeer],
+    bus: Bus,
+) -> None:
+    three = four_peers[:3]
+    write_lists(config.storage, node_list(identity, *three))
+    module = modules.start(with_retry_after(config, 0))
+    bus.wait_for(EventType.CONNECTION_OPENED, count=3)
+
+    module.handle(fetch_request(NOWHERE_ID))
+
+    bus.wait_for(EventType.FETCH_FAILED)
+    assert asked(bus, NOWHERE_ID) == by_match(NOWHERE_ID, three)
+
+
+def test_a_peer_that_cannot_be_asked_is_passed_over_until_the_second_pass(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    four_peers: list[FixturePeer],
+    bus: Bus,
+    now: list[float],
+    caplog: LogCaptureFixture,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    caplog.set_level(DEBUG, logger="libranet")
+    three = four_peers[:3]
+    write_lists(config.storage, node_list(identity, *three))
+    module = modules.start(with_retry_after(config, PEER_RETRY_AFTER))
+    bus.wait_for(EventType.CONNECTION_OPENED, count=3)
+    best = by_match(NOWHERE_ID, three)
+    retrieve = module.exchange.retrieve
+    tried: list[str] = []
+
+    def failing_for_best(session: PeerSession, content_id: ContentId) -> Retrieval:
+        tried.append(str(session.node_id))
+
+        if tried[-1] == best[0]:
+            raise ConnectionResetError("gone")
+
+        return retrieve(session, content_id)
+
+    monkeypatch.setattr(module.exchange, "retrieve", failing_for_best)
+
+    module.handle(fetch_request(NOWHERE_ID))
+    wait_for_second_pass(caplog, NOWHERE_ID)
+    now[0] += PEER_RETRY_AFTER
+    module.on_idle()
+
+    bus.wait_for(EventType.FETCH_FAILED)
+    assert tried == best + best
+    assert asked(bus, NOWHERE_ID) == best[1:] + best[1:]
+
+
+def test_a_search_that_goes_wrong_ends_as_failed(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    caplog: LogCaptureFixture,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+
+    def broken(session: PeerSession, content_id: ContentId) -> Retrieval:
+        raise RuntimeError("broken")
+
+    monkeypatch.setattr(module.exchange, "retrieve", broken)
+
+    module.handle(fetch_request(NOWHERE_ID))
+
+    (failed,) = bus.wait_for(EventType.FETCH_FAILED)
+    assert failed["hash"] == NOWHERE_ID.hash
+    assert f"Searching for {NOWHERE_ID} failed" in caplog.text
+
+
+def test_a_peer_that_connects_during_a_search_takes_its_place_in_the_order(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    four_peers: list[FixturePeer],
+    bus: Bus,
+    now: list[float],
+    caplog: LogCaptureFixture,
+) -> None:
+    caplog.set_level(DEBUG, logger="libranet")
+    best = by_match(NOWHERE_ID, four_peers)
+    others = [peer for peer in four_peers if str(peer.node_id) != best[0]]
+    write_lists(config.storage, node_list(identity, *others))
+    module = modules.start(with_retry_after(config, PEER_RETRY_AFTER))
+    bus.wait_for(EventType.CONNECTION_OPENED, count=3)
+    module.handle(fetch_request(NOWHERE_ID))
+    wait_for_second_pass(caplog, NOWHERE_ID)
+    assert asked(bus, NOWHERE_ID) == best[1:]
+
+    write_lists(config.storage, node_list(identity, *four_peers))
+    module.handle(node_list_updated(config))
+    bus.wait_for(EventType.CONNECTION_OPENED, count=4)
+    now[0] += PEER_RETRY_AFTER
+    module.on_idle()
+
+    bus.wait_for(EventType.FETCH_FAILED)
+    assert asked(bus, NOWHERE_ID) == best[1:] + best
+
+
+def test_a_search_that_found_nothing_holds_off_another_for_a_while(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    four_peers: list[FixturePeer],
+    bus: Bus,
+    now: list[float],
+    caplog: LogCaptureFixture,
+) -> None:
+    caplog.set_level(DEBUG, logger="libranet")
+    hold = 60
+    write_lists(config.storage, node_list(identity, *four_peers[:3]))
+    module = modules.start(
+        with_retry_after(with_peers(config, failed_search_hold_seconds=hold), PEER_RETRY_AFTER)
+    )
+    bus.wait_for(EventType.CONNECTION_OPENED, count=3)
+    module.handle(fetch_request(NOWHERE_ID))
+    wait_for_second_pass(caplog, NOWHERE_ID)
+
+    # The search under way answers this one.
+    module.handle(fetch_request(NOWHERE_ID))
+    now[0] += PEER_RETRY_AFTER
+    module.on_idle()
+    bus.wait_for(EventType.FETCH_FAILED)
+    assert len(asked(bus, NOWHERE_ID)) == 6
+
+    now[0] += hold - 1
+    module.handle(fetch_request(NOWHERE_ID))
+    assert f"Not searching for {NOWHERE_ID} for 1 seconds" in caplog.text
+
+    now[0] += 1
+    module.handle(fetch_request(NOWHERE_ID))
+    wait_for_second_pass(caplog, NOWHERE_ID, times=2)
+    assert len(asked(bus, NOWHERE_ID)) == 9
+    assert len(bus.events(EventType.FETCH_FAILED)) == 1
+
+
+def test_a_search_that_asked_no_peer_is_not_held(
+    modules: Modules, config: LibranetConfig, bus: Bus
+) -> None:
+    module = modules.start(config)
+
+    module.handle(fetch_request(NOWHERE_ID))
+    bus.wait_for(EventType.FETCH_FAILED)
+    module.handle(fetch_request(NOWHERE_ID))
+
+    bus.wait_for(EventType.FETCH_FAILED, count=2)
+
+
+def test_content_stored_during_a_search_ends_it(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    four_peers: list[FixturePeer],
+    bus: Bus,
+    now: list[float],
+    caplog: LogCaptureFixture,
+) -> None:
+    caplog.set_level(DEBUG, logger="libranet")
+    write_lists(config.storage, node_list(identity, *four_peers[:3]))
+    module = modules.start(with_retry_after(config, PEER_RETRY_AFTER))
+    bus.wait_for(EventType.CONNECTION_OPENED, count=3)
+    module.handle(fetch_request(NOWHERE_ID))
+    wait_for_second_pass(caplog, NOWHERE_ID)
+
+    module.handle(stored(NOWHERE_ID, OTHER_ID))
+    now[0] += PEER_RETRY_AFTER
+    module.on_idle()
+    sleep(0.2)
+
+    assert len(asked(bus, NOWHERE_ID)) == 3
+    assert bus.events(EventType.FETCH_FAILED) == []
+    assert f"{NOWHERE_ID} arrived while being searched for" in caplog.text
+
+    # It did not fail, so nothing holds off the next.
+    module.handle(fetch_request(NOWHERE_ID))
+    bus.wait_for(EventType.FETCH_ATTEMPTED, count=6, hash=NOWHERE_ID.hash)
 
 
 # -- Handing off -----------------------------------------------------------

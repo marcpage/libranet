@@ -35,6 +35,8 @@ _TOKEN: Final = compile_pattern(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
 # Field content may hold anything but control characters other than tab.
 _FIELD_VALUE: Final = compile_pattern(r"[^\x00-\x08\x0a-\x1f\x7f]*")
 _CHUNK_SIZE: Final = compile_pattern(rb"[0-9A-Fa-f]{1,16}")
+# A ``Retry-After`` given as a number of seconds (RFC 9110 §10.2.3).
+_DELAY_SECONDS: Final = compile_pattern(r"[0-9]+")
 _BODILESS_STATUSES: Final = frozenset({HTTPStatus.NO_CONTENT, HTTPStatus.NOT_MODIFIED})
 
 
@@ -64,6 +66,16 @@ class PeerResponse:
     headers: Mapping[str, str]
     body: bytes = b""
     closes_connection: bool = False
+
+    @property
+    def retry_after(self) -> int | None:
+        """The seconds the peer's ``Retry-After`` asks it be left, or ``None`` if it names none.
+
+        Only a number of seconds is read, as HttpApi §5.2 gives it; the HTTP
+        date RFC 9110 §10.2.3 also allows counts as none.
+        """
+        value = self.headers.get("Retry-After", "").strip()
+        return int(value) if _DELAY_SECONDS.fullmatch(value) else None
 
 
 class _Framing(Enum):
