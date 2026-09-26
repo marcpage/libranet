@@ -533,45 +533,6 @@ a real multicast socket.
 
 ---
 
-## Step 24 — Counting Incoming Connections in the Peer Mix
-
-**Issue:** #54. **Depends on:** Phase 1 Steps 6, 11; Step 23.
-
-- `PeerMix.choose` (Step 25) is given the peers this node has dialed or is
-  dialing. Peers that dialed *this* node are invisible to it, so a node
-  whose inbound peers already cover half the identifier space still dials
-  out to cover it again, spending connections on reach it has.
-- The web server knows who an inbound peer is: a signed request is
-  authenticated and carries the peer's node id. Nothing publishes that
-  today — `nodes.received` names endpoints, not the sender — so the first
-  piece of work is an event that reports an identified inbound peer, and
-  the connection manager holding a view of who is currently inbound.
-
-**Open questions**, and the reason this step needs a decision before it
-is written:
-
-- **What an inbound connection is worth.** Libranet peers talk over
-  HTTP, so the peer that dialed owns the request direction. An inbound
-  connection does not let this node fetch from that peer, hand content off
-  to it, or ask it anything at all. It is reach *to* this node, not
-  *from* it. So "count it" cannot mean "treat that bucket as covered" —
-  the two connections do different jobs. The plausible readings are: it
-  counts toward the total connection budget but never marks a bucket
-  covered; it marks a bucket covered at a discount, breaking ties only;
-  or it only suppresses dialing a peer already connected the other way.
-  Pick one and say why.
-- **What counts as current.** A live socket the web server still holds,
-  or any peer seen within a window. The web server is request-scoped and
-  may not hold a socket open between requests, which argues for a window.
-- **Whether a peer connected inbound should be dialed anyway**, since an
-  outbound connection to it is what makes fetching possible.
-
-**Testable in isolation:** `PeerMix.choose` is pure; its tests grow a
-second argument. Module-level tests use a fake queue to
-deliver inbound-peer events and assert which candidates get dialed.
-
----
-
 ## Step 25 — A Second Mix Inside This Node's Own Bucket
 
 **Issue:** #55. **Depends on:** Phase 1 Step 11; Step 24 if that lands
