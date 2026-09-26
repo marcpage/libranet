@@ -428,7 +428,9 @@ def test_a_response_the_peer_did_not_prove_closes_the_session(
 
     unverifiable = session_expecting(peer.identity.node_id)
 
-    with raises(PeerAuthenticationError, match="failed verification"):
+    with raises(
+        PeerAuthenticationError, match=r"^Response to GET /data/nodes from .* failed verification"
+    ):
         unverifiable.exchange([PeerRequest("GET", "/data/nodes")])
 
     assert unverifiable.closed and unverifiable.closed_locally
@@ -436,7 +438,9 @@ def test_a_response_the_peer_did_not_prove_closes_the_session(
     peer.identity.publish_public_key(client_store)
     impostor = session_expecting(OTHER_ID)
 
-    with raises(PeerAuthenticationError, match="was signed by"):
+    with raises(
+        PeerAuthenticationError, match=r"^Response to GET /data/nodes from .* was signed by"
+    ):
         impostor.exchange([PeerRequest("GET", "/data/nodes")])
 
     assert impostor.closed and impostor.closed_locally
@@ -535,7 +539,7 @@ def test_an_unusable_list_is_ignored(
 
     exchange.first_contact(session)
 
-    assert "Ignoring a list from" in caplog.text
+    assert f"Ignoring a list from {session.endpoint} (GET /data/nodes)" in caplog.text
     assert published(queues, EventType.NODES_RECEIVED) == []
 
 

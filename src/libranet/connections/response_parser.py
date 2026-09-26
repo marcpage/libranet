@@ -3,7 +3,8 @@
 Bytes are fed in as they arrive and complete responses are taken out in
 order. Whether a response has a body depends on the request it answers (a
 response to ``HEAD`` never does, RFC 9112 §6.3), so the caller names that
-request's method each time it asks for the next response.
+request each time it asks for the next response, and the response names it
+in turn (Step 22).
 
 A body is framed by ``Content-Length``, by chunked transfer coding, or by
 the peer closing the connection. The client never offers any other transfer
@@ -38,14 +39,26 @@ _BODILESS_STATUSES: Final = frozenset({HTTPStatus.NO_CONTENT, HTTPStatus.NOT_MOD
 
 
 @dataclass(frozen=True)
+class RequestLine:
+    """Which request a response answers; ``target`` is its path and any query string."""
+
+    method: str
+    target: str
+
+    def __str__(self) -> str:
+        return f"{self.method} {self.target}"
+
+
+@dataclass(frozen=True)
 class PeerResponse:
-    """One complete response from a peer.
+    """One complete response from a peer, to ``request``.
 
     ``headers`` are looked up case-insensitively; a field sent more than once
     has its values joined with commas (RFC 9110 §5.3). ``closes_connection``
     is set when the peer sends nothing more on the connection after it.
     """
 
+    request: RequestLine
     status: int
     reason: str
     headers: Mapping[str, str]
@@ -97,13 +110,13 @@ class ResponseParser:
         """Add bytes received from the connection."""
         self._buffer += data
 
-    def next_response(self, method: str) -> PeerResponse | None:
-        """The response to a ``method`` request, or ``None`` until all of it has arrived.
+    def next_response(self, request: RequestLine) -> PeerResponse | None:
+        """The response to ``request``, or ``None`` until all of it has arrived.
 
         Raises:
             MalformedResponseError: the bytes received are not a usable response.
         """
-        head = self._final_head(method)
+        head = self._final_head(request.method)
 
         if head is None:
             return None
@@ -114,19 +127,19 @@ class ResponseParser:
             if len(self._buffer) < end:
                 return None
 
-            return self._take(head, bytes(self._buffer[head.size : end]), end)
+            return self._take(request, head, bytes(self._buffer[head.size : end]), end)
 
         if head.framing is _Framing.CHUNKED:
             chunked = self._chunked_body(head.size)
-            return None if chunked is None else self._take(head, *chunked)
+            return None if chunked is None else self._take(request, head, *chunked)
 
         if len(self._buffer) - head.size > self._max_body_bytes:
             raise MalformedResponseError(f"Response body exceeds {self._max_body_bytes} bytes")
 
         return None
 
-    def finish(self, method: str) -> PeerResponse | None:
-        """The last response once the peer has closed the connection, if one remains.
+    def finish(self, request: RequestLine) -> PeerResponse | None:
+        """The response to ``request`` once the peer has closed the connection, if one remains.
 
         For use once :meth:`next_response` has returned everything it can:
         what remains is either nothing or a response whose body ran until the
@@ -138,17 +151,19 @@ class ResponseParser:
         if not self._buffer:
             return None
 
-        head = self._final_head(method)
+        head = self._final_head(request.method)
 
         if head is None or head.framing is not _Framing.UNTIL_CLOSE:
             raise MalformedResponseError("The connection closed partway through a response")
 
-        return self._take(head, bytes(self._buffer[head.size :]), len(self._buffer))
+        return self._take(request, head, bytes(self._buffer[head.size :]), len(self._buffer))
 
-    def _take(self, head: _Head, body: bytes, end: int) -> PeerResponse:
-        """``head``'s response with ``body``, after dropping its ``end`` bytes."""
+    def _take(self, request: RequestLine, head: _Head, body: bytes, end: int) -> PeerResponse:
+        """``head``'s response to ``request`` with ``body``, after dropping its ``end`` bytes."""
         del self._buffer[:end]
-        return PeerResponse(head.status, head.reason, head.headers, body, head.closes_connection)
+        return PeerResponse(
+            request, head.status, head.reason, head.headers, body, head.closes_connection
+        )
 
     def _final_head(self, method: str) -> _Head | None:
         """The next non-interim response head, dropping interim ones, if it has arrived."""

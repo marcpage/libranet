@@ -5,9 +5,15 @@ from __future__ import annotations
 from pytest import mark, raises
 
 from libranet.connections.errors import MalformedResponseError
-from libranet.connections.response_parser import MAX_HEAD_BYTES, PeerResponse, ResponseParser
+from libranet.connections.response_parser import (
+    MAX_HEAD_BYTES,
+    PeerResponse,
+    RequestLine,
+    ResponseParser,
+)
 
 MAX_BODY_BYTES = 1024
+GET = RequestLine("GET", "/data/sha256/0a")
 
 
 def _parser(*chunks: bytes) -> ResponseParser:
@@ -19,8 +25,8 @@ def _parser(*chunks: bytes) -> ResponseParser:
     return parser
 
 
-def _response(parser: ResponseParser, method: str = "GET") -> PeerResponse:
-    response = parser.next_response(method)
+def _response(parser: ResponseParser, request: RequestLine = GET) -> PeerResponse:
+    response = parser.next_response(request)
     assert response is not None
     return response
 
@@ -33,10 +39,10 @@ def test_response_framed_by_length() -> None:
     response = _response(parser)
 
     assert response == PeerResponse(
-        200, "OK", {"Content-Type": "text/plain", "Content-Length": "5"}, b"hello"
+        GET, 200, "OK", {"Content-Type": "text/plain", "Content-Length": "5"}, b"hello"
     )
     assert not parser.buffered
-    assert parser.next_response("GET") is None
+    assert parser.next_response(GET) is None
 
 
 def test_pipelined_responses_come_out_in_order() -> None:
@@ -53,13 +59,48 @@ def test_pipelined_responses_come_out_in_order() -> None:
     ]
 
 
+def test_each_response_names_the_request_it_answers() -> None:
+    put = RequestLine("PUT", "/data/sha256/0a")
+    head = RequestLine("HEAD", "/data/sha256/0b")
+    seek = RequestLine("GET", "/data/seek")
+    search = RequestLine("GET", "/data/search/0c?limit=1")
+    nodes = RequestLine("GET", "/data/nodes")
+    parser = _parser(
+        b"HTTP/1.1 202 Accepted\r\nContent-Length: 0\r\n\r\n"
+        b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n"
+        b"HTTP/1.1 100 Continue\r\n\r\n"
+        b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nseek"
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n6\r\nsearch\r\n0\r\n\r\n"
+        b"HTTP/1.1 200 OK\r\n\r\nnodes until close"
+    )
+
+    responses = [_response(parser, request) for request in (put, head, seek, search)]
+
+    assert parser.next_response(nodes) is None
+
+    last = parser.finish(nodes)
+
+    assert last is not None
+    assert [(r.request, r.status, r.body) for r in [*responses, last]] == [
+        (put, 202, b""),
+        (head, 200, b""),
+        (seek, 200, b"seek"),
+        (search, 200, b"search"),
+        (nodes, 200, b"nodes until close"),
+    ]
+
+
+def test_request_line_reads_as_method_and_target() -> None:
+    assert str(RequestLine("GET", "/data/search/0c?limit=1")) == "GET /data/search/0c?limit=1"
+
+
 def test_response_arriving_a_byte_at_a_time() -> None:
     raw = b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello"
     parser = _parser()
 
     for index in range(len(raw) - 1):
         parser.feed(raw[index : index + 1])
-        assert parser.next_response("GET") is None
+        assert parser.next_response(GET) is None
 
     parser.feed(raw[-1:])
 
@@ -87,7 +128,7 @@ def test_head_response_has_no_body() -> None:
         b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi"
     )
 
-    assert _response(parser, "HEAD").body == b""
+    assert _response(parser, RequestLine("HEAD", "/a")).body == b""
     assert _response(parser).body == b"hi"
 
 
@@ -123,7 +164,7 @@ def test_chunked_body_waits_for_every_piece() -> None:
     raw = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n3\r\nabc\r\n0\r\n\r\n"
 
     for end in range(len(raw)):
-        assert _parser(raw[:end]).next_response("GET") is None
+        assert _parser(raw[:end]).next_response(GET) is None
 
     assert _response(_parser(raw)).body == b"abc"
 
@@ -131,18 +172,18 @@ def test_chunked_body_waits_for_every_piece() -> None:
 def test_body_running_until_close() -> None:
     parser = _parser(b"HTTP/1.1 200 OK\r\n\r\nall of ", b"this")
 
-    assert parser.next_response("GET") is None
+    assert parser.next_response(GET) is None
 
-    response = parser.finish("GET")
+    response = parser.finish(GET)
 
     assert response is not None
     assert response.body == b"all of this"
     assert response.closes_connection
-    assert parser.finish("GET") is None
+    assert parser.finish(GET) is None
 
 
 def test_finish_with_nothing_left_is_none() -> None:
-    assert _parser().finish("GET") is None
+    assert _parser().finish(GET) is None
 
 
 @mark.parametrize(
@@ -156,10 +197,10 @@ def test_finish_with_nothing_left_is_none() -> None:
 def test_close_partway_through_a_response_is_malformed(partial: bytes) -> None:
     parser = _parser(partial)
 
-    assert parser.next_response("GET") is None
+    assert parser.next_response(GET) is None
 
     with raises(MalformedResponseError):
-        parser.finish("GET")
+        parser.finish(GET)
 
 
 @mark.parametrize(
@@ -200,7 +241,7 @@ def test_connection_close_is_reported(head: bytes, closes: bool) -> None:
 )
 def test_malformed_responses(raw: bytes) -> None:
     with raises(MalformedResponseError):
-        _parser(raw).next_response("GET")
+        _parser(raw).next_response(GET)
 
 
 def test_repeated_identical_content_length_is_accepted() -> None:
@@ -231,14 +272,14 @@ def test_body_over_the_limit_is_refused_whatever_its_framing() -> None:
         + b"\r\n1\r\nx\r\n0\r\n\r\n",
     ):
         with raises(MalformedResponseError, match="exceeds"):
-            _parser(raw).next_response("GET")
+            _parser(raw).next_response(GET)
 
 
 def test_oversized_head_is_refused() -> None:
     parser = _parser(b"HTTP/1.1 200 OK\r\nX: " + b"a" * MAX_HEAD_BYTES)
 
     with raises(MalformedResponseError, match="head exceeds"):
-        parser.next_response("GET")
+        parser.next_response(GET)
 
 
 def test_oversized_chunked_framing_is_refused() -> None:
@@ -248,4 +289,4 @@ def test_oversized_chunked_framing_is_refused() -> None:
     )
 
     with raises(MalformedResponseError, match="framing exceeds"):
-        parser.next_response("GET")
+        parser.next_response(GET)

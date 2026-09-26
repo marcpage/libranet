@@ -21,6 +21,7 @@ from libranet.cas.store import CasStore, source_of_truth_store
 from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
 from libranet.connections.errors import ConnectionClosedError, MalformedResponseError
 from libranet.connections.peer_connection import PeerConnection, open_connection
+from libranet.connections.response_parser import RequestLine
 from libranet.identity.authentication import request_authenticator
 from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity
@@ -115,6 +116,9 @@ def test_requests_are_all_sent_before_any_response_arrives(
     )
 
     assert [future.result(TIMEOUT).body for future in futures] == [t.encode() for t in targets]
+    assert [future.result(TIMEOUT).request for future in futures] == [
+        RequestLine("GET", target) for target in targets
+    ]
     assert caplog.text == ""
 
 
@@ -133,7 +137,9 @@ def test_response_to_head_has_no_body(pair: tuple[PeerConnection, socket]) -> No
     peer.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n" + _response(200, b"hello"))
 
     assert head.result(TIMEOUT).body == b""
+    assert head.result(TIMEOUT).request == RequestLine("HEAD", "/a")
     assert get.result(TIMEOUT).body == b"hello"
+    assert get.result(TIMEOUT).request == RequestLine("GET", "/b")
 
 
 def test_mismatched_request_path_echo_is_logged(
@@ -197,7 +203,7 @@ def test_connection_close_response_fails_the_rest(pair: tuple[PeerConnection, so
 
 def test_body_running_until_close_is_delivered(pair: tuple[PeerConnection, socket]) -> None:
     connection, peer = pair
-    future = connection.request("GET", "/")
+    future = connection.request("GET", "/all")
     _read_requests(peer, 1)
 
     peer.sendall(b"HTTP/1.1 200 OK\r\n\r\nall of ")
@@ -205,6 +211,7 @@ def test_body_running_until_close_is_delivered(pair: tuple[PeerConnection, socke
     peer.close()
 
     assert future.result(TIMEOUT).body == b"all of it"
+    assert future.result(TIMEOUT).request == RequestLine("GET", "/all")
 
 
 def test_close_partway_through_a_response_is_malformed(
@@ -481,6 +488,9 @@ def test_pipelined_requests_to_a_live_server_get_their_own_responses(
 
     assert [response.headers[REQUEST_PATH_HEADER] for response in responses] == [
         target for _, target, _ in requests
+    ]
+    assert [response.request for response in responses] == [
+        RequestLine(method, target) for method, target, _ in requests
     ]
     assert [response.status for response in responses] == [200, 503, 202, 200, 404, 405, 200]
     assert responses[0].body == responses[-1].body == CONTENT

@@ -109,13 +109,15 @@ class PeerSession:
         except SignatureError as error:
             self.close()
             raise PeerAuthenticationError(
-                f"Response from {self._endpoint} failed verification: {error}"
+                f"Response to {response.request} from {self._endpoint} failed verification: "
+                f"{error}"
             ) from error
 
         if signer != self._node_id:
             self.close()
             raise PeerAuthenticationError(
-                f"Response from {self._endpoint} was signed by {signer}, not {self._node_id}"
+                f"Response to {response.request} from {self._endpoint} was signed by {signer}, "
+                f"not {self._node_id}"
             )
 
         return response
