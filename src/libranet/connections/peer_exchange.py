@@ -333,14 +333,21 @@ class PeerExchange:
     ) -> _Parsed | None:
         """A list the peer sent, or ``None`` if it sent none or one that is unusable."""
         if response.status != HTTPStatus.OK:
-            self._logger.debug("%s sent no list (status %s)", session.endpoint, response.status)
+            self._logger.debug(
+                "%s sent no list (%s, status %s)",
+                session.endpoint,
+                response.request,
+                response.status,
+            )
             return None
 
         try:
             return parse(decode_list(response.body, self._storage.max_decompressed_list_bytes))
 
         except InvalidListError as error:
-            self._logger.warning("Ignoring a list from %s: %s", session.endpoint, error)
+            self._logger.warning(
+                "Ignoring a list from %s (%s): %s", session.endpoint, response.request, error
+            )
             return None
 
     def _push(self, session: PeerSession, sought: Sequence[ContentId]) -> None:

@@ -7,9 +7,9 @@ future at once. A send thread writes queued requests in order without
 waiting on any response, and a receive thread waits on the socket with
 ``selectors``, parses responses as they arrive, and completes the futures.
 A peer answers pipelined requests in the order it received them (RFC 9112
-§9.3.2), so each response belongs to the oldest request still waiting. The
-``X-Request-Path`` a Libranet peer echoes is only compared, and a mismatch
-logged, to help debugging.
+§9.3.2), so each response belongs to the oldest request still waiting, and
+names it (Step 22). The ``X-Request-Path`` a Libranet peer echoes is only
+compared, and a mismatch logged, to help debugging.
 
 Anything that leaves later responses in doubt closes the connection and
 fails every request still waiting: the peer closing it, a malformed
@@ -37,7 +37,7 @@ from typing import Callable, Final, Mapping
 
 from libranet.connections.errors import ConnectionClosedError, MalformedResponseError
 from libranet.connections.request_encoding import encode_request
-from libranet.connections.response_parser import PeerResponse, ResponseParser
+from libranet.connections.response_parser import PeerResponse, RequestLine, ResponseParser
 from libranet.identity.signatures import MessageSigner
 from libranet.webserver.server import REQUEST_PATH_HEADER
 
@@ -48,8 +48,7 @@ _RECEIVE_BYTES: Final = 64 * 1024
 class _Waiting:
     """A request sent, or queued to send, whose response has not arrived."""
 
-    method: str
-    target: str
+    request: RequestLine
     future: Future[PeerResponse]
 
 
@@ -146,7 +145,7 @@ class PeerConnection:
                 self._last_progress = monotonic()
 
             # Queued under the lock, so requests are sent in the order they wait.
-            self._waiting.append(_Waiting(method, target, future))
+            self._waiting.append(_Waiting(RequestLine(method, target), future))
             self._outgoing.put(data)
 
         return future
@@ -262,7 +261,7 @@ class PeerConnection:
             MalformedResponseError: a response is malformed, or arrived unasked.
         """
         while not self._closed and (waiting := self._oldest()) is not None:
-            response = self._parser.next_response(waiting.method)
+            response = self._parser.next_response(waiting.request)
 
             if response is None:
                 return
@@ -283,7 +282,7 @@ class PeerConnection:
         if waiting is None:
             return
 
-        response = self._parser.finish(waiting.method)
+        response = self._parser.finish(waiting.request)
 
         if response is not None:
             self._complete(waiting, response)
@@ -294,11 +293,10 @@ class PeerConnection:
 
         echoed = response.headers.get(REQUEST_PATH_HEADER)
 
-        if echoed is not None and echoed != waiting.target:
+        if echoed is not None and echoed != response.request.target:
             self._logger.warning(
-                "Response to %s %s from %s has %s %s",
-                waiting.method,
-                waiting.target,
+                "Response to %s from %s has %s %s",
+                response.request,
                 self._host,
                 REQUEST_PATH_HEADER,
                 echoed,

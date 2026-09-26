@@ -17,7 +17,7 @@ from libranet.connections.peer_exchange import PeerExchange
 from libranet.connections.peer_mix import bucket_of, choose_candidates
 from libranet.connections.peer_session import PeerRequest, PeerSession
 from libranet.connections.request_encoding import encode_request
-from libranet.connections.response_parser import PeerResponse, ResponseParser
+from libranet.connections.response_parser import PeerResponse, RequestLine, ResponseParser
 
 __all__ = [
     "Candidate",
@@ -31,6 +31,7 @@ __all__ = [
     "PeerRequest",
     "PeerResponse",
     "PeerSession",
+    "RequestLine",
     "ResponseParser",
     "bucket_of",
     "choose_candidates",

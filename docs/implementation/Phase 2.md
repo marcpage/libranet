@@ -208,6 +208,33 @@ round-trips, and stats rows, with no network anywhere.
   returning request/response pairs. If the response names its request,
   the list is enough and no caller changes.
 
+Found while building: the parser was given only the method. The target
+was known one layer up, in `PeerConnection`'s queue of waiting requests.
+It is now given both, and passes the target through untouched.
+
+My calls, not yet reviewed:
+
+- The response copies the fields rather than holding the `PeerRequest`.
+  A frozen `RequestLine`, a method and a target, lives in
+  `response_parser.py`, and `PeerResponse.request` is one.
+  `PeerRequest` sits in `peer_session.py`, which imports the parser, so
+  holding it would make the two import each other. It would also keep
+  each pushed body alive as long as its response, and `_identify` sends
+  its first two requests without a `PeerRequest`. `str()` of a
+  `RequestLine` is `GET /data/seek`, for log messages.
+- `request` is `PeerResponse`'s first field, since it has no sensible
+  default and the fields after it do.
+- `exchange` keeps returning a list, so its callers do not change. The
+  batches in `_push` and `_ask_for_sought` still match by position; Steps
+  27 and 45 are where a response is first matched by what it names.
+- Two messages that could not say which request they meant now do. A
+  response failing verification in `PeerSession` names its request, since
+  in a pipeline of eight the endpoint alone does not say which failed.
+  And a list the peer did not send, or sent unusable, is logged with its
+  request, which says whether it was the node list or the seek list.
+- `PeerConnection` checks the `X-Request-Path` echo against the target
+  the response names, instead of its own copy of it.
+
 **Testable in isolation:** parser tests that feed a pipelined byte stream
 and assert each response names the request it answers — including a
 `HEAD` with no body, an interim `1xx` that is skipped, and a response
