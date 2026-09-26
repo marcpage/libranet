@@ -101,42 +101,6 @@ The conventions of Phase 1 §3 carry over. In addition:
 
 ---
 
-## Step 16 (Optional) — mDNS/DNS-SD Local Discovery
-
-**Issue:** #20. **Depends on:** Phase 1 Step 11.
-
-Moved from Phase 1 unchanged. It was always optional and always outside
-protocol conformance, and it is more useful once a node can hold more
-than one address per peer (Step 23).
-
-- Optional local-network bootstrapping (HighLevelDesign §4.9.1) using the
-  `zeroconf` library, layered on top of the node-list mechanism — not a
-  replacement for it, and with no bearing on protocol conformance.
-- A node advertising itself publishes at minimum its node identifier and
-  a reachable address and port, so a peer that discovers it can go
-  straight to the handshake (§4.9.1).
-- What discovery produces is an address for a node id, which is exactly
-  what Step 23's stats module takes: a discovered peer is recorded as an
-  untested address, learned locally, and dialed in its turn. Built after
-  Step 23, this step publishes a message and stops there; built before it,
-  it has to write into the node list instead.
-
-**Open questions:**
-
-- Whether advertising is on by default or opt-in, and the configuration
-  that controls advertising and browsing separately — a node may want to
-  find LAN peers without announcing itself.
-- Whether a discovered LAN address is published in `/data/nodes` (Step 23
-  publishes verified LAN addresses, which outsiders cannot use but LAN
-  peers can).
-
-**Testable in isolation:** can be developed and tested independently of
-the wide-area discovery path, and left out of a build entirely without
-affecting anything else. The `zeroconf` interface is injected, so tests
-never touch a real multicast socket.
-
----
-
 ## Step 21 — Mixed-Case Hashes on Every Input Path
 
 **Issue:** #61. **Depends on:** Phase 1 Steps 2, 5, 13.
@@ -327,6 +291,83 @@ the answering-as-somebody-else rules: the second endpoint is recorded for
 the answering node and as a failure for the stale id, it is not redialed
 while the first connection is open even after the fake clock passes the
 retry delay, and it is dialed once that connection closes.
+
+---
+
+## Step 16 (Optional) — mDNS/DNS-SD Local Discovery
+
+**Issue:** #20. **Depends on:** Phase 1 Step 11; Step 23.
+
+Moved from Phase 1 unbuilt. The protocol leaves local discovery optional
+and outside conformance (HighLevelDesign §4.9.1), but a node that has it
+does it by default. It is built after Step 23, which gives it somewhere
+to put what it finds: an address for a node id.
+
+Settled:
+
+- **`zeroconf` is a required dependency.** It is LGPL-2.1-or-later, the
+  first copyleft dependency of a public-domain project. It is required
+  rather than an optional extra, so discovery never has to handle a
+  missing library.
+- **Advertising and browsing are separate settings, both on by
+  default**, in a `local_discovery` config section (`advertise`,
+  `browse`) documented in `examples/libranet.yaml`. A node can find LAN
+  peers without announcing itself. A node whose `listen_address` is
+  loopback never advertises, since nothing off the host could reach it.
+- **The service follows HighLevelDesign §4.9.1**: type
+  `_libranet._tcp.local.`, TXT keys `txtvers=1` and `id=<node id>`, and
+  the SRV port is `listen_port`. It is not `external_port`, which is for
+  peers beyond the gateway.
+- **A discovered peer gives untested addresses for a node id**: its
+  host's `.local` name from the SRV record, and its addresses from the A
+  records. Stats records each one with a new source, learned locally,
+  alongside Step 23's five. The connection manager publishes them in
+  `nodes.received`, marked with that source, and stops there. Each is
+  dialed in its turn.
+- **The `.local` name is kept alongside the addresses**, because it
+  outlasts a change of address on the LAN. A node whose resolver cannot
+  look it up gets failures for it. Step 23 then tries it after the
+  addresses that work, and eventually drops it.
+- **Published by Step 23's rule, with no special case.** Once dialed
+  successfully, a discovered address or `.local` name is verified, and
+  it is published in `/data/nodes`, so LAN peers learn it too. Until
+  then it is untested and is not published.
+- **No special place in the peer mix** (HighLevelDesign §4.6). While
+  buckets are uncovered, the mix already dials peers in covered ones, so
+  a node with few peers connects to every LAN peer it finds. Once the
+  mix is full, LAN peers compete by bucket like any other.
+
+My calls, not yet reviewed:
+
+- It runs inside the connections module, not in a process of its own
+  (§1). That module already holds the node's identity and publishes
+  `nodes.received`. A `LocalDiscovery` object owns the `Zeroconf`
+  instance, starting in `on_start` and closing in `on_stop`. `zeroconf`
+  runs its own threads, and the browse callback only publishes.
+- The instance name is `libranet-` and the first 12 hex digits of the
+  node id, and `zeroconf` renames it on a conflict. The whole id, 71
+  characters, does not fit a 63-byte instance label.
+- IP addresses come from A records only. That is IPv4, which matches
+  the IPv4 listener. A node listening on `0.0.0.0` advertises every
+  non-loopback IPv4 interface; one listening on a specific address
+  advertises that address alone.
+- The SRV record this node advertises names the host's own `.local`
+  name, the one the operating system's mDNS responder already answers
+  for.
+- A service whose `id` is missing, unusable, or this node's own is
+  ignored. A service that goes away changes nothing: stats' failure
+  counts and aging retire its addresses.
+- No rate limit beyond Step 23's per-node bound. Anyone on the LAN can
+  already POST a node list, and the handshake rejects a false identity.
+- On macOS, `zeroconf` shares UDP port 5353 with the system's
+  mDNSResponder, which also answers for the host's `.local` name. The
+  first build checks that browsing and advertising both work there, and
+  that the two answering for one name do not conflict.
+
+**Testable in isolation:** can be developed and tested independently of
+the wide-area discovery path, and switched off without affecting
+anything else. The `zeroconf` interface is injected, so tests never touch
+a real multicast socket.
 
 ---
 
@@ -1357,7 +1398,7 @@ into tiers; steps within a tier are independent of each other.
 | G | 46 (#121), 28 (#68), then 29 (#69), 30 (#71) | 46 is small, and its specification change is made. 28 moves candidate selection into stats, which is where 29 and 30 also need to reach. 30 answers a hand-off question 46 raises. |
 | H | 47 (#98), 48 (#84, #114), then 49 (#82, #83), then 31 (#73) and 50 (#85) | The backup chain. 48's record is what 49 compares against, 31 extends, and 50 updates from notifications. 47 fixes a comparison 49 relies on. Touches only bundles and backup, so it can run in parallel with D through G, by anyone not in the connections code. |
 | I | 51 (#99), 52 (#101) | Independent of everything above. 52's specification change is made; it needs a new dependency on macOS, and is best after 49, which it relies on to hold back attribute-only changes. |
-| — | 16 (#20) | Optional throughout. Cheapest after 23, which gives it somewhere to put what it discovers. |
+| — | 16 (#20) | Optional throughout. Built after 23, which gives it somewhere to put what it discovers. Its specification change is made. |
 
 ## 6. Deferred Past Phase 2
 
@@ -1396,14 +1437,15 @@ either step is built:
 - **What counts as an "access"** (Steps 28 and 29) — `data_stats` counts
   external requests, internal requests, and pushes today, and application
   accesses are not recorded at all.
-- **Four steps change a specification** (Steps 41, 46, 49, and 52) —
-  as with the push of new content (#119), the specification change is
-  agreed and written first. Three are made: HighLevelDesign §4.5 and §6
-  for a single hand-off copy (Step 46), BundleSpecification §2.4 for
-  extended attributes (Step 52), and BackupSpecification §3.3 and §5 for
-  holding back metadata-only changes (Step 49). HttpApi §2.3, if
-  `/config` moves to an origin of its own, is decided with #108 (Step
-  41).
+- **Five steps change a specification** (Steps 16, 41, 46, 49, and
+  52) — as with the push of new content (#119), the specification change
+  is agreed and written first. Four are made: HighLevelDesign §4.9.1 for
+  the local discovery service and what is done with it (Step 16),
+  HighLevelDesign §4.5 and §6 for a single hand-off copy (Step 46),
+  BundleSpecification §2.4 for extended attributes (Step 52), and
+  BackupSpecification §3.3 and §5 for holding back metadata-only changes
+  (Step 49). HttpApi §2.3, if `/config` moves to an origin of its own, is
+  decided with #108 (Step 41).
 - **What a blocking node answers a hand-off** (Steps 30 and 46) — with a
   single hand-off copy, a node that takes content it blocks and deletes
   it is enough to take that content off the network.

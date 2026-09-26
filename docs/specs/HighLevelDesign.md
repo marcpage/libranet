@@ -356,12 +356,35 @@ configuration.
 - Support for this discovery mechanism has no bearing on Karma or protocol
   conformance; it is a bootstrapping convenience only.
 
-**TBD:**
+The service a node advertises:
 
-- Service type name (e.g. `_libranet._tcp.local.`).
-- Exact service metadata (TXT record) schema.
-- Interaction with the sixteen-connection outgoing policy (§4.6) when local
-  peers are discovered.
+- The service type is `_libranet._tcp.local.`.
+- The instance name is the node's choice and carries no meaning. A node
+  identifier does not fit in a 63-byte instance label, so the TXT record
+  carries it. On a name conflict, the node picks another name (RFC 6762 §9).
+- The SRV record names the node's host by its `.local` host name, and gives the
+  port the node listens on for peers. On the local network that port may differ
+  from the port the node advertises in `/data/nodes`, which is the one a gateway
+  forwards (HTTP API §10.1).
+- The TXT record holds `txtvers=1`, the version of this schema, and
+  `id=<node identifier>`, for example `id=sha256/…`. A discovering node ignores
+  keys it does not recognize, and ignores a service with no usable `id`.
+- The service is plain HTTP. How an HTTPS node advertises itself is decided
+  when HTTPS is specified.
+
+What a discovering node does with it:
+
+- The host's `.local` name and each of its addresses are untested addresses for
+  the advertised node identifier, the same as entries in a received node list.
+  The handshake confirms the identity.
+- The `.local` name is kept because it outlasts a change of address on the
+  local network. A node that cannot resolve it finds out by dialing it, and
+  then tries it after the addresses that work, as with any address that fails.
+- Each appears in the node's own `/data/nodes` only after the node has
+  connected to it, like any other address (HTTP API §10.6). A `.local` name
+  that works is published, so other nodes on the same network learn it too.
+- Discovered peers have no special place in the outgoing connection policy
+  (§4.6). They are candidates like any other.
 
 ### 4.10 Pushing New Data
 
