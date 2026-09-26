@@ -451,7 +451,7 @@ def test_stats_rows_hold_what_any_spelling_named(stats: StatsModule, spell: Spel
     assert data_stats is not None and data_stats.external_requests == 1
     assert node_stats is not None and node_stats.successful_connections == 1
     assert database.content_ids_near(CONTENT_ID.hash, 1) == [CONTENT_ID]
-    assert database.known_endpoints() == [(PEER_ENDPOINT, str(PEER_ID))]
+    assert database.candidate_endpoints() == [(str(PEER_ID), [PEER_ENDPOINT])]
     assert database.seek_values(SeekKind.DATA) == [str(CONTENT_ID)]
     assert database.seek_values(SeekKind.SEARCH) == [PREFIX]
 

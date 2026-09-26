@@ -6,12 +6,26 @@ receiving node puts the connection's source address in its place before the
 list is stored, so ``localhost`` is never passed on to a node that was not on
 that connection. Only node lists are resolved this way; ``localhost``
 anywhere else keeps its ordinary meaning.
+
+A received list is published as ``nodes.received``, and the payload says how
+each of the sender's own entries was learned (Phase 2 Step 23)::
+
+    nodes.received  {"nodes": {"http://203.0.113.42:4300": "sha256/<hex>"},
+                     "sources": {"http://203.0.113.42:4300": "observed"}}
+
+An entry resolved from ``localhost`` was *observed*: its address is the one
+the connection came from. The sender's other entries were *advertised*.
+``sources`` leaves out the rest, which the sender merely relayed.
 """
 
 from __future__ import annotations
+from dataclasses import dataclass
 from ipaddress import IPv6Address, ip_address
-from typing import Final
+from typing import Final, Mapping
 from urllib.parse import urlsplit, urlunsplit
+
+from libranet.cas.content_id import ContentId
+from libranet.messaging.events import AddressSource
 
 LOCALHOST: Final = "localhost"
 _SCHEMES: Final = frozenset({"http", "https"})
@@ -45,6 +59,40 @@ def resolve_endpoint(endpoint: str, source_address: str) -> str | None:
         return None
 
     return urlunsplit(parts._replace(netloc=host if port is None else f"{host}:{port}"))
+
+
+@dataclass(frozen=True)
+class NodeListSender:
+    """The node a node list came from, and the address its connection came from."""
+
+    node_id: ContentId
+    address: str
+
+    def received(self, nodes: Mapping[str, ContentId]) -> dict[str, dict[str, str]]:
+        """The ``nodes.received`` payload for ``nodes``, a node list this sender sent.
+
+        Every ``localhost`` endpoint is resolved to :attr:`address`, and an
+        entry whose endpoint cannot be stored is dropped. If two entries end
+        up with the same endpoint, the later one is kept.
+        """
+        received: dict[str, str] = {}
+        sources: dict[str, str] = {}
+
+        for endpoint, node_id in nodes.items():
+            resolved = resolve_endpoint(endpoint, self.address)
+
+            if resolved is None:
+                continue
+
+            received[resolved] = str(node_id)
+            sources.pop(resolved, None)
+
+            if node_id == self.node_id:
+                observed = resolved != endpoint
+                source = AddressSource.OBSERVED if observed else AddressSource.ADVERTISED
+                sources[resolved] = source.value
+
+        return {"nodes": received, "sources": sources}
 
 
 def _url_host(address: str) -> str | None:

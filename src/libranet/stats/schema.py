@@ -18,10 +18,15 @@ Four tables cover what the implementation plan asks a node to remember:
     as the v1 node-list priority; ``connected_seconds`` accumulates the time
     those connections lasted.
 
-``node_endpoints``
-    The last endpoint each node id was seen at, which is what a node list
-    carries (HttpApi §10.6). Keyed by node id because the list names one
-    address per identity.
+``node_addresses``
+    Every place a node id may be reached, keyed by node id and endpoint
+    (Phase 2 Step 23): a node can have many, and an address is just a
+    possibly ephemeral location of one. ``source`` is the strongest
+    :class:`~libranet.messaging.events.AddressSource` it was learned from,
+    and ``last_learned`` the last time it was. The rest record trying it:
+    ``first_success`` and ``last_success`` are when a connection to the node
+    there first and last proved the node's identity, and
+    ``consecutive_failures`` counts the attempts since the last that did.
 
 ``seek_entries``
     Outstanding requests: content ids and search prefixes that have been
@@ -79,10 +84,17 @@ SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
     )
     """,
     """
-    CREATE TABLE IF NOT EXISTS node_endpoints (
-        node_id TEXT PRIMARY KEY,
+    CREATE TABLE IF NOT EXISTS node_addresses (
+        node_id TEXT NOT NULL,
         endpoint TEXT NOT NULL,
-        last_seen REAL NOT NULL
+        source TEXT NOT NULL,
+        last_learned REAL NOT NULL,
+        first_success REAL,
+        last_success REAL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        successes INTEGER NOT NULL DEFAULT 0,
+        consecutive_failures INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (node_id, endpoint)
     )
     """,
     """

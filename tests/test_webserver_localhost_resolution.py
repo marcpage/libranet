@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from pytest import mark
 
-from libranet.webserver.localhost_resolution import resolve_endpoint
+from libranet.cas.content_id import ContentId
+from libranet.webserver.localhost_resolution import NodeListSender, resolve_endpoint
 
 SOURCE = "203.0.113.42"
+SENDER_ID = ContentId.for_data(b"the sender's public key", "sha256")
+OTHER_ID = ContentId.for_data(b"another node's public key", "sha256")
 
 
 @mark.parametrize(
@@ -66,3 +69,48 @@ def test_unusable_endpoints_are_refused(endpoint: str) -> None:
 def test_localhost_is_refused_without_a_source_address_to_replace_it() -> None:
     assert resolve_endpoint("http://localhost:8080", "") is None
     assert resolve_endpoint("http://192.0.2.9:8080", "") == "http://192.0.2.9:8080"
+
+
+def test_a_senders_own_entries_are_marked_as_observed_or_advertised() -> None:
+    sender = NodeListSender(SENDER_ID, SOURCE)
+
+    received = sender.received(
+        {
+            "http://localhost:4300": SENDER_ID,
+            "http://sender.example.org:4300": SENDER_ID,
+            "http://localhost:9999": OTHER_ID,
+            "http://192.0.2.9:8080": OTHER_ID,
+        }
+    )
+
+    assert received == {
+        "nodes": {
+            "http://203.0.113.42:4300": str(SENDER_ID),
+            "http://sender.example.org:4300": str(SENDER_ID),
+            # A `localhost` not the sender's own was relayed, against §10.2.
+            "http://203.0.113.42:9999": str(OTHER_ID),
+            "http://192.0.2.9:8080": str(OTHER_ID),
+        },
+        "sources": {
+            "http://203.0.113.42:4300": "observed",
+            "http://sender.example.org:4300": "advertised",
+        },
+    }
+
+
+def test_a_later_entry_for_the_same_endpoint_replaces_the_earlier_one() -> None:
+    sender = NodeListSender(SENDER_ID, SOURCE)
+
+    received = sender.received(
+        {"http://localhost:8080": SENDER_ID, "http://203.0.113.42:8080": OTHER_ID}
+    )
+
+    assert received == {"nodes": {"http://203.0.113.42:8080": str(OTHER_ID)}, "sources": {}}
+
+
+def test_a_sender_whose_address_is_unknown_loses_its_localhost_entries() -> None:
+    sender = NodeListSender(SENDER_ID, "")
+
+    received = sender.received({"http://localhost:8080": SENDER_ID, "ftp://192.0.2.9:21": OTHER_ID})
+
+    assert received == {"nodes": {}, "sources": {}}

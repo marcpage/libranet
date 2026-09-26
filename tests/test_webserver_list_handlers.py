@@ -158,6 +158,8 @@ def test_a_node_list_is_published_with_localhost_resolved(
         "http://203.0.113.42:4300": str(SENDER_ID),
         "https://libranet.example.org:443": str(OTHER_ID),
     }
+    # The signer's own entry was observed; the other it merely relayed.
+    assert message["sources"] == {"http://203.0.113.42:4300": "observed"}
 
 
 def test_unusable_node_list_entries_are_dropped(router: Router, queues: ModuleQueues) -> None:

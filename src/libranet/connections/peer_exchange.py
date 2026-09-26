@@ -34,7 +34,8 @@ node-specific store for the validator, like any upload (HttpApi §7.2).
 
 What the exchange learns is published::
 
-    nodes.received      {"nodes": {"http://203.0.113.42:4300": "sha256/<hex>"}}
+    nodes.received      {"nodes": {"http://203.0.113.42:4300": "sha256/<hex>"},
+                         "sources": {"http://203.0.113.42:4300": "observed"}}
     data.sent           {"algorithm", "hash", "node_id", "size"}
     fetch.attempted     {"algorithm", "hash", "node_id", "found"}
     data.put_completed  {"algorithm", "hash", "node_id"}
@@ -43,12 +44,13 @@ What the exchange learns is published::
 content request the peer answered, and whether it sent the content;
 ``data.put_completed`` is content it did send, for the validator.
 
-A received node list loses its entries naming this node or the peer: the
-endpoint this node reached the peer at is the one worth keeping (HttpApi
-§10.6). A ``localhost`` endpoint is resolved to the address dialed (HttpApi
-§10.2), or dropped if that was a name rather than an IP address. Only the
-``data`` entries of the peer's seek list are acted on: no way to push what a
-``search`` entry seeks is defined yet (HttpApi §10.7.2).
+A received node list loses its entries naming this node. A ``localhost``
+endpoint is resolved to the peer's IP address, as this node's socket saw it
+(HttpApi §10.2), and dropped if that is not known. The peer's own entries
+are kept as addresses to try, and ``sources`` says which were observed and
+which advertised (Phase 2 Step 23). Only the ``data`` entries of the peer's
+seek list are acted on: no way to push what a ``search`` entry seeks is
+defined yet (HttpApi §10.7.2).
 """
 
 from __future__ import annotations
@@ -82,7 +84,7 @@ from libranet.webserver.list_bodies import (
     parse_seek_list,
 )
 from libranet.webserver.list_handlers import NODES_PATH, SEEK_PATH
-from libranet.webserver.localhost_resolution import resolve_endpoint
+from libranet.webserver.localhost_resolution import NodeListSender
 from libranet.webserver.publishing import Publish
 
 # Most requests pipelined at once when pushing or asking for many items:
@@ -114,7 +116,7 @@ class PeerExchange:
         self._identity = identity
         self._storage = config.storage
         self._peers = config.peers
-        self._own_endpoint = config.network.advertised_endpoint()
+        self._own_endpoints = config.network.own_endpoints()
         self._publish = publish
         self._logger = logger
         self._signer = MessageSigner(identity, clock)
@@ -292,28 +294,25 @@ class PeerExchange:
             return self._storage.node_list_path.read_bytes()
 
         except OSError:
-            own = {self._own_endpoint: str(self._identity.node_id)}
+            own = {endpoint: str(self._identity.node_id) for endpoint in self._own_endpoints}
             return dumps({"nodes": own}).encode("utf-8")
 
     def _receive_node_list(self, session: PeerSession, response: PeerResponse) -> None:
-        """Publish the peers the peer's node list names, for the stats module to keep."""
+        """Publish the nodes the peer's node list names, for the stats module to keep."""
         nodes = self._read_list(session, response, parse_node_list)
 
         if not nodes:
             return
 
-        address = peer_address(session.endpoint)
-        source = "" if address is None else address.host
-        received: dict[str, str] = {}
+        others = {
+            endpoint: node_id
+            for endpoint, node_id in nodes.items()
+            if node_id != self._identity.node_id
+        }
+        received = NodeListSender(session.node_id, session.peer_ip or "").received(others)
 
-        for endpoint, node_id in nodes.items():
-            resolved = resolve_endpoint(endpoint, source)
-
-            if resolved is not None and node_id not in (self._identity.node_id, session.node_id):
-                received[resolved] = str(node_id)
-
-        if received:
-            self._publish(EventType.NODES_RECEIVED, {"nodes": received})
+        if received["nodes"]:
+            self._publish(EventType.NODES_RECEIVED, received)
 
     def _sought_by(self, session: PeerSession, response: PeerResponse) -> list[ContentId]:
         """The content ids the peer's seek list names."""

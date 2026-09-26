@@ -1,4 +1,4 @@
-"""Rendering the plain node and seek lists the web server serves.
+"""Rendering the plain node and seek lists the web server serves, and the candidate list.
 
 Both bodies are capped: HttpApi §10.6 and §10.7.1 require each to stay under
 1 MiB as transferred, and say that priority decides what survives the cap.
@@ -11,6 +11,9 @@ which would be quadratic on a list of thousands. Each entry is charged the
 length of its encoded parts plus the punctuation joining them, counting a
 separator for the first entry too — an overestimate of one byte per list,
 which keeps the rendered body strictly under the budget.
+
+The candidate list is this node's own business, never sent anywhere, so it
+has no cap (Phase 2 Step 23).
 """
 
 from __future__ import annotations
@@ -53,6 +56,21 @@ def render_node_list(entries: Iterable[tuple[str, str]], max_bytes: int) -> byte
         used += cost
 
     return dumps({"nodes": nodes}, separators=_SEPARATORS).encode("utf-8")
+
+
+def render_candidate_list(nodes: Iterable[tuple[str, Sequence[str]]]) -> bytes:
+    """The candidate list body for ``(node id, endpoints)`` pairs, in the order given.
+
+    Its shape is documented by :mod:`libranet.stats.derivation`.
+    """
+    return dumps(
+        {
+            "nodes": [
+                {"node_id": node_id, "endpoints": list(endpoints)} for node_id, endpoints in nodes
+            ]
+        },
+        separators=_SEPARATORS,
+    ).encode("utf-8")
 
 
 def render_seek_list(data: Sequence[str], searches: Sequence[str], max_bytes: int) -> bytes:

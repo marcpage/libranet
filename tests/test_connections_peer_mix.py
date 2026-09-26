@@ -16,11 +16,11 @@ def node(leading: str, tail: str = "0") -> ContentId:
 
 def candidate(leading: str, tail: str = "0") -> Candidate:
     node_id = node(leading, tail)
-    return Candidate(f"http://{leading}{tail}.test", node_id)
+    return Candidate((f"http://{leading}{tail}.test",), node_id)
 
 
 def endpoints(chosen: list[Candidate]) -> list[str]:
-    return [chosen_one.endpoint for chosen_one in chosen]
+    return [chosen_one.endpoints[0] for chosen_one in chosen]
 
 
 @mark.parametrize(
@@ -74,7 +74,7 @@ def test_too_few_buckets_are_made_up_with_peers_in_covered_ones() -> None:
 
 
 def test_a_candidate_without_a_known_id_only_makes_up_the_number() -> None:
-    unknown = Candidate("http://seed.test", None)
+    unknown = Candidate(("http://seed.test",), None)
     known = candidate("4")
 
     assert choose_candidates([unknown, known], [], min_connections=1, bucket_bits=4) == [known]
@@ -96,7 +96,7 @@ def test_connections_of_unknown_id_count_towards_the_number_but_cover_no_bucket(
 
 
 def test_a_node_is_never_chosen_twice_or_while_connected() -> None:
-    twin = Candidate("http://twin.test", node("6"))
+    twin = Candidate(("http://twin.test",), node("6"))
     candidates = [candidate("6"), twin, candidate("7", "1"), candidate("7", "1")]
 
     chosen = choose_candidates(candidates, [node("8")], min_connections=16, bucket_bits=4)

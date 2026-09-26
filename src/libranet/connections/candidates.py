@@ -1,44 +1,74 @@
 """The peers this node could connect to, best first.
 
-Normally these are the node list the stats module derives (Step 8), which is
-already in priority order. The seed list is used instead only while that
-list names no peer but this node itself.
+Normally these are the candidate list the stats module derives (Phase 2
+Step 23), which is already in priority order and names each node with every
+address it may be reached at, in the order to try them. The seed list is
+used instead only while that list names no peer but this node itself.
 """
 
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from json import loads
 from pathlib import Path
+from typing import Callable
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
 from libranet.config.seeds import SeedPeer
-from libranet.webserver.list_bodies import parse_node_list
 
 
 @dataclass(frozen=True)
 class Candidate:
-    """A peer to dial: its endpoint, and its node id if one is known."""
+    """A peer to dial: its endpoints, to try in turn, and its node id if one is known."""
 
-    endpoint: str
+    endpoints: tuple[str, ...]
     node_id: ContentId | None
 
+    @property
+    def key(self) -> ContentId | str:
+        """What tells this candidate apart from others.
 
-def node_list_candidates(path: Path, own_id: ContentId) -> list[Candidate]:
-    """The peers in the node list file at ``path``, in its order, without this node.
+        That is its node id, or for a seed whose id is unknown, its one
+        endpoint.
+        """
+        return self.endpoints[0] if self.node_id is None else self.node_id
 
-    An entry whose node id is unusable is dropped, as is the whole list if
-    the file is missing or is not a node list.
+    def keeping(self, usable: Callable[[str], bool]) -> Candidate | None:
+        """This candidate with only the endpoints ``usable`` accepts.
+
+        ``None`` if it accepts none of them.
+        """
+        endpoints = tuple(endpoint for endpoint in self.endpoints if usable(endpoint))
+        return replace(self, endpoints=endpoints) if endpoints else None
+
+
+def candidate_list(path: Path, own_id: ContentId) -> list[Candidate]:
+    """The peers in the candidate list file at ``path``, in its order, without this node.
+
+    An entry whose node id is unusable, or that names no endpoint, is
+    dropped, as is the whole list if the file is missing or is not a
+    candidate list.
     """
     try:
-        nodes = parse_node_list(loads(path.read_bytes()))
+        nodes = loads(path.read_bytes())["nodes"]
+        entries = [(entry["node_id"], tuple(entry["endpoints"])) for entry in nodes]
 
-    except (OSError, ValueError):
+    except (OSError, ValueError, LookupError, TypeError):
         return []
 
-    return [
-        Candidate(endpoint, node_id) for endpoint, node_id in nodes.items() if node_id != own_id
-    ]
+    candidates: list[Candidate] = []
+
+    for text, endpoints in entries:
+        try:
+            node_id = ContentId.parse(text)
+
+        except InvalidContentIdError:
+            continue
+
+        if node_id != own_id and endpoints:
+            candidates.append(Candidate(endpoints, node_id))
+
+    return candidates
 
 
 def seed_candidates(seeds: tuple[SeedPeer, ...]) -> list[Candidate]:
@@ -52,6 +82,6 @@ def seed_candidates(seeds: tuple[SeedPeer, ...]) -> list[Candidate]:
         except InvalidContentIdError:
             node_id = None
 
-        candidates.append(Candidate(seed.address, node_id))
+        candidates.append(Candidate((seed.address,), node_id))
 
     return candidates

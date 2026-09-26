@@ -1055,7 +1055,11 @@ def test_posted_lists_reach_the_served_files_through_the_stats_module(
     _, nodes = _get(connection, "/data/nodes")
     _, seek = _get(connection, "/data/seek")
 
-    assert loads(nodes)["nodes"]["http://127.0.0.1:4300"] == str(peer.node_id)
+    # The peer's address is one to try, and is published once it has worked.
+    assert "http://127.0.0.1:4300" not in loads(nodes)["nodes"]
+    assert loads(storage.candidate_list_path.read_bytes())["nodes"] == [
+        {"node_id": str(peer.node_id), "endpoints": ["http://127.0.0.1:4300"]}
+    ]
     # The peer's own seek list is recorded, but only this node's is served.
     assert loads(seek) == {"data": [str(MISSING_ID)], "search": []}
 

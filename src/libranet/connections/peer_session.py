@@ -63,6 +63,11 @@ class PeerSession:
         return self._node_id
 
     @property
+    def peer_ip(self) -> str | None:
+        """The peer's IP address, as this node's socket saw it; ``None`` if it is not known."""
+        return self._connection.peer_ip
+
+    @property
     def closed(self) -> bool:
         """Whether the connection has closed, so no further request can be made."""
         return self._connection.closed

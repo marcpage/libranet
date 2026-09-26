@@ -7,6 +7,7 @@ from typing import Iterator
 from pytest import fixture, raises
 
 from libranet.cas.content_id import ContentId
+from libranet.messaging.events import AddressSource
 from libranet.stats.database import StatsDatabase
 from libranet.stats.schema import SeekKind
 
@@ -14,6 +15,9 @@ CONTENT_ID = ContentId.for_data(b"some content", "sha256")
 OTHER_ID = ContentId.for_data(b"other content", "sha256")
 NODE_ID = ContentId.for_data(b"a node's public key", "sha256")
 OTHER_NODE_ID = ContentId.for_data(b"another node's public key", "sha256")
+FIRST = "http://198.51.100.7:8080"
+SECOND = "http://203.0.113.9:4300"
+THIRD = "http://peer.example:4300"
 
 
 class FakeClock:
@@ -140,7 +144,7 @@ def test_an_opened_connection_counts_as_an_attempt_too(
     assert stats.node_id == NODE_ID
     assert (stats.connection_attempts, stats.successful_connections) == (2, 1)
     assert stats.last_connected == clock.now
-    assert database.known_endpoints() == [("http://198.51.100.7:8080", str(NODE_ID))]
+    assert database.last_good_endpoints() == [("http://198.51.100.7:8080", str(NODE_ID))]
 
 
 def test_closing_accumulates_connected_time_and_counts_remote_closes(
@@ -193,38 +197,193 @@ def test_fetch_outcomes_are_counted_per_node(database: StatsDatabase) -> None:
     assert (stats.data_found, stats.data_not_found) == (1, 2)
 
 
-def test_a_node_keeps_only_the_address_it_was_last_seen_at(
+def test_a_node_keeps_every_address_it_is_learned_at(
     database: StatsDatabase, clock: FakeClock
 ) -> None:
-    database.record_endpoint(NODE_ID, "http://198.51.100.7:8080")
+    database.record_addresses({FIRST: NODE_ID}, AddressSource.RELAYED)
     clock.advance(10)
-    database.record_endpoint(NODE_ID, "http://203.0.113.9:4300")
+    database.record_addresses({SECOND: NODE_ID}, AddressSource.RELAYED)
 
-    assert database.known_endpoints() == [("http://203.0.113.9:4300", str(NODE_ID))]
-
-
-def test_known_endpoints_put_the_most_recently_connected_first(
-    database: StatsDatabase, clock: FakeClock
-) -> None:
-    database.record_endpoints(
-        {"http://198.51.100.7:8080": NODE_ID, "http://203.0.113.9:4300": OTHER_NODE_ID}
+    assert database.candidate_endpoints() == [(str(NODE_ID), [SECOND, FIRST])]
+    latest, earliest = database.node_addresses(NODE_ID)
+    assert (latest.endpoint, latest.source, latest.last_learned) == (
+        SECOND,
+        AddressSource.RELAYED,
+        clock.now,
     )
-    clock.advance(10)
-    database.record_connection_opened(OTHER_NODE_ID)
+    assert (latest.attempts, latest.successes, latest.last_success) == (0, 0, None)
+    assert earliest.last_learned == clock.now - 10
 
-    assert database.known_endpoints() == [
-        ("http://203.0.113.9:4300", str(OTHER_NODE_ID)),
-        ("http://198.51.100.7:8080", str(NODE_ID)),
+
+def test_an_address_learned_again_keeps_its_strongest_source(
+    database: StatsDatabase, clock: FakeClock
+) -> None:
+    database.record_addresses({FIRST: NODE_ID, SECOND: NODE_ID}, AddressSource.ADVERTISED)
+    clock.advance(10)
+    database.record_addresses({FIRST: NODE_ID}, AddressSource.RELAYED)
+    database.record_addresses({SECOND: NODE_ID}, AddressSource.OBSERVED)
+
+    sources = {address.endpoint: address.source for address in database.node_addresses(NODE_ID)}
+    assert sources == {FIRST: AddressSource.ADVERTISED, SECOND: AddressSource.OBSERVED}
+    assert {address.last_learned for address in database.node_addresses(NODE_ID)} == {clock.now}
+
+
+def test_trying_an_address_is_counted_on_it(database: StatsDatabase, clock: FakeClock) -> None:
+    database.record_addresses({FIRST: NODE_ID}, AddressSource.RELAYED)
+    database.record_address_failed(NODE_ID, FIRST)
+    clock.advance(10)
+    database.record_address_worked(NODE_ID, FIRST)
+    first_worked = clock.now
+    clock.advance(10)
+    database.record_address_worked(NODE_ID, FIRST)
+    database.record_address_failed(NODE_ID, FIRST)
+    database.record_address_failed(NODE_ID, FIRST)
+
+    (address,) = database.node_addresses(NODE_ID)
+
+    assert address.source == AddressSource.DIALED
+    assert (address.first_success, address.last_success) == (first_worked, clock.now)
+    assert (address.attempts, address.successes, address.consecutive_failures) == (5, 2, 2)
+    # Reaching an address says nothing about the node's own connections.
+    assert database.node_stats(NODE_ID) is None
+
+
+def test_an_address_first_heard_of_by_reaching_it_is_kept(database: StatsDatabase) -> None:
+    database.record_address_worked(NODE_ID, FIRST)
+
+    (address,) = database.node_addresses(NODE_ID)
+
+    assert (address.endpoint, address.source, address.attempts, address.successes) == (
+        FIRST,
+        AddressSource.DIALED,
+        1,
+        1,
+    )
+
+
+def test_a_failure_at_an_unknown_address_records_nothing(database: StatsDatabase) -> None:
+    database.record_address_failed(NODE_ID, FIRST)
+
+    assert database.node_addresses(NODE_ID) == []
+
+
+def test_addresses_that_worked_are_tried_first(database: StatsDatabase, clock: FakeClock) -> None:
+    database.record_addresses({FIRST: NODE_ID}, AddressSource.RELAYED)
+    database.record_address_worked(NODE_ID, FIRST)
+    clock.advance(10)
+    database.record_address_worked(NODE_ID, SECOND)
+    clock.advance(10)
+    # Learned most recently, but never reached.
+    database.record_addresses({THIRD: NODE_ID}, AddressSource.RELAYED)
+    # Failing does not demote an address that has worked.
+    database.record_address_failed(NODE_ID, SECOND)
+
+    assert database.candidate_endpoints() == [(str(NODE_ID), [SECOND, FIRST, THIRD])]
+
+
+def test_candidates_put_nodes_reached_first_and_leave_this_node_out(
+    database: StatsDatabase, clock: FakeClock
+) -> None:
+    third_id = ContentId.for_data(b"a third node's public key", "sha256")
+    database.record_addresses({FIRST: NODE_ID}, AddressSource.RELAYED)
+    clock.advance(10)
+    database.record_addresses({SECOND: OTHER_NODE_ID}, AddressSource.RELAYED)
+    clock.advance(10)
+    database.record_address_worked(third_id, THIRD)
+
+    assert database.candidate_endpoints() == [
+        (str(third_id), [THIRD]),
+        (str(OTHER_NODE_ID), [SECOND]),
+        (str(NODE_ID), [FIRST]),
+    ]
+    assert database.candidate_endpoints(exclude=third_id) == [
+        (str(OTHER_NODE_ID), [SECOND]),
+        (str(NODE_ID), [FIRST]),
     ]
 
 
-def test_known_endpoints_can_leave_this_node_out(database: StatsDatabase) -> None:
-    database.record_endpoints(
-        {"http://198.51.100.7:8080": NODE_ID, "http://203.0.113.9:4300": OTHER_NODE_ID}
-    )
+def test_only_the_address_a_node_was_last_reached_at_is_published(
+    database: StatsDatabase, clock: FakeClock
+) -> None:
+    database.record_address_worked(NODE_ID, FIRST)
+    clock.advance(10)
+    database.record_address_worked(NODE_ID, SECOND)
+    database.record_addresses({THIRD: NODE_ID}, AddressSource.ADVERTISED)
 
-    assert database.known_endpoints(exclude=NODE_ID) == [
-        ("http://203.0.113.9:4300", str(OTHER_NODE_ID))
+    assert database.last_good_endpoints() == [(SECOND, str(NODE_ID))]
+
+
+def test_a_last_good_address_that_has_failed_since_is_not_published(
+    database: StatsDatabase, clock: FakeClock
+) -> None:
+    database.record_address_worked(NODE_ID, FIRST)
+    clock.advance(10)
+    database.record_address_worked(NODE_ID, SECOND)
+    database.record_address_failed(NODE_ID, SECOND)
+
+    # The older address is not the last good one, so it is not offered instead.
+    assert database.last_good_endpoints() == []
+
+    database.record_address_worked(NODE_ID, SECOND)
+
+    assert database.last_good_endpoints() == [(SECOND, str(NODE_ID))]
+
+
+def test_last_good_endpoints_put_the_most_recently_reached_first(
+    database: StatsDatabase, clock: FakeClock
+) -> None:
+    database.record_address_worked(NODE_ID, FIRST)
+    clock.advance(10)
+    database.record_address_worked(OTHER_NODE_ID, SECOND)
+
+    assert database.last_good_endpoints() == [
+        (SECOND, str(OTHER_NODE_ID)),
+        (FIRST, str(NODE_ID)),
+    ]
+    assert database.last_good_endpoints(exclude=OTHER_NODE_ID) == [(FIRST, str(NODE_ID))]
+
+
+def test_addresses_that_never_worked_are_forgotten_once_they_fail_too_often(
+    database: StatsDatabase,
+) -> None:
+    database.record_addresses({FIRST: NODE_ID, SECOND: NODE_ID}, AddressSource.RELAYED)
+    database.record_address_worked(NODE_ID, THIRD)
+
+    for _ in range(3):
+        database.record_address_failed(NODE_ID, FIRST)
+        database.record_address_failed(NODE_ID, THIRD)
+
+    database.record_address_failed(NODE_ID, SECOND)
+
+    assert database.prune_addresses(max_per_node=16, max_failures=3) == 1
+    # One that has worked is kept however often it fails.
+    assert database.candidate_endpoints() == [(str(NODE_ID), [THIRD, SECOND])]
+
+
+def test_a_node_keeps_no_more_addresses_than_its_cap(
+    database: StatsDatabase, clock: FakeClock
+) -> None:
+    worked = [f"http://198.51.100.{index}:8080" for index in range(2)]
+    database.record_address_worked(NODE_ID, worked[0])
+    clock.advance(1)
+    database.record_address_worked(NODE_ID, worked[1])
+    clock.advance(1)
+    database.record_addresses({"http://observed.example:8080": NODE_ID}, AddressSource.OBSERVED)
+    clock.advance(1)
+    database.record_addresses({"http://relayed.example:8080": NODE_ID}, AddressSource.RELAYED)
+    database.record_addresses({FIRST: OTHER_NODE_ID}, AddressSource.RELAYED)
+
+    # A relayed address goes before one learned some other way, even a newer one.
+    assert database.prune_addresses(max_per_node=3, max_failures=5) == 1
+    assert database.candidate_endpoints(exclude=OTHER_NODE_ID) == [
+        (str(NODE_ID), [worked[1], worked[0], "http://observed.example:8080"])
+    ]
+
+    # Then any that never worked, and then the longest since it last worked.
+    assert database.prune_addresses(max_per_node=1, max_failures=5) == 2
+    assert database.candidate_endpoints() == [
+        (str(NODE_ID), [worked[1]]),
+        (str(OTHER_NODE_ID), [FIRST]),
     ]
 
 

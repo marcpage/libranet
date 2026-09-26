@@ -29,7 +29,15 @@ from dataclasses import dataclass
 from logging import Logger
 from queue import SimpleQueue
 from selectors import EVENT_READ, DefaultSelector
-from socket import IPPROTO_TCP, SHUT_RDWR, TCP_NODELAY, create_connection, socket
+from socket import (
+    AF_INET,
+    AF_INET6,
+    IPPROTO_TCP,
+    SHUT_RDWR,
+    TCP_NODELAY,
+    create_connection,
+    socket,
+)
 from threading import Lock, Thread, current_thread
 from time import monotonic
 from types import TracebackType
@@ -56,10 +64,11 @@ class PeerConnection:
     """A pipelining client connection to one peer.
 
     Takes ownership of the connected ``sock`` and starts its send and receive
-    threads at once. ``host`` is the ``Host`` header sent with every request,
-    and every request is signed by ``signer``. While any request is waiting,
-    the peer must make progress (take a whole request, or send any bytes) at
-    least every ``request_timeout`` seconds. A response body over
+    threads at once, noting the peer's IP address if it is an IP socket.
+    ``host`` is the ``Host`` header sent with every request, and every
+    request is signed by ``signer``. While any request is waiting, the peer
+    must make progress (take a whole request, or send any bytes) at least
+    every ``request_timeout`` seconds. A response body over
     ``max_body_bytes`` is refused.
     """
 
@@ -85,6 +94,7 @@ class PeerConnection:
         self._closed = False
         self._failure: Exception = ConnectionClosedError(f"Connection to {host} closed")
         self._last_progress = monotonic()
+        self._peer_ip = _peer_ip(sock)
         # Completed once the receive thread has closed everything down.
         self._finished: Future[None] = Future()
         # Bounds each whole send; receiving only ever reads what has arrived.
@@ -109,6 +119,11 @@ class PeerConnection:
     def host(self) -> str:
         """The peer, as named in the ``Host`` header."""
         return self._host
+
+    @property
+    def peer_ip(self) -> str | None:
+        """The peer's IP address, as the socket saw it connect; ``None`` if it is not known."""
+        return self._peer_ip
 
     @property
     def closed(self) -> bool:
@@ -321,6 +336,18 @@ class PeerConnection:
             error = ConnectionClosedError(f"Connection to {self._host} failed: {self._failure}")
             error.__cause__ = self._failure
             request.future.set_exception(error)
+
+
+def _peer_ip(sock: socket) -> str | None:
+    """The IP address ``sock`` is connected to, if it is an IP socket that is connected."""
+    if sock.family not in (AF_INET, AF_INET6):
+        return None
+
+    try:
+        return str(sock.getpeername()[0])
+
+    except OSError:
+        return None
 
 
 def open_connection(

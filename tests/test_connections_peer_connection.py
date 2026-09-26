@@ -399,6 +399,18 @@ def test_open_connection_names_the_peer_in_host(family: int, host: str) -> None:
 
     assert connection.host == f"{authority}:{port}"
     assert f"\r\nHost: {authority}:{port}\r\n".encode() in head
+    assert connection.peer_ip == host
+
+
+def test_a_connection_not_over_ip_has_no_peer_ip(pair: tuple[PeerConnection, socket]) -> None:
+    connection, _ = pair
+
+    assert connection.peer_ip is None
+
+
+def test_a_socket_not_connected_has_no_peer_ip() -> None:
+    with _connection(socket(AF_INET), request_timeout=0.1) as connection:
+        assert connection.peer_ip is None
 
 
 def test_open_connection_to_nothing_raises() -> None:
