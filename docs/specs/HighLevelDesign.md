@@ -277,22 +277,43 @@ directional search strategy described below.
 ### 4.7 Request Routing Algorithm
 
 When a node receives a request for data, or a search, that it does not hold
-locally, it follows a progressive depth-first search ordered by binary-prefix
-match length:
+locally, it queries its peers in order of binary-prefix match length, the best
+match first.
+
+For an exact data request, it queries the peers it has an outgoing connection
+to (§4.6), in two passes:
+
+1. Sort the connected peers by the length of the common binary prefix with the
+   requested hash, with the best match first. A peer that connects during the
+   search takes its place in the order.
+2. Query each peer in turn. If one returns the data, finish.
+3. Once every connected peer has been queried, query each again in the same
+   order, as it may have fetched the data in the meantime. A peer that
+   answered with a temporary "not available" status is not queried again until
+   the `Retry-After` it gave has passed (HTTP API §5.2).
+4. After the second pass, stop.
+
+A node whose search for an object found nothing starts no new search for it for
+a while, and still answers requests for it with the temporary status; the
+object can still arrive through the node's seek list (§4.8). Every node asked
+for an object it lacks searches for it too, so without this pause, peers still
+searching would query a node whose search had just ended and start it again,
+and be started again by it in turn, and a search for an object no node holds
+would never end. The pause is longer than any `Retry-After` the node's peers
+send, so that their second passes are over before it ends.
+
+For a search request, it follows a progressive depth-first search:
 
 1. Sort known peers by the length of the common binary prefix with the requested
    hash, with the best match first.
-2. Query the best-match peer. If it returns the data, finish.
+2. Query the best-match peer.
 3. Query the second-best peer.
 4. Return to the first peer, as it may have fetched the data in the meantime,
    then the second, then the third, and so on.
 5. Each successive pass examines one additional peer deeper in the ordered list.
 
-For exact data requests, the process stops when the object is found.
-
-For search requests, the process continues until every known peer has been
-contacted at least once, after which the aggregated results are returned ordered
-by match quality.
+The process continues until every known peer has been contacted at least once,
+after which the aggregated results are returned ordered by match quality.
 
 If a node cannot yet serve a requested object, it replies with a temporary "not
 available" status and immediately begins the routing algorithm above so that a

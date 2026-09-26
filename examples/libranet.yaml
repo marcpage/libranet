@@ -50,6 +50,11 @@ peers:
   # Keep it under the peers' idle timeout (60 seconds for this
   # implementation) so the connection stays open.
   seek_refresh_seconds: 30.0
+  # Provisional: once a search of the connected peers for content has found
+  # nothing, how long before asking for it again starts another. Keep it
+  # longer than any Retry-After peers send (High-Level Design §4.7), or
+  # searches for content no node holds restart each other for ever.
+  failed_search_hold_seconds: 300.0
   # JSON file of initial peers, used only when this node knows no peers at
   # all. Defaults to the (currently empty) list shipped with the package.
   seed_file: null

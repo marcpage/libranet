@@ -30,7 +30,7 @@ from libranet.config.models import (
 )
 from libranet.connections.errors import ConnectionClosedError, PeerAuthenticationError
 from libranet.connections.peer_connection import open_connection
-from libranet.connections.peer_exchange import PIPELINE_DEPTH, PeerExchange
+from libranet.connections.peer_exchange import PIPELINE_DEPTH, PeerExchange, Retrieval
 from libranet.connections.peer_session import PeerRequest, PeerSession
 from libranet.identity.authentication import request_authenticator
 from libranet.identity.keys import generate_private_key
@@ -47,6 +47,8 @@ from libranet.webserver.server import LibranetHTTPServer, build_router
 
 LOGGER = getLogger("test.connections")
 TIMEOUT = 5.0
+# The Retry-After the fixture peer sends with a 503.
+RETRY_AFTER = 7
 
 HELD = b"content the client holds"
 HELD_ID = ContentId.for_data(HELD, "sha256")
@@ -83,7 +85,7 @@ class FixturePeer:
             ("127.0.0.1", 0),
             build_router(
                 self.storage,
-                7,
+                RETRY_AFTER,
                 StubModule(ModuleName.WEBSERVER, self.queues).publish,
                 request_authenticator(LibranetConfig(storage=self.storage)),
                 allow_unsigned_api_reads=True,
@@ -749,7 +751,7 @@ def test_retrieve_hands_what_the_peer_sends_to_the_validator(
     compressed = compress(OFFERED)
     peer.store.write(OFFERED_ID, compressed)
 
-    assert exchange.retrieve(session, OFFERED_ID)
+    assert exchange.retrieve(session, OFFERED_ID) == Retrieval(found=True)
 
     # Kept exactly as received, compressed or not, as uploads are.
     assert node_store(config.storage, peer.identity.node_id).read(OFFERED_ID) == compressed
@@ -759,10 +761,10 @@ def test_retrieve_hands_what_the_peer_sends_to_the_validator(
     ]
 
 
-def test_retrieve_reports_content_the_peer_lacks(
+def test_retrieve_reports_content_the_peer_lacks_and_when_to_ask_again(
     exchange: PeerExchange, session: PeerSession, queues: ModuleQueues
 ) -> None:
-    assert not exchange.retrieve(session, NOWHERE_ID)
+    assert exchange.retrieve(session, NOWHERE_ID) == Retrieval(found=False, retry_after=RETRY_AFTER)
 
     (attempt,) = drain(queues, [])
     assert (attempt["event"], attempt["found"]) == (EventType.FETCH_ATTEMPTED, False)
@@ -778,7 +780,7 @@ def test_retrieve_refuses_content_that_is_not_what_was_asked_for(
 ) -> None:
     peer.store.write(OFFERED_ID, b"something else")
 
-    assert not exchange.retrieve(session, OFFERED_ID)
+    assert exchange.retrieve(session, OFFERED_ID) == Retrieval(found=False)
 
     assert f"sent content that is not {OFFERED_ID}" in caplog.text
     assert not node_store(config.storage, peer.identity.node_id).exists(OFFERED_ID)

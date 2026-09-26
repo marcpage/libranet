@@ -33,17 +33,26 @@ taken into the mix if it is not connected yet. If it is, the new connection
 is closed, and the endpoint is not dialed again while the first connection
 lasts; after that, it is a route to that node like any other.
 
-A fetch (``fetch.requested`` ``{"algorithm", "hash"}``) asks the connected
-peers one at a time, those whose node id shares the most leading bits with
-the content's hash first (HighLevelDesign §4.7), until one sends it. Only
-peers already connected are asked, each once. The outcome is published for
-the fetcher::
+A fetch (``fetch.requested`` ``{"algorithm", "hash"}``) starts a search of
+the connected peers, those whose node id shares the most leading bits with
+the content's hash first, in two passes (HighLevelDesign §4.7): each peer in
+turn until one sends it, then each again, since it may have fetched the
+content meanwhile. A peer that connects during the search takes its place in
+the order. The second pass asks a peer again only once the ``Retry-After`` it
+gave has passed, or this node's own ``network.retry_after_seconds`` if it gave
+none, and waits for that no longer than this node's own. A search waiting for
+its second pass holds no fetch worker. A request for content being searched
+for is dropped, since the search under way answers it, and so is one made
+within ``peers.failed_search_hold_seconds`` of a search that asked peers and
+found nothing: peers still searching would otherwise start it over, and it
+them, for ever. Content stored meanwhile, by any route, ends its search. The
+outcome is published for the fetcher::
 
     fetch.succeeded  {"algorithm", "hash", "node_id"}
     fetch.failed     {"algorithm", "hash"}
 
 ``fetch.succeeded`` means the content went to the validator from ``node_id``;
-``fetch.failed`` means no connected peer had it.
+``fetch.failed`` means the search ended without it.
 
 A hand-off (``eviction.notice`` ``{"algorithm", "hash", "copies"}``) pushes
 content the eviction module means to delete to the connected peers, best
@@ -84,13 +93,16 @@ another, whose connection was closed at once, so it counts as no connection.
 """
 
 from __future__ import annotations
-from dataclasses import dataclass
+from collections import OrderedDict
+from dataclasses import dataclass, field
 from functools import partial
+from heapq import heappop, heappush
+from itertools import count
 from logging import Logger
 from queue import SimpleQueue
 from threading import Lock, Thread
 from time import time
-from typing import Callable, ClassVar, Final, Mapping
+from typing import Callable, ClassVar, Final, Mapping, Sequence
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError
@@ -111,8 +123,9 @@ from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 
-# Fetches under way at once. Each asks one peer at a time, so this also
-# bounds the requests fetching adds to all connections together.
+# Searches carried on at once. Each asks one peer at a time, so this also
+# bounds the requests searching adds to all connections together. A search
+# waiting for its second pass takes none.
 FETCH_WORKERS: Final = 8
 
 # Pushes of new content under way at once. Each sends one body to one peer
@@ -126,6 +139,61 @@ class _NewContent:
 
     content_id: ContentId
     source: ContentId
+
+
+@dataclass
+class _Search:
+    """A search for content, and how far it has gone (HighLevelDesign §4.7).
+
+    The first pass asks every connected peer, those whose node ids best match
+    the content's hash first, and the second asks each again. ``asked`` holds
+    the peers this pass has asked or passed over, ``due`` when each peer that
+    did not send the content may be asked again, and ``asks`` how many asks
+    were made in all. ``pause`` is this node's own ``Retry-After``: how long a
+    peer that gave none is left, and the longest the second pass waits. One
+    fetch worker at a time carries a search on, so it needs no lock of its
+    own.
+    """
+
+    content_id: ContentId
+    pause: float
+    second_pass: bool = False
+    asks: int = 0
+    asked: set[ContentId] = field(default_factory=set)
+    due: dict[ContentId, float] = field(default_factory=dict)
+
+    def next_peer(self, ranked: Sequence[PeerSession], now: float) -> PeerSession | None:
+        """The peer this pass asks next, of ``ranked`` best first; ``None`` once it has asked all.
+
+        A peer not due yet is passed over for this pass.
+        """
+        for session in ranked:
+            if session.node_id in self.asked:
+                continue
+
+            self.asked.add(session.node_id)
+
+            if self.due.get(session.node_id, now) <= now:
+                self.asks += 1
+                return session
+
+        return None
+
+    def start_second_pass(self, ranked: Sequence[PeerSession], now: float) -> float:
+        """Start the second pass over ``ranked``, and say when it may ask its first peer.
+
+        That is once every peer may be asked again, but no more than
+        ``pause`` from now: a peer that asked to be left longer is passed
+        over when its turn comes.
+        """
+        self.second_pass = True
+        self.asked = set()
+        due = [self.due.get(session.node_id, now) for session in ranked]
+        return min(max(due, default=now), now + self.pause)
+
+    def not_found(self, node_id: ContentId, now: float, retry_after: int | None) -> None:
+        """Note that ``node_id`` did not send the content, and asked to be left ``retry_after`` seconds."""
+        self.due[node_id] = now + (self.pause if retry_after is None else retry_after)
 
 
 @dataclass
@@ -186,8 +254,16 @@ class ConnectionsModule(ModuleBase):
         # Endpoints that reached a node connected at another endpoint, with
         # that node: not dialed again while that connection lasts.
         self._duplicates: dict[str, ContentId] = {}
-        self._fetching: set[ContentId] = set()
-        self._fetches: SimpleQueue[ContentId | None] = SimpleQueue()
+        # Searches under way, by the content each seeks.
+        self._searches: dict[ContentId, _Search] = {}
+        # Searches ready for a fetch worker to carry on.
+        self._fetches: SimpleQueue[_Search | None] = SimpleQueue()
+        # Searches waiting for their second pass, as (when, order, search), soonest first.
+        self._waiting: list[tuple[float, int, _Search]] = []
+        self._order = count()
+        # Content a search found nothing for, with when a new request may start
+        # another, in the order the searches ended.
+        self._held: OrderedDict[ContentId, float] = OrderedDict()
         self._handing_off: set[ContentId] = set()
         self._pushes: SimpleQueue[_NewContent | None] = SimpleQueue()
         # New content no peer was connected to take, by content id, with the
@@ -250,7 +326,10 @@ class ConnectionsModule(ModuleBase):
         self._maintain()
 
     def on_idle(self) -> None:
-        """Refresh peers whose seek list is due, and dial again once candidates have rested."""
+        """Refresh peers whose seek list is due, and dial again once candidates have rested.
+
+        Searches whose second pass is due are carried on too.
+        """
         now = self._clock()
 
         with self._lock:
@@ -266,8 +345,16 @@ class ConnectionsModule(ModuleBase):
             for peer in due:
                 peer.busy = True
 
+            resumed: list[_Search] = []
+
+            while self._waiting and self._waiting[0][0] <= now:
+                resumed.append(heappop(self._waiting)[2])
+
         for peer in due:
             self._start("refresh", partial(self._talk, peer, self.exchange.refresh))
+
+        for search in resumed:
+            self._fetches.put(search)
 
         if rested:
             self._maintain()
@@ -320,15 +407,33 @@ class ConnectionsModule(ModuleBase):
                 self._lookup.look_up(nodes[endpoint], endpoint)
 
     def _on_fetch_requested(self, message: Message) -> None:
+        """Start a search, unless one is under way or one that found nothing is still held."""
         content_id = ContentId.create(message["algorithm"], message["hash"])
+        now = self._clock()
+        search: _Search | None = None
 
         with self._lock:
-            if content_id in self._fetching:
-                return
+            # Every hold is as long, so they end in the order they began.
+            while self._held and next(iter(self._held.values())) <= now:
+                self._held.popitem(last=False)
 
-            self._fetching.add(content_id)
+            held_until = self._held.get(content_id, now)
 
-        self._fetches.put(content_id)
+            if content_id not in self._searches and held_until <= now:
+                self._held.pop(content_id, None)
+                search = self._searches[content_id] = _Search(
+                    content_id, self._config.network.retry_after_seconds
+                )
+
+        if search is not None:
+            self._fetches.put(search)
+
+        elif held_until > now:
+            self.logger.debug(
+                "Not searching for %s for %.0f seconds: the last search found nothing",
+                content_id,
+                held_until - now,
+            )
 
     def _on_eviction_notice(self, message: Message) -> None:
         """Hand the content off on a thread of its own.
@@ -347,12 +452,17 @@ class ConnectionsModule(ModuleBase):
         self._start("hand-off", partial(self._hand_off, content_id, copies))
 
     def _on_data_stored(self, message: Message) -> None:
-        self._pushes.put(
-            _NewContent(
-                ContentId.create(message["algorithm"], message["hash"]),
-                ContentId.parse(message["node_id"]),
-            )
-        )
+        """Push the new content on, and end any search for it."""
+        content_id = ContentId.create(message["algorithm"], message["hash"])
+
+        with self._lock:
+            searched = self._searches.pop(content_id, None) is not None
+            self._held.pop(content_id, None)
+
+        if searched:
+            self.logger.debug("%s arrived while being searched for", content_id)
+
+        self._pushes.put(_NewContent(content_id, ContentId.parse(message["node_id"])))
 
     def _load_seeds(self) -> list[Candidate]:
         try:
@@ -605,43 +715,114 @@ class ConnectionsModule(ModuleBase):
                 peer.refresh_at = self._clock() + self._config.peers.seek_refresh_seconds
 
     def _fetch_loop(self) -> None:
-        """Fetch-worker thread: fetch requested content until told to stop."""
-        while (content_id := self._fetches.get()) is not None:
+        """Fetch-worker thread: carry searches on until told to stop."""
+        while (search := self._fetches.get()) is not None:
             try:
-                self._fetch(content_id)
+                self._search(search)
 
             except Exception:
-                self.logger.exception("Fetching %s failed", content_id)
-                self.publish(
-                    EventType.FETCH_FAILED,
-                    {"algorithm": content_id.algorithm, "hash": content_id.hash},
-                )
+                self.logger.exception("Searching for %s failed", search.content_id)
+                self._search_failed(search)
 
-            finally:
-                with self._lock:
-                    self._fetching.discard(content_id)
-
-    def _fetch(self, content_id: ContentId) -> None:
-        """Ask connected peers for ``content_id``, best match first, until one sends it."""
-        payload = {"algorithm": content_id.algorithm, "hash": content_id.hash}
-
-        for session in self._by_match(content_id):
-            try:
-                found = self.exchange.retrieve(session, content_id)
-
-            except OSError as error:
-                self.logger.debug(
-                    "Could not ask %s for %s: %s", session.endpoint, content_id, error
-                )
-                continue
-
-            if found:
-                self.publish(
-                    EventType.FETCH_SUCCEEDED, {**payload, "node_id": str(session.node_id)}
-                )
+    def _search(self, search: _Search) -> None:
+        """Ask peers for what ``search`` seeks until it ends or waits for its second pass."""
+        while (session := self._next_ask(search)) is not None:
+            if self._ask(search, session):
                 return
 
-        self.publish(EventType.FETCH_FAILED, payload)
+    def _next_ask(self, search: _Search) -> PeerSession | None:
+        """The peer ``search`` asks next; ``None`` once it has ended or waits for its second pass.
+
+        It has ended if the module is stopping, if its content was stored,
+        or once its second pass is over, which fails it.
+        """
+        waiting = False
+
+        while not waiting:
+            ranked = self._by_match(search.content_id)
+            now = self._clock()
+
+            with self._lock:
+                if not self._running or self._searches.get(search.content_id) is not search:
+                    return None
+
+                session = search.next_peer(ranked, now)
+
+                if session is not None:
+                    return session
+
+                if search.second_pass:
+                    break
+
+                resume_at = search.start_second_pass(ranked, now)
+
+                if resume_at > now:
+                    heappush(self._waiting, (resume_at, next(self._order), search))
+                    waiting = True
+
+        if waiting:
+            self.logger.debug(
+                "The search for %s asks again in %.0f seconds", search.content_id, resume_at - now
+            )
+
+        else:
+            self._search_failed(search)
+
+        return None
+
+    def _ask(self, search: _Search, session: PeerSession) -> bool:
+        """Ask ``session``'s peer for what ``search`` seeks; whether it sent it, ending the search.
+
+        A peer that cannot be asked is passed over for this pass.
+        """
+        content_id = search.content_id
+
+        try:
+            retrieval = self.exchange.retrieve(session, content_id)
+
+        except OSError as error:
+            self.logger.debug("Could not ask %s for %s: %s", session.endpoint, content_id, error)
+            return False
+
+        if not retrieval.found:
+            search.not_found(session.node_id, self._clock(), retrieval.retry_after)
+            return False
+
+        with self._lock:
+            if self._searches.get(content_id) is search:
+                del self._searches[content_id]
+
+        self.publish(
+            EventType.FETCH_SUCCEEDED,
+            {
+                "algorithm": content_id.algorithm,
+                "hash": content_id.hash,
+                "node_id": str(session.node_id),
+            },
+        )
+        return True
+
+    def _search_failed(self, search: _Search) -> None:
+        """End ``search`` with nothing found, holding off another if it asked any peer.
+
+        One that asked none set off no search of a peer's, which could start
+        it over, so it needs no hold.
+        """
+        content_id = search.content_id
+        now = self._clock()
+
+        with self._lock:
+            if self._searches.get(content_id) is not search:
+                return
+
+            del self._searches[content_id]
+
+            if search.asks:
+                self._held[content_id] = now + self._config.peers.failed_search_hold_seconds
+
+        self.publish(
+            EventType.FETCH_FAILED, {"algorithm": content_id.algorithm, "hash": content_id.hash}
+        )
 
     def _hand_off(self, content_id: ContentId, copies: int) -> None:
         """Hand-off thread: push ``content_id`` to peers until ``copies`` accept it, and say which.
