@@ -250,9 +250,16 @@ The more leading bits that match, the higher the retention priority.
 When storage pressure requires eviction:
 
 - The node selects the lowest-priority objects for removal.
-- Before deletion it pushes each object to the two nodes whose identifiers best
-  match the object’s hash.
-- Only after successful hand-off may the object be deleted locally.
+- Before deletion it pushes each object to a single peer: its best outgoing
+  connection (§4.6), the one to the peer whose identifier shares the longest
+  binary prefix with the object’s hash. A peer that does not accept it is
+  passed over for the next best.
+- Only after a peer has accepted the object may it be deleted locally.
+
+One copy, rather than several, moves the object toward the node that best
+matches it without multiplying it, which matters most where several nodes share
+one disk. The peer that accepts it pushes it on toward a better match still
+(§4.10).
 
 This policy naturally segments the data space into **directions** defined by the
 binary prefixes of node identifiers, improving locality of search and retrieval.
@@ -483,8 +490,11 @@ The four protocol layers provide complementary security properties:
   decompressed bytes before trusting the content.
 - Prefix matching for drops deliberately trades computational work for the
   ability to place data at a predictable location.
-- Eviction hand-off to the two best-matching peers reduces the risk of data loss
-  while preserving the directional locality property.
+- Eviction hands each object off to a single peer, the best-matching one that
+  accepts it (§4.5), which preserves the directional locality property. The
+  evicting node's deletion then relies on that one peer keeping what it
+  accepted: a peer that accepts an object and then loses or discards it can
+  take the last copy with it.
 
 ### Applications
 

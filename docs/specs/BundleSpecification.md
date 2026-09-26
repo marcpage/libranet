@@ -57,6 +57,7 @@ perform plain byte comparison without normalizing.
   - `writable`, `executable` — booleans. **Default to `false` if omitted.**
   - `algorithm`, `hash` — the hash algorithm and hash value of the
     **fully reassembled file** (see §2.3).
+  - `xattrs` — the file's extended attributes (see §2.4).
 - **`contents`** — required. An ordered list of CAS paths, one per part of the
   file, in the order the parts appear in the reconstructed file. Example:
   `["sha256/...", "sha256/...", ...]`.
@@ -98,6 +99,47 @@ affecting an individual part while the parts still resolve to *something*
 addressable — the whole-file hash catches what a part-level check alone
 could not.
 
+### 2.4 Extended attributes
+
+`metadata.xattrs` records a file's extended attributes: the named values some
+filesystems attach to a file beside its contents, such as macOS Finder tags or
+Linux `user.*` attributes.
+
+```json
+"metadata": {
+  "xattrs": {
+    "user.origin": "aHR0cHM6Ly9leGFtcGxlLm9yZy8=",
+    "com.apple.ResourceFork": ["sha256/4e07b1...", "sha256/8c2d9a..."]
+  }
+}
+```
+
+- Each key is an attribute's name, exactly as the platform reports it. A name
+  that is not valid UTF-8 cannot be a key, so that attribute cannot be
+  recorded.
+- Each value is the attribute's bytes, in one of two shapes, told apart by
+  shape as everything else in a bundle is (§1):
+  - a **string** — the bytes, base64-encoded (RFC 4648 §4, with padding);
+  - an **array** — the bytes stored in CAS as parts, listed in order exactly
+    as a file's `contents` are (§2.1, §2.2).
+
+  A small value is simplest inline. A large one, such as a resource fork, is
+  better stored as parts, so that it deduplicates like file content and does
+  not grow the bundle; one too large to fit in a bundle inline has to be.
+  A value stored as parts has no whole-value hash: unlike a file (§2.3), it
+  is checked only part by part, as each part is against its CAS address.
+- `xattrs` is optional. A bundle without it records no extended attributes,
+  which does not mean the file had none.
+- Parts named in `xattrs` are part of what the bundle needs, like a file's
+  parts: whatever gathers or fetches everything a bundle names includes them.
+- Attribute names are platform-specific: Linux requires a namespace prefix
+  (`user.`, `trusted.`, `security.`, `system.`), and macOS does not. A reader
+  restoring an entry sets each attribute it can, and MAY skip one it cannot or
+  chooses not to, such as a name the platform rejects or one only a privileged
+  user may set, without failing the entry. A writer MAY leave out attributes
+  that describe the local copy rather than the content, such as a download
+  quarantine flag.
+
 ---
 
 ## 3. Raw Directory Bundle
@@ -130,7 +172,11 @@ could not.
 
 ### 3.1 Fields
 
-- **`metadata`** — optional. Any metadata about the directory itself.
+- **`metadata`** — optional. Any metadata about the directory itself. A
+  directory's metadata, here or in a metadata-only entry, may carry `xattrs`
+  for the directory's own extended attributes, as a file's does (§2.4). A
+  symlink entry carries no metadata, so a symlink's own extended attributes
+  are not recorded.
 - **`contents`** — required (may be `{}`). An object mapping **relative
   paths** (from the directory root) to entries. Full hierarchical paths
   (e.g. `docs/Specification.md`) may be used directly — there is **no
@@ -405,7 +451,8 @@ Notes:
 
 In addition to whole-bundle password protection (§6), individual CAS
 references — anywhere a CAS path is used, including file `contents` parts,
-`versions` entries, `extensions` paths, and `signer` — may point at encrypted
+extended-attribute parts (§2.4), `versions` entries, `extensions` paths, and
+`signer` — may point at encrypted
 data using an extended path scheme:
 
 ```text

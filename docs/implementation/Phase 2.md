@@ -1,6 +1,6 @@
 # Libranet Python Implementation Plan — Phase 2
 
-Version 0.1 • September 2026
+Version 0.2 • September 2026
 
 ---
 
@@ -12,10 +12,12 @@ serves, validates, connects, fetches, unbundles, evicts, backs up, and
 restores. Phase 2 makes that node a better citizen of the network — it
 remembers peers properly, spends its connections where they buy the most,
 searches instead of broadcasting, keeps the content worth keeping, and
-stops restating what it already said.
+backs up without redoing work. It also closes a hole the MVP left in
+`/config`, and cleans up what the MVP's pace left uneven in the code.
 
 Every step below comes from an issue in the GitHub **Phase 2** milestone,
-and each step names its issue. As in Phase 1, this is an implementation
+and each step names its issues. Every issue in the milestone is either a
+step or accounted for in §4. As in Phase 1, this is an implementation
 plan, not a protocol specification — see [High-Level
 Design](../specs/HighLevelDesign.md), [Protocol
 Specification](../specs/ProtocolSpecification.md), [HTTP
@@ -30,9 +32,16 @@ and the same invariant that only the stats module opens SQLite.
 
 ## 2. What Phase 2 Adds
 
-Five themes, which is also roughly the order the work wants to be done
-in:
+Seven themes. The first two come first; the rest are roughly the order
+the work wants to be done in:
 
+- **Keeping other sites out of `/config`.** A browser holding the
+  `/config` credential sends it with requests other sites' pages make.
+  Step 41.
+- **Code that reads the same everywhere.** Functions that should be
+  methods, caught exceptions that leave no trace, and constants defined
+  more than once. Steps 42, 43, and 44, with Step 21, a correctness sweep
+  that belongs early because everything else assumes it.
 - **Knowing where a peer is.** A node id is an identity; an address is a
   place that identity was reachable at, and it changes. Stats stops
   keeping one address per node and starts keeping the history of every
@@ -40,8 +49,9 @@ in:
   worked. Steps 23 and 16.
 - **Spending connections well.** The peer mix today counts only the
   connections this node dialed, aims only at spread across the whole
-  identifier space, and retries a dead peer forever. Steps 24, 25,
-  and 26.
+  identifier space, and retries a dead peer forever. And a connection
+  carries one push at a time when it could carry many. Steps 24, 25, 26,
+  and 45.
 - **Finding content without shouting.** A fetch walks peers once, best
   match first, and gives up. A search should be directed, bounded, and
   remembered. Steps 22 and 27.
@@ -49,12 +59,17 @@ in:
   match. Phase 2 scores on how recently and how often content was used,
   how big it is, and how well it matches — and adds the two cases the
   score does not cover: resolved bundles that are cheap to rebuild, and
-  content the node has decided not to hold at all. Steps 28, 29, and 30.
-- **Not restating what was already said.** A re-backup rewrites a whole
-  directory bundle to record a handful of changed files. Step 31.
+  content the node has decided not to hold at all. A hand-off goes to one
+  peer rather than two. Steps 28, 29, 30, and 46.
+- **Backing up without redoing work.** A re-backup polls the directory,
+  walks it twice, reads back and resolves the last bundle, publishes a new
+  bundle when only a timestamp moved, and rewrites the whole bundle to
+  record a handful of changed files. Steps 48, 49, 50, and 31. Three more
+  make backup and restore more faithful: creation times that survive a
+  restore (Step 47), extended attributes (Step 52), and a restore that
+  knows when to stop waiting (Step 51).
 
-Step 32 is documentation the specification asks for, and Step 21 is a
-correctness sweep that belongs early because everything else assumes it.
+Step 32 is documentation the specification asks for.
 
 ## 3. How to Read the Steps Below
 
@@ -64,18 +79,22 @@ The conventions of Phase 1 §3 carry over. In addition:
   Step 20, so Phase 2 starts at Step 21. The one exception is Step 16,
   which moved here from Phase 1 unbuilt and unchanged, keeping its
   number, so nothing that already refers to "Step 16" comes to mean
-  something else.
-- **Each step names its issue.** The issue is the source of record for
+  something else. Phase 1 later took Steps 33–40 for the rest of the MVP,
+  so the steps added here after that start at Step 41.
+- **Each step names its issues.** The issue is the source of record for
   what was asked for; this document is the source of record for how it is
   built and what was decided along the way. Where an issue settled a
   design, the settled parts appear as plain bullets. Where it did not,
   they appear under **Open questions** rather than being invented here.
-- **Build order is in §4**, because dependency order and step-number
+  Where two issues ask for one change, one step names both.
+- **Build order is in §5**, because dependency order and step-number
   order no longer agree.
 - **Change sets follow CLAUDE.md**: a step whose non-test Python would
   run past 1,000 new or changed lines is split into sets that can each be
-  reviewed and committed on their own. Only Step 23 is expected to need
-  it, and its split is recorded with it.
+  reviewed and committed on their own. Step 23 is expected to need it,
+  and its split is recorded with it. Step 42 is a sweep whose size
+  depends on how much its rules catch; if it runs past the threshold, it
+  splits by package.
 - Every change set must pass `uv run black --check .`, `uv run flake8`,
   `uv run mypy`, `uv run pytest --cov` (90% floor), and
   `uv run libranet --config examples/libranet.yaml --check-config`.
@@ -512,7 +531,7 @@ Consequences to work through when building it:
   list can only come from something that sees every object — the stats
   module. How much of it is produced at a time needs a bound, and the
   hand-off machinery of Phase 1 Step 15 (eight at a time, two copies
-  each) is unchanged underneath it.
+  each, or one after Step 46) is unchanged underneath it.
 - **A zero factor zeroes the product.** Content accessed this instant,
   or matching every bit of the node id, or exactly 1 MiB as stored,
   scores zero and is never evicted, whatever the other three say. That
@@ -610,6 +629,11 @@ Settled in the issue:
 - The motivating use is supersession: when Karma merges transactions into
   larger blocks, the smaller blocks it replaces are blocked, so the
   network stops carrying what nothing needs.
+- **The list is private.** Each node keeps its own, and never publishes
+  or advertises it: the node simply becomes a black hole for that
+  content. So no single node can delete anything from the network;
+  content leaves it only as the nodes holding it each decide, separately,
+  to stop.
 
 Work this implies:
 
@@ -626,6 +650,8 @@ Work this implies:
   decided not to hold.
 - A block has to outlive the content it names. Deleting the content and
   forgetting the block invites the next peer to push it straight back.
+- A blocked id is answered as content the node does not hold, `404`,
+  since anything more specific would advertise the block.
 
 **Open questions:**
 
@@ -633,12 +659,14 @@ Work this implies:
   Step 18), a message from whatever decides a block is superseded, or
   both. The Karma use needs the message; an operator needs the endpoint.
 - Whether a block ever expires, and whether there is an unblock.
-- Whether blocks propagate between nodes. The proposal here is no — a
-  block is a node's own policy, and accepting another node's blocks is a
-  trust decision that belongs with Karma, not with storage.
-- Whether a blocked id is answered `404` or something more specific. A
-  `404` is honest (this node does not have it) and says nothing about
-  policy, which is probably what is wanted.
+- What a push of blocked content is answered. Accepting it and deleting
+  it is the black hole the issue describes. But an eviction hand-off
+  takes any `2xx` as a copy kept, and the evicting node then deletes its
+  own. With the single hand-off copy of Step 46, one node blocking what
+  it is handed is enough to take that content off the network — which
+  is what the issue says no single node can do. So a hand-off, at least,
+  wants a refusal, which sends the evicting node to its next peer and
+  says only that this node did not take it.
 
 **Testable in isolation:** stats tests over a temp database for the
 marking and the derived list; validator and web server tests with a fake
@@ -649,13 +677,15 @@ search results; an eviction test asserting blocked content goes first.
 
 ## Step 31 — Bundle Updates as Extensions
 
-**Issue:** #73. **Depends on:** Phase 1 Steps 13, 17, 19.
+**Issue:** #73. **Depends on:** Phase 1 Steps 13, 17, 19, 38; Step 48.
 
 - Phase 1 Step 19 already makes a re-backup cheap in *parts*: a CAS
   existence check per part means only changed file content is written.
   What is not cheap is the directory bundle itself, which restates every
   entry in the directory every run. A million-file directory with one
   changed file writes a new million-entry bundle.
+- A build updated in place (Phase 1 Step 38) has the same cost, and Step
+  38 left chaining its updates to this step. Both are built alike.
 - BundleSpecification §4 already has the mechanism: `extensions` let a
   bundle layer over another, each higher layer replacing whole entries,
   and §4.2's `null` entries hide a path from the layers beneath, which is
@@ -671,16 +701,19 @@ Settled in the issue:
 - After a configurable depth of chained extensions, a run writes a whole
   new bundle instead, so the chain never grows without bound.
 
+Settled since, by #84 and #114 (Step 48): the previous run's entries,
+timestamps and sizes included, come from a local record of the last
+bundle kept fully expanded, along with how many extensions went into it.
+Neither the previous bundle's chain nor the backup jobs file is read for
+them.
+
 **Open questions:**
 
-- Where the previous run's per-entry timestamps and sizes are read from:
-  the previous bundle's own `metadata`, which is authoritative and
-  already there but costs a full chain resolution, or the backup module's
-  JSON state file, which is cheap and can drift.
 - The default chain depth, and whether the rebuild trigger counts chain
   length, total entries across the chain, or the ratio of live entries to
   restated ones. Depth alone is simplest and worst at the pathological
-  case: a hundred one-file extensions over a huge base.
+  case: a hundred one-file extensions over a huge base. Step 48 records
+  the count, so the two steps have to agree on what it counts.
 - Deletions become `null` entries, which means a deleted file's path is
   carried forever, in every layer above it, until the chain is rebuilt.
   Worth confirming that is acceptable.
@@ -729,22 +762,604 @@ between a documented path and a usable one.
 
 ---
 
-## 4. Suggested Build Order
+## Step 41 — Keeping Other Sites Out of `/config`
+
+**Issue:** #108. **Depends on:** Phase 1 Steps 18, 35, 36, 39.
+
+A browser caches the `/config` Basic credential for the node's origin and
+sends it with every request to that origin, whichever page made the
+request. That was true from Phase 1 Step 18; Steps 36 and 39 made it
+likely to matter by giving `/config` a page an operator logs in to. The
+issue raises two holes.
+
+Proposed in the issue, for the first:
+
+- **A request from another site.** A page on any other site can send a
+  `text/plain` `POST` to `/config/api/applications` without a CORS
+  preflight, and the browser attaches the credential. `decode_request`
+  (`webserver/config_requests.py`) ignores `Content-Type`, so the body is
+  parsed as JSON anyway, and the request could point `/` at another
+  bundle. The endpoints of Steps 18 and 35 have had this all along.
+- The fix: refuse a `/config` request whose `Origin` or `Sec-Fetch-Site`
+  header says it came from another site, and require `application/json`
+  on every request body. The first is a guard beside `local_config_guard`
+  (`webserver/config_guard.py`), refusing before credentials are looked
+  at. The second makes any cross-site `POST` need a preflight, which the
+  node never grants.
+- Checking `Content-Type` needs the request's headers, which
+  `decode_request(body)` is not given. So this step is where it becomes a
+  method on `Request` (`webserver/http_types.py`), as #81 asks (Step 42).
+
+Not settled, for the second:
+
+- **An application on the same origin.** Every registered application is
+  served from the same origin as `/config`, so any application's script
+  can call `/config/api` and the browser attaches the credential. No
+  header check can tell that request from the page's own. This dates from
+  Phase 1 Step 35. A script on the same origin can also open the `/config`
+  page itself and script it, so the fix that closes it is a separate
+  origin — `/config` on a port of its own, for example, since the port is
+  part of the origin. That changes HttpApi §2.3 and how an operator
+  reaches the page, so it is a specification decision before it is code.
+
+**Open questions:**
+
+- Whether a request carrying neither `Origin` nor `Sec-Fetch-Site`, such
+  as one from `curl`, is let through. Refusing it breaks every script
+  that drives `/config/api`; letting it through leaves open only browsers
+  that send neither header.
+- Whether the second hole is closed with a separate origin, or
+  registering an application is taken to mean trusting it and the hole is
+  documented instead.
+
+**Testable in isolation:** guard tests with fake requests carrying each
+combination of `Origin`, `Sec-Fetch-Site`, and `Content-Type`, asserting
+which are refused and that a refusal comes before any credential check.
+
+---
+
+## Step 42 — Functions That Should Be Methods
+
+**Issue:** #81, which names the first cases (#113 named them first, and
+is closed into it). **Depends on:** nothing not yet built.
+
+CLAUDE.md prefers a method on an object to a function taking it, class
+factory methods included, where it makes sense. Phase 1 grew functions
+that are really methods on their first parameter, or constructors of the
+type they return. Phase 1 Step 38 already moved one: `parse_export`
+became `ExportRequest.from_value`. #81 names four more in
+`webserver/config_requests.py`.
+
+- A parser that builds a type from its JSON form becomes that type's
+  `from_value` classmethod, as `LatestBackup`, `Application`, and
+  `ExportRequest` already have. So `parse_backup_job`, `parse_restore`,
+  and `parse_build` become `BackupJobRequest.from_value`,
+  `RestoreRequest.from_value`, and `BuildRequest.from_value`.
+- `decode_request` moves in Step 41, which needs it on `Request`.
+- Beyond those, a rough count finds 96 of the 226 module-level functions
+  taking or returning one of the project's own classes. Most should stay
+  functions:
+  - module factories (`*_module_factory`), which the supervisor's
+    `ModuleFactory` contract calls as functions;
+  - route handlers and guards, which the router calls as functions;
+  - response builders (`json_response`, `problem_response`, and the
+    `*_response` refusals), which make a `Response` from something that
+    is not one;
+  - private helpers over standard-library types (`stat_result`,
+    `DirEntry`).
+- What is left is mostly constructors and loaders —
+  `source_of_truth_store(storage)`, `load_node_identity(config)`,
+  `load_config_credential(config)`, `parse_cas_path(path)` — and queries
+  on one value, such as `bucket_of(node_id, bits)`. These are examples of
+  what the rules above leave, not decisions.
+
+**Open questions:**
+
+- Where a loader goes when it reads a file the configuration names: on
+  the type it loads (`NodeIdentity.load(config)`), or on the
+  configuration section that holds the path. The type is the usual
+  answer.
+- Whether a function taking a `ContentId` whose job belongs to one module
+  (`_data_path` in `connections/peer_exchange.py`) moves onto `ContentId`
+  or stays private where it is used. Moving everything that touches a
+  `ContentId` onto it would make it the widest class in the code.
+
+**Testable in isolation:** nothing changes behavior, so the existing tests
+are the check. They move with the functions, and call each moved one as a
+method.
+
+---
+
+## Step 43 — Logging Every Caught Exception
+
+**Issue:** #100. **Depends on:** nothing not yet built.
+
+Settled in the issue: an exception that is caught is logged — as an error
+when it is one, at info when it is expected — especially one caught as
+`Exception`, which can hide anything.
+
+- The twelve `except Exception` handlers already log, or hand the
+  exception to something that does. The gap is in the narrower ones: of
+  about 200 `except` clauses, about 90 neither log nor re-raise.
+- Broadly, those are:
+  - queue timeouts that are how a receive loop polls (`except Empty` in
+    `messaging/`), which fire every poll interval;
+  - a missing file taken as a default (`except FileNotFoundError` in
+    `cas/store.py`, `identity/keys.py`, `webserver/list_handlers.py`, and
+    more);
+  - input that fails to parse, turned into a `400` for the client or a
+    `None` for the caller (`except InvalidContentIdError`,
+    `except ValueError`);
+  - probes that answer a question by trying (`_is_utf8`'s
+    `UnicodeEncodeError` and `_timestamp`'s `OverflowError` in
+    `bundle/building.py`).
+- Logging the first kind at info would write a line per module every
+  half second, the default poll interval.
+
+**Open questions:**
+
+- Which handlers the rule exempts, or logs at debug rather than info. A
+  proposal: exempt a handler whose exception is how the code asks a
+  question (a queue timeout, a probe); log at debug one whose exception
+  becomes a value its caller reports anyway (a `4xx` response, a `None`
+  the caller logs); and log everything else at info or above.
+- Whether anything enforces the rule once the sweep is done, or review
+  does.
+
+**Testable in isolation:** each handler changed gets a test asserting its
+log record and level, with pytest's `caplog`.
+
+---
+
+## Step 44 — One Home for Shared Constants
+
+**Issue:** #102. **Depends on:** nothing not yet built.
+
+Settled in the issue: a constant that should never change is defined
+once and shared, not repeated across the code.
+
+- Comparing module-level constants finds these defined more than once
+  with the same meaning:
+  - the path separator `"/"` in seven modules (`backup/changes.py`,
+    `backup/restores.py`, `backup/writing.py`, `bundle/building.py`,
+    `bundle/content.py`, `bundle/shapes.py`, `unbundler/lookup.py`), and
+    `".."` in three;
+  - `frozenset(("", "."))`, the path steps that go nowhere, in
+    `backup/restores.py` and `unbundler/lookup.py`;
+  - the temporary-file suffix `".partial"` in `atomic_file.py` and
+    `identity/keys.py`;
+  - the Unix epoch and nanoseconds per microsecond in `backup/writing.py`
+    and `bundle/building.py`;
+  - zlib level 9 in `bundle/protection.py` and `bundle/storing.py`;
+  - the HTTP token pattern in `connections/request_encoding.py` and
+    `connections/response_parser.py`, and the statuses that carry no body
+    in `response_parser.py` and `webserver/server.py`;
+  - the hex digits in `cas/content_id.py` and `webserver/search.py`, and
+    the compact JSON separators in `stats/enrichment.py` and
+    `stats/lists.py`.
+- Constants that only share a value are not duplicates. Eight are `8`
+  and six are `64 * 1024`, and most of each mean different things. Tying
+  them together would make changing one change the others.
+
+**Open question:** where shared constants live — one module for the
+package, or one per layer they belong to (path syntax with the bundle
+code, HTTP syntax where both sides of the wire import it). Per layer
+keeps a module from importing another layer only for a constant.
+
+**Testable in isolation:** nothing changes behavior, so the existing tests
+are the check.
+
+---
+
+## Step 45 — Batching Outgoing Requests
+
+**Issue:** #96. **Depends on:** Phase 1 Step 11; Step 22.
+
+Settled in the issue: the connection manager drains the events waiting
+for it before sending, so the requests they cause go out in batches —
+pushes especially.
+
+- Today `ModuleBase.run` handles one message at a time. Each
+  `data.stored` is queued for one of eight push workers
+  (`connections/module.py`), and each push is one `PUT` in an exchange of
+  its own, so a backup that stores a thousand parts sends a thousand
+  one-request exchanges. `PeerSession.exchange` already pipelines a
+  sequence of requests, and the first-contact exchange already sends in
+  runs of `PIPELINE_DEPTH` (8); pushing new content does not.
+- Batching means content bound for the same peer goes in one pipelined
+  exchange. Content bound for different peers still goes to each one's
+  own best peer.
+- A batch of `PUT`s answered in order is matched back by position today;
+  once a response names its request (Step 22), a refusal says which
+  content it refused.
+
+**Open questions:**
+
+- Where the draining happens. `ModuleBase.run` is shared by every
+  module, so draining there changes all of them. Inside the connections
+  module, a push worker can take everything already waiting in its queue,
+  group it by best peer, and pipeline each group, with no change to the
+  base class.
+- How long to wait for a batch to fill. Taking only what is already
+  queued adds no delay, and batches exactly when there is a backlog,
+  which is when it matters.
+- Whether fetches, and Step 27's search, batch too. They ask one peer for
+  one item and wait on the answer to choose the next peer, so they batch
+  less naturally than pushes.
+
+**Testable in isolation:** module tests that queue many `data.stored`
+events before the workers run, against fixture peers that record what
+arrives on each connection, asserting the pushes arrive pipelined in
+groups of at most `PIPELINE_DEPTH`, each at its own best peer.
+
+---
+
+## Step 46 — Handing Off to One Peer
+
+**Issue:** #121. **Depends on:** Phase 1 Step 15.
+
+- Phase 1 Step 15 deletes content only once two other nodes hold it
+  (`HAND_OFF_COPIES` in `eviction/module.py`), as HighLevelDesign §4.5
+  required.
+- Settled in the issue: a hand-off goes to the single best outgoing
+  connection. The reason given is several nodes sharing one filesystem,
+  as when one machine runs several nodes: two copies per hand-off
+  multiplies what that disk holds, where one copy moves content toward
+  the single node that best matches it.
+- Settled in HighLevelDesign §4.5, changed to match: the object goes to
+  one peer, the best outgoing connection that accepts it; a peer that
+  does not accept it is passed over for the next best; and the local copy
+  is deleted once one peer has accepted it. §6 ("Distributed Storage")
+  now says what that costs: the deletion relies on that one peer keeping
+  what it accepted.
+- Offering best match first until enough peers accept is what
+  `_accepting_peers` (`connections/module.py`) already does, so with
+  `copies` of one the connection manager needs no change. The eviction
+  module's count, and the docstrings that say two, do.
+- Content a node receives is pushed on to its own best connection since
+  #119, so content handed to one peer keeps moving toward the best match
+  rather than stopping there.
+- What a node that blocks content answers a hand-off of it is Step 30's
+  question, and one copy makes it matter more (§7).
+
+**Testable in isolation:** the existing eviction and hand-off tests with
+the copy count changed to one, and a connections test with two fixture
+peers asserting only the best is offered the content when it accepts,
+and the next best when it refuses.
+
+---
+
+## Step 47 — Keeping a File's Creation Time
+
+**Issue:** #98. **Depends on:** Phase 1 Steps 17, 19, 20, 38.
+
+- A file's creation time is recorded from `st_birthtime` where the
+  platform reports one (`_metadata` in `bundle/building.py`); Linux does
+  not. A restore does not set it (Phase 1 Step 20), so a restored file
+  was created, as far as the filesystem knows, when it was restored.
+- Settled in the issue: updating a directory bundle keeps each file's
+  creation time from the bundle it supersedes, not the one on disk.
+  Otherwise the first backup after a restore records every file as
+  created at the restore, and the real time is lost.
+- That means `created` stops being compared. `_unchanged` keeps an
+  earlier entry only if everything `_as_recorded` gives matches,
+  `created` included. So the first backup after a restore finds every
+  file's metadata changed, reads each one whole to hash it, and publishes
+  a new bundle that differs only in creation times. Keeping the recorded
+  `created` and leaving it out of the comparison fixes both.
+- A path the previous bundle did not hold takes its creation time from
+  disk.
+
+**Open questions:**
+
+- Whether a file whose bytes changed keeps its old creation time too.
+  The issue's reason applies whatever the bytes are — editing a file does
+  not change when it was created — so the proposal is yes: any path the
+  previous bundle held keeps its `created`.
+- Whether a restore should also set the creation time where the platform
+  allows it, as macOS does.
+
+**Testable in isolation:** build a fixture tree with `previous=` entries
+whose `created` differs from the disk's, asserting the new entries keep
+the recorded `created`, that an otherwise unchanged file is kept without
+being read, and that a new path takes its time from disk.
+
+---
+
+## Step 48 — The Last Bundle, Kept Expanded
+
+**Issues:** #84 (backups) and #114 (expanding and building). **Depends
+on:** Phase 1 Steps 13, 19, 20, 38.
+
+- A backup and a build both start from what the bundle they supersede
+  holds. Today each reads it back from CAS and resolves its extensions
+  every time (`_entries` in `backup/runs.py`, and its twin in
+  `backup/builds.py`). If it has been evicted, or a build's was protected
+  with another password, every file is read again.
+- Settled in #84: a backup job's record keeps its last bundle's entries,
+  fully expanded, with how many extensions went into it. Eviction then
+  has no effect on the next backup, and a long chain is never resolved
+  again.
+- Settled in #114: expanding a directory bundle or an application into a
+  directory writes the `{name}.bundle` record beside it, as a build does
+  (Phase 1 Step 38), holding the fully expanded bundle, its id, and the
+  highest extension depth of what it was expanded from. Expanding is a
+  restore (Phase 1 Step 20), which is how an application is expanded to
+  be edited. A build of that directory is then an update of the bundle it
+  was expanded from, and can extend it rather than restate it (Step 31),
+  unless the depth would be too high.
+- Today a restore writes no record, so building an application that was
+  expanded and edited makes a bundle with no link to the one it came
+  from, and reads every file to do it.
+- A build writes the same record, so a directory built twice updates as
+  one expanded and then built does.
+- The extension depth is what Step 31 needs, to decide whether an update
+  may extend the previous bundle or has to start a new one.
+- A backup's record today is one entry per job in `backup_jobs.json`,
+  which is replaced whole on every change. A million-file directory's
+  entries do not belong in that file.
+
+**Open questions:**
+
+- Where a backup's expanded entries live. A file per job beside
+  `backup_jobs.json`, which the job's record names, is the obvious home.
+- Whether the backup record is protected. A backup bundle is encrypted so
+  that CAS holds nothing readable (BackupSpecification §4). Its expanded
+  entries, names and hashes included, written in the clear beside the
+  jobs file, hand that to anyone who can read the node's data directory.
+  A `.bundle` record sits beside files that are in the clear themselves,
+  so it gives away little they do not.
+- Whether restoring a backup writes a `.bundle` record too. A build of
+  that directory makes a plain bundle, which must not extend an encrypted
+  one, or nothing without the backup secret could read it. The record
+  would still spare the build from reading unchanged files.
+- What a restore does with a record already beside the directory. The
+  directory now holds what was restored, which argues for replacing it —
+  unless the file is not a record, which a build never replaces either.
+- What the extension depth counts. Phase 1 Step 17 already splits a
+  large bundle into chunks listed side by side as extensions, and the
+  reader follows at most 1,024 distinct extensions (Step 13). An update
+  chain adds layers on top, and each layer may be split itself. Chain
+  depth and the number of extensions are different numbers, and Step
+  31's limit wants one of them.
+
+**Testable in isolation:** back up a fixture directory, delete the bundle
+from a temp CAS, change one file, and back up again, asserting only the
+changed file is read. Restore a fixture bundle into a temp directory and
+assert the record it writes; then change one file and build, asserting
+only that file is read and the new bundle supersedes the restored one.
+Round-trip each record's JSON.
+
+---
+
+## Step 49 — One Pass per Backup, Published Only on Content Change
+
+**Issues:** #82 and #83. **Depends on:** Phase 1 Step 19; Steps 47, 48.
+
+- A backup job is looked at every `interval_seconds`, in two walks.
+  `PollingDetector.fingerprint` (`backup/changes.py`) lists the whole
+  directory and hashes every path's type, size, permissions, and time;
+  only if that changed does `back_up` (`backup/runs.py`) walk it again to
+  build the bundle. Walking is the expensive part, and the second walk
+  repeats the first.
+- Settled in #82: one walk. The run works out what changed against the
+  last bundle, and the fingerprint goes. Nothing changed means nothing to
+  publish.
+- Settled in #83: when a file's data changes, the bundle must be
+  updated; a change only to metadata — times, permissions, extended
+  attributes — is noted but does not cause a new bundle. Adding or
+  removing a path, or changing a symlink's target, is a content change.
+- Settled in BackupSpecification §3.3, amended to match: a metadata-only
+  change does not require a new bundle and MAY wait for the next content
+  change, and "metadata" is everything under a bundle's `metadata`,
+  extended attributes included. §5 now says a restore brings back
+  metadata as of the last content change.
+- Noting a metadata change without publishing it means recording it
+  where the next run compares against, or the next run sees the same
+  change again and reads every such file whole to hash it. Step 48's
+  expanded record is that place. The published bundle then lags the
+  record until content next changes, and carries the held-back metadata
+  with it.
+- `ChangeDetector` exists so that filesystem notifications (Step 50) can
+  replace polling without touching the rest of the module. Without a
+  fingerprint it changes shape: what polling or a notification says is
+  "look now" or "look at these paths", not "it looks like this".
+  `LatestBackup.fingerprint` (`backup/jobs.py`) goes with it.
+
+**Open question:** whether a backup an operator asks for through
+`/config` publishes a metadata-only change, since asking for one
+presumably wants what is there now. §3.3's MAY allows either.
+
+**Testable in isolation:** back up a fixture directory, touch a file's
+times only, and back up again, asserting no bundle is published and the
+record holds the new times; then change one file's bytes, asserting one
+new bundle carrying both changes. Listing is injected, so a test can
+assert one walk per run.
+
+---
+
+## Step 50 — Filesystem Notifications for Backup
+
+**Issue:** #85. **Depends on:** Phase 1 Step 19; Steps 48, 49.
+
+- Settled in the issue: backup learns that a directory may have changed
+  from filesystem notifications, instead of polling and walking it.
+  BackupSpecification §3.3 already prefers this, with polling as the
+  fallback, and its §7 leaves the mechanism open.
+- A notification names paths, so a run can look at those paths alone —
+  provided it has the rest of the entries to carry forward, which Step
+  48's record holds. Without that, a notification only says when to
+  walk, which saves the idle polls but not the walk.
+- Notifications from ignored paths, the node's own directories among
+  them, are dropped as the walk drops them. Otherwise backing up a
+  directory that holds the node's storage would set itself off.
+- Python's standard library has no notification interface. Each platform
+  has its own: FSEvents on macOS, inotify on Linux, and
+  `ReadDirectoryChangesW` on Windows. The `watchdog` library wraps all
+  three, and falls back to polling. It would be a new runtime dependency.
+
+**Open questions:**
+
+- `watchdog`, or each platform's interface directly. The dependency is
+  the smaller cost and keeps one code path. It also brings its own
+  threads into the backup module's process.
+- What a lost notification costs. inotify drops events past its queue
+  limit and needs a watch per directory, up to a per-user limit; FSEvents
+  coalesces. An overflow has to fall back to a full walk, so the polling
+  path stays, run less often.
+- Whether a job's `interval_seconds` becomes the full-walk interval, the
+  quiet period after a notification before a run (so a burst of writes is
+  one backup), or both.
+
+**Testable in isolation:** the notifier is injected, so tests deliver
+synthetic events and assert which paths the next run looks at, that a
+burst is one run, and that an overflow means a full walk. One test
+against the real library in a temp directory checks the wiring.
+
+---
+
+## Step 51 — Giving Up on a Stalled Restore
+
+**Issue:** #99. **Depends on:** Phase 1 Step 20.
+
+- A restore that lacks content waits for it: it asks peers again for
+  everything missing every half `stats.seek_entry_ttl_seconds`, and
+  carries on when content arrives (Phase 1 Step 20). Content that has
+  been deleted everywhere never arrives, and the restore waits forever.
+- Settled in the issue: a configurable time after which a restore that
+  has received no new content fails.
+
+**Open questions:**
+
+- The default. It has to outlast a peer that is offline overnight, since
+  failing gives up on content that was only slow.
+- What "no new content" means: none of the content it waits on arrived,
+  or no pass restored anything. They differ when content arrives that
+  completes no file.
+- What a failed restore reports: at least which files it could not
+  restore and which content ids they lacked, so an operator can tell what
+  was lost.
+- Whether a restore request can set its own limit, as it sets
+  `on_conflict`.
+
+**Testable in isolation:** restore tests with a fake clock and a temp CAS
+missing one part, asserting the restore fails once the clock passes the
+limit with nothing arriving, and does not while parts keep arriving.
+
+---
+
+## Step 52 — Extended Attributes in Bundles
+
+**Issue:** #101. **Depends on:** Phase 1 Steps 13, 17, 20.
+
+- Settled in the issue: a bundle records a file's extended attributes in
+  its metadata, so that a backup and a restore keep them. On macOS they
+  hold Finder tags, quarantine flags, and resource forks.
+- Settled in BundleSpecification §2.4, added for this step:
+  `metadata.xattrs` maps each attribute's name, as the platform reports
+  it, to its bytes — a base64 string inline, or an array of CAS parts
+  like a file's `contents` for a large value. A value stored as parts has
+  no whole-value hash; its parts are checked against their addresses, and
+  that is all. A directory's metadata may
+  carry it too; a symlink's attributes are not recorded, since a symlink
+  entry has no metadata. A reader restoring an entry MAY skip an
+  attribute it cannot or chooses not to set, and a writer MAY leave out
+  attributes that describe the local copy rather than the content.
+- An attribute change is a metadata change (BackupSpecification §3.3),
+  so a backup does not publish a new bundle for it alone — a changed
+  Finder tag or resource fork waits for a content change (Step 49).
+- A reader ignores fields it does not know (`bundle/parsing.py`), so an
+  older node reads a bundle carrying `xattrs` and drops them.
+- Parts named in `xattrs` are content the bundle needs (§2.4), so
+  everything that walks a bundle's parts walks them too: an export
+  (Phase 1 Step 38) writes them, and a restore (Step 20) waits on and
+  asks for them.
+- Python's `os.getxattr` and `os.setxattr` exist on Linux only. macOS
+  needs a library, such as the `xattr` package, or `ctypes` against its
+  `getxattr(2)`, which takes extra arguments Linux's does not. Windows
+  has alternate data streams instead.
+
+**Open questions:**
+
+- Where a value goes from inline to parts. Two nodes building the same
+  directory make the same bundle only if they choose alike, so the
+  threshold is a constant rather than a setting.
+- Which attributes this node leaves out. `com.apple.quarantine` is set
+  per download, and Linux's `security.*` attributes cannot be restored
+  by an ordinary user.
+- Whether builds (Phase 1 Step 38) record them too, since a built
+  application's files are served, not restored.
+
+**Testable in isolation:** round-trip tests of the field through parsing
+and serialization, and build and restore tests in a temp directory on a
+filesystem that supports extended attributes, skipped where the platform
+or filesystem does not.
+
+---
+
+## 4. Issues in the Milestone
+
+Every issue in the **Phase 2** milestone, by number, and where it went.
+
+| Issue | Asks for | Step |
+| --- | --- | --- |
+| #20 | mDNS/DNS-SD local discovery | 16 |
+| #51 | A response that names its request | 22 |
+| #52 | Many addresses per node | 23 |
+| #54 | Count incoming connections in the peer mix | 24 |
+| #55 | A second mix inside this node's bucket | 25 |
+| #56 | Bounded reconnection attempts | 26 |
+| #59 | Directed search for data | 27 |
+| #61 | Mixed-case hashes on every input path | 21 |
+| #68 | Scored eviction | 28 |
+| #69 | Reclaiming resolved bundles | 29 |
+| #71 | Blocked data list | 30 |
+| #73 | Bundle updates as extensions | 31 |
+| #75 | Documenting the `/config` password reset | 32 |
+| #80 | Push received or created data to the best peer | None: done by #119 (PR #120); closed |
+| #81 | Functions that should be methods | 42 |
+| #82 | Evaluate a backup's files once | 49 |
+| #83 | No new backup for metadata-only changes | 49 |
+| #84 | Keep the last backup bundle expanded locally | 48 |
+| #85 | Filesystem notifications for backup | 50 |
+| #96 | Batch outgoing requests | 45 |
+| #98 | Keep a file's creation time across updates | 47 |
+| #99 | A time limit on a stalled restore | 51 |
+| #100 | Log every caught exception | 43 |
+| #101 | Extended attributes in bundles | 52 |
+| #102 | Coalesce duplicate constants | 44 |
+| #108 | `/config` requests from other sites and apps | 41 |
+| #113 | `config_requests` functions that should be methods | 42; closed into #81 |
+| #114 | Record the expanded bundle when expanding or building | 48 |
+| #121 | Hand off to one peer on eviction | 46 |
+| #126 | Update this plan | None: this revision |
+
+Issue #80 asks for what #119 asked for later, and PR #120 built it in
+Phase 1: new content is pushed to the single best connected peer, never
+back to the node it came from, and only content the node did not already
+hold. Nothing is left for a step.
+
+---
+
+## 5. Suggested Build Order
 
 Step numbers are assignment order, not dependency order. The work groups
 into tiers; steps within a tier are independent of each other.
 
 | Tier | Steps | Why here |
 | --- | --- | --- |
-| A | 21 (#61), 22 (#51), 32 (#75) | Small, independent, and each one something a later step leans on. Step 22 unblocks 27; Step 21 should land before anything else starts comparing hashes. |
-| B | 23 (#52) | The foundation for all the peering work, and the only step with its own change sets. |
-| C | 26 (#56), 24 (#54), 25 (#55) | All three change how connections are chosen or given up on. 26 is the node-level half of a rule 23 starts, so it goes first — ideally straight after 23. |
-| D | 27 (#59) | Needs 22; better with 23 and 25, which give it more and better-placed peers to walk. |
-| E | 28 (#68), then 29 (#69), 30 (#71) | 28 moves candidate selection into stats, which is where 29 and 30 also need to reach. |
-| F | 31 (#73) | Touches only bundles and backup; can run in parallel with any tier above it, by anyone not in the connections code. |
+| A | 41 (#108) | A security hole with a small fix, so first. Its second half waits on a specification decision, which does not hold up the first. |
+| B | 21 (#61), 22 (#51), 32 (#75) | Small, independent, and each one something a later step leans on. Step 22 unblocks 27 and 45; Step 21 should land before anything else starts comparing hashes. |
+| C | 42 (#81), 43 (#100), 44 (#102) | Sweeps that touch many files shallowly, so best done before the large steps are open against the same files, and so that later steps are written the new way. 43 needs its exemptions decided first. |
+| D | 23 (#52) | The foundation for all the peering work, and the one step known to need its own change sets. |
+| E | 26 (#56), 24 (#54), 25 (#55) | All three change how connections are chosen or given up on. 26 is the node-level half of a rule 23 starts, so it goes first — ideally straight after 23. |
+| F | 27 (#59), then 45 (#96) | 27 needs 22; better with 23 and 25, which give it more and better-placed peers to walk. 45 needs 22 too, and reshapes the same sending code, so it follows. |
+| G | 46 (#121), 28 (#68), then 29 (#69), 30 (#71) | 46 is small, and its specification change is made. 28 moves candidate selection into stats, which is where 29 and 30 also need to reach. 30 answers a hand-off question 46 raises. |
+| H | 47 (#98), 48 (#84, #114), then 49 (#82, #83), then 31 (#73) and 50 (#85) | The backup chain. 48's record is what 49 compares against, 31 extends, and 50 updates from notifications. 47 fixes a comparison 49 relies on. Touches only bundles and backup, so it can run in parallel with D through G, by anyone not in the connections code. |
+| I | 51 (#99), 52 (#101) | Independent of everything above. 52's specification change is made; it needs a new dependency on macOS, and is best after 49, which it relies on to hold back attribute-only changes. |
 | — | 16 (#20) | Optional throughout. Cheapest after 23, which gives it somewhere to put what it discovers. |
 
-## 5. Deferred Past Phase 2
+## 6. Deferred Past Phase 2
 
 Still out of scope, carried forward from Phase 1 §4 unless a step above
 changes them:
@@ -758,9 +1373,8 @@ changes them:
 - The local "don't forward my own backup content" policy
   BackupSpecification §6 permits.
 - Hash-collision handling.
-- Propagating blocks between nodes (Step 30).
 
-## 6. Open Items Not Yet Decided
+## 7. Open Items Not Yet Decided
 
 The per-step **Open questions** above are the substance of this list; the
 ones that cut across more than one step, and so want deciding before
@@ -782,3 +1396,22 @@ either step is built:
 - **What counts as an "access"** (Steps 28 and 29) — `data_stats` counts
   external requests, internal requests, and pushes today, and application
   accesses are not recorded at all.
+- **Four steps change a specification** (Steps 41, 46, 49, and 52) —
+  as with the push of new content (#119), the specification change is
+  agreed and written first. Three are made: HighLevelDesign §4.5 and §6
+  for a single hand-off copy (Step 46), BundleSpecification §2.4 for
+  extended attributes (Step 52), and BackupSpecification §3.3 and §5 for
+  holding back metadata-only changes (Step 49). HttpApi §2.3, if
+  `/config` moves to an origin of its own, is decided with #108 (Step
+  41).
+- **What a blocking node answers a hand-off** (Steps 30 and 46) — with a
+  single hand-off copy, a node that takes content it blocks and deletes
+  it is enough to take that content off the network.
+- **One local record of the last bundle** (Steps 48, 49, 31, and 50) —
+  what 49 compares against, 31 extends, and 50 updates from
+  notifications. Where it lives, whether it is encrypted, and what its
+  extension count counts are decided once.
+- **What counts as a metadata change** (Steps 47, 49, and 52) —
+  settled by BackupSpecification §3.3: everything under `metadata`,
+  extended attributes included. Creation time is kept rather than
+  compared (47), and 49 publishes only on a content change.
