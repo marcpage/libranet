@@ -215,7 +215,9 @@ class LocalNetwork:
 
     def connection_target(self, node: LocalNode) -> int:
         """How many outgoing connections ``node`` aims for in this network."""
-        return min(node.place.config.peers.min_outgoing_connections, len(self.nodes) - 1)
+        peers = node.place.config.peers
+        wanted = peers.min_outgoing_connections + peers.min_neighborhood_connections
+        return min(wanted, len(self.nodes) - 1)
 
 
 class ConnectionLog:
@@ -493,7 +495,7 @@ class RunningNetwork:
 def parse_args(argv: Sequence[str] | None = None) -> Namespace:
     """The command-line options."""
     parser = ArgumentParser(description="Run a local network of Libranet nodes.")
-    parser.add_argument("--count", type=int, default=20, help="nodes to run (default 20)")
+    parser.add_argument("--count", type=int, default=40, help="nodes to run (default 40)")
     parser.add_argument(
         "--base-port", type=int, default=18400, help="port of node 0 (default 18400)"
     )

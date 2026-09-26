@@ -184,6 +184,12 @@ def test_the_connection_target_is_capped_by_the_other_nodes(tmp_path: Path) -> N
     assert network.connection_target(network.nodes[0]) == 4
 
 
+def test_the_connection_target_counts_both_sets_of_the_mix(tmp_path: Path) -> None:
+    network = LocalNetwork.create(tmp_path, 34, 18400)
+
+    assert network.connection_target(network.nodes[0]) == 32
+
+
 def test_connected_and_closed_lines_track_the_peers(tmp_path: Path) -> None:
     path = tmp_path / "connections.log"
     log = ConnectionLog(path)

@@ -79,12 +79,18 @@ class NetworkConfig(_Section):
 
 
 class PeerConfig(_Section):
-    """Outgoing connection policy (HighLevelDesign §4.6, Phase 1 Step 11)."""
+    """Outgoing connection policy (HighLevelDesign §4.6, Phase 1 Step 11, Phase 2 Step 25)."""
 
     # 4-bit buckets give 16 distinct prefixes; the implementation plan calls
     # for one connection per bucket.
     min_outgoing_connections: int = Field(default=16, ge=1)
     bucket_prefix_bits: int = Field(default=4, ge=1, le=16)
+
+    # A second set of connections, to neighbors: peers in this node's own
+    # bucket, one per bucket of the bits that follow (Phase 2 Step 25). 0
+    # turns it off.
+    min_neighborhood_connections: int = Field(default=16, ge=0)
+    neighborhood_prefix_bits: int = Field(default=4, ge=1, le=16)
 
     connect_timeout_seconds: float = Field(default=10.0, gt=0)
     request_timeout_seconds: float = Field(default=30.0, gt=0)
@@ -121,6 +127,13 @@ class PeerConfig(_Section):
                 f"min_outgoing_connections ({self.min_outgoing_connections}) "
                 f"exceeds the {bucket_count} buckets available from "
                 f"bucket_prefix_bits ({self.bucket_prefix_bits})"
+            )
+        neighborhood_count = 1 << self.neighborhood_prefix_bits
+        if self.min_neighborhood_connections > neighborhood_count:
+            raise ValueError(
+                f"min_neighborhood_connections ({self.min_neighborhood_connections}) "
+                f"exceeds the {neighborhood_count} buckets available from "
+                f"neighborhood_prefix_bits ({self.neighborhood_prefix_bits})"
             )
         return self
 

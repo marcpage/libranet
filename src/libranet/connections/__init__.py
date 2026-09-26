@@ -1,7 +1,7 @@
 """Outgoing peer connections (Phase 1 Steps 10, 11).
 
-Owns the raw-socket client, the first-contact handshake, the 16-connection
-4-bit peer mix, and fetching data on the fetcher module's behalf.
+Owns the raw-socket client, the first-contact handshake, the peer mix, and
+fetching data on the fetcher module's behalf.
 """
 
 from libranet.connections.candidates import Candidate, candidate_list, seed_candidates
@@ -14,7 +14,7 @@ from libranet.connections.errors import (
 from libranet.connections.module import ConnectionsModule, connections_module_factory
 from libranet.connections.peer_connection import PeerConnection, open_connection
 from libranet.connections.peer_exchange import PeerExchange
-from libranet.connections.peer_mix import bucket_of, choose_candidates
+from libranet.connections.peer_mix import PeerMix, bucket_of
 from libranet.connections.peer_session import PeerRequest, PeerSession
 from libranet.connections.request_encoding import encode_request
 from libranet.connections.response_parser import PeerResponse, RequestLine, ResponseParser
@@ -29,6 +29,7 @@ __all__ = [
     "PeerAuthenticationError",
     "PeerConnection",
     "PeerExchange",
+    "PeerMix",
     "PeerRequest",
     "PeerResponse",
     "PeerSession",
@@ -38,7 +39,6 @@ __all__ = [
     "ReverseLookup",
     "bucket_of",
     "candidate_list",
-    "choose_candidates",
     "connections_module_factory",
     "encode_request",
     "host_names",
