@@ -1,8 +1,9 @@
 """The connection manager module process (Phase 1 Step 11).
 
 It owns every outgoing peer connection. It keeps up the peer mix of
-HighLevelDesign §4.6 (:mod:`~libranet.connections.peer_mix`), holds the
-first-contact exchange with each new peer and refreshes it while connected
+HighLevelDesign §4.6, with its second set among this node's neighbors
+(:mod:`~libranet.connections.peer_mix`), holds the first-contact exchange
+with each new peer and refreshes it while connected
 (:mod:`~libranet.connections.peer_exchange`), and fetches content on the
 fetcher's behalf.
 
@@ -96,7 +97,7 @@ from libranet.config.seeds import SeedError, load_seed_peers
 from libranet.connections.candidates import Candidate, candidate_list, seed_candidates
 from libranet.connections.endpoints import peer_address
 from libranet.connections.peer_exchange import PeerExchange
-from libranet.connections.peer_mix import choose_candidates
+from libranet.connections.peer_mix import PeerMix
 from libranet.connections.peer_session import PeerSession
 from libranet.connections.reverse_dns import ResolveNames, ReverseLookup, host_names
 from libranet.identity.node_identity import load_node_identity
@@ -375,17 +376,13 @@ class ConnectionsModule(ModuleBase):
 
     def _maintain(self) -> None:
         """Dial whatever the peer mix is short of."""
-        peers = self._config.peers
-
         with self._lock:
             if not self._running:
                 return
 
-            chosen = choose_candidates(
+            chosen = PeerMix(self._config.peers, self.exchange.node_id).choose(
                 self._available(),
                 [*self._peers, *(candidate.node_id for candidate in self._pending.values())],
-                peers.min_outgoing_connections,
-                peers.bucket_prefix_bits,
             )
 
             for candidate in chosen:

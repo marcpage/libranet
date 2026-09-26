@@ -33,6 +33,12 @@ peers:
   # (High-Level Design §4.6).
   min_outgoing_connections: 16
   bucket_prefix_bits: 4
+  # Then one connection per 4-bit bucket among neighbors: peers whose
+  # identifiers start in this node's own bucket, bucketed by the bits that
+  # follow. While too few buckets have a peer, any peers make up the number
+  # of both sets together. 0 turns this second set off.
+  min_neighborhood_connections: 16
+  neighborhood_prefix_bits: 4
   connect_timeout_seconds: 10.0
   request_timeout_seconds: 30.0
   # Provisional: how long a peer rests after connecting to it failed at

@@ -126,6 +126,22 @@ class TestPeerPolicy:
 
         assert peers.min_outgoing_connections == 32
 
+    def test_by_default_as_many_neighbors_again_are_connected(self) -> None:
+        peers = PeerConfig()
+
+        assert peers.min_neighborhood_connections == 16
+        assert peers.neighborhood_prefix_bits == 4
+
+    def test_neighborhood_connections_may_not_exceed_their_buckets(self) -> None:
+        with raises(ValidationError, match="min_neighborhood_connections"):
+            PeerConfig(min_neighborhood_connections=9, neighborhood_prefix_bits=3)
+
+    def test_neighborhood_connections_can_be_turned_off(self) -> None:
+        assert PeerConfig(min_neighborhood_connections=0).min_neighborhood_connections == 0
+
+        with raises(ValidationError):
+            PeerConfig(min_neighborhood_connections=-1)
+
 
 class TestStoragePaths:
     def test_derived_paths_hang_off_the_data_directory(self, tmp_path: Path) -> None:

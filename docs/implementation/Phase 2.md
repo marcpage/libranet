@@ -551,18 +551,54 @@ first, since both change how the mix is counted.
   function over bits 4–8, restricted to candidates sharing this node's
   first digit. The mechanism is not new; the budget and the ordering are.
 
-**Open questions:**
+Settled:
 
-- Configuration: a second pair of settings, or one pair derived from the
-  first (16 and 4 either way, by default).
-- Whether the second set is filled only once the first is covered, or the
-  two are filled together. Filling the first only leaves a node blind to
-  its own neighborhood on a small network, which is exactly where
-  hand-offs fail.
-- Whether hand-off (Phase 1 Step 15) and directed search (Step 27) should
-  prefer this set explicitly, or simply benefit from it being there.
+- **32 distinct peers when every bucket can be filled.** 16 have distinct
+  first hex digits, one of them this node's own. The other 16 share this
+  node's first digit and have distinct second digits. No peer counts in
+  both sets, so there are 17 neighbors, and the first set's one repeats a
+  second digit the second set has.
+- **The first set is filled before the second.** Each pass claims the
+  first-digit buckets, then the second-digit buckets. A dial under way
+  covers its bucket, as before, so both sets are dialed in the same pass.
+- **Too few peers to fill every bucket:** once both sets have what they
+  can get, the best remaining candidates anywhere, seeds whose node id is
+  unknown included, make up the two counts together, 32. This is the
+  first set's rule, which made up 16, extended.
+- **A second pair of settings,** `peers.min_neighborhood_connections`
+  (16) and `peers.neighborhood_prefix_bits` (4), the count checked against
+  its buckets as the first pair's is. 0 turns the second set off, which
+  leaves the mix as it was.
+- **No explicit preference** in hand-off (Phase 1 Step 15) or directed
+  search (Step 27). Both rank connected peers by how well their node id
+  matches the content's hash (HighLevelDesign §4.5, §4.7), which already
+  puts neighbors first for content in this node's own bucket.
+- **No specification change.** HighLevelDesign §4.6's "at least sixteen"
+  still holds; the second set is recorded here.
+- Built before Step 24, on the connections this node dials.
 
-**Testable in isolation:** `choose_candidates` tests with a fixed node id
+My calls, not yet reviewed:
+
+- **`PeerMix` replaces `choose_candidates`.** It holds `PeerConfig` and
+  this node's id, and `choose(candidates, connected)` returns what to
+  dial; the function would have taken seven arguments. It holds the
+  settings rather than copies, so their validation covers it. `bucket_of`
+  stays a function. The connection manager builds a `PeerMix` each time it
+  tends the mix, since this node's id is known only once the module has
+  started.
+- **Which place a connected neighbor fills is worked out afresh each
+  time,** to cover the most buckets. A neighbor covers its second-digit
+  bucket if no other neighbor does, and this node's own first-digit bucket
+  is covered only by a neighbor left over. Within one pass, a neighbor the
+  first set picks fills that bucket and no second-digit one, so another
+  neighbor with the same second digit is still sought.
+- **The second set's buckets are the `neighborhood_prefix_bits` bits
+  after the first `bucket_prefix_bits`,** so, like the first set's, they
+  need not fall on a hex digit.
+- **`scripts/local_network.py`** aims each node at the two counts
+  together, capped at the number of other nodes as before.
+
+**Testable in isolation:** `PeerMix.choose` tests with a fixed node id
 and a synthetic candidate list, asserting both sets are aimed at and what
 happens when there are not enough peers to fill either.
 

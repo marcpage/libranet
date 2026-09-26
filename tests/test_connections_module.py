@@ -287,6 +287,15 @@ def node_list(identity: NodeIdentity, *peers: FixturePeer) -> dict[str, str]:
     return nodes
 
 
+def identity_where(wanted: Callable[[ContentId], bool]) -> NodeIdentity:
+    """A new identity whose node id is ``wanted``."""
+    while True:
+        identity = NodeIdentity.from_private_key(generate_private_key(), "sha256")
+
+        if wanted(identity.node_id):
+            return identity
+
+
 def closed_port() -> int:
     with create_server(("127.0.0.1", 0)) as listener:
         return int(listener.getsockname()[1])
@@ -386,11 +395,53 @@ def test_the_mix_stops_at_the_configured_number(
 ) -> None:
     write_lists(config.storage, node_list(identity, *peers))
 
-    module = modules.start(with_peers(config, min_outgoing_connections=1))
+    module = modules.start(
+        with_peers(config, min_outgoing_connections=1, min_neighborhood_connections=0)
+    )
 
     bus.wait_for(EventType.CONNECTION_OPENED, node_id=str(peers[0].node_id))
     sleep(0.2)
     assert module.connected == {peers[0].node_id: peers[0].endpoint}
+
+
+def test_a_neighbor_is_dialed_for_the_second_set(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    bus: Bus,
+    tmp_path: Path,
+) -> None:
+    own = identity.node_id.hash[0]
+    elsewhere = [
+        FixturePeer(
+            tmp_path / f"elsewhere-{index}",
+            identity_where(lambda node_id: node_id.hash[0] != own),
+        )
+        for index in range(2)
+    ]
+    neighbor = FixturePeer(
+        tmp_path / "neighbor", identity_where(lambda node_id: node_id.hash[0] == own)
+    )
+
+    try:
+        write_lists(config.storage, node_list(identity, *elsewhere, neighbor))
+        module = modules.start(
+            with_peers(config, min_outgoing_connections=1, min_neighborhood_connections=1)
+        )
+        bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+        sleep(0.2)
+        connected = module.connected
+
+    finally:
+        for peer in (*elsewhere, neighbor):
+            peer.stop()
+
+    # Without the second set, the next peer listed would have made up the
+    # number instead of the neighbor listed after it.
+    assert connected == {
+        elsewhere[0].node_id: elsewhere[0].endpoint,
+        neighbor.node_id: neighbor.endpoint,
+    }
 
 
 def test_a_new_node_list_brings_new_connections(
