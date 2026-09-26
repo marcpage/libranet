@@ -24,6 +24,22 @@ def test_upper_and_mixed_case_are_normalized() -> None:
     assert content_id == ContentId("sha256", EMPTY_SHA256)
 
 
+@mark.parametrize(
+    ("algorithm", "hash_value"),
+    [
+        ("SHA256", EMPTY_SHA256),
+        ("sha256", EMPTY_SHA256.upper()),
+        ("sha256", f"{EMPTY_SHA256[:10].upper()}{EMPTY_SHA256[10:]}"),
+        ("sha256", f"{EMPTY_SHA256[:-1]}g"),
+    ],
+)
+def test_building_an_identifier_directly_still_requires_lower_case_hex(
+    algorithm: str, hash_value: str
+) -> None:
+    with raises(InvalidContentIdError):
+        ContentId(algorithm, hash_value)
+
+
 def test_unknown_algorithm_is_rejected() -> None:
     with raises(UnknownAlgorithmError):
         ContentId.parse(f"sha3/{EMPTY_SHA256}")

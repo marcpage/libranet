@@ -3,6 +3,8 @@
 Each class mirrors one table from :mod:`libranet.stats.schema`, with the
 counters the implementation plan calls for. Instances are read-only
 snapshots: they are built from a query and never write anything back.
+Identifiers in a row were normalized on the way in
+(:mod:`libranet.stats.database`), so they are rebuilt as they are.
 """
 
 from __future__ import annotations

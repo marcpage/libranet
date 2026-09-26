@@ -49,6 +49,18 @@ class ContentSource(Protocol):
         ...
 
 
+def normalize_cas_path(path: str) -> str:
+    """``path`` with its hash algorithm and hash lower-cased (HttpApi §5.4).
+
+    Nothing is checked, since a path is parsed only when followed. The
+    segments a per-entry encrypted path adds (§7) are kept as written, since
+    the cipher's name is not a hash.
+    """
+    segments = path.split(_SEPARATOR, _PLAIN_PATH_SEGMENTS)
+    address = [segment.lower() for segment in segments[:_PLAIN_PATH_SEGMENTS]]
+    return _SEPARATOR.join(address + segments[_PLAIN_PATH_SEGMENTS:])
+
+
 def parse_cas_path(path: str) -> ContentId:
     """The content a bundle names by the CAS path ``path``.
 

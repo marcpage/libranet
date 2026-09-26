@@ -304,6 +304,12 @@ def _libranet_signature_input(headers: CaseInsensitiveDict) -> InnerList:
 
 
 def _parse_key_id(key_id: str) -> ContentId:
+    """The node id ``key_id`` names, lower-cased to look up its key (HttpApi §5.4).
+
+    Only the parsed id is normalized. The headers are left as sent: the
+    signature covers its own parameters, ``keyid`` included, and the
+    ``Signature`` value is base64, whose case is significant.
+    """
     try:
         return ContentId.parse(key_id)
 

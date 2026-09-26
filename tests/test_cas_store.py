@@ -106,6 +106,19 @@ def test_iter_prefix(tmp_path: Path) -> None:
         assert list(store.iter_prefix("sha256", prefix)) == expected
 
 
+def test_iter_prefix_skips_files_not_named_by_a_lower_case_hash(tmp_path: Path) -> None:
+    store = make_store(tmp_path, 2)
+    content_id = ContentId.for_data(b"held", "sha256")
+    store.write(content_id, b"held")
+    directory = store.path_for(content_id).parent
+    # Neither name is one the store writes; the first is not even the stored
+    # object's, so a case-insensitive filesystem keeps both files apart.
+    (directory / f"{content_id.hash[:2]}{'F' * 62}").write_bytes(b"")
+    (directory / f"{content_id.hash[:2]}stray").write_bytes(b"")
+
+    assert list(store.iter_prefix("sha256", content_id.hash[:2])) == [content_id]
+
+
 def test_iter_prefix_on_empty_store(tmp_path: Path) -> None:
     assert list(make_store(tmp_path).iter_prefix("sha256", "ab")) == []
 

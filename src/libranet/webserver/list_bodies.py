@@ -60,12 +60,12 @@ def decode_list(body: bytes, max_decompressed_bytes: int) -> object:
         raise InvalidListError("The decompressed body is not JSON") from None
 
 
-def parse_node_list(value: object) -> dict[str, str]:
+def parse_node_list(value: object) -> dict[str, ContentId]:
     """The ``endpoint → node id`` entries of a ``{"nodes": {...}}`` node list.
 
-    An entry whose node id is not a string is dropped. The stats module checks
-    the ids themselves when it records them, and endpoints are checked when
-    their ``localhost`` is resolved.
+    Node ids are parsed, which lower-cases them, and an entry whose node id
+    is not a valid one is dropped. Endpoints are checked when their
+    ``localhost`` is resolved.
 
     Raises:
         InvalidListError: ``value`` is not an object holding a ``nodes``
@@ -76,7 +76,19 @@ def parse_node_list(value: object) -> dict[str, str]:
     if not isinstance(nodes, dict):
         raise InvalidListError('A node list must be an object holding a "nodes" object')
 
-    return {endpoint: node_id for endpoint, node_id in nodes.items() if isinstance(node_id, str)}
+    parsed: dict[str, ContentId] = {}
+
+    for endpoint, node_id in nodes.items():
+        if not isinstance(node_id, str):
+            continue
+
+        try:
+            parsed[endpoint] = ContentId.parse(node_id)
+
+        except InvalidContentIdError:
+            continue
+
+    return parsed
 
 
 def parse_seek_list(value: object) -> tuple[list[str], list[str]]:

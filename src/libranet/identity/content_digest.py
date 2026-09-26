@@ -3,6 +3,9 @@
 RFC 9421 signatures cover headers, not bodies; covering ``content-digest``
 (HttpApi §11) extends a signature to the body, provided the digest itself is
 checked against the bytes received.
+
+A digest is base64, not hex, so its case is significant. Unlike a content
+hash (HttpApi §5.4), it is never lower-cased.
 """
 
 from __future__ import annotations

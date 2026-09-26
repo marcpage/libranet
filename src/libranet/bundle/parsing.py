@@ -12,12 +12,17 @@ directory's entries are files, symlinks, markers, or ``null`` (§4.2). The
 rules on the values themselves, such as entry paths with no ``..`` segment,
 are checked by the shapes as they are built, and CAS paths only when
 followed (:mod:`libranet.bundle.shapes`).
+
+Hashes are lower-cased as they are read, both the whole-file hash and each
+CAS path's (HttpApi §5.4), so a bundle received with upper-case hex is
+written back with lower-case.
 """
 
 from __future__ import annotations
 from json import loads
 from typing import Final
 
+from libranet.bundle.content import normalize_cas_path
 from libranet.bundle.errors import (
     MalformedBundleError,
     PasswordProtectedBundleError,
@@ -95,7 +100,7 @@ def _entry(fields: dict[str, object], contents: object) -> Entry:
 
     if isinstance(contents, list):
         return FileBundle(
-            _strings(contents, '"contents"'), _metadata(fields), _file_versions(fields)
+            _cas_paths(contents, '"contents"'), _metadata(fields), _file_versions(fields)
         )
 
     if isinstance(contents, str):
@@ -118,8 +123,8 @@ def _directory(fields: dict[str, object], contents: dict[str, object]) -> Direct
     return DirectoryBundle(
         entries,
         _metadata(fields),
-        _strings(fields.get("versions", []), '"versions"'),
-        _strings(fields.get("extensions", []), '"extensions"'),
+        _cas_paths(fields.get("versions", []), '"versions"'),
+        _cas_paths(fields.get("extensions", []), '"extensions"'),
     )
 
 
@@ -147,8 +152,8 @@ def _metadata(fields: dict[str, object]) -> Metadata:
         size=_optional_size(metadata),
         writable=_flag(metadata, "writable"),
         executable=_flag(metadata, "executable"),
-        algorithm=_optional_string(metadata, "algorithm"),
-        hash=_optional_string(metadata, "hash"),
+        algorithm=_optional_lower_case(metadata, "algorithm"),
+        hash=_optional_lower_case(metadata, "hash"),
     )
 
 
@@ -163,6 +168,12 @@ def _optional_string(metadata: dict[str, object], key: str) -> str | None:
         raise MalformedBundleError(f'"{key}" must be a string')
 
     return value
+
+
+def _optional_lower_case(metadata: dict[str, object], key: str) -> str | None:
+    """The string ``metadata`` holds at ``key``, if any, lower-cased."""
+    value = _optional_string(metadata, key)
+    return None if value is None else value.lower()
 
 
 def _optional_size(metadata: dict[str, object]) -> int | None:
@@ -197,6 +208,11 @@ def _strings(value: object, name: str) -> tuple[str, ...]:
     return tuple(value)
 
 
+def _cas_paths(value: object, name: str) -> tuple[str, ...]:
+    """``value`` as a tuple of CAS paths, if it is an array of strings."""
+    return tuple(normalize_cas_path(path) for path in _strings(value, name))
+
+
 def _file_versions(fields: dict[str, object]) -> tuple[tuple[str, ...], ...]:
     """A file's earlier versions: each the ``contents`` of a prior file bundle (§2.1)."""
     versions = fields.get("versions", [])
@@ -204,4 +220,4 @@ def _file_versions(fields: dict[str, object]) -> tuple[tuple[str, ...], ...]:
     if not isinstance(versions, list):
         raise MalformedBundleError('"versions" must be an array of arrays of strings')
 
-    return tuple(_strings(version, '"versions" entries') for version in versions)
+    return tuple(_cas_paths(version, '"versions" entries') for version in versions)

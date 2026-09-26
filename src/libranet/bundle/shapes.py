@@ -11,9 +11,10 @@ if they are broken. No invalid shape can exist, whether it was parsed or
 built in code, as the bundle writer (Step 17) will. Checking that JSON
 fields have the right types is the parser's job, as annotations cover code.
 
-CAS paths are kept as the strings the bundle holds. They are parsed only when
-followed, so a part addressed under an algorithm this node lacks makes only
-its own file unreadable rather than the whole directory.
+CAS paths are kept as the strings the bundle holds, except that the parser
+lower-cases their hash. They are parsed only when followed, so a part
+addressed under an algorithm this node lacks makes only its own file
+unreadable rather than the whole directory.
 """
 
 from __future__ import annotations

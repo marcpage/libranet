@@ -8,6 +8,7 @@ from libranet.cas.algorithms import AlgorithmRegistry, DEFAULT_REGISTRY
 from libranet.cas.errors import InvalidContentIdError
 
 _HEX_DIGITS = frozenset(hexdigits)
+_LOWER_HEX_DIGITS = frozenset(hexdigits.lower())
 
 
 @dataclass(frozen=True, order=True)
@@ -17,10 +18,26 @@ class ContentId:
     Construct instances through :meth:`create`, :meth:`parse`, or
     :meth:`for_data` so the hash is checked against its algorithm and
     lower-cased (HttpApi §5.4 accepts any case but stores lower-case hex).
+
+    However it is built, an identifier is lower-case, the one form compared
+    and stored, so no upper-case hex gets past building one directly. How
+    long its hash must be depends on the algorithm registry, so only
+    :meth:`create` checks that.
+
+    Raises:
+        InvalidContentIdError: ``algorithm`` is not lower-case, or ``hash``
+            is not lower-case hexadecimal.
     """
 
     algorithm: str
     hash: str
+
+    def __post_init__(self) -> None:
+        if self.algorithm != self.algorithm.lower() or not _LOWER_HEX_DIGITS.issuperset(self.hash):
+            raise InvalidContentIdError(
+                f"Content id must be lower-case with a hexadecimal hash, got "
+                f"{self.algorithm!r}/{self.hash!r}"
+            )
 
     @classmethod
     def create(

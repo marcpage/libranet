@@ -1,7 +1,8 @@
 """Writing bundles back out as JSON (BundleSpecification §§2–3).
 
 The inverse of :mod:`libranet.bundle.parsing`: :func:`parse_bundle` of what
-:func:`bundle_value` gives is the bundle it was given. A field holding only
+:func:`bundle_value` gives is the bundle it was given, provided its hashes
+are lower-case, the only form the parser leaves them in. A field holding only
 its default is left out, as an author would leave it, and keys are sorted,
 so a bundle always encodes to the same bytes. Non-ASCII text is escaped,
 which keeps any string JSON can hold, even a lone surrogate, encodable.

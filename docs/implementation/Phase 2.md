@@ -133,6 +133,47 @@ tests, before Phase 2 starts comparing hashes in more places (Steps 27,
   parameters — are not hex, and case is significant in them. This step
   does not touch them, and says so where it would be tempting.
 
+Found while building — three paths that did not normalize, and now do:
+
+- A node list POSTed to `/data/nodes` was published on the bus with each
+  node id spelled as the peer sent it. `parse_node_list` now parses the
+  ids, as `parse_seek_list` already did, and drops unusable ones, so the
+  connection manager's two readers of node lists no longer parse them
+  again.
+- `/config/api/backups/{job_id}` matched only lower-case hex, so a job id
+  in upper case missed the route. It now matches any case and passes the
+  id on lower-cased.
+- A bundle kept upper-case hex and wrote it back, both in
+  `metadata.algorithm` and `metadata.hash` and in every CAS path: a
+  file's parts and versions, and a directory's versions and extensions.
+  The parser now lower-cases them, so a bundle round-trips lower-case.
+
+Everything else already normalized where it parsed, and is now pinned by
+tests. The notes the last bullet asks for are in
+`identity/content_digest.py`, and at `_parse_key_id` in
+`identity/signatures.py`, where a signature's `keyid` is lower-cased to
+find the signer's key but the header is verified as sent, since the
+signature covers it.
+
+My calls, not yet reviewed:
+
+- `ContentId` checks its own case. Building one directly with an
+  algorithm that is not lower-case, or a hash that is not lower-case hex,
+  raises `InvalidContentIdError`, so a lower-case identifier is an
+  invariant of the type rather than of its factories. Only `create`
+  checks a hash's length, which needs the algorithm registry.
+  `CasStore.iter_prefix`, which builds identifiers from file names, skips
+  a name that is not a lower-case hash.
+- Stats rows are normalized on the way in, as `stats/database.py` now
+  states. Every method that writes an identifier takes a `ContentId`,
+  which can hold no other form, so identifiers are rebuilt from rows as
+  they are. Seek values are text, and callers pass them normalized.
+- Only a CAS path's first two segments, its algorithm and hash, are
+  lower-cased. The cipher a per-entry encrypted path adds
+  (BundleSpecification §7) is not a hash, so it and the key after it are
+  kept as written. The bundle shapes do not check case: the parser
+  normalizes, and code builds CAS paths only from `ContentId`s.
+
 **Testable in isolation:** table-driven tests that feed each entry point
 the same identifier in upper, lower, and mixed case and assert one
 normalized result — request handlers with a fake queue, bundle parsing
@@ -354,9 +395,10 @@ My calls, not yet reviewed:
 - The SRV record this node advertises names the host's own `.local`
   name, the one the operating system's mDNS responder already answers
   for.
-- A service whose `id` is missing, unusable, or this node's own is
-  ignored. A service that goes away changes nothing: stats' failure
-  counts and aging retire its addresses.
+- The `id` is parsed as any node id is, so its case does not matter
+  (Step 21). A service whose `id` is missing, unusable, or this node's
+  own is ignored. A service that goes away changes nothing: stats'
+  failure counts and aging retire its addresses.
 - No rate limit beyond Step 23's per-node bound. Anyone on the LAN can
   already POST a node list, and the handshake rejects a false identity.
 - On macOS, `zeroconf` shares UDP port 5353 with the system's
@@ -1315,6 +1357,9 @@ limit with nothing arriving, and does not while parts keep arriving.
   everything that walks a bundle's parts walks them too: an export
   (Phase 1 Step 38) writes them, and a restore (Step 20) waits on and
   asks for them.
+- The parser lower-cases the hash in each of those parts, as in every
+  other CAS path (Step 21). An inline value is base64, whose case is
+  significant, so it is kept as written.
 - Python's `os.getxattr` and `os.setxattr` exist on Linux only. macOS
   needs a library, such as the `xattr` package, or `ctypes` against its
   `getxattr(2)`, which takes extra arguments Linux's does not. Windows
