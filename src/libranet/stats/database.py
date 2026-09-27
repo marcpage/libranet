@@ -493,6 +493,26 @@ class StatsDatabase:
         )
         return failing.rowcount + surplus.rowcount
 
+    # -- Application use (Phase 2 Step 29) -------------------------------
+
+    def record_app_access(self, bundle: ContentId) -> None:
+        """Note that an application was just served from ``bundle``."""
+        self._execute(
+            "INSERT INTO app_bundles (algorithm, hash, last_accessed) "
+            "VALUES (:algorithm, :hash, :now) "
+            "ON CONFLICT (algorithm, hash) DO UPDATE SET last_accessed = :now",
+            {"algorithm": bundle.algorithm, "hash": bundle.hash, "now": self._clock()},
+        )
+
+    def apps_accessed_since(self, since: float) -> list[ContentId]:
+        """Every bundle an application has been served from at ``since`` or later, by hash."""
+        rows = self._query(
+            "SELECT algorithm, hash FROM app_bundles WHERE last_accessed >= :since "
+            "ORDER BY hash, algorithm",
+            {"since": since},
+        )
+        return [ContentId(row["algorithm"], row["hash"]) for row in rows]
+
     # -- Outstanding requests --------------------------------------------
 
     def record_seek(

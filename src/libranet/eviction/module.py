@@ -55,6 +55,21 @@ answers, as when it restarts, is given up on after
 
 This node's own public key is never let go of, since peers need it to check
 the node's signatures.
+
+The application files the unbundler resolves are not content, nor counted
+as content held, but they take up free space. So when free space runs
+short, before any content is handed off, those of applications not used
+within ``storage.resolved_idle_seconds`` are deleted (Phase 2 Step 29). The
+stats module is asked, and tells the unbundler which to keep; the unbundler
+deletes the rest and answers::
+
+    resolved.reclaim_requested  {}
+    resolved.reclaimed          {"bundles", "bytes"}
+
+No hand-off starts until it answers, or until ``reclaim_timeout_seconds``
+pass without an answer. While free space stays short, it is asked again at
+most once every ``reclaim_interval_seconds``. Storage over
+``max_storage_bytes`` alone deletes none, since they are not counted there.
 """
 
 from __future__ import annotations
@@ -91,6 +106,14 @@ DEFAULT_HAND_OFF_TIMEOUT_SECONDS: Final = 600.0
 # content to let go of. Ranking it reads every row of content held.
 DEFAULT_CANDIDATES_TIMEOUT_SECONDS: Final = 60.0
 
+# Provisional default: how long the unbundler may take to answer that it has
+# deleted the resolved files not used lately.
+DEFAULT_RECLAIM_TIMEOUT_SECONDS: Final = 60.0
+
+# Provisional default: how often those are deleted while free space stays
+# short. A file is deleted only once unused for far longer.
+DEFAULT_RECLAIM_INTERVAL_SECONDS: Final = 3600.0
+
 
 @dataclass(frozen=True)
 class _HandOff:
@@ -104,7 +127,12 @@ class EvictionModule(ModuleBase):
     """Hands off and deletes the content this node has least claim to keep, as storage runs short."""
 
     subscriptions: ClassVar[frozenset[EventType]] = frozenset(
-        {EventType.DATA_STORED, EventType.EVICTION_ACKNOWLEDGED, EventType.EVICTION_CANDIDATES}
+        {
+            EventType.DATA_STORED,
+            EventType.EVICTION_ACKNOWLEDGED,
+            EventType.EVICTION_CANDIDATES,
+            EventType.RESOLVED_RECLAIMED,
+        }
     )
 
     def __init__(
@@ -121,6 +149,8 @@ class EvictionModule(ModuleBase):
         max_hand_offs: int = DEFAULT_MAX_HAND_OFFS,
         hand_off_timeout_seconds: float = DEFAULT_HAND_OFF_TIMEOUT_SECONDS,
         candidates_timeout_seconds: float = DEFAULT_CANDIDATES_TIMEOUT_SECONDS,
+        reclaim_timeout_seconds: float = DEFAULT_RECLAIM_TIMEOUT_SECONDS,
+        reclaim_interval_seconds: float = DEFAULT_RECLAIM_INTERVAL_SECONDS,
     ) -> None:
         if retry_delay_seconds < 0:
             raise ValueError(f"retry_delay_seconds must not be negative, got {retry_delay_seconds}")
@@ -138,6 +168,16 @@ class EvictionModule(ModuleBase):
                 f"candidates_timeout_seconds must be positive, got {candidates_timeout_seconds}"
             )
 
+        if reclaim_timeout_seconds <= 0:
+            raise ValueError(
+                f"reclaim_timeout_seconds must be positive, got {reclaim_timeout_seconds}"
+            )
+
+        if reclaim_interval_seconds < 0:
+            raise ValueError(
+                f"reclaim_interval_seconds must not be negative, got {reclaim_interval_seconds}"
+            )
+
         super().__init__(name, queues, logger=logger, clock=clock, poll_interval=poll_interval)
         self._config = config
         self._retry_delay = retry_delay_seconds
@@ -145,6 +185,8 @@ class EvictionModule(ModuleBase):
         self._max_hand_offs = max_hand_offs
         self._hand_off_timeout = hand_off_timeout_seconds
         self._candidates_timeout = candidates_timeout_seconds
+        self._reclaim_timeout = reclaim_timeout_seconds
+        self._reclaim_interval = reclaim_interval_seconds
         self._store = source_of_truth_store(config.storage)
         self._node_id: ContentId | None = None
         self._pressure: StoragePressure | None = None
@@ -155,10 +197,15 @@ class EvictionModule(ModuleBase):
         self._asked_at: float | None = None
         # No new hand-off starts before this time.
         self._paused_until = 0.0
+        # When resolved files were asked to be deleted, while that is unanswered.
+        self._reclaiming_since: float | None = None
+        # They are not asked to be deleted again before this time.
+        self._next_reclaim_at = 0.0
         self._handlers: Mapping[EventType, Callable[[Message], None]] = {
             EventType.DATA_STORED: self._on_data_stored,
             EventType.EVICTION_ACKNOWLEDGED: self._on_eviction_acknowledged,
             EventType.EVICTION_CANDIDATES: self._on_eviction_candidates,
+            EventType.RESOLVED_RECLAIMED: self._on_resolved_reclaimed,
         }
 
     @property
@@ -207,12 +254,21 @@ class EvictionModule(ModuleBase):
             self._asked_at = None
             self.logger.warning("The stats module never said what to let go of")
 
+        unreclaimed = (
+            self._reclaiming_since is not None
+            and now - self._reclaiming_since >= self._reclaim_timeout
+        )
+
+        if unreclaimed:
+            self._reclaiming_since = None
+            self.logger.warning("The unbundler never said which resolved files it deleted")
+
         resumed = 0 < self._paused_until <= now
 
         if resumed:
             self._paused_until = 0.0
 
-        if overdue or unanswered or resumed:
+        if overdue or unanswered or unreclaimed or resumed:
             self._evict()
 
     def handle(self, message: Message) -> None:
@@ -273,19 +329,37 @@ class EvictionModule(ModuleBase):
                 "Storage is %d bytes over its limits, with nothing left to let go of", excess
             )
 
+    def _on_resolved_reclaimed(self, message: Message) -> None:
+        """Carry on, now that the resolved files not used lately are deleted."""
+        self._reclaiming_since = None
+        self.logger.debug(
+            "Deleting the resolved files of %d bundles freed %d bytes",
+            int(message["bundles"]),
+            int(message["bytes"]),
+        )
+        self._evict()
+
     def _evict(self) -> None:
         """Start hand-offs until those under way would bring storage back within its limits.
 
-        What is handed off is taken from the list stats last sent, and more
-        is asked for once that runs out.
+        With free space short, resolved files not used lately are deleted
+        first. What is handed off is taken from the list stats last sent,
+        and more is asked for once that runs out.
         """
         if self._clock() < self._paused_until or len(self._handing_off) >= self._max_hand_offs:
+            return
+
+        if self._reclaiming_since is not None:
             return
 
         excess = self.pressure.excess()
 
         if not excess:
             self._candidates.clear()
+            return
+
+        if self._clock() >= self._next_reclaim_at and self.pressure.free_space_shortfall():
+            self._reclaim()
             return
 
         freeing = sum(hand_off.size for hand_off in self._handing_off.values())
@@ -317,6 +391,14 @@ class EvictionModule(ModuleBase):
             },
         )
         self.logger.debug("Asked for content to free %d bytes", byte_count)
+
+    def _reclaim(self) -> None:
+        """Ask for the resolved files of applications not used lately to be deleted."""
+        now = self._clock()
+        self._reclaiming_since = now
+        self._next_reclaim_at = now + self._reclaim_interval
+        self.publish(EventType.RESOLVED_RECLAIM_REQUESTED, {})
+        self.logger.debug("Asked for the resolved files not used lately to be deleted")
 
     def _hand_off(self, held: HeldObject) -> None:
         content_id = held.content_id

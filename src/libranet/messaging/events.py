@@ -68,6 +68,12 @@ class EventType(StrEnum):
     EVICTION_CANDIDATES_REQUESTED = "eviction.candidates_requested"  # eviction → stats
     EVICTION_CANDIDATES = "eviction.candidates"  # stats → eviction
 
+    # Deleting the resolved files of applications not used lately (Phase 2 Step 29).
+    APP_ACCESSED = "app.accessed"  # webserver → stats
+    RESOLVED_RECLAIM_REQUESTED = "resolved.reclaim_requested"  # eviction → stats
+    RESOLVED_RECLAIM = "resolved.reclaim"  # stats → unbundler
+    RESOLVED_RECLAIMED = "resolved.reclaimed"  # unbundler → eviction
+
 
 class AddressSource(StrEnum):
     """How this node learned an address of a peer (Phase 2 Step 23).

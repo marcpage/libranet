@@ -9,7 +9,7 @@ Version 0.1 • September 2026
 This document describes every file a Libranet node reads or writes: where
 it lives, what it holds, which module writes it, and which settings and
 command-line switches move it or change what goes into it. It describes the
-implementation as of Phase 2 Step 28. The protocol does not prescribe any of
+implementation as of Phase 2 Step 29. The protocol does not prescribe any of
 this layout; for normative behavior see [High-Level
 Design](../specs/HighLevelDesign.md), [HTTP API](../specs/HttpApi.md), and
 [Backup Specification](../specs/BackupSpecification.md).
@@ -180,9 +180,12 @@ directly from then on (`src/libranet/unbundler/resolved_files.py`).
   with it.
 
 Resolved files are a cache of content in `cas/data`. They are not counted
-against the storage limits and are never evicted. Deleting a tree while the
-node is stopped is safe; the next request resolves it again. Phase 2 Step 29
-(#69) plans to reclaim trees whose application has gone unused for a month.
+toward `storage.max_storage_bytes`, but they take up free space. When free
+space falls below `storage.min_free_bytes`, before any object is handed off,
+the unbundler deletes the whole tree of every bundle no application has been
+served from for `storage.resolved_idle_seconds` (Phase 2 Step 29). Deleting a
+tree by hand while the node is stopped is safe too; the next request
+resolves it again.
 
 ### 3.3 Unverified Uploads: `incoming`
 
@@ -232,10 +235,10 @@ files together; there is no switch for it.
 ### 3.5 The Statistics Database
 
 `libranet.sqlite3` holds what the node knows about content and peers, in the
-tables `data_stats`, `node_stats`, `node_addresses`, and `seek_entries`
-(`src/libranet/stats/schema.py`). Only the stats module ever opens it; every
-other module learns from messages and from the lists derived into the cache
-directory.
+tables `data_stats`, `node_stats`, `node_addresses`, `app_bundles`, and
+`seek_entries` (`src/libranet/stats/schema.py`). Only the stats module ever
+opens it; every other module learns from messages and from the lists derived
+into the cache directory.
 
 It runs in write-ahead-log mode, so `libranet.sqlite3-wal` and
 `libranet.sqlite3-shm` sit beside it while the node runs. Its location
@@ -494,6 +497,7 @@ optional; `examples/libranet.yaml` shows them all with their defaults.
 | `storage.max_object_bytes` | `1048576` | — | Largest object accepted or stored; the part size backups and builds cut files into |
 | `storage.min_free_bytes` | `1073741824` | — | Free space kept on the filesystem holding `cas/` |
 | `storage.max_storage_bytes` | `null` | — | Most bytes of objects kept in `cas/data` |
+| `storage.resolved_idle_seconds` | `2592000.0` | — | How long an application goes unused before its tree in `cas/resolved/` may be deleted for free space |
 | `storage.search_cache_ttl_seconds` | `300.0` | — | How long a file in `search/` is reused |
 | `storage.search_max_results` | `32` | — | Hashes per file in `search/` |
 | `identity.key_dir` | `{data_dir}/keys` | — | Where the three private files live |
@@ -571,8 +575,6 @@ with its location printed, after a failure.
 
 Phase 2 steps that will change this layout:
 
-- **Step 29 (#69)** reclaims resolved trees in `cas/resolved/` for
-  applications unused for a month, when disk space runs low.
 - **Step 30 (#71)** adds a private list of blocked content ids to the stats
   database, and a list derived from it for the web server and validator,
   presumably beside the others in `lists/`.

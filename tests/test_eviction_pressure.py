@@ -109,6 +109,26 @@ def test_the_further_limit_decides(storage: StorageConfig) -> None:
     assert pressure.excess() == 5
 
 
+def test_only_free_space_counts_towards_its_shortfall(storage: StorageConfig) -> None:
+    free = FixedFreeBytes(90)
+    pressure = StoragePressure.of(limited(storage, min_free_bytes=100, max_storage_bytes=0), free)
+    pressure.stored(50)
+
+    assert (pressure.free_space_shortfall(), pressure.excess()) == (10, 50)
+
+    free.free = 100
+
+    assert (pressure.free_space_shortfall(), pressure.excess()) == (0, 50)
+
+
+def test_there_is_no_shortfall_of_free_space_without_a_minimum(storage: StorageConfig) -> None:
+    free = FixedFreeBytes(0)
+    pressure = StoragePressure.of(limited(storage, min_free_bytes=0), free)
+
+    assert pressure.free_space_shortfall() == 0
+    assert free.measured == 0
+
+
 def test_free_space_is_measured_where_content_is_stored_by_default(
     storage: StorageConfig,
 ) -> None:

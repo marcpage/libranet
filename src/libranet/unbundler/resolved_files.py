@@ -19,14 +19,20 @@ file. No filesystem path is built from request text, either.
 overlaid, as zlib-compressed JSON, saved by the unbundler so it is resolved
 only once (see :mod:`libranet.unbundler.module`). Its name is not hex, so no
 prefix subdirectory can take it.
+
+A bundle's files are deleted together, ``directory.jzon`` with them, never
+one at a time (Phase 2 Step 29): each is resolved again when next asked for.
 """
 
 from __future__ import annotations
 from hashlib import sha256
 from pathlib import Path
+from shutil import rmtree
 from typing import Final
 
+from libranet.cas.algorithms import DEFAULT_REGISTRY
 from libranet.cas.content_id import ContentId
+from libranet.cas.errors import InvalidContentIdError
 
 DIRECTORY_FILE: Final = "directory.jzon"
 
@@ -50,5 +56,45 @@ class ResolvedFiles:
         """Where the directory ``bundle`` describes is saved once resolved."""
         return self._bundle_dir(bundle) / DIRECTORY_FILE
 
+    def bundles(self) -> list[ContentId]:
+        """Every bundle whose files are kept here, in no particular order.
+
+        Only directories named as :meth:`path_for` names them are included.
+        """
+        found: list[ContentId] = []
+
+        for algorithm in DEFAULT_REGISTRY.names():
+            for directory in _subdirectories(self._directory / algorithm):
+                try:
+                    bundle = ContentId.create(algorithm, directory.name)
+
+                except InvalidContentIdError:
+                    continue
+
+                if bundle.hash == directory.name:
+                    found.append(bundle)
+
+        return found
+
+    def remove(self, bundle: ContentId) -> int:
+        """Delete every file kept for ``bundle``, and say how many bytes they took.
+
+        Raises:
+            OSError: a file could not be deleted; those that were stay deleted.
+        """
+        directory = self._bundle_dir(bundle)
+        size = sum(path.stat().st_size for path in directory.rglob("*") if path.is_file())
+        rmtree(directory)
+        return size
+
     def _bundle_dir(self, bundle: ContentId) -> Path:
         return self._directory / bundle.algorithm / bundle.hash
+
+
+def _subdirectories(directory: Path) -> list[Path]:
+    """The directories directly in ``directory``, if it exists."""
+    try:
+        return [entry for entry in directory.iterdir() if entry.is_dir()]
+
+    except FileNotFoundError:
+        return []

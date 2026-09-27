@@ -1,5 +1,5 @@
 """Tests for the eviction module, with the test standing in for the validator, the stats
-module, and the connection manager, and free space faked."""
+module, the connection manager, and the unbundler, and free space faked."""
 
 from __future__ import annotations
 from logging import INFO
@@ -23,6 +23,8 @@ from libranet.supervision.registry import default_module_specs
 RETRY_DELAY = 60.0
 TIMEOUT = 300.0
 CANDIDATES_TIMEOUT = 30.0
+RECLAIM_TIMEOUT = 20.0
+RECLAIM_INTERVAL = 600.0
 SIZE = 10
 PEERS = [ContentId.for_data(f"peer {index}'s key".encode(), "sha256") for index in range(3)]
 CONTENT = [ContentId.for_data(f"content {index}".encode(), "sha256") for index in range(5)]
@@ -84,6 +86,8 @@ class Modules:
             free_bytes=lambda: self._free[0],
             hand_off_timeout_seconds=TIMEOUT,
             candidates_timeout_seconds=CANDIDATES_TIMEOUT,
+            reclaim_timeout_seconds=RECLAIM_TIMEOUT,
+            reclaim_interval_seconds=RECLAIM_INTERVAL,
             **options,
         )
         self.built.append(module)
@@ -114,6 +118,23 @@ def capped(
     return config.model_copy(update={"storage": storage})
 
 
+def short_of_space(config: LibranetConfig, free: list[int]) -> LibranetConfig:
+    """``config`` needing 100 bytes left free, with 95 left."""
+    free[0] = 95
+    storage = config.storage.model_copy(update={"min_free_bytes": 100})
+    return config.model_copy(update={"storage": storage})
+
+
+def started_short_of_space(
+    modules: Modules, config: LibranetConfig, queues: ModuleQueues, free: list[int]
+) -> EvictionModule:
+    """A module 5 bytes short of free space, once no resolved files were found to delete."""
+    module = modules.start(short_of_space(config, free))
+    assert events(queues) == [(EventType.RESOLVED_RECLAIM_REQUESTED, "")]
+    module.handle(reclaimed())
+    return module
+
+
 def stored(content_id: ContentId, size: int = SIZE) -> Message:
     return make_message(
         EventType.DATA_STORED,
@@ -138,6 +159,15 @@ def candidates(*content_ids: ContentId, size: int = SIZE) -> Message:
                 for content_id in content_ids
             ]
         },
+    )
+
+
+def reclaimed(bundles: int = 0, byte_count: int = 0) -> Message:
+    """The unbundler's answer: the resolved files of ``bundles`` deleted, ``byte_count`` freed."""
+    return make_message(
+        EventType.RESOLVED_RECLAIMED,
+        ModuleName.UNBUNDLER,
+        {"bundles": bundles, "bytes": byte_count},
     )
 
 
@@ -249,16 +279,17 @@ def test_stored_content_is_counted_and_can_start_eviction(
     assert requested(queues) == (SIZE, [])
 
 
-def test_too_little_free_space_starts_eviction(
+def test_too_little_free_space_deletes_resolved_files_before_asking_stats(
     modules: Modules,
     config: LibranetConfig,
     queues: ModuleQueues,
     free: list[int],
 ) -> None:
-    free[0] = 95
-    storage = config.storage.model_copy(update={"min_free_bytes": 100})
+    module = modules.start(short_of_space(config, free))
 
-    modules.start(config.model_copy(update={"storage": storage}))
+    assert events(queues) == [(EventType.RESOLVED_RECLAIM_REQUESTED, "")]
+
+    module.handle(reclaimed(1, 3))
 
     assert requested(queues) == (5, [])
 
@@ -402,9 +433,7 @@ def test_an_empty_list_once_storage_is_within_its_limits_is_no_cause_to_wait(
     free: list[int],
     caplog: LogCaptureFixture,
 ) -> None:
-    free[0] = 95
-    storage = config.storage.model_copy(update={"min_free_bytes": 100})
-    module = modules.start(config.model_copy(update={"storage": storage}))
+    module = started_short_of_space(modules, config, queues, free)
     requested(queues)
     free[0] = 100
 
@@ -424,9 +453,7 @@ def test_a_list_left_over_once_storage_is_within_its_limits_is_dropped(
     free: list[int],
 ) -> None:
     hold(store, *CONTENT[:2])
-    free[0] = 95
-    storage = config.storage.model_copy(update={"min_free_bytes": 100})
-    module = modules.start(config.model_copy(update={"storage": storage}))
+    module = started_short_of_space(modules, config, queues, free)
     requested(queues)
     module.handle(candidates(CONTENT[0], CONTENT[1]))
     assert handed_off(queues) == [CONTENT[0]]
@@ -634,9 +661,7 @@ def test_a_late_answer_still_deletes_the_content(
     free: list[int],
 ) -> None:
     hold(store, CONTENT[0])
-    free[0] = 95
-    storage = config.storage.model_copy(update={"min_free_bytes": 100})
-    module = modules.start(config.model_copy(update={"storage": storage}))
+    module = started_short_of_space(modules, config, queues, free)
     requested(queues)
     module.handle(candidates(CONTENT[0]))
     assert handed_off(queues) == [CONTENT[0]]
@@ -664,6 +689,104 @@ def test_an_answer_for_content_no_longer_held_deletes_nothing(
     assert published(queues) == []
 
 
+# -- Resolved files first (Phase 2 Step 29) ---------------------------------
+
+
+def test_resolved_files_deleted_that_free_enough_space_leave_content_alone(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    queues: ModuleQueues,
+    free: list[int],
+) -> None:
+    hold(store, CONTENT[0])
+    module = modules.start(short_of_space(config, free))
+    assert events(queues) == [(EventType.RESOLVED_RECLAIM_REQUESTED, "")]
+    free[0] = 100
+
+    module.handle(reclaimed(2, 5))
+
+    assert published(queues) == []
+    assert store.exists(CONTENT[0])
+
+
+def test_nothing_is_handed_off_while_resolved_files_are_being_deleted(
+    modules: Modules,
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    free: list[int],
+) -> None:
+    module = modules.start(short_of_space(config, free))
+    assert events(queues) == [(EventType.RESOLVED_RECLAIM_REQUESTED, "")]
+
+    module.handle(stored(CONTENT[0]))
+    module.handle(candidates(CONTENT[0]))
+
+    assert published(queues) == []
+
+    module.handle(reclaimed())
+
+    assert handed_off(queues) == [CONTENT[0]]
+
+
+def test_storage_over_its_cap_alone_deletes_no_resolved_files(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+) -> None:
+    hold(store, CONTENT[0])
+
+    modules.start(capped(config, store, node_id, 0))
+
+    assert events(queues) == [(EventType.EVICTION_CANDIDATES_REQUESTED, "")]
+
+
+def test_resolved_files_the_unbundler_never_answers_for_are_given_up_on(
+    modules: Modules,
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    free: list[int],
+    caplog: LogCaptureFixture,
+) -> None:
+    module = modules.start(short_of_space(config, free))
+    assert events(queues) == [(EventType.RESOLVED_RECLAIM_REQUESTED, "")]
+
+    now[0] += RECLAIM_TIMEOUT - 1
+    module.on_idle()
+    assert published(queues) == []
+
+    now[0] += 1
+    module.on_idle()
+
+    assert "never said which resolved files it deleted" in caplog.text
+    assert requested(queues) == (5, [])
+
+
+def test_resolved_files_are_deleted_at_most_once_an_interval_while_space_stays_short(
+    modules: Modules,
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    free: list[int],
+) -> None:
+    module = started_short_of_space(modules, config, queues, free)
+    requested(queues)
+    module.handle(candidates())
+
+    now[0] += RETRY_DELAY
+    module.on_idle()
+    assert requested(queues) == (5, [])
+    module.handle(candidates())
+
+    now[0] += RECLAIM_INTERVAL - RETRY_DELAY
+    module.on_idle()
+
+    assert events(queues) == [(EventType.RESOLVED_RECLAIM_REQUESTED, "")]
+
+
 # -- Messages, lifecycle, and wiring ----------------------------------------
 
 
@@ -678,6 +801,9 @@ def test_a_malformed_broadcast_raises(modules: Modules, config: LibranetConfig) 
 
     with raises(KeyError):
         module.handle(make_message(EventType.EVICTION_CANDIDATES, ModuleName.STATS, {}))
+
+    with raises(KeyError):
+        module.handle(make_message(EventType.RESOLVED_RECLAIMED, ModuleName.UNBUNDLER, {}))
 
 
 def test_an_event_it_does_not_handle_raises(modules: Modules, config: LibranetConfig) -> None:
@@ -717,12 +843,21 @@ def test_unusable_settings_are_refused(config: LibranetConfig, queues: ModuleQue
             ModuleName.EVICTION, queues, config, RETRY_DELAY, candidates_timeout_seconds=0
         )
 
+    with raises(ValueError, match="reclaim_timeout_seconds"):
+        EvictionModule(ModuleName.EVICTION, queues, config, RETRY_DELAY, reclaim_timeout_seconds=0)
+
+    with raises(ValueError, match="reclaim_interval_seconds"):
+        EvictionModule(
+            ModuleName.EVICTION, queues, config, RETRY_DELAY, reclaim_interval_seconds=-1
+        )
+
 
 def test_the_module_subscribes_to_stored_content_and_answers() -> None:
     assert EvictionModule.subscriptions == {
         EventType.DATA_STORED,
         EventType.EVICTION_ACKNOWLEDGED,
         EventType.EVICTION_CANDIDATES,
+        EventType.RESOLVED_RECLAIMED,
     }
 
 

@@ -914,7 +914,8 @@ def test_an_application_file_not_yet_resolved_is_asked_for(
     assert response.status == 503
     assert response.getheader("Retry-After") == str(RETRY_AFTER_SECONDS)
     assert loads(body)["type"] == CONTENT_UNAVAILABLE
-    (asked,) = _published(queues)
+    accessed, asked = _published(queues)
+    assert (accessed["event"], accessed["bundle"]) == (EventType.APP_ACCESSED, str(APP_BUNDLE_ID))
     assert asked["event"] == EventType.APP_PATH_NOT_FOUND
     assert (asked["bundle"], asked["path"]) == (str(APP_BUNDLE_ID), "docs/index.html")
 
@@ -1176,9 +1177,9 @@ def test_every_path_beneath_config_but_the_apis_is_the_config_applications(
     assert redirect.status == 302
     assert redirect.getheader("Location") == "/config/"
     assert statuses == [503, 503, 503]
-    assert [
-        (message["event"], message["bundle"], message["path"]) for message in _published(queues)
-    ] == [
+    accessed, *asked = _published(queues)
+    assert (accessed["event"], accessed["bundle"]) == (EventType.APP_ACCESSED, str(APP_BUNDLE_ID))
+    assert [(message["event"], message["bundle"], message["path"]) for message in asked] == [
         (EventType.APP_PATH_NOT_FOUND, str(APP_BUNDLE_ID), path)
         for path in ("index.html", "backups", "restores/a/b")
     ]
@@ -1245,12 +1246,13 @@ def test_an_application_registered_through_config_is_served_at_once(
     assert loads(body) == {"name": "wiki", "bundle": str(APP_BUNDLE_ID)}
 
     asked, _ = _get(connection, "/wiki/")
-    (message,) = _published(queues)
+    accessed, message = _published(queues)
     resolved = ResolvedFiles(storage.resolved_files_dir, storage.hash_prefix_length)
     write_atomically(resolved.path_for(APP_BUNDLE_ID, "index.html"), b"<html>")
     served, page = _get(connection, "/wiki/")
 
     assert asked.status == 503
+    assert accessed["event"] == EventType.APP_ACCESSED
     assert (message["event"], message["bundle"]) == (
         EventType.APP_PATH_NOT_FOUND,
         str(APP_BUNDLE_ID),

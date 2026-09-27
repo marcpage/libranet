@@ -423,6 +423,53 @@ def test_with_nothing_held_nothing_is_offered(still: StatsModule, queues: Module
     assert offered(queues) == []
 
 
+def accessed(bundle: ContentId) -> Message:
+    return broadcast(EventType.APP_ACCESSED, {"bundle": str(bundle)}, ModuleName.WEBSERVER)
+
+
+def reclaim_requested() -> Message:
+    return broadcast(EventType.RESOLVED_RECLAIM_REQUESTED, {}, ModuleName.EVICTION)
+
+
+def test_only_applications_used_lately_have_their_resolved_files_kept(
+    config: LibranetConfig, queues: ModuleQueues
+) -> None:
+    now = [NOW]
+    module = StatsModule(ModuleName.STATS, queues, config, clock=lambda: now[0], poll_interval=0.01)
+    module.on_start()
+
+    try:
+        published(queues)
+        module.handle(accessed(OTHER_ID))
+        module.handle(accessed(CONTENT_ID))
+        now[0] += config.storage.resolved_idle_seconds
+        module.handle(accessed(PEER_ID))
+        # Used exactly as long ago as allowed, so still kept.
+        module.handle(reclaim_requested())
+        now[0] += 1
+        module.handle(reclaim_requested())
+
+        answers = published(queues)
+
+    finally:
+        module.on_stop()
+
+    assert [message["event"] for message in answers] == [EventType.RESOLVED_RECLAIM] * 2
+    assert answers[0]["keep"] == sorted(str(bundle) for bundle in (CONTENT_ID, OTHER_ID, PEER_ID))
+    assert answers[1]["keep"] == [str(PEER_ID)]
+
+
+def test_with_no_application_used_no_resolved_files_are_kept(
+    module: StatsModule, queues: ModuleQueues
+) -> None:
+    published(queues)
+
+    module.handle(reclaim_requested())
+
+    (answer,) = published(queues)
+    assert (answer["event"], answer["keep"]) == (EventType.RESOLVED_RECLAIM, [])
+
+
 def test_a_received_node_list_gives_candidates_not_yet_published(
     module: StatsModule, config: LibranetConfig
 ) -> None:
@@ -808,6 +855,8 @@ def test_the_module_subscribes_to_what_it_records() -> None:
     assert EventType.ADDRESS_VERIFIED in StatsModule.subscriptions
     assert EventType.NODE_UNREACHED in StatsModule.subscriptions
     assert EventType.EVICTION_CANDIDATES_REQUESTED in StatsModule.subscriptions
+    assert EventType.APP_ACCESSED in StatsModule.subscriptions
+    assert EventType.RESOLVED_RECLAIM_REQUESTED in StatsModule.subscriptions
     assert EventType.PUT_COMPLETED not in StatsModule.subscriptions
     assert EventType.NODE_LIST_UPDATED not in StatsModule.subscriptions
 

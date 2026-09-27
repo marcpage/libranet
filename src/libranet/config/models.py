@@ -175,6 +175,11 @@ class StorageConfig(_Section):
     min_free_bytes: int = Field(default=1024 * MIB, ge=0)
     max_storage_bytes: int | None = Field(default=None, ge=0)
 
+    # When free space falls below min_free_bytes, the unbundler first deletes
+    # the resolved files of every application not used for this long, to be
+    # resolved again from its bundle when next asked for (Phase 2 Step 29).
+    resolved_idle_seconds: float = Field(default=30 * 86400.0, gt=0)
+
     # Provisional default — see "Open Items" in the implementation plan.
     search_cache_ttl_seconds: float = Field(default=300.0, gt=0)
 

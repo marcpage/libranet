@@ -138,7 +138,9 @@ def resolved(
 ) -> Response:
     """``path`` once the unbundler has resolved what its first request asked for."""
     first = get(router, path)
-    (asked,) = published(queues)
+    (asked,) = [
+        message for message in published(queues) if message["event"] != EventType.APP_ACCESSED
+    ]
     unbundler.handle(asked)
 
     assert first.status == 503
