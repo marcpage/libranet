@@ -989,9 +989,10 @@ Ruled before building:
 - **Only storage pressure reclaims**, with no timer. A resolved tree
   nobody has opened in a year stays on a node with room.
 - **Resolved files are still not counted** toward `max_storage_bytes`,
-  which stays about content. They take up free space like anything else
-  on the disk, so free space falling below `min_free_bytes` is what
-  reclaims them; storage over `max_storage_bytes` alone does not.
+  since they are a cache, and it stays about content. They take up free
+  space like anything else on the disk, so free space falling below
+  `min_free_bytes` is what reclaims them; storage over `max_storage_bytes`
+  alone does not.
 - **An application served from its resolved files is not a request** in
   Step 28's score. While its tree exists it stands in for the content, so
   content behind an application in use can still be handed off, and is
