@@ -165,6 +165,11 @@ backup:
   # interval_seconds of its own. Looking lists the directory without reading
   # any file; only a directory that changed is read and backed up again.
   interval_seconds: 3600.0
+  # A backup, or a build through /config, stores only the entries that
+  # changed, as a layer over the bundle before, until this many layers lie
+  # above the last bundle stored whole; the next is stored whole again.
+  # 0 stores every one whole.
+  max_update_layers: 32
 
 # Applications are not configured here. Which directory bundle each one
 # serves is changed while the node runs, through /config/api/applications,

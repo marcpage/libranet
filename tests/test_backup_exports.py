@@ -31,6 +31,7 @@ from libranet.webserver.config_requests import (
 
 REQUESTED_AT = 1_789_000_000.0
 FINISHED_AT = REQUESTED_AT + 5
+MAX_LAYERS = 2
 
 
 @fixture
@@ -58,11 +59,19 @@ def archive(tmp_path: Path) -> Path:
 
 
 def built(
-    site: Path, store: CasStore, password: str | None = None, max_object_bytes: int = MIB
+    site: Path,
+    store: CasStore,
+    password: str | None = None,
+    max_object_bytes: int = MIB,
+    max_layers: int = MAX_LAYERS,
 ) -> ContentId:
     task = Build(BuildRequest(str(site), Password.optional(password)), REQUESTED_AT)
     task.run(
-        AnnouncingStore(store, lambda content_id, size: None), max_object_bytes, (), lambda: 0.0
+        AnnouncingStore(store, lambda content_id, size: None),
+        max_object_bytes,
+        max_layers,
+        (),
+        lambda: 0.0,
     )
     assert task.bundle is not None
     return task.bundle
@@ -153,10 +162,23 @@ def test_an_archive_holds_neither_the_versions_superseded_nor_their_parts(
 ) -> None:
     first = built(site, store)
     (site / "index.html").write_bytes(b"<p>home, again</p>")
-    second = built(site, store)
+    second = built(site, store, max_layers=0)
     export(second, source, archive)
 
     assert first not in held_in(archive)
+    assert part(b"<p>home</p>") not in held_in(archive)
+    assert files_of(second, archive)["index.html"] == b"<p>home, again</p>"
+
+
+def test_an_archive_of_a_layer_holds_the_bundle_beneath_but_not_the_parts_it_hides(
+    site: Path, store: CasStore, source: LayeredSource, archive: Path
+) -> None:
+    first = built(site, store)
+    (site / "index.html").write_bytes(b"<p>home, again</p>")
+    second = built(site, store)
+    export(second, source, archive)
+
+    assert first in held_in(archive)
     assert part(b"<p>home</p>") not in held_in(archive)
     assert files_of(second, archive)["index.html"] == b"<p>home, again</p>"
 

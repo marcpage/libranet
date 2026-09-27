@@ -23,6 +23,11 @@ directory's entries are all as they were, as when a file was saved unchanged
 or a backup was asked for with nothing to do, its bundle is kept. A new one
 would add a version recording no change.
 
+A new bundle holds only the entries that changed, as an update layer over
+the last (:mod:`libranet.bundle.layering`), until ``max_layers`` lie above
+the last bundle stored whole; the next is then stored whole again. One whose
+last bundle can no longer be read here is stored whole too.
+
 The paths given to be ignored, such as the node's own directories, are
 treated as though they were not there. A backup that took in the source of
 truth would take in what it stored the time before, and so grow without end.
@@ -37,12 +42,11 @@ from typing import Callable, Iterable, Mapping, Protocol
 from libranet.backup.jobs import LatestBackup
 from libranet.bundle.building import build_directory
 from libranet.bundle.content import ContentSource
-from libranet.bundle.errors import BundleError
-from libranet.bundle.extensions import resolve_directory
+from libranet.bundle.layering import StoredVersion, Superseded
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.serialization import encode_bundle
-from libranet.bundle.shapes import DirectoryBundle, Entry
-from libranet.bundle.storing import ContentSink, store_bundle
+from libranet.bundle.shapes import DirectoryBundle
+from libranet.bundle.storing import ContentSink
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 
@@ -96,11 +100,14 @@ def back_up(
     secret: bytes,
     made_at: float,
     max_object_bytes: int,
+    max_layers: int,
     ignore: Iterable[Path] = (),
 ) -> Backup:
     """Back ``directory`` up, as its ``fingerprint`` describes it, after ``latest``.
 
-    Whatever ``ignore`` names is treated as though it were not there.
+    The new bundle is stored as a layer over ``latest`` unless that would
+    lie more than ``max_layers`` above the last bundle stored whole. Whatever
+    ``ignore`` names is treated as though it were not there.
 
     Returns:
         The new latest backup: a bundle made at ``made_at`` superseding
@@ -114,13 +121,22 @@ def back_up(
         BundleTooLargeError: the directory's bundle cannot be stored.
     """
     supersedes = None if latest is None else latest.bundle
+    earlier = (
+        None
+        if latest is None
+        else Superseded.read(
+            latest.bundle,
+            lambda content_id: load_bundle(content_id, store, password=secret),
+            latest.layering,
+        )
+    )
     build = build_directory(
         directory,
         store,
         supersedes,
         max_object_bytes,
         ignore=ignore,
-        previous=None if supersedes is None else _entries(supersedes, store, secret),
+        previous=None if earlier is None else earlier.entries,
     )
     entries_digest = sha256(encode_bundle(DirectoryBundle(build.bundle.entries))).hexdigest()
     skipped = len(build.skipped)
@@ -128,23 +144,8 @@ def back_up(
     if latest is not None and entries_digest == latest.entries_digest:
         return Backup(replace(latest, fingerprint=fingerprint, skipped=skipped), build.skipped)
 
-    bundle = store_bundle(build.bundle, store, secret, max_object_bytes)
+    stored = StoredVersion.store(build.bundle, earlier, store, secret, max_object_bytes, max_layers)
     return Backup(
-        LatestBackup(bundle, made_at, fingerprint, entries_digest, skipped), build.skipped
+        LatestBackup(stored.bundle, made_at, fingerprint, entries_digest, skipped, stored.layering),
+        build.skipped,
     )
-
-
-def _entries(bundle: ContentId, source: ContentSource, secret: bytes) -> Mapping[str, Entry] | None:
-    """What the backup ``bundle`` holds, by path; ``None`` if it cannot be read here."""
-    try:
-        top = load_bundle(bundle, source, password=secret)
-
-        if not isinstance(top, DirectoryBundle):
-            return None
-
-        return resolve_directory(
-            top, lambda content_id: load_bundle(content_id, source, password=secret)
-        )
-
-    except BundleError:
-        return None

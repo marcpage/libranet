@@ -288,7 +288,8 @@ was last backed up to (`src/libranet/backup/jobs.py`):
         "made_at": 1790465751.3,
         "fingerprint": "3b90b75d…",
         "entries_digest": "8abcdd0b…",
-        "skipped": 0
+        "skipped": 0,
+        "layering": {"layers": 1, "extensions": 1}
       }
     }
   ]
@@ -299,7 +300,10 @@ Only the backup module opens it. This file is the only record of which bundle
 holds each directory's latest backup, so a file that cannot be read is an
 error rather than no jobs. Removing a job forgets its bundle but leaves the
 content in `cas/data`. A job whose `interval_seconds` is `null` is checked
-every `backup.interval_seconds`.
+every `backup.interval_seconds`. `layering` says how many update layers lie
+above the last bundle stored whole, and how many extensions a reader follows
+from this one (Phase 2 Step 31); it is `null` for a bundle made before
+layers were written.
 
 ## 4. The Cache Directory
 
@@ -447,10 +451,11 @@ Requests to `/config/api` can read and write anywhere the node's user can.
 
 - **Backups** read the job's directory and write only into `cas/data`.
 - **Builds** write a record named `{directory name}.bundle` beside the
-  directory, holding `{"bundle": "sha256/…"}`
-  (`src/libranet/backup/builds.py`). Building the directory again makes the
-  new bundle supersede the one recorded. A file of that name that is not a
-  record is never replaced; the build fails instead.
+  directory, holding `{"bundle": "sha256/…", "layering": {"layers": 1,
+  "extensions": 1}}` (`src/libranet/backup/builds.py`), with `layering` as
+  in §3.7. Building the directory again makes the new bundle supersede the
+  one recorded. A file of that name that is not a record is never replaced;
+  the build fails instead.
 - **Exports** write a content archive at the path the request names,
   replacing a file there only if the request allows it.
 - **Restores** write each file under a temporary name,
@@ -507,6 +512,7 @@ optional; `examples/libranet.yaml` shows them all with their defaults.
 | `stats.max_list_bytes` | `1048576` | — | Largest `nodes.json` and `seek.json` |
 | `stats.seek_entry_ttl_seconds` | `3600.0` | — | How long an unmet request stays in `seek.json` |
 | `backup.interval_seconds` | `3600.0` | — | How often a job's directory is checked |
+| `backup.max_update_layers` | `32` | — | Update layers a backup or build stores over its last whole bundle before storing a whole one again |
 | `logging.directory` | Platform log directory | `--log-dir` | Root of §5 |
 | `logging.file_name` | `libranet.log` | — | Stem and suffix of every log file |
 | `logging.max_bytes` | `10485760` | — | Size at which a log rotates |

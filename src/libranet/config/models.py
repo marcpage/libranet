@@ -346,6 +346,11 @@ class BackupConfig(_Section):
     # job was configured without an interval of its own. Provisional default.
     interval_seconds: float = Field(default=3600.0, gt=0)
 
+    # A backup or build stores only what changed, as a layer over its last
+    # bundle, until this many layers lie above the last one stored whole;
+    # the next is stored whole again (Phase 2 Step 31). 0 stores each whole.
+    max_update_layers: int = Field(default=32, ge=0)
+
 
 class LoggingConfig(_Section):
     """Centralized rotating-file logging setup."""

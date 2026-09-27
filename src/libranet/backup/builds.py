@@ -7,9 +7,10 @@ backup, the bundle is not encrypted with the node's backup secret. A password
 given with the request protects it (BundleSpecification §6), and without one
 it is left plain, so that it can be served once registered as an application.
 
-Its content id is recorded beside the directory, in ``{name}.bundle``::
+Its content id is recorded beside the directory, in ``{name}.bundle``, with
+where it sits among update layers (:mod:`libranet.bundle.layering`)::
 
-    {"bundle": "sha256/<hex>"}
+    {"bundle": "sha256/<hex>", "layering": {"layers": 1, "extensions": 1}}
 
 Building a directory that has a record updates it: the new bundle records the
 one the record names in its ``versions``, and takes its place in the record.
@@ -18,6 +19,12 @@ Files are kept from that bundle as a backup keeps them from the last one
 or protected with another password, every file is read. When nothing has
 changed, the same entries protected alike, the bundle is kept, since a new one
 would record no change.
+
+As with a backup, the new bundle holds only the entries that changed, as a
+layer over the one recorded, until ``max_layers`` lie above the last bundle
+stored whole. It is stored whole if the recorded bundle is protected
+otherwise, plain where it is protected or the other way about, so that
+whoever can read the new bundle can read what lies beneath it.
 
 A record is replaced whole, so a crash leaves the old one or the new. A file
 of that name that is not a record is never replaced: the build fails instead,
@@ -40,10 +47,9 @@ from libranet.backup.tasks import Task
 from libranet.bundle.building import build_directory
 from libranet.bundle.content import ContentSource
 from libranet.bundle.errors import BundleError, PasswordProtectedBundleError
-from libranet.bundle.extensions import resolve_directory
+from libranet.bundle.layering import Layering, StoredVersion, Superseded
 from libranet.bundle.loading import load_bundle
-from libranet.bundle.shapes import DirectoryBundle, Entry
-from libranet.bundle.storing import store_bundle
+from libranet.bundle.shapes import DirectoryBundle
 from libranet.cas.content_id import ContentId
 from libranet.webserver.config_requests import BuildRequest
 
@@ -57,9 +63,14 @@ class BuildRecordError(ValueError):
 
 @dataclass(frozen=True)
 class BuildRecord:
-    """The bundle a directory was last built as, as recorded beside it."""
+    """The bundle a directory was last built as, as recorded beside it.
+
+    ``layering`` is where the bundle sits among update layers, not known for
+    one recorded before layers were written.
+    """
 
     bundle: ContentId
+    layering: Layering | None = None
 
     @staticmethod
     def beside(directory: Path) -> Path:
@@ -73,12 +84,15 @@ class BuildRecord:
         Raises:
             ValueError: it is not a build record.
         """
-        bundle = value.get("bundle") if isinstance(value, dict) else None
-
-        if not isinstance(bundle, str):
+        if not isinstance(value, dict) or not isinstance(value.get("bundle"), str):
             raise ValueError('A build record must be an object naming its "bundle"')
 
-        return cls(ContentId.parse(bundle))
+        layering = value.get("layering")
+
+        return cls(
+            ContentId.parse(value["bundle"]),
+            None if layering is None else Layering.from_value(layering),
+        )
 
     @classmethod
     def load(cls, path: Path) -> BuildRecord | None:
@@ -104,7 +118,10 @@ class BuildRecord:
 
     def value(self) -> dict[str, Any]:
         """The JSON object this is recorded as."""
-        return {"bundle": str(self.bundle)}
+        return {
+            "bundle": str(self.bundle),
+            "layering": None if self.layering is None else self.layering.value(),
+        }
 
     def save(self, path: Path) -> None:
         """Replace what ``path`` holds with this record.
@@ -144,13 +161,16 @@ class Build(Task):
         self,
         store: BackupStore,
         max_object_bytes: int,
+        max_layers: int,
         ignore: Iterable[Path],
         clock: Callable[[], float],
     ) -> Mapping[str, str]:
         """Build the directory into ``store``, record its bundle beside it, and finish.
 
-        Whatever ``ignore`` names is treated as though it were not there.
-        ``clock`` says when it finished.
+        The new bundle is stored as a layer over the one recorded unless that
+        would lie more than ``max_layers`` above the last bundle stored
+        whole. Whatever ``ignore`` names is treated as though it were not
+        there. ``clock`` says when it finished.
 
         Returns:
             The paths left out, each with why.
@@ -167,22 +187,30 @@ class Build(Task):
         record_path = BuildRecord.beside(directory)
         record = BuildRecord.load(record_path)
         previous = None if record is None else record.bundle
-        earlier = None if previous is None else _Earlier.read(previous, store, password)
+        earlier = None if record is None else _Earlier.read(record, store, password)
         build = build_directory(
             directory,
             store,
             previous,
             max_object_bytes,
             ignore=ignore,
-            previous=None if earlier is None else earlier.entries,
+            previous=None if earlier is None else earlier.superseded.entries,
         )
 
         if previous is not None and earlier is not None and earlier.matches(build.bundle, password):
             bundle = previous
 
         else:
-            bundle = store_bundle(build.bundle, store, password, max_object_bytes)
-            BuildRecord(bundle).save(record_path)
+            stored = StoredVersion.store(
+                build.bundle,
+                None if earlier is None else earlier.under(password),
+                store,
+                password,
+                max_object_bytes,
+                max_layers,
+            )
+            bundle = stored.bundle
+            BuildRecord(bundle, stored.layering).save(record_path)
 
         self._bundle, self._previous, self._skipped = bundle, previous, len(build.skipped)
         self._finish(clock())
@@ -208,19 +236,21 @@ class Build(Task):
 
 @dataclass(frozen=True)
 class _Earlier:
-    """What the bundle a record names holds, by path, and whether it is protected."""
+    """The bundle a record names, as read back, and whether it is protected."""
 
-    entries: Mapping[str, Entry]
+    superseded: Superseded
     protected: bool
 
     @classmethod
     def read(
-        cls, bundle: ContentId, source: ContentSource, password: bytes | None
+        cls, record: BuildRecord, source: ContentSource, password: bytes | None
     ) -> _Earlier | None:
-        """What ``bundle`` holds, read with ``password`` if it is protected.
+        """The bundle ``record`` names, read with ``password`` if it is protected.
 
         ``None`` if it cannot be read here.
         """
+        bundle = record.bundle
+
         try:
             try:
                 top, protected = load_bundle(bundle, source), False
@@ -235,8 +265,11 @@ class _Earlier:
                 return None
 
             return cls(
-                resolve_directory(
-                    top, lambda content_id: load_bundle(content_id, source, password=password)
+                Superseded.resolve(
+                    bundle,
+                    top,
+                    lambda content_id: load_bundle(content_id, source, password=password),
+                    record.layering,
                 ),
                 protected,
             )
@@ -244,6 +277,15 @@ class _Earlier:
         except BundleError:
             return None
 
+    def under(self, password: bytes | None) -> Superseded | None:
+        """What a new version protected with ``password`` may be layered over.
+
+        This bundle, if it is protected alike; ``None`` otherwise. A bundle
+        read with ``password`` is protected with it, if it is protected.
+        """
+        return self.superseded if self.protected == (password is not None) else None
+
     def matches(self, bundle: DirectoryBundle, password: bytes | None) -> bool:
         """Whether ``bundle``, protected with ``password``, would record no change."""
-        return self.protected == (password is not None) and self.entries == bundle.entries
+        entries = self.superseded.entries
+        return self.protected == (password is not None) and entries == bundle.entries

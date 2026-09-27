@@ -1055,74 +1055,21 @@ nothing is handed off until the unbundler answers.
 
 ---
 
-## Step 30 — Blocked Data List
-
-**Issue:** #71. **Depends on:** Phase 1 Steps 5, 7, 8, 15.
-
-Settled in the issue:
-
-- Stats can mark a content id **do-not-keep**. Blocked content held
-  locally can be deleted; blocked content pushed to this node can be
-  deleted rather than kept; blocked content does not appear in search
-  results.
-- The motivating use is supersession: when Karma merges transactions into
-  larger blocks, the smaller blocks it replaces are blocked, so the
-  network stops carrying what nothing needs.
-- **The list is private.** Each node keeps its own, and never publishes
-  or advertises it: the node simply becomes a black hole for that
-  content. So no single node can delete anything from the network;
-  content leaves it only as the nodes holding it each decide, separately,
-  to stop.
-
-Work this implies:
-
-- Stats gains the block — a table of its own, or a flag on `data_stats` —
-  and a derived list, because the web server and the validator have to
-  check it and neither may open SQLite.
-- The validator refuses a blocked id instead of promoting it out of the
-  node-specific directory; the write path can refuse the `PUT` before the
-  body is stored. Which of the two does it decides whether a blocked push
-  costs disk.
-- `LocalSearch` and the stats search filter blocked ids out of results.
-- Eviction deletes blocked content ahead of anything the Step 28 score
-  produces — it is not a low-priority object, it is one this node has
-  decided not to hold.
-- A block has to outlive the content it names. Deleting the content and
-  forgetting the block invites the next peer to push it straight back.
-- A blocked id is answered as content the node does not hold, `404`,
-  since anything more specific would advertise the block.
-
-**Open questions:**
-
-- How an id gets blocked: an operator endpoint under `/config` (Phase 1
-  Step 18), a message from whatever decides a block is superseded, or
-  both. The Karma use needs the message; an operator needs the endpoint.
-- Whether a block ever expires, and whether there is an unblock.
-- What a push of blocked content is answered. Accepting it and deleting
-  it is the black hole the issue describes. But an eviction hand-off
-  takes any `2xx` as a copy kept, and the evicting node then deletes its
-  own. With the single hand-off copy of Step 46, one node blocking what
-  it is handed is enough to take that content off the network — which
-  is what the issue says no single node can do. So a hand-off, at least,
-  wants a refusal, which sends the evicting node to its next peer and
-  says only that this node did not take it.
-
-**Testable in isolation:** stats tests over a temp database for the
-marking and the derived list; validator and web server tests with a fake
-list asserting a blocked push is refused and a blocked id is absent from
-search results; an eviction test asserting blocked content goes first.
-
----
-
 ## Step 31 — Bundle Updates as Extensions
 
 **Issue:** #73. **Depends on:** Phase 1 Steps 13, 17, 19, 38; Step 48.
 
 - Phase 1 Step 19 already makes a re-backup cheap in *parts*: a CAS
   existence check per part means only changed file content is written.
-  What is not cheap is the directory bundle itself, which restates every
-  entry in the directory every run. A million-file directory with one
-  changed file writes a new million-entry bundle.
+  Phase 1 Step 17 makes it cheap in *chunks* too: a directory bundle too
+  large for one object is split where its entries alone decide, so a
+  re-backup rewrites only the chunks holding a change, and the rest dedup.
+  A million-file directory with one changed file writes one chunk of
+  about half a megabyte, and a top listing some 800 chunks.
+- What is left is written on every run, and pushed to a peer (#119): the
+  whole bundle, up to 1 MiB, for a directory that fits in one object, and
+  the changed chunk and the top for one that does not. Every chunk is
+  also encoded and encrypted again, only to learn its identifier.
 - A build updated in place (Phase 1 Step 38) has the same cost, and Step
   38 left chaining its updates to this step. Both are built alike.
 - BundleSpecification §4 already has the mechanism: `extensions` let a
@@ -1146,22 +1093,79 @@ bundle kept fully expanded, along with how many extensions went into it.
 Neither the previous bundle's chain nor the backup jobs file is read for
 them.
 
-**Open questions:**
+Ruled before building:
 
-- The default chain depth, and whether the rebuild trigger counts chain
-  length, total entries across the chain, or the ratio of live entries to
-  restated ones. Depth alone is simplest and worst at the pathological
-  case: a hundred one-file extensions over a huge base. Step 48 records
-  the count, so the two steps have to agree on what it counts.
-- Deletions become `null` entries, which means a deleted file's path is
-  carried forever, in every layer above it, until the chain is rebuilt.
-  Worth confirming that is acceptable.
-- **This shares `extensions` with a Phase 1 open item** — how an oversized
-  directory bundle is split across an extensions chain on the write path
-  (Phase 1 §5). One mechanism, two reasons to use it, and they interact:
-  a size split wants chunks stable across re-backups so unchanged chunks
-  dedup, and an update chain wants the top layer small. Design them
-  together.
+- **Built before Step 48.** The previous entries are still read back from
+  CAS, as Phase 1 Step 19 reads them, and a previous bundle that cannot
+  be read here, evicted or protected with another password, is superseded
+  by a whole bundle, as before. Only where each bundle sits is recorded
+  now, in the job's `latest` and in `{name}.bundle`, and Step 48's record
+  keeps the same counts. Until then a build extends only a bundle it
+  built, not one restored (#114).
+- **Two numbers are recorded, and the setting limits one.** `layers`
+  counts the update layers above the last whole bundle, and is what the
+  setting limits. `extensions` counts the distinct extensions a reader
+  follows from the bundle, chunks included, and is kept within the 1,024
+  a reader follows (Phase 1 Step 13), of which a million-file directory's
+  chunks already use about 800. Past either limit, the next version is
+  stored whole. No ratio of live entries to restated ones is kept: a
+  hundred one-file layers cost a reader a hundred small objects, and the
+  setting bounds them.
+- **Each layer lists every layer beneath it**, newest first, down to the
+  last whole bundle, not only the bundle it supersedes. §4.1 resolves the
+  list as it would the chain, and a node lacking the layers learns of all
+  of them from the top, so asks peers for them in one round rather than
+  one round per layer. Each layer beneath adds about 75 bytes.
+- **`backup.max_update_layers`, 32 by default**, for backups and builds
+  alike, since both run in the backup module. 0 stores every version
+  whole.
+- **Deletions are `null` entries** (§4.2), held by the layer that records
+  the deletion until the next whole bundle, not restated by the layers
+  above it. Deleting a directory writes one per file beneath it, since
+  the format has no deletion of a whole directory (§3.1).
+- **The size split was settled by Phase 1 Step 17**, which answers this
+  step's third question and the Phase 1 §5 item alike. A layer too large
+  for one object is split as any bundle is, its chunks listed ahead of
+  the layers beneath.
+
+My calls, not yet reviewed:
+
+- **A build is layered only over a bundle protected alike**: both plain,
+  or both protected with the password given. Otherwise the new version is
+  stored whole, so whoever can read it can read all it holds.
+- **A layer names the bundle it supersedes in `versions`**, as every new
+  version does (BackupSpecification §3.3), as well as first in its
+  `extensions`.
+- **A record written before this step has no layering**, and the version
+  after it is stored whole, once. Every bundle before this step was
+  whole, but how many chunks it reaches was not recorded. The field is
+  `"layering": {"layers", "extensions"}`, or `null`, in a job's `latest`
+  and in `{name}.bundle` alike (`bundle/layering.py`).
+- **A layer that would pass a limit is not written.** The reader's limit,
+  less what the layers beneath reach, is given to the writer, which
+  counts a split layer's chunks before storing any of them; the version
+  is then stored whole instead.
+- **The writer says how many chunks it made**: `StoredDirectory.store` in
+  `bundle/storing.py` does what `store_bundle` did for a directory, and
+  `store_bundle` calls it, unchanged for its other callers.
+- **A record's layer count is trusted only as far as the bundle lists as
+  many extensions**; past that, the next version is stored whole. Every
+  layer beneath is reached through the bundle superseded, so a wrong
+  count cannot change what a layer resolves to, only what it lists.
+- **An export of a layer holds the bundles beneath it**, as it holds any
+  extension; the parts of entries they hide are still left out.
+- **Nothing changed still keeps the bundle**: a backup compares its
+  entries digest, a build its entries and protection, as before.
+- **No specification change**: BundleSpecification §4 already names this
+  use, and a layer resolves to the directory's whole contents, which is
+  what BackupSpecification §3.3 asks each new bundle to reflect.
+
+Seen in a live run of one node: a site built, changed (one file changed,
+one added, one deleted), and built again recorded `{"layers": 1,
+"extensions": 1}`. Registered as an application, it served the changed
+and added pages and answered `404` for the deleted one. A directory backed
+up, changed alike, and backed up again recorded the same, and restoring
+the second backup reproduced the directory.
 
 **Testable in isolation:** build a bundle from a fixture tree, mutate one
 file, add one, delete one, and assert the second run writes an extension
@@ -1555,12 +1559,12 @@ on:** Phase 1 Steps 13, 19, 20, 38.
 - What a restore does with a record already beside the directory. The
   directory now holds what was restored, which argues for replacing it —
   unless the file is not a record, which a build never replaces either.
-- What the extension depth counts. Phase 1 Step 17 already splits a
-  large bundle into chunks listed side by side as extensions, and the
-  reader follows at most 1,024 distinct extensions (Step 13). An update
-  chain adds layers on top, and each layer may be split itself. Chain
-  depth and the number of extensions are different numbers, and Step
-  31's limit wants one of them.
+- What the extension depth counts — settled by Step 31, which records
+  both numbers: `layers`, the update layers above the last whole bundle,
+  which `backup.max_update_layers` limits, and `extensions`, the distinct
+  extensions a reader follows, kept within 1,024. They are kept in the
+  job's `latest` and in `{name}.bundle` as `"layering"`, and this step's
+  record keeps them too.
 
 **Testable in isolation:** back up a fixture directory, delete the bundle
 from a temp CAS, change one file, and back up again, asserting only the
@@ -1836,6 +1840,65 @@ fixture peer connects and drops the connection.
 
 ---
 
+## Step 30 — Blocked Data List
+
+**Issue:** #71. **Depends on:** Phase 1 Steps 5, 7, 8, 15.
+
+Settled in the issue:
+
+- Stats can mark a content id **do-not-keep**. Blocked content held
+  locally can be deleted; blocked content pushed to this node can be
+  deleted rather than kept; blocked content does not appear in search
+  results.
+- The motivating use is supersession: when Karma merges transactions into
+  larger blocks, the smaller blocks it replaces are blocked, so the
+  network stops carrying what nothing needs.
+- **The list is private.** Each node keeps its own, and never publishes
+  or advertises it: the node simply becomes a black hole for that
+  content. So no single node can delete anything from the network;
+  content leaves it only as the nodes holding it each decide, separately,
+  to stop.
+
+Work this implies:
+
+- Stats gains the block — a table of its own, or a flag on `data_stats` —
+  and a derived list, because the web server and the validator have to
+  check it and neither may open SQLite.
+- The validator refuses a blocked id instead of promoting it out of the
+  node-specific directory; the write path can refuse the `PUT` before the
+  body is stored. Which of the two does it decides whether a blocked push
+  costs disk.
+- `LocalSearch` and the stats search filter blocked ids out of results.
+- Eviction deletes blocked content ahead of anything the Step 28 score
+  produces — it is not a low-priority object, it is one this node has
+  decided not to hold.
+- A block has to outlive the content it names. Deleting the content and
+  forgetting the block invites the next peer to push it straight back.
+- A blocked id is answered as content the node does not hold, `404`,
+  since anything more specific would advertise the block.
+
+**Open questions:**
+
+- How an id gets blocked: an operator endpoint under `/config` (Phase 1
+  Step 18), a message from whatever decides a block is superseded, or
+  both. The Karma use needs the message; an operator needs the endpoint.
+- Whether a block ever expires, and whether there is an unblock.
+- What a push of blocked content is answered. Accepting it and deleting
+  it is the black hole the issue describes. But an eviction hand-off
+  takes any `2xx` as a copy kept, and the evicting node then deletes its
+  own. With the single hand-off copy of Step 46, one node blocking what
+  it is handed is enough to take that content off the network — which
+  is what the issue says no single node can do. So a hand-off, at least,
+  wants a refusal, which sends the evicting node to its next peer and
+  says only that this node did not take it.
+
+**Testable in isolation:** stats tests over a temp database for the
+marking and the derived list; validator and web server tests with a fake
+list asserting a blocked push is refused and a blocked id is absent from
+search results; an eviction test asserting blocked content goes first.
+
+---
+
 ## 4. Issues in the Milestone
 
 Every issue in the **Phase 2** milestone, by number, and where it went.
@@ -1932,8 +1995,10 @@ either step is built:
 - **How stats hands candidate lists to other modules** (Steps 28, 29,
   30) — settled by Step 28: a request and its answer, as events, rather
   than a derived file. Steps 29 and 30 are to reuse it.
-- **`extensions` for two purposes** (Step 31 and Phase 1 §5) — size
-  splitting and update chaining share one mechanism.
+- **`extensions` for two purposes** (Step 31 and Phase 1 §5) — settled.
+  Phase 1 Step 17 chose the size split, and Step 31 layers updates over
+  it; a layer too large for one object is split alike, and both count
+  toward the 1,024 extensions a reader follows.
 - **What counts as an "access"** (Steps 28 and 29) — settled for
   content by Step 28: a request, from a peer or from this machine, hit or
   miss. Pushes do not count. Settled for applications by Step 29: any
@@ -1957,7 +2022,8 @@ either step is built:
 - **One local record of the last bundle** (Steps 48, 49, 31, and 50) —
   what 49 compares against, 31 extends, and 50 updates from
   notifications. Where it lives, whether it is encrypted, and what its
-  extension count counts are decided once.
+  extension count counts are decided once. Step 31 settled the count:
+  `layers` and `extensions`, which it already records.
 - **What counts as a metadata change** (Steps 47, 49, and 52) —
   settled by BackupSpecification §3.3: everything under `metadata`,
   extended attributes included. Creation time is kept rather than

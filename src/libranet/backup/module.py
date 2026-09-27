@@ -469,6 +469,7 @@ class BackupModule(ModuleBase):
             skipped = build.run(
                 self._store,
                 self._config.storage.max_object_bytes,
+                self._config.backup.max_update_layers,
                 self._config.directories(),
                 self._clock,
             )
@@ -568,6 +569,7 @@ class BackupModule(ModuleBase):
                     self._backup_secret(),
                     self._clock(),
                     self._config.storage.max_object_bytes,
+                    self._config.backup.max_update_layers,
                     self._config.directories(),
                 )
                 self._keep({**self._jobs, job.job_id: replace(job, latest=backup.latest)})

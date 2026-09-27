@@ -9,6 +9,7 @@ from typing import Any
 from pytest import fixture, mark, raises
 
 from libranet.backup.jobs import BackupJob, JobFileError, LatestBackup, load_jobs, save_jobs
+from libranet.bundle.layering import Layering
 from libranet.cas.content_id import ContentId
 from libranet.webserver.config_requests import BackupJobRequest
 
@@ -52,6 +53,10 @@ def test_jobs_are_read_back_as_saved(path: Path) -> None:
     [
         BackupJob(BackupJobRequest("/home/me/notes")),
         BackupJob(BackupJobRequest("/a", 60.0), LATEST),
+        BackupJob(
+            BackupJobRequest("/a"),
+            LatestBackup(BUNDLE, 1_789_000_000.5, "f" * 64, "e" * 64, 0, Layering(3, 12)),
+        ),
     ],
 )
 def test_a_job_is_read_back_from_the_value_it_is_saved_as(job: BackupJob) -> None:
@@ -75,6 +80,7 @@ def test_jobs_are_saved_in_order_of_directory(path: Path) -> None:
                     "fingerprint": "f" * 64,
                     "entries_digest": "e" * 64,
                     "skipped": 2,
+                    "layering": None,
                 },
             },
             {"directory": "/b", "interval_seconds": None, "latest": None},
@@ -143,6 +149,9 @@ def test_a_file_that_cannot_be_read_is_an_error(path: Path) -> None:
         _saved(skipped=-1),
         _saved(skipped=1.5),
         _saved(skipped=True),
+        _saved(layering=[1, 1]),
+        _saved(layering={"layers": 1}),
+        _saved(layering={"layers": 2, "extensions": 1}),
     ],
 )
 def test_an_unusable_job_is_an_error(path: Path, job: object) -> None:

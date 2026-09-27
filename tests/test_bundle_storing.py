@@ -21,7 +21,7 @@ from libranet.bundle.shapes import (
     Metadata,
     Symlink,
 )
-from libranet.bundle.storing import store_bundle, store_object
+from libranet.bundle.storing import StoredDirectory, store_bundle, store_object
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError
 from libranet.cas.verification import content_matches
@@ -206,6 +206,26 @@ def test_directory_too_large_is_split_across_extensions() -> None:
     assert top.entries == {}
     assert len(top.extensions) > 1
     assert resolved(sink, content_id) == bundle.entries
+
+
+def test_a_stored_directory_counts_the_chunks_it_was_split_into() -> None:
+    sink = RecordingSink()
+    extension = part(1)
+    bundle = DirectoryBundle(entries(500), extensions=(extension,))
+
+    stored = StoredDirectory.store(bundle, sink, max_object_bytes=MAX_BYTES)
+
+    top = load(sink, stored.content_id)
+    assert isinstance(top, DirectoryBundle)
+    assert stored.chunks == len(top.extensions) - 1
+    assert top.extensions[-1] == extension
+    assert stored.content_id == store_bundle(bundle, RecordingSink(), max_object_bytes=MAX_BYTES)
+
+
+def test_a_stored_directory_that_fits_has_no_chunks() -> None:
+    stored = StoredDirectory.store(DirectoryBundle(entries(3)), RecordingSink(), None, MAX_BYTES)
+
+    assert stored.chunks == 0
 
 
 def test_every_object_of_a_split_directory_is_within_the_limit() -> None:
