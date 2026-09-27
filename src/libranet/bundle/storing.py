@@ -16,6 +16,7 @@ bundle's own extensions, as its entries did (§4.1).
 """
 
 from __future__ import annotations
+from dataclasses import dataclass
 from typing import Final, Protocol
 from zlib import compress
 
@@ -97,27 +98,61 @@ def store_bundle(
     if not isinstance(bundle, DirectoryBundle):
         return _store(bundle, sink, password, max_object_bytes)
 
-    try:
-        return _store(bundle, sink, password, max_object_bytes)
+    return StoredDirectory.store(
+        bundle, sink, password, max_object_bytes, max_extensions
+    ).content_id
 
-    except BundleTooLargeError:
-        pass  # Split below, outside the handler, so errors splitting raise alone.
 
-    margin = (max_object_bytes >> _SPLIT_MARGIN_SHIFT) + _SPLIT_MARGIN_BYTES
-    chunks = split_entries(bundle.entries, max_object_bytes - margin)
+@dataclass(frozen=True)
+class StoredDirectory:
+    """A directory bundle as stored: what it is read back by, and the chunks it was split into."""
 
-    if len(chunks) + len(bundle.extensions) > max_extensions:
-        raise BundleTooLargeError(
-            f"Directory needs {len(chunks)} chunks and {len(bundle.extensions)} extensions, "
-            f"more than the {max_extensions} extensions a reader follows"
+    content_id: ContentId
+    chunks: int = 0
+
+    @classmethod
+    def store(
+        cls,
+        bundle: DirectoryBundle,
+        sink: ContentSink,
+        password: bytes | None = None,
+        max_object_bytes: int = MIB,
+        max_extensions: int = DEFAULT_MAX_EXTENSIONS,
+    ) -> StoredDirectory:
+        """Store ``bundle`` in ``sink``, split across extensions if it does not fit in one object.
+
+        It is password-protected with ``password``, if one is given.
+
+        Raises:
+            BundleTooLargeError: ``bundle`` does not fit in one object, and
+                has an entry that does not fit in one alone, or more chunks
+                and extensions than ``max_extensions``, which readers do not
+                follow.
+        """
+        try:
+            return cls(_store(bundle, sink, password, max_object_bytes))
+
+        except BundleTooLargeError:
+            pass  # Split below, outside the handler, so errors splitting raise alone.
+
+        margin = (max_object_bytes >> _SPLIT_MARGIN_SHIFT) + _SPLIT_MARGIN_BYTES
+        chunks = split_entries(bundle.entries, max_object_bytes - margin)
+
+        if len(chunks) + len(bundle.extensions) > max_extensions:
+            raise BundleTooLargeError(
+                f"Directory needs {len(chunks)} chunks and {len(bundle.extensions)} extensions, "
+                f"more than the {max_extensions} extensions a reader follows"
+            )
+
+        stored_chunks = tuple(
+            str(_store(DirectoryBundle(chunk), sink, password, max_object_bytes))
+            for chunk in chunks
+        )
+        top = DirectoryBundle(
+            {}, bundle.metadata, bundle.versions, stored_chunks + bundle.extensions
         )
 
-    stored_chunks = tuple(
-        str(_store(DirectoryBundle(chunk), sink, password, max_object_bytes)) for chunk in chunks
-    )
-    top = DirectoryBundle({}, bundle.metadata, bundle.versions, stored_chunks + bundle.extensions)
-
-    return _store(top, sink, password, max_object_bytes)
+        return cls(_store(top, sink, password, max_object_bytes), len(stored_chunks))
 
 
 def _store(

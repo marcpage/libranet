@@ -12,7 +12,8 @@ the node (§3.3)::
     {"jobs": [{"directory": "/home/me/notes", "interval_seconds": null,
                "latest": {"bundle": "sha256/<hex>", "made_at": 1789000000.0,
                           "fingerprint": "<hex>", "entries_digest": "<hex>",
-                          "skipped": 0}}]}
+                          "skipped": 0,
+                          "layering": {"layers": 1, "extensions": 1}}}]}
 
 The file is replaced whole on every change, so a crash leaves it as it was
 before the change or after it. One that cannot be read is an error rather
@@ -28,6 +29,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from libranet.atomic_file import write_atomically
+from libranet.bundle.layering import Layering
 from libranet.cas.content_id import ContentId
 from libranet.webserver.config_requests import BackupJobRequest
 
@@ -46,6 +48,9 @@ class LatestBackup:
     versions it supersedes, so that building an unchanged directory again
     can be told apart from a change. ``skipped`` counts the paths the bundle
     leaves out (:class:`~libranet.bundle.building.DirectoryBuild`).
+    ``layering`` is where the bundle sits among update layers
+    (:mod:`libranet.bundle.layering`), not known for one made before layers
+    were written.
 
     Raises:
         ValueError: ``made_at`` is not finite, or ``skipped`` is negative.
@@ -56,6 +61,7 @@ class LatestBackup:
     fingerprint: str
     entries_digest: str
     skipped: int = 0
+    layering: Layering | None = None
 
     def __post_init__(self) -> None:
         if not isfinite(self.made_at):
@@ -80,12 +86,15 @@ class LatestBackup:
         if not isinstance(skipped, int) or isinstance(skipped, bool):
             raise ValueError('"skipped" must be an integer')
 
+        layering = value.get("layering")
+
         return cls(
             ContentId.parse(_string(value, "bundle")),
             _number(value, "made_at"),
             _string(value, "fingerprint"),
             _string(value, "entries_digest"),
             skipped,
+            None if layering is None else Layering.from_value(layering),
         )
 
     def value(self) -> dict[str, Any]:
@@ -96,6 +105,7 @@ class LatestBackup:
             "fingerprint": self.fingerprint,
             "entries_digest": self.entries_digest,
             "skipped": self.skipped,
+            "layering": None if self.layering is None else self.layering.value(),
         }
 
 

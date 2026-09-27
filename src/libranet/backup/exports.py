@@ -3,8 +3,9 @@
 An export writes a content archive (Step 34) holding the bundle, every
 extension of it, and every part of every file it holds once they are
 overlaid: everything needed to serve it, and nothing else. The bundles it
-supersedes are not needed, nor are the parts of entries its extensions hide,
-so neither is written. A node started with the archive among its
+supersedes are not needed, unless it extends them as an update layer does
+(Phase 2 Step 31), nor are the parts of entries its extensions hide, so
+neither is written. A node started with the archive among its
 ``storage.archives`` holds the bundle as it holds anything shipped with it,
 and serves it once it is registered as an application.
 

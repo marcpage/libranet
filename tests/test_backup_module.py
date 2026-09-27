@@ -9,7 +9,7 @@ from pathlib import Path
 from queue import Empty, Queue
 from typing import Any
 
-from pytest import LogCaptureFixture, MonkeyPatch, fixture, raises
+from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
 
 from libranet.backup.builds import Build, BuildRecord
 from libranet.backup.exports import Export
@@ -18,6 +18,7 @@ from libranet.backup.module import BackupModule, backup_module_factory
 from libranet.backup.restores import Restore
 from libranet.bundle.building import build_directory
 from libranet.bundle.extensions import resolve_directory
+from libranet.bundle.layering import Layering
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.reassembly import write_file
 from libranet.bundle.shapes import DirectoryBundle, FileBundle
@@ -988,6 +989,26 @@ def test_the_module_hears_build_and_export_requests() -> None:
     assert {EventType.BUILD_REQUESTED, EventType.EXPORT_REQUESTED} <= BackupModule.subscriptions
 
 
+@mark.parametrize("max_layers, layering", [(1, Layering(1, 1)), (0, Layering())])
+def test_building_again_layers_over_the_last_as_configured(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tree: Path,
+    max_layers: int,
+    layering: Layering,
+) -> None:
+    backup = config.backup.model_copy(update={"max_update_layers": max_layers})
+    module = start(config.model_copy(update={"backup": backup}), queues, now)
+    build(module, tree)
+    (tree / "readme.txt").write_bytes(b"read me again")
+    build(module, tree)
+    record = BuildRecord.load(BuildRecord.beside(tree))
+
+    assert record is not None
+    assert record.layering == layering
+
+
 def test_a_build_is_made_at_once_recorded_beside_its_directory_and_reported(
     config: LibranetConfig, queues: ModuleQueues, now: list[float], tree: Path, store: CasStore
 ) -> None:
@@ -1012,7 +1033,7 @@ def test_a_build_is_made_at_once_recorded_beside_its_directory_and_reported(
         "skipped": 0,
     }
     assert BuildRecord.load(BuildRecord.beside(tree)) == BuildRecord(
-        ContentId.parse(final["bundle"])
+        ContentId.parse(final["bundle"]), Layering()
     )
     # Plain, so it can be served once registered.
     top = load_bundle(ContentId.parse(final["bundle"]), store)

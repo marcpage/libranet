@@ -13,6 +13,7 @@ from libranet.backup.runs import AnnouncingStore
 from libranet.backup.tasks import TaskStatus
 from libranet.bundle.errors import BundleTooLargeError, PasswordProtectedBundleError
 from libranet.bundle.extensions import resolve_directory
+from libranet.bundle.layering import Layering
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.reassembly import write_file
 from libranet.bundle.shapes import DirectoryBundle, DirectoryMarker, FileBundle, Symlink
@@ -24,6 +25,7 @@ from libranet.webserver.config_requests import BuildRequest, Password
 
 REQUESTED_AT = 1_789_000_000.0
 FINISHED_AT = REQUESTED_AT + 5
+MAX_LAYERS = 2
 
 
 class Recorder:
@@ -68,10 +70,11 @@ def build(
     password: str | None = None,
     ignore: tuple[Path, ...] = (),
     max_object_bytes: int = MIB,
+    max_layers: int = MAX_LAYERS,
 ) -> Build:
     task = Build(BuildRequest(str(site), Password.optional(password)), REQUESTED_AT)
     task.begin()
-    task.run(sink, max_object_bytes, ignore, lambda: FINISHED_AT)
+    task.run(sink, max_object_bytes, max_layers, ignore, lambda: FINISHED_AT)
     return task
 
 
@@ -128,7 +131,10 @@ def test_a_build_holds_the_whole_directory_plain_and_records_it_beside_it(
     }
     assert top_of(bundle, store).versions == ()
     assert BuildRecord.beside(site) == site.parent / "site.bundle"
-    assert loads(BuildRecord.beside(site).read_bytes()) == {"bundle": str(bundle)}
+    assert loads(BuildRecord.beside(site).read_bytes()) == {
+        "bundle": str(bundle),
+        "layering": {"layers": 0, "extensions": 0},
+    }
     assert task.status is TaskStatus.DONE
     assert task.previous is None
 
@@ -157,7 +163,12 @@ def test_building_again_supersedes_the_first_and_stores_only_what_changed(
     assert recorded(site) == second
     assert contents(second, store)["index.html"] == b"<p>home, again</p>"
     # The unchanged file is kept as it was, and only the new part and bundle are stored.
-    assert top_of(second, store).entries["pages/about.html"] == about
+    assert (
+        resolve_directory(top_of(second, store), lambda content_id: load_bundle(content_id, store))[
+            "pages/about.html"
+        ]
+        == about
+    )
     assert set(recorder.announced) == {ContentId.for_data(b"<p>home, again</p>", "sha256"), second}
 
 
@@ -210,6 +221,73 @@ def test_protecting_a_bundle_otherwise_makes_a_new_version_though_nothing_change
     assert second != first
     assert top_of(second, store, after).versions == (str(first),)
     assert contents(second, store, after) == contents(first, store, before)
+    # Stored whole, so whoever can read it can read all it holds.
+    assert BuildRecord.load(BuildRecord.beside(site)) == BuildRecord(second, Layering())
+
+
+def test_building_again_stores_only_what_changed_as_a_layer_over_the_last(
+    site: Path, sink: AnnouncingStore, store: CasStore
+) -> None:
+    first = bundle_of(build(site, sink))
+    (site / "index.html").write_bytes(b"<p>home, again</p>")
+    (site / "pages" / "contact.html").write_bytes(b"<p>contact</p>")
+    (site / "pages" / "about.html").unlink()
+    second = bundle_of(build(site, sink))
+    top = top_of(second, store)
+
+    assert set(top.entries) == {"index.html", "pages/contact.html", "pages/about.html"}
+    assert top.entries["pages/about.html"] is None
+    assert top.extensions == (str(first),)
+    assert BuildRecord.load(BuildRecord.beside(site)) == BuildRecord(second, Layering(1, 1))
+    assert contents(second, store) == {
+        "index.html": b"<p>home, again</p>",
+        "pages/contact.html": b"<p>contact</p>",
+        "about": "pages/about.html",
+        "empty": None,
+    }
+
+
+def test_a_build_protected_as_the_last_is_a_layer_over_it(
+    site: Path, sink: AnnouncingStore, store: CasStore
+) -> None:
+    first = bundle_of(build(site, sink, "correct horse"))
+    (site / "index.html").write_bytes(b"<p>home, again</p>")
+    second = bundle_of(build(site, sink, "correct horse"))
+
+    with raises(PasswordProtectedBundleError):
+        load_bundle(second, store)
+
+    assert top_of(second, store, "correct horse").extensions == (str(first),)
+    assert contents(second, store, "correct horse")["index.html"] == b"<p>home, again</p>"
+
+
+def test_with_no_layers_allowed_every_build_is_stored_whole(
+    site: Path, sink: AnnouncingStore, store: CasStore
+) -> None:
+    build(site, sink)
+    (site / "index.html").write_bytes(b"<p>home, again</p>")
+    second = bundle_of(build(site, sink, max_layers=0))
+
+    assert set(top_of(second, store).entries) == {
+        "index.html",
+        "pages/about.html",
+        "about",
+        "empty",
+    }
+    assert BuildRecord.load(BuildRecord.beside(site)) == BuildRecord(second, Layering())
+
+
+def test_a_record_whose_layering_is_not_known_is_superseded_whole(
+    site: Path, sink: AnnouncingStore, store: CasStore
+) -> None:
+    first = bundle_of(build(site, sink))
+    BuildRecord(first).save(BuildRecord.beside(site))
+    (site / "index.html").write_bytes(b"<p>home, again</p>")
+    second = bundle_of(build(site, sink))
+
+    assert top_of(second, store).extensions == ()
+    assert top_of(second, store).versions == (str(first),)
+    assert BuildRecord.load(BuildRecord.beside(site)) == BuildRecord(second, Layering())
 
 
 def test_a_recorded_bundle_no_longer_held_is_superseded_by_one_built_afresh(
@@ -235,7 +313,16 @@ def test_a_record_naming_something_other_than_a_directory_is_superseded_afresh(
     assert contents(bundle, store)["index.html"] == b"<p>home</p>"
 
 
-@mark.parametrize("held", [b"{not json", b'{"bundle": 7}', b'{"bundle": "sha256/abc"}', b"[]"])
+@mark.parametrize(
+    "held",
+    [
+        b"{not json",
+        b'{"bundle": 7}',
+        b'{"bundle": "sha256/abc"}',
+        b"[]",
+        b'{"bundle": "sha256/' + b"a" * 64 + b'", "layering": {"layers": -1, "extensions": 0}}',
+    ],
+)
 def test_a_file_where_the_record_goes_that_is_not_one_fails_the_build_and_is_kept(
     site: Path, sink: AnnouncingStore, store: CasStore, held: bytes
 ) -> None:
@@ -343,8 +430,9 @@ def test_a_failed_build_reports_why() -> None:
     )
 
 
-def test_a_record_is_read_back_as_it_was_saved(tmp_path: Path) -> None:
-    record = BuildRecord(ContentId.for_data(b"a bundle", "sha256"))
+@mark.parametrize("layering", [None, Layering(2, 9)])
+def test_a_record_is_read_back_as_it_was_saved(tmp_path: Path, layering: Layering | None) -> None:
+    record = BuildRecord(ContentId.for_data(b"a bundle", "sha256"), layering)
     path = tmp_path / "site.bundle"
     record.save(path)
 

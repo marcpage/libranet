@@ -1,6 +1,7 @@
 """Tests for backing a directory up into an encrypted bundle."""
 
 from __future__ import annotations
+from dataclasses import replace
 from io import BytesIO
 from os import mkfifo, symlink, urandom, utime
 from pathlib import Path
@@ -11,6 +12,7 @@ from libranet.backup.jobs import LatestBackup
 from libranet.backup.runs import AnnouncingStore, Backup, back_up
 from libranet.bundle.errors import PasswordProtectedBundleError
 from libranet.bundle.extensions import resolve_directory
+from libranet.bundle.layering import Layering
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.reassembly import write_file
 from libranet.bundle.shapes import DirectoryBundle, DirectoryMarker, Entry, FileBundle, Symlink
@@ -22,6 +24,7 @@ from libranet.config.models import MIB
 SECRET = b"s" * 32
 MADE_AT = 1_789_000_000.0
 FINGERPRINT = "first"
+MAX_LAYERS = 2
 BIG = urandom(MIB + 1000)
 # 2026-09-01T08:30:00Z
 WHOLE_SECOND_NS = 1_788_251_400 * 1_000_000_000
@@ -98,11 +101,11 @@ def restored(bundle: ContentId, store: CasStore) -> dict[str, object]:
 
 
 def first_backup(tree: Path, backups: AnnouncingStore) -> Backup:
-    return back_up(tree, FINGERPRINT, None, backups, SECRET, MADE_AT, MIB)
+    return back_up(tree, FINGERPRINT, None, backups, SECRET, MADE_AT, MIB, MAX_LAYERS)
 
 
 def backup_after(first: LatestBackup, tree: Path, backups: AnnouncingStore) -> LatestBackup:
-    return back_up(tree, "second", first, backups, SECRET, MADE_AT + 60, MIB).latest
+    return back_up(tree, "second", first, backups, SECRET, MADE_AT + 60, MIB, MAX_LAYERS).latest
 
 
 def parts_of(entry: Entry) -> list[ContentId]:
@@ -174,7 +177,7 @@ def test_identical_directories_back_up_to_the_same_bundle(
 
 
 def test_another_secret_backs_up_to_another_bundle(tree: Path, backups: AnnouncingStore) -> None:
-    other = back_up(tree, FINGERPRINT, None, backups, b"t" * 32, MADE_AT, MIB)
+    other = back_up(tree, FINGERPRINT, None, backups, b"t" * 32, MADE_AT, MIB, MAX_LAYERS)
 
     assert other.latest.bundle != first_backup(tree, backups).latest.bundle
 
@@ -215,7 +218,7 @@ def test_unchanged_entries_keep_the_bundle(
     second = backup_after(first, tree, backups)
 
     assert second == LatestBackup(
-        first.bundle, MADE_AT, "second", first.entries_digest, first.skipped
+        first.bundle, MADE_AT, "second", first.entries_digest, first.skipped, first.layering
     )
     assert recorder.announced == []
 
@@ -267,6 +270,7 @@ def test_without_the_last_bundle_every_file_is_read(
 
     assert recorder.content_ids.issuperset(big_parts)
     assert restored(second.bundle, store)["big.bin"] == BIG
+    assert second.layering == Layering()
 
 
 def test_a_last_bundle_that_is_not_a_directory_is_not_built_from(
@@ -282,13 +286,69 @@ def test_a_last_bundle_that_is_not_a_directory_is_not_built_from(
     assert restored(second.bundle, store)["big.bin"] == BIG
 
 
+def test_a_new_backup_holds_only_what_changed_as_a_layer_over_the_last(
+    tree: Path, backups: AnnouncingStore, store: CasStore
+) -> None:
+    first = first_backup(tree, backups).latest
+    (tree / "readme.txt").write_bytes(b"read me, changed")
+    (tree / "docs" / "added.txt").write_bytes(b"added")
+    (tree / "docs" / "notes.txt").unlink()
+    second = backup_after(first, tree, backups)
+    top = load_bundle(second.bundle, store, password=SECRET)
+
+    assert isinstance(top, DirectoryBundle)
+    assert set(top.entries) == {"readme.txt", "docs/added.txt", "docs/notes.txt"}
+    assert top.entries["docs/notes.txt"] is None
+    assert top.extensions == (str(first.bundle),)
+    assert top.versions == (str(first.bundle),)
+    assert first.layering == Layering()
+    assert second.layering == Layering(1, 1)
+    assert restored(second.bundle, store) == {
+        "readme.txt": b"read me, changed",
+        "docs/added.txt": b"added",
+        "big.bin": BIG,
+        "link": "docs/notes.txt",
+        "empty": None,
+    }
+
+
+def test_past_the_most_layers_a_backup_is_stored_whole(
+    tree: Path, backups: AnnouncingStore, store: CasStore
+) -> None:
+    latest = first_backup(tree, backups).latest
+
+    for number in range(MAX_LAYERS + 1):
+        (tree / "readme.txt").write_bytes(b"read me" + b"!" * (number + 1))
+        latest = backup_after(latest, tree, backups)
+
+    top = load_bundle(latest.bundle, store, password=SECRET)
+
+    assert isinstance(top, DirectoryBundle)
+    assert latest.layering == Layering()
+    assert top.extensions == ()
+    assert restored(latest.bundle, store)["readme.txt"] == b"read me" + b"!" * (MAX_LAYERS + 1)
+
+
+def test_a_last_backup_whose_layering_is_not_known_is_superseded_whole(
+    tree: Path, backups: AnnouncingStore, store: CasStore
+) -> None:
+    first = replace(first_backup(tree, backups).latest, layering=None)
+    (tree / "readme.txt").write_bytes(b"read me again")
+    second = backup_after(first, tree, backups)
+    top = load_bundle(second.bundle, store, password=SECRET)
+
+    assert isinstance(top, DirectoryBundle)
+    assert second.layering == Layering()
+    assert set(top.entries) == {"readme.txt", "docs/notes.txt", "big.bin", "link", "empty"}
+
+
 def test_ignored_paths_are_left_out_as_though_absent(
     tree: Path, backups: AnnouncingStore, store: CasStore
 ) -> None:
     (tree / "docs" / "node").mkdir()
     (tree / "docs" / "node" / "own.txt").write_bytes(b"the node's own")
     backup = back_up(
-        tree, FINGERPRINT, None, backups, SECRET, MADE_AT, MIB, [tree / "docs" / "node"]
+        tree, FINGERPRINT, None, backups, SECRET, MADE_AT, MIB, MAX_LAYERS, [tree / "docs" / "node"]
     )
 
     assert set(restored(backup.latest.bundle, store)) == {
@@ -305,7 +365,7 @@ def test_a_directory_within_an_ignored_one_cannot_be_backed_up(
     tree: Path, backups: AnnouncingStore
 ) -> None:
     with raises(FileNotFoundError, match="Ignored"):
-        back_up(tree / "docs", FINGERPRINT, None, backups, SECRET, MADE_AT, MIB, [tree])
+        back_up(tree / "docs", FINGERPRINT, None, backups, SECRET, MADE_AT, MIB, MAX_LAYERS, [tree])
 
 
 def test_paths_left_out_are_counted_and_named(tree: Path, backups: AnnouncingStore) -> None:
@@ -325,7 +385,9 @@ def test_a_directory_too_large_for_one_object_is_split_and_every_chunk_encrypted
     for index in range(200):
         (many / "docs" / f"file-{index:03}.txt").write_bytes(f"file {index}".encode())
 
-    bundle = back_up(many, FINGERPRINT, None, backups, SECRET, MADE_AT, 4096).latest.bundle
+    bundle = back_up(
+        many, FINGERPRINT, None, backups, SECRET, MADE_AT, 4096, MAX_LAYERS
+    ).latest.bundle
     top = load_bundle(bundle, store, password=SECRET)
 
     assert isinstance(top, DirectoryBundle)

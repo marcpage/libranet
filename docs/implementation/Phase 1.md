@@ -1420,6 +1420,9 @@ the relevant step is built, not before starting:
 - How an oversized directory bundle is split across an `extensions` chain
   on the write path (Step 17): how many entries per chunk, and how to
   keep the split stable across re-backups so unchanged chunks still dedup.
+  Settled by Step 17: chunks end where their entries alone decide, side
+  by side rather than in a chain. Phase 2 Step 31 layers updates over
+  them.
 - Change-detection mechanism and default polling interval for backup jobs,
   and whether old `versions` entries are ever pruned
   (BackupSpecification §7).
