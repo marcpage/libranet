@@ -685,6 +685,38 @@ def test_ranking_needs_room_for_at_least_one(database: StatsDatabase) -> None:
         database.eviction_order(NODE, 0)
 
 
+# -- Application use (Phase 2 Step 29) ---------------------------------------
+
+
+def test_no_application_is_used_until_one_is_served(database: StatsDatabase) -> None:
+    database.record_request(CONTENT_ID, external=False)
+
+    assert database.apps_accessed_since(0.0) == []
+
+
+def test_applications_used_since_a_time_are_listed_by_hash(
+    database: StatsDatabase, clock: FakeClock
+) -> None:
+    database.record_app_access(hash_id("2"))
+    clock.advance(10)
+    database.record_app_access(hash_id("1"))
+    database.record_app_access(hash_id("3"))
+
+    assert database.apps_accessed_since(clock.now - 10) == [hash_id(s) for s in "123"]
+    assert database.apps_accessed_since(clock.now) == [hash_id("1"), hash_id("3")]
+    assert database.apps_accessed_since(clock.now + 1) == []
+
+
+def test_an_application_used_again_counts_from_its_last_use(
+    database: StatsDatabase, clock: FakeClock
+) -> None:
+    database.record_app_access(CONTENT_ID)
+    clock.advance(100)
+    database.record_app_access(CONTENT_ID)
+
+    assert database.apps_accessed_since(clock.now) == [CONTENT_ID]
+
+
 def test_a_closed_database_cannot_be_used(tmp_path: Path) -> None:
     database = StatsDatabase(tmp_path / "libranet.sqlite3")
     database.close()

@@ -3,7 +3,7 @@
 It is the only process that opens the SQLite file. Everything it records
 arrives as a broadcast from another module, and everything it publishes
 leaves as one of the derived list files plus a notice that the candidate
-list changed, or as an answer to the eviction module. Between derivations
+list changed, or in answer to the eviction module. Between derivations
 it does nothing but record, so a burst of requests costs one small statement
 each.
 
@@ -26,6 +26,8 @@ The payloads it consumes, by event:
 ``fetch.attempted``    ``{"algorithm", "hash", "node_id", "found"}`` (Step 11)
 ``data.deleted``       ``{"algorithm", "hash", "size"}`` (Step 15)
 ``eviction.candidates_requested`` ``{"bytes", "exclude"}`` (Phase 2 Step 28)
+``app.accessed``       ``{"bundle"}`` (Phase 2 Step 29)
+``resolved.reclaim_requested`` ``{}`` (Phase 2 Step 29)
 
 A miss on ``GET /data/{algorithm}/{hash}`` and a ``GET /data/search/{prefix}``
 are both requests this node could not answer, so each becomes an entry in
@@ -44,6 +46,17 @@ the list reaches ``max_candidates`` entries::
 Content no longer in the source of truth, though no ``data.deleted`` said
 so, as when its file was removed by hand, is recorded as deleted rather than
 listed, so eviction is never sent after content that is gone.
+
+Asked by the eviction module to reclaim resolved application files, it
+tells the unbundler which bundles an application has been served from
+within ``storage.resolved_idle_seconds``, whose files are to be kept; the
+unbundler deletes the rest (Phase 2 Step 29)::
+
+    resolved.reclaim       {"keep": ["sha256/<hex>", ...]}
+
+The bundles to keep are named rather than those to delete, so resolved
+files this module has no record of, as those resolved before its database
+was, are deleted too.
 
 Addresses are kept per node (Phase 2 Step 23). Each entry of a received
 node list is an address learned from the source ``sources`` names for it,
@@ -123,6 +136,8 @@ class StatsModule(ModuleBase):
             EventType.FETCH_ATTEMPTED,
             EventType.DATA_DELETED,
             EventType.EVICTION_CANDIDATES_REQUESTED,
+            EventType.APP_ACCESSED,
+            EventType.RESOLVED_RECLAIM_REQUESTED,
         }
     )
 
@@ -166,6 +181,8 @@ class StatsModule(ModuleBase):
             EventType.FETCH_ATTEMPTED: self._on_fetch_attempted,
             EventType.DATA_DELETED: self._on_data_deleted,
             EventType.EVICTION_CANDIDATES_REQUESTED: self._on_candidates_requested,
+            EventType.APP_ACCESSED: self._on_app_accessed,
+            EventType.RESOLVED_RECLAIM_REQUESTED: self._on_reclaim_requested,
         }
 
     @property
@@ -372,6 +389,15 @@ class StatsModule(ModuleBase):
                 ]
             },
         )
+
+    def _on_app_accessed(self, message: Message) -> None:
+        self.database.record_app_access(ContentId.parse(message["bundle"]))
+
+    def _on_reclaim_requested(self, message: Message) -> None:
+        """Tell the unbundler whose resolved files to keep: those of applications used lately."""
+        since = self._clock() - self._config.storage.resolved_idle_seconds
+        keep = self.database.apps_accessed_since(since)
+        self.publish(EventType.RESOLVED_RECLAIM, {"keep": [str(bundle) for bundle in keep]})
 
     def _node_ids(self, nodes: Mapping[str, str]) -> dict[str, ContentId]:
         """A received node list with its identifiers parsed, bad entries dropped.

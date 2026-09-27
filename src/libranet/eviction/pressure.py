@@ -9,7 +9,9 @@ starts, and then kept up to date as content is stored and deleted, so a check
 never lists the store.
 
 Only content counts towards ``max_storage_bytes``. The application files the
-unbundler resolves (Step 14) are kept apart from it and are not counted.
+unbundler resolves (Step 14) are kept apart from it and are not counted. They
+do take up free space, so free space running short is also what has those not
+used lately deleted (Phase 2 Step 29).
 """
 
 from __future__ import annotations
@@ -73,12 +75,16 @@ class StoragePressure:
         """Count ``size`` fewer bytes of content held."""
         self._held = max(0, self._held - size)
 
+    def free_space_shortfall(self) -> int:
+        """The bytes to free for enough free space to be left; ``0`` when there already is."""
+        if self._min_free <= 0:
+            return 0
+
+        return max(0, self._min_free - self._free_bytes())
+
     def excess(self) -> int:
         """The bytes to let go of to be within every limit; ``0`` when already within them."""
-        excess = 0
-
-        if self._min_free > 0:
-            excess = max(excess, self._min_free - self._free_bytes())
+        excess = self.free_space_shortfall()
 
         if self._max_held is not None:
             excess = max(excess, self._held - self._max_held)

@@ -209,7 +209,11 @@ def test_module_answers_application_paths_from_what_the_unbundler_reported(
 
         assert _status(host, port, "/wiki/missing.html") == (503, None)
         assert _status(host, port, "/wiki/docs") == (503, None)
-        asked = [queues.outbox.get(timeout=1) for _ in range(2)]
+        accessed, *asked = [queues.outbox.get(timeout=1) for _ in range(3)]
+        assert (accessed["event"], accessed["bundle"]) == (
+            EventType.APP_ACCESSED,
+            str(APP_BUNDLE_ID),
+        )
         assert [message["event"] for message in asked] == [EventType.APP_PATH_NOT_FOUND] * 2
         assert [message["path"] for message in asked] == ["missing.html", "docs"]
 
@@ -275,6 +279,7 @@ def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: P
         # The page the node ships, which the unbundler is asked for, and what
         # the node is, as the module was started with it.
         assert _authorized(host, port, "/config/")[0] == 503
+        assert queues.outbox.get(timeout=1)["event"] == EventType.APP_ACCESSED
         asked = queues.outbox.get(timeout=1)
         assert (asked["event"], asked["bundle"], asked["path"]) == (
             EventType.APP_PATH_NOT_FOUND,

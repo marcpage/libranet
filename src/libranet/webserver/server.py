@@ -36,6 +36,7 @@ from libranet.problems import Problem
 from libranet.unbundler.resolved_files import ResolvedFiles
 from libranet.webserver.app_handler import APP_PATTERN, CONFIG_APP_PATTERN, AppHandler
 from libranet.webserver.app_outcomes import ApplicationOutcomes
+from libranet.webserver.app_use import ApplicationUse
 from libranet.webserver.app_registry import ApplicationRegistry, RegisteredApplications
 from libranet.webserver.backup_state import BackupState
 from libranet.webserver.config_auth import ConfigAuthGuard
@@ -170,6 +171,7 @@ def build_router(
         app_outcomes or ApplicationOutcomes(),
         publish,
         retry_after_seconds,
+        ApplicationUse(publish),
     )
     # Every other path beneath /config is the /config application's.
     router.add("GET", CONFIG_APP_PATTERN, applications)

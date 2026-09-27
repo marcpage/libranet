@@ -32,6 +32,10 @@ answers ``503`` with ``Retry-After`` and asks the unbundler for the file::
 
     app.path_not_found  {"bundle": "sha256/<hex>", "path": "docs/index.html"}
 
+Every request that reaches an application is reported as a use of its
+bundle (see :mod:`libranet.webserver.app_use`), so the files resolved from it
+are kept while it is in use (Phase 2 Step 29).
+
 A bundle gives no content type, so it is guessed from the file's extension,
 using the standard library's own table rather than the host's, so every node
 guesses alike.
@@ -59,6 +63,7 @@ from libranet.webserver.app_registry import (
     ROOT_APPLICATION,
     ApplicationRegistry,
 )
+from libranet.webserver.app_use import ApplicationUse
 from libranet.webserver.config_guard import names_config
 from libranet.webserver.http_types import (
     OCTET_STREAM,
@@ -124,6 +129,7 @@ class AppHandler:
     outcomes: ApplicationOutcomes
     publish: Publish
     retry_after_seconds: int
+    use: ApplicationUse
 
     def __call__(self, request: Request) -> Response:
         route = self._route(request.path)
@@ -132,6 +138,7 @@ class AppHandler:
             return _not_found(request)
 
         prefix, bundle, rest = route
+        self.use.used(bundle)
 
         if rest is None:
             return _redirect(f"{prefix}/")

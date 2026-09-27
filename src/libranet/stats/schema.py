@@ -4,7 +4,7 @@ Every statement is ``IF NOT EXISTS``, so :func:`apply_schema` both creates a
 fresh database and leaves an existing one alone. It is applied on every
 start; no other process opens this file.
 
-Four tables cover what the implementation plan asks a node to remember:
+Five tables cover what the implementation plan asks a node to remember:
 
 ``data_stats``
     One row per content identifier the node has heard of, whether or not it
@@ -34,6 +34,12 @@ Four tables cover what the implementation plan asks a node to remember:
     ``first_success`` and ``last_success`` are when a connection to the node
     there first and last proved the node's identity, and
     ``consecutive_failures`` counts the attempts since the last that did.
+
+``app_bundles``
+    One row per bundle an application has been served from, and
+    ``last_accessed``, when it last was (Phase 2 Step 29). The web server
+    reports it at most once an hour for each bundle, so it can be up to an
+    hour behind.
 
 ``seek_entries``
     Outstanding requests: content ids and search prefixes that have been
@@ -109,6 +115,14 @@ SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
         successes INTEGER NOT NULL DEFAULT 0,
         consecutive_failures INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (node_id, endpoint)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS app_bundles (
+        algorithm TEXT NOT NULL,
+        hash TEXT NOT NULL,
+        last_accessed REAL NOT NULL,
+        PRIMARY KEY (algorithm, hash)
     )
     """,
     """

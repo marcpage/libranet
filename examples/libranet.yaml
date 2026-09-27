@@ -96,6 +96,11 @@ storage:
   # application files are not counted.
   min_free_bytes: 1073741824
   max_storage_bytes: null
+  # Before any content is handed off for want of free space, the resolved
+  # files of every application not used for this long (30 days) are deleted.
+  # They are resolved from the application's bundle again when next asked
+  # for.
+  resolved_idle_seconds: 2592000.0
 
   # Provisional: how long a cached /data/search result stays valid.
   search_cache_ttl_seconds: 300.0

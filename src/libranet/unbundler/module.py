@@ -44,6 +44,19 @@ for each path either. Content addressing means none of these go stale.
 
 A bundle found unusable is remembered only in memory, not saved, since a
 later version of this node may be able to serve it.
+
+When free space runs short, the stats module names the bundles of the
+applications used lately, and the resolved files of every other bundle are
+deleted, each bundle's all together, its saved directory included, and its
+directory forgotten from memory too (Phase 2 Step 29). What was deleted is
+reported for the eviction module, which waits for it before handing off any
+content::
+
+    resolved.reclaim    {"keep": ["sha256/<hex>", ...]}
+    resolved.reclaimed  {"bundles": 2, "bytes": 123456}
+
+A file deleted is resolved again when next requested, which, if content it
+needs has been handed off since, fetches that content first.
 """
 
 from __future__ import annotations
@@ -65,7 +78,7 @@ from libranet.bundle.shapes import Bundle, DirectoryBundle
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
 from libranet.config.models import LibranetConfig, StorageConfig
-from libranet.messaging.envelope import Message
+from libranet.messaging.envelope import Message, event_of
 from libranet.messaging.events import EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
@@ -88,7 +101,9 @@ class _Unusable:
 class UnbundlerModule(ModuleBase):
     """Writes the application files the web server is asked for and lacks."""
 
-    subscriptions: ClassVar[frozenset[EventType]] = frozenset({EventType.APP_PATH_NOT_FOUND})
+    subscriptions: ClassVar[frozenset[EventType]] = frozenset(
+        {EventType.APP_PATH_NOT_FOUND, EventType.RESOLVED_RECLAIM}
+    )
 
     def __init__(
         self,
@@ -111,7 +126,14 @@ class UnbundlerModule(ModuleBase):
         self._directories: OrderedDict[ContentId, ResolvedDirectory | _Unusable] = OrderedDict()
 
     def handle(self, message: Message) -> None:
-        """Resolve one requested path; a malformed message raises and :meth:`run` logs it."""
+        """Resolve one requested path, or delete resolved files not to be kept.
+
+        A malformed message raises, and :meth:`run` logs it.
+        """
+        if event_of(message) == EventType.RESOLVED_RECLAIM:
+            self._reclaim({ContentId.parse(text) for text in message["keep"]})
+            return
+
         bundle = ContentId.parse(message["bundle"])
         path: str = message["path"]
         target = self._files.path_for(bundle, path)
@@ -255,6 +277,34 @@ class UnbundlerModule(ModuleBase):
             )
 
         self.logger.info("%s in %s waits on %d objects not held here", path, bundle, len(missing))
+
+    def _reclaim(self, keep: set[ContentId]) -> None:
+        """Delete the resolved files of every bundle but those in ``keep``, and report it.
+
+        A bundle whose files cannot all be deleted is passed over.
+        """
+        bundles = 0
+        freed = 0
+
+        for bundle in self._files.bundles():
+            if bundle in keep:
+                continue
+
+            self._directories.pop(bundle, None)
+
+            try:
+                freed += self._files.remove(bundle)
+
+            except OSError as error:
+                self.logger.warning("Could not delete the resolved files of %s: %s", bundle, error)
+                continue
+
+            bundles += 1
+
+        self.publish(EventType.RESOLVED_RECLAIMED, {"bundles": bundles, "bytes": freed})
+        self.logger.info(
+            "Deleted the resolved files of %d bundles not used lately, %d bytes", bundles, freed
+        )
 
     def _report(self, bundle: ContentId, path: str, outcome: PathOutcome, **details: Any) -> None:
         self.publish(

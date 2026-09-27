@@ -969,34 +969,86 @@ Settled in the issue:
 - Stats keeps track of application accesses, which is the new fact it
   has to record.
 
-Proposed, for review:
+Ruled before building:
 
-- A bundle's resolved tree goes as a unit — every file under
+- **A bundle's resolved tree goes as a unit** — every file under
   `{directory}/{algorithm}/{bundle hash}/`, `directory.jzon` included —
-  rather than file by file. A partly reclaimed tree costs a re-resolve
-  on the next request anyway, and the per-file bookkeeping buys nothing.
-- The unbundler owns that directory (`unbundler/resolved_files.py`) and
-  should be what deletes from it, reacting to a message from eviction,
-  rather than eviction reaching into another module's storage.
-- The web server is the only module that sees an application access — it
-  serves a resolved file directly when one is there — so it is what
-  publishes the access. `data.requested` is per content id and does not
-  fit; an application access names an application and a path.
+  rather than file by file. A partly reclaimed tree costs a re-resolve on
+  the next request anyway, and the per-file bookkeeping buys nothing.
+- **The unbundler deletes**, since it owns that directory
+  (`unbundler/resolved_files.py`), reacting to a message rather than
+  eviction reaching into another module's storage. It forgets the
+  bundle's directory from memory too, so the next request saves it again.
+- **The web server reports each use**, being the only module that sees
+  one: it serves a resolved file directly when one is there. A use names
+  the bundle, not the application's name and path as first proposed:
+  resolved files are kept by bundle, and a name can be pointed at another
+  bundle. `data.requested` is per content id and does not fit.
+- **The month is configuration**: `storage.resolved_idle_seconds`, 30 days
+  by default.
+- **Only storage pressure reclaims**, with no timer. A resolved tree
+  nobody has opened in a year stays on a node with room.
+- **Resolved files are still not counted** toward `max_storage_bytes`,
+  which stays about content. They take up free space like anything else
+  on the disk, so free space falling below `min_free_bytes` is what
+  reclaims them; storage over `max_storage_bytes` alone does not.
+- **An application served from its resolved files is not a request** in
+  Step 28's score. While its tree exists it stands in for the content, so
+  content behind an application in use can still be handed off, and is
+  fetched again should the tree later be reclaimed and requested.
+- **Reclaiming stops at the month.** With every tree unused that long
+  gone and storage still short, content is handed off as in Step 28;
+  trees used within the month are kept.
 
-**Open questions:**
+My calls, not yet reviewed:
 
-- Whether the month is a provisional default or configuration.
-- Whether reclaiming runs only under storage pressure or also on a slow
-  timer, since a resolved tree for an application nobody has opened in a
-  year is pure waste even on a node with room.
-- Whether resolved files should now be *counted* toward storage limits,
-  having been excluded in Phase 1. Counting them makes pressure honest;
-  not counting them keeps the numbers about content.
+- **A use is reported at most once an hour for each bundle**
+  (`DEFAULT_REPORT_INTERVAL_SECONDS` in `webserver/app_use.py`), the first
+  at once, rather than for every request: a page and everything it loads
+  would otherwise be a message and a statement each. Every request routed
+  to an application counts, whether its file is served from disk, asked
+  for, or answered from an outcome the unbundler reported.
+- **Stats keeps uses in a new `app_bundles` table**: a bundle, and when it
+  was last used. SQLite creates a new table in an existing database, so
+  unlike Step 28 this step needs no database deleted. Rows are never
+  pruned; there is one per bundle ever served.
+- **Stats answers with the bundles to keep, not those to delete**, and the
+  unbundler deletes every other tree it finds, then says what it freed:
+
+  ```text
+  resolved.reclaim_requested  {}
+  resolved.reclaim            {"keep": ["sha256/<hex>", ...]}
+  resolved.reclaimed          {"bundles", "bytes"}
+  ```
+
+  The first goes from eviction to stats, the second from stats to the
+  unbundler, and the third from the unbundler back to eviction. Trees
+  stats has no record of — resolved before this step, or before a stats
+  database was deleted — are reclaimed too. The unbundler finds trees by
+  listing `{directory}/{algorithm}/` for each registered algorithm, and
+  leaves alone any name it would not have written.
+- **Eviction reclaims before any hand-off, and waits for the answer**,
+  giving up after 60 seconds (`DEFAULT_RECLAIM_TIMEOUT_SECONDS`); then it
+  measures free space afresh. Hand-offs already under way carry on
+  meanwhile. While free space stays short it reclaims again at most once
+  an hour (`DEFAULT_RECLAIM_INTERVAL_SECONDS`), so a tree crossing the
+  month during a long shortage still goes. Both are constructor defaults,
+  as Step 15's limits are.
+- **A tree that cannot be wholly deleted is logged and passed over**; the
+  others are still deleted.
+
+Seen in a live run of one node: once its shipped root application had
+been resolved, it was restarted with `min_free_bytes` above the disk's free
+space and `resolved_idle_seconds` at 5. It deleted the tree (6,241 bytes),
+and only then, 50 ms later, asked stats for content to let go of. The next
+request for `/` was `503`, then `200` once the file was resolved again, and
+no second reclaim was asked for.
 
 **Testable in isolation:** resolve a fixture bundle into a temp resolved
-directory, advance a fake clock past the threshold, deliver the pressure
-message, and assert the tree is gone and the next request resolves it
-again.
+directory, deliver a reclaim that keeps nothing, and assert the tree is
+gone and the next request resolves it again. Stats tests advance a fake
+clock past the idle time and assert what is kept; eviction tests assert
+nothing is handed off until the unbundler answers.
 
 ---
 
@@ -1783,8 +1835,9 @@ either step is built:
   splitting and update chaining share one mechanism.
 - **What counts as an "access"** (Steps 28 and 29) — settled for
   content by Step 28: a request, from a peer or from this machine, hit or
-  miss. Pushes do not count. Application accesses, not recorded at all
-  yet, are Step 29's.
+  miss. Pushes do not count. Settled for applications by Step 29: any
+  request routed to one is a use of its bundle, which keeps the files
+  resolved from it, and is not a request for the bundle's content.
 - **Seven steps change a specification** (Steps 16, 27, 28, 41, 46, 49,
   and 52) — as with the push of new content (#119), the specification
   change is agreed and written first. Six are made: HighLevelDesign

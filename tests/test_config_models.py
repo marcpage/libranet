@@ -61,6 +61,13 @@ def test_a_peer_is_given_up_on_after_five_failures_for_a_day() -> None:
         StatsConfig(node_cool_off_seconds=0)
 
 
+def test_resolved_files_are_kept_for_thirty_days_unused_by_default() -> None:
+    assert StorageConfig().resolved_idle_seconds == 30 * 86400.0
+
+    with raises(ValidationError):
+        StorageConfig(resolved_idle_seconds=0)
+
+
 def test_decompressed_lists_may_exceed_the_object_limit() -> None:
     storage = StorageConfig()
     larger = StorageConfig(max_decompressed_list_bytes=64 * MIB)

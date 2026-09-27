@@ -9,7 +9,7 @@ from queue import Empty, Queue
 from typing import Any
 from zlib import compress, decompress
 
-from pytest import LogCaptureFixture, fixture, mark, raises
+from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
 
 from libranet.atomic_file import write_atomically
 from libranet.bundle.parsing import decode_bundle, parse_bundle
@@ -458,6 +458,110 @@ def test_the_least_recently_used_bundle_is_forgotten_past_the_limit(
     assert all(str(bundle) in read for read, bundle in zip(reads, (first, second, third, second)))
 
 
+def reclaim(*keep: ContentId) -> Message:
+    return make_message(
+        EventType.RESOLVED_RECLAIM, ModuleName.STATS, {"keep": [str(bundle) for bundle in keep]}
+    )
+
+
+def tree_bytes(storage: StorageConfig, bundle: ContentId) -> int:
+    """The bytes of every file kept for ``bundle``."""
+    directory = saved_directory(storage, bundle).parent
+    return sum(path.stat().st_size for path in directory.rglob("*") if path.is_file())
+
+
+@fixture
+def other_app_id(store: CasStore) -> ContentId:
+    """A second application, sharing the first one's content."""
+    return put(store, bundle_bytes({"contents": {"index.html": file_entry(INDEX)}}))
+
+
+def test_the_files_of_every_bundle_not_kept_are_deleted_and_reported(
+    unbundler: UnbundlerModule,
+    queues: ModuleQueues,
+    storage: StorageConfig,
+    app_id: ContentId,
+    other_app_id: ContentId,
+) -> None:
+    for bundle in (app_id, other_app_id):
+        unbundler.handle(request(bundle, "index.html"))
+
+    unbundler.handle(request(app_id, "about.html"))
+    published(queues)
+    freed = tree_bytes(storage, app_id)
+
+    unbundler.handle(reclaim(other_app_id))
+
+    (reported,) = published(queues)
+    assert reported["event"] == EventType.RESOLVED_RECLAIMED
+    assert (reported["bundles"], reported["bytes"]) == (1, freed)
+    assert written(storage, app_id, "index.html") is None
+    assert not saved_directory(storage, app_id).parent.exists()
+    assert written(storage, other_app_id, "index.html") == INDEX
+    assert saved_directory(storage, other_app_id).exists()
+
+
+def test_a_deleted_file_is_resolved_again_when_next_requested(
+    unbundler: UnbundlerModule, queues: ModuleQueues, storage: StorageConfig, app_id: ContentId
+) -> None:
+    unbundler.handle(request(app_id, "index.html"))
+    unbundler.handle(reclaim())
+    published(queues)
+
+    unbundler.handle(request(app_id, "index.html"))
+
+    assert resolved(queues) == [{"path": "index.html", "outcome": "stored", "size": len(INDEX)}]
+    assert written(storage, app_id, "index.html") == INDEX
+    # The directory was forgotten from memory too, so it is saved again.
+    assert saved_directory(storage, app_id).exists()
+
+
+def test_with_nothing_resolved_nothing_is_deleted(
+    unbundler: UnbundlerModule, queues: ModuleQueues
+) -> None:
+    unbundler.handle(reclaim())
+
+    (reported,) = published(queues)
+    assert (reported["event"], reported["bundles"], reported["bytes"]) == (
+        EventType.RESOLVED_RECLAIMED,
+        0,
+        0,
+    )
+
+
+def test_a_bundle_whose_files_cannot_be_deleted_is_passed_over(
+    unbundler: UnbundlerModule,
+    queues: ModuleQueues,
+    storage: StorageConfig,
+    app_id: ContentId,
+    other_app_id: ContentId,
+    monkeypatch: MonkeyPatch,
+    caplog: LogCaptureFixture,
+) -> None:
+    for bundle in (app_id, other_app_id):
+        unbundler.handle(request(bundle, "index.html"))
+
+    published(queues)
+    remove = ResolvedFiles.remove
+
+    def remove_all_but_the_first(files: ResolvedFiles, bundle: ContentId) -> int:
+        if bundle == app_id:
+            raise PermissionError("not allowed")
+
+        return remove(files, bundle)
+
+    monkeypatch.setattr(ResolvedFiles, "remove", remove_all_but_the_first)
+
+    with caplog.at_level(WARNING):
+        unbundler.handle(reclaim())
+
+    (reported,) = published(queues)
+    assert reported["bundles"] == 1
+    assert f"Could not delete the resolved files of {app_id}" in caplog.text
+    assert written(storage, app_id, "index.html") == INDEX
+    assert written(storage, other_app_id, "index.html") is None
+
+
 def test_a_message_naming_no_valid_bundle_raises(unbundler: UnbundlerModule) -> None:
     message = make_message(
         EventType.APP_PATH_NOT_FOUND,
@@ -468,6 +572,9 @@ def test_a_message_naming_no_valid_bundle_raises(unbundler: UnbundlerModule) -> 
     with raises(InvalidContentIdError):
         unbundler.handle(message)
 
+    with raises(KeyError):
+        unbundler.handle(make_message(EventType.RESOLVED_RECLAIM, ModuleName.STATS, {}))
+
 
 def test_the_bundle_cache_must_hold_at_least_one(
     storage: StorageConfig, queues: ModuleQueues
@@ -476,8 +583,11 @@ def test_the_bundle_cache_must_hold_at_least_one(
         UnbundlerModule(ModuleName.UNBUNDLER, queues, storage, max_cached_bundles=0)
 
 
-def test_the_module_subscribes_to_application_misses() -> None:
-    assert UnbundlerModule.subscriptions == {EventType.APP_PATH_NOT_FOUND}
+def test_the_module_subscribes_to_application_misses_and_reclaiming() -> None:
+    assert UnbundlerModule.subscriptions == {
+        EventType.APP_PATH_NOT_FOUND,
+        EventType.RESOLVED_RECLAIM,
+    }
 
 
 def test_the_node_runs_the_unbundler(storage: StorageConfig, queues: ModuleQueues) -> None:
@@ -506,11 +616,12 @@ def test_the_web_server_serves_what_the_unbundler_resolves(
     browse = Request("GET", "/wiki/docs/guide.html", client_address="127.0.0.1")
 
     first = router.dispatch(browse)
-    (asked,) = published(web_queues)
+    accessed, asked = published(web_queues)
     unbundler.handle(asked)
     second = router.dispatch(browse)
 
     assert first.status == 503
+    assert (accessed["event"], accessed["bundle"]) == (EventType.APP_ACCESSED, str(app_id))
     assert loads(first.body)["retry_after"] == 5
     assert second.status == 200
     assert second.body == FIRST_HALF + SECOND_HALF

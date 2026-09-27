@@ -350,12 +350,13 @@ def test_a_new_node_serves_each_shipped_page_with_nothing_in_the_cas(
     browse = Request("GET", path, headers=headers, client_address=client_address)
 
     first = router.dispatch(browse)
-    (asked,) = published(web_queues)
+    accessed, asked = published(web_queues)
     unbundler.handle(asked)
     second = router.dispatch(browse)
 
     assert first.status == 503
     assert loads(first.body)["retry_after"] == 5
+    assert (accessed["event"], accessed["bundle"]) == (EventType.APP_ACCESSED, str(bundle))
     assert (asked["event"], asked["bundle"], asked["path"]) == (
         EventType.APP_PATH_NOT_FOUND,
         str(bundle),

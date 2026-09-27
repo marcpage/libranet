@@ -24,6 +24,7 @@ from libranet.webserver.app_handler import (
 )
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 from libranet.webserver.app_registry import Application, ApplicationRegistry, RegistryFileError
+from libranet.webserver.app_use import ApplicationUse
 from libranet.webserver.http_types import OCTET_STREAM, Request, Response
 
 ROOT_BUNDLE = ContentId.for_data(b"the root application's bundle", "sha256")
@@ -59,6 +60,12 @@ def published() -> Recorder:
 
 
 @fixture
+def uses() -> Recorder:
+    """What the handler reports used, kept apart from what it asks the unbundler for."""
+    return Recorder()
+
+
+@fixture
 def registry(tmp_path: Path) -> ApplicationRegistry:
     return ApplicationRegistry(tmp_path / "applications.json")
 
@@ -69,12 +76,20 @@ def handler_for(
     files: ResolvedFiles,
     outcomes: ApplicationOutcomes,
     published: Recorder,
+    uses: Recorder | None = None,
 ) -> AppHandler:
     """A handler serving ``applications``, once they are registered in ``registry``."""
     for name, bundle in applications.items():
         registry.register(Application.create(name, bundle))
 
-    return AppHandler(registry, files, outcomes, published, RETRY_AFTER_SECONDS)
+    return AppHandler(
+        registry,
+        files,
+        outcomes,
+        published,
+        RETRY_AFTER_SECONDS,
+        ApplicationUse(uses or Recorder()),
+    )
 
 
 @fixture
@@ -83,9 +98,10 @@ def handler(
     files: ResolvedFiles,
     outcomes: ApplicationOutcomes,
     published: Recorder,
+    uses: Recorder,
 ) -> AppHandler:
     applications = {"/": ROOT_BUNDLE, "wiki": WIKI_BUNDLE, "strasse": WIKI_BUNDLE}
-    return handler_for(applications, registry, files, outcomes, published)
+    return handler_for(applications, registry, files, outcomes, published, uses)
 
 
 def get(handler: AppHandler, path: str) -> Response:
@@ -136,6 +152,38 @@ def test_each_bundle_keeps_its_own_files(handler: AppHandler, files: ResolvedFil
 
     assert get(handler, "/page.html").body == b"the root's page"
     assert get(handler, "/wiki/page.html").body == b"the wiki's page"
+
+
+def test_every_request_reaching_an_application_reports_its_bundle_used(
+    handler: AppHandler, files: ResolvedFiles, uses: Recorder
+) -> None:
+    resolve(files, WIKI_BUNDLE, "page.html", b"resolved content")
+
+    get(handler, "/wiki/page.html")
+    get(handler, "/missing.html")
+
+    assert uses.messages == [
+        (EventType.APP_ACCESSED, {"bundle": str(WIKI_BUNDLE)}),
+        (EventType.APP_ACCESSED, {"bundle": str(ROOT_BUNDLE)}),
+    ]
+
+
+def test_a_bundle_is_reported_used_once_however_many_names_reach_it(
+    handler: AppHandler, uses: Recorder
+) -> None:
+    for path in ("/wiki/", "/wiki/style.css", "/Stra%C3%9Fe/"):
+        get(handler, path)
+
+    assert uses.messages == [(EventType.APP_ACCESSED, {"bundle": str(WIKI_BUNDLE)})]
+
+
+@mark.parametrize("path", ["/web", "/data%2Fnodes", "/config/"])
+def test_a_request_reaching_no_application_reports_nothing_used(
+    handler: AppHandler, uses: Recorder, path: str
+) -> None:
+    get(handler, path)
+
+    assert uses.messages == []
 
 
 def test_an_application_named_without_its_slash_is_redirected_to_it(
