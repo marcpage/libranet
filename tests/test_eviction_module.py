@@ -15,7 +15,7 @@ from libranet.config.models import IdentityConfig, LibranetConfig, PeerConfig, S
 from libranet.eviction.module import HAND_OFF_COPIES, EvictionModule, eviction_module_factory
 from libranet.identity.node_identity import load_node_identity
 from libranet.messaging.envelope import Message, make_message
-from libranet.messaging.events import EventType
+from libranet.messaging.events import ConnectionDirection, EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.supervision.registry import default_module_specs
@@ -92,6 +92,8 @@ class Modules:
         )
         self.built.append(module)
         module.on_start()
+        # Before anything else, it asks which peers are connected (Phase 2 Step 53).
+        assert self._queues.outbox.get(block=False)["event"] == EventType.PEERS_CONNECTED_REQUESTED
         return module
 
 
@@ -180,6 +182,19 @@ def acknowledged(content_id: ContentId, *holders: ContentId) -> Message:
             "hash": content_id.hash,
             "node_ids": [str(node_id) for node_id in holders],
         },
+    )
+
+
+def connected(direction: ConnectionDirection, *node_ids: ContentId) -> Message:
+    """The peers connected ``direction``, as the connection manager or web server names them."""
+    return make_message(
+        EventType.PEERS_CONNECTED,
+        (
+            ModuleName.CONNECTIONS
+            if direction == ConnectionDirection.OUTBOUND
+            else ModuleName.WEBSERVER
+        ),
+        {"direction": direction, "node_ids": [str(node_id) for node_id in node_ids]},
     )
 
 
@@ -689,6 +704,88 @@ def test_an_answer_for_content_no_longer_held_deletes_nothing(
     assert published(queues) == []
 
 
+# -- Keys of connected peers (Phase 2 Step 53) ------------------------------
+
+
+def test_keys_of_peers_connected_either_way_are_left_out_of_what_stats_is_asked_for(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+) -> None:
+    hold(store, CONTENT[0])
+    module = modules.start(capped(config, store, node_id, SIZE))
+    module.handle(connected(ConnectionDirection.OUTBOUND, PEERS[0]))
+    module.handle(connected(ConnectionDirection.INBOUND, PEERS[1], PEERS[2]))
+
+    module.handle(stored(CONTENT[1]))
+
+    byte_count, exclude = requested(queues)
+    assert byte_count == SIZE
+    assert sorted(exclude) == sorted(str(peer) for peer in PEERS)
+
+
+def test_a_connected_peers_key_is_not_handed_off_even_if_listed(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+) -> None:
+    hold(store, PEERS[0], PEERS[1], CONTENT[0])
+    module = modules.start(capped(config, store, node_id, 2 * SIZE))
+    requested(queues)
+    module.handle(connected(ConnectionDirection.OUTBOUND, PEERS[0]))
+    module.handle(connected(ConnectionDirection.INBOUND, PEERS[1]))
+
+    module.handle(candidates(PEERS[0], PEERS[1], CONTENT[0]))
+
+    assert handed_off(queues) == [CONTENT[0]]
+
+
+def test_a_key_whose_peer_connects_during_its_hand_off_is_kept(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+    caplog: LogCaptureFixture,
+) -> None:
+    hold(store, PEERS[0])
+    module = modules.start(capped(config, store, node_id, 0))
+    requested(queues)
+    module.handle(candidates(PEERS[0]))
+    assert handed_off(queues) == [PEERS[0]]
+    module.handle(connected(ConnectionDirection.INBOUND, PEERS[0]))
+
+    with caplog.at_level(INFO):
+        module.handle(acknowledged(PEERS[0], PEERS[1], PEERS[2]))
+
+    assert store.exists(PEERS[0])
+    assert requested(queues) == (SIZE, [str(PEERS[0])])
+    assert "connected meanwhile" in caplog.text
+
+
+def test_each_way_names_its_peers_anew_and_a_peer_connected_neither_way_loses_its_key(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+) -> None:
+    hold(store, PEERS[0], PEERS[1])
+    module = modules.start(capped(config, store, node_id, SIZE))
+    requested(queues)
+    module.handle(connected(ConnectionDirection.OUTBOUND, PEERS[0], PEERS[1]))
+    module.handle(connected(ConnectionDirection.INBOUND, PEERS[1]))
+
+    module.handle(connected(ConnectionDirection.OUTBOUND))
+    module.handle(candidates(PEERS[0], PEERS[1]))
+
+    assert handed_off(queues) == [PEERS[0]]
+
+
 # -- Resolved files first (Phase 2 Step 29) ---------------------------------
 
 
@@ -858,6 +955,7 @@ def test_the_module_subscribes_to_stored_content_and_answers() -> None:
         EventType.EVICTION_ACKNOWLEDGED,
         EventType.EVICTION_CANDIDATES,
         EventType.RESOLVED_RECLAIMED,
+        EventType.PEERS_CONNECTED,
     }
 
 

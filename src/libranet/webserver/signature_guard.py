@@ -3,7 +3,10 @@
 A signed request, whatever it asks for, has its signature checked; one that
 fails is refused and its connection closed (HandshakeProtocol §2.1). The
 outcome is attached to the request, so a handler never checks it again,
-which would count one request twice against the provisional-trust limit.
+which would count one request twice against the provisional-trust limit. A
+signer whose key verified it is noted on the connection the request arrived
+on, since that key must be kept while the connection is open (Phase 2 Step
+53).
 
 Unsigned requests pass through, except that reads (``GET`` or ``HEAD``) of
 the ``/data`` API are refused unless ``allow_unsigned_api_reads`` is set, the
@@ -20,7 +23,7 @@ from __future__ import annotations
 from dataclasses import KW_ONLY, dataclass, replace
 from typing import Final, Mapping
 
-from libranet.identity.authentication import RequestAuthenticator
+from libranet.identity.authentication import AuthenticationStatus, RequestAuthenticator
 from libranet.identity.signatures import SIGNATURE_HEADER, SIGNATURE_INPUT_HEADER
 from libranet.webserver.http_types import Request, Response
 from libranet.webserver.request_refusals import (
@@ -61,6 +64,11 @@ class SignatureGuard:
 
         if result.rejected:
             return invalid_signature_response(request, result.reason)
+
+        verified = result.status is AuthenticationStatus.VERIFIED
+
+        if verified and result.node_id is not None and request.connection is not None:
+            request.connection.verified(result.node_id)
 
         return replace(request, authentication=result)
 

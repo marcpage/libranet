@@ -90,6 +90,14 @@ known beforehand. ``node.unreached`` follows once every endpoint a node was
 dialed at has failed, unless the node was connected meanwhile at another.
 ``address.verified`` is an endpoint that reached a node already connected at
 another, whose connection was closed at once, so it counts as no connection.
+
+The eviction module never lets go of a connected peer's public key, which
+every response from it is checked against (Phase 2 Step 53). So the peers
+connected are named, all of them, whenever one joins the mix or leaves it,
+when the module starts, and when eviction asks::
+
+    peers.connected_requested  {}
+    peers.connected            {"direction": "outbound", "node_ids": ["sha256/<hex>", ...]}
 """
 
 from __future__ import annotations
@@ -118,7 +126,7 @@ from libranet.connections.peer_session import PeerSession
 from libranet.connections.reverse_dns import ResolveNames, ReverseLookup, host_names
 from libranet.identity.node_identity import load_node_identity
 from libranet.messaging.envelope import Message, event_of
-from libranet.messaging.events import AddressSource, EventType
+from libranet.messaging.events import AddressSource, ConnectionDirection, EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
@@ -219,6 +227,7 @@ class ConnectionsModule(ModuleBase):
             EventType.FETCH_REQUESTED,
             EventType.EVICTION_NOTICE,
             EventType.DATA_STORED,
+            EventType.PEERS_CONNECTED_REQUESTED,
         }
     )
 
@@ -275,6 +284,7 @@ class ConnectionsModule(ModuleBase):
             EventType.FETCH_REQUESTED: self._on_fetch_requested,
             EventType.EVICTION_NOTICE: self._on_eviction_notice,
             EventType.DATA_STORED: self._on_data_stored,
+            EventType.PEERS_CONNECTED_REQUESTED: self._on_peers_connected_requested,
         }
 
     @property
@@ -305,6 +315,8 @@ class ConnectionsModule(ModuleBase):
 
         with self._lock:
             self._running = True
+            # None yet: any named before a restart are gone.
+            self._publish_connected()
 
         for index in range(FETCH_WORKERS):
             Thread(target=self._fetch_loop, name=f"{self.name}-fetch-{index}", daemon=True).start()
@@ -463,6 +475,24 @@ class ConnectionsModule(ModuleBase):
             self.logger.debug("%s arrived while being searched for", content_id)
 
         self._pushes.put(_NewContent(content_id, ContentId.parse(message["node_id"])))
+
+    def _on_peers_connected_requested(self, message: Message) -> None:
+        with self._lock:
+            self._publish_connected()
+
+    def _publish_connected(self) -> None:
+        """Name every peer connected now, for eviction to keep their public keys.
+
+        Called holding the lock, so each list goes out in the order the
+        connections changed, and the last one is current.
+        """
+        self.publish(
+            EventType.PEERS_CONNECTED,
+            {
+                "direction": ConnectionDirection.OUTBOUND,
+                "node_ids": sorted(str(node_id) for node_id in self._peers),
+            },
+        )
 
     def _load_seeds(self) -> list[Candidate]:
         try:
@@ -648,6 +678,7 @@ class ConnectionsModule(ModuleBase):
             else:
                 peer = _Peer(session, now + self._config.peers.seek_refresh_seconds)
                 self._peers[session.node_id] = peer
+                self._publish_connected()
                 refusal = ""
 
         if peer is None:
@@ -678,6 +709,7 @@ class ConnectionsModule(ModuleBase):
         with self._lock:
             if self._peers.get(session.node_id) is peer:
                 del self._peers[session.node_id]
+                self._publish_connected()
                 # What reached it at another endpoint is a route to it again.
                 self._duplicates = {
                     endpoint: node_id

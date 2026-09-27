@@ -261,6 +261,10 @@ bits, and content matching many bits can still go when nothing uses it.
 When storage pressure requires eviction:
 
 - The node selects the lowest-priority objects for removal.
+- It never selects its own public key, nor the public key of a peer it has a
+  connection open with, in either direction: each signature that peer sends
+  is checked against its key (§2.2). A peer’s key may go once no connection
+  to it remains, since the next handshake brings it back (§3.2).
 - Before deletion it pushes each object to a single peer: its best outgoing
   connection (§4.6), the one to the peer whose identifier shares the longest
   binary prefix with the object’s hash. A peer that does not accept it is

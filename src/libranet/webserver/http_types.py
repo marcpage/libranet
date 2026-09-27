@@ -14,6 +14,7 @@ from json import dumps
 from typing import Any, Final, Mapping, Protocol
 
 from libranet.identity.authentication import AuthenticationResult
+from libranet.webserver.inbound_peers import InboundConnection
 from libranet.problems import PROBLEM_CONTENT_TYPE, Problem
 
 OCTET_STREAM: Final = "application/octet-stream"
@@ -99,7 +100,8 @@ class Request:
 
     ``path`` excludes any query string; ``params`` holds the named groups the
     route pattern matched. ``authentication`` is the outcome of checking the
-    request's signature, once something has checked it.
+    request's signature, once something has checked it. ``connection`` is
+    the connection it arrived on, if the server keeps track of them.
     """
 
     method: str
@@ -109,6 +111,7 @@ class Request:
     client_address: str = ""
     body: RequestBody = field(default_factory=lambda: RequestBody(0))
     authentication: AuthenticationResult | None = None
+    connection: InboundConnection | None = None
 
 
 @dataclass(frozen=True)

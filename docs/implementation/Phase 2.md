@@ -60,7 +60,8 @@ the work wants to be done in:
   how big it is, and how well it matches — and adds the two cases the
   score does not cover: resolved bundles that are cheap to rebuild, and
   content the node has decided not to hold at all. A hand-off goes to one
-  peer rather than two. Steps 28, 29, 30, and 46.
+  peer rather than two, and a connected peer's key is never let go of.
+  Steps 28, 29, 30, 46, and 53.
 - **Backing up without redoing work.** A re-backup polls the directory,
   walks it twice, reads back and resolves the last bundle, publishes a new
   bundle when only a timestamp moved, and rewrites the whole bundle to
@@ -939,7 +940,8 @@ connection to it at its next response ("Public key not held locally"), so
 the next hand-offs fell short until it reconnected and fetched the key
 again, 10 seconds later. The client's next `PUT` was refused `401` once its
 provisional allowance ran out. With only this node's own key exempt,
-peers' keys go first whenever storage runs short.
+peers' keys go first whenever storage runs short. Step 53 keeps the keys
+of the peers connected.
 
 **Testable in isolation:** the scoring is a pure function over a row per
 object — table-driven tests including every factor at its extremes.
@@ -1737,6 +1739,103 @@ or filesystem does not.
 
 ---
 
+## Step 53 — Keeping Connected Peers' Keys
+
+**Issue:** #140. **Depends on:** Phase 1 Steps 7, 11, 15; Step 28.
+
+- Seen in Step 28's live run: a peer's public key is about 113 bytes of
+  PEM and never requested, so it scores highest of all and goes first
+  whenever storage runs short. Every signature a peer sends is checked
+  against its key, read from the source of truth each time, so deleting
+  it breaks the connection either way. On a connection this node dialed,
+  the peer's next response fails verification and the connection closes.
+  On one the peer dialed, its requests are trusted provisionally
+  (`identity.provisional_trust_attempts`, 3 by default) and then refused
+  `401`: the web server never fetches a key, and a peer sends its own
+  only at first contact.
+- Suggested in the issue: count a key as requested when it is received,
+  and never evict data matching the node id of an active connection.
+
+Ruled before building:
+
+- **Only connected peers' keys are kept.** Counting a key as requested
+  when it arrives keeps it only while that request is recent, so on a
+  long connection it climbs back to the top. Counting one at each first
+  contact adds requests nobody made, and can make a key the most
+  requested object held, which weakens the frequency factor for
+  everything else. Keeping every key was turned down too: any signer can
+  `PUT` its own key, which is stored at once, so made-up identities could
+  fill the disk with files never evicted. Once no connection to a peer
+  remains, a missing key costs nothing, since the next handshake fetches
+  it, or the peer pushes it.
+- **Connected means either way**: peers this node dialed, and peers
+  whose signed requests arrive on a web-server connection still open.
+- **HighLevelDesign §4.5 says so**, amended first: a node never selects
+  its own public key, nor the key of a peer it has a connection open
+  with, in either direction.
+
+My calls, not yet reviewed:
+
+- **The eviction module keeps them**, since it both asks stats what to
+  let go of and deletes. It leaves connected peers' keys out of what it
+  asks stats for (`exclude`), passes one over should stats list it
+  anyway, and does not delete one whose peer connected while it was being
+  handed off; the peers that took it keep their copies. Stats is
+  unchanged.
+- **The connection manager and the web server each name every peer
+  connected their way**, all at once, rather than reporting connections
+  one at a time as they open and close:
+
+  ```text
+  peers.connected_requested  {}
+  peers.connected            {"direction": "outbound", "node_ids": ["sha256/<hex>", ...]}
+  ```
+
+  `direction` is `outbound` from the connection manager and `inbound`
+  from the web server, and each list replaces the last for its direction.
+  A list is sent whenever the peers change, when the sender starts, and
+  when eviction asks, which it does as it starts. So a restart on either
+  side mends itself: a sender that restarts names nobody, its connections
+  having gone with it, and an eviction module that restarts asks afresh.
+  Reports of single connections would leave a stale or empty set after
+  either. Each sender publishes while holding the lock that guards its
+  peers, so the lists go out in the order the peers changed.
+- **An inbound connection counts from its first request whose signature
+  verifies until the socket closes.** The signature guard notes the
+  signer on the connection (`webserver/inbound_peers.py`), and the
+  request thread serving it reports it closed as it ends. A provisionally
+  trusted request does not count, since there is no key to keep yet. A
+  peer counts until its last connection closes, and every signer on a
+  connection counts.
+- **An outbound connection counts while its peer is in the mix**, from
+  `connection.opened` to `connection.closed`. The handshake, which has
+  just used the key, is not covered: a key deleted in that moment breaks
+  the new connection, and it is dialed again after
+  `peers.retry_delay_seconds`.
+- **`connection.opened` and `connection.closed` are not reused** for
+  inbound connections: stats counts them as this node's dials, and what
+  an inbound connection is worth is Step 24's question.
+- **Eviction asks at start and carries on at once**, rather than waiting
+  for the lists. A hand-off started meanwhile is answered long after
+  they arrive, and the check before deleting still applies.
+
+Seen in a live run of three nodes, A capped at 12,000 bytes, each told of
+the others, and a client pushing its key and then 30 objects of 1,000
+bytes to A over one connection. Before this step, A's first three
+deletions were B's key, C's, and the client's; both of A's connections
+closed within milliseconds, and every hand-off after that fell short. With
+it, A handed off and deleted 19 objects and kept all three keys, no
+connection closed, and the client's next five `PUT`s on the same
+connection were accepted.
+
+**Testable in isolation:** eviction tests feed `peers.connected` lists
+and assert what is excluded, handed off, and kept; the web server's
+tracking is tested with a fake publisher and through the running module
+with a signing peer; the connection manager's lists are checked as a
+fixture peer connects and drops the connection.
+
+---
+
 ## 4. Issues in the Milestone
 
 Every issue in the **Phase 2** milestone, by number, and where it went.
@@ -1772,6 +1871,7 @@ Every issue in the **Phase 2** milestone, by number, and where it went.
 | #113 | `config_requests` functions that should be methods | 42; closed into #81 |
 | #114 | Record the expanded bundle when expanding or building | 48 |
 | #121 | Hand off to one peer on eviction | 46 |
+| #140 | Keep the public keys of connected peers | 53 |
 | #126 | Update this plan | None: this revision |
 
 Issue #80 asks for what #119 asked for later, and PR #120 built it in
@@ -1794,7 +1894,7 @@ into tiers; steps within a tier are independent of each other.
 | D | 23 (#52) | The foundation for all the peering work, and the one step known to need its own change sets. |
 | E | 26 (#56), 24 (#54), 25 (#55) | All three change how connections are chosen or given up on. 26 is the node-level half of a rule 23 starts, so it goes first — ideally straight after 23. |
 | F | 27 (#59), then 45 (#96) | 27 needs 22; better with 23 and 25, which give it more and better-placed peers to walk. 45 needs 22 too, and reshapes the same sending code, so it follows. |
-| G | 46 (#121), 28 (#68), then 29 (#69), 30 (#71) | 46 is small, and its specification change is made. 28 moves candidate selection into stats, which is where 29 and 30 also need to reach. 30 answers a hand-off question 46 raises. |
+| G | 46 (#121), 28 (#68), then 29 (#69), 30 (#71), 53 (#140) | 46 is small, and its specification change is made. 28 moves candidate selection into stats, which is where 29 and 30 also need to reach. 30 answers a hand-off question 46 raises. 53 fixes what 28's live run found, and its specification change is made. |
 | H | 47 (#98), 48 (#84, #114), then 49 (#82, #83), then 31 (#73) and 50 (#85) | The backup chain. 48's record is what 49 compares against, 31 extends, and 50 updates from notifications. 47 fixes a comparison 49 relies on. Touches only bundles and backup, so it can run in parallel with D through G, by anyone not in the connections code. |
 | I | 51 (#99), 52 (#101) | Independent of everything above. 52's specification change is made; it needs a new dependency on macOS, and is best after 49, which it relies on to hold back attribute-only changes. |
 | — | 16 (#20) | Optional throughout. Built after 23, which gives it somewhere to put what it discovers. Its specification change is made. |

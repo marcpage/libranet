@@ -74,6 +74,10 @@ class EventType(StrEnum):
     RESOLVED_RECLAIM = "resolved.reclaim"  # stats → unbundler
     RESOLVED_RECLAIMED = "resolved.reclaimed"  # unbundler → eviction
 
+    # The peers connected, whose public keys are never evicted (Phase 2 Step 53).
+    PEERS_CONNECTED_REQUESTED = "peers.connected_requested"  # eviction → connections, webserver
+    PEERS_CONNECTED = "peers.connected"  # connections, webserver → eviction
+
 
 class AddressSource(StrEnum):
     """How this node learned an address of a peer (Phase 2 Step 23).
@@ -87,3 +91,10 @@ class AddressSource(StrEnum):
     ADVERTISED = "advertised"  # in the node's own node list, as its own
     OBSERVED = "observed"  # a `localhost` entry resolved to the connection's address
     DIALED = "dialed"  # this node reached the node there
+
+
+class ConnectionDirection(StrEnum):
+    """Which side opened the connections a ``peers.connected`` names (Phase 2 Step 53)."""
+
+    OUTBOUND = "outbound"  # dialed by this node's connection manager
+    INBOUND = "inbound"  # dialed by the peer, to this node's web server

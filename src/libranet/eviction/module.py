@@ -13,8 +13,9 @@ of than it has content to hand off (Phase 2 Step 28)::
     eviction.candidates_requested  {"bytes", "exclude": ["sha256/<hex>", ...]}
 
 ``bytes`` is how much more is to be freed, and ``exclude`` the content
-already being handed off. Stats answers with the held content to let go of
-first, best first, as much of it as covers ``bytes``, up to a limit::
+already being handed off and the keys of the peers connected. Stats
+answers with the held content to let go of first, best first, as much of
+it as covers ``bytes``, up to a limit::
 
     eviction.candidates            {"objects": [{"algorithm", "hash", "size"}, ...]}
 
@@ -53,8 +54,19 @@ within its limits once they succeed. One the connection manager never
 answers, as when it restarts, is given up on after
 ``hand_off_timeout_seconds``.
 
-This node's own public key is never let go of, since peers need it to check
-the node's signatures.
+Public keys are never let go of while signatures are checked against them:
+this node's own, and those of the peers connected to it either way (Phase 2
+Step 53). The connection manager names the peers it dialed, and the web
+server those that dialed it, all of them whenever that changes and when
+asked, as this module asks when it starts::
+
+    peers.connected_requested  {}
+    peers.connected            {"direction": "outbound", "node_ids": ["sha256/<hex>", ...]}
+
+Their keys are left out of what stats is asked for and are not handed off,
+and one whose peer connects while it is being handed off is not deleted. A
+peer's key may go once it is connected neither way, since the next
+handshake brings it back.
 
 The application files the unbundler resolves are not content, nor counted
 as content held, but they take up free space. So when free space runs
@@ -86,7 +98,7 @@ from libranet.eviction.pressure import FreeBytes, StoragePressure
 from libranet.eviction.priority import HeldObject
 from libranet.identity.node_identity import load_node_identity
 from libranet.messaging.envelope import Message, event_of
-from libranet.messaging.events import EventType
+from libranet.messaging.events import ConnectionDirection, EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
@@ -132,6 +144,7 @@ class EvictionModule(ModuleBase):
             EventType.EVICTION_ACKNOWLEDGED,
             EventType.EVICTION_CANDIDATES,
             EventType.RESOLVED_RECLAIMED,
+            EventType.PEERS_CONNECTED,
         }
     )
 
@@ -201,11 +214,14 @@ class EvictionModule(ModuleBase):
         self._reclaiming_since: float | None = None
         # They are not asked to be deleted again before this time.
         self._next_reclaim_at = 0.0
+        # The peers last named connected, each way, whose keys are kept.
+        self._connected: dict[ConnectionDirection, frozenset[ContentId]] = {}
         self._handlers: Mapping[EventType, Callable[[Message], None]] = {
             EventType.DATA_STORED: self._on_data_stored,
             EventType.EVICTION_ACKNOWLEDGED: self._on_eviction_acknowledged,
             EventType.EVICTION_CANDIDATES: self._on_eviction_candidates,
             EventType.RESOLVED_RECLAIMED: self._on_resolved_reclaimed,
+            EventType.PEERS_CONNECTED: self._on_peers_connected,
         }
 
     @property
@@ -229,10 +245,13 @@ class EvictionModule(ModuleBase):
 
         The node identity is read here rather than passed across the process
         boundary, for the same reason the web server reads it: the private
-        key stays on disk.
+        key stays on disk. Which peers are connected is asked first, since
+        a restart forgets it; the answers arrive long before any hand-off
+        started meanwhile is.
         """
         self._node_id = load_node_identity(self._config).node_id
         self._pressure = StoragePressure.of(self._config.storage, self._free_bytes)
+        self.publish(EventType.PEERS_CONNECTED_REQUESTED, {})
         self._evict()
 
     def on_idle(self) -> None:
@@ -299,7 +318,14 @@ class EvictionModule(ModuleBase):
             )
             return
 
-        self._delete(content_id)
+        if self._kept(content_id):
+            self.logger.info(
+                "%s is the key of a peer connected meanwhile, so it is kept", content_id
+            )
+
+        else:
+            self._delete(content_id)
+
         self._evict()
 
     def _on_eviction_candidates(self, message: Message) -> None:
@@ -328,6 +354,12 @@ class EvictionModule(ModuleBase):
             self.logger.warning(
                 "Storage is %d bytes over its limits, with nothing left to let go of", excess
             )
+
+    def _on_peers_connected(self, message: Message) -> None:
+        """Keep the keys of the peers now connected one way, in place of those named before."""
+        self._connected[ConnectionDirection(message["direction"])] = frozenset(
+            ContentId.parse(node_id) for node_id in message["node_ids"]
+        )
 
     def _on_resolved_reclaimed(self, message: Message) -> None:
         """Carry on, now that the resolved files not used lately are deleted."""
@@ -371,7 +403,7 @@ class EvictionModule(ModuleBase):
 
             held = self._candidates.popleft()
 
-            if held.content_id == self.node_id or held.content_id in self._handing_off:
+            if self._kept(held.content_id) or held.content_id in self._handing_off:
                 continue
 
             self._hand_off(held)
@@ -387,10 +419,20 @@ class EvictionModule(ModuleBase):
             EventType.EVICTION_CANDIDATES_REQUESTED,
             {
                 "bytes": byte_count,
-                "exclude": [str(content_id) for content_id in self._handing_off],
+                "exclude": [
+                    str(content_id) for content_id in self._handing_off.keys() | self._peer_keys()
+                ],
             },
         )
         self.logger.debug("Asked for content to free %d bytes", byte_count)
+
+    def _peer_keys(self) -> frozenset[ContentId]:
+        """The public keys of the peers connected either way, by their node ids."""
+        return frozenset[ContentId]().union(*self._connected.values())
+
+    def _kept(self, content_id: ContentId) -> bool:
+        """Whether ``content_id`` is a public key that signatures are checked against now."""
+        return content_id == self.node_id or content_id in self._peer_keys()
 
     def _reclaim(self) -> None:
         """Ask for the resolved files of applications not used lately to be deleted."""
