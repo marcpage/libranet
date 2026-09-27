@@ -11,7 +11,10 @@ The receive loop takes in what the unbundler found at application paths it
 stored no file for, ``app.path_resolved`` (see
 :mod:`libranet.unbundler.module`), and what the backup module reports its
 jobs and restores are doing, ``backup.state`` (Step 19), for request threads
-to answer from.
+to answer from. It also takes the eviction module's
+``peers.connected_requested``, answered with the peers connected to the
+server (:mod:`libranet.webserver.inbound_peers`), which are named once as
+the server starts too (Phase 2 Step 53).
 
 The ``/config`` credential is loaded from disk like the node key, rather
 than being carried across the process boundary.
@@ -38,6 +41,7 @@ from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 from libranet.webserver.backup_state import BackupReport, BackupState
 from libranet.webserver.config_credential import load_config_credential
 from libranet.webserver.config_handlers import NodeDescription
+from libranet.webserver.inbound_peers import InboundPeers
 from libranet.webserver.server import LibranetHTTPServer, build_router
 
 
@@ -45,7 +49,7 @@ class WebServerModule(ModuleBase):
     """Serves the node's HTTP API while the module runs."""
 
     subscriptions: ClassVar[frozenset[EventType]] = frozenset(
-        {EventType.APP_PATH_RESOLVED, EventType.BACKUP_STATE}
+        {EventType.APP_PATH_RESOLVED, EventType.BACKUP_STATE, EventType.PEERS_CONNECTED_REQUESTED}
     )
 
     def __init__(
@@ -61,6 +65,7 @@ class WebServerModule(ModuleBase):
         self._config = config
         self._app_outcomes = ApplicationOutcomes()
         self._backup_state = BackupState()
+        self._inbound_peers = InboundPeers(self.publish)
         self._server: LibranetHTTPServer | None = None
         self._thread: Thread | None = None
 
@@ -76,10 +81,17 @@ class WebServerModule(ModuleBase):
     def handle(self, message: Message) -> None:
         """Remember what another module reported, for request threads to answer from.
 
-        A malformed message raises, and :meth:`run` logs it.
+        Eviction asking which peers are connected is answered at once. A
+        malformed message raises, and :meth:`run` logs it.
         """
-        if event_of(message) == EventType.BACKUP_STATE:
+        event = event_of(message)
+
+        if event == EventType.BACKUP_STATE:
             self._backup_state.report(BackupReport.from_message(message))
+            return
+
+        if event == EventType.PEERS_CONNECTED_REQUESTED:
+            self._inbound_peers.publish()
             return
 
         outcome = PathOutcome(message["outcome"])
@@ -103,6 +115,8 @@ class WebServerModule(ModuleBase):
         does not: requests that need it are answered ``500`` until it is
         fixed, and the rest of the node's API is served meanwhile.
         """
+        # None yet: any named before a restart are gone.
+        self._inbound_peers.publish()
         network = self._config.network
         identity = self._config.identity
         node = load_node_identity(self._config)
@@ -123,6 +137,7 @@ class WebServerModule(ModuleBase):
             ),
             self.logger,
             signer,
+            inbound_peers=self._inbound_peers,
         )
         self._thread = Thread(
             target=self._server.serve_forever, name=f"{self.name}-http", daemon=True

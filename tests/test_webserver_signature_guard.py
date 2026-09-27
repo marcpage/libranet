@@ -1,9 +1,11 @@
 """Tests for the signature policy applied to requests before they are routed."""
 
 from __future__ import annotations
+from dataclasses import replace
 from io import BytesIO
 from json import loads
 from pathlib import Path
+from typing import Any, Mapping
 
 from pytest import fixture, mark
 
@@ -12,8 +14,11 @@ from libranet.identity.authentication import AuthenticationStatus, RequestAuthen
 from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import SIGNATURE_HEADER, MessageSigner, MessageVerifier
+from libranet.messaging.envelope import Message
+from libranet.messaging.events import EventType
 from libranet.problems import CONTENT_TOO_LARGE, INVALID_SIGNATURE, SIGNATURE_REQUIRED
 from libranet.webserver.http_types import Request, RequestBody, Response
+from libranet.webserver.inbound_peers import InboundPeers
 from libranet.webserver.signature_guard import SignatureGuard
 
 NOW = 1_757_080_000.0
@@ -111,6 +116,23 @@ def test_unknown_signer_is_provisional_and_counted_once(guard: SignatureGuard) -
     assert first.authentication is not None
     assert first.authentication.status is AuthenticationStatus.PROVISIONAL
     assert refused(guard(signed(stranger))).close
+
+
+def test_only_a_signer_whose_key_verified_is_noted_on_the_connection(
+    guard: SignatureGuard, known: NodeIdentity
+) -> None:
+    named: list[Mapping[str, Any]] = []
+
+    def publish(event: EventType, payload: Mapping[str, Any] | None = None) -> Message:
+        named.append(payload or {})
+        return {}
+
+    connection = InboundPeers(publish).connection()
+
+    passed(guard(replace(signed(new_identity()), connection=connection)))
+    passed(guard(replace(signed(known), connection=connection)))
+
+    assert [each["node_ids"] for each in named] == [[str(known.node_id)]]
 
 
 def test_failed_signature_is_refused_and_closes(guard: SignatureGuard, known: NodeIdentity) -> None:

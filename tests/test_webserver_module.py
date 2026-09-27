@@ -5,7 +5,7 @@ from base64 import b64encode
 from http.client import HTTPConnection
 from json import loads
 from pathlib import Path
-from queue import Queue
+from queue import Empty, Queue
 from socket import socket
 from threading import Event, Thread
 from time import monotonic, sleep
@@ -20,7 +20,7 @@ from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity, load_node_identity
 from libranet.identity.signatures import MessageSigner, MessageVerifier
 from libranet.messaging.envelope import make_message
-from libranet.messaging.events import EventType
+from libranet.messaging.events import ConnectionDirection, EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.webserver.app_registry import CONFIG_APPLICATION, Application, ApplicationRegistry
@@ -69,6 +69,18 @@ def _wait_for_address(module: WebServerModule) -> tuple[str, int]:
     raise AssertionError("web server did not start")
 
 
+def _serving(module: WebServerModule, queues: ModuleQueues) -> tuple[str, int]:
+    """Where ``module`` listens, once it has named the peers connected to it: none yet."""
+    address = _wait_for_address(module)
+    started = queues.outbox.get(timeout=1)
+    assert (started["event"], started["direction"], started["node_ids"]) == (
+        EventType.PEERS_CONNECTED,
+        ConnectionDirection.INBOUND,
+        [],
+    )
+    return address
+
+
 def test_module_serves_until_shutdown_and_publishes_misses(tmp_path: Path) -> None:
     port = _free_port()
     queues = _queues()
@@ -79,7 +91,7 @@ def test_module_serves_until_shutdown_and_publishes_misses(tmp_path: Path) -> No
     thread.start()
 
     try:
-        host, bound_port = _wait_for_address(module)
+        host, bound_port = _serving(module, queues)
         assert bound_port == port
 
         missing = ContentId.for_data(b"missing", "sha256")
@@ -118,7 +130,7 @@ def test_module_accepts_signed_uploads_and_signs_its_responses(tmp_path: Path) -
     thread.start()
 
     try:
-        host, port = _wait_for_address(module)
+        host, port = _serving(module, queues)
         identity = NodeIdentity.from_private_key(generate_private_key(), "sha256")
         upload = b"uploaded through the module"
         upload_id = ContentId.for_data(upload, "sha256")
@@ -143,6 +155,48 @@ def test_module_accepts_signed_uploads_and_signs_its_responses(tmp_path: Path) -
         thread.join(timeout=5)
 
     assert not thread.is_alive()
+
+
+def test_module_names_the_peers_connected_to_it_as_they_come_and_go_and_when_asked(
+    tmp_path: Path,
+) -> None:
+    queues = _queues()
+    config = _config(tmp_path, _free_port())
+    module = WebServerModule(ModuleName.WEBSERVER, queues, config, poll_interval=0.01)
+    stop = Event()
+    thread = Thread(target=module.run, args=(stop,), daemon=True)
+    thread.start()
+    peer = NodeIdentity.from_private_key(generate_private_key(), "sha256")
+    peer.publish_public_key(source_of_truth_store(config.storage))
+    signed = MessageSigner(peer).sign_request("GET", "/data/nodes", {})
+    inbound = [
+        (EventType.PEERS_CONNECTED, ConnectionDirection.INBOUND, names)
+        for names in ([str(peer.node_id)], [str(peer.node_id)], [])
+    ]
+    named = []
+
+    try:
+        host, port = _serving(module, queues)
+        connection = HTTPConnection(host, port, timeout=5)
+
+        for _ in range(2):
+            connection.request("GET", "/data/nodes", headers=signed)
+            connection.getresponse().read()
+
+        named.append(queues.outbox.get(timeout=1))
+        queues.inbox.put(make_message(EventType.PEERS_CONNECTED_REQUESTED, ModuleName.EVICTION, {}))
+        named.append(queues.outbox.get(timeout=1))
+        connection.close()
+        named.append(queues.outbox.get(timeout=5))
+
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+    assert [(each["event"], each["direction"], each["node_ids"]) for each in named] == inbound
+
+    with raises(Empty):
+        queues.outbox.get(block=False)
 
 
 @mark.parametrize("allow_unsigned_api_reads, unsigned_status", [(True, 503), (False, 401)])
@@ -205,7 +259,7 @@ def test_module_answers_application_paths_from_what_the_unbundler_reported(
     thread.start()
 
     try:
-        host, port = _wait_for_address(module)
+        host, port = _serving(module, queues)
 
         assert _status(host, port, "/wiki/missing.html") == (503, None)
         assert _status(host, port, "/wiki/docs") == (503, None)
@@ -268,7 +322,7 @@ def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: P
     job = {"job_id": "0123456789abcdef", "directory": "/home/me/documents", "state": "idle"}
 
     try:
-        host, port = _wait_for_address(module)
+        host, port = _serving(module, queues)
 
         # The first request captures the credential, which is then stored
         # beside the node key; a later one offering another is refused.
@@ -329,6 +383,7 @@ def test_module_subscribes_to_what_other_modules_report() -> None:
     assert WebServerModule.subscriptions == {
         EventType.APP_PATH_RESOLVED,
         EventType.BACKUP_STATE,
+        EventType.PEERS_CONNECTED_REQUESTED,
     }
 
 

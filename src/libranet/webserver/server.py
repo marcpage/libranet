@@ -15,6 +15,11 @@ Every response, including the server's own errors, is signed with the node's
 key (HighLevelDesign §2.2), which is how a peer learns and authenticates this
 node's identity (HandshakeProtocol §3). Each one also echoes the request's
 target in ``X-Request-Path``, to help debug pipelined clients (Step 10).
+
+Given :class:`~libranet.webserver.inbound_peers.InboundPeers`, the server
+tells it which peers are connected: each request carries the connection it
+arrived on, and each connection is reported closed when its thread ends
+(Phase 2 Step 53).
 """
 
 from __future__ import annotations
@@ -52,6 +57,7 @@ from libranet.webserver.http_types import (
     Response,
     problem_response,
 )
+from libranet.webserver.inbound_peers import InboundConnection, InboundPeers
 from libranet.webserver.list_handlers import (
     NODES_PATH,
     SEEK_PATH,
@@ -183,18 +189,26 @@ def build_router(
 class LibranetHTTPServer(ThreadingHTTPServer):
     """A threading HTTP server that routes every request through ``router``.
 
-    ``signer`` signs every response with this node's key.
+    ``signer`` signs every response with this node's key, and
+    ``inbound_peers``, if given, is told which peers are connected.
     """
 
     daemon_threads = True
 
     def __init__(
-        self, address: tuple[str, int], router: Router, logger: Logger, signer: MessageSigner
+        self,
+        address: tuple[str, int],
+        router: Router,
+        logger: Logger,
+        signer: MessageSigner,
+        *,
+        inbound_peers: InboundPeers | None = None,
     ) -> None:
         self.address_family = AF_INET6 if ":" in address[0] else AF_INET
         self.router = router
         self.logger = logger
         self.signer = signer
+        self.inbound_peers = inbound_peers
         super().__init__(address, RequestHandler)
 
     def server_bind(self) -> None:
@@ -219,6 +233,23 @@ class RequestHandler(BaseHTTPRequestHandler):
     timeout = IDLE_TIMEOUT_SECONDS
 
     server: LibranetHTTPServer
+    # The connection this handler serves, if the server keeps track of them.
+    inbound: InboundConnection | None = None
+
+    def setup(self) -> None:
+        """Start serving a connection, and track it if the server does."""
+        super().setup()
+        peers = self.server.inbound_peers
+        self.inbound = None if peers is None else peers.connection()
+
+    def finish(self) -> None:
+        """Stop serving a connection, and report it closed if it is tracked."""
+        try:
+            super().finish()
+
+        finally:
+            if self.inbound is not None:
+                self.inbound.close()
 
     def _handle(self) -> None:
         path = urlsplit(self.path).path
@@ -237,6 +268,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             headers=dict(self.headers.items()),
             client_address=str(self.client_address[0]),
             body=body,
+            connection=self.inbound,
         )
 
         try:

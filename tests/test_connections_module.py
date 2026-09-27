@@ -40,7 +40,7 @@ from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity, load_node_identity
 from libranet.identity.signatures import MessageSigner
 from libranet.messaging.envelope import Message, make_message
-from libranet.messaging.events import EventType
+from libranet.messaging.events import ConnectionDirection, EventType
 from libranet.messaging.queues import MessageQueue, ModuleQueues
 from libranet.modules import ModuleName
 from libranet.stats.module import StatsModule
@@ -858,6 +858,26 @@ def test_a_connection_the_peer_closes_is_reported_and_rests(
     module.on_idle()
 
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+
+
+def test_the_peers_connected_are_named_at_start_as_they_come_and_go_and_when_asked(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    # The peer drops the connection as soon as it goes idle.
+    monkeypatch.setattr(RequestHandler, "timeout", 0.3)
+    write_lists(config.storage, node_list(identity, peers[0]))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_CLOSED)
+
+    module.handle(make_message(EventType.PEERS_CONNECTED_REQUESTED, ModuleName.EVICTION, {}))
+
+    named = bus.events(EventType.PEERS_CONNECTED, direction=ConnectionDirection.OUTBOUND)
+    assert [message["node_ids"] for message in named] == [[], [str(peers[0].node_id)], [], []]
 
 
 def test_stopping_closes_every_connection(
@@ -1734,6 +1754,7 @@ def test_the_module_subscribes_to_node_lists_fetches_hand_offs_and_new_content()
         EventType.FETCH_REQUESTED,
         EventType.EVICTION_NOTICE,
         EventType.DATA_STORED,
+        EventType.PEERS_CONNECTED_REQUESTED,
     }
 
 
