@@ -9,12 +9,15 @@ used instead only while that list names no peer but this node itself.
 from __future__ import annotations
 from dataclasses import dataclass, replace
 from json import loads
+from logging import getLogger
 from pathlib import Path
 from typing import Callable
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
 from libranet.config.seeds import SeedPeer
+
+_LOGGER = getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -53,7 +56,12 @@ def candidate_list(path: Path, own_id: ContentId) -> list[Candidate]:
         nodes = loads(path.read_bytes())["nodes"]
         entries = [(entry["node_id"], tuple(entry["endpoints"])) for entry in nodes]
 
-    except (OSError, ValueError, LookupError, TypeError):
+    except FileNotFoundError:
+        # Not logged: there is none until stats first derives it.
+        return []
+
+    except (OSError, ValueError, LookupError, TypeError) as error:
+        _LOGGER.warning("Ignoring the candidate list at %s: %s", path, error)
         return []
 
     candidates: list[Candidate] = []
@@ -62,7 +70,8 @@ def candidate_list(path: Path, own_id: ContentId) -> list[Candidate]:
         try:
             node_id = ContentId.parse(text)
 
-        except InvalidContentIdError:
+        except InvalidContentIdError as error:
+            _LOGGER.warning("Dropping the candidate %r: %s", text, error)
             continue
 
         if node_id != own_id and endpoints:
@@ -79,7 +88,8 @@ def seed_candidates(seeds: tuple[SeedPeer, ...]) -> list[Candidate]:
         try:
             node_id = None if seed.node_id is None else ContentId.parse(seed.node_id)
 
-        except InvalidContentIdError:
+        except InvalidContentIdError as error:
+            _LOGGER.warning("Seed %s has an unusable node id: %s", seed.address, error)
             node_id = None
 
         candidates.append(Candidate((seed.address,), node_id))

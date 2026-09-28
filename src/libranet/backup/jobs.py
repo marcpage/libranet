@@ -166,6 +166,7 @@ def load_jobs(path: Path) -> dict[str, BackupJob]:
         value = loads(path.read_bytes())
 
     except FileNotFoundError:
+        # Not logged: there are no jobs until one is saved.
         return {}
 
     except (OSError, ValueError) as error:

@@ -1,9 +1,10 @@
 """Tests for the filesystem CAS store."""
 
 from __future__ import annotations
+from logging import WARNING
 from pathlib import Path
 
-from pytest import raises
+from pytest import LogCaptureFixture, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError
@@ -145,3 +146,18 @@ def test_node_stores_are_separate_per_node(tmp_path: Path) -> None:
     assert store.root.parent == storage.incoming_dir
     assert store.prefix_length == 3
     assert CasStore.for_node(storage, second).root != store.root
+
+
+def test_iter_prefix_logs_a_file_not_named_as_content_as_a_warning(
+    tmp_path: Path, caplog: LogCaptureFixture
+) -> None:
+    store = make_store(tmp_path, 2)
+    content_id = ContentId.for_data(b"held", "sha256")
+    store.write(content_id, b"held")
+    stray = store.path_for(content_id).parent / f"{content_id.hash[:2]}stray"
+    stray.write_bytes(b"")
+
+    assert list(store.iter_prefix("sha256", content_id.hash[:2])) == [content_id]
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith(f"Skipping {stray}, not named as CAS content: ")

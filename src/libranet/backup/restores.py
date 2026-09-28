@@ -192,6 +192,7 @@ class Restore:
                 missing = self._place_held(self._pending, writer, source, skipped)
 
         except MissingContentError as error:
+            # Not logged: what is missing is asked for, and the backup module logs it.
             missing = list(error.content_ids)
 
         self._skipped += len(skipped)
@@ -321,6 +322,7 @@ class Restore:
                 writer.place_directory(path, entry.metadata)
 
         except MissingContentError as error:
+            # Not logged: what is missing is asked for, and the backup module logs it.
             missing.extend(error.content_ids)
             return missing
 
@@ -328,6 +330,7 @@ class Restore:
             if isinstance(error, OSError) and error.errno in _STOPPING_ERRORS:
                 raise
 
+            # Not logged: the backup module logs what is skipped.
             skipped[path] = str(error)
 
         else:
@@ -375,6 +378,7 @@ def _load(content_id: ContentId, source: ContentSource, secret: bytes) -> Bundle
         raise
 
     except BundleError as error:
+        # Not logged: it may be a drop; if not, its error is raised below.
         try:
             return load_bundle(content_id, source, password=secret, targeted=True)
 

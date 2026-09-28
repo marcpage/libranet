@@ -24,11 +24,14 @@ change is noticed once it can be.
 
 from __future__ import annotations
 from hashlib import sha256
+from logging import getLogger
 from os import DirEntry, fsencode, scandir, stat_result
 from pathlib import Path
 from typing import Final, Iterable, Protocol
 
 from libranet.bundle.building import IgnoredPaths
+
+_LOGGER = getLogger(__name__)
 
 _PATH_SEPARATOR: Final = "/"
 
@@ -76,10 +79,11 @@ class PollingDetector:
             try:
                 listing = _sorted_listing(current)
 
-            except OSError:
+            except OSError as error:
                 if not prefix:
                     raise
 
+                _LOGGER.debug("Cannot list %s to fingerprint it: %s", current, error)
                 hasher.update(fsencode(prefix) + _FIELD_END + _UNREADABLE + _FIELD_END)
                 continue
 
@@ -90,7 +94,8 @@ class PollingDetector:
 
                     described = _described(item.stat(follow_symlinks=False))
 
-                except OSError:
+                except OSError as error:
+                    _LOGGER.debug("Cannot read %s to fingerprint it: %s", item.path, error)
                     described = _UNREADABLE
 
                 path = prefix + item.name

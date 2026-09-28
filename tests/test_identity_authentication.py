@@ -1,10 +1,11 @@
 """Tests for the web server's request authentication policy."""
 
 from __future__ import annotations
+from logging import DEBUG
 from pathlib import Path
 from threading import Thread
 
-from pytest import fixture, raises
+from pytest import LogCaptureFixture, fixture, raises
 
 from libranet.cas.store import CasStore
 from libranet.config.models import IdentityConfig, LibranetConfig, StorageConfig
@@ -197,3 +198,34 @@ def test_an_authenticator_of_a_configuration_uses_its_policy(tmp_path: Path) -> 
     ):
         headers = MessageSigner(identity).sign_request("GET", PATH, {})
         assert authenticator.authenticate("GET", PATH, headers).status is status
+
+
+def test_an_invalid_signature_is_logged_at_debug(
+    store: CasStore, caplog: LogCaptureFixture
+) -> None:
+    identity = new_identity()
+    identity.publish_public_key(store)
+    caplog.set_level(DEBUG)
+
+    make_authenticator(store).authenticate(
+        "POST", PATH, signed_headers(identity, b"body"), b"tampered"
+    )
+
+    (record,) = [r for r in caplog.records if r.name == "libranet.identity.authentication"]
+    assert record.levelno == DEBUG
+    assert record.getMessage().startswith(f"Rejecting the signature on POST {PATH}: ")
+
+
+def test_a_signer_whose_key_is_not_held_is_logged_at_debug(
+    store: CasStore, caplog: LogCaptureFixture
+) -> None:
+    identity = new_identity()
+    caplog.set_level(DEBUG)
+
+    make_authenticator(store).authenticate("POST", PATH, signed_headers(identity))
+
+    assert [
+        (level, message)
+        for name, level, message in caplog.record_tuples
+        if name == "libranet.identity.authentication"
+    ] == [(DEBUG, f"POST {PATH} is signed by {identity.node_id}, whose key is not held")]

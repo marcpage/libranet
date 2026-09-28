@@ -43,6 +43,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from errno import ENOENT
+from logging import getLogger
 from os import (
     O_NOFOLLOW,
     O_NONBLOCK,
@@ -75,6 +76,8 @@ from libranet.bundle.storing import HASH_ALGORITHM, ContentSink, store_object
 from libranet.cas.algorithms import DEFAULT_REGISTRY
 from libranet.cas.content_id import ContentId
 from libranet.config.models import MIB
+
+_LOGGER = getLogger(__name__)
 
 _PATH_SEPARATOR: Final = "/"
 _EPOCH: Final = datetime(1970, 1, 1, tzinfo=timezone.utc)
@@ -200,6 +203,7 @@ def build_directory(
             if not prefix:
                 raise
 
+            # Not logged: the backup module logs what is skipped.
             del directories[prefix[:-1]]
             skipped[prefix[:-1]] = str(error)
             continue
@@ -235,6 +239,7 @@ def build_directory(
                     raise MalformedBundleError("Not a file, a directory, or a symlink")
 
             except (OSError, MalformedBundleError) as error:
+                # Not logged: the backup module logs what is skipped.
                 skipped[path] = str(error)
 
             if file is not None:
@@ -256,6 +261,7 @@ def _identity(path: Path) -> tuple[int, int] | None:
         status = path.stat()
 
     except OSError:
+        # Not logged: a path naming nothing has no identity.
         return None
 
     return status.st_dev, status.st_ino
@@ -301,6 +307,7 @@ def _is_utf8(text: str) -> bool:
         text.encode("utf-8")
 
     except UnicodeEncodeError:
+        # Not logged: failing to encode is the answer.
         return False
 
     return True
@@ -411,6 +418,9 @@ def _timestamp(microseconds: int) -> str | None:
         moment = _EPOCH + timedelta(microseconds=microseconds)
 
     except OverflowError:
+        _LOGGER.warning(
+            "Leaving out a time %d microseconds from the epoch, as out of range", microseconds
+        )
         return None
 
     return moment.isoformat().replace(_UTC_SUFFIX, _UTC_DESIGNATOR)

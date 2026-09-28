@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 from hashlib import sha256
+from logging import WARNING, getLogger
 
-from pytest import raises
+from pytest import LogCaptureFixture, raises
 
-from libranet.cas.algorithms import AlgorithmRegistry, DEFAULT_REGISTRY, Hasher, Sha256Algorithm
+from libranet.cas.algorithms import (
+    AlgorithmRegistry,
+    DEFAULT_REGISTRY,
+    Hasher,
+    Sha256Algorithm,
+    UnsupportedAlgorithms,
+)
 from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
 
 
@@ -79,3 +86,29 @@ def test_duplicate_registration_is_rejected() -> None:
 
     with raises(ValueError):
         registry.register(Sha256Algorithm())
+
+
+def test_unsupported_algorithms_are_logged_once_with_how_many_ids_named_each(
+    caplog: LogCaptureFixture,
+) -> None:
+    unsupported = UnsupportedAlgorithms()
+    unsupported.add(f"sha512/{'0' * 128}")
+    unsupported.add(f"SHA512/{'1' * 128}")
+    unsupported.add("blake3/00")
+
+    unsupported.log(getLogger("test.algorithms"), "A list")
+
+    assert caplog.record_tuples == [
+        (
+            "test.algorithms",
+            WARNING,
+            "A list names ids hashed with algorithms this node does not support, "
+            "which a software update may add: 1 under blake3, 2 under sha512",
+        )
+    ]
+
+
+def test_with_nothing_unsupported_nothing_is_logged(caplog: LogCaptureFixture) -> None:
+    UnsupportedAlgorithms().log(getLogger("test.algorithms"), "A list")
+
+    assert caplog.record_tuples == []

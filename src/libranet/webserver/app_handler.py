@@ -44,6 +44,7 @@ guesses alike.
 from __future__ import annotations
 from dataclasses import dataclass
 from http import HTTPStatus
+from logging import getLogger
 from mimetypes import MimeTypes
 from pathlib import Path
 from re import escape
@@ -73,6 +74,8 @@ from libranet.webserver.http_types import (
     problem_response,
 )
 from libranet.webserver.publishing import Publish
+
+_LOGGER = getLogger(__name__)
 
 # Every path but the reserved names' own, in any case. A reserved name spelled
 # with percent-encoding matches, and the handler refuses it instead.
@@ -211,7 +214,8 @@ def _decoded(text: str) -> str | None:
     try:
         return unquote(text, errors="strict")
 
-    except UnicodeDecodeError:
+    except UnicodeDecodeError as error:
+        _LOGGER.debug("%r does not percent-encode UTF-8: %s", text, error)
         return None
 
 
@@ -229,6 +233,7 @@ def _read(path: Path) -> bytes | None:
         return path.read_bytes()
 
     except FileNotFoundError:
+        # Not logged: a file not resolved yet is asked for.
         return None
 
 

@@ -133,7 +133,7 @@ class StoredDirectory:
             return cls(_store(bundle, sink, password, max_object_bytes))
 
         except BundleTooLargeError:
-            pass  # Split below, outside the handler, so errors splitting raise alone.
+            pass  # Not logged: split below, outside the handler, so errors splitting raise alone.
 
         margin = (max_object_bytes >> _SPLIT_MARGIN_SHIFT) + _SPLIT_MARGIN_BYTES
         chunks = split_entries(bundle.entries, max_object_bytes - margin)

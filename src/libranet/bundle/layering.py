@@ -28,6 +28,7 @@ superseded by a whole bundle.
 
 from __future__ import annotations
 from dataclasses import dataclass, field, replace
+from logging import getLogger
 from typing import Any, Callable, Mapping
 
 from libranet.bundle.errors import BundleError, BundleTooLargeError
@@ -35,6 +36,8 @@ from libranet.bundle.extensions import DEFAULT_MAX_EXTENSIONS, resolve_directory
 from libranet.bundle.shapes import Bundle, DirectoryBundle, Entry
 from libranet.bundle.storing import ContentSink, StoredDirectory
 from libranet.cas.content_id import ContentId
+
+_LOGGER = getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -112,7 +115,10 @@ class Superseded:
 
             return cls.resolve(bundle, top, load, layering)
 
-        except BundleError:
+        except BundleError as error:
+            _LOGGER.info(
+                "Cannot read %s, the bundle superseded, so every file is read: %s", bundle, error
+            )
             return None
 
     @classmethod
@@ -191,6 +197,7 @@ class Superseded:
             )
 
         except BundleTooLargeError:
+            # Not logged: a layer that would pass a limit is stored whole instead.
             return None
 
         return StoredVersion(

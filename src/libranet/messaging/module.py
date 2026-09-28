@@ -104,6 +104,7 @@ class ModuleBase(ABC):
                 raw = self._queues.inbox.get(timeout=remaining)
 
             except Empty:
+                # Not logged: nothing arriving in time is the answer.
                 return None
 
             try:

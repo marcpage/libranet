@@ -91,6 +91,7 @@ class Export(Task):
             needed = self._needed(source)
 
         except MissingContentError as error:
+            # Not logged: the backup module logs what is lacked.
             lacked = error.content_ids
             self._failed(f"Lacks {len(lacked)} of the objects it needs", clock())
             return lacked

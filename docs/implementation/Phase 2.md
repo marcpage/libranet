@@ -1238,18 +1238,130 @@ when it is one, at info when it is expected — especially one caught as
 - Logging the first kind at info would write a line per module every
   half second, the default poll interval.
 
-**Open questions:**
+Ruled before building:
 
-- Which handlers the rule exempts, or logs at debug rather than info. A
-  proposal: exempt a handler whose exception is how the code asks a
-  question (a queue timeout, a probe); log at debug one whose exception
-  becomes a value its caller reports anyway (a `4xx` response, a `None`
-  the caller logs); and log everything else at info or above.
-- Whether anything enforces the rule once the sweep is done, or review
-  does.
+- **Three tiers.** A handler does not log when the exception is how the
+  code asks a question — a queue poll timing out, a probe such as
+  `_is_utf8`, a file that may not be there — or when the code it hands the
+  exception to logs or raises it. It logs at debug when the exception
+  becomes a `4xx` or `503` response, or a value its caller reports.
+  Everything else is logged at info or above.
+- **A test enforces it.** `tests/test_exception_logging.py` parses every
+  module under `src/libranet/`, and fails on a handler that neither calls
+  a logging method nor ends in `raise`, unless a comment in it starts
+  `# Not logged:` and gives the reason.
+- **Code with no logger at hand uses `getLogger(__name__)`**, such as
+  `libranet.cas.store`. Its records reach the running process's log file
+  through the `libranet` logger that `configure_logging` sets up. Code
+  that holds a module's `self.logger` uses that.
 
-**Testable in isolation:** each handler changed gets a test asserting its
-log record and level, with pytest's `caplog`.
+Ruled on review, once the first change set was committed:
+
+- **Unexpected data is always logged.** A `# Not logged:` comment is for
+  an exception that answers a question the code asks, never for skipping
+  data that is not what it should be. Data this node holds or reads that
+  is wrong — a stray name in the CAS store or the resolved files, a
+  bundle's time that is not RFC 3339, an endpoint that does not parse — is
+  a warning. Data a client or peer sent that is refused is debug, as the
+  first ruling has it.
+- **An id under a hash algorithm this node does not support is a warning
+  wherever it is dropped or refused,** since it may mean the node needs a
+  software update: in an archive, in a peer's node or seek list, in a
+  `/data` request, and in a signature's `keyid`. An archive or list logs
+  it once, naming each algorithm and how many ids used it, not a line per
+  id.
+
+What the sweep found: 104 handlers, not about 90. 98 neither logged nor
+raised, and 6 more raised on one path and swallowed the exception on
+another. Splitting some of them, and giving unsupported algorithms clauses
+of their own, made 111, treated as follows once the review's ruling was
+applied:
+
+| Treatment | Handlers | For example |
+| --- | --- | --- |
+| Not logged: a question | 47 | queue polls, `_is_utf8`, `CasStore.delete` of what is gone, `LayeredSource.read` trying the next layer |
+| Not logged: handed on | 13 | `_attempt_failed` logs it; the backup module logs skipped paths and missing content; `_fail` raises it to the request waiting on it |
+| Not logged: printed | 2 | a configuration that cannot be loaded, or directories that cannot be created, before there is a log |
+| Debug | 22 | each `400` from `/config/api`, `/data`, and the list and search endpoints; a `503` for content not held or a list not derived yet; a signature rejected or its key not held; list entries a peer sent that are dropped; a path, Basic credentials, or a peer's endpoint that does not decode |
+| Info | 5 | a new private key or backup secret created; the bundle a backup or build supersedes cannot be read, so every file is read |
+| Warning | 20 | the application registry cannot be read; this node's own candidate list, seek list, or a cached search response cannot be used; a seed has an unusable node id; a name in the CAS store or resolved files that is not a hash; a bundle's time that is not RFC 3339, or a file's time out of range; an endpoint that does not parse; an id under an unsupported algorithm, anywhere |
+| Error | 2 | the node identity or a content archive stops the node at start |
+
+The first change set came to about 175 new or changed lines of non-test
+Python, 70 of them `# Not logged:` comments. The review's follow-up is a
+second, about 135 new or changed lines.
+
+My calls, not yet reviewed:
+
+- **The test's rule is structural.** A handler passes if it calls a
+  logging method anywhere in it (`log_error` included, which
+  `BaseHTTPRequestHandler` logs through), if its last statement is
+  `raise`, or if a `# Not logged:` comment with a reason sits between its
+  `except` line and its end. So a handler that raises on one path and
+  swallows on another needs a log or a comment for the other. It checks
+  `src/libranet/` only, not `scripts/` or `hatch_build.py`, and not
+  `contextlib.suppress`, whose one use, shutting down a socket that may
+  already be gone, says what it does.
+- **The comment is the handler's first line,** or sits just before the
+  statement that swallows the exception when the handler raises first.
+  Two handlers that already had a trailing comment saying why
+  (`bundle/storing.py`, `webserver/list_bodies.py`) had `Not logged:` put
+  in front of it.
+- **A function that answers `None` for input it cannot use logs that
+  input,** since the review: `basic_credentials`, `_decoded`, and
+  `resolve_endpoint` at debug, as input a client or peer sent;
+  `PeerAddress.of` at warning, since an endpoint reaches it only from the
+  seed list or once stored, after `resolve_endpoint` has checked it. An
+  address from the socket that is not an IP (`is_local_client`,
+  `_url_host`) and a host name that is not looked up (`_worth_looking_up`)
+  stay unlogged, since nobody sent them.
+- **Refusals log one message:** `Refusing {method} {path}: {error}`,
+  beside the access log's line with the status. An application registry
+  that cannot be read is the same message at warning, since it is this
+  node's own file and has to be fixed by hand.
+- **Entries dropped from a list a peer sent are debug,** as stats already
+  logs `Ignoring node list entry`. An unusable entry in this node's own
+  candidate list or a cached search response is a warning, since this node
+  wrote it. Since the review, an entry under an unsupported algorithm is a
+  warning, once for the list.
+- **`UnsupportedAlgorithms`,** in `cas/algorithms.py`, counts ids by
+  algorithm over an archive or a list and warns once: `A node list names
+  ids hashed with algorithms this node does not support, which a software
+  update may add: 2 under md5`. It logs with the caller's logger, so the
+  record names the module that met the ids. A single id, in a `/data`
+  request or a signature's `keyid`, is warned about on its own.
+- **Basic credentials that do not decode log the error's type only,**
+  since its text can quote part of a password.
+- **This node's own seek list,** when missing before the first derivation,
+  is not logged; any other failure to read it is a warning.
+- **An out-of-range file time is tested by moving `_EPOCH`,** since no
+  filesystem here keeps a time past 2262.
+- **The candidate list's handler was split.** A missing file, before stats
+  first derives one, is not logged; any other failure is a warning.
+- **Creating a private key or backup secret is info,** logged by the
+  process that created it: a lost key file means a new node identity, and
+  a lost secret means backups this node cannot read. So that the key's
+  creation reaches the log, the supervisor configures its log right after
+  creating directories, not after opening archives. A node identity or
+  content archive that stops the node is now logged at error as well as
+  printed, and with `logging.console` on, the default, both reach the
+  terminal. Module System §4.1 shows the new order.
+- **A superseded bundle that cannot be read is info,** for backups and
+  builds alike, since what it costs is reading every file again.
+- **The rule is written down for new code** in Module System §5.3.
+
+Not covered: the store scans also skip names through plain checks rather
+than exceptions — an upper-case copy of a hash, a directory where a file
+belongs, a prefix directory of the wrong shape — and those are still
+skipped without a word. The review's ruling reaches them in spirit, but
+Step 43 is about caught exceptions, so they are left for a decision.
+
+**Testable in isolation:** each of the 50 log lines added has a test
+asserting its record and level, with pytest's `caplog`, or for the
+supervisor, in its log file, and `UnsupportedAlgorithms` has its own. The new test file also checks the checker on
+small sources: a silent handler, one that logs, one that raises, one that
+raises only sometimes, and markers with and without a reason, inside the
+handler and outside it.
 
 ---
 
@@ -1943,7 +2055,7 @@ into tiers; steps within a tier are independent of each other.
 | --- | --- | --- |
 | A | 41 (#108) | A security hole with a small fix, so first. Its second half waits on a specification decision, which does not hold up the first. |
 | B | 21 (#61), 22 (#51), 32 (#75) | Small, independent, and each one something a later step leans on. Step 22 unblocks 27 and 45; Step 21 should land before anything else starts comparing hashes. |
-| C | 42 (#81), 43 (#100), 44 (#102) | Sweeps that touch many files shallowly, so best done before the large steps are open against the same files, and so that later steps are written the new way. 43 needs its exemptions decided first. |
+| C | 42 (#81), 43 (#100), 44 (#102) | Sweeps that touch many files shallowly, so best done before the large steps are open against the same files, and so that later steps are written the new way. 43 had its exemptions decided first. |
 | D | 23 (#52) | The foundation for all the peering work, and the one step known to need its own change sets. |
 | E | 26 (#56), 25 (#55) | Both change how connections are chosen or given up on. 26 is the node-level half of a rule 23 starts, so it goes first — ideally straight after 23. |
 | F | 27 (#59), then 45 (#96) and 55 (#138) | 27 needs 22; better with 23 and 25, which give it more and better-placed peers to walk. 45 needs 22 too, and reshapes the same sending code, so it follows. 55 makes 27's two passes a setting, and waits on whether §4.7 changes. |

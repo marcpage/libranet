@@ -21,11 +21,14 @@ the connection came from. The sender's other entries were *advertised*.
 from __future__ import annotations
 from dataclasses import dataclass
 from ipaddress import IPv6Address, ip_address
+from logging import getLogger
 from typing import Final, Mapping
 from urllib.parse import urlsplit, urlunsplit
 
 from libranet.cas.content_id import ContentId
 from libranet.messaging.events import AddressSource
+
+_LOGGER = getLogger(__name__)
 
 LOCALHOST: Final = "localhost"
 _SCHEMES: Final = frozenset({"http", "https"})
@@ -44,7 +47,8 @@ def resolve_endpoint(endpoint: str, source_address: str) -> str | None:
         parts = urlsplit(endpoint)
         port = parts.port
 
-    except ValueError:
+    except ValueError as error:
+        _LOGGER.debug("Dropping the entry for %s from a node list: %s", endpoint, error)
         return None
 
     if parts.scheme not in _SCHEMES or not parts.hostname:
@@ -107,6 +111,7 @@ def _url_host(address: str) -> str | None:
         parsed = ip_address(address)
 
     except ValueError:
+        # Not logged: None answers that it is not an IP address.
         return None
 
     if not isinstance(parsed, IPv6Address):

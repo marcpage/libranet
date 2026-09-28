@@ -7,6 +7,7 @@ URLs, so adding an algorithm later means registering one more
 
 from __future__ import annotations
 from hashlib import sha256
+from logging import Logger
 from typing import Iterator, Protocol
 
 from libranet.cas.errors import UnknownAlgorithmError
@@ -99,6 +100,35 @@ class AlgorithmRegistry:
     def names(self) -> tuple[str, ...]:
         """Every registered algorithm name, in registration order."""
         return tuple(self._algorithms)
+
+
+class UnsupportedAlgorithms:
+    """How many ids named each hash algorithm this node does not support.
+
+    Counted over a whole archive or list, so that it is logged once rather
+    than for every id. Such ids may mean this node needs a software update.
+    """
+
+    def __init__(self) -> None:
+        self._counts: dict[str, int] = {}
+
+    def add(self, content_id: str) -> None:
+        """Count ``content_id``, an ``algorithm/hash`` whose algorithm is not supported."""
+        algorithm = content_id.partition("/")[0].lower()
+        self._counts[algorithm] = self._counts.get(algorithm, 0) + 1
+
+    def log(self, logger: Logger, where: str) -> None:
+        """Warn, if any were counted, that ``where`` names ids this node cannot use."""
+        if not self._counts:
+            return
+
+        counts = ", ".join(f"{count} under {name}" for name, count in sorted(self._counts.items()))
+        logger.warning(
+            "%s names ids hashed with algorithms this node does not support, "
+            "which a software update may add: %s",
+            where,
+            counts,
+        )
 
 
 DEFAULT_REGISTRY = AlgorithmRegistry((Sha256Algorithm(),))

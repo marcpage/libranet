@@ -23,12 +23,15 @@ from base64 import b64decode
 from binascii import Error as Base64Error
 from dataclasses import dataclass
 from http import HTTPStatus
+from logging import getLogger
 from typing import Final, Mapping
 
 from libranet.problems import CREDENTIAL_REQUIRED, Problem
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_guard import names_config
 from libranet.webserver.http_types import Request, Response, problem_response
+
+_LOGGER = getLogger(__name__)
 
 #: Named in the challenge, so a client can tell this credential from another's.
 CONFIG_REALM: Final = "Libranet /config"
@@ -73,7 +76,9 @@ def basic_credentials(headers: Mapping[str, str]) -> str | None:
         try:
             decoded = b64decode(encoded.strip(), validate=True).decode("utf-8")
 
-        except (Base64Error, UnicodeDecodeError, ValueError):
+        except (Base64Error, UnicodeDecodeError, ValueError) as error:
+            # The error alone, since what it failed on may be a password.
+            _LOGGER.debug("Ignoring Basic credentials that do not decode: %s", type(error).__name__)
             return None
 
         return decoded if ":" in decoded else None

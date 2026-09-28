@@ -13,12 +13,16 @@ also how the stats module treats unusable node ids (Step 8).
 
 from __future__ import annotations
 from json import loads
+from logging import getLogger
 from typing import Callable
 from zlib import decompressobj, error as ZlibError
 
 from libranet.cas.content_id import ContentId
-from libranet.cas.errors import InvalidContentIdError
+from libranet.cas.algorithms import UnsupportedAlgorithms
+from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
 from libranet.webserver.search import normalize_prefix
+
+_LOGGER = getLogger(__name__)
 
 
 class InvalidListError(ValueError):
@@ -37,7 +41,7 @@ def decode_list(body: bytes, max_decompressed_bytes: int) -> object:
         return loads(body)
 
     except ValueError:
-        pass  # Not plain JSON, so it can only be compressed.
+        pass  # Not logged: not plain JSON, so it can only be compressed.
 
     decompressor = decompressobj()
 
@@ -77,6 +81,7 @@ def parse_node_list(value: object) -> dict[str, ContentId]:
         raise InvalidListError('A node list must be an object holding a "nodes" object')
 
     parsed: dict[str, ContentId] = {}
+    unsupported = UnsupportedAlgorithms()
 
     for endpoint, node_id in nodes.items():
         if not isinstance(node_id, str):
@@ -85,9 +90,15 @@ def parse_node_list(value: object) -> dict[str, ContentId]:
         try:
             parsed[endpoint] = ContentId.parse(node_id)
 
-        except InvalidContentIdError:
+        except UnknownAlgorithmError:
+            # Not logged: counted, and logged once for the list below.
+            unsupported.add(node_id)
+
+        except InvalidContentIdError as error:
+            _LOGGER.debug("Dropping the entry for %s from a node list: %s", endpoint, error)
             continue
 
+    unsupported.log(_LOGGER, "A node list")
     return parsed
 
 
@@ -119,6 +130,7 @@ def parse_seek_list(value: object) -> tuple[list[str], list[str]]:
 def _normalized(values: list[object], normalize: Callable[[str], str]) -> list[str]:
     """``values`` passed through ``normalize``, minus non-strings and any it rejects."""
     kept: list[str] = []
+    unsupported = UnsupportedAlgorithms()
 
     for value in values:
         if not isinstance(value, str):
@@ -127,7 +139,13 @@ def _normalized(values: list[object], normalize: Callable[[str], str]) -> list[s
         try:
             kept.append(normalize(value))
 
-        except InvalidContentIdError:
+        except UnknownAlgorithmError:
+            # Not logged: counted, and logged once for the list below.
+            unsupported.add(value)
+
+        except InvalidContentIdError as error:
+            _LOGGER.debug("Dropping %r from a seek list: %s", value, error)
             continue
 
+    unsupported.log(_LOGGER, "A seek list")
     return kept

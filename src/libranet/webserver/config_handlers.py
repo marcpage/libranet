@@ -58,6 +58,7 @@ use for is still read, so the connection stays usable.
 from __future__ import annotations
 from dataclasses import dataclass
 from http import HTTPStatus
+from logging import getLogger
 from typing import Any, Final
 from urllib.parse import unquote
 
@@ -86,6 +87,8 @@ from libranet.webserver.http_types import Request, Response, json_response, prob
 from libranet.webserver.publishing import Publish
 from libranet.webserver.router import Handler
 from libranet.webserver.request_refusals import unreadable_body_response
+
+_LOGGER = getLogger(__name__)
 
 CONFIG_API_PATH: Final = "/config/api"
 NODE_PATH: Final = CONFIG_API_PATH + "/node"
@@ -198,6 +201,7 @@ class BackupJobHandler:
             job = BackupJobRequest.from_value(decode_request(body))
 
         except InvalidConfigRequestError as error:
+            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
             return invalid_request_response(request, error)
 
         self.publish(EventType.BACKUP_JOB_CONFIGURED, job.payload())
@@ -259,6 +263,7 @@ class RestoreHandler:
             restore = RestoreRequest.from_value(decode_request(body))
 
         except InvalidConfigRequestError as error:
+            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
             return invalid_request_response(request, error)
 
         self.publish(EventType.RESTORE_REQUESTED, restore.payload())
@@ -281,6 +286,7 @@ class BuildHandler:
             build = BuildRequest.from_value(decode_request(body))
 
         except InvalidConfigRequestError as error:
+            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
             return invalid_request_response(request, error)
 
         self.publish(EventType.BUILD_REQUESTED, build.payload())
@@ -303,6 +309,7 @@ class ExportHandler:
             export = ExportRequest.from_value(decode_request(body))
 
         except InvalidConfigRequestError as error:
+            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
             return invalid_request_response(request, error)
 
         self.publish(EventType.EXPORT_REQUESTED, export.payload())
@@ -320,6 +327,7 @@ class ApplicationListHandler:
             return json_response(self.registry.applications().value())
 
         except RegistryFileError as error:
+            _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, error)
             return _unreadable_registry_response(request, error)
 
 
@@ -344,12 +352,14 @@ class ApplicationRegistrationHandler:
             application = Application.from_value(decode_request(body))
 
         except ValueError as error:
+            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
             return invalid_request_response(request, error)
 
         try:
             self.registry.register(application)
 
         except RegistryFileError as error:
+            _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, error)
             return _unreadable_registry_response(request, error)
 
         return json_response(application.value())
@@ -374,10 +384,12 @@ class ApplicationRemovalHandler:
         try:
             removed = self.registry.remove(unquote(request.params["name"], errors="strict"))
 
-        except UnicodeDecodeError:
+        except UnicodeDecodeError as error:
+            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
             removed = False
 
         except RegistryFileError as error:
+            _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, error)
             return _unreadable_registry_response(request, error)
 
         if not removed:

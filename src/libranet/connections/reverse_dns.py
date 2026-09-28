@@ -49,6 +49,7 @@ def host_names(address: str) -> list[str]:
         name, aliases, _ = gethostbyaddr(address)
 
     except OSError:
+        # Not logged: finding no name is an answer, cached like any other.
         return []
 
     return [name, *aliases]
@@ -146,6 +147,7 @@ def _worth_looking_up(host: str) -> bool:
         ip_address(host)
 
     except ValueError:
+        # Not logged: failing to parse is the answer.
         return False
 
     return not is_local_client(host)

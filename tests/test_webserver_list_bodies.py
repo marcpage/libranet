@@ -1,9 +1,10 @@
 """Tests for reading the node and seek lists peers post."""
 
 from __future__ import annotations
+from logging import DEBUG, WARNING
 from zlib import compress
 
-from pytest import mark, raises
+from pytest import LogCaptureFixture, mark, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.webserver.list_bodies import (
@@ -109,3 +110,55 @@ def test_a_seek_list_may_leave_out_either_key() -> None:
 def test_misshapen_seek_lists_are_refused(value: object) -> None:
     with raises(InvalidListError):
         parse_seek_list(value)
+
+
+def test_a_dropped_node_list_entry_is_logged_at_debug(caplog: LogCaptureFixture) -> None:
+    caplog.set_level(DEBUG)
+
+    parse_node_list({"nodes": {"http://192.0.2.10:80": "x"}})
+
+    (record,) = caplog.records
+    assert record.levelno == DEBUG
+    assert record.getMessage().startswith(
+        "Dropping the entry for http://192.0.2.10:80 from a node list: "
+    )
+
+
+def test_a_dropped_seek_list_entry_is_logged_at_debug(caplog: LogCaptureFixture) -> None:
+    caplog.set_level(DEBUG)
+
+    parse_seek_list({"data": ["sha256/short"], "search": ["xyz"]})
+
+    assert {record.levelno for record in caplog.records} == {DEBUG}
+    assert [record.getMessage().split(": ")[0] for record in caplog.records] == [
+        "Dropping 'sha256/short' from a seek list",
+        "Dropping 'xyz' from a seek list",
+    ]
+
+
+def test_node_list_entries_under_unsupported_algorithms_are_logged_once_as_a_warning(
+    caplog: LogCaptureFixture,
+) -> None:
+    nodes = {
+        "http://192.0.2.10:80": "md5/" + "0" * 32,
+        "http://192.0.2.11:80": "md5/" + "1" * 32,
+        "http://192.0.2.12:80": str(NODE_ID),
+    }
+
+    assert parse_node_list({"nodes": nodes}) == {"http://192.0.2.12:80": NODE_ID}
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith("A node list names ids hashed with algorithms ")
+    assert record.getMessage().endswith(": 2 under md5")
+
+
+def test_seek_list_entries_under_unsupported_algorithms_are_logged_once_as_a_warning(
+    caplog: LogCaptureFixture,
+) -> None:
+    value = {"data": ["md5/" + "0" * 32, str(CONTENT_ID)], "search": []}
+
+    assert parse_seek_list(value) == ([str(CONTENT_ID)], [])
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith("A seek list names ids hashed with algorithms ")
+    assert record.getMessage().endswith(": 1 under md5")

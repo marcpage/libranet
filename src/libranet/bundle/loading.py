@@ -72,4 +72,5 @@ def load_bundle(
         if password is None:
             raise
 
+        # Not logged: a protected bundle is read with the password given.
         return decode_bundle(unprotect(data, password, max_bytes))

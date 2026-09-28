@@ -1,12 +1,13 @@
 """Tests for noticing that a backed-up directory may have changed."""
 
 from __future__ import annotations
+from logging import DEBUG
 from os import chmod, geteuid, stat, symlink, utime
 from pathlib import Path
 from shutil import copytree
 from typing import Callable
 
-from pytest import fixture, mark, raises
+from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.backup.changes import ChangeDetector, PollingDetector
 
@@ -208,3 +209,43 @@ def test_a_missing_directory_cannot_be_fingerprinted(
 ) -> None:
     with raises(OSError):
         detector.fingerprint(tmp_path / "missing")
+
+
+@needs_permissions
+def test_a_directory_that_cannot_be_listed_is_logged_at_debug(
+    detector: ChangeDetector, tree: Path, caplog: LogCaptureFixture
+) -> None:
+    docs = tree / "docs"
+    chmod(docs, 0)
+    caplog.set_level(DEBUG)
+
+    try:
+        detector.fingerprint(tree)
+
+    finally:
+        chmod(docs, 0o755)
+
+    (record,) = caplog.records
+    assert record.levelno == DEBUG
+    assert record.getMessage().startswith(f"Cannot list {docs} to fingerprint it: ")
+
+
+@needs_permissions
+def test_an_entry_that_cannot_be_looked_at_is_logged_at_debug(
+    detector: ChangeDetector, tree: Path, caplog: LogCaptureFixture
+) -> None:
+    docs = tree / "docs"
+    chmod(docs, 0o444)  # Its names can be listed, but nothing in it looked at.
+    caplog.set_level(DEBUG)
+
+    try:
+        detector.fingerprint(tree)
+
+    finally:
+        chmod(docs, 0o755)
+
+    assert {record.levelno for record in caplog.records} == {DEBUG}
+    assert any(
+        record.getMessage().startswith(f"Cannot read {docs / 'notes.txt'} to fingerprint it: ")
+        for record in caplog.records
+    )

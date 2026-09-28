@@ -254,6 +254,7 @@ class ApplicationRegistry:
                 self._version = version
 
         except FileNotFoundError:
+            # Not logged: with no registry file, the applications are those shipped.
             self._version = None
             self._applications = self._initial
 

@@ -34,9 +34,10 @@ as content held (Phase 2 Step 28)::
 
 from __future__ import annotations
 from http import HTTPStatus
+from logging import getLogger
 
 from libranet.cas.content_id import ContentId
-from libranet.cas.errors import InvalidContentIdError
+from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
 from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
@@ -51,6 +52,8 @@ from libranet.webserver.request_refusals import (
     signature_required_response,
     unreadable_body_response,
 )
+
+_LOGGER = getLogger(__name__)
 
 
 class DataWriteHandler:
@@ -72,7 +75,12 @@ class DataWriteHandler:
         try:
             content_id = ContentId.create(request.params["algorithm"], request.params["hash"])
 
+        except UnknownAlgorithmError as error:
+            _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, error)
+            return invalid_address_response(error, request)
+
         except InvalidContentIdError as error:
+            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
             return invalid_address_response(error, request)
 
         refusal = unreadable_body_response(request, self._storage.max_object_bytes)
@@ -128,6 +136,7 @@ def _is_public_key(node_id: ContentId, data: bytes) -> bool:
         published_public_key(node_id, data)
 
     except KeyFileError:
+        # Not logged: False answers that it is not.
         return False
 
     return True

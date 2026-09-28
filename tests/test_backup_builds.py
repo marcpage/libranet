@@ -3,10 +3,11 @@
 from __future__ import annotations
 from io import BytesIO
 from json import loads
+from logging import INFO
 from os import symlink
 from pathlib import Path
 
-from pytest import fixture, mark, raises
+from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.backup.builds import RECORD_SUFFIX, Build, BuildRecord, BuildRecordError
 from libranet.backup.runs import AnnouncingStore
@@ -438,3 +439,34 @@ def test_a_record_is_read_back_as_it_was_saved(tmp_path: Path, layering: Layerin
 
     assert BuildRecord.load(path) == record
     assert BuildRecord.load(tmp_path / "other.bundle") is None
+
+
+def test_a_recorded_bundle_no_longer_held_is_logged_at_info(
+    site: Path, sink: AnnouncingStore, store: CasStore, caplog: LogCaptureFixture
+) -> None:
+    first = bundle_of(build(site, sink))
+    store.delete(first)
+    caplog.set_level(INFO)
+
+    build(site, sink)
+
+    (record,) = [record for record in caplog.records if record.name == "libranet.backup.builds"]
+    assert record.levelno == INFO
+    assert record.getMessage().startswith(
+        f"Cannot read {first}, the build before, so every file is read: "
+    )
+
+
+def test_a_protected_bundle_built_over_without_a_password_is_logged_at_info(
+    site: Path, sink: AnnouncingStore, caplog: LogCaptureFixture
+) -> None:
+    first = bundle_of(build(site, sink, "secret"))
+    caplog.set_level(INFO)
+
+    build(site, sink)
+
+    assert [
+        (level, message)
+        for name, level, message in caplog.record_tuples
+        if name == "libranet.backup.builds"
+    ] == [(INFO, f"{first} is protected, so without a password every file is read")]

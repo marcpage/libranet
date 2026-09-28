@@ -8,7 +8,7 @@ from __future__ import annotations
 from base64 import b64encode
 from http.client import HTTPConnection, HTTPResponse
 from json import dumps, loads
-from logging import getLogger
+from logging import DEBUG, WARNING, getLogger
 from pathlib import Path
 from queue import Empty, Queue
 from socket import SHUT_WR, create_connection
@@ -16,7 +16,7 @@ from threading import Thread
 from typing import Callable, Iterator
 from zlib import compress
 
-from pytest import fixture, mark, raises
+from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.atomic_file import write_atomically
 from libranet.cas.archive import ArchiveSink, ArchiveSource
@@ -1310,3 +1310,53 @@ def test_a_registry_that_cannot_be_read_leaves_the_rest_of_the_node_served(
     assert index.status == 200
     assert listing.status == 500
     assert str(registry.path) in loads(body)["detail"]
+
+
+def test_an_invalid_content_id_is_logged_at_debug(
+    connection: HTTPConnection, caplog: LogCaptureFixture
+) -> None:
+    caplog.set_level(DEBUG)
+
+    _get(connection, "/data/sha256/xyz")
+
+    (record,) = [r for r in caplog.records if r.name == "libranet.webserver.data_handler"]
+    assert record.levelno == DEBUG
+    assert record.getMessage().startswith("Refusing GET /data/sha256/xyz: ")
+
+
+def test_missing_content_is_logged_at_debug(
+    connection: HTTPConnection, caplog: LogCaptureFixture
+) -> None:
+    caplog.set_level(DEBUG)
+
+    _get(connection, f"/data/{MISSING_ID}")
+
+    assert [
+        (level, message)
+        for name, level, message in caplog.record_tuples
+        if name == "libranet.webserver.data_handler"
+    ] == [(DEBUG, f"{MISSING_ID} is not held here, so it is asked for")]
+
+
+def test_an_invalid_search_prefix_is_logged_at_debug(
+    connection: HTTPConnection, caplog: LogCaptureFixture
+) -> None:
+    caplog.set_level(DEBUG)
+
+    _get(connection, "/data/search/nothex")
+
+    (record,) = [r for r in caplog.records if r.name == "libranet.webserver.search_handler"]
+    assert record.levelno == DEBUG
+    assert record.getMessage().startswith("Refusing GET /data/search/nothex: ")
+
+
+def test_a_content_id_under_an_unsupported_algorithm_is_logged_as_a_warning(
+    connection: HTTPConnection, caplog: LogCaptureFixture
+) -> None:
+    path = "/data/md5/" + "0" * 32
+    response, _ = _get(connection, path)
+
+    assert response.status == 400
+    (record,) = [r for r in caplog.records if r.name == "libranet.webserver.data_handler"]
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith(f"Refusing GET {path}: ")

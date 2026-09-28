@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 from json import dumps, loads
+from logging import WARNING
 from pathlib import Path
 from time import time
 from typing import Iterator
 
-from pytest import fixture, raises
+from pytest import LogCaptureFixture, fixture, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.stats.database import StatsDatabase
@@ -170,3 +171,31 @@ def test_an_enricher_needs_room_for_at_least_one_result(
 ) -> None:
     with raises(ValueError, match="max_results must be at least 1"):
         SearchEnricher(database, cache, max_results=0)
+
+
+def test_an_unreadable_cache_file_is_logged_as_a_warning(
+    enricher: SearchEnricher, cache: SearchCache, caplog: LogCaptureFixture
+) -> None:
+    cache.save(PREFIX, b"not json at all")
+
+    enricher.enrich(PREFIX)
+
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith("Ignoring an unreadable cached search response: ")
+
+
+def test_an_unusable_entry_in_a_cache_file_is_logged_as_a_warning(
+    enricher: SearchEnricher, cache: SearchCache, caplog: LogCaptureFixture
+) -> None:
+    cache.save(PREFIX, dumps({"results": ["not an id", str(CACHED_ID)]}).encode("utf-8"))
+
+    enricher.enrich(PREFIX)
+
+    assert caplog.record_tuples == [
+        (
+            "libranet.stats.enrichment",
+            WARNING,
+            "A cached search response holds 'not an id', not a content id",
+        )
+    ]

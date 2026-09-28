@@ -31,6 +31,7 @@ Creation times are not set, as the standard library cannot set them.
 from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from errno import EACCES, EEXIST, EISDIR, ELOOP, ENOTDIR, ENOTEMPTY
+from logging import getLogger
 from os import (
     O_CREAT,
     O_DIRECTORY,
@@ -74,6 +75,8 @@ from libranet.bundle.building import IgnoredPaths
 from libranet.bundle.content import ContentSource
 from libranet.bundle.reassembly import write_file
 from libranet.bundle.shapes import FileBundle, Metadata, Symlink
+
+_LOGGER = getLogger(__name__)
 
 _SEPARATOR: Final = "/"
 
@@ -162,6 +165,7 @@ class DirectoryWriter:
                 empty = next(listing, None) is None
 
         except FileNotFoundError:
+            # Not logged: a directory not there yet is empty.
             return
 
         if not empty:
@@ -290,12 +294,14 @@ class DirectoryWriter:
             return self._open_directory(parent, name)
 
         except FileNotFoundError:
+            # Not logged: a directory not there yet is made below.
             pass
 
         except OSError as error:
             if error.errno not in _NOT_A_DIRECTORY:
                 raise
 
+            # Not logged: what is in the way of the directory is replaced.
             self._make_way(parent, name)
             unlink(name, dir_fd=parent)
 
@@ -331,6 +337,7 @@ class DirectoryWriter:
             status = lstat(name, dir_fd=parent)
 
         except FileNotFoundError:
+            # Not logged: nothing is in the way.
             return
 
         if not self._overwrite:
@@ -358,6 +365,7 @@ def _under_temporary_name(make: Callable[[str], _Made]) -> tuple[str, _Made]:
             return candidate, make(candidate)
 
         except FileExistsError:
+            # Not logged: the name is taken, so the next is tried.
             continue
 
     raise FileExistsError(EEXIST, "No temporary name tried was free")
@@ -405,6 +413,7 @@ def _nanoseconds(timestamp: str | None) -> int | None:
         moment = datetime.fromisoformat(timestamp)
 
     except ValueError:
+        _LOGGER.warning("Leaving a modification time unset, as %r is not RFC 3339", timestamp)
         return None
 
     if moment.tzinfo is None:

@@ -26,6 +26,7 @@ one at a time (Phase 2 Step 29): each is resolved again when next asked for.
 
 from __future__ import annotations
 from hashlib import sha256
+from logging import getLogger
 from pathlib import Path
 from shutil import rmtree
 from typing import Final
@@ -33,6 +34,8 @@ from typing import Final
 from libranet.cas.algorithms import DEFAULT_REGISTRY
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
+
+_LOGGER = getLogger(__name__)
 
 DIRECTORY_FILE: Final = "directory.jzon"
 
@@ -68,7 +71,10 @@ class ResolvedFiles:
                 try:
                     bundle = ContentId.create(algorithm, directory.name)
 
-                except InvalidContentIdError:
+                except InvalidContentIdError as error:
+                    _LOGGER.warning(
+                        "Leaving %s alone, not named as resolved files: %s", directory, error
+                    )
                     continue
 
                 if bundle.hash == directory.name:
@@ -97,4 +103,5 @@ def _subdirectories(directory: Path) -> list[Path]:
         return [entry for entry in directory.iterdir() if entry.is_dir()]
 
     except FileNotFoundError:
+        # Not logged: nothing has been resolved with that algorithm.
         return []

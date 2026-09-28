@@ -1,8 +1,9 @@
 """Tests for resolving ``localhost`` in received node lists (HttpApi §10.2)."""
 
 from __future__ import annotations
+from logging import DEBUG
 
-from pytest import mark
+from pytest import LogCaptureFixture, mark
 
 from libranet.cas.content_id import ContentId
 from libranet.webserver.localhost_resolution import NodeListSender, resolve_endpoint
@@ -114,3 +115,14 @@ def test_a_sender_whose_address_is_unknown_loses_its_localhost_entries() -> None
     received = sender.received({"http://localhost:8080": SENDER_ID, "ftp://192.0.2.9:21": OTHER_ID})
 
     assert received == {"nodes": {}, "sources": {}}
+
+
+def test_an_endpoint_that_does_not_parse_is_logged_at_debug(caplog: LogCaptureFixture) -> None:
+    caplog.set_level(DEBUG)
+
+    assert resolve_endpoint("http://localhost:99999", SOURCE) is None
+    (record,) = caplog.records
+    assert record.levelno == DEBUG
+    assert record.getMessage().startswith(
+        "Dropping the entry for http://localhost:99999 from a node list: "
+    )

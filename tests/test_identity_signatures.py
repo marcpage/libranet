@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 from base64 import b64encode, encodebytes
+from logging import WARNING
 from pathlib import Path
 from typing import Callable
 from zlib import compress
 
-from pytest import fixture, raises
+from pytest import LogCaptureFixture, fixture, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
@@ -419,3 +420,20 @@ def test_path_starting_with_two_slashes_is_signed_as_a_path(
 
     with raises(InvalidSignatureError):
         make_verifier(store).verify_request("GET", "/data", headers)
+
+
+def test_a_keyid_under_an_unsupported_algorithm_is_logged_as_a_warning(
+    store: CasStore, caplog: LogCaptureFixture
+) -> None:
+    key_id = "md5/" + "0" * 32
+    headers = {
+        "Signature-Input": f'libranet=("@method" "@path");created={int(NOW)};keyid="{key_id}"',
+        "Signature": "libranet=:AAAA:",
+    }
+
+    with raises(InvalidSignatureError, match="not a node id"):
+        make_verifier(store).verify_request("GET", PATH, headers)
+
+    (record,) = [r for r in caplog.records if r.name == "libranet.identity.signatures"]
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith(f"Refusing a signature whose keyid is '{key_id}': ")

@@ -249,11 +249,11 @@ once, before any module exists, and exits with status 2 if any of it fails:
 1. Parse the command line, and load and validate the config file into a
    `LibranetConfig`.
 2. Create the node's directories.
-3. Load the node's private key, creating it on the first start, and store
+3. Set up the supervisor's own log, so what follows is logged.
+4. Load the node's private key, creating it on the first start, and store
    the public key in `cas/data`.
-4. Open every content archive once, so a broken one stops the node rather
+5. Open every content archive once, so a broken one stops the node rather
    than a module.
-5. Set up the supervisor's own log.
 6. Hand over to `ProcessSupervisor.run()`.
 
 The supervisor creates every module's inbox and outbox before it starts any
@@ -271,6 +271,7 @@ sequenceDiagram
     participant mod as Module process, each of 8
 
     main->>main: load config, create directories
+    main->>main: configure logging
     main->>main: load or create the node key
     main->>main: open content archives
     main->>sup: run(stop)
@@ -520,6 +521,20 @@ To add an event:
 A payload holds only plain JSON values. A content id travels as an
 `algorithm` and `hash` pair, or as a `sha256/{hex}` string, and a payload
 may not use an envelope field's name (§6.2).
+
+A module logs with `self.logger`. Code with no logger at hand, such as the
+bundle library or a web handler, uses `getLogger(__name__)`, whose records
+reach the process's own log file through the `libranet` logger. Every
+caught exception is logged, or raised on, or its handler has a comment
+starting `# Not logged:` that says why: the exception is how the code asks a
+question, or the code it is handed to logs it. A failure the caller turns
+into a `4xx` response or a value it reports is logged at debug. Data that is
+not what it should be is always logged: at warning when it is this node's
+own, at debug when a client or peer sent it and it was refused. An id under
+a hash algorithm this node does not support is a warning wherever it is met,
+since the node may need an update, and `UnsupportedAlgorithms` logs a whole
+archive's or list's worth once. `tests/test_exception_logging.py` checks
+every handler.
 
 ### 5.4 Threads Inside a Module
 

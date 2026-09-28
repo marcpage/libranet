@@ -21,6 +21,7 @@ def is_local_client(address: str) -> bool:
         parsed = ip_address(address)
 
     except ValueError:
+        # Not logged: an address that is not an IP is not a local client.
         return False
 
     if isinstance(parsed, IPv6Address) and parsed.ipv4_mapped is not None:
