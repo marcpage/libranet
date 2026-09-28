@@ -75,12 +75,12 @@ from libranet.webserver.backup_state import (
 )
 from libranet.webserver.config_requests import (
     IDENTIFIER_LENGTH,
+    BackupJobRequest,
+    BuildRequest,
     ExportRequest,
     InvalidConfigRequestError,
+    RestoreRequest,
     decode_request,
-    parse_backup_job,
-    parse_build,
-    parse_restore,
 )
 from libranet.webserver.http_types import Request, Response, json_response, problem_response
 from libranet.webserver.publishing import Publish
@@ -195,7 +195,7 @@ class BackupJobHandler:
             return body
 
         try:
-            job = parse_backup_job(decode_request(body))
+            job = BackupJobRequest.from_value(decode_request(body))
 
         except InvalidConfigRequestError as error:
             return invalid_request_response(request, error)
@@ -256,7 +256,7 @@ class RestoreHandler:
             return body
 
         try:
-            restore = parse_restore(decode_request(body))
+            restore = RestoreRequest.from_value(decode_request(body))
 
         except InvalidConfigRequestError as error:
             return invalid_request_response(request, error)
@@ -278,7 +278,7 @@ class BuildHandler:
             return body
 
         try:
-            build = parse_build(decode_request(body))
+            build = BuildRequest.from_value(decode_request(body))
 
         except InvalidConfigRequestError as error:
             return invalid_request_response(request, error)

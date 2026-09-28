@@ -33,7 +33,7 @@ from urllib.parse import urlsplit
 
 from libranet import __version__
 from libranet.cas.layered import LayeredSource
-from libranet.cas.store import source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.signatures import MessageSigner
@@ -117,7 +117,7 @@ def build_router(
     the applications the node ships (Step 37). It is the source of truth
     alone, shipping nothing, if none is given.
     """
-    store = source_of_truth_store(storage)
+    store = CasStore.source_of_truth(storage)
     content = LayeredSource(store) if content is None else content
     registry = ApplicationRegistry(
         storage.applications_path, RegisteredApplications(content.applications)

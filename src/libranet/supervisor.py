@@ -25,7 +25,7 @@ from libranet.config.loader import ConfigError, load_config
 from libranet.config.models import LibranetConfig
 from libranet.config.seeds import SeedError, load_seed_peers
 from libranet.identity.errors import IdentityError
-from libranet.identity.node_identity import load_node_identity
+from libranet.identity.node_identity import NodeIdentity
 from libranet.logging_setup import configure_logging
 from libranet.messaging.module import StopSignal
 from libranet.modules import ModuleName
@@ -75,7 +75,7 @@ def main(argv: Sequence[str] | None = None, *, stop: StopSignal | None = None) -
     # Created here, before any module starts, so the key is generated once
     # and the public key is already servable from CAS.
     try:
-        identity = load_node_identity(config)
+        identity = NodeIdentity.load(config)
 
     except (IdentityError, ValueError, OSError) as error:
         print(f"Could not load the node identity: {error}", file=sys.stderr)

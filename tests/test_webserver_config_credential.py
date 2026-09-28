@@ -18,7 +18,6 @@ from libranet.webserver.config_credential import (
     ConfigCredential,
     CredentialFileError,
     StoredCredential,
-    load_config_credential,
 )
 
 CREDENTIALS = "admin:correct horse"
@@ -181,7 +180,7 @@ def test_a_record_survives_the_round_trip_through_the_file(credential: ConfigCre
 
 def test_the_credential_is_stored_beside_the_node_key(tmp_path: Path) -> None:
     config = LibranetConfig(storage=StorageConfig(data_dir=tmp_path / "data"))
-    path = load_config_credential(config).path
+    path = ConfigCredential.of(config).path
 
     assert path.parent == config.identity.resolved_key_dir(config.storage)
     assert path.name == config.identity.config_credential_path_name

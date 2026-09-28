@@ -11,7 +11,6 @@ from libranet.unbundler.lookup import (
     FoundDirectory,
     FoundFile,
     ResolvedDirectory,
-    look_up,
 )
 
 INDEX = FileBundle(parts=("sha256/" + "1" * 64,))
@@ -38,7 +37,7 @@ ENTRIES: Mapping[str, Entry] = {
 
 
 def look(path: str) -> FoundFile | FoundDirectory | None:
-    return look_up(ResolvedDirectory.of(ENTRIES), path)
+    return ResolvedDirectory.of(ENTRIES).look_up(path)
 
 
 def test_directories_are_every_path_leading_to_an_entry_and_every_marker() -> None:
@@ -119,5 +118,5 @@ def test_following_too_many_symlinks_finds_nothing() -> None:
 def test_an_empty_directory_has_only_its_root() -> None:
     directory = ResolvedDirectory.of({})
 
-    assert look_up(directory, "") == FoundDirectory("")
-    assert look_up(directory, "index.html") is None
+    assert directory.look_up("") == FoundDirectory("")
+    assert directory.look_up("index.html") is None

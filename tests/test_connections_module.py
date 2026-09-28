@@ -22,7 +22,7 @@ from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.prefix import matching_bits, nearest
-from libranet.cas.store import node_store, source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.config.models import (
     IdentityConfig,
     LibranetConfig,
@@ -35,9 +35,9 @@ from libranet.connections.module import ConnectionsModule, connections_module_fa
 from libranet.connections.peer_exchange import Retrieval
 from libranet.connections.peer_session import PeerSession
 from libranet.connections.reverse_dns import ResolveNames
-from libranet.identity.authentication import request_authenticator
+from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.keys import generate_private_key
-from libranet.identity.node_identity import NodeIdentity, load_node_identity
+from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import MessageSigner
 from libranet.messaging.envelope import Message, make_message
 from libranet.messaging.events import ConnectionDirection, EventType
@@ -45,7 +45,7 @@ from libranet.messaging.queues import MessageQueue, ModuleQueues
 from libranet.modules import ModuleName
 from libranet.stats.module import StatsModule
 from libranet.supervision.stubs import StubModule
-from libranet.webserver.config_credential import load_config_credential
+from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.router import Router
 from libranet.webserver.server import LibranetHTTPServer, RequestHandler, build_router
@@ -126,7 +126,7 @@ class FixturePeer:
     def __init__(self, root: Path, identity: NodeIdentity | None = None) -> None:
         self.identity = identity or NodeIdentity.from_private_key(generate_private_key(), "sha256")
         self.storage = StorageConfig(data_dir=root / "data", cache_dir=root / "cache")
-        self.store = source_of_truth_store(self.storage)
+        self.store = CasStore.source_of_truth(self.storage)
         self.identity.publish_public_key(self.store)
         queues = ModuleQueues(inbox=Queue(), outbox=Queue())
         self.bus = Bus(queues.outbox)
@@ -136,9 +136,9 @@ class FixturePeer:
                 self.storage,
                 PEER_RETRY_AFTER,
                 StubModule(ModuleName.WEBSERVER, queues).publish,
-                request_authenticator(LibranetConfig(storage=self.storage)),
+                RequestAuthenticator.of(LibranetConfig(storage=self.storage)),
                 allow_unsigned_api_reads=True,
-                config_credential=load_config_credential(LibranetConfig(storage=self.storage)),
+                config_credential=ConfigCredential.of(LibranetConfig(storage=self.storage)),
                 node=NodeDescription(self.identity.node_id, NetworkConfig()),
             ),
             getLogger("test.webserver"),
@@ -244,7 +244,7 @@ def with_retry_after(config: LibranetConfig, seconds: int) -> LibranetConfig:
 
 @fixture
 def identity(config: LibranetConfig) -> NodeIdentity:
-    return load_node_identity(config)
+    return NodeIdentity.load(config)
 
 
 @fixture
@@ -907,7 +907,7 @@ def test_a_connected_peers_seek_list_is_refreshed(
     bus: Bus,
     now: list[float],
 ) -> None:
-    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    CasStore.source_of_truth(config.storage).write(HELD_ID, HELD)
     # Asking for this is the last step of first contact.
     write_lists(config.storage, node_list(identity, peers[0]), [NOWHERE_ID])
     module = modules.start(config)
@@ -948,7 +948,7 @@ def test_a_fetch_is_answered_by_the_peer_that_has_it(
     (succeeded,) = bus.wait_for(EventType.FETCH_SUCCEEDED)
     assert succeeded["node_id"] == str(peers[1].node_id)
     assert (succeeded["algorithm"], succeeded["hash"]) == ("sha256", OFFERED_ID.hash)
-    assert node_store(config.storage, peers[1].node_id).read(OFFERED_ID) == OFFERED
+    assert CasStore.for_node(config.storage, peers[1].node_id).read(OFFERED_ID) == OFFERED
     bus.wait_for(EventType.PUT_COMPLETED, hash=OFFERED_ID.hash)
     assert bus.events(EventType.FETCH_FAILED) == []
 
@@ -1275,7 +1275,7 @@ def test_a_hand_off_goes_to_the_best_matching_peers(
     peers: list[FixturePeer],
     bus: Bus,
 ) -> None:
-    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    CasStore.source_of_truth(config.storage).write(HELD_ID, HELD)
     write_lists(config.storage, node_list(identity, *peers))
     module = modules.start(config)
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)
@@ -1299,7 +1299,7 @@ def test_a_hand_off_stops_once_enough_peers_accept(
     peers: list[FixturePeer],
     bus: Bus,
 ) -> None:
-    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    CasStore.source_of_truth(config.storage).write(HELD_ID, HELD)
     write_lists(config.storage, node_list(identity, *peers))
     module = modules.start(config)
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)
@@ -1324,7 +1324,7 @@ def test_a_peer_that_cannot_be_reached_is_passed_over(
     bus: Bus,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    CasStore.source_of_truth(config.storage).write(HELD_ID, HELD)
     write_lists(config.storage, node_list(identity, *peers))
     module = modules.start(config)
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)
@@ -1348,7 +1348,7 @@ def test_a_peer_that_cannot_be_reached_is_passed_over(
 def test_a_hand_off_without_connected_peers_falls_short_at_once(
     modules: Modules, config: LibranetConfig, bus: Bus
 ) -> None:
-    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    CasStore.source_of_truth(config.storage).write(HELD_ID, HELD)
     module = modules.start(config)
 
     module.handle(eviction_notice(HELD_ID))
@@ -1387,7 +1387,7 @@ def test_a_hand_off_that_goes_wrong_is_still_answered(
     monkeypatch: MonkeyPatch,
     caplog: LogCaptureFixture,
 ) -> None:
-    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    CasStore.source_of_truth(config.storage).write(HELD_ID, HELD)
     write_lists(config.storage, node_list(identity, *peers))
     module = modules.start(config)
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)
@@ -1412,7 +1412,7 @@ def test_a_hand_off_under_way_is_not_started_again(
     bus: Bus,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    CasStore.source_of_truth(config.storage).write(HELD_ID, HELD)
     write_lists(config.storage, node_list(identity, *peers))
     module = modules.start(config)
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)
@@ -1448,7 +1448,7 @@ def test_new_content_is_pushed_to_the_best_matching_peer_alone(
     peers: list[FixturePeer],
     bus: Bus,
 ) -> None:
-    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    CasStore.source_of_truth(config.storage).write(HELD_ID, HELD)
     write_lists(config.storage, node_list(identity, *peers))
     module = modules.start(config)
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)
@@ -1469,7 +1469,7 @@ def test_content_received_is_pushed_on_to_the_best_matching_peer(
     peers: list[FixturePeer],
     bus: Bus,
 ) -> None:
-    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    CasStore.source_of_truth(config.storage).write(HELD_ID, HELD)
     write_lists(config.storage, node_list(identity, *peers))
     module = modules.start(config)
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)
@@ -1489,7 +1489,7 @@ def test_content_is_not_pushed_back_to_the_peer_it_came_from(
     caplog: LogCaptureFixture,
 ) -> None:
     caplog.set_level(DEBUG, logger="libranet")
-    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    CasStore.source_of_truth(config.storage).write(HELD_ID, HELD)
     write_lists(config.storage, node_list(identity, *peers))
     module = modules.start(config)
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)
@@ -1509,7 +1509,7 @@ def test_new_content_is_pushed_even_when_this_node_matches_it_better(
     bus: Bus,
 ) -> None:
     content_id, data = content_nearer_to(identity.node_id, [peer.node_id for peer in peers])
-    source_of_truth_store(config.storage).write(content_id, data)
+    CasStore.source_of_truth(config.storage).write(content_id, data)
     write_lists(config.storage, node_list(identity, *peers))
     module = modules.start(config)
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)
@@ -1528,7 +1528,7 @@ def test_new_content_waits_for_a_connection_to_open(
     caplog: LogCaptureFixture,
 ) -> None:
     caplog.set_level(DEBUG, logger="libranet")
-    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    CasStore.source_of_truth(config.storage).write(HELD_ID, HELD)
     module = modules.start(config)
 
     module.handle(stored(HELD_ID, identity.node_id))
@@ -1548,7 +1548,7 @@ def test_a_push_goes_to_a_peer_that_connected_while_it_was_under_way(
     bus: Bus,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    CasStore.source_of_truth(config.storage).write(HELD_ID, HELD)
     write_lists(config.storage, node_list(identity, peers[0]))
     module = modules.start(config)
     bus.wait_for(EventType.CONNECTION_OPENED)
@@ -1580,7 +1580,7 @@ def test_a_peer_that_cannot_be_reached_is_passed_over_for_a_push(
     bus: Bus,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    CasStore.source_of_truth(config.storage).write(HELD_ID, HELD)
     write_lists(config.storage, node_list(identity, *peers))
     module = modules.start(config)
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)
@@ -1610,7 +1610,7 @@ def test_a_push_the_best_peer_refuses_goes_no_further(
     caplog: LogCaptureFixture,
 ) -> None:
     caplog.set_level(DEBUG, logger="libranet")
-    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    CasStore.source_of_truth(config.storage).write(HELD_ID, HELD)
     write_lists(config.storage, node_list(identity, *peers))
     module = modules.start(config)
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)
@@ -1654,7 +1654,7 @@ def test_a_push_that_goes_wrong_is_logged(
     monkeypatch: MonkeyPatch,
     caplog: LogCaptureFixture,
 ) -> None:
-    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    CasStore.source_of_truth(config.storage).write(HELD_ID, HELD)
     write_lists(config.storage, node_list(identity, *peers))
     module = modules.start(config)
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)

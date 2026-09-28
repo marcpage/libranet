@@ -10,7 +10,7 @@ from typing import Any, Iterator, Mapping
 from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.cas.content_id import ContentId
-from libranet.cas.store import source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.config.models import (
     IdentityConfig,
     LibranetConfig,
@@ -18,7 +18,7 @@ from libranet.config.models import (
     StatsConfig,
     StorageConfig,
 )
-from libranet.identity.node_identity import load_node_identity
+from libranet.identity.node_identity import NodeIdentity
 from libranet.messaging.envelope import Message, make_message
 from libranet.messaging.events import AddressSource, EventType
 from libranet.messaging.queues import ModuleQueues
@@ -117,7 +117,7 @@ def seek_list(config: LibranetConfig) -> dict[str, list[str]]:
 def test_starting_opens_the_database_and_writes_every_list(
     module: StatsModule, config: LibranetConfig, queues: ModuleQueues
 ) -> None:
-    identity = load_node_identity(config)
+    identity = NodeIdentity.load(config)
 
     assert config.storage.database_path.is_file()
     assert node_list(config) == {SELF_ENDPOINT: str(identity.node_id)}
@@ -138,7 +138,7 @@ def test_a_node_whose_ports_differ_publishes_both_for_itself(
     module.on_start()
 
     try:
-        node_id = str(load_node_identity(config).node_id)
+        node_id = str(NodeIdentity.load(config).node_id)
 
         assert node_list(config) == {
             "http://localhost:4300": node_id,
@@ -287,7 +287,7 @@ def unmatched(node_id: ContentId, variant: int) -> ContentId:
 
 def hold(module: StatsModule, config: LibranetConfig, content_id: ContentId, size: int) -> None:
     """Store ``size`` bytes as ``content_id``, and announce it."""
-    source_of_truth_store(config.storage).write(content_id, b"x" * size)
+    CasStore.source_of_truth(config.storage).write(content_id, b"x" * size)
     module.handle(stored(content_id, size))
 
 
@@ -315,7 +315,7 @@ def offered(queues: ModuleQueues) -> list[tuple[ContentId, int]]:
 
 @fixture
 def node_id(config: LibranetConfig) -> ContentId:
-    return load_node_identity(config).node_id
+    return NodeIdentity.load(config).node_id
 
 
 @fixture
@@ -393,7 +393,7 @@ def test_content_gone_from_the_store_is_recorded_as_deleted_not_offered(
     gone, kept = unmatched(node_id, 1), unmatched(node_id, 2)
     hold(still, config, gone, 10)
     hold(still, config, kept, 20)
-    source_of_truth_store(config.storage).path_for(gone).unlink()
+    CasStore.source_of_truth(config.storage).path_for(gone).unlink()
 
     with caplog.at_level(INFO):
         still.handle(candidates_requested(1_000))

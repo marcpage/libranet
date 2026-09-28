@@ -18,7 +18,7 @@ from threading import Lock
 from typing import Final, Mapping
 
 from libranet.cas.content_id import ContentId
-from libranet.cas.store import source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig
 from libranet.identity.errors import InvalidSignatureError, MissingSignatureError, UnknownKeyError
 from libranet.identity.signatures import MessageVerifier
@@ -77,6 +77,17 @@ class RequestAuthenticator:
         self._attempts: OrderedDict[ContentId, int] = OrderedDict()
         self._lock = Lock()
 
+    @classmethod
+    def of(cls, config: LibranetConfig) -> RequestAuthenticator:
+        """The authenticator a node's web server uses, per its configuration."""
+        identity = config.identity
+        verifier = MessageVerifier(
+            CasStore.source_of_truth(config.storage),
+            identity.signature_max_age_seconds,
+            identity.signature_clock_skew_seconds,
+        )
+        return cls(verifier, identity.provisional_trust_attempts)
+
     def authenticate(
         self, method: str, path: str, headers: Mapping[str, str], body: bytes = b""
     ) -> AuthenticationResult:
@@ -115,14 +126,3 @@ class RequestAuthenticator:
             )
 
         return AuthenticationResult(AuthenticationStatus.PROVISIONAL, node_id)
-
-
-def request_authenticator(config: LibranetConfig) -> RequestAuthenticator:
-    """The authenticator a node's web server uses, per its configuration."""
-    identity = config.identity
-    verifier = MessageVerifier(
-        source_of_truth_store(config.storage),
-        identity.signature_max_age_seconds,
-        identity.signature_clock_skew_seconds,
-    )
-    return RequestAuthenticator(verifier, identity.provisional_trust_attempts)

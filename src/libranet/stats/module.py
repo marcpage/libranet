@@ -90,10 +90,10 @@ from typing import Callable, ClassVar, Final, Mapping, TypeVar
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import CasError
-from libranet.cas.store import source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig
 from libranet.eviction.priority import HeldObject
-from libranet.identity.node_identity import load_node_identity
+from libranet.identity.node_identity import NodeIdentity
 from libranet.messaging.envelope import Message, event_of
 from libranet.messaging.events import AddressSource, EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
@@ -158,7 +158,7 @@ class StatsModule(ModuleBase):
         super().__init__(name, queues, logger=logger, clock=clock, poll_interval=poll_interval)
         self._config = config
         self._max_candidates = max_candidates
-        self._store = source_of_truth_store(config.storage)
+        self._store = CasStore.source_of_truth(config.storage)
         self._node_id: ContentId | None = None
         self._database: StatsDatabase | None = None
         self._deriver: ListDeriver | None = None
@@ -208,7 +208,7 @@ class StatsModule(ModuleBase):
         key stays on disk.
         """
         storage = self._config.storage
-        identity = load_node_identity(self._config)
+        identity = NodeIdentity.load(self._config)
         self._node_id = identity.node_id
         self._database = StatsDatabase(storage.database_path, clock=self._clock)
         self._deriver = ListDeriver(

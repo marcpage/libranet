@@ -20,7 +20,7 @@ from pytest import fixture, mark
 from libranet.bundle.parsing import decode_bundle
 from libranet.bundle.serialization import bundle_value
 from libranet.cas.content_id import ContentId
-from libranet.cas.store import CasStore, node_store, source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.config.models import (
     IdentityConfig,
     LibranetConfig,
@@ -121,7 +121,7 @@ def storage(tmp_path: Path) -> StorageConfig:
 
 @fixture
 def truth(storage: StorageConfig) -> CasStore:
-    store = source_of_truth_store(storage)
+    store = CasStore.source_of_truth(storage)
     store.write(CONTENT_ID, CONTENT)
     return store
 
@@ -270,7 +270,7 @@ def test_an_upload_by_any_spelling_is_stored_and_announced_normalized(
     assert response.status == 202
     # Listed rather than looked up, since a lookup by the lower-case name
     # would also find an upper-case one on a case-insensitive filesystem.
-    assert stored_names(node_store(storage, SIGNER_ID)) == [upload_id.hash]
+    assert stored_names(CasStore.for_node(storage, SIGNER_ID)) == [upload_id.hash]
     (message,) = published(queues)
     assert (message["algorithm"], message["hash"]) == ("sha256", upload_id.hash)
 

@@ -115,16 +115,16 @@ from typing import Callable, ClassVar, Final, Mapping, Sequence
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError
 from libranet.cas.prefix import nearest
-from libranet.cas.store import source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig
 from libranet.config.seeds import SeedError, load_seed_peers
 from libranet.connections.candidates import Candidate, candidate_list, seed_candidates
-from libranet.connections.endpoints import peer_address
+from libranet.connections.endpoints import PeerAddress
 from libranet.connections.peer_exchange import PeerExchange
 from libranet.connections.peer_mix import PeerMix
 from libranet.connections.peer_session import PeerSession
 from libranet.connections.reverse_dns import ResolveNames, ReverseLookup, host_names
-from libranet.identity.node_identity import load_node_identity
+from libranet.identity.node_identity import NodeIdentity
 from libranet.messaging.envelope import Message, event_of
 from libranet.messaging.events import AddressSource, ConnectionDirection, EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
@@ -244,7 +244,7 @@ class ConnectionsModule(ModuleBase):
     ) -> None:
         super().__init__(name, queues, logger=logger, clock=clock, poll_interval=poll_interval)
         self._config = config
-        self._source_of_truth = source_of_truth_store(config.storage)
+        self._source_of_truth = CasStore.source_of_truth(config.storage)
         self._exchange: PeerExchange | None = None
         self._resolve_names = resolve_names
         self._lookup: ReverseLookup | None = None
@@ -309,7 +309,7 @@ class ConnectionsModule(ModuleBase):
         key stays on disk.
         """
         self._exchange = PeerExchange(
-            load_node_identity(self._config), self._config, self.publish, self.logger
+            NodeIdentity.load(self._config), self._config, self.publish, self.logger
         )
         self._seeds = self._load_seeds()
 
@@ -988,7 +988,7 @@ class ConnectionsModule(ModuleBase):
 
 def _dialable(endpoint: str) -> bool:
     """Whether this node can dial ``endpoint`` at all."""
-    return peer_address(endpoint) is not None
+    return PeerAddress.of(endpoint) is not None
 
 
 def connections_module_factory(

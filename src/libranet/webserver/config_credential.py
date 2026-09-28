@@ -145,6 +145,13 @@ class ConfigCredential:
     def __init__(self, path: Path) -> None:
         self._path = path
 
+    @classmethod
+    def of(cls, config: LibranetConfig) -> ConfigCredential:
+        """This node's ``/config`` credential, stored beside its other secrets."""
+        identity = config.identity
+        directory = identity.resolved_key_dir(config.storage)
+        return cls(directory / identity.config_credential_path_name)
+
     @property
     def path(self) -> Path:
         """Where the credential is stored; deleting this file reverts capture."""
@@ -240,10 +247,3 @@ def _whole(record: dict[str, Any], name: str) -> int:
         raise CredentialFileError(f"A credential record's {name!r} must be an integer")
 
     return value
-
-
-def load_config_credential(config: LibranetConfig) -> ConfigCredential:
-    """This node's ``/config`` credential, stored beside its other secrets."""
-    identity = config.identity
-    directory = identity.resolved_key_dir(config.storage)
-    return ConfigCredential(directory / identity.config_credential_path_name)

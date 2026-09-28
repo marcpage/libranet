@@ -81,6 +81,35 @@ class BackupJobRequest:
         """
         return cls(normalized_directory(directory), interval_seconds)
 
+    @classmethod
+    def from_value(cls, value: object) -> BackupJobRequest:
+        """The backup job a ``{"directory", "interval_seconds"}`` object asks for.
+
+        Raises:
+            InvalidConfigRequestError: it is not such an object, or what it asks
+                for is not a usable job.
+        """
+        if not isinstance(value, dict):
+            raise InvalidConfigRequestError("A backup job must be a JSON object")
+
+        directory = value.get("directory")
+
+        if not isinstance(directory, str):
+            raise InvalidConfigRequestError('A backup job\'s "directory" must be a string')
+
+        interval = value.get("interval_seconds")
+
+        if interval is not None and (
+            isinstance(interval, bool) or not isinstance(interval, (int, float))
+        ):
+            raise InvalidConfigRequestError('A backup job\'s "interval_seconds" must be a number')
+
+        try:
+            return cls.create(directory, None if interval is None else float(interval))
+
+        except ValueError as error:
+            raise InvalidConfigRequestError(str(error)) from None
+
     @property
     def job_id(self) -> str:
         """What names this job, derived from the directory alone."""
@@ -116,6 +145,37 @@ class RestoreRequest:
             ValueError: the directory is not absolute and free of ``..``.
         """
         return cls(bundle, normalized_directory(directory), on_conflict)
+
+    @classmethod
+    def from_value(cls, value: object) -> RestoreRequest:
+        """The restore a ``{"bundle", "directory", "on_conflict"}`` object asks for.
+
+        Raises:
+            InvalidConfigRequestError: it is not such an object, or what it asks
+                for is not a usable restore.
+        """
+        if not isinstance(value, dict):
+            raise InvalidConfigRequestError("A restore must be a JSON object")
+
+        bundle = value.get("bundle")
+        directory = value.get("directory")
+
+        if not isinstance(bundle, str) or not isinstance(directory, str):
+            raise InvalidConfigRequestError('A restore\'s "bundle" and "directory" must be strings')
+
+        on_conflict = value.get("on_conflict", ConflictBehavior.REFUSE.value)
+
+        if on_conflict not in tuple(ConflictBehavior):
+            behaviors = ", ".join(behavior.value for behavior in ConflictBehavior)
+            raise InvalidConfigRequestError(
+                f'A restore\'s "on_conflict" must be one of: {behaviors}'
+            )
+
+        try:
+            return cls.create(ContentId.parse(bundle), directory, ConflictBehavior(on_conflict))
+
+        except (InvalidContentIdError, ValueError) as error:
+            raise InvalidConfigRequestError(str(error)) from None
 
     @property
     def restore_id(self) -> str:
@@ -194,6 +254,28 @@ class BuildRequest:
                 is the root, or the password is not usable.
         """
         return cls(normalized_directory(directory), Password.optional(password))
+
+    @classmethod
+    def from_value(cls, value: object) -> BuildRequest:
+        """The build a ``{"directory", "password"}`` object asks for.
+
+        Raises:
+            InvalidConfigRequestError: it is not such an object, or what it asks
+                for is not a usable build.
+        """
+        if not isinstance(value, dict):
+            raise InvalidConfigRequestError("A build must be a JSON object")
+
+        directory = value.get("directory")
+
+        if not isinstance(directory, str):
+            raise InvalidConfigRequestError('A build\'s "directory" must be a string')
+
+        try:
+            return cls.create(directory, _password(value, "A build"))
+
+        except ValueError as error:
+            raise InvalidConfigRequestError(str(error)) from None
 
     @property
     def build_id(self) -> str:
@@ -357,88 +439,6 @@ def decode_request(body: bytes) -> object:
 
     except ValueError as error:
         raise InvalidConfigRequestError(f"The request body is not JSON: {error}") from None
-
-
-def parse_backup_job(value: object) -> BackupJobRequest:
-    """The backup job a ``{"directory", "interval_seconds"}`` object asks for.
-
-    Raises:
-        InvalidConfigRequestError: it is not such an object, or what it asks
-            for is not a usable job.
-    """
-    if not isinstance(value, dict):
-        raise InvalidConfigRequestError("A backup job must be a JSON object")
-
-    directory = value.get("directory")
-
-    if not isinstance(directory, str):
-        raise InvalidConfigRequestError('A backup job\'s "directory" must be a string')
-
-    interval = value.get("interval_seconds")
-
-    if interval is not None and (
-        isinstance(interval, bool) or not isinstance(interval, (int, float))
-    ):
-        raise InvalidConfigRequestError('A backup job\'s "interval_seconds" must be a number')
-
-    try:
-        return BackupJobRequest.create(directory, None if interval is None else float(interval))
-
-    except ValueError as error:
-        raise InvalidConfigRequestError(str(error)) from None
-
-
-def parse_restore(value: object) -> RestoreRequest:
-    """The restore a ``{"bundle", "directory", "on_conflict"}`` object asks for.
-
-    Raises:
-        InvalidConfigRequestError: it is not such an object, or what it asks
-            for is not a usable restore.
-    """
-    if not isinstance(value, dict):
-        raise InvalidConfigRequestError("A restore must be a JSON object")
-
-    bundle = value.get("bundle")
-    directory = value.get("directory")
-
-    if not isinstance(bundle, str) or not isinstance(directory, str):
-        raise InvalidConfigRequestError('A restore\'s "bundle" and "directory" must be strings')
-
-    on_conflict = value.get("on_conflict", ConflictBehavior.REFUSE.value)
-
-    if on_conflict not in tuple(ConflictBehavior):
-        behaviors = ", ".join(behavior.value for behavior in ConflictBehavior)
-        raise InvalidConfigRequestError(f'A restore\'s "on_conflict" must be one of: {behaviors}')
-
-    try:
-        return RestoreRequest.create(
-            ContentId.parse(bundle), directory, ConflictBehavior(on_conflict)
-        )
-
-    except (InvalidContentIdError, ValueError) as error:
-        raise InvalidConfigRequestError(str(error)) from None
-
-
-def parse_build(value: object) -> BuildRequest:
-    """The build a ``{"directory", "password"}`` object asks for.
-
-    Raises:
-        InvalidConfigRequestError: it is not such an object, or what it asks
-            for is not a usable build.
-    """
-    if not isinstance(value, dict):
-        raise InvalidConfigRequestError("A build must be a JSON object")
-
-    directory = value.get("directory")
-
-    if not isinstance(directory, str):
-        raise InvalidConfigRequestError('A build\'s "directory" must be a string')
-
-    try:
-        return BuildRequest.create(directory, _password(value, "A build"))
-
-    except ValueError as error:
-        raise InvalidConfigRequestError(str(error)) from None
 
 
 def _password(value: dict[str, Any], what: str) -> str | None:

@@ -6,12 +6,11 @@ from threading import Thread
 
 from pytest import fixture, raises
 
-from libranet.cas.store import CasStore, source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.config.models import IdentityConfig, LibranetConfig, StorageConfig
 from libranet.identity.authentication import (
     AuthenticationStatus,
     RequestAuthenticator,
-    request_authenticator,
 )
 from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity
@@ -183,14 +182,14 @@ def test_invalid_limits_are_rejected(store: CasStore) -> None:
         make_authenticator(store, max_tracked_signers=0)
 
 
-def test_request_authenticator_uses_the_configured_policy(tmp_path: Path) -> None:
+def test_an_authenticator_of_a_configuration_uses_its_policy(tmp_path: Path) -> None:
     config = LibranetConfig(
         storage=StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache"),
         identity=IdentityConfig(provisional_trust_attempts=0),
     )
     known, unknown = new_identity(), new_identity()
-    known.publish_public_key(source_of_truth_store(config.storage))
-    authenticator = request_authenticator(config)
+    known.publish_public_key(CasStore.source_of_truth(config.storage))
+    authenticator = RequestAuthenticator.of(config)
 
     for identity, status in (
         (known, AuthenticationStatus.VERIFIED),

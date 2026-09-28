@@ -1174,93 +1174,6 @@ tree, and that the configured depth triggers a full rebuild.
 
 ---
 
-## Step 32 — Operator Guide: Resetting the `/config` Password
-
-**Issue:** #75. **Depends on:** Phase 1 Step 18.
-
-Documentation, not code. HttpApi §2.3.2 leaves credential storage
-implementation-defined but asks that the recovery path be documented, and
-Phase 1 Step 18 built the mechanism without writing it down anywhere an
-operator would look.
-
-- The mechanism already works: the credential is a salted scrypt hash in
-  a permissions-restricted file in the resolved key directory, alongside
-  the node private key and the backup secret. Deleting that file returns
-  the node to the pre-capture state, and the next `/config` request
-  captures a new credential. The file is read on every request, not
-  cached, so it takes effect immediately, without a restart.
-- What to write: where the file is, including what `key_dir` resolves to
-  by default on each platform; that the node must not be reachable at
-  `/config` by anyone else between the delete and the next request, since
-  the first request carrying `Authorization: Basic` captures whatever it
-  sends; and that `/config` is loopback-only, which is what makes that
-  window safe on a normal node.
-- Where it goes: a short operations page under `docs/`, linked from the
-  README's documentation table next to the design and Karma links.
-
-**Open question:** whether a `libranet --reset-config-password` command
-should exist as well, so an operator never has to find the file by hand.
-It is a few lines on top of `ConfigCredential`, and it is the difference
-between a documented path and a usable one.
-
----
-
-## Step 41 — Keeping Other Sites Out of `/config`
-
-**Issue:** #108. **Depends on:** Phase 1 Steps 18, 35, 36, 39.
-
-A browser caches the `/config` Basic credential for the node's origin and
-sends it with every request to that origin, whichever page made the
-request. That was true from Phase 1 Step 18; Steps 36 and 39 made it
-likely to matter by giving `/config` a page an operator logs in to. The
-issue raises two holes.
-
-Proposed in the issue, for the first:
-
-- **A request from another site.** A page on any other site can send a
-  `text/plain` `POST` to `/config/api/applications` without a CORS
-  preflight, and the browser attaches the credential. `decode_request`
-  (`webserver/config_requests.py`) ignores `Content-Type`, so the body is
-  parsed as JSON anyway, and the request could point `/` at another
-  bundle. The endpoints of Steps 18 and 35 have had this all along.
-- The fix: refuse a `/config` request whose `Origin` or `Sec-Fetch-Site`
-  header says it came from another site, and require `application/json`
-  on every request body. The first is a guard beside `local_config_guard`
-  (`webserver/config_guard.py`), refusing before credentials are looked
-  at. The second makes any cross-site `POST` need a preflight, which the
-  node never grants.
-- Checking `Content-Type` needs the request's headers, which
-  `decode_request(body)` is not given. So this step is where it becomes a
-  method on `Request` (`webserver/http_types.py`), as #81 asks (Step 42).
-
-Not settled, for the second:
-
-- **An application on the same origin.** Every registered application is
-  served from the same origin as `/config`, so any application's script
-  can call `/config/api` and the browser attaches the credential. No
-  header check can tell that request from the page's own. This dates from
-  Phase 1 Step 35. A script on the same origin can also open the `/config`
-  page itself and script it, so the fix that closes it is a separate
-  origin — `/config` on a port of its own, for example, since the port is
-  part of the origin. That changes HttpApi §2.3 and how an operator
-  reaches the page, so it is a specification decision before it is code.
-
-**Open questions:**
-
-- Whether a request carrying neither `Origin` nor `Sec-Fetch-Site`, such
-  as one from `curl`, is let through. Refusing it breaks every script
-  that drives `/config/api`; letting it through leaves open only browsers
-  that send neither header.
-- Whether the second hole is closed with a separate origin, or
-  registering an application is taken to mean trusting it and the hole is
-  documented instead.
-
-**Testable in isolation:** guard tests with fake requests carrying each
-combination of `Origin`, `Sec-Fetch-Site`, and `Content-Type`, asserting
-which are refused and that a refusal comes before any credential check.
-
----
-
 ## Step 42 — Functions That Should Be Methods
 
 **Issue:** #81, which names the first cases (#113 named them first, and
@@ -1296,16 +1209,76 @@ became `ExportRequest.from_value`. #81 names four more in
   on one value, such as `bucket_of(node_id, bits)`. These are examples of
   what the rules above leave, not decisions.
 
-**Open questions:**
+Ruled before building:
 
-- Where a loader goes when it reads a file the configuration names: on
-  the type it loads (`NodeIdentity.load(config)`), or on the
-  configuration section that holds the path. The type is the usual
-  answer.
-- Whether a function taking a `ContentId` whose job belongs to one module
-  (`_data_path` in `connections/peer_exchange.py`) moves onto `ContentId`
-  or stays private where it is used. Moving everything that touches a
-  `ContentId` onto it would make it the widest class in the code.
+- **A loader goes on the type it builds**, not on the configuration
+  section holding the path. `config/models.py` imports nothing from the
+  modules that build from it, and would have to import them in a circle
+  to hold their loaders.
+- **Only a function in its class's own module moves.** A function using
+  another module's class to do its own module's job stays where it is
+  used: `_data_path` and `bucket_of` with a `ContentId`,
+  `parse_cas_path` making one, `write_file` with a `FileBundle`,
+  `held_objects` with a `CasStore`, `log_file_path` with a
+  `LoggingConfig`. So `ContentId` is no wider than it was.
+- **`load_config` and `build_config` stay in `config/loader.py`.** That
+  module reads YAML, and is kept apart from the pydantic schema on
+  purpose; a classmethod on `LibranetConfig` could not call it without
+  importing in a circle.
+
+What moved, thirteen functions, each onto a class in its own module:
+
+| Was | Is |
+| --- | --- |
+| `parse_backup_job(value)` | `BackupJobRequest.from_value(value)` |
+| `parse_restore(value)` | `RestoreRequest.from_value(value)` |
+| `parse_build(value)` | `BuildRequest.from_value(value)` |
+| `source_of_truth_store(storage)` | `CasStore.source_of_truth(storage)` |
+| `connection_store(storage, connection_id)` | `CasStore.for_connection(storage, connection_id)` |
+| `node_store(storage, node_id)` | `CasStore.for_node(storage, node_id)` |
+| `load_node_identity(config)` | `NodeIdentity.load(config)` |
+| `load_config_credential(config)` | `ConfigCredential.of(config)` |
+| `request_authenticator(config)` | `RequestAuthenticator.of(config)` |
+| `peer_address(endpoint)` | `PeerAddress.of(endpoint)` |
+| `open_connection(host, port, ...)` | `PeerConnection.open(host, port, ...)` |
+| `look_up(directory, path)` | `directory.look_up(path)` on `ResolvedDirectory` |
+| `_fail(progress, error)` | `progress.fail(error)` on the backup module's `_Progress` |
+
+It came to about 290 new or changed lines of non-test Python, so it is
+one change set, not one per package.
+
+My calls, not yet reviewed:
+
+- **Names follow the classmethods already in the code.** `for_` as in
+  `ContentId.for_data`; `load` for one that reads a file, as
+  `BuildRecord.load` does, which `NodeIdentity.load` does and
+  `ConfigCredential.of` does not, since the credential file is read on
+  each request; `of` for one that reads nothing, as `StoragePressure.of`;
+  `open` for one that opens a resource, as `DirectoryWriter.open`.
+  `PeerAddress.of` answers `None` for an endpoint this node cannot dial
+  rather than raising, so it is not `parse`.
+- **More stays a function than the rules above name**, each for a reason
+  of its own:
+  - a function returning a collection rather than one instance
+    (`load_jobs`, `load_seed_peers`, `candidate_list`, `held_objects`,
+    `create_module_queues`);
+  - a function whose result type is only its result (`back_up` making a
+    `Backup`, `build_directory` a `DirectoryBuild`), since the work is the
+    function's;
+  - a function over the `Bundle` or `Entry` union, or over a protocol
+    such as `ContentSource`, which has no class to hold it. So the bundle
+    codec stays in `parsing.py` and `serialization.py`, `Metadata`'s part
+    of it included; a `Metadata.from_value` alone would split it;
+  - a process entry point in `supervision/children.py`, which
+    `multiprocessing` starts by a module-level name;
+  - a reader of a message's envelope (`event_of`, `source_of`), since a
+    `Message` is a `dict`.
+- **The old names are gone**, not kept as aliases: every caller is in the
+  repository. Each package's `__all__` loses them; the classes were
+  already exported.
+- **Tests named after an old function are renamed** for the method
+  (`test_load_*`, `test_open_*`), and the example in Module System §11
+  uses `CasStore.for_node`.
 
 **Testable in isolation:** nothing changes behavior, so the existing tests
 are the check. They move with the functions, and call each moved one as a
@@ -1837,6 +1810,93 @@ and assert what is excluded, handed off, and kept; the web server's
 tracking is tested with a fake publisher and through the running module
 with a signing peer; the connection manager's lists are checked as a
 fixture peer connects and drops the connection.
+
+---
+
+## Step 41 — Keeping Other Sites Out of `/config`
+
+**Issue:** #108. **Depends on:** Phase 1 Steps 18, 35, 36, 39.
+
+A browser caches the `/config` Basic credential for the node's origin and
+sends it with every request to that origin, whichever page made the
+request. That was true from Phase 1 Step 18; Steps 36 and 39 made it
+likely to matter by giving `/config` a page an operator logs in to. The
+issue raises two holes.
+
+Proposed in the issue, for the first:
+
+- **A request from another site.** A page on any other site can send a
+  `text/plain` `POST` to `/config/api/applications` without a CORS
+  preflight, and the browser attaches the credential. `decode_request`
+  (`webserver/config_requests.py`) ignores `Content-Type`, so the body is
+  parsed as JSON anyway, and the request could point `/` at another
+  bundle. The endpoints of Steps 18 and 35 have had this all along.
+- The fix: refuse a `/config` request whose `Origin` or `Sec-Fetch-Site`
+  header says it came from another site, and require `application/json`
+  on every request body. The first is a guard beside `local_config_guard`
+  (`webserver/config_guard.py`), refusing before credentials are looked
+  at. The second makes any cross-site `POST` need a preflight, which the
+  node never grants.
+- Checking `Content-Type` needs the request's headers, which
+  `decode_request(body)` is not given. So this step is where it becomes a
+  method on `Request` (`webserver/http_types.py`), as #81 asks (Step 42).
+
+Not settled, for the second:
+
+- **An application on the same origin.** Every registered application is
+  served from the same origin as `/config`, so any application's script
+  can call `/config/api` and the browser attaches the credential. No
+  header check can tell that request from the page's own. This dates from
+  Phase 1 Step 35. A script on the same origin can also open the `/config`
+  page itself and script it, so the fix that closes it is a separate
+  origin — `/config` on a port of its own, for example, since the port is
+  part of the origin. That changes HttpApi §2.3 and how an operator
+  reaches the page, so it is a specification decision before it is code.
+
+**Open questions:**
+
+- Whether a request carrying neither `Origin` nor `Sec-Fetch-Site`, such
+  as one from `curl`, is let through. Refusing it breaks every script
+  that drives `/config/api`; letting it through leaves open only browsers
+  that send neither header.
+- Whether the second hole is closed with a separate origin, or
+  registering an application is taken to mean trusting it and the hole is
+  documented instead.
+
+**Testable in isolation:** guard tests with fake requests carrying each
+combination of `Origin`, `Sec-Fetch-Site`, and `Content-Type`, asserting
+which are refused and that a refusal comes before any credential check.
+
+---
+
+## Step 32 — Operator Guide: Resetting the `/config` Password
+
+**Issue:** #75. **Depends on:** Phase 1 Step 18.
+
+Documentation, not code. HttpApi §2.3.2 leaves credential storage
+implementation-defined but asks that the recovery path be documented, and
+Phase 1 Step 18 built the mechanism without writing it down anywhere an
+operator would look.
+
+- The mechanism already works: the credential is a salted scrypt hash in
+  a permissions-restricted file in the resolved key directory, alongside
+  the node private key and the backup secret. Deleting that file returns
+  the node to the pre-capture state, and the next `/config` request
+  captures a new credential. The file is read on every request, not
+  cached, so it takes effect immediately, without a restart.
+- What to write: where the file is, including what `key_dir` resolves to
+  by default on each platform; that the node must not be reachable at
+  `/config` by anyone else between the delete and the next request, since
+  the first request carrying `Authorization: Basic` captures whatever it
+  sends; and that `/config` is loopback-only, which is what makes that
+  window safe on a normal node.
+- Where it goes: a short operations page under `docs/`, linked from the
+  README's documentation table next to the design and Karma links.
+
+**Open question:** whether a `libranet --reset-config-password` command
+should exist as well, so an operator never has to find the file by hand.
+It is a few lines on top of `ConfigCredential`, and it is the difference
+between a documented path and a usable one.
 
 ---
 

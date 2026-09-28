@@ -83,7 +83,7 @@ from libranet.messaging.events import EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
-from libranet.unbundler.lookup import FoundDirectory, ResolvedDirectory, look_up
+from libranet.unbundler.lookup import FoundDirectory, ResolvedDirectory
 from libranet.unbundler.outcomes import PathOutcome
 from libranet.unbundler.resolved_files import ResolvedFiles
 
@@ -164,7 +164,7 @@ class UnbundlerModule(ModuleBase):
             self._report(bundle, path, PathOutcome.UNUSABLE, detail=directory.detail)
             return
 
-        found = look_up(directory, path)
+        found = directory.look_up(path)
 
         if found is None:
             self._report(bundle, path, PathOutcome.NOT_FOUND)

@@ -17,22 +17,22 @@ class PeerAddress:
     host: str
     port: int
 
+    @classmethod
+    def of(cls, endpoint: str) -> PeerAddress | None:
+        """Where to dial ``endpoint``, or ``None`` if this node cannot dial it.
 
-def peer_address(endpoint: str) -> PeerAddress | None:
-    """Where to dial ``endpoint``, or ``None`` if this node cannot dial it.
+        A missing port is port 80 (HttpApi §10.6). Any path is ignored. IPv6
+        hosts lose their brackets, as :meth:`~libranet.connections.PeerConnection.open`
+        expects.
+        """
+        try:
+            parts = urlsplit(endpoint)
+            port = parts.port
 
-    A missing port is port 80 (HttpApi §10.6). Any path is ignored. IPv6
-    hosts lose their brackets, as :func:`~libranet.connections.open_connection`
-    expects.
-    """
-    try:
-        parts = urlsplit(endpoint)
-        port = parts.port
+        except ValueError:
+            return None
 
-    except ValueError:
-        return None
+        if parts.scheme != _SCHEME or not parts.hostname:
+            return None
 
-    if parts.scheme != _SCHEME or not parts.hostname:
-        return None
-
-    return PeerAddress(parts.hostname, port or _DEFAULT_PORT)
+        return cls(parts.hostname, port or _DEFAULT_PORT)

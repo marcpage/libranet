@@ -10,7 +10,7 @@ from libranet.cas.archive import ArchiveSink, ArchiveSource
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ArchiveError, ContentNotFoundError
 from libranet.cas.layered import PACKAGED_ARCHIVES, LayeredSource, packaged_archives
-from libranet.cas.store import CasStore, source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
 from libranet.eviction.pressure import StoragePressure
 from libranet.eviction.priority import held_objects
@@ -63,7 +63,7 @@ def layered(tmp_path: Path) -> LayeredSource:
             {id_of(SECOND): SECOND, id_of(FIRST): compress(FIRST), id_of(SHARED): compress(SHARED)},
         ),
     )
-    store = source_of_truth_store(storage)
+    store = CasStore.source_of_truth(storage)
     store.write(id_of(STORED), STORED)
     store.write(id_of(SHARED), SHARED)
     return LayeredSource.open(storage, tmp_path / "no-packaged-archives")
@@ -102,7 +102,7 @@ def test_prefix_iteration_spans_every_layer_giving_each_id_once(tmp_path: Path) 
         write_archive(tmp_path / "first.zip", {with_hash("ab1"): b"x", with_hash("ab2"): b"x"}),
         write_archive(tmp_path / "second.zip", {with_hash("ab2"): b"x", with_hash("ac"): b"x"}),
     )
-    store = source_of_truth_store(storage)
+    store = CasStore.source_of_truth(storage)
     store.write(with_hash("ab0"), b"x")
     store.write(with_hash("ab1"), b"x")
 
@@ -115,7 +115,7 @@ def test_prefix_iteration_spans_every_layer_giving_each_id_once(tmp_path: Path) 
 
 def test_search_finds_archive_content(tmp_path: Path) -> None:
     storage = storage_for(tmp_path, write_archive(tmp_path / "a.zip", {with_hash("abc"): b"x"}))
-    source_of_truth_store(storage).write(with_hash("abd"), b"x")
+    CasStore.source_of_truth(storage).write(with_hash("abd"), b"x")
 
     with LayeredSource.open(storage, tmp_path / "none") as content:
         assert content.prefix_length == storage.hash_prefix_length
@@ -127,7 +127,7 @@ def test_search_finds_archive_content(tmp_path: Path) -> None:
 
 def test_eviction_sees_only_the_store(tmp_path: Path) -> None:
     storage = storage_for(tmp_path, write_archive(tmp_path / "a.zip", {id_of(FIRST): FIRST}))
-    store = source_of_truth_store(storage)
+    store = CasStore.source_of_truth(storage)
     store.write(id_of(STORED), STORED)
 
     with LayeredSource.open(storage, tmp_path / "none") as content:
@@ -173,7 +173,7 @@ def test_the_packaged_archives_open(tmp_path: Path) -> None:
 
 
 def test_a_source_built_directly_ships_no_applications(tmp_path: Path) -> None:
-    assert LayeredSource(source_of_truth_store(storage_for(tmp_path))).applications == {}
+    assert LayeredSource(CasStore.source_of_truth(storage_for(tmp_path))).applications == {}
 
 
 def test_an_archive_that_cannot_be_opened_stops_opening(tmp_path: Path) -> None:

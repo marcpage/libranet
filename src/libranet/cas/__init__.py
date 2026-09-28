@@ -29,7 +29,7 @@ from libranet.cas.errors import (
     UnknownAlgorithmError,
 )
 from libranet.cas.prefix import matching_bits, nearest
-from libranet.cas.store import CasStore, connection_store, node_store, source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.cas.verification import content_matches
 
 __all__ = [
@@ -47,10 +47,7 @@ __all__ = [
     "InvalidContentIdError",
     "Sha256Algorithm",
     "UnknownAlgorithmError",
-    "connection_store",
     "content_matches",
     "matching_bits",
     "nearest",
-    "node_store",
-    "source_of_truth_store",
 ]

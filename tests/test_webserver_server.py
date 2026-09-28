@@ -22,9 +22,9 @@ from libranet.atomic_file import write_atomically
 from libranet.cas.archive import ArchiveSink, ArchiveSource
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
-from libranet.cas.store import CasStore, node_store, source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
-from libranet.identity.authentication import request_authenticator
+from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.content_digest import CONTENT_DIGEST_HEADER
 from libranet.identity.errors import InvalidSignatureError, UnknownKeyError
 from libranet.identity.keys import generate_private_key
@@ -49,7 +49,7 @@ from libranet.unbundler.resolved_files import ResolvedFiles
 from libranet.validator.module import ValidatorModule
 from libranet.webserver.app_registry import Application, ApplicationRegistry
 from libranet.webserver.config_auth import CONFIG_REALM
-from libranet.webserver.config_credential import ConfigCredential, load_config_credential
+from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.http_types import Request, RequestBody, Response
 from libranet.webserver.server import REQUEST_PATH_HEADER, LibranetHTTPServer, build_router
@@ -70,7 +70,7 @@ def storage(tmp_path: Path) -> StorageConfig:
 
 @fixture
 def store(storage: StorageConfig) -> CasStore:
-    store = source_of_truth_store(storage)
+    store = CasStore.source_of_truth(storage)
     store.write(CONTENT_ID, CONTENT)
     return store
 
@@ -109,7 +109,7 @@ def registry(storage: StorageConfig) -> ApplicationRegistry:
 @fixture
 def credential(storage: StorageConfig) -> ConfigCredential:
     """Where this node's `/config` credential would be captured."""
-    return load_config_credential(LibranetConfig(storage=storage))
+    return ConfigCredential.of(LibranetConfig(storage=storage))
 
 
 @fixture
@@ -132,7 +132,7 @@ def server(
             storage,
             RETRY_AFTER_SECONDS,
             publisher.publish,
-            request_authenticator(LibranetConfig(storage=storage)),
+            RequestAuthenticator.of(LibranetConfig(storage=storage)),
             allow_unsigned_api_reads=allow_unsigned_api_reads,
             config_credential=credential,
             node=SERVER_NODE,
@@ -344,7 +344,7 @@ def test_data_and_search_read_content_archives(
             storage,
             RETRY_AFTER_SECONDS,
             StubModule(ModuleName.WEBSERVER, queues).publish,
-            request_authenticator(LibranetConfig(storage=storage)),
+            RequestAuthenticator.of(LibranetConfig(storage=storage)),
             allow_unsigned_api_reads=True,
             config_credential=credential,
             node=SERVER_NODE,
@@ -500,7 +500,7 @@ def test_signed_upload_is_accepted_and_the_connection_reused(
     assert response.status == 202
     assert reply == b""
     assert response.getheader("Connection") is None
-    assert node_store(storage, identity.node_id).read(content_id) == body
+    assert CasStore.for_node(storage, identity.node_id).read(content_id) == body
     (message,) = _published(queues)
     assert message["event"] == EventType.PUT_COMPLETED
     assert message["node_id"] == str(identity.node_id)
@@ -877,7 +877,7 @@ def test_uploads_always_need_a_valid_signature(
     accepted, _ = _put(connection, content_id, body, identity)
 
     assert accepted.status == 202
-    assert node_store(storage, identity.node_id).read(content_id) == body
+    assert CasStore.for_node(storage, identity.node_id).read(content_id) == body
     assert len(_published(queues)) == 1
 
 
