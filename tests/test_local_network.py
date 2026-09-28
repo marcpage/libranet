@@ -12,6 +12,7 @@ from typing import Iterator
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from pytest import MonkeyPatch, fixture
+from yaml import safe_load
 
 from libranet.config.loader import load_config
 from libranet.config.models import LoggingConfig
@@ -25,6 +26,7 @@ from local_network import (
     NodeProcess,
     RunningNetwork,
     choose_keys,
+    parse_args,
 )
 
 ALGORITHM = "sha256"
@@ -150,6 +152,25 @@ def test_the_written_config_is_the_one_the_node_reads(tmp_path: Path) -> None:
     node.write_files()
 
     assert load_config(node.place.config_path, required=True) == node.place.config
+
+
+def test_the_debug_switch_is_off_unless_given() -> None:
+    assert parse_args([]).debug is False
+    assert parse_args(["--debug"]).debug is True
+
+
+def test_nodes_log_at_debug_only_with_the_switch(tmp_path: Path) -> None:
+    # A kept directory run again without the switch is rewritten back to INFO.
+    for debug, level in ((True, "DEBUG"), (False, "INFO")):
+        network = LocalNetwork.create(tmp_path, 2, 18400, debug)
+        node = network.nodes[0]
+
+        node.write_files()
+
+        # Written either way, so a change to the node's default cannot hide
+        # the INFO lines the progress display reads.
+        assert safe_load(node.place.config_path.read_text())["logging"]["level"] == level
+        assert load_config(node.place.config_path, required=True).logging.level == level
 
 
 def test_keys_an_earlier_run_left_are_reused(tmp_path: Path) -> None:
