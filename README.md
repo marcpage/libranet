@@ -348,36 +348,47 @@ installed package, so run it from a clone:
 uv run python scripts/local_network.py
 ```
 
-It starts 20 nodes on `127.0.0.1`, on ports 18400 to 18419, and tells each one
+It starts 40 nodes on `127.0.0.1`, on ports 18400 to 18439, and tells each one
 about all the others by posting it a node list. The first sixteen get keys
 whose node ids start with the hex digits `0` to `f` in turn, so every
-identifier bucket holds a node; the other four get random keys. It then shows
+identifier bucket holds a node; the other 24 get random keys. It then shows
 each node's URL and connections, updated as they change:
 
 ```text
-Libranet local network: 20 nodes in /tmp/libranet-k3v9x2
+Libranet local network: 40 nodes in /tmp/libranet-k3v9x2
 Ctrl-C stops every node.
 
-Connections [##################################------] 274/320
+Connections [#####################################---] 1187/1280
 
   #  URL                       node id           out   in
-  0  http://127.0.0.1:18400    04493b6b71ff    16/16   15
-  1  http://127.0.0.1:18401    1c546f6facc2    16/16   14
-  2  http://127.0.0.1:18402    2214b7267367    16/16   16
+  0  http://127.0.0.1:18400    04493b6b71ff    32/32   31
+  1  http://127.0.0.1:18401    1c546f6facc2    32/32   29
+  2  http://127.0.0.1:18402    2214b7267367    32/32   33
 ...
- 19  http://127.0.0.1:18419    a90213c4e8d1    11/16   13
+ 39  http://127.0.0.1:18439    a90213c4e8d1    27/32   30
 ```
 
-`out` counts the node's connections to peers against the sixteen it aims for,
-one per bucket; `in` counts the other nodes connected to it. Open any URL in a
-browser to use that node. `Ctrl-C` stops every node and deletes the network's
+`out` counts the node's connections to peers against the 32 it aims for:
+sixteen spread across the identifier buckets, one per bucket, and sixteen more
+among its neighbors, the peers whose ids start with its own first hex digit. A
+network this small has too few neighbors to fill that second set, so other
+peers make up the number. With fewer than 33 nodes, each aims for every other
+node. `in` counts the other nodes connected to it. Open any URL in a browser to
+use that node. `Ctrl-C` stops every node and deletes the network's
 files. Nodes stop four at a time, so a large network takes a while; a second
 `Ctrl-C` kills whatever is left at once.
 
 `--count` sets how many nodes run and `--base-port` the port of the first.
 `--dir DIR` keeps the network's files in `DIR`, and a later run with the same
 `DIR` brings back the same nodes. Each idle node uses about 320 MB of memory,
-so 20 of them need a machine with several gigabytes to spare.
+so the default 40 need about 13 GB to spare; on a smaller machine, run fewer.
+
+`--debug` has every node log at `DEBUG` rather than `INFO`, to see why the
+nodes do what they do. It lasts for that run only: the script writes each
+node's configuration afresh every time, so a later run with the same `DIR` and
+no `--debug` is back at `INFO`. Debug logs grow fast. Each of a node's ten
+processes keeps its own log, rotated at 10 MiB with five old files kept, so a
+node can hold up to 600 MiB of them, and 40 nodes 24 GiB.
 
 ---
 

@@ -569,10 +569,13 @@ testing, each with its own directories:
 | `--count` | `40` | Nodes to run, at least 2 |
 | `--base-port` | `18400` | Port of `node-00`; node *n* listens on `base-port + n` |
 | `--dir` | A new temporary directory | Where the nodes' directories go |
+| `--debug` | Off | Every node sets `logging.level` to `DEBUG`, for this run only |
 
 The script writes each node's key before starting it, so that the ids of
 `node-00` to `node-0f` begin with the hex digits `0` to `f`. Its config sets
-`stats.derive_interval_seconds` to 5 so new peers are noticed quickly. With
+`stats.derive_interval_seconds` to 5 so new peers are noticed quickly, and
+`logging.level` to `INFO`, or `DEBUG` with `--debug`, since the progress
+display reads the connections log's `INFO` lines. With
 `--dir`, the directory is kept and a later run reuses the keys it finds.
 Without it, the temporary directory is deleted after a clean stop and kept,
 with its location printed, after a failure.

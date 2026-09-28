@@ -1917,9 +1917,10 @@ Settled in the issue:
 
 Work this implies:
 
-- `NodePlace.document` writes `logging.level` when the switch is given.
-  Since the configuration is written on every run, a network kept with
-  `--dir` and run again without the switch is back at `INFO`.
+- `NodePlace.document` writes `logging.level`: `DEBUG` with the switch,
+  `INFO` without it. Since the configuration is written on every run, a
+  network kept with `--dir` and run again without the switch is back at
+  `INFO`.
 - The progress display reads every line of each node's connections log
   (`ConnectionLog.poll`) to find the `Connected to` and `closed` lines,
   which are logged at `INFO` either way. At `DEBUG` it reads more, and
@@ -1930,9 +1931,34 @@ Work this implies:
 - The switch is added to the README's "Run a local test network" and to
   the table of switches in File Layout §11.
 
+It came to about 30 new or changed lines of the script, so it is one
+change set. Seen in a live run of three nodes with the switch: each
+node's `libranet.yaml` carried `level: DEBUG`, the stats and web server
+logs had `DEBUG` lines in them, and the display reached 6/6 connections
+as it does without it.
+
+Ruled on review:
+
+- **`logging.level` is always written**, `INFO` without the switch,
+  rather than left to the node's default. The progress display depends
+  on the connections log's `INFO` lines, so it must not stop working
+  should the default ever change.
+
+My calls, not yet reviewed:
+
+- **The switch is a field of `NodePlace`**, `debug`, off unless given,
+  and `LocalNetwork.create` passes it to every node, since the place is
+  what builds a node's configuration.
+- **The help gives the limit for each process, not each node.** It
+  works the figure out from `LoggingConfig`'s defaults, `max_bytes` times
+  one more than `backup_count`, 60 MiB, so it follows them if they
+  change. A node runs ten processes, each with its own log (the
+  dispatcher's included), and the README gives the total from that: up
+  to 600 MiB a node, and 24 GiB for the default 40 nodes.
+
 **Testable in isolation:** `parse_args` accepts the switch, and the
-configuration written for a node carries `DEBUG` with it and `INFO`
-without it, as `build_config` reads it.
+configuration file written for a node carries `DEBUG` with it and `INFO`
+without it, and the node reads the same.
 
 ---
 

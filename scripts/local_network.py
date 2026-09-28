@@ -1,6 +1,6 @@
 """Run a local network of Libranet nodes for manual testing.
 
-Starts ``--count`` nodes (20 by default) on ``127.0.0.1``, one per port from
+Starts ``--count`` nodes (40 by default) on ``127.0.0.1``, one per port from
 ``--base-port`` up, and tells each one about all the others by posting a
 node list to its ``/data/nodes`` (HttpApi §10.5). The first sixteen nodes are
 given keys whose node ids start with the hex digits ``0`` to ``f`` in order,
@@ -42,7 +42,7 @@ from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption,
 from yaml import safe_dump
 
 from libranet.config.loader import build_config
-from libranet.config.models import LibranetConfig
+from libranet.config.models import MIB, LibranetConfig, LoggingConfig
 from libranet.identity.keys import (
     generate_private_key,
     load_or_create_private_key,
@@ -110,11 +110,12 @@ def choose_keys(
 
 @dataclass(frozen=True)
 class NodePlace:
-    """Where one node of the network keeps its files, and the port it listens on."""
+    """Where one node of the network keeps its files, the port it listens on, and how it logs."""
 
     index: int
     directory: Path
     port: int
+    debug: bool = False
 
     @property
     def endpoint(self) -> str:
@@ -141,7 +142,13 @@ class NodePlace:
                 "cache_dir": str(self.directory / "cache"),
             },
             "stats": {"derive_interval_seconds": _DERIVE_INTERVAL_SECONDS},
-            "logging": {"directory": str(self.directory / "logs"), "console": False},
+            "logging": {
+                "directory": str(self.directory / "logs"),
+                "console": False,
+                # The progress display needs the connections log's INFO lines,
+                # whatever the node's default level.
+                "level": "DEBUG" if self.debug else "INFO",
+            },
         }
 
     @cached_property
@@ -191,9 +198,12 @@ class LocalNetwork:
         self.nodes = tuple(nodes)
 
     @classmethod
-    def create(cls, root: Path, count: int, base_port: int) -> LocalNetwork:
-        """A network of ``count`` nodes under ``root``, reusing any keys left there."""
-        places = [NodePlace(i, root / f"node-{i:02d}", base_port + i) for i in range(count)]
+    def create(cls, root: Path, count: int, base_port: int, debug: bool = False) -> LocalNetwork:
+        """A network of ``count`` nodes under ``root``, reusing any keys left there.
+
+        With ``debug``, every node logs at ``DEBUG`` rather than ``INFO``.
+        """
+        places = [NodePlace(i, root / f"node-{i:02d}", base_port + i, debug) for i in range(count)]
         algorithm = places[0].config.identity.hash_algorithm
         held = {place.index: key for place in places if (key := place.held_key()) is not None}
         keys = choose_keys(count, held, algorithm)
@@ -505,6 +515,15 @@ def parse_args(argv: Sequence[str] | None = None) -> Namespace:
         help="keep the network's files here, reusing any keys an earlier run left, "
         "instead of in a temporary directory deleted on exit",
     )
+    # Each process of a node writes its own log, rotated at the default size.
+    log_defaults = LoggingConfig()
+    kept = log_defaults.max_bytes * (log_defaults.backup_count + 1) // MIB
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help=f"have every node log at DEBUG rather than INFO; debug logs grow fast, "
+        f"and each of a node's processes keeps up to {kept} MiB of them",
+    )
     args = parser.parse_args(argv)
 
     if args.count < 2:
@@ -520,7 +539,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run the network until interrupted."""
     args = parse_args(argv)
     root: Path = args.dir.resolve() if args.dir is not None else Path(mkdtemp(prefix="libranet-"))
-    running = RunningNetwork(LocalNetwork.create(root, args.count, args.base_port), root)
+    running = RunningNetwork(
+        LocalNetwork.create(root, args.count, args.base_port, args.debug), root
+    )
 
     # Closing the terminal or a plain kill stops the nodes too, since they
     # run in sessions of their own and would not hear it.
