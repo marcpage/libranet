@@ -579,11 +579,11 @@ with its location printed, after a failure.
 
 ## 12. Planned Changes
 
-Phase 2 steps that will change this layout:
+Planned steps that will change this layout, in Phases 2 and 3:
 
-- **Step 30 (#71)** adds a private list of blocked content ids to the stats
-  database, and a list derived from it for the web server and validator,
-  presumably beside the others in `lists/`.
+- **Step 30 (#71, Phase 3)** adds a private list of blocked content ids to
+  the stats database, and a list derived from it for the web server and
+  validator, presumably beside the others in `lists/`.
 - **Step 32 (#75)** documents resetting the `/config` credential, and may
   add a switch to do it.
 - **Step 48 (#84, #114)** keeps each backup job's last bundle fully

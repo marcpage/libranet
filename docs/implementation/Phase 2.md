@@ -1,6 +1,6 @@
 # Libranet Python Implementation Plan — Phase 2
 
-Version 0.2 • September 2026
+Version 0.3 • September 2026
 
 ---
 
@@ -46,42 +46,46 @@ the work wants to be done in:
   place that identity was reachable at, and it changes. Stats stops
   keeping one address per node and starts keeping the history of every
   address it has learned, with where it came from and whether it ever
-  worked. Steps 23 and 16.
-- **Spending connections well.** The peer mix today counts only the
-  connections this node dialed, aims only at spread across the whole
-  identifier space, and retries a dead peer forever. And a connection
-  carries one push at a time when it could carry many. Steps 24, 25, 26,
-  and 45.
+  worked. Step 23.
+- **Spending connections well.** The peer mix today aims only at spread
+  across the whole identifier space, and retries a dead peer forever. And
+  a connection carries one push at a time when it could carry many. Steps
+  25, 26, and 45.
 - **Finding content without shouting.** A fetch walks peers once, best
   match first, and gives up. A search should be directed, bounded, and
-  remembered. Steps 22 and 27.
+  remembered, and how many times it walks the peers should be something
+  a larger network can raise. Steps 22, 27, and 55.
 - **Keeping what is worth keeping.** Eviction picks purely on node-id
   match. Phase 2 scores on how recently and how often content was used,
-  how big it is, and how well it matches — and adds the two cases the
-  score does not cover: resolved bundles that are cheap to rebuild, and
-  content the node has decided not to hold at all. A hand-off goes to one
-  peer rather than two, and a connected peer's key is never let go of.
-  Steps 28, 29, 30, 46, and 53.
-- **Backing up without redoing work.** A re-backup polls the directory,
-  walks it twice, reads back and resolves the last bundle, publishes a new
-  bundle when only a timestamp moved, and rewrites the whole bundle to
-  record a handful of changed files. Steps 48, 49, 50, and 31. Three more
-  make backup and restore more faithful: creation times that survive a
-  restore (Step 47), extended attributes (Step 52), and a restore that
-  knows when to stop waiting (Step 51).
+  how big it is, and how well it matches — and adds the case the score
+  does not cover: resolved bundles that are cheap to rebuild. A hand-off
+  goes to one peer rather than two, and a connected peer's key is never
+  let go of. Steps 28, 29, 46, and 53.
+- **Backing up without redoing work.** A re-backup walks the directory
+  twice, reads back and resolves the last bundle, publishes a new bundle
+  when only a timestamp moved, and rewrites the whole bundle to record a
+  handful of changed files. Steps 48, 49, and 31. Three more make backup
+  and restore more faithful: creation times that survive a restore (Step
+  47), extended attributes (Step 52), and a restore that knows when to
+  stop waiting (Step 51).
 
-Step 32 is documentation the specification asks for.
+Step 32 is documentation the specification asks for, and Step 54 a switch
+for the script that runs a local test network.
 
 ## 3. How to Read the Steps Below
 
 The conventions of Phase 1 §3 carry over. In addition:
 
 - **Step numbers continue from Phase 1 and stay stable.** Phase 1 ends at
-  Step 20, so Phase 2 starts at Step 21. The one exception is Step 16,
-  which moved here from Phase 1 unbuilt and unchanged, keeping its
-  number, so nothing that already refers to "Step 16" comes to mean
-  something else. Phase 1 later took Steps 33–40 for the rest of the MVP,
-  so the steps added here after that start at Step 41.
+  Step 20, so Phase 2 starts at Step 21. Phase 1 later took Steps 33–40
+  for the rest of the MVP, so the steps added here after that start at
+  Step 41. A step that moves to another phase keeps its number, so
+  nothing that already refers to it comes to mean something else. Step
+  16 moved here from Phase 1 unbuilt, and has moved on to [Phase
+  4](Phase%204.md) with Step 50; Step 30 has moved to [Phase
+  3](Phase%203.md). Each went with its issue when the issue changed
+  milestone, and a mention of one below means the step there. Step 24
+  was dropped (§4), and its number is not reused.
 - **Each step names its issues.** The issue is the source of record for
   what was asked for; this document is the source of record for how it is
   built and what was decided along the way. Where an issue settled a
@@ -453,84 +457,6 @@ the answering-as-somebody-else rules: the second endpoint is recorded for
 the answering node and as a failure for the stale id, it is not redialed
 while the first connection is open even after the fake clock passes the
 retry delay, and it is dialed once that connection closes.
-
----
-
-## Step 16 (Optional) — mDNS/DNS-SD Local Discovery
-
-**Issue:** #20. **Depends on:** Phase 1 Step 11; Step 23.
-
-Moved from Phase 1 unbuilt. The protocol leaves local discovery optional
-and outside conformance (HighLevelDesign §4.9.1), but a node that has it
-does it by default. It is built after Step 23, which gives it somewhere
-to put what it finds: an address for a node id.
-
-Settled:
-
-- **`zeroconf` is a required dependency.** It is LGPL-2.1-or-later, the
-  first copyleft dependency of a public-domain project. It is required
-  rather than an optional extra, so discovery never has to handle a
-  missing library.
-- **Advertising and browsing are separate settings, both on by
-  default**, in a `local_discovery` config section (`advertise`,
-  `browse`) documented in `examples/libranet.yaml`. A node can find LAN
-  peers without announcing itself. A node whose `listen_address` is
-  loopback never advertises, since nothing off the host could reach it.
-- **The service follows HighLevelDesign §4.9.1**: type
-  `_libranet._tcp.local.`, TXT keys `txtvers=1` and `id=<node id>`, and
-  the SRV port is `listen_port`. It is not `external_port`, which is for
-  peers beyond the gateway.
-- **A discovered peer gives untested addresses for a node id**: its
-  host's `.local` name from the SRV record, and its addresses from the A
-  records. Stats records each one with a new source, learned locally,
-  alongside Step 23's five. The connection manager publishes them in
-  `nodes.received`, marked with that source, and stops there. Each is
-  dialed in its turn.
-- **The `.local` name is kept alongside the addresses**, because it
-  outlasts a change of address on the LAN. A node whose resolver cannot
-  look it up gets failures for it. Step 23 then tries it after the
-  addresses that work, and eventually drops it.
-- **Published by Step 23's rule, with no special case.** Once dialed
-  successfully, a discovered address or `.local` name is verified, and
-  it is published in `/data/nodes`, so LAN peers learn it too. Until
-  then it is untested and is not published.
-- **No special place in the peer mix** (HighLevelDesign §4.6). While
-  buckets are uncovered, the mix already dials peers in covered ones, so
-  a node with few peers connects to every LAN peer it finds. Once the
-  mix is full, LAN peers compete by bucket like any other.
-
-My calls, not yet reviewed:
-
-- It runs inside the connections module, not in a process of its own
-  (§1). That module already holds the node's identity and publishes
-  `nodes.received`. A `LocalDiscovery` object owns the `Zeroconf`
-  instance, starting in `on_start` and closing in `on_stop`. `zeroconf`
-  runs its own threads, and the browse callback only publishes.
-- The instance name is `libranet-` and the first 12 hex digits of the
-  node id, and `zeroconf` renames it on a conflict. The whole id, 71
-  characters, does not fit a 63-byte instance label.
-- IP addresses come from A records only. That is IPv4, which matches
-  the IPv4 listener. A node listening on `0.0.0.0` advertises every
-  non-loopback IPv4 interface; one listening on a specific address
-  advertises that address alone.
-- The SRV record this node advertises names the host's own `.local`
-  name, the one the operating system's mDNS responder already answers
-  for.
-- The `id` is parsed as any node id is, so its case does not matter
-  (Step 21). A service whose `id` is missing, unusable, or this node's
-  own is ignored. A service that goes away changes nothing: stats'
-  failure counts and aging retire its addresses.
-- No rate limit beyond Step 23's per-node bound. Anyone on the LAN can
-  already POST a node list, and the handshake rejects a false identity.
-- On macOS, `zeroconf` shares UDP port 5353 with the system's
-  mDNSResponder, which also answers for the host's `.local` name. The
-  first build checks that browsing and advertising both work there, and
-  that the two answering for one name do not conflict.
-
-**Testable in isolation:** can be developed and tested independently of
-the wide-area discovery path, and switched off without affecting
-anything else. The `zeroconf` interface is injected, so tests never touch
-a real multicast socket.
 
 ---
 
@@ -1436,7 +1362,8 @@ groups of at most `PIPELINE_DEPTH`, each at its own best peer.
   #119, so content handed to one peer keeps moving toward the best match
   rather than stopping there.
 - What a node that blocks content answers a hand-off of it is Step 30's
-  question, and one copy makes it matter more (§7).
+  question, and one copy makes it matter more ([Phase 3](Phase%203.md)
+  §6).
 
 **Testable in isolation:** the existing eviction and hand-off tests with
 the copy count changed to one, and a connections test with two fixture
@@ -1591,46 +1518,6 @@ times only, and back up again, asserting no bundle is published and the
 record holds the new times; then change one file's bytes, asserting one
 new bundle carrying both changes. Listing is injected, so a test can
 assert one walk per run.
-
----
-
-## Step 50 — Filesystem Notifications for Backup
-
-**Issue:** #85. **Depends on:** Phase 1 Step 19; Steps 48, 49.
-
-- Settled in the issue: backup learns that a directory may have changed
-  from filesystem notifications, instead of polling and walking it.
-  BackupSpecification §3.3 already prefers this, with polling as the
-  fallback, and its §7 leaves the mechanism open.
-- A notification names paths, so a run can look at those paths alone —
-  provided it has the rest of the entries to carry forward, which Step
-  48's record holds. Without that, a notification only says when to
-  walk, which saves the idle polls but not the walk.
-- Notifications from ignored paths, the node's own directories among
-  them, are dropped as the walk drops them. Otherwise backing up a
-  directory that holds the node's storage would set itself off.
-- Python's standard library has no notification interface. Each platform
-  has its own: FSEvents on macOS, inotify on Linux, and
-  `ReadDirectoryChangesW` on Windows. The `watchdog` library wraps all
-  three, and falls back to polling. It would be a new runtime dependency.
-
-**Open questions:**
-
-- `watchdog`, or each platform's interface directly. The dependency is
-  the smaller cost and keeps one code path. It also brings its own
-  threads into the backup module's process.
-- What a lost notification costs. inotify drops events past its queue
-  limit and needs a watch per directory, up to a per-user limit; FSEvents
-  coalesces. An overflow has to fall back to a full walk, so the polling
-  path stays, run less often.
-- Whether a job's `interval_seconds` becomes the full-walk interval, the
-  quiet period after a notification before a run (so a burst of writes is
-  one backup), or both.
-
-**Testable in isolation:** the notifier is injected, so tests deliver
-synthetic events and assert which paths the next run looks at, that a
-burst is one run, and that an overflow means a full walk. One test
-against the real library in a temp directory checks the wiring.
 
 ---
 
@@ -1900,62 +1787,98 @@ between a documented path and a usable one.
 
 ---
 
-## Step 30 — Blocked Data List
+## Step 54 — A Debug Switch for the Local Network Script
 
-**Issue:** #71. **Depends on:** Phase 1 Steps 5, 7, 8, 15.
+**Issue:** #131. **Depends on:** nothing not yet built.
+
+`scripts/local_network.py` runs a network of nodes on this machine for
+trying Libranet out by hand. It writes each node's configuration itself
+on every run (`LocalNode.write_files`, from `NodePlace.document`), and
+leaves `logging.level` at its default, `INFO`. Seeing why the nodes do
+what they do means stopping the script, editing every node's
+`libranet.yaml`, and starting them again without the script, which would
+write them afresh.
 
 Settled in the issue:
 
-- Stats can mark a content id **do-not-keep**. Blocked content held
-  locally can be deleted; blocked content pushed to this node can be
-  deleted rather than kept; blocked content does not appear in search
-  results.
-- The motivating use is supersession: when Karma merges transactions into
-  larger blocks, the smaller blocks it replaces are blocked, so the
-  network stops carrying what nothing needs.
-- **The list is private.** Each node keeps its own, and never publishes
-  or advertises it: the node simply becomes a black hole for that
-  content. So no single node can delete anything from the network;
-  content leaves it only as the nodes holding it each decide, separately,
-  to stop.
+- A `--debug` switch sets each node's log level to `DEBUG`.
 
 Work this implies:
 
-- Stats gains the block — a table of its own, or a flag on `data_stats` —
-  and a derived list, because the web server and the validator have to
-  check it and neither may open SQLite.
-- The validator refuses a blocked id instead of promoting it out of the
-  node-specific directory; the write path can refuse the `PUT` before the
-  body is stored. Which of the two does it decides whether a blocked push
-  costs disk.
-- `LocalSearch` and the stats search filter blocked ids out of results.
-- Eviction deletes blocked content ahead of anything the Step 28 score
-  produces — it is not a low-priority object, it is one this node has
-  decided not to hold.
-- A block has to outlive the content it names. Deleting the content and
-  forgetting the block invites the next peer to push it straight back.
-- A blocked id is answered as content the node does not hold, `404`,
-  since anything more specific would advertise the block.
+- `NodePlace.document` writes `logging.level` when the switch is given.
+  Since the configuration is written on every run, a network kept with
+  `--dir` and run again without the switch is back at `INFO`.
+- The progress display reads every line of each node's connections log
+  (`ConnectionLog.poll`) to find the `Connected to` and `closed` lines,
+  which are logged at `INFO` either way. At `DEBUG` it reads more, and
+  finds the same.
+- Debug logs grow fast. Each module's log rotates at `logging.max_bytes`,
+  keeping `logging.backup_count` old files, so the limit per node is
+  fixed, but forty nodes of it is not small. The switch's help says so.
+- The switch is added to the README's "Run a local test network" and to
+  the table of switches in File Layout §11.
+
+**Testable in isolation:** `parse_args` accepts the switch, and the
+configuration written for a node carries `DEBUG` with it and `INFO`
+without it, as `build_config` reads it.
+
+---
+
+## Step 55 — A Configurable Number of Search Passes
+
+**Issue:** #138. **Depends on:** Step 27.
+
+Step 27 searches the connected peers for content in two passes, as
+HighLevelDesign §4.7 now says: every peer is asked, best match first,
+then every peer again once the `Retry-After` of its `503` has passed,
+and then the search stops. Two is built into the code: a search's
+`second_pass` flag in `connections/module.py`.
+
+Settled in the issue:
+
+- The number of passes becomes a setting, so it can be experimented with.
+  It is at least 2. If two passes turn out to be too few, because the
+  network is too large, it can be raised to 3 or even 4.
+
+Work this implies:
+
+- A setting in `peers`, beside `peers.failed_search_hold_seconds`: 2 by
+  default, and refused below 2. `peers.search_passes` is the obvious
+  name. It is documented in `examples/libranet.yaml`.
+- The search counts its passes rather than flagging the second. Every
+  pass after the first is paced as the second is now: a peer is asked
+  again only once its `Retry-After` has passed, and no pass waits longer
+  than this node's own `network.retry_after_seconds` to start.
 
 **Open questions:**
 
-- How an id gets blocked: an operator endpoint under `/config` (Phase 1
-  Step 18), a message from whatever decides a block is superseded, or
-  both. The Karma use needs the message; an operator needs the endpoint.
-- Whether a block ever expires, and whether there is an unblock.
-- What a push of blocked content is answered. Accepting it and deleting
-  it is the black hole the issue describes. But an eviction hand-off
-  takes any `2xx` as a copy kept, and the evicting node then deletes its
-  own. With the single hand-off copy of Step 46, one node blocking what
-  it is handed is enough to take that content off the network — which
-  is what the issue says no single node can do. So a hand-off, at least,
-  wants a refusal, which sends the evicting node to its next peer and
-  says only that this node did not take it.
+- Whether the hold has to grow with the passes. The hold after a search
+  that found nothing is what keeps searches for content no node holds
+  from restarting each other (Step 27), and §4.7 sizes it against one
+  pass after the first: it is longer than any `Retry-After` the node's
+  peers send, "so that their second passes are over before it ends".
+  Each pass added lengthens a search by up to one more `Retry-After`. At
+  the defaults, a 300-second hold and a 5-second `Retry-After`, there is
+  room to spare; with the 60 seconds Step 27's simulation tried, four
+  passes take 180 of the 300. The setting could be checked against the
+  hold, or the hold worked out from it.
+- Whether §4.7 changes. It says two passes, and the hold is a rule for
+  the network rather than a local choice, since what it has to outlast
+  is the peers' passes, not the node's own. A node making more passes
+  than its peers expect is the case the hold does not cover. Either §4.7
+  allows two or more, and says the hold outlasts the longest search a
+  peer makes, or the setting stays an experiment the specification does
+  not mention, for networks whose nodes all set it alike.
+- Whether Step 27's simulation is run again at three and four passes
+  before the default moves. It showed two passes going quiet within
+  about one `Retry-After`; deepening passes, which also lengthened each
+  search, never stopped.
 
-**Testable in isolation:** stats tests over a temp database for the
-marking and the derived list; validator and web server tests with a fake
-list asserting a blocked push is refused and a blocked id is absent from
-search results; an eviction test asserting blocked content goes first.
+**Testable in isolation:** Step 27's module tests with a fake clock, run
+at two, three, and four passes: each peer is asked once in each pass,
+each pass after the first waits for the `Retry-After` its peers gave,
+and the search stops after the last. Config tests assert a value below 2
+is refused.
 
 ---
 
@@ -1965,17 +1888,15 @@ Every issue in the **Phase 2** milestone, by number, and where it went.
 
 | Issue | Asks for | Step |
 | --- | --- | --- |
-| #20 | mDNS/DNS-SD local discovery | 16 |
 | #51 | A response that names its request | 22 |
 | #52 | Many addresses per node | 23 |
-| #54 | Count incoming connections in the peer mix | 24 |
+| #54 | Count incoming connections in the peer mix | None: Step 24, dropped by PR #134; closed |
 | #55 | A second mix inside this node's bucket | 25 |
 | #56 | Bounded reconnection attempts | 26 |
 | #59 | Directed search for data | 27 |
 | #61 | Mixed-case hashes on every input path | 21 |
 | #68 | Scored eviction | 28 |
 | #69 | Reclaiming resolved bundles | 29 |
-| #71 | Blocked data list | 30 |
 | #73 | Bundle updates as extensions | 31 |
 | #75 | Documenting the `/config` password reset | 32 |
 | #80 | Push received or created data to the best peer | None: done by #119 (PR #120); closed |
@@ -1983,7 +1904,6 @@ Every issue in the **Phase 2** milestone, by number, and where it went.
 | #82 | Evaluate a backup's files once | 49 |
 | #83 | No new backup for metadata-only changes | 49 |
 | #84 | Keep the last backup bundle expanded locally | 48 |
-| #85 | Filesystem notifications for backup | 50 |
 | #96 | Batch outgoing requests | 45 |
 | #98 | Keep a file's creation time across updates | 47 |
 | #99 | A time limit on a stalled restore | 51 |
@@ -1994,13 +1914,23 @@ Every issue in the **Phase 2** milestone, by number, and where it went.
 | #113 | `config_requests` functions that should be methods | 42; closed into #81 |
 | #114 | Record the expanded bundle when expanding or building | 48 |
 | #121 | Hand off to one peer on eviction | 46 |
+| #126 | Update this plan | None: its version 0.2 |
+| #131 | A `--debug` switch for `scripts/local_network.py` | 54 |
+| #138 | A configurable number of search passes | 55 |
 | #140 | Keep the public keys of connected peers | 53 |
-| #126 | Update this plan | None: this revision |
 
 Issue #80 asks for what #119 asked for later, and PR #120 built it in
 Phase 1: new content is pushed to the single best connected peer, never
 back to the node it came from, and only content the node did not already
 hold. Nothing is left for a step.
+
+Issue #54 was Step 24, and was closed without being built: a node cannot
+reliably push to a connection a peer opened, so only the connections this
+node dials fill the mix. PR #134 dropped the step.
+
+Three issues left the milestone unbuilt, and their steps went with them,
+issue #71 (Step 30) to **Phase 3**, and #20 (Step 16) and #85 (Step 50)
+to **Phase 4**.
 
 ---
 
@@ -2015,12 +1945,11 @@ into tiers; steps within a tier are independent of each other.
 | B | 21 (#61), 22 (#51), 32 (#75) | Small, independent, and each one something a later step leans on. Step 22 unblocks 27 and 45; Step 21 should land before anything else starts comparing hashes. |
 | C | 42 (#81), 43 (#100), 44 (#102) | Sweeps that touch many files shallowly, so best done before the large steps are open against the same files, and so that later steps are written the new way. 43 needs its exemptions decided first. |
 | D | 23 (#52) | The foundation for all the peering work, and the one step known to need its own change sets. |
-| E | 26 (#56), 24 (#54), 25 (#55) | All three change how connections are chosen or given up on. 26 is the node-level half of a rule 23 starts, so it goes first — ideally straight after 23. |
-| F | 27 (#59), then 45 (#96) | 27 needs 22; better with 23 and 25, which give it more and better-placed peers to walk. 45 needs 22 too, and reshapes the same sending code, so it follows. |
-| G | 46 (#121), 28 (#68), then 29 (#69), 30 (#71), 53 (#140) | 46 is small, and its specification change is made. 28 moves candidate selection into stats, which is where 29 and 30 also need to reach. 30 answers a hand-off question 46 raises. 53 fixes what 28's live run found, and its specification change is made. |
-| H | 47 (#98), 48 (#84, #114), then 49 (#82, #83), then 31 (#73) and 50 (#85) | The backup chain. 48's record is what 49 compares against, 31 extends, and 50 updates from notifications. 47 fixes a comparison 49 relies on. Touches only bundles and backup, so it can run in parallel with D through G, by anyone not in the connections code. |
-| I | 51 (#99), 52 (#101) | Independent of everything above. 52's specification change is made; it needs a new dependency on macOS, and is best after 49, which it relies on to hold back attribute-only changes. |
-| — | 16 (#20) | Optional throughout. Built after 23, which gives it somewhere to put what it discovers. Its specification change is made. |
+| E | 26 (#56), 25 (#55) | Both change how connections are chosen or given up on. 26 is the node-level half of a rule 23 starts, so it goes first — ideally straight after 23. |
+| F | 27 (#59), then 45 (#96) and 55 (#138) | 27 needs 22; better with 23 and 25, which give it more and better-placed peers to walk. 45 needs 22 too, and reshapes the same sending code, so it follows. 55 makes 27's two passes a setting, and waits on whether §4.7 changes. |
+| G | 46 (#121), 28 (#68), then 29 (#69), 53 (#140) | 46 is small, and its specification change is made. 28 moves candidate selection into stats, which is where 29 also needs to reach. 53 fixes what 28's live run found, and its specification change is made. |
+| H | 47 (#98), 48 (#84, #114), then 49 (#82, #83), then 31 (#73) | The backup chain. 48's record is what 49 compares against and 31 extends. 47 fixes a comparison 49 relies on. Touches only bundles and backup, so it can run in parallel with D through G, by anyone not in the connections code. |
+| I | 51 (#99), 52 (#101), 54 (#131) | Independent of everything above. 52's specification change is made; it needs a new dependency on macOS, and is best after 49, which it relies on to hold back attribute-only changes. 54 touches only the local network script. |
 
 ## 6. Deferred Past Phase 2
 
@@ -2029,8 +1958,11 @@ changes them:
 
 - HTTPS/TLS, and HTTP Range requests for `<video>` streaming from bundle
   applications.
-- Karma/Kismet incentive integration. Step 30 is a prerequisite for one
-  part of it — blocking superseded blocks — but implements no Karma.
+- Karma/Kismet incentive integration, which is [Phase 3](Phase%203.md),
+  along with the blocked data list (Step 30) it needs to let go of
+  superseded blocks.
+- Local discovery (Step 16), filesystem notifications for backup (Step
+  50), and IPv6, which are [Phase 4](Phase%204.md).
 - Signed bundles (BundleSpecification §5) and per-entry CAS encryption
   (§7).
 - The local "don't forward my own backup content" policy
@@ -2043,9 +1975,10 @@ The per-step **Open questions** above are the substance of this list; the
 ones that cut across more than one step, and so want deciding before
 either step is built:
 
-- **What an inbound connection is worth** (Step 24) — it changes the peer
-  mix. Step 26 settled its own part: a node list an inbound peer sends
-  naming itself clears a give-up.
+- **What an inbound connection is worth** (Step 24) — settled: nothing,
+  in the peer mix. Step 24 was dropped (§4), so only the connections this
+  node dials fill it. Step 26 settled its own part: a node list an
+  inbound peer sends naming itself clears a give-up.
 - **One rule for giving up, not two** (Steps 23 and 26) — settled. Step
   23's failures drop only addresses that have never worked, and nothing
   ages an address out. Step 26 counts failed walks per node, which relays
@@ -2064,26 +1997,27 @@ either step is built:
   miss. Pushes do not count. Settled for applications by Step 29: any
   request routed to one is a use of its bundle, which keeps the files
   resolved from it, and is not a request for the bundle's content.
-- **Seven steps change a specification** (Steps 16, 27, 28, 41, 46, 49,
-  and 52) — as with the push of new content (#119), the specification
-  change is agreed and written first. Six are made: HighLevelDesign
-  §4.9.1 for the local discovery service and what is done with it (Step
-  16), HighLevelDesign §4.7 for a data request's two passes, how the
-  second is paced, and the pause after one that found nothing (Step 27),
-  HighLevelDesign §4.5 for the four factors of retention priority (Step
-  28), HighLevelDesign §4.5 and §6 for a single hand-off copy (Step 46),
-  BundleSpecification §2.4 for extended attributes (Step 52), and
-  BackupSpecification §3.3 and §5 for holding back metadata-only changes
-  (Step 49). HttpApi §2.3, if `/config` moves to an origin of its own, is
-  decided with #108 (Step 41).
-- **What a blocking node answers a hand-off** (Steps 30 and 46) — with a
-  single hand-off copy, a node that takes content it blocks and deletes
-  it is enough to take that content off the network.
-- **One local record of the last bundle** (Steps 48, 49, 31, and 50) —
-  what 49 compares against, 31 extends, and 50 updates from
-  notifications. Where it lives, whether it is encrypted, and what its
-  extension count counts are decided once. Step 31 settled the count:
-  `layers` and `extensions`, which it already records.
+- **Seven steps change a specification** (Steps 27, 28, 41, 46, 49, 52,
+  and 55) — as with the push of new content (#119), the specification
+  change is agreed and written first. Five are made: HighLevelDesign §4.7
+  for a data request's two passes, how the second is paced, and the pause
+  after one that found nothing (Step 27), HighLevelDesign §4.5 for the
+  four factors of retention priority (Step 28), HighLevelDesign §4.5 and
+  §6 for a single hand-off copy (Step 46), BundleSpecification §2.4 for
+  extended attributes (Step 52), and BackupSpecification §3.3 and §5 for
+  holding back metadata-only changes (Step 49). HttpApi §2.3, if
+  `/config` moves to an origin of its own, is decided with #108 (Step
+  41), and HighLevelDesign §4.7, for more than two passes, with #138
+  (Step 55). Step 16's change to HighLevelDesign §4.9.1 is made too, and
+  went with it to Phase 4.
+- **What a blocking node answers a hand-off** (Steps 30 and 46) — now
+  Phase 3's to decide, with Step 30. Step 46 does not wait for it: until
+  Step 30 is built, no node blocks anything.
+- **One local record of the last bundle** (Steps 48, 49, and 31, and
+  Phase 4's Step 50) — what 49 compares against, 31 extends, and 50
+  updates from notifications. Where it lives, whether it is encrypted,
+  and what its extension count counts are decided once. Step 31 settled
+  the count: `layers` and `extensions`, which it already records.
 - **What counts as a metadata change** (Steps 47, 49, and 52) —
   settled by BackupSpecification §3.3: everything under `metadata`,
   extended attributes included. Creation time is kept rather than

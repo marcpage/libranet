@@ -1111,18 +1111,18 @@ What the module system does not do yet:
   Each handler reads the fields it needs, and a malformed payload raises
   there and is logged.
 
-Phase 2 steps that will change it:
+Planned steps that will change it, in Phases 2 to 4:
 
-- **Step 16** (local discovery) runs inside the connection manager, with
-  the `zeroconf` library's own threads, and publishes what it finds in
-  `nodes.received`. It adds no process.
-- **Step 30** (#71, blocked data) keeps the blocked list in stats, and
-  derives a file from it for the web server and validator, since neither
-  may open SQLite.
+- **Step 16** (local discovery, Phase 4) runs inside the connection
+  manager, with the `zeroconf` library's own threads, and publishes what
+  it finds in `nodes.received`. It adds no process.
+- **Step 30** (#71, blocked data, Phase 3) keeps the blocked list in
+  stats, and derives a file from it for the web server and validator,
+  since neither may open SQLite.
 - **Step 45** (#96, batching) drains messages waiting for the connection
   manager before sending, either in `ModuleBase.run`, which would change
   every module, or in the connection manager's push workers alone.
 - **Step 46** (#121) hands content off to one peer rather than two, so
   `eviction.notice` asks for one copy.
-- **Step 50** (#85) brings filesystem-notification threads into the
-  backup module's process.
+- **Step 50** (#85, Phase 4) brings filesystem-notification threads into
+  the backup module's process.

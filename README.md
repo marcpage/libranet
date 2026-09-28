@@ -476,7 +476,9 @@ written to the source tree.
 | ------------------------------------- | -------------------------- |
 | Protocol and format specifications | Drafted |
 | Phase 1 — reference node, steps 1–20 | Implemented |
-| Phase 2 — steps 16, 21–32, and 41–53 | Planned |
+| Phase 2 — steps 21–29, 31–32, 41–49, and 51–55 | In progress |
+| Phase 3 — Karma, steps 30 and 56 | Planned |
+| Phase 4 — enhancements, steps 16, 50, and 57 | Planned |
 | Public network | Not yet running |
 
 Working today: content-addressed storage with prefix search, node identity and
@@ -511,7 +513,9 @@ currently find each other only through peers you configure yourself.
 | [Backup Specification](docs/specs/BackupSpecification.md) | Backing up and restoring local directories |
 | [Karma and Kismet](docs/specs/Karma.md) | The reputation and contribution system |
 | [Phase 1 Plan](docs/implementation/Phase%201.md) | Implementation steps 1–20, all built |
-| [Phase 2 Plan](docs/implementation/Phase%202.md) | Implementation steps 16, 21–32, and 41–53, planned |
+| [Phase 2 Plan](docs/implementation/Phase%202.md) | Implementation steps 21–29, 31–32, 41–49, and 51–55, in progress |
+| [Phase 3 Plan](docs/implementation/Phase%203.md) | Karma: steps 30 and 56 so far, planned |
+| [Phase 4 Plan](docs/implementation/Phase%204.md) | Enhancements: steps 16, 50, and 57, planned |
 
 The specifications are normative; the implementation plans record the decisions
 the Python node made within them.
