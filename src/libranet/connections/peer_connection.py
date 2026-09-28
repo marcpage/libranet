@@ -104,6 +104,39 @@ class PeerConnection:
         self._sender.start()
         self._receiver.start()
 
+    @classmethod
+    def open(
+        cls,
+        host: str,
+        port: int,
+        signer: MessageSigner,
+        logger: Logger,
+        *,
+        connect_timeout: float,
+        request_timeout: float,
+        max_body_bytes: int,
+    ) -> PeerConnection:
+        """Connect to the peer listening at ``host`` and ``port``.
+
+        The remaining arguments are as for :class:`PeerConnection`.
+
+        Raises:
+            OSError: no connection was made within ``connect_timeout`` seconds.
+        """
+        sock = create_connection((host, port), timeout=connect_timeout)
+        # Pipelined requests are small and back to back; don't hold one until
+        # the previous is acknowledged.
+        sock.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
+        authority = f"[{host}]" if ":" in host else host
+        return cls(
+            sock,
+            f"{authority}:{port}",
+            signer,
+            logger,
+            request_timeout=request_timeout,
+            max_body_bytes=max_body_bytes,
+        )
+
     def __enter__(self) -> PeerConnection:
         return self
 
@@ -348,35 +381,3 @@ def _peer_ip(sock: socket) -> str | None:
 
     except OSError:
         return None
-
-
-def open_connection(
-    host: str,
-    port: int,
-    signer: MessageSigner,
-    logger: Logger,
-    *,
-    connect_timeout: float,
-    request_timeout: float,
-    max_body_bytes: int,
-) -> PeerConnection:
-    """Connect to the peer listening at ``host`` and ``port``.
-
-    The remaining arguments are as for :class:`PeerConnection`.
-
-    Raises:
-        OSError: no connection was made within ``connect_timeout`` seconds.
-    """
-    sock = create_connection((host, port), timeout=connect_timeout)
-    # Pipelined requests are small and back to back; don't hold one until
-    # the previous is acknowledged.
-    sock.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
-    authority = f"[{host}]" if ":" in host else host
-    return PeerConnection(
-        sock,
-        f"{authority}:{port}",
-        signer,
-        logger,
-        request_timeout=request_timeout,
-        max_body_bytes=max_body_bytes,
-    )

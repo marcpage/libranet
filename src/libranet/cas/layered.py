@@ -42,7 +42,7 @@ from libranet.applications.packaged import (
 from libranet.cas.archive import ARCHIVE_SUFFIX, ArchiveSource
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ArchiveError, ContentNotFoundError
-from libranet.cas.store import CasStore, source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
 
 #: Where the archives shipped with the package are kept.
@@ -113,7 +113,7 @@ class LayeredSource:
         if shipped.archive is not None:
             archives.append(ArchiveSource(BytesIO(shipped.archive), _BUILT_APPLICATIONS))
 
-        return cls(source_of_truth_store(storage), archives, shipped.bundles)
+        return cls(CasStore.source_of_truth(storage), archives, shipped.bundles)
 
     @property
     def archives(self) -> tuple[ArchiveSource, ...]:

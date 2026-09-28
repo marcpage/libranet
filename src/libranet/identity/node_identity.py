@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from libranet.cas.content_id import ContentId
-from libranet.cas.store import CasStore, source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig
 from libranet.identity.keys import encode_public_key, load_or_create_private_key
 
@@ -34,6 +34,23 @@ class NodeIdentity:
         public_key = encode_public_key(private_key.public_key())
         return cls(private_key, public_key, ContentId.for_data(public_key, algorithm))
 
+    @classmethod
+    def load(cls, config: LibranetConfig) -> NodeIdentity:
+        """This node's identity, creating its key on first run.
+
+        The public key is also published into the source of truth.
+
+        Raises:
+            KeyFileError: the stored private key cannot be loaded.
+            UnknownAlgorithmError: the configured hash algorithm is unsupported.
+            OSError: the key or public key file cannot be read or written.
+        """
+        identity = config.identity
+        key_path = identity.resolved_key_dir(config.storage) / identity.private_key_path_name
+        node = cls.from_private_key(load_or_create_private_key(key_path), identity.hash_algorithm)
+        node.publish_public_key(CasStore.source_of_truth(config.storage))
+        return node
+
     @property
     def key_id(self) -> str:
         """The RFC 9421 ``keyid``: the node id in ``{algorithm}/{hash}`` form."""
@@ -43,22 +60,3 @@ class NodeIdentity:
         """Make the public key retrievable from ``store`` under the node id."""
         if not store.exists(self.node_id):
             store.write(self.node_id, self.public_key)
-
-
-def load_node_identity(config: LibranetConfig) -> NodeIdentity:
-    """This node's identity, creating its key on first run.
-
-    The public key is also published into the source of truth.
-
-    Raises:
-        KeyFileError: the stored private key cannot be loaded.
-        UnknownAlgorithmError: the configured hash algorithm is unsupported.
-        OSError: the key or public key file cannot be read or written.
-    """
-    identity = config.identity
-    key_path = identity.resolved_key_dir(config.storage) / identity.private_key_path_name
-    node = NodeIdentity.from_private_key(
-        load_or_create_private_key(key_path), identity.hash_algorithm
-    )
-    node.publish_public_key(source_of_truth_store(config.storage))
-    return node

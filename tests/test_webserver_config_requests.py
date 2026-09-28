@@ -15,9 +15,6 @@ from libranet.webserver.config_requests import (
     Password,
     RestoreRequest,
     decode_request,
-    parse_backup_job,
-    parse_build,
-    parse_restore,
 )
 
 DIRECTORY = "/home/me/documents"
@@ -27,7 +24,7 @@ ARCHIVE = "/home/me/site.zip"
 
 
 def test_a_job_names_its_directory_and_how_often_to_look() -> None:
-    job = parse_backup_job({"directory": DIRECTORY, "interval_seconds": 900})
+    job = BackupJobRequest.from_value({"directory": DIRECTORY, "interval_seconds": 900})
 
     assert job.directory == DIRECTORY
     assert job.interval_seconds == 900.0
@@ -39,16 +36,16 @@ def test_a_job_names_its_directory_and_how_often_to_look() -> None:
 
 
 def test_an_interval_left_out_is_left_to_the_backup_module() -> None:
-    job = parse_backup_job({"directory": DIRECTORY})
+    job = BackupJobRequest.from_value({"directory": DIRECTORY})
 
     assert job.interval_seconds is None
     assert job.payload()["interval_seconds"] is None
 
 
 def test_a_job_is_named_by_its_directory_alone() -> None:
-    job = parse_backup_job({"directory": DIRECTORY, "interval_seconds": 60})
-    same_directory = parse_backup_job({"directory": DIRECTORY, "interval_seconds": 3600})
-    other = parse_backup_job({"directory": "/home/me/pictures"})
+    job = BackupJobRequest.from_value({"directory": DIRECTORY, "interval_seconds": 60})
+    same_directory = BackupJobRequest.from_value({"directory": DIRECTORY, "interval_seconds": 3600})
+    other = BackupJobRequest.from_value({"directory": "/home/me/pictures"})
 
     assert job.job_id == same_directory.job_id
     assert job.job_id != other.job_id
@@ -58,10 +55,10 @@ def test_a_job_is_named_by_its_directory_alone() -> None:
 
 @mark.parametrize("spelled", ["/home/me//documents", "/home/me/./documents", "/home/me/documents/"])
 def test_one_directory_has_one_spelling_and_so_one_job(spelled: str) -> None:
-    job = parse_backup_job({"directory": spelled})
+    job = BackupJobRequest.from_value({"directory": spelled})
 
     assert job.directory == DIRECTORY
-    assert job.job_id == parse_backup_job({"directory": DIRECTORY}).job_id
+    assert job.job_id == BackupJobRequest.from_value({"directory": DIRECTORY}).job_id
 
 
 @mark.parametrize(
@@ -83,11 +80,11 @@ def test_one_directory_has_one_spelling_and_so_one_job(spelled: str) -> None:
 )
 def test_a_job_this_node_cannot_act_on_is_refused(value: object) -> None:
     with raises(InvalidConfigRequestError):
-        parse_backup_job(value)
+        BackupJobRequest.from_value(value)
 
 
 def test_a_restore_names_the_bundle_the_target_and_the_conflict_behavior() -> None:
-    restore = parse_restore(
+    restore = RestoreRequest.from_value(
         {"bundle": str(BUNDLE), "directory": DIRECTORY, "on_conflict": "overwrite"}
     )
 
@@ -102,21 +99,21 @@ def test_a_restore_names_the_bundle_the_target_and_the_conflict_behavior() -> No
 
 
 def test_a_restore_refuses_a_non_empty_target_unless_asked_otherwise() -> None:
-    restore = parse_restore({"bundle": str(BUNDLE), "directory": DIRECTORY})
+    restore = RestoreRequest.from_value({"bundle": str(BUNDLE), "directory": DIRECTORY})
 
     assert restore.on_conflict is ConflictBehavior.REFUSE
 
 
 def test_a_restore_is_named_by_its_bundle_and_its_target() -> None:
-    restore = parse_restore({"bundle": str(BUNDLE), "directory": DIRECTORY})
-    elsewhere = parse_restore({"bundle": str(BUNDLE), "directory": "/home/me/pictures"})
-    other_bundle = parse_restore(
+    restore = RestoreRequest.from_value({"bundle": str(BUNDLE), "directory": DIRECTORY})
+    elsewhere = RestoreRequest.from_value({"bundle": str(BUNDLE), "directory": "/home/me/pictures"})
+    other_bundle = RestoreRequest.from_value(
         {"bundle": str(ContentId.for_data(b"another bundle", "sha256")), "directory": DIRECTORY}
     )
 
     assert (
         restore.restore_id
-        == parse_restore({"bundle": str(BUNDLE), "directory": DIRECTORY}).restore_id
+        == RestoreRequest.from_value({"bundle": str(BUNDLE), "directory": DIRECTORY}).restore_id
     )
     assert len({restore.restore_id, elsewhere.restore_id, other_bundle.restore_id}) == 3
 
@@ -136,7 +133,7 @@ def test_a_restore_is_named_by_its_bundle_and_its_target() -> None:
 )
 def test_a_restore_this_node_cannot_act_on_is_refused(value: object) -> None:
     with raises(InvalidConfigRequestError):
-        parse_restore(value)
+        RestoreRequest.from_value(value)
 
 
 def test_a_body_that_is_not_json_is_refused() -> None:
@@ -160,7 +157,7 @@ def test_a_request_cannot_be_built_around_a_directory_it_would_misname(directory
 
 
 def test_a_build_names_its_directory_and_passes_its_password_on() -> None:
-    build = parse_build({"directory": SITE, "password": "correct horse"})
+    build = BuildRequest.from_value({"directory": SITE, "password": "correct horse"})
 
     assert build.directory == SITE
     assert build.password == Password("correct horse")
@@ -172,7 +169,7 @@ def test_a_build_names_its_directory_and_passes_its_password_on() -> None:
 
 
 def test_a_build_without_a_password_leaves_its_bundle_plain() -> None:
-    build = parse_build({"directory": SITE})
+    build = BuildRequest.from_value({"directory": SITE})
 
     assert build.password is None
     assert build.payload()["password"] is None
@@ -180,11 +177,11 @@ def test_a_build_without_a_password_leaves_its_bundle_plain() -> None:
 
 @mark.parametrize("spelled", ["/home/me//site", "/home/me/./site", "/home/me/site/"])
 def test_a_build_is_named_by_its_directory_alone(spelled: str) -> None:
-    build = parse_build({"directory": spelled, "password": "one"})
-    other = parse_build({"directory": "/home/me/blog"})
+    build = BuildRequest.from_value({"directory": spelled, "password": "one"})
+    other = BuildRequest.from_value({"directory": "/home/me/blog"})
 
     assert build.directory == SITE
-    assert build.build_id == parse_build({"directory": SITE}).build_id
+    assert build.build_id == BuildRequest.from_value({"directory": SITE}).build_id
     assert build.build_id != other.build_id
     assert len(build.build_id) == IDENTIFIER_LENGTH
 
@@ -205,7 +202,7 @@ def test_a_build_is_named_by_its_directory_alone(spelled: str) -> None:
 )
 def test_a_build_this_node_cannot_act_on_is_refused(value: object) -> None:
     with raises(InvalidConfigRequestError):
-        parse_build(value)
+        BuildRequest.from_value(value)
 
 
 def test_an_export_names_the_bundle_the_archive_and_the_conflict_behavior() -> None:

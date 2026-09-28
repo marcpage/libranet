@@ -17,19 +17,19 @@ from typing import Iterator, Mapping
 from pytest import LogCaptureFixture, fixture, mark, raises, skip
 
 from libranet.cas.content_id import ContentId
-from libranet.cas.store import CasStore, source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
 from libranet.connections.errors import ConnectionClosedError, MalformedResponseError
-from libranet.connections.peer_connection import PeerConnection, open_connection
+from libranet.connections.peer_connection import PeerConnection
 from libranet.connections.response_parser import RequestLine
-from libranet.identity.authentication import request_authenticator
+from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import MessageSigner, MessageVerifier
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.supervision.stubs import StubModule
-from libranet.webserver.config_credential import load_config_credential
+from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.server import REQUEST_PATH_HEADER, LibranetHTTPServer, build_router
 
@@ -368,7 +368,7 @@ def test_invalid_request_is_refused_before_it_is_queued(
 
 
 @mark.parametrize(("family", "host"), [(AF_INET, "127.0.0.1"), (AF_INET6, "::1")])
-def test_open_connection_names_the_peer_in_host(family: int, host: str) -> None:
+def test_open_names_the_peer_in_host(family: int, host: str) -> None:
     try:
         listener = create_server((host, 0), family=family)
 
@@ -380,7 +380,7 @@ def test_open_connection_names_the_peer_in_host(family: int, host: str) -> None:
 
     with (
         listener,
-        open_connection(
+        PeerConnection.open(
             host,
             port,
             CLIENT_SIGNER,
@@ -413,12 +413,12 @@ def test_a_socket_not_connected_has_no_peer_ip() -> None:
         assert connection.peer_ip is None
 
 
-def test_open_connection_to_nothing_raises() -> None:
+def test_open_to_nothing_raises() -> None:
     with create_server(("127.0.0.1", 0)) as listener:
         port = listener.getsockname()[1]
 
     with raises(OSError):
-        open_connection(
+        PeerConnection.open(
             "127.0.0.1",
             port,
             CLIENT_SIGNER,
@@ -433,7 +433,7 @@ def test_open_connection_to_nothing_raises() -> None:
 def storage(tmp_path: Path) -> StorageConfig:
     """A server CAS holding some content, and the client's key from an earlier handshake."""
     storage = StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache")
-    store = source_of_truth_store(storage)
+    store = CasStore.source_of_truth(storage)
     store.write(CONTENT_ID, CONTENT)
     CLIENT_IDENTITY.publish_public_key(store)
     return storage
@@ -448,9 +448,9 @@ def server(storage: StorageConfig) -> Iterator[LibranetHTTPServer]:
             storage,
             7,
             publisher.publish,
-            request_authenticator(LibranetConfig(storage=storage)),
+            RequestAuthenticator.of(LibranetConfig(storage=storage)),
             allow_unsigned_api_reads=True,
-            config_credential=load_config_credential(LibranetConfig(storage=storage)),
+            config_credential=ConfigCredential.of(LibranetConfig(storage=storage)),
             node=NodeDescription(SERVER_IDENTITY.node_id, NetworkConfig()),
         ),
         getLogger("test.webserver"),
@@ -468,7 +468,7 @@ def server(storage: StorageConfig) -> Iterator[LibranetHTTPServer]:
 def live(server: LibranetHTTPServer) -> Iterator[PeerConnection]:
     host, port = server.server_address[:2]
 
-    with open_connection(
+    with PeerConnection.open(
         str(host),
         int(port),
         CLIENT_SIGNER,

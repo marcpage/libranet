@@ -25,7 +25,7 @@ from libranet.bundle.shapes import DirectoryBundle, FileBundle
 from libranet.bundle.storing import store_bundle
 from libranet.cas.archive import ArchiveSink, ArchiveSource
 from libranet.cas.content_id import ContentId
-from libranet.cas.store import CasStore, source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.config.models import (
     BackupConfig,
     IdentityConfig,
@@ -35,7 +35,7 @@ from libranet.config.models import (
 )
 from libranet.eviction.priority import held_objects
 from libranet.identity.keys import load_or_create_backup_secret
-from libranet.identity.node_identity import load_node_identity
+from libranet.identity.node_identity import NodeIdentity
 from libranet.messaging.envelope import Message, make_message
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
@@ -91,7 +91,7 @@ def now() -> list[float]:
 
 @fixture
 def store(config: LibranetConfig) -> CasStore:
-    return source_of_truth_store(config.storage)
+    return CasStore.source_of_truth(config.storage)
 
 
 @fixture
@@ -265,7 +265,7 @@ def test_every_object_a_backup_stores_is_announced_from_this_node(
     config: LibranetConfig, queues: ModuleQueues, now: list[float], tree: Path, store: CasStore
 ) -> None:
     module = start(config, queues, now)
-    node_id = load_node_identity(config).node_id
+    node_id = NodeIdentity.load(config).node_id
     configure(module, tree)
     announced = of(published(queues), EventType.DATA_STORED)
     held = set(store.iter_prefix("sha256", "")) - {node_id}
@@ -1048,7 +1048,7 @@ def test_every_object_a_build_stores_is_announced_from_this_node(
     config: LibranetConfig, queues: ModuleQueues, now: list[float], tree: Path, store: CasStore
 ) -> None:
     module = start(config, queues, now)
-    node_id = load_node_identity(config).node_id
+    node_id = NodeIdentity.load(config).node_id
     build(module, tree)
     announced = of(published(queues), EventType.DATA_STORED)
 

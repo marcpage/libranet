@@ -6,7 +6,7 @@ from pathlib import Path
 from pytest import fixture
 
 from libranet.cas.content_id import ContentId
-from libranet.cas.store import source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
 from libranet.eviction.pressure import StoragePressure, free_bytes_under
 
@@ -58,7 +58,7 @@ def test_free_space_is_not_measured_without_a_minimum(storage: StorageConfig) ->
 
 
 def test_content_held_is_counted_when_its_size_is_limited(storage: StorageConfig) -> None:
-    store = source_of_truth_store(storage)
+    store = CasStore.source_of_truth(storage)
 
     for size in (10, 20, 30):
         data = bytes(size)
@@ -75,7 +75,7 @@ def test_content_held_is_counted_when_its_size_is_limited(storage: StorageConfig
 def test_content_held_is_not_counted_when_its_size_is_not_limited(
     storage: StorageConfig,
 ) -> None:
-    source_of_truth_store(storage).write(ContentId.for_data(b"x", "sha256"), b"x")
+    CasStore.source_of_truth(storage).write(ContentId.for_data(b"x", "sha256"), b"x")
 
     pressure = StoragePressure.of(limited(storage, max_storage_bytes=None), FixedFreeBytes(10**12))
 

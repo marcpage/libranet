@@ -9,7 +9,6 @@ from libranet.unbundler.lookup import (
     FoundDirectory,
     FoundFile,
     ResolvedDirectory,
-    look_up,
 )
 from libranet.unbundler.module import (
     DEFAULT_MAX_CACHED_BUNDLES,
@@ -28,6 +27,5 @@ __all__ = [
     "ResolvedDirectory",
     "ResolvedFiles",
     "UnbundlerModule",
-    "look_up",
     "unbundler_module_factory",
 ]

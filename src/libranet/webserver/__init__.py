@@ -38,7 +38,6 @@ from libranet.webserver.config_credential import (
     ConfigCredential,
     CredentialFileError,
     StoredCredential,
-    load_config_credential,
 )
 from libranet.webserver.config_guard import local_config_guard, names_config
 from libranet.webserver.config_handlers import (
@@ -65,9 +64,6 @@ from libranet.webserver.config_requests import (
     InvalidConfigRequestError,
     Password,
     RestoreRequest,
-    parse_backup_job,
-    parse_build,
-    parse_restore,
 )
 from libranet.webserver.data_handler import DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
@@ -156,14 +152,10 @@ __all__ = [
     "content_type_for",
     "decode_list",
     "invalid_signature_response",
-    "load_config_credential",
     "local_config_guard",
     "names_config",
     "normalize_prefix",
-    "parse_backup_job",
-    "parse_build",
     "parse_node_list",
-    "parse_restore",
     "parse_seek_list",
     "resolve_endpoint",
     "signature_required_response",

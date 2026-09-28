@@ -9,7 +9,7 @@ from zlib import compress
 from pytest import LogCaptureFixture, fixture
 
 from libranet.cas.content_id import ContentId
-from libranet.cas.store import CasStore, node_store, source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig, StorageConfig
 from libranet.messaging.envelope import Message, make_message
 from libranet.messaging.events import EventType
@@ -30,7 +30,7 @@ def storage(tmp_path: Path) -> StorageConfig:
 
 @fixture
 def truth(storage: StorageConfig) -> CasStore:
-    return source_of_truth_store(storage)
+    return CasStore.source_of_truth(storage)
 
 
 @fixture
@@ -50,7 +50,7 @@ def upload(
     node_id: ContentId = NODE_ID,
 ) -> Message:
     """Store ``data`` as the web server would and return its announcement."""
-    node_store(storage, node_id).write(content_id, data)
+    CasStore.for_node(storage, node_id).write(content_id, data)
     return completed(content_id, node_id)
 
 
@@ -79,7 +79,7 @@ def test_valid_upload_is_promoted_and_announced(
     validator.handle(upload(storage, CONTENT))
 
     assert truth.read(CONTENT_ID) == CONTENT
-    assert not node_store(storage, NODE_ID).exists(CONTENT_ID)
+    assert not CasStore.for_node(storage, NODE_ID).exists(CONTENT_ID)
 
     (message,) = published(queues)
     assert message["event"] == EventType.DATA_STORED
@@ -98,7 +98,7 @@ def test_compressed_upload_is_stored_as_received(
     validator.handle(upload(storage, compressed))
 
     assert truth.read(CONTENT_ID) == compressed
-    assert not node_store(storage, NODE_ID).exists(CONTENT_ID)
+    assert not CasStore.for_node(storage, NODE_ID).exists(CONTENT_ID)
     (message,) = published(queues)
     assert message["event"] == EventType.DATA_STORED
     assert message["size"] == len(compressed)
@@ -115,7 +115,7 @@ def test_mismatched_upload_is_discarded_and_reported(
         validator.handle(upload(storage, data))
 
         assert not truth.exists(CONTENT_ID)
-        assert not node_store(storage, NODE_ID).exists(CONTENT_ID)
+        assert not CasStore.for_node(storage, NODE_ID).exists(CONTENT_ID)
         (message,) = published(queues)
         assert message["event"] == EventType.DATA_REJECTED
         assert message["source"] == ModuleName.VALIDATOR
@@ -136,7 +136,7 @@ def test_upload_of_content_already_held_is_discarded_quietly(
     validator.handle(upload(storage, CONTENT))
 
     assert truth.read(CONTENT_ID) == compressed
-    assert not node_store(storage, NODE_ID).exists(CONTENT_ID)
+    assert not CasStore.for_node(storage, NODE_ID).exists(CONTENT_ID)
     assert published(queues) == []
 
 

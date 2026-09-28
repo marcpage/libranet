@@ -132,11 +132,11 @@ from libranet.bundle.building import IgnoredPaths
 from libranet.bundle.errors import BundleError
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
-from libranet.cas.store import source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig
 from libranet.identity.errors import KeyFileError
 from libranet.identity.keys import load_or_create_backup_secret
-from libranet.identity.node_identity import load_node_identity
+from libranet.identity.node_identity import NodeIdentity
 from libranet.messaging.envelope import Message, event_of
 from libranet.messaging.events import EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
@@ -174,6 +174,10 @@ class _Progress:
     error: str | None = None
     checked_at: float | None = None
 
+    def fail(self, error: Exception) -> None:
+        """Report that the job's last look failed, and why."""
+        self.status, self.error = JobStatus.FAILED, str(error) or type(error).__name__
+
 
 class BackupModule(ModuleBase):
     """Keeps configured directories backed up into the source of truth, and restores them."""
@@ -204,7 +208,7 @@ class BackupModule(ModuleBase):
         super().__init__(name, queues, logger=logger, clock=clock, poll_interval=poll_interval)
         self._config = config
         self._detector = detector or PollingDetector(config.directories())
-        self._store = AnnouncingStore(source_of_truth_store(config.storage), self._announce)
+        self._store = AnnouncingStore(CasStore.source_of_truth(config.storage), self._announce)
         self._content = LayeredSource.open(config.storage)
         self._node_id: ContentId | None = None
         self._secret: bytes | None = None
@@ -262,7 +266,7 @@ class BackupModule(ModuleBase):
             JobFileError: the saved jobs cannot be read. The module stops
                 rather than start with no jobs and save over them.
         """
-        self._node_id = load_node_identity(self._config).node_id
+        self._node_id = NodeIdentity.load(self._config).node_id
         self._jobs = load_jobs(self._config.storage.backup_jobs_path)
         now = self._clock()
         self._progress = {job_id: _Progress(now) for job_id in self._jobs}
@@ -576,11 +580,11 @@ class BackupModule(ModuleBase):
                 self._log_backup(job, backup.latest.bundle, backup.skipped)
 
         except (OSError, BundleError, KeyFileError) as error:
-            _fail(progress, error)
+            progress.fail(error)
             self.logger.warning("Could not back up %s: %s", job.directory, error)
 
         except Exception as error:
-            _fail(progress, error)
+            progress.fail(error)
             self.logger.exception("Backing up %s failed", job.directory)
 
         else:
@@ -668,11 +672,6 @@ class BackupModule(ModuleBase):
             "backed_up_at": None if latest is None else latest.made_at,
             "skipped": 0 if latest is None else latest.skipped,
         }
-
-
-def _fail(progress: _Progress, error: Exception) -> None:
-    """Report that a job's last look failed, and why."""
-    progress.status, progress.error = JobStatus.FAILED, str(error) or type(error).__name__
 
 
 def backup_module_factory(

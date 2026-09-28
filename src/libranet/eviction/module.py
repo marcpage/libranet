@@ -92,11 +92,11 @@ from time import time
 from typing import Callable, ClassVar, Final, Mapping
 
 from libranet.cas.content_id import ContentId
-from libranet.cas.store import source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig
 from libranet.eviction.pressure import FreeBytes, StoragePressure
 from libranet.eviction.priority import HeldObject
-from libranet.identity.node_identity import load_node_identity
+from libranet.identity.node_identity import NodeIdentity
 from libranet.messaging.envelope import Message, event_of
 from libranet.messaging.events import ConnectionDirection, EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
@@ -200,7 +200,7 @@ class EvictionModule(ModuleBase):
         self._candidates_timeout = candidates_timeout_seconds
         self._reclaim_timeout = reclaim_timeout_seconds
         self._reclaim_interval = reclaim_interval_seconds
-        self._store = source_of_truth_store(config.storage)
+        self._store = CasStore.source_of_truth(config.storage)
         self._node_id: ContentId | None = None
         self._pressure: StoragePressure | None = None
         self._handing_off: dict[ContentId, _HandOff] = {}
@@ -249,7 +249,7 @@ class EvictionModule(ModuleBase):
         a restart forgets it; the answers arrive long before any hand-off
         started meanwhile is.
         """
-        self._node_id = load_node_identity(self._config).node_id
+        self._node_id = NodeIdentity.load(self._config).node_id
         self._pressure = StoragePressure.of(self._config.storage, self._free_bytes)
         self.publish(EventType.PEERS_CONNECTED_REQUESTED, {})
         self._evict()

@@ -23,7 +23,7 @@ from typing import ClassVar
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError
-from libranet.cas.store import node_store, source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.cas.verification import content_matches
 from libranet.config.models import LibranetConfig, StorageConfig
 from libranet.messaging.envelope import Message
@@ -49,13 +49,13 @@ class ValidatorModule(ModuleBase):
     ) -> None:
         super().__init__(name, queues, logger=logger, poll_interval=poll_interval)
         self._storage = storage
-        self._source_of_truth = source_of_truth_store(storage)
+        self._source_of_truth = CasStore.source_of_truth(storage)
 
     def handle(self, message: Message) -> None:
         """Check one upload; a malformed message raises and is logged by :meth:`run`."""
         content_id = ContentId.create(message["algorithm"], message["hash"])
         node_id = ContentId.parse(message["node_id"])
-        incoming = node_store(self._storage, node_id)
+        incoming = CasStore.for_node(self._storage, node_id)
 
         try:
             data = incoming.read(content_id)

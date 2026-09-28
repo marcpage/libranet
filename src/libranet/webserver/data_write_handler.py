@@ -37,7 +37,7 @@ from http import HTTPStatus
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
-from libranet.cas.store import CasStore, node_store
+from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.errors import KeyFileError
@@ -110,7 +110,7 @@ class DataWriteHandler:
             )
             return Response(HTTPStatus.CREATED)
 
-        node_store(self._storage, result.node_id).write(content_id, body)
+        CasStore.for_node(self._storage, result.node_id).write(content_id, body)
         self._publish(
             EventType.PUT_COMPLETED,
             {

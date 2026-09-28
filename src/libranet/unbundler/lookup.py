@@ -57,6 +57,53 @@ class ResolvedDirectory:
 
         return cls(entries, frozenset(directories))
 
+    def look_up(self, path: str) -> FoundFile | FoundDirectory | None:
+        """What ``path`` names in this directory, following symlinks, or ``None`` if nothing."""
+        reached: list[str] = []
+        pending = deque(path.split(_SEPARATOR))
+        hops = 0
+
+        while pending:
+            segment = pending.popleft()
+
+            if segment in _NO_STEP:
+                continue
+
+            if segment == _PARENT:
+                if not reached:
+                    return None
+
+                reached.pop()
+                continue
+
+            reached.append(segment)
+            current = _SEPARATOR.join(reached)
+            entry = self.entries.get(current)
+
+            if isinstance(entry, Symlink):
+                hops += 1
+
+                if hops > MAX_SYMLINK_HOPS:
+                    return None
+
+                reached.pop()
+                pending.extendleft(reversed(entry.target.split(_SEPARATOR)))
+
+            elif isinstance(entry, FileBundle):
+                if pending:
+                    return None
+
+            elif current not in self.directories:
+                return None
+
+        found = _SEPARATOR.join(reached)
+        entry = self.entries.get(found)
+
+        if isinstance(entry, FileBundle):
+            return FoundFile(found, entry)
+
+        return FoundDirectory(found)
+
 
 @dataclass(frozen=True)
 class FoundFile:
@@ -71,51 +118,3 @@ class FoundDirectory:
     """A directory, at the path it is reached at once symlinks are followed."""
 
     path: str
-
-
-def look_up(directory: ResolvedDirectory, path: str) -> FoundFile | FoundDirectory | None:
-    """What ``path`` names in ``directory``, following symlinks, or ``None`` if nothing."""
-    reached: list[str] = []
-    pending = deque(path.split(_SEPARATOR))
-    hops = 0
-
-    while pending:
-        segment = pending.popleft()
-
-        if segment in _NO_STEP:
-            continue
-
-        if segment == _PARENT:
-            if not reached:
-                return None
-
-            reached.pop()
-            continue
-
-        reached.append(segment)
-        current = _SEPARATOR.join(reached)
-        entry = directory.entries.get(current)
-
-        if isinstance(entry, Symlink):
-            hops += 1
-
-            if hops > MAX_SYMLINK_HOPS:
-                return None
-
-            reached.pop()
-            pending.extendleft(reversed(entry.target.split(_SEPARATOR)))
-
-        elif isinstance(entry, FileBundle):
-            if pending:
-                return None
-
-        elif current not in directory.directories:
-            return None
-
-    found = _SEPARATOR.join(reached)
-    entry = directory.entries.get(found)
-
-    if isinstance(entry, FileBundle):
-        return FoundFile(found, entry)
-
-    return FoundDirectory(found)

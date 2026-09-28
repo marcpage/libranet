@@ -14,10 +14,10 @@ from pytest import mark, raises
 
 from libranet.applications.packaged import PackagedApplications
 from libranet.cas.content_id import ContentId
-from libranet.cas.store import node_store, source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.config.models import IdentityConfig, LibranetConfig, NetworkConfig, StorageConfig
 from libranet.identity.keys import generate_private_key
-from libranet.identity.node_identity import NodeIdentity, load_node_identity
+from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import MessageSigner, MessageVerifier
 from libranet.messaging.envelope import make_message
 from libranet.messaging.events import ConnectionDirection, EventType
@@ -30,7 +30,7 @@ from libranet.webserver.backup_state import (
     JOBS_FIELD,
     RESTORES_FIELD,
 )
-from libranet.webserver.config_credential import load_config_credential
+from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.module import WebServerModule, webserver_module_factory
 
 
@@ -144,11 +144,11 @@ def test_module_accepts_signed_uploads_and_signs_its_responses(tmp_path: Path) -
 
         assert response.status == 202
         # The module signs with the node key stored under this config's data directory.
-        verifier = MessageVerifier(source_of_truth_store(config.storage), 5.0, 30.0)
+        verifier = MessageVerifier(CasStore.source_of_truth(config.storage), 5.0, 30.0)
         signer = verifier.verify_response(response.status, dict(response.getheaders()), body)
-        assert signer == load_node_identity(config).node_id
+        assert signer == NodeIdentity.load(config).node_id
         assert queues.outbox.get(timeout=1)["event"] == EventType.PUT_COMPLETED
-        assert node_store(config.storage, identity.node_id).exists(upload_id)
+        assert CasStore.for_node(config.storage, identity.node_id).exists(upload_id)
 
     finally:
         stop.set()
@@ -167,7 +167,7 @@ def test_module_names_the_peers_connected_to_it_as_they_come_and_go_and_when_ask
     thread = Thread(target=module.run, args=(stop,), daemon=True)
     thread.start()
     peer = NodeIdentity.from_private_key(generate_private_key(), "sha256")
-    peer.publish_public_key(source_of_truth_store(config.storage))
+    peer.publish_public_key(CasStore.source_of_truth(config.storage))
     signed = MessageSigner(peer).sign_request("GET", "/data/nodes", {})
     inbound = [
         (EventType.PEERS_CONNECTED, ConnectionDirection.INBOUND, names)
@@ -212,7 +212,7 @@ def test_module_follows_the_unsigned_api_read_setting(
     try:
         host, port = _wait_for_address(module)
         reader = NodeIdentity.from_private_key(generate_private_key(), "sha256")
-        reader.publish_public_key(source_of_truth_store(config.storage))
+        reader.publish_public_key(CasStore.source_of_truth(config.storage))
         missing = ContentId.for_data(b"missing", "sha256")
         signed = MessageSigner(reader).sign_request("GET", f"/data/{missing}", {})
         # Signed for a different path by a known node, so the signature fails.
@@ -327,7 +327,7 @@ def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: P
         # The first request captures the credential, which is then stored
         # beside the node key; a later one offering another is refused.
         assert _authorized(host, port, "/config/api")[0] == 200
-        assert load_config_credential(config).captured
+        assert ConfigCredential.of(config).captured
         assert _authorized(host, port, "/config/api", user="someone else")[0] == 401
 
         # The page the node ships, which the unbundler is asked for, and what
@@ -344,7 +344,7 @@ def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: P
         assert (status, loads(body)) == (
             200,
             {
-                "node_id": str(load_node_identity(config).node_id),
+                "node_id": str(NodeIdentity.load(config).node_id),
                 "listen_address": "127.0.0.1",
                 "listen_port": port,
                 "advertised_endpoint": f"http://localhost:{port}",

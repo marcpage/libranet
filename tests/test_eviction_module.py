@@ -10,10 +10,10 @@ from typing import Any, Iterator
 from pytest import LogCaptureFixture, fixture, raises
 
 from libranet.cas.content_id import ContentId
-from libranet.cas.store import CasStore, source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.config.models import IdentityConfig, LibranetConfig, PeerConfig, StorageConfig
 from libranet.eviction.module import HAND_OFF_COPIES, EvictionModule, eviction_module_factory
-from libranet.identity.node_identity import load_node_identity
+from libranet.identity.node_identity import NodeIdentity
 from libranet.messaging.envelope import Message, make_message
 from libranet.messaging.events import ConnectionDirection, EventType
 from libranet.messaging.queues import ModuleQueues
@@ -43,12 +43,12 @@ def config(tmp_path: Path) -> LibranetConfig:
 
 @fixture
 def node_id(config: LibranetConfig) -> ContentId:
-    return load_node_identity(config).node_id
+    return NodeIdentity.load(config).node_id
 
 
 @fixture
 def store(config: LibranetConfig) -> CasStore:
-    return source_of_truth_store(config.storage)
+    return CasStore.source_of_truth(config.storage)
 
 
 @fixture

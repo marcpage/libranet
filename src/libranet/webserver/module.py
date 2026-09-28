@@ -28,8 +28,8 @@ from typing import ClassVar
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
 from libranet.config.models import LibranetConfig
-from libranet.identity.authentication import request_authenticator
-from libranet.identity.node_identity import load_node_identity
+from libranet.identity.authentication import RequestAuthenticator
+from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import MessageSigner
 from libranet.messaging.envelope import Message, event_of
 from libranet.messaging.events import EventType
@@ -39,7 +39,7 @@ from libranet.modules import ModuleName
 from libranet.unbundler.outcomes import PathOutcome
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 from libranet.webserver.backup_state import BackupReport, BackupState
-from libranet.webserver.config_credential import load_config_credential
+from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.inbound_peers import InboundPeers
 from libranet.webserver.server import LibranetHTTPServer, build_router
@@ -119,7 +119,7 @@ class WebServerModule(ModuleBase):
         self._inbound_peers.publish()
         network = self._config.network
         identity = self._config.identity
-        node = load_node_identity(self._config)
+        node = NodeIdentity.load(self._config)
         signer = MessageSigner(node)
         self._server = LibranetHTTPServer(
             (network.listen_address, network.listen_port),
@@ -127,9 +127,9 @@ class WebServerModule(ModuleBase):
                 self._config.storage,
                 network.retry_after_seconds,
                 self.publish,
-                request_authenticator(self._config),
+                RequestAuthenticator.of(self._config),
                 allow_unsigned_api_reads=identity.allow_unsigned_api_reads,
-                config_credential=load_config_credential(self._config),
+                config_credential=ConfigCredential.of(self._config),
                 node=NodeDescription(node.node_id, network),
                 app_outcomes=self._app_outcomes,
                 backup_state=self._backup_state,

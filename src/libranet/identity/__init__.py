@@ -8,7 +8,6 @@ from libranet.identity.authentication import (
     AuthenticationResult,
     AuthenticationStatus,
     RequestAuthenticator,
-    request_authenticator,
 )
 from libranet.identity.content_digest import (
     CONTENT_DIGEST_HEADER,
@@ -31,7 +30,7 @@ from libranet.identity.keys import (
     load_or_create_private_key,
     published_public_key,
 )
-from libranet.identity.node_identity import NodeIdentity, load_node_identity
+from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import (
     SIGNATURE_HEADER,
     SIGNATURE_INPUT_HEADER,
@@ -61,10 +60,8 @@ __all__ = [
     "decode_public_key",
     "encode_public_key",
     "generate_private_key",
-    "load_node_identity",
     "load_or_create_backup_secret",
     "load_or_create_private_key",
     "published_public_key",
-    "request_authenticator",
     "verify_content_digest",
 ]

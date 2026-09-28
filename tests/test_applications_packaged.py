@@ -32,9 +32,9 @@ from libranet.bundle.shapes import DirectoryBundle, DirectoryMarker, FileBundle,
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ArchiveError
 from libranet.cas.layered import LayeredSource
-from libranet.cas.store import source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
-from libranet.identity.authentication import request_authenticator
+from libranet.identity.authentication import RequestAuthenticator
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
@@ -43,7 +43,7 @@ from libranet.supervision.stubs import StubModule
 from libranet.unbundler.module import UnbundlerModule
 from libranet.webserver.app_handler import CONFIG_APP_POLICY
 from libranet.webserver.app_registry import CONFIG_APPLICATION, ROOT_APPLICATION
-from libranet.webserver.config_credential import load_config_credential
+from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import CONFIG_API_PATH, ENDPOINTS, NodeDescription
 from libranet.webserver.http_types import Request
 from libranet.webserver.server import build_router
@@ -203,7 +203,7 @@ def test_run_from_source_they_are_built_as_the_content_is_opened(
         "the applications shipped with the node, built from their source"
     )
     assert content.exists(root_bundle)
-    assert not source_of_truth_store(storage).exists(root_bundle)
+    assert not CasStore.source_of_truth(storage).exists(root_bundle)
     assert root_page == ROOT_PAGE_SOURCE.read_bytes()
     assert index_page(built.bundles[CONFIG_APPLICATION], content) == (
         CONFIG_PAGE_SOURCE.read_bytes()
@@ -341,9 +341,9 @@ def test_a_new_node_serves_each_shipped_page_with_nothing_in_the_cas(
         storage,
         5,
         StubModule(ModuleName.WEBSERVER, web_queues).publish,
-        request_authenticator(LibranetConfig(storage=storage)),
+        RequestAuthenticator.of(LibranetConfig(storage=storage)),
         allow_unsigned_api_reads=True,
-        config_credential=load_config_credential(LibranetConfig(storage=storage)),
+        config_credential=ConfigCredential.of(LibranetConfig(storage=storage)),
         node=NodeDescription(ContentId.for_data(b"a node's public key", "sha256"), NetworkConfig()),
         content=LayeredSource.open(storage),
     )
@@ -367,7 +367,7 @@ def test_a_new_node_serves_each_shipped_page_with_nothing_in_the_cas(
     assert second.headers.get("Content-Security-Policy") == policy
     assert second.body == source.read_bytes()
     # Nothing was stored, and the registry file was not written.
-    assert not source_of_truth_store(storage).exists(bundle)
+    assert not CasStore.source_of_truth(storage).exists(bundle)
     assert not storage.applications_path.exists()
 
 
@@ -376,9 +376,9 @@ def test_a_router_given_no_content_ships_no_applications(storage: StorageConfig)
         storage,
         5,
         StubModule(ModuleName.WEBSERVER, ModuleQueues(inbox=Queue(), outbox=Queue())).publish,
-        request_authenticator(LibranetConfig(storage=storage)),
+        RequestAuthenticator.of(LibranetConfig(storage=storage)),
         allow_unsigned_api_reads=True,
-        config_credential=load_config_credential(LibranetConfig(storage=storage)),
+        config_credential=ConfigCredential.of(LibranetConfig(storage=storage)),
         node=NodeDescription(ContentId.for_data(b"a node's public key", "sha256"), NetworkConfig()),
     )
 

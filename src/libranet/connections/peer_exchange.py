@@ -67,12 +67,12 @@ from typing import Callable, Final, Iterator, Mapping, Sequence, TypeVar
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError
 from libranet.cas.layered import LayeredSource
-from libranet.cas.store import node_store, source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.cas.verification import content_matches
 from libranet.config.models import LibranetConfig
-from libranet.connections.endpoints import peer_address
+from libranet.connections.endpoints import PeerAddress
 from libranet.connections.errors import ConnectionClosedError, PeerAuthenticationError
-from libranet.connections.peer_connection import PeerConnection, open_connection
+from libranet.connections.peer_connection import PeerConnection
 from libranet.connections.peer_session import PeerRequest, PeerSession
 from libranet.connections.response_parser import PeerResponse
 from libranet.identity.errors import KeyFileError, SignatureError, UnknownKeyError
@@ -136,7 +136,7 @@ class PeerExchange:
         self._publish = publish
         self._logger = logger
         self._signer = MessageSigner(identity, clock)
-        self._source_of_truth = source_of_truth_store(config.storage)
+        self._source_of_truth = CasStore.source_of_truth(config.storage)
         self._content = LayeredSource.open(config.storage)
         self._verifier = MessageVerifier(
             self._source_of_truth,
@@ -159,12 +159,12 @@ class PeerExchange:
                 :class:`PeerAuthenticationError` when the peer did not prove
                 an identity.
         """
-        address = peer_address(endpoint)
+        address = PeerAddress.of(endpoint)
 
         if address is None:
             raise ValueError(f"Cannot dial {endpoint!r}")
 
-        connection = open_connection(
+        connection = PeerConnection.open(
             address.host,
             address.port,
             self._signer,
@@ -457,7 +457,7 @@ class PeerExchange:
             self._logger.warning("%s sent content that is not %s", session.endpoint, content_id)
 
         if found:
-            node_store(self._storage, session.node_id).write(content_id, response.body)
+            CasStore.for_node(self._storage, session.node_id).write(content_id, response.body)
             self._publish(EventType.PUT_COMPLETED, _content_fields(content_id, session))
 
         self._publish(

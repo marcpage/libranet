@@ -20,7 +20,7 @@ from pathlib import Path
 from shutil import disk_usage
 from typing import Callable
 
-from libranet.cas.store import source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
 from libranet.eviction.priority import held_objects
 
@@ -49,7 +49,7 @@ class StoragePressure:
         ``free_bytes`` measures the free space; by default it is measured on
         the filesystem holding the source of truth.
         """
-        store = source_of_truth_store(storage)
+        store = CasStore.source_of_truth(storage)
         held = 0
 
         if storage.max_storage_bytes is not None:

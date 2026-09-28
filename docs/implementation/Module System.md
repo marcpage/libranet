@@ -1075,7 +1075,7 @@ hook, and read what it published from its outbox. Condensed from
 queues = ModuleQueues(inbox=Queue(), outbox=Queue())
 validator = ValidatorModule(ModuleName.VALIDATOR, queues, storage, poll_interval=0.01)
 
-node_store(storage, NODE_ID).write(CONTENT_ID, CONTENT)  # as the web server would
+CasStore.for_node(storage, NODE_ID).write(CONTENT_ID, CONTENT)  # as the web server would
 validator.handle(
     make_message(
         EventType.PUT_COMPLETED,

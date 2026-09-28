@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pytest import mark
 
-from libranet.connections.endpoints import PeerAddress, peer_address
+from libranet.connections.endpoints import PeerAddress
 
 
 @mark.parametrize(
@@ -19,7 +19,7 @@ from libranet.connections.endpoints import PeerAddress, peer_address
 def test_http_endpoints_are_dialed_at_their_host_and_port(
     endpoint: str, expected: PeerAddress
 ) -> None:
-    assert peer_address(endpoint) == expected
+    assert PeerAddress.of(endpoint) == expected
 
 
 @mark.parametrize(
@@ -34,4 +34,4 @@ def test_http_endpoints_are_dialed_at_their_host_and_port(
     ],
 )
 def test_endpoints_this_node_cannot_dial_are_refused(endpoint: str) -> None:
-    assert peer_address(endpoint) is None
+    assert PeerAddress.of(endpoint) is None

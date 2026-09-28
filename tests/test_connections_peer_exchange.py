@@ -20,7 +20,7 @@ from pytest import LogCaptureFixture, fixture, raises
 
 from libranet.cas.archive import ArchiveSink
 from libranet.cas.content_id import ContentId
-from libranet.cas.store import node_store, source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.config.models import (
     IdentityConfig,
     LibranetConfig,
@@ -29,19 +29,19 @@ from libranet.config.models import (
     StorageConfig,
 )
 from libranet.connections.errors import ConnectionClosedError, PeerAuthenticationError
-from libranet.connections.peer_connection import open_connection
+from libranet.connections.peer_connection import PeerConnection
 from libranet.connections.peer_exchange import PIPELINE_DEPTH, PeerExchange, Retrieval
 from libranet.connections.peer_session import PeerRequest, PeerSession
-from libranet.identity.authentication import request_authenticator
+from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.keys import generate_private_key
-from libranet.identity.node_identity import NodeIdentity, load_node_identity
+from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import MessageSigner, MessageVerifier
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.supervision.stubs import StubModule
-from libranet.webserver.config_credential import load_config_credential
+from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.server import LibranetHTTPServer, build_router
 
@@ -78,7 +78,7 @@ class FixturePeer:
     def __init__(self, root: Path, identity: NodeIdentity | None = None) -> None:
         self.identity = identity or new_identity()
         self.storage = StorageConfig(data_dir=root / "data", cache_dir=root / "cache")
-        self.store = source_of_truth_store(self.storage)
+        self.store = CasStore.source_of_truth(self.storage)
         self.queues = ModuleQueues(inbox=Queue(), outbox=Queue())
         self._seen: list[Message] = []
         self.server = LibranetHTTPServer(
@@ -87,9 +87,9 @@ class FixturePeer:
                 self.storage,
                 RETRY_AFTER,
                 StubModule(ModuleName.WEBSERVER, self.queues).publish,
-                request_authenticator(LibranetConfig(storage=self.storage)),
+                RequestAuthenticator.of(LibranetConfig(storage=self.storage)),
                 allow_unsigned_api_reads=True,
-                config_credential=load_config_credential(LibranetConfig(storage=self.storage)),
+                config_credential=ConfigCredential.of(LibranetConfig(storage=self.storage)),
                 node=NodeDescription(self.identity.node_id, NetworkConfig()),
             ),
             getLogger("test.webserver"),
@@ -151,7 +151,7 @@ def config(tmp_path: Path) -> LibranetConfig:
 
 @fixture
 def identity(config: LibranetConfig) -> NodeIdentity:
-    return load_node_identity(config)
+    return NodeIdentity.load(config)
 
 
 @fixture
@@ -205,7 +205,7 @@ def test_first_contact_proves_the_peers_identity_and_swaps_keys(
         assert session.node_id == peer.identity.node_id
         assert session.endpoint == peer.endpoint
         assert not session.closed
-        client_store = source_of_truth_store(config.storage)
+        client_store = CasStore.source_of_truth(config.storage)
         assert client_store.read(peer.identity.node_id) == peer.identity.public_key
         # The peer holds this node's key at once, so it could verify from then on.
         assert peer.store.read(identity.node_id) == identity.public_key
@@ -226,7 +226,7 @@ def test_first_contact_proves_the_peers_identity_and_swaps_keys(
 def test_a_key_already_held_is_not_asked_for(
     exchange: PeerExchange, peer: FixturePeer, config: LibranetConfig, queues: ModuleQueues
 ) -> None:
-    peer.identity.publish_public_key(source_of_truth_store(config.storage))
+    peer.identity.publish_public_key(CasStore.source_of_truth(config.storage))
 
     opened = exchange.open(peer.endpoint)
     opened.close()
@@ -252,7 +252,7 @@ def test_a_compressed_public_key_is_held_as_sent(
         peer.stop()
 
     assert session.node_id == peer.identity.node_id
-    assert source_of_truth_store(config.storage).read(peer.identity.node_id) == compressed
+    assert CasStore.source_of_truth(config.storage).read(peer.identity.node_id) == compressed
     (announced,) = published(queues, EventType.DATA_STORED)
     assert announced["size"] == len(compressed)
 
@@ -269,7 +269,7 @@ def test_a_peer_that_does_not_send_its_key_is_refused(
     finally:
         peer.stop()
 
-    assert not source_of_truth_store(config.storage).exists(peer.identity.node_id)
+    assert not CasStore.source_of_truth(config.storage).exists(peer.identity.node_id)
 
 
 def test_an_endpoint_this_node_cannot_dial_is_refused(exchange: PeerExchange) -> None:
@@ -374,7 +374,7 @@ def test_a_peer_that_changes_identity_is_refused(
     exchange: PeerExchange, config: LibranetConfig
 ) -> None:
     claimed, actual = new_identity(), new_identity()
-    actual.publish_public_key(source_of_truth_store(config.storage))
+    actual.publish_public_key(CasStore.source_of_truth(config.storage))
     peer = RawPeer([signed(claimed, 201), signed(actual, 200, claimed.public_key)])
 
     with raises(PeerAuthenticationError, match="then as"):
@@ -409,14 +409,14 @@ def test_a_peer_whose_id_is_not_a_key_is_refused(
         exchange.open(peer.endpoint)
 
     peer.join()
-    assert not source_of_truth_store(config.storage).exists(content_id)
+    assert not CasStore.source_of_truth(config.storage).exists(content_id)
 
 
 def test_a_peer_that_closes_after_identifying_itself_is_refused(
     exchange: PeerExchange, config: LibranetConfig
 ) -> None:
     closing = new_identity()
-    closing.publish_public_key(source_of_truth_store(config.storage))
+    closing.publish_public_key(CasStore.source_of_truth(config.storage))
     peer = RawPeer([signed(closing, 401, headers={"Connection": "close"})])
 
     with raises(ConnectionClosedError):
@@ -428,11 +428,11 @@ def test_a_peer_that_closes_after_identifying_itself_is_refused(
 def test_a_response_the_peer_did_not_prove_closes_the_session(
     peer: FixturePeer, config: LibranetConfig, identity: NodeIdentity
 ) -> None:
-    client_store = source_of_truth_store(config.storage)
+    client_store = CasStore.source_of_truth(config.storage)
     verifier = MessageVerifier(client_store, 5.0, 30.0)
 
     def session_expecting(node_id: ContentId) -> PeerSession:
-        connection = open_connection(
+        connection = PeerConnection.open(
             "127.0.0.1",
             peer.server.server_address[1],
             MessageSigner(identity),
@@ -611,7 +611,7 @@ def test_first_contact_pushes_what_the_peer_seeks(
     identity: NodeIdentity,
     queues: ModuleQueues,
 ) -> None:
-    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    CasStore.source_of_truth(config.storage).write(HELD_ID, HELD)
     peer.write_lists({}, [NOWHERE_ID, HELD_ID])
 
     exchange.first_contact(session)
@@ -624,7 +624,7 @@ def test_first_contact_pushes_what_the_peer_seeks(
     }
     (pushed,) = peer.published(EventType.PUT_COMPLETED)
     assert (pushed["hash"], pushed["node_id"]) == (HELD_ID.hash, str(identity.node_id))
-    assert node_store(peer.storage, identity.node_id).read(HELD_ID) == HELD
+    assert CasStore.for_node(peer.storage, identity.node_id).read(HELD_ID) == HELD
     assert session.pushed == {HELD_ID}
 
 
@@ -632,8 +632,8 @@ def test_a_push_the_peer_refuses_is_not_counted_as_sent_or_tried_again(
     exchange: PeerExchange, config: LibranetConfig, queues: ModuleQueues
 ) -> None:
     refusing = new_identity()
-    refusing.publish_public_key(source_of_truth_store(config.storage))
-    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    refusing.publish_public_key(CasStore.source_of_truth(config.storage))
+    CasStore.source_of_truth(config.storage).write(HELD_ID, HELD)
     seek = dumps({"data": [str(HELD_ID)], "search": []}).encode()
     peer = RawPeer(
         [
@@ -665,7 +665,7 @@ def test_first_contact_asks_for_what_this_node_seeks(
     config: LibranetConfig,
     queues: ModuleQueues,
 ) -> None:
-    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    CasStore.source_of_truth(config.storage).write(HELD_ID, HELD)
     peer.store.write(OFFERED_ID, OFFERED)
     write_lists(config.storage, None, [OFFERED_ID, NOWHERE_ID, HELD_ID])
 
@@ -678,7 +678,7 @@ def test_first_contact_asks_for_what_this_node_seeks(
         {"event": EventType.FETCH_ATTEMPTED, **content_fields(OFFERED_ID, peer_id), "found": True},
         {"event": EventType.FETCH_ATTEMPTED, **content_fields(NOWHERE_ID, peer_id), "found": False},
     ]
-    assert node_store(config.storage, peer_id).read(OFFERED_ID) == OFFERED
+    assert CasStore.for_node(config.storage, peer_id).read(OFFERED_ID) == OFFERED
 
 
 def test_archive_content_is_pushed_and_never_asked_for(
@@ -742,7 +742,7 @@ def test_refresh_pushes_newly_sought_content_once(
     config: LibranetConfig,
     queues: ModuleQueues,
 ) -> None:
-    source_of_truth_store(config.storage).write(HELD_ID, HELD)
+    CasStore.source_of_truth(config.storage).write(HELD_ID, HELD)
     peer.write_lists({}, [])
     exchange.first_contact(session)
     assert published(queues, EventType.DATA_SENT) == []
@@ -769,7 +769,7 @@ def test_retrieve_hands_what_the_peer_sends_to_the_validator(
     assert exchange.retrieve(session, OFFERED_ID) == Retrieval(found=True)
 
     # Kept exactly as received, compressed or not, as uploads are.
-    assert node_store(config.storage, peer.identity.node_id).read(OFFERED_ID) == compressed
+    assert CasStore.for_node(config.storage, peer.identity.node_id).read(OFFERED_ID) == compressed
     assert [message["event"] for message in drain(queues, [])] == [
         EventType.PUT_COMPLETED,
         EventType.FETCH_ATTEMPTED,
@@ -798,7 +798,7 @@ def test_retrieve_refuses_content_that_is_not_what_was_asked_for(
     assert exchange.retrieve(session, OFFERED_ID) == Retrieval(found=False)
 
     assert f"sent content that is not {OFFERED_ID}" in caplog.text
-    assert not node_store(config.storage, peer.identity.node_id).exists(OFFERED_ID)
+    assert not CasStore.for_node(config.storage, peer.identity.node_id).exists(OFFERED_ID)
     (attempt,) = drain(queues, [])
     assert attempt["found"] is False
 
@@ -821,7 +821,7 @@ def test_hand_off_pushes_content_the_peer_did_not_ask_for(
         **content_fields(HELD_ID, peer.identity.node_id),
         "size": len(HELD),
     }
-    assert node_store(peer.storage, identity.node_id).read(HELD_ID) == HELD
+    assert CasStore.for_node(peer.storage, identity.node_id).read(HELD_ID) == HELD
     assert session.pushed == {HELD_ID}
 
 
@@ -840,7 +840,7 @@ def test_a_hand_off_the_peer_refuses_is_not_accepted(
     exchange: PeerExchange, config: LibranetConfig, queues: ModuleQueues
 ) -> None:
     refusing = new_identity()
-    refusing.publish_public_key(source_of_truth_store(config.storage))
+    refusing.publish_public_key(CasStore.source_of_truth(config.storage))
     peer = RawPeer([signed(refusing, 201), signed(refusing, 507)])
     session = exchange.open(peer.endpoint)
 

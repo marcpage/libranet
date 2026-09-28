@@ -10,7 +10,7 @@ from zlib import compress
 from pytest import fixture
 
 from libranet.cas.content_id import ContentId
-from libranet.cas.store import CasStore, node_store, source_of_truth_store
+from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
 from libranet.identity.authentication import (
     AuthenticationResult,
@@ -53,7 +53,7 @@ def storage(tmp_path: Path) -> StorageConfig:
 
 @fixture
 def truth(storage: StorageConfig) -> CasStore:
-    return source_of_truth_store(storage)
+    return CasStore.source_of_truth(storage)
 
 
 @fixture
@@ -171,7 +171,7 @@ def test_signed_upload_is_stored_for_its_node_and_published(
     assert response.body == b""
     assert not response.close
     assert request.body.consumed
-    assert node_store(storage, known.node_id).read(CONTENT_ID) == CONTENT
+    assert CasStore.for_node(storage, known.node_id).read(CONTENT_ID) == CONTENT
     assert not truth.exists(CONTENT_ID)
 
     (message,) = published(queues)
@@ -188,7 +188,7 @@ def test_upper_case_address_is_stored_normalized(
     address = f"SHA256/{CONTENT_ID.hash.upper()}"
 
     assert router.dispatch(signed_request(known, CONTENT, address)).status == 202
-    assert node_store(storage, known.node_id).exists(CONTENT_ID)
+    assert CasStore.for_node(storage, known.node_id).exists(CONTENT_ID)
     assert published(queues)[0]["hash"] == CONTENT_ID.hash
 
 
@@ -204,7 +204,7 @@ def test_unknown_signer_can_push_its_own_public_key(
     # next request is verified.
     assert response.status == 201
     assert truth.read(stranger.node_id) == stranger.public_key
-    assert not node_store(storage, stranger.node_id).exists(stranger.node_id)
+    assert not CasStore.for_node(storage, stranger.node_id).exists(stranger.node_id)
     # Announced as stored, as the validator announces what it stores.
     assert announced(queues) == [stored_payload(stranger, len(stranger.public_key))]
     assert router.dispatch(signed_request(stranger, CONTENT)).status == 202
@@ -234,7 +234,7 @@ def test_someone_elses_public_key_goes_to_the_validator(
 
     assert response.status == 202
     assert not truth.exists(other.node_id)
-    assert node_store(storage, known.node_id).read(other.node_id) == other.public_key
+    assert CasStore.for_node(storage, known.node_id).read(other.node_id) == other.public_key
 
 
 def test_a_signers_own_content_that_is_not_a_key_goes_to_the_validator(
@@ -248,7 +248,7 @@ def test_a_signers_own_content_that_is_not_a_key_goes_to_the_validator(
 
     assert response.status == 202
     assert not truth.exists(content_id)
-    assert node_store(storage, content_id).read(content_id) == b"not a key"
+    assert CasStore.for_node(storage, content_id).read(content_id) == b"not a key"
 
 
 def test_own_key_upload_that_does_not_match_goes_to_the_validator(
@@ -260,14 +260,14 @@ def test_own_key_upload_that_does_not_match_goes_to_the_validator(
 
     assert response.status == 202
     assert not truth.exists(stranger.node_id)
-    assert node_store(storage, stranger.node_id).read(stranger.node_id) == b"not my key"
+    assert CasStore.for_node(storage, stranger.node_id).read(stranger.node_id) == b"not my key"
 
 
 def test_content_is_not_checked_against_its_address(
     router: Router, storage: StorageConfig, known: NodeIdentity
 ) -> None:
     assert router.dispatch(signed_request(known, b"not the content")).status == 202
-    assert node_store(storage, known.node_id).read(CONTENT_ID) == b"not the content"
+    assert CasStore.for_node(storage, known.node_id).read(CONTENT_ID) == b"not the content"
 
 
 def test_unsigned_upload_is_refused(
@@ -379,7 +379,7 @@ def test_content_already_held_is_not_written_again(
 
     assert response.status == 204
     assert request.body.consumed
-    assert not node_store(storage, known.node_id).exists(CONTENT_ID)
+    assert not CasStore.for_node(storage, known.node_id).exists(CONTENT_ID)
     assert published(queues) == []
 
 
@@ -402,7 +402,7 @@ def test_signature_already_checked_is_not_checked_again(
     )
 
     assert handler(request).status == 202
-    assert node_store(storage, checked_signer).read(CONTENT_ID) == CONTENT
+    assert CasStore.for_node(storage, checked_signer).read(CONTENT_ID) == CONTENT
     assert published(queues)[0]["node_id"] == str(checked_signer)
 
 
