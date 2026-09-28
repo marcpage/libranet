@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from http import HTTPStatus
 from json import dumps
+from logging import getLogger
 from typing import Final
 
 from libranet.cas.errors import InvalidContentIdError
@@ -24,6 +25,8 @@ from libranet.webserver.http_types import (
 )
 from libranet.webserver.publishing import Publish
 from libranet.webserver.search import LocalSearch, SearchCache, normalize_prefix
+
+_LOGGER = getLogger(__name__)
 
 SEARCH_PATTERN: Final = r"/data/search/(?P<prefix>[^/]+)"
 
@@ -41,6 +44,7 @@ class SearchHandler:
             prefix = normalize_prefix(request.params["prefix"])
 
         except InvalidContentIdError as error:
+            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
             return problem_response(
                 Problem(
                     status=HTTPStatus.BAD_REQUEST,

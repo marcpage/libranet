@@ -12,6 +12,7 @@ processes race to create the same file, one wins and the other loads it.
 """
 
 from __future__ import annotations
+from logging import getLogger
 from os import fdopen, link
 from pathlib import Path
 from secrets import token_bytes
@@ -31,6 +32,8 @@ from cryptography.hazmat.primitives.serialization import (
 
 from libranet.cas.content_id import ContentId
 from libranet.identity.errors import KeyFileError
+
+_LOGGER = getLogger(__name__)
 
 BACKUP_SECRET_BYTES = 32
 
@@ -117,6 +120,7 @@ def _decompressed(data: bytes, max_bytes: int) -> bytes | None:
         result = decompressor.decompress(data, max_bytes + 1)
 
     except ZlibError:
+        # Not logged: the caller raises KeyFileError for data that is not a key.
         return None
 
     if len(result) > max_bytes or not decompressor.eof or decompressor.unused_data:
@@ -139,6 +143,7 @@ def load_or_create_private_key(path: Path) -> Ed25519PrivateKey:
         encoded = key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption())
 
         if write_private_file(path, encoded):
+            _LOGGER.info("Created a new private key at %s", path)
             return key
 
         data = path.read_bytes()
@@ -170,7 +175,10 @@ def load_or_create_backup_secret(path: Path) -> bytes:
     except FileNotFoundError:
         secret = token_bytes(BACKUP_SECRET_BYTES)
 
-        if not write_private_file(path, secret):
+        if write_private_file(path, secret):
+            _LOGGER.info("Created a new backup secret at %s", path)
+
+        else:
             secret = path.read_bytes()
 
     if len(secret) != BACKUP_SECRET_BYTES:
@@ -204,6 +212,7 @@ def write_private_file(path: Path, data: bytes) -> bool:
             link(temp_path, path)
 
         except FileExistsError:
+            # Not logged: another process made it first, and the caller loads it.
             return False
 
         return True

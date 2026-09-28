@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 from json import dumps
+from logging import WARNING
 from pathlib import Path
+
+from pytest import LogCaptureFixture
 
 from libranet.cas.content_id import ContentId
 from libranet.config.seeds import SeedPeer
@@ -92,3 +95,39 @@ def test_a_candidate_can_keep_only_some_of_its_endpoints() -> None:
         ("http://first.example:8080",), FIRST_ID
     )
     assert candidate.keeping(lambda endpoint: False) is None
+
+
+def test_an_unusable_node_id_in_the_candidate_list_is_logged_as_a_warning(
+    tmp_path: Path, caplog: LogCaptureFixture
+) -> None:
+    path = write_candidates(
+        tmp_path / "candidates.json", [("nonsense", ["http://203.0.113.1:8080"])]
+    )
+
+    candidate_list(path, OWN_ID)
+
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith("Dropping the candidate 'nonsense': ")
+
+
+def test_an_unreadable_candidate_list_is_logged_as_a_warning_and_a_missing_one_is_not(
+    tmp_path: Path, caplog: LogCaptureFixture
+) -> None:
+    garbled = tmp_path / "garbled.json"
+    garbled.write_bytes(b"\xff not json")
+
+    candidate_list(tmp_path / "absent.json", OWN_ID)
+    candidate_list(garbled, OWN_ID)
+
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith(f"Ignoring the candidate list at {garbled}: ")
+
+
+def test_a_seed_with_an_unusable_node_id_is_logged_as_a_warning(caplog: LogCaptureFixture) -> None:
+    seed_candidates((SeedPeer(address="http://198.51.100.3:8080", node_id="nonsense"),))
+
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith("Seed http://198.51.100.3:8080 has an unusable node id: ")

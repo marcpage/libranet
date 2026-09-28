@@ -6,11 +6,12 @@ signed request is built here with the outcome the guard would have attached.
 
 from __future__ import annotations
 from json import dumps, loads
+from logging import DEBUG
 from pathlib import Path
 from queue import Empty, Queue
 from zlib import compress
 
-from pytest import fixture, mark
+from pytest import LogCaptureFixture, fixture, mark
 
 from libranet.cas.content_id import ContentId
 from libranet.identity.authentication import AuthenticationResult, AuthenticationStatus
@@ -316,3 +317,29 @@ def test_a_body_that_is_not_json_is_400(router: Router, queues: ModuleQueues, pa
     assert response.status == 400
     assert problem_type(response) == INVALID_LIST
     assert published(queues) == []
+
+
+@mark.parametrize("path", [NODES_PATH, SEEK_PATH])
+def test_a_list_not_derived_yet_is_logged_at_debug(
+    router: Router, caplog: LogCaptureFixture, path: str
+) -> None:
+    caplog.set_level(DEBUG)
+
+    router.dispatch(Request("GET", path))
+
+    (record,) = caplog.records
+    assert record.levelno == DEBUG
+    assert record.getMessage().endswith(" has not been derived yet")
+
+
+@mark.parametrize("path", [NODES_PATH, SEEK_PATH])
+def test_a_refused_list_is_logged_at_debug(
+    router: Router, caplog: LogCaptureFixture, path: str
+) -> None:
+    caplog.set_level(DEBUG)
+
+    router.dispatch(post(path, []))
+
+    (record,) = caplog.records
+    assert record.levelno == DEBUG
+    assert record.getMessage().startswith(f"Refusing POST {path}: ")

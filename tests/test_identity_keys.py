@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 from base64 import encodebytes
+from logging import INFO
 from pathlib import Path
 from stat import S_IMODE
 from sys import platform
@@ -15,7 +16,7 @@ from cryptography.hazmat.primitives.serialization import (
     PrivateFormat,
     PublicFormat,
 )
-from pytest import MonkeyPatch, mark, raises
+from pytest import LogCaptureFixture, MonkeyPatch, mark, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.identity.errors import KeyFileError
@@ -263,3 +264,38 @@ def test_private_key_creation_race_loads_the_winner(
     loaded = load_or_create_private_key(tmp_path / "node.pem")
 
     assert encode_public_key(loaded.public_key()) == encode_public_key(winner.public_key())
+
+
+def test_creating_a_private_key_is_logged_once(tmp_path: Path, caplog: LogCaptureFixture) -> None:
+    caplog.set_level(INFO)
+    path = tmp_path / "keys" / "node.pem"
+
+    load_or_create_private_key(path)
+    load_or_create_private_key(path)
+
+    assert caplog.record_tuples == [
+        ("libranet.identity.keys", INFO, f"Created a new private key at {path}")
+    ]
+
+
+def test_creating_a_backup_secret_is_logged_once(tmp_path: Path, caplog: LogCaptureFixture) -> None:
+    caplog.set_level(INFO)
+    path = tmp_path / "backup_secret"
+
+    load_or_create_backup_secret(path)
+    load_or_create_backup_secret(path)
+
+    assert caplog.record_tuples == [
+        ("libranet.identity.keys", INFO, f"Created a new backup secret at {path}")
+    ]
+
+
+def test_a_key_file_another_process_created_is_not_logged_as_created(
+    tmp_path: Path, monkeypatch: MonkeyPatch, caplog: LogCaptureFixture
+) -> None:
+    caplog.set_level(INFO)
+    _lose_creation_race(monkeypatch, bytes(range(BACKUP_SECRET_BYTES)))
+
+    load_or_create_backup_secret(tmp_path / "backup_secret")
+
+    assert caplog.record_tuples == []

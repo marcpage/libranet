@@ -247,6 +247,7 @@ class PeerConnection:
                 self._socket.sendall(data)
 
             except OSError as error:
+                # Not logged: _fail raises it to the request waiting on it.
                 self._fail(ConnectionClosedError(f"Sending to {self._host} failed: {error}"))
                 return
 
@@ -281,6 +282,7 @@ class PeerConnection:
                     self._deliver()
 
         except OSError as error:
+            # Not logged: _fail raises it to the request waiting on it.
             self._fail(error)
 
         finally:
@@ -380,4 +382,5 @@ def _peer_ip(sock: socket) -> str | None:
         return str(sock.getpeername()[0])
 
     except OSError:
+        # Not logged: the address is then unknown, which callers allow for.
         return None

@@ -14,6 +14,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from dataclasses import dataclass
 from enum import StrEnum
+from logging import getLogger
 from threading import Lock
 from typing import Final, Mapping
 
@@ -22,6 +23,8 @@ from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig
 from libranet.identity.errors import InvalidSignatureError, MissingSignatureError, UnknownKeyError
 from libranet.identity.signatures import MessageVerifier
+
+_LOGGER = getLogger(__name__)
 
 # Bounds the provisional-attempt table, so requests naming endless made-up
 # node ids cannot grow it without limit. The least recently seen signer is
@@ -96,12 +99,17 @@ class RequestAuthenticator:
             node_id = self._verifier.verify_request(method, path, headers, body)
 
         except MissingSignatureError:
+            # Not logged: most requests are unsigned, and that is no failure.
             return AuthenticationResult(AuthenticationStatus.UNAUTHENTICATED)
 
         except UnknownKeyError as error:
+            _LOGGER.debug(
+                "%s %s is signed by %s, whose key is not held", method, path, error.node_id
+            )
             return self._provisional(error.node_id)
 
         except InvalidSignatureError as error:
+            _LOGGER.debug("Rejecting the signature on %s %s: %s", method, path, error)
             return AuthenticationResult(AuthenticationStatus.REJECTED, reason=str(error))
 
         with self._lock:

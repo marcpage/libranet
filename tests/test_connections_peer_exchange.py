@@ -8,7 +8,7 @@ publishes. Peers that misbehave are raw sockets answering with canned bytes.
 
 from __future__ import annotations
 from json import dumps
-from logging import getLogger
+from logging import DEBUG, getLogger
 from pathlib import Path
 from queue import Empty, Queue
 from socket import create_server, socket
@@ -852,3 +852,18 @@ def test_a_hand_off_the_peer_refuses_is_not_accepted(
         peer.join()
 
     assert published(queues, EventType.DATA_SENT) == []
+
+
+def test_first_contact_without_a_seek_list_of_its_own_logs_it_at_debug(
+    exchange: PeerExchange, session: PeerSession, caplog: LogCaptureFixture
+) -> None:
+    caplog.set_level(DEBUG)
+
+    exchange.first_contact(session)
+
+    (record,) = [
+        record
+        for record in caplog.records
+        if record.getMessage().startswith("Cannot read this node's own seek list: ")
+    ]
+    assert record.levelno == DEBUG

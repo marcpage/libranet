@@ -100,6 +100,7 @@ class CasStore:
             self.path_for(content_id).unlink()
 
         except FileNotFoundError:
+            # Not logged: it was not there, which is what is returned.
             return False
 
         return True
@@ -151,6 +152,7 @@ class CasStore:
                     content_id = ContentId(algorithm, entry.name)
 
                 except InvalidContentIdError:
+                    # Not logged: a partial write, or any other name not a hash, is not content.
                     continue
 
                 yield content_id

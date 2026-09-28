@@ -69,6 +69,7 @@ class ResolvedFiles:
                     bundle = ContentId.create(algorithm, directory.name)
 
                 except InvalidContentIdError:
+                    # Not logged: a name this module would not have written is left alone.
                     continue
 
                 if bundle.hash == directory.name:
@@ -97,4 +98,5 @@ def _subdirectories(directory: Path) -> list[Path]:
         return [entry for entry in directory.iterdir() if entry.is_dir()]
 
     except FileNotFoundError:
+        # Not logged: nothing has been resolved with that algorithm.
         return []

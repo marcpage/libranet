@@ -212,6 +212,7 @@ def _decoded(text: str) -> str | None:
         return unquote(text, errors="strict")
 
     except UnicodeDecodeError:
+        # Not logged: None answers that it is not UTF-8.
         return None
 
 
@@ -229,6 +230,7 @@ def _read(path: Path) -> bytes | None:
         return path.read_bytes()
 
     except FileNotFoundError:
+        # Not logged: a file not resolved yet is asked for.
         return None
 
 

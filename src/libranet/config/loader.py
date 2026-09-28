@@ -65,6 +65,8 @@ def _read_document(path: Path, *, required: bool) -> dict[str, Any]:
     except FileNotFoundError:
         if required:
             raise ConfigError(f"Config file not found: {path}") from None
+
+        # Not logged: a config file not named on the command line is optional.
         return {}
 
     except OSError as error:

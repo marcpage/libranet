@@ -38,6 +38,7 @@ lies within one cannot be built.
 from __future__ import annotations
 from dataclasses import dataclass
 from json import dumps, loads
+from logging import getLogger
 from pathlib import Path
 from typing import Any, Callable, Final, Iterable, Mapping
 
@@ -52,6 +53,8 @@ from libranet.bundle.loading import load_bundle
 from libranet.bundle.shapes import DirectoryBundle
 from libranet.cas.content_id import ContentId
 from libranet.webserver.config_requests import BuildRequest
+
+_LOGGER = getLogger(__name__)
 
 #: What the file recording a build is named, after the directory's own name.
 RECORD_SUFFIX: Final = ".bundle"
@@ -105,6 +108,7 @@ class BuildRecord:
             value = loads(path.read_bytes())
 
         except FileNotFoundError:
+            # Not logged: a directory never built has no record.
             return None
 
         except (OSError, ValueError) as error:
@@ -257,6 +261,9 @@ class _Earlier:
 
             except PasswordProtectedBundleError:
                 if password is None:
+                    _LOGGER.info(
+                        "%s is protected, so without a password every file is read", bundle
+                    )
                     return None
 
                 top, protected = load_bundle(bundle, source, password=password), True
@@ -274,7 +281,10 @@ class _Earlier:
                 protected,
             )
 
-        except BundleError:
+        except BundleError as error:
+            _LOGGER.info(
+                "Cannot read %s, the build before, so every file is read: %s", bundle, error
+            )
             return None
 
     def under(self, password: bytes | None) -> Superseded | None:

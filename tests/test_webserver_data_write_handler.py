@@ -3,11 +3,12 @@
 from __future__ import annotations
 from io import BytesIO
 from json import loads
+from logging import DEBUG
 from pathlib import Path
 from queue import Empty, Queue
 from zlib import compress
 
-from pytest import fixture
+from pytest import LogCaptureFixture, fixture
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
@@ -434,3 +435,19 @@ def test_guarded_unsigned_upload_is_still_refused(
     assert not response.close
     assert problem_type(response) == SIGNATURE_REQUIRED
     assert published(queues) == []
+
+
+def test_an_invalid_address_is_logged_at_debug(
+    router: Router, known: NodeIdentity, caplog: LogCaptureFixture
+) -> None:
+    caplog.set_level(DEBUG)
+
+    router.dispatch(signed_request(known, CONTENT, "sha256/xyz"))
+
+    (record,) = [
+        record
+        for record in caplog.records
+        if record.name == "libranet.webserver.data_write_handler"
+    ]
+    assert record.levelno == DEBUG
+    assert record.getMessage().startswith("Refusing PUT /data/sha256/xyz: ")

@@ -3,9 +3,10 @@
 from __future__ import annotations
 from functools import partial
 from hashlib import sha256
+from logging import INFO
 from typing import Mapping
 
-from pytest import mark, raises
+from pytest import LogCaptureFixture, mark, raises
 
 from libranet.bundle.errors import PasswordProtectedBundleError
 from libranet.bundle.extensions import DEFAULT_MAX_EXTENSIONS, resolve_directory
@@ -344,3 +345,16 @@ def test_a_layering_reaches_at_least_one_extension_per_layer(layers: int, extens
 def test_an_unusable_layering_is_an_error(value: object) -> None:
     with raises(ValueError):
         Layering.from_value(value)
+
+
+def test_a_bundle_that_cannot_be_read_back_is_logged_at_info(caplog: LogCaptureFixture) -> None:
+    caplog.set_level(INFO)
+    bundle = ContentId.parse(part(1))
+
+    Superseded.read(bundle, partial(load, Sink()), None)
+
+    (record,) = caplog.records
+    assert record.levelno == INFO
+    assert record.getMessage().startswith(
+        f"Cannot read {bundle}, the bundle superseded, so every file is read: "
+    )

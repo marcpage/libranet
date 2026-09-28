@@ -18,6 +18,7 @@ a peer's interest in content is counted apart from this node's own.
 
 from __future__ import annotations
 from http import HTTPStatus
+from logging import getLogger
 from typing import Final
 
 from libranet.bundle.content import ContentSource
@@ -28,6 +29,8 @@ from libranet.problems import CONTENT_UNAVAILABLE, INVALID_CONTENT_ADDRESS, Prob
 from libranet.webserver.client_origin import is_local_client
 from libranet.webserver.http_types import Request, Response, bytes_response, problem_response
 from libranet.webserver.publishing import Publish
+
+_LOGGER = getLogger(__name__)
 
 DATA_PATTERN: Final = r"/data/(?P<algorithm>[^/]+)/(?P<hash>[^/]+)"
 
@@ -64,6 +67,7 @@ class DataReadHandler:
             content_id = ContentId.create(request.params["algorithm"], request.params["hash"])
 
         except InvalidContentIdError as error:
+            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
             return invalid_address_response(error, request)
 
         self._publish(
@@ -79,6 +83,7 @@ class DataReadHandler:
             body = self._content.read(content_id)
 
         except ContentNotFoundError:
+            _LOGGER.debug("%s is not held here, so it is asked for", content_id)
             return self._not_found(content_id, request)
 
         return bytes_response(body, headers={"Cache-Control": _IMMUTABLE_CACHE_CONTROL})

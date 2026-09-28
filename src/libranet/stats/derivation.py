@@ -123,6 +123,7 @@ def _write_if_changed(path: Path, body: bytes) -> bool:
             return False
 
     except OSError:
+        # Not logged: a file that cannot be read is written afresh.
         pass
 
     write_atomically(path, body)

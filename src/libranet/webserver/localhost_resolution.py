@@ -45,6 +45,7 @@ def resolve_endpoint(endpoint: str, source_address: str) -> str | None:
         port = parts.port
 
     except ValueError:
+        # Not logged: None answers that the entry cannot be stored.
         return None
 
     if parts.scheme not in _SCHEMES or not parts.hostname:
@@ -107,6 +108,7 @@ def _url_host(address: str) -> str | None:
         parsed = ip_address(address)
 
     except ValueError:
+        # Not logged: None answers that it is not an IP address.
         return None
 
     if not isinstance(parsed, IPv6Address):

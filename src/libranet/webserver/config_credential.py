@@ -195,6 +195,7 @@ class ConfigCredential:
             data = self._path.read_bytes()
 
         except FileNotFoundError:
+            # Not logged: none is captured until the first request.
             return None
 
         return StoredCredential.from_json(data)

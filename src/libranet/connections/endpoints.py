@@ -30,6 +30,7 @@ class PeerAddress:
             port = parts.port
 
         except ValueError:
+            # Not logged: None answers that it cannot be dialed.
             return None
 
         if parts.scheme != _SCHEME or not parts.hostname:

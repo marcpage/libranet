@@ -8,10 +8,11 @@ Authentication is a router guard and is tested separately.
 
 from __future__ import annotations
 from json import dumps, loads
+from logging import DEBUG, WARNING, LogRecord
 from pathlib import Path
 from queue import Empty, Queue
 
-from pytest import fixture, mark
+from pytest import LogCaptureFixture, fixture, mark
 
 from libranet.cas.content_id import ContentId
 from libranet.config.models import NetworkConfig
@@ -555,3 +556,56 @@ def test_a_registry_that_cannot_be_read_is_reported_and_left_alone(
     assert problem_type(response) == "about:blank"
     assert str(registry.path) in loads(response.body)["detail"]
     assert registry.path.read_bytes() == b"{not json"
+
+
+def handler_records(caplog: LogCaptureFixture) -> list[LogRecord]:
+    return [r for r in caplog.records if r.name == "libranet.webserver.config_handlers"]
+
+
+@mark.parametrize(
+    "method, path, body",
+    [
+        ("POST", BACKUPS_PATH, b"{not json"),
+        ("POST", RESTORES_PATH, b"{not json"),
+        ("POST", BUILDS_PATH, b"{not json"),
+        ("POST", EXPORTS_PATH, b"{not json"),
+        ("POST", APPLICATIONS_PATH, b"{not json"),
+        ("DELETE", f"{APPLICATIONS_PATH}/%FF", b""),
+    ],
+)
+def test_a_refused_request_is_logged_at_debug(
+    router: Router, caplog: LogCaptureFixture, method: str, path: str, body: bytes
+) -> None:
+    caplog.set_level(DEBUG)
+
+    router.dispatch(request(method, path, body=body))
+
+    (record,) = handler_records(caplog)
+    assert record.levelno == DEBUG
+    assert record.getMessage().startswith(f"Refusing {method} {path}: ")
+
+
+@mark.parametrize(
+    "method, path, value",
+    [
+        ("GET", APPLICATIONS_PATH, None),
+        ("POST", APPLICATIONS_PATH, {"name": "wiki", "bundle": str(APP_BUNDLE)}),
+        ("DELETE", WIKI_PATH, None),
+    ],
+)
+def test_a_registry_that_cannot_be_read_is_logged_as_a_warning(
+    router: Router,
+    registry: ApplicationRegistry,
+    caplog: LogCaptureFixture,
+    method: str,
+    path: str,
+    value: object,
+) -> None:
+    registry.path.write_bytes(b"{not json")
+
+    router.dispatch(request(method, path, value))
+
+    (record,) = handler_records(caplog)
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith(f"Refusing {method} {path}: ")
+    assert str(registry.path) in record.getMessage()

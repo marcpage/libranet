@@ -194,6 +194,7 @@ class ArchiveSource:
                 members[ContentId.parse(info.filename, registry)] = info
 
             except UnknownAlgorithmError:
+                # Not logged: a hash this node has no algorithm for is not served.
                 continue
 
             except InvalidContentIdError as error:

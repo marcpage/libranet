@@ -131,6 +131,7 @@ def _subdirectories(directory: Path) -> list[Path]:
         return [entry for entry in directory.iterdir() if entry.is_dir()]
 
     except FileNotFoundError:
+        # Not logged: a store with no such directory holds nothing there.
         return []
 
 
@@ -152,6 +153,7 @@ def _objects_in(directory: Path, algorithm: str) -> list[HeldObject]:
             status = entry.stat()
 
         except (InvalidContentIdError, FileNotFoundError):
+            # Not logged: a name that is not a hash, or a file just deleted, is not held.
             continue
 
         if content_id.hash == entry.name and S_ISREG(status.st_mode):

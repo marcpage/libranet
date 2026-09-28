@@ -74,6 +74,7 @@ def basic_credentials(headers: Mapping[str, str]) -> str | None:
             decoded = b64decode(encoded.strip(), validate=True).decode("utf-8")
 
         except (Base64Error, UnicodeDecodeError, ValueError):
+            # Not logged: None answers that the header holds no credentials.
             return None
 
         return decoded if ":" in decoded else None

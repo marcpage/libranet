@@ -599,6 +599,7 @@ class ConnectionsModule(ModuleBase):
                 session = self.exchange.open(endpoint)
 
             except Exception as error:
+                # Not logged: _attempt_failed logs it.
                 self._attempt_failed(candidate, endpoint, error)
                 continue
 

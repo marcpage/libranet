@@ -58,6 +58,7 @@ def main(argv: Sequence[str] | None = None, *, stop: StopSignal | None = None) -
         )
 
     except ConfigError as error:
+        # Not logged: logging is configured from what could not be loaded.
         print(error, file=sys.stderr)
         return EXIT_CONFIG_ERROR
 
@@ -69,8 +70,13 @@ def main(argv: Sequence[str] | None = None, *, stop: StopSignal | None = None) -
         config.create_directories()
 
     except OSError as error:
+        # Not logged: the directory for logs may be among those not created.
         print(f"Could not create node directories: {error}", file=sys.stderr)
         return EXIT_CONFIG_ERROR
+
+    # Configured before the identity is loaded, so a key it creates is logged.
+    logger = configure_logging(config.logging, ModuleName.SUPERVISOR)
+    logger.info("Libranet supervisor starting (config: %s)", config_path)
 
     # Created here, before any module starts, so the key is generated once
     # and the public key is already servable from CAS.
@@ -78,6 +84,7 @@ def main(argv: Sequence[str] | None = None, *, stop: StopSignal | None = None) -
         identity = NodeIdentity.load(config)
 
     except (IdentityError, ValueError, OSError) as error:
+        logger.error("Could not load the node identity: %s", error)
         print(f"Could not load the node identity: {error}", file=sys.stderr)
         return EXIT_CONFIG_ERROR
 
@@ -88,11 +95,10 @@ def main(argv: Sequence[str] | None = None, *, stop: StopSignal | None = None) -
             archives = [archive.name for archive in content.archives]
 
     except ArchiveError as error:
+        logger.error("Could not open a content archive: %s", error)
         print(f"Could not open a content archive: {error}", file=sys.stderr)
         return EXIT_CONFIG_ERROR
 
-    logger = configure_logging(config.logging, ModuleName.SUPERVISOR)
-    logger.info("Libranet supervisor starting (config: %s)", config_path)
     logger.info("Data directory: %s", config.storage.data_dir)
     logger.info("Node id: %s", identity.node_id)
     logger.info("Listening on %s:%s", config.network.listen_address, config.network.listen_port)

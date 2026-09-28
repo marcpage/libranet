@@ -37,6 +37,12 @@ logging:
     return path
 
 
+def logged(tmp_path: Path, level: str, message: str) -> bool:
+    """Whether the supervisor's log file holds ``message`` at ``level``."""
+    log = (tmp_path / "logs" / "libranet-supervisor.log").read_text(encoding="utf-8")
+    return any(line.split()[2] == level and message in line for line in log.splitlines())
+
+
 def test_check_config_prints_the_resolved_config(
     config_file: Path, capsys: CaptureFixture[str]
 ) -> None:
@@ -98,6 +104,8 @@ def test_run_creates_the_node_identity_and_publishes_its_key(
     assert len(list((tmp_path / "data" / "cas" / "data" / "sha256").glob("*/*"))) == 1
     log = (tmp_path / "logs" / "libranet-supervisor.log").read_text(encoding="utf-8")
     assert "Node id: sha256/" in log
+    key_path = tmp_path / "data" / "keys" / "node_private_key.pem"
+    assert logged(tmp_path, "INFO", f"Created a new private key at {key_path}")
 
 
 def test_unreadable_node_key_is_an_error(
@@ -111,6 +119,7 @@ def test_unreadable_node_key_is_an_error(
 
     assert main(["--config", str(config_file)], stop=stop) == EXIT_CONFIG_ERROR
     assert "node identity" in capsys.readouterr().err
+    assert logged(tmp_path, "ERROR", "Could not load the node identity: ")
 
 
 def with_archive(config_file: Path, archive: Path) -> Path:
@@ -147,7 +156,7 @@ def test_a_content_archive_that_cannot_be_opened_is_an_error(
 
     assert status == EXIT_CONFIG_ERROR
     assert f"Could not open a content archive: Cannot open {archive}" in capsys.readouterr().err
-    assert not (tmp_path / "logs" / "libranet-supervisor.log").exists()
+    assert logged(tmp_path, "ERROR", f"Could not open a content archive: Cannot open {archive}")
 
 
 def test_run_spawns_every_module_until_stopped(config_file: Path, tmp_path: Path) -> None:

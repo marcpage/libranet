@@ -460,6 +460,7 @@ class EvictionModule(ModuleBase):
             path.unlink()
 
         except FileNotFoundError:
+            # Not logged: already gone, so there is nothing to report.
             return
 
         self.pressure.deleted(size)

@@ -134,6 +134,7 @@ class SearchCache:
             return path.read_bytes()
 
         except FileNotFoundError:
+            # Not logged: a prefix not searched for lately has no cached response.
             return None
 
     def save(self, prefix: str, body: bytes) -> Path:

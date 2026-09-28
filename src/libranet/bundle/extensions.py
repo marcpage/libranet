@@ -77,6 +77,7 @@ def resolve_directory(
             extension = load(content_id)
 
         except MissingContentError as error:
+            # Not logged: raised below, with everything else missing.
             missing.extend(error.content_ids)
             continue
 

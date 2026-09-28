@@ -146,6 +146,7 @@ class LayeredSource:
                 return layer.read(content_id)
 
             except ContentNotFoundError:
+                # Not logged: the next layer may hold it.
                 continue
 
         raise ContentNotFoundError(f"Content not found: {content_id}")

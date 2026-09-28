@@ -13,12 +13,15 @@ also how the stats module treats unusable node ids (Step 8).
 
 from __future__ import annotations
 from json import loads
+from logging import getLogger
 from typing import Callable
 from zlib import decompressobj, error as ZlibError
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
 from libranet.webserver.search import normalize_prefix
+
+_LOGGER = getLogger(__name__)
 
 
 class InvalidListError(ValueError):
@@ -37,7 +40,7 @@ def decode_list(body: bytes, max_decompressed_bytes: int) -> object:
         return loads(body)
 
     except ValueError:
-        pass  # Not plain JSON, so it can only be compressed.
+        pass  # Not logged: not plain JSON, so it can only be compressed.
 
     decompressor = decompressobj()
 
@@ -85,7 +88,8 @@ def parse_node_list(value: object) -> dict[str, ContentId]:
         try:
             parsed[endpoint] = ContentId.parse(node_id)
 
-        except InvalidContentIdError:
+        except InvalidContentIdError as error:
+            _LOGGER.debug("Dropping the entry for %s from a node list: %s", endpoint, error)
             continue
 
     return parsed
@@ -127,7 +131,8 @@ def _normalized(values: list[object], normalize: Callable[[str], str]) -> list[s
         try:
             kept.append(normalize(value))
 
-        except InvalidContentIdError:
+        except InvalidContentIdError as error:
+            _LOGGER.debug("Dropping %r from a seek list: %s", value, error)
             continue
 
     return kept

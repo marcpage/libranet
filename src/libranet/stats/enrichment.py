@@ -15,6 +15,7 @@ enriched answer is newer than the one it replaces.
 
 from __future__ import annotations
 from json import JSONDecodeError, dumps, loads
+from logging import getLogger
 from typing import Final
 
 from libranet.cas.content_id import ContentId
@@ -22,6 +23,8 @@ from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.prefix import nearest
 from libranet.stats.database import StatsDatabase
 from libranet.webserver.search import SearchCache
+
+_LOGGER = getLogger(__name__)
 
 _SEPARATORS: Final = (",", ":")
 _RESULTS_FIELD: Final = "results"
@@ -65,7 +68,8 @@ def _parse_results(body: bytes) -> set[ContentId]:
     try:
         results = loads(body)[_RESULTS_FIELD]
 
-    except (JSONDecodeError, KeyError, TypeError, UnicodeDecodeError):
+    except (JSONDecodeError, KeyError, TypeError, UnicodeDecodeError) as error:
+        _LOGGER.warning("Ignoring an unreadable cached search response: %s", error)
         return set()
 
     if not isinstance(results, list):
@@ -78,6 +82,7 @@ def _parse_results(body: bytes) -> set[ContentId]:
             parsed.add(ContentId.parse(text))
 
         except (InvalidContentIdError, AttributeError):
+            _LOGGER.warning("A cached search response holds %r, not a content id", text)
             continue
 
     return parsed

@@ -225,6 +225,7 @@ def _scheme(descriptor: bytes) -> tuple[_Scheme, bytes]:
         iv = bytes.fromhex(iv_hex)
 
     except ValueError:
+        # Not logged: an IV that is not hex is refused below.
         iv = b""
 
     if prefix != _IV_PREFIX or len(iv) != scheme.iv_bytes:
@@ -239,6 +240,7 @@ def _is_json(data: bytes) -> bool:
         loads(data.decode("utf-8"))
 
     except (ValueError, RecursionError):
+        # Not logged: failing to parse is the answer.
         return False
 
     return True

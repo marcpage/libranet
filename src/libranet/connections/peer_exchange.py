@@ -254,6 +254,7 @@ class PeerExchange:
             return self._verifier.verify_response(response.status, response.headers, response.body)
 
         except UnknownKeyError as error:
+            # Not logged: a peer's key is not held until it is fetched, below.
             node_id = error.node_id
 
         except SignatureError as error:
@@ -325,6 +326,7 @@ class PeerExchange:
             return self._storage.node_list_path.read_bytes()
 
         except OSError:
+            # Not logged: there is none before the first derivation, as above.
             own = {endpoint: str(self._identity.node_id) for endpoint in self._own_endpoints}
             return dumps({"nodes": own}).encode("utf-8")
 
@@ -419,6 +421,7 @@ class PeerExchange:
                 held.append((content_id, self._content.read(content_id)))
 
             except ContentNotFoundError:
+                # Not logged: only what is held is sent.
                 continue
 
         return held
@@ -442,7 +445,8 @@ class PeerExchange:
         try:
             data, _ = parse_seek_list(loads(self._storage.seek_list_path.read_bytes()))
 
-        except (OSError, ValueError):
+        except (OSError, ValueError) as error:
+            self._logger.debug("Cannot read this node's own seek list: %s", error)
             return []
 
         return [ContentId.parse(text) for text in data]

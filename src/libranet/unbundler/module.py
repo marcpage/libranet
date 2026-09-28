@@ -146,9 +146,11 @@ class UnbundlerModule(ModuleBase):
             self._resolve(bundle, path, target)
 
         except MissingContentError as error:
+            # Not logged: _fetch logs it.
             self._fetch(bundle, path, error.content_ids)
 
         except BundleError as error:
+            # Not logged: _report logs it.
             self._report(bundle, path, PathOutcome.UNUSABLE, detail=str(error))
 
     def _resolve(self, bundle: ContentId, path: str, target: Path) -> None:
@@ -249,6 +251,7 @@ class UnbundlerModule(ModuleBase):
                 raise MalformedBundleError("Not a directory bundle")
 
         except FileNotFoundError:
+            # Not logged: a directory not saved yet is saved once resolved.
             return None
 
         except (ZlibError, BundleError) as error:

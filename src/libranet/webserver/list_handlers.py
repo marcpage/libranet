@@ -28,6 +28,7 @@ and ``sources`` says which entries were the signer's own
 from __future__ import annotations
 from dataclasses import dataclass
 from http import HTTPStatus
+from logging import getLogger
 from pathlib import Path
 from typing import Final
 
@@ -54,6 +55,8 @@ from libranet.webserver.request_refusals import (
     unreadable_body_response,
 )
 
+_LOGGER = getLogger(__name__)
+
 NODES_PATH: Final = "/data/nodes"
 SEEK_PATH: Final = "/data/seek"
 
@@ -70,6 +73,7 @@ class ListFileHandler:
             body = self.path.read_bytes()
 
         except FileNotFoundError:
+            _LOGGER.debug("%s has not been derived yet", self.path)
             return problem_response(
                 Problem.for_status(
                     HTTPStatus.SERVICE_UNAVAILABLE,
@@ -106,6 +110,7 @@ class NodeListHandler:
             nodes = parse_node_list(decode_list(request.body.read(), self.max_decompressed_bytes))
 
         except InvalidListError as error:
+            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
             return _invalid_list_response(request, error)
 
         sender = NodeListSender(signer, request.client_address)
@@ -133,6 +138,7 @@ class SeekListHandler:
             )
 
         except InvalidListError as error:
+            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
             return _invalid_list_response(request, error)
 
         self.publish(

@@ -200,6 +200,7 @@ def build_directory(
             if not prefix:
                 raise
 
+            # Not logged: the backup module logs what is skipped.
             del directories[prefix[:-1]]
             skipped[prefix[:-1]] = str(error)
             continue
@@ -235,6 +236,7 @@ def build_directory(
                     raise MalformedBundleError("Not a file, a directory, or a symlink")
 
             except (OSError, MalformedBundleError) as error:
+                # Not logged: the backup module logs what is skipped.
                 skipped[path] = str(error)
 
             if file is not None:
@@ -256,6 +258,7 @@ def _identity(path: Path) -> tuple[int, int] | None:
         status = path.stat()
 
     except OSError:
+        # Not logged: a path naming nothing has no identity.
         return None
 
     return status.st_dev, status.st_ino
@@ -301,6 +304,7 @@ def _is_utf8(text: str) -> bool:
         text.encode("utf-8")
 
     except UnicodeEncodeError:
+        # Not logged: failing to encode is the answer.
         return False
 
     return True
@@ -411,6 +415,7 @@ def _timestamp(microseconds: int) -> str | None:
         moment = _EPOCH + timedelta(microseconds=microseconds)
 
     except OverflowError:
+        # Not logged: a time with no RFC 3339 form is not recorded.
         return None
 
     return moment.isoformat().replace(_UTC_SUFFIX, _UTC_DESIGNATOR)

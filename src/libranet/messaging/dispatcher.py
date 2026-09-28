@@ -76,6 +76,7 @@ class Dispatcher:
                     raw = queues.outbox.get(block=False)
 
                 except Empty:
+                    # Not logged: an empty outbox ends the drain.
                     break
 
                 if self.dispatch(raw) is not None:
@@ -107,6 +108,7 @@ class Dispatcher:
                     raw = pending.get(timeout=self._poll_interval)
 
                 except Empty:
+                    # Not logged: a timeout is how the loop polls.
                     continue
 
                 message = self.dispatch(raw)
@@ -136,6 +138,7 @@ class Dispatcher:
                 pending.put(outbox.get(timeout=self._poll_interval))
 
             except Empty:
+                # Not logged: a timeout is how the loop polls.
                 continue
 
             except (EOFError, OSError):

@@ -162,6 +162,7 @@ class DirectoryWriter:
                 empty = next(listing, None) is None
 
         except FileNotFoundError:
+            # Not logged: a directory not there yet is empty.
             return
 
         if not empty:
@@ -290,12 +291,14 @@ class DirectoryWriter:
             return self._open_directory(parent, name)
 
         except FileNotFoundError:
+            # Not logged: a directory not there yet is made below.
             pass
 
         except OSError as error:
             if error.errno not in _NOT_A_DIRECTORY:
                 raise
 
+            # Not logged: what is in the way of the directory is replaced.
             self._make_way(parent, name)
             unlink(name, dir_fd=parent)
 
@@ -331,6 +334,7 @@ class DirectoryWriter:
             status = lstat(name, dir_fd=parent)
 
         except FileNotFoundError:
+            # Not logged: nothing is in the way.
             return
 
         if not self._overwrite:
@@ -358,6 +362,7 @@ def _under_temporary_name(make: Callable[[str], _Made]) -> tuple[str, _Made]:
             return candidate, make(candidate)
 
         except FileExistsError:
+            # Not logged: the name is taken, so the next is tried.
             continue
 
     raise FileExistsError(EEXIST, "No temporary name tried was free")
@@ -405,6 +410,7 @@ def _nanoseconds(timestamp: str | None) -> int | None:
         moment = datetime.fromisoformat(timestamp)
 
     except ValueError:
+        # Not logged: a time with no RFC 3339 form is not set.
         return None
 
     if moment.tzinfo is None:
