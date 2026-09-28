@@ -8,7 +8,7 @@ publishes. Peers that misbehave are raw sockets answering with canned bytes.
 
 from __future__ import annotations
 from json import dumps
-from logging import DEBUG, getLogger
+from logging import DEBUG, WARNING, LogRecord, getLogger
 from pathlib import Path
 from queue import Empty, Queue
 from socket import create_server, socket
@@ -854,16 +854,31 @@ def test_a_hand_off_the_peer_refuses_is_not_accepted(
     assert published(queues, EventType.DATA_SENT) == []
 
 
-def test_first_contact_without_a_seek_list_of_its_own_logs_it_at_debug(
+def own_seek_list_records(caplog: LogCaptureFixture) -> list[LogRecord]:
+    return [
+        record
+        for record in caplog.records
+        if record.getMessage().startswith("Cannot read this node's own seek list: ")
+    ]
+
+
+def test_first_contact_before_a_seek_list_of_its_own_is_derived_logs_nothing_of_it(
     exchange: PeerExchange, session: PeerSession, caplog: LogCaptureFixture
 ) -> None:
     caplog.set_level(DEBUG)
 
     exchange.first_contact(session)
 
-    (record,) = [
-        record
-        for record in caplog.records
-        if record.getMessage().startswith("Cannot read this node's own seek list: ")
-    ]
-    assert record.levelno == DEBUG
+    assert own_seek_list_records(caplog) == []
+
+
+def test_first_contact_with_an_unreadable_seek_list_of_its_own_logs_a_warning(
+    exchange: PeerExchange, session: PeerSession, config: LibranetConfig, caplog: LogCaptureFixture
+) -> None:
+    config.storage.derived_dir.mkdir(parents=True, exist_ok=True)
+    config.storage.seek_list_path.write_bytes(b"not json")
+
+    exchange.first_contact(session)
+
+    (record,) = own_seek_list_records(caplog)
+    assert record.levelno == WARNING

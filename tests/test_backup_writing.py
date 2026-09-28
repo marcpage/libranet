@@ -3,12 +3,13 @@
 from __future__ import annotations
 from dataclasses import replace
 from errno import ENOTEMPTY
+from logging import WARNING
 from os import readlink, symlink, umask, urandom
 from pathlib import Path
 from stat import S_IMODE
 from typing import Any, Iterator
 
-from pytest import MonkeyPatch, fixture, mark, raises
+from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
 
 from libranet.backup.writing import DirectoryWriter
 from libranet.bundle.building import IgnoredPaths, build_file
@@ -402,3 +403,20 @@ def test_when_every_temporary_name_is_taken_nothing_is_written(
 
     assert (target / "taken").read_bytes() == b"someone else's"
     assert names(target) == {"taken"}
+
+
+def test_a_time_that_is_not_rfc_3339_is_logged_as_a_warning(
+    tmp_path: Path, store: CasStore, target: Path, caplog: LogCaptureFixture
+) -> None:
+    entry = file_entry(tmp_path, store, b"when?", modified="not a time")
+
+    with writer(target) as placing:
+        placing.place_file("when.txt", entry, store)
+
+    assert caplog.record_tuples == [
+        (
+            "libranet.backup.writing",
+            WARNING,
+            "Leaving a modification time unset, as 'not a time' is not RFC 3339",
+        )
+    ]

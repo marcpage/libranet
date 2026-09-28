@@ -29,6 +29,7 @@ still listed here, since that is how the content held is first counted
 
 from __future__ import annotations
 from dataclasses import dataclass
+from logging import getLogger
 from math import prod
 from pathlib import Path
 from stat import S_ISREG
@@ -40,6 +41,8 @@ from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.prefix import matching_bits
 from libranet.cas.store import DATA_SEGMENT, CasStore
 from libranet.config.models import MIB
+
+_LOGGER = getLogger(__name__)
 
 #: Provisional: the least any one factor of a score counts for.
 FACTOR_FLOOR: Final = 0.01
@@ -152,8 +155,12 @@ def _objects_in(directory: Path, algorithm: str) -> list[HeldObject]:
             content_id = ContentId.create(algorithm, entry.name)
             status = entry.stat()
 
-        except (InvalidContentIdError, FileNotFoundError):
-            # Not logged: a name that is not a hash, or a file just deleted, is not held.
+        except InvalidContentIdError as error:
+            _LOGGER.warning("Skipping %s, not named as CAS content: %s", entry, error)
+            continue
+
+        except FileNotFoundError:
+            # Not logged: it was deleted while the directory was read.
             continue
 
         if content_id.hash == entry.name and S_ISREG(status.st_mode):

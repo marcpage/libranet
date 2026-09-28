@@ -46,7 +46,7 @@ def _decompressed_hexdigest(data: bytes, hasher: Hasher) -> str | None:
             chunk = decompressor.decompress(decompressor.unconsumed_tail, _CHUNK_BYTES)
 
     except ZlibError:
-        # Not logged: data that is not a zlib stream does not match.
+        # Not logged: data that is not a zlib stream does not match, as callers log.
         return None
 
     if not decompressor.eof or decompressor.unused_data:

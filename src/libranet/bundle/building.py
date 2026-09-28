@@ -43,6 +43,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from errno import ENOENT
+from logging import getLogger
 from os import (
     O_NOFOLLOW,
     O_NONBLOCK,
@@ -75,6 +76,8 @@ from libranet.bundle.storing import HASH_ALGORITHM, ContentSink, store_object
 from libranet.cas.algorithms import DEFAULT_REGISTRY
 from libranet.cas.content_id import ContentId
 from libranet.config.models import MIB
+
+_LOGGER = getLogger(__name__)
 
 _PATH_SEPARATOR: Final = "/"
 _EPOCH: Final = datetime(1970, 1, 1, tzinfo=timezone.utc)
@@ -415,7 +418,9 @@ def _timestamp(microseconds: int) -> str | None:
         moment = _EPOCH + timedelta(microseconds=microseconds)
 
     except OverflowError:
-        # Not logged: a time with no RFC 3339 form is not recorded.
+        _LOGGER.warning(
+            "Leaving out a time %d microseconds from the epoch, as out of range", microseconds
+        )
         return None
 
     return moment.isoformat().replace(_UTC_SUFFIX, _UTC_DESIGNATOR)

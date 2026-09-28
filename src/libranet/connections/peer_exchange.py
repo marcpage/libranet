@@ -445,8 +445,12 @@ class PeerExchange:
         try:
             data, _ = parse_seek_list(loads(self._storage.seek_list_path.read_bytes()))
 
+        except FileNotFoundError:
+            # Not logged: there is none before the first derivation.
+            return []
+
         except (OSError, ValueError) as error:
-            self._logger.debug("Cannot read this node's own seek list: %s", error)
+            self._logger.warning("Cannot read this node's own seek list: %s", error)
             return []
 
         return [ContentId.parse(text) for text in data]

@@ -3,7 +3,7 @@
 from __future__ import annotations
 from io import BytesIO
 from json import loads
-from logging import DEBUG
+from logging import DEBUG, WARNING
 from pathlib import Path
 from queue import Empty, Queue
 from zlib import compress
@@ -451,3 +451,18 @@ def test_an_invalid_address_is_logged_at_debug(
     ]
     assert record.levelno == DEBUG
     assert record.getMessage().startswith("Refusing PUT /data/sha256/xyz: ")
+
+
+def test_an_address_under_an_unsupported_algorithm_is_logged_as_a_warning(
+    router: Router, known: NodeIdentity, caplog: LogCaptureFixture
+) -> None:
+    address = "md5/" + "0" * 32
+
+    assert router.dispatch(signed_request(known, CONTENT, address)).status == 400
+    (record,) = [
+        record
+        for record in caplog.records
+        if record.name == "libranet.webserver.data_write_handler"
+    ]
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith(f"Refusing PUT /data/{address}: ")

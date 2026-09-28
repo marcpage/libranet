@@ -3,11 +3,12 @@
 from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
+from logging import WARNING
 from pathlib import Path
 from zipfile import ZIP_BZIP2, ZIP_DEFLATED, ZipFile, ZipInfo
 from zlib import compress
 
-from pytest import raises
+from pytest import LogCaptureFixture, raises
 
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.reassembly import write_file
@@ -264,3 +265,24 @@ def test_member_times_and_permissions_are_fixed(tmp_path: Path) -> None:
     assert isinstance(info, ZipInfo)
     assert info.date_time == (1980, 1, 1, 0, 0, 0)
     assert info.external_attr >> 16 == 0o100644
+
+
+def test_unknown_algorithms_in_an_archive_are_logged_once_as_a_warning(
+    tmp_path: Path, caplog: LogCaptureFixture
+) -> None:
+    path = raw_archive(
+        tmp_path / "a.zip",
+        {
+            str(id_of(FIRST)): FIRST,
+            f"sha512/{'0' * 128}": b"later",
+            f"sha512/{'1' * 128}": b"later still",
+        },
+    )
+
+    with ArchiveSource.open(path):
+        pass
+
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith("The archive ")
+    assert record.getMessage().endswith(": 2 under sha512")

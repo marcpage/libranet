@@ -31,6 +31,7 @@ Creation times are not set, as the standard library cannot set them.
 from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from errno import EACCES, EEXIST, EISDIR, ELOOP, ENOTDIR, ENOTEMPTY
+from logging import getLogger
 from os import (
     O_CREAT,
     O_DIRECTORY,
@@ -74,6 +75,8 @@ from libranet.bundle.building import IgnoredPaths
 from libranet.bundle.content import ContentSource
 from libranet.bundle.reassembly import write_file
 from libranet.bundle.shapes import FileBundle, Metadata, Symlink
+
+_LOGGER = getLogger(__name__)
 
 _SEPARATOR: Final = "/"
 
@@ -410,7 +413,7 @@ def _nanoseconds(timestamp: str | None) -> int | None:
         moment = datetime.fromisoformat(timestamp)
 
     except ValueError:
-        # Not logged: a time with no RFC 3339 form is not set.
+        _LOGGER.warning("Leaving a modification time unset, as %r is not RFC 3339", timestamp)
         return None
 
     if moment.tzinfo is None:

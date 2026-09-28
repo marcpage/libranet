@@ -1,8 +1,9 @@
 """Tests for turning node-list endpoints into addresses to dial."""
 
 from __future__ import annotations
+from logging import WARNING
 
-from pytest import mark
+from pytest import LogCaptureFixture, mark
 
 from libranet.connections.endpoints import PeerAddress
 
@@ -35,3 +36,19 @@ def test_http_endpoints_are_dialed_at_their_host_and_port(
 )
 def test_endpoints_this_node_cannot_dial_are_refused(endpoint: str) -> None:
     assert PeerAddress.of(endpoint) is None
+
+
+def test_an_endpoint_that_does_not_parse_is_logged_as_a_warning(
+    caplog: LogCaptureFixture,
+) -> None:
+    assert PeerAddress.of("http://peer.example:99999") is None
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith("Cannot dial 'http://peer.example:99999': ")
+
+
+def test_an_endpoint_this_node_does_not_dial_by_design_is_not_logged(
+    caplog: LogCaptureFixture,
+) -> None:
+    assert PeerAddress.of("https://peer.example:443") is None
+    assert caplog.records == []

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 from hashlib import sha256
+from logging import WARNING
 from pathlib import Path
 
-from pytest import raises
+from pytest import LogCaptureFixture, raises
 
 from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
@@ -89,3 +90,15 @@ def test_removing_a_bundle_deletes_all_its_files_and_says_how_large_they_were(
 def test_the_prefix_length_must_be_positive(tmp_path: Path) -> None:
     with raises(ValueError, match="prefix_length"):
         ResolvedFiles(tmp_path, 0)
+
+
+def test_a_directory_not_named_as_a_bundle_is_logged_as_a_warning(
+    tmp_path: Path, caplog: LogCaptureFixture
+) -> None:
+    stray = tmp_path / "sha256" / "not-a-hash"
+    stray.mkdir(parents=True)
+
+    assert ResolvedFiles(tmp_path, 4).bundles() == []
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith(f"Leaving {stray} alone, not named as resolved files: ")

@@ -528,8 +528,13 @@ reach the process's own log file through the `libranet` logger. Every
 caught exception is logged, or raised on, or its handler has a comment
 starting `# Not logged:` that says why: the exception is how the code asks a
 question, or the code it is handed to logs it. A failure the caller turns
-into a `4xx` response or a value it reports is logged at debug.
-`tests/test_exception_logging.py` checks every handler.
+into a `4xx` response or a value it reports is logged at debug. Data that is
+not what it should be is always logged: at warning when it is this node's
+own, at debug when a client or peer sent it and it was refused. An id under
+a hash algorithm this node does not support is a warning wherever it is met,
+since the node may need an update, and `UnsupportedAlgorithms` logs a whole
+archive's or list's worth once. `tests/test_exception_logging.py` checks
+every handler.
 
 ### 5.4 Threads Inside a Module
 

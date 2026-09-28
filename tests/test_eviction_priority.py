@@ -1,9 +1,10 @@
 """Tests for the eviction score, and for listing what a temp CAS holds."""
 
 from __future__ import annotations
+from logging import WARNING
 from pathlib import Path
 
-from pytest import approx, fixture, mark
+from pytest import LogCaptureFixture, approx, fixture, mark
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.prefix import matching_bits
@@ -199,3 +200,18 @@ def test_the_prefix_length_of_the_store_is_used(tmp_path: Path) -> None:
     hold(store, *content)
 
     assert sorted(held.content_id for held in held_objects(store)) == sorted(content)
+
+
+def test_a_file_not_named_as_content_is_logged_as_a_warning(
+    tmp_path: Path, caplog: LogCaptureFixture
+) -> None:
+    store = CasStore(tmp_path / "cas", 4)
+    held = sharing(0)
+    hold(store, held)
+    stray = store.path_for(held).parent / f"{held.hash[:4]}stray"
+    stray.write_bytes(b"")
+
+    assert list(held_objects(store)) == [HeldObject(held, 3)]
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith(f"Skipping {stray}, not named as CAS content: ")

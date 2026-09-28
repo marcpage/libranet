@@ -1,7 +1,7 @@
 """Tests for reading the node and seek lists peers post."""
 
 from __future__ import annotations
-from logging import DEBUG
+from logging import DEBUG, WARNING
 from zlib import compress
 
 from pytest import LogCaptureFixture, mark, raises
@@ -134,3 +134,31 @@ def test_a_dropped_seek_list_entry_is_logged_at_debug(caplog: LogCaptureFixture)
         "Dropping 'sha256/short' from a seek list",
         "Dropping 'xyz' from a seek list",
     ]
+
+
+def test_node_list_entries_under_unsupported_algorithms_are_logged_once_as_a_warning(
+    caplog: LogCaptureFixture,
+) -> None:
+    nodes = {
+        "http://192.0.2.10:80": "md5/" + "0" * 32,
+        "http://192.0.2.11:80": "md5/" + "1" * 32,
+        "http://192.0.2.12:80": str(NODE_ID),
+    }
+
+    assert parse_node_list({"nodes": nodes}) == {"http://192.0.2.12:80": NODE_ID}
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith("A node list names ids hashed with algorithms ")
+    assert record.getMessage().endswith(": 2 under md5")
+
+
+def test_seek_list_entries_under_unsupported_algorithms_are_logged_once_as_a_warning(
+    caplog: LogCaptureFixture,
+) -> None:
+    value = {"data": ["md5/" + "0" * 32, str(CONTENT_ID)], "search": []}
+
+    assert parse_seek_list(value) == ([str(CONTENT_ID)], [])
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith("A seek list names ids hashed with algorithms ")
+    assert record.getMessage().endswith(": 1 under md5")

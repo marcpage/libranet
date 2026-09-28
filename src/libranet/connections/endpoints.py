@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 from dataclasses import dataclass
+from logging import getLogger
 from typing import Final
 from urllib.parse import urlsplit
+
+_LOGGER = getLogger(__name__)
 
 # HTTPS is deferred past v1, so only plain HTTP endpoints are dialed.
 _SCHEME: Final = "http"
@@ -29,8 +32,8 @@ class PeerAddress:
             parts = urlsplit(endpoint)
             port = parts.port
 
-        except ValueError:
-            # Not logged: None answers that it cannot be dialed.
+        except ValueError as error:
+            _LOGGER.warning("Cannot dial %r: %s", endpoint, error)
             return None
 
         if parts.scheme != _SCHEME or not parts.hostname:

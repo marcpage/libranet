@@ -13,6 +13,7 @@ the rest of ``{root}`` free for resolved application paths (Step 14).
 """
 
 from __future__ import annotations
+from logging import getLogger
 from os import replace
 from pathlib import Path
 from typing import Iterator
@@ -21,6 +22,8 @@ from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError, InvalidContentIdError
 from libranet.config.models import StorageConfig
+
+_LOGGER = getLogger(__name__)
 
 DATA_SEGMENT = "data"
 
@@ -151,8 +154,8 @@ class CasStore:
                 try:
                     content_id = ContentId(algorithm, entry.name)
 
-                except InvalidContentIdError:
-                    # Not logged: a partial write, or any other name not a hash, is not content.
+                except InvalidContentIdError as error:
+                    _LOGGER.warning("Skipping %s, not named as CAS content: %s", entry, error)
                     continue
 
                 yield content_id

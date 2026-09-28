@@ -8,7 +8,7 @@ from __future__ import annotations
 from base64 import b64encode
 from http.client import HTTPConnection, HTTPResponse
 from json import dumps, loads
-from logging import DEBUG, getLogger
+from logging import DEBUG, WARNING, getLogger
 from pathlib import Path
 from queue import Empty, Queue
 from socket import SHUT_WR, create_connection
@@ -1348,3 +1348,15 @@ def test_an_invalid_search_prefix_is_logged_at_debug(
     (record,) = [r for r in caplog.records if r.name == "libranet.webserver.search_handler"]
     assert record.levelno == DEBUG
     assert record.getMessage().startswith("Refusing GET /data/search/nothex: ")
+
+
+def test_a_content_id_under_an_unsupported_algorithm_is_logged_as_a_warning(
+    connection: HTTPConnection, caplog: LogCaptureFixture
+) -> None:
+    path = "/data/md5/" + "0" * 32
+    response, _ = _get(connection, path)
+
+    assert response.status == 400
+    (record,) = [r for r in caplog.records if r.name == "libranet.webserver.data_handler"]
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith(f"Refusing GET {path}: ")

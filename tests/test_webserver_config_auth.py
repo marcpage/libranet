@@ -3,9 +3,10 @@
 from __future__ import annotations
 from base64 import b64encode
 from json import loads
+from logging import DEBUG
 from pathlib import Path
 
-from pytest import fixture, mark
+from pytest import LogCaptureFixture, fixture, mark
 
 from libranet.problems import CREDENTIAL_REQUIRED, PROBLEM_CONTENT_TYPE
 from libranet.webserver.config_auth import CONFIG_REALM, ConfigAuthGuard, basic_credentials
@@ -160,3 +161,19 @@ def test_a_remote_request_is_refused_before_it_can_capture_anything(
 )
 def test_what_an_authorization_header_carries(header: str, expected: str | None) -> None:
     assert basic_credentials({"Authorization": header}) == expected
+
+
+def test_credentials_that_do_not_decode_are_logged_at_debug_without_them(
+    caplog: LogCaptureFixture,
+) -> None:
+    caplog.set_level(DEBUG)
+    encoded = b64encode(b"\xff\xfe:password").decode("ascii")
+
+    assert basic_credentials({"Authorization": f"Basic {encoded}"}) is None
+    assert caplog.record_tuples == [
+        (
+            "libranet.webserver.config_auth",
+            DEBUG,
+            "Ignoring Basic credentials that do not decode: UnicodeDecodeError",
+        )
+    ]

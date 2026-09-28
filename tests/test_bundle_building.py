@@ -1,14 +1,16 @@
 """Tests for building bundles from local files and directories."""
 
 from __future__ import annotations
+from datetime import datetime, timezone
 from hashlib import sha256
 from io import BytesIO
+from logging import WARNING
 from os import chmod, fsencode, geteuid, mkfifo, stat, symlink, urandom, utime
 from pathlib import Path
 from stat import S_IRUSR, S_IWUSR, S_IXUSR
 from zlib import compress
 
-from pytest import fixture, mark, raises, skip
+from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises, skip
 
 from libranet.bundle.building import build_directory, build_file
 from libranet.bundle.reassembly import write_file
@@ -539,3 +541,19 @@ def test_file_that_was_something_else_is_built_afresh(tree: Path, store: Recordi
 
     assert isinstance(entry, FileBundle)
     assert reassembled(entry, store) == b"data"
+
+
+def test_a_time_out_of_range_is_left_out_and_logged_as_a_warning(
+    tmp_path: Path, store: RecordingStore, monkeypatch: MonkeyPatch, caplog: LogCaptureFixture
+) -> None:
+    # No filesystem here keeps a time past 2262, so the epoch moves instead.
+    monkeypatch.setattr(
+        "libranet.bundle.building._EPOCH", datetime(9999, 12, 31, tzinfo=timezone.utc)
+    )
+    path = tmp_path / "file.txt"
+    path.write_bytes(b"x")
+
+    assert build_file(path, store).metadata.modified is None
+    assert caplog.records
+    assert all(record.levelno == WARNING for record in caplog.records)
+    assert all(record.getMessage().startswith("Leaving out a time ") for record in caplog.records)

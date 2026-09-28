@@ -17,6 +17,7 @@ Either also covers ``content-digest`` whenever a body is present, and the
 
 from __future__ import annotations
 from datetime import datetime
+from logging import getLogger
 from time import time
 from typing import Any, Callable, Final, Mapping, Sequence
 
@@ -33,7 +34,11 @@ from http_message_signatures.http_sfv import Dictionary, InnerList
 from http_message_signatures.structures import CaseInsensitiveDict
 
 from libranet.cas.content_id import ContentId
-from libranet.cas.errors import ContentNotFoundError, InvalidContentIdError
+from libranet.cas.errors import (
+    ContentNotFoundError,
+    InvalidContentIdError,
+    UnknownAlgorithmError,
+)
 from libranet.cas.store import CasStore
 from libranet.identity.content_digest import (
     CONTENT_DIGEST_HEADER,
@@ -48,6 +53,8 @@ from libranet.identity.errors import (
 )
 from libranet.identity.keys import published_public_key
 from libranet.identity.node_identity import NodeIdentity
+
+_LOGGER = getLogger(__name__)
 
 SIGNATURE_LABEL: Final = "libranet"
 SIGNATURE_INPUT_HEADER: Final = "Signature-Input"
@@ -314,6 +321,9 @@ def _parse_key_id(key_id: str) -> ContentId:
         return ContentId.parse(key_id)
 
     except InvalidContentIdError as error:
+        if isinstance(error, UnknownAlgorithmError):
+            _LOGGER.warning("Refusing a signature whose keyid is %r: %s", key_id, error)
+
         raise InvalidSignatureError(f"Signature keyid is not a node id: {error}") from error
 
 

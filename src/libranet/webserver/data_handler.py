@@ -23,7 +23,11 @@ from typing import Final
 
 from libranet.bundle.content import ContentSource
 from libranet.cas.content_id import ContentId
-from libranet.cas.errors import ContentNotFoundError, InvalidContentIdError
+from libranet.cas.errors import (
+    ContentNotFoundError,
+    InvalidContentIdError,
+    UnknownAlgorithmError,
+)
 from libranet.messaging.events import EventType
 from libranet.problems import CONTENT_UNAVAILABLE, INVALID_CONTENT_ADDRESS, Problem
 from libranet.webserver.client_origin import is_local_client
@@ -65,6 +69,10 @@ class DataReadHandler:
     def __call__(self, request: Request) -> Response:
         try:
             content_id = ContentId.create(request.params["algorithm"], request.params["hash"])
+
+        except UnknownAlgorithmError as error:
+            _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, error)
+            return invalid_address_response(error, request)
 
         except InvalidContentIdError as error:
             _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)

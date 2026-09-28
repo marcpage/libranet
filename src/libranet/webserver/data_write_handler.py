@@ -37,7 +37,7 @@ from http import HTTPStatus
 from logging import getLogger
 
 from libranet.cas.content_id import ContentId
-from libranet.cas.errors import InvalidContentIdError
+from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
 from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
@@ -74,6 +74,10 @@ class DataWriteHandler:
     def __call__(self, request: Request) -> Response:
         try:
             content_id = ContentId.create(request.params["algorithm"], request.params["hash"])
+
+        except UnknownAlgorithmError as error:
+            _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, error)
+            return invalid_address_response(error, request)
 
         except InvalidContentIdError as error:
             _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)

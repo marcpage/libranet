@@ -28,6 +28,7 @@ from __future__ import annotations
 from bisect import bisect_left
 from contextlib import contextmanager
 from importlib.resources.abc import Traversable
+from logging import getLogger
 from pathlib import Path
 from threading import Lock
 from types import TracebackType
@@ -36,7 +37,7 @@ from zipfile import ZIP_DEFLATED, ZIP_STORED, BadZipFile, ZipFile, ZipInfo
 from zlib import error as ZlibError
 
 from libranet.atomic_file import atomic_writer
-from libranet.cas.algorithms import DEFAULT_REGISTRY, AlgorithmRegistry
+from libranet.cas.algorithms import DEFAULT_REGISTRY, AlgorithmRegistry, UnsupportedAlgorithms
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import (
     ArchiveError,
@@ -44,6 +45,8 @@ from libranet.cas.errors import (
     InvalidContentIdError,
     UnknownAlgorithmError,
 )
+
+_LOGGER = getLogger(__name__)
 
 #: What an archive's file name ends in.
 ARCHIVE_SUFFIX: Final = ".zip"
@@ -182,6 +185,7 @@ class ArchiveSource:
             ArchiveError: a member is not a CAS object, or cannot be read.
         """
         members: dict[ContentId, ZipInfo] = {}
+        unsupported = UnsupportedAlgorithms()
 
         for info in self._archive.infolist():
             if info.is_dir():
@@ -194,14 +198,15 @@ class ArchiveSource:
                 members[ContentId.parse(info.filename, registry)] = info
 
             except UnknownAlgorithmError:
-                # Not logged: a hash this node has no algorithm for is not served.
-                continue
+                # Not logged: counted, and logged once for the archive below.
+                unsupported.add(info.filename)
 
             except InvalidContentIdError as error:
                 raise ArchiveError(
                     f"{self._name} holds something not a CAS object: {error}"
                 ) from None
 
+        unsupported.log(_LOGGER, f"The archive {self._name}")
         return members
 
 

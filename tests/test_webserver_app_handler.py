@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 from json import loads
+from logging import DEBUG
 from pathlib import Path
 from re import fullmatch
 from typing import Any, Mapping
 
-from pytest import fixture, mark, raises
+from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
@@ -503,3 +504,14 @@ def test_a_registry_that_cannot_be_read_is_raised_for_the_server_to_answer(
     # A reserved name is refused before the registry is looked at.
     assert get(handler, "/data/nodes").status == 404
     assert published.messages == []
+
+
+def test_a_path_that_is_not_utf_8_is_logged_at_debug(
+    handler: AppHandler, caplog: LogCaptureFixture
+) -> None:
+    caplog.set_level(DEBUG)
+
+    assert get(handler, "/wiki/%FF.html").status == 404
+    (record,) = [r for r in caplog.records if r.name == "libranet.webserver.app_handler"]
+    assert record.levelno == DEBUG
+    assert record.getMessage().startswith("'wiki/%FF.html' does not percent-encode UTF-8: ")
