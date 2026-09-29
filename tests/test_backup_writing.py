@@ -3,7 +3,7 @@
 from __future__ import annotations
 from dataclasses import replace
 from errno import ENOTEMPTY
-from logging import WARNING
+from logging import ERROR, WARNING
 from os import readlink, symlink, umask, urandom
 from pathlib import Path
 from stat import S_IMODE
@@ -14,7 +14,11 @@ from xattr import xattr
 
 from libranet.backup.writing import DirectoryWriter
 from libranet.bundle.building import IgnoredPaths, build_file
-from libranet.bundle.errors import BundleVerificationError, MissingContentError
+from libranet.bundle.errors import (
+    BundleVerificationError,
+    MissingContentError,
+    UnsupportedBundleError,
+)
 from libranet.bundle.shapes import DirectoryMarker, FileBundle, Metadata, Symlink
 from libranet.bundle.storing import store_object
 from libranet.bundle.xattrs import ExtendedAttributes
@@ -530,3 +534,23 @@ def test_what_placing_an_entry_needs_is_its_parts_and_those_of_attributes_set(
     with writer(target) as placing:
         assert placing.needs(file) == (part,)
         assert placing.needs(directory) == ()
+
+
+class Unknown:
+    """A kind of entry no bundle this node reads holds."""
+
+
+def test_what_placing_an_entry_of_a_kind_not_known_needs_is_logged_and_refused(
+    target: Path, caplog: LogCaptureFixture
+) -> None:
+    unknown: Any = Unknown()
+
+    with writer(target, xattrs=ExtendedAttributes()) as placing:
+        with (
+            caplog.at_level(ERROR, logger="libranet.backup.writing"),
+            raises(UnsupportedBundleError, match="Unknown"),
+        ):
+            placing.needs(unknown)
+
+    assert [record.levelno for record in caplog.records] == [ERROR]
+    assert "Unknown" in caplog.text

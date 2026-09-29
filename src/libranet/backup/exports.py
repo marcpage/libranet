@@ -20,7 +20,10 @@ request gives, and written as it is held, still protected.
 
 An export needs every object held here. If any is not, nothing is written,
 the export fails, and what it lacks is to be asked for, as a restore asks, so
-that asking for the export again once that has arrived can succeed.
+that asking for the export again once that has arrived can succeed. A bundle
+holding an entry that is not a file, a symlink, or a directory, which no
+bundle this node reads holds, cannot be exported, since what that entry needs
+cannot be told. That is logged as an error.
 
 A file already where the archive goes is replaced only if the request says
 it may be, and the paths given to be ignored, such as the node's own
@@ -31,6 +34,7 @@ was there.
 
 from __future__ import annotations
 from errno import EEXIST
+from logging import getLogger
 from os.path import lexists
 from pathlib import Path
 from typing import Any, Callable
@@ -38,14 +42,20 @@ from typing import Any, Callable
 from libranet.backup.tasks import Task
 from libranet.bundle.building import IgnoredPaths
 from libranet.bundle.content import ContentSource, parse_cas_path
-from libranet.bundle.errors import BundleVerificationError, MissingContentError
+from libranet.bundle.errors import (
+    BundleVerificationError,
+    MissingContentError,
+    UnsupportedBundleError,
+)
 from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.loading import load_bundle
-from libranet.bundle.shapes import Bundle, DirectoryBundle, FileBundle, Symlink
+from libranet.bundle.shapes import Bundle, DirectoryBundle, DirectoryMarker, FileBundle, Symlink
 from libranet.cas.archive import ArchiveSink
 from libranet.cas.content_id import ContentId
 from libranet.cas.verification import content_matches
 from libranet.webserver.config_requests import ConflictBehavior, ExportRequest
+
+_LOGGER = getLogger(__name__)
 
 
 class Export(Task):
@@ -131,7 +141,8 @@ class Export(Task):
         Raises:
             MissingContentError: some are not held; all that could be found
                 are named.
-            BundleError: the bundle or an extension cannot be read.
+            BundleError: the bundle or an extension cannot be read, or holds
+                an entry that is not a file, a symlink, or a directory.
         """
         bundle = self._request.bundle
         password = None if self._request.password is None else self._request.password.encoded
@@ -142,7 +153,9 @@ class Export(Task):
             return load_bundle(content_id, source, password=password)
 
         top = load_bundle(bundle, source, password=password)
-        found: list[Bundle] = [top]
+        # Each looked at as whatever it is, so that a kind of entry this does
+        # not know is logged and fails the export, rather than taken for another.
+        found: list[object] = [top]
 
         if isinstance(top, DirectoryBundle):
             found.extend(resolve_directory(top, load).values())
@@ -152,9 +165,22 @@ class Export(Task):
         for entry in found:
             if isinstance(entry, FileBundle):
                 paths.extend(entry.parts)
-
-            if not isinstance(entry, Symlink):  # symlinks don't get xattrs
                 paths.extend(entry.metadata.xattr_parts())
+
+            elif isinstance(entry, (DirectoryBundle, DirectoryMarker)):
+                paths.extend(entry.metadata.xattr_parts())
+
+            elif isinstance(entry, Symlink):
+                continue  # Symlinks have no parts, and don't get xattrs.
+
+            else:
+                kind = type(entry).__name__
+                _LOGGER.error(
+                    "Cannot export %s, as a %s is not a file, a symlink, or a directory",
+                    bundle,
+                    kind,
+                )
+                raise UnsupportedBundleError(f"Not a file, a symlink, or a directory: {kind}")
 
         parts = {parse_cas_path(part) for part in paths}
         lacked = sorted(part for part in parts if not source.exists(part))

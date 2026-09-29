@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 from io import BytesIO
+from logging import ERROR
 from pathlib import Path
+from typing import Any
 
-from pytest import fixture, raises
+from pytest import LogCaptureFixture, MonkeyPatch, fixture, raises
 
 from libranet.backup.builds import Build
 from libranet.backup.exports import Export
 from libranet.backup.runs import AnnouncingStore
 from libranet.backup.tasks import TaskStatus
 from libranet.bundle.building import IgnoredPaths
-from libranet.bundle.errors import BundleVerificationError, PasswordProtectedBundleError
+from libranet.bundle.errors import (
+    BundleVerificationError,
+    PasswordProtectedBundleError,
+    UnsupportedBundleError,
+)
 from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.reassembly import write_file
@@ -376,6 +382,34 @@ def test_an_export_lacking_the_parts_of_an_attribute_names_them(
     task = exporting(bundle, archive)
 
     assert task.run(source, IgnoredPaths(), lambda: FINISHED_AT) == (fork,)
+    assert not archive.exists()
+
+
+class Unknown:
+    """A kind of entry no bundle this node reads holds."""
+
+
+def test_a_bundle_holding_an_entry_of_a_kind_not_known_is_logged_and_not_exported(
+    store: CasStore,
+    source: LayeredSource,
+    archive: Path,
+    monkeypatch: MonkeyPatch,
+    caplog: LogCaptureFixture,
+) -> None:
+    shown = store_object(b"a file", store)
+    bundle = store_bundle(DirectoryBundle({"file": FileBundle((str(shown),))}), store)
+    entries: dict[str, Any] = {"file": FileBundle((str(shown),)), "odd": Unknown()}
+    monkeypatch.setattr("libranet.backup.exports.resolve_directory", lambda *_: entries)
+    task = exporting(bundle, archive)
+
+    with (
+        caplog.at_level(ERROR, logger="libranet.backup.exports"),
+        raises(UnsupportedBundleError, match="Unknown"),
+    ):
+        task.run(source, IgnoredPaths(), lambda: FINISHED_AT)
+
+    assert [record.levelno for record in caplog.records] == [ERROR]
+    assert str(bundle) in caplog.text and "Unknown" in caplog.text
     assert not archive.exists()
 
 
