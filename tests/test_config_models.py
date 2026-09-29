@@ -162,6 +162,39 @@ class TestPeerPolicy:
         with raises(ValidationError):
             PeerConfig(min_neighborhood_connections=-1)
 
+    def test_a_search_makes_three_passes_by_default_and_never_fewer_than_two(self) -> None:
+        assert PeerConfig().search_passes == 3
+        assert PeerConfig(search_passes=2).search_passes == 2
+
+        with raises(ValidationError, match="search_passes"):
+            PeerConfig(search_passes=1)
+
+    def test_the_hold_must_outlast_a_search(self) -> None:
+        # Two passes after the first, each waiting up to 150 seconds: 300 in all.
+        with raises(ValidationError, match="failed_search_hold_seconds"):
+            LibranetConfig.model_validate(
+                {"network": {"retry_after_seconds": 150}, "peers": {"search_passes": 3}}
+            )
+
+        config = LibranetConfig.model_validate(
+            {"network": {"retry_after_seconds": 149}, "peers": {"search_passes": 3}}
+        )
+        assert config.peers.failed_search_hold_seconds == 300.0
+
+    def test_more_passes_need_a_longer_hold(self) -> None:
+        def four_passes_held(hold: float) -> LibranetConfig:
+            return LibranetConfig.model_validate(
+                {
+                    "network": {"retry_after_seconds": 60},
+                    "peers": {"search_passes": 4, "failed_search_hold_seconds": hold},
+                }
+            )
+
+        with raises(ValidationError, match="failed_search_hold_seconds"):
+            four_passes_held(180)
+
+        assert four_passes_held(181).peers.failed_search_hold_seconds == 181
+
 
 class TestStoragePaths:
     def test_derived_paths_hang_off_the_data_directory(self, tmp_path: Path) -> None:

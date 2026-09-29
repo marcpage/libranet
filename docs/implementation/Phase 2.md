@@ -2109,10 +2109,10 @@ without it, and the node reads the same.
 **Issue:** #138. **Depends on:** Step 27.
 
 Step 27 searches the connected peers for content in two passes, as
-HighLevelDesign §4.7 now says: every peer is asked, best match first,
-then every peer again once the `Retry-After` of its `503` has passed,
-and then the search stops. Two is built into the code: a search's
-`second_pass` flag in `connections/module.py`.
+HighLevelDesign §4.7 said: every peer is asked, best match first, then
+every peer again once the `Retry-After` of its `503` has passed, and then
+the search stops. Two was built into the code: a search's `second_pass`
+flag in `connections/module.py`.
 
 Settled in the issue:
 
@@ -2120,45 +2120,82 @@ Settled in the issue:
   It is at least 2. If two passes turn out to be too few, because the
   network is too large, it can be raised to 3 or even 4.
 
-Work this implies:
+Ruled before building:
 
-- A setting in `peers`, beside `peers.failed_search_hold_seconds`: 2 by
-  default, and refused below 2. `peers.search_passes` is the obvious
-  name. It is documented in `examples/libranet.yaml`.
-- The search counts its passes rather than flagging the second. Every
-  pass after the first is paced as the second is now: a peer is asked
-  again only once its `Retry-After` has passed, and no pass waits longer
-  than this node's own `network.retry_after_seconds` to start.
+- **§4.7 allows two passes or more.** Each pass after the first is paced
+  as the second was, and the search stops after the last. The pause after
+  a search that found nothing now outlasts the longest search the node's
+  peers make: it is longer than any `Retry-After` they send, times the
+  passes after the first that they make. A node set to three passes
+  keeps to the specification, rather than the setting being an
+  experiment the specification does not mention.
+- **A hold too short for the passes is refused.** A node does not start
+  when `peers.failed_search_hold_seconds` is no longer than
+  `peers.search_passes` less one, times `network.retry_after_seconds`.
+  Its own settings stand in for its peers', which the hold has to
+  outlast, as they do on a network whose nodes are all set alike. At
+  the default 300-second hold and three passes, it refuses a
+  `Retry-After` of 150 seconds or more.
 
-**Open questions:**
+How the rulings were reached. Step 27's simulation was not kept, so a new
+one was written to the connection manager's and fetcher's rules: 40 and
+100 nodes of 32 peers each, a client asking one node once for content no
+node holds, and ten runs of each case.
 
-- Whether the hold has to grow with the passes. The hold after a search
-  that found nothing is what keeps searches for content no node holds
-  from restarting each other (Step 27), and §4.7 sizes it against one
-  pass after the first: it is longer than any `Retry-After` the node's
-  peers send, "so that their second passes are over before it ends".
-  Each pass added lengthens a search by up to one more `Retry-After`. At
-  the defaults, a 300-second hold and a 5-second `Retry-After`, there is
-  room to spare; with the 60 seconds Step 27's simulation tried, four
-  passes take 180 of the 300. The setting could be checked against the
-  hold, or the hold worked out from it.
-- Whether §4.7 changes. It says two passes, and the hold is a rule for
-  the network rather than a local choice, since what it has to outlast
-  is the peers' passes, not the node's own. A node making more passes
-  than its peers expect is the case the hold does not cover. Either §4.7
-  allows two or more, and says the hold outlasts the longest search a
-  peer makes, or the setting stays an experiment the specification does
-  not mention, for networks whose nodes all set it alike.
-- Whether Step 27's simulation is run again at three and four passes
-  before the default moves. It showed two passes going quiet within
-  about one `Retry-After`; deepening passes, which also lengthened each
-  search, never stopped.
+- Two passes went quiet every time, each node searching once, even with a
+  60-second hold, as Step 27 found.
+- Three and four passes went quiet with each node searching once whenever
+  the hold was longer than the passes after the first times the largest
+  `Retry-After` on the network. That held for every mix of `Retry-After`
+  from 5 to 60 seconds, and with nodes making different numbers of
+  passes. At 0.9 times that, some nodes searched twice. At half of it,
+  where nodes' `Retry-After` or number of passes differed, some runs were
+  still searching four hours later.
+- Each pass adds a walk of every peer: about 64, 96, and 128 asks per
+  node for two, three, and four passes. At the defaults, a 300-second
+  hold and a 5-second `Retry-After`, the hold leaves room for far more
+  than 4 passes.
 
-**Testable in isolation:** Step 27's module tests with a fake clock, run
-at two, three, and four passes: each peer is asked once in each pass,
-each pass after the first waits for the `Retry-After` its peers gave,
-and the search stops after the last. Config tests assert a value below 2
-is refused.
+What was built: `peers.search_passes`, 3 by default and refused below 2,
+beside `peers.failed_search_hold_seconds`, and documented in
+`examples/libranet.yaml`. The check on the hold is on the whole
+configuration, since the settings are in two sections. A search counts
+its passes (`pass_number`, up to `passes`) rather than flagging the
+second. It came to about 56 new or changed lines of non-test Python, so
+it is one change set. In a live run of six linked nodes set to three
+passes, asked for content none held, each node searched once, waited
+twice for a next pass about 5 seconds apart, and went quiet, and the
+client's later retries were held off. A node set to three passes with a
+150-second `Retry-After` refused to start.
+
+Ruled on review:
+
+- **The default is three passes**, not the two Step 27 built. It costs
+  a third walk of every peer for content no connected peer holds,
+  about 96 asks per node rather than 64, and lengthens such a search by
+  up to one more `Retry-After`, well within the default hold. Step 27's
+  module tests, which count on two passes, now set two themselves.
+
+My calls, not yet reviewed:
+
+- **A pass that passed every peer over still counts.** When a node's own
+  `Retry-After` is shorter than its peers', a pass can start before any
+  peer is due and ask none. Counting it keeps a search within its passes
+  after the first times the node's own `Retry-After`, which is what the
+  check on the hold assumes. Not counting it would stretch the search to
+  the peers' `Retry-After`, which Step 27 chose it should not do.
+- **No upper limit on the passes** beyond what the hold allows. More than
+  the issue's 4 is left open to experiment.
+- **The hold is checked against this node's own settings only.** A node
+  cannot know its peers' passes or `Retry-After`, and §4.7 leaves
+  keeping them within the hold to the network.
+
+**Testable in isolation:** Step 27's pacing test run at two, three, and
+four passes: each peer is asked once in each pass, each pass after the
+first waits for the `Retry-After` its peers gave, and the search stops
+after the last. A test at three passes shows that a pass that passed
+every peer over still counts. Config tests assert that a value below 2 is
+refused, and so is a hold no longer than the search it follows.
 
 ---
 
@@ -2226,7 +2263,7 @@ into tiers; steps within a tier are independent of each other.
 | C | 42 (#81), 43 (#100), 44 (#102) | Sweeps that touch many files shallowly, so best done before the large steps are open against the same files, and so that later steps are written the new way. 43 had its exemptions decided first. |
 | D | 23 (#52) | The foundation for all the peering work, and the one step known to need its own change sets. |
 | E | 26 (#56), 25 (#55) | Both change how connections are chosen or given up on. 26 is the node-level half of a rule 23 starts, so it goes first — ideally straight after 23. |
-| F | 27 (#59), then 45 (#96) and 55 (#138) | 27 needs 22; better with 23 and 25, which give it more and better-placed peers to walk. 45 needs 22 too, and reshapes the same sending code, so it follows. 55 makes 27's two passes a setting, and waits on whether §4.7 changes. |
+| F | 27 (#59), then 45 (#96) and 55 (#138) | 27 needs 22; better with 23 and 25, which give it more and better-placed peers to walk. 45 needs 22 too, and reshapes the same sending code, so it follows. 55 makes 27's two passes a setting, and its §4.7 change is made. |
 | G | 46 (#121), 28 (#68), then 29 (#69), 53 (#140) | 46 is small, and its specification change is made. 28 moves candidate selection into stats, which is where 29 also needs to reach. 53 fixes what 28's live run found, and its specification change is made. |
 | H | 47 (#98), 48 (#84, #114), then 49 (#82, #83), then 31 (#73) | The backup chain. 48's record is what 49 compares against and 31 extends. 47 fixes a comparison 49 relies on. Touches only bundles and backup, so it can run in parallel with D through G, by anyone not in the connections code. |
 | I | 51 (#99), 52 (#101), 54 (#131) | Independent of everything above. 52's specification change is made; it needs a new dependency on macOS, and is best after 49, which it relies on to hold back attribute-only changes. 54 touches only the local network script. |
@@ -2279,17 +2316,17 @@ either step is built:
   resolved from it, and is not a request for the bundle's content.
 - **Seven steps change a specification** (Steps 27, 28, 41, 46, 49, 52,
   and 55) — as with the push of new content (#119), the specification
-  change is agreed and written first. Five are made: HighLevelDesign §4.7
+  change is agreed and written first. Six are made: HighLevelDesign §4.7
   for a data request's two passes, how the second is paced, and the pause
-  after one that found nothing (Step 27), HighLevelDesign §4.5 for the
+  after one that found nothing (Step 27), and for two passes or more and a
+  pause that outlasts them (Step 55), HighLevelDesign §4.5 for the
   four factors of retention priority (Step 28), HighLevelDesign §4.5 and
   §6 for a single hand-off copy (Step 46), BundleSpecification §2.4 for
   extended attributes (Step 52), and BackupSpecification §3.3 and §5 for
   holding back metadata-only changes (Step 49). HttpApi §2.3, if
   `/config` moves to an origin of its own, is decided with #108 (Step
-  41), and HighLevelDesign §4.7, for more than two passes, with #138
-  (Step 55). Step 16's change to HighLevelDesign §4.9.1 is made too, and
-  went with it to Phase 4.
+  41). Step 16's change to HighLevelDesign §4.9.1 is made too, and went
+  with it to Phase 4.
 - **What a blocking node answers a hand-off** (Steps 30 and 46) — now
   Phase 3's to decide, with Step 30. Step 46 does not wait for it: until
   Step 30 is built, no node blocks anything.
