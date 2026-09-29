@@ -28,6 +28,7 @@ from libranet.bundle.errors import (
     PasswordProtectedBundleError,
     UnsupportedBundleError,
 )
+from libranet.bundle.protection import DESCRIPTOR_SEPARATOR
 from libranet.bundle.shapes import (
     Bundle,
     DirectoryBundle,
@@ -38,9 +39,6 @@ from libranet.bundle.shapes import (
     Symlink,
 )
 
-# A password-protected bundle's ciphertext ends at its last 0x00, before the
-# descriptor (§6.1). JSON text never holds a raw 0x00 (§6.5).
-_DESCRIPTOR_SEPARATOR: Final = b"\0"
 _ABSENT: Final = object()
 
 
@@ -58,7 +56,7 @@ def decode_bundle(data: bytes) -> Bundle:
         value = loads(data.decode("utf-8"))
 
     except (ValueError, RecursionError):
-        if _DESCRIPTOR_SEPARATOR in data:
+        if DESCRIPTOR_SEPARATOR in data:
             raise PasswordProtectedBundleError("Bundle is password-protected") from None
 
         raise MalformedBundleError("Bundle is neither JSON nor password-protected") from None

@@ -45,7 +45,7 @@ from libranet.config.models import MIB
 # The ciphertext ends at the last 0x00, before the descriptor (§6.1), and a
 # drop's placement bytes follow a further 0x00 (§6.4). JSON text never holds
 # a raw 0x00 (§6.5).
-_SEPARATOR: Final = b"\0"
+DESCRIPTOR_SEPARATOR: Final = b"\0"
 
 # A descriptor names its scheme in four fields, "PW-{hash}-{cipher}-{mode}",
 # and may add a fifth, "IV:{hex}" (§6.1).
@@ -143,7 +143,7 @@ def protect(plaintext: bytes, password: bytes, max_object_bytes: int = MIB) -> b
     scheme = _WRITTEN_SCHEME
     compressed = compress(plaintext, _COMPRESSION_LEVEL)
     ciphertext = scheme.encrypt(compressed, password, bytes(scheme.iv_bytes))
-    protected = ciphertext + _SEPARATOR + scheme.descriptor.encode("ascii")
+    protected = ciphertext + DESCRIPTOR_SEPARATOR + scheme.descriptor.encode("ascii")
 
     if len(protected) > max_object_bytes:
         raise BundleTooLargeError(
@@ -168,7 +168,7 @@ def unprotect(data: bytes, password: bytes, max_bytes: int) -> bytes:
         MalformedBundleError: ``data`` is not ciphertext followed by a
             descriptor, or the ciphertext cannot be the named scheme's.
     """
-    ciphertext, separator, descriptor = data.rpartition(_SEPARATOR)
+    ciphertext, separator, descriptor = data.rpartition(DESCRIPTOR_SEPARATOR)
 
     if not separator:
         raise MalformedBundleError("Password-protected bundle has no descriptor")
@@ -188,7 +188,7 @@ def strip_targeting(data: bytes) -> bytes:
     Only a caller expecting ``data`` to be a drop knows it ends in them.
     Data holding no ``0x00`` is returned as it is.
     """
-    content, separator, _ = data.rpartition(_SEPARATOR)
+    content, separator, _ = data.rpartition(DESCRIPTOR_SEPARATOR)
     return content if separator else data
 
 

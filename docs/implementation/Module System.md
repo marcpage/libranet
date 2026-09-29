@@ -536,6 +536,14 @@ since the node may need an update, and `UnsupportedAlgorithms` logs a whole
 archive's or list's worth once. `tests/test_exception_logging.py` checks
 every handler.
 
+A constant another module also needs is defined once, public, in the
+lowest module of the layer its meaning belongs to — bundle path syntax in
+`bundle/shapes.py`, HTTP syntax in `webserver/http_types.py` — and imported
+from there, even where the same value could be written inline. Compact
+JSON, which no layer owns, is in `json_format.py`. Constants that only share
+a value stay apart: a protected bundle's compression level may never
+change, and the level objects are stored at may.
+
 ### 5.4 Threads Inside a Module
 
 Six of the eight modules are single-threaded. The other two are not:

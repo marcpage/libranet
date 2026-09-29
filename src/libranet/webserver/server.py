@@ -51,6 +51,7 @@ from libranet.webserver.config_handlers import NodeDescription, config_routes
 from libranet.webserver.data_handler import DATA_PATTERN, DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
 from libranet.webserver.http_types import (
+    BODILESS_STATUSES,
     IncompleteBodyError,
     Request,
     RequestBody,
@@ -81,9 +82,6 @@ IDLE_TIMEOUT_SECONDS = 60.0
 # mismatch when debugging (Step 10). Other implementations need not send
 # it, and a proxy may rewrite paths.
 REQUEST_PATH_HEADER = "X-Request-Path"
-
-# Responses that must not carry a body, whatever the handler supplied.
-_BODILESS_STATUSES = frozenset({HTTPStatus.NO_CONTENT, HTTPStatus.NOT_MODIFIED})
 
 
 def build_router(
@@ -332,7 +330,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         return RequestBody(int(length), self.rfile)
 
     def _send(self, response: Response, *, close: bool = False) -> None:
-        omit_body = self.command == "HEAD" or response.status in _BODILESS_STATUSES
+        omit_body = self.command == "HEAD" or response.status in BODILESS_STATUSES
         # Signed over the bytes actually sent, so the client can check what it received.
         headers = self.server.signer.sign_response(
             response.status, response.headers, b"" if omit_body else response.body
@@ -347,7 +345,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         if self.command:
             self.send_header(REQUEST_PATH_HEADER, self.path)
 
-        if response.status not in _BODILESS_STATUSES:
+        if response.status not in BODILESS_STATUSES:
             self.send_header("Content-Length", str(len(response.body)))
 
         if close:

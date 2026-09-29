@@ -10,17 +10,15 @@ better results it knows about.
 
 from __future__ import annotations
 from pathlib import Path
-from string import hexdigits
 from time import time
 from typing import Callable, Final, Iterator, Protocol
 
 from libranet.atomic_file import write_atomically
 from libranet.cas.algorithms import DEFAULT_REGISTRY, AlgorithmRegistry
-from libranet.cas.content_id import ContentId
+from libranet.cas.content_id import HEX_DIGITS, ContentId
 from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.prefix import nearest
 
-_HEX_DIGITS: Final = frozenset(hexdigits)
 _CACHE_SUFFIX: Final = ".json"
 
 
@@ -33,7 +31,7 @@ def normalize_prefix(text: str, registry: AlgorithmRegistry = DEFAULT_REGISTRY) 
     """
     longest = max((algorithm.hex_length for algorithm in registry), default=0)
 
-    if not text or len(text) > longest or not _HEX_DIGITS.issuperset(text):
+    if not text or len(text) > longest or not HEX_DIGITS.issuperset(text):
         raise InvalidContentIdError(
             f"Search prefix must be 1 to {longest} hexadecimal characters, got {text!r}"
         )

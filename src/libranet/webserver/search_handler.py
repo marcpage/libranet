@@ -14,6 +14,7 @@ from logging import getLogger
 from typing import Final
 
 from libranet.cas.errors import InvalidContentIdError
+from libranet.json_format import COMPACT_SEPARATORS
 from libranet.messaging.events import EventType
 from libranet.problems import INVALID_SEARCH_PREFIX, Problem
 from libranet.webserver.http_types import (
@@ -59,7 +60,7 @@ class SearchHandler:
 
         if body is None:
             results = [str(content_id) for content_id in self.search.search(prefix)]
-            body = dumps({"results": results}, separators=(",", ":")).encode("utf-8")
+            body = dumps({"results": results}, separators=COMPACT_SEPARATORS).encode("utf-8")
             self.cache.save(prefix, body)
 
         self.publish(

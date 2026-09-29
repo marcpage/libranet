@@ -1395,13 +1395,117 @@ once and shared, not repeated across the code.
   and six are `64 * 1024`, and most of each mean different things. Tying
   them together would make changing one change the others.
 
-**Open question:** where shared constants live — one module for the
-package, or one per layer they belong to (path syntax with the bundle
-code, HTTP syntax where both sides of the wire import it). Per layer
-keeps a module from importing another layer only for a constant.
+Ruled before building:
+
+- **Per layer.** A shared constant is made public in the lowest module of
+  the layer its meaning belongs to, one its users already import, rather
+  than gathered into one module for the package. A fact no layer owns gets
+  a small top-level module, as writing a file whole has `atomic_file.py`.
+- **Inline copies count.** Where a shared constant now has a home, a
+  literal that states the same fact uses it too. A copy that only shares
+  the value stays apart.
+
+What the sweep found, reading each pair's uses and comments rather than
+comparing values:
+
+- Three of the pairs above share only a value:
+  - zlib level 9: `bundle/protection.py`'s may never change, since
+    identical protected bundles must encrypt to identical bytes to dedup
+    (BundleSpecification §6.3), while `bundle/storing.py`'s, as its
+    comment says, is free to change, since storage compression changes no
+    id;
+  - `bundle/content.py`'s `"/"` splits a CAS path, `{algorithm}/{hash}`
+    and the segments §7 adds, which is a content id's syntax, not an entry
+    path's (§3.1);
+  - `webserver/config_requests.py`'s `".."` is looked for in a local
+    path's parts, the host's syntax, not a bundle's.
+- Four more state one fact under other names or spellings:
+  - the `0x00` ending a protected bundle's ciphertext (§6.1), in
+    `bundle/protection.py` and `bundle/parsing.py`;
+  - the most decompressed bytes held at once, in `bundle/content.py` and
+    `cas/verification.py`, under the same comment word for word;
+  - the lower-case hex digits a stored hash is written in, in
+    `cas/content_id.py` and `eviction/priority.py`;
+  - the compact JSON separators, written inline in `problems.py`,
+    `webserver/http_types.py`, `webserver/config_credential.py`, and
+    `webserver/search_handler.py`, the last of which writes the same
+    search-cache files as `stats/enrichment.py`.
+
+Each now has one home:
+
+| Constants | Home | Also used by |
+| --- | --- | --- |
+| `PATH_SEPARATOR`, `PARENT_SEGMENT`, `NO_STEP_SEGMENTS` | `bundle/shapes.py` | `bundle/building.py`, `backup/changes.py`, `backup/restores.py`, `backup/writing.py`, `unbundler/lookup.py` |
+| `EPOCH`, `NANOSECONDS_PER_MICROSECOND` | `bundle/building.py` | `backup/writing.py` |
+| `DESCRIPTOR_SEPARATOR` | `bundle/protection.py` | `bundle/parsing.py` |
+| `CHUNK_BYTES` | `cas/verification.py` | `bundle/content.py` |
+| `HEX_DIGITS`, `LOWER_HEX_DIGITS` | `cas/content_id.py` | `webserver/search.py`, `eviction/priority.py` |
+| `TEMP_SUFFIX` | `atomic_file.py`, already public | `identity/keys.py` |
+| `TOKEN`, `BODILESS_STATUSES` | `webserver/http_types.py` | `connections/request_encoding.py`, `connections/response_parser.py`, `webserver/server.py` |
+| `COMPACT_SEPARATORS` | `json_format.py`, new | `problems.py`, `stats/enrichment.py`, `stats/lists.py`, `webserver/config_credential.py`, `webserver/http_types.py`, `webserver/search_handler.py` |
+
+It came to about 127 new or changed lines of non-test Python, one change
+set. One test moves `EPOCH` where it moved `_EPOCH`.
+
+My calls, not yet reviewed:
+
+- **Homes.** Entry-path syntax is in `bundle/shapes.py`, which already
+  checks entry paths, and which every module using it imports. The epoch
+  is in `bundle/building.py`, where file times become bundle times;
+  `backup/writing.py`, which turns them back, already imports it. The
+  protected bundle's `0x00` is in `bundle/protection.py`, which writes the
+  format; `bundle/parsing.py` only tells a protected bundle apart by it.
+  The chunk size is in `cas/verification.py`, since bundle code imports
+  the CAS and not the reverse. The token pattern is in
+  `webserver/http_types.py` beside the bodiless statuses, although only
+  the client uses it, so that HTTP syntax has one home, and one the
+  connection manager already imports.
+- **`json_format.py` is new,** since `webserver/http_types.py` imports
+  `problems.py`, so the separators could not live in the HTTP layer and
+  still reach problem bodies.
+- **Names.** A shared constant loses its underscore and keeps the most
+  descriptive of its names: `PATH_SEPARATOR` over `_SEPARATOR`,
+  `DESCRIPTOR_SEPARATOR` for protection's `_SEPARATOR`, and
+  `LOWER_HEX_DIGITS` over `_LOWER_HEX`. `_PARENT` and `_NO_STEP` became
+  `PARENT_SEGMENT` and `NO_STEP_SEGMENTS`, and `TOKEN` keeps RFC 9110's
+  name for the rule. No module imports one under an alias.
+- **`bundle/shapes.py`'s unusable segments are built from the shared
+  ones,** `NO_STEP_SEGMENTS | {PARENT_SEGMENT}`, so `""`, `"."`, and
+  `".."` are written once.
+- **What stays apart,** besides the three pairs above:
+  - `webserver/app_registry.py`'s `_UNUSABLE_SEGMENTS`, the same three
+    segments, since an application name is one URL path segment (HttpApi
+    §2), a rule of its own rather than §3.1's;
+  - `bundle/serialization.py`'s compact separators, since a bundle's bytes
+    decide its id, so its encoding may never change, as `json_format.py`
+    says;
+  - `backup/changes.py`'s `0x00`, which ends a field in its own change
+    record;
+  - the four `"libranet"`s: the program's name, its data directory's, the
+    signature label, and the root logger's;
+  - values shared only, as the list above found for `8` and `64 * 1024`.
+- **The rule is written down for new code** in Module System §5.3.
+
+Not covered, each a class larger than this step, and left for a decision:
+
+- A constant repeated inside longer ones: `/data` begins `API_PREFIX`,
+  `NODES_PATH`, `SEEK_PATH`, `DATA_PATTERN`, `SEARCH_PATTERN`, and the
+  path `connections/peer_exchange.py` fetches from, and `/config/api`
+  spells out `CONFIG_APPLICATION` and `app_handler.py`'s `_CONFIG_API`.
+- JSON field names one side writes and another reads, such as
+  `"results"`, which is `_RESULTS_FIELD` in `stats/enrichment.py` and
+  inline in `webserver/search_handler.py`, and `"nodes"` in the lists, the
+  message payloads, and the seed list.
+- A content id's `"/"`, inline in `cas/content_id.py` and
+  `cas/algorithms.py`, and `bundle/content.py`'s `_SEPARATOR`.
+  `cas/algorithms.py` cannot import `cas/content_id.py`, which imports it.
+- `connections/peer_exchange.py` sends this node's own node list with
+  `json`'s default separators, not compact ones. Making it compact would
+  change what is sent, which this step does not.
 
 **Testable in isolation:** nothing changes behavior, so the existing tests
-are the check.
+are the check. Each changed module was also imported on its own, which is
+how an import cycle would show.
 
 ---
 

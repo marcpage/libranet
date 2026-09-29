@@ -3,12 +3,15 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from string import hexdigits
+from typing import Final
 
 from libranet.cas.algorithms import AlgorithmRegistry, DEFAULT_REGISTRY
 from libranet.cas.errors import InvalidContentIdError
 
-_HEX_DIGITS = frozenset(hexdigits)
-_LOWER_HEX_DIGITS = frozenset(hexdigits.lower())
+# The digits a hash may be written with, and the ones it is stored with
+# (HttpApi §5.4).
+HEX_DIGITS: Final = frozenset(hexdigits)
+LOWER_HEX_DIGITS: Final = frozenset(hexdigits.lower())
 
 
 @dataclass(frozen=True, order=True)
@@ -33,7 +36,7 @@ class ContentId:
     hash: str
 
     def __post_init__(self) -> None:
-        if self.algorithm != self.algorithm.lower() or not _LOWER_HEX_DIGITS.issuperset(self.hash):
+        if self.algorithm != self.algorithm.lower() or not LOWER_HEX_DIGITS.issuperset(self.hash):
             raise InvalidContentIdError(
                 f"Content id must be lower-case with a hexadecimal hash, got "
                 f"{self.algorithm!r}/{self.hash!r}"
@@ -52,7 +55,7 @@ class ContentId:
         spec = registry.get(algorithm.lower())
         normalized = hash_value.lower()
 
-        if len(normalized) != spec.hex_length or not _HEX_DIGITS.issuperset(normalized):
+        if len(normalized) != spec.hex_length or not HEX_DIGITS.issuperset(normalized):
             raise InvalidContentIdError(
                 f"Invalid {spec.name} hash: expected {spec.hex_length} hexadecimal characters, "
                 f"got {hash_value!r}"

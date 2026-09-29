@@ -45,6 +45,9 @@ from libranet.bundle.errors import BundleError, MissingContentError, Unsupported
 from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.shapes import (
+    NO_STEP_SEGMENTS,
+    PARENT_SEGMENT,
+    PATH_SEPARATOR,
     Bundle,
     DirectoryBundle,
     DirectoryMarker,
@@ -59,10 +62,6 @@ from libranet.webserver.config_requests import ConflictBehavior, RestoreRequest
 # Provisional default: how long after content it waits on arrives that a
 # restore carries on, so that content arriving together is restored together.
 RESUME_DELAY_SECONDS: Final = 10.0
-
-_SEPARATOR: Final = "/"
-_PARENT: Final = ".."
-_NO_STEP: Final = frozenset(("", "."))
 
 # Writing failing for any of these would fail every other entry alike.
 _STOPPING_ERRORS: Final = frozenset({ENOSPC, EDQUOT, EIO, EROFS})
@@ -273,7 +272,7 @@ class Restore:
         missing: list[ContentId] = []
         others = [path for path, entry in pending.items() if not isinstance(entry, DirectoryMarker)]
 
-        for path in sorted(others, key=lambda p: p.split(_SEPARATOR)):
+        for path in sorted(others, key=lambda p: p.split(PATH_SEPARATOR)):
             missing.extend(self._place(pending, path, writer, source, skipped))
 
         waiting = _ancestors(
@@ -398,9 +397,9 @@ def _lacked(entry: FileBundle, source: ContentSource) -> tuple[ContentId, ...]:
 
 def _beneath_other_entry(entries: Mapping[str, Entry], path: str) -> bool:
     """Whether a directory above ``path`` is a file or a symlink in ``entries``."""
-    segments = path.split(_SEPARATOR)
+    segments = path.split(PATH_SEPARATOR)
     return any(
-        isinstance(entries.get(_SEPARATOR.join(segments[:depth])), (FileBundle, Symlink))
+        isinstance(entries.get(PATH_SEPARATOR.join(segments[:depth])), (FileBundle, Symlink))
         for depth in range(1, len(segments))
     )
 
@@ -414,17 +413,17 @@ def _leads_outside(entries: Mapping[str, Entry], path: str, link: Symlink) -> bo
     nowhere. Following more than :data:`MAX_SYMLINK_HOPS` links is taken to
     lead outside, since a platform that follows more could get there.
     """
-    reached = path.split(_SEPARATOR)[:-1]
-    pending = deque(link.target.split(_SEPARATOR))
+    reached = path.split(PATH_SEPARATOR)[:-1]
+    pending = deque(link.target.split(PATH_SEPARATOR))
     hops = 0
 
     while pending:
         segment = pending.popleft()
 
-        if segment in _NO_STEP:
+        if segment in NO_STEP_SEGMENTS:
             continue
 
-        if segment == _PARENT:
+        if segment == PARENT_SEGMENT:
             if not reached:
                 return True
 
@@ -432,7 +431,7 @@ def _leads_outside(entries: Mapping[str, Entry], path: str, link: Symlink) -> bo
             continue
 
         reached.append(segment)
-        entry = entries.get(_SEPARATOR.join(reached))
+        entry = entries.get(PATH_SEPARATOR.join(reached))
 
         if isinstance(entry, Symlink):
             hops += 1
@@ -441,7 +440,7 @@ def _leads_outside(entries: Mapping[str, Entry], path: str, link: Symlink) -> bo
                 return True
 
             reached.pop()
-            pending.extendleft(reversed(entry.target.split(_SEPARATOR)))
+            pending.extendleft(reversed(entry.target.split(PATH_SEPARATOR)))
 
         elif isinstance(entry, FileBundle) and pending:
             return False
@@ -454,12 +453,12 @@ def _ancestors(paths: Iterable[str]) -> set[str]:
     ancestors: set[str] = set()
 
     for path in paths:
-        segments = path.split(_SEPARATOR)
-        ancestors.update(_SEPARATOR.join(segments[:depth]) for depth in range(1, len(segments)))
+        segments = path.split(PATH_SEPARATOR)
+        ancestors.update(PATH_SEPARATOR.join(segments[:depth]) for depth in range(1, len(segments)))
 
     return ancestors
 
 
 def _deepest_first(path: str) -> tuple[int, str]:
     """Sorts directories beneath others ahead of them."""
-    return -path.count(_SEPARATOR), path
+    return -path.count(PATH_SEPARATOR), path

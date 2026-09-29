@@ -13,6 +13,8 @@ from http import HTTPStatus
 from json import dumps, loads
 from typing import Any, Final, Mapping
 
+from libranet.json_format import COMPACT_SEPARATORS
+
 PROBLEM_CONTENT_TYPE: Final = "application/problem+json"
 ABOUT_BLANK: Final = "about:blank"
 PROBLEM_TYPE_BASE: Final = "https://libranet.org/problems/"
@@ -82,7 +84,7 @@ class Problem:
 
     def to_json(self) -> bytes:
         """The UTF-8 encoded JSON body."""
-        return dumps(self.to_dict(), separators=(",", ":")).encode("utf-8")
+        return dumps(self.to_dict(), separators=COMPACT_SEPARATORS).encode("utf-8")
 
     @classmethod
     def from_json(cls, body: bytes | str) -> Problem:

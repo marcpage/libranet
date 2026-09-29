@@ -21,6 +21,7 @@ from typing import Final, Mapping
 from http_message_signatures.structures import CaseInsensitiveDict
 
 from libranet.connections.errors import MalformedResponseError
+from libranet.webserver.http_types import BODILESS_STATUSES, TOKEN
 
 # The most bytes a status line and header section, or any single line of
 # chunked framing, may take. Libranet responses need a small fraction of it.
@@ -30,14 +31,11 @@ _LINE_END: Final = b"\r\n"
 # The last header line's line break, then the blank line's.
 _HEAD_END: Final = _LINE_END * 2
 _STATUS_LINE: Final = compile_pattern(r"HTTP/1\.([0-9]) ([0-9]{3})(?: (.*))?")
-# RFC 9110 §5.6.2.
-_TOKEN: Final = compile_pattern(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
 # Field content may hold anything but control characters other than tab.
 _FIELD_VALUE: Final = compile_pattern(r"[^\x00-\x08\x0a-\x1f\x7f]*")
 _CHUNK_SIZE: Final = compile_pattern(rb"[0-9A-Fa-f]{1,16}")
 # A ``Retry-After`` given as a number of seconds (RFC 9110 §10.2.3).
 _DELAY_SECONDS: Final = compile_pattern(r"[0-9]+")
-_BODILESS_STATUSES: Final = frozenset({HTTPStatus.NO_CONTENT, HTTPStatus.NOT_MODIFIED})
 
 
 @dataclass(frozen=True)
@@ -214,7 +212,7 @@ class ResponseParser:
             name, colon, value = line.partition(":")
             value = value.strip(" \t")
 
-            if not colon or not _TOKEN.fullmatch(name) or not _FIELD_VALUE.fullmatch(value):
+            if not colon or not TOKEN.fullmatch(name) or not _FIELD_VALUE.fullmatch(value):
                 raise MalformedResponseError(f"Invalid header line {line[:80]!r}")
 
             headers[name] = f"{headers[name]}, {value}" if name in headers else value
@@ -236,7 +234,7 @@ class ResponseParser:
         self, method: str, status: int, headers: Mapping[str, str]
     ) -> tuple[_Framing, int]:
         """How the body is framed, and its size when framed by length (RFC 9112 §6.3)."""
-        if method == "HEAD" or status < HTTPStatus.OK or status in _BODILESS_STATUSES:
+        if method == "HEAD" or status < HTTPStatus.OK or status in BODILESS_STATUSES:
             return _Framing.LENGTH, 0
 
         if "Transfer-Encoding" in headers:

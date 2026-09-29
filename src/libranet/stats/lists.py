@@ -20,7 +20,7 @@ from __future__ import annotations
 from json import dumps
 from typing import Final, Iterable, Sequence
 
-_SEPARATORS: Final = (",", ":")
+from libranet.json_format import COMPACT_SEPARATORS
 
 #: `{"nodes":{}}`, the smallest node list.
 _NODE_LIST_BASE: Final = 12
@@ -55,7 +55,7 @@ def render_node_list(entries: Iterable[tuple[str, str]], max_bytes: int) -> byte
         nodes[endpoint] = node_id
         used += cost
 
-    return dumps({"nodes": nodes}, separators=_SEPARATORS).encode("utf-8")
+    return dumps({"nodes": nodes}, separators=COMPACT_SEPARATORS).encode("utf-8")
 
 
 def render_candidate_list(nodes: Iterable[tuple[str, Sequence[str]]]) -> bytes:
@@ -69,7 +69,7 @@ def render_candidate_list(nodes: Iterable[tuple[str, Sequence[str]]]) -> bytes:
                 {"node_id": node_id, "endpoints": list(endpoints)} for node_id, endpoints in nodes
             ]
         },
-        separators=_SEPARATORS,
+        separators=COMPACT_SEPARATORS,
     ).encode("utf-8")
 
 
@@ -82,9 +82,9 @@ def render_seek_list(data: Sequence[str], searches: Sequence[str], max_bytes: in
     budget = max_bytes - _SEEK_LIST_BASE
     wanted_data, data_used = _take_while_fits(data, budget // 2)
     wanted_searches, _ = _take_while_fits(searches, budget - data_used)
-    return dumps({"data": wanted_data, "search": wanted_searches}, separators=_SEPARATORS).encode(
-        "utf-8"
-    )
+    return dumps(
+        {"data": wanted_data, "search": wanted_searches}, separators=COMPACT_SEPARATORS
+    ).encode("utf-8")
 
 
 def _take_while_fits(values: Iterable[str], budget: int) -> tuple[list[str], int]:

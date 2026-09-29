@@ -11,6 +11,7 @@ from re import compile as compile_pattern
 from typing import Final, Mapping
 
 from libranet.identity.signatures import MessageSigner
+from libranet.webserver.http_types import TOKEN
 
 # Methods that define a meaning for a body, so even an empty one is framed
 # with `Content-Length: 0` (RFC 9110 §8.6).
@@ -19,8 +20,6 @@ _BODY_METHODS: Final = frozenset({"POST", "PUT", "PATCH"})
 # Lower-cased names of the header fields that frame the message.
 _FRAMING_HEADERS: Final = frozenset({"host", "content-length", "transfer-encoding"})
 
-# RFC 9110 §5.6.2.
-_TOKEN: Final = compile_pattern(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
 # Origin-form (RFC 9112 §3.2.1): visible ASCII, starting with "/".
 _TARGET: Final = compile_pattern(r"/[!-~]*")
 # ASCII text, with no line breaks that would end the field early.
@@ -43,7 +42,7 @@ def encode_request(
     Raises:
         ValueError: the request cannot be sent as given.
     """
-    if not _TOKEN.fullmatch(method):
+    if not TOKEN.fullmatch(method):
         raise ValueError(f"Invalid method {method!r}")
 
     if not _TARGET.fullmatch(target):
@@ -55,7 +54,7 @@ def encode_request(
     fields = dict(headers or {})
 
     for name, value in fields.items():
-        if not _TOKEN.fullmatch(name) or not _FIELD_VALUE.fullmatch(value):
+        if not TOKEN.fullmatch(name) or not _FIELD_VALUE.fullmatch(value):
             raise ValueError(f"Invalid header {name!r}: {value!r}")
 
         if name.lower() in _FRAMING_HEADERS:
