@@ -30,6 +30,7 @@ from cryptography.hazmat.primitives.serialization import (
     load_pem_public_key,
 )
 
+from libranet.atomic_file import TEMP_SUFFIX
 from libranet.cas.content_id import ContentId
 from libranet.identity.errors import KeyFileError
 
@@ -41,7 +42,6 @@ BACKUP_SECRET_BYTES = 32
 # past this, so a small body cannot expand without bound.
 MAX_PUBLIC_KEY_BYTES = 64 * 1024
 _PRIVATE_DIR_MODE = 0o700
-_TEMP_SUFFIX = ".partial"
 
 # The y-coordinate encodings of the eight Ed25519 points of small order,
 # including the non-canonical encodings of y = 0 and y = 1 (as p and p + 1).
@@ -201,7 +201,7 @@ def write_private_file(path: Path, data: bytes) -> bool:
     """
     path.parent.mkdir(mode=_PRIVATE_DIR_MODE, parents=True, exist_ok=True)
     # mkstemp creates the file with mode 0o600.
-    descriptor, temp_name = mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=_TEMP_SUFFIX)
+    descriptor, temp_name = mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=TEMP_SUFFIX)
     temp_path = Path(temp_name)
 
     try:

@@ -65,6 +65,7 @@ from typing import BinaryIO, Final, Iterable, Mapping
 
 from libranet.bundle.errors import MalformedBundleError
 from libranet.bundle.shapes import (
+    PATH_SEPARATOR,
     DirectoryBundle,
     DirectoryMarker,
     Entry,
@@ -79,11 +80,10 @@ from libranet.config.models import MIB
 
 _LOGGER = getLogger(__name__)
 
-_PATH_SEPARATOR: Final = "/"
-_EPOCH: Final = datetime(1970, 1, 1, tzinfo=timezone.utc)
+EPOCH: Final = datetime(1970, 1, 1, tzinfo=timezone.utc)
 _UTC_SUFFIX: Final = "+00:00"
 _UTC_DESIGNATOR: Final = "Z"
-_NANOSECONDS_PER_MICROSECOND: Final = 1000
+NANOSECONDS_PER_MICROSECOND: Final = 1000
 _MICROSECONDS_PER_SECOND: Final = 1_000_000
 
 # Opening a file never follows a symlink, nor waits on a FIFO, that has taken
@@ -224,7 +224,7 @@ def build_directory(
 
                 elif item.is_dir(follow_symlinks=False):
                     directories[path] = _metadata(item.stat(follow_symlinks=False))
-                    pending.append((path + _PATH_SEPARATOR, Path(item.path)))
+                    pending.append((path + PATH_SEPARATOR, Path(item.path)))
 
                 elif item.is_file(follow_symlinks=False):
                     kept = _unchanged(earlier.get(path), item)
@@ -318,10 +318,10 @@ def _ancestors(paths: set[str]) -> set[str]:
     ancestors: set[str] = set()
 
     for path in paths:
-        segments = path.split(_PATH_SEPARATOR)[:-1]
+        segments = path.split(PATH_SEPARATOR)[:-1]
 
         for depth in range(1, len(segments) + 1):
-            ancestors.add(_PATH_SEPARATOR.join(segments[:depth]))
+            ancestors.add(PATH_SEPARATOR.join(segments[:depth]))
 
     return ancestors
 
@@ -406,7 +406,7 @@ def _metadata(status: stat_result) -> Metadata:
         created=(
             None if birth_time is None else _timestamp(round(birth_time * _MICROSECONDS_PER_SECOND))
         ),
-        modified=_timestamp(status.st_mtime_ns // _NANOSECONDS_PER_MICROSECOND),
+        modified=_timestamp(status.st_mtime_ns // NANOSECONDS_PER_MICROSECOND),
         writable=bool(status.st_mode & S_IWUSR),
         executable=bool(status.st_mode & S_IXUSR),
     )
@@ -415,7 +415,7 @@ def _metadata(status: stat_result) -> Metadata:
 def _timestamp(microseconds: int) -> str | None:
     """The UTC time ``microseconds`` after the epoch, as RFC 3339; ``None`` if out of range."""
     try:
-        moment = _EPOCH + timedelta(microseconds=microseconds)
+        moment = EPOCH + timedelta(microseconds=microseconds)
 
     except OverflowError:
         _LOGGER.warning(

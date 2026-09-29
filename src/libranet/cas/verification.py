@@ -15,7 +15,7 @@ from libranet.cas.algorithms import DEFAULT_REGISTRY, AlgorithmRegistry, Hasher
 from libranet.cas.content_id import ContentId
 
 # Most decompressed bytes held in memory at once.
-_CHUNK_BYTES: Final = 64 * 1024
+CHUNK_BYTES: Final = 64 * 1024
 
 
 def content_matches(
@@ -39,11 +39,11 @@ def _decompressed_hexdigest(data: bytes, hasher: Hasher) -> str | None:
     decompressor = decompressobj()
 
     try:
-        chunk = decompressor.decompress(data, _CHUNK_BYTES)
+        chunk = decompressor.decompress(data, CHUNK_BYTES)
 
         while chunk:
             hasher.update(chunk)
-            chunk = decompressor.decompress(decompressor.unconsumed_tail, _CHUNK_BYTES)
+            chunk = decompressor.decompress(decompressor.unconsumed_tail, CHUNK_BYTES)
 
     except ZlibError:
         # Not logged: data that is not a zlib stream does not match, as callers log.

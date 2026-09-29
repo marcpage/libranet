@@ -23,8 +23,13 @@ from typing import Final, Mapping, TypeAlias
 
 from libranet.bundle.errors import MalformedBundleError
 
-_PATH_SEPARATOR: Final = "/"
-_UNUSABLE_SEGMENTS: Final = frozenset(("", ".", ".."))
+# How an entry path or a symlink's target is spelled (§3.1), wherever bundle
+# code builds, splits, or follows one.
+PATH_SEPARATOR: Final = "/"
+PARENT_SEGMENT: Final = ".."
+# Segments that stay where they are, when a symlink's target is followed.
+NO_STEP_SEGMENTS: Final = frozenset(("", "."))
+_UNUSABLE_SEGMENTS: Final = NO_STEP_SEGMENTS | {PARENT_SEGMENT}
 
 
 def is_entry_path(path: str) -> bool:
@@ -33,7 +38,7 @@ def is_entry_path(path: str) -> bool:
     It must be relative, with no empty, ``.``, or ``..`` segment, and hold no
     NUL.
     """
-    return "\0" not in path and _UNUSABLE_SEGMENTS.isdisjoint(path.split(_PATH_SEPARATOR))
+    return "\0" not in path and _UNUSABLE_SEGMENTS.isdisjoint(path.split(PATH_SEPARATOR))
 
 
 @dataclass(frozen=True)
@@ -89,7 +94,7 @@ class Symlink:
     target: str
 
     def __post_init__(self) -> None:
-        if not self.target or self.target.startswith(_PATH_SEPARATOR) or "\0" in self.target:
+        if not self.target or self.target.startswith(PATH_SEPARATOR) or "\0" in self.target:
             raise MalformedBundleError(
                 f"Symlink target must be a non-empty relative path: {self.target!r}"
             )

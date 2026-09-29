@@ -31,6 +31,7 @@ from typing import Any, Final
 
 from libranet.config.models import LibranetConfig
 from libranet.identity.keys import write_private_file
+from libranet.json_format import COMPACT_SEPARATORS
 
 #: The name of the hash, stored so another can be told apart from it later.
 SCHEME: Final = "scrypt"
@@ -128,7 +129,7 @@ class StoredCredential:
                 "salt": self.salt.hex(),
                 "key": self.key.hex(),
             },
-            separators=(",", ":"),
+            separators=COMPACT_SEPARATORS,
         ).encode("utf-8")
 
     def matches(self, credentials: str) -> bool:

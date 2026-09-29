@@ -21,14 +21,18 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Final, Mapping
 
-from libranet.bundle.shapes import DirectoryMarker, Entry, FileBundle, Symlink
+from libranet.bundle.shapes import (
+    NO_STEP_SEGMENTS,
+    PARENT_SEGMENT,
+    PATH_SEPARATOR,
+    DirectoryMarker,
+    Entry,
+    FileBundle,
+    Symlink,
+)
 
 # As Linux's MAXSYMLINKS.
 MAX_SYMLINK_HOPS: Final = 40
-
-_SEPARATOR: Final = "/"
-_PARENT: Final = ".."
-_NO_STEP: Final = frozenset(("", "."))
 
 
 @dataclass(frozen=True)
@@ -47,9 +51,9 @@ class ResolvedDirectory:
         directories = {""}
 
         for path, entry in entries.items():
-            segments = path.split(_SEPARATOR)
+            segments = path.split(PATH_SEPARATOR)
             directories.update(
-                _SEPARATOR.join(segments[:count]) for count in range(1, len(segments))
+                PATH_SEPARATOR.join(segments[:count]) for count in range(1, len(segments))
             )
 
             if isinstance(entry, DirectoryMarker):
@@ -60,16 +64,16 @@ class ResolvedDirectory:
     def look_up(self, path: str) -> FoundFile | FoundDirectory | None:
         """What ``path`` names in this directory, following symlinks, or ``None`` if nothing."""
         reached: list[str] = []
-        pending = deque(path.split(_SEPARATOR))
+        pending = deque(path.split(PATH_SEPARATOR))
         hops = 0
 
         while pending:
             segment = pending.popleft()
 
-            if segment in _NO_STEP:
+            if segment in NO_STEP_SEGMENTS:
                 continue
 
-            if segment == _PARENT:
+            if segment == PARENT_SEGMENT:
                 if not reached:
                     return None
 
@@ -77,7 +81,7 @@ class ResolvedDirectory:
                 continue
 
             reached.append(segment)
-            current = _SEPARATOR.join(reached)
+            current = PATH_SEPARATOR.join(reached)
             entry = self.entries.get(current)
 
             if isinstance(entry, Symlink):
@@ -87,7 +91,7 @@ class ResolvedDirectory:
                     return None
 
                 reached.pop()
-                pending.extendleft(reversed(entry.target.split(_SEPARATOR)))
+                pending.extendleft(reversed(entry.target.split(PATH_SEPARATOR)))
 
             elif isinstance(entry, FileBundle):
                 if pending:
@@ -96,7 +100,7 @@ class ResolvedDirectory:
             elif current not in self.directories:
                 return None
 
-        found = _SEPARATOR.join(reached)
+        found = PATH_SEPARATOR.join(reached)
         entry = self.entries.get(found)
 
         if isinstance(entry, FileBundle):

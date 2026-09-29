@@ -36,7 +36,7 @@ from stat import S_ISREG
 from typing import Final, Iterator
 
 from libranet.cas.algorithms import DEFAULT_REGISTRY
-from libranet.cas.content_id import ContentId
+from libranet.cas.content_id import LOWER_HEX_DIGITS, ContentId
 from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.prefix import matching_bits
 from libranet.cas.store import DATA_SEGMENT, CasStore
@@ -46,8 +46,6 @@ _LOGGER = getLogger(__name__)
 
 #: Provisional: the least any one factor of a score counts for.
 FACTOR_FLOOR: Final = 0.01
-
-_LOWER_HEX: Final = frozenset("0123456789abcdef")
 
 
 @dataclass(frozen=True)
@@ -122,7 +120,7 @@ def _prefix_directories(store: CasStore) -> dict[str, list[tuple[str, Path]]]:
         for directory in _subdirectories(store.root / DATA_SEGMENT / algorithm):
             name = directory.name
 
-            if len(name) == store.prefix_length and _LOWER_HEX.issuperset(name):
+            if len(name) == store.prefix_length and LOWER_HEX_DIGITS.issuperset(name):
                 found.setdefault(name, []).append((algorithm, directory))
 
     return found

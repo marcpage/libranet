@@ -548,7 +548,7 @@ def test_a_time_out_of_range_is_left_out_and_logged_as_a_warning(
 ) -> None:
     # No filesystem here keeps a time past 2262, so the epoch moves instead.
     monkeypatch.setattr(
-        "libranet.bundle.building._EPOCH", datetime(9999, 12, 31, tzinfo=timezone.utc)
+        "libranet.bundle.building.EPOCH", datetime(9999, 12, 31, tzinfo=timezone.utc)
     )
     path = tmp_path / "file.txt"
     path.write_bytes(b"x")

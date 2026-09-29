@@ -71,14 +71,12 @@ from types import TracebackType
 from typing import Callable, Final, TypeVar
 
 from libranet.atomic_file import TEMP_SUFFIX
-from libranet.bundle.building import IgnoredPaths
+from libranet.bundle.building import EPOCH, NANOSECONDS_PER_MICROSECOND, IgnoredPaths
 from libranet.bundle.content import ContentSource
 from libranet.bundle.reassembly import write_file
-from libranet.bundle.shapes import FileBundle, Metadata, Symlink
+from libranet.bundle.shapes import PATH_SEPARATOR, FileBundle, Metadata, Symlink
 
 _LOGGER = getLogger(__name__)
-
-_SEPARATOR: Final = "/"
 
 # Opening a directory never follows a symlink in its place.
 _DIRECTORY_FLAGS: Final = O_RDONLY | O_DIRECTORY | O_NOFOLLOW
@@ -108,9 +106,7 @@ _TEMPORARY_NAME_ATTEMPTS: Final = 100
 
 _Made = TypeVar("_Made")
 
-_EPOCH: Final = datetime(1970, 1, 1, tzinfo=timezone.utc)
 _MICROSECOND: Final = timedelta(microseconds=1)
-_NANOSECONDS_PER_MICROSECOND: Final = 1000
 
 
 class DirectoryWriter:
@@ -243,7 +239,7 @@ class DirectoryWriter:
             OSError: something is in the way, or the directory could not be
                 made.
         """
-        _set_metadata(self._directory(path.split(_SEPARATOR)), metadata)
+        _set_metadata(self._directory(path.split(PATH_SEPARATOR)), metadata)
 
     def _parent_of(self, path: str) -> tuple[int, str]:
         """The directory ``path`` is in, made if missing, and its name there.
@@ -252,7 +248,7 @@ class DirectoryWriter:
             OSError: something is in the way, or a directory could not be
                 made.
         """
-        *parents, name = path.split(_SEPARATOR)
+        *parents, name = path.split(PATH_SEPARATOR)
         return self._directory(parents), name
 
     def _directory(self, segments: list[str]) -> int:
@@ -419,4 +415,4 @@ def _nanoseconds(timestamp: str | None) -> int | None:
     if moment.tzinfo is None:
         moment = moment.replace(tzinfo=timezone.utc)
 
-    return (moment - _EPOCH) // _MICROSECOND * _NANOSECONDS_PER_MICROSECOND
+    return (moment - EPOCH) // _MICROSECOND * NANOSECONDS_PER_MICROSECOND

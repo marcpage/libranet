@@ -20,9 +20,7 @@ from libranet.bundle.errors import (
 from libranet.cas.algorithms import DEFAULT_REGISTRY
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError, InvalidContentIdError, UnknownAlgorithmError
-
-# Most decompressed bytes held in memory at once.
-_CHUNK_BYTES: Final = 64 * 1024
+from libranet.cas.verification import CHUNK_BYTES
 
 _SEPARATOR: Final = "/"
 _PLAIN_PATH_SEGMENTS: Final = 2
@@ -118,7 +116,7 @@ def content_chunks(source: ContentSource, content_id: ContentId) -> Iterator[byt
 
     while True:
         try:
-            chunk = decompressor.decompress(pending, _CHUNK_BYTES)
+            chunk = decompressor.decompress(pending, CHUNK_BYTES)
 
         except ZlibError:
             raise BundleVerificationError(f"Stored content does not match {content_id}") from None

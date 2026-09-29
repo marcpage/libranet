@@ -30,10 +30,9 @@ from pathlib import Path
 from typing import Final, Iterable, Protocol
 
 from libranet.bundle.building import IgnoredPaths
+from libranet.bundle.shapes import PATH_SEPARATOR
 
 _LOGGER = getLogger(__name__)
-
-_PATH_SEPARATOR: Final = "/"
 
 # Paths hold no NUL, so NUL-terminated fields cannot run into each other.
 _FIELD_END: Final = b"\0"
@@ -102,7 +101,7 @@ class PollingDetector:
                 hasher.update(fsencode(path) + _FIELD_END + described + _FIELD_END)
 
                 if item.is_dir(follow_symlinks=False):
-                    pending.append((path + _PATH_SEPARATOR, Path(item.path)))
+                    pending.append((path + PATH_SEPARATOR, Path(item.path)))
 
         return hasher.hexdigest()
 

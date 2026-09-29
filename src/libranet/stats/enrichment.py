@@ -21,12 +21,12 @@ from typing import Final
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.prefix import nearest
+from libranet.json_format import COMPACT_SEPARATORS
 from libranet.stats.database import StatsDatabase
 from libranet.webserver.search import SearchCache
 
 _LOGGER = getLogger(__name__)
 
-_SEPARATORS: Final = (",", ":")
 _RESULTS_FIELD: Final = "results"
 
 
@@ -91,5 +91,5 @@ def _parse_results(body: bytes) -> set[ContentId]:
 def _render_results(results: list[ContentId]) -> bytes:
     """A search response body, shaped as HttpApi §6.1 requires."""
     return dumps(
-        {_RESULTS_FIELD: [str(content_id) for content_id in results]}, separators=_SEPARATORS
+        {_RESULTS_FIELD: [str(content_id) for content_id in results]}, separators=COMPACT_SEPARATORS
     ).encode("utf-8")

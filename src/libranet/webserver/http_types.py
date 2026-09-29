@@ -11,14 +11,21 @@ from dataclasses import dataclass, field
 from http import HTTPStatus
 from io import BytesIO
 from json import dumps
+from re import compile as compile_pattern
 from typing import Any, Final, Mapping, Protocol
 
 from libranet.identity.authentication import AuthenticationResult
+from libranet.json_format import COMPACT_SEPARATORS
 from libranet.webserver.inbound_peers import InboundConnection
 from libranet.problems import PROBLEM_CONTENT_TYPE, Problem
 
 OCTET_STREAM: Final = "application/octet-stream"
 JSON_CONTENT_TYPE: Final = "application/json"
+
+# A method or header field name (RFC 9110 §5.6.2).
+TOKEN: Final = compile_pattern(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
+# Statuses whose responses never carry a body (RFC 9110 §15.3.5, §15.4.5).
+BODILESS_STATUSES: Final = frozenset({HTTPStatus.NO_CONTENT, HTTPStatus.NOT_MODIFIED})
 
 
 class IncompleteBodyError(ConnectionError):
@@ -139,7 +146,7 @@ def bytes_response(
 
 def json_response(value: Any, status: int = HTTPStatus.OK) -> Response:
     """``value`` serialized as a JSON body."""
-    body = dumps(value, separators=(",", ":")).encode("utf-8")
+    body = dumps(value, separators=COMPACT_SEPARATORS).encode("utf-8")
     return Response(status, body, {"Content-Type": JSON_CONTENT_TYPE})
 
 
