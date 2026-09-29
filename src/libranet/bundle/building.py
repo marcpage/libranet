@@ -15,8 +15,14 @@ A directory is walked without following symlinks. Every file and symlink
 beneath it is keyed by its full relative path, and a directory holding
 neither, however deep, gets a metadata-only entry, so empty directories are
 kept (§3.1). A directory's name is established by the entries beneath it, so
-no other directory gets an entry. The walk uses no recursion, so a deep tree
-cannot exhaust the stack.
+no other directory gets an entry, unless it has extended attributes to
+record. The walk uses no recursion, so a deep tree cannot exhaust the stack.
+
+Extended attributes are recorded only when the caller says which
+(:class:`~libranet.bundle.xattrs.ExtendedAttributes`), for every file and
+directory beneath the one built, but not a symlink, nor the directory itself
+(§2.4). Nothing a file's status gives says they changed, so they are read
+again every time.
 
 A path that cannot be recorded is left out and reported, and the walk goes
 on: one that cannot be opened or listed, one that is neither a file, a
@@ -30,9 +36,10 @@ beneath it, as though it were not there (:class:`IgnoredPaths`). A directory
 that is one of them, or lies within one, cannot be built at all.
 
 Building a directory again can start from what the bundle it supersedes
-holds. A file whose recorded metadata it still has is kept as it was, without
-being read. A file whose metadata changed is hashed, and if it still holds
-the bytes recorded, it keeps its parts and only its metadata is updated.
+holds. A file whose recorded metadata it still has, extended attributes
+aside, is kept as it was, without being read, with the attributes it has
+now. A file whose metadata changed is hashed, and if it still holds the
+bytes recorded, it keeps its parts and only its metadata is updated.
 Otherwise it is built afresh.
 
 Times are UTC, to the microsecond. A file's creation time is recorded only
@@ -77,8 +84,11 @@ from libranet.bundle.shapes import (
     FileBundle,
     Metadata,
     Symlink,
+    XattrValue,
+    is_utf8,
 )
 from libranet.bundle.storing import HASH_ALGORITHM, ContentSink, store_object
+from libranet.bundle.xattrs import ExtendedAttributes
 from libranet.cas.algorithms import DEFAULT_REGISTRY
 from libranet.cas.content_id import ContentId
 from libranet.config.models import MIB
@@ -165,7 +175,7 @@ def build_file(path: Path, sink: ContentSink, max_object_bytes: int = MIB) -> Fi
             content could not be stored.
     """
     with _open_regular_file(path) as file:
-        return _file_bundle(file, sink, max_object_bytes)
+        return _file_bundle(file, sink, max_object_bytes, {})
 
 
 def build_directory(
@@ -176,6 +186,7 @@ def build_directory(
     *,
     ignore: Iterable[Path] = (),
     previous: Mapping[str, Entry] | None = None,
+    xattrs: ExtendedAttributes | None = None,
 ) -> DirectoryBuild:
     """The bundle for the directory at ``root``, every file's parts stored in ``sink``.
 
@@ -184,7 +195,8 @@ def build_directory(
     (:func:`~libranet.bundle.storing.store_bundle`). Whatever ``ignore``
     names is treated as though it were not there. ``previous`` is what the
     bundle superseded holds, by path, for files to be kept from where they
-    have not changed.
+    have not changed. ``xattrs`` says which extended attributes are
+    recorded; without it, none are.
 
     Raises:
         OSError: ``root`` could not be listed, is or lies within a path
@@ -198,6 +210,9 @@ def build_directory(
     directories: dict[str, Metadata] = {}
     skipped: dict[str, str] = {}
     pending: list[tuple[str, Path]] = [("", root)]
+
+    def attributes(path: str) -> dict[str, XattrValue]:
+        return {} if xattrs is None else xattrs.read(path, sink, max_object_bytes)
 
     while pending:
         prefix, directory = pending.pop()
@@ -217,26 +232,31 @@ def build_directory(
         for item in listing:
             path = prefix + item.name
             file: BinaryIO | None = None
+            found: dict[str, XattrValue] = {}
 
             try:
                 if ignored.matches(item):
                     continue
 
-                if not _is_utf8(item.name):
+                if not is_utf8(item.name):
                     raise MalformedBundleError("Name is not UTF-8")
 
                 if item.is_symlink():
                     entries[path] = _symlink(item)
 
                 elif item.is_dir(follow_symlinks=False):
-                    directories[path] = _metadata(
-                        item.stat(follow_symlinks=False),
-                        _recorded(earlier.get(path), DirectoryMarker),
+                    directories[path] = replace(
+                        _metadata(
+                            item.stat(follow_symlinks=False),
+                            _recorded(earlier.get(path), DirectoryMarker),
+                        ),
+                        xattrs=attributes(item.path),
                     )
                     pending.append((path + PATH_SEPARATOR, Path(item.path)))
 
                 elif item.is_file(follow_symlinks=False):
-                    kept = _unchanged(earlier.get(path), item)
+                    found = attributes(item.path)
+                    kept = _unchanged(earlier.get(path), item, found)
 
                     if kept is None:
                         file = _open_regular_file(Path(item.path))
@@ -253,10 +273,15 @@ def build_directory(
 
             if file is not None:
                 with file:
-                    entries[path] = _file_bundle(file, sink, max_object_bytes, earlier.get(path))
+                    entries[path] = _file_bundle(
+                        file, sink, max_object_bytes, found, earlier.get(path)
+                    )
 
-    for path in directories.keys() - _ancestors(entries.keys() | directories.keys()):
-        entries[path] = DirectoryMarker(directories[path])
+    parents = _ancestors(entries.keys() | directories.keys())
+
+    for path, metadata in directories.items():
+        if path not in parents or metadata.xattrs:
+            entries[path] = DirectoryMarker(metadata)
 
     versions = () if supersedes is None else (str(supersedes),)
     return DirectoryBuild(
@@ -276,10 +301,13 @@ def _identity(path: Path) -> tuple[int, int] | None:
     return status.st_dev, status.st_ino
 
 
-def _unchanged(earlier: Entry | None, item: DirEntry[str]) -> FileBundle | None:
+def _unchanged(
+    earlier: Entry | None, item: DirEntry[str], xattrs: Mapping[str, XattrValue]
+) -> FileBundle | None:
     """``earlier``, if it is a file whose recorded metadata the file ``item`` still has.
 
-    Its creation time is kept, not compared.
+    Its creation time is kept, not compared. Its extended attributes are not
+    compared either, but become ``xattrs``, the ones the file has now.
 
     Raises:
         OSError: ``item`` could not be looked at.
@@ -288,7 +316,15 @@ def _unchanged(earlier: Entry | None, item: DirEntry[str]) -> FileBundle | None:
         return None
 
     recorded = earlier.metadata
-    return earlier if _as_recorded(item.stat(follow_symlinks=False), recorded) == recorded else None
+    status = item.stat(follow_symlinks=False)
+
+    if _as_recorded(status, recorded, recorded.xattrs) != recorded:
+        return None
+
+    if xattrs == recorded.xattrs:
+        return earlier
+
+    return replace(earlier, metadata=replace(recorded, xattrs=xattrs))
 
 
 def _listing(directory: Path) -> list[DirEntry[str]]:
@@ -306,22 +342,10 @@ def _symlink(item: DirEntry[str]) -> Symlink:
     """
     target = readlink(item.path)
 
-    if not _is_utf8(target):
+    if not is_utf8(target):
         raise MalformedBundleError("Symlink target is not UTF-8")
 
     return Symlink(target)
-
-
-def _is_utf8(text: str) -> bool:
-    """Whether ``text`` came from UTF-8, rather than holding bytes that are not."""
-    try:
-        text.encode("utf-8")
-
-    except UnicodeEncodeError:
-        # Not logged: failing to encode is the answer.
-        return False
-
-    return True
 
 
 def _ancestors(paths: set[str]) -> set[str]:
@@ -358,17 +382,22 @@ def _open_regular_file(path: Path) -> BinaryIO:
 
 
 def _file_bundle(
-    file: BinaryIO, sink: ContentSink, max_object_bytes: int, earlier: Entry | None = None
+    file: BinaryIO,
+    sink: ContentSink,
+    max_object_bytes: int,
+    xattrs: Mapping[str, XattrValue],
+    earlier: Entry | None = None,
 ) -> FileBundle:
     """The bundle for the open ``file``, its parts stored in ``sink`` as they are read.
 
-    If ``earlier`` is a file that held the same bytes, it keeps its parts, and
-    nothing is stored. If it is a file at all, its creation time is kept.
+    ``xattrs`` are its extended attributes, as recorded. If ``earlier`` is a
+    file that held the same bytes, it keeps its parts, and nothing is
+    stored. If it is a file at all, its creation time is kept.
     """
     status = fstat(file.fileno())
 
     if isinstance(earlier, FileBundle) and _holds(file, status, earlier.metadata):
-        return FileBundle(earlier.parts, _as_recorded(status, earlier.metadata))
+        return FileBundle(earlier.parts, _as_recorded(status, earlier.metadata, xattrs))
 
     file.seek(0)
     hasher = DEFAULT_REGISTRY.get(HASH_ALGORITHM).hasher()
@@ -385,6 +414,7 @@ def _file_bundle(
         size=size,
         algorithm=HASH_ALGORITHM,
         hash=hasher.hexdigest(),
+        xattrs=xattrs,
     )
     return FileBundle(tuple(parts), metadata)
 
@@ -405,13 +435,19 @@ def _holds(file: BinaryIO, status: stat_result, recorded: Metadata) -> bool:
     return hasher.hexdigest() == recorded.hash
 
 
-def _as_recorded(status: stat_result, recorded: Metadata) -> Metadata:
-    """What ``status`` says of a file, with the creation time and whole-file hash ``recorded``."""
+def _as_recorded(
+    status: stat_result, recorded: Metadata, xattrs: Mapping[str, XattrValue]
+) -> Metadata:
+    """What ``status`` says of a file, with the creation time and whole-file hash ``recorded``.
+
+    Its extended attributes are ``xattrs``.
+    """
     return replace(
         _metadata(status, recorded),
         size=status.st_size,
         algorithm=recorded.algorithm,
         hash=recorded.hash,
+        xattrs=xattrs,
     )
 
 

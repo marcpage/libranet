@@ -15,7 +15,14 @@ from libranet.bundle.errors import BundleVerificationError, PasswordProtectedBun
 from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.reassembly import write_file
-from libranet.bundle.shapes import DirectoryBundle, FileBundle
+from libranet.bundle.shapes import (
+    DirectoryBundle,
+    DirectoryMarker,
+    Entry,
+    FileBundle,
+    Metadata,
+    Symlink,
+)
 from libranet.bundle.storing import store_bundle, store_object
 from libranet.cas.archive import ArchiveSource
 from libranet.cas.content_id import ContentId
@@ -326,6 +333,50 @@ def test_a_file_bundle_is_exported_with_its_parts(
     export(bundle, source, archive)
 
     assert held_in(archive) == {bundle, shown}
+
+
+def test_an_archive_holds_the_parts_of_extended_attributes_too(
+    store: CasStore, source: LayeredSource, archive: Path
+) -> None:
+    shown, fork, icon, root = (
+        store_object(data, store) for data in (b"a file", b"a fork", b"an icon", b"the root's")
+    )
+    inline = Metadata(xattrs={"user.tag": "cmVk"})
+    entries: dict[str, Entry | None] = {
+        "file": FileBundle((str(shown),), Metadata(xattrs={"user.fork": (str(fork),)})),
+        "folder": DirectoryMarker(Metadata(xattrs={"user.icon": (str(icon),)})),
+        "tagged": DirectoryMarker(inline),
+        "link": Symlink("file"),
+    }
+    bundle = store_bundle(
+        DirectoryBundle(entries, Metadata(xattrs={"user.root": (str(root),)})), store
+    )
+    export(bundle, source, archive)
+
+    assert held_in(archive) == {bundle, shown, fork, icon, root}
+
+
+def test_a_file_bundle_is_exported_with_the_parts_of_its_attributes(
+    store: CasStore, source: LayeredSource, archive: Path
+) -> None:
+    shown, fork = store_object(b"a file", store), store_object(b"a fork", store)
+    metadata = Metadata(xattrs={"user.fork": (str(fork),)})
+    bundle = store_bundle(FileBundle((str(shown),), metadata), store)
+    export(bundle, source, archive)
+
+    assert held_in(archive) == {bundle, shown, fork}
+
+
+def test_an_export_lacking_the_parts_of_an_attribute_names_them(
+    store: CasStore, source: LayeredSource, archive: Path
+) -> None:
+    fork = part(b"a fork never held")
+    metadata = Metadata(xattrs={"user.fork": (str(fork),)})
+    bundle = store_bundle(DirectoryBundle({"folder": DirectoryMarker(metadata)}), store)
+    task = exporting(bundle, archive)
+
+    assert task.run(source, IgnoredPaths(), lambda: FINISHED_AT) == (fork,)
+    assert not archive.exists()
 
 
 def test_an_export_reports_what_it_wrote_and_never_its_password(

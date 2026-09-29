@@ -199,6 +199,47 @@ def test_metadata_field_of_the_wrong_type_is_malformed(metadata: dict[str, objec
         parse_bundle({"contents": [], "metadata": metadata})
 
 
+def test_extended_attributes_are_read_inline_as_written_and_as_parts_lower_cased() -> None:
+    xattrs = {"user.origin": "aHR0cHM6Ly9leGFtcGxlLm9yZy8=", "user.fork": [PART_A.upper(), PART_B]}
+
+    bundle = parse_bundle({"contents": [], "metadata": {"xattrs": xattrs}})
+
+    assert bundle == FileBundle(
+        (),
+        Metadata(
+            xattrs={"user.origin": "aHR0cHM6Ly9leGFtcGxlLm9yZy8=", "user.fork": (PART_A, PART_B)}
+        ),
+    )
+
+
+def test_a_directory_marker_may_carry_extended_attributes() -> None:
+    bundle = parse_bundle({"metadata": {"xattrs": {"user.tag": "cmVk"}}})
+
+    assert bundle == DirectoryMarker(Metadata(xattrs={"user.tag": "cmVk"}))
+
+
+@mark.parametrize("xattrs", [[], "MQ==", None])
+def test_extended_attributes_must_be_an_object(xattrs: object) -> None:
+    with raises(MalformedBundleError, match='"xattrs" must be an object'):
+        parse_bundle({"contents": [], "metadata": {"xattrs": xattrs}})
+
+
+@mark.parametrize("value", [1, None, {"a": "b"}, True])
+def test_an_extended_attribute_must_be_a_string_or_an_array(value: object) -> None:
+    with raises(MalformedBundleError, match="must be a string or an array"):
+        parse_bundle({"contents": [], "metadata": {"xattrs": {"user.bad": value}}})
+
+
+def test_extended_attribute_parts_must_be_strings() -> None:
+    with raises(MalformedBundleError, match="must be an array of strings"):
+        parse_bundle({"contents": [], "metadata": {"xattrs": {"user.bad": [PART_A, 1]}}})
+
+
+def test_an_extended_attribute_that_is_not_base64_is_malformed() -> None:
+    with raises(MalformedBundleError, match="not padded base64"):
+        parse_bundle({"contents": [], "metadata": {"xattrs": {"user.bad": "MQ"}}})
+
+
 @mark.parametrize("metadata", [{"algorithm": "sha256"}, {"hash": WHOLE_HASH}])
 def test_whole_file_algorithm_and_hash_come_together(metadata: dict[str, object]) -> None:
     with raises(MalformedBundleError, match="together"):

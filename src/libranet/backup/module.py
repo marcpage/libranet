@@ -39,10 +39,14 @@ looking for changes and when backing up. Whatever holds them is backed up as
 though they were not there, and a job whose directory lies within one fails
 as though that directory did not exist. A restore never writes in them.
 
+Backups and builds record extended attributes, and restores set them, all but
+those ``backup.excluded_xattrs`` names (Phase 2 Step 52).
+
 A restore is carried on in passes (:mod:`libranet.backup.restores`), each
 restoring whatever it can from what this node holds, in the source of truth or
 its content archives (Step 34). Content it lacks, whether the bundle, an
-extension, or a file's parts, is asked for as a miss would be::
+extension, a file's parts, or the parts of an extended attribute, is asked for
+as a miss would be::
 
     data.not_found  {"algorithm", "hash"}
 
@@ -130,6 +134,7 @@ from libranet.backup.runs import AnnouncingStore, back_up
 from libranet.backup.tasks import TaskStatus
 from libranet.bundle.building import IgnoredPaths
 from libranet.bundle.errors import BundleError
+from libranet.bundle.xattrs import ExtendedAttributes
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
 from libranet.cas.store import CasStore
@@ -210,6 +215,7 @@ class BackupModule(ModuleBase):
         self._detector = detector or PollingDetector(config.directories())
         self._store = AnnouncingStore(CasStore.source_of_truth(config.storage), self._announce)
         self._content = LayeredSource.open(config.storage)
+        self._xattrs = ExtendedAttributes(config.backup.excluded_xattrs)
         self._node_id: ContentId | None = None
         self._secret: bytes | None = None
         self._jobs: dict[str, BackupJob] = {}
@@ -423,6 +429,7 @@ class BackupModule(ModuleBase):
                 self._backup_secret(),
                 IgnoredPaths(self._config.directories()),
                 self._clock(),
+                self._xattrs,
             )
 
         except (OSError, BundleError, KeyFileError) as error:
@@ -438,6 +445,15 @@ class BackupModule(ModuleBase):
         else:
             for path, reason in restore_pass.skipped.items():
                 self.logger.warning("Left %s out of %s: %s", path, request.directory, reason)
+
+            for (name, why), count in restore_pass.unset_xattrs.items():
+                self.logger.warning(
+                    "Left extended attribute %r unset on %d entries in %s: %s",
+                    name,
+                    count,
+                    request.directory,
+                    why,
+                )
 
             for content_id in restore_pass.ask_for:
                 self.publish(
@@ -476,6 +492,7 @@ class BackupModule(ModuleBase):
                 self._config.backup.max_update_layers,
                 self._config.directories(),
                 self._clock,
+                self._xattrs,
             )
 
         except (OSError, BundleError, BuildRecordError) as error:
@@ -575,6 +592,7 @@ class BackupModule(ModuleBase):
                     self._config.storage.max_object_bytes,
                     self._config.backup.max_update_layers,
                     self._config.directories(),
+                    self._xattrs,
                 )
                 self._keep({**self._jobs, job.job_id: replace(job, latest=backup.latest)})
                 self._log_backup(job, backup.latest.bundle, backup.skipped)

@@ -10,11 +10,15 @@ from stat import S_IMODE
 from typing import Any, Iterator
 
 from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
+from xattr import xattr
 
 from libranet.backup.writing import DirectoryWriter
 from libranet.bundle.building import IgnoredPaths, build_file
 from libranet.bundle.errors import BundleVerificationError, MissingContentError
-from libranet.bundle.shapes import FileBundle, Metadata, Symlink
+from libranet.bundle.shapes import DirectoryMarker, FileBundle, Metadata, Symlink
+from libranet.bundle.storing import store_object
+from libranet.bundle.xattrs import ExtendedAttributes
+from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import MIB
 
@@ -59,9 +63,12 @@ def file_entry(tmp_path: Path, store: CasStore, data: bytes, **metadata: Any) ->
 
 
 def writer(
-    target: Path, overwrite: bool = False, ignored: IgnoredPaths | None = None
+    target: Path,
+    overwrite: bool = False,
+    ignored: IgnoredPaths | None = None,
+    xattrs: ExtendedAttributes | None = None,
 ) -> DirectoryWriter:
-    return DirectoryWriter.open(target, overwrite, ignored or IgnoredPaths())
+    return DirectoryWriter.open(target, overwrite, ignored or IgnoredPaths(), xattrs)
 
 
 def names(directory: Path) -> set[str]:
@@ -178,11 +185,13 @@ def test_a_symlink_is_made_as_recorded(target: Path) -> None:
     assert readlink(target / "docs" / "link") == "../readme.txt"
 
 
-def test_a_directory_is_made_with_its_recorded_times_and_permissions(target: Path) -> None:
+def test_a_directory_is_made_with_its_recorded_times_and_permissions(
+    store: CasStore, target: Path
+) -> None:
     metadata = Metadata(modified=MODIFIED, writable=False, executable=True)
 
     with writer(target) as placing:
-        placing.place_directory("a/b/empty", metadata)
+        placing.place_directory("a/b/empty", metadata, store)
 
     status = (target / "a" / "b" / "empty").stat()
     assert (S_IMODE(status.st_mode), status.st_mtime_ns) == (0o555, MODIFIED_NS)
@@ -302,7 +311,7 @@ def test_nothing_is_written_within_a_path_ignored(
             placing.place_file("node/planted.txt", entry, store)
 
         with raises(PermissionError):
-            placing.place_directory("node/deeper", Metadata())
+            placing.place_directory("node/deeper", Metadata(), store)
 
         placing.place_file("beside.txt", entry, store)
 
@@ -420,3 +429,104 @@ def test_a_time_that_is_not_rfc_3339_is_logged_as_a_warning(
             "Leaving a modification time unset, as 'not a time' is not RFC 3339",
         )
     ]
+
+
+@mark.usefixtures("supports_xattrs")
+def test_a_file_is_given_its_extended_attributes_inline_and_from_parts(
+    tmp_path: Path, store: CasStore, target: Path
+) -> None:
+    fork = urandom(3000)
+    part = str(store_object(fork, store))
+    entry = file_entry(
+        tmp_path, store, b"tagged", xattrs={"user.tag": "cmVk", "user.fork": (part,)}
+    )
+
+    with writer(target, xattrs=ExtendedAttributes()) as placing:
+        placing.place_file("tagged.txt", entry, store)
+
+    attributes = xattr(str(target / "tagged.txt"))
+    assert (attributes.get("user.tag"), attributes.get("user.fork")) == (b"red", fork)
+
+
+@mark.usefixtures("supports_xattrs")
+def test_a_file_its_owner_could_not_write_is_given_its_extended_attributes(
+    tmp_path: Path, store: CasStore, target: Path
+) -> None:
+    entry = file_entry(tmp_path, store, b"locked", writable=False, xattrs={"user.tag": "cmVk"})
+
+    with writer(target, xattrs=ExtendedAttributes()) as placing:
+        placing.place_file("locked.txt", entry, store)
+
+    assert S_IMODE((target / "locked.txt").stat().st_mode) == 0o444
+    assert xattr(str(target / "locked.txt")).get("user.tag") == b"red"
+
+
+@mark.usefixtures("supports_xattrs")
+def test_a_directory_is_given_its_extended_attributes(store: CasStore, target: Path) -> None:
+    metadata = Metadata(modified=MODIFIED, writable=False, xattrs={"user.tag": "cmVk"})
+
+    with writer(target, xattrs=ExtendedAttributes()) as placing:
+        placing.place_directory("tagged", metadata, store)
+
+    assert xattr(str(target / "tagged")).get("user.tag") == b"red"
+    assert (target / "tagged").stat().st_mtime_ns == MODIFIED_NS
+
+
+@mark.usefixtures("supports_xattrs")
+def test_extended_attributes_are_set_only_as_asked(
+    tmp_path: Path, store: CasStore, target: Path
+) -> None:
+    entry = file_entry(tmp_path, store, b"x", xattrs={"user.tag": "cmVk", "user.local": "MQ=="})
+
+    with writer(target) as placing:
+        placing.place_file("none.txt", entry, store)
+
+    with writer(target, xattrs=ExtendedAttributes(["user.local"])) as placing:
+        placing.place_file("some.txt", entry, store)
+
+    assert xattr(str(target / "none.txt")).list() == []
+    assert xattr(str(target / "some.txt")).list() == ["user.tag"]
+
+
+@mark.usefixtures("supports_xattrs")
+def test_extended_attributes_refused_are_counted_by_name_and_why(
+    tmp_path: Path, store: CasStore, target: Path
+) -> None:
+    too_long = "user." + "n" * 300
+    entry = file_entry(tmp_path, store, b"x", xattrs={too_long: "MQ==", "user.tag": "cmVk"})
+
+    with writer(target, xattrs=ExtendedAttributes()) as placing:
+        placing.place_file("one.txt", entry, store)
+        placing.place_directory("two", entry.metadata, store)
+        unset = placing.unset_xattrs
+
+    assert [(name, count) for (name, _), count in unset.items()] == [(too_long, 2)]
+    assert xattr(str(target / "one.txt")).get("user.tag") == b"red"
+
+
+def test_a_file_whose_attribute_parts_are_not_held_leaves_nothing_behind(
+    tmp_path: Path, store: CasStore, target: Path
+) -> None:
+    lacked = str(ContentId.for_data(b"away", "sha256"))
+    entry = file_entry(tmp_path, store, b"here", xattrs={"user.fork": (lacked,)})
+
+    with writer(target, xattrs=ExtendedAttributes()) as placing, raises(MissingContentError):
+        placing.place_file("here.txt", entry, store)
+
+    assert names(target) == set()
+
+
+def test_what_placing_an_entry_needs_is_its_parts_and_those_of_attributes_set(
+    target: Path,
+) -> None:
+    part, fork, local = ("sha256/" + digit * 64 for digit in "abc")
+    metadata = Metadata(xattrs={"user.fork": (fork,), "user.local": (local,), "user.tag": "MQ=="})
+    file, directory = FileBundle((part,), metadata), DirectoryMarker(metadata)
+
+    with writer(target, xattrs=ExtendedAttributes(["user.local"])) as placing:
+        assert placing.needs(file) == (part, fork)
+        assert placing.needs(directory) == (fork,)
+
+    with writer(target) as placing:
+        assert placing.needs(file) == (part,)
+        assert placing.needs(directory) == ()

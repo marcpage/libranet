@@ -12,10 +12,12 @@ from stat import S_IRUSR, S_IWUSR, S_IXUSR
 from zlib import compress
 
 from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises, skip
+from xattr import xattr
 
 from libranet.bundle.building import build_directory, build_file
 from libranet.bundle.reassembly import write_file
 from libranet.bundle.shapes import DirectoryMarker, Entry, FileBundle, Metadata, Symlink
+from libranet.bundle.xattrs import INLINE_LIMIT_BYTES, ExtendedAttributes
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import MIB
@@ -669,3 +671,145 @@ def test_a_time_out_of_range_is_left_out_and_logged_as_a_warning(
     assert caplog.records
     assert all(record.levelno == WARNING for record in caplog.records)
     assert all(record.getMessage().startswith("Leaving out a time ") for record in caplog.records)
+
+
+def tagged_tree(tree: Path) -> None:
+    """A file, an empty directory, and a directory holding a file, each with an attribute.
+
+    A symlink, an untagged directory holding a file, and the tree itself too.
+    """
+    (tree / "file").write_bytes(b"tagged")
+    (tree / "empty").mkdir()
+    (tree / "full").mkdir()
+    (tree / "full" / "inner").write_bytes(b"inner")
+    (tree / "plain").mkdir()
+    (tree / "plain" / "inner").write_bytes(b"inner")
+    symlink("file", tree / "link")
+
+    for path in (tree / "file", tree / "empty", tree / "full", tree):
+        xattr(str(path)).set("user.tag", path.name.encode())
+
+
+@mark.usefixtures("supports_xattrs")
+def test_extended_attributes_are_recorded_for_files_and_directories(
+    tree: Path, store: RecordingStore
+) -> None:
+    tagged_tree(tree)
+
+    built = build_directory(tree, store, xattrs=ExtendedAttributes()).bundle
+
+    entries = built.entries
+    assert isinstance(entries["file"], FileBundle)
+    assert entries["file"].metadata.xattrs == {"user.tag": "ZmlsZQ=="}
+    assert isinstance(entries["empty"], DirectoryMarker)
+    assert entries["empty"].metadata.xattrs == {"user.tag": "ZW1wdHk="}
+    assert isinstance(entries["full"], DirectoryMarker)
+    assert entries["full"].metadata.xattrs == {"user.tag": "ZnVsbA=="}
+    assert entries["link"] == Symlink("file")
+    assert "plain" not in entries
+    assert built.metadata == Metadata()
+
+
+@mark.usefixtures("supports_xattrs")
+def test_extended_attributes_are_not_recorded_unless_asked_for(
+    tree: Path, store: RecordingStore
+) -> None:
+    tagged_tree(tree)
+
+    entries = build_directory(tree, store).bundle.entries
+
+    assert "full" not in entries
+    assert all(
+        entry.metadata.xattrs == {}
+        for entry in entries.values()
+        if entry and not isinstance(entry, Symlink)
+    )
+
+
+@mark.usefixtures("supports_xattrs")
+def test_extended_attributes_excluded_are_left_out(tree: Path, store: RecordingStore) -> None:
+    (tree / "file").write_bytes(b"downloaded")
+    xattr(str(tree / "file")).set("user.origin", b"https://example.org/")
+    xattr(str(tree / "file")).set("user.quarantine", b"0081")
+
+    entry = build_directory(
+        tree, store, xattrs=ExtendedAttributes(["user.quarantine"])
+    ).bundle.entries["file"]
+
+    assert isinstance(entry, FileBundle)
+    assert entry.metadata.xattrs == {"user.origin": "aHR0cHM6Ly9leGFtcGxlLm9yZy8="}
+
+
+@mark.usefixtures("supports_xattrs")
+def test_a_large_extended_attribute_is_stored_as_parts(tree: Path, store: RecordingStore) -> None:
+    fork = urandom(INLINE_LIMIT_BYTES + MAX_BYTES)
+    (tree / "file").write_bytes(b"")
+    xattr(str(tree / "file")).set("user.fork", fork)
+
+    entry = build_directory(
+        tree, store, max_object_bytes=MAX_BYTES, xattrs=ExtendedAttributes()
+    ).bundle.entries["file"]
+
+    assert isinstance(entry, FileBundle)
+    parts = entry.metadata.xattrs["user.fork"]
+    assert isinstance(parts, tuple) and len(parts) == 17
+    assert store.writes == [ContentId.parse(part) for part in parts]
+    assert reassembled(FileBundle(parts), store) == fork
+
+
+@mark.usefixtures("supports_xattrs")
+def test_file_whose_attributes_alone_changed_is_kept_unread_with_the_new_ones(
+    tree: Path, store: RecordingStore
+) -> None:
+    (tree / "file").write_bytes(b"as it was")
+    xattr(str(tree / "file")).set("user.tag", b"red")
+    built = build_directory(tree, store, xattrs=ExtendedAttributes()).bundle.entries["file"]
+    assert isinstance(built, FileBundle)
+    # Parts the file could not have produced, so only an entry kept unread names them.
+    recorded = FileBundle((str(ContentId.for_data(b"elsewhere", "sha256")),), built.metadata)
+    xattr(str(tree / "file")).set("user.tag", b"blue")
+    store.writes.clear()
+
+    entries = build_directory(
+        tree, store, previous={"file": recorded}, xattrs=ExtendedAttributes()
+    ).bundle.entries
+
+    assert entries["file"] == FileBundle(
+        recorded.parts, replace(recorded.metadata, xattrs={"user.tag": "Ymx1ZQ=="})
+    )
+    assert store.writes == []
+
+
+@mark.usefixtures("supports_xattrs")
+def test_file_whose_attributes_are_unchanged_is_kept_as_it_was(
+    tree: Path, store: RecordingStore
+) -> None:
+    (tree / "file").write_bytes(b"as it was")
+    xattr(str(tree / "file")).set("user.tag", b"red")
+    built = build_directory(tree, store, xattrs=ExtendedAttributes()).bundle.entries["file"]
+    assert isinstance(built, FileBundle)
+
+    entries = build_directory(
+        tree, store, previous={"file": built}, xattrs=ExtendedAttributes()
+    ).bundle.entries
+
+    assert entries["file"] is built
+
+
+@mark.usefixtures("supports_xattrs")
+def test_file_whose_metadata_changed_but_bytes_did_not_records_its_attributes(
+    tree: Path, store: RecordingStore
+) -> None:
+    (tree / "file").write_bytes(b"as it was")
+    built = build_directory(tree, store, xattrs=ExtendedAttributes()).bundle.entries["file"]
+    assert isinstance(built, FileBundle)
+    xattr(str(tree / "file")).set("user.tag", b"red")
+    utime(tree / "file", ns=(WHOLE_SECOND_NS, WHOLE_SECOND_NS))
+
+    entry = build_directory(
+        tree, store, previous={"file": built}, xattrs=ExtendedAttributes()
+    ).bundle.entries["file"]
+
+    assert isinstance(entry, FileBundle)
+    assert entry.parts == built.parts
+    assert entry.metadata.xattrs == {"user.tag": "cmVk"}

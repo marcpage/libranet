@@ -7,7 +7,8 @@ from io import BytesIO
 from os import mkfifo, symlink, urandom, utime
 from pathlib import Path
 
-from pytest import fixture, raises
+from pytest import fixture, mark, raises
+from xattr import xattr
 
 from libranet.backup.jobs import LatestBackup
 from libranet.backup.runs import AnnouncingStore, Backup, back_up
@@ -19,6 +20,7 @@ from libranet.bundle.reassembly import write_file
 from libranet.bundle.serialization import encode_bundle
 from libranet.bundle.shapes import DirectoryBundle, DirectoryMarker, Entry, FileBundle, Symlink
 from libranet.bundle.storing import store_bundle
+from libranet.bundle.xattrs import INLINE_LIMIT_BYTES, ExtendedAttributes
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import MIB
@@ -448,3 +450,57 @@ def test_the_store_announces_writes_but_not_reads(
     assert backups.exists(content_id)
     assert backups.read(content_id) == b"data"
     assert recorder.announced == [(content_id, 4)]
+
+
+@mark.usefixtures("supports_xattrs")
+def test_a_backup_records_the_extended_attributes_asked_for(
+    tree: Path, backups: AnnouncingStore, store: CasStore, recorder: Recorder
+) -> None:
+    fork = urandom(INLINE_LIMIT_BYTES + 1)
+    xattr(str(tree / "readme.txt")).set("user.tag", b"red")
+    xattr(str(tree / "readme.txt")).set("user.local", b"here only")
+    xattr(str(tree / "docs")).set("user.fork", fork)
+
+    backup = back_up(
+        tree,
+        FINGERPRINT,
+        None,
+        backups,
+        SECRET,
+        MADE_AT,
+        MIB,
+        MAX_LAYERS,
+        xattrs=ExtendedAttributes(["user.local"]),
+    )
+
+    entries = entries_of(backup.latest.bundle, store)
+    readme, docs = entries["readme.txt"], entries["docs"]
+    assert isinstance(readme, FileBundle) and isinstance(docs, DirectoryMarker)
+    assert readme.metadata.xattrs == {"user.tag": "cmVk"}
+    assert docs.metadata.xattrs == {"user.fork": (str(ContentId.for_data(fork, "sha256")),)}
+    assert ContentId.for_data(fork, "sha256") in recorder.content_ids
+
+
+@mark.usefixtures("supports_xattrs")
+def test_an_attribute_changed_alone_is_recorded_by_the_next_backup_without_reading_the_file(
+    tree: Path, backups: AnnouncingStore, store: CasStore, recorder: Recorder
+) -> None:
+    xattrs = ExtendedAttributes()
+    first = back_up(
+        tree, FINGERPRINT, None, backups, SECRET, MADE_AT, MIB, MAX_LAYERS, xattrs=xattrs
+    ).latest
+    big = entries_of(first.bundle, store)["big.bin"]
+    assert isinstance(big, FileBundle)
+    for part in parts_of(big):
+        store.delete(part)
+    xattr(str(tree / "big.bin")).set("user.tag", b"red")
+
+    second = back_up(
+        tree, "second", first, backups, SECRET, MADE_AT + 60, MIB, MAX_LAYERS, xattrs=xattrs
+    ).latest
+
+    assert second.bundle != first.bundle
+    entry = entries_of(second.bundle, store)["big.bin"]
+    assert isinstance(entry, FileBundle)
+    assert (entry.parts, entry.metadata.xattrs) == (big.parts, {"user.tag": "cmVk"})
+    assert not any(store.exists(part) for part in parts_of(big))

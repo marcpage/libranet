@@ -32,7 +32,8 @@ rather than lose what the file holds.
 
 The paths given to be ignored, such as the node's own directories, are
 treated as though they were not there, as in a backup, and a directory that
-lies within one cannot be built.
+lies within one cannot be built. Extended attributes are recorded as in a
+backup too (Phase 2 Step 52), though serving a file carries none of them.
 """
 
 from __future__ import annotations
@@ -51,6 +52,7 @@ from libranet.bundle.errors import BundleError, PasswordProtectedBundleError
 from libranet.bundle.layering import Layering, StoredVersion, Superseded
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.shapes import DirectoryBundle
+from libranet.bundle.xattrs import ExtendedAttributes
 from libranet.cas.content_id import ContentId
 from libranet.webserver.config_requests import BuildRequest
 
@@ -168,13 +170,15 @@ class Build(Task):
         max_layers: int,
         ignore: Iterable[Path],
         clock: Callable[[], float],
+        xattrs: ExtendedAttributes | None = None,
     ) -> Mapping[str, str]:
         """Build the directory into ``store``, record its bundle beside it, and finish.
 
         The new bundle is stored as a layer over the one recorded unless that
         would lie more than ``max_layers`` above the last bundle stored
         whole. Whatever ``ignore`` names is treated as though it were not
-        there. ``clock`` says when it finished.
+        there. ``clock`` says when it finished. ``xattrs`` says which
+        extended attributes are recorded; without it, none are.
 
         Returns:
             The paths left out, each with why.
@@ -199,6 +203,7 @@ class Build(Task):
             max_object_bytes,
             ignore=ignore,
             previous=None if earlier is None else earlier.superseded.entries,
+            xattrs=xattrs,
         )
 
         if previous is not None and earlier is not None and earlier.matches(build.bundle, password):

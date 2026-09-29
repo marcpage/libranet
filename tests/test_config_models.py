@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from libranet.config.models import (
     MIB,
+    BackupConfig,
     IdentityConfig,
     LibranetConfig,
     NetworkConfig,
@@ -84,6 +85,19 @@ def test_no_content_archives_are_configured_by_default() -> None:
     assert StorageConfig.model_validate({"archives": ["a.zip", "/b.zip"]}).archives == (
         Path("a.zip"),
         Path("/b.zip"),
+    )
+
+
+def test_local_copy_and_privileged_attributes_are_excluded_by_default() -> None:
+    assert BackupConfig().excluded_xattrs == (
+        "com.apple.quarantine",
+        "com.apple.lastuseddate#PS",
+        "com.apple.macl",
+        "com.apple.provenance",
+        "com.apple.metadata:kMDLabel_*",
+        "security.*",
+        "system.*",
+        "trusted.*",
     )
 
 

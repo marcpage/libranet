@@ -2,7 +2,8 @@
 
 An export writes a content archive (Step 34) holding the bundle, every
 extension of it, and every part of every file it holds once they are
-overlaid: everything needed to serve it, and nothing else. The bundles it
+overlaid, and of every extended attribute recorded (Phase 2 Step 52):
+everything needed to serve or restore it, and nothing else. The bundles it
 supersedes are not needed, unless it extends them as an update layer does
 (Phase 2 Step 31), nor are the parts of entries its extensions hide, so
 neither is written. A node started with the archive among its
@@ -40,7 +41,7 @@ from libranet.bundle.content import ContentSource, parse_cas_path
 from libranet.bundle.errors import BundleVerificationError, MissingContentError
 from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.loading import load_bundle
-from libranet.bundle.shapes import Bundle, DirectoryBundle, FileBundle
+from libranet.bundle.shapes import Bundle, DirectoryBundle, FileBundle, Symlink
 from libranet.cas.archive import ArchiveSink
 from libranet.cas.content_id import ContentId
 from libranet.cas.verification import content_matches
@@ -125,7 +126,7 @@ class Export(Task):
         }
 
     def _needed(self, source: ContentSource) -> list[ContentId]:
-        """Every object needed to serve the bundle, in content id order.
+        """Every object needed to serve or restore the bundle, in content id order.
 
         Raises:
             MissingContentError: some are not held; all that could be found
@@ -141,13 +142,21 @@ class Export(Task):
             return load_bundle(content_id, source, password=password)
 
         top = load_bundle(bundle, source, password=password)
-        files = [top] if isinstance(top, FileBundle) else []
+        found: list[Bundle] = [top]
 
         if isinstance(top, DirectoryBundle):
-            entries = resolve_directory(top, load).values()
-            files = [entry for entry in entries if isinstance(entry, FileBundle)]
+            found.extend(resolve_directory(top, load).values())
 
-        parts = {parse_cas_path(part) for file in files for part in file.parts}
+        paths: list[str] = []
+
+        for entry in found:
+            if isinstance(entry, FileBundle):
+                paths.extend(entry.parts)
+
+            if not isinstance(entry, Symlink):
+                paths.extend(entry.metadata.xattr_parts())
+
+        parts = {parse_cas_path(part) for part in paths}
         lacked = sorted(part for part in parts if not source.exists(part))
 
         if lacked:

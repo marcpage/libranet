@@ -15,7 +15,9 @@ followed (:mod:`libranet.bundle.shapes`).
 
 Hashes are lower-cased as they are read, both the whole-file hash and each
 CAS path's (HttpApi §5.4), so a bundle received with upper-case hex is
-written back with lower-case.
+written back with lower-case. That includes the parts an extended attribute
+is stored in (§2.4), but not a value held inline: that is base64, whose case
+is significant, so it is kept as written.
 """
 
 from __future__ import annotations
@@ -37,6 +39,7 @@ from libranet.bundle.shapes import (
     FileBundle,
     Metadata,
     Symlink,
+    XattrValue,
 )
 
 _ABSENT: Final = object()
@@ -152,7 +155,30 @@ def _metadata(fields: dict[str, object]) -> Metadata:
         executable=_flag(metadata, "executable"),
         algorithm=_optional_lower_case(metadata, "algorithm"),
         hash=_optional_lower_case(metadata, "hash"),
+        xattrs=_xattrs(metadata),
     )
+
+
+def _xattrs(metadata: dict[str, object]) -> dict[str, XattrValue]:
+    """The extended attributes ``metadata`` holds, by name, if any (§2.4)."""
+    xattrs = metadata.get("xattrs", {})
+
+    if not isinstance(xattrs, dict):
+        raise MalformedBundleError('"xattrs" must be an object')
+
+    parsed: dict[str, XattrValue] = {}
+
+    for name, value in xattrs.items():
+        if isinstance(value, str):
+            parsed[name] = value
+
+        elif isinstance(value, list):
+            parsed[name] = _cas_paths(value, f"Extended attribute {name!r}")
+
+        else:
+            raise MalformedBundleError(f"Extended attribute {name!r} must be a string or an array")
+
+    return parsed
 
 
 def _optional_string(metadata: dict[str, object], key: str) -> str | None:

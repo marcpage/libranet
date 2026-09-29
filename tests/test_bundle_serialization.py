@@ -29,6 +29,7 @@ FULL_METADATA = Metadata(
     hash=WHOLE,
 )
 FILE = FileBundle((PART, OTHER_PART), FULL_METADATA, ((PART,), (PART, OTHER_PART)))
+XATTRS = Metadata(xattrs={"user.origin": "aHR0cHM6Ly9leGFtcGxlLm9yZy8=", "user.fork": (PART,)})
 DIRECTORY = DirectoryBundle(
     {
         "README.md": FileBundle((PART,), Metadata(size=128)),
@@ -55,6 +56,8 @@ DIRECTORY = DirectoryBundle(
         Symlink("../elsewhere"),
         DirectoryMarker(FULL_METADATA),
         DirectoryMarker(),
+        FileBundle((PART,), XATTRS),
+        DirectoryMarker(XATTRS),
     ],
 )
 def test_a_bundle_reads_back_as_itself(bundle: Bundle) -> None:
@@ -99,3 +102,17 @@ def test_encoding_is_compact_sorted_ascii_and_the_same_every_time() -> None:
     assert encoded.isascii()
     assert b" " not in encoded
     assert encoded.startswith(b'{"contents":{"README.md":')
+
+
+def test_extended_attributes_are_written_inline_as_strings_and_as_parts_as_arrays() -> None:
+    assert bundle_value(DirectoryMarker(XATTRS)) == {
+        "metadata": {"xattrs": {"user.origin": "aHR0cHM6Ly9leGFtcGxlLm9yZy8=", "user.fork": [PART]}}
+    }
+
+
+def test_an_inline_value_is_written_back_as_it_was_read() -> None:
+    # Base64 decodes this alike with its last character "Q" or "R", so only
+    # keeping it as written gives back the bundle's bytes.
+    value = {"metadata": {"xattrs": {"user.a": "YR=="}}}
+
+    assert bundle_value(parse_bundle(value)) == value

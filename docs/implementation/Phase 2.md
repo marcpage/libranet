@@ -1957,21 +1957,111 @@ limit with nothing arriving, and does not while parts keep arriving.
   `getxattr(2)`, which takes extra arguments Linux's does not. Windows
   has alternate data streams instead.
 
-**Open questions:**
+Ruled before building:
 
-- Where a value goes from inline to parts. Two nodes building the same
-  directory make the same bundle only if they choose alike, so the
-  threshold is a constant rather than a setting.
-- Which attributes this node leaves out. `com.apple.quarantine` is set
-  per download, and Linux's `security.*` attributes cannot be restored
-  by an ordinary user.
-- Whether builds (Phase 1 Step 38) record them too, since a built
-  application's files are served, not restored.
+- **A value over 1 KiB is stored as parts**, and one up to it inline
+  (`INLINE_LIMIT_BYTES` in `bundle/xattrs.py`). Finder tags, FinderInfo,
+  quarantine flags, where-froms, and Linux `user.*` values stay inline;
+  resource forks and custom icons dedup as parts and do not grow the
+  bundle.
+- **What is left out is configuration**: `backup.excluded_xattrs`, a list
+  of shell-style patterns matched case sensitively. A name matching one
+  is left out when building and not set when restoring, since a restore
+  makes a new local copy. The default is macOS's local-copy attributes
+  (`com.apple.quarantine`, `com.apple.lastuseddate#PS`, `com.apple.macl`,
+  `com.apple.provenance`, `com.apple.metadata:kMDLabel_*`) and every Linux
+  namespace but `user.*` (`security.*`, `system.*`, `trusted.*`).
+- **Builds record them too**, as they keep times and permissions.
+- **The `xattr` package reads and sets them**, on macOS and Linux alike,
+  as a new runtime dependency, rather than `ctypes` on macOS (my
+  recommendation). It ships no type information, so mypy is told to
+  ignore its missing stubs.
+
+What was built: a new `bundle/xattrs.py`, whose `ExtendedAttributes`
+holds the patterns excluded, reads a path's attributes as a bundle
+records them, storing a large value's parts, and sets a bundle's
+attributes on an open file or directory, reading parts from CAS.
+`Metadata` gains `xattrs`, each value a base64 string or a tuple of CAS
+paths, and `xattr_parts()`; the parser and the serializer read and write
+the field. `build_directory` takes an `ExtendedAttributes`, and without
+one records none, so shipped applications (Phase 1 Step 37) record none.
+The backup module makes one from the config and hands it to backups,
+builds, and restores. `DirectoryWriter` sets attributes, and says which
+parts placing an entry reads (`needs`), so a restore waits on and asks
+for them; an export ships them. `_is_utf8` moved from `bundle/building.py`
+to `bundle/shapes.py` as `is_utf8`, which both use. About 511 new or
+changed lines of non-test Python, so it is one change set.
+
+A scratch run on macOS backed up a tree whose file held FinderInfo, Finder
+tags, a quarantine flag, and a 200 KB resource fork, with a tagged
+directory holding a file and a read-only file with a `user.*` attribute,
+and restored it with the real restore code. Every attribute came back
+byte for byte, but the quarantine flag, which was left out; the resource
+fork went through CAS as a part, and modification times were kept.
+Backing the restored tree up over the first backup kept its bundle and
+wrote nothing.
+
+My calls, not yet reviewed:
+
+- **A directory with attributes gets a metadata-only entry even when it
+  is not empty**, as §3.1 allows, or a Finder tag on a folder would be
+  lost. A restore then sets that directory's times and permissions too,
+  which it does not for a non-empty directory without attributes. The
+  directory built, or restored into, records and gets none, as it gets no
+  times.
+- **Attributes are read again every build**, for every file and
+  directory, since nothing in a file's status says they changed. A file
+  whose attributes alone changed keeps its parts and is not read.
+- **Built before Step 49**, which §5 put first. The change detector sees
+  no attribute change, as it moves only the status change time, so an
+  attribute change alone is recorded when a backup next runs for another
+  reason, or is asked for. That is the wait §3.3 allows, without Step 49.
+- **A bundle whose attribute name is empty, holds a NUL, or is not
+  UTF-8, or whose inline value is not padded base64, is malformed**,
+  checked by `Metadata`, as a symlink target with a NUL is. Parts are
+  checked only when followed, as a file's are. An inline value is kept as
+  the string written, never decoded and re-encoded, so a bundle
+  round-trips byte for byte.
+- **Reading**: a filesystem that keeps no attributes holds none; any other
+  failure leaves the path out and reported, as a file that cannot be read
+  is. A name that is not UTF-8, which only Linux allows, leaves out all of
+  that file's attributes, logged as a warning, since the package cannot
+  list the others without it; the file itself is kept.
+- **Restoring**: attributes are set before permissions and times, since
+  macOS refuses them on a read-only file. One the platform refuses is
+  left unset and the entry restored without it, and each pass logs one
+  warning per name and reason with a count of entries, rather than one
+  per entry. A part not held is waited on, as a file's is, and one that is
+  corrupt or under an unknown algorithm leaves the entry out, as a file's
+  does. Parts of attributes not set are not waited on. Attributes already
+  on a directory that was there are left alone.
+- **An export ships the parts of every attribute recorded**, excluded
+  ones and the top bundle's own included, since it ships the bundle as it
+  is rather than what this node would set.
+- **No platform marker on the dependency.** The package does not build on
+  Windows, but neither does the node run there: `bundle/building.py`
+  already imports `O_NOFOLLOW`.
+- Noted, not handled: Linux's ext4 fits all of a file's attributes in one
+  block, 4 KiB by default, so a restore there leaves a larger value
+  unset, and logs it. macOS names, such as `com.apple.ResourceFork`, have
+  no namespace, and Linux refuses them whatever their size.
 
 **Testable in isolation:** round-trip tests of the field through parsing
 and serialization, and build and restore tests in a temp directory on a
 filesystem that supports extended attributes, skipped where the platform
-or filesystem does not.
+or filesystem does not. Built as a `supports_xattrs` fixture in
+`conftest.py` that skips where the temp directory keeps none;
+`test_bundle_xattrs.py` for reading, storing parts past the limit,
+excluding, symlinks, unsupported filesystems, unreadable names, and
+setting, refusals, and missing parts; tests of the shape, parser, and
+serializer; `test_bundle_building.py` for files and directories, a
+non-empty directory's entry, none unless asked, exclusion, parts, and
+files kept unread; `test_backup_writing.py` for files, read-only files,
+directories, exclusion, refusals counted, and `needs`;
+`test_backup_restores.py` for a real round trip, waiting on parts, not
+waiting on parts not set, and refusals reported;
+`test_backup_exports.py`, `test_backup_runs.py`, `test_backup_builds.py`,
+`test_backup_module.py`, and the config tests for the rest.
 
 ---
 

@@ -10,6 +10,7 @@ from queue import Empty, Queue
 from typing import Any
 
 from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
+from xattr import xattr
 
 from libranet.backup.builds import Build, BuildRecord
 from libranet.backup.exports import Export
@@ -21,7 +22,7 @@ from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.layering import Layering
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.reassembly import write_file
-from libranet.bundle.shapes import DirectoryBundle, FileBundle
+from libranet.bundle.shapes import DirectoryBundle, FileBundle, Metadata
 from libranet.bundle.storing import store_bundle
 from libranet.cas.archive import ArchiveSink, ArchiveSource
 from libranet.cas.content_id import ContentId
@@ -924,6 +925,59 @@ def test_paths_a_restore_leaves_out_are_counted_and_logged(
     assert (done["status"], done["restored"], done["skipped"]) == ("done", 2, 1)
     assert "Left up out of" in caplog.text
     assert not (tmp_path / "restored" / "up").exists()
+
+
+@mark.usefixtures("supports_xattrs")
+def test_backups_builds_and_restores_keep_extended_attributes_but_those_excluded(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float], tree: Path, tmp_path: Path
+) -> None:
+    excluding = config.model_copy(
+        update={"backup": BackupConfig(interval_seconds=INTERVAL, excluded_xattrs=("user.l*",))}
+    )
+    xattr(str(tree / "readme.txt")).set("user.tag", b"red")
+    xattr(str(tree / "readme.txt")).set("user.local", b"here only")
+    module = start(excluding, queues, now)
+    bundle = backed_up_bundle(module, queues, tree)
+    built = ContentId.parse(built_bundle(module, queues, tree))
+    top = load_bundle(built, CasStore.source_of_truth(excluding.storage))
+    assert isinstance(top, DirectoryBundle)
+    readme = top.entries["readme.txt"]
+    xattr(str(tree / "readme.txt")).set("user.tag", b"blue")
+
+    restore(module, bundle, tmp_path / "restored")
+
+    restored_file = xattr(str(tmp_path / "restored" / "readme.txt"))
+    assert {name: restored_file.get(name) for name in restored_file.list()} == {"user.tag": b"red"}
+    assert isinstance(readme, FileBundle) and readme.metadata.xattrs == {"user.tag": "cmVk"}
+
+
+@mark.usefixtures("supports_xattrs")
+def test_extended_attributes_a_restore_leaves_unset_are_logged_once_by_name(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tree: Path,
+    tmp_path: Path,
+    store: CasStore,
+    caplog: LogCaptureFixture,
+) -> None:
+    too_long = "user." + "n" * 300
+    module = start(config, queues, now)
+    built = build_directory(tree, store).bundle
+    tagged = {
+        path: FileBundle(entry.parts, Metadata(xattrs={too_long: "MQ=="}))
+        for path, entry in built.entries.items()
+        if isinstance(entry, FileBundle)
+    }
+    bundle = store_bundle(DirectoryBundle(tagged), store, secret_of(config))
+
+    with caplog.at_level(WARNING):
+        restore(module, str(bundle), tmp_path / "restored")
+
+    done = restores(published(queues))[-1][0]
+    assert (done["status"], done["restored"], done["skipped"]) == ("done", 2, 0)
+    assert caplog.text.count("unset on 2 entries") == 1
+    assert (tmp_path / "restored" / "readme.txt").read_bytes() == b"read me"
 
 
 def test_an_unexpected_restore_failure_fails_it_and_is_logged(

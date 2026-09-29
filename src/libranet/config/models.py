@@ -357,6 +357,22 @@ class BackupConfig(_Section):
     # the next is stored whole again (Phase 2 Step 31). 0 stores each whole.
     max_update_layers: int = Field(default=32, ge=0)
 
+    # Extended attributes a backup or build leaves out of its bundle, and a
+    # restore does not set: shell-style patterns, matched case sensitively
+    # (Phase 2 Step 52). By default, those describing the local copy rather
+    # than the content on macOS, and on Linux every namespace but user.*, as
+    # only a privileged user may set most of them.
+    excluded_xattrs: tuple[str, ...] = (
+        "com.apple.quarantine",
+        "com.apple.lastuseddate#PS",
+        "com.apple.macl",
+        "com.apple.provenance",
+        "com.apple.metadata:kMDLabel_*",
+        "security.*",
+        "system.*",
+        "trusted.*",
+    )
+
 
 class LoggingConfig(_Section):
     """Centralized rotating-file logging setup."""

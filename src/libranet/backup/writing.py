@@ -26,6 +26,12 @@ permissions a new one gets from the umask, adjusted as its metadata records:
 without write access if its owner could not write it, and with execute access
 wherever it can be read if its owner could run or, for a directory, search it.
 Creation times are not set, as the standard library cannot set them.
+
+It gets the extended attributes its metadata records too, all but those the
+writer is to leave out (:mod:`libranet.bundle.xattrs`), before its
+permissions, which could forbid setting them. One the platform refuses is
+left unset, and counted, and the entry is placed without it. An attribute
+already on a directory that was there is left as it is.
 """
 
 from __future__ import annotations
@@ -68,7 +74,7 @@ from stat import (
     S_IXUSR,
 )
 from types import TracebackType
-from typing import Callable, Final, TypeVar
+from typing import Callable, Final, Mapping, TypeVar
 
 from libranet.atomic_file import TEMP_SUFFIX
 from libranet.bundle.building import (
@@ -79,7 +85,8 @@ from libranet.bundle.building import (
 )
 from libranet.bundle.content import ContentSource
 from libranet.bundle.reassembly import write_file
-from libranet.bundle.shapes import PATH_SEPARATOR, FileBundle, Metadata, Symlink
+from libranet.bundle.shapes import PATH_SEPARATOR, DirectoryMarker, FileBundle, Metadata, Symlink
+from libranet.bundle.xattrs import ExtendedAttributes
 
 _LOGGER = getLogger(__name__)
 
@@ -116,25 +123,43 @@ class DirectoryWriter:
     """Writes entries beneath one local directory, never through a symlink.
 
     Use it as a context manager, so that the directories it holds open are
-    closed.
+    closed. ``xattrs`` says which extended attributes are set; without it,
+    none are.
     """
 
-    def __init__(self, root: int, overwrite: bool, ignored: IgnoredPaths) -> None:
+    def __init__(
+        self,
+        root: int,
+        overwrite: bool,
+        ignored: IgnoredPaths,
+        xattrs: ExtendedAttributes | None = None,
+    ) -> None:
         self._root = root
         self._overwrite = overwrite
         self._ignored = ignored
+        self._xattrs = xattrs
         # The directories beneath the root the last path was written in,
         # outermost first, each by name, held open for the next path to
         # start from.
         self._opened: list[tuple[str, int]] = []
+        # How many entries each extended attribute was left unset on, by its
+        # name and why.
+        self._unset: dict[tuple[str, str], int] = {}
 
     @classmethod
-    def open(cls, directory: Path, overwrite: bool, ignored: IgnoredPaths) -> DirectoryWriter:
+    def open(
+        cls,
+        directory: Path,
+        overwrite: bool,
+        ignored: IgnoredPaths,
+        xattrs: ExtendedAttributes | None = None,
+    ) -> DirectoryWriter:
         """A writer into ``directory``, which is made if missing, as are those above it.
 
         Symlinks are followed to reach ``directory`` itself, as it is the
         path asked for, but never beneath it. ``overwrite`` says whether a
         file or symlink already where an entry goes may be replaced.
+        ``xattrs`` says which extended attributes are set.
 
         Raises:
             OSError: ``directory`` is or lies within a path ignored, or could
@@ -142,7 +167,7 @@ class DirectoryWriter:
         """
         ignored.check(directory)
         directory.mkdir(parents=True, exist_ok=True)
-        return cls(open_file(directory, O_RDONLY | O_DIRECTORY), overwrite, ignored)
+        return cls(open_file(directory, O_RDONLY | O_DIRECTORY), overwrite, ignored, xattrs)
 
     @staticmethod
     def check(directory: Path, overwrite: bool, ignored: IgnoredPaths) -> None:
@@ -181,6 +206,11 @@ class DirectoryWriter:
     ) -> None:
         self.close()
 
+    @property
+    def unset_xattrs(self) -> Mapping[tuple[str, str], int]:
+        """How many entries each extended attribute was left unset on, by its name and why."""
+        return dict(self._unset)
+
     def close(self) -> None:
         """Close every directory held open, the root last."""
         while self._opened:
@@ -188,13 +218,26 @@ class DirectoryWriter:
 
         close(self._root)
 
+    def needs(self, entry: FileBundle | DirectoryMarker) -> tuple[str, ...]:
+        """The CAS paths of what placing ``entry`` reads.
+
+        That is a file's parts, and the parts of each extended attribute set.
+        """
+        parts = entry.parts if isinstance(entry, FileBundle) else ()
+
+        if self._xattrs is None:
+            return parts
+
+        return parts + entry.metadata.xattr_parts(self._xattrs.includes)
+
     def place_file(self, path: str, entry: FileBundle, source: ContentSource) -> None:
         """Write the file ``entry`` describes at ``path``, reassembled from ``source``.
 
         Raises:
             MissingContentError: a part is not held.
-            BundleError: the file does not match its metadata, or cannot be
-                reassembled here.
+            BundleError: the file does not match its metadata, a part of it
+                or of an extended attribute does not match its CAS path, or
+                it cannot be reassembled here.
             OSError: something is in the way, or the file could not be
                 written.
         """
@@ -208,6 +251,7 @@ class DirectoryWriter:
             with fdopen(descriptor, "wb") as output:
                 write_file(entry, source, output)
                 output.flush()
+                self._set_xattrs(output.fileno(), entry.metadata, source)
                 _set_metadata(output.fileno(), entry.metadata)
 
             rename(temporary, name, src_dir_fd=parent, dst_dir_fd=parent)
@@ -235,14 +279,37 @@ class DirectoryWriter:
             unlink(temporary, dir_fd=parent)
             raise
 
-    def place_directory(self, path: str, metadata: Metadata) -> None:
+    def place_directory(self, path: str, metadata: Metadata, source: ContentSource) -> None:
         """Make the directory at ``path`` if it is missing, and set what ``metadata`` records.
 
+        Extended attributes stored as parts are read from ``source``.
+
         Raises:
+            MissingContentError: a part is not held.
+            BundleError: a part does not match its CAS path, or is not one
+                this node can read.
             OSError: something is in the way, or the directory could not be
                 made.
         """
-        _set_metadata(self._directory(path.split(PATH_SEPARATOR)), metadata)
+        descriptor = self._directory(path.split(PATH_SEPARATOR))
+        self._set_xattrs(descriptor, metadata, source)
+        _set_metadata(descriptor, metadata)
+
+    def _set_xattrs(self, descriptor: int, metadata: Metadata, source: ContentSource) -> None:
+        """Set the extended attributes ``metadata`` records on the open file or directory.
+
+        Each the platform refuses is counted.
+
+        Raises:
+            MissingContentError: a part is not held.
+            BundleError: a part does not match its CAS path, or is not one
+                this node can read.
+        """
+        if self._xattrs is None or not metadata.xattrs:
+            return
+
+        for name, why in self._xattrs.write(descriptor, metadata.xattrs, source).items():
+            self._unset[name, why] = self._unset.get((name, why), 0) + 1
 
     def _parent_of(self, path: str) -> tuple[int, str]:
         """The directory ``path`` is in, made if missing, and its name there.

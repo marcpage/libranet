@@ -18,8 +18,9 @@ unreadable rather than the whole directory.
 """
 
 from __future__ import annotations
+from base64 import b64decode
 from dataclasses import dataclass, field
-from typing import Final, Mapping, TypeAlias
+from typing import Callable, Final, Mapping, TypeAlias
 
 from libranet.bundle.errors import MalformedBundleError
 
@@ -32,6 +33,18 @@ NO_STEP_SEGMENTS: Final = frozenset(("", "."))
 _UNUSABLE_SEGMENTS: Final = NO_STEP_SEGMENTS | {PARENT_SEGMENT}
 
 
+def is_utf8(text: str) -> bool:
+    """Whether ``text`` came from UTF-8, rather than holding bytes that are not."""
+    try:
+        text.encode("utf-8")
+
+    except UnicodeEncodeError:
+        # Not logged: failing to encode is the answer.
+        return False
+
+    return True
+
+
 def is_entry_path(path: str) -> bool:
     """Whether ``path`` may name a directory entry (§3.1).
 
@@ -41,17 +54,25 @@ def is_entry_path(path: str) -> bool:
     return "\0" not in path and _UNUSABLE_SEGMENTS.isdisjoint(path.split(PATH_SEPARATOR))
 
 
+# An extended attribute's value (§2.4): its bytes base64-encoded, or the CAS
+# paths of the parts they are stored in, in order.
+XattrValue: TypeAlias = str | tuple[str, ...]
+
+
 @dataclass(frozen=True)
 class Metadata:
     """What a bundle records about a file or directory (§2.1), all optional.
 
     ``algorithm`` and ``hash`` are the whole-file hash over a file's
     reassembled bytes (§2.3); each is present only with the other.
-    Timestamps are kept as written.
+    Timestamps are kept as written. ``xattrs`` holds extended attributes by
+    name (§2.4), each value inline as base64, kept as written, or as parts.
 
     Raises:
-        MalformedBundleError: ``size`` is negative, or only one of
-            ``algorithm`` and ``hash`` is given.
+        MalformedBundleError: ``size`` is negative, only one of
+            ``algorithm`` and ``hash`` is given, or an extended attribute's
+            name is empty, holds a NUL, or is not UTF-8, or its value is
+            not padded base64.
     """
 
     created: str | None = None
@@ -61,6 +82,7 @@ class Metadata:
     executable: bool = False
     algorithm: str | None = None
     hash: str | None = None
+    xattrs: Mapping[str, XattrValue] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.size is not None and self.size < 0:
@@ -68,6 +90,28 @@ class Metadata:
 
         if (self.algorithm is None) != (self.hash is None):
             raise MalformedBundleError('"algorithm" and "hash" must be given together')
+
+        for name, value in self.xattrs.items():
+            if not name or "\0" in name or not is_utf8(name):
+                raise MalformedBundleError(
+                    f"Extended attribute name must be non-empty UTF-8 with no NUL: {name!r}"
+                )
+
+            if isinstance(value, str) and not _is_base64(value):
+                raise MalformedBundleError(f"Extended attribute {name!r} is not padded base64")
+
+    def xattr_parts(self, included: Callable[[str], bool] | None = None) -> tuple[str, ...]:
+        """The CAS paths of the parts extended attributes are stored in, in order.
+
+        With ``included``, only those of the attributes whose names it
+        accepts.
+        """
+        return tuple(
+            part
+            for name, value in self.xattrs.items()
+            if not isinstance(value, str) and (included is None or included(name))
+            for part in value
+        )
 
 
 @dataclass(frozen=True)
@@ -140,3 +184,15 @@ class DirectoryBundle:
 
 
 Bundle: TypeAlias = FileBundle | DirectoryBundle | Symlink | DirectoryMarker
+
+
+def _is_base64(text: str) -> bool:
+    """Whether ``text`` is base64 with its padding (RFC 4648 §4)."""
+    try:
+        b64decode(text, validate=True)
+
+    except ValueError:
+        # Not logged: failing to decode is the answer. A binascii.Error is one.
+        return False
+
+    return True
