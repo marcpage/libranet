@@ -153,7 +153,7 @@ class Export(Task):
             if isinstance(entry, FileBundle):
                 paths.extend(entry.parts)
 
-            if not isinstance(entry, Symlink):
+            if not isinstance(entry, Symlink):  # symlinks don't get xattrs
                 paths.extend(entry.metadata.xattr_parts())
 
         parts = {parse_cas_path(part) for part in paths}
