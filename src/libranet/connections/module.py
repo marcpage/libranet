@@ -790,7 +790,7 @@ class ConnectionsModule(ModuleBase):
                 if session is not None:
                     return session
 
-                if search.pass_number == search.passes:
+                if search.pass_number >= search.passes:
                     break
 
                 resume_at = search.start_next_pass(ranked, now)
