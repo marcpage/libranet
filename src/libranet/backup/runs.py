@@ -11,12 +11,14 @@ what is not held already is written. :class:`AnnouncingStore` says what it
 writes, so each new object can be announced as the validator announces one.
 
 A directory backed up before is built from what its last bundle holds, read
-back with the secret. A file whose size, times, and permissions are as
-recorded is kept without being read. A file whose metadata changed is hashed,
-and if its bytes are as recorded, it keeps its parts, and only its metadata
-is updated. Only a file whose bytes changed is split and stored again. If the
-last bundle can no longer be read here, as when it has been evicted, every
-file is read, and the parts already held are still not stored again.
+back with the secret. A file whose size, modification time, and permissions
+are as recorded is kept without being read, and every file keeps the
+creation time recorded, which a restore does not bring back. A file whose
+metadata changed is hashed, and if its bytes are as recorded, it keeps its
+parts, and only its metadata is updated. Only a file whose bytes changed is
+split and stored again. If the last bundle can no longer be read here, as when
+it has been evicted, every file is read, and the parts already held are still
+not stored again.
 
 A new bundle names the one it supersedes in its ``versions`` (§3.3). When a
 directory's entries are all as they were, as when a file was saved unchanged

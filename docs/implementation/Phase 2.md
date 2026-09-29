@@ -1632,8 +1632,11 @@ and the next best when it refuses.
 
 - A file's creation time is recorded from `st_birthtime` where the
   platform reports one (`_metadata` in `bundle/building.py`); Linux does
-  not. A restore does not set it (Phase 1 Step 20), so a restored file
-  was created, as far as the filesystem knows, when it was restored.
+  not. A restore does not bring it back (Phase 1 Step 20), so a restored
+  file was created, as far as the filesystem knows, when it was restored.
+  On macOS, it is when the file was last modified instead: a restore sets
+  the modification time the bundle records, and on APFS and HFS+ setting
+  one earlier than the creation time pulls the creation time back to it.
 - Settled in the issue: updating a directory bundle keeps each file's
   creation time from the bundle it supersedes, not the one on disk.
   Otherwise the first backup after a restore records every file as
@@ -1647,19 +1650,66 @@ and the next best when it refuses.
 - A path the previous bundle did not hold takes its creation time from
   disk.
 
-**Open questions:**
+Ruled before building:
 
-- Whether a file whose bytes changed keeps its old creation time too.
-  The issue's reason applies whatever the bytes are — editing a file does
-  not change when it was created — so the proposal is yes: any path the
-  previous bundle held keeps its `created`.
-- Whether a restore should also set the creation time where the platform
-  allows it, as macOS does.
+- **A file whose bytes changed keeps its recorded creation time too.**
+  The issue's reason applies whatever the bytes are: editing a file does
+  not change when it was created, and a restore loses the time either
+  way. Any file the previous bundle held keeps its `created`.
+- **A restore does not set the creation time**, not in this step. It
+  could become an issue of its own. The standard library could do it on
+  macOS: `utime` with the creation time as the modification time, then
+  again with the modification time, pulls the creation time back, for
+  files and directories alike, as tried on APFS. It can only move the
+  time back, which a file just written always needs, but the behavior is
+  not documented. The documented call, `setattrlist`, would need
+  `ctypes`.
+
+What was built: `_metadata` in `bundle/building.py` takes the metadata
+recorded for the path, if any, and gives its `created` in place of the
+disk's. `_as_recorded` passes it, so `_unchanged` no longer tells a
+restored file from an unchanged one, and a file whose metadata changed
+keeps it along with its parts. A file built afresh, and an empty
+directory, take it from the entry of their own kind (`_recorded`). Both a
+backup and a build (Phase 1 Step 38) go through `build_directory`, so
+both keep it. About 48 new or changed lines of non-test Python, most of
+them docstrings, so it is one change set.
+
+A scratch run backed up a tree, restored it with the real restore code,
+and backed the restored tree up again, on macOS. With this step, the
+backup kept the bundle and wrote nothing. Without it, the backup
+published a new layer that differed only in creation times, each now the
+file's modification time.
+
+My calls, not yet reviewed:
+
+- **An empty directory keeps its recorded creation time too.** A restore
+  makes it as it makes a file, so the issue's reason applies. No other
+  directory has an entry to keep one in.
+- **Only an entry of the same kind keeps it.** A file where the bundle
+  held an empty directory, or an empty directory where it held a file,
+  takes its time from disk: what is there now was made after what was
+  recorded. A symlink records no metadata, so a file where one was takes
+  its time from disk too.
+- **A path recorded without a creation time keeps none**, rather than
+  take the one on disk. That happens when the bundle superseded was built
+  where the platform reports none, such as an application built on Linux
+  and expanded on macOS, where the disk's would be when it was expanded.
+- **`backup/writing.py` is left as it is.** Its docstring says creation
+  times are not set because the standard library cannot set them. On
+  macOS they are set, to the modification time, as a side effect, and
+  the standard library could set them. That belongs with the issue a
+  restore that sets them would be.
 
 **Testable in isolation:** build a fixture tree with `previous=` entries
 whose `created` differs from the disk's, asserting the new entries keep
 the recorded `created`, that an otherwise unchanged file is kept without
-being read, and that a new path takes its time from disk.
+being read, and that a new path takes its time from disk. Built as
+tests in `test_bundle_building.py` for a file kept unread, one whose
+metadata changed, one whose bytes changed, one recorded without a
+creation time, an empty directory, a new path, and a path recorded as
+another kind; and in `test_backup_runs.py`, a backup whose last bundle
+records other creation times keeps that bundle and writes nothing.
 
 ---
 

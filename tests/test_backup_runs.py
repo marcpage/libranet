@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 from dataclasses import replace
+from hashlib import sha256
 from io import BytesIO
 from os import mkfifo, symlink, urandom, utime
 from pathlib import Path
@@ -15,6 +16,7 @@ from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.layering import Layering
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.reassembly import write_file
+from libranet.bundle.serialization import encode_bundle
 from libranet.bundle.shapes import DirectoryBundle, DirectoryMarker, Entry, FileBundle, Symlink
 from libranet.bundle.storing import store_bundle
 from libranet.cas.content_id import ContentId
@@ -28,6 +30,8 @@ MAX_LAYERS = 2
 BIG = urandom(MIB + 1000)
 # 2026-09-01T08:30:00Z
 WHOLE_SECOND_NS = 1_788_251_400 * 1_000_000_000
+# Recorded earlier, and unlike any creation time a file made here has.
+CREATED = "2001-02-03T04:05:06Z"
 
 
 class Recorder:
@@ -255,6 +259,35 @@ def test_a_file_whose_metadata_changed_but_not_its_bytes_keeps_its_parts(
     assert parts_of(entry) == big_parts
     assert isinstance(entry, FileBundle)
     assert entry.metadata.modified == "2026-09-01T08:30:00Z"
+
+
+def test_creation_times_unlike_those_recorded_keep_the_bundle(
+    tree: Path, backups: AnnouncingStore, store: CasStore, recorder: Recorder
+) -> None:
+    first = first_backup(tree, backups).latest
+    # Every creation time recorded differs from the one on disk, as after a restore.
+    recorded = DirectoryBundle(
+        {
+            path: (
+                replace(entry, metadata=replace(entry.metadata, created=CREATED))
+                if isinstance(entry, (FileBundle, DirectoryMarker))
+                else entry
+            )
+            for path, entry in entries_of(first.bundle, store).items()
+        }
+    )
+    latest = LatestBackup(
+        store_bundle(recorded, backups, SECRET),
+        MADE_AT,
+        FINGERPRINT,
+        sha256(encode_bundle(recorded)).hexdigest(),
+        layering=Layering(),
+    )
+    recorder.announced.clear()
+    second = backup_after(latest, tree, backups)
+
+    assert second.bundle == latest.bundle
+    assert recorder.announced == []
 
 
 def test_without_the_last_bundle_every_file_is_read(

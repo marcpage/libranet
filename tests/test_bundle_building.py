@@ -1,6 +1,7 @@
 """Tests for building bundles from local files and directories."""
 
 from __future__ import annotations
+from dataclasses import replace
 from datetime import datetime, timezone
 from hashlib import sha256
 from io import BytesIO
@@ -14,7 +15,7 @@ from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises, skip
 
 from libranet.bundle.building import build_directory, build_file
 from libranet.bundle.reassembly import write_file
-from libranet.bundle.shapes import DirectoryMarker, FileBundle, Metadata, Symlink
+from libranet.bundle.shapes import DirectoryMarker, Entry, FileBundle, Metadata, Symlink
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import MIB
@@ -22,6 +23,8 @@ from libranet.config.models import MIB
 MAX_BYTES = 64
 # 2026-09-01T08:30:00Z
 WHOLE_SECOND_NS = 1_788_251_400 * 1_000_000_000
+# Recorded earlier, and unlike any creation time a file made here has.
+CREATED = "2001-02-03T04:05:06Z"
 EMPTY_SHA256 = sha256(b"").hexdigest()
 
 needs_permissions = mark.skipif(geteuid() == 0, reason="root reads files regardless of mode")
@@ -541,6 +544,115 @@ def test_file_that_was_something_else_is_built_afresh(tree: Path, store: Recordi
 
     assert isinstance(entry, FileBundle)
     assert reassembled(entry, store) == b"data"
+
+
+def test_file_kept_unread_keeps_its_recorded_creation_time(
+    tree: Path, store: RecordingStore
+) -> None:
+    (tree / "file").write_bytes(b"as it was")
+    built = build_directory(tree, store).bundle.entries["file"]
+    assert isinstance(built, FileBundle)
+    # Parts the file could not have produced, so only an entry kept unread names them.
+    recorded = FileBundle(
+        (str(ContentId.for_data(b"elsewhere", "sha256")),),
+        replace(built.metadata, created=CREATED),
+    )
+    store.writes.clear()
+
+    entries = build_directory(tree, store, previous={"file": recorded}).bundle.entries
+
+    assert entries["file"] is recorded
+    assert store.writes == []
+
+
+def test_file_whose_metadata_changed_keeps_its_recorded_creation_time(
+    tree: Path, store: RecordingStore
+) -> None:
+    (tree / "file").write_bytes(b"as it was")
+    built = build_directory(tree, store).bundle.entries["file"]
+    assert isinstance(built, FileBundle)
+    recorded = replace(built, metadata=replace(built.metadata, created=CREATED))
+    utime(tree / "file", ns=(WHOLE_SECOND_NS, WHOLE_SECOND_NS))
+
+    entry = build_directory(tree, store, previous={"file": recorded}).bundle.entries["file"]
+
+    assert isinstance(entry, FileBundle)
+    assert entry.parts == built.parts
+    assert entry.metadata.modified == "2026-09-01T08:30:00Z"
+    assert entry.metadata.created == CREATED
+
+
+def test_file_whose_bytes_changed_keeps_its_recorded_creation_time(
+    tree: Path, store: RecordingStore
+) -> None:
+    (tree / "file").write_bytes(b"as it was")
+    built = build_directory(tree, store).bundle.entries["file"]
+    assert isinstance(built, FileBundle)
+    recorded = replace(built, metadata=replace(built.metadata, created=CREATED))
+    (tree / "file").write_bytes(b"as it is now")
+
+    entry = build_directory(tree, store, previous={"file": recorded}).bundle.entries["file"]
+
+    assert isinstance(entry, FileBundle)
+    assert entry.parts == (str(ContentId.for_data(b"as it is now", "sha256")),)
+    assert entry.metadata.created == CREATED
+
+
+def test_file_recorded_without_a_creation_time_is_given_none(
+    tree: Path, store: RecordingStore
+) -> None:
+    (tree / "file").write_bytes(b"as it was")
+    built = build_directory(tree, store).bundle.entries["file"]
+    assert isinstance(built, FileBundle)
+    recorded = replace(built, metadata=replace(built.metadata, created=None))
+    (tree / "file").write_bytes(b"as it is now")
+
+    entry = build_directory(tree, store, previous={"file": recorded}).bundle.entries["file"]
+
+    assert isinstance(entry, FileBundle)
+    assert entry.metadata.created is None
+
+
+def test_empty_directory_keeps_its_recorded_creation_time(
+    tree: Path, store: RecordingStore
+) -> None:
+    (tree / "empty").mkdir()
+    utime(tree / "empty", ns=(WHOLE_SECOND_NS, WHOLE_SECOND_NS))
+    recorded = DirectoryMarker(Metadata(created=CREATED))
+
+    marker = build_directory(tree, store, previous={"empty": recorded}).bundle.entries["empty"]
+
+    assert isinstance(marker, DirectoryMarker)
+    assert marker.metadata.created == CREATED
+    assert marker.metadata.modified == "2026-09-01T08:30:00Z"
+
+
+def test_path_not_recorded_takes_its_creation_time_from_disk(
+    tree: Path, store: RecordingStore
+) -> None:
+    (tree / "file").write_bytes(b"data")
+    (tree / "empty").mkdir()
+    first = build_directory(tree, store).bundle.entries
+    previous: dict[str, Entry] = {
+        "other": FileBundle((), Metadata(created=CREATED)),
+        "gone": DirectoryMarker(Metadata(created=CREATED)),
+    }
+
+    assert build_directory(tree, store, previous=previous).bundle.entries == first
+
+
+def test_path_recorded_as_another_kind_takes_its_creation_time_from_disk(
+    tree: Path, store: RecordingStore
+) -> None:
+    (tree / "file").write_bytes(b"data")
+    (tree / "empty").mkdir()
+    first = build_directory(tree, store).bundle.entries
+    previous: dict[str, Entry] = {
+        "file": DirectoryMarker(Metadata(created=CREATED)),
+        "empty": FileBundle((), Metadata(created=CREATED)),
+    }
+
+    assert build_directory(tree, store, previous=previous).bundle.entries == first
 
 
 def test_a_time_out_of_range_is_left_out_and_logged_as_a_warning(
