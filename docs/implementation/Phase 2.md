@@ -1436,7 +1436,7 @@ Each now has one home:
 | Constants | Home | Also used by |
 | --- | --- | --- |
 | `PATH_SEPARATOR`, `PARENT_SEGMENT`, `NO_STEP_SEGMENTS` | `bundle/shapes.py` | `bundle/building.py`, `backup/changes.py`, `backup/restores.py`, `backup/writing.py`, `unbundler/lookup.py` |
-| `EPOCH`, `NANOSECONDS_PER_MICROSECOND` | `bundle/building.py` | `backup/writing.py` |
+| `EPOCH`, `NANOSECONDS_PER_MICROSECOND`, `MICROSECOND` | `bundle/building.py` | `backup/writing.py` |
 | `DESCRIPTOR_SEPARATOR` | `bundle/protection.py` | `bundle/parsing.py` |
 | `CHUNK_BYTES` | `cas/verification.py` | `bundle/content.py` |
 | `HEX_DIGITS`, `LOWER_HEX_DIGITS` | `cas/content_id.py` | `webserver/search.py`, `eviction/priority.py` |
@@ -1446,6 +1446,11 @@ Each now has one home:
 
 It came to about 127 new or changed lines of non-test Python, one change
 set. One test moves `EPOCH` where it moved `_EPOCH`.
+
+Ruled on review, once the change set was committed: `backup/writing.py`'s
+`_MICROSECOND` moves with the time units it was defined beside, to
+`bundle/building.py` as `MICROSECOND`, although only `backup/writing.py`
+uses it. The follow-up is about 10 new or changed lines.
 
 My calls, not yet reviewed:
 

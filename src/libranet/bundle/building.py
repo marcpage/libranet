@@ -84,6 +84,7 @@ EPOCH: Final = datetime(1970, 1, 1, tzinfo=timezone.utc)
 _UTC_SUFFIX: Final = "+00:00"
 _UTC_DESIGNATOR: Final = "Z"
 NANOSECONDS_PER_MICROSECOND: Final = 1000
+MICROSECOND: Final = timedelta(microseconds=1)
 _MICROSECONDS_PER_SECOND: Final = 1_000_000
 
 # Opening a file never follows a symlink, nor waits on a FIFO, that has taken

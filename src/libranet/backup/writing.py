@@ -29,7 +29,7 @@ Creation times are not set, as the standard library cannot set them.
 """
 
 from __future__ import annotations
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from errno import EACCES, EEXIST, EISDIR, ELOOP, ENOTDIR, ENOTEMPTY
 from logging import getLogger
 from os import (
@@ -71,7 +71,12 @@ from types import TracebackType
 from typing import Callable, Final, TypeVar
 
 from libranet.atomic_file import TEMP_SUFFIX
-from libranet.bundle.building import EPOCH, NANOSECONDS_PER_MICROSECOND, IgnoredPaths
+from libranet.bundle.building import (
+    EPOCH,
+    MICROSECOND,
+    NANOSECONDS_PER_MICROSECOND,
+    IgnoredPaths,
+)
 from libranet.bundle.content import ContentSource
 from libranet.bundle.reassembly import write_file
 from libranet.bundle.shapes import PATH_SEPARATOR, FileBundle, Metadata, Symlink
@@ -105,8 +110,6 @@ _TEMPORARY_TOKEN_BYTES: Final = 8
 _TEMPORARY_NAME_ATTEMPTS: Final = 100
 
 _Made = TypeVar("_Made")
-
-_MICROSECOND: Final = timedelta(microseconds=1)
 
 
 class DirectoryWriter:
@@ -415,4 +418,4 @@ def _nanoseconds(timestamp: str | None) -> int | None:
     if moment.tzinfo is None:
         moment = moment.replace(tzinfo=timezone.utc)
 
-    return (moment - EPOCH) // _MICROSECOND * NANOSECONDS_PER_MICROSECOND
+    return (moment - EPOCH) // MICROSECOND * NANOSECONDS_PER_MICROSECOND
