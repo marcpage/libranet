@@ -72,7 +72,10 @@ there even when this node's own id matches the hash better, since that peer
 may be connected to a better match still, but not when that peer is where it
 came from. A peer that cannot be reached is passed over for the next best;
 one that refuses the content is not. Content that finds no peer to go to
-waits, in memory, until a connection opens. ``data.stored`` announces only
+waits, in memory, until a connection opens. It goes in batches (Phase 2 Step
+45): a push worker takes the new content already waiting, up to
+``PIPELINE_DEPTH`` items, and what of it is bound for the same peer goes
+there in one pipelined exchange. ``data.stored`` announces only
 content this node did not hold before, so what it held already is never
 pushed on.
 
@@ -109,7 +112,7 @@ from functools import partial
 from heapq import heappop, heappush
 from itertools import count
 from logging import Logger
-from queue import SimpleQueue
+from queue import Empty, SimpleQueue
 from threading import Lock, Thread
 from time import time
 from typing import Callable, ClassVar, Final, Mapping, Sequence
@@ -122,7 +125,7 @@ from libranet.config.models import LibranetConfig
 from libranet.config.seeds import SeedError, load_seed_peers
 from libranet.connections.candidates import Candidate, candidate_list, seed_candidates
 from libranet.connections.endpoints import PeerAddress
-from libranet.connections.peer_exchange import PeerExchange
+from libranet.connections.peer_exchange import PIPELINE_DEPTH, PeerExchange
 from libranet.connections.peer_mix import PeerMix
 from libranet.connections.peer_session import PeerSession
 from libranet.connections.reverse_dns import ResolveNames, ReverseLookup, host_names
@@ -138,8 +141,9 @@ from libranet.modules import ModuleName
 # waiting for its next pass takes none.
 FETCH_WORKERS: Final = 8
 
-# Pushes of new content under way at once. Each sends one body to one peer
-# at a time, so this also bounds the bodies pushing holds in memory.
+# Pushes of new content under way at once. Each takes up to PIPELINE_DEPTH
+# items at a time and holds their bodies until they are sent, so this also
+# bounds the bodies pushing holds in memory.
 PUSH_WORKERS: Final = 8
 
 
@@ -149,6 +153,30 @@ class _NewContent:
 
     content_id: ContentId
     source: ContentId
+
+
+@dataclass
+class _Push:
+    """New content being pushed, as stored, and the peers it may go to.
+
+    ``ranked`` is the peers connected when the push began, those whose node
+    ids best match the content's hash first, and ``tried`` those it has been
+    sent to so far.
+    """
+
+    new: _NewContent
+    body: bytes
+    ranked: Sequence[PeerSession]
+    tried: set[ContentId] = field(default_factory=set)
+
+    def next_peer(self) -> PeerSession | None:
+        """The best peer not tried yet, now counted as tried; ``None`` once all have been."""
+        for session in self.ranked:
+            if session.node_id not in self.tried:
+                self.tried.add(session.node_id)
+                return session
+
+        return None
 
 
 @dataclass
@@ -920,50 +948,106 @@ class ConnectionsModule(ModuleBase):
         return accepted
 
     def _push_loop(self) -> None:
-        """Push-worker thread: push new content until told to stop."""
-        while (new := self._pushes.get()) is not None:
+        """Push-worker thread: push new content, a batch at a time, until told to stop."""
+        while (first := self._pushes.get()) is not None:
+            batch = self._batch_from(first)
+
             try:
-                self._push(new)
+                self._push(batch)
 
             except Exception:
-                self.logger.exception("Pushing %s failed", new.content_id)
-
-    def _push(self, new: _NewContent) -> None:
-        """Push ``new`` to the best connected peer, unless that is where it came from.
-
-        A peer that cannot be reached is passed over for the next best.
-        Content that no connected peer was there to take waits for a
-        connection to open.
-        """
-        try:
-            body = self._source_of_truth.read(new.content_id)
-
-        except ContentNotFoundError:
-            self.logger.info("%s is no longer held, so cannot be pushed", new.content_id)
-            return
-
-        tried: set[ContentId] = set()
-
-        for session in self._by_match(new.content_id):
-            if session.node_id == new.source:
-                self.logger.debug("Not pushing %s back to %s", new.content_id, new.source)
-                return
-
-            tried.add(session.node_id)
-
-            try:
-                if not self.exchange.hand_off(session, new.content_id, body):
-                    self.logger.debug("%s refused %s", session.endpoint, new.content_id)
-
-                return
-
-            except OSError as error:
-                self.logger.debug(
-                    "Could not push %s to %s: %s", new.content_id, session.endpoint, error
+                self.logger.exception(
+                    "Pushing %s failed", ", ".join(str(new.content_id) for new in batch)
                 )
 
+    def _batch_from(self, first: _NewContent) -> list[_NewContent]:
+        """``first`` and the new content already waiting behind it, ``PIPELINE_DEPTH`` at most.
+
+        Nothing is waited for, so there is a batch only when there is a
+        backlog. Being told to stop is put back, for this worker or another
+        to stop on, so each worker is still told once.
+        """
+        batch = [first]
+
+        while len(batch) < PIPELINE_DEPTH:
+            try:
+                new = self._pushes.get_nowait()
+
+            except Empty:
+                # Not logged: nothing more is waiting, which ends the batch.
+                break
+
+            if new is None:
+                self._pushes.put(None)
+                break
+
+            batch.append(new)
+
+        return batch
+
+    def _push(self, batch: Sequence[_NewContent]) -> None:
+        """Push each of ``batch`` to the best connected peer, unless that is where it came from.
+
+        What is bound for the same peer goes to it in one pipelined exchange.
+        A peer that cannot be reached is passed over for the next best, and
+        what it could not be sent goes on together to where each item goes
+        next. Content that no connected peer was there to take waits for a
+        connection to open.
+        """
+        pending: list[_Push] = []
+
+        for new in batch:
+            try:
+                body = self._source_of_truth.read(new.content_id)
+
+            except ContentNotFoundError:
+                self.logger.info("%s is no longer held, so cannot be pushed", new.content_id)
+                continue
+
+            pending.append(_Push(new, body, self._by_match(new.content_id)))
+
+        while pending:
+            bound: dict[PeerSession, list[_Push]] = {}
+
+            for push in pending:
+                session = self._next_peer_for(push)
+
+                if session is not None:
+                    bound.setdefault(session, []).append(push)
+
+            pending = [
+                push for session, group in bound.items() for push in self._push_to(session, group)
+            ]
+
+    def _next_peer_for(self, push: _Push) -> PeerSession | None:
+        """The peer to send ``push`` to next; ``None`` if it goes no further.
+
+        It goes no further once the best peer it has not tried is the one its
+        content came from, or once it has tried every peer.
+        """
+        new = push.new
+        session = push.next_peer()
+
+        if session is None:
+            self._wait_for_peer(push)
+            return None
+
+        if session.node_id == new.source:
+            self.logger.debug("Not pushing %s back to %s", new.content_id, new.source)
+            return None
+
+        return session
+
+    def _wait_for_peer(self, push: _Push) -> None:
+        """Keep what ``push`` could not be sent until a connection opens.
+
+        Unless a peer it has not tried connected meanwhile, when it is pushed
+        again from the start.
+        """
+        new = push.new
+
         with self._lock:
-            waiting = self._peers.keys() <= tried
+            waiting = self._peers.keys() <= push.tried
 
             if waiting:
                 self._unpushed[new.content_id] = new.source
@@ -973,6 +1057,32 @@ class ConnectionsModule(ModuleBase):
 
         else:  # a peer connected meanwhile
             self._pushes.put(new)
+
+    def _push_to(self, session: PeerSession, group: Sequence[_Push]) -> Sequence[_Push]:
+        """Send ``group`` to ``session``'s peer in one pipelined exchange; what did not reach it.
+
+        That is all of ``group`` if the peer could not be reached, and none
+        of it otherwise, since a peer that refuses content is not passed over.
+        """
+        try:
+            accepted = self.exchange.hand_off_many(
+                session, [(push.new.content_id, push.body) for push in group]
+            )
+
+        except OSError as error:
+            self.logger.debug(
+                "Could not push %s to %s: %s",
+                ", ".join(str(push.new.content_id) for push in group),
+                session.endpoint,
+                error,
+            )
+            return group
+
+        for push, took in zip(group, accepted):
+            if not took:
+                self.logger.debug("%s refused %s", session.endpoint, push.new.content_id)
+
+        return ()
 
     def _push_unpushed(self) -> None:
         """Push the new content that was waiting for a peer, now that one is connected."""

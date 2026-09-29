@@ -18,7 +18,9 @@ rest. While the connection lasts, :meth:`PeerExchange.refresh` repeats steps
 4 and 6 (§3.3), and :meth:`PeerExchange.retrieve` is step 7 for a single
 content id, for searching for it on demand (HighLevelDesign §4.7). :meth:`PeerExchange.hand_off` pushes
 one content id the peer did not ask for, for it to keep: content this node
-is letting go (HighLevelDesign §4.5), or new content (§4.10). Steps 1 and 2
+is letting go (HighLevelDesign §4.5). :meth:`PeerExchange.hand_off_many`
+pushes several such, pipelined: new content (§4.10), in batches (Phase 2
+Step 45). Steps 1 and 2
 wait for their
 responses. Steps 3 to 5 are sent together, pipelined, and so are the
 requests of step 6 and of step 7.
@@ -236,10 +238,30 @@ class PeerExchange:
         Raises:
             OSError: as :meth:`first_contact`.
         """
-        (response,) = session.exchange(
-            [PeerRequest("PUT", _data_path(content_id), body, _OCTET_STREAM_HEADERS)]
+        (accepted,) = self.hand_off_many(session, [(content_id, body)])
+        return accepted
+
+    def hand_off_many(
+        self, session: PeerSession, held: Sequence[tuple[ContentId, bytes]]
+    ) -> list[bool]:
+        """Push each content id in ``held``, with its stored bytes, pipelined, as :meth:`hand_off`.
+
+        Returns whether the peer accepted each, in the order of ``held``.
+
+        Raises:
+            OSError: as :meth:`first_contact`. None of them is then counted
+                as sent, though the peer may have taken some.
+        """
+        responses = session.exchange(
+            [
+                PeerRequest("PUT", _data_path(content_id), body, _OCTET_STREAM_HEADERS)
+                for content_id, body in held
+            ]
         )
-        return self._pushed(session, content_id, body, response)
+        return [
+            self._pushed(session, content_id, body, response)
+            for (content_id, body), response in zip(held, responses)
+        ]
 
     def _identify(self, connection: PeerConnection, endpoint: str) -> ContentId:
         """The node id the peer on ``connection`` proves it holds the key for."""
@@ -387,16 +409,7 @@ class PeerExchange:
         wanted = [content_id for content_id in sought if content_id not in session.pushed]
 
         for batch in _batches(wanted):
-            held = self._held(batch)
-            responses = session.exchange(
-                [
-                    PeerRequest("PUT", _data_path(content_id), body, _OCTET_STREAM_HEADERS)
-                    for content_id, body in held
-                ]
-            )
-
-            for (content_id, body), response in zip(held, responses):
-                self._pushed(session, content_id, body, response)
+            self.hand_off_many(session, self._held(batch))
 
     def _pushed(
         self, session: PeerSession, content_id: ContentId, body: bytes, response: PeerResponse

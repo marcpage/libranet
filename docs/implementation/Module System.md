@@ -167,8 +167,9 @@ Owns every outgoing connection. It keeps up the peer mix (HighLevelDesign
 §4.6), dialing again whenever the candidate list changes (`nodes.updated`)
 or a connection opens, fails, or closes. It searches connected peers for
 content the fetcher asks for (`fetch.requested`), pushes new content to the
-best-matching peer (`data.stored`), and offers content the eviction module
-wants to delete to peers until enough accept it (`eviction.notice`).
+best-matching peer (`data.stored`), in pipelined batches when it arrives
+faster than it can be sent, and offers content the eviction module wants to
+delete to peers until enough accept it (`eviction.notice`).
 Content it fetches goes into the peer's store in `incoming/` and is
 announced with `data.put_completed`, so it passes through the validator
 just as an upload does. It is the most threaded module (§5.4). It reports
@@ -1142,9 +1143,10 @@ Planned steps that will change it, in Phases 2 to 4:
 - **Step 30** (#71, blocked data, Phase 3) keeps the blocked list in
   stats, and derives a file from it for the web server and validator,
   since neither may open SQLite.
-- **Step 45** (#96, batching) drains messages waiting for the connection
-  manager before sending, either in `ModuleBase.run`, which would change
-  every module, or in the connection manager's push workers alone.
+- **Step 45** (#96, batching) has the connection manager's push workers
+  take the new content already waiting, up to eight items, and send what is
+  bound for the same peer in one pipelined exchange. `ModuleBase.run` is
+  unchanged.
 - **Step 46** (#121) hands content off to one peer rather than two, so
   `eviction.notice` asks for one copy.
 - **Step 50** (#85, Phase 4) brings filesystem-notification threads into

@@ -14,7 +14,7 @@ from logging import DEBUG, INFO, Logger, getLogger
 from pathlib import Path
 from queue import Empty, Queue
 from socket import SHUT_RDWR, create_server, socket
-from threading import Event, Thread
+from threading import Event, Thread, current_thread
 from time import monotonic, sleep, time
 from typing import Any, Callable, Iterator, Mapping, Sequence
 
@@ -32,7 +32,7 @@ from libranet.config.models import (
     StorageConfig,
 )
 from libranet.connections.module import ConnectionsModule, connections_module_factory
-from libranet.connections.peer_exchange import Retrieval
+from libranet.connections.peer_exchange import PIPELINE_DEPTH, Retrieval
 from libranet.connections.peer_session import PeerSession
 from libranet.connections.reverse_dns import ResolveNames
 from libranet.identity.authentication import RequestAuthenticator
@@ -391,17 +391,28 @@ def wait_for_next_pass(caplog: LogCaptureFixture, content_id: ContentId, times: 
 
 def content_nearer_to(node_id: ContentId, others: Sequence[ContentId]) -> tuple[ContentId, bytes]:
     """Content whose hash matches ``node_id`` better than it matches any of ``others``."""
+    (content,) = contents_nearer_to(node_id, others, 1)
+    return content
+
+
+def contents_nearer_to(
+    node_id: ContentId, others: Sequence[ContentId], count: int
+) -> list[tuple[ContentId, bytes]]:
+    """``count`` items of content whose hashes match ``node_id`` better than any of ``others``."""
+    contents: list[tuple[ContentId, bytes]] = []
     index = 0
 
-    while True:
+    while len(contents) < count:
         data = f"content near {node_id}, try {index}".encode()
         content_id = ContentId.for_data(data, "sha256")
         bits = matching_bits(content_id.hash, node_id.hash)
 
         if all(matching_bits(content_id.hash, other.hash) < bits for other in others):
-            return content_id, data
+            contents.append((content_id, data))
 
         index += 1
+
+    return contents
 
 
 # -- Keeping the peer mix --------------------------------------------------
@@ -1625,11 +1636,13 @@ def test_a_push_goes_to_a_peer_that_connected_while_it_was_under_way(
     write_lists(config.storage, node_list(identity, peers[0]))
     module = modules.start(config)
     bus.wait_for(EventType.CONNECTION_OPENED)
-    hand_off = module.exchange.hand_off
+    hand_off_many = module.exchange.hand_off_many
 
-    def unreachable_first(session: PeerSession, content_id: ContentId, body: bytes) -> bool:
+    def unreachable_first(
+        session: PeerSession, held: Sequence[tuple[ContentId, bytes]]
+    ) -> list[bool]:
         if session.node_id != peers[0].node_id:
-            return hand_off(session, content_id, body)
+            return hand_off_many(session, held)
 
         if peers[1].node_id not in module.connected:
             write_lists(config.storage, node_list(identity, *peers))
@@ -1638,7 +1651,7 @@ def test_a_push_goes_to_a_peer_that_connected_while_it_was_under_way(
 
         raise ConnectionResetError("gone")
 
-    monkeypatch.setattr(module.exchange, "hand_off", unreachable_first)
+    monkeypatch.setattr(module.exchange, "hand_off_many", unreachable_first)
 
     module.handle(stored(HELD_ID, identity.node_id))
 
@@ -1658,15 +1671,17 @@ def test_a_peer_that_cannot_be_reached_is_passed_over_for_a_push(
     module = modules.start(config)
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)
     best, other = best_and_other(HELD_ID, peers)
-    hand_off = module.exchange.hand_off
+    hand_off_many = module.exchange.hand_off_many
 
-    def failing_for_best(session: PeerSession, content_id: ContentId, body: bytes) -> bool:
+    def failing_for_best(
+        session: PeerSession, held: Sequence[tuple[ContentId, bytes]]
+    ) -> list[bool]:
         if session.node_id == best.node_id:
             raise ConnectionResetError("gone")
 
-        return hand_off(session, content_id, body)
+        return hand_off_many(session, held)
 
-    monkeypatch.setattr(module.exchange, "hand_off", failing_for_best)
+    monkeypatch.setattr(module.exchange, "hand_off_many", failing_for_best)
 
     module.handle(stored(HELD_ID, identity.node_id))
 
@@ -1690,11 +1705,11 @@ def test_a_push_the_best_peer_refuses_goes_no_further(
     best, _ = best_and_other(HELD_ID, peers)
     offered: list[ContentId] = []
 
-    def refusing(session: PeerSession, content_id: ContentId, body: bytes) -> bool:
+    def refusing(session: PeerSession, held: Sequence[tuple[ContentId, bytes]]) -> list[bool]:
         offered.append(session.node_id)
-        return False
+        return [False] * len(held)
 
-    monkeypatch.setattr(module.exchange, "hand_off", refusing)
+    monkeypatch.setattr(module.exchange, "hand_off_many", refusing)
 
     module.handle(stored(HELD_ID, identity.node_id))
 
@@ -1732,14 +1747,180 @@ def test_a_push_that_goes_wrong_is_logged(
     module = modules.start(config)
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)
 
-    def broken(session: PeerSession, content_id: ContentId, body: bytes) -> bool:
+    def broken(session: PeerSession, held: Sequence[tuple[ContentId, bytes]]) -> list[bool]:
         raise RuntimeError("broken")
 
-    monkeypatch.setattr(module.exchange, "hand_off", broken)
+    monkeypatch.setattr(module.exchange, "hand_off_many", broken)
 
     module.handle(stored(HELD_ID, identity.node_id))
 
     wait_until(lambda: f"Pushing {HELD_ID} failed" in caplog.text, "the failure to be logged")
+
+
+# -- Pushing new content in batches ----------------------------------------
+
+
+@fixture
+def one_push_worker(monkeypatch: MonkeyPatch) -> None:
+    """A single push worker, so what queues up behind it is taken in a known order."""
+    monkeypatch.setattr("libranet.connections.module.PUSH_WORKERS", 1)
+
+
+class HeldPushes:
+    """Stands in for pipelined pushes, recording each, and holding the first until released.
+
+    While the one push worker is held, new content queues up behind it. A
+    push to ``unreachable`` fails as if that peer could not be reached.
+    """
+
+    def __init__(
+        self,
+        module: ConnectionsModule,
+        monkeypatch: MonkeyPatch,
+        unreachable: ContentId | None = None,
+    ) -> None:
+        self._hand_off_many = module.exchange.hand_off_many
+        self._unreachable = unreachable
+        self._held = Event()
+        self._released = Event()
+        # Each push, as the peer it went to and the content ids it carried.
+        self.pushes: list[tuple[ContentId, list[ContentId]]] = []
+        self.worker: Thread | None = None
+        monkeypatch.setattr(module.exchange, "hand_off_many", self._push)
+
+    def wait_until_held(self) -> None:
+        assert self._held.wait(TIMEOUT), "timed out waiting for the first push"
+
+    def release(self) -> None:
+        self._released.set()
+
+    def _push(self, session: PeerSession, held: Sequence[tuple[ContentId, bytes]]) -> list[bool]:
+        self.pushes.append((session.node_id, [content_id for content_id, _ in held]))
+
+        if not self._held.is_set():
+            self.worker = current_thread()
+            self._held.set()
+            self._released.wait(TIMEOUT)
+
+        if session.node_id == self._unreachable:
+            raise ConnectionResetError("gone")
+
+        return self._hand_off_many(session, held)
+
+
+def test_new_content_waiting_is_pushed_in_pipelined_batches_each_to_its_best_peer(
+    one_push_worker: None,
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    store = CasStore.source_of_truth(config.storage)
+    content_ids: list[ContentId] = []
+
+    for index in range(1 + 2 * PIPELINE_DEPTH):
+        data = f"new content {index}".encode()
+        content_ids.append(ContentId.for_data(data, "sha256"))
+        store.write(content_ids[-1], data)
+
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+    pushes = HeldPushes(module, monkeypatch)
+    first, *waiting = content_ids
+
+    module.handle(stored(first, identity.node_id))
+    pushes.wait_until_held()
+
+    for content_id in waiting:
+        module.handle(stored(content_id, identity.node_id))
+
+    pushes.release()
+
+    bus.wait_for(EventType.DATA_SENT, count=len(content_ids))
+    best = {content_id: by_match(content_id, peers)[0] for content_id in content_ids}
+    expected = [(best[first], [first])]
+
+    # Each batch the worker took, one pipelined push to each peer it is bound for.
+    for start in range(0, len(waiting), PIPELINE_DEPTH):
+        batch = waiting[start : start + PIPELINE_DEPTH]
+
+        for node_id in dict.fromkeys(best[content_id] for content_id in batch):
+            expected.append((node_id, [item for item in batch if best[item] == node_id]))
+
+    assert [(str(node_id), pushed) for node_id, pushed in pushes.pushes] == expected
+    assert len(pushes.pushes) < len(content_ids)
+
+
+def test_what_could_not_reach_its_best_peer_goes_on_together_to_the_next_best(
+    one_push_worker: None,
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    best, other = peers
+    contents = contents_nearer_to(best.node_id, [other.node_id], 4)
+    store = CasStore.source_of_truth(config.storage)
+
+    for content_id, data in contents:
+        store.write(content_id, data)
+
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+    pushes = HeldPushes(module, monkeypatch, unreachable=best.node_id)
+    first, *waiting = [content_id for content_id, _ in contents]
+
+    module.handle(stored(first, identity.node_id))
+    pushes.wait_until_held()
+
+    for content_id in waiting:
+        module.handle(stored(content_id, identity.node_id))
+
+    pushes.release()
+
+    sent = bus.wait_for(EventType.DATA_SENT, count=len(contents))
+    assert pushes.pushes == [
+        (best.node_id, [first]),
+        (other.node_id, [first]),
+        (best.node_id, waiting),
+        (other.node_id, waiting),
+    ]
+    assert {message["node_id"] for message in sent} == {str(other.node_id)}
+
+
+def test_a_push_worker_told_to_stop_while_taking_a_batch_still_stops(
+    one_push_worker: None,
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    store = CasStore.source_of_truth(config.storage)
+    store.write(HELD_ID, HELD)
+    store.write(OFFERED_ID, OFFERED)
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+    pushes = HeldPushes(module, monkeypatch)
+
+    module.handle(stored(HELD_ID, identity.node_id))
+    pushes.wait_until_held()
+    # Queued behind the push held, and taken with being told to stop.
+    module.handle(stored(OFFERED_ID, identity.node_id))
+    module.on_stop()
+    pushes.release()
+
+    assert pushes.worker is not None
+    pushes.worker.join(TIMEOUT)
+    assert not pushes.worker.is_alive()
 
 
 # -- Reverse DNS -----------------------------------------------------------
