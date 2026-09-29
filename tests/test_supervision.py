@@ -105,10 +105,10 @@ class _StubbornProcess:
 
     def __init__(self) -> None:
         self.started = Event()
-        self.started_at = 0.0
+        # The timeout of every wait for this child to exit.
+        self.waits: list[float] = []
 
     def start(self) -> None:
-        self.started_at = monotonic()
         self.started.set()
 
     def is_alive(self) -> bool:
@@ -116,6 +116,7 @@ class _StubbornProcess:
 
     def join(self, timeout: float | None = None) -> None:
         assert timeout is not None, "waited with no timeout for a child that will never exit"
+        self.waits.append(timeout)
         sleep(timeout)
 
     def terminate(self) -> None:
@@ -356,5 +357,5 @@ def test_run_returns_although_a_child_will_not_exit(
     supervisor.run(stubborn.started)
 
     # A stop timeout each to let it stop, to terminate it, and to kill it.
-    assert monotonic() - stubborn.started_at < 3 * STOP_TIMEOUT_SECONDS + 1.0
+    assert sum(stubborn.waits) <= 3 * STOP_TIMEOUT_SECONDS
     assert "did not exit; leaving it" in caplog.text
