@@ -1477,6 +1477,39 @@ groups of at most `PIPELINE_DEPTH`, each at its own best peer.
   question, and one copy makes it matter more ([Phase 3](Phase%203.md)
   §6).
 
+It came to 12 new or changed lines of the eviction module, so it is one
+change set. It was seen in two live runs of three nodes, with A capped at
+12,000 bytes, each node told of the others, and a client pushing its key
+and then 30 objects of 1,000 bytes to A over one connection. A handed off
+and deleted 19 objects each time, none fell short, and none was lost.
+Every object A deleted was held by the peer it was handed to, and by the
+other peer only where the first pushed it on (#119). So 1, and then 3, of
+the 19 were left with a single peer, which two copies never allowed.
+
+Ruled on review:
+
+- **The hand-off timeout covers the 32 peers of Step 25's mix**, not the
+  16 it was set for. Offering the content to all of them, each taking the
+  full 30-second request timeout, can take 960 seconds, past the 600 it
+  was.
+
+My calls, not yet reviewed:
+
+- **The hand-off timeout is 1,200 seconds**, keeping the quarter to
+  spare that 600 kept over 16 peers' 480. It stays a constant,
+  `DEFAULT_HAND_OFF_TIMEOUT_SECONDS`, rather than being worked out from
+  the mix size and request timeout in the configuration. A connection
+  manager that restarts mid-hand-off now holds that hand-off's place for
+  up to 20 minutes rather than 10.
+- **`copies` stays in `eviction.notice`**, now always one, rather than
+  being dropped. The connection manager still hands off to as many peers
+  as it is asked for, so neither it nor the message changes, and one of
+  its tests still asks for two, to keep that covered.
+- **Phase 1 Step 15 still says two.** It is the record of what Phase 1
+  built, and was left as it was when Step 28 changed how candidates are
+  chosen. Module System §3.2.7 and §8.4, and the comment in
+  `examples/libranet.yaml`, now say one.
+
 **Testable in isolation:** the existing eviction and hand-off tests with
 the copy count changed to one, and a connections test with two fixture
 peers asserting only the best is offered the content when it accepts,
