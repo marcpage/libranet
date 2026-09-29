@@ -3,12 +3,13 @@
 from __future__ import annotations
 from dataclasses import replace
 from errno import ENOSPC, ENOTEMPTY
+from logging import ERROR
 from os import chmod, readlink, symlink, umask, urandom, utime, walk
 from pathlib import Path
 from stat import S_IMODE
 from typing import Iterable, Iterator
 
-from pytest import fixture, mark, raises
+from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
 from xattr import xattr
 
 from libranet.backup.restores import RESUME_DELAY_SECONDS, Restore, RestorePass, RestoreStatus
@@ -460,6 +461,31 @@ def test_an_entry_whose_attribute_part_cannot_be_read_is_left_out_and_the_rest_r
     assert "blake3" in skipped["unknown.txt"]
     assert set(described(target)) == {"honest.txt"}
     assert restore.status is RestoreStatus.DONE
+
+
+class Unknown:
+    """A kind of entry no bundle this node reads holds."""
+
+
+def test_an_entry_of_a_kind_not_known_is_logged_as_an_error_and_left_out(
+    tmp_path: Path,
+    store: CasStore,
+    target: Path,
+    monkeypatch: MonkeyPatch,
+    caplog: LogCaptureFixture,
+) -> None:
+    entry = file_entry(tmp_path, store, b"known")
+    restore = restore_of(stored({"known.txt": entry}, store), target)
+    monkeypatch.setattr(Restore, "_read", lambda *_: {"known.txt": entry, "odd": Unknown()})
+
+    with caplog.at_level(ERROR, logger="libranet.backup.restores"):
+        skipped = attempt(restore, store).skipped
+
+    assert skipped == {"odd": "Not a file, a symlink, or a directory: Unknown"}
+    assert [record.levelno for record in caplog.records] == [ERROR]
+    assert "odd" in caplog.text and "Unknown" in caplog.text
+    assert set(described(target)) == {"known.txt"}
+    assert restore.status is RestoreStatus.DONE and restore.report()["restored"] == 1
 
 
 class Full:

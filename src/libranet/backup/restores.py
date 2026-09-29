@@ -25,7 +25,9 @@ Some entries are left out, each with why, and the restore goes on without them:
   through the bundle's other symlinks, where ``..`` climbs from wherever a
   link actually led;
 - a file that fails its checks, or cannot be reassembled here;
-- an entry something already there is in the way of.
+- an entry something already there is in the way of;
+- an entry that is not a file, a symlink, or a directory, which no bundle this
+  node reads holds, and so is logged as an error.
 
 Failing to write for want of space, or because the filesystem fails or is
 read-only, would fail every entry alike, so it fails the restore instead.
@@ -36,6 +38,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from enum import StrEnum
 from errno import EDQUOT, EIO, ENOSPC, EROFS
+from logging import getLogger
 from pathlib import Path
 from typing import Any, Final, Iterable, Mapping
 
@@ -60,6 +63,8 @@ from libranet.bundle.xattrs import ExtendedAttributes
 from libranet.cas.content_id import ContentId
 from libranet.unbundler.lookup import MAX_SYMLINK_HOPS
 from libranet.webserver.config_requests import ConflictBehavior, RestoreRequest
+
+_LOGGER = getLogger(__name__)
 
 # Provisional default: how long after content it waits on arrives that a
 # restore carries on, so that content arriving together is restored together.
@@ -318,23 +323,31 @@ class Restore:
             OSError: writing failed in a way that would fail every entry.
         """
         missing: list[ContentId] = []
-        entry = pending[path]
+        # Looked at as whatever it is, so that a kind of entry this does not
+        # know is logged and left out, rather than taken for another.
+        entry: object = pending[path]
 
         try:
             if isinstance(entry, Symlink):
                 writer.place_symlink(path, entry)
 
+            elif isinstance(entry, FileBundle):
+                _check_held(writer.needs(entry), source)
+                writer.place_file(path, entry, source)
+
+            elif isinstance(entry, DirectoryMarker):
+                _check_held(writer.needs(entry), source)
+                writer.place_directory(path, entry.metadata, source)
+
             else:
-                lacked = _lacked(writer.needs(entry), source)
-
-                if lacked:
-                    raise MissingContentError(lacked)
-
-                if isinstance(entry, FileBundle):
-                    writer.place_file(path, entry, source)
-
-                else:
-                    writer.place_directory(path, entry.metadata, source)
+                kind = type(entry).__name__
+                _LOGGER.error(
+                    "Cannot restore %s into %s, as a %s is not a file, a symlink, or a directory",
+                    path,
+                    self._request.directory,
+                    kind,
+                )
+                raise UnsupportedBundleError(f"Not a file, a symlink, or a directory: {kind}")
 
         except MissingContentError as error:
             # Not logged: what is missing is asked for, and the backup module logs it.
@@ -401,14 +414,18 @@ def _load(content_id: ContentId, source: ContentSource, secret: bytes) -> Bundle
             raise error from None
 
 
-def _lacked(paths: Iterable[str], source: ContentSource) -> tuple[ContentId, ...]:
-    """The content the CAS ``paths`` name that ``source`` does not hold.
+def _check_held(paths: Iterable[str], source: ContentSource) -> None:
+    """Raise unless ``source`` holds all the content the CAS ``paths`` name.
 
     Raises:
+        MissingContentError: some is not held; all of it is named.
         BundleError: a path is not a CAS path this node can read.
     """
     parts = dict.fromkeys(parse_cas_path(part) for part in paths)
-    return tuple(part for part in parts if not source.exists(part))
+    lacked = tuple(part for part in parts if not source.exists(part))
+
+    if lacked:
+        raise MissingContentError(lacked)
 
 
 def _beneath_other_entry(entries: Mapping[str, Entry], path: str) -> bool:
