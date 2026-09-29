@@ -9,7 +9,14 @@ exports a bundle as a content archive.
 from libranet.backup.builds import RECORD_SUFFIX, Build, BuildRecord, BuildRecordError
 from libranet.backup.changes import ChangeDetector, PollingDetector
 from libranet.backup.exports import Export
-from libranet.backup.jobs import BackupJob, JobFileError, LatestBackup, load_jobs, save_jobs
+from libranet.backup.jobs import (
+    BackupJob,
+    ExpandedBackups,
+    JobFileError,
+    LatestBackup,
+    load_jobs,
+    save_jobs,
+)
 from libranet.backup.module import BackupModule, JobStatus, backup_module_factory
 from libranet.backup.restores import RESUME_DELAY_SECONDS, Restore, RestorePass, RestoreStatus
 from libranet.backup.runs import Announce, AnnouncingStore, Backup, BackupStore, back_up
@@ -30,6 +37,7 @@ __all__ = [
     "BuildRecordError",
     "ChangeDetector",
     "DirectoryWriter",
+    "ExpandedBackups",
     "Export",
     "JobFileError",
     "JobStatus",

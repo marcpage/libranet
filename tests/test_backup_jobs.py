@@ -2,14 +2,24 @@
 
 from __future__ import annotations
 from json import dumps, loads
+from logging import INFO, WARNING
 from math import inf, nan
 from pathlib import Path
 from typing import Any
 
-from pytest import fixture, mark, raises
+from pytest import LogCaptureFixture, fixture, mark, raises
 
-from libranet.backup.jobs import BackupJob, JobFileError, LatestBackup, load_jobs, save_jobs
-from libranet.bundle.layering import Layering
+from libranet.backup.jobs import (
+    BackupJob,
+    ExpandedBackups,
+    JobFileError,
+    LatestBackup,
+    load_jobs,
+    save_jobs,
+)
+from libranet.bundle.layering import Layering, Superseded
+from libranet.bundle.protection import protect
+from libranet.bundle.shapes import FileBundle, Metadata, Symlink
 from libranet.cas.content_id import ContentId
 from libranet.webserver.config_requests import BackupJobRequest
 
@@ -177,3 +187,129 @@ def test_a_latest_backup_has_a_finite_time(made_at: float) -> None:
 def test_a_latest_backup_skips_no_fewer_than_no_paths() -> None:
     with raises(ValueError):
         LatestBackup(BUNDLE, 0.0, "f", "e", skipped=-1)
+
+
+SECRET = b"s" * 32
+JOB_ID = "0123456789abcdef"
+EXPANDED = Superseded(
+    BUNDLE,
+    {
+        "secret plans.txt": FileBundle(
+            (str(ContentId.for_data(b"plans", "sha256")),), Metadata(size=5, writable=True)
+        ),
+        "link": Symlink("secret plans.txt"),
+    },
+    (str(ContentId.for_data(b"a layer beneath", "sha256")),),
+    Layering(1, 1),
+)
+
+
+@fixture
+def expanded(tmp_path: Path) -> ExpandedBackups:
+    return ExpandedBackups(tmp_path / "backup_jobs")
+
+
+def test_a_bundle_kept_expanded_is_read_back_as_kept(expanded: ExpandedBackups) -> None:
+    expanded.save(JOB_ID, EXPANDED, SECRET)
+
+    assert expanded.path(JOB_ID).name == JOB_ID
+    assert expanded.load(JOB_ID, BUNDLE, SECRET) == EXPANDED
+
+
+def test_a_bundle_kept_expanded_is_encrypted_with_the_secret(expanded: ExpandedBackups) -> None:
+    expanded.save(JOB_ID, EXPANDED, SECRET)
+    held = expanded.path(JOB_ID).read_bytes()
+
+    assert b"secret plans" not in held
+    assert ContentId.for_data(b"plans", "sha256").hash.encode() not in held
+    assert held.endswith(b"\0PW-SHA256-AES256-CBC")
+
+
+def test_keeping_a_bundle_expanded_replaces_what_was_kept(expanded: ExpandedBackups) -> None:
+    expanded.save(JOB_ID, Superseded(ContentId.for_data(b"before", "sha256"), {}), SECRET)
+    expanded.save(JOB_ID, EXPANDED, SECRET)
+
+    assert expanded.load(JOB_ID, BUNDLE, SECRET) == EXPANDED
+
+
+def test_nothing_kept_is_no_bundle_and_is_not_logged(
+    expanded: ExpandedBackups, caplog: LogCaptureFixture
+) -> None:
+    assert expanded.load(JOB_ID, BUNDLE, SECRET) is None
+    assert caplog.records == []
+
+
+def test_a_bundle_kept_expanded_is_not_used_in_place_of_another(
+    expanded: ExpandedBackups, caplog: LogCaptureFixture
+) -> None:
+    expanded.save(JOB_ID, EXPANDED, SECRET)
+    other = ContentId.for_data(b"another bundle", "sha256")
+    caplog.set_level(INFO)
+
+    assert expanded.load(JOB_ID, other, SECRET) is None
+    assert caplog.record_tuples == [
+        (
+            "libranet.backup.jobs",
+            INFO,
+            f"{expanded.path(JOB_ID)} keeps {BUNDLE}, not the latest backup {other}, "
+            "so the last backup is read back",
+        )
+    ]
+
+
+@mark.parametrize(
+    "held",
+    [
+        b"not encrypted",
+        protect(b"{not json", SECRET),
+        protect(dumps({"bundle": str(BUNDLE)}).encode(), SECRET),
+        protect(dumps(EXPANDED.value()).encode(), b"another secret"),
+    ],
+)
+def test_what_is_kept_that_the_secret_does_not_open_as_a_bundle_is_not_used(
+    expanded: ExpandedBackups, caplog: LogCaptureFixture, held: bytes
+) -> None:
+    expanded.path(JOB_ID).parent.mkdir()
+    expanded.path(JOB_ID).write_bytes(held)
+
+    assert expanded.load(JOB_ID, BUNDLE, SECRET) is None
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith(
+        f"{expanded.path(JOB_ID)} is not a bundle kept expanded with this node's backup secret, "
+        "so the last backup is read back: "
+    )
+
+
+def test_what_is_kept_that_cannot_be_read_is_not_used(
+    expanded: ExpandedBackups, caplog: LogCaptureFixture
+) -> None:
+    expanded.path(JOB_ID).mkdir(parents=True)
+
+    assert expanded.load(JOB_ID, BUNDLE, SECRET) is None
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith(
+        f"Cannot read {expanded.path(JOB_ID)}, so the last backup is read back: "
+    )
+
+
+def test_a_bundle_kept_expanded_is_removed_with_its_job(expanded: ExpandedBackups) -> None:
+    expanded.save(JOB_ID, EXPANDED, SECRET)
+    expanded.remove(JOB_ID)
+    expanded.remove(JOB_ID)
+
+    assert not expanded.path(JOB_ID).exists()
+
+
+def test_what_is_kept_that_cannot_be_removed_is_logged_and_left(
+    expanded: ExpandedBackups, caplog: LogCaptureFixture
+) -> None:
+    (expanded.path(JOB_ID) / "within").mkdir(parents=True)
+
+    expanded.remove(JOB_ID)
+
+    assert expanded.path(JOB_ID).exists()
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith(f"Could not delete {expanded.path(JOB_ID)}: ")

@@ -10,15 +10,19 @@ validator: this node hashed it itself, so there is nothing to check. Only
 what is not held already is written. :class:`AnnouncingStore` says what it
 writes, so each new object can be announced as the validator announces one.
 
-A directory backed up before is built from what its last bundle holds, read
-back with the secret. A file whose size, modification time, and permissions
-are as recorded is kept without being read, and every file keeps the
-creation time recorded, which a restore does not bring back. A file whose
+A directory backed up before is built from what its last bundle holds, kept
+expanded beside the job (Phase 2 Step 48), so that neither that bundle nor its
+extensions are read back. A file whose size, modification time, and
+permissions are as recorded is kept without being read, and every file keeps
+the creation time recorded, which a restore does not bring back. A file whose
 metadata changed is hashed, and if its bytes are as recorded, it keeps its
 parts, and only its metadata is updated. Only a file whose bytes changed is
-split and stored again. If the last bundle can no longer be read here, as when
-it has been evicted, every file is read, and the parts already held are still
-not stored again.
+split and stored again.
+
+A job backed up before its last bundle was kept expanded has its bundle read
+back with the secret instead, once, and kept expanded from then on. If that
+bundle can no longer be read here, as when it has been evicted, every file is
+read, and the parts already held are still not stored again.
 
 A new bundle names the one it supersedes in its ``versions`` (§3.3). When a
 directory's entries are all as they were, as when a file was saved unchanged
@@ -27,8 +31,10 @@ would add a version recording no change.
 
 A new bundle holds only the entries that changed, as an update layer over
 the last (:mod:`libranet.bundle.layering`), until ``max_layers`` lie above
-the last bundle stored whole; the next is then stored whole again. One whose
-last bundle can no longer be read here is stored whole too.
+the last bundle stored whole; the next is then stored whole again. A layer
+is written over the last bundle kept expanded even where that bundle has
+been evicted, as a restore asks peers for what it lacks. One whose last
+bundle was neither kept expanded nor can be read here is stored whole.
 
 The paths given to be ignored, such as the node's own directories, are
 treated as though they were not there. A backup that took in the source of
@@ -67,10 +73,15 @@ class BackupStore(ContentSink, ContentSource, Protocol):
 
 @dataclass(frozen=True)
 class Backup:
-    """What backing a directory up made of it, and the paths it left out, each with why."""
+    """What backing a directory up made of it, and the paths it left out, each with why.
+
+    ``expanded`` is the latest bundle, to be kept expanded in place of the
+    one given, or ``None`` if the one given is still right.
+    """
 
     latest: LatestBackup
     skipped: Mapping[str, str]
+    expanded: Superseded | None = None
 
 
 class AnnouncingStore:
@@ -110,13 +121,16 @@ def back_up(
     max_layers: int,
     ignore: Iterable[Path] = (),
     xattrs: ExtendedAttributes | None = None,
+    expanded: Superseded | None = None,
 ) -> Backup:
     """Back ``directory`` up, as its ``fingerprint`` describes it, after ``latest``.
 
-    The new bundle is stored as a layer over ``latest`` unless that would
-    lie more than ``max_layers`` above the last bundle stored whole. Whatever
-    ``ignore`` names is treated as though it were not there. ``xattrs`` says
-    which extended attributes are recorded; without it, none are.
+    ``expanded`` is ``latest``'s bundle kept expanded, if it was; if not,
+    the bundle is read back from ``store``. The new bundle is stored as a
+    layer over it unless that would lie more than ``max_layers`` above the
+    last bundle stored whole. Whatever ``ignore`` names is treated as though
+    it were not there. ``xattrs`` says which extended attributes are
+    recorded; without it, none are.
 
     Returns:
         The new latest backup: a bundle made at ``made_at`` superseding
@@ -131,8 +145,8 @@ def back_up(
     """
     supersedes = None if latest is None else latest.bundle
     earlier = (
-        None
-        if latest is None
+        expanded
+        if latest is None or expanded is not None
         else Superseded.read(
             latest.bundle,
             lambda content_id: load_bundle(content_id, store, password=secret),
@@ -152,10 +166,18 @@ def back_up(
     skipped = len(build.skipped)
 
     if latest is not None and entries_digest == latest.entries_digest:
-        return Backup(replace(latest, fingerprint=fingerprint, skipped=skipped), build.skipped)
+        unchanged = replace(latest, fingerprint=fingerprint, skipped=skipped)
+
+        if expanded is not None:
+            return Backup(unchanged, build.skipped)
+
+        # Kept expanded from now on; where it sits is not known if it could not be read back.
+        kept = earlier if earlier is not None else Superseded(latest.bundle, build.entries)
+        return Backup(unchanged, build.skipped, kept)
 
     stored = StoredVersion.store(build.bundle, earlier, store, secret, max_object_bytes, max_layers)
     return Backup(
         LatestBackup(stored.bundle, made_at, fingerprint, entries_digest, skipped, stored.layering),
         build.skipped,
+        stored.expanded(build.entries),
     )

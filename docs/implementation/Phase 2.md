@@ -1814,36 +1814,129 @@ on:** Phase 1 Steps 13, 19, 20, 38.
   which is replaced whole on every change. A million-file directory's
   entries do not belong in that file.
 
-**Open questions:**
+Ruled before building:
 
-- Where a backup's expanded entries live. A file per job beside
-  `backup_jobs.json`, which the job's record names, is the obvious home.
-- Whether the backup record is protected. A backup bundle is encrypted so
-  that CAS holds nothing readable (BackupSpecification §4). Its expanded
-  entries, names and hashes included, written in the clear beside the
-  jobs file, hand that to anyone who can read the node's data directory.
-  A `.bundle` record sits beside files that are in the clear themselves,
-  so it gives away little they do not.
-- Whether restoring a backup writes a `.bundle` record too. A build of
-  that directory makes a plain bundle, which must not extend an encrypted
-  one, or nothing without the backup secret could read it. The record
-  would still spare the build from reading unchanged files.
-- What a restore does with a record already beside the directory. The
-  directory now holds what was restored, which argues for replacing it —
-  unless the file is not a record, which a build never replaces either.
-- What the extension depth counts — settled by Step 31, which records
-  both numbers: `layers`, the update layers above the last whole bundle,
-  which `backup.max_update_layers` limits, and `extensions`, the distinct
-  extensions a reader follows, kept within 1,024. They are kept in the
-  job's `latest` and in `{name}.bundle` as `"layering"`, and this step's
-  record keeps them too.
+- **A file per job, named by the job's id**, in `backup_jobs/` beside
+  `backup_jobs.json` (my recommendation). The jobs file does not name it;
+  the record names its bundle, and is used only if that is the job's
+  latest. Removing a job deletes it.
+- **A backup's record is encrypted with the backup secret** (my
+  recommendation), with BundleSpecification §6's protection, as the
+  bundle is. Parts are plain in CAS, so a record in the clear would map
+  the user's files to content anyone can fetch, which is what encrypting
+  the bundle hides. A record the secret does not open, as after the
+  secret was lost and made anew, is not used. Measured before building:
+  100,000 entries are 34 MB of JSON, encoded in 0.65 s; protecting them
+  takes about 1 s more and stores 9 MB; opening them, 0.07 s.
+- **Only a restore of a plain bundle writes a record** (my
+  recommendation), as an application is expanded to be edited. Restoring
+  a backup writes none, so neither its names nor its hashes are written
+  in the clear beside the directory, and a plain build of it does not
+  name the encrypted backup in its `versions`. That build reads every
+  file once.
+- **A restore replaces a record already there, and a file there that is
+  not a record fails the restore**, as it fails a build, and is kept.
+- **The extension depth was settled by Step 31**: `layers` and
+  `extensions`, as `"layering"`, which both records keep.
+
+What was built: `Superseded` (`bundle/layering.py`) is the record. Its
+JSON form is a directory bundle holding every entry, with the bundle's
+id, its `layering`, and `beneath`, the layers beneath it that a new layer
+lists after it; `from_value` reads it with the bundle parser, and
+`value()` writes it with the serializer. `StoredVersion` says which
+layers lie beneath what it stored, and `expanded(entries)` makes the
+record of it. `Superseded.expand` works out where a bundle read from
+elsewhere sits. A backup (`back_up` in `backup/runs.py`) takes the job's
+record and says what to keep; `ExpandedBackups` (`backup/jobs.py`) keeps
+each job's, encrypted, in `backup_jobs/{job id}`
+(`StorageConfig.expanded_backups_dir`), and the backup module loads it,
+saves it before the jobs file, and deletes it with the job. `BuildRecord`
+(`backup/builds.py`) gains the expanded bundle and whether it is
+protected, so `{name}.bundle` now reads:
+
+```json
+{"bundle": "sha256/…", "layering": {"layers": 1, "extensions": 1},
+ "protected": false, "beneath": ["sha256/…"],
+ "contents": {"index.html": {…}}}
+```
+
+A restore (`backup/restores.py`) of a plain bundle writes one when done.
+`DirectoryBuild.entries` gives a build's entries typed as holding no
+deletions. About 540 new or changed lines of non-test Python, so it is
+one change set.
+
+Seen in a live run of one node: a site was built, restored into another
+directory, which wrote the same record byte for byte, edited, and built
+there, which made a layer over the restored bundle (`previous` the
+restored one, `{"layers": 1, "extensions": 1}`). Registered as an
+application, the layer served the edited page and the page beneath it. A
+directory was backed up, and its record file (`0600`, 565 bytes) held no
+name in the clear. With that bundle and a 3 MB file's parts deleted from
+`cas/data`, one other file was changed and a backup asked for: it made a
+layer over the deleted bundle, and stored none of the 3 MB file's parts
+again. Restoring a backup wrote no record, and removing the job deleted
+its file.
+
+My calls, not yet reviewed:
+
+- **A layer is written over the recorded bundle whether or not it is
+  held here**, for a backup and for a plain build alike, as #84 asks:
+  eviction no longer makes the next version whole. Serving the layer, or
+  restoring it, asks peers for what it lacks, as it would for any
+  extension, so on a node with no peers it waits. Before this step, a
+  bundle that could not be read here was superseded whole.
+- **A protected build is layered over only if the password given opens
+  the recorded bundle**, read from CAS. The record says only whether it
+  is protected, never with what. A bundle that is protected and no longer
+  held is superseded whole, but its unchanged files are still not read.
+- **Records written before this step still work.** A job with no record,
+  or a `{name}.bundle` holding only `bundle` and `layering`, has its
+  bundle read back from CAS as before, once, and is then kept expanded,
+  even if nothing changed. An unchanged directory whose bundle cannot be
+  read back is kept expanded as found, where it sits not known, so its
+  next version is stored whole.
+- **What cannot be used is logged, and read back instead**: a record that
+  cannot be read, that the secret does not open, or that is not a record,
+  at warning; one naming a bundle other than the job's latest, as after a
+  crash between the two saves, at info.
+- **Failing to save a backup's record fails the backup**, as failing to
+  save the jobs file does, and the job keeps its last bundle. A record
+  that cannot be deleted is logged and left, since it names a bundle no
+  job does.
+- **A backup's record has no size limit** but one no directory reaches
+  (1 TiB, which `unprotect` needs a number for), and is compressed as a
+  bundle is, at zlib level 9.
+- **Where a restored bundle sits is worked out from what it lists.** One
+  listing among its extensions a version it supersedes is a layer over
+  it, and the extensions from there on are the layers beneath it
+  (§4); the extensions it reaches are those the restore read. A bundle
+  that lists a layer twice is logged at warning, where it sits not known.
+- **A restore checks for a record before writing anything, and again
+  once done**, and writes it only then: not while it waits on content,
+  nor if it fails. One into the root writes none. Whether a bundle is
+  plain is judged by its top, read without a password first, so a
+  backup's top is read twice.
+- **A `.bundle` record with `contents` must say `protected`**; one
+  without them is read as before. It is still indented, as before, for a
+  person reading it.
+- **A layering counting more layers than its bundle lists is logged** at
+  warning, now that `Superseded.resolve` checks it rather than `layer`;
+  the next version is stored whole, as before. `Superseded.extensions`
+  became `beneath`, since only the layers beneath are ever used.
 
 **Testable in isolation:** back up a fixture directory, delete the bundle
 from a temp CAS, change one file, and back up again, asserting only the
 changed file is read. Restore a fixture bundle into a temp directory and
 assert the record it writes; then change one file and build, asserting
 only that file is read and the new bundle supersedes the restored one.
-Round-trip each record's JSON.
+Round-trip each record's JSON. Built as those tests in
+`test_backup_runs.py`, `test_backup_restores.py`, and
+`test_backup_module.py`, with a restored layer recorded as the build that
+made it recorded it; `test_bundle_layering.py` for the JSON form, `beneath`,
+layering over a bundle not held, and working out where a bundle sits;
+`test_backup_jobs.py` for keeping a job's record, encrypted, and every
+reason one is not used; and `test_backup_builds.py` for building from the
+record, protected records, and records written before this step.
 
 ---
 
@@ -2539,10 +2632,11 @@ either step is built:
   Phase 3's to decide, with Step 30. Step 46 does not wait for it: until
   Step 30 is built, no node blocks anything.
 - **One local record of the last bundle** (Steps 48, 49, and 31, and
-  Phase 4's Step 50) — what 49 compares against, 31 extends, and 50
-  updates from notifications. Where it lives, whether it is encrypted,
-  and what its extension count counts are decided once. Step 31 settled
-  the count: `layers` and `extensions`, which it already records.
+  Phase 4's Step 50) — settled by Step 48: a job's is a file of its own
+  in `backup_jobs/`, encrypted with the backup secret, and a build's or
+  an expanded application's is `{name}.bundle` beside the directory, in
+  the clear. Step 31 settled the count: `layers` and `extensions`, which
+  both keep.
 - **What counts as a metadata change** (Steps 47, 49, and 52) —
   settled by BackupSpecification §3.3: everything under `metadata`,
   extended attributes included. Creation time is kept rather than

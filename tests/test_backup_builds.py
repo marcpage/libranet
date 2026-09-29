@@ -15,10 +15,18 @@ from libranet.backup.runs import AnnouncingStore
 from libranet.backup.tasks import TaskStatus
 from libranet.bundle.errors import BundleTooLargeError, PasswordProtectedBundleError
 from libranet.bundle.extensions import resolve_directory
-from libranet.bundle.layering import Layering
+from libranet.bundle.layering import Layering, Superseded
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.reassembly import write_file
-from libranet.bundle.shapes import DirectoryBundle, DirectoryMarker, FileBundle, Symlink
+from libranet.bundle.serialization import bundle_value
+from libranet.bundle.shapes import (
+    DirectoryBundle,
+    DirectoryMarker,
+    Entry,
+    FileBundle,
+    Metadata,
+    Symlink,
+)
 from libranet.bundle.storing import store_bundle
 from libranet.bundle.xattrs import ExtendedAttributes
 from libranet.cas.content_id import ContentId
@@ -120,6 +128,33 @@ def recorded(site: Path) -> ContentId:
     return BuildRecord.from_value(loads((site.parent / f"site{RECORD_SUFFIX}").read_bytes())).bundle
 
 
+def record_of(site: Path) -> BuildRecord:
+    record = BuildRecord.load(BuildRecord.beside(site))
+    assert record is not None
+    return record
+
+
+def placed(site: Path) -> tuple[ContentId, Layering | None]:
+    """The bundle recorded beside ``site``, and where the record says it sits."""
+    record = record_of(site)
+    return record.bundle, record.layering
+
+
+def as_before_expanded_bundles(site: Path) -> ContentId:
+    """Record the bundle beside ``site`` as a record written before bundles were kept expanded."""
+    record = record_of(site)
+    BuildRecord(record.bundle, record.layering).save(BuildRecord.beside(site))
+    return record.bundle
+
+
+def parts_of(bundle: ContentId, path: str, store: CasStore) -> list[ContentId]:
+    entry = resolve_directory(
+        top_of(bundle, store), lambda content_id: load_bundle(content_id, store)
+    )[path]
+    assert isinstance(entry, FileBundle)
+    return [ContentId.parse(part) for part in entry.parts]
+
+
 def test_a_build_holds_the_whole_directory_plain_and_records_it_beside_it(
     site: Path, sink: AnnouncingStore, store: CasStore
 ) -> None:
@@ -137,6 +172,9 @@ def test_a_build_holds_the_whole_directory_plain_and_records_it_beside_it(
     assert loads(BuildRecord.beside(site).read_bytes()) == {
         "bundle": str(bundle),
         "layering": {"layers": 0, "extensions": 0},
+        "protected": False,
+        "beneath": [],
+        **bundle_value(DirectoryBundle(top_of(bundle, store).entries)),
     }
     assert task.status is TaskStatus.DONE
     assert task.previous is None
@@ -225,7 +263,8 @@ def test_protecting_a_bundle_otherwise_makes_a_new_version_though_nothing_change
     assert top_of(second, store, after).versions == (str(first),)
     assert contents(second, store, after) == contents(first, store, before)
     # Stored whole, so whoever can read it can read all it holds.
-    assert BuildRecord.load(BuildRecord.beside(site)) == BuildRecord(second, Layering())
+    assert placed(site) == (second, Layering())
+    assert record_of(site).protected == (after is not None)
 
 
 def test_building_again_stores_only_what_changed_as_a_layer_over_the_last(
@@ -241,7 +280,13 @@ def test_building_again_stores_only_what_changed_as_a_layer_over_the_last(
     assert set(top.entries) == {"index.html", "pages/contact.html", "pages/about.html"}
     assert top.entries["pages/about.html"] is None
     assert top.extensions == (str(first),)
-    assert BuildRecord.load(BuildRecord.beside(site)) == BuildRecord(second, Layering(1, 1))
+    assert placed(site) == (second, Layering(1, 1))
+    assert record_of(site).expanded == Superseded(
+        second,
+        resolve_directory(top, lambda content_id: load_bundle(content_id, store)),
+        (str(first),),
+        Layering(1, 1),
+    )
     assert contents(second, store) == {
         "index.html": b"<p>home, again</p>",
         "pages/contact.html": b"<p>contact</p>",
@@ -277,7 +322,7 @@ def test_with_no_layers_allowed_every_build_is_stored_whole(
         "about",
         "empty",
     }
-    assert BuildRecord.load(BuildRecord.beside(site)) == BuildRecord(second, Layering())
+    assert placed(site) == (second, Layering())
 
 
 def test_a_record_whose_layering_is_not_known_is_superseded_whole(
@@ -290,19 +335,93 @@ def test_a_record_whose_layering_is_not_known_is_superseded_whole(
 
     assert top_of(second, store).extensions == ()
     assert top_of(second, store).versions == (str(first),)
-    assert BuildRecord.load(BuildRecord.beside(site)) == BuildRecord(second, Layering())
+    assert placed(site) == (second, Layering())
 
 
-def test_a_recorded_bundle_no_longer_held_is_superseded_by_one_built_afresh(
+def test_a_recorded_bundle_no_longer_held_is_built_from_as_recorded_and_layered_over(
+    site: Path, sink: AnnouncingStore, store: CasStore, recorder: Recorder
+) -> None:
+    first = bundle_of(build(site, sink))
+    about = parts_of(first, "pages/about.html", store)
+    # Reading about.html again would store its part again.
+    for content_id in (first, *about):
+        store.delete(content_id)
+    recorder.announced.clear()
+    (site / "index.html").write_bytes(b"<p>home, again</p>")
+    second = bundle_of(build(site, sink))
+
+    assert set(recorder.announced).isdisjoint(about)
+    assert top_of(second, store).extensions == (str(first),)
+    assert set(top_of(second, store).entries) == {"index.html"}
+    assert placed(site) == (second, Layering(1, 1))
+
+
+def test_an_unchanged_directory_keeps_its_recorded_bundle_though_it_is_no_longer_held(
+    site: Path, sink: AnnouncingStore, store: CasStore, recorder: Recorder
+) -> None:
+    first = bundle_of(build(site, sink))
+    store.delete(first)
+    recorder.announced.clear()
+    task = build(site, sink)
+
+    assert bundle_of(task) == task.previous == first
+    assert recorder.announced == []
+
+
+def test_a_bundle_recorded_before_bundles_were_kept_expanded_is_read_back_and_kept_expanded(
     site: Path, sink: AnnouncingStore, store: CasStore
 ) -> None:
     first = bundle_of(build(site, sink))
+    expanded = record_of(site).expanded
+    assert expanded is not None
+    as_before_expanded_bundles(site)
+    task = build(site, sink)
+
+    assert bundle_of(task) == first
+    assert record_of(site) == BuildRecord.of(expanded, False)
+
+
+def test_a_bundle_recorded_before_bundles_were_kept_expanded_and_no_longer_held_is_built_afresh(
+    site: Path, sink: AnnouncingStore, store: CasStore
+) -> None:
+    first = bundle_of(build(site, sink))
+    as_before_expanded_bundles(site)
     store.delete(first)
     second = bundle_of(build(site, sink))
 
     assert second != first
     assert top_of(second, store).versions == (str(first),)
     assert contents(second, store)["index.html"] == b"<p>home</p>"
+    assert placed(site) == (second, Layering())
+
+
+def test_a_protected_bundle_recorded_before_bundles_were_kept_expanded_is_read_with_the_password(
+    site: Path, sink: AnnouncingStore, store: CasStore
+) -> None:
+    first = bundle_of(build(site, sink, "correct horse"))
+    as_before_expanded_bundles(site)
+    (site / "index.html").write_bytes(b"<p>home, again</p>")
+    second = bundle_of(build(site, sink, "correct horse"))
+
+    assert top_of(second, store, "correct horse").extensions == (str(first),)
+    assert placed(site) == (second, Layering(1, 1))
+    assert record_of(site).protected
+
+
+def test_a_protected_bundle_no_longer_held_is_superseded_whole_from_what_it_recorded(
+    site: Path, sink: AnnouncingStore, store: CasStore, recorder: Recorder
+) -> None:
+    first = bundle_of(build(site, sink, "correct horse"))
+    store.delete(first)
+    recorder.announced.clear()
+    (site / "index.html").write_bytes(b"<p>home, again</p>")
+    second = bundle_of(build(site, sink, "correct horse"))
+
+    # Only the new part and the bundle are stored: nothing unchanged was read again.
+    assert set(recorder.announced) == {ContentId.for_data(b"<p>home, again</p>", "sha256"), second}
+    assert top_of(second, store, "correct horse").extensions == ()
+    assert top_of(second, store, "correct horse").versions == (str(first),)
+    assert placed(site) == (second, Layering())
 
 
 def test_a_record_naming_something_other_than_a_directory_is_superseded_afresh(
@@ -324,6 +443,9 @@ def test_a_record_naming_something_other_than_a_directory_is_superseded_afresh(
         b'{"bundle": "sha256/abc"}',
         b"[]",
         b'{"bundle": "sha256/' + b"a" * 64 + b'", "layering": {"layers": -1, "extensions": 0}}',
+        b'{"bundle": "sha256/' + b"a" * 64 + b'", "beneath": [], "contents": {}}',
+        b'{"bundle": "sha256/' + b"a" * 64 + b'", "protected": 0, "beneath": [], "contents": {}}',
+        b'{"bundle": "sha256/' + b"a" * 64 + b'", "protected": false, "contents": {}}',
     ],
 )
 def test_a_file_where_the_record_goes_that_is_not_one_fails_the_build_and_is_kept(
@@ -449,9 +571,27 @@ def test_a_failed_build_reports_why() -> None:
     )
 
 
-@mark.parametrize("layering", [None, Layering(2, 9)])
-def test_a_record_is_read_back_as_it_was_saved(tmp_path: Path, layering: Layering | None) -> None:
-    record = BuildRecord(ContentId.for_data(b"a bundle", "sha256"), layering)
+BUNDLE = ContentId.for_data(b"a bundle", "sha256")
+BENEATH = str(ContentId.for_data(b"a layer beneath", "sha256"))
+ENTRIES: dict[str, Entry] = {
+    "index.html": FileBundle(
+        (str(ContentId.for_data(b"<p>home</p>", "sha256")),), Metadata(size=11, writable=True)
+    ),
+    "about": Symlink("pages/about.html"),
+    "empty": DirectoryMarker(),
+}
+
+
+@mark.parametrize(
+    "record",
+    [
+        BuildRecord(BUNDLE),
+        BuildRecord(BUNDLE, Layering(2, 9)),
+        BuildRecord.of(Superseded(BUNDLE, ENTRIES), False),
+        BuildRecord.of(Superseded(BUNDLE, ENTRIES, (BENEATH,), Layering(1, 3)), True),
+    ],
+)
+def test_a_record_is_read_back_as_it_was_saved(tmp_path: Path, record: BuildRecord) -> None:
     path = tmp_path / "site.bundle"
     record.save(path)
 
@@ -459,10 +599,19 @@ def test_a_record_is_read_back_as_it_was_saved(tmp_path: Path, layering: Layerin
     assert BuildRecord.load(tmp_path / "other.bundle") is None
 
 
+def test_a_record_keeps_only_the_bundle_it_records_expanded() -> None:
+    with raises(ValueError):
+        BuildRecord(BUNDLE, Layering(), Superseded(BUNDLE, ENTRIES))
+
+    with raises(ValueError):
+        BuildRecord(ContentId.for_data(b"another", "sha256"), None, Superseded(BUNDLE, ENTRIES))
+
+
 def test_a_recorded_bundle_no_longer_held_is_logged_at_info(
     site: Path, sink: AnnouncingStore, store: CasStore, caplog: LogCaptureFixture
 ) -> None:
     first = bundle_of(build(site, sink))
+    as_before_expanded_bundles(site)
     store.delete(first)
     caplog.set_level(INFO)
 
@@ -479,6 +628,7 @@ def test_a_protected_bundle_built_over_without_a_password_is_logged_at_info(
     site: Path, sink: AnnouncingStore, caplog: LogCaptureFixture
 ) -> None:
     first = bundle_of(build(site, sink, "secret"))
+    as_before_expanded_bundles(site)
     caplog.set_level(INFO)
 
     build(site, sink)
@@ -488,3 +638,19 @@ def test_a_protected_bundle_built_over_without_a_password_is_logged_at_info(
         for name, level, message in caplog.record_tuples
         if name == "libranet.backup.builds"
     ] == [(INFO, f"{first} is protected, so without a password every file is read")]
+
+
+def test_a_protected_bundle_the_password_does_not_open_is_logged_at_info(
+    site: Path, sink: AnnouncingStore, caplog: LogCaptureFixture
+) -> None:
+    first = bundle_of(build(site, sink, "secret"))
+    caplog.set_level(INFO)
+
+    build(site, sink, "another")
+
+    (record,) = [record for record in caplog.records if record.name == "libranet.backup.builds"]
+    assert record.levelno == INFO
+    assert record.getMessage().startswith(
+        f"Cannot open {first}, the build before, with the password given, "
+        "so the build is stored whole: "
+    )

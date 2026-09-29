@@ -6,6 +6,7 @@ from hashlib import sha256
 from io import BytesIO
 from os import mkfifo, symlink, urandom, utime
 from pathlib import Path
+from typing import Mapping
 
 from pytest import fixture, mark, raises
 from xattr import xattr
@@ -14,7 +15,7 @@ from libranet.backup.jobs import LatestBackup
 from libranet.backup.runs import AnnouncingStore, Backup, back_up
 from libranet.bundle.errors import PasswordProtectedBundleError
 from libranet.bundle.extensions import resolve_directory
-from libranet.bundle.layering import Layering
+from libranet.bundle.layering import Layering, Superseded
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.reassembly import write_file
 from libranet.bundle.serialization import encode_bundle
@@ -117,6 +118,11 @@ def backup_after(first: LatestBackup, tree: Path, backups: AnnouncingStore) -> L
 def parts_of(entry: Entry) -> list[ContentId]:
     assert isinstance(entry, FileBundle)
     return [ContentId.parse(part) for part in entry.parts]
+
+
+def entries_of_expanded(backup: Backup) -> Mapping[str, Entry]:
+    assert backup.expanded is not None
+    return backup.expanded.entries
 
 
 def test_a_backup_holds_the_whole_directory(
@@ -504,3 +510,93 @@ def test_an_attribute_changed_alone_is_recorded_by_the_next_backup_without_readi
     assert isinstance(entry, FileBundle)
     assert (entry.parts, entry.metadata.xattrs) == (big.parts, {"user.tag": "cmVk"})
     assert not any(store.exists(part) for part in parts_of(big))
+
+
+def test_a_backup_is_to_be_kept_expanded(
+    tree: Path, backups: AnnouncingStore, store: CasStore
+) -> None:
+    first = first_backup(tree, backups)
+
+    assert first.expanded == Superseded(
+        first.latest.bundle, entries_of(first.latest.bundle, store), (), first.latest.layering
+    )
+
+
+def test_a_backup_built_from_its_last_bundle_kept_expanded_reads_neither_it_nor_unchanged_files(
+    tree: Path, backups: AnnouncingStore, store: CasStore, recorder: Recorder
+) -> None:
+    first = first_backup(tree, backups)
+    big_parts = parts_of(entries_of(first.latest.bundle, store)["big.bin"])
+    # Reading big.bin again would store its parts again; the bundle is evicted.
+    for content_id in (first.latest.bundle, *big_parts):
+        store.delete(content_id)
+    recorder.announced.clear()
+    (tree / "readme.txt").write_bytes(b"read me again")
+
+    second = back_up(
+        tree,
+        "second",
+        first.latest,
+        backups,
+        SECRET,
+        MADE_AT + 60,
+        MIB,
+        MAX_LAYERS,
+        expanded=first.expanded,
+    )
+    top = load_bundle(second.latest.bundle, store, password=SECRET)
+
+    assert recorder.content_ids.isdisjoint(big_parts)
+    assert isinstance(top, DirectoryBundle)
+    assert set(top.entries) == {"readme.txt"}
+    assert top.extensions == (str(first.latest.bundle),)
+    assert second.latest.layering == Layering(1, 1)
+    assert second.expanded is not None
+    assert second.expanded.beneath == (str(first.latest.bundle),)
+    assert second.expanded.entries["big.bin"] == entries_of_expanded(first)["big.bin"]
+
+
+def test_an_unchanged_directory_keeps_its_bundle_and_what_is_kept_expanded(
+    tree: Path, backups: AnnouncingStore, store: CasStore, recorder: Recorder
+) -> None:
+    first = first_backup(tree, backups)
+    store.delete(first.latest.bundle)
+    recorder.announced.clear()
+
+    second = back_up(
+        tree,
+        "second",
+        first.latest,
+        backups,
+        SECRET,
+        MADE_AT + 60,
+        MIB,
+        MAX_LAYERS,
+        expanded=first.expanded,
+    )
+
+    assert second.latest.bundle == first.latest.bundle
+    assert second.expanded is None
+    assert recorder.announced == []
+
+
+def test_an_unchanged_directory_not_kept_expanded_is_kept_expanded_as_read_back(
+    tree: Path, backups: AnnouncingStore
+) -> None:
+    first = first_backup(tree, backups)
+    second = back_up(tree, "second", first.latest, backups, SECRET, MADE_AT + 60, MIB, MAX_LAYERS)
+
+    assert second.latest.bundle == first.latest.bundle
+    assert second.expanded == first.expanded
+
+
+def test_an_unchanged_directory_neither_kept_expanded_nor_held_is_kept_expanded_as_found(
+    tree: Path, backups: AnnouncingStore, store: CasStore
+) -> None:
+    first = first_backup(tree, backups)
+    store.delete(first.latest.bundle)
+    second = back_up(tree, "second", first.latest, backups, SECRET, MADE_AT + 60, MIB, MAX_LAYERS)
+
+    # Where it sits is not known without the bundle, so the next version is stored whole.
+    assert second.latest.bundle == first.latest.bundle
+    assert second.expanded == Superseded(first.latest.bundle, entries_of_expanded(first))
