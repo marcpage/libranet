@@ -36,7 +36,12 @@ the bytes recorded, it keeps its parts and only its metadata is updated.
 Otherwise it is built afresh.
 
 Times are UTC, to the microsecond. A file's creation time is recorded only
-where the platform reports it, which Linux does not.
+where the platform reports it, which Linux does not. Building again keeps the
+creation time recorded for each file, and each empty directory, that the
+bundle superseded held as the same kind of entry, whatever the bytes are now,
+and even if none was recorded. A restore does not bring it back, so the one
+on disk no longer says when the file was made. It is kept rather than
+compared, so a file is not read again only because it was restored.
 """
 
 from __future__ import annotations
@@ -224,7 +229,10 @@ def build_directory(
                     entries[path] = _symlink(item)
 
                 elif item.is_dir(follow_symlinks=False):
-                    directories[path] = _metadata(item.stat(follow_symlinks=False))
+                    directories[path] = _metadata(
+                        item.stat(follow_symlinks=False),
+                        _recorded(earlier.get(path), DirectoryMarker),
+                    )
                     pending.append((path + PATH_SEPARATOR, Path(item.path)))
 
                 elif item.is_file(follow_symlinks=False):
@@ -270,6 +278,8 @@ def _identity(path: Path) -> tuple[int, int] | None:
 
 def _unchanged(earlier: Entry | None, item: DirEntry[str]) -> FileBundle | None:
     """``earlier``, if it is a file whose recorded metadata the file ``item`` still has.
+
+    Its creation time is kept, not compared.
 
     Raises:
         OSError: ``item`` could not be looked at.
@@ -353,7 +363,7 @@ def _file_bundle(
     """The bundle for the open ``file``, its parts stored in ``sink`` as they are read.
 
     If ``earlier`` is a file that held the same bytes, it keeps its parts, and
-    nothing is stored.
+    nothing is stored. If it is a file at all, its creation time is kept.
     """
     status = fstat(file.fileno())
 
@@ -371,7 +381,10 @@ def _file_bundle(
         parts.append(str(store_object(part, sink, max_object_bytes)))
 
     metadata = replace(
-        _metadata(status), size=size, algorithm=HASH_ALGORITHM, hash=hasher.hexdigest()
+        _metadata(status, _recorded(earlier, FileBundle)),
+        size=size,
+        algorithm=HASH_ALGORITHM,
+        hash=hasher.hexdigest(),
     )
     return FileBundle(tuple(parts), metadata)
 
@@ -393,24 +406,39 @@ def _holds(file: BinaryIO, status: stat_result, recorded: Metadata) -> bool:
 
 
 def _as_recorded(status: stat_result, recorded: Metadata) -> Metadata:
-    """What ``status`` says of a file, with the whole-file hash ``recorded`` for its bytes."""
+    """What ``status`` says of a file, with the creation time and whole-file hash ``recorded``."""
     return replace(
-        _metadata(status), size=status.st_size, algorithm=recorded.algorithm, hash=recorded.hash
+        _metadata(status, recorded),
+        size=status.st_size,
+        algorithm=recorded.algorithm,
+        hash=recorded.hash,
     )
 
 
-def _metadata(status: stat_result) -> Metadata:
-    """What ``status`` says of a file or directory's times and owner's permissions."""
-    birth_time = getattr(status, "st_birthtime", None)
+def _recorded(
+    earlier: Entry | None, kind: type[FileBundle] | type[DirectoryMarker]
+) -> Metadata | None:
+    """The metadata ``earlier`` records, if it is an entry of ``kind``."""
+    return earlier.metadata if isinstance(earlier, kind) else None
 
+
+def _metadata(status: stat_result, recorded: Metadata | None = None) -> Metadata:
+    """What ``status`` says of a file or directory's times and owner's permissions.
+
+    Its creation time is the one ``recorded``, if it was recorded before.
+    """
     return Metadata(
-        created=(
-            None if birth_time is None else _timestamp(round(birth_time * _MICROSECONDS_PER_SECOND))
-        ),
+        created=_created(status) if recorded is None else recorded.created,
         modified=_timestamp(status.st_mtime_ns // NANOSECONDS_PER_MICROSECOND),
         writable=bool(status.st_mode & S_IWUSR),
         executable=bool(status.st_mode & S_IXUSR),
     )
+
+
+def _created(status: stat_result) -> str | None:
+    """When ``status`` says a file or directory was created; ``None`` if the platform does not say."""
+    birth_time = getattr(status, "st_birthtime", None)
+    return None if birth_time is None else _timestamp(round(birth_time * _MICROSECONDS_PER_SECOND))
 
 
 def _timestamp(microseconds: int) -> str | None:
