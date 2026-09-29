@@ -84,6 +84,7 @@ from libranet.bundle.building import (
     IgnoredPaths,
 )
 from libranet.bundle.content import ContentSource
+from libranet.bundle.errors import UnsupportedBundleError
 from libranet.bundle.reassembly import write_file
 from libranet.bundle.shapes import PATH_SEPARATOR, DirectoryMarker, FileBundle, Metadata, Symlink
 from libranet.bundle.xattrs import ExtendedAttributes
@@ -222,13 +223,29 @@ class DirectoryWriter:
         """The CAS paths of what placing ``entry`` reads.
 
         That is a file's parts, and the parts of each extended attribute set.
+
+        Raises:
+            UnsupportedBundleError: ``entry`` is not a file or a directory.
         """
-        parts = entry.parts if isinstance(entry, FileBundle) else ()
+        # Looked at as whatever it is, so that a kind of entry this does not
+        # know is logged, rather than taken for another.
+        placed: object = entry
+
+        if isinstance(placed, FileBundle):
+            parts = placed.parts
+
+        elif isinstance(placed, DirectoryMarker):
+            parts = ()
+
+        else:
+            kind = type(placed).__name__
+            _LOGGER.error("Cannot place a %s, as it is not a file or a directory", kind)
+            raise UnsupportedBundleError(f"Not a file or a directory: {kind}")
 
         if self._xattrs is None:
             return parts
 
-        return parts + entry.metadata.xattr_parts(self._xattrs.includes)
+        return parts + placed.metadata.xattr_parts(self._xattrs.includes)
 
     def place_file(self, path: str, entry: FileBundle, source: ContentSource) -> None:
         """Write the file ``entry`` describes at ``path``, reassembled from ``source``.
