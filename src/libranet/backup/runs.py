@@ -33,6 +33,10 @@ last bundle can no longer be read here is stored whole too.
 The paths given to be ignored, such as the node's own directories, are
 treated as though they were not there. A backup that took in the source of
 truth would take in what it stored the time before, and so grow without end.
+
+Extended attributes are backed up as the node is configured to record them
+(Phase 2 Step 52). A file or directory whose attributes alone changed looks
+unchanged to the change detector, so the change waits for the next backup.
 """
 
 from __future__ import annotations
@@ -49,6 +53,7 @@ from libranet.bundle.loading import load_bundle
 from libranet.bundle.serialization import encode_bundle
 from libranet.bundle.shapes import DirectoryBundle
 from libranet.bundle.storing import ContentSink
+from libranet.bundle.xattrs import ExtendedAttributes
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 
@@ -104,12 +109,14 @@ def back_up(
     max_object_bytes: int,
     max_layers: int,
     ignore: Iterable[Path] = (),
+    xattrs: ExtendedAttributes | None = None,
 ) -> Backup:
     """Back ``directory`` up, as its ``fingerprint`` describes it, after ``latest``.
 
     The new bundle is stored as a layer over ``latest`` unless that would
     lie more than ``max_layers`` above the last bundle stored whole. Whatever
-    ``ignore`` names is treated as though it were not there.
+    ``ignore`` names is treated as though it were not there. ``xattrs`` says
+    which extended attributes are recorded; without it, none are.
 
     Returns:
         The new latest backup: a bundle made at ``made_at`` superseding
@@ -139,6 +146,7 @@ def back_up(
         max_object_bytes,
         ignore=ignore,
         previous=None if earlier is None else earlier.entries,
+        xattrs=xattrs,
     )
     entries_digest = sha256(encode_bundle(DirectoryBundle(build.bundle.entries))).hexdigest()
     skipped = len(build.skipped)

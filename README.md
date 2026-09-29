@@ -124,7 +124,8 @@ low.
 - [uv](https://docs.astral.sh/uv/) for development
 
 Runtime dependencies are `cryptography`, `http-message-signatures`,
-`platformdirs`, `pydantic`, and `pyyaml`; they install with the package.
+`platformdirs`, `pydantic`, `pyyaml`, and `xattr`; they install with the
+package.
 
 ---
 

@@ -6,6 +6,7 @@ from pathlib import Path
 from pytest import raises
 
 from libranet.config.loader import ConfigError, load_config
+from libranet.config.models import BackupConfig
 
 
 def write_config(tmp_path: Path, text: str) -> Path:
@@ -113,6 +114,18 @@ def test_unknown_key_is_reported(tmp_path: Path) -> None:
 
     with raises(ConfigError, match="lisen_port"):
         load_config(path)
+
+
+def test_excluded_extended_attributes_from_the_file_replace_the_default(tmp_path: Path) -> None:
+    path = write_config(tmp_path, 'backup:\n  excluded_xattrs: ["user.local*"]\n')
+
+    assert load_config(path).backup.excluded_xattrs == ("user.local*",)
+
+
+def test_the_example_config_states_the_default_excluded_extended_attributes() -> None:
+    example = Path(__file__).parent.parent / "examples" / "libranet.yaml"
+
+    assert load_config(example).backup.excluded_xattrs == BackupConfig().excluded_xattrs
 
 
 def test_no_path_at_all_yields_defaults() -> None:

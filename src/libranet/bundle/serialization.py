@@ -72,4 +72,10 @@ def _metadata_value(metadata: Metadata) -> dict[str, Any]:
     if metadata.executable:
         value["executable"] = True
 
+    if metadata.xattrs:
+        value["xattrs"] = {
+            name: xattr if isinstance(xattr, str) else list(xattr)
+            for name, xattr in metadata.xattrs.items()
+        }
+
     return value

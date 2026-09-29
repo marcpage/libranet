@@ -8,6 +8,7 @@ from os import symlink
 from pathlib import Path
 
 from pytest import LogCaptureFixture, fixture, mark, raises
+from xattr import xattr
 
 from libranet.backup.builds import RECORD_SUFFIX, Build, BuildRecord, BuildRecordError
 from libranet.backup.runs import AnnouncingStore
@@ -19,6 +20,7 @@ from libranet.bundle.loading import load_bundle
 from libranet.bundle.reassembly import write_file
 from libranet.bundle.shapes import DirectoryBundle, DirectoryMarker, FileBundle, Symlink
 from libranet.bundle.storing import store_bundle
+from libranet.bundle.xattrs import ExtendedAttributes
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import MIB
@@ -377,6 +379,22 @@ def test_a_bundle_that_cannot_be_stored_fails_the_build_and_keeps_the_record(
         build(site, sink, max_object_bytes=64)
 
     assert recorded(site) == first
+
+
+@mark.usefixtures("supports_xattrs")
+def test_a_build_records_the_extended_attributes_asked_for(
+    site: Path, sink: AnnouncingStore, store: CasStore
+) -> None:
+    xattr(str(site / "index.html")).set("user.tag", b"red")
+    xattr(str(site / "index.html")).set("user.local", b"here only")
+    task = Build(BuildRequest(str(site), None), REQUESTED_AT)
+    task.begin()
+
+    task.run(sink, MIB, MAX_LAYERS, (), lambda: FINISHED_AT, ExtendedAttributes(["user.local"]))
+
+    index = top_of(bundle_of(task), store).entries["index.html"]
+    assert isinstance(index, FileBundle)
+    assert index.metadata.xattrs == {"user.tag": "cmVk"}
 
 
 def test_a_build_reports_what_it_made_and_never_its_password(

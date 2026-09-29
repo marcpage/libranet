@@ -3,12 +3,14 @@
 from __future__ import annotations
 from dataclasses import replace
 from errno import ENOSPC, ENOTEMPTY
+from logging import ERROR
 from os import chmod, readlink, symlink, umask, urandom, utime, walk
 from pathlib import Path
 from stat import S_IMODE
 from typing import Iterable, Iterator
 
-from pytest import fixture, mark, raises
+from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
+from xattr import xattr
 
 from libranet.backup.restores import RESUME_DELAY_SECONDS, Restore, RestorePass, RestoreStatus
 from libranet.bundle.building import IgnoredPaths, build_directory, build_file
@@ -24,7 +26,8 @@ from libranet.bundle.shapes import (
     Metadata,
     Symlink,
 )
-from libranet.bundle.storing import store_bundle
+from libranet.bundle.storing import store_bundle, store_object
+from libranet.bundle.xattrs import INLINE_LIMIT_BYTES, ExtendedAttributes
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import MIB
@@ -119,9 +122,14 @@ def restore_of(
     return Restore(RestoreRequest(bundle, str(target), on_conflict), NOW, ASK_INTERVAL)
 
 
-def attempt(restore: Restore, store: CasStore, now: float = NOW) -> RestorePass:
+def attempt(
+    restore: Restore,
+    store: CasStore,
+    now: float = NOW,
+    xattrs: ExtendedAttributes | None = None,
+) -> RestorePass:
     restore.begin()
-    return restore.attempt(store, SECRET, IgnoredPaths(), now)
+    return restore.attempt(store, SECRET, IgnoredPaths(), now, xattrs)
 
 
 def described(root: Path) -> Described:
@@ -430,6 +438,56 @@ def test_a_file_that_fails_its_checks_is_left_out_and_the_rest_restored(
     assert restore.status is RestoreStatus.DONE
 
 
+def test_an_entry_whose_attribute_part_cannot_be_read_is_left_out_and_the_rest_restored(
+    tmp_path: Path, store: CasStore, target: Path
+) -> None:
+    forged = ContentId.for_data(b"the real fork", "sha256")
+    store.write(forged, b"something else")
+    entry = file_entry(tmp_path, store, b"honest")
+    corrupt = Metadata(xattrs={"user.fork": (str(forged),)})
+    unknown = Metadata(xattrs={"user.fork": ("blake3/" + "a" * 64,)})
+    entries: dict[str, Entry] = {
+        "corrupt.txt": replace(entry, metadata=corrupt),
+        "unknown.txt": replace(entry, metadata=unknown),
+        "folder": DirectoryMarker(unknown),
+        "honest.txt": entry,
+    }
+    restore = restore_of(stored(entries, store), target)
+
+    skipped = attempt(restore, store, xattrs=ExtendedAttributes()).skipped
+
+    assert sorted(skipped) == ["corrupt.txt", "folder", "unknown.txt"]
+    assert "does not match" in skipped["corrupt.txt"]
+    assert "blake3" in skipped["unknown.txt"]
+    assert set(described(target)) == {"honest.txt"}
+    assert restore.status is RestoreStatus.DONE
+
+
+class Unknown:
+    """A kind of entry no bundle this node reads holds."""
+
+
+def test_an_entry_of_a_kind_not_known_is_logged_as_an_error_and_left_out(
+    tmp_path: Path,
+    store: CasStore,
+    target: Path,
+    monkeypatch: MonkeyPatch,
+    caplog: LogCaptureFixture,
+) -> None:
+    entry = file_entry(tmp_path, store, b"known")
+    restore = restore_of(stored({"known.txt": entry}, store), target)
+    monkeypatch.setattr(Restore, "_read", lambda *_: {"known.txt": entry, "odd": Unknown()})
+
+    with caplog.at_level(ERROR, logger="libranet.backup.restores"):
+        skipped = attempt(restore, store).skipped
+
+    assert skipped == {"odd": "Not a file, a symlink, or a directory: Unknown"}
+    assert [record.levelno for record in caplog.records] == [ERROR]
+    assert "odd" in caplog.text and "Unknown" in caplog.text
+    assert set(described(target)) == {"known.txt"}
+    assert restore.status is RestoreStatus.DONE and restore.report()["restored"] == 1
+
+
 class Full:
     """A store whose parts cannot be written out, as though the disk were full."""
 
@@ -523,3 +581,84 @@ def test_a_restore_not_yet_attempted_is_due_at_once(target: Path) -> None:
 
     assert restore.is_due(NOW) and not restore.finished
     assert (report["status"], report["finished_at"], report["restored"]) == ("waiting", None, 0)
+
+
+@mark.usefixtures("supports_xattrs")
+def test_extended_attributes_are_restored_as_backed_up(
+    tree: Path, store: CasStore, target: Path
+) -> None:
+    fork = urandom(INLINE_LIMIT_BYTES * 3)
+    xattr(str(tree / "readme.txt")).set("user.tag", b"red")
+    xattr(str(tree / "big.bin")).set("user.fork", fork)
+    chmod(tree / "locked.txt", 0o644)
+    xattr(str(tree / "locked.txt")).set("user.tag", b"locked")
+    chmod(tree / "locked.txt", 0o444)
+    xattr(str(tree / "empty")).set("user.tag", b"empty")
+    xattr(str(tree / "docs")).set("user.tag", b"docs")
+    built = build_directory(tree, store, xattrs=ExtendedAttributes()).bundle
+    restore = restore_of(store_bundle(built, store, SECRET), target)
+
+    assert attempt(restore, store, xattrs=ExtendedAttributes()) == RestorePass({}, ())
+
+    assert described(target) == described(tree)
+    for path in ("readme.txt", "big.bin", "locked.txt", "empty", "docs"):
+        source, restored = xattr(str(tree / path)), xattr(str(target / path))
+        assert {name: restored.get(name) for name in restored.list()} == {
+            name: source.get(name) for name in source.list()
+        }
+
+
+def test_parts_of_an_attribute_not_held_are_asked_for_and_waited_on(
+    tmp_path: Path, held: CasStore, store: CasStore, target: Path
+) -> None:
+    fork = store_object(b"resource fork", held)
+    entry = replace(
+        file_entry(tmp_path, held, b"forked"), metadata=Metadata(xattrs={"user.fork": (str(fork),)})
+    )
+    bundle = stored({"forked.txt": entry, "plain.txt": file_entry(tmp_path, held, b"plain")}, held)
+    copy_all(held, store)
+    store.delete(fork)
+    restore = restore_of(bundle, target)
+
+    assert attempt(restore, store, xattrs=ExtendedAttributes()) == RestorePass({}, (fork,))
+    assert not (target / "forked.txt").exists()
+    assert (target / "plain.txt").read_bytes() == b"plain"
+
+    copy([fork], held, store)
+    restore.landed(fork, NOW + 1)
+
+    assert attempt(restore, store, NOW + 1, ExtendedAttributes()) == RestorePass({}, ())
+    assert (target / "forked.txt").read_bytes() == b"forked"
+
+
+def test_parts_of_an_attribute_not_set_are_not_waited_on(
+    tmp_path: Path, held: CasStore, store: CasStore, target: Path
+) -> None:
+    fork = ContentId.for_data(b"never held", "sha256")
+    metadata = Metadata(xattrs={"user.local": (str(fork),)})
+    entry = replace(file_entry(tmp_path, held, b"forked"), metadata=metadata)
+    bundle = stored({"forked.txt": entry, "empty": DirectoryMarker(metadata)}, held)
+    copy_all(held, store)
+
+    for xattrs in (None, ExtendedAttributes(["user.local"])):
+        restore = restore_of(bundle, target / str(xattrs is None))
+
+        assert attempt(restore, store, xattrs=xattrs) == RestorePass({}, ())
+        assert (target / str(xattrs is None) / "forked.txt").read_bytes() == b"forked"
+
+
+@mark.usefixtures("supports_xattrs")
+def test_extended_attributes_refused_are_reported_with_the_pass(
+    tmp_path: Path, held: CasStore, target: Path
+) -> None:
+    too_long = "user." + "n" * 300
+    metadata = Metadata(xattrs={too_long: "MQ==", "user.tag": "cmVk"})
+    entry = replace(file_entry(tmp_path, held, b"tagged"), metadata=metadata)
+    bundle = stored({"a.txt": entry, "b.txt": entry, "empty": DirectoryMarker(metadata)}, held)
+    restore = restore_of(bundle, target)
+
+    restored = attempt(restore, held, xattrs=ExtendedAttributes())
+
+    assert [(name, count) for (name, _), count in restored.unset_xattrs.items()] == [(too_long, 3)]
+    assert restored.skipped == {} and restore.status is RestoreStatus.DONE
+    assert xattr(str(target / "a.txt")).get("user.tag") == b"red"

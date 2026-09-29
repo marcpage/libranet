@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 from logging import getLogger
+from pathlib import Path
 from typing import Iterator
 
-from pytest import fixture
+from pytest import fixture, skip
+from xattr import xattr
 
 from libranet.logging_setup import LOGGER_ROOT
 
@@ -29,3 +31,19 @@ def restore_logging() -> Iterator[None]:
         logger.addHandler(handler)
     logger.setLevel(saved_level)
     logger.propagate = saved_propagate
+
+
+@fixture
+def supports_xattrs(tmp_path: Path) -> None:
+    """Skip the test where the filesystem its temp directory is on keeps no extended attributes."""
+    probe = tmp_path / ".xattr-probe"
+    probe.touch()
+
+    try:
+        xattr(str(probe)).set("user.libranet", b"probe")
+
+    except OSError as error:
+        skip(f"Extended attributes are not supported here: {error}")
+
+    finally:
+        probe.unlink()

@@ -10,10 +10,13 @@ from libranet.bundle.shapes import (
     DirectoryMarker,
     Metadata,
     Symlink,
+    XattrValue,
     is_entry_path,
 )
 
 WHOLE_HASH = "c" * 64
+PART = "sha256/" + "a" * 64
+OTHER_PART = "sha256/" + "b" * 64
 
 
 @mark.parametrize("target", ["Specification.md", "../README.md", "./x", "a//b", ".."])
@@ -76,3 +79,35 @@ def test_metadata_needs_algorithm_and_hash_together(
 def test_broken_rule_is_a_value_error() -> None:
     with raises(ValueError):
         Symlink("")
+
+
+def test_metadata_keeps_extended_attributes_inline_and_as_parts() -> None:
+    xattrs: dict[str, XattrValue] = {
+        "user.origin": "aHR0cHM6Ly9leGFtcGxlLm9yZy8=",
+        "user.fork": (PART, OTHER_PART),
+    }
+
+    assert Metadata(xattrs=xattrs).xattrs == xattrs
+
+
+@mark.parametrize("name", ["", "user.a\0b", "user.\ud800"])
+def test_metadata_refuses_an_extended_attribute_name_that_cannot_be_one(name: str) -> None:
+    with raises(MalformedBundleError, match="Extended attribute name"):
+        Metadata(xattrs={name: "MQ=="})
+
+
+@mark.parametrize("value", ["MQ", "M Q==", "not base64!", "\u00e9Q=="])
+def test_metadata_refuses_an_inline_value_that_is_not_padded_base64(value: str) -> None:
+    with raises(MalformedBundleError, match="not padded base64"):
+        Metadata(xattrs={"user.bad": value})
+
+
+def test_an_inline_value_may_be_empty() -> None:
+    assert Metadata(xattrs={"user.empty": ""}).xattrs == {"user.empty": ""}
+
+
+def test_extended_attribute_parts_are_listed_in_order() -> None:
+    metadata = Metadata(xattrs={"user.a": (PART, OTHER_PART), "user.b": "MQ==", "user.c": (PART,)})
+
+    assert metadata.xattr_parts() == (PART, OTHER_PART, PART)
+    assert metadata.xattr_parts(lambda name: name != "user.a") == (PART,)

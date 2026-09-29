@@ -178,6 +178,19 @@ backup:
   # above the last bundle stored whole; the next is stored whole again.
   # 0 stores every one whole.
   max_update_layers: 32
+  # Extended attributes a backup or build leaves out, and a restore does not
+  # set: shell-style patterns, case sensitive. These describe the local copy
+  # rather than the content on macOS, or on Linux are namespaces only a
+  # privileged user may set. The list replaces the default, not adds to it.
+  excluded_xattrs:
+    - "com.apple.quarantine"
+    - "com.apple.lastuseddate#PS"
+    - "com.apple.macl"
+    - "com.apple.provenance"
+    - "com.apple.metadata:kMDLabel_*"
+    - "security.*"
+    - "system.*"
+    - "trusted.*"
 
 # Applications are not configured here. Which directory bundle each one
 # serves is changed while the node runs, through /config/api/applications,

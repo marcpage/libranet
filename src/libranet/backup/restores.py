@@ -3,14 +3,15 @@
 The bundle is read with the backup secret (§4.2), as a drop (BundleSpecification
 §6.4) if it cannot be read as it is, and its extensions overlaid (§4). Its files
 are then reassembled, each checked against its whole-file hash before it is put
-in place, and its symlinks and empty directories made, with the times and
-permissions recorded (:mod:`libranet.backup.writing`).
+in place, and its symlinks and empty directories made, with the times,
+permissions, and extended attributes recorded (:mod:`libranet.backup.writing`).
 
 Content this node does not hold is normal rather than a failure: a bundle may
 name content this node has handed off, or never held. A restore restores what
 it can, in passes, and between them waits on the rest, which its caller asks
-peers for. A pass restores every file whose parts are all held, so a restore
-still waiting has restored everything else it can.
+peers for. A pass restores every file whose parts are all held, as are those of
+the extended attributes set on it, so a restore still waiting has restored
+everything else it can.
 
 A directory that is not empty is refused before anything is written there,
 unless the restore may overwrite what is there (§5). Its entries then replace
@@ -24,7 +25,9 @@ Some entries are left out, each with why, and the restore goes on without them:
   through the bundle's other symlinks, where ``..`` climbs from wherever a
   link actually led;
 - a file that fails its checks, or cannot be reassembled here;
-- an entry something already there is in the way of.
+- an entry something already there is in the way of;
+- an entry that is not a file, a symlink, or a directory, which no bundle this
+  node reads holds, and so is logged as an error.
 
 Failing to write for want of space, or because the filesystem fails or is
 read-only, would fail every entry alike, so it fails the restore instead.
@@ -32,9 +35,10 @@ read-only, would fail every entry alike, so it fails the restore instead.
 
 from __future__ import annotations
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from errno import EDQUOT, EIO, ENOSPC, EROFS
+from logging import getLogger
 from pathlib import Path
 from typing import Any, Final, Iterable, Mapping
 
@@ -55,9 +59,12 @@ from libranet.bundle.shapes import (
     FileBundle,
     Symlink,
 )
+from libranet.bundle.xattrs import ExtendedAttributes
 from libranet.cas.content_id import ContentId
 from libranet.unbundler.lookup import MAX_SYMLINK_HOPS
 from libranet.webserver.config_requests import ConflictBehavior, RestoreRequest
+
+_LOGGER = getLogger(__name__)
 
 # Provisional default: how long after content it waits on arrives that a
 # restore carries on, so that content arriving together is restored together.
@@ -78,10 +85,15 @@ class RestoreStatus(StrEnum):
 
 @dataclass(frozen=True)
 class RestorePass:
-    """What a pass of a restore left out, each path with why, and the content to ask for."""
+    """What a pass of a restore left out, each path with why, and the content to ask for.
+
+    ``unset_xattrs`` counts the entries each extended attribute was left
+    unset on, by its name and why.
+    """
 
     skipped: Mapping[str, str]
     ask_for: tuple[ContentId, ...]
+    unset_xattrs: Mapping[tuple[str, str], int] = field(default_factory=dict)
 
 
 class Restore:
@@ -159,11 +171,17 @@ class Restore:
         self._status = RestoreStatus.RUNNING
 
     def attempt(
-        self, source: ContentSource, secret: bytes, ignored: IgnoredPaths, now: float
+        self,
+        source: ContentSource,
+        secret: bytes,
+        ignored: IgnoredPaths,
+        now: float,
+        xattrs: ExtendedAttributes | None = None,
     ) -> RestorePass:
         """Restore whatever is held of what is left, the bundle read with ``secret``.
 
-        Whatever ``ignored`` names is never written in.
+        Whatever ``ignored`` names is never written in. ``xattrs`` says which
+        extended attributes are set; without it, none are.
 
         Returns:
             The paths left out in this pass, and the content lacked that is to
@@ -178,6 +196,7 @@ class Restore:
         directory = Path(self._request.directory)
         overwrite = self._request.on_conflict is ConflictBehavior.OVERWRITE
         skipped: dict[str, str] = {}
+        unset: Mapping[tuple[str, str], int] = {}
 
         if not self._started:
             DirectoryWriter.check(directory, overwrite, ignored)
@@ -186,16 +205,17 @@ class Restore:
             if self._pending is None:
                 self._pending = self._plan(self._read(source, secret), skipped)
 
-            with DirectoryWriter.open(directory, overwrite, ignored) as writer:
+            with DirectoryWriter.open(directory, overwrite, ignored, xattrs) as writer:
                 self._started = True
                 missing = self._place_held(self._pending, writer, source, skipped)
+                unset = writer.unset_xattrs
 
         except MissingContentError as error:
             # Not logged: what is missing is asked for, and the backup module logs it.
             missing = list(error.content_ids)
 
         self._skipped += len(skipped)
-        return RestorePass(skipped, self._wait_on(missing, now))
+        return RestorePass(skipped, self._wait_on(missing, now), unset)
 
     def fail(self, error: Exception, now: float) -> None:
         """Note that the restore failed, and why."""
@@ -303,22 +323,31 @@ class Restore:
             OSError: writing failed in a way that would fail every entry.
         """
         missing: list[ContentId] = []
-        entry = pending[path]
+        # Looked at as whatever it is, so that a kind of entry this does not
+        # know is logged and left out, rather than taken for another.
+        entry: object = pending[path]
 
         try:
-            if isinstance(entry, FileBundle):
-                lacked = _lacked(entry, source)
-
-                if lacked:
-                    raise MissingContentError(lacked)
-
-                writer.place_file(path, entry, source)
-
-            elif isinstance(entry, Symlink):
+            if isinstance(entry, Symlink):
                 writer.place_symlink(path, entry)
 
+            elif isinstance(entry, FileBundle):
+                _check_held(writer.needs(entry), source)
+                writer.place_file(path, entry, source)
+
+            elif isinstance(entry, DirectoryMarker):
+                _check_held(writer.needs(entry), source)
+                writer.place_directory(path, entry.metadata, source)
+
             else:
-                writer.place_directory(path, entry.metadata)
+                kind = type(entry).__name__
+                _LOGGER.error(
+                    "Cannot restore %s into %s, as a %s is not a file, a symlink, or a directory",
+                    path,
+                    self._request.directory,
+                    kind,
+                )
+                raise UnsupportedBundleError(f"Not a file, a symlink, or a directory: {kind}")
 
         except MissingContentError as error:
             # Not logged: what is missing is asked for, and the backup module logs it.
@@ -385,14 +414,18 @@ def _load(content_id: ContentId, source: ContentSource, secret: bytes) -> Bundle
             raise error from None
 
 
-def _lacked(entry: FileBundle, source: ContentSource) -> tuple[ContentId, ...]:
-    """The parts of the file ``entry`` that ``source`` does not hold.
+def _check_held(paths: Iterable[str], source: ContentSource) -> None:
+    """Raise unless ``source`` holds all the content the CAS ``paths`` name.
 
     Raises:
-        BundleError: a part is not a CAS path this node can read.
+        MissingContentError: some is not held; all of it is named.
+        BundleError: a path is not a CAS path this node can read.
     """
-    parts = dict.fromkeys(parse_cas_path(part) for part in entry.parts)
-    return tuple(part for part in parts if not source.exists(part))
+    parts = dict.fromkeys(parse_cas_path(part) for part in paths)
+    lacked = tuple(part for part in parts if not source.exists(part))
+
+    if lacked:
+        raise MissingContentError(lacked)
 
 
 def _beneath_other_entry(entries: Mapping[str, Entry], path: str) -> bool:
