@@ -854,6 +854,35 @@ def test_a_hand_off_the_peer_refuses_is_not_accepted(
     assert published(queues, EventType.DATA_SENT) == []
 
 
+def test_hand_off_many_says_which_of_them_the_peer_accepted(
+    exchange: PeerExchange, config: LibranetConfig, queues: ModuleQueues
+) -> None:
+    choosy = new_identity()
+    choosy.publish_public_key(CasStore.source_of_truth(config.storage))
+    peer = RawPeer(
+        [
+            signed(choosy, 201),  # this node's key
+            signed(choosy, 202),  # the first pushed
+            signed(choosy, 507),  # the second, refused
+            signed(choosy, 202),  # the third
+        ]
+    )
+    held = [(HELD_ID, HELD), (OFFERED_ID, OFFERED), (NOWHERE_ID, b"content nobody holds")]
+    session = exchange.open(peer.endpoint)
+
+    try:
+        accepted = exchange.hand_off_many(session, held)
+
+    finally:
+        session.close()
+        peer.join()
+
+    assert accepted == [True, False, True]
+    sent = published(queues, EventType.DATA_SENT)
+    assert [message["hash"] for message in sent] == [HELD_ID.hash, NOWHERE_ID.hash]
+    assert session.pushed == {HELD_ID, OFFERED_ID, NOWHERE_ID}
+
+
 def own_seek_list_records(caplog: LogCaptureFixture) -> list[LogRecord]:
     return [
         record

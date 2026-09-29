@@ -1550,10 +1550,78 @@ pushes especially.
   one item and wait on the answer to choose the next peer, so they batch
   less naturally than pushes.
 
+Found while building: the eight push workers already overlapped. Each sent
+one `PUT` in an exchange of its own, but `PeerConnection` pipelines
+requests from whichever threads send them, so pushes bound for one peer
+went down its connection up to eight deep. Batching raises how many can be
+in flight at once, from eight to 64.
+
+What was built: a push worker takes the new content already waiting, up to
+`PIPELINE_DEPTH` items (`_batch_from` in `connections/module.py`), and
+finds each item's best connected peer. What is bound for the same peer goes
+there in one pipelined exchange, through a new
+`PeerExchange.hand_off_many`, which `hand_off` and step 6 of first contact
+now use too. As before, each item ranks the peers connected when its push
+began, is never pushed back where it came from, and passes over a peer
+that cannot be reached for its next best. What was bound for that peer
+goes on together, grouped again by where each item goes next. A worker
+that meets the signal to stop while taking a batch puts it back, since each
+worker is sent one. About 170 new or changed lines of non-test Python, so
+it is one change set.
+
+A scratch benchmark pushed a burst of 400 new items to two fixture peers,
+each reached through a proxy that held every chunk for 25 ms each way. With
+this step, the burst went in 0.70 to 0.82 seconds, in 83 to 100
+exchanges; on main it took 3.0 seconds, in 400. With no delay, both took
+about 0.3 seconds.
+
+My calls, not yet reviewed:
+
+- **The draining is in the push workers.** `ModuleBase.run` still handles
+  one message at a time, and no other module changes. `_on_data_stored`
+  only queues the content, so a backlog builds in the push queue, which is
+  where the workers take it from.
+- **Nothing waits for a batch to fill.** A worker takes only what is
+  already queued, so content that arrives slower than it can be sent still
+  goes one item at a time.
+- **A batch is at most `PIPELINE_DEPTH` (8) items**, not all that is
+  waiting. A worker that took a whole backlog would send it one peer after
+  another while the other workers sat idle, no faster than before. Taking
+  eight leaves the rest to the other workers, so pushes to different peers
+  go at once, and a group never needs splitting into runs. With many
+  peers, a batch splits into small groups, which is no worse than before.
+- **Pushing holds more in memory.** Each worker holds its batch's bodies
+  until they are sent, so up to 64 bodies rather than eight: 64 MiB at the
+  default `storage.max_object_bytes`. `PUSH_WORKERS` stays eight.
+- **Fetches, searches, and hand-offs do not batch.** A search asks one
+  peer for one item and waits on the answer to choose the next. A hand-off
+  offers one item until a peer accepts it; the eviction module asks for at
+  most eight at once, each on its own thread, and those already share each
+  connection's pipeline. First contact and refresh pipelined already.
+- **Responses are still matched to what they answer by position.** Each
+  names its request (Step 22), but `PeerConnection` gives each response to
+  the oldest request waiting, so position and name always agree. A refusal
+  is logged naming the content refused, as before.
+- **An exchange that fails partway sends its whole group on**, to each
+  item's next best peer, even items the peer had accepted by then:
+  `PeerSession.exchange` raises without the responses it did get. The next
+  best peer gets a copy it did not need, where before only the one item
+  under way could.
+- **An unexpected error drops the rest of its batch**, up to eight items
+  where it dropped one, and is logged naming each. A peer that cannot be
+  reached is not unexpected, and is passed over as before.
+
 **Testable in isolation:** module tests that queue many `data.stored`
 events before the workers run, against fixture peers that record what
 arrives on each connection, asserting the pushes arrive pipelined in
-groups of at most `PIPELINE_DEPTH`, each at its own best peer.
+groups of at most `PIPELINE_DEPTH`, each at its own best peer. Built with
+one push worker, held on its first push while content queues behind it,
+and each push recorded at `hand_off_many`: 17 items go as 1 and then two
+batches of 8, one pipelined push per peer per batch, each to its best
+peer; a group whose best peer cannot be reached goes on together to the
+next best; and a worker told to stop while taking a batch still stops. A
+`PeerExchange` test sends three to a raw peer that refuses the second, and
+`hand_off_many` says which it accepted.
 
 ---
 
