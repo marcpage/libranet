@@ -200,10 +200,10 @@ Keeps storage within `storage.max_storage_bytes` and
 `storage.min_free_bytes`, checking after each `data.stored`. When free
 space runs short, it first asks for the resolved files of applications not
 used lately to be deleted. Then it asks stats which content to let go of,
-asks the connection manager to hand each object off, and deletes its copy
-once two peers have accepted it, reporting `data.deleted`. It never lets
-go of this node's own public key, nor the key of a peer connected either
-way, which the connection manager and web server name in
+asks the connection manager to hand each object off to one peer, and
+deletes its copy once a peer has accepted it, reporting `data.deleted`. It
+never lets go of this node's own public key, nor the key of a peer
+connected either way, which the connection manager and web server name in
 `peers.connected`. Every question it asks another module has a timeout,
 so a restart of the module it asked cannot stall it.
 
@@ -927,20 +927,20 @@ sequenceDiagram
     evict-)stats: eviction.candidates_requested, leaving out connected peers' keys
     stats-)evict: eviction.candidates, best first
     loop for each candidate, up to 8 at once
-        evict-)conn: eviction.notice, 2 copies
-        conn->>peers: offer it, best match first
-        conn-)evict: eviction.acknowledged, the peers that accepted
-        alt two peers accepted it
+        evict-)conn: eviction.notice, 1 copy
+        conn->>peers: offer it, best match first, until one accepts it
+        conn-)evict: eviction.acknowledged, the peer that accepted, if any
+        alt a peer accepted it
             evict->>evict: delete it from cas/data
             evict-)stats: data.deleted
-        else fewer did
+        else none did
             evict->>evict: keep it, and pause for peers.retry_delay_seconds
         end
     end
 ```
 
 Each question the eviction module asks has a timeout: 60 seconds for the
-reclaim and for the candidates, and 600 seconds for a hand-off. A module
+reclaim and for the candidates, and 1,200 seconds for a hand-off. A module
 that restarts mid-conversation therefore costs a delay, never a stall.
 
 Throughout, the eviction module keeps the public keys of this node and of
@@ -1071,7 +1071,7 @@ side recovers:
 | Stats | An answer it owed the eviction module | The database is kept, and the lists are derived again at start; eviction times out and asks again |
 | Web server | Remembered outcomes; the last `backup.state`; requests in progress; its connections | Paths are asked of the unbundler again. The `/config/api` backup endpoints answer `503` until the backup module next reports, which it does only when something changes. It names no peers connected as it starts, and peers that dial again are named anew |
 | Validator | The upload it was checking, if it died mid-message | The upload stays in `incoming/` until the same content arrives from the same node again |
-| Connection manager | Connections, searches, hand-offs, content not yet pushed | It dials from the candidate list again, naming no peers connected until one is; eviction times out a hand-off after 600 s; a fetch is asked for again at the next miss after the fetcher's interval |
+| Connection manager | Connections, searches, hand-offs, content not yet pushed | It dials from the candidate list again, naming no peers connected until one is; eviction times out a hand-off after 1,200 s; a fetch is asked for again at the next miss after the fetcher's interval |
 | Fetcher | Which content it asked for lately | The next miss is asked for at once |
 | Unbundler | Directories held in memory; a reclaim in progress | Directories are read back from each bundle's saved `directory.jzon`; eviction times out the reclaim |
 | Eviction | Hand-offs under way; its list of candidates; which peers are connected | It counts storage again at start, asks which peers are connected, and asks stats again |

@@ -4,7 +4,7 @@ It keeps the node within its storage limits
 (:mod:`~libranet.eviction.pressure`), checking after each ``data.stored``
 from the validator rather than on a timer. What it lets go of goes highest
 eviction score first (:mod:`~libranet.eviction.priority`), and nothing is
-deleted until two other nodes hold it (HighLevelDesign §4.5).
+deleted until another node holds it (HighLevelDesign §4.5).
 
 The scores are measured from what the stats module records, so stats ranks
 the content and this module asks it for some whenever it has more to let go
@@ -27,9 +27,9 @@ answers, as when it restarts, is given up on after
 ``candidates_timeout_seconds``.
 
 For each object it would let go of, it asks the connection manager to hand
-it off::
+it off to one peer::
 
-    eviction.notice        {"algorithm", "hash", "copies": 2}
+    eviction.notice        {"algorithm", "hash", "copies": 1}
 
 The connection manager offers it to the connected peers whose ids best match
 its hash until ``copies`` of them accept it, and answers with those that
@@ -103,16 +103,18 @@ from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 
-# Other nodes that must hold an object before it is deleted (HighLevelDesign §4.5).
-HAND_OFF_COPIES: Final = 2
+# Other nodes that must hold an object before it is deleted: the best match
+# that accepts it, alone (HighLevelDesign §4.5).
+HAND_OFF_COPIES: Final = 1
 
 # Provisional default: hand-offs under way at once.
 DEFAULT_MAX_HAND_OFFS: Final = 8
 
 # Provisional default: how long a hand-off may go unanswered. Long enough for
-# the connection manager to offer the content to all 16 peers of its mix
-# with each taking its full request timeout.
-DEFAULT_HAND_OFF_TIMEOUT_SECONDS: Final = 600.0
+# the connection manager to offer the content to all 32 peers of its mix
+# (Phase 2 Step 25) with each taking its full request timeout, 960 seconds by
+# default, and a quarter as long again to spare.
+DEFAULT_HAND_OFF_TIMEOUT_SECONDS: Final = 1200.0
 
 # Provisional default: how long the stats module may take to answer with
 # content to let go of. Ranking it reads every row of content held.
@@ -311,10 +313,10 @@ class EvictionModule(ModuleBase):
         if len(holders) < HAND_OFF_COPIES:
             self._paused_until = self._clock() + self._retry_delay
             self.logger.info(
-                "%d of the %d peers needed took %s, so it is kept for now",
+                "%s was taken by %d peers, short of the %d needed, so it is kept for now",
+                content_id,
                 len(holders),
                 HAND_OFF_COPIES,
-                content_id,
             )
             return
 

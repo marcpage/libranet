@@ -225,7 +225,8 @@ def handed_off(queues: ModuleQueues) -> list[ContentId]:
     """The content the module asked to have handed off since last asked, in order."""
     notices = published(queues)
     assert {message["event"] for message in notices} <= {EventType.EVICTION_NOTICE}
-    assert all(message["copies"] == HAND_OFF_COPIES for message in notices)
+    # One peer, the best match that accepts it (HighLevelDesign §4.5).
+    assert all(message["copies"] == 1 for message in notices)
     return [ContentId.create(message["algorithm"], message["hash"]) for message in notices]
 
 
@@ -433,7 +434,7 @@ def test_an_empty_list_while_hand_offs_are_under_way_waits_for_their_answers(
     module.handle(candidates())
     assert published(queues) == []
 
-    module.handle(acknowledged(CONTENT[0], PEERS[0], PEERS[1]))
+    module.handle(acknowledged(CONTENT[0], PEERS[0]))
 
     assert events(queues) == [
         (EventType.DATA_DELETED, CONTENT[0].hash),
@@ -473,7 +474,7 @@ def test_a_list_left_over_once_storage_is_within_its_limits_is_dropped(
     module.handle(candidates(CONTENT[0], CONTENT[1]))
     assert handed_off(queues) == [CONTENT[0]]
     free[0] = 100
-    module.handle(acknowledged(CONTENT[0], PEERS[0], PEERS[1]))
+    module.handle(acknowledged(CONTENT[0], PEERS[0]))
     assert events(queues) == [(EventType.DATA_DELETED, CONTENT[0].hash)]
 
     # Short again later: stats is asked afresh rather than the old list used.
@@ -522,7 +523,7 @@ def test_no_more_than_the_most_hand_offs_run_at_once_the_rest_of_the_list_waitin
     module.handle(stored(CONTENT[0]))
     assert published(queues) == []
 
-    module.handle(acknowledged(CONTENT[0], PEERS[0], PEERS[1]))
+    module.handle(acknowledged(CONTENT[0], PEERS[0]))
 
     assert events(queues) == [
         (EventType.DATA_DELETED, CONTENT[0].hash),
@@ -548,7 +549,7 @@ def test_content_enough_peers_hold_is_deleted_and_reported(
     assert handed_off(queues) == [first]
     held = module.pressure.held_bytes
 
-    module.handle(acknowledged(first, PEERS[0], PEERS[1]))
+    module.handle(acknowledged(first, PEERS[0]))
 
     assert not store.exists(first)
     assert store.exists(kept)
@@ -572,14 +573,14 @@ def test_deleting_carries_on_while_storage_is_still_over(
     module.handle(candidates(first, second, third))
     assert handed_off(queues) == [first]
 
-    module.handle(acknowledged(first, PEERS[0], PEERS[1]))
+    module.handle(acknowledged(first, PEERS[0]))
 
     assert events(queues) == [
         (EventType.DATA_DELETED, first.hash),
         (EventType.EVICTION_NOTICE, second.hash),
     ]
 
-    module.handle(acknowledged(second, PEERS[1], PEERS[2]))
+    module.handle(acknowledged(second, PEERS[1]))
 
     assert events(queues) == [(EventType.DATA_DELETED, second.hash)]
     assert store.exists(third)
@@ -602,10 +603,9 @@ def test_a_hand_off_that_falls_short_keeps_the_content_and_waits(
     assert handed_off(queues) == [first]
 
     with caplog.at_level(INFO):
-        # The same peer named twice is still one copy.
-        module.handle(acknowledged(first, PEERS[0], PEERS[0]))
+        module.handle(acknowledged(first))
 
-    assert f"1 of the 2 peers needed took {first}" in caplog.text
+    assert f"{first} was taken by 0 peers, short of the 1 needed" in caplog.text
     assert store.exists(first)
     module.handle(stored(second, 0))
     now[0] += RETRY_DELAY - 1
@@ -686,7 +686,7 @@ def test_a_late_answer_still_deletes_the_content(
     module.on_idle()
     assert published(queues) == []
 
-    module.handle(acknowledged(CONTENT[0], PEERS[0], PEERS[2]))
+    module.handle(acknowledged(CONTENT[0], PEERS[2]))
 
     assert not store.exists(CONTENT[0])
     assert events(queues) == [(EventType.DATA_DELETED, CONTENT[0].hash)]
@@ -699,7 +699,7 @@ def test_an_answer_for_content_no_longer_held_deletes_nothing(
 ) -> None:
     module = modules.start(config)
 
-    module.handle(acknowledged(CONTENT[0], PEERS[0], PEERS[1]))
+    module.handle(acknowledged(CONTENT[0], PEERS[0]))
 
     assert published(queues) == []
 
@@ -760,7 +760,7 @@ def test_a_key_whose_peer_connects_during_its_hand_off_is_kept(
     module.handle(connected(ConnectionDirection.INBOUND, PEERS[0]))
 
     with caplog.at_level(INFO):
-        module.handle(acknowledged(PEERS[0], PEERS[1], PEERS[2]))
+        module.handle(acknowledged(PEERS[0], PEERS[1]))
 
     assert store.exists(PEERS[0])
     assert requested(queues) == (SIZE, [str(PEERS[0])])

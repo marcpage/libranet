@@ -329,7 +329,7 @@ def fetch_request(content_id: ContentId) -> Message:
     )
 
 
-def eviction_notice(content_id: ContentId, copies: int = 2) -> Message:
+def eviction_notice(content_id: ContentId, copies: int = 1) -> Message:
     return make_message(
         EventType.EVICTION_NOTICE,
         ModuleName.EVICTION,
@@ -1280,7 +1280,7 @@ def test_a_hand_off_goes_to_the_best_matching_peers(
     module = modules.start(config)
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)
 
-    module.handle(eviction_notice(HELD_ID))
+    module.handle(eviction_notice(HELD_ID, copies=2))
 
     (answer,) = bus.wait_for(EventType.EVICTION_ACKNOWLEDGED)
     best_first = nearest(HELD_ID.hash, [peer.node_id for peer in peers], 2)
@@ -1314,6 +1314,37 @@ def test_a_hand_off_stops_once_enough_peers_accept(
     assert answer["node_ids"] == [str(best.node_id)]
     best.bus.wait_for(EventType.PUT_COMPLETED, hash=HELD_ID.hash)
     assert other.bus.events(EventType.PUT_COMPLETED, hash=HELD_ID.hash) == []
+
+
+def test_a_hand_off_the_best_peer_refuses_goes_to_the_next_best(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    CasStore.source_of_truth(config.storage).write(HELD_ID, HELD)
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+    best, other = best_and_other(HELD_ID, peers)
+    hand_off = module.exchange.hand_off
+    offered: list[ContentId] = []
+
+    def refused_by_best(session: PeerSession, content_id: ContentId, body: bytes) -> bool:
+        offered.append(session.node_id)
+        return session.node_id != best.node_id and hand_off(session, content_id, body)
+
+    monkeypatch.setattr(module.exchange, "hand_off", refused_by_best)
+
+    module.handle(eviction_notice(HELD_ID))
+
+    (answer,) = bus.wait_for(EventType.EVICTION_ACKNOWLEDGED)
+    assert answer["node_ids"] == [str(other.node_id)]
+    assert offered == [best.node_id, other.node_id]
+    other.bus.wait_for(EventType.PUT_COMPLETED, hash=HELD_ID.hash)
+    assert best.bus.events(EventType.PUT_COMPLETED, hash=HELD_ID.hash) == []
 
 
 def test_a_peer_that_cannot_be_reached_is_passed_over(
