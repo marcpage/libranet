@@ -106,10 +106,16 @@ class PeerConfig(_Section):
     # the connection open. Provisional default.
     seek_refresh_seconds: float = Field(default=30.0, gt=0)
 
+    # How many passes a search of the connected peers for content makes before
+    # it stops (HighLevelDesign §4.7, Phase 2 Step 55). Each pass after the
+    # first asks every peer again, once its Retry-After has passed.
+    search_passes: int = Field(default=3, ge=2)
+
     # Once a search of the connected peers for content has found nothing, how
     # long before a new request for it starts another (HighLevelDesign §4.7).
-    # Longer than any Retry-After peers send, or searches for content no node
-    # holds restart each other for ever (Phase 2 Step 27). Provisional default.
+    # Longer than peers' searches last, a Retry-After for each pass after the
+    # first, or searches for content no node holds restart each other for ever
+    # (Phase 2 Steps 27 and 55). Provisional default.
     failed_search_hold_seconds: float = Field(default=300.0, gt=0)
 
     # Path to a JSON seed list overriding the one shipped with the package.
@@ -378,6 +384,22 @@ class LibranetConfig(_Section):
     stats: StatsConfig = Field(default_factory=StatsConfig)
     backup: BackupConfig = Field(default_factory=BackupConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+
+    @model_validator(mode="after")
+    def _hold_outlasts_searches(self) -> LibranetConfig:
+        # The hold has to outlast the searches of this node's peers
+        # (HighLevelDesign §4.7). Its own passes and Retry-After stand in for
+        # theirs, as they do on a network whose nodes are all set alike.
+        peers = self.peers
+        longest_search = (peers.search_passes - 1) * self.network.retry_after_seconds
+        if peers.failed_search_hold_seconds <= longest_search:
+            raise ValueError(
+                f"peers.failed_search_hold_seconds ({peers.failed_search_hold_seconds}) "
+                f"must be longer than the {longest_search} seconds a search may last: "
+                f"peers.search_passes ({peers.search_passes}) less one, times "
+                f"network.retry_after_seconds ({self.network.retry_after_seconds})"
+            )
+        return self
 
     def directories(self) -> tuple[Path, ...]:
         """Every directory the node needs to exist before it starts."""

@@ -227,6 +227,8 @@ def config(tmp_path: Path) -> LibranetConfig:
             request_timeout_seconds=TIMEOUT,
             retry_delay_seconds=RETRY_DELAY,
             seek_refresh_seconds=SEEK_REFRESH,
+            # Step 27's search tests count on two passes, whatever the default.
+            search_passes=2,
             seed_file=write_seeds(tmp_path / "seeds.json", {}),
         ),
     )
@@ -379,11 +381,11 @@ def asked(bus: Bus, content_id: ContentId) -> list[str]:
     ]
 
 
-def wait_for_second_pass(caplog: LogCaptureFixture, content_id: ContentId, times: int = 1) -> None:
-    """Wait until searches for ``content_id`` have waited ``times`` times for their second pass."""
+def wait_for_next_pass(caplog: LogCaptureFixture, content_id: ContentId, times: int = 1) -> None:
+    """Wait until searches for ``content_id`` have waited ``times`` times for a next pass."""
     wait_until(
         lambda: caplog.text.count(f"The search for {content_id} asks again in") >= times,
-        "the search to wait for its second pass",
+        "the search to wait for its next pass",
     )
 
 
@@ -968,7 +970,7 @@ def test_a_fetch_no_connected_peer_can_answer_fails(
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)
 
     module.handle(fetch_request(NOWHERE_ID))
-    wait_for_second_pass(caplog, NOWHERE_ID)
+    wait_for_next_pass(caplog, NOWHERE_ID)
     now[0] += PEER_RETRY_AFTER
     module.on_idle()
 
@@ -1015,7 +1017,9 @@ def test_an_event_it_does_not_handle_is_not_taken_for_a_fetch(
     assert bus.events(EventType.FETCH_FAILED) == []
 
 
-def test_the_second_pass_asks_every_peer_again_once_its_retry_after_has_passed(
+@mark.parametrize("passes", [2, 3, 4])
+def test_each_pass_after_the_first_asks_every_peer_again_once_its_retry_after_has_passed(
+    passes: int,
     modules: Modules,
     config: LibranetConfig,
     identity: NodeIdentity,
@@ -1027,27 +1031,31 @@ def test_the_second_pass_asks_every_peer_again_once_its_retry_after_has_passed(
     caplog.set_level(DEBUG, logger="libranet")
     three = four_peers[:3]
     write_lists(config.storage, node_list(identity, *three))
-    # Longer than the peers' own, so theirs is what the second pass waits for.
-    module = modules.start(with_retry_after(config, PEER_RETRY_AFTER + 3))
+    # Longer than the peers' own, so theirs is what each pass waits for.
+    module = modules.start(
+        with_retry_after(with_peers(config, search_passes=passes), PEER_RETRY_AFTER + 3)
+    )
     bus.wait_for(EventType.CONNECTION_OPENED, count=3)
     best = by_match(NOWHERE_ID, three)
 
     module.handle(fetch_request(NOWHERE_ID))
 
-    wait_for_second_pass(caplog, NOWHERE_ID)
-    assert asked(bus, NOWHERE_ID) == best
+    for made in range(1, passes):
+        wait_for_next_pass(caplog, NOWHERE_ID, times=made)
+        assert asked(bus, NOWHERE_ID) == best * made
 
-    now[0] += PEER_RETRY_AFTER - 1
-    module.on_idle()
-    sleep(0.2)
-    assert asked(bus, NOWHERE_ID) == best
+        now[0] += PEER_RETRY_AFTER - 1
+        module.on_idle()
+        sleep(0.2)
+        assert asked(bus, NOWHERE_ID) == best * made
 
-    now[0] += 1
-    module.on_idle()
+        now[0] += 1
+        module.on_idle()
+
     (failed,) = bus.wait_for(EventType.FETCH_FAILED)
 
     assert failed["hash"] == NOWHERE_ID.hash
-    assert asked(bus, NOWHERE_ID) == best + best
+    assert asked(bus, NOWHERE_ID) == best * passes
 
 
 def test_the_second_pass_waits_no_longer_than_this_nodes_own_retry_after(
@@ -1065,7 +1073,7 @@ def test_the_second_pass_waits_no_longer_than_this_nodes_own_retry_after(
     module = modules.start(with_retry_after(config, PEER_RETRY_AFTER - 2))
     bus.wait_for(EventType.CONNECTION_OPENED, count=3)
     module.handle(fetch_request(NOWHERE_ID))
-    wait_for_second_pass(caplog, NOWHERE_ID)
+    wait_for_next_pass(caplog, NOWHERE_ID)
 
     now[0] += PEER_RETRY_AFTER - 2
     module.on_idle()
@@ -1073,6 +1081,40 @@ def test_the_second_pass_waits_no_longer_than_this_nodes_own_retry_after(
     bus.wait_for(EventType.FETCH_FAILED)
     # Every peer asked to be left longer, so each is passed over.
     assert asked(bus, NOWHERE_ID) == by_match(NOWHERE_ID, three)
+
+
+def test_a_pass_that_passed_every_peer_over_still_counts(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    four_peers: list[FixturePeer],
+    bus: Bus,
+    now: list[float],
+    caplog: LogCaptureFixture,
+) -> None:
+    caplog.set_level(DEBUG, logger="libranet")
+    three = four_peers[:3]
+    write_lists(config.storage, node_list(identity, *three))
+    module = modules.start(
+        with_retry_after(with_peers(config, search_passes=3), PEER_RETRY_AFTER - 2)
+    )
+    bus.wait_for(EventType.CONNECTION_OPENED, count=3)
+    best = by_match(NOWHERE_ID, three)
+    module.handle(fetch_request(NOWHERE_ID))
+    wait_for_next_pass(caplog, NOWHERE_ID)
+
+    # The second pass starts before any peer is due, so passes each over.
+    now[0] += PEER_RETRY_AFTER - 2
+    module.on_idle()
+    wait_for_next_pass(caplog, NOWHERE_ID, times=2)
+    assert asked(bus, NOWHERE_ID) == best
+
+    # The third waits out the rest of their Retry-After, and is the last.
+    now[0] += 2
+    module.on_idle()
+
+    bus.wait_for(EventType.FETCH_FAILED)
+    assert asked(bus, NOWHERE_ID) == best + best
 
 
 def test_with_no_retry_after_of_its_own_a_search_never_waits(
@@ -1123,7 +1165,7 @@ def test_a_peer_that_cannot_be_asked_is_passed_over_until_the_second_pass(
     monkeypatch.setattr(module.exchange, "retrieve", failing_for_best)
 
     module.handle(fetch_request(NOWHERE_ID))
-    wait_for_second_pass(caplog, NOWHERE_ID)
+    wait_for_next_pass(caplog, NOWHERE_ID)
     now[0] += PEER_RETRY_AFTER
     module.on_idle()
 
@@ -1173,7 +1215,7 @@ def test_a_peer_that_connects_during_a_search_takes_its_place_in_the_order(
     module = modules.start(with_retry_after(config, PEER_RETRY_AFTER))
     bus.wait_for(EventType.CONNECTION_OPENED, count=3)
     module.handle(fetch_request(NOWHERE_ID))
-    wait_for_second_pass(caplog, NOWHERE_ID)
+    wait_for_next_pass(caplog, NOWHERE_ID)
     assert asked(bus, NOWHERE_ID) == best[1:]
 
     write_lists(config.storage, node_list(identity, *four_peers))
@@ -1203,7 +1245,7 @@ def test_a_search_that_found_nothing_holds_off_another_for_a_while(
     )
     bus.wait_for(EventType.CONNECTION_OPENED, count=3)
     module.handle(fetch_request(NOWHERE_ID))
-    wait_for_second_pass(caplog, NOWHERE_ID)
+    wait_for_next_pass(caplog, NOWHERE_ID)
 
     # The search under way answers this one.
     module.handle(fetch_request(NOWHERE_ID))
@@ -1218,7 +1260,7 @@ def test_a_search_that_found_nothing_holds_off_another_for_a_while(
 
     now[0] += 1
     module.handle(fetch_request(NOWHERE_ID))
-    wait_for_second_pass(caplog, NOWHERE_ID, times=2)
+    wait_for_next_pass(caplog, NOWHERE_ID, times=2)
     assert len(asked(bus, NOWHERE_ID)) == 9
     assert len(bus.events(EventType.FETCH_FAILED)) == 1
 
@@ -1249,7 +1291,7 @@ def test_content_stored_during_a_search_ends_it(
     module = modules.start(with_retry_after(config, PEER_RETRY_AFTER))
     bus.wait_for(EventType.CONNECTION_OPENED, count=3)
     module.handle(fetch_request(NOWHERE_ID))
-    wait_for_second_pass(caplog, NOWHERE_ID)
+    wait_for_next_pass(caplog, NOWHERE_ID)
 
     module.handle(stored(NOWHERE_ID, OTHER_ID))
     now[0] += PEER_RETRY_AFTER

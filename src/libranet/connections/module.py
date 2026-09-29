@@ -35,13 +35,15 @@ lasts; after that, it is a route to that node like any other.
 
 A fetch (``fetch.requested`` ``{"algorithm", "hash"}``) starts a search of
 the connected peers, those whose node id shares the most leading bits with
-the content's hash first, in two passes (HighLevelDesign §4.7): each peer in
-turn until one sends it, then each again, since it may have fetched the
+the content's hash first, in ``peers.search_passes`` passes, three by default
+(HighLevelDesign §4.7, Phase 2 Step 55): each peer in turn until one sends
+it, then each again in each pass that follows, since it may have fetched the
 content meanwhile. A peer that connects during the search takes its place in
-the order. The second pass asks a peer again only once the ``Retry-After`` it
-gave has passed, or this node's own ``network.retry_after_seconds`` if it gave
-none, and waits for that no longer than this node's own. A search waiting for
-its second pass holds no fetch worker. A request for content being searched
+the order. Each pass after the first asks a peer again only once the
+``Retry-After`` it gave has passed, or this node's own
+``network.retry_after_seconds`` if it gave none, and waits for that no longer
+than this node's own. A search waiting for its next pass holds no fetch
+worker. A request for content being searched
 for is dropped, since the search under way answers it, and so is one made
 within ``peers.failed_search_hold_seconds`` of a search that asked peers and
 found nothing: peers still searching would otherwise start it over, and it
@@ -133,7 +135,7 @@ from libranet.modules import ModuleName
 
 # Searches carried on at once. Each asks one peer at a time, so this also
 # bounds the requests searching adds to all connections together. A search
-# waiting for its second pass takes none.
+# waiting for its next pass takes none.
 FETCH_WORKERS: Final = 8
 
 # Pushes of new content under way at once. Each sends one body to one peer
@@ -154,18 +156,20 @@ class _Search:
     """A search for content, and how far it has gone (HighLevelDesign §4.7).
 
     The first pass asks every connected peer, those whose node ids best match
-    the content's hash first, and the second asks each again. ``asked`` holds
-    the peers this pass has asked or passed over, ``due`` when each peer that
-    did not send the content may be asked again, and ``asks`` how many asks
-    were made in all. ``pause`` is this node's own ``Retry-After``: how long a
-    peer that gave none is left, and the longest the second pass waits. One
-    fetch worker at a time carries a search on, so it needs no lock of its
-    own.
+    the content's hash first, and each pass that follows asks each again,
+    until ``passes`` have been made. ``pass_number`` is the pass under way,
+    counted from one. ``asked`` holds the peers this pass has asked or passed
+    over, ``due`` when each peer that did not send the content may be asked
+    again, and ``asks`` how many asks were made in all. ``pause`` is this
+    node's own ``Retry-After``: how long a peer that gave none is left, and
+    the longest a pass after the first waits. One fetch worker at a time
+    carries a search on, so it needs no lock of its own.
     """
 
     content_id: ContentId
     pause: float
-    second_pass: bool = False
+    passes: int
+    pass_number: int = 1
     asks: int = 0
     asked: set[ContentId] = field(default_factory=set)
     due: dict[ContentId, float] = field(default_factory=dict)
@@ -187,14 +191,14 @@ class _Search:
 
         return None
 
-    def start_second_pass(self, ranked: Sequence[PeerSession], now: float) -> float:
-        """Start the second pass over ``ranked``, and say when it may ask its first peer.
+    def start_next_pass(self, ranked: Sequence[PeerSession], now: float) -> float:
+        """Start the next pass over ``ranked``, and say when it may ask its first peer.
 
         That is once every peer may be asked again, but no more than
         ``pause`` from now: a peer that asked to be left longer is passed
         over when its turn comes.
         """
-        self.second_pass = True
+        self.pass_number += 1
         self.asked = set()
         due = [self.due.get(session.node_id, now) for session in ranked]
         return min(max(due, default=now), now + self.pause)
@@ -267,7 +271,7 @@ class ConnectionsModule(ModuleBase):
         self._searches: dict[ContentId, _Search] = {}
         # Searches ready for a fetch worker to carry on.
         self._fetches: SimpleQueue[_Search | None] = SimpleQueue()
-        # Searches waiting for their second pass, as (when, order, search), soonest first.
+        # Searches waiting for their next pass, as (when, order, search), soonest first.
         self._waiting: list[tuple[float, int, _Search]] = []
         self._order = count()
         # Content a search found nothing for, with when a new request may start
@@ -340,7 +344,7 @@ class ConnectionsModule(ModuleBase):
     def on_idle(self) -> None:
         """Refresh peers whose seek list is due, and dial again once candidates have rested.
 
-        Searches whose second pass is due are carried on too.
+        Searches whose next pass is due are carried on too.
         """
         now = self._clock()
 
@@ -434,7 +438,9 @@ class ConnectionsModule(ModuleBase):
             if content_id not in self._searches and held_until <= now:
                 self._held.pop(content_id, None)
                 search = self._searches[content_id] = _Search(
-                    content_id, self._config.network.retry_after_seconds
+                    content_id,
+                    self._config.network.retry_after_seconds,
+                    self._config.peers.search_passes,
                 )
 
         if search is not None:
@@ -758,16 +764,16 @@ class ConnectionsModule(ModuleBase):
                 self._search_failed(search)
 
     def _search(self, search: _Search) -> None:
-        """Ask peers for what ``search`` seeks until it ends or waits for its second pass."""
+        """Ask peers for what ``search`` seeks until it ends or waits for its next pass."""
         while (session := self._next_ask(search)) is not None:
             if self._ask(search, session):
                 return
 
     def _next_ask(self, search: _Search) -> PeerSession | None:
-        """The peer ``search`` asks next; ``None`` once it has ended or waits for its second pass.
+        """The peer ``search`` asks next; ``None`` once it has ended or waits for its next pass.
 
         It has ended if the module is stopping, if its content was stored,
-        or once its second pass is over, which fails it.
+        or once its last pass is over, which fails it.
         """
         waiting = False
 
@@ -784,10 +790,10 @@ class ConnectionsModule(ModuleBase):
                 if session is not None:
                     return session
 
-                if search.second_pass:
+                if search.pass_number == search.passes:
                     break
 
-                resume_at = search.start_second_pass(ranked, now)
+                resume_at = search.start_next_pass(ranked, now)
 
                 if resume_at > now:
                     heappush(self._waiting, (resume_at, next(self._order), search))

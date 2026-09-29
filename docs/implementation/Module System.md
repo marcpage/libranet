@@ -461,7 +461,7 @@ What each module does in them:
 | Stats | Read the node id; open the database; derive the lists | Derive the lists once the interval has passed | Close the database |
 | Web server | Name no peers connected; read the key and credential; bind; start the HTTP thread | — | Stop the HTTP server; close the socket |
 | Validator | — | — | — |
-| Connection manager | Read the key; name no peers connected; start the workers; load candidates; dial | Dial rested candidates; refresh peers due; resume second passes | Stop the workers; close every connection |
+| Connection manager | Read the key; name no peers connected; start the workers; load candidates; dial | Dial rested candidates; refresh peers due; resume searches due a next pass | Stop the workers; close every connection |
 | Fetcher | — | — | — |
 | Unbundler | — | — | — |
 | Eviction | Read the node id; count storage; ask which peers are connected; evict if over | Time out hand-offs and questions; resume after a pause | — |

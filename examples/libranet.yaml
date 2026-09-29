@@ -50,10 +50,18 @@ peers:
   # Keep it under the peers' idle timeout (60 seconds for this
   # implementation) so the connection stays open.
   seek_refresh_seconds: 30.0
+  # How many passes a search of the connected peers for content makes before
+  # it gives up: each pass after the first asks every peer again, once the
+  # Retry-After it gave has passed (High-Level Design §4.7). At least 2. More
+  # may help a large network, but each pass asks every peer once more.
+  search_passes: 3
   # Provisional: once a search of the connected peers for content has found
   # nothing, how long before asking for it again starts another. Keep it
-  # longer than any Retry-After peers send (High-Level Design §4.7), or
-  # searches for content no node holds restart each other for ever.
+  # longer than peers' searches last, any Retry-After they send times their
+  # search_passes less one (High-Level Design §4.7), or searches for content
+  # no node holds restart each other for ever. A node refuses to start with a
+  # hold no longer than its own search_passes less one, times its
+  # network.retry_after_seconds.
   failed_search_hold_seconds: 300.0
   # JSON file of initial peers, used only when this node knows no peers at
   # all. Defaults to the (currently empty) list shipped with the package.

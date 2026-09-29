@@ -297,17 +297,20 @@ locally, it queries its peers in order of binary-prefix match length, the best
 match first.
 
 For an exact data request, it queries the peers it has an outgoing connection
-to (§4.6), in two passes:
+to (§4.6), in two passes or more:
 
 1. Sort the connected peers by the length of the common binary prefix with the
    requested hash, with the best match first. A peer that connects during the
    search takes its place in the order.
 2. Query each peer in turn. If one returns the data, finish.
-3. Once every connected peer has been queried, query each again in the same
-   order, as it may have fetched the data in the meantime. A peer that
-   answered with a temporary "not available" status is not queried again until
-   the `Retry-After` it gave has passed (HTTP API §5.2).
-4. After the second pass, stop.
+3. Once every connected peer has been queried, start the next pass: query each
+   again in the same order, as it may have fetched the data in the meantime. A
+   peer that answered with a temporary "not available" status is not queried
+   again until the `Retry-After` it gave has passed (HTTP API §5.2).
+4. After the last pass, stop.
+
+A large network may need more than two passes, since a peer's own search takes
+longer to reach the data there, but each pass adds a query of every peer.
 
 A node whose search for an object found nothing starts no new search for it for
 a while, and still answers requests for it with the temporary status; the
@@ -315,8 +318,10 @@ object can still arrive through the node's seek list (§4.8). Every node asked
 for an object it lacks searches for it too, so without this pause, peers still
 searching would query a node whose search had just ended and start it again,
 and be started again by it in turn, and a search for an object no node holds
-would never end. The pause is longer than any `Retry-After` the node's peers
-send, so that their second passes are over before it ends.
+would never end. The pause outlasts the longest search the node's peers make,
+so that their last passes are over before it ends. Each pass after the first
+may wait for a `Retry-After`, so the pause is longer than any `Retry-After` the
+node's peers send, times the passes after the first that they make.
 
 For a search request, it follows a progressive depth-first search:
 
