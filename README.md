@@ -74,6 +74,9 @@ directories as encrypted bundles. There is no public network to join yet — see
   [add more net value to the network](docs/specs/Karma.md) (designed, not yet
   implemented)
 
+[Vote for the next feature](https://github.com/marcpage/libranet/issues?q=is%3Aissue+state%3Aopen+sort%3Areactions-%2B1)
+by giving a Thumbs Up to the description of your favorite issues.
+
 ### Hasn't this already been done?
 
 Several aspects of Libranet have been done before.
