@@ -75,3 +75,30 @@ def test_for_data_and_matches() -> None:
 def test_for_data_rejects_unknown_algorithm() -> None:
     with raises(UnknownAlgorithmError):
         ContentId.for_data(b"hello", "md5")
+
+
+def test_fields_name_an_identifier_by_its_algorithm_and_hash() -> None:
+    content_id = ContentId("sha256", EMPTY_SHA256)
+
+    assert content_id.fields() == {"algorithm": "sha256", "hash": EMPTY_SHA256}
+    assert ContentId.from_fields(content_id.fields()) == content_id
+
+
+def test_from_fields_normalizes_and_ignores_whatever_else_is_named() -> None:
+    fields = {"algorithm": "SHA256", "hash": EMPTY_SHA256.upper(), "size": 7}
+
+    assert ContentId.from_fields(fields) == ContentId("sha256", EMPTY_SHA256)
+
+
+def test_from_fields_checks_what_create_checks() -> None:
+    with raises(UnknownAlgorithmError):
+        ContentId.from_fields({"algorithm": "sha3", "hash": EMPTY_SHA256})
+
+    with raises(InvalidContentIdError):
+        ContentId.from_fields({"algorithm": "sha256", "hash": "xyz"})
+
+
+@mark.parametrize("fields", [{}, {"algorithm": "sha256"}, {"hash": EMPTY_SHA256}])
+def test_fields_lacking_a_part_name_no_identifier(fields: dict[str, str]) -> None:
+    with raises(KeyError):
+        ContentId.from_fields(fields)

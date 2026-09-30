@@ -132,7 +132,7 @@ from libranet.connections.peer_mix import PeerMix
 from libranet.connections.peer_session import PeerSession
 from libranet.connections.reverse_dns import ResolveNames, ReverseLookup, host_names
 from libranet.identity.node_identity import NodeIdentity
-from libranet.messaging.envelope import Message, event_of
+from libranet.messaging.envelope import Message
 from libranet.messaging.events import AddressSource, ConnectionDirection, EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
@@ -320,14 +320,16 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         # New content no peer was connected to take, by content id, with the
         # node each came from: pushed once a connection opens.
         self._unpushed: dict[ContentId, ContentId] = {}
-        self._handlers: Mapping[EventType, Callable[[Message], None]] = {
-            EventType.NODE_LIST_UPDATED: self._on_node_list_updated,
-            EventType.NODES_RECEIVED: self._on_nodes_received,
-            EventType.FETCH_REQUESTED: self._on_fetch_requested,
-            EventType.EVICTION_NOTICE: self._on_eviction_notice,
-            EventType.DATA_STORED: self._on_data_stored,
-            EventType.PEERS_CONNECTED_REQUESTED: self._on_peers_connected_requested,
-        }
+        self._route(
+            {
+                EventType.NODE_LIST_UPDATED: self._on_node_list_updated,
+                EventType.NODES_RECEIVED: self._on_nodes_received,
+                EventType.FETCH_REQUESTED: self._on_fetch_requested,
+                EventType.EVICTION_NOTICE: self._on_eviction_notice,
+                EventType.DATA_STORED: self._on_data_stored,
+                EventType.PEERS_CONNECTED_REQUESTED: self._on_peers_connected_requested,
+            }
+        )
 
     @property
     def exchange(self) -> PeerExchange:
@@ -437,14 +439,6 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         for peer in peers:
             peer.session.close()
 
-    def handle(self, message: Message) -> None:
-        """React to one subscribed broadcast; a malformed one raises and :meth:`run` logs it.
-
-        An event with no handler raises too, rather than being taken for one
-        it is not.
-        """
-        self._handlers[event_of(message)](message)
-
     def _on_node_list_updated(self, _message: Message) -> None:
         self._reload_candidates()
         self._maintain()
@@ -462,7 +456,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
 
     def _on_fetch_requested(self, message: Message) -> None:
         """Start a search, unless one is under way or one that found nothing is still held."""
-        content_id = ContentId.create(message["algorithm"], message["hash"])
+        content_id = ContentId.from_fields(message)
         now = self._clock()
         search: _Search | None = None
 
@@ -496,7 +490,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
 
         The eviction module bounds how many it asks for at once.
         """
-        content_id = ContentId.create(message["algorithm"], message["hash"])
+        content_id = ContentId.from_fields(message)
         copies = int(message["copies"])
 
         with self._lock:
@@ -509,7 +503,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
 
     def _on_data_stored(self, message: Message) -> None:
         """Push the new content on, and end any search for it."""
-        content_id = ContentId.create(message["algorithm"], message["hash"])
+        content_id = ContentId.from_fields(message)
 
         with self._lock:
             searched = self._searches.pop(content_id, None) is not None
@@ -877,11 +871,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
 
         self.publish(
             EventType.FETCH_SUCCEEDED,
-            {
-                "algorithm": content_id.algorithm,
-                "hash": content_id.hash,
-                "node_id": str(session.node_id),
-            },
+            {**content_id.fields(), "node_id": str(session.node_id)},
         )
         return True
 
@@ -903,9 +893,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             if search.asks:
                 self._held[content_id] = now + self._config.peers.failed_search_hold_seconds
 
-        self.publish(
-            EventType.FETCH_FAILED, {"algorithm": content_id.algorithm, "hash": content_id.hash}
-        )
+        self.publish(EventType.FETCH_FAILED, content_id.fields())
 
     def _hand_off(self, content_id: ContentId, copies: int) -> None:
         """Hand-off thread: push ``content_id`` to peers until ``copies`` accept it, and say which.
@@ -927,11 +915,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
 
             self.publish(
                 EventType.EVICTION_ACKNOWLEDGED,
-                {
-                    "algorithm": content_id.algorithm,
-                    "hash": content_id.hash,
-                    "node_ids": [str(node_id) for node_id in accepted],
-                },
+                {**content_id.fields(), "node_ids": [str(node_id) for node_id in accepted]},
             )
 
     def _accepting_peers(self, content_id: ContentId, copies: int) -> list[ContentId]:

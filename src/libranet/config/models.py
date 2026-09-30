@@ -441,6 +441,25 @@ class LibranetConfig(_Section):
 
         return self
 
+    @property
+    def private_key_path(self) -> Path:
+        """Where the node's private key is kept."""
+        return self._key_dir / self.identity.private_key_path_name
+
+    @property
+    def backup_secret_path(self) -> Path:
+        """Where the secret protecting the node's backups is kept."""
+        return self._key_dir / self.identity.backup_secret_path_name
+
+    @property
+    def config_credential_path(self) -> Path:
+        """Where the salted hash of the ``/config`` credential is kept (Step 18)."""
+        return self._key_dir / self.identity.config_credential_path_name
+
+    @property
+    def _key_dir(self) -> Path:
+        return self.identity.resolved_key_dir(self.storage)
+
     def directories(self) -> tuple[Path, ...]:
         """Every directory the node needs to exist before it starts."""
         return (
@@ -448,7 +467,7 @@ class LibranetConfig(_Section):
             self.storage.source_of_truth_dir,
             self.storage.incoming_dir,
             self.storage.cache_dir,
-            self.identity.resolved_key_dir(self.storage),
+            self._key_dir,
             self.logging.directory,
         )
 

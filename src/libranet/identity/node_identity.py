@@ -45,9 +45,9 @@ class NodeIdentity:
             UnknownAlgorithmError: the configured hash algorithm is unsupported.
             OSError: the key or public key file cannot be read or written.
         """
-        identity = config.identity
-        key_path = identity.resolved_key_dir(config.storage) / identity.private_key_path_name
-        node = cls.from_private_key(load_or_create_private_key(key_path), identity.hash_algorithm)
+        node = cls.from_private_key(
+            load_or_create_private_key(config.private_key_path), config.identity.hash_algorithm
+        )
         node.publish_public_key(CasStore.source_of_truth(config.storage))
         return node
 

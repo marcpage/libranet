@@ -9,7 +9,7 @@ Step 31). Operates purely on bundle JSON, local files, and CAS reads and writes.
 """
 
 from libranet.bundle.building import DirectoryBuild, IgnoredPaths, build_directory, build_file
-from libranet.bundle.content import ContentSource, content_chunks, parse_cas_path
+from libranet.bundle.content import ContentSource, check_held, content_chunks, parse_cas_path
 from libranet.bundle.errors import (
     BundleError,
     BundleTooLargeError,
@@ -77,6 +77,7 @@ __all__ = [
     "build_directory",
     "build_file",
     "bundle_value",
+    "check_held",
     "content_chunks",
     "decode_bundle",
     "encode_bundle",

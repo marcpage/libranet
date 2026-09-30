@@ -54,7 +54,6 @@ name it. Nor is a restore into the root, which has nothing beside it.
 """
 
 from __future__ import annotations
-from collections import deque
 from dataclasses import dataclass, field
 from enum import StrEnum
 from errno import EDQUOT, EIO, ENOSPC, EROFS
@@ -66,7 +65,7 @@ from typing import Any, Final, Iterable, Mapping
 from libranet.backup.builds import BuildRecord
 from libranet.backup.writing import DirectoryWriter
 from libranet.bundle.building import IgnoredPaths
-from libranet.bundle.content import ContentSource, parse_cas_path
+from libranet.bundle.content import ContentSource, check_held, parse_cas_path
 from libranet.bundle.errors import (
     BundleError,
     MissingContentError,
@@ -77,8 +76,6 @@ from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.layering import Superseded
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.shapes import (
-    NO_STEP_SEGMENTS,
-    PARENT_SEGMENT,
     PATH_SEPARATOR,
     Bundle,
     DirectoryBundle,
@@ -90,7 +87,7 @@ from libranet.bundle.shapes import (
 )
 from libranet.bundle.xattrs import ExtendedAttributes
 from libranet.cas.content_id import ContentId
-from libranet.unbundler.lookup import MAX_SYMLINK_HOPS
+from libranet.unbundler.lookup import PathEnd, path_reached
 from libranet.webserver.config_requests import ConflictBehavior, RestoreRequest
 
 _LOGGER = getLogger(__name__)
@@ -582,11 +579,7 @@ def _check_held(paths: Iterable[str], source: ContentSource) -> None:
         MissingContentError: some is not held; all of it is named.
         BundleError: a path is not a CAS path this node can read.
     """
-    parts = dict.fromkeys(parse_cas_path(part) for part in paths)
-    lacked = tuple(part for part in parts if not source.exists(part))
-
-    if lacked:
-        raise MissingContentError(lacked)
+    check_held((parse_cas_path(part) for part in paths), source)
 
 
 def _beneath_other_entry(entries: Mapping[str, Entry], path: str) -> bool:
@@ -602,42 +595,12 @@ def _leads_outside(entries: Mapping[str, Entry], path: str, link: Symlink) -> bo
     Links are followed through ``entries`` as POSIX follows them: ``..``
     climbs from wherever a link actually led. A path not in ``entries`` is
     taken to be a directory, and one leading on beneath a file leads
-    nowhere. Following more than :data:`MAX_SYMLINK_HOPS` links is taken to
+    nowhere. Following more than
+    :data:`~libranet.unbundler.lookup.MAX_SYMLINK_HOPS` links is taken to
     lead outside, since a platform that follows more could get there.
     """
-    reached = path.split(PATH_SEPARATOR)[:-1]
-    pending = deque(link.target.split(PATH_SEPARATOR))
-    hops = 0
-
-    while pending:
-        segment = pending.popleft()
-
-        if segment in NO_STEP_SEGMENTS:
-            continue
-
-        if segment == PARENT_SEGMENT:
-            if not reached:
-                return True
-
-            reached.pop()
-            continue
-
-        reached.append(segment)
-        entry = entries.get(PATH_SEPARATOR.join(reached))
-
-        if isinstance(entry, Symlink):
-            hops += 1
-
-            if hops > MAX_SYMLINK_HOPS:
-                return True
-
-            reached.pop()
-            pending.extendleft(reversed(entry.target.split(PATH_SEPARATOR)))
-
-        elif isinstance(entry, FileBundle) and pending:
-            return False
-
-    return False
+    end = path_reached(entries, path.split(PATH_SEPARATOR)[:-1], link.target)
+    return end in (PathEnd.OUTSIDE, PathEnd.TOO_MANY_LINKS)
 
 
 def _deepest_first(path: str) -> tuple[int, str]:

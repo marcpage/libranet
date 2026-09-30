@@ -164,16 +164,10 @@ class RestoreRequest:
         if not isinstance(bundle, str) or not isinstance(directory, str):
             raise InvalidConfigRequestError('A restore\'s "bundle" and "directory" must be strings')
 
-        on_conflict = value.get("on_conflict", ConflictBehavior.REFUSE.value)
-
-        if on_conflict not in tuple(ConflictBehavior):
-            behaviors = ", ".join(behavior.value for behavior in ConflictBehavior)
-            raise InvalidConfigRequestError(
-                f'A restore\'s "on_conflict" must be one of: {behaviors}'
-            )
+        on_conflict = _on_conflict(value, "A restore")
 
         try:
-            return cls.create(ContentId.parse(bundle), directory, ConflictBehavior(on_conflict))
+            return cls.create(ContentId.parse(bundle), directory, on_conflict)
 
         except (InvalidContentIdError, ValueError) as error:
             raise InvalidConfigRequestError(str(error)) from None
@@ -342,20 +336,11 @@ class ExportRequest:
         if not isinstance(bundle, str) or not isinstance(archive, str):
             raise InvalidConfigRequestError('An export\'s "bundle" and "archive" must be strings')
 
-        on_conflict = value.get("on_conflict", ConflictBehavior.REFUSE.value)
-
-        if on_conflict not in tuple(ConflictBehavior):
-            behaviors = ", ".join(behavior.value for behavior in ConflictBehavior)
-            raise InvalidConfigRequestError(
-                f'An export\'s "on_conflict" must be one of: {behaviors}'
-            )
+        on_conflict = _on_conflict(value, "An export")
 
         try:
             return cls.create(
-                ContentId.parse(bundle),
-                archive,
-                ConflictBehavior(on_conflict),
-                _password(value, "An export"),
+                ContentId.parse(bundle), archive, on_conflict, _password(value, "An export")
             )
 
         except (InvalidContentIdError, ValueError) as error:
@@ -441,3 +426,20 @@ def _password(value: dict[str, Any], what: str) -> str | None:
         raise InvalidConfigRequestError(f'{what}\'s "password" must be a string')
 
     return password
+
+
+def _on_conflict(value: dict[str, Any], what: str) -> ConflictBehavior:
+    """The ``"on_conflict"`` ``value`` gives, or to refuse if it gives none.
+
+    ``what`` names the request.
+
+    Raises:
+        InvalidConfigRequestError: it gives one that is not a behavior.
+    """
+    on_conflict = value.get("on_conflict", ConflictBehavior.REFUSE.value)
+
+    if on_conflict not in tuple(ConflictBehavior):
+        behaviors = ", ".join(behavior.value for behavior in ConflictBehavior)
+        raise InvalidConfigRequestError(f'{what}\'s "on_conflict" must be one of: {behaviors}')
+
+    return ConflictBehavior(on_conflict)

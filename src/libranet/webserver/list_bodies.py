@@ -15,11 +15,16 @@ from __future__ import annotations
 from json import loads
 from logging import getLogger
 from typing import Callable
-from zlib import decompressobj, error as ZlibError
 
 from libranet.cas.algorithms import UnsupportedAlgorithms
+from libranet.cas.compression import decompressed
 from libranet.cas.content_id import ContentId
-from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
+from libranet.cas.errors import (
+    InvalidContentIdError,
+    NotZlibStreamError,
+    StreamTooLargeError,
+    UnknownAlgorithmError,
+)
 from libranet.webserver.search import normalize_prefix
 
 _LOGGER = getLogger(__name__)
@@ -43,19 +48,16 @@ def decode_list(body: bytes, max_decompressed_bytes: int) -> object:
     except ValueError:
         pass  # Not logged: not plain JSON, so it can only be compressed.
 
-    decompressor = decompressobj()
-
     try:
-        data = decompressor.decompress(body, max_decompressed_bytes + 1)
+        data = decompressed(body, max_decompressed_bytes)
 
-    except ZlibError:
+    except StreamTooLargeError:
+        raise InvalidListError(
+            f"The body decompresses to more than {max_decompressed_bytes} bytes"
+        ) from None
+
+    except NotZlibStreamError:
         raise InvalidListError("The body is neither JSON nor zlib-compressed JSON") from None
-
-    if len(data) > max_decompressed_bytes:
-        raise InvalidListError(f"The body decompresses to more than {max_decompressed_bytes} bytes")
-
-    if not decompressor.eof or decompressor.unused_data:
-        raise InvalidListError("The body is neither JSON nor zlib-compressed JSON")
 
     try:
         return loads(data)

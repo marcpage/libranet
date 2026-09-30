@@ -10,10 +10,10 @@ Shared by every error path: the web server builds its error responses from
 from __future__ import annotations
 from dataclasses import dataclass, field
 from http import HTTPStatus
-from json import dumps, loads
+from json import loads
 from typing import Any, Final, Mapping
 
-from libranet.json_format import COMPACT_SEPARATORS
+from libranet.json_format import compact_json
 
 PROBLEM_CONTENT_TYPE: Final = "application/problem+json"
 ABOUT_BLANK: Final = "about:blank"
@@ -84,7 +84,7 @@ class Problem:
 
     def to_json(self) -> bytes:
         """The UTF-8 encoded JSON body."""
-        return dumps(self.to_dict(), separators=COMPACT_SEPARATORS).encode("utf-8")
+        return compact_json(self.to_dict())
 
     @classmethod
     def from_json(cls, body: bytes | str) -> Problem:

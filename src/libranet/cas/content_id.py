@@ -3,7 +3,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from string import hexdigits
-from typing import Final
+from typing import Any, Final, Mapping
 
 from libranet.cas.algorithms import DEFAULT_REGISTRY, AlgorithmRegistry
 from libranet.cas.errors import InvalidContentIdError
@@ -18,9 +18,10 @@ LOWER_HEX_DIGITS: Final = frozenset(hexdigits.lower())
 class ContentId:
     """A validated, normalized content identifier.
 
-    Construct instances through :meth:`create`, :meth:`parse`, or
-    :meth:`for_data` so the hash is checked against its algorithm and
-    lower-cased (HttpApi §5.4 accepts any case but stores lower-case hex).
+    Construct instances through :meth:`create`, :meth:`parse`,
+    :meth:`from_fields`, or :meth:`for_data` so the hash is checked against
+    its algorithm and lower-cased (HttpApi §5.4 accepts any case but stores
+    lower-case hex).
 
     However it is built, an identifier is lower-case, the one form compared
     and stored, so no upper-case hex gets past building one directly. How
@@ -79,6 +80,22 @@ class ContentId:
         return cls.create(algorithm, hash_value, registry)
 
     @classmethod
+    def from_fields(
+        cls, fields: Mapping[str, Any], registry: AlgorithmRegistry = DEFAULT_REGISTRY
+    ) -> ContentId:
+        """The identifier ``fields`` names as an ``algorithm`` and a ``hash``.
+
+        That is how a message payload and a ``/data`` route name one, among
+        whatever else they hold.
+
+        Raises:
+            KeyError: ``fields`` lacks either.
+            UnknownAlgorithmError: the ``algorithm`` is not registered.
+            InvalidContentIdError: the ``hash`` is not hex of the right length.
+        """
+        return cls.create(fields["algorithm"], fields["hash"], registry)
+
+    @classmethod
     def for_data(
         cls, data: bytes, algorithm: str, registry: AlgorithmRegistry = DEFAULT_REGISTRY
     ) -> ContentId:
@@ -89,6 +106,10 @@ class ContentId:
     def matches(self, data: bytes, registry: AlgorithmRegistry = DEFAULT_REGISTRY) -> bool:
         """Whether ``data`` hashes to this identifier."""
         return registry.get(self.algorithm).hexdigest(data) == self.hash
+
+    def fields(self) -> dict[str, str]:
+        """The ``algorithm`` and ``hash`` naming this identifier, as :meth:`from_fields` reads."""
+        return {"algorithm": self.algorithm, "hash": self.hash}
 
     def __str__(self) -> str:
         return f"{self.algorithm}/{self.hash}"

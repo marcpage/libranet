@@ -53,7 +53,7 @@ class ValidatorModule(ModuleBase):
 
     def handle(self, message: Message) -> None:
         """Check one upload; a malformed message raises and is logged by :meth:`run`."""
-        content_id = ContentId.create(message["algorithm"], message["hash"])
+        content_id = ContentId.from_fields(message)
         node_id = ContentId.parse(message["node_id"])
         incoming = CasStore.for_node(self._storage, node_id)
 
@@ -64,11 +64,7 @@ class ValidatorModule(ModuleBase):
             self.logger.debug("Upload of %s from %s was already handled", content_id, node_id)
             return
 
-        payload = {
-            "algorithm": content_id.algorithm,
-            "hash": content_id.hash,
-            "node_id": str(node_id),
-        }
+        payload = {**content_id.fields(), "node_id": str(node_id)}
 
         if self._source_of_truth.exists(content_id):
             self.logger.debug("Discarding duplicate upload of %s from %s", content_id, node_id)

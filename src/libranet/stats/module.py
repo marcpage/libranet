@@ -94,7 +94,7 @@ from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig
 from libranet.eviction.priority import HeldObject
 from libranet.identity.node_identity import NodeIdentity
-from libranet.messaging.envelope import Message, event_of
+from libranet.messaging.envelope import Message
 from libranet.messaging.events import AddressSource, EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
@@ -166,26 +166,28 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._deriver: ListDeriver | None = None
         self._enricher: SearchEnricher | None = None
         self._derived_at = 0.0
-        self._handlers: Mapping[EventType, Callable[[Message], None]] = {
-            EventType.DATA_REQUESTED: self._on_data_requested,
-            EventType.DATA_NOT_FOUND: self._on_data_not_found,
-            EventType.SEARCH_REQUESTED: self._on_search_requested,
-            EventType.DATA_STORED: self._on_data_stored,
-            EventType.DATA_REJECTED: self._on_data_rejected,
-            EventType.NODES_RECEIVED: self._on_nodes_received,
-            EventType.SEEK_RECEIVED: self._on_seek_received,
-            EventType.CONNECTION_OPENED: self._on_connection_opened,
-            EventType.CONNECTION_CLOSED: self._on_connection_closed,
-            EventType.CONNECTION_FAILED: self._on_connection_failed,
-            EventType.NODE_UNREACHED: self._on_node_unreached,
-            EventType.ADDRESS_VERIFIED: self._on_address_verified,
-            EventType.DATA_SENT: self._on_data_sent,
-            EventType.FETCH_ATTEMPTED: self._on_fetch_attempted,
-            EventType.DATA_DELETED: self._on_data_deleted,
-            EventType.EVICTION_CANDIDATES_REQUESTED: self._on_candidates_requested,
-            EventType.APP_ACCESSED: self._on_app_accessed,
-            EventType.RESOLVED_RECLAIM_REQUESTED: self._on_reclaim_requested,
-        }
+        self._route(
+            {
+                EventType.DATA_REQUESTED: self._on_data_requested,
+                EventType.DATA_NOT_FOUND: self._on_data_not_found,
+                EventType.SEARCH_REQUESTED: self._on_search_requested,
+                EventType.DATA_STORED: self._on_data_stored,
+                EventType.DATA_REJECTED: self._on_data_rejected,
+                EventType.NODES_RECEIVED: self._on_nodes_received,
+                EventType.SEEK_RECEIVED: self._on_seek_received,
+                EventType.CONNECTION_OPENED: self._on_connection_opened,
+                EventType.CONNECTION_CLOSED: self._on_connection_closed,
+                EventType.CONNECTION_FAILED: self._on_connection_failed,
+                EventType.NODE_UNREACHED: self._on_node_unreached,
+                EventType.ADDRESS_VERIFIED: self._on_address_verified,
+                EventType.DATA_SENT: self._on_data_sent,
+                EventType.FETCH_ATTEMPTED: self._on_fetch_attempted,
+                EventType.DATA_DELETED: self._on_data_deleted,
+                EventType.EVICTION_CANDIDATES_REQUESTED: self._on_candidates_requested,
+                EventType.APP_ACCESSED: self._on_app_accessed,
+                EventType.RESOLVED_RECLAIM_REQUESTED: self._on_reclaim_requested,
+            }
+        )
 
     @property
     def database(self) -> StatsDatabase:
@@ -222,12 +224,7 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         )
         self._enricher = SearchEnricher(
             self._database,
-            SearchCache(
-                storage.search_cache_dir,
-                storage.search_cache_ttl_seconds,
-                storage.hash_prefix_length,
-                clock=self._clock,
-            ),
+            SearchCache.of(storage, clock=self._clock),
             storage.search_max_results,
         )
         self.logger.info("Stats database open at %s", storage.database_path)
@@ -256,15 +253,13 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             self.publish(EventType.NODE_LIST_UPDATED, {"path": str(lists.candidate_list)})
             self.logger.debug("Candidate list rewritten at %s", lists.candidate_list)
 
-    def handle(self, message: Message) -> None:
-        """Record one broadcast; a malformed one raises and :meth:`run` logs it."""
-        self._handlers[event_of(message)](message)
-
     def _on_data_requested(self, message: Message) -> None:
-        self.database.record_request(_content_id(message), external=bool(message["external"]))
+        self.database.record_request(
+            ContentId.from_fields(message), external=bool(message["external"])
+        )
 
     def _on_data_not_found(self, message: Message) -> None:
-        self.database.record_seek(SeekKind.DATA, [str(_content_id(message))])
+        self.database.record_seek(SeekKind.DATA, [str(ContentId.from_fields(message))])
 
     def _on_search_requested(self, message: Message) -> None:
         prefix = normalize_prefix(message["prefix"])
@@ -274,7 +269,7 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             self.logger.debug("Enriched the cached search for %s", prefix)
 
     def _on_data_stored(self, message: Message) -> None:
-        content_id = _content_id(message)
+        content_id = ContentId.from_fields(message)
         size_bytes = int(message["size"])
         self.database.record_push(content_id)
         self.database.record_acquired(content_id, size_bytes)
@@ -284,7 +279,7 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         )
 
     def _on_data_rejected(self, message: Message) -> None:
-        self.database.record_push(_content_id(message))
+        self.database.record_push(ContentId.from_fields(message))
 
     def _on_nodes_received(self, message: Message) -> None:
         sources: Mapping[str, str] = message.get("sources", {})
@@ -357,7 +352,7 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         )
 
     def _on_data_deleted(self, message: Message) -> None:
-        self.database.record_deleted(_content_id(message))
+        self.database.record_deleted(ContentId.from_fields(message))
 
     def _on_candidates_requested(self, message: Message) -> None:
         """Tell the eviction module what to let go of first, enough to free the bytes it asks."""
@@ -382,16 +377,7 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
 
         self.publish(
             EventType.EVICTION_CANDIDATES,
-            {
-                "objects": [
-                    {
-                        "algorithm": held.content_id.algorithm,
-                        "hash": held.content_id.hash,
-                        "size": held.size_bytes,
-                    }
-                    for held in chosen
-                ]
-            },
+            {"objects": [{**held.content_id.fields(), "size": held.size_bytes} for held in chosen]},
         )
 
     def _on_app_accessed(self, message: Message) -> None:
@@ -432,11 +418,6 @@ def _started(component: _Component | None) -> _Component:
         raise RuntimeError("The stats module is not running")
 
     return component
-
-
-def _content_id(message: Message) -> ContentId:
-    """The content identifier a message names in its ``algorithm`` and ``hash``."""
-    return ContentId.create(message["algorithm"], message["hash"])
 
 
 def stats_module_factory(

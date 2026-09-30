@@ -7,7 +7,7 @@ from zlib import compress
 
 from pytest import fixture, mark, raises
 
-from libranet.bundle.content import content_chunks, parse_cas_path
+from libranet.bundle.content import check_held, content_chunks, parse_cas_path
 from libranet.bundle.errors import (
     BundleVerificationError,
     MalformedBundleError,
@@ -133,3 +133,21 @@ def test_stored_bytes_that_do_not_match_fail_verification(store: CasStore, store
 
     with raises(BundleVerificationError, match=str(CONTENT_ID)):
         b"".join(content_chunks(store, CONTENT_ID))
+
+
+def test_content_all_held_passes_the_check(store: CasStore) -> None:
+    store.write(CONTENT_ID, CONTENT)
+
+    check_held([CONTENT_ID, CONTENT_ID], store)
+    check_held([], store)
+
+
+def test_content_not_held_is_named_once_each_in_the_order_given(store: CasStore) -> None:
+    first = ContentId.for_data(b"first part lacked", "sha256")
+    second = ContentId.for_data(b"second part lacked", "sha256")
+    store.write(CONTENT_ID, CONTENT)
+
+    with raises(MissingContentError) as raised:
+        check_held([second, CONTENT_ID, first, second], store)
+
+    assert raised.value.content_ids == (second, first)

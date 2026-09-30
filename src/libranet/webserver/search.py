@@ -11,13 +11,18 @@ better results it knows about.
 from __future__ import annotations
 from pathlib import Path
 from time import time
-from typing import Callable, Final, Iterator, Protocol
+from typing import Callable, Final, Iterable, Iterator, Protocol
 
 from libranet.atomic_file import write_atomically
 from libranet.cas.algorithms import DEFAULT_REGISTRY, AlgorithmRegistry
 from libranet.cas.content_id import HEX_DIGITS, ContentId
 from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.prefix import nearest
+from libranet.config.models import StorageConfig
+from libranet.json_format import compact_json
+
+# The member of a search response that lists what was found (HttpApi §6.1).
+RESULTS_FIELD: Final = "results"
 
 _CACHE_SUFFIX: Final = ".json"
 
@@ -117,6 +122,16 @@ class SearchCache:
         self._prefix_length = prefix_length
         self._clock = clock
 
+    @classmethod
+    def of(cls, storage: StorageConfig, *, clock: Callable[[], float] = time) -> SearchCache:
+        """The cache a node keeps its search responses in, per its configuration."""
+        return cls(
+            storage.search_cache_dir,
+            storage.search_cache_ttl_seconds,
+            storage.hash_prefix_length,
+            clock=clock,
+        )
+
     def path_for(self, prefix: str) -> Path:
         """The cache file for a normalized ``prefix``."""
         return self._directory / prefix[: self._prefix_length] / f"{prefix}{_CACHE_SUFFIX}"
@@ -142,3 +157,13 @@ class SearchCache:
             The path of the cached file.
         """
         return write_atomically(self.path_for(prefix), body)
+
+    def save_results(self, prefix: str, results: Iterable[ContentId]) -> bytes:
+        """Cache ``results``, best first, as the response to a search for ``prefix``.
+
+        Returns:
+            The response's body, shaped as HttpApi §6.1 requires.
+        """
+        body = compact_json({RESULTS_FIELD: [str(content_id) for content_id in results]})
+        self.save(prefix, body)
+        return body

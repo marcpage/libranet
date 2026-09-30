@@ -8,8 +8,7 @@ protocol sets no limit on its size.
 """
 
 from __future__ import annotations
-from typing import Final, Iterator, Protocol
-from zlib import decompressobj, error as ZlibError
+from typing import Final, Iterable, Iterator, Protocol
 
 from libranet.bundle.errors import (
     BundleVerificationError,
@@ -18,9 +17,14 @@ from libranet.bundle.errors import (
     UnsupportedBundleError,
 )
 from libranet.cas.algorithms import DEFAULT_REGISTRY
+from libranet.cas.compression import decompressed_chunks
 from libranet.cas.content_id import ContentId
-from libranet.cas.errors import ContentNotFoundError, InvalidContentIdError, UnknownAlgorithmError
-from libranet.cas.verification import CHUNK_BYTES
+from libranet.cas.errors import (
+    ContentNotFoundError,
+    InvalidContentIdError,
+    NotZlibStreamError,
+    UnknownAlgorithmError,
+)
 
 _SEPARATOR: Final = "/"
 _PLAIN_PATH_SEGMENTS: Final = 2
@@ -87,6 +91,19 @@ def parse_cas_path(path: str) -> ContentId:
     return content_id
 
 
+def check_held(content_ids: Iterable[ContentId], source: ContentSource) -> None:
+    """Raise unless ``source`` holds every one of ``content_ids``.
+
+    Raises:
+        MissingContentError: some are not held; each is named once, in the
+            order given.
+    """
+    lacked = tuple(part for part in dict.fromkeys(content_ids) if not source.exists(part))
+
+    if lacked:
+        raise MissingContentError(lacked)
+
+
 def content_chunks(source: ContentSource, content_id: ContentId) -> Iterator[bytes]:
     """The content held for ``content_id``, decompressed if stored compressed.
 
@@ -111,22 +128,14 @@ def content_chunks(source: ContentSource, content_id: ContentId) -> Iterator[byt
         return
 
     hasher = algorithm.hasher()
-    decompressor = decompressobj()
-    pending = data
 
-    while True:
-        try:
-            chunk = decompressor.decompress(pending, CHUNK_BYTES)
+    try:
+        for chunk in decompressed_chunks(data):
+            hasher.update(chunk)
+            yield chunk
 
-        except ZlibError:
-            raise BundleVerificationError(f"Stored content does not match {content_id}") from None
+    except NotZlibStreamError:
+        raise BundleVerificationError(f"Stored content does not match {content_id}") from None
 
-        if not chunk:
-            break
-
-        hasher.update(chunk)
-        yield chunk
-        pending = decompressor.unconsumed_tail
-
-    if not decompressor.eof or decompressor.unused_data or hasher.hexdigest() != content_id.hash:
+    if hasher.hexdigest() != content_id.hash:
         raise BundleVerificationError(f"Stored content does not match {content_id}")

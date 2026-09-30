@@ -11,6 +11,12 @@ becomes of this.
 """
 
 from __future__ import annotations
-from typing import Final
+from json import dumps
+from typing import Any, Final
 
-COMPACT_SEPARATORS: Final = (",", ":")
+_SEPARATORS: Final = (",", ":")
+
+
+def compact_json(value: Any) -> bytes:
+    """``value`` as compact JSON text, in UTF-8."""
+    return dumps(value, separators=_SEPARATORS).encode("utf-8")

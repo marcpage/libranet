@@ -37,6 +37,19 @@ class RecordingModule(ModuleBase):
         self.calls.append("stop")
 
 
+class RoutingModule(ModuleBase):
+    """A module that gives each of ``events`` a handler, which keeps what it is sent."""
+
+    subscriptions: ClassVar[frozenset[EventType]] = frozenset(
+        {EventType.DATA_NOT_FOUND, EventType.DATA_STORED}
+    )
+
+    def __init__(self, queues: ModuleQueues, *events: EventType) -> None:
+        super().__init__(ModuleName.FETCHER, queues)
+        self.handled: dict[EventType, list[Message]] = {event: [] for event in events}
+        self._route({event: self.handled[event].append for event in events})
+
+
 @fixture
 def queues() -> ModuleQueues:
     return ModuleQueues(inbox=Queue(), outbox=Queue())
@@ -135,3 +148,33 @@ def test_run_stops_when_the_stop_signal_is_set(module: RecordingModule) -> None:
 def test_poll_interval_must_be_positive(queues: ModuleQueues) -> None:
     with raises(ValueError):
         RecordingModule(queues, poll_interval_seconds=0)
+
+
+def test_each_event_goes_to_the_handler_it_was_routed_to(queues: ModuleQueues) -> None:
+    module = RoutingModule(queues, EventType.DATA_NOT_FOUND, EventType.DATA_STORED)
+    stored = _message(EventType.DATA_STORED, hash="01")
+
+    module.handle(stored)
+
+    assert module.handled == {EventType.DATA_NOT_FOUND: [], EventType.DATA_STORED: [stored]}
+
+
+def test_a_subscription_with_no_handler_is_refused(queues: ModuleQueues) -> None:
+    with raises(ValueError, match="data.stored"):
+        RoutingModule(queues, EventType.DATA_NOT_FOUND)
+
+
+def test_a_handler_for_an_event_not_subscribed_to_is_refused(queues: ModuleQueues) -> None:
+    with raises(ValueError, match="fetch.failed"):
+        RoutingModule(
+            queues, EventType.DATA_NOT_FOUND, EventType.DATA_STORED, EventType.FETCH_FAILED
+        )
+
+
+def test_an_event_with_no_handler_raises_rather_than_being_taken_for_another(
+    queues: ModuleQueues,
+) -> None:
+    module = ModuleBase(ModuleName.FETCHER, queues)
+
+    with raises(KeyError):
+        module.handle(_message(EventType.DATA_STORED))

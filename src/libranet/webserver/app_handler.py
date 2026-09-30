@@ -54,7 +54,7 @@ from urllib.parse import quote, unquote
 from libranet.bundle.shapes import is_entry_path
 from libranet.cas.content_id import ContentId
 from libranet.messaging.events import EventType
-from libranet.problems import CONTENT_UNAVAILABLE, UNUSABLE_BUNDLE, Problem
+from libranet.problems import UNUSABLE_BUNDLE, Problem
 from libranet.unbundler.outcomes import PathOutcome
 from libranet.unbundler.resolved_files import ResolvedFiles
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
@@ -74,6 +74,7 @@ from libranet.webserver.http_types import (
     problem_response,
 )
 from libranet.webserver.publishing import Publish
+from libranet.webserver.request_refusals import content_unavailable_response
 
 _LOGGER = getLogger(__name__)
 
@@ -195,16 +196,10 @@ class AppHandler:
 
     def _unavailable(self, request: Request) -> Response:
         """The ``503`` for a file the unbundler has been asked for."""
-        return problem_response(
-            Problem(
-                status=HTTPStatus.SERVICE_UNAVAILABLE,
-                title="Content temporarily unavailable",
-                type=CONTENT_UNAVAILABLE,
-                detail="This file is not resolved from its bundle yet; resolution was requested.",
-                instance=request.path,
-                extensions={"retry_after": self.retry_after_seconds},
-            ),
-            {"Retry-After": str(self.retry_after_seconds), "Cache-Control": "no-store"},
+        return content_unavailable_response(
+            request,
+            "This file is not resolved from its bundle yet; resolution was requested.",
+            self.retry_after_seconds,
         )
 
 

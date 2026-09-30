@@ -89,7 +89,7 @@ from collections import deque
 from dataclasses import dataclass
 from logging import Logger
 from time import time
-from typing import Callable, ClassVar, Final, Mapping
+from typing import Callable, ClassVar, Final
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
@@ -97,7 +97,7 @@ from libranet.config.models import LibranetConfig
 from libranet.eviction.pressure import FreeBytes, StoragePressure
 from libranet.eviction.priority import HeldObject
 from libranet.identity.node_identity import NodeIdentity
-from libranet.messaging.envelope import Message, event_of
+from libranet.messaging.envelope import Message
 from libranet.messaging.events import ConnectionDirection, EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
@@ -220,13 +220,15 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         self._next_reclaim_at = 0.0
         # The peers last named connected, each way, whose keys are kept.
         self._connected: dict[ConnectionDirection, frozenset[ContentId]] = {}
-        self._handlers: Mapping[EventType, Callable[[Message], None]] = {
-            EventType.DATA_STORED: self._on_data_stored,
-            EventType.EVICTION_ACKNOWLEDGED: self._on_eviction_acknowledged,
-            EventType.EVICTION_CANDIDATES: self._on_eviction_candidates,
-            EventType.RESOLVED_RECLAIMED: self._on_resolved_reclaimed,
-            EventType.PEERS_CONNECTED: self._on_peers_connected,
-        }
+        self._route(
+            {
+                EventType.DATA_STORED: self._on_data_stored,
+                EventType.EVICTION_ACKNOWLEDGED: self._on_eviction_acknowledged,
+                EventType.EVICTION_CANDIDATES: self._on_eviction_candidates,
+                EventType.RESOLVED_RECLAIMED: self._on_resolved_reclaimed,
+                EventType.PEERS_CONNECTED: self._on_peers_connected,
+            }
+        )
 
     @property
     def node_id(self) -> ContentId:
@@ -296,10 +298,6 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         if overdue or unanswered or unreclaimed or resumed:
             self._evict()
 
-    def handle(self, message: Message) -> None:
-        """React to one subscribed broadcast; a malformed one raises and :meth:`run` logs it."""
-        self._handlers[event_of(message)](message)
-
     def _on_data_stored(self, message: Message) -> None:
         self.pressure.stored(int(message["size"]))
         self._evict()
@@ -310,7 +308,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         An answer to a hand-off already given up on is acted on all the
         same: the peers named hold the content either way.
         """
-        content_id = ContentId.create(message["algorithm"], message["hash"])
+        content_id = ContentId.from_fields(message)
         holders = {ContentId.parse(node_id) for node_id in message["node_ids"]}
         self._handing_off.pop(content_id, None)
 
@@ -342,7 +340,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         """
         self._asked_at = None
         self._candidates = deque(
-            HeldObject(ContentId.create(entry["algorithm"], entry["hash"]), int(entry["size"]))
+            HeldObject(ContentId.from_fields(entry), int(entry["size"]))
             for entry in message["objects"]
         )
 
@@ -453,7 +451,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         self._handing_off[content_id] = _HandOff(held.size_bytes, self._clock())
         self.publish(
             EventType.EVICTION_NOTICE,
-            {"algorithm": content_id.algorithm, "hash": content_id.hash, "copies": HAND_OFF_COPIES},
+            {**content_id.fields(), "copies": HAND_OFF_COPIES},
         )
         self.logger.debug("Asked for %s to be handed off", content_id)
 
@@ -472,7 +470,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         self.pressure.deleted(size_bytes)
         self.publish(
             EventType.DATA_DELETED,
-            {"algorithm": content_id.algorithm, "hash": content_id.hash, "size": size_bytes},
+            {**content_id.fields(), "size": size_bytes},
         )
         self.logger.info("Deleted %s, which other nodes now hold", content_id)
 

@@ -120,7 +120,7 @@ class UnbundlerModule(ModuleBase):
 
         super().__init__(name, queues, logger=logger, poll_interval_seconds=poll_interval_seconds)
         self._source = LayeredSource.open(storage)
-        self._files = ResolvedFiles(storage.resolved_files_dir, storage.hash_prefix_length)
+        self._files = ResolvedFiles.of(storage)
         self._max_cached_bundles = max_cached_bundles
         # Least recently used first.
         self._directories: OrderedDict[ContentId, ResolvedDirectory | _Unusable] = OrderedDict()
@@ -277,10 +277,7 @@ class UnbundlerModule(ModuleBase):
     def _fetch(self, bundle: ContentId, path: str, missing: tuple[ContentId, ...]) -> None:
         """Ask for the content ``path`` in ``bundle`` needs and this node lacks."""
         for content_id in missing:
-            self.publish(
-                EventType.DATA_NOT_FOUND,
-                {"algorithm": content_id.algorithm, "hash": content_id.hash},
-            )
+            self.publish(EventType.DATA_NOT_FOUND, content_id.fields())
 
         self.logger.info("%s in %s waits on %d objects not held here", path, bundle, len(missing))
 

@@ -8,14 +8,11 @@ of memory.
 """
 
 from __future__ import annotations
-from typing import Final
-from zlib import decompressobj, error as ZlibError
 
 from libranet.cas.algorithms import DEFAULT_REGISTRY, AlgorithmRegistry, Hasher
+from libranet.cas.compression import decompressed_chunks
 from libranet.cas.content_id import ContentId
-
-# Most decompressed bytes held in memory at once.
-CHUNK_BYTES: Final = 64 * 1024
+from libranet.cas.errors import NotZlibStreamError
 
 
 def content_matches(
@@ -36,20 +33,12 @@ def content_matches(
 
 def _decompressed_hexdigest(data: bytes, hasher: Hasher) -> str | None:
     """The digest of ``data`` decompressed, or ``None`` if it is not a zlib stream."""
-    decompressor = decompressobj()
-
     try:
-        chunk = decompressor.decompress(data, CHUNK_BYTES)
-
-        while chunk:
+        for chunk in decompressed_chunks(data):
             hasher.update(chunk)
-            chunk = decompressor.decompress(decompressor.unconsumed_tail, CHUNK_BYTES)
 
-    except ZlibError:
+    except NotZlibStreamError:
         # Not logged: data that is not a zlib stream does not match, as callers log.
-        return None
-
-    if not decompressor.eof or decompressor.unused_data:
         return None
 
     return hasher.hexdigest()

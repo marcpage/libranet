@@ -9,12 +9,10 @@ scanned and the result cached. Every request publishes
 from __future__ import annotations
 from dataclasses import dataclass
 from http import HTTPStatus
-from json import dumps
 from logging import getLogger
 from typing import Final
 
 from libranet.cas.errors import InvalidContentIdError
-from libranet.json_format import COMPACT_SEPARATORS
 from libranet.messaging.events import EventType
 from libranet.problems import INVALID_SEARCH_PREFIX, Problem
 from libranet.webserver.http_types import (
@@ -59,9 +57,7 @@ class SearchHandler:
         body = self.cache.load(prefix)
 
         if body is None:
-            results = [str(content_id) for content_id in self.search.search(prefix)]
-            body = dumps({"results": results}, separators=COMPACT_SEPARATORS).encode("utf-8")
-            self.cache.save(prefix, body)
+            body = self.cache.save_results(prefix, self.search.search(prefix))
 
         self.publish(
             EventType.SEARCH_REQUESTED,

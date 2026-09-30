@@ -3,7 +3,7 @@
 from __future__ import annotations
 from logging import INFO
 from pathlib import Path
-from queue import Empty, Queue
+from queue import Queue
 
 from pytest import LogCaptureFixture, fixture, raises
 
@@ -19,6 +19,7 @@ from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.supervision.registry import default_module_specs
+from tests.helpers import published
 
 INTERVAL = 5.0
 CONTENT_ID = ContentId.for_data(b"content this node lacks", "sha256")
@@ -67,17 +68,6 @@ def failed(content_id: ContentId = CONTENT_ID) -> Message:
         ModuleName.CONNECTIONS,
         {"algorithm": content_id.algorithm, "hash": content_id.hash},
     )
-
-
-def published(queues: ModuleQueues) -> list[Message]:
-    messages = []
-
-    while True:
-        try:
-            messages.append(queues.outbox.get(block=False))
-
-        except Empty:
-            return messages
 
 
 def asked_for(queues: ModuleQueues) -> list[ContentId]:

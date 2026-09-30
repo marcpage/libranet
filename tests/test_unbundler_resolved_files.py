@@ -9,6 +9,7 @@ from pytest import LogCaptureFixture, raises
 
 from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
+from libranet.config.models import StorageConfig
 from libranet.unbundler.resolved_files import ResolvedFiles
 
 BUNDLE = ContentId.for_data(b"a directory bundle", "sha256")
@@ -102,3 +103,14 @@ def test_a_directory_not_named_as_a_bundle_is_logged_as_a_warning(
     (record,) = caplog.records
     assert record.levelno == WARNING
     assert record.getMessage().startswith(f"Leaving {stray} alone, not named as resolved files: ")
+
+
+def test_a_node_keeps_resolved_files_where_it_is_configured_to(tmp_path: Path) -> None:
+    storage = StorageConfig(data_dir=tmp_path, hash_prefix_length=3)
+    key = sha256(b"index.html").hexdigest()
+
+    files = ResolvedFiles.of(storage)
+
+    assert files.path_for(BUNDLE, "index.html") == (
+        storage.resolved_files_dir / "sha256" / BUNDLE.hash / key[:3] / key
+    )

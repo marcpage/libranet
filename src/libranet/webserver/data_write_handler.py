@@ -37,14 +37,13 @@ from http import HTTPStatus
 from logging import getLogger
 
 from libranet.cas.content_id import ContentId
-from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
 from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.errors import KeyFileError
 from libranet.identity.keys import published_public_key
 from libranet.messaging.events import EventType
-from libranet.webserver.data_handler import invalid_address_response
+from libranet.webserver.data_handler import content_id_or_refusal
 from libranet.webserver.http_types import Request, Response
 from libranet.webserver.publishing import Publish
 from libranet.webserver.request_refusals import (
@@ -72,16 +71,10 @@ class DataWriteHandler:
         self._publish = publish
 
     def __call__(self, request: Request) -> Response:  # pylint: disable=too-many-return-statements
-        try:
-            content_id = ContentId.create(request.params["algorithm"], request.params["hash"])
+        content_id = content_id_or_refusal(request, _LOGGER)
 
-        except UnknownAlgorithmError as error:
-            _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, error)
-            return invalid_address_response(error, request)
-
-        except InvalidContentIdError as error:
-            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            return invalid_address_response(error, request)
+        if isinstance(content_id, Response):
+            return content_id
 
         refusal = unreadable_body_response(request, self._storage.max_object_bytes)
 
@@ -109,23 +102,14 @@ class DataWriteHandler:
             self._source_of_truth.write(content_id, body)
             self._publish(
                 EventType.DATA_STORED,
-                {
-                    "algorithm": content_id.algorithm,
-                    "hash": content_id.hash,
-                    "node_id": str(result.node_id),
-                    "size": len(body),
-                },
+                {**content_id.fields(), "node_id": str(result.node_id), "size": len(body)},
             )
             return Response(HTTPStatus.CREATED)
 
         CasStore.for_node(self._storage, result.node_id).write(content_id, body)
         self._publish(
             EventType.PUT_COMPLETED,
-            {
-                "algorithm": content_id.algorithm,
-                "hash": content_id.hash,
-                "node_id": str(result.node_id),
-            },
+            {**content_id.fields(), "node_id": str(result.node_id)},
         )
         return Response(HTTPStatus.ACCEPTED)
 

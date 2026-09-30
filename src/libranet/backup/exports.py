@@ -41,7 +41,7 @@ from typing import Any, Callable
 
 from libranet.backup.tasks import Task
 from libranet.bundle.building import IgnoredPaths
-from libranet.bundle.content import ContentSource, parse_cas_path
+from libranet.bundle.content import ContentSource, check_held, parse_cas_path
 from libranet.bundle.errors import (
     BundleVerificationError,
     MissingContentError,
@@ -183,9 +183,5 @@ class Export(Task):
                 raise UnsupportedBundleError(f"Not a file, a symlink, or a directory: {kind}")
 
         parts = {parse_cas_path(part) for part in paths}
-        lacked = sorted(part for part in parts if not source.exists(part))
-
-        if lacked:
-            raise MissingContentError(tuple(lacked))
-
+        check_held(sorted(parts), source)
         return sorted(needed | parts)

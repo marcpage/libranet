@@ -27,7 +27,7 @@ from __future__ import annotations
 from hashlib import sha256
 from json import loads
 from typing import Final, Mapping, Protocol
-from zlib import compress, decompressobj, error as ZlibError
+from zlib import compress
 
 from cryptography.hazmat.primitives.ciphers import Cipher
 from cryptography.hazmat.primitives.ciphers.algorithms import AES256
@@ -40,6 +40,8 @@ from libranet.bundle.errors import (
     MalformedBundleError,
     UnsupportedBundleError,
 )
+from libranet.cas.compression import decompressed
+from libranet.cas.errors import NotZlibStreamError, StreamTooLargeError
 from libranet.config.models import MIB
 
 # The ciphertext ends at the last 0x00, before the descriptor (§6.1), and a
@@ -254,18 +256,11 @@ def _decompressed(data: bytes, max_bytes: int) -> bytes:
         IncorrectPasswordError: ``data`` is not one complete zlib stream.
         UnsupportedBundleError: it decompresses to more than ``max_bytes``.
     """
-    decompressor = decompressobj()
-
     try:
-        plaintext = decompressor.decompress(data, max_bytes + 1)
+        return decompressed(data, max_bytes)
 
-    except ZlibError:
+    except StreamTooLargeError:
+        raise UnsupportedBundleError(f"Bundle is larger than {max_bytes} bytes") from None
+
+    except NotZlibStreamError:
         raise IncorrectPasswordError("The password does not decrypt the bundle") from None
-
-    if len(plaintext) > max_bytes:
-        raise UnsupportedBundleError(f"Bundle is larger than {max_bytes} bytes")
-
-    if not decompressor.eof or decompressor.unused_data:
-        raise IncorrectPasswordError("The password does not decrypt the bundle")
-
-    return plaintext

@@ -139,12 +139,7 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
         self._signer = MessageSigner(identity, clock)
         self._source_of_truth = CasStore.source_of_truth(config.storage)
         self._content = LayeredSource.open(config.storage)
-        self._verifier = MessageVerifier(
-            self._source_of_truth,
-            config.identity.signature_max_age_seconds,
-            config.identity.signature_clock_skew_seconds,
-            clock,
-        )
+        self._verifier = MessageVerifier.of(config, clock)
 
     @property
     def node_id(self) -> ContentId:
@@ -330,12 +325,7 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
         self._source_of_truth.write(node_id, response.body)
         self._publish(
             EventType.DATA_STORED,
-            {
-                "algorithm": node_id.algorithm,
-                "hash": node_id.hash,
-                "node_id": str(node_id),
-                "size": len(response.body),
-            },
+            {**node_id.fields(), "node_id": str(node_id), "size": len(response.body)},
         )
 
     def _node_list(self) -> bytes:
@@ -497,11 +487,7 @@ def _data_path(content_id: ContentId) -> str:
 
 def _content_fields(content_id: ContentId, session: PeerSession) -> dict[str, str]:
     """The payload fields naming ``content_id`` and the peer it went to or came from."""
-    return {
-        "algorithm": content_id.algorithm,
-        "hash": content_id.hash,
-        "node_id": str(session.node_id),
-    }
+    return {**content_id.fields(), "node_id": str(session.node_id)}
 
 
 def _batches(items: Sequence[_Item]) -> Iterator[Sequence[_Item]]:

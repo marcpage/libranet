@@ -8,8 +8,5 @@ exclude =
     __pycache__,
     build,
     dist
-# ModuleBase's on_start, on_idle, and on_stop are hooks a module may leave
-# empty, not methods it must supply (B027).
 per-file-ignores =
     src/libranet/*/__init__.py: F401
-    src/libranet/messaging/module.py: B027

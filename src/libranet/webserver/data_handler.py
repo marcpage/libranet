@@ -18,7 +18,7 @@ a peer's interest in content is counted apart from this node's own.
 
 from __future__ import annotations
 from http import HTTPStatus
-from logging import getLogger
+from logging import Logger, getLogger
 from typing import Final
 
 from libranet.bundle.content import ContentSource
@@ -29,10 +29,11 @@ from libranet.cas.errors import (
     UnknownAlgorithmError,
 )
 from libranet.messaging.events import EventType
-from libranet.problems import CONTENT_UNAVAILABLE, INVALID_CONTENT_ADDRESS, Problem
+from libranet.problems import INVALID_CONTENT_ADDRESS, Problem
 from libranet.webserver.client_origin import is_local_client
 from libranet.webserver.http_types import Request, Response, bytes_response, problem_response
 from libranet.webserver.publishing import Publish
+from libranet.webserver.request_refusals import content_unavailable_response
 
 _LOGGER = getLogger(__name__)
 
@@ -55,6 +56,23 @@ def invalid_address_response(error: InvalidContentIdError, request: Request) -> 
     )
 
 
+def content_id_or_refusal(request: Request, logger: Logger) -> ContentId | Response:
+    """The content a ``/data/{algorithm}/{hash}`` path names, or the response refusing it.
+
+    ``logger`` is the handler's own, which the refusal is logged with.
+    """
+    try:
+        return ContentId.from_fields(request.params)
+
+    except UnknownAlgorithmError as error:
+        logger.warning("Refusing %s %s: %s", request.method, request.path, error)
+        return invalid_address_response(error, request)
+
+    except InvalidContentIdError as error:
+        logger.debug("Refusing %s %s: %s", request.method, request.path, error)
+        return invalid_address_response(error, request)
+
+
 class DataReadHandler:
     """Serves the CAS content ``content`` holds, reporting misses."""
 
@@ -67,24 +85,14 @@ class DataReadHandler:
         self._retry_after_seconds = retry_after_seconds
 
     def __call__(self, request: Request) -> Response:
-        try:
-            content_id = ContentId.create(request.params["algorithm"], request.params["hash"])
+        content_id = content_id_or_refusal(request, _LOGGER)
 
-        except UnknownAlgorithmError as error:
-            _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, error)
-            return invalid_address_response(error, request)
-
-        except InvalidContentIdError as error:
-            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            return invalid_address_response(error, request)
+        if isinstance(content_id, Response):
+            return content_id
 
         self._publish(
             EventType.DATA_REQUESTED,
-            {
-                "algorithm": content_id.algorithm,
-                "hash": content_id.hash,
-                "external": not is_local_client(request.client_address),
-            },
+            {**content_id.fields(), "external": not is_local_client(request.client_address)},
         )
 
         try:
@@ -97,18 +105,9 @@ class DataReadHandler:
         return bytes_response(body, headers={"Cache-Control": _IMMUTABLE_CACHE_CONTROL})
 
     def _not_found(self, content_id: ContentId, request: Request) -> Response:
-        self._publish(
-            EventType.DATA_NOT_FOUND,
-            {"algorithm": content_id.algorithm, "hash": content_id.hash},
-        )
-        return problem_response(
-            Problem(
-                status=HTTPStatus.SERVICE_UNAVAILABLE,
-                title="Content temporarily unavailable",
-                type=CONTENT_UNAVAILABLE,
-                detail="The requested content is not stored here yet; retrieval was requested.",
-                instance=request.path,
-                extensions={"retry_after": self._retry_after_seconds},
-            ),
-            {"Retry-After": str(self._retry_after_seconds), "Cache-Control": "no-store"},
+        self._publish(EventType.DATA_NOT_FOUND, content_id.fields())
+        return content_unavailable_response(
+            request,
+            "The requested content is not stored here yet; retrieval was requested.",
+            self._retry_after_seconds,
         )

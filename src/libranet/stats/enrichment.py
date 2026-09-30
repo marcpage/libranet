@@ -14,20 +14,16 @@ enriched answer is newer than the one it replaces.
 """
 
 from __future__ import annotations
-from json import JSONDecodeError, dumps, loads
+from json import JSONDecodeError, loads
 from logging import getLogger
-from typing import Final
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.prefix import nearest
-from libranet.json_format import COMPACT_SEPARATORS
 from libranet.stats.database import StatsDatabase
-from libranet.webserver.search import SearchCache
+from libranet.webserver.search import RESULTS_FIELD, SearchCache
 
 _LOGGER = getLogger(__name__)
-
-_RESULTS_FIELD: Final = "results"
 
 
 class SearchEnricher:
@@ -59,14 +55,14 @@ class SearchEnricher:
         if merged == nearest(prefix, cached, self._max_results):
             return False
 
-        self._cache.save(prefix, _render_results(merged))
+        self._cache.save_results(prefix, merged)
         return True
 
 
 def _parse_results(body: bytes) -> set[ContentId]:
     """The identifiers in a cached response; an unreadable one holds none."""
     try:
-        results = loads(body)[_RESULTS_FIELD]
+        results = loads(body)[RESULTS_FIELD]
 
     except (JSONDecodeError, KeyError, TypeError, UnicodeDecodeError) as error:
         _LOGGER.warning("Ignoring an unreadable cached search response: %s", error)
@@ -86,10 +82,3 @@ def _parse_results(body: bytes) -> set[ContentId]:
             continue
 
     return parsed
-
-
-def _render_results(results: list[ContentId]) -> bytes:
-    """A search response body, shaped as HttpApi §6.1 requires."""
-    return dumps(
-        {_RESULTS_FIELD: [str(content_id) for content_id in results]}, separators=COMPACT_SEPARATORS
-    ).encode("utf-8")
