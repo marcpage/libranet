@@ -18,9 +18,11 @@ Five tables cover what the implementation plan asks a node to remember:
 
 ``node_stats``
     One row per peer node id. ``last_connected`` is when the last successful
-    connection to it was established and is never cleared, so it also serves
-    as the v1 node-list priority; ``connected_seconds`` accumulates the time
-    those connections lasted. ``consecutive_failures`` counts the attempts in
+    connection to it was established and is never cleared, so the time a
+    connection lasted can be measured from it; ``connected_seconds``
+    accumulates the time those connections lasted. It no longer orders the
+    lists, which go by when each address last worked, in ``node_addresses``
+    (Phase 2 Step 23). ``consecutive_failures`` counts the attempts in
     a row to reach it, each dialing every address it was to be tried at,
     that reached it at none, and ``last_failure`` is when the last of them
     ended (Phase 2 Step 26).
@@ -89,7 +91,7 @@ SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
     "CREATE INDEX IF NOT EXISTS data_stats_held ON data_stats (hash) WHERE size IS NOT NULL",
     """
     CREATE TABLE IF NOT EXISTS node_stats (
-        node_id TEXT PRIMARY KEY,
+        node_id TEXT NOT NULL PRIMARY KEY,
         connection_attempts INTEGER NOT NULL DEFAULT 0,
         successful_connections INTEGER NOT NULL DEFAULT 0,
         remote_disconnects INTEGER NOT NULL DEFAULT 0,
