@@ -929,6 +929,77 @@ def test_asking_for_a_finished_restore_starts_it_again(
     assert (target / "readme.txt").read_bytes() == b"read me"
 
 
+def test_a_restore_nothing_arrives_for_gives_up_and_logs_what_it_did_not_restore(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tree: Path,
+    tmp_path: Path,
+    store: CasStore,
+    caplog: LogCaptureFixture,
+) -> None:
+    config = config.model_copy(
+        update={"backup": config.backup.model_copy(update={"restore_stall_seconds": 5000.0})}
+    )
+    module = start(config, queues, now)
+    bundle = backed_up_bundle(module, queues, tree)
+    part = ContentId.for_data(b"some notes", "sha256")
+    store.delete(part)
+    target = tmp_path / "restored"
+    restore(module, bundle, target)
+    published(queues)
+    now[0] += 5000 - 1
+    module.on_idle()
+    messages = published(queues)
+
+    assert restores(messages)[-1][0]["status"] == "waiting"
+    assert asked_for(messages) == [part]
+
+    now[0] += 1
+
+    with caplog.at_level(WARNING):
+        module.on_idle()
+
+    messages = published(queues)
+    failed = restores(messages)[-1][0]
+
+    assert (failed["status"], failed["restored"], failed["missing"]) == ("failed", 1, 0)
+    assert failed["error"].startswith("Gave up, as none of the content it waits on arrived")
+    assert asked_for(messages) == []
+    assert f"Did not restore docs/notes.txt into {target}, lacking {part}" in caplog.text
+    assert f"Could not restore {bundle} into {target}: Gave up" in caplog.text
+
+
+def test_asking_for_a_restore_that_gave_up_carries_it_on_where_it_left_off(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tree: Path,
+    tmp_path: Path,
+    store: CasStore,
+) -> None:
+    module = start(config, queues, now)
+    bundle = backed_up_bundle(module, queues, tree)
+    part = ContentId.for_data(b"some notes", "sha256")
+    data = store.read(part)
+    store.delete(part)
+    target = tmp_path / "restored"
+    restore_id = restore(module, bundle, target)
+    now[0] += config.backup.restore_stall_seconds
+    module.on_idle()
+
+    assert restores(published(queues))[-1][0]["status"] == "failed"
+
+    store.write(part, data)
+    now[0] += 1
+    restore(module, bundle, target)
+    done = restores(published(queues))[-1][0]
+
+    assert (done["status"], done["requested_at"], done["restored"]) == ("done", START, 2)
+    assert list(module.restores) == [restore_id]
+    assert (target / "docs" / "notes.txt").read_bytes() == b"some notes"
+
+
 def test_a_restore_due_goes_ahead_of_a_backup_due(
     config: LibranetConfig, queues: ModuleQueues, now: list[float], tree: Path, tmp_path: Path
 ) -> None:

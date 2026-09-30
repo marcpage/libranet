@@ -13,6 +13,14 @@ peers for. A pass restores every file whose parts are all held, as are those of
 the extended attributes set on it, so a restore still waiting has restored
 everything else it can.
 
+Content deleted everywhere never arrives, so a restore gives up, and fails,
+once it has waited a set time with none of what it waits on arriving (Phase 2
+Step 51). Content arriving restarts that time whether or not it completes
+anything, so that a large file arriving a part at a time is not given up on.
+Giving up writes nothing more, and names each entry not restored with the
+content it lacked. Asking for a restore that gave up carries it on where it
+left off, as asking for one still waiting does.
+
 A directory that is not empty is refused before anything is written there,
 unless the restore may overwrite what is there (§5). Its entries then replace
 files and symlinks in their way, but never a directory.
@@ -50,6 +58,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from enum import StrEnum
 from errno import EDQUOT, EIO, ENOSPC, EROFS
+from itertools import chain
 from logging import getLogger
 from pathlib import Path
 from typing import Any, Final, Iterable, Mapping
@@ -108,12 +117,15 @@ class RestorePass:
     """What a pass of a restore left out, each path with why, and the content to ask for.
 
     ``unset_xattrs`` counts the entries each extended attribute was left
-    unset on, by its name and why.
+    unset on, by its name and why. ``given_up`` is empty unless the restore
+    gave up in this pass, and then holds each entry it did not restore, by
+    path, with the content that entry lacked.
     """
 
     skipped: Mapping[str, str]
     ask_for: tuple[ContentId, ...]
     unset_xattrs: Mapping[tuple[str, str], int] = field(default_factory=dict)
+    given_up: Mapping[str, tuple[ContentId, ...]] = field(default_factory=dict)
 
 
 class Restore:
@@ -122,19 +134,32 @@ class Restore:
     A restore waiting on content carries on :data:`RESUME_DELAY_SECONDS`
     after any of it arrives, or at once once all of it has, and otherwise
     every ``ask_interval`` seconds, when its caller is to ask for whatever
-    it still lacks again.
+    it still lacks again. It gives up once ``give_up_after`` seconds pass
+    with none of it arriving, and without its being asked for again.
     """
 
-    def __init__(self, request: RestoreRequest, requested_at: float, ask_interval: float) -> None:
+    def __init__(
+        self,
+        request: RestoreRequest,
+        requested_at: float,
+        ask_interval: float,
+        give_up_after: float,
+    ) -> None:
         self._request = request
         self._requested_at = requested_at
         self._ask_interval = ask_interval
+        self._give_up_after = give_up_after
         self._status = RestoreStatus.WAITING
         self._error: str | None = None
         self._due_at = requested_at
         self._asked_at: float | None = None
+        # When content it waits on last arrived, or it was last asked for.
+        self._arrived_at = requested_at
+        self._gave_up = False
         self._finished_at: float | None = None
         self._missing: set[ContentId] = set()
+        # What each entry waiting on content lacked, by path, as of the last pass.
+        self._lacking: dict[str, tuple[ContentId, ...]] = {}
         # The entries not yet restored or left out; None until the bundle is read.
         self._pending: dict[str, Entry] | None = None
         # The bundle, to be recorded beside the directory; None unless it is read and plain.
@@ -154,9 +179,20 @@ class Restore:
         return self._status
 
     @property
+    def error(self) -> str | None:
+        """Why the restore failed; ``None`` unless it has."""
+        return self._error
+
+    @property
     def finished(self) -> bool:
         """Whether the restore is done or has failed, so that nothing is left to do."""
         return self._status in (RestoreStatus.DONE, RestoreStatus.FAILED)
+
+    @property
+    def can_carry_on(self) -> bool:
+        """Whether asking for the restore again carries it on, rather than starting it over:
+        it is waiting on content, or gave up waiting."""
+        return not self.finished or self._gave_up
 
     @property
     def due_at(self) -> float:
@@ -173,10 +209,18 @@ class Restore:
         return self._status is RestoreStatus.WAITING and self._due_at <= now
 
     def ask_again(self, request: RestoreRequest, now: float) -> None:
-        """Carry on at once, as ``request`` asks, asking again for everything lacked."""
+        """Carry on at once, as ``request`` asks, asking again for everything lacked.
+
+        The time it waits before giving up starts again, and a restore that
+        gave up carries on where it left off.
+        """
         self._request = request
-        self._due_at = now
+        self._due_at = self._arrived_at = now
         self._asked_at = None
+
+        if self._gave_up:
+            self._status, self._error, self._finished_at = RestoreStatus.WAITING, None, None
+            self._gave_up = False
 
     def landed(self, content_id: ContentId, now: float) -> bool:
         """Note that ``content_id`` is now held, and say whether the restore waited on it."""
@@ -184,6 +228,7 @@ class Restore:
             return False
 
         self._missing.discard(content_id)
+        self._arrived_at = now
         resume_at = now + RESUME_DELAY_SECONDS if self._missing else now
         self._due_at = min(self._due_at, resume_at)
         return True
@@ -208,7 +253,8 @@ class Restore:
         Returns:
             The paths left out in this pass, and the content lacked that is to
             be asked for: what was not lacked before, or all of it when it is
-            time to ask again.
+            time to ask again. If it gave up, nothing is to be asked for, and
+            each entry not restored is named with what it lacked.
 
         Raises:
             OSError: the directory may not be restored into, or writing to it,
@@ -238,8 +284,10 @@ class Restore:
 
             with DirectoryWriter.open(directory, overwrite, ignored, xattrs) as writer:
                 self._started = True
-                missing = self._place_held(self._pending, writer, source, skipped)
+                self._lacking = self._place_held(self._pending, writer, source, skipped)
                 unset = writer.unset_xattrs
+
+            missing = list(dict.fromkeys(chain.from_iterable(self._lacking.values())))
 
         except MissingContentError as error:
             # Not logged: what is missing is asked for, and the backup module logs it.
@@ -250,7 +298,8 @@ class Restore:
         if not missing:
             self._record()
 
-        return RestorePass(skipped, self._wait_on(missing, now), unset)
+        asking = self._wait_on(missing, now)
+        return RestorePass(skipped, asking, unset, dict(self._lacking) if self._gave_up else {})
 
     def fail(self, error: Exception, now: float) -> None:
         """Note that the restore failed, and why."""
@@ -356,21 +405,24 @@ class Restore:
         writer: DirectoryWriter,
         source: ContentSource,
         skipped: dict[str, str],
-    ) -> list[ContentId]:
-        """Restore each of ``pending`` whose content is held, and return the content lacked.
+    ) -> dict[str, tuple[ContentId, ...]]:
+        """Restore each of ``pending`` whose content is held, and return what the rest lack.
 
         Each entry restored, or left out, leaves ``pending``. A directory is
         made last, deepest first, and only once nothing beneath it waits, so
         its times and permissions are not changed by what is written there.
 
+        Returns:
+            The content each entry not restored for want of it lacks, by path.
+
         Raises:
             OSError: writing failed in a way that would fail every entry.
         """
-        missing: list[ContentId] = []
+        lacking: dict[str, tuple[ContentId, ...]] = {}
         others = [path for path, entry in pending.items() if not isinstance(entry, DirectoryMarker)]
 
         for path in sorted(others, key=lambda p: p.split(PATH_SEPARATOR)):
-            missing.extend(self._place(pending, path, writer, source, skipped))
+            lacking[path] = self._place(pending, path, writer, source, skipped)
 
         waiting = ancestors(
             path for path, entry in pending.items() if not isinstance(entry, DirectoryMarker)
@@ -382,9 +434,9 @@ class Restore:
         ]
 
         for path in sorted(directories, key=_deepest_first):
-            missing.extend(self._place(pending, path, writer, source, skipped))
+            lacking[path] = self._place(pending, path, writer, source, skipped)
 
-        return list(dict.fromkeys(missing))
+        return {path: lacked for path, lacked in lacking.items() if lacked}
 
     def _place(
         self,
@@ -393,13 +445,15 @@ class Restore:
         writer: DirectoryWriter,
         source: ContentSource,
         skipped: dict[str, str],
-    ) -> list[ContentId]:
+    ) -> tuple[ContentId, ...]:
         """Restore the entry at ``path``, unless content it needs is not held.
+
+        Returns:
+            The content it needs that is not held; none if it was restored or left out.
 
         Raises:
             OSError: writing failed in a way that would fail every entry.
         """
-        missing: list[ContentId] = []
         # Looked at as whatever it is, so that a kind of entry this does not
         # know is logged and left out, rather than taken for another.
         entry: object = pending[path]
@@ -428,8 +482,7 @@ class Restore:
 
         except MissingContentError as error:
             # Not logged: what is missing is asked for, and the backup module logs it.
-            missing.extend(error.content_ids)
-            return missing
+            return tuple(error.content_ids)
 
         except (OSError, BundleError) as error:
             if isinstance(error, OSError) and error.errno in _STOPPING_ERRORS:
@@ -442,19 +495,30 @@ class Restore:
             self._restored += 1
 
         del pending[path]
-        return missing
+        return ()
 
     def _wait_on(self, missing: list[ContentId], now: float) -> tuple[ContentId, ...]:
         """Wait on ``missing``, if there is any, and return what is to be asked for now.
 
         That is all of it if it is time to ask again, and otherwise only what
-        was not waited on before.
+        was not waited on before. Nothing is if the restore has waited
+        ``give_up_after`` seconds with none of it arriving, since it gives up.
         """
         waited = self._missing
         self._missing = set(missing)
 
+        if waited - self._missing:
+            # Held now, though its arrival was not noted, as content stored during the pass is.
+            self._arrived_at = now
+
         if not missing:
             self._status, self._finished_at = RestoreStatus.DONE, now
+            return ()
+
+        give_up_at = self._arrived_at + self._give_up_after
+
+        if now >= give_up_at:
+            self._give_up(now)
             return ()
 
         if self._asked_at is None or now >= self._asked_at + self._ask_interval:
@@ -464,8 +528,26 @@ class Restore:
         else:
             asking = tuple(content_id for content_id in missing if content_id not in waited)
 
-        self._status, self._due_at = RestoreStatus.WAITING, self._asked_at + self._ask_interval
+        self._status = RestoreStatus.WAITING
+        self._due_at = min(self._asked_at + self._ask_interval, give_up_at)
         return asking
+
+    def _give_up(self, now: float) -> None:
+        """Fail for want of the content waited on, saying what was not restored for it."""
+        if self._lacking:
+            entries, objects = len(self._lacking), len(self._missing)
+            what = f"{entries} entries lacking {objects} objects were not restored"
+
+        else:
+            names = ", ".join(sorted(str(content_id) for content_id in self._missing))
+            what = f"the bundle cannot be read without {names}"
+
+        self._status, self._finished_at, self._gave_up = RestoreStatus.FAILED, now, True
+        self._error = (
+            f"Gave up, as none of the content it waits on arrived in "
+            f"{self._give_up_after:g} seconds; {what}"
+        )
+        self._missing.clear()
 
 
 def _load(content_id: ContentId, source: ContentSource, secret: bytes) -> Bundle:

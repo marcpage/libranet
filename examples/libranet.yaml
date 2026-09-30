@@ -179,6 +179,10 @@ backup:
   # above the last bundle stored whole; the next is stored whole again.
   # 0 stores every one whole.
   max_update_layers: 32
+  # Provisional: a restore waiting on content it lacks gives up, and fails,
+  # once this long passes with none of that content arriving. Asking for the
+  # same restore again carries it on where it left off.
+  restore_stall_seconds: 86400.0
   # Extended attributes a backup or build leaves out, and a restore does not
   # set: shell-style patterns, case sensitive. These describe the local copy
   # rather than the content on macOS, or on Linux are namespaces only a

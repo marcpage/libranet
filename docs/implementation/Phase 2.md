@@ -2068,23 +2068,86 @@ held back until a backup is asked for, and the log line.
   been deleted everywhere never arrives, and the restore waits forever.
 - Settled in the issue: a configurable time after which a restore that
   has received no new content fails.
+- A failed restore reports at least which files it could not restore
+  and which content ids they lacked, so an operator can tell what was
+  lost.
 
-**Open questions:**
+Ruled before building, each my recommendation:
 
-- The default. It has to outlast a peer that is offline overnight, since
-  failing gives up on content that was only slow.
-- What "no new content" means: none of the content it waits on arrived,
-  or no pass restored anything. They differ when content arrives that
-  completes no file.
-- What a failed restore reports: at least which files it could not
-  restore and which content ids they lacked, so an operator can tell what
-  was lost.
-- Whether a restore request can set its own limit, as it sets
-  `on_conflict`.
+- **The default is a day**, 86,400 seconds, which outlasts a peer that
+  is offline overnight. It is `backup.restore_stall_seconds`.
+- **Any content the restore waits on arriving is new content**, and
+  starts the time again, whether or not it completes anything. A large
+  file arriving a part at a time restores nothing until its last part,
+  and is not given up on while its parts keep coming.
+- **The limit is the node's alone.** A restore request does not set its
+  own; one can be added later.
+- **Asking for a restore that gave up carries it on where it left off**,
+  as asking for one still waiting does, and starts the time again.
+  Asking for one that failed any other way still starts it over, which
+  with `refuse` fails once anything was written.
+
+What was built: `BackupConfig.restore_stall_seconds` (86,400, above
+zero), stated in `examples/libranet.yaml` and `File Layout.md`. `Restore`
+(`backup/restores.py`) takes it as `give_up_after`, and notes when content
+it waits on last arrived: when `landed` says it did, when a pass finds
+held what the pass before lacked, and when it is asked for or asked for
+again. A restore waiting is due at the earlier of its next ask and when
+it would give up, so it gives up on time, not up to an ask interval late.
+The pass that is due then restores whatever is now held, and gives up
+only if none of what it waits on arrived: the restore fails, asks for
+nothing, and its `error` says how long it waited and how many entries,
+lacking how many objects, it did not restore — or, if it never read the
+bundle, which objects the bundle cannot be read without. `RestorePass`
+gains `given_up`, each entry not restored with the content it lacked,
+which the module logs a line each, at warning, before the restore's own
+"Could not restore" line. `Restore.can_carry_on` says whether asking again
+carries it on, which the module now asks rather than whether it is
+finished, and `ask_again` returns a restore that gave up to waiting.
+The `/config` page's hint for restores says they give up, and that
+asking again carries one on. About 140 new or changed lines of non-test
+Python, and two of HTML, so it is one change set.
+
+Seen in a live run of one node, with `restore_stall_seconds` at 15 and
+`stats.seek_entry_ttl_seconds` at 20: a backup of two files, one of whose
+parts was then deleted from CAS, restored the other file and waited;
+15 seconds later it failed, the report's error saying 1 entry lacking 1
+object was not restored, and the log naming the file and the part. With
+the part put back, asking for the same restore again, still `refuse`,
+carried it on into the partly restored directory, and it was done, its
+`requested_at` unchanged.
+
+My calls, not yet reviewed:
+
+- **Content found held counts as arriving, as well as content announced.**
+  Content stored during a pass is held before its `data.stored` is
+  handled, and the pass finds it, so a pass that finds held what the pass
+  before lacked starts the time again too.
+- **A last pass runs before giving up.** The restore gives up in the pass
+  due at its limit, not beside it, so what is held by then is restored
+  first.
+- **Giving up writes nothing more.** Directories above an entry not
+  restored keep the times and permissions they were made with, since a
+  directory is finished only once nothing beneath it waits; carrying the
+  restore on finishes them.
+- **The report gains no field.** `status` is `failed`, `error` says what
+  was not restored, `missing` is 0 since it waits on nothing, and the
+  entries themselves are logged, as `skipped` counts paths the log names.
+  Entries given up on are not counted as `skipped`, since carrying on can
+  still restore them.
+- **An entry given up on is logged at warning**, as a path left out is,
+  and a directory is named only if it lacks content of its own, such as
+  an extended attribute's parts.
 
 **Testable in isolation:** restore tests with a fake clock and a temp CAS
 missing one part, asserting the restore fails once the clock passes the
 limit with nothing arriving, and does not while parts keep arriving.
+Built as those tests in `test_backup_restores.py`, with a bundle never
+read, content found held without being announced, asking again starting
+the time over, and a restore that gave up carried on to done; in
+`test_backup_module.py`, for a restore giving up on time without asking,
+its log lines, and being carried on by asking again; and in
+`test_config_models.py` for the default.
 
 ---
 

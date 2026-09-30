@@ -362,6 +362,12 @@ class BackupConfig(_Section):
     # the next is stored whole again (Phase 2 Step 31). 0 stores each whole.
     max_update_layers: int = Field(default=32, ge=0)
 
+    # A restore waiting on content gives up, and fails, once this long passes
+    # with none of what it waits on arriving; asking for it again carries it
+    # on (Phase 2 Step 51). Provisional default: a day, to outlast a peer
+    # that is offline overnight.
+    restore_stall_seconds: float = Field(default=86400.0, gt=0)
+
     # Extended attributes a backup or build leaves out of its bundle, and a
     # restore does not set: shell-style patterns, matched case sensitively
     # (Phase 2 Step 52). By default, those describing the local copy rather
