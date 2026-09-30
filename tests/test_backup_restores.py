@@ -39,6 +39,8 @@ from libranet.webserver.config_requests import BuildRequest, ConflictBehavior, R
 SECRET = b"s" * 32
 NOW = 1_789_000_000.0
 ASK_INTERVAL = 1800.0
+# Longer than two ask intervals, and not a whole number of them.
+GIVE_UP_AFTER = 4000.0
 BIG = urandom(MIB + 1000)
 # 2026-09-01T08:30:00.000123Z
 MODIFIED_NS = 1_788_251_400_000_123_000
@@ -149,7 +151,9 @@ def parts_of(entry: object) -> list[ContentId]:
 def restore_of(
     bundle: ContentId, target: Path, on_conflict: ConflictBehavior = ConflictBehavior.REFUSE
 ) -> Restore:
-    return Restore(RestoreRequest(bundle, str(target), on_conflict), NOW, ASK_INTERVAL)
+    return Restore(
+        RestoreRequest(bundle, str(target), on_conflict), NOW, ASK_INTERVAL, GIVE_UP_AFTER
+    )
 
 
 def attempt(
@@ -384,6 +388,142 @@ def test_content_not_waited_on_does_not_carry_a_restore_on(
     assert restore.due_at == NOW + ASK_INTERVAL
 
 
+def test_a_restore_nothing_arrives_for_gives_up_naming_what_it_did_not_restore(
+    tmp_path: Path, held: CasStore, store: CasStore, target: Path
+) -> None:
+    near, far = (file_entry(tmp_path, held, data) for data in (b"near", b"far away"))
+    bundle = stored({"near.txt": near, "far.txt": far}, held)
+    copy([bundle, *parts_of(near)], held, store)
+    restore = restore_of(bundle, target)
+    attempt(restore, store)
+    attempt(restore, store, NOW + ASK_INTERVAL)
+    attempt(restore, store, NOW + 2 * ASK_INTERVAL)
+
+    assert restore.due_at == NOW + GIVE_UP_AFTER
+    assert not restore.is_due(NOW + GIVE_UP_AFTER - 1)
+    assert attempt(restore, store, NOW + GIVE_UP_AFTER) == RestorePass(
+        {}, (), given_up={"far.txt": tuple(parts_of(far))}
+    )
+    assert restore.status is RestoreStatus.FAILED and restore.finished
+    assert restore.report() == {
+        "restore_id": restore.request.restore_id,
+        "bundle": str(bundle),
+        "directory": str(target),
+        "on_conflict": "refuse",
+        "status": "failed",
+        "error": "Gave up, as none of the content it waits on arrived in 4000 seconds; "
+        "1 entries lacking 1 objects were not restored",
+        "requested_at": NOW,
+        "finished_at": NOW + GIVE_UP_AFTER,
+        "restored": 1,
+        "skipped": 0,
+        "missing": 0,
+    }
+    assert (target / "near.txt").read_bytes() == b"near"
+    assert not (target / "far.txt").exists()
+
+
+def test_a_restore_that_cannot_read_its_bundle_gives_up_naming_what_it_lacks(
+    tree: Path, held: CasStore, store: CasStore, target: Path
+) -> None:
+    bundle = backed_up(tree, held)
+    restore = restore_of(bundle, target)
+    attempt(restore, store)
+
+    assert attempt(restore, store, NOW + GIVE_UP_AFTER) == RestorePass({}, ())
+    assert restore.error is not None
+    assert restore.error.endswith(f"; the bundle cannot be read without {bundle}")
+    assert not target.exists()
+
+
+def test_content_arriving_keeps_a_restore_from_giving_up_though_it_completes_nothing(
+    tmp_path: Path, held: CasStore, store: CasStore, target: Path
+) -> None:
+    entry = file_entry(tmp_path, held, BIG)
+    first, second = parts_of(entry)
+    bundle = stored({"big.bin": entry}, held)
+    copy([bundle], held, store)
+    restore = restore_of(bundle, target)
+    attempt(restore, store)
+    copy([first], held, store)
+
+    assert restore.landed(first, NOW + 1000)
+
+    attempt(restore, store, NOW + GIVE_UP_AFTER)
+
+    assert (restore.status, restore.missing) == (RestoreStatus.WAITING, frozenset({second}))
+    assert restore.report()["restored"] == 0
+    assert restore.due_at == NOW + 1000 + GIVE_UP_AFTER
+
+    attempt(restore, store, NOW + 1000 + GIVE_UP_AFTER)
+
+    assert restore.status is RestoreStatus.FAILED
+
+
+def test_content_found_held_though_its_arrival_was_not_noted_keeps_a_restore_from_giving_up(
+    tmp_path: Path, held: CasStore, store: CasStore, target: Path
+) -> None:
+    first, second = (file_entry(tmp_path, held, data) for data in (b"first", b"second"))
+    bundle = stored({"first.txt": first, "second.txt": second}, held)
+    copy([bundle], held, store)
+    restore = restore_of(bundle, target)
+    attempt(restore, store)
+    copy(parts_of(first), held, store)
+    attempt(restore, store, NOW + ASK_INTERVAL)
+    attempt(restore, store, NOW + GIVE_UP_AFTER)
+
+    assert restore.status is RestoreStatus.WAITING
+    assert (target / "first.txt").read_bytes() == b"first"
+    assert restore.due_at == NOW + ASK_INTERVAL + GIVE_UP_AFTER
+
+
+def test_asking_again_starts_the_time_before_giving_up_again(
+    tmp_path: Path, held: CasStore, store: CasStore, target: Path
+) -> None:
+    entry = file_entry(tmp_path, held, b"far away")
+    bundle = stored({"far.txt": entry}, held)
+    copy([bundle], held, store)
+    restore = restore_of(bundle, target)
+    attempt(restore, store)
+    restore.ask_again(restore.request, NOW + 1000)
+    attempt(restore, store, NOW + GIVE_UP_AFTER)
+
+    assert restore.report()["status"] == "waiting"
+
+    attempt(restore, store, NOW + 1000 + GIVE_UP_AFTER)
+
+    assert restore.status is RestoreStatus.FAILED
+
+
+def test_asking_for_a_restore_that_gave_up_carries_it_on_where_it_left_off(
+    tree: Path, held: CasStore, store: CasStore, target: Path
+) -> None:
+    built = build_directory(tree, held).bundle
+    bundle = store_bundle(built, held, SECRET)
+    lacked = parts_of(built.entries["docs/notes.txt"])
+    copy_all(held, store)
+
+    for part in lacked:
+        store.delete(part)
+
+    restore = restore_of(bundle, target)
+    attempt(restore, store)
+    attempt(restore, store, NOW + GIVE_UP_AFTER)
+
+    assert restore.status is RestoreStatus.FAILED and restore.can_carry_on
+
+    copy(lacked, held, store)
+    restore.ask_again(restore.request, NOW + GIVE_UP_AFTER + 1)
+    report = restore.report()
+
+    assert (report["status"], report["error"], report["finished_at"]) == ("waiting", None, None)
+    assert restore.is_due(NOW + GIVE_UP_AFTER + 1) and not restore.finished
+    assert attempt(restore, store, NOW + GIVE_UP_AFTER + 1) == RestorePass({}, ())
+    assert described(target) == described(tree)
+    assert (restore.status, restore.report()["restored"]) == (RestoreStatus.DONE, 7)
+    assert not restore.can_carry_on
+
+
 def test_entries_beneath_a_file_or_symlink_are_left_out(
     tmp_path: Path, store: CasStore, target: Path
 ) -> None:
@@ -597,12 +737,16 @@ def test_a_failed_restore_reports_why_and_waits_on_nothing(
 ) -> None:
     restore = restore_of(backed_up(tree, held), target)
     attempt(restore, store)
+
+    assert restore.can_carry_on
+
     restore.fail(OSError("It broke"), NOW + 1)
     report = restore.report()
 
     assert (report["status"], report["error"]) == ("failed", "It broke")
     assert (report["finished_at"], report["missing"]) == (NOW + 1, 0)
     assert restore.finished and not restore.is_due(NOW + 2)
+    assert not restore.can_carry_on
 
 
 def test_a_restore_not_yet_attempted_is_due_at_once(target: Path) -> None:

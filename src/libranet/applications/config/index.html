@@ -342,7 +342,8 @@
   <section aria-labelledby="restores-heading">
     <h2 id="restores-heading">Restores</h2>
     <p class="hint">Each rebuilds a backup bundle into a directory, fetching from peers whatever
-    this node lacks. They are forgotten when the node restarts.</p>
+    this node lacks, and gives up if none of that arrives for a long while; asking for the same
+    restore again carries it on. They are forgotten when the node restarts.</p>
     <p class="state" id="restores-state">Loading…</p>
     <div class="table-wrap">
       <table id="restores-table" aria-labelledby="restores-heading" hidden>

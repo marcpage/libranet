@@ -54,9 +54,13 @@ as a miss would be::
 so that the fetcher (Step 12) retrieves it and it joins this node's seek list.
 The restore carries on as that content is stored, and asks again for whatever
 it still lacks every half ``stats.seek_entry_ttl_seconds``, so that it stays
-in the seek list for peers that connect later. Asking for a restore that is
-still waiting carries it on at once. Asking for one that is done or has failed
-starts it again. Restores are kept in memory only, so a restart forgets them.
+in the seek list for peers that connect later. Once
+``backup.restore_stall_seconds`` pass with none of that content arriving, it
+gives up and fails, and each entry it did not restore is logged with the
+content it lacked (Phase 2 Step 51). Asking for a restore that is still
+waiting, or that gave up, carries it on at once, and starts that time again.
+Asking for one that is done, or failed any other way, starts it again.
+Restores are kept in memory only, so a restart forgets them.
 A pass runs between two messages, as a backup does, and a restore due goes
 ahead of any backup.
 
@@ -99,9 +103,9 @@ Each restore is reported, in the order they were asked for, as::
 
 ``status`` is ``waiting`` between passes, ``running`` during one, ``done``
 once every entry is restored or left out, and ``failed`` if it could not go
-on, with ``error`` saying why. ``restored`` counts the entries restored so
-far, ``skipped`` those left out, which are logged, and ``missing`` the objects
-it waits on.
+on, or gave up, with ``error`` saying why. ``restored`` counts the entries
+restored so far, ``skipped`` those left out, which are logged, and ``missing``
+the objects it waits on.
 
 Each build and export is reported, in the order they were asked for, as::
 
@@ -133,7 +137,7 @@ from typing import Any, Callable, ClassVar, Final, Mapping
 from libranet.backup.builds import Build, BuildRecordError
 from libranet.backup.exports import Export
 from libranet.backup.jobs import BackupJob, ExpandedBackups, load_jobs, save_jobs
-from libranet.backup.restores import Restore
+from libranet.backup.restores import Restore, RestoreStatus
 from libranet.backup.runs import AnnouncingStore, Backup, BuildSettings, back_up
 from libranet.backup.tasks import TaskStatus
 from libranet.bundle.building import IgnoredPaths
@@ -346,9 +350,11 @@ class BackupModule(ModuleBase):
         now = self._clock()
         restore = self._restores.get(request.restore_id)
 
-        if restore is None or restore.finished:
+        if restore is None or not restore.can_carry_on:
             self._restores.pop(request.restore_id, None)
-            self._restores[request.restore_id] = Restore(request, now, self._ask_interval())
+            self._restores[request.restore_id] = Restore(
+                request, now, self._ask_interval(), self._config.backup.restore_stall_seconds
+            )
             self.logger.info("Restoring %s into %s", request.bundle, request.directory)
 
         else:
@@ -464,12 +470,26 @@ class BackupModule(ModuleBase):
                     {"algorithm": content_id.algorithm, "hash": content_id.hash},
                 )
 
+            for path, lacked in restore_pass.given_up.items():
+                self.logger.warning(
+                    "Did not restore %s into %s, lacking %s",
+                    path,
+                    request.directory,
+                    ", ".join(str(content_id) for content_id in lacked),
+                )
+
             self._log_restore(restore)
 
         self._report()
 
     def _log_restore(self, restore: Restore) -> None:
         request = restore.request
+
+        if restore.status is RestoreStatus.FAILED:
+            self.logger.warning(
+                "Could not restore %s into %s: %s", request.bundle, request.directory, restore.error
+            )
+            return
 
         if restore.finished:
             self.logger.info("Restored %s into %s", request.bundle, request.directory)

@@ -563,6 +563,7 @@ optional; `examples/libranet.yaml` shows them all with their defaults.
 | `stats.seek_entry_ttl_seconds` | `3600.0` | — | How long an unmet request stays in `seek.json` |
 | `backup.interval_seconds` | `3600.0` | — | How often a job's directory is checked |
 | `backup.max_update_layers` | `32` | — | Update layers a backup or build stores over its last whole bundle before storing a whole one again |
+| `backup.restore_stall_seconds` | `86400.0` | — | How long a restore waits with none of the content it lacks arriving before it gives up |
 | `backup.excluded_xattrs` | macOS local-copy attributes; Linux `security.*`, `system.*`, `trusted.*` | — | Extended attributes a backup or build leaves out of its bundle, and a restore does not set |
 | `logging.directory` | Platform log directory | `--log-dir` | Root of §5 |
 | `logging.file_name` | `libranet.log` | — | Stem and suffix of every log file |

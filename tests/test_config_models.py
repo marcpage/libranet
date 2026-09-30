@@ -101,6 +101,13 @@ def test_local_copy_and_privileged_attributes_are_excluded_by_default() -> None:
     )
 
 
+def test_a_restore_gives_up_after_a_day_with_nothing_arriving_by_default() -> None:
+    assert BackupConfig().restore_stall_seconds == 86400.0
+
+    with raises(ValidationError):
+        BackupConfig(restore_stall_seconds=0)
+
+
 def test_unsigned_api_reads_are_allowed_unless_disabled() -> None:
     assert LibranetConfig().identity.allow_unsigned_api_reads is True
 
