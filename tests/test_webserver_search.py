@@ -9,6 +9,7 @@ from pytest import mark, raises
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.store import CasStore
+from libranet.config.models import StorageConfig
 from libranet.webserver.search import LocalSearch, SearchCache, normalize_prefix
 
 
@@ -103,3 +104,39 @@ def test_cache_rejects_invalid_settings(tmp_path: Path) -> None:
 
     with raises(ValueError):
         SearchCache(tmp_path, ttl_seconds=1, prefix_length=0)
+
+
+def test_results_are_cached_as_the_response_body_that_lists_them(tmp_path: Path) -> None:
+    cache = SearchCache(tmp_path, ttl_seconds=10, prefix_length=2)
+    results = [ContentId.create("sha256", _hash("abc1")), ContentId.create("sha256", _hash("ab00"))]
+
+    body = cache.save_results("ab", results)
+
+    assert body == b'{"results":["sha256/%s","sha256/%s"]}' % (
+        _hash("abc1").encode(),
+        _hash("ab00").encode(),
+    )
+    assert cache.load("ab") == body
+
+
+def test_a_node_caches_searches_where_and_for_as_long_as_it_is_configured_to(
+    tmp_path: Path,
+) -> None:
+    storage = StorageConfig(
+        data_dir=tmp_path / "data",
+        cache_dir=tmp_path / "cache",
+        search_cache_ttl_seconds=10,
+        hash_prefix_length=3,
+    )
+    now = [1_000.0]
+    cache = SearchCache.of(storage, clock=lambda: now[0])
+
+    path = cache.save("abcd", b"{}")
+    utime(path, (now[0], now[0]))
+
+    assert path == storage.search_cache_dir / "abc" / "abcd.json"
+    assert cache.load("abcd") == b"{}"
+
+    now[0] += 10
+
+    assert cache.load("abcd") is None

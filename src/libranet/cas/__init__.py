@@ -20,16 +20,19 @@ from libranet.cas.algorithms import (
     Sha256Algorithm,
 )
 from libranet.cas.archive import ArchiveSink, ArchiveSource
+from libranet.cas.compression import decompressed, decompressed_chunks
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import (
     ArchiveError,
     CasError,
     ContentNotFoundError,
     InvalidContentIdError,
+    NotZlibStreamError,
+    StreamTooLargeError,
     UnknownAlgorithmError,
 )
 from libranet.cas.prefix import matching_bits, nearest
-from libranet.cas.store import CasStore
+from libranet.cas.store import CasStore, subdirectories
 from libranet.cas.verification import content_matches
 
 __all__ = [
@@ -45,9 +48,14 @@ __all__ = [
     "HashAlgorithm",
     "Hasher",
     "InvalidContentIdError",
+    "NotZlibStreamError",
     "Sha256Algorithm",
+    "StreamTooLargeError",
     "UnknownAlgorithmError",
     "content_matches",
+    "decompressed",
+    "decompressed_chunks",
     "matching_bits",
     "nearest",
+    "subdirectories",
 ]

@@ -159,8 +159,7 @@ class NodePlace:
     @property
     def key_path(self) -> Path:
         """Where the node looks for its private key."""
-        identity = self.config.identity
-        return identity.resolved_key_dir(self.config.storage) / identity.private_key_path_name
+        return self.config.private_key_path
 
     @property
     def connections_log_path(self) -> Path:

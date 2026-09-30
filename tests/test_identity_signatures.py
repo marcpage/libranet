@@ -11,6 +11,7 @@ from pytest import LogCaptureFixture, fixture, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
+from libranet.config.models import IdentityConfig, LibranetConfig, StorageConfig
 from libranet.identity.errors import (
     InvalidSignatureError,
     MissingSignatureError,
@@ -435,3 +436,22 @@ def test_a_keyid_under_an_unsupported_algorithm_is_logged_as_a_warning(
     (record,) = [r for r in caplog.records if r.name == "libranet.identity.signatures"]
     assert record.levelno == WARNING
     assert record.getMessage().startswith(f"Refusing a signature whose keyid is '{key_id}': ")
+
+
+def test_a_node_verifies_with_its_own_keys_and_freshness_settings(
+    tmp_path: Path, identity: NodeIdentity, signer: MessageSigner
+) -> None:
+    config = LibranetConfig(
+        storage=StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache"),
+        identity=IdentityConfig(signature_max_age_seconds=MAX_AGE, signature_clock_skew_seconds=0),
+    )
+    identity.publish_public_key(CasStore.source_of_truth(config.storage))
+    headers = signer.sign_request("GET", PATH, {})
+
+    fresh = MessageVerifier.of(config, fixed_clock(NOW + MAX_AGE))
+    stale = MessageVerifier.of(config, fixed_clock(NOW + MAX_AGE + 1))
+
+    assert fresh.verify_request("GET", PATH, headers) == identity.node_id
+
+    with raises(InvalidSignatureError):
+        stale.verify_request("GET", PATH, headers)

@@ -39,7 +39,7 @@ from libranet.cas.algorithms import DEFAULT_REGISTRY
 from libranet.cas.content_id import LOWER_HEX_DIGITS, ContentId
 from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.prefix import matching_bits
-from libranet.cas.store import DATA_SEGMENT, CasStore
+from libranet.cas.store import DATA_SEGMENT, CasStore, subdirectories
 from libranet.config.models import MIB
 
 _LOGGER = getLogger(__name__)
@@ -119,23 +119,13 @@ def _prefix_directories(store: CasStore) -> dict[str, list[tuple[str, Path]]]:
     found: dict[str, list[tuple[str, Path]]] = {}
 
     for algorithm in DEFAULT_REGISTRY.names():
-        for directory in _subdirectories(store.root / DATA_SEGMENT / algorithm):
+        for directory in subdirectories(store.root / DATA_SEGMENT / algorithm):
             name = directory.name
 
             if len(name) == store.prefix_length and LOWER_HEX_DIGITS.issuperset(name):
                 found.setdefault(name, []).append((algorithm, directory))
 
     return found
-
-
-def _subdirectories(directory: Path) -> list[Path]:
-    """The directories directly in ``directory``, if it exists."""
-    try:
-        return [entry for entry in directory.iterdir() if entry.is_dir()]
-
-    except FileNotFoundError:
-        # Not logged: a store with no such directory holds nothing there.
-        return []
 
 
 def _objects_in(directory: Path, algorithm: str) -> list[HeldObject]:

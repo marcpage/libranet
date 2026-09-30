@@ -162,3 +162,13 @@ class CasStore:
                     continue
 
                 yield content_id
+
+
+def subdirectories(directory: Path) -> list[Path]:
+    """The directories directly in ``directory``; none if it does not exist."""
+    try:
+        return [entry for entry in directory.iterdir() if entry.is_dir()]
+
+    except FileNotFoundError:
+        # Not logged: nothing has been stored beneath a directory not made yet.
+        return []

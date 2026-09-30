@@ -8,7 +8,9 @@ from libranet.unbundler.lookup import (
     MAX_SYMLINK_HOPS,
     FoundDirectory,
     FoundFile,
+    PathEnd,
     ResolvedDirectory,
+    path_reached,
 )
 from libranet.unbundler.module import (
     DEFAULT_MAX_CACHED_BUNDLES,
@@ -23,9 +25,11 @@ __all__ = [
     "MAX_SYMLINK_HOPS",
     "FoundDirectory",
     "FoundFile",
+    "PathEnd",
     "PathOutcome",
     "ResolvedDirectory",
     "ResolvedFiles",
     "UnbundlerModule",
+    "path_reached",
     "unbundler_module_factory",
 ]

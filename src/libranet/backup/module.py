@@ -661,9 +661,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             OSError: it could not be read or written.
         """
         if self._secret is None:
-            identity = self._config.identity
-            key_dir = identity.resolved_key_dir(self._config.storage)
-            self._secret = load_or_create_backup_secret(key_dir / identity.backup_secret_path_name)
+            self._secret = load_or_create_backup_secret(self._config.backup_secret_path)
 
         return self._secret
 

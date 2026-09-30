@@ -377,11 +377,7 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
 
         self.publish(
             EventType.EVICTION_CANDIDATES,
-            {
-                "objects": [
-                    {**held.content_id.fields(), "size": held.size_bytes} for held in chosen
-                ]
-            },
+            {"objects": [{**held.content_id.fields(), "size": held.size_bytes} for held in chosen]},
         )
 
     def _on_app_accessed(self, message: Message) -> None:

@@ -10,7 +10,9 @@ from libranet.unbundler.lookup import (
     MAX_SYMLINK_HOPS,
     FoundDirectory,
     FoundFile,
+    PathEnd,
     ResolvedDirectory,
+    path_reached,
 )
 
 INDEX = FileBundle(parts=("sha256/" + "1" * 64,))
@@ -120,3 +122,38 @@ def test_an_empty_directory_has_only_its_root() -> None:
 
     assert directory.look_up("") == FoundDirectory("")
     assert directory.look_up("index.html") is None
+
+
+@mark.parametrize(
+    "path, end",
+    [
+        ("..", PathEnd.OUTSIDE),
+        ("escape", PathEnd.OUTSIDE),
+        ("loop-a", PathEnd.TOO_MANY_LINKS),
+        ("index.html/more", PathEnd.BENEATH_FILE),
+        ("to-file-dir", PathEnd.BENEATH_FILE),
+        ("missing.html", PathEnd.NOT_FOUND),
+        ("missing/index.html", PathEnd.NOT_FOUND),
+    ],
+)
+def test_a_path_that_reaches_nothing_says_why(path: str, end: PathEnd) -> None:
+    directories = ResolvedDirectory.of(ENTRIES).directories
+
+    assert path_reached(ENTRIES, (), path, directories) is end
+
+
+def test_a_path_is_followed_from_the_directory_it_starts_in() -> None:
+    assert path_reached(ENTRIES, ("docs",), "spec/v1.html") == "docs/spec/v1.html"
+    assert path_reached(ENTRIES, ("docs",), "../index.html") == "index.html"
+    assert path_reached(ENTRIES, ("docs", "spec"), "../..") == ""
+    assert path_reached(ENTRIES, ("docs",), "../..") is PathEnd.OUTSIDE
+
+
+def test_a_path_in_no_entry_is_a_directory_unless_the_directories_are_given() -> None:
+    assert path_reached(ENTRIES, (), "missing/deeper") == "missing/deeper"
+    assert path_reached(ENTRIES, (), "missing/deeper", frozenset({""})) is PathEnd.NOT_FOUND
+
+
+def test_a_path_spelled_like_an_ending_is_still_a_path() -> None:
+    assert path_reached({}, (), "outside") == "outside"
+    assert path_reached({}, (), "outside") != PathEnd.OUTSIDE

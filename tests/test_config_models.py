@@ -279,3 +279,24 @@ def test_applications_are_no_longer_configured_here() -> None:
     # A configuration still naming them fails, rather than being ignored.
     with raises(ValidationError, match="applications"):
         LibranetConfig.model_validate({"applications": {"wiki": "sha256/" + "ab" * 32}})
+
+
+def test_secrets_are_kept_in_keys_under_the_data_directory_by_default(tmp_path: Path) -> None:
+    config = LibranetConfig(storage=StorageConfig(data_dir=tmp_path))
+    keys = tmp_path / "keys"
+
+    assert config.private_key_path == keys / "node_private_key.pem"
+    assert config.backup_secret_path == keys / "backup_secret"
+    assert config.config_credential_path == keys / "config_credential"
+    assert keys in config.directories()
+
+
+def test_secrets_are_kept_in_the_key_directory_configured(tmp_path: Path) -> None:
+    config = LibranetConfig(
+        storage=StorageConfig(data_dir=tmp_path / "data"),
+        identity=IdentityConfig(key_dir=tmp_path / "secrets"),
+    )
+
+    assert config.private_key_path.parent == tmp_path / "secrets"
+    assert config.backup_secret_path.parent == tmp_path / "secrets"
+    assert config.config_credential_path.parent == tmp_path / "secrets"

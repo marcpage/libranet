@@ -34,6 +34,8 @@ from typing import Final
 from libranet.cas.algorithms import DEFAULT_REGISTRY
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
+from libranet.cas.store import subdirectories
+from libranet.config.models import StorageConfig
 
 _LOGGER = getLogger(__name__)
 
@@ -49,6 +51,11 @@ class ResolvedFiles:
 
         self._directory = directory
         self._prefix_length = prefix_length
+
+    @classmethod
+    def of(cls, storage: StorageConfig) -> ResolvedFiles:
+        """Where a node keeps its resolved files, per its configuration."""
+        return cls(storage.resolved_files_dir, storage.hash_prefix_length)
 
     def path_for(self, bundle: ContentId, entry_path: str) -> Path:
         """Where the file at ``entry_path`` in ``bundle`` is kept once resolved."""
@@ -67,7 +74,7 @@ class ResolvedFiles:
         found: list[ContentId] = []
 
         for algorithm in DEFAULT_REGISTRY.names():
-            for directory in _subdirectories(self._directory / algorithm):
+            for directory in subdirectories(self._directory / algorithm):
                 try:
                     bundle = ContentId.create(algorithm, directory.name)
 
@@ -95,13 +102,3 @@ class ResolvedFiles:
 
     def _bundle_dir(self, bundle: ContentId) -> Path:
         return self._directory / bundle.algorithm / bundle.hash
-
-
-def _subdirectories(directory: Path) -> list[Path]:
-    """The directories directly in ``directory``, if it exists."""
-    try:
-        return [entry for entry in directory.iterdir() if entry.is_dir()]
-
-    except FileNotFoundError:
-        # Not logged: nothing has been resolved with that algorithm.
-        return []

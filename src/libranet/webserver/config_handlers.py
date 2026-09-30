@@ -62,7 +62,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from http import HTTPStatus
 from logging import getLogger
-from typing import Any, Final
+from typing import Any, Callable, Final, Protocol
 from urllib.parse import unquote
 
 from libranet.cas.content_id import ContentId
@@ -193,11 +193,27 @@ class BackupReportHandler:
         return json_response({self.field: [dict(entry) for entry in report.entries(self.field)]})
 
 
+class BackupRequest(Protocol):
+    """What a body asks the backup module for, once it has been checked."""
+
+    def payload(self) -> dict[str, Any]:
+        """The message body asking for it, which holds what it is named by."""
+        ...
+
+
 @dataclass(frozen=True)
-class BackupJobHandler:
-    """``POST /config/api/backups``: configure a directory to keep backed up."""
+class BackupRequestHandler:
+    """A ``POST`` asking the backup module for what its body describes.
+
+    ``parse`` reads what is asked for from the body's JSON value, ``event``
+    is what it is published as, and ``id_field`` is the member of its payload
+    that names it, which the answer gives back.
+    """
 
     publish: Publish
+    parse: Callable[[object], BackupRequest]
+    event: EventType
+    id_field: str
 
     def __call__(self, request: Request) -> Response:
         value = _json_or_refusal(request)
@@ -206,19 +222,20 @@ class BackupJobHandler:
             return value
 
         try:
-            job = BackupJobRequest.from_value(value)
+            asked = self.parse(value)
 
         except InvalidConfigRequestError as error:
             _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
             return invalid_request_response(request, error)
 
-        self.publish(EventType.BACKUP_JOB_CONFIGURED, job.payload())
-        return json_response({"job_id": job.job_id}, HTTPStatus.ACCEPTED)
+        payload = asked.payload()
+        self.publish(self.event, payload)
+        return json_response({self.id_field: payload[self.id_field]}, HTTPStatus.ACCEPTED)
 
 
 @dataclass(frozen=True)
-class BackupJobRemovalHandler:
-    """``DELETE /config/api/backups/{job_id}``: stop backing a directory up.
+class BackupJobEventHandler:
+    """A request naming a backup job in its path, published as ``event`` for the backup module.
 
     A job this node never had is accepted like any other: the web server
     holds no job state to check it against, and the backup module reports
@@ -226,6 +243,7 @@ class BackupJobRemovalHandler:
     """
 
     publish: Publish
+    event: EventType
 
     def __call__(self, request: Request) -> Response:
         body = _body_or_refusal(request)
@@ -234,94 +252,8 @@ class BackupJobRemovalHandler:
             return body
 
         job_id = request.params["job_id"].lower()
-        self.publish(EventType.BACKUP_JOB_REMOVED, {"job_id": job_id})
+        self.publish(self.event, {"job_id": job_id})
         return json_response({"job_id": job_id}, HTTPStatus.ACCEPTED)
-
-
-@dataclass(frozen=True)
-class BackupRunHandler:
-    """``POST /config/api/backups/{job_id}/run``: back a job's directory up now."""
-
-    publish: Publish
-
-    def __call__(self, request: Request) -> Response:
-        body = _body_or_refusal(request)
-
-        if isinstance(body, Response):
-            return body
-
-        job_id = request.params["job_id"].lower()
-        self.publish(EventType.BACKUP_RUN_REQUESTED, {"job_id": job_id})
-        return json_response({"job_id": job_id}, HTTPStatus.ACCEPTED)
-
-
-@dataclass(frozen=True)
-class RestoreHandler:
-    """``POST /config/api/restores``: rebuild a backup bundle into a directory."""
-
-    publish: Publish
-
-    def __call__(self, request: Request) -> Response:
-        value = _json_or_refusal(request)
-
-        if isinstance(value, Response):
-            return value
-
-        try:
-            restore = RestoreRequest.from_value(value)
-
-        except InvalidConfigRequestError as error:
-            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            return invalid_request_response(request, error)
-
-        self.publish(EventType.RESTORE_REQUESTED, restore.payload())
-        return json_response({"restore_id": restore.restore_id}, HTTPStatus.ACCEPTED)
-
-
-@dataclass(frozen=True)
-class BuildHandler:
-    """``POST /config/api/builds``: make a bundle of a directory, or a new version of it."""
-
-    publish: Publish
-
-    def __call__(self, request: Request) -> Response:
-        value = _json_or_refusal(request)
-
-        if isinstance(value, Response):
-            return value
-
-        try:
-            build = BuildRequest.from_value(value)
-
-        except InvalidConfigRequestError as error:
-            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            return invalid_request_response(request, error)
-
-        self.publish(EventType.BUILD_REQUESTED, build.payload())
-        return json_response({"build_id": build.build_id}, HTTPStatus.ACCEPTED)
-
-
-@dataclass(frozen=True)
-class ExportHandler:
-    """``POST /config/api/exports``: write a bundle, and all it needs, into a content archive."""
-
-    publish: Publish
-
-    def __call__(self, request: Request) -> Response:
-        value = _json_or_refusal(request)
-
-        if isinstance(value, Response):
-            return value
-
-        try:
-            export = ExportRequest.from_value(value)
-
-        except InvalidConfigRequestError as error:
-            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            return invalid_request_response(request, error)
-
-        self.publish(EventType.EXPORT_REQUESTED, export.payload())
-        return json_response({"export_id": export.export_id}, HTTPStatus.ACCEPTED)
 
 
 @dataclass(frozen=True)
@@ -475,19 +407,33 @@ def config_routes(
     retry_after_seconds: int,
 ) -> tuple[tuple[str, str, Handler], ...]:
     """Every ``/config/api`` route, as ``(method, pattern, handler)`` in route order."""
+    configure = BackupRequestHandler(
+        publish, BackupJobRequest.from_value, EventType.BACKUP_JOB_CONFIGURED, "job_id"
+    )
+    restore = BackupRequestHandler(
+        publish, RestoreRequest.from_value, EventType.RESTORE_REQUESTED, "restore_id"
+    )
+    build = BackupRequestHandler(
+        publish, BuildRequest.from_value, EventType.BUILD_REQUESTED, "build_id"
+    )
+    export = BackupRequestHandler(
+        publish, ExportRequest.from_value, EventType.EXPORT_REQUESTED, "export_id"
+    )
+    run = BackupJobEventHandler(publish, EventType.BACKUP_RUN_REQUESTED)
+    remove = BackupJobEventHandler(publish, EventType.BACKUP_JOB_REMOVED)
     return (
         ("GET", CONFIG_API_PATH, config_index),
         ("GET", NODE_PATH, NodeHandler(node)),
         ("GET", BACKUPS_PATH, BackupReportHandler(state, JOBS_FIELD, retry_after_seconds)),
-        ("POST", BACKUPS_PATH, BackupJobHandler(publish)),
+        ("POST", BACKUPS_PATH, configure),
         ("GET", RESTORES_PATH, BackupReportHandler(state, RESTORES_FIELD, retry_after_seconds)),
-        ("POST", RESTORES_PATH, RestoreHandler(publish)),
+        ("POST", RESTORES_PATH, restore),
         ("GET", BUILDS_PATH, BackupReportHandler(state, BUILDS_FIELD, retry_after_seconds)),
-        ("POST", BUILDS_PATH, BuildHandler(publish)),
+        ("POST", BUILDS_PATH, build),
         ("GET", EXPORTS_PATH, BackupReportHandler(state, EXPORTS_FIELD, retry_after_seconds)),
-        ("POST", EXPORTS_PATH, ExportHandler(publish)),
-        ("POST", BACKUP_RUN_PATTERN, BackupRunHandler(publish)),
-        ("DELETE", BACKUP_JOB_PATTERN, BackupJobRemovalHandler(publish)),
+        ("POST", EXPORTS_PATH, export),
+        ("POST", BACKUP_RUN_PATTERN, run),
+        ("DELETE", BACKUP_JOB_PATTERN, remove),
         ("GET", APPLICATIONS_PATH, ApplicationListHandler(registry)),
         ("POST", APPLICATIONS_PATH, ApplicationRegistrationHandler(registry)),
         ("DELETE", APPLICATION_PATTERN, ApplicationRemovalHandler(registry)),

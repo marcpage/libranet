@@ -18,7 +18,6 @@ from pathlib import Path
 from secrets import token_bytes
 from tempfile import mkstemp
 from typing import Final
-from zlib import decompressobj, error as ZlibError
 
 from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
@@ -32,7 +31,9 @@ from cryptography.hazmat.primitives.serialization import (
 )
 
 from libranet.atomic_file import TEMP_SUFFIX
+from libranet.cas.compression import decompressed
 from libranet.cas.content_id import ContentId
+from libranet.cas.errors import NotZlibStreamError, StreamTooLargeError
 from libranet.identity.errors import KeyFileError
 
 _LOGGER = getLogger(__name__)
@@ -115,19 +116,12 @@ def published_public_key(node_id: ContentId, data: bytes) -> Ed25519PublicKey:
 
 def _decompressed(data: bytes, max_bytes: int) -> bytes | None:
     """``data`` decompressed, or ``None`` unless it is one zlib stream of at most ``max_bytes``."""
-    decompressor = decompressobj()
-
     try:
-        result = decompressor.decompress(data, max_bytes + 1)
+        return decompressed(data, max_bytes)
 
-    except ZlibError:
+    except (NotZlibStreamError, StreamTooLargeError):
         # Not logged: the caller raises KeyFileError for data that is not a key.
         return None
-
-    if len(result) > max_bytes or not decompressor.eof or decompressor.unused_data:
-        return None
-
-    return result
 
 
 def load_or_create_private_key(path: Path) -> Ed25519PrivateKey:

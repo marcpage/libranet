@@ -161,9 +161,7 @@ class ConfigCredential:
     @classmethod
     def of(cls, config: LibranetConfig) -> ConfigCredential:
         """This node's ``/config`` credential, stored beside its other secrets."""
-        identity = config.identity
-        directory = identity.resolved_key_dir(config.storage)
-        return cls(directory / identity.config_credential_path_name)
+        return cls(config.config_credential_path)
 
     @property
     def path(self) -> Path:

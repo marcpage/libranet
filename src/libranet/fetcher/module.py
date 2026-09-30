@@ -105,9 +105,7 @@ class FetcherModule(ModuleBase):
         self.logger.debug("Asked the connection manager for %s", content_id)
 
     def _on_fetch_succeeded(self, message: Message) -> None:
-        self.logger.info(
-            "Fetched %s from %s", ContentId.from_fields(message), message["node_id"]
-        )
+        self.logger.info("Fetched %s from %s", ContentId.from_fields(message), message["node_id"])
 
     def _on_fetch_failed(self, message: Message) -> None:
         self.logger.info("No connected peer had %s", ContentId.from_fields(message))

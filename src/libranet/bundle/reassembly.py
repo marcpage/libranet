@@ -12,11 +12,10 @@ unsupported rather than unchecked.
 from __future__ import annotations
 from typing import Protocol
 
-from libranet.bundle.content import ContentSource, content_chunks, parse_cas_path
+from libranet.bundle.content import ContentSource, check_held, content_chunks, parse_cas_path
 from libranet.bundle.errors import (
     BundleVerificationError,
     MalformedBundleError,
-    MissingContentError,
     UnsupportedBundleError,
 )
 from libranet.bundle.shapes import FileBundle, Metadata
@@ -51,11 +50,7 @@ def write_file(bundle: FileBundle, source: ContentSource, output: ByteSink) -> i
     """
     parts = [parse_cas_path(part) for part in bundle.parts]
     expected = _whole_file_id(bundle.metadata)
-    missing = tuple(part for part in dict.fromkeys(parts) if not source.exists(part))
-
-    if missing:
-        raise MissingContentError(missing)
-
+    check_held(parts, source)
     hasher = DEFAULT_REGISTRY.get(expected.algorithm).hasher() if expected else None
     expected_bytes = bundle.metadata.size_bytes
     size_bytes = 0

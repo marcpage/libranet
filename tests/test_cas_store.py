@@ -8,7 +8,7 @@ from pytest import LogCaptureFixture, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError
-from libranet.cas.store import CasStore
+from libranet.cas.store import CasStore, subdirectories
 from libranet.config.models import StorageConfig
 
 
@@ -162,3 +162,15 @@ def test_iter_prefix_logs_a_file_not_named_as_content_as_a_warning(
     (record,) = caplog.records
     assert record.levelno == WARNING
     assert record.getMessage().startswith(f"Skipping {stray}, not named as CAS content: ")
+
+
+def test_subdirectories_are_the_directories_directly_inside(tmp_path: Path) -> None:
+    (tmp_path / "one" / "deeper").mkdir(parents=True)
+    (tmp_path / "two").mkdir()
+    (tmp_path / "a-file").write_bytes(b"")
+
+    assert sorted(subdirectories(tmp_path)) == [tmp_path / "one", tmp_path / "two"]
+
+
+def test_a_directory_not_made_yet_has_no_subdirectories(tmp_path: Path) -> None:
+    assert subdirectories(tmp_path / "missing") == []
