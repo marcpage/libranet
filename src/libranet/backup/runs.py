@@ -29,6 +29,19 @@ directory's entries are all as they were, as when a file was saved unchanged
 or a backup was asked for with nothing to do, its bundle is kept. A new one
 would add a version recording no change.
 
+A new bundle is made only when content changed: a path added or removed, or
+a file's bytes or a symlink's target changed (§3.3; Phase 2 Step 49). A
+change to metadata alone, such as a file's times, permissions, or extended
+attributes, is held back: the bundle is kept, and the change is kept beside
+it, expanded, so that the next backup compares against it rather than
+hashing the same files again. The next bundle made carries it. A backup
+asked for publishes a change to metadata alone too, as whoever asked
+presumably wants what is there now. An extended attribute too large to hold
+inline is stored as parts as it is read, even if its change is held back.
+Whether only metadata changed cannot be told without the last bundle, so a
+job whose last bundle was neither kept expanded nor can be read here makes a
+new bundle for any change.
+
 A new bundle holds only the entries that changed, as an update layer over
 the last (:mod:`libranet.bundle.layering`), until ``max_layers`` lie above
 the last bundle stored whole; the next is then stored whole again. A layer
@@ -41,8 +54,7 @@ treated as though they were not there. A backup that took in the source of
 truth would take in what it stored the time before, and so grow without end.
 
 Extended attributes are backed up as the node is configured to record them
-(Phase 2 Step 52). A file or directory whose attributes alone changed looks
-unchanged to the change detector, so the change waits for the next backup.
+(Phase 2 Step 52).
 """
 
 from __future__ import annotations
@@ -57,7 +69,7 @@ from libranet.bundle.content import ContentSource
 from libranet.bundle.layering import StoredVersion, Superseded
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.serialization import encode_bundle
-from libranet.bundle.shapes import DirectoryBundle
+from libranet.bundle.shapes import DirectoryBundle, Entry
 from libranet.bundle.storing import ContentSink
 from libranet.bundle.xattrs import ExtendedAttributes
 from libranet.cas.content_id import ContentId
@@ -76,12 +88,15 @@ class Backup:
     """What backing a directory up made of it, and the paths it left out, each with why.
 
     ``expanded`` is the latest bundle, to be kept expanded in place of the
-    one given, or ``None`` if the one given is still right.
+    one given, or ``None`` if the one given is still right. ``held_back``
+    counts the entries whose change to metadata alone the latest bundle does
+    not hold yet.
     """
 
     latest: LatestBackup
     skipped: Mapping[str, str]
     expanded: Superseded | None = None
+    held_back: int = 0
 
 
 class AnnouncingStore:
@@ -112,7 +127,6 @@ class AnnouncingStore:
 
 def back_up(
     directory: Path,
-    fingerprint: str,
     latest: LatestBackup | None,
     store: BackupStore,
     secret: bytes,
@@ -122,20 +136,21 @@ def back_up(
     ignore: Iterable[Path] = (),
     xattrs: ExtendedAttributes | None = None,
     expanded: Superseded | None = None,
+    publish_metadata: bool = False,
 ) -> Backup:
-    """Back ``directory`` up, as its ``fingerprint`` describes it, after ``latest``.
+    """Back ``directory`` up after ``latest``, walking it once.
 
     ``expanded`` is ``latest``'s bundle kept expanded, if it was; if not,
     the bundle is read back from ``store``. The new bundle is stored as a
     layer over it unless that would lie more than ``max_layers`` above the
-    last bundle stored whole. Whatever ``ignore`` names is treated as though
-    it were not there. ``xattrs`` says which extended attributes are
-    recorded; without it, none are.
+    last bundle stored whole. A change to metadata alone is held back unless
+    ``publish_metadata`` says to publish it. Whatever ``ignore`` names is
+    treated as though it were not there. ``xattrs`` says which extended
+    attributes are recorded; without it, none are.
 
     Returns:
         The new latest backup: a bundle made at ``made_at`` superseding
-        ``latest``, or ``latest`` itself, with ``fingerprint``, if the
-        directory's entries have not changed.
+        ``latest``, or ``latest`` itself if nothing it is to publish changed.
 
     Raises:
         OSError: ``directory`` could not be listed, is or lies within a path
@@ -159,25 +174,67 @@ def back_up(
         supersedes,
         max_object_bytes,
         ignore=ignore,
-        previous=None if earlier is None else earlier.entries,
+        previous=None if earlier is None else earlier.seen,
         xattrs=xattrs,
     )
-    entries_digest = sha256(encode_bundle(DirectoryBundle(build.bundle.entries))).hexdigest()
+    entries = build.entries
     skipped = len(build.skipped)
 
-    if latest is not None and entries_digest == latest.entries_digest:
-        unchanged = replace(latest, fingerprint=fingerprint, skipped=skipped)
+    if latest is not None:
+        kept = _kept(latest, earlier, entries, publish_metadata)
 
-        if expanded is not None:
-            return Backup(unchanged, build.skipped)
-
-        # Kept expanded from now on; where it sits is not known if it could not be read back.
-        kept = earlier if earlier is not None else Superseded(latest.bundle, build.entries)
-        return Backup(unchanged, build.skipped, kept)
+        if kept is not None:
+            return Backup(
+                replace(latest, skipped=skipped),
+                build.skipped,
+                None if kept == expanded else kept,
+                len(kept.held_back),
+            )
 
     stored = StoredVersion.store(build.bundle, earlier, store, secret, max_object_bytes, max_layers)
     return Backup(
-        LatestBackup(stored.bundle, made_at, fingerprint, entries_digest, skipped, stored.layering),
+        LatestBackup(stored.bundle, made_at, _digest(entries), skipped, stored.layering),
         build.skipped,
-        stored.expanded(build.entries),
+        stored.expanded(entries),
     )
+
+
+def _kept(
+    latest: LatestBackup,
+    earlier: Superseded | None,
+    entries: Mapping[str, Entry],
+    publish_metadata: bool,
+) -> Superseded | None:
+    """``latest``'s bundle, kept expanded with what ``entries`` change of it held back.
+
+    ``earlier`` is that bundle expanded, if it could be. ``None`` if
+    ``entries`` change what is to be published: content, or with
+    ``publish_metadata``, anything.
+    """
+    if earlier is None:
+        # Neither kept expanded nor held here, so only the digest says whether
+        # anything changed, and where the bundle sits is not known.
+        return (
+            Superseded(latest.bundle, entries)
+            if _digest(entries) == latest.entries_digest
+            else None
+        )
+
+    if entries == earlier.entries:
+        return replace(earlier, held_back={})
+
+    if publish_metadata:
+        return None
+
+    if entries == earlier.seen:
+        return earlier
+
+    if earlier.changes_content(entries):
+        return None
+
+    return replace(earlier, held_back=earlier.changes(entries))
+
+
+def _digest(entries: Mapping[str, Entry]) -> str:
+    """The SHA-256 of ``entries`` as a directory bundle's, without the versions it supersedes."""
+    return sha256(encode_bundle(DirectoryBundle(entries))).hexdigest()

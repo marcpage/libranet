@@ -1974,15 +1974,87 @@ record, protected records, and records written before this step.
   "look now" or "look at these paths", not "it looks like this".
   `LatestBackup.fingerprint` (`backup/jobs.py`) goes with it.
 
-**Open question:** whether a backup an operator asks for through
-`/config` publishes a metadata-only change, since asking for one
-presumably wants what is there now. §3.3's MAY allows either.
+Ruled before building:
+
+- **A backup an operator asks for through `/config` publishes a
+  metadata-only change** (my recommendation), since asking for one
+  presumably wants what is there now. That includes a change held back by
+  an earlier look. §3.3's MAY allows either.
+- **A held-back change is logged only**, with how many entries it holds,
+  at info, in place of the "unchanged" line. The job's report gains no
+  field for it.
+
+What was built: every look is a backup, and walks the directory once.
+`changes.py`, with `ChangeDetector`, `PollingDetector`, and their tests,
+is gone, and so is `LatestBackup.fingerprint`; a jobs file saved before
+still loads, its `fingerprint` not used. `Superseded` (`bundle/layering.py`)
+gains `held_back`, what a backup found changed since the bundle in
+metadata alone, as a layer holds changes, saved as `"held_back"` beside
+`contents` when there is any. `seen` is the bundle's entries with it
+overlaid, which a backup builds from and compares against, and
+`changes_content` says whether entries change more than metadata. `entries`
+stays what the bundle holds, so the next layer is worked out against the
+bundle, and carries what was held back. `back_up` (`backup/runs.py`) loses
+its `fingerprint` and takes `publish_metadata`, and `Backup.held_back`
+counts what the kept bundle does not hold yet. The module reports a job
+`running` for every look, saves the jobs file only when its latest backup
+changed, and passes whether the backup was asked for. `changes_content`
+needs every directory above an entry, which was worked out in four places
+(building, twice in restoring, and the unbundler's lookups); it is now one
+`ancestors` in `bundle/shapes.py`. About 275 new or changed lines of
+non-test Python, and 117 removed with `changes.py`, so it is one change
+set.
+
+Seen in a live run of one node, with a job looked at every 3 seconds: a
+3 MB file's times set back and an extended attribute set on a directory
+were held back, logged as the metadata of 2 entries, with nothing stored;
+a file's bytes changed then made one bundle, storing only its part and the
+bundle, and restoring that bundle brought back the times and the
+attribute. A file's times changed alone were held back until a backup was
+asked for, which published them.
+
+My calls, not yet reviewed:
+
+- **The change detector goes, rather than changing shape.** With one walk
+  per look, polling says only "look now", which the module's interval
+  schedule already says. Phase 4's Step 50 adds what a notification says
+  when it is built.
+- **A file's bytes are known by its parts.** Parts are cut at fixed
+  offsets and named by hash, so the same bytes give the same parts. A
+  file's `versions` are not compared; a backup writes none.
+- **A directory is there however it is recorded.** A marker that appears
+  or goes only because a directory with entries beneath it gained or lost
+  extended attributes adds or removes no path, so it is metadata.
+- **An entry of no known kind counts as a content change**, logged at
+  error, as a restore treats one since Step 52.
+- **Without the last bundle, any change makes a new one.** A job whose
+  bundle was neither kept expanded nor can be read here has only the
+  digest to compare, which cannot tell metadata from content, so it
+  publishes, whole, as before.
+- **An extended attribute too large to hold inline is stored as it is
+  read**, and announced, even when its change is held back. Not storing it
+  would mean reading it again when content changes.
+- **Metadata changed back to what the bundle holds leaves nothing held
+  back**, and the record is saved again without it.
+- **Every look reports `running`**, since every look is now the walk a
+  backup does, and a long one should show. Before this step, a look that
+  found nothing reported only `waiting`.
+- **The record is read and decrypted on every look**, as it was on every
+  backup, rather than kept in memory between looks. Step 48 measured
+  opening 100,000 entries at 0.07 s, before parsing.
 
 **Testable in isolation:** back up a fixture directory, touch a file's
 times only, and back up again, asserting no bundle is published and the
 record holds the new times; then change one file's bytes, asserting one
 new bundle carrying both changes. Listing is injected, so a test can
-assert one walk per run.
+assert one walk per run. Built as those tests in `test_backup_runs.py`,
+with an attribute changed alone, a held-back file not opened again, a
+backup asked for publishing a change held back, and metadata changed
+back; `test_bundle_layering.py` for the JSON form of `held_back`, `seen`,
+and which changes are content; `test_backup_jobs.py` for a record keeping
+what is held back and an old `fingerprint`; and `test_backup_module.py`,
+with the directory's listing counted, for one walk per look, a change
+held back until a backup is asked for, and the log line.
 
 ---
 

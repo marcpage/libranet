@@ -144,6 +144,9 @@ Moved from Phase 2 unbuilt, with #85.
   provided it has the rest of the entries to carry forward, which Phase
   2 Step 48's record holds. Without that, a notification only says when
   to walk, which saves the idle polls but not the walk.
+- Phase 2 Step 49 removed the change detector with the fingerprint: each
+  look is one walk, on the job's interval. What a notification says, "look
+  now" or "look at these paths", is this step's to add.
 - Notifications from ignored paths, the node's own directories among
   them, are dropped as the walk drops them. Otherwise backing up a
   directory that holds the node's storage would set itself off.

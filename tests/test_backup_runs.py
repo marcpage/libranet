@@ -4,11 +4,11 @@ from __future__ import annotations
 from dataclasses import replace
 from hashlib import sha256
 from io import BytesIO
-from os import mkfifo, symlink, urandom, utime
+from os import mkfifo, open as open_file, symlink, urandom, utime
 from pathlib import Path
 from typing import Mapping
 
-from pytest import fixture, mark, raises
+from pytest import MonkeyPatch, fixture, mark, raises
 from xattr import xattr
 
 from libranet.backup.jobs import LatestBackup
@@ -28,7 +28,6 @@ from libranet.config.models import MIB
 
 SECRET = b"s" * 32
 MADE_AT = 1_789_000_000.0
-FINGERPRINT = "first"
 MAX_LAYERS = 2
 BIG = urandom(MIB + 1000)
 # 2026-09-01T08:30:00Z
@@ -108,11 +107,44 @@ def restored(bundle: ContentId, store: CasStore) -> dict[str, object]:
 
 
 def first_backup(tree: Path, backups: AnnouncingStore) -> Backup:
-    return back_up(tree, FINGERPRINT, None, backups, SECRET, MADE_AT, MIB, MAX_LAYERS)
+    return back_up(tree, None, backups, SECRET, MADE_AT, MIB, MAX_LAYERS)
 
 
-def backup_after(first: LatestBackup, tree: Path, backups: AnnouncingStore) -> LatestBackup:
-    return back_up(tree, "second", first, backups, SECRET, MADE_AT + 60, MIB, MAX_LAYERS).latest
+def backup_after(
+    first: LatestBackup, tree: Path, backups: AnnouncingStore, publish_metadata: bool = False
+) -> LatestBackup:
+    return back_up(
+        tree,
+        first,
+        backups,
+        SECRET,
+        MADE_AT + 60,
+        MIB,
+        MAX_LAYERS,
+        publish_metadata=publish_metadata,
+    ).latest
+
+
+def backup_over(
+    earlier: Backup, tree: Path, backups: AnnouncingStore, publish_metadata: bool = False
+) -> Backup:
+    """A backup after ``earlier``, built from what it keeps expanded."""
+    return back_up(
+        tree,
+        earlier.latest,
+        backups,
+        SECRET,
+        MADE_AT + 60,
+        MIB,
+        MAX_LAYERS,
+        expanded=earlier.expanded,
+        publish_metadata=publish_metadata,
+    )
+
+
+def touch(path: Path, nanoseconds: int = WHOLE_SECOND_NS) -> None:
+    """Set ``path``'s times, changing nothing else."""
+    utime(path, ns=(nanoseconds, nanoseconds), follow_symlinks=False)
 
 
 def parts_of(entry: Entry) -> list[ContentId]:
@@ -152,7 +184,6 @@ def test_a_first_backup_records_what_it_was_made_from(tree: Path, backups: Annou
     latest = first_backup(tree, backups).latest
 
     assert latest.made_at == MADE_AT
-    assert latest.fingerprint == FINGERPRINT
     assert latest.skipped == 0
     assert len(latest.entries_digest) == 64
 
@@ -189,7 +220,7 @@ def test_identical_directories_back_up_to_the_same_bundle(
 
 
 def test_another_secret_backs_up_to_another_bundle(tree: Path, backups: AnnouncingStore) -> None:
-    other = back_up(tree, FINGERPRINT, None, backups, b"t" * 32, MADE_AT, MIB, MAX_LAYERS)
+    other = back_up(tree, None, backups, b"t" * 32, MADE_AT, MIB, MAX_LAYERS)
 
     assert other.latest.bundle != first_backup(tree, backups).latest.bundle
 
@@ -218,7 +249,6 @@ def test_a_new_backup_supersedes_the_last(
     assert isinstance(top, DirectoryBundle)
     assert top.versions == (str(first.bundle),)
     assert second.made_at == MADE_AT + 60
-    assert second.fingerprint == "second"
     assert second.entries_digest != first.entries_digest
 
 
@@ -230,7 +260,7 @@ def test_unchanged_entries_keep_the_bundle(
     second = backup_after(first, tree, backups)
 
     assert second == LatestBackup(
-        first.bundle, MADE_AT, "second", first.entries_digest, first.skipped, first.layering
+        first.bundle, MADE_AT, first.entries_digest, first.skipped, first.layering
     )
     assert recorder.announced == []
 
@@ -259,8 +289,8 @@ def test_a_file_whose_metadata_changed_but_not_its_bytes_keeps_its_parts(
     for part in big_parts:
         store.delete(part)
     recorder.announced.clear()
-    utime(tree / "big.bin", ns=(WHOLE_SECOND_NS, WHOLE_SECOND_NS))
-    second = backup_after(first, tree, backups)
+    touch(tree / "big.bin")
+    second = backup_after(first, tree, backups, publish_metadata=True)
     entry = entries_of(second.bundle, store)["big.bin"]
 
     assert recorder.content_ids == {second.bundle}
@@ -287,7 +317,6 @@ def test_creation_times_unlike_those_recorded_keep_the_bundle(
     latest = LatestBackup(
         store_bundle(recorded, backups, SECRET),
         MADE_AT,
-        FINGERPRINT,
         sha256(encode_bundle(recorded)).hexdigest(),
         layering=Layering(),
     )
@@ -318,7 +347,7 @@ def test_a_last_bundle_that_is_not_a_directory_is_not_built_from(
     tree: Path, backups: AnnouncingStore, store: CasStore
 ) -> None:
     not_a_directory = store_bundle(Symlink("elsewhere"), backups, SECRET)
-    first = LatestBackup(not_a_directory, MADE_AT, FINGERPRINT, "no entries")
+    first = LatestBackup(not_a_directory, MADE_AT, "no entries")
     second = backup_after(first, tree, backups)
     top = load_bundle(second.bundle, store, password=SECRET)
 
@@ -389,7 +418,7 @@ def test_ignored_paths_are_left_out_as_though_absent(
     (tree / "docs" / "node").mkdir()
     (tree / "docs" / "node" / "own.txt").write_bytes(b"the node's own")
     backup = back_up(
-        tree, FINGERPRINT, None, backups, SECRET, MADE_AT, MIB, MAX_LAYERS, [tree / "docs" / "node"]
+        tree, None, backups, SECRET, MADE_AT, MIB, MAX_LAYERS, [tree / "docs" / "node"]
     )
 
     assert set(restored(backup.latest.bundle, store)) == {
@@ -406,7 +435,7 @@ def test_a_directory_within_an_ignored_one_cannot_be_backed_up(
     tree: Path, backups: AnnouncingStore
 ) -> None:
     with raises(FileNotFoundError, match="Ignored"):
-        back_up(tree / "docs", FINGERPRINT, None, backups, SECRET, MADE_AT, MIB, MAX_LAYERS, [tree])
+        back_up(tree / "docs", None, backups, SECRET, MADE_AT, MIB, MAX_LAYERS, [tree])
 
 
 def test_paths_left_out_are_counted_and_named(tree: Path, backups: AnnouncingStore) -> None:
@@ -426,9 +455,7 @@ def test_a_directory_too_large_for_one_object_is_split_and_every_chunk_encrypted
     for index in range(200):
         (many / "docs" / f"file-{index:03}.txt").write_bytes(f"file {index}".encode())
 
-    bundle = back_up(
-        many, FINGERPRINT, None, backups, SECRET, MADE_AT, 4096, MAX_LAYERS
-    ).latest.bundle
+    bundle = back_up(many, None, backups, SECRET, MADE_AT, 4096, MAX_LAYERS).latest.bundle
     top = load_bundle(bundle, store, password=SECRET)
 
     assert isinstance(top, DirectoryBundle)
@@ -469,7 +496,6 @@ def test_a_backup_records_the_extended_attributes_asked_for(
 
     backup = back_up(
         tree,
-        FINGERPRINT,
         None,
         backups,
         SECRET,
@@ -488,28 +514,159 @@ def test_a_backup_records_the_extended_attributes_asked_for(
 
 
 @mark.usefixtures("supports_xattrs")
-def test_an_attribute_changed_alone_is_recorded_by_the_next_backup_without_reading_the_file(
+def test_an_attribute_changed_alone_is_held_back_without_reading_the_file(
     tree: Path, backups: AnnouncingStore, store: CasStore, recorder: Recorder
 ) -> None:
     xattrs = ExtendedAttributes()
-    first = back_up(
-        tree, FINGERPRINT, None, backups, SECRET, MADE_AT, MIB, MAX_LAYERS, xattrs=xattrs
-    ).latest
-    big = entries_of(first.bundle, store)["big.bin"]
+    first = back_up(tree, None, backups, SECRET, MADE_AT, MIB, MAX_LAYERS, xattrs=xattrs)
+    big = entries_of(first.latest.bundle, store)["big.bin"]
     assert isinstance(big, FileBundle)
     for part in parts_of(big):
         store.delete(part)
+    recorder.announced.clear()
     xattr(str(tree / "big.bin")).set("user.tag", b"red")
 
     second = back_up(
-        tree, "second", first, backups, SECRET, MADE_AT + 60, MIB, MAX_LAYERS, xattrs=xattrs
-    ).latest
+        tree,
+        first.latest,
+        backups,
+        SECRET,
+        MADE_AT + 60,
+        MIB,
+        MAX_LAYERS,
+        xattrs=xattrs,
+        expanded=first.expanded,
+    )
 
-    assert second.bundle != first.bundle
-    entry = entries_of(second.bundle, store)["big.bin"]
+    assert second.latest == first.latest
+    assert second.held_back == 1
+    assert second.expanded is not None
+    entry = second.expanded.held_back["big.bin"]
     assert isinstance(entry, FileBundle)
     assert (entry.parts, entry.metadata.xattrs) == (big.parts, {"user.tag": "cmVk"})
-    assert not any(store.exists(part) for part in parts_of(big))
+    assert recorder.announced == []
+
+
+def test_a_change_to_times_alone_is_held_back_and_kept_expanded(
+    tree: Path, backups: AnnouncingStore, store: CasStore, recorder: Recorder
+) -> None:
+    first = first_backup(tree, backups)
+    recorder.announced.clear()
+    touch(tree / "readme.txt")
+    second = backup_over(first, tree, backups)
+
+    assert second.latest == first.latest
+    assert recorder.announced == []
+    assert second.held_back == 1
+    assert second.expanded is not None and first.expanded is not None
+    assert second.expanded.entries == first.expanded.entries
+    assert set(second.expanded.held_back) == {"readme.txt"}
+    readme = second.expanded.seen["readme.txt"]
+    assert isinstance(readme, FileBundle)
+    assert readme.metadata.modified == "2026-09-01T08:30:00Z"
+    assert entries_of(first.latest.bundle, store) == first.expanded.entries
+
+
+def test_a_file_whose_change_is_held_back_is_not_read_again(
+    tree: Path, backups: AnnouncingStore, monkeypatch: MonkeyPatch
+) -> None:
+    first = first_backup(tree, backups)
+    touch(tree / "big.bin")
+    second = backup_over(first, tree, backups)
+    opened: list[Path] = []
+
+    def recorded(path: Path, flags: int) -> int:
+        opened.append(path)
+        return open_file(path, flags)
+
+    monkeypatch.setattr("libranet.bundle.building.open_file", recorded)
+    third = backup_over(second, tree, backups)
+
+    assert opened == []
+    assert third.latest == first.latest
+    assert third.expanded is None
+    assert third.held_back == 1
+
+
+def test_a_change_to_content_publishes_what_was_held_back_with_it(
+    tree: Path, backups: AnnouncingStore, store: CasStore, recorder: Recorder
+) -> None:
+    first = first_backup(tree, backups)
+    touch(tree / "readme.txt")
+    second = backup_over(first, tree, backups)
+    recorder.announced.clear()
+    (tree / "docs" / "notes.txt").write_bytes(b"other notes")
+    third = backup_over(second, tree, backups)
+    top = load_bundle(third.latest.bundle, store, password=SECRET)
+    readme = entries_of(third.latest.bundle, store)["readme.txt"]
+
+    assert isinstance(top, DirectoryBundle)
+    assert set(top.entries) == {"readme.txt", "docs/notes.txt"}
+    assert top.versions == (str(first.latest.bundle),)
+    assert recorder.content_ids == {
+        ContentId.for_data(b"other notes", "sha256"),
+        third.latest.bundle,
+    }
+    assert isinstance(readme, FileBundle)
+    assert readme.metadata.modified == "2026-09-01T08:30:00Z"
+    assert third.held_back == 0
+    assert third.expanded is not None and third.expanded.held_back == {}
+
+
+def test_a_backup_asked_for_publishes_a_change_to_metadata_alone(
+    tree: Path, backups: AnnouncingStore, store: CasStore
+) -> None:
+    first = first_backup(tree, backups)
+    touch(tree / "readme.txt")
+    second = backup_over(first, tree, backups, publish_metadata=True)
+    readme = entries_of(second.latest.bundle, store)["readme.txt"]
+
+    assert second.latest.bundle != first.latest.bundle
+    assert isinstance(readme, FileBundle)
+    assert readme.metadata.modified == "2026-09-01T08:30:00Z"
+
+
+def test_a_backup_asked_for_publishes_what_was_held_back_though_nothing_changed_since(
+    tree: Path, backups: AnnouncingStore, store: CasStore
+) -> None:
+    first = first_backup(tree, backups)
+    touch(tree / "readme.txt")
+    second = backup_over(first, tree, backups)
+    third = backup_over(second, tree, backups, publish_metadata=True)
+    readme = entries_of(third.latest.bundle, store)["readme.txt"]
+
+    assert third.latest.bundle != first.latest.bundle
+    assert isinstance(readme, FileBundle)
+    assert readme.metadata.modified == "2026-09-01T08:30:00Z"
+    assert third.expanded is not None and third.expanded.held_back == {}
+
+
+def test_metadata_changed_back_to_what_the_bundle_holds_holds_nothing_back(
+    tree: Path, backups: AnnouncingStore
+) -> None:
+    first = first_backup(tree, backups)
+    was = (tree / "readme.txt").stat().st_mtime_ns
+    touch(tree / "readme.txt")
+    second = backup_over(first, tree, backups)
+    touch(tree / "readme.txt", was)
+    third = backup_over(second, tree, backups)
+
+    assert third.latest == first.latest
+    assert third.held_back == 0
+    assert third.expanded == first.expanded
+
+
+def test_without_the_last_bundle_a_change_to_metadata_alone_makes_a_new_bundle(
+    tree: Path, backups: AnnouncingStore, store: CasStore
+) -> None:
+    first = first_backup(tree, backups).latest
+    store.delete(first.bundle)
+    touch(tree / "readme.txt")
+    second = back_up(tree, first, backups, SECRET, MADE_AT + 60, MIB, MAX_LAYERS)
+
+    # Whether only metadata changed cannot be told, so the new bundle is stored whole.
+    assert second.latest.bundle != first.bundle
+    assert second.latest.layering == Layering()
 
 
 def test_a_backup_is_to_be_kept_expanded(
@@ -535,7 +692,6 @@ def test_a_backup_built_from_its_last_bundle_kept_expanded_reads_neither_it_nor_
 
     second = back_up(
         tree,
-        "second",
         first.latest,
         backups,
         SECRET,
@@ -565,7 +721,6 @@ def test_an_unchanged_directory_keeps_its_bundle_and_what_is_kept_expanded(
 
     second = back_up(
         tree,
-        "second",
         first.latest,
         backups,
         SECRET,
@@ -584,7 +739,7 @@ def test_an_unchanged_directory_not_kept_expanded_is_kept_expanded_as_read_back(
     tree: Path, backups: AnnouncingStore
 ) -> None:
     first = first_backup(tree, backups)
-    second = back_up(tree, "second", first.latest, backups, SECRET, MADE_AT + 60, MIB, MAX_LAYERS)
+    second = back_up(tree, first.latest, backups, SECRET, MADE_AT + 60, MIB, MAX_LAYERS)
 
     assert second.latest.bundle == first.latest.bundle
     assert second.expanded == first.expanded
@@ -595,7 +750,7 @@ def test_an_unchanged_directory_neither_kept_expanded_nor_held_is_kept_expanded_
 ) -> None:
     first = first_backup(tree, backups)
     store.delete(first.latest.bundle)
-    second = back_up(tree, "second", first.latest, backups, SECRET, MADE_AT + 60, MIB, MAX_LAYERS)
+    second = back_up(tree, first.latest, backups, SECRET, MADE_AT + 60, MIB, MAX_LAYERS)
 
     # Where it sits is not known without the bundle, so the next version is stored whole.
     assert second.latest.bundle == first.latest.bundle

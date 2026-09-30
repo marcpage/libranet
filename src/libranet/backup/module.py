@@ -17,13 +17,14 @@ server asks::
 
 A job's directory is looked at once it is configured, again when the module
 starts, and ``interval_seconds`` after each look, or ``backup.interval_seconds``
-for a job that gives none. It is backed up whenever it may have changed since
-its latest backup (:mod:`libranet.backup.changes`), and whenever a backup is
-asked for. A backup reads only the files whose metadata changed, and stores
-only those whose bytes did (:mod:`libranet.backup.runs`). Configuring a job's
-directory again sets its interval anew and keeps its backups. Backups run one
-at a time, each between two messages, so a long one holds up the rest, and
-shutdown waits for it.
+for a job that gives none, and whenever a backup is asked for. Each look is a
+backup, walking the directory once (Phase 2 Step 49). It reads only the files
+whose metadata changed, stores only those whose bytes did, and makes a new
+bundle only if content changed. A change to metadata alone is held back, and
+logged, until content next changes, unless a backup was asked for
+(:mod:`libranet.backup.runs`). Configuring a job's directory again sets its
+interval anew and keeps its backups. Backups run one at a time, each between
+two messages, so a long one holds up the rest, and shutdown waits for it.
 
 Every object a backup or a build stores is announced as the validator
 announces one it stores, so eviction and stats treat that content like any
@@ -34,10 +35,10 @@ other, and the connection manager pushes it to a peer (HttpApi §7.4)::
 ``node_id`` is this node's own, since this node is where the content came
 from.
 
-The node's own directories, as its config lists them, are ignored both when
-looking for changes and when backing up. Whatever holds them is backed up as
-though they were not there, and a job whose directory lies within one fails
-as though that directory did not exist. A restore never writes in them.
+The node's own directories, as its config lists them, are ignored when
+backing up. Whatever holds them is backed up as though they were not there,
+and a job whose directory lies within one fails as though that directory did
+not exist. A restore never writes in them.
 
 Backups and builds record extended attributes, and restores set them, all but
 those ``backup.excluded_xattrs`` names (Phase 2 Step 52).
@@ -86,8 +87,8 @@ Each job is reported as::
     {"job_id", "directory", "interval_seconds", "status", "error", "checked_at",
      "bundle", "backed_up_at", "skipped"}
 
-``status`` is ``waiting`` between looks, ``running`` during a backup, and
-``failed`` if the last look or backup failed, with ``error`` saying why.
+``status`` is ``waiting`` between looks, ``running`` during one, and
+``failed`` if the last look failed, with ``error`` saying why.
 ``bundle`` is the job's current bundle, made at ``backed_up_at``, and
 ``skipped`` counts the paths it leaves out, which are logged.
 
@@ -130,11 +131,10 @@ from time import time
 from typing import Any, Callable, ClassVar, Final, Mapping
 
 from libranet.backup.builds import Build, BuildRecordError
-from libranet.backup.changes import ChangeDetector, PollingDetector
 from libranet.backup.exports import Export
 from libranet.backup.jobs import BackupJob, ExpandedBackups, load_jobs, save_jobs
 from libranet.backup.restores import Restore
-from libranet.backup.runs import AnnouncingStore, back_up
+from libranet.backup.runs import AnnouncingStore, Backup, back_up
 from libranet.backup.tasks import TaskStatus
 from libranet.bundle.building import IgnoredPaths
 from libranet.bundle.errors import BundleError
@@ -212,11 +212,9 @@ class BackupModule(ModuleBase):
         logger: Logger | None = None,
         clock: Callable[[], float] = time,
         poll_interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
-        detector: ChangeDetector | None = None,
     ) -> None:
         super().__init__(name, queues, logger=logger, clock=clock, poll_interval=poll_interval)
         self._config = config
-        self._detector = detector or PollingDetector(config.directories())
         self._store = AnnouncingStore(CasStore.source_of_truth(config.storage), self._announce)
         self._content = LayeredSource.open(config.storage)
         self._expanded = ExpandedBackups(config.storage.expanded_backups_dir)
@@ -577,43 +575,40 @@ class BackupModule(ModuleBase):
             self._look_at(self._jobs[job_id], self._progress[job_id])
 
     def _look_at(self, job: BackupJob, progress: _Progress) -> None:
-        """Back ``job`` up if a backup was asked for, or its directory may have changed."""
+        """Back ``job`` up, publishing a change to metadata alone only if a backup was asked for."""
         requested, progress.requested = progress.requested, False
         progress.checked_at = self._clock()
+        progress.status = JobStatus.RUNNING
+        self._report()
 
         try:
-            fingerprint = self._detector.fingerprint(job.directory)
+            secret = self._backup_secret()
             latest = job.latest
+            expanded = (
+                None if latest is None else self._expanded.load(job.job_id, latest.bundle, secret)
+            )
+            backup = back_up(
+                job.directory,
+                latest,
+                self._store,
+                secret,
+                self._clock(),
+                self._config.storage.max_object_bytes,
+                self._config.backup.max_update_layers,
+                self._config.directories(),
+                self._xattrs,
+                expanded,
+                publish_metadata=requested,
+            )
 
-            if requested or latest is None or fingerprint != latest.fingerprint:
-                progress.status = JobStatus.RUNNING
-                self._report()
-                secret = self._backup_secret()
-                expanded = (
-                    None
-                    if latest is None
-                    else self._expanded.load(job.job_id, latest.bundle, secret)
-                )
-                backup = back_up(
-                    job.directory,
-                    fingerprint,
-                    latest,
-                    self._store,
-                    secret,
-                    self._clock(),
-                    self._config.storage.max_object_bytes,
-                    self._config.backup.max_update_layers,
-                    self._config.directories(),
-                    self._xattrs,
-                    expanded,
-                )
+            # Kept first, so that failing to keep it leaves the job with the bundle it keeps.
+            if backup.expanded is not None:
+                self._expanded.save(job.job_id, backup.expanded, secret)
 
-                # Kept first, so that failing to keep it leaves the job with the bundle it keeps.
-                if backup.expanded is not None:
-                    self._expanded.save(job.job_id, backup.expanded, secret)
-
+            if backup.latest != latest:
                 self._keep({**self._jobs, job.job_id: replace(job, latest=backup.latest)})
-                self._log_backup(job, backup.latest.bundle, backup.skipped)
+
+            self._log_backup(job, backup)
 
         except (OSError, BundleError, KeyFileError) as error:
             progress.fail(error)
@@ -629,15 +624,26 @@ class BackupModule(ModuleBase):
         progress.due_at = self._clock() + self._interval_of(job)
         self._report()
 
-    def _log_backup(self, job: BackupJob, bundle: ContentId, skipped: Mapping[str, str]) -> None:
-        for path, reason in skipped.items():
+    def _log_backup(self, job: BackupJob, backup: Backup) -> None:
+        bundle = backup.latest.bundle
+
+        for path, reason in backup.skipped.items():
             self.logger.warning("Left %s out of the backup of %s: %s", path, job.directory, reason)
 
-        if job.latest is not None and bundle == job.latest.bundle:
-            self.logger.info("%s is unchanged since its backup %s", job.directory, bundle)
+        if job.latest is None or bundle != job.latest.bundle:
+            self.logger.info("Backed up %s as %s", job.directory, bundle)
+
+        elif backup.held_back:
+            self.logger.info(
+                "%s is unchanged since its backup %s but for the metadata of %d entries, "
+                "held back until its content changes",
+                job.directory,
+                bundle,
+                backup.held_back,
+            )
 
         else:
-            self.logger.info("Backed up %s as %s", job.directory, bundle)
+            self.logger.info("%s is unchanged since its backup %s", job.directory, bundle)
 
     def _backup_secret(self) -> bytes:
         """The node's backup secret, made the first time it is needed (§4.2).

@@ -77,6 +77,7 @@ from libranet.bundle.shapes import (
     Entry,
     FileBundle,
     Symlink,
+    ancestors,
 )
 from libranet.bundle.xattrs import ExtendedAttributes
 from libranet.cas.content_id import ContentId
@@ -371,7 +372,7 @@ class Restore:
         for path in sorted(others, key=lambda p: p.split(PATH_SEPARATOR)):
             missing.extend(self._place(pending, path, writer, source, skipped))
 
-        waiting = _ancestors(
+        waiting = ancestors(
             path for path, entry in pending.items() if not isinstance(entry, DirectoryMarker)
         )
         directories = [
@@ -506,10 +507,8 @@ def _check_held(paths: Iterable[str], source: ContentSource) -> None:
 
 def _beneath_other_entry(entries: Mapping[str, Entry], path: str) -> bool:
     """Whether a directory above ``path`` is a file or a symlink in ``entries``."""
-    segments = path.split(PATH_SEPARATOR)
     return any(
-        isinstance(entries.get(PATH_SEPARATOR.join(segments[:depth])), (FileBundle, Symlink))
-        for depth in range(1, len(segments))
+        isinstance(entries.get(above), (FileBundle, Symlink)) for above in ancestors((path,))
     )
 
 
@@ -555,17 +554,6 @@ def _leads_outside(entries: Mapping[str, Entry], path: str, link: Symlink) -> bo
             return False
 
     return False
-
-
-def _ancestors(paths: Iterable[str]) -> set[str]:
-    """Every directory above one of ``paths``."""
-    ancestors: set[str] = set()
-
-    for path in paths:
-        segments = path.split(PATH_SEPARATOR)
-        ancestors.update(PATH_SEPARATOR.join(segments[:depth]) for depth in range(1, len(segments)))
-
-    return ancestors
 
 
 def _deepest_first(path: str) -> tuple[int, str]:

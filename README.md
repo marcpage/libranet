@@ -291,8 +291,13 @@ curl -u admin:secret http://127.0.0.1:8080/config/api/backups
 }]}
 ```
 
-The job is re-checked on its interval, and only a directory that changed is
-read and backed up again. The node's own data directory is never backed up.
+The job is re-checked on its interval, reading only the files whose size,
+times, or permissions changed. A new bundle is made only when content
+changed: a file's bytes, a path added or removed, or a symlink's target. A
+change to times, permissions, or extended attributes alone waits for the
+next one, unless you ask for a backup with
+`POST /config/api/backups/{job_id}/run`. The node's own data directory is
+never backed up.
 
 ### Restore a backup
 

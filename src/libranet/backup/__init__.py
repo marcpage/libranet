@@ -7,7 +7,6 @@ exports a bundle as a content archive.
 """
 
 from libranet.backup.builds import RECORD_SUFFIX, Build, BuildRecord, BuildRecordError
-from libranet.backup.changes import ChangeDetector, PollingDetector
 from libranet.backup.exports import Export
 from libranet.backup.jobs import (
     BackupJob,
@@ -35,14 +34,12 @@ __all__ = [
     "Build",
     "BuildRecord",
     "BuildRecordError",
-    "ChangeDetector",
     "DirectoryWriter",
     "ExpandedBackups",
     "Export",
     "JobFileError",
     "JobStatus",
     "LatestBackup",
-    "PollingDetector",
     "Restore",
     "RestorePass",
     "RestoreStatus",

@@ -30,23 +30,39 @@ The bundle a new version is built from is kept expanded, as a
 extensions read back (Phase 2 Step 48). A bundle expanded from elsewhere, as
 by a restore, has no layering recorded, so where it sits is worked out from
 what it lists.
+
+A backup whose directory changed in metadata alone keeps its bundle, and
+keeps that change beside it, held back, until content next changes
+(BackupSpecification §3.3; Phase 2 Step 49). The next version is layered
+over the bundle as it is, so it carries what was held back with it.
 """
 
 from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from logging import getLogger
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Final, Mapping
 
 from libranet.bundle.content import normalize_cas_path
 from libranet.bundle.errors import BundleError, BundleTooLargeError
 from libranet.bundle.extensions import DEFAULT_MAX_EXTENSIONS, resolve_directory
 from libranet.bundle.parsing import parse_bundle
 from libranet.bundle.serialization import bundle_value
-from libranet.bundle.shapes import Bundle, DirectoryBundle, Entry
+from libranet.bundle.shapes import (
+    Bundle,
+    DirectoryBundle,
+    DirectoryMarker,
+    Entry,
+    FileBundle,
+    Symlink,
+    ancestors,
+)
 from libranet.bundle.storing import ContentSink, StoredDirectory
 from libranet.cas.content_id import ContentId
 
 _LOGGER = getLogger(__name__)
+
+# What a directory is in an outline: there, whatever its metadata.
+_DIRECTORY: Final = (DirectoryMarker,)
 
 
 @dataclass(frozen=True)
@@ -102,14 +118,17 @@ class Superseded:
     ``layering`` is where it sits, if that is known, and ``beneath`` the
     layers beneath it, newest first, down to the last whole bundle, as it
     lists them last among its extensions: one for each layer ``layering``
-    counts, and none if it is not known.
+    counts, and none if it is not known. ``held_back`` is what a backup found
+    changed since, in metadata alone, and did not publish: each entry
+    changed, and ``None`` for each gone, as a layer holds them.
 
     It is what a directory's last bundle is kept as, expanded, and its JSON
     form is a directory bundle holding every entry, with the bundle's id and
-    where it sits::
+    where it sits, and what is held back, if anything is::
 
         {"bundle": "sha256/<hex>", "layering": {"layers": 1, "extensions": 1},
-         "beneath": ["sha256/<hex>"], "contents": {"index.html": {...}}}
+         "beneath": ["sha256/<hex>"], "contents": {"index.html": {...}},
+         "held_back": {"index.html": {...}}}
 
     Raises:
         ValueError: ``beneath`` lists a layer more or fewer than
@@ -120,6 +139,7 @@ class Superseded:
     entries: Mapping[str, Entry]
     beneath: tuple[str, ...] = ()
     layering: Layering | None = None
+    held_back: Mapping[str, Entry | None] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         layers = 0 if self.layering is None else self.layering.layers
@@ -238,23 +258,10 @@ class Superseded:
         if not isinstance(beneath, list) or not all(isinstance(path, str) for path in beneath):
             raise ValueError('"beneath" must be an array of strings')
 
-        contents = value.get("contents")
+        expanded = _directory_entries(value.get("contents"), '"contents"')
+        entries = {path: entry for path, entry in expanded.items() if entry is not None}
 
-        if not isinstance(contents, dict):
-            raise ValueError('"contents" must be an object')
-
-        try:
-            expanded = parse_bundle({"contents": contents})
-
-        except BundleError as error:
-            raise ValueError(f"Its contents are not a directory's: {error}") from None
-
-        if not isinstance(expanded, DirectoryBundle):
-            raise ValueError("Its contents are not a directory's")
-
-        entries = {path: entry for path, entry in expanded.entries.items() if entry is not None}
-
-        if len(entries) < len(expanded.entries):
+        if len(entries) < len(expanded):
             raise ValueError("A bundle kept expanded has its deletions overlaid, so holds none")
 
         layering = value.get("layering")
@@ -264,16 +271,44 @@ class Superseded:
             entries,
             tuple(normalize_cas_path(path) for path in beneath),
             None if layering is None else Layering.from_value(layering),
+            _directory_entries(value.get("held_back", {}), '"held_back"'),
         )
 
     def value(self) -> dict[str, Any]:
         """The JSON object this is kept as."""
-        return {
+        value: dict[str, Any] = {
             "bundle": str(self.bundle),
             "layering": None if self.layering is None else self.layering.value(),
             "beneath": list(self.beneath),
             **bundle_value(DirectoryBundle(self.entries)),
         }
+
+        if self.held_back:
+            value["held_back"] = bundle_value(DirectoryBundle(self.held_back))["contents"]
+
+        return value
+
+    @property
+    def seen(self) -> Mapping[str, Entry]:
+        """Every entry as last seen: what the bundle holds, with what is held back overlaid."""
+        if not self.held_back:
+            return self.entries
+
+        overlaid = {**self.entries, **self.held_back}
+        return {path: entry for path, entry in overlaid.items() if entry is not None}
+
+    def changes_content(self, entries: Mapping[str, Entry]) -> bool:
+        """Whether ``entries`` change more of this bundle's than metadata (BackupSpecification §3.3).
+
+        They do if a path is added or removed, an entry is of another kind,
+        or a file's bytes or a symlink's target changed. A file's bytes are
+        known by its parts. A directory is there whether it has an entry of
+        its own or only entries beneath it, so an entry made for its
+        extended attributes alone adds no path. An entry of no kind known is
+        logged, and counts as a change.
+        """
+        before, after = _outline(self.entries), _outline(entries)
+        return before is None or after is None or before != after
 
     def changes(self, entries: Mapping[str, Entry | None]) -> dict[str, Entry | None]:
         """What ``entries`` change of this bundle's.
@@ -415,3 +450,52 @@ def _count(value: dict[str, Any], key: str) -> int:
         raise ValueError(f'"{key}" must be a whole number')
 
     return count
+
+
+def _directory_entries(value: object, name: str) -> dict[str, Entry | None]:
+    """The entries ``value`` holds, as a directory bundle's ``contents``, saved as ``name``.
+
+    Raises:
+        ValueError: it is not a directory's contents.
+    """
+    if not isinstance(value, dict):
+        raise ValueError(f"{name} must be an object")
+
+    try:
+        directory = parse_bundle({"contents": value})
+
+    except BundleError as error:
+        raise ValueError(f"{name} are not a directory's contents: {error}") from None
+
+    if not isinstance(directory, DirectoryBundle):
+        raise ValueError(f"{name} are not a directory's contents")
+
+    return dict(directory.entries)
+
+
+def _outline(entries: Mapping[str, Entry]) -> dict[str, tuple[object, ...]] | None:
+    """Every path ``entries`` make, each with what is there but its metadata.
+
+    A directory is made alike by an entry of its own or by entries beneath
+    it. ``None`` if an entry is of no kind known, which is logged.
+    """
+    outline: dict[str, tuple[object, ...]] = dict.fromkeys(ancestors(entries.keys()), _DIRECTORY)
+
+    for path, entry in entries.items():
+        # object, not Entry, so that an entry of no kind known is still caught.
+        found: object = entry
+
+        if isinstance(found, FileBundle):
+            outline[path] = (FileBundle, found.parts)
+
+        elif isinstance(found, Symlink):
+            outline[path] = (Symlink, found.target)
+
+        elif isinstance(found, DirectoryMarker):
+            outline[path] = _DIRECTORY
+
+        else:
+            _LOGGER.error("%s is no kind of entry known, so it is taken to change content", path)
+            return None
+
+    return outline

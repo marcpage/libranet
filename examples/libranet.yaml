@@ -170,8 +170,9 @@ stats:
 backup:
   # Provisional: how often each backup job's directory is looked at for
   # changes, for a job configured through /config without an
-  # interval_seconds of its own. Looking lists the directory without reading
-  # any file; only a directory that changed is read and backed up again.
+  # interval_seconds of its own. Looking walks the directory once, reading
+  # only files whose metadata changed, and makes a new backup only if content
+  # changed; a change to metadata alone waits for the next one.
   interval_seconds: 3600.0
   # A backup, or a build through /config, stores only the entries that
   # changed, as a layer over the bundle before, until this many layers lie
