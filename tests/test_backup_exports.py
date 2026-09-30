@@ -10,7 +10,7 @@ from pytest import LogCaptureFixture, MonkeyPatch, fixture, raises
 
 from libranet.backup.builds import Build
 from libranet.backup.exports import Export
-from libranet.backup.runs import AnnouncingStore
+from libranet.backup.runs import AnnouncingStore, BuildSettings
 from libranet.backup.tasks import TaskStatus
 from libranet.bundle.building import IgnoredPaths
 from libranet.bundle.errors import (
@@ -81,9 +81,7 @@ def built(
     task = Build(BuildRequest(str(site), Password.optional(password)), REQUESTED_AT)
     task.run(
         AnnouncingStore(store, lambda content_id, size: None),
-        max_object_bytes,
-        max_layers,
-        (),
+        BuildSettings(max_object_bytes, max_layers),
         lambda: 0.0,
     )
     assert task.bundle is not None

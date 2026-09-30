@@ -11,7 +11,7 @@ from pytest import LogCaptureFixture, fixture, mark, raises
 from xattr import xattr
 
 from libranet.backup.builds import RECORD_SUFFIX, Build, BuildRecord, BuildRecordError
-from libranet.backup.runs import AnnouncingStore
+from libranet.backup.runs import AnnouncingStore, BuildSettings
 from libranet.backup.tasks import TaskStatus
 from libranet.bundle.errors import BundleTooLargeError, PasswordProtectedBundleError
 from libranet.bundle.extensions import resolve_directory
@@ -85,7 +85,7 @@ def build(
 ) -> Build:
     task = Build(BuildRequest(str(site), Password.optional(password)), REQUESTED_AT)
     task.begin()
-    task.run(sink, max_object_bytes, max_layers, ignore, lambda: FINISHED_AT)
+    task.run(sink, BuildSettings(max_object_bytes, max_layers, ignore), lambda: FINISHED_AT)
     return task
 
 
@@ -512,7 +512,11 @@ def test_a_build_records_the_extended_attributes_asked_for(
     task = Build(BuildRequest(str(site), None), REQUESTED_AT)
     task.begin()
 
-    task.run(sink, MIB, MAX_LAYERS, (), lambda: FINISHED_AT, ExtendedAttributes(["user.local"]))
+    task.run(
+        sink,
+        BuildSettings(MIB, MAX_LAYERS, xattrs=ExtendedAttributes(["user.local"])),
+        lambda: FINISHED_AT,
+    )
 
     index = top_of(bundle_of(task), store).entries["index.html"]
     assert isinstance(index, FileBundle)

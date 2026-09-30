@@ -61,7 +61,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
-from typing import Callable, Iterable, Mapping, Protocol
+from typing import Callable, Mapping, Protocol
 
 from libranet.backup.jobs import LatestBackup
 from libranet.bundle.building import build_directory
@@ -74,6 +74,7 @@ from libranet.bundle.storing import ContentSink
 from libranet.bundle.xattrs import ExtendedAttributes
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
+from libranet.config.models import LibranetConfig
 
 #: Told of each object an :class:`AnnouncingStore` writes, and its size as stored.
 Announce = Callable[[ContentId, int], None]
@@ -97,6 +98,44 @@ class Backup:
     skipped: Mapping[str, str]
     expanded: Superseded | None = None
     held_back: int = 0
+
+
+@dataclass(frozen=True)
+class BuildSettings:
+    """How a directory is built into bundles, by a backup or a build.
+
+    ``max_object_bytes`` is the most an object stored may hold, and
+    ``max_layers`` the most update layers a new bundle may lie above the
+    last bundle stored whole. Whatever ``ignore`` names is treated as though
+    it were not there. ``xattrs`` says which extended attributes are
+    recorded; without it, none are.
+
+    Raises:
+        ValueError: ``max_object_bytes`` is not positive, or ``max_layers``
+            is negative.
+    """
+
+    max_object_bytes: int
+    max_layers: int
+    ignore: tuple[Path, ...] = ()
+    xattrs: ExtendedAttributes | None = None
+
+    def __post_init__(self) -> None:
+        if self.max_object_bytes < 1:
+            raise ValueError(f"max_object_bytes must be positive, got {self.max_object_bytes}")
+
+        if self.max_layers < 0:
+            raise ValueError(f"max_layers must not be negative, got {self.max_layers}")
+
+    @classmethod
+    def from_config(cls, config: LibranetConfig) -> BuildSettings:
+        """The settings ``config`` gives, ignoring the node's own directories."""
+        return cls(
+            config.storage.max_object_bytes,
+            config.backup.max_update_layers,
+            config.directories(),
+            ExtendedAttributes(config.backup.excluded_xattrs),
+        )
 
 
 class AnnouncingStore:
@@ -131,22 +170,17 @@ def back_up(
     store: BackupStore,
     secret: bytes,
     made_at: float,
-    max_object_bytes: int,
-    max_layers: int,
-    ignore: Iterable[Path] = (),
-    xattrs: ExtendedAttributes | None = None,
+    settings: BuildSettings,
     expanded: Superseded | None = None,
     publish_metadata: bool = False,
 ) -> Backup:
-    """Back ``directory`` up after ``latest``, walking it once.
+    """Back ``directory`` up after ``latest``, walking it once, as ``settings`` say.
 
     ``expanded`` is ``latest``'s bundle kept expanded, if it was; if not,
     the bundle is read back from ``store``. The new bundle is stored as a
-    layer over it unless that would lie more than ``max_layers`` above the
-    last bundle stored whole. A change to metadata alone is held back unless
-    ``publish_metadata`` says to publish it. Whatever ``ignore`` names is
-    treated as though it were not there. ``xattrs`` says which extended
-    attributes are recorded; without it, none are.
+    layer over it unless that would lie more than ``settings.max_layers``
+    above the last bundle stored whole. A change to metadata alone is held
+    back unless ``publish_metadata`` says to publish it.
 
     Returns:
         The new latest backup: a bundle made at ``made_at`` superseding
@@ -172,10 +206,10 @@ def back_up(
         directory,
         store,
         supersedes,
-        max_object_bytes,
-        ignore=ignore,
+        settings.max_object_bytes,
+        ignore=settings.ignore,
         previous=None if earlier is None else earlier.seen,
-        xattrs=xattrs,
+        xattrs=settings.xattrs,
     )
     entries = build.entries
     skipped = len(build.skipped)
@@ -191,7 +225,9 @@ def back_up(
                 len(kept.held_back),
             )
 
-    stored = StoredVersion.store(build.bundle, earlier, store, secret, max_object_bytes, max_layers)
+    stored = StoredVersion.store(
+        build.bundle, earlier, store, secret, settings.max_object_bytes, settings.max_layers
+    )
     return Backup(
         LatestBackup(stored.bundle, made_at, _digest(entries), skipped, stored.layering),
         build.skipped,

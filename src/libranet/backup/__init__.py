@@ -18,7 +18,14 @@ from libranet.backup.jobs import (
 )
 from libranet.backup.module import BackupModule, JobStatus, backup_module_factory
 from libranet.backup.restores import RESUME_DELAY_SECONDS, Restore, RestorePass, RestoreStatus
-from libranet.backup.runs import Announce, AnnouncingStore, Backup, BackupStore, back_up
+from libranet.backup.runs import (
+    Announce,
+    AnnouncingStore,
+    Backup,
+    BackupStore,
+    BuildSettings,
+    back_up,
+)
 from libranet.backup.tasks import Task, TaskStatus
 from libranet.backup.writing import DirectoryWriter
 
@@ -34,6 +41,7 @@ __all__ = [
     "Build",
     "BuildRecord",
     "BuildRecordError",
+    "BuildSettings",
     "DirectoryWriter",
     "ExpandedBackups",
     "Export",
