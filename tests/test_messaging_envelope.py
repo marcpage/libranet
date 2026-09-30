@@ -33,8 +33,8 @@ def test_make_message_builds_envelope_and_payload() -> None:
         "algorithm": "sha256",
         "hash": "ab" * 32,
     }
-    assert type(message["event"]) is str
-    assert type(message["source"]) is str
+    assert type(message["event"]) is str  # pylint: disable=unidiomatic-typecheck
+    assert type(message["source"]) is str  # pylint: disable=unidiomatic-typecheck
 
 
 def test_make_message_without_payload_has_only_the_envelope() -> None:

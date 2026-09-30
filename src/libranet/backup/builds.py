@@ -258,7 +258,7 @@ class Build(Task):
                 store,
                 password,
                 settings.max_object_bytes,
-                settings.max_layers,
+                max_layers=settings.max_layers,
             )
             bundle = stored.bundle
             BuildRecord.of(stored.expanded(build.entries), password is not None).save(record_path)

@@ -26,6 +26,8 @@ dev = [
     "flake8>=7.0",
     "flake8-bugbear>=26.9.9",
     "mypy>=1.10",
+    "pylint>=4.1.1",
+    "pylint-per-file-ignores>=4.0.0",
     "pytest>=8.2",
     "pytest-cov>=7.1.0",
     "types-PyYAML>=6.0",
@@ -71,6 +73,50 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_decorators = false
+
+[tool.pylint.main]
+py-version = "3.11"
+# Gives pylint per-file-ignores, which it has none of its own.
+load-plugins = ["pylint_per_file_ignores"]
+fail-on = ["useless-suppression"]
+
+[tool.pylint.format]
+max-line-length = 100
+
+[tool.pylint.typecheck]
+# pylint takes a settings model's field for the pydantic FieldInfo that
+# declares it, which has none of the model's attributes.
+ignored-classes = ["pydantic.fields.FieldInfo"]
+
+[tool.pylint."messages control"]
+# A disable that turns nothing off is reported, and fails the run, so that
+# none outlives its reason.
+enable = ["useless-suppression"]
+disable = [
+    # Tests state again what the code holds, and each test file has its own
+    # helpers. The check reads every file at once, so it cannot be turned
+    # off for the tests alone.
+    "duplicate-code",
+    # A Protocol often asks for one method, and a class that is handed what
+    # it works with may offer only one.
+    "too-few-public-methods",
+    # Optional collaborators and tuning are keyword-only, and a call names
+    # each. too-many-positional-arguments limits the ones that are not.
+    "too-many-arguments",
+]
+per-file-ignores = [
+    # hatchling is installed only where a wheel is built.
+    "hatch_build.py:import-error",
+    # A test's name is its docstring. A fixture is asked for by naming it as
+    # a parameter, and a test may ask for many. That there is exactly one of
+    # something is asserted by unpacking it, from a list pylint takes to be
+    # empty. A result is compared with the empty value expected, which checks
+    # its type too.
+    "tests/*.py:missing-function-docstring,redefined-outer-name,too-many-positional-arguments,unbalanced-tuple-unpacking,use-implicit-booleaness-not-comparison",
+    # pylint takes the stub of MessageQueue.get for the queue's own, and so
+    # for returning nothing.
+    "tests/test_webserver_module.py:assignment-from-no-return,unsubscriptable-object",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

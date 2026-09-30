@@ -90,7 +90,7 @@ _LAST_USED: Final = (
 _SCORE: Final = "eviction_score"
 
 
-class StatsDatabase:
+class StatsDatabase:  # pylint: disable=too-many-public-methods
     """Node and data statistics, where nodes may be reached, and outstanding requests.
 
     Usable as a context manager, which closes the connection on exit.

@@ -100,7 +100,7 @@ class ReverseLookup:
             try:
                 self._publish_names(node_id, endpoint)
 
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 self._logger.exception("Looking up names for %s failed", endpoint)
 
     def _publish_names(self, node_id: str, endpoint: str) -> None:

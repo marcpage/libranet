@@ -192,7 +192,7 @@ class _Progress:
         self.status, self.error = JobStatus.FAILED, str(error) or type(error).__name__
 
 
-class BackupModule(ModuleBase):
+class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
     """Keeps configured directories backed up into the source of truth, and restores them."""
 
     subscriptions: ClassVar[frozenset[EventType]] = frozenset(
@@ -450,7 +450,7 @@ class BackupModule(ModuleBase):
                 "Could not restore %s into %s: %s", request.bundle, request.directory, error
             )
 
-        except Exception as error:
+        except Exception as error:  # pylint: disable=broad-exception-caught
             restore.fail(error, self._clock())
             self.logger.exception("Restoring %s into %s failed", request.bundle, request.directory)
 
@@ -518,7 +518,7 @@ class BackupModule(ModuleBase):
             build.fail(error, self._clock())
             self.logger.warning("Could not build %s: %s", directory, error)
 
-        except Exception as error:
+        except Exception as error:  # pylint: disable=broad-exception-caught
             build.fail(error, self._clock())
             self.logger.exception("Building %s failed", directory)
 
@@ -553,7 +553,7 @@ class BackupModule(ModuleBase):
                 "Could not export %s to %s: %s", request.bundle, request.archive, error
             )
 
-        except Exception as error:
+        except Exception as error:  # pylint: disable=broad-exception-caught
             export.fail(error, self._clock())
             self.logger.exception("Exporting %s to %s failed", request.bundle, request.archive)
 
@@ -608,8 +608,8 @@ class BackupModule(ModuleBase):
                 self._store,
                 secret,
                 self._clock(),
-                self._settings,
-                expanded,
+                settings=self._settings,
+                expanded=expanded,
                 publish_metadata=requested,
             )
 
@@ -626,7 +626,7 @@ class BackupModule(ModuleBase):
             progress.fail(error)
             self.logger.warning("Could not back up %s: %s", job.directory, error)
 
-        except Exception as error:
+        except Exception as error:  # pylint: disable=broad-exception-caught
             progress.fail(error)
             self.logger.exception("Backing up %s failed", job.directory)
 

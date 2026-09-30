@@ -30,7 +30,7 @@ def _split(data: bytes) -> tuple[str, dict[str, str], bytes]:
 
 
 def test_get_is_signed_without_a_body(verifier: MessageVerifier) -> None:
-    data = encode_request(SIGNER, "GET", "/data/nodes", "peer:8080", {"Accept": "*/*"})
+    data = encode_request(SIGNER, "GET", "/data/nodes", "peer:8080", headers={"Accept": "*/*"})
 
     request_line, headers, body = _split(data)
 
@@ -90,4 +90,4 @@ def test_requests_that_cannot_be_sent_are_refused(
     method: str, target: str, host: str, headers: dict[str, str]
 ) -> None:
     with raises(ValueError):
-        encode_request(SIGNER, method, target, host, headers)
+        encode_request(SIGNER, method, target, host, headers=headers)

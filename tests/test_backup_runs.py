@@ -108,7 +108,7 @@ def restored(bundle: ContentId, store: CasStore) -> dict[str, object]:
 
 
 def first_backup(tree: Path, backups: AnnouncingStore) -> Backup:
-    return back_up(tree, None, backups, SECRET, MADE_AT, SETTINGS)
+    return back_up(tree, None, backups, SECRET, MADE_AT, settings=SETTINGS)
 
 
 def backup_after(
@@ -120,7 +120,7 @@ def backup_after(
         backups,
         SECRET,
         MADE_AT + 60,
-        SETTINGS,
+        settings=SETTINGS,
         publish_metadata=publish_metadata,
     ).latest
 
@@ -135,7 +135,7 @@ def backup_over(
         backups,
         SECRET,
         MADE_AT + 60,
-        SETTINGS,
+        settings=SETTINGS,
         expanded=earlier.expanded,
         publish_metadata=publish_metadata,
     )
@@ -219,7 +219,7 @@ def test_identical_directories_back_up_to_the_same_bundle(
 
 
 def test_another_secret_backs_up_to_another_bundle(tree: Path, backups: AnnouncingStore) -> None:
-    other = back_up(tree, None, backups, b"t" * 32, MADE_AT, SETTINGS)
+    other = back_up(tree, None, backups, b"t" * 32, MADE_AT, settings=SETTINGS)
 
     assert other.latest.bundle != first_backup(tree, backups).latest.bundle
 
@@ -428,7 +428,7 @@ def test_ignored_paths_are_left_out_as_though_absent(
         backups,
         SECRET,
         MADE_AT,
-        BuildSettings(MIB, MAX_LAYERS, (tree / "docs" / "node",)),
+        settings=BuildSettings(MIB, MAX_LAYERS, (tree / "docs" / "node",)),
     )
 
     assert set(restored(backup.latest.bundle, store)) == {
@@ -446,7 +446,12 @@ def test_a_directory_within_an_ignored_one_cannot_be_backed_up(
 ) -> None:
     with raises(FileNotFoundError, match="Ignored"):
         back_up(
-            tree / "docs", None, backups, SECRET, MADE_AT, BuildSettings(MIB, MAX_LAYERS, (tree,))
+            tree / "docs",
+            None,
+            backups,
+            SECRET,
+            MADE_AT,
+            settings=BuildSettings(MIB, MAX_LAYERS, (tree,)),
         )
 
 
@@ -468,7 +473,7 @@ def test_a_directory_too_large_for_one_object_is_split_and_every_chunk_encrypted
         (many / "docs" / f"file-{index:03}.txt").write_bytes(f"file {index}".encode())
 
     bundle = back_up(
-        many, None, backups, SECRET, MADE_AT, BuildSettings(4096, MAX_LAYERS)
+        many, None, backups, SECRET, MADE_AT, settings=BuildSettings(4096, MAX_LAYERS)
     ).latest.bundle
     top = load_bundle(bundle, store, password=SECRET)
 
@@ -514,7 +519,7 @@ def test_a_backup_records_the_extended_attributes_asked_for(
         backups,
         SECRET,
         MADE_AT,
-        BuildSettings(MIB, MAX_LAYERS, xattrs=ExtendedAttributes(["user.local"])),
+        settings=BuildSettings(MIB, MAX_LAYERS, xattrs=ExtendedAttributes(["user.local"])),
     )
 
     entries = entries_of(backup.latest.bundle, store)
@@ -530,7 +535,7 @@ def test_an_attribute_changed_alone_is_held_back_without_reading_the_file(
     tree: Path, backups: AnnouncingStore, store: CasStore, recorder: Recorder
 ) -> None:
     settings = BuildSettings(MIB, MAX_LAYERS, xattrs=ExtendedAttributes())
-    first = back_up(tree, None, backups, SECRET, MADE_AT, settings)
+    first = back_up(tree, None, backups, SECRET, MADE_AT, settings=settings)
     big = entries_of(first.latest.bundle, store)["big.bin"]
     assert isinstance(big, FileBundle)
 
@@ -546,7 +551,7 @@ def test_an_attribute_changed_alone_is_held_back_without_reading_the_file(
         backups,
         SECRET,
         MADE_AT + 60,
-        settings,
+        settings=settings,
         expanded=first.expanded,
     )
 
@@ -674,7 +679,7 @@ def test_without_the_last_bundle_a_change_to_metadata_alone_makes_a_new_bundle(
     first = first_backup(tree, backups).latest
     store.delete(first.bundle)
     touch(tree / "readme.txt")
-    second = back_up(tree, first, backups, SECRET, MADE_AT + 60, SETTINGS)
+    second = back_up(tree, first, backups, SECRET, MADE_AT + 60, settings=SETTINGS)
 
     # Whether only metadata changed cannot be told, so the new bundle is stored whole.
     assert second.latest.bundle != first.bundle
@@ -710,7 +715,7 @@ def test_a_backup_built_from_its_last_bundle_kept_expanded_reads_neither_it_nor_
         backups,
         SECRET,
         MADE_AT + 60,
-        SETTINGS,
+        settings=SETTINGS,
         expanded=first.expanded,
     )
     top = load_bundle(second.latest.bundle, store, password=SECRET)
@@ -738,7 +743,7 @@ def test_an_unchanged_directory_keeps_its_bundle_and_what_is_kept_expanded(
         backups,
         SECRET,
         MADE_AT + 60,
-        SETTINGS,
+        settings=SETTINGS,
         expanded=first.expanded,
     )
 
@@ -751,7 +756,7 @@ def test_an_unchanged_directory_not_kept_expanded_is_kept_expanded_as_read_back(
     tree: Path, backups: AnnouncingStore
 ) -> None:
     first = first_backup(tree, backups)
-    second = back_up(tree, first.latest, backups, SECRET, MADE_AT + 60, SETTINGS)
+    second = back_up(tree, first.latest, backups, SECRET, MADE_AT + 60, settings=SETTINGS)
 
     assert second.latest.bundle == first.latest.bundle
     assert second.expanded == first.expanded
@@ -762,7 +767,7 @@ def test_an_unchanged_directory_neither_kept_expanded_nor_held_is_kept_expanded_
 ) -> None:
     first = first_backup(tree, backups)
     store.delete(first.latest.bundle)
-    second = back_up(tree, first.latest, backups, SECRET, MADE_AT + 60, SETTINGS)
+    second = back_up(tree, first.latest, backups, SECRET, MADE_AT + 60, settings=SETTINGS)
 
     # Where it sits is not known without the bundle, so the next version is stored whole.
     assert second.latest.bundle == first.latest.bundle

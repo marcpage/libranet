@@ -31,6 +31,7 @@ def encode_request(
     method: str,
     target: str,
     host: str,
+    *,
     headers: Mapping[str, str] | None = None,
     body: bytes = b"",
 ) -> bytes:

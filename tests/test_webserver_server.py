@@ -4,6 +4,8 @@ Published messages land on a plain in-process queue, so no dispatcher runs.
 Every response is expected to be signed by the server's node key.
 """
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 from base64 import b64encode
 from http.client import HTTPConnection, HTTPResponse
@@ -122,6 +124,8 @@ def server(
     registry: ApplicationRegistry,
     credential: ConfigCredential,
 ) -> Iterator[LibranetHTTPServer]:
+    # `store` is asked for so that what it holds is there to be served.
+    # pylint: disable=unused-argument
     for name, bundle in applications.items():
         registry.register(Application.create(name, bundle))
 
@@ -755,9 +759,7 @@ def test_client_can_authenticate_the_server_after_first_contact(
     assert verifier.verify_response(*first_reply) == server_id
 
 
-def test_signed_read_is_served(
-    connection: HTTPConnection, store: CasStore, queues: ModuleQueues
-) -> None:
+def test_signed_read_is_served(connection: HTTPConnection, store: CasStore) -> None:
     reader = _new_identity()
     reader.publish_public_key(store)
 

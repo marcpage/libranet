@@ -84,7 +84,7 @@ IDLE_TIMEOUT_SECONDS: Final = 60.0
 REQUEST_PATH_HEADER: Final = "X-Request-Path"
 
 
-def build_router(
+def build_router(  # pylint: disable=too-many-locals
     storage: StorageConfig,
     retry_after_seconds: int,
     publish: Publish,
@@ -282,7 +282,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.close_connection = True
             return
 
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             self.server.logger.exception("Handler failed for %s %s", self.command, path)
             response = problem_response(
                 Problem.for_status(HTTPStatus.INTERNAL_SERVER_ERROR, instance=path)
@@ -309,7 +309,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         )
         self._send(problem_response(problem), close=True)
 
-    def log_message(self, format: str, *args: Any) -> None:
+    # BaseHTTPRequestHandler names the parameter `format`.
+    def log_message(self, format: str, *args: Any) -> None:  # pylint: disable=redefined-builtin
         """Send the access log to the web server's logger rather than stderr."""
         self.server.logger.info("%s %s", self.address_string(), format % args)
 

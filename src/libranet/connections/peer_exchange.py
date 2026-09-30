@@ -115,7 +115,7 @@ class Retrieval:
     retry_after_seconds: int | None = None
 
 
-class PeerExchange:
+class PeerExchange:  # pylint: disable=too-many-instance-attributes
     """Holds this node's side of every conversation with a peer.
 
     Shared by every connection: it keeps no state about any one peer.

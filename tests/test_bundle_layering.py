@@ -102,8 +102,8 @@ def store(
         sink,
         password,
         MAX_BYTES,
-        max_layers,
-        max_extensions,
+        max_layers=max_layers,
+        max_extensions=max_extensions,
     )
 
 
@@ -261,7 +261,7 @@ def test_a_version_over_one_whose_layering_is_not_known_is_stored_whole() -> Non
     first = store(sink, entries(10))
     over = Superseded.read(first.bundle, partial(load, sink), None)
     version = DirectoryBundle(entries(11), versions=(str(first.bundle),))
-    stored = StoredVersion.store(version, over, sink, None, MAX_BYTES, MAX_LAYERS)
+    stored = StoredVersion.store(version, over, sink, None, MAX_BYTES, max_layers=MAX_LAYERS)
 
     assert stored.layering == Layering()
     assert top(sink, stored.bundle).entries == entries(11)
@@ -274,7 +274,7 @@ def test_a_layering_naming_more_layers_than_the_bundle_lists_is_not_layered_over
     first = store(sink, entries(10))
     over = Superseded.read(first.bundle, partial(load, sink), Layering(2, 2))
     version = DirectoryBundle(entries(11), versions=(str(first.bundle),))
-    stored = StoredVersion.store(version, over, sink, None, MAX_BYTES, MAX_LAYERS)
+    stored = StoredVersion.store(version, over, sink, None, MAX_BYTES, max_layers=MAX_LAYERS)
 
     assert stored.layering == Layering()
     assert caplog.record_tuples == [
@@ -324,7 +324,7 @@ def test_a_version_is_layered_over_one_kept_expanded_though_it_is_no_longer_held
     kept = first.expanded(entries(10))
     del sink.held[first.bundle]
     version = DirectoryBundle(entries(11), versions=(str(first.bundle),))
-    stored = StoredVersion.store(version, kept, sink, None, MAX_BYTES, MAX_LAYERS)
+    stored = StoredVersion.store(version, kept, sink, None, MAX_BYTES, max_layers=MAX_LAYERS)
 
     assert stored.layering == Layering(1, 1)
     assert top(sink, stored.bundle).entries == {

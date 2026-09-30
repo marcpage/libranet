@@ -184,7 +184,7 @@ def build_file(path: Path, sink: ContentSink, max_object_bytes: int = MIB) -> Fi
         return _file_bundle(file, sink, max_object_bytes, {})
 
 
-def build_directory(
+def build_directory(  # pylint: disable=too-many-branches,too-many-locals
     root: Path,
     sink: ContentSink,
     supersedes: ContentId | None = None,

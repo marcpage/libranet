@@ -70,7 +70,7 @@ class FarewellStubModule(StubModule):
 
 
 def stub_module_factory(
-    name: ModuleName, config: LibranetConfig, queues: ModuleQueues
+    name: ModuleName, _config: LibranetConfig, queues: ModuleQueues
 ) -> ModuleBase:
     """:data:`~libranet.supervision.specs.ModuleFactory` for :class:`StubModule`."""
     return StubModule(name, queues)
@@ -78,7 +78,7 @@ def stub_module_factory(
 
 def crashing_module_factory(
     name: ModuleName,
-    config: LibranetConfig,
+    _config: LibranetConfig,
     queues: ModuleQueues,
     *,
     crash_after_seconds: float = 0.0,
@@ -95,7 +95,7 @@ def crashing_module_factory(
 
 def farewell_module_factory(
     name: ModuleName,
-    config: LibranetConfig,
+    _config: LibranetConfig,
     queues: ModuleQueues,
     *,
     farewells: int = 2000,
@@ -115,10 +115,10 @@ def crashing_dispatcher_main(
 
 
 def unready_dispatcher_main(
-    config: LibranetConfig,
-    endpoints: Mapping[ModuleName, ModuleQueues],
+    _config: LibranetConfig,
+    _endpoints: Mapping[ModuleName, ModuleQueues],
     stop: StopSignal,
-    ready: ReadySignal,
+    _ready: ReadySignal,
 ) -> None:
     """A :data:`~libranet.supervision.specs.DispatcherEntry` that never becomes ready."""
     while not stop.is_set():

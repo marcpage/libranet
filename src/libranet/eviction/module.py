@@ -137,7 +137,7 @@ class _HandOff:
     started_at: float
 
 
-class EvictionModule(ModuleBase):
+class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
     """Hands off and deletes the content this node has least claim to, as storage runs short."""
 
     subscriptions: ClassVar[frozenset[EventType]] = frozenset(

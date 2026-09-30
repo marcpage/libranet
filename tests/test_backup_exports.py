@@ -298,9 +298,7 @@ def test_an_export_lacking_content_writes_nothing_and_names_what_it_lacks(
     assert not archive.exists()
 
 
-def test_an_export_lacking_the_bundle_itself_names_it(
-    store: CasStore, source: LayeredSource, archive: Path
-) -> None:
+def test_an_export_lacking_the_bundle_itself_names_it(source: LayeredSource, archive: Path) -> None:
     bundle = part(b"a bundle never held")
 
     assert exporting(bundle, archive).run(source, IgnoredPaths(), lambda: FINISHED_AT) == (bundle,)

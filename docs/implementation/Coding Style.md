@@ -14,7 +14,8 @@ already follows. The few places where the code does not are listed in §12.
 
 A rule here is one of three kinds:
 
-- **Checked by a tool**: `black`, `flake8`, or `mypy` fails the build (§2).
+- **Checked by a tool**: `black`, `flake8`, `mypy`, or `pylint` fails the
+  build (§2).
 - **Checked by a test**: a test in `tests/` fails.
 - **Convention**: nothing checks it; it is kept by hand and in review.
 
@@ -30,10 +31,11 @@ processes fit together is in [Module System](Module%20System.md).
 uv run black .           # format
 uv run flake8            # lint
 uv run mypy              # type-check
+uv run pylint src tests scripts hatch_build.py   # lint further
 uv run pytest --cov      # tests, with coverage
 ```
 
-CI runs all four on every pull request, and the tests on Ubuntu and macOS
+CI runs all five on every pull request, and the tests on Ubuntu and macOS
 against Python 3.11 and 3.14.
 
 | Tool | Settings | What it holds to |
@@ -41,6 +43,7 @@ against Python 3.11 and 3.14.
 | `black` | Line length 100, target `py311` | Layout of code: quotes, wrapping, trailing commas |
 | `flake8` | `.flake8`, with `flake8-bugbear`; `F401` allowed in a package's `__init__.py` | Unused names, undefined names, PEP 8 spacing, likely bugs, and any line past 110 columns (`B950`) |
 | `mypy` | `strict`, `warn_unreachable`, over `src`, `tests`, and `scripts` | Every annotation, in tests too |
+| `pylint` | `[tool.pylint]` in `pyproject.toml`, with `pylint-per-file-ignores`; over `src`, `tests`, `scripts`, and `hatch_build.py` | Docstrings, unused arguments, names, how large a function or class may grow, mistakes it can infer, and any line past 100 columns |
 | `pytest` | Branch coverage, failing under 90% | Behavior |
 
 Code is written for Python 3.11, the oldest version supported.
@@ -50,6 +53,47 @@ When a tool objects, the code changes, not the tool's view of it. A library
 that ships no types gets a `[[tool.mypy.overrides]]` entry in
 `pyproject.toml`, and a lint rule that does not fit one file is turned off
 for that file in `.flake8`, each with a comment saying why.
+
+### 2.1 Turning a pylint Message Off
+
+`pylint` judges more than the other tools do, and is the one tool that may
+be turned off in the code itself. When it objects, the code changes if the
+change makes the code better. Where it would not, the message is turned off
+as narrowly as it can be:
+
+- **For the whole project**, in `disable` in `pyproject.toml`, where a check
+  does not fit how this code is written: `too-few-public-methods`, since a
+  `Protocol` often asks for one method (§5); `too-many-arguments`, since
+  what is keyword-only is named in the call (§6.4); and `duplicate-code`,
+  which cannot be turned off for the tests alone.
+- **For a file or a directory**, in `per-file-ignores` there. The checks
+  that tests are not held to are listed this way (§11).
+- **For one line, function, or class**, with a comment that names the
+  message, at the end of the line `pylint` reports:
+
+  ```Python
+  class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
+  ```
+
+  Where the line has no room for it, it goes on a line of its own: as
+  `# pylint: disable-next=` above a statement, or as `# pylint: disable=`
+  first in the body of a function.
+
+Every entry in `pyproject.toml` has a comment saying why, and so does a
+comment in the code, on the line above it:
+
+```Python
+# Kept open for reads until close() closes it.
+self._archive = ZipFile(file)  # pylint: disable=consider-using-with
+```
+
+Two kinds need no reason given, because it is always the same one:
+`broad-exception-caught` at a boundary (§9.2), and a limit on size
+(`too-many-instance-attributes`, `too-many-locals`, and the like) that a
+class or function has outgrown.
+
+A disable that turns nothing off fails the run (`useless-suppression`), so
+none outlives its reason.
 
 ## 3. Layout of a File
 
@@ -162,10 +206,12 @@ Code runs to 100 columns, which `black` enforces. Prose is wrapped by hand at
 79 columns, in comments and in the body of a docstring. A docstring's first
 line may run to 100 so that it stays one line.
 
-`black` does not rewrap a docstring, a comment, or a long string. `flake8`
-catches those only once they pass 110 columns: `B950` allows a line a tenth
-over the limit, and `E501`, which allows nothing over, is turned off in its
-favor.
+`black` does not rewrap a docstring, a comment, or a long string, so
+`pylint` is what holds those to 100 columns (`line-too-long`). `flake8`
+catches them only once they pass 110: `B950` allows a line a tenth over the
+limit, and `E501`, which allows nothing over, is turned off in its favor.
+A `# pylint:` comment at the end of a line is not counted by `pylint`, but
+is by `flake8`.
 
 ## 4. Names
 
@@ -197,6 +243,12 @@ PEP 8 casing throughout: `snake_case` for modules, functions, and variables,
   `@property`. No property has a setter.
 - **Words are spelled out**: `content_id`, `connection`, `message`,
   `request`, not `cid`, `conn`, `msg`, `req`.
+- **A parameter that must be taken but is not used has a leading
+  underscore**: `_message` in a handler that needs only to be told,
+  `_config` in a factory that builds without it. `pylint` checks that every
+  other parameter is used. Where the name is set elsewhere, by a `Protocol`
+  or by the method being overridden, it is kept, and `unused-argument` is
+  turned off for that function (§2.1).
 
 A classmethod that builds its class is named for what it builds from:
 
@@ -313,6 +365,10 @@ do.
   ) -> None:
   ```
 
+- **No more than five parameters are positional**, not counting `self` or
+  `cls`, which `pylint` checks. Any more go after the `*`, where a call has
+  to name them: `back_up(directory, latest, store, secret, made_at,
+  settings=settings)`.
 - **A constructor refuses arguments it cannot work with** by raising
   `ValueError` before it stores anything.
 
@@ -350,8 +406,12 @@ _MAX_EXPANDED_BYTES: Final = 1 << 40
 ### 8.1 Docstrings
 
 Every module, every class, and every public function and method has a
-docstring. Most private helpers do too. Dunder methods do not, nor does a
-method that only implements a documented `Protocol`, nor does a test.
+docstring, which `pylint` checks. Most private helpers do too. Dunder
+methods do not, nor does a method that only implements a documented
+`Protocol`, nor does a test. The `Protocol` documents each method it asks
+for, and a class whose methods only implement it turns
+`missing-function-docstring` off for itself, with a comment naming the
+`Protocol` (§2.1).
 
 ```Python
 @classmethod
@@ -431,8 +491,10 @@ phase plan or an issue.
 
 Catch the narrowest exception that can happen, and name it `error`.
 `except Exception` is only for a boundary that must survive whatever it runs:
-a module's receive loop, a worker thread, a request handler.
-`except BaseException` is only for cleaning up and raising again.
+a module's receive loop, a worker thread, a request handler. Each is marked
+`# pylint: disable=broad-exception-caught`, so that a new one is a decision
+and not an accident. `except BaseException` is only for cleaning up and
+raising again.
 
 Every handler does one of three things, and
 `tests/test_exception_logging.py` fails on one that does none:
@@ -551,12 +613,26 @@ that a value already past the limit still stops it:
   are kept short by passing a small `poll_interval_seconds`.
 - **That there is exactly one of something is asserted by unpacking it**:
   `(message,) = published(queues)`.
+- **A fixture wanted only for what it sets up is named in
+  `@mark.usefixtures`**, not taken as a parameter the test never reads. A
+  test asks for no fixture it does not need.
 - **Shared data is a module-level constant**, in upper case; helpers and
   fixtures come before the tests. Long numbers are grouped:
   `1_789_000_000.5`.
 - **A module is tested without starting a process**: build it with
   `queue.Queue` objects, call `handle()` with a message, and read its
   outbox. ([Module System](Module%20System.md) §11.)
+
+`pylint` reads the tests too, less five checks that the rules above set
+aside, turned off for `tests/` in `pyproject.toml` (§2.1):
+
+| Check | Why tests are not held to it |
+| --- | --- |
+| `missing-function-docstring` | A test's name is its docstring, and a helper's says enough |
+| `redefined-outer-name` | A fixture is asked for by naming it as a parameter |
+| `too-many-positional-arguments` | A test may ask for many fixtures |
+| `unbalanced-tuple-unpacking` | Unpacking asserts that there is exactly one, from a list `pylint` takes to be empty |
+| `use-implicit-booleaness-not-comparison` | `== []` checks the type of what came back, which `not` would not |
 
 New code comes with tests, and coverage is gated at 90%.
 

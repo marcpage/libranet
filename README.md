@@ -481,6 +481,7 @@ uv run pytest --cov      # with coverage (the build fails under 90%)
 uv run black .           # format (line length 100)
 uv run flake8            # lint
 uv run mypy              # type-check (strict)
+uv run pylint src tests scripts hatch_build.py   # lint further
 ```
 
 CI runs the lint and type checks once, and the test suite on Ubuntu and macOS
@@ -559,8 +560,8 @@ the Python node made within them.
 Issues and pull requests are welcome at
 [github.com/marcpage/libranet](https://github.com/marcpage/libranet/issues).
 
-Before opening a pull request, please make sure `black`, `flake8`, `mypy`, and
-`pytest` all pass — see [Development](#development). New code is expected to
+Before opening a pull request, please make sure `black`, `flake8`, `mypy`,
+`pylint`, and `pytest` all pass — see [Development](#development). New code is expected to
 come with tests; coverage is gated at 90%. Changes to protocol behavior should
 say which section of which specification they implement, and specification
 changes are best raised as an issue first.

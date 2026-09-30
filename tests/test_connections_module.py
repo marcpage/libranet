@@ -7,6 +7,8 @@ retry delays and seek refreshes, whose timers only :meth:`on_idle` checks;
 signatures still use real time.
 """
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 from contextlib import suppress
 from json import dumps
@@ -264,7 +266,7 @@ def now() -> list[float]:
     return [time()]
 
 
-def no_names(address: str) -> Sequence[str]:
+def no_names(_address: str) -> Sequence[str]:
     """A reverse DNS lookup that finds nothing, so tests never touch real DNS."""
     return ()
 
@@ -1808,8 +1810,8 @@ class HeldPushes:
         return self._hand_off_many(session, held)
 
 
+@mark.usefixtures("one_push_worker")
 def test_new_content_waiting_is_pushed_in_pipelined_batches_each_to_its_best_peer(
-    one_push_worker: None,
     modules: Modules,
     config: LibranetConfig,
     identity: NodeIdentity,
@@ -1817,6 +1819,7 @@ def test_new_content_waiting_is_pushed_in_pipelined_batches_each_to_its_best_pee
     bus: Bus,
     monkeypatch: MonkeyPatch,
 ) -> None:
+    # pylint: disable=too-many-locals
     store = CasStore.source_of_truth(config.storage)
     content_ids: list[ContentId] = []
 
@@ -1854,8 +1857,8 @@ def test_new_content_waiting_is_pushed_in_pipelined_batches_each_to_its_best_pee
     assert len(pushes.pushes) < len(content_ids)
 
 
+@mark.usefixtures("one_push_worker")
 def test_what_could_not_reach_its_best_peer_goes_on_together_to_the_next_best(
-    one_push_worker: None,
     modules: Modules,
     config: LibranetConfig,
     identity: NodeIdentity,
@@ -1863,6 +1866,7 @@ def test_what_could_not_reach_its_best_peer_goes_on_together_to_the_next_best(
     bus: Bus,
     monkeypatch: MonkeyPatch,
 ) -> None:
+    # pylint: disable=too-many-locals
     best, other = peers
     contents = contents_nearer_to(best.node_id, [other.node_id], 4)
     store = CasStore.source_of_truth(config.storage)
@@ -1894,8 +1898,8 @@ def test_what_could_not_reach_its_best_peer_goes_on_together_to_the_next_best(
     assert {message["node_id"] for message in sent} == {str(other.node_id)}
 
 
+@mark.usefixtures("one_push_worker")
 def test_a_push_worker_told_to_stop_while_taking_a_batch_still_stops(
-    one_push_worker: None,
     modules: Modules,
     config: LibranetConfig,
     identity: NodeIdentity,
@@ -1998,7 +2002,7 @@ def test_stopping_a_module_that_never_started_is_harmless(
     module.on_stop()
 
     with raises(RuntimeError, match="not running"):
-        module.exchange
+        module.exchange  # pylint: disable=pointless-statement
 
 
 def test_the_module_subscribes_to_node_lists_fetches_hand_offs_and_new_content() -> None:

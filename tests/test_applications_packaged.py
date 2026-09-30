@@ -329,6 +329,7 @@ def test_a_new_node_serves_each_shipped_page_with_nothing_in_the_cas(
     headers: dict[str, str],
     policy: str | None,
 ) -> None:
+    # pylint: disable=too-many-locals
     bundle = built.bundles[application]
     web_queues = ModuleQueues(inbox=Queue(), outbox=Queue())
     unbundler = UnbundlerModule(

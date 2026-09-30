@@ -124,6 +124,8 @@ def test_only_a_signer_whose_key_verified_is_noted_on_the_connection(
     named: list[Mapping[str, Any]] = []
 
     def publish(event: EventType, payload: Mapping[str, Any] | None = None) -> Message:
+        # Named as Publish names them, whichever it uses.
+        # pylint: disable=unused-argument
         named.append(payload or {})
         return {}
 

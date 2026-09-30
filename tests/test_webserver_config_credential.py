@@ -85,7 +85,7 @@ def test_what_is_stored_is_a_salted_hash_under_named_parameters(
     assert len(bytes.fromhex(record["key"])) == KEY_BYTES
 
 
-def test_the_same_credentials_are_salted_differently_each_time(tmp_path: Path) -> None:
+def test_the_same_credentials_are_salted_differently_each_time() -> None:
     first = StoredCredential.of(CREDENTIALS)
     second = StoredCredential.of(CREDENTIALS)
 
@@ -170,7 +170,7 @@ def test_a_credential_removed_as_it_was_captured_is_an_error(
         credential.authenticate(CREDENTIALS)
 
 
-def test_a_record_survives_the_round_trip_through_the_file(credential: ConfigCredential) -> None:
+def test_a_record_survives_the_round_trip_through_the_file() -> None:
     stored = StoredCredential.of(CREDENTIALS)
     restored = StoredCredential.from_json(stored.to_json())
 

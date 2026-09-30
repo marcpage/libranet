@@ -77,19 +77,18 @@ from libranet.webserver.publishing import Publish
 
 _LOGGER = getLogger(__name__)
 
+# A pattern matching any one of the reserved names.
+_RESERVED: Final = "|".join(escape(name) for name in sorted(RESERVED_APPLICATION_NAMES))
+
 # Every path but the reserved names' own, in any case. A reserved name spelled
 # with percent-encoding matches, and the handler refuses it instead.
-APP_PATTERN: Final = r"/(?!(?i:{names})(?:/|$)).*".format(
-    names="|".join(escape(name) for name in sorted(RESERVED_APPLICATION_NAMES))
-)
+APP_PATTERN: Final = rf"/(?!(?i:{_RESERVED})(?:/|$)).*"
 
 # The first segment beneath /config that is the API's, never the application's.
 _CONFIG_API: Final = "api"
 
 # `/config`, in any case, and every path beneath it but the API's.
-CONFIG_APP_PATTERN: Final = r"/(?i:{name})(?:/(?!{api}(?:/|$)).*)?".format(
-    name=escape(CONFIG_APPLICATION), api=_CONFIG_API
-)
+CONFIG_APP_PATTERN: Final = rf"/(?i:{escape(CONFIG_APPLICATION)})(?:/(?!{_CONFIG_API}(?:/|$)).*)?"
 
 # What a file the /config application serves may load: its own files, inline
 # script and styles, and requests to this node. No other site may frame it.

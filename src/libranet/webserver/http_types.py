@@ -39,7 +39,9 @@ class UnsupportedMediaTypeError(ValueError):
 class _Readable(Protocol):
     """Where body bytes come from: the connection's ``rfile``, or a buffer."""
 
-    def read(self, size_bytes: int, /) -> bytes: ...
+    def read(self, size_bytes: int, /) -> bytes:
+        """Up to ``size_bytes`` more of the body, or nothing once it has all been read."""
+        ...
 
 
 class RequestBody:
@@ -106,7 +108,7 @@ class RequestBody:
 
 
 @dataclass(frozen=True)
-class Request:
+class Request:  # pylint: disable=too-many-instance-attributes
     """An incoming request, reduced to what handlers need.
 
     ``path`` excludes any query string; ``params`` holds the named groups the

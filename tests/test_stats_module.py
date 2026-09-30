@@ -115,8 +115,9 @@ def seek_list(config: LibranetConfig) -> dict[str, list[str]]:
     return seek
 
 
+@mark.usefixtures("module")
 def test_starting_opens_the_database_and_writes_every_list(
-    module: StatsModule, config: LibranetConfig, queues: ModuleQueues
+    config: LibranetConfig, queues: ModuleQueues
 ) -> None:
     identity = NodeIdentity.load(config)
 
@@ -861,7 +862,7 @@ def test_the_database_is_closed_when_the_module_stops(
     module.on_stop()
 
     with raises(RuntimeError, match="not running"):
-        module.database
+        module.database  # pylint: disable=pointless-statement
 
 
 def test_the_module_subscribes_to_what_it_records() -> None:

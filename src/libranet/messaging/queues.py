@@ -21,9 +21,17 @@ START_METHOD: Final = "spawn"
 class MessageQueue(Protocol):
     """The subset of the ``multiprocessing.Queue`` API the bus relies on."""
 
-    def put(self, item: Message, /) -> None: ...
+    def put(self, item: Message, /) -> None:
+        """Add ``item`` to the queue."""
+        ...
 
-    def get(self, block: bool = True, timeout: float | None = None) -> Message: ...
+    def get(self, block: bool = True, timeout: float | None = None) -> Message:
+        """The next message, waiting up to ``timeout`` seconds for one if ``block`` is set.
+
+        Raises:
+            queue.Empty: there is none, or none came in time.
+        """
+        ...
 
 
 @dataclass(frozen=True)

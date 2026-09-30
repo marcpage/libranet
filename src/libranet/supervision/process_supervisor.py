@@ -61,7 +61,7 @@ class _Child:
     restart_at: float | None = None
 
 
-class ProcessSupervisor:
+class ProcessSupervisor:  # pylint: disable=too-many-instance-attributes
     """Runs the dispatcher and a fixed set of modules, restarting any that exit.
 
     An instance is single-use: once :meth:`shutdown` has run it cannot be

@@ -150,7 +150,7 @@ def test_guards_run_in_order_each_seeing_what_the_last_passed_on() -> None:
 def test_the_first_guard_to_refuse_stops_the_rest() -> None:
     seen: list[str] = []
 
-    def refuse(request: Request) -> Request | Response:
+    def refuse(_request: Request) -> Request | Response:
         seen.append("refuse")
         return Response(403)
 

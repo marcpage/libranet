@@ -92,7 +92,9 @@ class _ResponseMessage:
         self.headers = CaseInsensitiveDict(headers)
 
 
-class _PrivateKeyResolver(HTTPSignatureKeyResolver):
+# The signer never asks for a public key, so the library's refusal to resolve
+# one stands.
+class _PrivateKeyResolver(HTTPSignatureKeyResolver):  # pylint: disable=abstract-method
     """Supplies this node's private key; the signer only asks for its own key id."""
 
     def __init__(self, identity: NodeIdentity) -> None:
@@ -102,7 +104,9 @@ class _PrivateKeyResolver(HTTPSignatureKeyResolver):
         return self._identity.private_key
 
 
-class _PublicKeyResolver(HTTPSignatureKeyResolver):
+# The verifier never asks for a private key, so the library's refusal to
+# resolve one stands.
+class _PublicKeyResolver(HTTPSignatureKeyResolver):  # pylint: disable=abstract-method
     """Resolves a signer's key id to the public key held in CAS."""
 
     def __init__(self, store: CasStore) -> None:

@@ -43,7 +43,7 @@ def run_dispatcher_process(
 
 
 def dispatcher_main(
-    config: LibranetConfig,
+    _config: LibranetConfig,
     endpoints: Mapping[ModuleName, ModuleQueues],
     stop: StopSignal,
     ready: ReadySignal,
