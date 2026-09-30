@@ -127,7 +127,7 @@ def main(argv: Sequence[str] | None = None, *, stop: StopSignal | None = None) -
 def _stop_on_signals(stop: Event) -> Generator[None, None, None]:
     """Set ``stop`` on ``SIGINT`` or ``SIGTERM`` while the context is active."""
 
-    def request_stop(signum: int, frame: FrameType | None) -> None:
+    def request_stop(_signum: int, _frame: FrameType | None) -> None:
         stop.set()
 
     previous = {number: signal(number, request_stop) for number in (SIGINT, SIGTERM)}

@@ -140,9 +140,7 @@ def test_a_derivation_that_changes_nothing_rewrites_nothing(
     assert changed.seek_list.stat().st_mtime_ns == written_at[1]
 
 
-def test_stale_outstanding_requests_stop_being_advertised(
-    database: StatsDatabase, storage: StorageConfig
-) -> None:
+def test_stale_outstanding_requests_stop_being_advertised(storage: StorageConfig) -> None:
     now = [1_000.0]
     database_with_clock = StatsDatabase(storage.database_path, clock=lambda: now[0])
     deriver = ListDeriver(

@@ -101,7 +101,8 @@ The conventions of Phase 1 §3 carry over. In addition:
   depends on how much its rules catch; if it runs past the threshold, it
   splits by package.
 - Every change set must pass `uv run black --check .`, `uv run flake8`,
-  `uv run mypy`, `uv run pytest --cov` (90% floor), and
+  `uv run mypy`, `uv run pylint src tests scripts hatch_build.py`,
+  `uv run pytest --cov` (90% floor), and
   `uv run libranet --config examples/libranet.yaml --check-config`.
 
 ---

@@ -919,10 +919,10 @@ def test_before_starting_nothing_is_known(config: LibranetConfig, queues: Module
     module = EvictionModule(ModuleName.EVICTION, queues, config, RETRY_DELAY)
 
     with raises(RuntimeError, match="not running"):
-        module.node_id
+        module.node_id  # pylint: disable=pointless-statement
 
     with raises(RuntimeError, match="not running"):
-        module.pressure
+        module.pressure  # pylint: disable=pointless-statement
 
 
 def test_unusable_settings_are_refused(config: LibranetConfig, queues: ModuleQueues) -> None:

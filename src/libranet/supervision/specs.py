@@ -18,7 +18,9 @@ from libranet.modules import ModuleName
 class ReadySignal(Protocol):
     """Anything with ``set()``: how the dispatcher reports that it is up."""
 
-    def set(self) -> None: ...
+    def set(self) -> None:
+        """Report that the dispatcher is up."""
+        ...
 
 
 #: Builds a module inside its own process from the node config and its queues.

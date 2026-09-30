@@ -64,7 +64,7 @@ def test_the_refusal_comes_before_any_later_guard_or_handler() -> None:
         later.append("guard")
         return request
 
-    def handler(request: Request) -> Response:
+    def handler(_request: Request) -> Response:
         later.append("handler")
         return Response(200)
 

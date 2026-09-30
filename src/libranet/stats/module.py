@@ -115,7 +115,7 @@ _SENDERS_OWN: Final = frozenset({AddressSource.ADVERTISED, AddressSource.OBSERVE
 DEFAULT_MAX_CANDIDATES: Final = 256
 
 
-class StatsModule(ModuleBase):
+class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
     """Records what the node sees and derives the lists it publishes."""
 
     subscriptions: ClassVar[frozenset[EventType]] = frozenset(
@@ -397,7 +397,7 @@ class StatsModule(ModuleBase):
     def _on_app_accessed(self, message: Message) -> None:
         self.database.record_app_access(ContentId.parse(message["bundle"]))
 
-    def _on_reclaim_requested(self, message: Message) -> None:
+    def _on_reclaim_requested(self, _message: Message) -> None:
         """Tell the unbundler whose resolved files to keep: those of applications used lately."""
         since = self._clock() - self._config.storage.resolved_idle_seconds
         keep = self.database.apps_accessed_since(since)

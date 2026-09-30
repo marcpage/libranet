@@ -327,6 +327,7 @@ class Superseded:
         sink: ContentSink,
         password: bytes | None,
         max_object_bytes: int,
+        *,
         max_layers: int,
         max_extensions: int = DEFAULT_MAX_EXTENSIONS,
     ) -> StoredVersion | None:
@@ -407,6 +408,7 @@ class StoredVersion:
         sink: ContentSink,
         password: bytes | None,
         max_object_bytes: int,
+        *,
         max_layers: int,
         max_extensions: int = DEFAULT_MAX_EXTENSIONS,
     ) -> StoredVersion:
@@ -424,7 +426,12 @@ class StoredVersion:
         """
         if superseded is not None:
             layered = superseded.layer(
-                version, sink, password, max_object_bytes, max_layers, max_extensions
+                version,
+                sink,
+                password,
+                max_object_bytes,
+                max_layers=max_layers,
+                max_extensions=max_extensions,
             )
 
             if layered is not None:

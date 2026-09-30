@@ -42,8 +42,11 @@ class ApplicationsBuildHook(BuildHookInterface[BuilderConfig]):
         # Imported here, from the source being built, rather than from any
         # installed copy of the package.
         import_path.insert(0, str(Path(self.root) / "src"))
+        # pylint: disable-next=import-outside-toplevel
         from libranet.applications.packaged import PackagedApplications
 
+        # Kept until finalize() removes it, once the wheel holds what is in it.
+        # pylint: disable-next=consider-using-with
         self._output = TemporaryDirectory(prefix="libranet-applications-")
 
         for built in PackagedApplications.build().write(Path(self._output.name)):
@@ -51,6 +54,8 @@ class ApplicationsBuildHook(BuildHookInterface[BuilderConfig]):
 
     def finalize(self, version: str, build_data: dict[str, Any], artifact_path: str) -> None:
         """Remove what was built, now that the wheel holds it."""
+        # The hook is handed all three, whichever it uses.
+        # pylint: disable=unused-argument
         if self._output is not None:
             self._output.cleanup()
             self._output = None

@@ -84,7 +84,8 @@ class ArchiveSource:
                 other than CAS objects this node can read.
         """
         try:
-            self._archive = ZipFile(file)
+            # Kept open for reads until close() closes it.
+            self._archive = ZipFile(file)  # pylint: disable=consider-using-with
 
         except (BadZipFile, EOFError, OSError) as error:
             raise ArchiveError(f"{name} is not a zip archive: {error}") from None
@@ -218,7 +219,8 @@ class ArchiveSink:
     """
 
     def __init__(self, file: IO[bytes]) -> None:
-        self._archive = ZipFile(file, "w")
+        # Kept open for writes until close() finishes it.
+        self._archive = ZipFile(file, "w")  # pylint: disable=consider-using-with
         self._written: set[ContentId] = set()
 
     @classmethod

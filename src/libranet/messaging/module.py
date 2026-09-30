@@ -34,7 +34,9 @@ DEFAULT_POLL_INTERVAL_SECONDS: Final = 0.5
 class StopSignal(Protocol):
     """Anything with ``is_set()``: a ``threading.Event`` or ``multiprocessing.Event``."""
 
-    def is_set(self) -> bool: ...
+    def is_set(self) -> bool:
+        """Whether the signal has been given."""
+        ...
 
 
 class ModuleBase(ABC):
@@ -141,7 +143,7 @@ class ModuleBase(ABC):
                 try:
                     self.handle(message)
 
-                except Exception:
+                except Exception:  # pylint: disable=broad-exception-caught
                     self._logger.exception(
                         "Module %s failed handling %s", self._name, event_of(message)
                     )

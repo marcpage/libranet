@@ -1,6 +1,8 @@
 """Tests for the backup module, with the test standing in for the web server's ``/config``
 endpoints, and the clock faked."""
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 from io import BytesIO
 from logging import ERROR, INFO, WARNING
@@ -584,12 +586,12 @@ def test_a_missing_directory_fails_its_job_until_it_appears(
     assert job["bundle"] is not None
 
 
+@mark.usefixtures("tree")
 def test_the_node_own_directories_are_left_out_as_though_absent(
     config: LibranetConfig,
     queues: ModuleQueues,
     now: list[float],
     tmp_path: Path,
-    tree: Path,
     store: CasStore,
 ) -> None:
     module = start(config, queues, now)
@@ -603,8 +605,9 @@ def test_the_node_own_directories_are_left_out_as_though_absent(
     }
 
 
+@mark.usefixtures("tree")
 def test_what_a_backup_stores_does_not_set_off_another(
-    config: LibranetConfig, queues: ModuleQueues, now: list[float], tmp_path: Path, tree: Path
+    config: LibranetConfig, queues: ModuleQueues, now: list[float], tmp_path: Path
 ) -> None:
     module = start(config, queues, now)
     configure(module, tmp_path)
@@ -753,8 +756,10 @@ def test_paths_left_out_are_counted_and_logged(
 def test_the_node_id_is_only_known_once_started(
     config: LibranetConfig, queues: ModuleQueues
 ) -> None:
+    module = BackupModule(ModuleName.BACKUP, queues, config)
+
     with raises(RuntimeError):
-        BackupModule(ModuleName.BACKUP, queues, config).node_id
+        module.node_id  # pylint: disable=pointless-statement
 
 
 def test_the_supervisor_runs_the_backup_module(

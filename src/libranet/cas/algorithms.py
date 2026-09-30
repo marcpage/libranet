@@ -47,7 +47,8 @@ class HashAlgorithm(Protocol):
         ...
 
 
-class Sha256Algorithm:
+# Its methods are documented on HashAlgorithm, which they implement.
+class Sha256Algorithm:  # pylint: disable=missing-function-docstring
     """SHA-256, the only algorithm supported in v1."""
 
     @property

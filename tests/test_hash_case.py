@@ -278,7 +278,7 @@ def test_an_upload_by_any_spelling_is_stored_and_announced_normalized(
 
 @spellings
 def test_a_search_by_any_spelling_is_answered_and_cached_normalized(
-    data_router: Router, storage: StorageConfig, queues: ModuleQueues, spell: Spelling
+    data_router: Router, queues: ModuleQueues, spell: Spelling
 ) -> None:
     response = data_router.dispatch(request("GET", f"/data/search/{spell(PREFIX)}"))
 

@@ -174,6 +174,7 @@ def back_up(
     store: BackupStore,
     secret: bytes,
     made_at: float,
+    *,
     settings: BuildSettings,
     expanded: Superseded | None = None,
     publish_metadata: bool = False,
@@ -230,7 +231,12 @@ def back_up(
             )
 
     stored = StoredVersion.store(
-        build.bundle, earlier, store, secret, settings.max_object_bytes, settings.max_layers
+        build.bundle,
+        earlier,
+        store,
+        secret,
+        settings.max_object_bytes,
+        max_layers=settings.max_layers,
     )
     return Backup(
         LatestBackup(stored.bundle, made_at, _digest(entries), skipped, stored.layering),

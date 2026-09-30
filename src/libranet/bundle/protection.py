@@ -86,7 +86,8 @@ class _Scheme(Protocol):
         ...
 
 
-class _Sha256Aes256Cbc:
+# Its methods are documented on _Scheme, which they implement.
+class _Sha256Aes256Cbc:  # pylint: disable=missing-function-docstring
     """AES-256-CBC keyed by a single SHA-256 of the password, with PKCS#7 padding."""
 
     _BLOCK_BITS: Final = AES256.block_size

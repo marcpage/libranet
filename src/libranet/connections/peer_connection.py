@@ -60,7 +60,7 @@ class _Waiting:
     future: Future[PeerResponse]
 
 
-class PeerConnection:
+class PeerConnection:  # pylint: disable=too-many-instance-attributes
     """A pipelining client connection to one peer.
 
     Takes ownership of the connected ``sock`` and starts its send and receive
@@ -181,7 +181,7 @@ class PeerConnection:
             ValueError: the request cannot be sent as given.
             ConnectionClosedError: the connection is already closed.
         """
-        data = encode_request(self._signer, method, target, self._host, headers, body)
+        data = encode_request(self._signer, method, target, self._host, headers=headers, body=body)
         future: Future[PeerResponse] = Future()
         future.set_running_or_notify_cancel()
 

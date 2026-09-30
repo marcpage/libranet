@@ -71,7 +71,7 @@ class DataWriteHandler:
         self._authenticator = authenticator
         self._publish = publish
 
-    def __call__(self, request: Request) -> Response:
+    def __call__(self, request: Request) -> Response:  # pylint: disable=too-many-return-statements
         try:
             content_id = ContentId.create(request.params["algorithm"], request.params["hash"])
 

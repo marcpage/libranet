@@ -371,7 +371,7 @@ def test_an_unchanged_directory_keeps_its_recorded_bundle_though_it_is_no_longer
 
 
 def test_a_bundle_recorded_before_bundles_were_kept_expanded_is_read_back_and_kept_expanded(
-    site: Path, sink: AnnouncingStore, store: CasStore
+    site: Path, sink: AnnouncingStore
 ) -> None:
     first = bundle_of(build(site, sink))
     expanded = record_of(site).expanded

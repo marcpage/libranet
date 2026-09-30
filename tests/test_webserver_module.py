@@ -122,6 +122,7 @@ def test_module_serves_until_shutdown_and_publishes_misses(tmp_path: Path) -> No
 
 
 def test_module_accepts_signed_uploads_and_signs_its_responses(tmp_path: Path) -> None:
+    # pylint: disable=too-many-locals
     queues = _queues()
     config = _config(tmp_path, _free_port())
     module = WebServerModule(ModuleName.WEBSERVER, queues, config, poll_interval_seconds=0.01)
@@ -203,6 +204,7 @@ def test_module_names_the_peers_connected_to_it_as_they_come_and_go_and_when_ask
 def test_module_follows_the_unsigned_api_read_setting(
     tmp_path: Path, allow_unsigned_api_reads: bool, unsigned_status: int
 ) -> None:
+    # pylint: disable=too-many-locals
     config = _config(tmp_path, _free_port(), allow_unsigned_api_reads)
     module = WebServerModule(ModuleName.WEBSERVER, _queues(), config, poll_interval_seconds=0.01)
     stop = Event()

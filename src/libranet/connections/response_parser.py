@@ -188,7 +188,7 @@ class ResponseParser:
 
             del self._buffer[: head.size_bytes]
 
-    def _head(self, method: str) -> _Head | None:
+    def _head(self, method: str) -> _Head | None:  # pylint: disable=too-many-locals
         """The response head at the start of the buffer, if it has fully arrived."""
         end = self._buffer.find(_HEAD_END, 0, MAX_HEAD_BYTES)
 

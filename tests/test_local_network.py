@@ -18,7 +18,7 @@ from libranet.config.loader import load_config
 from libranet.config.models import LoggingConfig
 from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity
-from local_network import (
+from local_network import (  # pylint: disable=wrong-import-order
     DISTINCT_DIGITS,
     ConnectionLog,
     LocalNetwork,
@@ -62,7 +62,8 @@ class StandInNodes:
         running = RunningNetwork(network, self.root)
 
         for node, program in zip(network.nodes, programs):
-            process = Popen(
+            # Left running until close() kills it.
+            process = Popen(  # pylint: disable=consider-using-with
                 [executable, "-c", program], stdout=PIPE, stderr=DEVNULL, start_new_session=True
             )
             assert process.stdout is not None

@@ -162,6 +162,8 @@ class TestAdvertisedEndpoint:
 
 
 class TestPeerPolicy:
+    """What the peer settings allow, and what they default to."""
+
     def test_connections_may_not_exceed_available_buckets(self) -> None:
         with raises(ValidationError):
             PeerConfig(min_outgoing_connections=17, bucket_prefix_bits=4)
@@ -222,6 +224,8 @@ class TestPeerPolicy:
 
 
 class TestStoragePaths:
+    """Where the storage settings put each thing the node keeps."""
+
     def test_derived_paths_hang_off_the_data_directory(self, tmp_path: Path) -> None:
         storage = StorageConfig(data_dir=tmp_path)
 

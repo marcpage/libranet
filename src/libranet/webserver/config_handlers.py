@@ -137,7 +137,7 @@ ENDPOINTS: Final = (
 )
 
 
-def config_index(request: Request) -> Response:
+def config_index(_request: Request) -> Response:
     """``GET /config/api``: what this node's administration surface offers."""
     return json_response({"endpoints": list(ENDPOINTS)})
 

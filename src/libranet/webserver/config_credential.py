@@ -85,7 +85,15 @@ class StoredCredential:
     def of(cls, credentials: str) -> StoredCredential:
         """A record of ``credentials`` under a fresh random salt."""
         salt = token_bytes(SALT_BYTES)
-        return cls(salt, _derive(credentials, salt, COST, BLOCK_SIZE, PARALLELISM, KEY_BYTES))
+        key = _derive(
+            credentials,
+            salt,
+            cost=COST,
+            block_size=BLOCK_SIZE,
+            parallelism=PARALLELISM,
+            length_bytes=KEY_BYTES,
+        )
+        return cls(salt, key)
 
     @classmethod
     def from_json(cls, data: bytes) -> StoredCredential:
@@ -135,7 +143,12 @@ class StoredCredential:
     def matches(self, credentials: str) -> bool:
         """Whether ``credentials`` hash to this record, compared in constant time."""
         derived = _derive(
-            credentials, self.salt, self.cost, self.block_size, self.parallelism, len(self.key)
+            credentials,
+            self.salt,
+            cost=self.cost,
+            block_size=self.block_size,
+            parallelism=self.parallelism,
+            length_bytes=len(self.key),
         )
         return compare_digest(self.key, derived)
 
@@ -203,7 +216,13 @@ class ConfigCredential:
 
 
 def _derive(
-    credentials: str, salt: bytes, cost: int, block_size: int, parallelism: int, length_bytes: int
+    credentials: str,
+    salt: bytes,
+    *,
+    cost: int,
+    block_size: int,
+    parallelism: int,
+    length_bytes: int,
 ) -> bytes:
     """The scrypt hash of ``credentials`` under the given parameters."""
     return scrypt(

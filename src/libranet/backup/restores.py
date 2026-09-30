@@ -128,7 +128,7 @@ class RestorePass:
     given_up: Mapping[str, tuple[ContentId, ...]] = field(default_factory=dict)
 
 
-class Restore:
+class Restore:  # pylint: disable=too-many-instance-attributes
     """A backup bundle being restored into a directory, a pass at a time, until done.
 
     A restore waiting on content carries on :data:`RESUME_DELAY_SECONDS`

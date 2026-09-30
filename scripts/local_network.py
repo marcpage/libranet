@@ -300,7 +300,8 @@ class NodeProcess:
         log = ConnectionLog.from_end(node.place.connections_log_path)
 
         with node.place.console_path.open("ab") as console:
-            process = Popen(
+            # Left running: the script stops it when the network is stopped.
+            process = Popen(  # pylint: disable=consider-using-with
                 [executable, "-m", "libranet", "--config", str(node.place.config_path)],
                 stdin=DEVNULL,
                 stdout=console,
@@ -440,12 +441,12 @@ class RunningNetwork:
         made = sum(len(process.peers) for process in self.processes)
         target = sum(self.network.connection_target(node) for node in self.network.nodes)
         filled = round(_BAR_WIDTH * made / target) if target else _BAR_WIDTH
-        bar = "#" * filled + "-" * (_BAR_WIDTH - filled)
+        progress = "#" * filled + "-" * (_BAR_WIDTH - filled)
         lines = [
             f"Libranet local network: {len(self.processes)} nodes in {self.root}",
             "Ctrl-C stops every node.",
             "",
-            f"Connections [{bar}] {made}/{target}",
+            f"Connections [{progress}] {made}/{target}",
             "",
             f"{'#':>3}  {'URL':<24}  {'node id':<14}  {'out':>5}  {'in':>3}",
         ]

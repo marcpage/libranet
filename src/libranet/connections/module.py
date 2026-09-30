@@ -105,6 +105,8 @@ when the module starts, and when eviction asks::
     peers.connected            {"direction": "outbound", "node_ids": ["sha256/<hex>", ...]}
 """
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 from collections import OrderedDict
 from dataclasses import dataclass, field
@@ -255,7 +257,7 @@ class _Peer:
     busy: bool = True
 
 
-class ConnectionsModule(ModuleBase):
+class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
     """Keeps this node connected to a spread of peers and fetches from them."""
 
     subscriptions: ClassVar[frozenset[EventType]] = frozenset(
@@ -443,7 +445,7 @@ class ConnectionsModule(ModuleBase):
         """
         self._handlers[event_of(message)](message)
 
-    def _on_node_list_updated(self, message: Message) -> None:
+    def _on_node_list_updated(self, _message: Message) -> None:
         self._reload_candidates()
         self._maintain()
 
@@ -518,7 +520,7 @@ class ConnectionsModule(ModuleBase):
 
         self._pushes.put(_NewContent(content_id, ContentId.parse(message["node_id"])))
 
-    def _on_peers_connected_requested(self, message: Message) -> None:
+    def _on_peers_connected_requested(self, _message: Message) -> None:
         with self._lock:
             self._publish_connected()
 
@@ -643,7 +645,7 @@ class ConnectionsModule(ModuleBase):
             try:
                 session = self.exchange.open(endpoint)
 
-            except Exception as error:
+            except Exception as error:  # pylint: disable=broad-exception-caught
                 # Not logged: _attempt_failed logs it.
                 self._attempt_failed(candidate, endpoint, error)
                 continue
@@ -787,7 +789,7 @@ class ConnectionsModule(ModuleBase):
         except OSError as error:
             self.logger.info("Exchange with %s ended early: %s", peer.session.endpoint, error)
 
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             self.logger.exception("Exchange with %s failed", peer.session.endpoint)
 
         finally:
@@ -801,7 +803,7 @@ class ConnectionsModule(ModuleBase):
             try:
                 self._search(search)
 
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 self.logger.exception("Searching for %s failed", search.content_id)
                 self._search_failed(search)
 
@@ -916,7 +918,7 @@ class ConnectionsModule(ModuleBase):
         try:
             accepted = self._accepting_peers(content_id, copies)
 
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             self.logger.exception("Handing off %s failed", content_id)
 
         finally:
@@ -970,7 +972,7 @@ class ConnectionsModule(ModuleBase):
             try:
                 self._push(batch)
 
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 self.logger.exception(
                     "Pushing %s failed", ", ".join(str(new.content_id) for new in batch)
                 )

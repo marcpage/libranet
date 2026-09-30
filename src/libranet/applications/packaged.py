@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from json import dumps
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Final, Mapping
 
 from libranet.atomic_file import write_atomically
@@ -38,7 +39,7 @@ PACKAGED_APPLICATIONS: Final = Path(__file__).resolve().parent
 #: directory beside this module it is built from. ``/`` is the root
 #: application (HttpApi §13), and ``config`` the one serving ``/config``
 #: (HttpApi §2.3).
-SHIPPED_APPLICATIONS: Final = {"/": "root", "config": "config"}
+SHIPPED_APPLICATIONS: Final = MappingProxyType({"/": "root", "config": "config"})
 
 #: What a wheel's content archives name the applications' objects, and the
 #: file giving their content ids.

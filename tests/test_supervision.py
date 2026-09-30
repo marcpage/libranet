@@ -141,7 +141,7 @@ class _StubbornContext:
         return getattr(self._real, attribute)
 
     # Named as on a multiprocessing context, which the supervisor calls.
-    def Process(
+    def Process(  # pylint: disable=invalid-name
         self, *, target: Callable[..., object], args: tuple[object, ...], name: str, daemon: bool
     ) -> BaseProcess | _StubbornProcess:
         if name == self._name:

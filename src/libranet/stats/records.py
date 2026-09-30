@@ -16,7 +16,7 @@ from libranet.messaging.events import AddressSource
 
 
 @dataclass(frozen=True)
-class DataStats:
+class DataStats:  # pylint: disable=too-many-instance-attributes
     """What is known about one content identifier."""
 
     content_id: ContentId
@@ -51,7 +51,7 @@ class DataStats:
 
 
 @dataclass(frozen=True)
-class NodeStats:
+class NodeStats:  # pylint: disable=too-many-instance-attributes
     """What is known about one peer node."""
 
     node_id: ContentId
@@ -87,7 +87,7 @@ class NodeStats:
 
 
 @dataclass(frozen=True)
-class NodeAddress:
+class NodeAddress:  # pylint: disable=too-many-instance-attributes
     """What is known about one place a peer node may be reached."""
 
     node_id: ContentId

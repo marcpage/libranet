@@ -207,7 +207,7 @@ def test_tampered_signature_parameters_are_rejected(signer: MessageSigner, store
 
 
 def test_signature_from_a_different_key_is_rejected(
-    signer: MessageSigner, store: CasStore, identity: NodeIdentity
+    store: CasStore, identity: NodeIdentity
 ) -> None:
     impostor = NodeIdentity(generate_private_key(), identity.public_key, identity.node_id)
     headers = MessageSigner(impostor, clock=fixed_clock(NOW)).sign_request("GET", PATH, {})
@@ -317,9 +317,7 @@ def test_future_signature_is_rejected(signer: MessageSigner, store: CasStore) ->
         make_verifier(store, now=NOW - SKEW - 1).verify_request("GET", PATH, headers)
 
 
-def test_expires_parameter_is_honored(
-    signer: MessageSigner, store: CasStore, identity: NodeIdentity
-) -> None:
+def test_expires_parameter_is_honored(store: CasStore, identity: NodeIdentity) -> None:
     signature_input = (
         f'libranet=("@method" "@path");created={int(NOW)};expires={int(NOW)};'
         f'keyid="{identity.key_id}"'
