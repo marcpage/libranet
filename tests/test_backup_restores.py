@@ -14,7 +14,7 @@ from xattr import xattr
 
 from libranet.backup.builds import Build, BuildRecord, BuildRecordError
 from libranet.backup.restores import RESUME_DELAY_SECONDS, Restore, RestorePass, RestoreStatus
-from libranet.backup.runs import AnnouncingStore
+from libranet.backup.runs import AnnouncingStore, BuildSettings
 from libranet.bundle.building import IgnoredPaths, build_directory, build_file
 from libranet.bundle.errors import IncorrectPasswordError, UnsupportedBundleError
 from libranet.bundle.layering import Layering, Superseded
@@ -98,7 +98,9 @@ def build_of(directory: Path, store: CasStore) -> Build:
     """``directory`` built into a plain bundle in ``store``, as an application is."""
     task = Build(BuildRequest(str(directory)), NOW)
     task.begin()
-    task.run(AnnouncingStore(store, lambda content_id, size: None), MIB, 32, (), lambda: NOW)
+    task.run(
+        AnnouncingStore(store, lambda content_id, size: None), BuildSettings(MIB, 32), lambda: NOW
+    )
     return task
 
 

@@ -51,10 +51,10 @@ from dataclasses import dataclass
 from json import dumps, loads
 from logging import getLogger
 from pathlib import Path
-from typing import Any, Callable, Final, Iterable, Mapping
+from typing import Any, Callable, Final, Mapping
 
 from libranet.atomic_file import write_atomically
-from libranet.backup.runs import BackupStore
+from libranet.backup.runs import BackupStore, BuildSettings
 from libranet.backup.tasks import Task
 from libranet.bundle.building import build_directory
 from libranet.bundle.content import ContentSource
@@ -62,7 +62,6 @@ from libranet.bundle.errors import BundleError, PasswordProtectedBundleError
 from libranet.bundle.layering import Layering, StoredVersion, Superseded
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.shapes import DirectoryBundle
-from libranet.bundle.xattrs import ExtendedAttributes
 from libranet.cas.content_id import ContentId
 from libranet.webserver.config_requests import BuildRequest
 
@@ -210,19 +209,14 @@ class Build(Task):
     def run(
         self,
         store: BackupStore,
-        max_object_bytes: int,
-        max_layers: int,
-        ignore: Iterable[Path],
+        settings: BuildSettings,
         clock: Callable[[], float],
-        xattrs: ExtendedAttributes | None = None,
     ) -> Mapping[str, str]:
-        """Build the directory into ``store``, record its bundle beside it, and finish.
+        """Build the directory into ``store`` as ``settings`` say, record its bundle, and finish.
 
         The new bundle is stored as a layer over the one recorded unless that
-        would lie more than ``max_layers`` above the last bundle stored
-        whole. Whatever ``ignore`` names is treated as though it were not
-        there. ``clock`` says when it finished. ``xattrs`` says which
-        extended attributes are recorded; without it, none are.
+        would lie more than ``settings.max_layers`` above the last bundle
+        stored whole. ``clock`` says when it finished.
 
         Returns:
             The paths left out, each with why.
@@ -244,10 +238,10 @@ class Build(Task):
             directory,
             store,
             previous,
-            max_object_bytes,
-            ignore=ignore,
+            settings.max_object_bytes,
+            ignore=settings.ignore,
             previous=None if earlier is None else earlier.superseded.entries,
-            xattrs=xattrs,
+            xattrs=settings.xattrs,
         )
 
         if record is not None and earlier is not None and earlier.matches(build.bundle):
@@ -263,8 +257,8 @@ class Build(Task):
                 None if earlier is None else earlier.under(),
                 store,
                 password,
-                max_object_bytes,
-                max_layers,
+                settings.max_object_bytes,
+                settings.max_layers,
             )
             bundle = stored.bundle
             BuildRecord.of(stored.expanded(build.entries), password is not None).save(record_path)

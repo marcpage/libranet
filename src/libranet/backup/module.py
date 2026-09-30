@@ -134,11 +134,10 @@ from libranet.backup.builds import Build, BuildRecordError
 from libranet.backup.exports import Export
 from libranet.backup.jobs import BackupJob, ExpandedBackups, load_jobs, save_jobs
 from libranet.backup.restores import Restore
-from libranet.backup.runs import AnnouncingStore, Backup, back_up
+from libranet.backup.runs import AnnouncingStore, Backup, BuildSettings, back_up
 from libranet.backup.tasks import TaskStatus
 from libranet.bundle.building import IgnoredPaths
 from libranet.bundle.errors import BundleError
-from libranet.bundle.xattrs import ExtendedAttributes
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
 from libranet.cas.store import CasStore
@@ -218,7 +217,7 @@ class BackupModule(ModuleBase):
         self._store = AnnouncingStore(CasStore.source_of_truth(config.storage), self._announce)
         self._content = LayeredSource.open(config.storage)
         self._expanded = ExpandedBackups(config.storage.expanded_backups_dir)
-        self._xattrs = ExtendedAttributes(config.backup.excluded_xattrs)
+        self._settings = BuildSettings.from_config(config)
         self._node_id: ContentId | None = None
         self._secret: bytes | None = None
         self._jobs: dict[str, BackupJob] = {}
@@ -433,7 +432,7 @@ class BackupModule(ModuleBase):
                 self._backup_secret(),
                 IgnoredPaths(self._config.directories()),
                 self._clock(),
-                self._xattrs,
+                self._settings.xattrs,
             )
 
         except (OSError, BundleError, KeyFileError, BuildRecordError) as error:
@@ -490,14 +489,7 @@ class BackupModule(ModuleBase):
         self._report()
 
         try:
-            skipped = build.run(
-                self._store,
-                self._config.storage.max_object_bytes,
-                self._config.backup.max_update_layers,
-                self._config.directories(),
-                self._clock,
-                self._xattrs,
-            )
+            skipped = build.run(self._store, self._settings, self._clock)
 
         except (OSError, BundleError, BuildRecordError) as error:
             build.fail(error, self._clock())
@@ -593,10 +585,7 @@ class BackupModule(ModuleBase):
                 self._store,
                 secret,
                 self._clock(),
-                self._config.storage.max_object_bytes,
-                self._config.backup.max_update_layers,
-                self._config.directories(),
-                self._xattrs,
+                self._settings,
                 expanded,
                 publish_metadata=requested,
             )
