@@ -20,7 +20,7 @@ from __future__ import annotations
 from json import dumps
 from typing import Final, Iterable, Sequence
 
-from libranet.json_format import COMPACT_SEPARATORS
+from libranet.json_format import compact_json
 
 #: `{"nodes":{}}`, the smallest node list.
 _NODE_LIST_BASE_BYTES: Final = 12
@@ -55,7 +55,7 @@ def render_node_list(entries: Iterable[tuple[str, str]], max_bytes: int) -> byte
         nodes[endpoint] = node_id
         used_bytes += cost_bytes
 
-    return dumps({"nodes": nodes}, separators=COMPACT_SEPARATORS).encode("utf-8")
+    return compact_json({"nodes": nodes})
 
 
 def render_candidate_list(nodes: Iterable[tuple[str, Sequence[str]]]) -> bytes:
@@ -63,14 +63,13 @@ def render_candidate_list(nodes: Iterable[tuple[str, Sequence[str]]]) -> bytes:
 
     Its shape is documented by :mod:`libranet.stats.derivation`.
     """
-    return dumps(
+    return compact_json(
         {
             "nodes": [
                 {"node_id": node_id, "endpoints": list(endpoints)} for node_id, endpoints in nodes
             ]
-        },
-        separators=COMPACT_SEPARATORS,
-    ).encode("utf-8")
+        }
+    )
 
 
 def render_seek_list(data: Sequence[str], searches: Sequence[str], max_bytes: int) -> bytes:
@@ -82,9 +81,7 @@ def render_seek_list(data: Sequence[str], searches: Sequence[str], max_bytes: in
     budget_bytes = max_bytes - _SEEK_LIST_BASE_BYTES
     wanted_data, data_used_bytes = _take_while_fits(data, budget_bytes // 2)
     wanted_searches, _ = _take_while_fits(searches, budget_bytes - data_used_bytes)
-    return dumps(
-        {"data": wanted_data, "search": wanted_searches}, separators=COMPACT_SEPARATORS
-    ).encode("utf-8")
+    return compact_json({"data": wanted_data, "search": wanted_searches})
 
 
 def _take_while_fits(values: Iterable[str], budget_bytes: int) -> tuple[list[str], int]:

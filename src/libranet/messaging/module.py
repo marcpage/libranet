@@ -3,13 +3,13 @@
 A module is given its queues through its constructor (manual dependency
 injection), publishes through :meth:`ModuleBase.publish`, and receives only
 the broadcasts it subscribes to. Subclasses declare ``subscriptions`` and
-implement :meth:`ModuleBase.handle`; :meth:`ModuleBase.run` supplies the
-receive loop. Because nothing here starts a process, a module can be
-unit-tested by constructing it with plain ``queue.Queue`` objects.
+say which handler takes each, or implement :meth:`ModuleBase.handle`
+themselves; :meth:`ModuleBase.run` supplies the receive loop. Because nothing
+here starts a process, a module can be unit-tested by constructing it with
+plain ``queue.Queue`` objects.
 """
 
 from __future__ import annotations
-from abc import ABC, abstractmethod
 from logging import Logger
 from queue import Empty
 from time import monotonic, time
@@ -39,7 +39,7 @@ class StopSignal(Protocol):
         ...
 
 
-class ModuleBase(ABC):
+class ModuleBase:
     """Publish/receive plumbing shared by every module.
 
     Broadcasts reach every module, including the one that published them;
@@ -66,6 +66,7 @@ class ModuleBase(ABC):
         self._logger = logger or get_logger(name)
         self._clock = clock
         self._poll_interval_seconds = poll_interval_seconds
+        self._handlers: Mapping[EventType, Callable[[Message], None]] = {}
 
     @property
     def name(self) -> ModuleName:
@@ -152,9 +153,13 @@ class ModuleBase(ABC):
             self.on_stop()
             self._logger.info("Module %s stopped", self._name)
 
-    @abstractmethod
     def handle(self, message: Message) -> None:
-        """React to one subscribed broadcast."""
+        """React to one subscribed broadcast, with the handler :meth:`_route` gave its event.
+
+        A malformed message raises, and :meth:`run` logs it. So does an event
+        with no handler, rather than being taken for one it is not.
+        """
+        self._handlers[event_of(message)](message)
 
     def on_start(self) -> None:
         """Hook run once before the receive loop starts."""
@@ -164,3 +169,20 @@ class ModuleBase(ABC):
 
     def on_stop(self) -> None:
         """Hook run once after the receive loop ends, however it ends."""
+
+    def _route(self, handlers: Mapping[EventType, Callable[[Message], None]]) -> None:
+        """Have :meth:`handle` pass each subscribed event to the handler ``handlers`` gives it.
+
+        Raises:
+            ValueError: ``handlers`` lacks a subscribed event, or holds one
+                this module does not subscribe to and so would never be sent.
+        """
+        unmatched = handlers.keys() ^ self.subscriptions
+
+        if unmatched:
+            raise ValueError(
+                f"Handlers and subscriptions must name the same events, "
+                f"got only one for {', '.join(sorted(unmatched))}"
+            )
+
+        self._handlers = handlers

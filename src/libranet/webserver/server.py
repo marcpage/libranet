@@ -141,11 +141,7 @@ def build_router(  # pylint: disable=too-many-locals
         SEARCH_PATTERN,
         SearchHandler(
             search=LocalSearch(content, storage.search_max_results),
-            cache=SearchCache(
-                storage.search_cache_dir,
-                storage.search_cache_ttl_seconds,
-                storage.hash_prefix_length,
-            ),
+            cache=SearchCache.of(storage),
             publish=publish,
         ),
     )
@@ -175,7 +171,7 @@ def build_router(  # pylint: disable=too-many-locals
 
     applications = AppHandler(
         registry,
-        ResolvedFiles(storage.resolved_files_dir, storage.hash_prefix_length),
+        ResolvedFiles.of(storage),
         app_outcomes or ApplicationOutcomes(),
         publish,
         retry_after_seconds,

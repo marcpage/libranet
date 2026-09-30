@@ -1,10 +1,21 @@
-"""Refusals shared by everything that reads request bodies or checks signatures."""
+"""Responses more than one handler gives in place of what a request asked for.
+
+Those refusing a body or a signature are shared by everything that reads
+request bodies or checks signatures. The ``503`` is for content that is on
+its way, whether from peers or out of a bundle.
+"""
 
 from __future__ import annotations
 from dataclasses import replace
 from http import HTTPStatus
 
-from libranet.problems import CONTENT_TOO_LARGE, INVALID_SIGNATURE, SIGNATURE_REQUIRED, Problem
+from libranet.problems import (
+    CONTENT_TOO_LARGE,
+    CONTENT_UNAVAILABLE,
+    INVALID_SIGNATURE,
+    SIGNATURE_REQUIRED,
+    Problem,
+)
 from libranet.webserver.http_types import Request, Response, problem_response
 
 
@@ -68,3 +79,24 @@ def invalid_signature_response(request: Request, reason: str | None) -> Response
         )
     )
     return replace(response, close=True)
+
+
+def content_unavailable_response(
+    request: Request, detail: str, retry_after_seconds: int
+) -> Response:
+    """The ``503`` for content asked for that is not here yet, but has been sent for (HttpApi §5.2).
+
+    ``detail`` says what was sent for, and ``retry_after_seconds`` how long
+    the client is told to wait before it asks again.
+    """
+    return problem_response(
+        Problem(
+            status=HTTPStatus.SERVICE_UNAVAILABLE,
+            title="Content temporarily unavailable",
+            type=CONTENT_UNAVAILABLE,
+            detail=detail,
+            instance=request.path,
+            extensions={"retry_after": retry_after_seconds},
+        ),
+        {"Retry-After": str(retry_after_seconds), "Cache-Control": "no-store"},
+    )

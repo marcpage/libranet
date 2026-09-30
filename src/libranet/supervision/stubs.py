@@ -11,7 +11,6 @@ from time import monotonic, sleep
 from typing import Mapping
 
 from libranet.config.models import LibranetConfig
-from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase, StopSignal
 from libranet.messaging.queues import ModuleQueues
@@ -21,9 +20,6 @@ from libranet.supervision.specs import ReadySignal
 
 class StubModule(ModuleBase):
     """A "hello world" module: it announces itself and subscribes to nothing."""
-
-    def handle(self, message: Message) -> None:
-        """Never called: a stub has no subscriptions."""
 
     def on_start(self) -> None:
         self.logger.info("Hello from stub module %s", self.name)

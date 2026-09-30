@@ -24,14 +24,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import scrypt
 from hmac import compare_digest
-from json import dumps, loads
+from json import loads
 from pathlib import Path
 from secrets import token_bytes
 from typing import Any, Final
 
 from libranet.config.models import LibranetConfig
 from libranet.identity.keys import write_private_file
-from libranet.json_format import COMPACT_SEPARATORS
+from libranet.json_format import compact_json
 
 #: The name of the hash, stored so another can be told apart from it later.
 SCHEME: Final = "scrypt"
@@ -128,7 +128,7 @@ class StoredCredential:
 
     def to_json(self) -> bytes:
         """The record as the bytes of the stored file."""
-        return dumps(
+        return compact_json(
             {
                 "scheme": SCHEME,
                 "cost": self.cost,
@@ -136,9 +136,8 @@ class StoredCredential:
                 "parallelism": self.parallelism,
                 "salt": self.salt.hex(),
                 "key": self.key.hex(),
-            },
-            separators=COMPACT_SEPARATORS,
-        ).encode("utf-8")
+            }
+        )
 
     def matches(self, credentials: str) -> bool:
         """Whether ``credentials`` hash to this record, compared in constant time."""

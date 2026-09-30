@@ -150,7 +150,7 @@ from libranet.config.models import LibranetConfig
 from libranet.identity.errors import KeyFileError
 from libranet.identity.keys import load_or_create_backup_secret
 from libranet.identity.node_identity import NodeIdentity
-from libranet.messaging.envelope import Message, event_of
+from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
@@ -232,15 +232,17 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._restores: dict[str, Restore] = {}
         self._builds: dict[str, Build] = {}
         self._exports: dict[str, Export] = {}
-        self._handlers: Mapping[EventType, Callable[[Message], None]] = {
-            EventType.BACKUP_JOB_CONFIGURED: self._on_job_configured,
-            EventType.BACKUP_JOB_REMOVED: self._on_job_removed,
-            EventType.BACKUP_RUN_REQUESTED: self._on_run_requested,
-            EventType.RESTORE_REQUESTED: self._on_restore_requested,
-            EventType.BUILD_REQUESTED: self._on_build_requested,
-            EventType.EXPORT_REQUESTED: self._on_export_requested,
-            EventType.DATA_STORED: self._on_data_stored,
-        }
+        self._route(
+            {
+                EventType.BACKUP_JOB_CONFIGURED: self._on_job_configured,
+                EventType.BACKUP_JOB_REMOVED: self._on_job_removed,
+                EventType.BACKUP_RUN_REQUESTED: self._on_run_requested,
+                EventType.RESTORE_REQUESTED: self._on_restore_requested,
+                EventType.BUILD_REQUESTED: self._on_build_requested,
+                EventType.EXPORT_REQUESTED: self._on_export_requested,
+                EventType.DATA_STORED: self._on_data_stored,
+            }
+        )
 
     @property
     def node_id(self) -> ContentId:
@@ -297,7 +299,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
 
         A malformed message raises, and :meth:`run` logs it.
         """
-        self._handlers[event_of(message)](message)
+        super().handle(message)
         self._work_next()
 
     def _on_job_configured(self, message: Message) -> None:
@@ -395,7 +397,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self.logger.info("Exporting %s to %s", request.bundle, request.archive)
 
     def _on_data_stored(self, message: Message) -> None:
-        content_id = ContentId.create(message["algorithm"], message["hash"])
+        content_id = ContentId.from_fields(message)
         now = self._clock()
         landed = [restore.landed(content_id, now) for restore in self._restores.values()]
 
@@ -468,10 +470,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
                 )
 
             for content_id in restore_pass.ask_for:
-                self.publish(
-                    EventType.DATA_NOT_FOUND,
-                    {"algorithm": content_id.algorithm, "hash": content_id.hash},
-                )
+                self.publish(EventType.DATA_NOT_FOUND, content_id.fields())
 
             for path, lacked in restore_pass.given_up.items():
                 self.logger.warning(
@@ -559,10 +558,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
 
         else:
             for content_id in lacked:
-                self.publish(
-                    EventType.DATA_NOT_FOUND,
-                    {"algorithm": content_id.algorithm, "hash": content_id.hash},
-                )
+                self.publish(EventType.DATA_NOT_FOUND, content_id.fields())
 
             if lacked:
                 self.logger.warning(
@@ -674,12 +670,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
     def _announce(self, content_id: ContentId, size_bytes: int) -> None:
         self.publish(
             EventType.DATA_STORED,
-            {
-                "algorithm": content_id.algorithm,
-                "hash": content_id.hash,
-                "node_id": str(self.node_id),
-                "size": size_bytes,
-            },
+            {**content_id.fields(), "node_id": str(self.node_id), "size": size_bytes},
         )
 
     def _interval_of(self, job: BackupJob) -> float:

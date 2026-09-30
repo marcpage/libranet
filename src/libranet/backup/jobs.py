@@ -40,7 +40,7 @@ from libranet.bundle.errors import BundleError
 from libranet.bundle.layering import Layering, Superseded
 from libranet.bundle.protection import protect, unprotect
 from libranet.cas.content_id import ContentId
-from libranet.json_format import COMPACT_SEPARATORS
+from libranet.json_format import compact_json
 from libranet.webserver.config_requests import BackupJobRequest
 
 _LOGGER = getLogger(__name__)
@@ -243,7 +243,7 @@ class ExpandedBackups:
         Raises:
             OSError: it could not be written.
         """
-        plaintext = dumps(expanded.value(), separators=COMPACT_SEPARATORS).encode("ascii")
+        plaintext = compact_json(expanded.value())
         write_atomically(self.path(job_id), protect(plaintext, secret, _MAX_EXPANDED_BYTES))
 
     def remove(self, job_id: str) -> None:

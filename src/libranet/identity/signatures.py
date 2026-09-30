@@ -42,6 +42,7 @@ from libranet.cas.errors import (
     UnknownAlgorithmError,
 )
 from libranet.cas.store import CasStore
+from libranet.config.models import LibranetConfig
 from libranet.identity.content_digest import (
     CONTENT_DIGEST_HEADER,
     content_digest,
@@ -226,6 +227,20 @@ class MessageVerifier:
     ) -> None:
         self._verifier = _FreshnessVerifier(
             _PublicKeyResolver(public_keys), max_age_seconds, clock_skew_seconds, clock
+        )
+
+    @classmethod
+    def of(cls, config: LibranetConfig, clock: Clock = time) -> MessageVerifier:
+        """The verifier a node checks signatures with, per its configuration.
+
+        The public keys are those its source of truth holds.
+        """
+        identity = config.identity
+        return cls(
+            CasStore.source_of_truth(config.storage),
+            identity.signature_max_age_seconds,
+            identity.signature_clock_skew_seconds,
+            clock,
         )
 
     def verify_request(

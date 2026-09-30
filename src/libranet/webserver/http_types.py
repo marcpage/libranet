@@ -10,12 +10,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from io import BytesIO
-from json import dumps, loads
+from json import loads
 from re import compile as compile_pattern
 from typing import Any, Final, Mapping, Protocol
 
 from libranet.identity.authentication import AuthenticationResult
-from libranet.json_format import COMPACT_SEPARATORS
+from libranet.json_format import compact_json
 from libranet.problems import PROBLEM_CONTENT_TYPE, Problem
 from libranet.webserver.inbound_peers import InboundConnection
 
@@ -192,8 +192,7 @@ def bytes_response(
 
 def json_response(value: Any, status: int = HTTPStatus.OK) -> Response:
     """``value`` serialized as a JSON body."""
-    body = dumps(value, separators=COMPACT_SEPARATORS).encode("utf-8")
-    return Response(status, body, {"Content-Type": JSON_CONTENT_TYPE})
+    return Response(status, compact_json(value), {"Content-Type": JSON_CONTENT_TYPE})
 
 
 def problem_response(problem: Problem, headers: Mapping[str, str] | None = None) -> Response:

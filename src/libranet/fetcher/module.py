@@ -31,13 +31,13 @@ that connect later are asked for it.
 from __future__ import annotations
 from collections import OrderedDict
 from logging import Logger
-from typing import Callable, ClassVar, Mapping
+from typing import ClassVar
 
 from libranet.bundle.content import ContentSource
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
 from libranet.config.models import LibranetConfig
-from libranet.messaging.envelope import TIMESTAMP_FIELD, Message, event_of
+from libranet.messaging.envelope import TIMESTAMP_FIELD, Message
 from libranet.messaging.events import EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
@@ -72,18 +72,16 @@ class FetcherModule(ModuleBase):
         # Content asked for, oldest first, with when the miss that prompted
         # each request was reported.
         self._asked: OrderedDict[ContentId, float] = OrderedDict()
-        self._handlers: Mapping[EventType, Callable[[Message], None]] = {
-            EventType.DATA_NOT_FOUND: self._on_data_not_found,
-            EventType.FETCH_SUCCEEDED: self._on_fetch_succeeded,
-            EventType.FETCH_FAILED: self._on_fetch_failed,
-        }
-
-    def handle(self, message: Message) -> None:
-        """React to one subscribed broadcast; a malformed one raises and :meth:`run` logs it."""
-        self._handlers[event_of(message)](message)
+        self._route(
+            {
+                EventType.DATA_NOT_FOUND: self._on_data_not_found,
+                EventType.FETCH_SUCCEEDED: self._on_fetch_succeeded,
+                EventType.FETCH_FAILED: self._on_fetch_failed,
+            }
+        )
 
     def _on_data_not_found(self, message: Message) -> None:
-        content_id = _content_id(message)
+        content_id = ContentId.from_fields(message)
 
         if self._content.exists(content_id):
             self.logger.debug("%s is held, so is not asked for", content_id)
@@ -103,16 +101,16 @@ class FetcherModule(ModuleBase):
 
         self._asked[content_id] = reported_at
         self._asked.move_to_end(content_id)
-        self.publish(
-            EventType.FETCH_REQUESTED, {"algorithm": content_id.algorithm, "hash": content_id.hash}
-        )
+        self.publish(EventType.FETCH_REQUESTED, content_id.fields())
         self.logger.debug("Asked the connection manager for %s", content_id)
 
     def _on_fetch_succeeded(self, message: Message) -> None:
-        self.logger.info("Fetched %s from %s", _content_id(message), message["node_id"])
+        self.logger.info(
+            "Fetched %s from %s", ContentId.from_fields(message), message["node_id"]
+        )
 
     def _on_fetch_failed(self, message: Message) -> None:
-        self.logger.info("No connected peer had %s", _content_id(message))
+        self.logger.info("No connected peer had %s", ContentId.from_fields(message))
 
     def _forget_asks_before(self, cutoff: float) -> None:
         """Drop requests made no later than ``cutoff``, too old to cover any miss after it.
@@ -122,11 +120,6 @@ class FetcherModule(ModuleBase):
         """
         while self._asked and next(iter(self._asked.values())) <= cutoff:
             self._asked.popitem(last=False)
-
-
-def _content_id(message: Message) -> ContentId:
-    """The content identifier a message names in its ``algorithm`` and ``hash``."""
-    return ContentId.create(message["algorithm"], message["hash"])
 
 
 def fetcher_module_factory(
