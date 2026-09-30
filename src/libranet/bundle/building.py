@@ -85,6 +85,7 @@ from libranet.bundle.shapes import (
     Metadata,
     Symlink,
     XattrValue,
+    ancestors,
     is_utf8,
 )
 from libranet.bundle.storing import HASH_ALGORITHM, ContentSink, store_object
@@ -282,7 +283,7 @@ def build_directory(
                         file, sink, max_object_bytes, found, earlier.get(path)
                     )
 
-    parents = _ancestors(entries.keys() | directories.keys())
+    parents = ancestors(entries.keys() | directories.keys())
 
     for path, metadata in directories.items():
         if path not in parents or metadata.xattrs:
@@ -351,19 +352,6 @@ def _symlink(item: DirEntry[str]) -> Symlink:
         raise MalformedBundleError("Symlink target is not UTF-8")
 
     return Symlink(target)
-
-
-def _ancestors(paths: set[str]) -> set[str]:
-    """Every directory above one of ``paths``."""
-    ancestors: set[str] = set()
-
-    for path in paths:
-        segments = path.split(PATH_SEPARATOR)[:-1]
-
-        for depth in range(1, len(segments) + 1):
-            ancestors.add(PATH_SEPARATOR.join(segments[:depth]))
-
-    return ancestors
 
 
 def _open_regular_file(path: Path) -> BinaryIO:

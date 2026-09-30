@@ -1,6 +1,7 @@
 """Tests for backup jobs and the file they are kept in."""
 
 from __future__ import annotations
+from dataclasses import replace
 from json import dumps, loads
 from logging import INFO, WARNING
 from math import inf, nan
@@ -24,7 +25,7 @@ from libranet.cas.content_id import ContentId
 from libranet.webserver.config_requests import BackupJobRequest
 
 BUNDLE = ContentId.for_data(b"a bundle", "sha256")
-LATEST = LatestBackup(BUNDLE, 1_789_000_000.5, "f" * 64, "e" * 64, skipped=2)
+LATEST = LatestBackup(BUNDLE, 1_789_000_000.5, "e" * 64, skipped=2)
 
 
 @fixture
@@ -40,7 +41,6 @@ def _saved(**latest: Any) -> dict[str, Any]:
         "latest": {
             "bundle": str(BUNDLE),
             "made_at": 1_789_000_000.0,
-            "fingerprint": "f" * 64,
             "entries_digest": "e" * 64,
             "skipped": 0,
             **latest,
@@ -65,7 +65,7 @@ def test_jobs_are_read_back_as_saved(path: Path) -> None:
         BackupJob(BackupJobRequest("/a", 60.0), LATEST),
         BackupJob(
             BackupJobRequest("/a"),
-            LatestBackup(BUNDLE, 1_789_000_000.5, "f" * 64, "e" * 64, 0, Layering(3, 12)),
+            LatestBackup(BUNDLE, 1_789_000_000.5, "e" * 64, 0, Layering(3, 12)),
         ),
     ],
 )
@@ -87,7 +87,6 @@ def test_jobs_are_saved_in_order_of_directory(path: Path) -> None:
                 "latest": {
                     "bundle": str(BUNDLE),
                     "made_at": 1_789_000_000.5,
-                    "fingerprint": "f" * 64,
                     "entries_digest": "e" * 64,
                     "skipped": 2,
                     "layering": None,
@@ -96,6 +95,14 @@ def test_jobs_are_saved_in_order_of_directory(path: Path) -> None:
             {"directory": "/b", "interval_seconds": None, "latest": None},
         ]
     }
+
+
+def test_a_fingerprint_saved_before_one_pass_backups_is_not_used(path: Path) -> None:
+    path.write_text(dumps({"jobs": [_saved(fingerprint="f" * 64)]}))
+    (job,) = load_jobs(path).values()
+
+    assert job.latest == LatestBackup(BUNDLE, 1_789_000_000.0, "e" * 64)
+    assert job.value()["latest"] == {**_saved()["latest"], "layering": None}
 
 
 def test_saving_replaces_what_was_saved(path: Path) -> None:
@@ -154,7 +161,6 @@ def test_a_file_that_cannot_be_read_is_an_error(path: Path) -> None:
         _saved(bundle="not a content id"),
         _saved(made_at="yesterday"),
         _saved(made_at=False),
-        _saved(fingerprint=None),
         _saved(entries_digest=1),
         _saved(skipped=-1),
         _saved(skipped=1.5),
@@ -181,12 +187,12 @@ def test_a_time_that_is_not_finite_is_an_error(path: Path) -> None:
 @mark.parametrize("made_at", [inf, -inf, nan])
 def test_a_latest_backup_has_a_finite_time(made_at: float) -> None:
     with raises(ValueError):
-        LatestBackup(BUNDLE, made_at, "f", "e")
+        LatestBackup(BUNDLE, made_at, "e")
 
 
 def test_a_latest_backup_skips_no_fewer_than_no_paths() -> None:
     with raises(ValueError):
-        LatestBackup(BUNDLE, 0.0, "f", "e", skipped=-1)
+        LatestBackup(BUNDLE, 0.0, "e", skipped=-1)
 
 
 SECRET = b"s" * 32
@@ -223,6 +229,17 @@ def test_a_bundle_kept_expanded_is_encrypted_with_the_secret(expanded: ExpandedB
     assert b"secret plans" not in held
     assert ContentId.for_data(b"plans", "sha256").hash.encode() not in held
     assert held.endswith(b"\0PW-SHA256-AES256-CBC")
+
+
+def test_a_change_held_back_is_kept_with_the_bundle(expanded: ExpandedBackups) -> None:
+    plans = EXPANDED.entries["secret plans.txt"]
+    assert isinstance(plans, FileBundle)
+    held_back = replace(
+        EXPANDED, held_back={"secret plans.txt": replace(plans, metadata=Metadata(size=5))}
+    )
+    expanded.save(JOB_ID, held_back, SECRET)
+
+    assert expanded.load(JOB_ID, BUNDLE, SECRET) == held_back
 
 
 def test_keeping_a_bundle_expanded_replaces_what_was_kept(expanded: ExpandedBackups) -> None:

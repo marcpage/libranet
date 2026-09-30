@@ -3,7 +3,7 @@
 from __future__ import annotations
 from functools import partial
 from hashlib import sha256
-from logging import INFO, WARNING
+from logging import ERROR, INFO, WARNING
 from typing import Any, Mapping
 
 from pytest import LogCaptureFixture, mark, raises
@@ -350,6 +350,8 @@ KEPT: dict[str, Entry] = {
     "about": Symlink("pages/about.html"),
     "empty": DirectoryMarker(Metadata(writable=True)),
 }
+# index.html, its time alone changed.
+TOUCHED = FileBundle((part(1),), Metadata(size=1, modified="2026-09-02T08:30:00Z"))
 
 
 @mark.parametrize(
@@ -358,6 +360,7 @@ KEPT: dict[str, Entry] = {
         Superseded(ContentId.parse(part(0)), KEPT),
         Superseded(ContentId.parse(part(0)), KEPT, (part(2), part(3)), Layering(2, 5)),
         Superseded(ContentId.parse(part(0)), {}),
+        Superseded(ContentId.parse(part(0)), KEPT, held_back={"about": None, "empty": None}),
     ],
 )
 def test_a_bundle_kept_expanded_is_read_back_from_the_value_it_is_saved_as(
@@ -375,6 +378,28 @@ def test_a_bundle_kept_expanded_is_saved_as_a_directory_bundle_naming_itself() -
         "beneath": [part(2)],
         **bundle_value(DirectoryBundle(KEPT)),
     }
+
+
+def test_what_is_held_back_is_saved_as_a_directory_bundle_contents_beside_it() -> None:
+    held_back: dict[str, Entry | None] = {"index.html": TOUCHED, "about": None}
+    kept = Superseded(ContentId.parse(part(0)), KEPT, held_back=held_back)
+
+    assert kept.value() == {
+        "bundle": part(0),
+        "layering": None,
+        "beneath": [],
+        **bundle_value(DirectoryBundle(KEPT)),
+        "held_back": bundle_value(DirectoryBundle(held_back))["contents"],
+    }
+
+
+def test_a_bundle_kept_expanded_is_seen_as_it_holds_with_what_is_held_back_overlaid() -> None:
+    kept = Superseded(
+        ContentId.parse(part(0)), KEPT, held_back={"index.html": TOUCHED, "about": None}
+    )
+
+    assert kept.seen == {"index.html": TOUCHED, "empty": KEPT["empty"]}
+    assert Superseded(ContentId.parse(part(0)), KEPT).seen == KEPT
 
 
 def test_a_bundle_kept_expanded_lower_cases_the_hashes_it_names() -> None:
@@ -408,6 +433,9 @@ def kept_value(**changes: object) -> dict[str, Any]:
         kept_value(layering={"layers": 1}),
         kept_value(layering={"layers": 1, "extensions": 1}),
         kept_value(beneath=[part(2)]),
+        kept_value(held_back=[]),
+        kept_value(held_back={"../escape": None}),
+        kept_value(held_back={"file": {"contents": 7}}),
     ],
 )
 def test_an_unusable_bundle_kept_expanded_is_an_error(value: object) -> None:
@@ -544,3 +572,72 @@ def test_a_bundle_that_cannot_be_read_back_is_logged_at_info(caplog: LogCaptureF
     assert record.getMessage().startswith(
         f"Cannot read {bundle}, the bundle superseded, so every file is read: "
     )
+
+
+# KEPT, with a directory that has an entry beneath it but none of its own.
+FILLED: dict[str, Entry] = {**KEPT, "pages/about.html": FileBundle((part(2),))}
+TAGGED = DirectoryMarker(Metadata(xattrs={"user.tag": "cmVk"}))
+
+
+@mark.parametrize(
+    "before, after",
+    [
+        (FILLED, FILLED),
+        (FILLED, {**FILLED, "index.html": TOUCHED}),
+        (FILLED, {**FILLED, "empty": TAGGED}),
+        (FILLED, {**FILLED, "pages": TAGGED}),
+        ({**FILLED, "pages": TAGGED}, FILLED),
+    ],
+    ids=["same", "time", "xattr", "marker-for-xattr-added", "marker-for-xattr-removed"],
+)
+def test_a_change_to_metadata_alone_changes_no_content(
+    before: dict[str, Entry], after: dict[str, Entry]
+) -> None:
+    assert not Superseded(ContentId.parse(part(0)), before).changes_content(after)
+
+
+@mark.parametrize(
+    "entries",
+    [
+        {**KEPT, "index.html": FileBundle((part(3),), TOUCHED.metadata)},
+        {**KEPT, "added.txt": FileBundle(())},
+        {path: entry for path, entry in KEPT.items() if path != "about"},
+        {**KEPT, "about": Symlink("pages/other.html")},
+        {**KEPT, "about": FileBundle(())},
+        {**KEPT, "empty": Symlink("index.html")},
+        {**KEPT, "new/empty": DirectoryMarker()},
+        {
+            **{path: entry for path, entry in KEPT.items() if path != "empty"},
+            "empty/filled.txt": FileBundle(()),
+        },
+    ],
+    ids=[
+        "bytes",
+        "path-added",
+        "path-removed",
+        "target",
+        "symlink-to-file",
+        "directory-to-symlink",
+        "empty-directory-added",
+        "empty-directory-filled",
+    ],
+)
+def test_a_path_added_or_removed_or_bytes_or_target_changed_changes_content(
+    entries: dict[str, Entry],
+) -> None:
+    assert Superseded(ContentId.parse(part(0)), KEPT).changes_content(entries)
+
+
+def test_an_entry_of_no_kind_known_is_logged_and_changes_content(
+    caplog: LogCaptureFixture,
+) -> None:
+    unknown: Any = object()
+
+    assert Superseded(ContentId.parse(part(0)), KEPT).changes_content({**KEPT, "odd": unknown})
+    assert caplog.record_tuples == [
+        (
+            "libranet.bundle.layering",
+            ERROR,
+            "odd is no kind of entry known, so it is taken to change content",
+        )
+    ]

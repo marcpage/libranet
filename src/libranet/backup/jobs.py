@@ -2,8 +2,7 @@
 
 A job is a directory to keep backed up, and how often to look at it, as
 ``/config`` configured it (Step 18). Once backed up, it also has a latest
-backup: its current bundle, and what the directory was like when the bundle
-was made, so the next look can tell whether anything changed.
+backup: its current bundle, and a digest of what it holds.
 
 Jobs are kept in a JSON file only the backup module opens, not in the stats
 database, so the mapping from each directory to its current bundle outlives
@@ -11,8 +10,7 @@ the node (§3.3)::
 
     {"jobs": [{"directory": "/home/me/notes", "interval_seconds": null,
                "latest": {"bundle": "sha256/<hex>", "made_at": 1789000000.0,
-                          "fingerprint": "<hex>", "entries_digest": "<hex>",
-                          "skipped": 0,
+                          "entries_digest": "<hex>", "skipped": 0,
                           "layering": {"layers": 1, "extensions": 1}}}]}
 
 The file is replaced whole on every change, so a crash leaves it as it was
@@ -24,7 +22,9 @@ Each job's latest bundle is also kept expanded, every entry it holds with its
 extensions overlaid, so that the next backup is built from it without reading
 the bundle back (Phase 2 Step 48). A million-file directory's entries do not
 belong in the jobs file, so each job's are kept in a file of their own, named
-by the job's id, in a directory beside it (:class:`ExpandedBackups`).
+by the job's id, in a directory beside it (:class:`ExpandedBackups`). A
+change to metadata alone that a backup held back is kept there too (Phase 2
+Step 49).
 """
 
 from __future__ import annotations
@@ -58,13 +58,12 @@ class JobFileError(ValueError):
 class LatestBackup:
     """A job's current bundle (§3.3), and what it was made from.
 
-    ``fingerprint`` is what the directory was like when the bundle was made,
-    as a :class:`~libranet.backup.changes.ChangeDetector` describes it.
     ``entries_digest`` is the SHA-256 of the bundle's entries, without the
     versions it supersedes, so that building an unchanged directory again
-    can be told apart from a change. ``skipped`` counts the paths the bundle
-    leaves out (:class:`~libranet.bundle.building.DirectoryBuild`).
-    ``layering`` is where the bundle sits among update layers
+    can be told apart from a change where the bundle cannot be read.
+    ``skipped`` counts the paths the bundle leaves out
+    (:class:`~libranet.bundle.building.DirectoryBuild`). ``layering`` is
+    where the bundle sits among update layers
     (:mod:`libranet.bundle.layering`), not known for one made before layers
     were written.
 
@@ -74,7 +73,6 @@ class LatestBackup:
 
     bundle: ContentId
     made_at: float
-    fingerprint: str
     entries_digest: str
     skipped: int = 0
     layering: Layering | None = None
@@ -89,6 +87,8 @@ class LatestBackup:
     @classmethod
     def from_value(cls, value: object) -> LatestBackup:
         """The latest backup a saved JSON object describes.
+
+        A ``fingerprint``, saved before Phase 2 Step 49, is not used.
 
         Raises:
             ValueError: it is not a latest-backup object, or describes an
@@ -107,7 +107,6 @@ class LatestBackup:
         return cls(
             ContentId.parse(_string(value, "bundle")),
             _number(value, "made_at"),
-            _string(value, "fingerprint"),
             _string(value, "entries_digest"),
             skipped,
             None if layering is None else Layering.from_value(layering),
@@ -118,7 +117,6 @@ class LatestBackup:
         return {
             "bundle": str(self.bundle),
             "made_at": self.made_at,
-            "fingerprint": self.fingerprint,
             "entries_digest": self.entries_digest,
             "skipped": self.skipped,
             "layering": None if self.layering is None else self.layering.value(),

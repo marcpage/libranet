@@ -4,10 +4,10 @@ endpoints, and the clock faked."""
 from __future__ import annotations
 from io import BytesIO
 from logging import ERROR, INFO, WARNING
-from os import mkfifo
+from os import DirEntry, mkfifo, scandir, utime
 from pathlib import Path
 from queue import Empty, Queue
-from typing import Any
+from typing import Any, Iterator
 
 from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
 from xattr import xattr
@@ -54,20 +54,8 @@ from libranet.webserver.config_requests import (
 
 INTERVAL = 100.0
 START = 1_789_000_000.0
-
-
-class Blind:
-    """A change detector that never notices a change."""
-
-    def fingerprint(self, directory: Path) -> str:
-        return "the same as ever"
-
-
-class Broken:
-    """A change detector that fails without saying why."""
-
-    def fingerprint(self, directory: Path) -> str:
-        raise RuntimeError()
+# 2026-09-01T08:30:00Z
+WHOLE_SECOND_NS = 1_788_251_400 * 1_000_000_000
 
 
 @fixture
@@ -366,21 +354,87 @@ def test_a_backup_whose_bundle_cannot_be_kept_expanded_fails_its_job_and_keeps_t
     assert latest is not None and str(latest.bundle) == bundle
 
 
-def test_an_unchanged_directory_is_looked_at_but_not_backed_up(
+def test_an_unchanged_directory_is_looked_at_but_keeps_its_bundle(
     config: LibranetConfig, queues: ModuleQueues, now: list[float], tree: Path
 ) -> None:
     module = start(config, queues, now)
     configure(module, tree)
     bundle = reports(published(queues))[-1][0]["bundle"]
+    saved = config.storage.backup_jobs_path.stat().st_ino
     now[0] += INTERVAL
     module.on_idle()
     messages = published(queues)
 
     assert stored_ids(messages) == []
-    assert [jobs[0]["status"] for jobs in reports(messages)] == ["waiting"]
-    assert reports(messages)[0][0]["checked_at"] == START + INTERVAL
-    assert reports(messages)[0][0]["bundle"] == bundle
-    assert reports(messages)[0][0]["backed_up_at"] == START
+    assert [jobs[0]["status"] for jobs in reports(messages)] == ["running", "waiting"]
+    assert reports(messages)[-1][0]["checked_at"] == START + INTERVAL
+    assert reports(messages)[-1][0]["bundle"] == bundle
+    assert reports(messages)[-1][0]["backed_up_at"] == START
+    # Nothing to save, so the jobs file is not written again.
+    assert config.storage.backup_jobs_path.stat().st_ino == saved
+
+
+def test_a_look_walks_the_directory_once(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tree: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    listed: list[Path] = []
+
+    def recorded(directory: Path) -> Iterator[DirEntry[str]]:
+        listed.append(Path(directory))
+        return scandir(directory)
+
+    monkeypatch.setattr("libranet.bundle.building.scandir", recorded)
+    module = start(config, queues, now)
+    configure(module, tree)
+    (tree / "readme.txt").write_bytes(b"read me, changed")
+    now[0] += INTERVAL
+    module.on_idle()
+    now[0] += INTERVAL
+    module.on_idle()
+
+    assert listed.count(tree) == 3
+    assert len(stored_ids(of(published(queues), EventType.DATA_STORED))) > 0
+
+
+def test_a_change_to_metadata_alone_is_held_back_until_a_backup_is_asked_for(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tree: Path,
+    store: CasStore,
+    caplog: LogCaptureFixture,
+) -> None:
+    module = start(config, queues, now)
+    job_id = configure(module, tree)
+    bundle = reports(published(queues))[-1][0]["bundle"]
+    utime(tree / "readme.txt", ns=(WHOLE_SECOND_NS, WHOLE_SECOND_NS))
+    now[0] += INTERVAL
+
+    with caplog.at_level(INFO):
+        module.on_idle()
+
+    messages = published(queues)
+
+    assert stored_ids(messages) == []
+    assert reports(messages)[-1][0]["bundle"] == bundle
+    assert (
+        f"{tree} is unchanged since its backup {bundle} but for the metadata of 1 entries, "
+        "held back until its content changes"
+    ) in caplog.messages
+
+    module.handle(asked(EventType.BACKUP_RUN_REQUESTED, job_id=job_id))
+    second = ContentId.parse(reports(published(queues))[-1][0]["bundle"])
+    top = load_bundle(second, store, password=secret_of(config))
+
+    assert str(second) != bundle
+    assert isinstance(top, DirectoryBundle)
+    readme = top.entries["readme.txt"]
+    assert isinstance(readme, FileBundle)
+    assert readme.metadata.modified == "2026-09-01T08:30:00Z"
 
 
 def test_a_job_is_not_looked_at_before_its_interval_is_up(
@@ -405,23 +459,6 @@ def test_a_job_interval_overrides_the_configured_one(
     module.on_idle()
 
     assert reports(published(queues))[-1][0]["interval_seconds"] == 10.0
-
-
-def test_a_requested_backup_runs_though_no_change_is_noticed(
-    config: LibranetConfig, queues: ModuleQueues, now: list[float], tree: Path
-) -> None:
-    module = start(config, queues, now, detector=Blind())
-    job_id = configure(module, tree)
-    published(queues)
-    (tree / "readme.txt").write_bytes(b"read me, changed")
-    now[0] += INTERVAL
-    module.on_idle()
-
-    assert stored_ids(published(queues)) == []
-
-    module.handle(asked(EventType.BACKUP_RUN_REQUESTED, job_id=job_id))
-
-    assert ContentId.for_data(b"read me, changed", "sha256") in stored_ids(published(queues))
 
 
 def test_a_requested_backup_of_an_unchanged_directory_keeps_its_bundle(
@@ -572,7 +609,7 @@ def test_what_a_backup_stores_does_not_set_off_another(
     messages = published(queues)
 
     assert stored_ids(messages) == []
-    assert [jobs[0]["status"] for jobs in reports(messages)] == ["waiting"]
+    assert [jobs[0]["status"] for jobs in reports(messages)] == ["running", "waiting"]
     assert reports(messages)[-1][0]["bundle"] == bundle
 
 
@@ -674,8 +711,13 @@ def test_an_unexpected_failure_fails_the_job_and_is_logged(
     now: list[float],
     tree: Path,
     caplog: LogCaptureFixture,
+    monkeypatch: MonkeyPatch,
 ) -> None:
-    module = start(config, queues, now, detector=Broken())
+    def broken(*_: object, **__: object) -> None:
+        raise RuntimeError()
+
+    monkeypatch.setattr("libranet.backup.module.back_up", broken)
+    module = start(config, queues, now)
 
     with caplog.at_level(ERROR):
         configure(module, tree)

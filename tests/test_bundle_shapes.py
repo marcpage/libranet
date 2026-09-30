@@ -11,6 +11,7 @@ from libranet.bundle.shapes import (
     Metadata,
     Symlink,
     XattrValue,
+    ancestors,
     is_entry_path,
 )
 
@@ -50,6 +51,11 @@ def test_an_entry_path_is_relative_with_named_segments(path: str) -> None:
 @mark.parametrize("path", ["", "/etc/hosts", "docs/", "a//b", "./a", "a/../b", "..", "a\0b"])
 def test_an_entry_path_has_no_empty_dot_or_dot_dot_segment(path: str) -> None:
     assert not is_entry_path(path)
+
+
+def test_the_ancestors_of_entry_paths_are_every_directory_above_them() -> None:
+    assert ancestors(["a/b/c.txt", "a/d", "top.txt"]) == {"a", "a/b"}
+    assert ancestors([]) == set()
 
 
 @mark.parametrize("size", [None, 0, 4096])

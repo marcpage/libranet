@@ -20,7 +20,7 @@ unreadable rather than the whole directory.
 from __future__ import annotations
 from base64 import b64decode
 from dataclasses import dataclass, field
-from typing import Callable, Final, Mapping, TypeAlias
+from typing import Callable, Final, Iterable, Mapping, TypeAlias
 
 from libranet.bundle.errors import MalformedBundleError
 
@@ -52,6 +52,17 @@ def is_entry_path(path: str) -> bool:
     NUL.
     """
     return "\0" not in path and _UNUSABLE_SEGMENTS.isdisjoint(path.split(PATH_SEPARATOR))
+
+
+def ancestors(paths: Iterable[str]) -> set[str]:
+    """Every directory above one of the entry paths ``paths``."""
+    found: set[str] = set()
+
+    for path in paths:
+        segments = path.split(PATH_SEPARATOR)
+        found.update(PATH_SEPARATOR.join(segments[:depth]) for depth in range(1, len(segments)))
+
+    return found
 
 
 # An extended attribute's value (§2.4): its bytes base64-encoded, or the CAS

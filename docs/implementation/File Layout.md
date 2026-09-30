@@ -290,7 +290,6 @@ was last backed up to (`src/libranet/backup/jobs.py`):
       "latest": {
         "bundle": "sha256/3264db1d…",
         "made_at": 1790465751.3,
-        "fingerprint": "3b90b75d…",
         "entries_digest": "8abcdd0b…",
         "skipped": 0,
         "layering": {"layers": 1, "extensions": 1}
@@ -323,18 +322,22 @@ not in the clear:
   "bundle": "sha256/3264db1d…",
   "layering": {"layers": 1, "extensions": 1},
   "beneath": ["sha256/9f1c08e2…"],
-  "contents": {"notes.txt": {"contents": ["sha256/…"], "metadata": {…}}}
+  "contents": {"notes.txt": {"contents": ["sha256/…"], "metadata": {…}}},
+  "held_back": {"notes.txt": {"contents": ["sha256/…"], "metadata": {…}}}
 }
 ```
 
 `contents` is a directory bundle's, and `beneath` lists the layers beneath
-the bundle, which the next layer lists after it. The file is written before
-`backup_jobs.json` on every backup that makes a new bundle, and is used only
-if it names the job's latest bundle and the backup secret opens it;
-otherwise the bundle is read back from `cas/data` as before, and the file
-written anew. Deleting it is safe: the next backup reads the bundle back
-instead, or, if it has been evicted, every file. Removing a job deletes its
-file.
+the bundle, which the next layer lists after it. `held_back`, there only
+when something is, holds what changed since in metadata alone, which the
+next bundle carries (Phase 2 Step 49), as a layer's `contents` would, with
+`null` for an entry gone. The file is written on every backup that makes a
+new bundle or holds a change back, before `backup_jobs.json` if that changes
+too, and is used only if it names the job's latest bundle and the backup
+secret opens it; otherwise the bundle is read back from `cas/data` as
+before, and the file written anew. Deleting it is safe: the next backup
+reads the bundle back instead, or, if it has been evicted, every file, and
+finds any change held back again. Removing a job deletes its file.
 
 ## 4. The Cache Directory
 

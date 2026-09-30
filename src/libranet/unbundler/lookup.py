@@ -29,6 +29,7 @@ from libranet.bundle.shapes import (
     Entry,
     FileBundle,
     Symlink,
+    ancestors,
 )
 
 # As Linux's MAXSYMLINKS.
@@ -48,18 +49,8 @@ class ResolvedDirectory:
     @classmethod
     def of(cls, entries: Mapping[str, Entry]) -> ResolvedDirectory:
         """The directory ``entries`` describe."""
-        directories = {""}
-
-        for path, entry in entries.items():
-            segments = path.split(PATH_SEPARATOR)
-            directories.update(
-                PATH_SEPARATOR.join(segments[:count]) for count in range(1, len(segments))
-            )
-
-            if isinstance(entry, DirectoryMarker):
-                directories.add(path)
-
-        return cls(entries, frozenset(directories))
+        markers = {path for path, entry in entries.items() if isinstance(entry, DirectoryMarker)}
+        return cls(entries, frozenset({""} | ancestors(entries) | markers))
 
     def look_up(self, path: str) -> FoundFile | FoundDirectory | None:
         """What ``path`` names in this directory, following symlinks, or ``None`` if nothing."""
