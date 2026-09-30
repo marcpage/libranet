@@ -12,9 +12,12 @@ from typing import Iterable, Iterator
 from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
 from xattr import xattr
 
+from libranet.backup.builds import Build, BuildRecord, BuildRecordError
 from libranet.backup.restores import RESUME_DELAY_SECONDS, Restore, RestorePass, RestoreStatus
+from libranet.backup.runs import AnnouncingStore
 from libranet.bundle.building import IgnoredPaths, build_directory, build_file
 from libranet.bundle.errors import IncorrectPasswordError, UnsupportedBundleError
+from libranet.bundle.layering import Layering, Superseded
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.protection import protect
 from libranet.bundle.serialization import encode_bundle
@@ -31,7 +34,7 @@ from libranet.bundle.xattrs import INLINE_LIMIT_BYTES, ExtendedAttributes
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import MIB
-from libranet.webserver.config_requests import ConflictBehavior, RestoreRequest
+from libranet.webserver.config_requests import BuildRequest, ConflictBehavior, RestoreRequest
 
 SECRET = b"s" * 32
 NOW = 1_789_000_000.0
@@ -89,6 +92,31 @@ def tree(tmp_path: Path) -> Path:
 def backed_up(tree: Path, store: CasStore) -> ContentId:
     """The bundle ``tree`` is backed up as, stored in ``store``."""
     return store_bundle(build_directory(tree, store).bundle, store, SECRET)
+
+
+def build_of(directory: Path, store: CasStore) -> Build:
+    """``directory`` built into a plain bundle in ``store``, as an application is."""
+    task = Build(BuildRequest(str(directory)), NOW)
+    task.begin()
+    task.run(AnnouncingStore(store, lambda content_id, size: None), MIB, 32, (), lambda: NOW)
+    return task
+
+
+def built(directory: Path, store: CasStore) -> ContentId:
+    """The bundle ``directory`` is built as, in ``store``."""
+    bundle = build_of(directory, store).bundle
+    assert bundle is not None
+    return bundle
+
+
+def record_beside(directory: Path) -> BuildRecord | None:
+    return BuildRecord.load(BuildRecord.beside(directory))
+
+
+def record_expanded(directory: Path) -> Superseded:
+    record = record_beside(directory)
+    assert record is not None and record.expanded is not None
+    return record.expanded
 
 
 def stored(entries: dict[str, Entry], store: CasStore, max_object_bytes: int = MIB) -> ContentId:
@@ -662,3 +690,116 @@ def test_extended_attributes_refused_are_reported_with_the_pass(
     assert [(name, count) for (name, _), count in restored.unset_xattrs.items()] == [(too_long, 3)]
     assert restored.skipped == {} and restore.status is RestoreStatus.DONE
     assert xattr(str(target / "a.txt")).get("user.tag") == b"red"
+
+
+def test_a_plain_bundle_restored_is_recorded_beside_the_directory(
+    tree: Path, store: CasStore, target: Path
+) -> None:
+    build = build_directory(tree, store)
+    bundle = store_bundle(build.bundle, store)
+    attempt(restore_of(bundle, target), store)
+
+    assert record_beside(target) == BuildRecord.of(
+        Superseded(bundle, build.entries, (), Layering()), False
+    )
+
+
+def test_a_layer_restored_is_recorded_as_the_build_that_made_it_recorded_it(
+    tree: Path, store: CasStore, target: Path
+) -> None:
+    first = built(tree, store)
+    (tree / "readme.txt").write_bytes(b"read me again")
+    second = built(tree, store)
+    attempt(restore_of(second, target), store)
+    record = record_beside(target)
+
+    assert record is not None and record.expanded is not None
+    assert (record.bundle, record.layering) == (second, Layering(1, 1))
+    assert record.expanded.beneath == (str(first),)
+    assert record == record_beside(tree)
+
+
+def test_a_backup_restored_is_not_recorded_and_what_is_beside_the_directory_is_kept(
+    tree: Path, store: CasStore, target: Path
+) -> None:
+    BuildRecord.beside(target).write_bytes(b"not a record")
+    restore = restore_of(backed_up(tree, store), target)
+    attempt(restore, store)
+
+    assert restore.status is RestoreStatus.DONE
+    assert BuildRecord.beside(target).read_bytes() == b"not a record"
+
+
+def test_a_record_already_beside_the_directory_is_replaced(
+    tree: Path, store: CasStore, target: Path
+) -> None:
+    BuildRecord(ContentId.for_data(b"built before", "sha256")).save(BuildRecord.beside(target))
+    bundle = store_bundle(build_directory(tree, store).bundle, store)
+    attempt(restore_of(bundle, target), store)
+    record = record_beside(target)
+
+    assert record is not None and record.bundle == bundle
+
+
+def test_a_file_beside_the_directory_that_is_not_a_record_fails_the_restore_before_it_writes(
+    tree: Path, store: CasStore, target: Path
+) -> None:
+    BuildRecord.beside(target).write_bytes(b"{not json")
+    bundle = store_bundle(build_directory(tree, store).bundle, store)
+
+    with raises(BuildRecordError):
+        attempt(restore_of(bundle, target), store)
+
+    assert not target.exists()
+    assert BuildRecord.beside(target).read_bytes() == b"{not json"
+
+
+def test_a_restore_waiting_on_content_records_nothing_and_fails_on_what_is_not_a_record_once_done(
+    tree: Path, held: CasStore, store: CasStore, target: Path
+) -> None:
+    bundle = store_bundle(build_directory(tree, held).bundle, held)
+    copy([bundle], held, store)
+    restore = restore_of(bundle, target)
+    attempt(restore, store)
+
+    assert restore.status is RestoreStatus.WAITING
+    assert not BuildRecord.beside(target).exists()
+
+    BuildRecord.beside(target).write_bytes(b"{not json")
+    copy_all(held, store)
+
+    with raises(BuildRecordError):
+        attempt(restore, store, NOW + ASK_INTERVAL)
+
+    assert BuildRecord.beside(target).read_bytes() == b"{not json"
+
+
+def test_a_restored_directory_built_unchanged_keeps_the_bundle_restored(
+    tree: Path, store: CasStore, target: Path
+) -> None:
+    bundle = built(tree, store)
+    attempt(restore_of(bundle, target), store)
+    task = build_of(target, store)
+
+    assert task.bundle == task.previous == bundle
+
+
+def test_a_restored_directory_built_again_reads_only_what_changed_and_extends_the_bundle(
+    tree: Path, store: CasStore, target: Path
+) -> None:
+    bundle = built(tree, store)
+    attempt(restore_of(bundle, target), store)
+    big = parts_of(record_expanded(target).entries["big.bin"])
+    # Reading big.bin again would store its parts again.
+    for part in big:
+        store.delete(part)
+    (target / "readme.txt").write_bytes(b"read me, edited")
+    task = build_of(target, store)
+    assert task.bundle is not None
+    top = load_bundle(task.bundle, store)
+
+    assert not any(store.exists(part) for part in big)
+    assert task.previous == bundle
+    assert isinstance(top, DirectoryBundle)
+    assert set(top.entries) == {"readme.txt"}
+    assert (top.versions, top.extensions) == ((str(bundle),), (str(bundle),))

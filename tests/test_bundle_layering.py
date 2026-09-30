@@ -3,16 +3,25 @@
 from __future__ import annotations
 from functools import partial
 from hashlib import sha256
-from logging import INFO
-from typing import Mapping
+from logging import INFO, WARNING
+from typing import Any, Mapping
 
 from pytest import LogCaptureFixture, mark, raises
 
-from libranet.bundle.errors import PasswordProtectedBundleError
+from libranet.bundle.errors import BundleError, PasswordProtectedBundleError
 from libranet.bundle.extensions import DEFAULT_MAX_EXTENSIONS, resolve_directory
 from libranet.bundle.layering import Layering, StoredVersion, Superseded
 from libranet.bundle.loading import load_bundle
-from libranet.bundle.shapes import Bundle, DirectoryBundle, Entry, FileBundle, Metadata
+from libranet.bundle.serialization import bundle_value
+from libranet.bundle.shapes import (
+    Bundle,
+    DirectoryBundle,
+    DirectoryMarker,
+    Entry,
+    FileBundle,
+    Metadata,
+    Symlink,
+)
 from libranet.bundle.storing import store_bundle
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError
@@ -143,6 +152,7 @@ def test_a_new_version_holds_only_what_changed_and_extends_the_last() -> None:
     assert layer.extensions == (str(first.bundle),)
     assert layer.versions == (str(first.bundle),)
     assert second.layering == Layering(1, 1)
+    assert second.beneath == (str(first.bundle),)
     assert resolved(sink, second.bundle) == held
 
 
@@ -158,6 +168,7 @@ def test_each_layer_lists_every_layer_beneath_it_newest_first() -> None:
     assert top(sink, stored[-1].bundle).extensions == (second, first, base)
     assert top(sink, stored[-1].bundle).versions == (second,)
     assert stored[-1].layering == Layering(3, 3)
+    assert stored[-1].beneath == (second, first, base)
     assert resolved(sink, stored[-1].bundle) == entries(10 + MAX_LAYERS)
 
 
@@ -254,7 +265,9 @@ def test_a_version_over_one_whose_layering_is_not_known_is_stored_whole() -> Non
     assert top(sink, stored.bundle).entries == entries(11)
 
 
-def test_a_layering_naming_more_layers_than_the_bundle_lists_is_not_layered_over() -> None:
+def test_a_layering_naming_more_layers_than_the_bundle_lists_is_not_layered_over(
+    caplog: LogCaptureFixture,
+) -> None:
     sink = Sink()
     first = store(sink, entries(10))
     over = Superseded.read(first.bundle, partial(load, sink), Layering(2, 2))
@@ -262,6 +275,14 @@ def test_a_layering_naming_more_layers_than_the_bundle_lists_is_not_layered_over
     stored = StoredVersion.store(version, over, sink, None, MAX_BYTES, MAX_LAYERS)
 
     assert stored.layering == Layering()
+    assert caplog.record_tuples == [
+        (
+            "libranet.bundle.layering",
+            WARNING,
+            f"{first.bundle} lists fewer extensions than the 2 layers recorded for it, "
+            "so the version after it is stored whole",
+        )
+    ]
 
 
 def test_layers_are_protected_with_the_password() -> None:
@@ -283,16 +304,181 @@ def test_the_same_entries_change_nothing() -> None:
     assert superseded(sink, first).changes(entries(10)) == {}
 
 
-def test_a_bundle_read_back_holds_its_entries_and_lists_its_extensions() -> None:
+def test_a_bundle_read_back_holds_its_entries_and_lists_the_layers_beneath_it() -> None:
+    sink = Sink()
+    first = store(sink, entries(300))
+    second = store(sink, with_parts_changed(entries(300), 1000), first)
+    read = superseded(sink, second)
+
+    assert len(top(sink, second.bundle).extensions) > 1
+    assert read == second.expanded(with_parts_changed(entries(300), 1000))
+    assert read.beneath == (str(first.bundle),)
+    assert read.layering == second.layering
+
+
+def test_a_version_is_layered_over_one_kept_expanded_though_it_is_no_longer_held() -> None:
+    sink = Sink()
+    first = store(sink, entries(10))
+    kept = first.expanded(entries(10))
+    del sink.held[first.bundle]
+    version = DirectoryBundle(entries(11), versions=(str(first.bundle),))
+    stored = StoredVersion.store(version, kept, sink, None, MAX_BYTES, MAX_LAYERS)
+
+    assert stored.layering == Layering(1, 1)
+    assert top(sink, stored.bundle).entries == {
+        "dir3/file00010.txt": entries(11)["dir3/file00010.txt"]
+    }
+    assert top(sink, stored.bundle).extensions == (str(first.bundle),)
+
+
+@mark.parametrize(
+    "beneath, layering", [((), Layering(1, 1)), ((part(1),), None), ((part(1),), Layering())]
+)
+def test_a_bundle_lists_one_layer_beneath_it_for_each_it_sits_above(
+    beneath: tuple[str, ...], layering: Layering | None
+) -> None:
+    with raises(ValueError):
+        Superseded(ContentId.parse(part(0)), {}, beneath, layering)
+
+    if layering is not None:
+        with raises(ValueError):
+            StoredVersion(ContentId.parse(part(0)), layering, beneath)
+
+
+KEPT: dict[str, Entry] = {
+    "index.html": FileBundle((part(1),), Metadata(size=1, modified="2026-09-01T08:30:00Z")),
+    "about": Symlink("pages/about.html"),
+    "empty": DirectoryMarker(Metadata(writable=True)),
+}
+
+
+@mark.parametrize(
+    "kept",
+    [
+        Superseded(ContentId.parse(part(0)), KEPT),
+        Superseded(ContentId.parse(part(0)), KEPT, (part(2), part(3)), Layering(2, 5)),
+        Superseded(ContentId.parse(part(0)), {}),
+    ],
+)
+def test_a_bundle_kept_expanded_is_read_back_from_the_value_it_is_saved_as(
+    kept: Superseded,
+) -> None:
+    assert Superseded.from_value(kept.value()) == kept
+
+
+def test_a_bundle_kept_expanded_is_saved_as_a_directory_bundle_naming_itself() -> None:
+    kept = Superseded(ContentId.parse(part(0)), KEPT, (part(2),), Layering(1, 4))
+
+    assert kept.value() == {
+        "bundle": part(0),
+        "layering": {"layers": 1, "extensions": 4},
+        "beneath": [part(2)],
+        **bundle_value(DirectoryBundle(KEPT)),
+    }
+
+
+def test_a_bundle_kept_expanded_lower_cases_the_hashes_it_names() -> None:
+    value = Superseded(ContentId.parse(part(0)), KEPT, (part(2),), Layering(1, 1)).value()
+    value["beneath"] = [part(2).upper()]
+    value["contents"]["index.html"]["contents"] = [part(1).upper()]
+
+    assert Superseded.from_value(value) == Superseded(
+        ContentId.parse(part(0)), KEPT, (part(2),), Layering(1, 1)
+    )
+
+
+def kept_value(**changes: object) -> dict[str, Any]:
+    return {**Superseded(ContentId.parse(part(0)), KEPT).value(), **changes}
+
+
+@mark.parametrize(
+    "value",
+    [
+        None,
+        [],
+        kept_value(bundle=7),
+        kept_value(bundle="not a content id"),
+        {key: field for key, field in kept_value().items() if key != "bundle"},
+        kept_value(beneath=None),
+        kept_value(beneath=[7]),
+        kept_value(contents=[]),
+        kept_value(contents={"../escape": {"contents": []}}),
+        kept_value(contents={"signed": {"contents": [], "signature": "x"}}),
+        kept_value(contents={"gone": None}),
+        kept_value(layering={"layers": 1}),
+        kept_value(layering={"layers": 1, "extensions": 1}),
+        kept_value(beneath=[part(2)]),
+    ],
+)
+def test_an_unusable_bundle_kept_expanded_is_an_error(value: object) -> None:
+    with raises(ValueError):
+        Superseded.from_value(value)
+
+
+def test_a_whole_bundle_expanded_sits_above_no_layers_and_reaches_its_chunks() -> None:
+    sink = Sink()
+    first = store(sink, entries(300))
+    expanded = Superseded.expand(first.bundle, top(sink, first.bundle), partial(load, sink))
+
+    assert expanded == first.expanded(entries(300))
+    assert expanded.layering == Layering(0, len(top(sink, first.bundle).extensions))
+
+
+def test_a_layer_expanded_sits_above_the_layers_it_lists_after_the_version_it_supersedes() -> None:
+    sink = Sink()
+    first = store(sink, entries(300))
+    second = store(sink, with_parts_changed(entries(300), 1000), first)
+    third = store(sink, with_parts_changed(entries(300), 2000), second)
+    expanded = Superseded.expand(third.bundle, top(sink, third.bundle), partial(load, sink))
+
+    assert len(top(sink, third.bundle).extensions) > 2
+    assert expanded == third.expanded(with_parts_changed(entries(300), 2000))
+    assert expanded.beneath == (str(second.bundle), str(first.bundle))
+
+
+def test_a_bundle_extending_what_it_does_not_supersede_sits_above_no_layers() -> None:
+    sink = Sink()
+    library = store(sink, entries(10))
+    earlier = store(sink, entries(5))
+    held = {"index.html": FileBundle((part(1000),), Metadata(size=1))}
+    bundle = store_bundle(
+        DirectoryBundle(held, versions=(str(earlier.bundle),), extensions=(str(library.bundle),)),
+        sink,
+    )
+    expanded = Superseded.expand(bundle, top(sink, bundle), partial(load, sink))
+
+    assert expanded == Superseded(bundle, {**entries(10), **held}, (), Layering(0, 1))
+
+
+def test_a_bundle_listing_a_layer_beneath_it_twice_sits_where_that_cannot_say(
+    caplog: LogCaptureFixture,
+) -> None:
+    sink = Sink()
+    first = store(sink, entries(10))
+    listed = (str(first.bundle), str(first.bundle))
+    bundle = store_bundle(
+        DirectoryBundle({}, versions=(str(first.bundle),), extensions=listed), sink
+    )
+    expanded = Superseded.expand(bundle, top(sink, bundle), partial(load, sink))
+
+    assert expanded == Superseded(bundle, entries(10))
+    assert caplog.record_tuples == [
+        (
+            "libranet.bundle.layering",
+            WARNING,
+            f"{bundle} lists a layer beneath it twice, so the version after it is stored whole",
+        )
+    ]
+
+
+def test_a_bundle_whose_extension_is_not_held_cannot_be_expanded() -> None:
     sink = Sink()
     first = store(sink, entries(10))
     second = store(sink, entries(11), first)
-    read = superseded(sink, second)
+    del sink.held[first.bundle]
 
-    assert read.bundle == second.bundle
-    assert read.entries == entries(11)
-    assert read.extensions == (str(first.bundle),)
-    assert read.layering == Layering(1, 1)
+    with raises(BundleError):
+        Superseded.expand(second.bundle, top(sink, second.bundle), partial(load, sink))
 
 
 def test_a_bundle_not_held_cannot_be_read_back() -> None:

@@ -249,6 +249,11 @@ class StorageConfig(_Section):
         return self.data_dir / "backup_jobs.json"
 
     @property
+    def expanded_backups_dir(self) -> Path:
+        """Each backup job's latest bundle, kept expanded, a file per job (Phase 2 Step 48)."""
+        return self.data_dir / "backup_jobs"
+
+    @property
     def applications_path(self) -> Path:
         """The application registry, owned by the web server (Step 35)."""
         return self.data_dir / "applications.json"

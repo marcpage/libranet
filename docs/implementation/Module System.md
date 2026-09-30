@@ -217,8 +217,9 @@ at a time on its main thread, between messages. It publishes its whole
 state as `backup.state` whenever that changes. Every object it stores is
 announced with `data.stored`, as the validator announces what it stores,
 and content a restore or export lacks is asked for with `data.not_found`.
-Jobs are kept in `backup_jobs.json`; restores, builds, and exports are kept
-in memory only.
+Jobs are kept in `backup_jobs.json`, and each job's last bundle, kept
+expanded, in `backup_jobs/`; restores, builds, and exports are kept in
+memory only.
 
 ### 3.3 What Each Module Owns
 
@@ -1001,6 +1002,7 @@ data moves through files, and a message tells the reader where to look.
 | `libranet.sqlite3` | Stats | Stats | — |
 | `applications.json` | Web server | Web server | — |
 | `backup_jobs.json` | Backup | Backup | — |
+| `backup_jobs/` | Backup | Backup | — |
 | `keys/` | Supervisor; backup; web server | Modules that need them, in `on_start` | — |
 
 Two things make sharing these safe without locks. Every file is replaced

@@ -61,7 +61,9 @@ ahead of any backup.
 
 A build (:mod:`libranet.backup.builds`) makes a bundle of a directory, or a
 new version of the one it made before, and records its content id beside the
-directory. An export (:mod:`libranet.backup.exports`) writes a bundle, and
+directory, with every entry it holds. A restore of a plain bundle, such as an
+application, records it there too, so that a build makes its next version,
+and fails if a file there is not such a record. An export (:mod:`libranet.backup.exports`) writes a bundle, and
 everything needed to serve it, into a content archive. Each is done, or
 fails, the first time it runs, between two messages, after any restore due
 and ahead of any backup, in the order they were asked for. Asking for one
@@ -70,8 +72,10 @@ restore asks, so asking again once it has arrived can succeed. Like
 restores, builds and exports are kept in memory only.
 
 Jobs, and the bundle each was last backed up to, are kept in a file
-(:mod:`libranet.backup.jobs`). Removing a job forgets its bundle, but leaves
-the content in CAS. What every job and restore is doing is reported whenever
+(:mod:`libranet.backup.jobs`), and each job's bundle is kept expanded in a
+file of its own, encrypted with the backup secret, for the next backup to be
+built from. Removing a job forgets its bundle, and deletes it as kept
+expanded, but leaves the content in CAS. What every job and restore is doing is reported whenever
 it changes, for the web server to serve at ``GET /config/api/backups``,
 ``restores``, ``builds``, and ``exports``::
 
@@ -128,7 +132,7 @@ from typing import Any, Callable, ClassVar, Final, Mapping
 from libranet.backup.builds import Build, BuildRecordError
 from libranet.backup.changes import ChangeDetector, PollingDetector
 from libranet.backup.exports import Export
-from libranet.backup.jobs import BackupJob, load_jobs, save_jobs
+from libranet.backup.jobs import BackupJob, ExpandedBackups, load_jobs, save_jobs
 from libranet.backup.restores import Restore
 from libranet.backup.runs import AnnouncingStore, back_up
 from libranet.backup.tasks import TaskStatus
@@ -215,6 +219,7 @@ class BackupModule(ModuleBase):
         self._detector = detector or PollingDetector(config.directories())
         self._store = AnnouncingStore(CasStore.source_of_truth(config.storage), self._announce)
         self._content = LayeredSource.open(config.storage)
+        self._expanded = ExpandedBackups(config.storage.expanded_backups_dir)
         self._xattrs = ExtendedAttributes(config.backup.excluded_xattrs)
         self._node_id: ContentId | None = None
         self._secret: bytes | None = None
@@ -313,6 +318,7 @@ class BackupModule(ModuleBase):
             return
 
         self._keep({other: kept for other, kept in self._jobs.items() if other != job_id})
+        self._expanded.remove(job_id)
         del self._progress[job_id]
         self._report()
         self.logger.info("No longer backing up %s", job.directory)
@@ -432,7 +438,7 @@ class BackupModule(ModuleBase):
                 self._xattrs,
             )
 
-        except (OSError, BundleError, KeyFileError) as error:
+        except (OSError, BundleError, KeyFileError, BuildRecordError) as error:
             restore.fail(error, self._clock())
             self.logger.warning(
                 "Could not restore %s into %s: %s", request.bundle, request.directory, error
@@ -582,18 +588,30 @@ class BackupModule(ModuleBase):
             if requested or latest is None or fingerprint != latest.fingerprint:
                 progress.status = JobStatus.RUNNING
                 self._report()
+                secret = self._backup_secret()
+                expanded = (
+                    None
+                    if latest is None
+                    else self._expanded.load(job.job_id, latest.bundle, secret)
+                )
                 backup = back_up(
                     job.directory,
                     fingerprint,
                     latest,
                     self._store,
-                    self._backup_secret(),
+                    secret,
                     self._clock(),
                     self._config.storage.max_object_bytes,
                     self._config.backup.max_update_layers,
                     self._config.directories(),
                     self._xattrs,
+                    expanded,
                 )
+
+                # Kept first, so that failing to keep it leaves the job with the bundle it keeps.
+                if backup.expanded is not None:
+                    self._expanded.save(job.job_id, backup.expanded, secret)
+
                 self._keep({**self._jobs, job.job_id: replace(job, latest=backup.latest)})
                 self._log_backup(job, backup.latest.bundle, backup.skipped)
 

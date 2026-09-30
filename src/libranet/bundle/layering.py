@@ -24,6 +24,12 @@ costs only what changed since then.
 Where a bundle sits is recorded beside it, as a :class:`Layering`. A bundle
 whose layering is not known, as one stored before layers were written, is
 superseded by a whole bundle.
+
+The bundle a new version is built from is kept expanded, as a
+:class:`Superseded`, so that the next version needs neither it nor its
+extensions read back (Phase 2 Step 48). A bundle expanded from elsewhere, as
+by a restore, has no layering recorded, so where it sits is worked out from
+what it lists.
 """
 
 from __future__ import annotations
@@ -31,8 +37,11 @@ from dataclasses import dataclass, field, replace
 from logging import getLogger
 from typing import Any, Callable, Mapping
 
+from libranet.bundle.content import normalize_cas_path
 from libranet.bundle.errors import BundleError, BundleTooLargeError
 from libranet.bundle.extensions import DEFAULT_MAX_EXTENSIONS, resolve_directory
+from libranet.bundle.parsing import parse_bundle
+from libranet.bundle.serialization import bundle_value
 from libranet.bundle.shapes import Bundle, DirectoryBundle, Entry
 from libranet.bundle.storing import ContentSink, StoredDirectory
 from libranet.cas.content_id import ContentId
@@ -89,15 +98,36 @@ class Layering:
 class Superseded:
     """A stored directory bundle that a new version is built from, and may be layered over.
 
-    ``entries`` is what it holds once its extensions are overlaid, and
-    ``extensions`` its own, as it lists them. ``layering`` is where it sits,
-    if that is known.
+    ``entries`` is what it holds once its extensions are overlaid.
+    ``layering`` is where it sits, if that is known, and ``beneath`` the
+    layers beneath it, newest first, down to the last whole bundle, as it
+    lists them last among its extensions: one for each layer ``layering``
+    counts, and none if it is not known.
+
+    It is what a directory's last bundle is kept as, expanded, and its JSON
+    form is a directory bundle holding every entry, with the bundle's id and
+    where it sits::
+
+        {"bundle": "sha256/<hex>", "layering": {"layers": 1, "extensions": 1},
+         "beneath": ["sha256/<hex>"], "contents": {"index.html": {...}}}
+
+    Raises:
+        ValueError: ``beneath`` lists a layer more or fewer than
+            ``layering`` counts.
     """
 
     bundle: ContentId
     entries: Mapping[str, Entry]
-    extensions: tuple[str, ...] = ()
+    beneath: tuple[str, ...] = ()
     layering: Layering | None = None
+
+    def __post_init__(self) -> None:
+        layers = 0 if self.layering is None else self.layering.layers
+
+        if len(self.beneath) != layers:
+            raise ValueError(
+                f"A bundle {layers} layers up lists as many beneath it, not {len(self.beneath)}"
+            )
 
     @classmethod
     def read(
@@ -131,10 +161,119 @@ class Superseded:
     ) -> Superseded:
         """``bundle``, already read as ``top``, with its extensions as ``load`` reads them.
 
+        A ``layering`` counting more layers than ``top`` lists is not its
+        own, so where it sits is not known.
+
         Raises:
             BundleError: an extension cannot be read, or is not a directory.
         """
-        return cls(bundle, resolve_directory(top, load), top.extensions, layering)
+        entries = resolve_directory(top, load)
+
+        if layering is None:
+            return cls(bundle, entries)
+
+        if layering.layers > len(top.extensions):
+            _LOGGER.warning(
+                "%s lists fewer extensions than the %d layers recorded for it, "
+                "so the version after it is stored whole",
+                bundle,
+                layering.layers,
+            )
+            return cls(bundle, entries)
+
+        beneath = top.extensions[len(top.extensions) - layering.layers :]
+        return cls(bundle, entries, beneath, layering)
+
+    @classmethod
+    def expand(
+        cls, bundle: ContentId, top: DirectoryBundle, load: Callable[[ContentId], Bundle]
+    ) -> Superseded:
+        """``bundle``, already read as ``top``, expanded, where it sits worked out from what it lists.
+
+        Nothing here recorded where it sits, as for a bundle restored. A
+        bundle listing among its extensions a version it supersedes is an
+        update layer over that version (§4), and the extensions it lists
+        from there on are the layers beneath it. It reaches the extensions
+        ``load`` reads. Where one lists a layer beneath it twice, where it
+        sits is not known.
+
+        Raises:
+            BundleError: an extension cannot be read, or is not a directory.
+        """
+        reached: list[ContentId] = []
+
+        def counted(content_id: ContentId) -> Bundle:
+            extension = load(content_id)
+            reached.append(content_id)
+            return extension
+
+        entries = resolve_directory(top, counted)
+        first = next(
+            (index for index, path in enumerate(top.extensions) if path in top.versions),
+            len(top.extensions),
+        )
+        beneath = top.extensions[first:]
+
+        if len(set(beneath)) < len(beneath):
+            _LOGGER.warning(
+                "%s lists a layer beneath it twice, so the version after it is stored whole",
+                bundle,
+            )
+            return cls(bundle, entries)
+
+        return cls(bundle, entries, beneath, Layering(len(beneath), len(reached)))
+
+    @classmethod
+    def from_value(cls, value: object) -> Superseded:
+        """The bundle a saved JSON object keeps expanded.
+
+        Raises:
+            ValueError: it is not such an object, or describes no bundle.
+        """
+        if not isinstance(value, dict) or not isinstance(value.get("bundle"), str):
+            raise ValueError('A bundle kept expanded must be an object naming its "bundle"')
+
+        beneath = value.get("beneath")
+
+        if not isinstance(beneath, list) or not all(isinstance(path, str) for path in beneath):
+            raise ValueError('"beneath" must be an array of strings')
+
+        contents = value.get("contents")
+
+        if not isinstance(contents, dict):
+            raise ValueError('"contents" must be an object')
+
+        try:
+            expanded = parse_bundle({"contents": contents})
+
+        except BundleError as error:
+            raise ValueError(f"Its contents are not a directory's: {error}") from None
+
+        if not isinstance(expanded, DirectoryBundle):
+            raise ValueError("Its contents are not a directory's")
+
+        entries = {path: entry for path, entry in expanded.entries.items() if entry is not None}
+
+        if len(entries) < len(expanded.entries):
+            raise ValueError("A bundle kept expanded has its deletions overlaid, so holds none")
+
+        layering = value.get("layering")
+
+        return cls(
+            ContentId.parse(value["bundle"]),
+            entries,
+            tuple(normalize_cas_path(path) for path in beneath),
+            None if layering is None else Layering.from_value(layering),
+        )
+
+    def value(self) -> dict[str, Any]:
+        """The JSON object this is kept as."""
+        return {
+            "bundle": str(self.bundle),
+            "layering": None if self.layering is None else self.layering.value(),
+            "beneath": list(self.beneath),
+            **bundle_value(DirectoryBundle(self.entries)),
+        }
 
     def changes(self, entries: Mapping[str, Entry | None]) -> dict[str, Entry | None]:
         """What ``entries`` change of this bundle's.
@@ -168,21 +307,16 @@ class Superseded:
         if layering is None or layering.layers >= max_layers:
             return None
 
-        # A record naming more layers than this bundle lists is not its own.
-        if layering.layers > len(self.extensions):
-            return None
-
         # This bundle and every extension it reaches, the layers beneath it among them.
         reached = 1 + layering.extensions
 
         if reached > max_extensions:
             return None
 
-        beneath = self.extensions[len(self.extensions) - layering.layers :]
         layer = replace(
             version,
             entries=self.changes(version.entries),
-            extensions=(str(self.bundle),) + beneath,
+            extensions=(str(self.bundle),) + self.beneath,
         )
 
         try:
@@ -201,16 +335,34 @@ class Superseded:
             return None
 
         return StoredVersion(
-            stored.content_id, Layering(layering.layers + 1, reached + stored.chunks)
+            stored.content_id,
+            Layering(layering.layers + 1, reached + stored.chunks),
+            layer.extensions,
         )
 
 
 @dataclass(frozen=True)
 class StoredVersion:
-    """A directory's new bundle as stored, and where it sits among update layers."""
+    """A directory's new bundle as stored, and where it sits among update layers.
+
+    ``beneath`` is the layers beneath it, newest first, as it lists them
+    last among its extensions: one for each layer ``layering`` counts.
+
+    Raises:
+        ValueError: ``beneath`` lists a layer more or fewer than
+            ``layering`` counts.
+    """
 
     bundle: ContentId
     layering: Layering = field(default_factory=Layering)
+    beneath: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if len(self.beneath) != self.layering.layers:
+            raise ValueError(
+                f"A bundle {self.layering.layers} layers up lists as many beneath it, "
+                f"not {len(self.beneath)}"
+            )
 
     @classmethod
     def store(
@@ -245,6 +397,10 @@ class StoredVersion:
 
         whole = StoredDirectory.store(version, sink, password, max_object_bytes, max_extensions)
         return cls(whole.content_id, Layering(0, whole.chunks))
+
+    def expanded(self, entries: Mapping[str, Entry]) -> Superseded:
+        """This version, holding ``entries`` once its extensions are overlaid, kept expanded."""
+        return Superseded(self.bundle, entries, self.beneath, self.layering)
 
 
 def _count(value: dict[str, Any], key: str) -> int:

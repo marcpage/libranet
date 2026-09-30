@@ -31,6 +31,18 @@ Some entries are left out, each with why, and the restore goes on without them:
 
 Failing to write for want of space, or because the filesystem fails or is
 read-only, would fail every entry alike, so it fails the restore instead.
+
+Restoring a plain bundle, as an application is expanded to be edited, records
+it beside the directory once done, in ``{name}.bundle``, as a build records
+the bundle it makes (:mod:`libranet.backup.builds`), so that building the
+directory makes that bundle's next version (Phase 2 Step 48). Where it sits
+among update layers is worked out from what it lists. A record already there
+is replaced, since the directory now holds what was restored, but a file
+there that is not a record fails the restore, before anything is written if
+it is there from the start. A backup, which is protected, is not recorded, so
+that neither its names nor its hashes are written in the clear, and a build
+of the directory, which is not protected with the backup secret, does not
+name it. Nor is a restore into the root, which has nothing beside it.
 """
 
 from __future__ import annotations
@@ -42,11 +54,18 @@ from logging import getLogger
 from pathlib import Path
 from typing import Any, Final, Iterable, Mapping
 
+from libranet.backup.builds import BuildRecord
 from libranet.backup.writing import DirectoryWriter
 from libranet.bundle.building import IgnoredPaths
 from libranet.bundle.content import ContentSource, parse_cas_path
-from libranet.bundle.errors import BundleError, MissingContentError, UnsupportedBundleError
+from libranet.bundle.errors import (
+    BundleError,
+    MissingContentError,
+    PasswordProtectedBundleError,
+    UnsupportedBundleError,
+)
 from libranet.bundle.extensions import resolve_directory
+from libranet.bundle.layering import Superseded
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.shapes import (
     NO_STEP_SEGMENTS,
@@ -117,6 +136,8 @@ class Restore:
         self._missing: set[ContentId] = set()
         # The entries not yet restored or left out; None until the bundle is read.
         self._pending: dict[str, Entry] | None = None
+        # The bundle, to be recorded beside the directory; None unless it is read and plain.
+        self._expanded: Superseded | None = None
         self._started = False
         self._restored = 0
         self._skipped = 0
@@ -189,9 +210,12 @@ class Restore:
             time to ask again.
 
         Raises:
-            OSError: the directory may not be restored into, or writing to it
-                failed in a way that would fail every entry.
+            OSError: the directory may not be restored into, or writing to it,
+                or to the record beside it, failed in a way that would fail
+                every entry.
             BundleError: the bundle cannot be read, or is not a directory.
+            BuildRecordError: a plain bundle is restored, and what is where
+                its record goes is not one.
         """
         directory = Path(self._request.directory)
         overwrite = self._request.on_conflict is ConflictBehavior.OVERWRITE
@@ -205,6 +229,12 @@ class Restore:
             if self._pending is None:
                 self._pending = self._plan(self._read(source, secret), skipped)
 
+            record = self._record_path()
+
+            if not self._started and record is not None:
+                # Read only to raise if what is there is not a record, before anything is written.
+                BuildRecord.load(record)
+
             with DirectoryWriter.open(directory, overwrite, ignored, xattrs) as writer:
                 self._started = True
                 missing = self._place_held(self._pending, writer, source, skipped)
@@ -215,6 +245,10 @@ class Restore:
             missing = list(error.content_ids)
 
         self._skipped += len(skipped)
+
+        if not missing:
+            self._record()
+
         return RestorePass(skipped, self._wait_on(missing, now), unset)
 
     def fail(self, error: Exception, now: float) -> None:
@@ -240,22 +274,64 @@ class Restore:
             "missing": len(self._missing),
         }
 
-    def _read(self, source: ContentSource, secret: bytes) -> dict[str, Entry]:
+    def _read(self, source: ContentSource, secret: bytes) -> Mapping[str, Entry]:
         """Every entry the bundle holds once its extensions are overlaid, by path.
+
+        A plain bundle is kept expanded, to be recorded once restored.
 
         Raises:
             MissingContentError: the bundle or some extensions are not held.
             BundleError: the bundle cannot be read, or is not a directory.
         """
         bundle = self._request.bundle
-        top = _load(bundle, source, secret)
+
+        try:
+            top, protected = load_bundle(bundle, source), False
+
+        except PasswordProtectedBundleError:
+            # Not logged: a backup is protected, and is read with the secret.
+            top, protected = _load(bundle, source, secret), True
 
         if not isinstance(top, DirectoryBundle):
             raise UnsupportedBundleError(
                 f"Bundle {bundle} is not a directory, so cannot be restored"
             )
 
-        return resolve_directory(top, lambda content_id: _load(content_id, source, secret))
+        def load(content_id: ContentId) -> Bundle:
+            return _load(content_id, source, secret)
+
+        if protected:
+            return resolve_directory(top, load)
+
+        self._expanded = Superseded.expand(bundle, top, load)
+        return self._expanded.entries
+
+    def _record_path(self) -> Path | None:
+        """Where the bundle is recorded beside the directory; ``None`` if it is not to be.
+
+        Only a plain bundle, once read, is recorded, and not one restored into
+        the root, which has nothing beside it.
+        """
+        directory = Path(self._request.directory)
+        return (
+            None if self._expanded is None or not directory.name else BuildRecord.beside(directory)
+        )
+
+    def _record(self) -> None:
+        """Record the bundle restored beside the directory, as a build would, if it is to be.
+
+        Raises:
+            BuildRecordError: what is where the record goes is not one.
+            OSError: the record could not be written.
+        """
+        path = self._record_path()
+
+        if self._expanded is None or path is None:
+            return
+
+        # Read only to raise if what is there now is not a record, which is kept.
+        BuildRecord.load(path)
+        BuildRecord.of(self._expanded, False).save(path)
 
     def _plan(self, entries: Mapping[str, Entry], skipped: dict[str, str]) -> dict[str, Entry]:
         """The ``entries`` to restore; those that cannot be are added to ``skipped``, with why."""

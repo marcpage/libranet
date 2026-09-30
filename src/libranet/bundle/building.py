@@ -166,6 +166,11 @@ class DirectoryBuild:
     bundle: DirectoryBundle
     skipped: Mapping[str, str]
 
+    @property
+    def entries(self) -> dict[str, Entry]:
+        """Every entry the bundle holds, by path; as built, it deletes none."""
+        return {path: entry for path, entry in self.bundle.entries.items() if entry is not None}
+
 
 def build_file(path: Path, sink: ContentSink, max_object_bytes: int = MIB) -> FileBundle:
     """The bundle for the file at ``path``, its parts stored in ``sink``.

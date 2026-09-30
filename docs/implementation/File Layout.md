@@ -58,7 +58,8 @@ A node on macOS with every default, after its first run, looks like this:
 │   ├── keys/                       identity.key_dir
 │   ├── libranet.sqlite3            statistics database
 │   ├── applications.json           application registry
-│   └── backup_jobs.json            backup jobs
+│   ├── backup_jobs.json            backup jobs
+│   └── backup_jobs/                each job's last bundle, kept expanded
 ├── Caches/libranet/                storage.cache_dir
 │   ├── lists/                      derived node, seek, and candidate lists
 │   └── search/                     cached search responses
@@ -116,7 +117,9 @@ something is written to it.
 ├── libranet.sqlite3-wal                 only while the node runs
 ├── libranet.sqlite3-shm                 only while the node runs
 ├── applications.json
-└── backup_jobs.json
+├── backup_jobs.json
+└── backup_jobs/
+    └── {job id}                         a job's last bundle, kept expanded
 ```
 
 | Path | Written by | Read by |
@@ -130,6 +133,7 @@ something is written to it.
 | `libranet.sqlite3` | Stats module | Stats module only |
 | `applications.json` | Web server | Web server |
 | `backup_jobs.json` | Backup module | Backup module |
+| `backup_jobs/` | Backup module | Backup module |
 
 ### 3.1 The Source of Truth: `cas/data`
 
@@ -272,7 +276,7 @@ request and rereads it when they change, so an edit by hand takes effect at
 once. A file that cannot be parsed is an error, not an empty registry, since
 saving over it would lose every registration.
 
-### 3.7 Backup Jobs: `backup_jobs.json`
+### 3.7 Backup Jobs: `backup_jobs.json` and `backup_jobs/`
 
 The backup jobs configured through `/config/api/backups`, and the bundle each
 was last backed up to (`src/libranet/backup/jobs.py`):
@@ -304,6 +308,33 @@ every `backup.interval_seconds`. `layering` says how many update layers lie
 above the last bundle stored whole, and how many extensions a reader follows
 from this one (Phase 2 Step 31); it is `null` for a bundle made before
 layers were written.
+
+Each job's latest bundle is also kept expanded, every entry it holds with
+its extensions overlaid, in `backup_jobs/{job id}`, so that the next backup
+is built from it without reading the bundle, or any file whose metadata is
+unchanged, back (Phase 2 Step 48; `ExpandedBackups` in
+`src/libranet/backup/jobs.py`). The job id is the one `/config/api/backups`
+reports. The file is JSON, password-protected with the backup secret as
+the bundle is (BackupSpecification §4), so its names and part hashes are
+not in the clear:
+
+```json
+{
+  "bundle": "sha256/3264db1d…",
+  "layering": {"layers": 1, "extensions": 1},
+  "beneath": ["sha256/9f1c08e2…"],
+  "contents": {"notes.txt": {"contents": ["sha256/…"], "metadata": {…}}}
+}
+```
+
+`contents` is a directory bundle's, and `beneath` lists the layers beneath
+the bundle, which the next layer lists after it. The file is written before
+`backup_jobs.json` on every backup that makes a new bundle, and is used only
+if it names the job's latest bundle and the backup secret opens it;
+otherwise the bundle is read back from `cas/data` as before, and the file
+written anew. Deleting it is safe: the next backup reads the bundle back
+instead, or, if it has been evicted, every file. Removing a job deletes its
+file.
 
 ## 4. The Cache Directory
 
@@ -445,24 +476,40 @@ Requests to `/config/api` can read and write anywhere the node's user can.
 │   └── index.html
 ├── site.bundle           the build record: what site/ was last built as
 ├── site.zip              an archive written by POST /config/api/exports
-└── restored/             a restore's target directory
-    └── .restore-{16 hex digits}.partial    a file being restored
+├── restored/             a restore's target directory
+│   └── .restore-{16 hex digits}.partial    a file being restored
+└── restored.bundle       its record, once done, if what it restored was plain
 ```
 
 - **Backups** read the job's directory and write only into `cas/data`.
 - **Builds** write a record named `{directory name}.bundle` beside the
-  directory, holding `{"bundle": "sha256/…", "layering": {"layers": 1,
-  "extensions": 1}}` (`src/libranet/backup/builds.py`), with `layering` as
-  in §3.7. Building the directory again makes the new bundle supersede the
-  one recorded. A file of that name that is not a record is never replaced;
-  the build fails instead.
+  directory (`src/libranet/backup/builds.py`), holding the bundle kept
+  expanded, as §3.7 describes, in the clear, and whether it is
+  password-protected:
+
+  ```json
+  {"bundle": "sha256/…", "layering": {"layers": 1, "extensions": 1},
+   "protected": false, "beneath": ["sha256/…"],
+   "contents": {"index.html": {…}}}
+  ```
+
+  Building the directory again makes the new bundle supersede the one
+  recorded, built from the entries recorded. A record written before Phase
+  2 Step 48 holds only `bundle` and `layering`; the bundle is then read
+  back, and the record written anew. A file of that name that is not a
+  record is never replaced; the build fails instead.
 - **Exports** write a content archive at the path the request names,
   replacing a file there only if the request allows it.
 - **Restores** write each file under a temporary name,
   `.restore-{random}.partial`, beside where it goes, and rename it into place
   once it has passed its checks (`src/libranet/backup/writing.py`). A
   directory that is not empty is refused unless the request allows
-  overwriting.
+  overwriting. Once done, a restore of a plain bundle, such as an
+  application, writes the same record a build writes beside the directory,
+  replacing a record there, so that building the directory makes that
+  bundle's next version. A file there that is not a record fails the
+  restore, before anything is written if it is there from the start. A
+  restore of a backup, which is encrypted, writes no record.
 
 None of these ever reads from or writes into the node's own directories:
 the data directory, `cas/`, `incoming/`, the cache directory, the key
@@ -476,9 +523,9 @@ them.
   `.{name}.{random}.partial` in the same directory and then renamed over the
   target (`src/libranet/atomic_file.py`), so a reader sees the old file or
   the new one, never part of one. This covers CAS objects, resolved files,
-  derived lists, search results, the registry, the jobs file, build records,
-  and export archives. A `.partial` file left by a crash is not cleaned up,
-  but every scan skips it.
+  derived lists, search results, the registry, the jobs file, each job's
+  last bundle, build records, and export archives. A `.partial` file left
+  by a crash is not cleaned up, but every scan skips it.
 - **Owner-only by accident of the method.** A file replaced this way gets
   mode `0600`, because the temporary file is created with it. The database
   and log files follow the process umask, as do all directories.
@@ -590,7 +637,3 @@ Planned steps that will change this layout, in Phases 2 and 3:
   validator, presumably beside the others in `lists/`.
 - **Step 32 (#75)** documents resetting the `/config` credential, and may
   add a switch to do it.
-- **Step 48 (#84, #114)** keeps each backup job's last bundle fully
-  expanded, likely in a file per job beside `backup_jobs.json`, and extends
-  `{name}.bundle` records to hold an expanded bundle, possibly written by
-  restores too.

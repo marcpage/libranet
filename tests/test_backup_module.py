@@ -14,12 +14,12 @@ from xattr import xattr
 
 from libranet.backup.builds import Build, BuildRecord
 from libranet.backup.exports import Export
-from libranet.backup.jobs import JobFileError, load_jobs
+from libranet.backup.jobs import ExpandedBackups, JobFileError, load_jobs
 from libranet.backup.module import BackupModule, backup_module_factory
 from libranet.backup.restores import Restore
 from libranet.bundle.building import build_directory
 from libranet.bundle.extensions import resolve_directory
-from libranet.bundle.layering import Layering
+from libranet.bundle.layering import Layering, Superseded
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.reassembly import write_file
 from libranet.bundle.shapes import DirectoryBundle, FileBundle, Metadata
@@ -302,6 +302,70 @@ def test_a_second_backup_writes_only_what_changed_and_supersedes_the_first(
     assert latest is not None and latest.bundle == second
 
 
+def test_a_backup_keeps_its_bundle_expanded_in_a_file_named_by_its_job(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float], tree: Path, store: CasStore
+) -> None:
+    module = start(config, queues, now)
+    job_id = configure(module, tree)
+    bundle = ContentId.parse(reports(published(queues))[-1][0]["bundle"])
+    expanded = ExpandedBackups(config.storage.expanded_backups_dir)
+    secret = secret_of(config)
+    top = load_bundle(bundle, store, password=secret)
+    assert isinstance(top, DirectoryBundle)
+    entries = resolve_directory(
+        top, lambda content_id: load_bundle(content_id, store, password=secret)
+    )
+
+    assert expanded.path(job_id) == config.storage.data_dir / "backup_jobs" / job_id
+    assert expanded.load(job_id, bundle, secret) == Superseded(bundle, entries, (), Layering())
+
+
+def test_a_backup_is_built_from_its_last_bundle_kept_expanded_though_that_is_evicted(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float], tree: Path, store: CasStore
+) -> None:
+    module = start(config, queues, now)
+    job_id = configure(module, tree)
+    first = ContentId.parse(reports(published(queues))[-1][0]["bundle"])
+    store.delete(first)
+    (tree / "readme.txt").write_bytes(b"read me, changed")
+    now[0] += INTERVAL
+    module.on_idle()
+    messages = published(queues)
+    second = ContentId.parse(reports(messages)[-1][0]["bundle"])
+    top = load_bundle(second, store, password=secret_of(config))
+
+    assert sorted(stored_ids(messages)) == sorted(
+        [ContentId.for_data(b"read me, changed", "sha256"), second]
+    )
+    assert isinstance(top, DirectoryBundle)
+    assert set(top.entries) == {"readme.txt"}
+    assert top.extensions == (str(first),)
+    kept = ExpandedBackups(config.storage.expanded_backups_dir).load(
+        job_id, second, secret_of(config)
+    )
+    assert kept is not None and kept.layering == Layering(1, 1)
+
+
+def test_a_backup_whose_bundle_cannot_be_kept_expanded_fails_its_job_and_keeps_the_last(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float], tree: Path
+) -> None:
+    module = start(config, queues, now)
+    job_id = configure(module, tree)
+    bundle = reports(published(queues))[-1][0]["bundle"]
+    kept = ExpandedBackups(config.storage.expanded_backups_dir).path(job_id)
+    kept.unlink()
+    kept.mkdir()
+    (tree / "readme.txt").write_bytes(b"read me, changed")
+    now[0] += INTERVAL
+    module.on_idle()
+    job = reports(published(queues))[-1][0]
+    latest = module.jobs[job_id].latest
+
+    assert job["status"] == "failed"
+    assert job["bundle"] == bundle
+    assert latest is not None and str(latest.bundle) == bundle
+
+
 def test_an_unchanged_directory_is_looked_at_but_not_backed_up(
     config: LibranetConfig, queues: ModuleQueues, now: list[float], tree: Path
 ) -> None:
@@ -419,6 +483,7 @@ def test_removing_a_job_forgets_it_but_leaves_its_content(
 
     assert reports(published(queues)) == [[]]
     assert load_jobs(config.storage.backup_jobs_path) == {}
+    assert not ExpandedBackups(config.storage.expanded_backups_dir).path(job_id).exists()
     assert store.exists(bundle)
 
     now[0] += INTERVAL
@@ -1086,9 +1151,9 @@ def test_a_build_is_made_at_once_recorded_beside_its_directory_and_reported(
         "previous": None,
         "skipped": 0,
     }
-    assert BuildRecord.load(BuildRecord.beside(tree)) == BuildRecord(
-        ContentId.parse(final["bundle"]), Layering()
-    )
+    record = BuildRecord.load(BuildRecord.beside(tree))
+    assert record is not None
+    assert (record.bundle, record.layering) == (ContentId.parse(final["bundle"]), Layering())
     # Plain, so it can be served once registered.
     top = load_bundle(ContentId.parse(final["bundle"]), store)
     assert isinstance(top, DirectoryBundle)
@@ -1219,6 +1284,45 @@ def test_a_build_beside_a_file_that_is_not_its_record_fails_and_keeps_the_file(
     assert failed["status"] == "failed"
     assert "Cannot read a build record" in failed["error"]
     assert BuildRecord.beside(tree).read_bytes() == b"my own notes"
+
+
+def test_an_application_restored_is_recorded_beside_it_and_built_as_its_next_version(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float], tree: Path, tmp_path: Path
+) -> None:
+    module = start(config, queues, now)
+    bundle = built_bundle(module, queues, tree)
+    target = tmp_path / "expanded"
+    restore(module, bundle, target)
+    (target / "readme.txt").write_bytes(b"read me, edited")
+    build(module, target)
+    final = builds(published(queues))[-1][-1]
+
+    assert (final["status"], final["previous"]) == ("done", bundle)
+    assert final["bundle"] != bundle
+
+
+def test_a_restore_beside_a_file_that_is_not_a_record_fails_and_keeps_the_file(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tree: Path,
+    tmp_path: Path,
+    caplog: LogCaptureFixture,
+) -> None:
+    module = start(config, queues, now)
+    bundle = built_bundle(module, queues, tree)
+    target = tmp_path / "expanded"
+    BuildRecord.beside(target).write_bytes(b"my own notes")
+    restore(module, bundle, target)
+    failed = restores(published(queues))[-1][0]
+
+    assert failed["status"] == "failed"
+    assert "Cannot read a build record" in failed["error"]
+    assert BuildRecord.beside(target).read_bytes() == b"my own notes"
+    assert not target.exists()
+    assert [
+        record.levelno for record in caplog.records if "Could not restore" in record.message
+    ] == [WARNING]
 
 
 def test_a_directory_within_the_node_own_directories_cannot_be_built(

@@ -8,23 +8,33 @@ given with the request protects it (BundleSpecification §6), and without one
 it is left plain, so that it can be served once registered as an application.
 
 Its content id is recorded beside the directory, in ``{name}.bundle``, with
-where it sits among update layers (:mod:`libranet.bundle.layering`)::
+where it sits among update layers (:mod:`libranet.bundle.layering`), whether
+it is password-protected, and every entry it holds, kept expanded (Phase 2
+Step 48)::
 
-    {"bundle": "sha256/<hex>", "layering": {"layers": 1, "extensions": 1}}
+    {"bundle": "sha256/<hex>", "layering": {"layers": 1, "extensions": 1},
+     "protected": false, "beneath": ["sha256/<hex>"], "contents": {...}}
+
+A restore of a plain bundle writes the same record (:mod:`libranet.backup.restores`),
+so that a directory expanded to be edited is built as that bundle's update.
 
 Building a directory that has a record updates it: the new bundle records the
 one the record names in its ``versions``, and takes its place in the record.
-Files are kept from that bundle as a backup keeps them from the last one
-(:mod:`libranet.backup.runs`). If it cannot be read here, having been evicted
-or protected with another password, every file is read. When nothing has
-changed, the same entries protected alike, the bundle is kept, since a new one
-would record no change.
+Files are kept from the entries recorded, as a backup keeps them from the
+last one (:mod:`libranet.backup.runs`), without that bundle being read. A
+record written before entries were kept has the bundle read back instead,
+and if it cannot be read here, having been evicted or protected with another
+password, every file is read. When nothing has changed, the same entries
+protected alike, the bundle is kept, since a new one would record no change.
 
 As with a backup, the new bundle holds only the entries that changed, as a
 layer over the one recorded, until ``max_layers`` lie above the last bundle
 stored whole. It is stored whole if the recorded bundle is protected
 otherwise, plain where it is protected or the other way about, so that
-whoever can read the new bundle can read what lies beneath it.
+whoever can read the new bundle can read what lies beneath it. A protected
+bundle is protected alike only if the password given opens it, so one that
+is no longer held here is superseded whole. A plain one is layered over
+whether it is held or not, as serving the layer fetches what it lacks.
 
 A record is replaced whole, so a crash leaves the old one or the new. A file
 of that name that is not a record is never replaced: the build fails instead,
@@ -68,14 +78,35 @@ class BuildRecordError(ValueError):
 
 @dataclass(frozen=True)
 class BuildRecord:
-    """The bundle a directory was last built as, as recorded beside it.
+    """The bundle a directory was last built as, or expanded from, as recorded beside it.
 
     ``layering`` is where the bundle sits among update layers, not known for
-    one recorded before layers were written.
+    one recorded before layers were written. ``expanded`` is the bundle kept
+    expanded, and ``protected`` whether it is password-protected; neither is
+    known for one recorded before bundles were kept expanded.
+
+    Raises:
+        ValueError: ``expanded`` is another bundle, or sits elsewhere.
     """
 
     bundle: ContentId
     layering: Layering | None = None
+    expanded: Superseded | None = None
+    protected: bool = False
+
+    def __post_init__(self) -> None:
+        expanded = self.expanded
+
+        if expanded is not None and (expanded.bundle, expanded.layering) != (
+            self.bundle,
+            self.layering,
+        ):
+            raise ValueError(f"A record of {self.bundle} keeps {expanded.bundle} expanded")
+
+    @classmethod
+    def of(cls, expanded: Superseded, protected: bool) -> BuildRecord:
+        """The record of ``expanded``, password-protected if ``protected`` says it is."""
+        return cls(expanded.bundle, expanded.layering, expanded, protected)
 
     @staticmethod
     def beside(directory: Path) -> Path:
@@ -91,6 +122,14 @@ class BuildRecord:
         """
         if not isinstance(value, dict) or not isinstance(value.get("bundle"), str):
             raise ValueError('A build record must be an object naming its "bundle"')
+
+        if "contents" in value:
+            protected = value.get("protected")
+
+            if not isinstance(protected, bool):
+                raise ValueError('"protected" must be true or false')
+
+            return cls.of(Superseded.from_value(value), protected)
 
         layering = value.get("layering")
 
@@ -124,10 +163,15 @@ class BuildRecord:
 
     def value(self) -> dict[str, Any]:
         """The JSON object this is recorded as."""
-        return {
+        value: dict[str, Any] = {
             "bundle": str(self.bundle),
             "layering": None if self.layering is None else self.layering.value(),
         }
+
+        if self.expanded is None:
+            return value
+
+        return {**value, "protected": self.protected, **self.expanded.value()}
 
     def save(self, path: Path) -> None:
         """Replace what ``path`` holds with this record.
@@ -206,20 +250,24 @@ class Build(Task):
             xattrs=xattrs,
         )
 
-        if previous is not None and earlier is not None and earlier.matches(build.bundle, password):
-            bundle = previous
+        if record is not None and earlier is not None and earlier.matches(build.bundle):
+            bundle = record.bundle
+
+            # Kept expanded from now on, if the record was written before bundles were.
+            if record.expanded is None:
+                BuildRecord.of(earlier.superseded, password is not None).save(record_path)
 
         else:
             stored = StoredVersion.store(
                 build.bundle,
-                None if earlier is None else earlier.under(password),
+                None if earlier is None else earlier.under(),
                 store,
                 password,
                 max_object_bytes,
                 max_layers,
             )
             bundle = stored.bundle
-            BuildRecord(bundle, stored.layering).save(record_path)
+            BuildRecord.of(stored.expanded(build.entries), password is not None).save(record_path)
 
         self._bundle, self._previous, self._skipped = bundle, previous, len(build.skipped)
         self._finish(clock())
@@ -245,20 +293,30 @@ class Build(Task):
 
 @dataclass(frozen=True)
 class _Earlier:
-    """The bundle a record names, as read back, and whether it is protected."""
+    """The bundle a record names, and whether a new version protected as asked is protected alike.
+
+    Protected alike is both plain, or both protected with one password.
+    """
 
     superseded: Superseded
-    protected: bool
+    alike: bool
 
     @classmethod
     def read(
         cls, record: BuildRecord, source: ContentSource, password: bytes | None
     ) -> _Earlier | None:
-        """The bundle ``record`` names, read with ``password`` if it is protected.
+        """The bundle ``record`` names, as it keeps it expanded or else read back with ``password``.
 
-        ``None`` if it cannot be read here.
+        ``None`` if it keeps none, and the bundle cannot be read here.
         """
         bundle = record.bundle
+        expanded = record.expanded
+
+        if expanded is not None:
+            if not record.protected or password is None:
+                return cls(expanded, not record.protected and password is None)
+
+            return cls(expanded, cls._opens(bundle, source, password))
 
         try:
             try:
@@ -283,7 +341,7 @@ class _Earlier:
                     lambda content_id: load_bundle(content_id, source, password=password),
                     record.layering,
                 ),
-                protected,
+                protected == (password is not None),
             )
 
         except BundleError as error:
@@ -292,15 +350,27 @@ class _Earlier:
             )
             return None
 
-    def under(self, password: bytes | None) -> Superseded | None:
-        """What a new version protected with ``password`` may be layered over.
+    @staticmethod
+    def _opens(bundle: ContentId, source: ContentSource, password: bytes) -> bool:
+        """Whether ``password`` opens ``bundle``, recorded as protected, as held here."""
+        try:
+            load_bundle(bundle, source, password=password)
 
-        This bundle, if it is protected alike; ``None`` otherwise. A bundle
-        read with ``password`` is protected with it, if it is protected.
-        """
-        return self.superseded if self.protected == (password is not None) else None
+        except BundleError as error:
+            _LOGGER.info(
+                "Cannot open %s, the build before, with the password given, "
+                "so the build is stored whole: %s",
+                bundle,
+                error,
+            )
+            return False
 
-    def matches(self, bundle: DirectoryBundle, password: bytes | None) -> bool:
-        """Whether ``bundle``, protected with ``password``, would record no change."""
-        entries = self.superseded.entries
-        return self.protected == (password is not None) and entries == bundle.entries
+        return True
+
+    def under(self) -> Superseded | None:
+        """What the new version may be layered over: this bundle, if it is protected alike."""
+        return self.superseded if self.alike else None
+
+    def matches(self, bundle: DirectoryBundle) -> bool:
+        """Whether ``bundle``, protected as asked, would record no change."""
+        return self.alike and self.superseded.entries == bundle.entries

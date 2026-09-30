@@ -19,19 +19,35 @@ The file is replaced whole on every change, so a crash leaves it as it was
 before the change or after it. One that cannot be read is an error rather
 than no jobs, since saving over it would lose the only record of which
 bundle holds each directory's backups.
+
+Each job's latest bundle is also kept expanded, every entry it holds with its
+extensions overlaid, so that the next backup is built from it without reading
+the bundle back (Phase 2 Step 48). A million-file directory's entries do not
+belong in the jobs file, so each job's are kept in a file of their own, named
+by the job's id, in a directory beside it (:class:`ExpandedBackups`).
 """
 
 from __future__ import annotations
 from dataclasses import dataclass
 from json import dumps, loads
+from logging import getLogger
 from math import isfinite
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Final, Iterable
 
 from libranet.atomic_file import write_atomically
-from libranet.bundle.layering import Layering
+from libranet.bundle.errors import BundleError
+from libranet.bundle.layering import Layering, Superseded
+from libranet.bundle.protection import protect, unprotect
 from libranet.cas.content_id import ContentId
+from libranet.json_format import COMPACT_SEPARATORS
 from libranet.webserver.config_requests import BackupJobRequest
+
+_LOGGER = getLogger(__name__)
+
+# The files are this node's own, and a million-file directory's run to
+# hundreds of megabytes, so the only limit is one no directory reaches.
+_MAX_EXPANDED_BYTES: Final = 1 << 40
 
 
 class JobFileError(ValueError):
@@ -154,6 +170,97 @@ class BackupJob:
             "interval_seconds": self.request.interval_seconds,
             "latest": None if self.latest is None else self.latest.value(),
         }
+
+
+class ExpandedBackups:
+    """Each job's latest bundle, kept expanded, in a file of its own named by the job's id.
+
+    A file holds a :class:`~libranet.bundle.layering.Superseded` as JSON,
+    password-protected with the backup secret as the bundle is
+    (BackupSpecification §4.4), since its names and part hashes are what
+    encrypting the bundle keeps from whoever can fetch it. Unlike the bundle,
+    it is not limited to one object's size. A file the secret does not open,
+    as after the secret was lost and made anew, is not used, so nothing is
+    layered over a bundle the secret cannot read.
+
+    Each is replaced whole, so a crash leaves it as it was before or after,
+    and is written before the job's latest backup is saved. One naming a
+    bundle other than the job's latest is left over from a backup whose
+    saving failed, so it is not used.
+    """
+
+    def __init__(self, directory: Path) -> None:
+        self._directory = directory
+
+    def path(self, job_id: str) -> Path:
+        """Where job ``job_id``'s latest bundle is kept expanded."""
+        return self._directory / job_id
+
+    def load(self, job_id: str, bundle: ContentId, secret: bytes) -> Superseded | None:
+        """``bundle`` as job ``job_id`` keeps it expanded; ``None`` if it keeps no usable one.
+
+        Nothing kept is not logged: a job backed up before bundles were kept
+        expanded keeps none until its next backup. Anything else is, and the
+        bundle is read back instead.
+        """
+        path = self.path(job_id)
+
+        try:
+            data = path.read_bytes()
+
+        except FileNotFoundError:
+            # Not logged: a job backed up before bundles were kept expanded has none yet.
+            return None
+
+        except OSError as error:
+            _LOGGER.warning("Cannot read %s, so the last backup is read back: %s", path, error)
+            return None
+
+        try:
+            expanded = Superseded.from_value(loads(unprotect(data, secret, _MAX_EXPANDED_BYTES)))
+
+        except (BundleError, ValueError) as error:
+            _LOGGER.warning(
+                "%s is not a bundle kept expanded with this node's backup secret, "
+                "so the last backup is read back: %s",
+                path,
+                error,
+            )
+            return None
+
+        if expanded.bundle != bundle:
+            _LOGGER.info(
+                "%s keeps %s, not the latest backup %s, so the last backup is read back",
+                path,
+                expanded.bundle,
+                bundle,
+            )
+            return None
+
+        return expanded
+
+    def save(self, job_id: str, expanded: Superseded, secret: bytes) -> None:
+        """Keep ``expanded`` as job ``job_id``'s latest bundle, in place of any kept before.
+
+        Raises:
+            OSError: it could not be written.
+        """
+        plaintext = dumps(expanded.value(), separators=COMPACT_SEPARATORS).encode("ascii")
+        write_atomically(self.path(job_id), protect(plaintext, secret, _MAX_EXPANDED_BYTES))
+
+    def remove(self, job_id: str) -> None:
+        """Keep nothing for job ``job_id`` any longer.
+
+        A file that cannot be deleted is logged and left, since it is not used
+        unless it names the job's latest backup.
+        """
+        path = self.path(job_id)
+
+        try:
+            path.unlink(missing_ok=True)
+
+        except OSError as error:
+            _LOGGER.warning("Could not delete %s: %s", path, error)
 
 
 def load_jobs(path: Path) -> dict[str, BackupJob]:
