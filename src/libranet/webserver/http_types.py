@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from io import BytesIO
-from json import dumps
+from json import dumps, loads
 from re import compile as compile_pattern
 from typing import Any, Final, Mapping, Protocol
 
@@ -30,6 +30,10 @@ BODILESS_STATUSES: Final = frozenset({HTTPStatus.NO_CONTENT, HTTPStatus.NOT_MODI
 
 class IncompleteBodyError(ConnectionError):
     """The client stopped sending before the whole declared body arrived."""
+
+
+class UnsupportedMediaTypeError(ValueError):
+    """A request's body does not say it is of the type it would be read as."""
 
 
 class _Readable(Protocol):
@@ -119,6 +123,46 @@ class Request:
     body: RequestBody = field(default_factory=lambda: RequestBody(0))
     authentication: AuthenticationResult | None = None
     connection: InboundConnection | None = None
+
+    def header(self, name: str) -> str | None:
+        """The value of the header ``name``, however it is capitalized, or ``None`` if not sent."""
+        wanted = name.lower()
+
+        for sent, value in self.headers.items():
+            if sent.lower() == wanted:
+                return value
+
+        return None
+
+    def json(self) -> object:
+        """The JSON value the body carries, read only if the request says its body is JSON.
+
+        A page on another site can send this node a body of any type a
+        form sends without asking it first, but one of ``application/json``
+        only once the node agrees (HttpApi §2.3.3). Parameters after the
+        type, such as a ``charset``, are ignored.
+
+        Raises:
+            UnsupportedMediaTypeError: the ``Content-Type`` is not
+                ``application/json``.
+            ValueError: the body is not JSON, or its length is not known.
+            IncompleteBodyError: the connection closed or timed out first.
+        """
+        content_type = self.header("Content-Type")
+        media_type = (content_type or "").partition(";")[0].strip().lower()
+
+        if media_type != JSON_CONTENT_TYPE:
+            raise UnsupportedMediaTypeError(
+                f"A request body's Content-Type must be {JSON_CONTENT_TYPE}, got {content_type!r}"
+            )
+
+        body = self.body.read()
+
+        try:
+            return loads(body)
+
+        except ValueError as error:
+            raise ValueError(f"The request body is not JSON: {error}") from None
 
 
 @dataclass(frozen=True)

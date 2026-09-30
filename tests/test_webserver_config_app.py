@@ -31,7 +31,7 @@ from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 from libranet.webserver.app_registry import CONFIG_APPLICATION
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import APPLICATIONS_PATH, NodeDescription
-from libranet.webserver.http_types import Request, RequestBody, Response
+from libranet.webserver.http_types import JSON_CONTENT_TYPE, Request, RequestBody, Response
 from libranet.webserver.router import Router
 from libranet.webserver.server import build_router
 
@@ -115,7 +115,7 @@ def send(router: Router, method: str, path: str, value: Any = None) -> Response:
         Request(
             method,
             path,
-            headers=CREDENTIALS,
+            headers={**CREDENTIALS, "Content-Type": JSON_CONTENT_TYPE},
             client_address="127.0.0.1",
             body=RequestBody.of(body),
         )

@@ -51,8 +51,11 @@ A browser has the ``/config`` application instead, served like any other
 (see :mod:`libranet.webserver.app_handler`).
 
 Bodies here are small JSON objects, so they are held to their own limit
-rather than the object limit peers' uploads use. A body an endpoint has no
-use for is still read, so the connection stays usable.
+rather than the object limit peers' uploads use. One is read as JSON only if
+its ``Content-Type`` says it is, and is ``415`` otherwise, since a page on
+another site can send a form's types without asking this node first
+(HttpApi §2.3.3). A body an endpoint has no use for is still read, so the
+connection stays usable, whatever type it says it is.
 """
 
 from __future__ import annotations
@@ -81,9 +84,14 @@ from libranet.webserver.config_requests import (
     ExportRequest,
     InvalidConfigRequestError,
     RestoreRequest,
-    decode_request,
 )
-from libranet.webserver.http_types import Request, Response, json_response, problem_response
+from libranet.webserver.http_types import (
+    Request,
+    Response,
+    UnsupportedMediaTypeError,
+    json_response,
+    problem_response,
+)
 from libranet.webserver.publishing import Publish
 from libranet.webserver.router import Handler
 from libranet.webserver.request_refusals import unreadable_body_response
@@ -192,13 +200,13 @@ class BackupJobHandler:
     publish: Publish
 
     def __call__(self, request: Request) -> Response:
-        body = _body_or_refusal(request)
+        value = _json_or_refusal(request)
 
-        if isinstance(body, Response):
-            return body
+        if isinstance(value, Response):
+            return value
 
         try:
-            job = BackupJobRequest.from_value(decode_request(body))
+            job = BackupJobRequest.from_value(value)
 
         except InvalidConfigRequestError as error:
             _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
@@ -254,13 +262,13 @@ class RestoreHandler:
     publish: Publish
 
     def __call__(self, request: Request) -> Response:
-        body = _body_or_refusal(request)
+        value = _json_or_refusal(request)
 
-        if isinstance(body, Response):
-            return body
+        if isinstance(value, Response):
+            return value
 
         try:
-            restore = RestoreRequest.from_value(decode_request(body))
+            restore = RestoreRequest.from_value(value)
 
         except InvalidConfigRequestError as error:
             _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
@@ -277,13 +285,13 @@ class BuildHandler:
     publish: Publish
 
     def __call__(self, request: Request) -> Response:
-        body = _body_or_refusal(request)
+        value = _json_or_refusal(request)
 
-        if isinstance(body, Response):
-            return body
+        if isinstance(value, Response):
+            return value
 
         try:
-            build = BuildRequest.from_value(decode_request(body))
+            build = BuildRequest.from_value(value)
 
         except InvalidConfigRequestError as error:
             _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
@@ -300,13 +308,13 @@ class ExportHandler:
     publish: Publish
 
     def __call__(self, request: Request) -> Response:
-        body = _body_or_refusal(request)
+        value = _json_or_refusal(request)
 
-        if isinstance(body, Response):
-            return body
+        if isinstance(value, Response):
+            return value
 
         try:
-            export = ExportRequest.from_value(decode_request(body))
+            export = ExportRequest.from_value(value)
 
         except InvalidConfigRequestError as error:
             _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
@@ -343,13 +351,13 @@ class ApplicationRegistrationHandler:
     registry: ApplicationRegistry
 
     def __call__(self, request: Request) -> Response:
-        body = _body_or_refusal(request)
+        value = _json_or_refusal(request)
 
-        if isinstance(body, Response):
-            return body
+        if isinstance(value, Response):
+            return value
 
         try:
-            application = Application.from_value(decode_request(body))
+            application = Application.from_value(value)
 
         except ValueError as error:
             _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
@@ -430,6 +438,33 @@ def _body_or_refusal(request: Request) -> bytes | Response:
     """``request``'s body, or the response refusing it unread."""
     refusal = unreadable_body_response(request, MAX_CONFIG_BODY_BYTES)
     return refusal if refusal is not None else request.body.read()
+
+
+def _json_or_refusal(request: Request) -> object | Response:
+    """The JSON value ``request``'s body carries, or the response refusing the body.
+
+    A body that does not say it is JSON is ``415``, and one that says so and
+    is not is ``400``.
+    """
+    body = _body_or_refusal(request)
+
+    if isinstance(body, Response):
+        return body
+
+    try:
+        return request.json()
+
+    except UnsupportedMediaTypeError as error:
+        _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
+        return problem_response(
+            Problem.for_status(
+                HTTPStatus.UNSUPPORTED_MEDIA_TYPE, detail=str(error), instance=request.path
+            )
+        )
+
+    except ValueError as error:
+        _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
+        return invalid_request_response(request, error)
 
 
 def config_routes(

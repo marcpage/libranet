@@ -255,6 +255,13 @@ It answers only on loopback, and the first request carrying
 `Authorization: Basic` sets the node's credential — pick one on first use and
 reuse it after that.
 
+A browser sends that credential with every request to the node, whichever page
+made it, so `/config` refuses any request that another site's page made: one
+whose `Sec-Fetch-Site` or `Origin` header says so, or whose `Host` is not
+`localhost`, `127.0.0.1`, or `[::1]`. If you reach `/config` by another name,
+add it to `network.config_hosts`. A request body is read only if it is sent as
+`Content-Type: application/json`, and is `415` otherwise.
+
 Open `http://127.0.0.1:8080/config` in a browser for a page that does
 everything below. Scripts use the same JSON endpoints, beneath `/config/api`:
 
@@ -329,6 +336,11 @@ curl -u admin:secret -X POST http://127.0.0.1:8080/config/api/applications \
 GET /wiki/
 GET /wiki/index.html
 ```
+
+Register only bundles you trust. Every application is served from the same
+origin as `/config`, so while a browser holds the `/config` login, the scripts
+of an application open in it can do anything `/config` can, which includes
+reading and writing any file the node's user can.
 
 The name `/` registers the application served at the root. A new node serves
 its own page there, shipped with it, so it needs nothing from peers. `data`,

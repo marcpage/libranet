@@ -1,11 +1,16 @@
-"""Tests for the request body handlers read lazily."""
+"""Tests for the request body handlers read lazily, and what a request says of itself."""
 
 from __future__ import annotations
 from io import BytesIO
 
-from pytest import raises
+from pytest import mark, raises
 
-from libranet.webserver.http_types import IncompleteBodyError, Request, RequestBody
+from libranet.webserver.http_types import (
+    IncompleteBodyError,
+    Request,
+    RequestBody,
+    UnsupportedMediaTypeError,
+)
 
 
 class StalledStream:
@@ -78,3 +83,71 @@ def test_invalid_bodies_are_refused() -> None:
 
     with raises(ValueError):
         RequestBody(None)
+
+
+def json_request(body: bytes, content_type: str | None = "application/json") -> Request:
+    headers = {} if content_type is None else {"Content-Type": content_type}
+    return Request("POST", "/config/api/backups", headers=headers, body=RequestBody.of(body))
+
+
+@mark.parametrize("name", ["Sec-Fetch-Site", "sec-fetch-site", "SEC-FETCH-SITE"])
+def test_a_header_is_found_however_it_is_capitalized(name: str) -> None:
+    request = Request("GET", "/", headers={"Host": "localhost", "sec-Fetch-site": "none"})
+
+    assert request.header(name) == "none"
+
+
+def test_a_header_not_sent_is_none() -> None:
+    assert Request("GET", "/", headers={"Host": "localhost"}).header("Origin") is None
+
+
+@mark.parametrize(
+    "content_type",
+    [
+        "application/json",
+        "Application/JSON",
+        "application/json; charset=utf-8",
+        " application/json ;x",
+    ],
+)
+def test_a_body_that_says_it_is_json_is_read_as_json(content_type: str) -> None:
+    assert json_request(b'{"directory": "/home/me"}', content_type).json() == {
+        "directory": "/home/me"
+    }
+
+
+def test_the_content_type_is_found_however_the_header_is_capitalized() -> None:
+    request = Request(
+        "POST", "/", headers={"content-type": "application/json"}, body=RequestBody.of(b"[1]")
+    )
+
+    assert request.json() == [1]
+
+
+@mark.parametrize(
+    "content_type",
+    [
+        None,
+        "",
+        "text/plain",
+        "text/plain; application/json",
+        "application/x-www-form-urlencoded",
+        "multipart/form-data; boundary=x",
+        "application/problem+json",
+        "application/jsonp",
+        "text/json",
+    ],
+)
+def test_a_body_that_does_not_say_it_is_json_is_not_read_as_json(
+    content_type: str | None,
+) -> None:
+    with raises(UnsupportedMediaTypeError, match="application/json"):
+        json_request(b'{"directory": "/home/me"}', content_type).json()
+
+
+@mark.parametrize("body", [b"{not json", b"", b"\xff\xfe"])
+def test_a_body_that_says_it_is_json_and_is_not_is_refused(body: bytes) -> None:
+    with raises(ValueError, match="not JSON") as raised:
+        json_request(body).json()
+
+    assert not isinstance(raised.value, UnsupportedMediaTypeError)

@@ -53,6 +53,13 @@ class NetworkConfig(_Section):
     # once per this period (Step 12).
     retry_after_seconds: int = Field(default=5, ge=0)
 
+    # The hosts `/config` is served as. A request there whose `Host` header
+    # names any other is refused, so a site that points a name of its own at
+    # this machine is not taken for this node (HttpApi §2.3.3, Phase 2 Step
+    # 41). Shell-style patterns, matched whatever their case against the
+    # host without its port, an IPv6 address written without its brackets.
+    config_hosts: tuple[str, ...] = ("localhost", "127.0.0.1", "::1")
+
     def advertised_endpoint(self) -> str:
         """The endpoint string this node publishes in its own node list.
 

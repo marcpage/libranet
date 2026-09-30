@@ -39,7 +39,7 @@ from libranet.webserver.config_credential import (
     CredentialFileError,
     StoredCredential,
 )
-from libranet.webserver.config_guard import local_config_guard, names_config
+from libranet.webserver.config_guard import ConfigSiteGuard, local_config_guard, names_config
 from libranet.webserver.config_handlers import (
     ApplicationListHandler,
     ApplicationRegistrationHandler,
@@ -67,7 +67,13 @@ from libranet.webserver.config_requests import (
 )
 from libranet.webserver.data_handler import DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
-from libranet.webserver.http_types import IncompleteBodyError, Request, RequestBody, Response
+from libranet.webserver.http_types import (
+    IncompleteBodyError,
+    Request,
+    RequestBody,
+    Response,
+    UnsupportedMediaTypeError,
+)
 from libranet.webserver.list_bodies import (
     InvalidListError,
     decode_list,
@@ -109,6 +115,7 @@ __all__ = [
     "BuildRequest",
     "ConfigAuthGuard",
     "ConfigCredential",
+    "ConfigSiteGuard",
     "ConflictBehavior",
     "CredentialFileError",
     "DataReadHandler",
@@ -144,6 +151,7 @@ __all__ = [
     "SeekListHandler",
     "SignatureGuard",
     "StoredCredential",
+    "UnsupportedMediaTypeError",
     "WebServerModule",
     "basic_credentials",
     "build_router",

@@ -14,7 +14,6 @@ from libranet.webserver.config_requests import (
     InvalidConfigRequestError,
     Password,
     RestoreRequest,
-    decode_request,
 )
 
 DIRECTORY = "/home/me/documents"
@@ -134,11 +133,6 @@ def test_a_restore_is_named_by_its_bundle_and_its_target() -> None:
 def test_a_restore_this_node_cannot_act_on_is_refused(value: object) -> None:
     with raises(InvalidConfigRequestError):
         RestoreRequest.from_value(value)
-
-
-def test_a_body_that_is_not_json_is_refused() -> None:
-    with raises(InvalidConfigRequestError):
-        decode_request(b"{not json")
 
 
 @mark.parametrize("directory", ["relative", "/a/../b", "/a\0b", "/home/me/", "/home//me"])

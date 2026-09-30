@@ -4,9 +4,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from pytest import raises
+from yaml import safe_load
 
 from libranet.config.loader import ConfigError, load_config
-from libranet.config.models import BackupConfig
+from libranet.config.models import BackupConfig, NetworkConfig
 
 
 def write_config(tmp_path: Path, text: str) -> Path:
@@ -120,6 +121,20 @@ def test_excluded_extended_attributes_from_the_file_replace_the_default(tmp_path
     path = write_config(tmp_path, 'backup:\n  excluded_xattrs: ["user.local*"]\n')
 
     assert load_config(path).backup.excluded_xattrs == ("user.local*",)
+
+
+def test_config_hosts_from_the_file_replace_the_default(tmp_path: Path) -> None:
+    path = write_config(tmp_path, 'network:\n  config_hosts: ["node.example.org", "*.lan"]\n')
+
+    assert load_config(path).network.config_hosts == ("node.example.org", "*.lan")
+
+
+def test_the_example_config_states_the_default_config_hosts() -> None:
+    example = Path(__file__).parent.parent / "examples" / "libranet.yaml"
+
+    assert safe_load(example.read_text(encoding="utf-8"))["network"]["config_hosts"] == list(
+        NetworkConfig().config_hosts
+    )
 
 
 def test_the_example_config_states_the_default_excluded_extended_attributes() -> None:
