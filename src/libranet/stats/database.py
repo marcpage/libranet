@@ -292,7 +292,8 @@ class StatsDatabase:
 
         ``remote`` says the peer closed it rather than this node. One close
         is expected per opened connection; ``last_connected`` is left in
-        place, since it is what orders the node list.
+        place, as when the node was last connected to. The lists are ordered
+        by when each address last worked (:meth:`record_address_worked`).
         """
         self._execute(
             "UPDATE node_stats SET remote_disconnects = remote_disconnects + :remote, "

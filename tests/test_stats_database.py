@@ -1,7 +1,9 @@
 """Tests for the statistics database, against a temp SQLite file."""
 
 from __future__ import annotations
+from contextlib import closing
 from pathlib import Path
+from sqlite3 import connect
 from typing import Collection, Iterator
 
 from pytest import fixture, mark, raises
@@ -11,7 +13,7 @@ from libranet.config.models import MIB
 from libranet.eviction.priority import HeldObject
 from libranet.messaging.events import AddressSource
 from libranet.stats.database import StatsDatabase
-from libranet.stats.schema import SeekKind
+from libranet.stats.schema import SeekKind, apply_schema
 
 CONTENT_ID = ContentId.for_data(b"some content", "sha256")
 OTHER_ID = ContentId.for_data(b"other content", "sha256")
@@ -64,6 +66,28 @@ def test_reopening_an_existing_database_keeps_what_it_holds(tmp_path: Path) -> N
 
     assert stats is not None
     assert stats.external_requests == 1
+
+
+def test_no_primary_key_column_may_be_null() -> None:
+    # SQLite lets a primary key column of a rowid table be null unless it is
+    # declared NOT NULL as well.
+    with closing(connect(":memory:")) as connection:
+        apply_schema(connection)
+        tables = [
+            name
+            for (name,) in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        ]
+        nullable = [
+            f"{table}.{name}"
+            for table in tables
+            for _, name, _, not_null, _, primary_key in connection.execute(
+                f"PRAGMA table_info({table})"
+            )
+            if primary_key and not not_null
+        ]
+
+    assert len(tables) == 5
+    assert nullable == []
 
 
 def test_nothing_is_known_about_unseen_content_or_nodes(database: StatsDatabase) -> None:
