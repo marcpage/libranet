@@ -112,13 +112,13 @@ class UnbundlerModule(ModuleBase):
         storage: StorageConfig,
         *,
         logger: Logger | None = None,
-        poll_interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
+        poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
         max_cached_bundles: int = DEFAULT_MAX_CACHED_BUNDLES,
     ) -> None:
         if max_cached_bundles < 1:
             raise ValueError(f"max_cached_bundles must be at least 1, got {max_cached_bundles}")
 
-        super().__init__(name, queues, logger=logger, poll_interval=poll_interval)
+        super().__init__(name, queues, logger=logger, poll_interval_seconds=poll_interval_seconds)
         self._source = LayeredSource.open(storage)
         self._files = ResolvedFiles(storage.resolved_files_dir, storage.hash_prefix_length)
         self._max_cached_bundles = max_cached_bundles
@@ -180,9 +180,9 @@ class UnbundlerModule(ModuleBase):
 
         else:
             with atomic_writer(target) as output:
-                size = write_file(found.entry, self._source, output)
+                size_bytes = write_file(found.entry, self._source, output)
 
-            self._report(bundle, path, PathOutcome.STORED, size=size)
+            self._report(bundle, path, PathOutcome.STORED, size=size_bytes)
 
     def _directory(self, bundle: ContentId) -> ResolvedDirectory | _Unusable:
         """The directory ``bundle`` describes.
@@ -217,6 +217,9 @@ class UnbundlerModule(ModuleBase):
 
     def _load(self, bundle: ContentId) -> ResolvedDirectory | _Unusable:
         """Read ``bundle`` and overlay its extensions.
+
+        Returns:
+            The directory it resolves to, or why it cannot be served.
 
         Raises:
             MissingContentError: the bundle or an extension is not held.
@@ -287,7 +290,7 @@ class UnbundlerModule(ModuleBase):
         A bundle whose files cannot all be deleted is passed over.
         """
         bundles = 0
-        freed = 0
+        freed_bytes = 0
 
         for bundle in self._files.bundles():
             if bundle in keep:
@@ -296,7 +299,7 @@ class UnbundlerModule(ModuleBase):
             self._directories.pop(bundle, None)
 
             try:
-                freed += self._files.remove(bundle)
+                freed_bytes += self._files.remove(bundle)
 
             except OSError as error:
                 self.logger.warning("Could not delete the resolved files of %s: %s", bundle, error)
@@ -304,9 +307,11 @@ class UnbundlerModule(ModuleBase):
 
             bundles += 1
 
-        self.publish(EventType.RESOLVED_RECLAIMED, {"bundles": bundles, "bytes": freed})
+        self.publish(EventType.RESOLVED_RECLAIMED, {"bundles": bundles, "bytes": freed_bytes})
         self.logger.info(
-            "Deleted the resolved files of %d bundles not used lately, %d bytes", bundles, freed
+            "Deleted the resolved files of %d bundles not used lately, %d bytes",
+            bundles,
+            freed_bytes,
         )
 
     def _report(self, bundle: ContentId, path: str, outcome: PathOutcome, **details: Any) -> None:

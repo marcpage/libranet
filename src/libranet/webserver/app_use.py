@@ -44,7 +44,7 @@ class ApplicationUse:
             )
 
         self._publish = publish
-        self._interval = report_interval_seconds
+        self._report_interval_seconds = report_interval_seconds
         self._clock = clock
         self._reported: dict[ContentId, float] = {}
         self._lock = Lock()
@@ -56,7 +56,7 @@ class ApplicationUse:
         with self._lock:
             reported = self._reported.get(bundle)
 
-            if reported is not None and now - reported < self._interval:
+            if reported is not None and now - reported < self._report_interval_seconds:
                 return
 
             self._reported[bundle] = now

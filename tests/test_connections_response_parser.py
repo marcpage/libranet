@@ -131,13 +131,13 @@ def test_headers_are_case_insensitive_and_repeats_combined() -> None:
 def test_retry_after_is_read_as_a_number_of_seconds(value: str, seconds: int | None) -> None:
     raw = f"HTTP/1.1 503 Service Unavailable\r\nRetry-After:  {value} \r\nContent-Length: 0\r\n\r\n"
 
-    assert _response(_parser(raw.encode())).retry_after == seconds
+    assert _response(_parser(raw.encode())).retry_after_seconds == seconds
 
 
 def test_a_response_without_retry_after_names_no_wait() -> None:
     response = _response(_parser(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n"))
 
-    assert response.retry_after is None
+    assert response.retry_after_seconds is None
 
 
 def test_status_line_without_reason() -> None:

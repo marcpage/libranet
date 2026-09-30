@@ -19,8 +19,8 @@ class RecordingModule(ModuleBase):
 
     subscriptions: ClassVar[frozenset[EventType]] = frozenset({EventType.DATA_NOT_FOUND})
 
-    def __init__(self, queues: ModuleQueues, poll_interval: float = 0.01) -> None:
-        super().__init__(ModuleName.FETCHER, queues, poll_interval=poll_interval)
+    def __init__(self, queues: ModuleQueues, poll_interval_seconds: float = 0.01) -> None:
+        super().__init__(ModuleName.FETCHER, queues, poll_interval_seconds=poll_interval_seconds)
         self.handled: list[Message] = []
         self.calls: list[str] = []
 
@@ -70,7 +70,7 @@ def test_receive_filters_to_subscribed_events(
     queues.inbox.put(_message(EventType.SEARCH_REQUESTED))
     queues.inbox.put(_message(EventType.DATA_NOT_FOUND, hash="01"))
 
-    received = module.receive(timeout=1)
+    received = module.receive(timeout_seconds=1)
 
     assert received is not None
     assert received["hash"] == "01"
@@ -79,7 +79,7 @@ def test_receive_filters_to_subscribed_events(
 def test_receive_ignores_own_messages(module: RecordingModule, queues: ModuleQueues) -> None:
     queues.inbox.put(_message(EventType.DATA_NOT_FOUND, source=ModuleName.FETCHER))
 
-    assert module.receive(timeout=0.05) is None
+    assert module.receive(timeout_seconds=0.05) is None
 
 
 def test_receive_drops_malformed_messages(
@@ -88,7 +88,7 @@ def test_receive_drops_malformed_messages(
     queues.inbox.put({"event": "bogus"})
     queues.inbox.put(_message(EventType.DATA_NOT_FOUND))
 
-    received = module.receive(timeout=1)
+    received = module.receive(timeout_seconds=1)
 
     assert received is not None
     assert event_of(received) is EventType.DATA_NOT_FOUND
@@ -100,8 +100,8 @@ def test_receive_times_out_when_nothing_is_wanted(
 ) -> None:
     queues.inbox.put(_message(EventType.NODES_RECEIVED))
 
-    assert module.receive(timeout=0.05) is None
-    assert module.receive(timeout=0) is None
+    assert module.receive(timeout_seconds=0.05) is None
+    assert module.receive(timeout_seconds=0) is None
 
 
 def test_shutdown_is_always_wanted(module: RecordingModule) -> None:
@@ -134,4 +134,4 @@ def test_run_stops_when_the_stop_signal_is_set(module: RecordingModule) -> None:
 
 def test_poll_interval_must_be_positive(queues: ModuleQueues) -> None:
     with raises(ValueError):
-        RecordingModule(queues, poll_interval=0)
+        RecordingModule(queues, poll_interval_seconds=0)

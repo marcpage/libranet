@@ -22,7 +22,7 @@ WHOLE = "c" * 64
 FULL_METADATA = Metadata(
     created="2026-08-01T12:00:00Z",
     modified="2026-09-01T08:30:00Z",
-    size=4096,
+    size_bytes=4096,
     writable=True,
     executable=True,
     algorithm="sha256",
@@ -32,7 +32,7 @@ FILE = FileBundle((PART, OTHER_PART), FULL_METADATA, ((PART,), (PART, OTHER_PART
 XATTRS = Metadata(xattrs={"user.origin": "aHR0cHM6Ly9leGFtcGxlLm9yZy8=", "user.fork": (PART,)})
 DIRECTORY = DirectoryBundle(
     {
-        "README.md": FileBundle((PART,), Metadata(size=128)),
+        "README.md": FileBundle((PART,), Metadata(size_bytes=128)),
         "docs/spec.md": FILE,
         "docs/old-spec-link": Symlink("spec.md"),
         "docs": DirectoryMarker(Metadata(created="2026-01-01T00:00:00Z")),
@@ -69,7 +69,7 @@ def test_defaults_are_left_out() -> None:
     assert bundle_value(FileBundle((PART,))) == {"contents": [PART]}
     assert bundle_value(DirectoryBundle({"a": None})) == {"contents": {"a": None}}
     assert bundle_value(DirectoryMarker()) == {}
-    assert bundle_value(DirectoryMarker(Metadata(size=0))) == {"metadata": {"size": 0}}
+    assert bundle_value(DirectoryMarker(Metadata(size_bytes=0))) == {"metadata": {"size": 0}}
 
 
 def test_every_field_is_written_as_the_specification_names_it() -> None:

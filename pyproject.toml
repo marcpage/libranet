@@ -24,6 +24,7 @@ Homepage = "https://github.com/marcpage/libranet"
 dev = [
     "black>=24.4",
     "flake8>=7.0",
+    "flake8-bugbear>=26.9.9",
     "mypy>=1.10",
     "pytest>=8.2",
     "pytest-cov>=7.1.0",

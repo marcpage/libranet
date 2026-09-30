@@ -775,6 +775,7 @@ def test_extended_attributes_are_restored_as_backed_up(
     assert attempt(restore, store, xattrs=ExtendedAttributes()) == RestorePass({}, ())
 
     assert described(target) == described(tree)
+
     for path in ("readme.txt", "big.bin", "locked.txt", "empty", "docs"):
         source, restored = xattr(str(tree / path)), xattr(str(target / path))
         assert {name: restored.get(name) for name in restored.list()} == {
@@ -936,9 +937,11 @@ def test_a_restored_directory_built_again_reads_only_what_changed_and_extends_th
     bundle = built(tree, store)
     attempt(restore_of(bundle, target), store)
     big = parts_of(record_expanded(target).entries["big.bin"])
+
     # Reading big.bin again would store its parts again.
     for part in big:
         store.delete(part)
+
     (target / "readme.txt").write_bytes(b"read me, edited")
     task = build_of(target, store)
     assert task.bundle is not None

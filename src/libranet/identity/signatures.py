@@ -5,9 +5,11 @@ message objects, to the plain method/path/status, headers, and body values
 this project's web server and raw-socket client work with.
 
 Every Libranet message carries exactly one Ed25519 signature labelled
-``libranet``, whose ``keyid`` is the signer's node id::
+``libranet``, whose ``keyid`` is the signer's node id (``Signature-Input`` is
+one line, wrapped here)::
 
-    Signature-Input: libranet=("@method" "@path" "content-digest");created=1757080000;keyid="sha256/def567..."
+    Signature-Input: libranet=("@method" "@path" "content-digest");
+        created=1757080000;keyid="sha256/def567..."
     Signature: libranet=:<base64-signature>:
 
 Requests cover ``@method`` and ``@path``; responses cover ``@status``.
@@ -296,7 +298,8 @@ def _libranet_signature_input(headers: CaseInsensitiveDict) -> InnerList:
     try:
         inputs.parse(headers[SIGNATURE_INPUT_HEADER].encode("ascii"))
 
-    except (ValueError, UnicodeEncodeError) as error:
+    except ValueError as error:
+        # A UnicodeEncodeError, for a header that is not ASCII, is one.
         raise InvalidSignatureError("Malformed Signature-Input header") from error
 
     if list(inputs) != [SIGNATURE_LABEL]:

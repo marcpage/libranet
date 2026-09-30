@@ -133,12 +133,12 @@ DEFAULT_RECLAIM_INTERVAL_SECONDS: Final = 3600.0
 class _HandOff:
     """A hand-off under way: the bytes it will free, and when it was asked for."""
 
-    size: int
+    size_bytes: int
     started_at: float
 
 
 class EvictionModule(ModuleBase):
-    """Hands off and deletes the content this node has least claim to keep, as storage runs short."""
+    """Hands off and deletes the content this node has least claim to, as storage runs short."""
 
     subscriptions: ClassVar[frozenset[EventType]] = frozenset(
         {
@@ -159,7 +159,7 @@ class EvictionModule(ModuleBase):
         *,
         logger: Logger | None = None,
         clock: Callable[[], float] = time,
-        poll_interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
+        poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
         free_bytes: FreeBytes | None = None,
         max_hand_offs: int = DEFAULT_MAX_HAND_OFFS,
         hand_off_timeout_seconds: float = DEFAULT_HAND_OFF_TIMEOUT_SECONDS,
@@ -193,15 +193,17 @@ class EvictionModule(ModuleBase):
                 f"reclaim_interval_seconds must not be negative, got {reclaim_interval_seconds}"
             )
 
-        super().__init__(name, queues, logger=logger, clock=clock, poll_interval=poll_interval)
+        super().__init__(
+            name, queues, logger=logger, clock=clock, poll_interval_seconds=poll_interval_seconds
+        )
         self._config = config
-        self._retry_delay = retry_delay_seconds
+        self._retry_delay_seconds = retry_delay_seconds
         self._free_bytes = free_bytes
         self._max_hand_offs = max_hand_offs
-        self._hand_off_timeout = hand_off_timeout_seconds
-        self._candidates_timeout = candidates_timeout_seconds
-        self._reclaim_timeout = reclaim_timeout_seconds
-        self._reclaim_interval = reclaim_interval_seconds
+        self._hand_off_timeout_seconds = hand_off_timeout_seconds
+        self._candidates_timeout_seconds = candidates_timeout_seconds
+        self._reclaim_timeout_seconds = reclaim_timeout_seconds
+        self._reclaim_interval_seconds = reclaim_interval_seconds
         self._store = CasStore.source_of_truth(config.storage)
         self._node_id: ContentId | None = None
         self._pressure: StoragePressure | None = None
@@ -262,14 +264,16 @@ class EvictionModule(ModuleBase):
         overdue = [
             content_id
             for content_id, hand_off in self._handing_off.items()
-            if now - hand_off.started_at >= self._hand_off_timeout
+            if now - hand_off.started_at >= self._hand_off_timeout_seconds
         ]
 
         for content_id in overdue:
             del self._handing_off[content_id]
             self.logger.warning("The hand-off of %s went unanswered", content_id)
 
-        unanswered = self._asked_at is not None and now - self._asked_at >= self._candidates_timeout
+        unanswered = (
+            self._asked_at is not None and now - self._asked_at >= self._candidates_timeout_seconds
+        )
 
         if unanswered:
             self._asked_at = None
@@ -277,7 +281,7 @@ class EvictionModule(ModuleBase):
 
         unreclaimed = (
             self._reclaiming_since is not None
-            and now - self._reclaiming_since >= self._reclaim_timeout
+            and now - self._reclaiming_since >= self._reclaim_timeout_seconds
         )
 
         if unreclaimed:
@@ -311,7 +315,7 @@ class EvictionModule(ModuleBase):
         self._handing_off.pop(content_id, None)
 
         if len(holders) < HAND_OFF_COPIES:
-            self._paused_until = self._clock() + self._retry_delay
+            self._paused_until = self._clock() + self._retry_delay_seconds
             self.logger.info(
                 "%s was taken by %d peers, short of the %d needed, so it is kept for now",
                 content_id,
@@ -352,7 +356,7 @@ class EvictionModule(ModuleBase):
         excess = self.pressure.excess()
 
         if excess:
-            self._paused_until = self._clock() + self._retry_delay
+            self._paused_until = self._clock() + self._retry_delay_seconds
             self.logger.warning(
                 "Storage is %d bytes over its limits, with nothing left to let go of", excess
             )
@@ -396,11 +400,11 @@ class EvictionModule(ModuleBase):
             self._reclaim()
             return
 
-        freeing = sum(hand_off.size for hand_off in self._handing_off.values())
+        freeing_bytes = sum(hand_off.size_bytes for hand_off in self._handing_off.values())
 
-        while freeing < excess and len(self._handing_off) < self._max_hand_offs:
+        while freeing_bytes < excess and len(self._handing_off) < self._max_hand_offs:
             if not self._candidates:
-                self._ask_for_candidates(excess - freeing)
+                self._ask_for_candidates(excess - freeing_bytes)
                 return
 
             held = self._candidates.popleft()
@@ -409,10 +413,10 @@ class EvictionModule(ModuleBase):
                 continue
 
             self._hand_off(held)
-            freeing += held.size
+            freeing_bytes += held.size_bytes
 
-    def _ask_for_candidates(self, byte_count: int) -> None:
-        """Ask stats for enough content to free ``byte_count`` bytes, unless already asking."""
+    def _ask_for_candidates(self, needed_bytes: int) -> None:
+        """Ask stats for enough content to free ``needed_bytes``, unless already asking."""
         if self._asked_at is not None:
             return
 
@@ -420,13 +424,13 @@ class EvictionModule(ModuleBase):
         self.publish(
             EventType.EVICTION_CANDIDATES_REQUESTED,
             {
-                "bytes": byte_count,
+                "bytes": needed_bytes,
                 "exclude": [
                     str(content_id) for content_id in self._handing_off.keys() | self._peer_keys()
                 ],
             },
         )
-        self.logger.debug("Asked for content to free %d bytes", byte_count)
+        self.logger.debug("Asked for content to free %d bytes", needed_bytes)
 
     def _peer_keys(self) -> frozenset[ContentId]:
         """The public keys of the peers connected either way, by their node ids."""
@@ -440,13 +444,13 @@ class EvictionModule(ModuleBase):
         """Ask for the resolved files of applications not used lately to be deleted."""
         now = self._clock()
         self._reclaiming_since = now
-        self._next_reclaim_at = now + self._reclaim_interval
+        self._next_reclaim_at = now + self._reclaim_interval_seconds
         self.publish(EventType.RESOLVED_RECLAIM_REQUESTED, {})
         self.logger.debug("Asked for the resolved files not used lately to be deleted")
 
     def _hand_off(self, held: HeldObject) -> None:
         content_id = held.content_id
-        self._handing_off[content_id] = _HandOff(held.size, self._clock())
+        self._handing_off[content_id] = _HandOff(held.size_bytes, self._clock())
         self.publish(
             EventType.EVICTION_NOTICE,
             {"algorithm": content_id.algorithm, "hash": content_id.hash, "copies": HAND_OFF_COPIES},
@@ -458,17 +462,17 @@ class EvictionModule(ModuleBase):
         path = self._store.path_for(content_id)
 
         try:
-            size = path.stat().st_size
+            size_bytes = path.stat().st_size
             path.unlink()
 
         except FileNotFoundError:
             # Not logged: already gone, so there is nothing to report.
             return
 
-        self.pressure.deleted(size)
+        self.pressure.deleted(size_bytes)
         self.publish(
             EventType.DATA_DELETED,
-            {"algorithm": content_id.algorithm, "hash": content_id.hash, "size": size},
+            {"algorithm": content_id.algorithm, "hash": content_id.hash, "size": size_bytes},
         )
         self.logger.info("Deleted %s, which other nodes now hold", content_id)
 

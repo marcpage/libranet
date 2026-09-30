@@ -12,13 +12,13 @@ marked as such.
 
 from __future__ import annotations
 from pathlib import Path
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from libranet.config import paths
 
-MIB = 1024 * 1024
+MIB: Final = 1024 * 1024
 
 Scheme = Literal["http", "https"]
 
@@ -141,19 +141,23 @@ class PeerConfig(_Section):
     @model_validator(mode="after")
     def _connections_fit_buckets(self) -> PeerConfig:
         bucket_count = 1 << self.bucket_prefix_bits
+
         if self.min_outgoing_connections > bucket_count:
             raise ValueError(
                 f"min_outgoing_connections ({self.min_outgoing_connections}) "
                 f"exceeds the {bucket_count} buckets available from "
                 f"bucket_prefix_bits ({self.bucket_prefix_bits})"
             )
+
         neighborhood_count = 1 << self.neighborhood_prefix_bits
+
         if self.min_neighborhood_connections > neighborhood_count:
             raise ValueError(
                 f"min_neighborhood_connections ({self.min_neighborhood_connections}) "
                 f"exceeds the {neighborhood_count} buckets available from "
                 f"neighborhood_prefix_bits ({self.neighborhood_prefix_bits})"
             )
+
         return self
 
 
@@ -426,6 +430,7 @@ class LibranetConfig(_Section):
         # theirs, as they do on a network whose nodes are all set alike.
         peers = self.peers
         longest_search = (peers.search_passes - 1) * self.network.retry_after_seconds
+
         if peers.failed_search_hold_seconds <= longest_search:
             raise ValueError(
                 f"peers.failed_search_hold_seconds ({peers.failed_search_hold_seconds}) "
@@ -433,6 +438,7 @@ class LibranetConfig(_Section):
                 f"peers.search_passes ({peers.search_passes}) less one, times "
                 f"network.retry_after_seconds ({self.network.retry_after_seconds})"
             )
+
         return self
 
     def directories(self) -> tuple[Path, ...]:

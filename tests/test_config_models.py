@@ -3,8 +3,8 @@
 from __future__ import annotations
 from pathlib import Path
 
-from pytest import raises
 from pydantic import ValidationError
+from pytest import raises
 
 from libranet.config.models import (
     MIB,

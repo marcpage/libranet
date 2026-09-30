@@ -8,14 +8,15 @@ all of them.
 """
 
 from __future__ import annotations
-from logging import Logger, getLogger, Formatter, StreamHandler
+from logging import Formatter, Logger, StreamHandler, getLogger
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from typing import Final
 
 from libranet.config.models import LoggingConfig
 from libranet.modules import ModuleName
 
-LOGGER_ROOT = "libranet"
+LOGGER_ROOT: Final = "libranet"
 
 
 def get_logger(module: ModuleName | str) -> Logger:

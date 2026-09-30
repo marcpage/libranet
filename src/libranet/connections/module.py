@@ -188,14 +188,14 @@ class _Search:
     until ``passes`` have been made. ``pass_number`` is the pass under way,
     counted from one. ``asked`` holds the peers this pass has asked or passed
     over, ``due`` when each peer that did not send the content may be asked
-    again, and ``asks`` how many asks were made in all. ``pause`` is this
-    node's own ``Retry-After``: how long a peer that gave none is left, and
+    again, and ``asks`` how many asks were made in all. ``pause_seconds`` is
+    this node's own ``Retry-After``: how long a peer that gave none is left, and
     the longest a pass after the first waits. One fetch worker at a time
     carries a search on, so it needs no lock of its own.
     """
 
     content_id: ContentId
-    pause: float
+    pause_seconds: float
     passes: int
     pass_number: int = 1
     asks: int = 0
@@ -220,20 +220,26 @@ class _Search:
         return None
 
     def start_next_pass(self, ranked: Sequence[PeerSession], now: float) -> float:
-        """Start the next pass over ``ranked``, and say when it may ask its first peer.
+        """Start the next pass over ``ranked``.
 
-        That is once every peer may be asked again, but no more than
-        ``pause`` from now: a peer that asked to be left longer is passed
-        over when its turn comes.
+        Returns:
+            When it may ask its first peer: once every peer may be asked
+            again, but no more than ``pause_seconds`` from now, since a peer
+            that asked to be left longer is passed over when its turn comes.
         """
         self.pass_number += 1
         self.asked = set()
         due = [self.due.get(session.node_id, now) for session in ranked]
-        return min(max(due, default=now), now + self.pause)
+        return min(max(due, default=now), now + self.pause_seconds)
 
-    def not_found(self, node_id: ContentId, now: float, retry_after: int | None) -> None:
-        """Note that ``node_id`` did not send the content, and asked to be left ``retry_after`` seconds."""
-        self.due[node_id] = now + (self.pause if retry_after is None else retry_after)
+    def not_found(self, node_id: ContentId, now: float, retry_after_seconds: int | None) -> None:
+        """Note that ``node_id`` did not send the content.
+
+        ``retry_after_seconds`` is how long it asked to be left, if it said.
+        """
+        self.due[node_id] = now + (
+            self.pause_seconds if retry_after_seconds is None else retry_after_seconds
+        )
 
 
 @dataclass
@@ -271,10 +277,12 @@ class ConnectionsModule(ModuleBase):
         *,
         logger: Logger | None = None,
         clock: Callable[[], float] = time,
-        poll_interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
+        poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
         resolve_names: ResolveNames = host_names,
     ) -> None:
-        super().__init__(name, queues, logger=logger, clock=clock, poll_interval=poll_interval)
+        super().__init__(
+            name, queues, logger=logger, clock=clock, poll_interval_seconds=poll_interval_seconds
+        )
         self._config = config
         self._source_of_truth = CasStore.source_of_truth(config.storage)
         self._exchange: PeerExchange | None = None
@@ -600,7 +608,7 @@ class ConnectionsModule(ModuleBase):
         Thread(target=job, name=f"{self.name}-{purpose}", daemon=True).start()
 
     def _connect(self, candidate: Candidate) -> None:
-        """Dial ``candidate``, take a peer it reaches into the mix, then finish the first-contact exchange.
+        """Dial ``candidate``, take a peer it reaches into the mix, then finish first contact.
 
         The candidate rests if no peer was taken in, unless its node was
         connected meanwhile at another endpoint.
@@ -627,6 +635,9 @@ class ConnectionsModule(ModuleBase):
         It stops early at an endpoint that reaches the node expected, even if
         that node is not taken in, and when the module is stopping. Stats is
         told of a walk that reached the node expected at none of them.
+
+        Returns:
+            The peer taken into the mix, or ``None`` if none was.
         """
         for endpoint in candidate.endpoints:
             try:
@@ -692,6 +703,9 @@ class ConnectionsModule(ModuleBase):
         connected, or if the module is stopping. A node already connected
         was reached at this endpoint all the same, which stats is told, and
         the endpoint is not dialed again while the first connection lasts.
+
+        Returns:
+            The peer taken in, or ``None`` if it was not wanted.
         """
         now = self._clock()
         peer: _Peer | None = None
@@ -852,7 +866,7 @@ class ConnectionsModule(ModuleBase):
             return False
 
         if not retrieval.found:
-            search.not_found(session.node_id, self._clock(), retrieval.retry_after)
+            search.not_found(session.node_id, self._clock(), retrieval.retry_after_seconds)
             return False
 
         with self._lock:
@@ -921,7 +935,8 @@ class ConnectionsModule(ModuleBase):
     def _accepting_peers(self, content_id: ContentId, copies: int) -> list[ContentId]:
         """Offer ``content_id`` to connected peers, best match first, until ``copies`` accept it.
 
-        Returns those that did, in the order offered.
+        Returns:
+            Those that did, in the order offered.
         """
         try:
             body = self._source_of_truth.read(content_id)
@@ -1059,10 +1074,12 @@ class ConnectionsModule(ModuleBase):
             self._pushes.put(new)
 
     def _push_to(self, session: PeerSession, group: Sequence[_Push]) -> Sequence[_Push]:
-        """Send ``group`` to ``session``'s peer in one pipelined exchange; what did not reach it.
+        """Send ``group`` to ``session``'s peer in one pipelined exchange.
 
-        That is all of ``group`` if the peer could not be reached, and none
-        of it otherwise, since a peer that refuses content is not passed over.
+        Returns:
+            What did not reach it: all of ``group`` if the peer could not be
+            reached, and none of it otherwise, since a peer that refuses
+            content is not passed over.
         """
         try:
             accepted = self.exchange.hand_off_many(

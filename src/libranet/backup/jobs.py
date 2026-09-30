@@ -150,13 +150,13 @@ class BackupJob:
         if not isinstance(value, dict):
             raise ValueError("A backup job must be an object")
 
-        interval = value.get("interval_seconds")
+        interval_seconds = value.get("interval_seconds")
         latest = value.get("latest")
 
         return cls(
             BackupJobRequest(
                 _string(value, "directory"),
-                None if interval is None else _number(value, "interval_seconds"),
+                None if interval_seconds is None else _number(value, "interval_seconds"),
             ),
             None if latest is None else LatestBackup.from_value(latest),
         )

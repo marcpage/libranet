@@ -269,9 +269,11 @@ def test_a_file_whose_metadata_is_unchanged_is_not_read_again(
 ) -> None:
     first = first_backup(tree, backups).latest
     big_parts = parts_of(entries_of(first.bundle, store)["big.bin"])
+
     # Reading big.bin again would store its parts again.
     for part in big_parts:
         store.delete(part)
+
     recorder.announced.clear()
     (tree / "readme.txt").write_bytes(b"read me again")
     second = backup_after(first, tree, backups)
@@ -285,8 +287,10 @@ def test_a_file_whose_metadata_changed_but_not_its_bytes_keeps_its_parts(
 ) -> None:
     first = first_backup(tree, backups).latest
     big_parts = parts_of(entries_of(first.bundle, store)["big.bin"])
+
     for part in big_parts:
         store.delete(part)
+
     recorder.announced.clear()
     touch(tree / "big.bin")
     second = backup_after(first, tree, backups, publish_metadata=True)
@@ -331,8 +335,10 @@ def test_without_the_last_bundle_every_file_is_read(
 ) -> None:
     first = first_backup(tree, backups).latest
     big_parts = parts_of(entries_of(first.bundle, store)["big.bin"])
+
     for content_id in (first.bundle, *big_parts):
         store.delete(content_id)
+
     recorder.announced.clear()
     (tree / "readme.txt").write_bytes(b"read me again")
     second = backup_after(first, tree, backups)
@@ -527,8 +533,10 @@ def test_an_attribute_changed_alone_is_held_back_without_reading_the_file(
     first = back_up(tree, None, backups, SECRET, MADE_AT, settings)
     big = entries_of(first.latest.bundle, store)["big.bin"]
     assert isinstance(big, FileBundle)
+
     for part in parts_of(big):
         store.delete(part)
+
     recorder.announced.clear()
     xattr(str(tree / "big.bin")).set("user.tag", b"red")
 
@@ -688,9 +696,11 @@ def test_a_backup_built_from_its_last_bundle_kept_expanded_reads_neither_it_nor_
 ) -> None:
     first = first_backup(tree, backups)
     big_parts = parts_of(entries_of(first.latest.bundle, store)["big.bin"])
+
     # Reading big.bin again would store its parts again; the bundle is evicted.
     for content_id in (first.latest.bundle, *big_parts):
         store.delete(content_id)
+
     recorder.announced.clear()
     (tree / "readme.txt").write_bytes(b"read me again")
 

@@ -10,13 +10,15 @@ YAML config file or by the supervisor's command line.
 
 from __future__ import annotations
 from pathlib import Path
+from typing import Final
+
 from platformdirs import PlatformDirs
 
-APP_NAME = "libranet"
+APP_NAME: Final = "libranet"
 
-CONFIG_FILE_NAME = "libranet.yaml"
+CONFIG_FILE_NAME: Final = "libranet.yaml"
 
-_DIRS = PlatformDirs(appname=APP_NAME, appauthor=False, roaming=False)
+_DIRS: Final = PlatformDirs(appname=APP_NAME, appauthor=False, roaming=False)
 
 
 def default_config_dir() -> Path:

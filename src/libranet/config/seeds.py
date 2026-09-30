@@ -9,15 +9,15 @@ entry's identifier may be ``null`` when only an address is known.
 
 from __future__ import annotations
 
-from json import loads, JSONDecodeError
 from importlib import resources
+from json import JSONDecodeError, loads
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from pydantic import BaseModel, ConfigDict
 
-SEED_RESOURCE_PACKAGE = "libranet.config"
-SEED_RESOURCE_NAME = "seed_peers.json"
+SEED_RESOURCE_PACKAGE: Final = "libranet.config"
+SEED_RESOURCE_NAME: Final = "seed_peers.json"
 
 
 class SeedError(Exception):
@@ -53,10 +53,12 @@ def load_seed_peers(path: Path | None = None) -> tuple[SeedPeer, ...]:
 
 def _read_packaged_seed_list() -> str:
     resource = resources.files(SEED_RESOURCE_PACKAGE).joinpath(SEED_RESOURCE_NAME)
+
     try:
         return resource.read_text(encoding="utf-8")
 
-    except (OSError, FileNotFoundError) as error:
+    except OSError as error:
+        # A FileNotFoundError, for a package shipped without the list, is one.
         raise SeedError(f"Packaged seed list is missing: {error}") from error
 
 

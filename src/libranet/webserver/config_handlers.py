@@ -93,8 +93,8 @@ from libranet.webserver.http_types import (
     problem_response,
 )
 from libranet.webserver.publishing import Publish
-from libranet.webserver.router import Handler
 from libranet.webserver.request_refusals import unreadable_body_response
+from libranet.webserver.router import Handler
 
 _LOGGER = getLogger(__name__)
 

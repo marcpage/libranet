@@ -40,7 +40,7 @@ def queues() -> ModuleQueues:
 
 @fixture
 def validator(storage: StorageConfig, queues: ModuleQueues) -> ValidatorModule:
-    return ValidatorModule(ModuleName.VALIDATOR, queues, storage, poll_interval=0.01)
+    return ValidatorModule(ModuleName.VALIDATOR, queues, storage, poll_interval_seconds=0.01)
 
 
 def upload(

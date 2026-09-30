@@ -37,9 +37,9 @@ class StoragePressure:
         held_bytes: int,
         free_bytes: FreeBytes,
     ) -> None:
-        self._min_free = min_free_bytes
-        self._max_held = max_held_bytes
-        self._held = held_bytes
+        self._min_free_bytes = min_free_bytes
+        self._max_held_bytes = max_held_bytes
+        self._held_bytes = held_bytes
         self._free_bytes = free_bytes
 
     @classmethod
@@ -50,44 +50,44 @@ class StoragePressure:
         the filesystem holding the source of truth.
         """
         store = CasStore.source_of_truth(storage)
-        held = 0
+        held_bytes = 0
 
         if storage.max_storage_bytes is not None:
-            held = sum(stored.size for stored in held_objects(store))
+            held_bytes = sum(stored.size_bytes for stored in held_objects(store))
 
         return cls(
             storage.min_free_bytes,
             storage.max_storage_bytes,
-            held,
+            held_bytes,
             free_bytes or partial(free_bytes_under, store.root),
         )
 
     @property
     def held_bytes(self) -> int:
         """The bytes of content held, as counted; only kept when that is limited."""
-        return self._held
+        return self._held_bytes
 
-    def stored(self, size: int) -> None:
-        """Count ``size`` more bytes of content held."""
-        self._held += size
+    def stored(self, size_bytes: int) -> None:
+        """Count ``size_bytes`` more bytes of content held."""
+        self._held_bytes += size_bytes
 
-    def deleted(self, size: int) -> None:
-        """Count ``size`` fewer bytes of content held."""
-        self._held = max(0, self._held - size)
+    def deleted(self, size_bytes: int) -> None:
+        """Count ``size_bytes`` fewer bytes of content held."""
+        self._held_bytes = max(0, self._held_bytes - size_bytes)
 
     def free_space_shortfall(self) -> int:
         """The bytes to free for enough free space to be left; ``0`` when there already is."""
-        if self._min_free <= 0:
+        if self._min_free_bytes <= 0:
             return 0
 
-        return max(0, self._min_free - self._free_bytes())
+        return max(0, self._min_free_bytes - self._free_bytes())
 
     def excess(self) -> int:
         """The bytes to let go of to be within every limit; ``0`` when already within them."""
         excess = self.free_space_shortfall()
 
-        if self._max_held is not None:
-            excess = max(excess, self._held - self._max_held)
+        if self._max_held_bytes is not None:
+            excess = max(excess, self._held_bytes - self._max_held_bytes)
 
         return excess
 

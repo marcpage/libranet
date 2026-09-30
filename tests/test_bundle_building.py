@@ -90,7 +90,7 @@ def test_file_metadata_gives_its_size_and_whole_file_hash(
 
     metadata = build_file(path, store, MAX_BYTES).metadata
 
-    assert metadata.size == len(data)
+    assert metadata.size_bytes == len(data)
     assert metadata.algorithm == "sha256"
     assert metadata.hash == sha256(data).hexdigest()
 
@@ -147,7 +147,7 @@ def test_empty_file_has_no_parts(tmp_path: Path, store: RecordingStore) -> None:
     bundle = build_file(path, store)
 
     assert bundle.parts == ()
-    assert (bundle.metadata.size, bundle.metadata.hash) == (0, EMPTY_SHA256)
+    assert (bundle.metadata.size_bytes, bundle.metadata.hash) == (0, EMPTY_SHA256)
     assert store.writes == []
 
 
@@ -495,8 +495,10 @@ def test_file_whose_metadata_changed_but_bytes_did_not_keeps_its_parts(
     (tree / "file").write_bytes(b"as it was")
     built = build_directory(tree, store).bundle.entries["file"]
     assert isinstance(built, FileBundle)
+
     for part in built.parts:
         store.delete(ContentId.parse(part))
+
     store.writes.clear()
     utime(tree / "file", ns=(WHOLE_SECOND_NS, WHOLE_SECOND_NS))
 
@@ -505,7 +507,10 @@ def test_file_whose_metadata_changed_but_bytes_did_not_keeps_its_parts(
     assert isinstance(entry, FileBundle)
     assert entry.parts == built.parts
     assert entry.metadata.modified == "2026-09-01T08:30:00Z"
-    assert (entry.metadata.size, entry.metadata.hash) == (built.metadata.size, built.metadata.hash)
+    assert (entry.metadata.size_bytes, entry.metadata.hash) == (
+        built.metadata.size_bytes,
+        built.metadata.hash,
+    )
     assert store.writes == []
 
 
@@ -529,7 +534,9 @@ def test_file_whose_bytes_changed_is_built_afresh(
 def test_file_recorded_without_a_hash_is_built_afresh(tree: Path, store: RecordingStore) -> None:
     (tree / "file").write_bytes(b"data")
     utime(tree / "file", ns=(WHOLE_SECOND_NS, WHOLE_SECOND_NS))
-    recorded = FileBundle((str(ContentId.for_data(b"elsewhere", "sha256")),), Metadata(size=4))
+    recorded = FileBundle(
+        (str(ContentId.for_data(b"elsewhere", "sha256")),), Metadata(size_bytes=4)
+    )
 
     entry = build_directory(tree, store, previous={"file": recorded}).bundle.entries["file"]
 

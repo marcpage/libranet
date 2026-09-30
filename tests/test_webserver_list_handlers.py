@@ -232,7 +232,7 @@ def test_a_compressed_list_may_expand_past_the_transfer_cap(
 ) -> None:
     request = post(path, value, compressed=True)
 
-    assert request.body.length is not None and request.body.length <= MAX_BYTES
+    assert request.body.length_bytes is not None and request.body.length_bytes <= MAX_BYTES
     assert MAX_BYTES < len(dumps(value)) <= MAX_DECOMPRESSED_BYTES
     assert router.dispatch(request).status == 202
     (message,) = published(queues)

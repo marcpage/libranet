@@ -57,30 +57,30 @@ def write_file(bundle: FileBundle, source: ContentSource, output: ByteSink) -> i
         raise MissingContentError(missing)
 
     hasher = DEFAULT_REGISTRY.get(expected.algorithm).hasher() if expected else None
-    expected_size = bundle.metadata.size
-    size = 0
+    expected_bytes = bundle.metadata.size_bytes
+    size_bytes = 0
 
     for part in parts:
         for chunk in content_chunks(source, part):
-            size += len(chunk)
+            size_bytes += len(chunk)
 
-            if expected_size is not None and size > expected_size:
-                raise BundleVerificationError(f"File is larger than its size, {expected_size}")
+            if expected_bytes is not None and size_bytes > expected_bytes:
+                raise BundleVerificationError(f"File is larger than its size, {expected_bytes}")
 
             if hasher is not None:
                 hasher.update(chunk)
 
             output.write(chunk)
 
-    if expected_size is not None and size != expected_size:
-        raise BundleVerificationError(f"File is {size} bytes, not its size, {expected_size}")
+    if expected_bytes is not None and size_bytes != expected_bytes:
+        raise BundleVerificationError(f"File is {size_bytes} bytes, not its size, {expected_bytes}")
 
     if hasher is not None and expected is not None and hasher.hexdigest() != expected.hash:
         raise BundleVerificationError(
             f"File does not match its whole-file hash, {expected} vs {hasher.hexdigest()}"
         )
 
-    return size
+    return size_bytes
 
 
 def _whole_file_id(metadata: Metadata) -> ContentId | None:

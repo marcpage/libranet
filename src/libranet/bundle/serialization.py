@@ -59,7 +59,7 @@ def _metadata_value(metadata: Metadata) -> dict[str, Any]:
         for key, field in (
             ("created", metadata.created),
             ("modified", metadata.modified),
-            ("size", metadata.size),
+            ("size", metadata.size_bytes),
             ("algorithm", metadata.algorithm),
             ("hash", metadata.hash),
         )

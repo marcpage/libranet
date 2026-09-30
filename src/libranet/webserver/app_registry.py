@@ -224,8 +224,10 @@ class ApplicationRegistry:
     def remove(self, name: str) -> bool:
         """Stop serving the application ``name``, however it is cased.
 
-        Returns whether one of that name was registered. The file is left
-        alone if none was.
+        The file is left alone if none of that name was registered.
+
+        Returns:
+            Whether one of that name was registered.
 
         Raises:
             RegistryFileError: the file cannot be read, and is left alone.
@@ -300,8 +302,8 @@ class _FileVersion:
     """
 
     inode: int
-    modified_ns: int
-    size: int
+    modified_nanoseconds: int
+    size_bytes: int
 
     @classmethod
     def of(cls, path: Path) -> _FileVersion:

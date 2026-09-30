@@ -168,6 +168,7 @@ def test_removing_what_is_not_registered_leaves_the_file_alone(
 def test_each_change_replaces_the_file_whole(registry: ApplicationRegistry, path: Path) -> None:
     registry.register(Application.create("wiki", WIKI_BUNDLE))
     first = path.stat().st_ino
+
     # Held open, so the replaced file's inode cannot be reused for the next.
     with path.open("rb") as replaced:
         registry.register(Application.create("photos", ROOT_BUNDLE))

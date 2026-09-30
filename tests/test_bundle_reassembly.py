@@ -43,7 +43,7 @@ def file_bundle(parts: list[ContentId], metadata: Metadata | None = None) -> Fil
 
 def describing(content: bytes) -> Metadata:
     """Metadata giving the size and whole-file hash of ``content``."""
-    return Metadata(size=len(content), algorithm="sha256", hash=sha256(content).hexdigest())
+    return Metadata(size_bytes=len(content), algorithm="sha256", hash=sha256(content).hexdigest())
 
 
 def test_parts_are_written_in_order(store: CasStore) -> None:
@@ -113,14 +113,14 @@ def test_whole_file_hash_is_compared_in_lower_case(store: CasStore) -> None:
 
 
 def test_file_shorter_than_its_size_fails(store: CasStore) -> None:
-    bundle = file_bundle([FIRST_ID], Metadata(size=len(FIRST) + 1))
+    bundle = file_bundle([FIRST_ID], Metadata(size_bytes=len(FIRST) + 1))
 
     with raises(BundleVerificationError, match="not its size"):
         write_file(bundle, store, BytesIO())
 
 
 def test_file_longer_than_its_size_stops_before_writing_past_it(store: CasStore) -> None:
-    bundle = file_bundle([FIRST_ID, THIRD_ID], Metadata(size=len(FIRST) + 10))
+    bundle = file_bundle([FIRST_ID, THIRD_ID], Metadata(size_bytes=len(FIRST) + 10))
     output = BytesIO()
 
     with raises(BundleVerificationError, match="larger than its size"):

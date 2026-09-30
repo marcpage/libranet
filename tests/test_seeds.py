@@ -5,6 +5,7 @@ from json import dumps
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
 from pytest import raises
 
 from libranet.config.seeds import SeedError, load_seed_peers
@@ -63,7 +64,7 @@ def test_seed_peers_are_immutable(tmp_path: Path) -> None:
 
     (peer,) = load_seed_peers(path)
 
-    with raises(Exception):
+    with raises(ValidationError):
         peer.address = "http://192.0.2.8:8080"
 
 

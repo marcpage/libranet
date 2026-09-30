@@ -10,8 +10,8 @@ Restart policy:
 * Any child that exits while the node is running is restarted, however
   often it crashes.
 * Modules back off exponentially between consecutive crashes, capped at
-  ``max_restart_delay``; a module that stayed up for ``stable_after``
-  seconds starts again from the base delay.
+  ``max_restart_delay_seconds``; a module that stayed up for
+  ``stable_after_seconds`` starts again from the base delay.
 * The dispatcher is restarted immediately and ahead of everything else.
   Other modules are neither started nor restarted until the dispatcher has
   reported that it is up, since every module depends on it.
@@ -23,7 +23,7 @@ from logging import Logger
 from multiprocessing import get_context
 from multiprocessing.process import BaseProcess
 from time import monotonic, sleep
-from typing import Iterable, Sequence
+from typing import Final, Iterable, Sequence
 
 from libranet.config.models import LibranetConfig
 from libranet.logging_setup import get_logger
@@ -37,14 +37,14 @@ from libranet.supervision.children import (
 )
 from libranet.supervision.specs import DispatcherEntry, ModuleSpec
 
-DEFAULT_POLL_INTERVAL_SECONDS = 0.2
-DEFAULT_RESTART_DELAY_SECONDS = 0.5
-DEFAULT_MAX_RESTART_DELAY_SECONDS = 30.0
-DEFAULT_STABLE_AFTER_SECONDS = 60.0
-DEFAULT_READY_TIMEOUT_SECONDS = 30.0
-DEFAULT_STOP_TIMEOUT_SECONDS = 5.0
+DEFAULT_POLL_INTERVAL_SECONDS: Final = 0.2
+DEFAULT_RESTART_DELAY_SECONDS: Final = 0.5
+DEFAULT_MAX_RESTART_DELAY_SECONDS: Final = 30.0
+DEFAULT_STABLE_AFTER_SECONDS: Final = 60.0
+DEFAULT_READY_TIMEOUT_SECONDS: Final = 30.0
+DEFAULT_STOP_TIMEOUT_SECONDS: Final = 5.0
 
-_READY_CHECK_INTERVAL_SECONDS = 0.05
+_READY_CHECK_INTERVAL_SECONDS: Final = 0.05
 
 
 @dataclass
@@ -75,12 +75,12 @@ class ProcessSupervisor:
         *,
         dispatcher_entry: DispatcherEntry = dispatcher_main,
         logger: Logger | None = None,
-        poll_interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
-        restart_delay: float = DEFAULT_RESTART_DELAY_SECONDS,
-        max_restart_delay: float = DEFAULT_MAX_RESTART_DELAY_SECONDS,
-        stable_after: float = DEFAULT_STABLE_AFTER_SECONDS,
-        ready_timeout: float = DEFAULT_READY_TIMEOUT_SECONDS,
-        stop_timeout: float = DEFAULT_STOP_TIMEOUT_SECONDS,
+        poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
+        restart_delay_seconds: float = DEFAULT_RESTART_DELAY_SECONDS,
+        max_restart_delay_seconds: float = DEFAULT_MAX_RESTART_DELAY_SECONDS,
+        stable_after_seconds: float = DEFAULT_STABLE_AFTER_SECONDS,
+        ready_timeout_seconds: float = DEFAULT_READY_TIMEOUT_SECONDS,
+        stop_timeout_seconds: float = DEFAULT_STOP_TIMEOUT_SECONDS,
     ) -> None:
         names = [spec.name for spec in modules]
 
@@ -90,22 +90,25 @@ class ProcessSupervisor:
         if len(set(names)) != len(names):
             raise ValueError(f"Module names must be unique, got {names}")
 
-        if poll_interval <= 0 or ready_timeout <= 0 or stop_timeout <= 0:
-            raise ValueError("poll_interval, ready_timeout, and stop_timeout must be positive")
+        if poll_interval_seconds <= 0 or ready_timeout_seconds <= 0 or stop_timeout_seconds <= 0:
+            raise ValueError(
+                "poll_interval_seconds, ready_timeout_seconds, and stop_timeout_seconds "
+                "must be positive"
+            )
 
-        if restart_delay < 0 or max_restart_delay < restart_delay:
-            raise ValueError("Need 0 <= restart_delay <= max_restart_delay")
+        if restart_delay_seconds < 0 or max_restart_delay_seconds < restart_delay_seconds:
+            raise ValueError("Need 0 <= restart_delay_seconds <= max_restart_delay_seconds")
 
         self._config = config
         self._specs = {spec.name: spec for spec in modules}
         self._dispatcher_entry = dispatcher_entry
         self._logger = logger or get_logger(ModuleName.SUPERVISOR)
-        self._poll_interval = poll_interval
-        self._restart_delay = restart_delay
-        self._max_restart_delay = max_restart_delay
-        self._stable_after = stable_after
-        self._ready_timeout = ready_timeout
-        self._stop_timeout = stop_timeout
+        self._poll_interval_seconds = poll_interval_seconds
+        self._restart_delay_seconds = restart_delay_seconds
+        self._max_restart_delay_seconds = max_restart_delay_seconds
+        self._stable_after_seconds = stable_after_seconds
+        self._ready_timeout_seconds = ready_timeout_seconds
+        self._stop_timeout_seconds = stop_timeout_seconds
 
         self._context = get_context(START_METHOD)
         # Children watch ``_stop``, which only :meth:`shutdown` sets. The node's
@@ -146,7 +149,7 @@ class ProcessSupervisor:
         try:
             while not self._stopping():
                 self.poll()
-                sleep(self._poll_interval)
+                sleep(self._poll_interval_seconds)
 
         finally:
             self.shutdown()
@@ -183,9 +186,9 @@ class ProcessSupervisor:
         self._logger.info("All module processes stopped")
 
     def _stop_children(self, children: Iterable[_Child]) -> None:
-        """Wait for ``children``, already asked to stop, escalating to ``SIGTERM`` and ``SIGKILL``."""
+        """Wait for ``children``, asked to stop, escalating to ``SIGTERM`` and ``SIGKILL``."""
         running = [(child, child.process) for child in children if child.process is not None]
-        deadline = monotonic() + self._stop_timeout
+        deadline = monotonic() + self._stop_timeout_seconds
 
         for _, process in running:
             process.join(max(0.0, deadline - monotonic()))
@@ -194,12 +197,12 @@ class ProcessSupervisor:
             if process.is_alive():
                 self._logger.warning("Module %s did not stop in time; terminating", child.name)
                 process.terminate()
-                process.join(self._stop_timeout)
+                process.join(self._stop_timeout_seconds)
 
             if process.is_alive():
                 self._logger.error("Module %s ignored SIGTERM; killing", child.name)
                 process.kill()
-                process.join(self._stop_timeout)
+                process.join(self._stop_timeout_seconds)
 
             self._release(child, process)
 
@@ -226,7 +229,12 @@ class ProcessSupervisor:
         return self._start_dispatcher()
 
     def _start_dispatcher(self) -> bool:
-        """Start the dispatcher and wait until it is ready or has failed."""
+        """Start the dispatcher and wait until it is ready or has failed.
+
+        Returns:
+            Whether it became ready; ``False`` if it exited or ran out of time
+            first, or the supervisor is stopping.
+        """
         ready = self._context.Event()
         process = self._context.Process(
             target=run_dispatcher_process,
@@ -241,7 +249,7 @@ class ProcessSupervisor:
             daemon=True,
         )
         self._launch(self._dispatcher, process)
-        deadline = monotonic() + self._ready_timeout
+        deadline = monotonic() + self._ready_timeout_seconds
 
         while not ready.wait(_READY_CHECK_INTERVAL_SECONDS):
             if self._stopping():
@@ -253,7 +261,7 @@ class ProcessSupervisor:
 
             if monotonic() >= deadline:
                 self._logger.error(
-                    "Dispatcher not ready after %.1fs; terminating it", self._ready_timeout
+                    "Dispatcher not ready after %.1fs; terminating it", self._ready_timeout_seconds
                 )
                 process.terminate()
                 return False
@@ -267,9 +275,9 @@ class ProcessSupervisor:
                 return
 
             self._reap(child, now)
-            delay = self._backoff(child.failures)
-            child.restart_at = now + delay
-            self._logger.info("Restarting module %s in %.1fs", child.name, delay)
+            delay_seconds = self._backoff(child.failures)
+            child.restart_at = now + delay_seconds
+            self._logger.info("Restarting module %s in %.1fs", child.name, delay_seconds)
 
         if child.restart_at is None or now >= child.restart_at:
             spec = self._specs[child.name]
@@ -301,17 +309,24 @@ class ProcessSupervisor:
             )
 
     def _reap(self, child: _Child, now: float) -> None:
-        """Collect a dead child's exit status and count the failure."""
+        """Collect a dead child's exit status and count the failure.
+
+        Raises:
+            RuntimeError: ``child`` was never started, so has no process.
+        """
         process = child.process
-        assert process is not None
-        process.join(self._stop_timeout)
-        uptime = now - child.started_at
-        child.failures = 1 if uptime >= self._stable_after else child.failures + 1
+
+        if process is None:
+            raise RuntimeError(f"Module {child.name} has no process to reap")
+
+        process.join(self._stop_timeout_seconds)
+        uptime_seconds = now - child.started_at
+        child.failures = 1 if uptime_seconds >= self._stable_after_seconds else child.failures + 1
         self._logger.warning(
             "Module %s exited with status %s after %.1fs (consecutive failures: %d)",
             child.name,
             process.exitcode,
-            uptime,
+            uptime_seconds,
             child.failures,
         )
         self._release(child, process)
@@ -334,4 +349,6 @@ class ProcessSupervisor:
 
     def _backoff(self, failures: int) -> float:
         """Delay before restarting a module that has failed ``failures`` times in a row."""
-        return float(min(self._restart_delay * 2 ** (failures - 1), self._max_restart_delay))
+        return float(
+            min(self._restart_delay_seconds * 2 ** (failures - 1), self._max_restart_delay_seconds)
+        )

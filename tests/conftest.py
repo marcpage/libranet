@@ -24,11 +24,14 @@ def restore_logging() -> Iterator[None]:
     saved_level = logger.level
     saved_propagate = logger.propagate
     yield
+
     for handler in list(logger.handlers):
         logger.removeHandler(handler)
         handler.close()
+
     for handler in saved_handlers:
         logger.addHandler(handler)
+
     logger.setLevel(saved_level)
     logger.propagate = saved_propagate
 

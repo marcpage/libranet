@@ -39,7 +39,7 @@ def store(tmp_path: Path) -> CasStore:
 @fixture
 def fetcher(queues: ModuleQueues, store: CasStore) -> FetcherModule:
     return FetcherModule(
-        ModuleName.FETCHER, queues, INTERVAL, LayeredSource(store), poll_interval=0.01
+        ModuleName.FETCHER, queues, INTERVAL, LayeredSource(store), poll_interval_seconds=0.01
     )
 
 

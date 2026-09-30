@@ -13,17 +13,17 @@ plain, JSON-friendly dict even if it is logged or serialized later.
 from __future__ import annotations
 from math import isfinite
 from time import time
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Final, Mapping
 
 from libranet.messaging.events import EventType
 from libranet.modules import ModuleName
 
 Message = dict[str, Any]
 
-EVENT_FIELD = "event"
-TIMESTAMP_FIELD = "timestamp"
-SOURCE_FIELD = "source"
-ENVELOPE_FIELDS = frozenset({EVENT_FIELD, TIMESTAMP_FIELD, SOURCE_FIELD})
+EVENT_FIELD: Final = "event"
+TIMESTAMP_FIELD: Final = "timestamp"
+SOURCE_FIELD: Final = "source"
+ENVELOPE_FIELDS: Final = frozenset({EVENT_FIELD, TIMESTAMP_FIELD, SOURCE_FIELD})
 
 
 class InvalidMessageError(ValueError):

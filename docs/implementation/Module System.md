@@ -1099,7 +1099,7 @@ hook, and read what it published from its outbox. Condensed from
 
 ```Python
 queues = ModuleQueues(inbox=Queue(), outbox=Queue())
-validator = ValidatorModule(ModuleName.VALIDATOR, queues, storage, poll_interval=0.01)
+validator = ValidatorModule(ModuleName.VALIDATOR, queues, storage, poll_interval_seconds=0.01)
 
 CasStore.for_node(storage, NODE_ID).write(CONTENT_ID, CONTENT)  # as the web server would
 validator.handle(

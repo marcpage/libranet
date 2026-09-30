@@ -723,7 +723,7 @@ My calls, not yet reviewed:
 - **A search that raises ends as one that found nothing,** hold
   included, as `fetch.failed` did before.
 - **A `Retry-After` is read only as a number of seconds**
-  (`PeerResponse.retry_after`); an HTTP date counts as none.
+  (`PeerResponse.retry_after_seconds`); an HTTP date counts as none.
   `PeerExchange.retrieve` returns a `Retrieval`, whether the peer sent the
   content and, if not, its `Retry-After`.
 - **Searches resume from `on_idle`,** as resting candidates and seek-list
@@ -2090,8 +2090,8 @@ Ruled before building, each my recommendation:
 
 What was built: `BackupConfig.restore_stall_seconds` (86,400, above
 zero), stated in `examples/libranet.yaml` and `File Layout.md`. `Restore`
-(`backup/restores.py`) takes it as `give_up_after`, and notes when content
-it waits on last arrived: when `landed` says it did, when a pass finds
+(`backup/restores.py`) takes it as `give_up_after_seconds`, and notes when
+content it waits on last arrived: when `landed` says it did, when a pass finds
 held what the pass before lacked, and when it is asked for or asked for
 again. A restore waiting is due at the earlier of its next ask and when
 it would give up, so it gives up on time, not up to an ask interval late.

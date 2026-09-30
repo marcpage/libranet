@@ -96,7 +96,12 @@ def start(
     config: LibranetConfig, queues: ModuleQueues, now: list[float], **options: Any
 ) -> BackupModule:
     module = BackupModule(
-        ModuleName.BACKUP, queues, config, clock=lambda: now[0], poll_interval=0.01, **options
+        ModuleName.BACKUP,
+        queues,
+        config,
+        clock=lambda: now[0],
+        poll_interval_seconds=0.01,
+        **options,
     )
     module.on_start()
     return module

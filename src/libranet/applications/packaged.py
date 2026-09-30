@@ -66,7 +66,7 @@ class PackagedApplications:
         directory: Path = PACKAGED_APPLICATIONS,
         names: Mapping[str, str] = SHIPPED_APPLICATIONS,
     ) -> PackagedApplications:
-        """Each application ``names`` lists, built in memory from its directory within ``directory``.
+        """Each application ``names`` lists, built in memory from its directory in ``directory``.
 
         Raises:
             OSError: a directory could not be read.
@@ -124,7 +124,7 @@ class _Objects(dict[ContentId, bytes]):
         return content_id in self
 
     def write(self, content_id: ContentId, data: bytes) -> None:
-        """Hold ``data``, the content of ``content_id`` as is or zlib-compressed, unless it is held."""
+        """Hold ``data``, ``content_id``'s content as is or zlib-compressed, unless it is held."""
         self.setdefault(content_id, data)
 
     def add_directory(self, directory: Path) -> ContentId:
@@ -159,7 +159,9 @@ def _as_shipped(entry: Entry | None) -> Entry | None:
         recorded = entry.metadata
         return FileBundle(
             entry.parts,
-            Metadata(size=recorded.size, algorithm=recorded.algorithm, hash=recorded.hash),
+            Metadata(
+                size_bytes=recorded.size_bytes, algorithm=recorded.algorithm, hash=recorded.hash
+            ),
         )
 
     if isinstance(entry, DirectoryMarker):

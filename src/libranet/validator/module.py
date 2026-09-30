@@ -45,9 +45,9 @@ class ValidatorModule(ModuleBase):
         storage: StorageConfig,
         *,
         logger: Logger | None = None,
-        poll_interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
+        poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
     ) -> None:
-        super().__init__(name, queues, logger=logger, poll_interval=poll_interval)
+        super().__init__(name, queues, logger=logger, poll_interval_seconds=poll_interval_seconds)
         self._storage = storage
         self._source_of_truth = CasStore.source_of_truth(storage)
 

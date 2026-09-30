@@ -9,12 +9,12 @@ from __future__ import annotations
 
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Final, Sequence
 
 from libranet import __version__
 from libranet.config import paths
 
-PROGRAM_NAME = "libranet"
+PROGRAM_NAME: Final = "libranet"
 
 
 def build_parser() -> ArgumentParser:

@@ -5,21 +5,21 @@ real factory here.
 """
 
 from __future__ import annotations
-from typing import Mapping
+from typing import Final, Mapping
 
 from libranet.backup.module import backup_module_factory
 from libranet.connections.module import connections_module_factory
 from libranet.eviction.module import eviction_module_factory
 from libranet.fetcher.module import fetcher_module_factory
 from libranet.modules import SPAWNED_MODULES, ModuleName
-from libranet.supervision.specs import ModuleFactory, ModuleSpec
 from libranet.stats.module import stats_module_factory
+from libranet.supervision.specs import ModuleFactory, ModuleSpec
 from libranet.supervision.stubs import stub_module_factory
 from libranet.unbundler.module import unbundler_module_factory
 from libranet.validator.module import validator_module_factory
 from libranet.webserver.module import webserver_module_factory
 
-_FACTORIES: Mapping[ModuleName, ModuleFactory] = {
+_FACTORIES: Final[Mapping[ModuleName, ModuleFactory]] = {
     ModuleName.WEBSERVER: webserver_module_factory,
     ModuleName.VALIDATOR: validator_module_factory,
     ModuleName.STATS: stats_module_factory,

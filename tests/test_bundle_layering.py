@@ -57,7 +57,9 @@ def part(number: int) -> str:
 
 def entries(count: int) -> dict[str, Entry]:
     return {
-        f"dir{number % 7}/file{number:05d}.txt": FileBundle((part(number),), Metadata(size=number))
+        f"dir{number % 7}/file{number:05d}.txt": FileBundle(
+            (part(number),), Metadata(size_bytes=number)
+        )
         for number in range(count)
     }
 
@@ -138,8 +140,8 @@ def test_a_new_version_holds_only_what_changed_and_extends_the_last() -> None:
     sink = Sink()
     first = store(sink, entries(10))
     held = entries(10)
-    held["dir0/file00000.txt"] = FileBundle((part(100),), Metadata(size=100))
-    held["added.txt"] = FileBundle((part(101),), Metadata(size=101))
+    held["dir0/file00000.txt"] = FileBundle((part(100),), Metadata(size_bytes=100))
+    held["added.txt"] = FileBundle((part(101),), Metadata(size_bytes=101))
     del held["dir1/file00001.txt"]
     second = store(sink, held, first)
     layer = top(sink, second.bundle)
@@ -203,7 +205,7 @@ def test_a_layer_over_a_split_bundle_reaches_its_chunks() -> None:
     sink = Sink()
     first = store(sink, entries(300))
     held = entries(300)
-    held["dir0/file00000.txt"] = FileBundle((part(1000),), Metadata(size=0))
+    held["dir0/file00000.txt"] = FileBundle((part(1000),), Metadata(size_bytes=0))
     second = store(sink, held, first)
 
     assert second.layering == Layering(1, first.layering.extensions + 1)
@@ -216,7 +218,7 @@ def test_a_layer_may_reach_as_many_extensions_as_a_reader_follows_and_no_more() 
     first = store(sink, entries(300))
     chunks = first.layering.extensions
     held = entries(300)
-    held["dir0/file00000.txt"] = FileBundle((part(1000),), Metadata(size=0))
+    held["dir0/file00000.txt"] = FileBundle((part(1000),), Metadata(size_bytes=0))
 
     at_the_limit = store(sink, held, first, max_extensions=chunks + 1)
     past_it = store(sink, held, first, max_extensions=chunks)
@@ -346,12 +348,12 @@ def test_a_bundle_lists_one_layer_beneath_it_for_each_it_sits_above(
 
 
 KEPT: dict[str, Entry] = {
-    "index.html": FileBundle((part(1),), Metadata(size=1, modified="2026-09-01T08:30:00Z")),
+    "index.html": FileBundle((part(1),), Metadata(size_bytes=1, modified="2026-09-01T08:30:00Z")),
     "about": Symlink("pages/about.html"),
     "empty": DirectoryMarker(Metadata(writable=True)),
 }
 # index.html, its time alone changed.
-TOUCHED = FileBundle((part(1),), Metadata(size=1, modified="2026-09-02T08:30:00Z"))
+TOUCHED = FileBundle((part(1),), Metadata(size_bytes=1, modified="2026-09-02T08:30:00Z"))
 
 
 @mark.parametrize(
@@ -468,7 +470,7 @@ def test_a_bundle_extending_what_it_does_not_supersede_sits_above_no_layers() ->
     sink = Sink()
     library = store(sink, entries(10))
     earlier = store(sink, entries(5))
-    held = {"index.html": FileBundle((part(1000),), Metadata(size=1))}
+    held = {"index.html": FileBundle((part(1000),), Metadata(size_bytes=1))}
     bundle = store_bundle(
         DirectoryBundle(held, versions=(str(earlier.bundle),), extensions=(str(library.bundle),)),
         sink,
@@ -526,7 +528,7 @@ def test_a_bundle_whose_extension_is_not_held_cannot_be_read_back() -> None:
 
 def test_a_bundle_that_is_not_a_directory_cannot_be_read_back() -> None:
     sink = Sink()
-    file = store_bundle(FileBundle((part(1),), Metadata(size=1)), sink)
+    file = store_bundle(FileBundle((part(1),), Metadata(size_bytes=1)), sink)
 
     assert Superseded.read(file, partial(load, sink), None) is None
 

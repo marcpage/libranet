@@ -58,8 +58,8 @@ def make_supervisor(config: LibranetConfig) -> Iterator[Callable[..., ProcessSup
     created: list[ProcessSupervisor] = []
 
     def make(modules: tuple[ModuleSpec, ...] = STUBS, **options: Any) -> ProcessSupervisor:
-        options.setdefault("poll_interval", 0.05)
-        options.setdefault("restart_delay", 0.0)
+        options.setdefault("poll_interval_seconds", 0.05)
+        options.setdefault("restart_delay_seconds", 0.0)
         supervisor = ProcessSupervisor(config, modules, **options)
         created.append(supervisor)
         return supervisor
@@ -168,15 +168,15 @@ def test_module_names_must_be_unique(config: LibranetConfig) -> None:
 
 def test_restart_delays_must_be_ordered(config: LibranetConfig) -> None:
     with raises(ValueError, match="restart_delay"):
-        ProcessSupervisor(config, STUBS, restart_delay=5.0, max_restart_delay=1.0)
+        ProcessSupervisor(config, STUBS, restart_delay_seconds=5.0, max_restart_delay_seconds=1.0)
 
 
 def test_crashing_stub_raises_once_its_time_is_up() -> None:
     module = CrashingStubModule(
         ModuleName.WEBSERVER,
         ModuleQueues(inbox=Queue(), outbox=Queue()),
-        crash_after=0.0,
-        poll_interval=0.01,
+        crash_after_seconds=0.0,
+        poll_interval_seconds=0.01,
     )
 
     with raises(RuntimeError, match="on purpose"):
@@ -210,7 +210,9 @@ def test_each_module_logs_to_its_own_file(
 def test_crash_looping_module_keeps_being_restarted(
     make_supervisor: Callable[..., ProcessSupervisor],
 ) -> None:
-    crasher = ModuleSpec(ModuleName.FETCHER, partial(crashing_module_factory, crash_after=0.0))
+    crasher = ModuleSpec(
+        ModuleName.FETCHER, partial(crashing_module_factory, crash_after_seconds=0.0)
+    )
     supervisor = make_supervisor((STUBS[0], crasher))
 
     _poll_until(supervisor, lambda: supervisor.restart_count(ModuleName.FETCHER) >= 3)
@@ -222,8 +224,12 @@ def test_crash_looping_module_keeps_being_restarted(
 def test_restart_waits_for_the_backoff_delay(
     make_supervisor: Callable[..., ProcessSupervisor],
 ) -> None:
-    crasher = ModuleSpec(ModuleName.FETCHER, partial(crashing_module_factory, crash_after=0.0))
-    supervisor = make_supervisor((crasher,), restart_delay=60.0, max_restart_delay=60.0)
+    crasher = ModuleSpec(
+        ModuleName.FETCHER, partial(crashing_module_factory, crash_after_seconds=0.0)
+    )
+    supervisor = make_supervisor(
+        (crasher,), restart_delay_seconds=60.0, max_restart_delay_seconds=60.0
+    )
     supervisor.poll()
     deadline = monotonic() + 3.0
 
@@ -331,7 +337,7 @@ def test_readiness_wait_ends_once_the_node_is_asked_to_stop(
     make_supervisor: Callable[..., ProcessSupervisor],
 ) -> None:
     supervisor = make_supervisor(
-        dispatcher_entry=unready_dispatcher_main, ready_timeout=TIMEOUT_SECONDS
+        dispatcher_entry=unready_dispatcher_main, ready_timeout_seconds=TIMEOUT_SECONDS
     )
     stop = Event()
     Timer(0.5, stop.set).start()
@@ -349,7 +355,9 @@ def test_run_returns_although_a_child_will_not_exit(
     monkeypatch: MonkeyPatch,
     caplog: LogCaptureFixture,
 ) -> None:
-    supervisor = make_supervisor(stop_timeout=STOP_TIMEOUT_SECONDS, logger=getLogger(__name__))
+    supervisor = make_supervisor(
+        stop_timeout_seconds=STOP_TIMEOUT_SECONDS, logger=getLogger(__name__)
+    )
     stubborn = _StubbornProcess()
     monkeypatch.setattr(supervisor, "_context", _StubbornContext(ModuleName.WEBSERVER, stubborn))
 

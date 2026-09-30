@@ -45,6 +45,7 @@ from libranet.webserver.config_requests import (
 REQUESTED_AT = 1_789_000_000.0
 FINISHED_AT = REQUESTED_AT + 5
 MAX_LAYERS = 2
+NOTHING_IGNORED = IgnoredPaths()
 
 
 @fixture
@@ -106,7 +107,7 @@ def export(
     archive: Path,
     on_conflict: ConflictBehavior = ConflictBehavior.REFUSE,
     password: str | None = None,
-    ignored: IgnoredPaths = IgnoredPaths(),
+    ignored: IgnoredPaths = NOTHING_IGNORED,
 ) -> Export:
     task = exporting(bundle, archive, on_conflict, password)
     assert task.run(source, ignored, lambda: FINISHED_AT) == ()

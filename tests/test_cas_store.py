@@ -97,6 +97,7 @@ def test_move_to_missing_raises(tmp_path: Path) -> None:
 def test_iter_prefix(tmp_path: Path) -> None:
     store = make_store(tmp_path, 2)
     ids = [ContentId.for_data(str(index).encode(), "sha256") for index in range(200)]
+
     for content_id in ids:
         store.write(content_id, b"")
 

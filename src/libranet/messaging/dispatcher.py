@@ -15,7 +15,7 @@ from __future__ import annotations
 from logging import Logger
 from queue import Empty, SimpleQueue
 from threading import Event, Thread
-from typing import Mapping
+from typing import Final, Mapping
 
 from libranet.logging_setup import get_logger
 from libranet.messaging.envelope import InvalidMessageError, Message, event_of, validate_message
@@ -24,7 +24,7 @@ from libranet.messaging.module import StopSignal
 from libranet.messaging.queues import MessageQueue, ModuleQueues
 from libranet.modules import ModuleName
 
-DEFAULT_POLL_INTERVAL_SECONDS = 0.1
+DEFAULT_POLL_INTERVAL_SECONDS: Final = 0.1
 
 
 class Dispatcher:
@@ -35,14 +35,14 @@ class Dispatcher:
         endpoints: Mapping[ModuleName, ModuleQueues],
         *,
         logger: Logger | None = None,
-        poll_interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
+        poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
     ) -> None:
-        if poll_interval <= 0:
-            raise ValueError(f"poll_interval must be positive, got {poll_interval}")
+        if poll_interval_seconds <= 0:
+            raise ValueError(f"poll_interval_seconds must be positive, got {poll_interval_seconds}")
 
         self._endpoints = dict(endpoints)
         self._logger = logger or get_logger(ModuleName.DISPATCHER)
-        self._poll_interval = poll_interval
+        self._poll_interval_seconds = poll_interval_seconds
 
     def dispatch(self, raw: object) -> Message | None:
         """Broadcast one message to every inbox; returns it, or ``None`` if invalid.
@@ -65,8 +65,11 @@ class Dispatcher:
     def dispatch_pending(self) -> int:
         """Broadcast whatever is already waiting in the outboxes, without blocking.
 
-        Returns the number of valid messages broadcast. Intended for
-        single-threaded tests; :meth:`run` is the production loop.
+        Intended for single-threaded tests; :meth:`run` is the production
+        loop.
+
+        Returns:
+            The number of valid messages broadcast.
         """
         count = 0
 
@@ -105,7 +108,7 @@ class Dispatcher:
         try:
             while stop is None or not stop.is_set():
                 try:
-                    raw = pending.get(timeout=self._poll_interval)
+                    raw = pending.get(timeout=self._poll_interval_seconds)
 
                 except Empty:
                     # Not logged: a timeout is how the loop polls.
@@ -135,7 +138,7 @@ class Dispatcher:
         """Reader-thread body: move one outbox's messages onto ``pending``."""
         while not stop.is_set():
             try:
-                pending.put(outbox.get(timeout=self._poll_interval))
+                pending.put(outbox.get(timeout=self._poll_interval_seconds))
 
             except Empty:
                 # Not logged: a timeout is how the loop polls.

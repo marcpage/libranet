@@ -7,8 +7,8 @@ from logging import WARNING, getLogger
 from pytest import LogCaptureFixture, raises
 
 from libranet.cas.algorithms import (
-    AlgorithmRegistry,
     DEFAULT_REGISTRY,
+    AlgorithmRegistry,
     Hasher,
     Sha256Algorithm,
     UnsupportedAlgorithms,

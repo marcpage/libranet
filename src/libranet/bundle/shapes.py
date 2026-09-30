@@ -80,7 +80,7 @@ class Metadata:
     name (§2.4), each value inline as base64, kept as written, or as parts.
 
     Raises:
-        MalformedBundleError: ``size`` is negative, only one of
+        MalformedBundleError: ``size_bytes`` is negative, only one of
             ``algorithm`` and ``hash`` is given, or an extended attribute's
             name is empty, holds a NUL, or is not UTF-8, or its value is
             not padded base64.
@@ -88,7 +88,7 @@ class Metadata:
 
     created: str | None = None
     modified: str | None = None
-    size: int | None = None
+    size_bytes: int | None = None
     writable: bool = False
     executable: bool = False
     algorithm: str | None = None
@@ -96,8 +96,10 @@ class Metadata:
     xattrs: Mapping[str, XattrValue] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if self.size is not None and self.size < 0:
-            raise MalformedBundleError(f'"size" must be a non-negative integer, got {self.size}')
+        if self.size_bytes is not None and self.size_bytes < 0:
+            raise MalformedBundleError(
+                f'"size" must be a non-negative integer, got {self.size_bytes}'
+            )
 
         if (self.algorithm is None) != (self.hash is None):
             raise MalformedBundleError('"algorithm" and "hash" must be given together')

@@ -28,7 +28,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from logging import Logger
 from socket import AF_INET, AF_INET6
 from socketserver import TCPServer
-from typing import Any
+from typing import Any, Final
 from urllib.parse import urlsplit
 
 from libranet import __version__
@@ -41,8 +41,8 @@ from libranet.problems import Problem
 from libranet.unbundler.resolved_files import ResolvedFiles
 from libranet.webserver.app_handler import APP_PATTERN, CONFIG_APP_PATTERN, AppHandler
 from libranet.webserver.app_outcomes import ApplicationOutcomes
-from libranet.webserver.app_use import ApplicationUse
 from libranet.webserver.app_registry import ApplicationRegistry, RegisteredApplications
+from libranet.webserver.app_use import ApplicationUse
 from libranet.webserver.backup_state import BackupState
 from libranet.webserver.config_auth import ConfigAuthGuard
 from libranet.webserver.config_credential import ConfigCredential
@@ -74,14 +74,14 @@ from libranet.webserver.signature_guard import SignatureGuard
 
 # Idle keep-alive connections are dropped after this long, so they cannot
 # hold request threads forever.
-IDLE_TIMEOUT_SECONDS = 60.0
+IDLE_TIMEOUT_SECONDS: Final = 60.0
 
 # Every response to a request whose request line parsed echoes that
 # request's target (path and any query string) here. A pipelining client
 # matches responses by order alone and needn't rely on it, but can spot a
 # mismatch when debugging (Step 10). Other implementations need not send
 # it, and a proxy may rewrite paths.
-REQUEST_PATH_HEADER = "X-Request-Path"
+REQUEST_PATH_HEADER: Final = "X-Request-Path"
 
 
 def build_router(
@@ -165,6 +165,7 @@ def build_router(
         SEEK_PATH,
         SeekListHandler(storage.max_object_bytes, storage.max_decompressed_list_bytes, publish),
     )
+
     # The administration surface, which the guards above have already
     # restricted to authenticated clients on this machine.
     for method, pattern, handler in config_routes(

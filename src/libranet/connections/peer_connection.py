@@ -68,7 +68,7 @@ class PeerConnection:
     ``host`` is the ``Host`` header sent with every request, and every
     request is signed by ``signer``. While any request is waiting, the peer
     must make progress (take a whole request, or send any bytes) at least
-    every ``request_timeout`` seconds. A response body over
+    every ``request_timeout_seconds``. A response body over
     ``max_body_bytes`` is refused.
     """
 
@@ -79,14 +79,14 @@ class PeerConnection:
         signer: MessageSigner,
         logger: Logger,
         *,
-        request_timeout: float,
+        request_timeout_seconds: float,
         max_body_bytes: int,
     ) -> None:
         self._socket = sock
         self._host = host
         self._signer = signer
         self._logger = logger
-        self._request_timeout = request_timeout
+        self._request_timeout_seconds = request_timeout_seconds
         self._parser = ResponseParser(max_body_bytes)
         self._lock = Lock()
         self._waiting: deque[_Waiting] = deque()
@@ -98,7 +98,7 @@ class PeerConnection:
         # Completed once the receive thread has closed everything down.
         self._finished: Future[None] = Future()
         # Bounds each whole send; receiving only ever reads what has arrived.
-        sock.settimeout(request_timeout)
+        sock.settimeout(request_timeout_seconds)
         self._sender = Thread(target=self._send_loop, name=f"send {host}", daemon=True)
         self._receiver = Thread(target=self._receive_loop, name=f"receive {host}", daemon=True)
         self._sender.start()
@@ -112,8 +112,8 @@ class PeerConnection:
         signer: MessageSigner,
         logger: Logger,
         *,
-        connect_timeout: float,
-        request_timeout: float,
+        connect_timeout_seconds: float,
+        request_timeout_seconds: float,
         max_body_bytes: int,
     ) -> PeerConnection:
         """Connect to the peer listening at ``host`` and ``port``.
@@ -121,9 +121,9 @@ class PeerConnection:
         The remaining arguments are as for :class:`PeerConnection`.
 
         Raises:
-            OSError: no connection was made within ``connect_timeout`` seconds.
+            OSError: no connection was made within ``connect_timeout_seconds``.
         """
-        sock = create_connection((host, port), timeout=connect_timeout)
+        sock = create_connection((host, port), timeout=connect_timeout_seconds)
         # Pipelined requests are small and back to back; don't hold one until
         # the previous is acknowledged.
         sock.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
@@ -133,7 +133,7 @@ class PeerConnection:
             f"{authority}:{port}",
             signer,
             logger,
-            request_timeout=request_timeout,
+            request_timeout_seconds=request_timeout_seconds,
             max_body_bytes=max_body_bytes,
         )
 
@@ -259,15 +259,18 @@ class PeerConnection:
                 selector.register(self._socket, EVENT_READ)
 
                 while not self._closed:
-                    remaining = self._time_left()
+                    remaining_seconds = self._time_left()
 
-                    if remaining is not None and remaining <= 0:
+                    if remaining_seconds is not None and remaining_seconds <= 0:
                         raise TimeoutError(
-                            f"{self._host} made no progress for {self._request_timeout} seconds"
+                            f"{self._host} made no progress for "
+                            f"{self._request_timeout_seconds} seconds"
                         )
 
                     if not selector.select(
-                        self._request_timeout if remaining is None else remaining
+                        self._request_timeout_seconds
+                        if remaining_seconds is None
+                        else remaining_seconds
                     ):
                         continue
 
@@ -298,7 +301,7 @@ class PeerConnection:
             if not self._waiting:
                 return None
 
-            return self._last_progress + self._request_timeout - monotonic()
+            return self._last_progress + self._request_timeout_seconds - monotonic()
 
     def _oldest(self) -> _Waiting | None:
         with self._lock:

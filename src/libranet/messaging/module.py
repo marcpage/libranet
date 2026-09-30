@@ -13,7 +13,7 @@ from abc import ABC, abstractmethod
 from logging import Logger
 from queue import Empty
 from time import monotonic, time
-from typing import Any, Callable, ClassVar, Mapping, Protocol
+from typing import Any, Callable, ClassVar, Final, Mapping, Protocol
 
 from libranet.logging_setup import get_logger
 from libranet.messaging.envelope import (
@@ -28,7 +28,7 @@ from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 
-DEFAULT_POLL_INTERVAL_SECONDS = 0.5
+DEFAULT_POLL_INTERVAL_SECONDS: Final = 0.5
 
 
 class StopSignal(Protocol):
@@ -54,16 +54,16 @@ class ModuleBase(ABC):
         *,
         logger: Logger | None = None,
         clock: Callable[[], float] = time,
-        poll_interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
+        poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
     ) -> None:
-        if poll_interval <= 0:
-            raise ValueError(f"poll_interval must be positive, got {poll_interval}")
+        if poll_interval_seconds <= 0:
+            raise ValueError(f"poll_interval_seconds must be positive, got {poll_interval_seconds}")
 
         self._name = name
         self._queues = queues
         self._logger = logger or get_logger(name)
         self._clock = clock
-        self._poll_interval = poll_interval
+        self._poll_interval_seconds = poll_interval_seconds
 
     @property
     def name(self) -> ModuleName:
@@ -89,19 +89,19 @@ class ModuleBase(ABC):
         event = event_of(message)
         return event == EventType.SHUTDOWN or event in self.subscriptions
 
-    def receive(self, timeout: float | None = None) -> Message | None:
+    def receive(self, timeout_seconds: float | None = None) -> Message | None:
         """The next broadcast this module wants, or ``None`` on timeout.
 
         Unwanted and malformed messages are discarded while waiting.
-        ``timeout=None`` blocks until a wanted message arrives.
+        ``timeout_seconds=None`` blocks until a wanted message arrives.
         """
-        deadline = None if timeout is None else monotonic() + timeout
+        deadline = None if timeout_seconds is None else monotonic() + timeout_seconds
 
         while True:
-            remaining = None if deadline is None else max(0.0, deadline - monotonic())
+            remaining_seconds = None if deadline is None else max(0.0, deadline - monotonic())
 
             try:
-                raw = self._queues.inbox.get(timeout=remaining)
+                raw = self._queues.inbox.get(timeout=remaining_seconds)
 
             except Empty:
                 # Not logged: nothing arriving in time is the answer.
@@ -128,7 +128,7 @@ class ModuleBase(ABC):
 
         try:
             while stop is None or not stop.is_set():
-                message = self.receive(timeout=self._poll_interval)
+                message = self.receive(timeout_seconds=self._poll_interval_seconds)
 
                 if message is None:
                     self.on_idle()

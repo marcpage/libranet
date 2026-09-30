@@ -23,9 +23,10 @@ PASSWORD = b"correct horse battery staple"
 DESCRIPTOR = b"PW-SHA256-AES256-CBC"
 MAX_BYTES = 1 << 20
 IV = bytes(range(16))
+ZERO_IV = bytes(16)
 
 
-def encrypt(data: bytes, password: bytes = PASSWORD, iv: bytes = bytes(16)) -> bytes:
+def encrypt(data: bytes, password: bytes = PASSWORD, iv: bytes = ZERO_IV) -> bytes:
     """``data`` encrypted as §6.1 describes, done here independently of the library."""
     padder = PKCS7(128).padder()
     padded = padder.update(data) + padder.finalize()

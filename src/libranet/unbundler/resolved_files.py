@@ -89,9 +89,9 @@ class ResolvedFiles:
             OSError: a file could not be deleted; those that were stay deleted.
         """
         directory = self._bundle_dir(bundle)
-        size = sum(path.stat().st_size for path in directory.rglob("*") if path.is_file())
+        size_bytes = sum(path.stat().st_size for path in directory.rglob("*") if path.is_file())
         rmtree(directory)
-        return size
+        return size_bytes
 
     def _bundle_dir(self, bundle: ContentId) -> Path:
         return self._directory / bundle.algorithm / bundle.hash

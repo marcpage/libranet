@@ -9,8 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Mapping
 
-from yaml import safe_load, YAMLError
 from pydantic import ValidationError
+from yaml import YAMLError, safe_load
 
 from libranet.config.models import LibranetConfig
 
@@ -27,13 +27,10 @@ def load_config(
 ) -> LibranetConfig:
     """Build a :class:`LibranetConfig` from a YAML file plus overrides.
 
-    Args:
-        path: YAML file to read. A missing file yields an all-defaults
-            configuration unless ``required`` is set.
-        overrides: Nested mapping merged over the file's contents, used for
-            command-line flags such as ``--log-level``.
-        required: When true, a missing ``path`` is an error rather than a
-            fall back to defaults.
+    ``path`` is the YAML file to read. A missing file yields an all-defaults
+    configuration, unless ``required`` is set, when it is an error.
+    ``overrides`` is a nested mapping merged over the file's contents, used
+    for command-line flags such as ``--log-level``.
 
     Raises:
         ConfigError: the file is unreadable, is not a YAML mapping, or the

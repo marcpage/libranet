@@ -59,15 +59,15 @@ class FetcherModule(ModuleBase):
         content: ContentSource,
         *,
         logger: Logger | None = None,
-        poll_interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
+        poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
     ) -> None:
         if ask_interval_seconds < 0:
             raise ValueError(
                 f"ask_interval_seconds must not be negative, got {ask_interval_seconds}"
             )
 
-        super().__init__(name, queues, logger=logger, poll_interval=poll_interval)
-        self._ask_interval = ask_interval_seconds
+        super().__init__(name, queues, logger=logger, poll_interval_seconds=poll_interval_seconds)
+        self._ask_interval_seconds = ask_interval_seconds
         self._content = content
         # Content asked for, oldest first, with when the miss that prompted
         # each request was reported.
@@ -92,10 +92,10 @@ class FetcherModule(ModuleBase):
         # Timed by when each miss was reported rather than when it is handled,
         # so a backlog here cannot make a client's retry look early.
         reported_at = float(message[TIMESTAMP_FIELD])
-        self._forget_asks_before(reported_at - self._ask_interval)
+        self._forget_asks_before(reported_at - self._ask_interval_seconds)
         asked_at = self._asked.get(content_id)
 
-        if asked_at is not None and reported_at - asked_at < self._ask_interval:
+        if asked_at is not None and reported_at - asked_at < self._ask_interval_seconds:
             self.logger.debug(
                 "%s was asked for %.1f seconds earlier", content_id, reported_at - asked_at
             )

@@ -59,9 +59,9 @@ class WebServerModule(ModuleBase):
         config: LibranetConfig,
         *,
         logger: Logger | None = None,
-        poll_interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
+        poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
     ) -> None:
-        super().__init__(name, queues, logger=logger, poll_interval=poll_interval)
+        super().__init__(name, queues, logger=logger, poll_interval_seconds=poll_interval_seconds)
         self._config = config
         self._app_outcomes = ApplicationOutcomes()
         self._backup_state = BackupState()

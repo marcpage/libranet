@@ -74,7 +74,10 @@ class PeerSession:
 
     @property
     def closed_locally(self) -> bool:
-        """Whether this node chose to close the connection, rather than it failing or the peer closing it."""
+        """Whether this node chose to close the connection.
+
+        Not so when it failed, or when the peer closed it.
+        """
         return self._closed_locally
 
     def exchange(self, requests: Sequence[PeerRequest]) -> list[PeerResponse]:
@@ -98,7 +101,7 @@ class PeerSession:
         self._connection.close()
 
     def when_closed(self, callback: Callable[[], None]) -> None:
-        """Call ``callback`` once the connection has closed; see :meth:`PeerConnection.when_closed`."""
+        """Call ``callback`` once the connection has closed (:meth:`PeerConnection.when_closed`)."""
         self._connection.when_closed(callback)
 
     def _verified(self, response: PeerResponse) -> PeerResponse:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 from pathlib import Path
+from sqlite3 import ProgrammingError
 from typing import Collection, Iterator
 
 from pytest import fixture, mark, raises
@@ -115,7 +116,7 @@ def test_acquiring_records_when_it_happened_and_its_size(
     stats = database.data_stats(CONTENT_ID)
 
     assert stats is not None
-    assert (stats.last_acquired, stats.size) == (clock.now, 10)
+    assert (stats.last_acquired, stats.size_bytes) == (clock.now, 10)
 
 
 def test_deleting_accumulates_how_long_content_was_held(
@@ -136,7 +137,7 @@ def test_deleting_accumulates_how_long_content_was_held(
     assert stats.stored_seconds == 65
     # The last time it was acquired stays true after the copy is gone.
     assert stats.last_acquired == clock.now - 5
-    assert stats.size is None
+    assert stats.size_bytes is None
 
 
 def test_deleting_content_never_acquired_adds_no_time(database: StatsDatabase) -> None:
@@ -154,7 +155,7 @@ def test_content_merely_heard_of_is_not_held(database: StatsDatabase) -> None:
 
     for content_id in (CONTENT_ID, OTHER_ID):
         stats = database.data_stats(content_id)
-        assert stats is not None and stats.size is None
+        assert stats is not None and stats.size_bytes is None
 
 
 def test_an_opened_connection_counts_as_an_attempt_too(
@@ -201,8 +202,8 @@ def test_closing_a_connection_to_an_unknown_node_records_nothing(
 
 
 def test_transferred_bytes_accumulate_per_direction(database: StatsDatabase) -> None:
-    database.record_transfer(NODE_ID, received=1024)
-    database.record_transfer(NODE_ID, received=512, sent=256)
+    database.record_transfer(NODE_ID, received_bytes=1024)
+    database.record_transfer(NODE_ID, received_bytes=512, sent_bytes=256)
     database.record_transfer(NODE_ID)
 
     stats = database.node_stats(NODE_ID)
@@ -721,5 +722,5 @@ def test_a_closed_database_cannot_be_used(tmp_path: Path) -> None:
     database = StatsDatabase(tmp_path / "libranet.sqlite3")
     database.close()
 
-    with raises(Exception):
+    with raises(ProgrammingError):
         database.record_push(CONTENT_ID)

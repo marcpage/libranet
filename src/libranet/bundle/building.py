@@ -395,16 +395,16 @@ def _file_bundle(
     file.seek(0)
     hasher = DEFAULT_REGISTRY.get(HASH_ALGORITHM).hasher()
     parts: list[str] = []
-    size = 0
+    size_bytes = 0
 
     while part := file.read(max_object_bytes):
         hasher.update(part)
-        size += len(part)
+        size_bytes += len(part)
         parts.append(str(store_object(part, sink, max_object_bytes)))
 
     metadata = replace(
         _metadata(status, _recorded(earlier, FileBundle)),
-        size=size,
+        size_bytes=size_bytes,
         algorithm=HASH_ALGORITHM,
         hash=hasher.hexdigest(),
         xattrs=xattrs,
@@ -417,7 +417,7 @@ def _holds(file: BinaryIO, status: stat_result, recorded: Metadata) -> bool:
 
     It is read only if its size is the one recorded.
     """
-    if recorded.size != status.st_size or recorded.algorithm != HASH_ALGORITHM:
+    if recorded.size_bytes != status.st_size or recorded.algorithm != HASH_ALGORITHM:
         return False
 
     hasher = DEFAULT_REGISTRY.get(HASH_ALGORITHM).hasher()
@@ -437,7 +437,7 @@ def _as_recorded(
     """
     return replace(
         _metadata(status, recorded),
-        size=status.st_size,
+        size_bytes=status.st_size,
         algorithm=recorded.algorithm,
         hash=recorded.hash,
         xattrs=xattrs,
@@ -465,7 +465,7 @@ def _metadata(status: stat_result, recorded: Metadata | None = None) -> Metadata
 
 
 def _created(status: stat_result) -> str | None:
-    """When ``status`` says a file or directory was created; ``None`` if the platform does not say."""
+    """When ``status`` says a file or directory was created; ``None`` if the platform cannot say."""
     birth_time = getattr(status, "st_birthtime", None)
     return None if birth_time is None else _timestamp(round(birth_time * _MICROSECONDS_PER_SECOND))
 

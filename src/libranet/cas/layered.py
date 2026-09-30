@@ -91,9 +91,10 @@ class LayeredSource:
         packaged: Traversable = PACKAGED_ARCHIVES,
         sources: Path = PACKAGED_APPLICATIONS,
     ) -> LayeredSource:
-        """The source of truth, the archives ``storage`` names and those in ``packaged``, and the applications.
+        """The source of truth, then the node's archives, then the applications it ships.
 
-        The applications the node ships are read from ``packaged`` if it holds
+        The archives are those ``storage`` names and those in ``packaged``. The
+        applications the node ships are read from ``packaged`` if it holds
         them built, and are otherwise built from ``sources`` now.
 
         Raises:
@@ -183,7 +184,7 @@ class LayeredSource:
 
 
 def _shipped_applications(packaged: Traversable, sources: Path) -> PackagedApplications:
-    """The applications the node ships: as ``packaged`` holds them built, or else built from ``sources``.
+    """The applications the node ships: as ``packaged`` holds them built, or built from ``sources``.
 
     Raises:
         ArchiveError: the file naming them cannot be read, or they cannot be

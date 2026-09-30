@@ -9,6 +9,7 @@ named after its member (see :mod:`libranet.logging_setup`).
 
 from __future__ import annotations
 from enum import StrEnum
+from typing import Final
 
 
 class ModuleName(StrEnum):
@@ -28,7 +29,7 @@ class ModuleName(StrEnum):
 
 #: Modules the supervisor spawns, in the order it starts them. The dispatcher
 #: is first because every other module publishes through it.
-SPAWNED_MODULES: tuple[ModuleName, ...] = (
+SPAWNED_MODULES: Final[tuple[ModuleName, ...]] = (
     ModuleName.DISPATCHER,
     ModuleName.STATS,
     ModuleName.WEBSERVER,

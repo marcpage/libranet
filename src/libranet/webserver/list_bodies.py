@@ -17,8 +17,8 @@ from logging import getLogger
 from typing import Callable
 from zlib import decompressobj, error as ZlibError
 
-from libranet.cas.content_id import ContentId
 from libranet.cas.algorithms import UnsupportedAlgorithms
+from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
 from libranet.webserver.search import normalize_prefix
 
