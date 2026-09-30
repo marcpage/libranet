@@ -168,6 +168,56 @@ next request to `/config` re-triggers capture (§2.3.1). Each
 implementation SHOULD document where and how to do this for its
 platform.
 
+#### 2.3.3 Requests From Other Sites
+
+A browser that holds the `/config` credential sends it with every request
+to the node's origin, whichever page made the request. Left at that, a
+page on any other site could change the node's configuration with the
+operator's credential, and a link from another site could make a node
+that has no credential yet capture one of that site's choosing (§2.3.1).
+A node therefore serves `/config` only to requests that a browser says
+its own pages made, and to requests that no browser made.
+
+The checks below are made on every `/config` request, whatever its method
+and whichever half of the namespace it falls in, before the request's
+credentials are looked at. A request that fails one MUST be refused with
+`403 Forbidden` and MUST NOT trigger credential capture.
+
+- **`Host`.** A node keeps a list of the hosts it serves `/config` as,
+  which by default holds only `localhost`, `127.0.0.1`, and `::1`. A
+  request whose `Host` header names any other host MUST be refused. The
+  port is not compared. This is what stops a site that points a name of
+  its own at a loopback address: a browser takes that site's requests to
+  be same-origin, so neither check below catches them. An operator who
+  reaches `/config` under another name, through a reverse proxy for
+  example, adds that name to the list.
+- **`Sec-Fetch-Site`.** A request carrying this header with any value
+  other than `same-origin` or `none` MUST be refused. That includes
+  `same-site`: another port on the same host is another origin.
+- **`Origin`.** A request carrying `Origin` and no `Sec-Fetch-Site` MUST
+  be refused unless the host and port `Origin` names are the ones its
+  `Host` header names. `Origin: null` names neither, and is refused.
+
+A request carrying none of these headers passes. Every current browser
+sends `Host` with every request, `Sec-Fetch-Site` with every request to a
+loopback origin, and `Origin` with every cross-origin request that is not
+a `GET` or `HEAD`, so a request without them comes from a script or a
+command-line client, which holds the credential itself.
+
+A `/config/api` endpoint MUST read a request body as JSON only if the
+request's `Content-Type` is `application/json`, with or without
+parameters, and MUST answer a body of any other type with
+`415 Unsupported Media Type`. A browser sends a cross-origin request of
+that type only after asking the node whether it may, and a node MUST NOT
+send `Access-Control-Allow-Origin`, or any other header granting a
+cross-origin request, on a `/config` response.
+
+None of this tells a request made by a directory-bundle application the
+node serves (§13) from one made by the `/config` application: both are
+the node's own origin. Until the two are separated, an application
+registered on a node can do anything `/config` can, with the credential
+of an operator who has logged in to `/config` in the same browser.
+
 ---
 
 ## 3. HTTP and HTTPS
@@ -1229,6 +1279,7 @@ The following status codes are expected to have defined Libranet semantics.
 | `404 Not Found`             | Requested resource is unavailable          |
 | `405 Method Not Allowed`    | HTTP method is not supported               |
 | `413 Content Too Large`     | Request exceeds permitted size             |
+| `415 Unsupported Media Type` | Request body is not of an accepted type   |
 | `429 Too Many Requests`     | Rate limit exceeded                        |
 | `500 Internal Server Error` | Unexpected node error                      |
 | `503 Service Unavailable`   | Resource temporarily unavailable           |
@@ -1656,6 +1707,8 @@ implementation:
 30. HTTP-specific registrations.
 31. Mechanism for pushing search-derived results to satisfy `/data/seek`
     `search` entries.
+32. Separating `/config` from the applications a node serves, which share
+    its origin (§2.3.3).
 
 ---
 

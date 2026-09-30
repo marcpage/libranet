@@ -26,7 +26,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 from hashlib import sha256
-from json import loads
 from math import isfinite
 from pathlib import PurePath
 from typing import Any, Final
@@ -426,19 +425,6 @@ def check_named(local_path: str, what: str) -> None:
     """
     if not PurePath(local_path).name:
         raise ValueError(f"{what} may not be the root, got {local_path!r}")
-
-
-def decode_request(body: bytes) -> object:
-    """The JSON value ``body`` carries.
-
-    Raises:
-        InvalidConfigRequestError: it is not JSON.
-    """
-    try:
-        return loads(body)
-
-    except ValueError as error:
-        raise InvalidConfigRequestError(f"The request body is not JSON: {error}") from None
 
 
 def _password(value: dict[str, Any], what: str) -> str | None:

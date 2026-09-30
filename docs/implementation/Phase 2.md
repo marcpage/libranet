@@ -1117,7 +1117,8 @@ became `ExportRequest.from_value`. #81 names four more in
   `ExportRequest` already have. So `parse_backup_job`, `parse_restore`,
   and `parse_build` become `BackupJobRequest.from_value`,
   `RestoreRequest.from_value`, and `BuildRequest.from_value`.
-- `decode_request` moves in Step 41, which needs it on `Request`.
+- `decode_request` moved in Step 41, which needed it on `Request`: it is
+  `Request.json`.
 - Beyond those, a rough count finds 96 of the 226 module-level functions
   taking or returning one of the project's own classes. Most should stay
   functions:
@@ -2400,49 +2401,128 @@ request. That was true from Phase 1 Step 18; Steps 36 and 39 made it
 likely to matter by giving `/config` a page an operator logs in to. The
 issue raises two holes.
 
-Proposed in the issue, for the first:
-
 - **A request from another site.** A page on any other site can send a
   `text/plain` `POST` to `/config/api/applications` without a CORS
   preflight, and the browser attaches the credential. `decode_request`
-  (`webserver/config_requests.py`) ignores `Content-Type`, so the body is
-  parsed as JSON anyway, and the request could point `/` at another
+  (`webserver/config_requests.py`) ignored `Content-Type`, so the body
+  was parsed as JSON anyway, and the request could point `/` at another
   bundle. The endpoints of Steps 18 and 35 have had this all along.
-- The fix: refuse a `/config` request whose `Origin` or `Sec-Fetch-Site`
-  header says it came from another site, and require `application/json`
-  on every request body. The first is a guard beside `local_config_guard`
-  (`webserver/config_guard.py`), refusing before credentials are looked
-  at. The second makes any cross-site `POST` need a preflight, which the
-  node never grants.
-- Checking `Content-Type` needs the request's headers, which
-  `decode_request(body)` is not given. So this step is where it becomes a
-  method on `Request` (`webserver/http_types.py`), as #81 asks (Step 42).
-
-Not settled, for the second:
-
+- Proposed in the issue: refuse a `/config` request whose `Origin` or
+  `Sec-Fetch-Site` header says it came from another site, and require
+  `application/json` on every request body.
 - **An application on the same origin.** Every registered application is
   served from the same origin as `/config`, so any application's script
   can call `/config/api` and the browser attaches the credential. No
-  header check can tell that request from the page's own. This dates from
-  Phase 1 Step 35. A script on the same origin can also open the `/config`
-  page itself and script it, so the fix that closes it is a separate
-  origin — `/config` on a port of its own, for example, since the port is
-  part of the origin. That changes HttpApi §2.3 and how an operator
-  reaches the page, so it is a specification decision before it is code.
+  header check can tell that request from the page's own, and a script
+  on the same origin can also open the `/config` page and drive it. What
+  closes it is a separate origin, which changes HttpApi §2.3 and how an
+  operator reaches the page.
 
-**Open questions:**
+Two more holes were found reading the code before building:
 
-- Whether a request carrying neither `Origin` nor `Sec-Fetch-Site`, such
-  as one from `curl`, is let through. Refusing it breaks every script
-  that drives `/config/api`; letting it through leaves open only browsers
-  that send neither header.
-- Whether the second hole is closed with a separate origin, or
-  registering an application is taken to mean trusting it and the hole is
-  documented instead.
+- **A link from another site captures the credential.** A node with no
+  credential yet adopts the first one it is sent (HttpApi §2.3.1). A page
+  elsewhere that links to `http://name:password@127.0.0.1:8080/config/`
+  has the browser send a credential of that page's choosing.
+- **`Host` was not checked.** A site can point a name of its own at
+  `127.0.0.1`. The browser then takes that site's pages and the node to
+  be one origin, so `Sec-Fetch-Site` says `same-origin` and `Origin`
+  matches `Host`. Such a page does not get the operator's credential,
+  which the browser holds for another origin, but it can capture one on
+  a node that has none, or guess at one that has.
 
-**Testable in isolation:** guard tests with fake requests carrying each
-combination of `Origin`, `Sec-Fetch-Site`, and `Content-Type`, asserting
-which are refused and that a refusal comes before any credential check.
+Ruled before building, each my recommendation:
+
+- **A request carrying neither `Origin` nor `Sec-Fetch-Site` is let
+  through**, so `curl` and scripts keep working. Every current browser
+  sends `Sec-Fetch-Site` to a loopback origin, and browsers have sent
+  `Origin` with a cross-site `POST` for years.
+- **A request from another site is refused whatever its method**,
+  following a link to the `/config` page included, which closes capture
+  by link. A link to `/config` on a page elsewhere gets `403`; an
+  address typed, a bookmark, and a link from one of the node's own pages
+  still work.
+- **The second hole gets an issue of its own**, decided later. This step
+  only says, in the README and on the page's register form, that a
+  registered application can do anything `/config` can.
+- **`Host` is checked too**, against a list of names in the
+  configuration that holds `localhost`, `127.0.0.1`, and `::1` by
+  default.
+
+What was built: HttpApi §2.3.3, written first, then the code.
+`ConfigSiteGuard` (`webserver/config_guard.py`) runs after
+`local_config_guard` and before `ConfigAuthGuard`, so a refusal is `403`
+before any credential is looked at and nothing is captured. It refuses a
+`/config` request whose `Host` names a host `/config` is not served as;
+whose `Sec-Fetch-Site` is anything but `same-origin` or `none`; or,
+where a browser sends no `Sec-Fetch-Site`, whose `Origin` names a host
+and port other than `Host`'s. Each refusal is logged at warning, naming
+the header. `NetworkConfig.config_hosts` holds the hosts, as shell-style
+patterns matched whatever their case, and is stated in
+`examples/libranet.yaml`. `Request` (`webserver/http_types.py`) gains
+`header`, which finds a header however it is capitalized, and `json`,
+which is `decode_request` moved as #81 asks: it reads the body as JSON
+only if `Content-Type` is `application/json`, and raises
+`UnsupportedMediaTypeError` otherwise. The five `/config/api` endpoints
+that read a body answer that with `415`, through `_json_or_refusal`
+(`webserver/config_handlers.py`). The page's register form and the
+README carry the warning, and the README says what `/config` refuses.
+About 250 new or changed lines of non-test Python, so it is one change
+set.
+
+Seen in a live run of one node. With no credential captured, a request
+with `Sec-Fetch-Site: cross-site` and one with `Host: evil.example` were
+each `403`, and no credential file was written. `curl` with no such
+headers then captured one. A `text/plain` body was `415`, as was
+`curl -d` with its default type, and the README's examples worked as
+written. Chrome 154, through a loopback proxy adding the credential,
+loaded the `/config` page and its lists, sending `Sec-Fetch-Site: none`
+for the page and `same-origin` for the rest, and a `POST` from a page of
+the same origin was accepted. A page served from another port of
+`127.0.0.1` had its `text/plain` `POST`, its preflight for a JSON one,
+and a frame of `/config/` each refused as `same-site`, and the same page
+served as `localhost` had them refused as `cross-site`.
+
+My calls, not yet reviewed:
+
+- **`same-site` is refused.** Another port on the same host is another
+  origin, and is what any other web server on the machine is.
+- **`Sec-Fetch-Site` decides when a browser sends it**, and `Origin` is
+  compared with `Host` only when it does not. A reverse proxy that
+  rewrites `Host` would otherwise fail every `POST` from the page.
+  Behind such a proxy a browser that sends no `Sec-Fetch-Site` is
+  refused.
+- **Only host and port are compared** between `Origin` and `Host`, since
+  the node cannot tell which scheme a proxy in front of it was reached
+  by. `Origin: null` is refused.
+- **A request with no `Host` is let through**, as one with no `Origin`
+  is: a browser always sends it.
+- **The list is the whole of what `Host` may name**, the loopback
+  addresses included, and replaces the default when set. Patterns are
+  allowed, as for other lists of names in the configuration, so `*`
+  turns the check off. An IPv6 address is written without its brackets,
+  which a pattern would read as a set of characters.
+- **`build_router` takes the hosts from `node.network`**, which it was
+  already given, rather than a new parameter every caller would pass.
+- **A body not sent as JSON is `415`**, with no problem type of its own,
+  and is still read, so the connection stays usable. The check is made
+  where a body is read as JSON. The two `DELETE`s and
+  `POST /config/api/backups/{job_id}/run` have no use for a body, and
+  ask for no `Content-Type`.
+- **Refusals are logged at warning.** One means a page tried to use the
+  operator's credential, or that a name needs adding to `config_hosts`,
+  which the refusal over `Host` names.
+- **Nothing answers a preflight.** An `OPTIONS` from another site is
+  refused like any other request, and no response carries an
+  `Access-Control-Allow-Origin`.
+
+Still open, beyond the second hole:
+
+- A browser sends `Sec-Fetch-Site` only to an origin it trusts: HTTPS,
+  or a loopback address. A node reached as plain HTTP under another name
+  gets no such header, and a `GET` carries no `Origin`, so a link from
+  another site to `/config` there is not refused, and can still capture
+  the credential of a node that has none.
 
 ---
 
@@ -2663,7 +2743,7 @@ Every issue in the **Phase 2** milestone, by number, and where it went.
 | #100 | Log every caught exception | 43 |
 | #101 | Extended attributes in bundles | 52 |
 | #102 | Coalesce duplicate constants | 44 |
-| #108 | `/config` requests from other sites and apps | 41 |
+| #108 | `/config` requests from other sites and apps | 41; apps on the same origin go to an issue of their own |
 | #113 | `config_requests` functions that should be methods | 42; closed into #81 |
 | #114 | Record the expanded bundle when expanding or building | 48 |
 | #121 | Hand off to one peer on eviction | 46 |
@@ -2694,7 +2774,7 @@ into tiers; steps within a tier are independent of each other.
 
 | Tier | Steps | Why here |
 | --- | --- | --- |
-| A | 41 (#108) | A security hole with a small fix, so first. Its second half waits on a specification decision, which does not hold up the first. |
+| A | 41 (#108) | A security hole with a small fix, so first. Its second half, applications on the same origin, waits on a specification decision and has an issue of its own. |
 | B | 21 (#61), 22 (#51), 32 (#75) | Small, independent, and each one something a later step leans on. Step 22 unblocks 27 and 45; Step 21 should land before anything else starts comparing hashes. |
 | C | 42 (#81), 43 (#100), 44 (#102) | Sweeps that touch many files shallowly, so best done before the large steps are open against the same files, and so that later steps are written the new way. 43 had its exemptions decided first. |
 | D | 23 (#52) | The foundation for all the peering work, and the one step known to need its own change sets. |
@@ -2752,17 +2832,18 @@ either step is built:
   resolved from it, and is not a request for the bundle's content.
 - **Seven steps change a specification** (Steps 27, 28, 41, 46, 49, 52,
   and 55) — as with the push of new content (#119), the specification
-  change is agreed and written first. Six are made: HighLevelDesign §4.7
+  change is agreed and written first. All are made: HighLevelDesign §4.7
   for a data request's two passes, how the second is paced, and the pause
   after one that found nothing (Step 27), and for two passes or more and a
   pause that outlasts them (Step 55), HighLevelDesign §4.5 for the
   four factors of retention priority (Step 28), HighLevelDesign §4.5 and
   §6 for a single hand-off copy (Step 46), BundleSpecification §2.4 for
-  extended attributes (Step 52), and BackupSpecification §3.3 and §5 for
-  holding back metadata-only changes (Step 49). HttpApi §2.3, if
-  `/config` moves to an origin of its own, is decided with #108 (Step
-  41). Step 16's change to HighLevelDesign §4.9.1 is made too, and went
-  with it to Phase 4.
+  extended attributes (Step 52), BackupSpecification §3.3 and §5 for
+  holding back metadata-only changes (Step 49), and HttpApi §2.3.3 for
+  the requests `/config` refuses as another site's (Step 41). Whether
+  `/config` moves to an origin of its own, which would change HttpApi
+  §2.3 again, is left to the issue that follows #108. Step 16's change
+  to HighLevelDesign §4.9.1 is made too, and went with it to Phase 4.
 - **What a blocking node answers a hand-off** (Steps 30 and 46) — now
   Phase 3's to decide, with Step 30. Step 46 does not wait for it: until
   Step 30 is built, no node blocks anything.

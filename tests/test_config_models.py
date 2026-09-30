@@ -101,6 +101,10 @@ def test_local_copy_and_privileged_attributes_are_excluded_by_default() -> None:
     )
 
 
+def test_config_is_served_as_this_machine_alone_by_default() -> None:
+    assert NetworkConfig().config_hosts == ("localhost", "127.0.0.1", "::1")
+
+
 def test_a_restore_gives_up_after_a_day_with_nothing_arriving_by_default() -> None:
     assert BackupConfig().restore_stall_seconds == 86400.0
 

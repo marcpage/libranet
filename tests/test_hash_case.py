@@ -56,7 +56,7 @@ from libranet.webserver.config_handlers import (
 from libranet.webserver.config_requests import BackupJobRequest, ExportRequest, RestoreRequest
 from libranet.webserver.data_handler import DATA_PATTERN, DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
-from libranet.webserver.http_types import Request, RequestBody
+from libranet.webserver.http_types import JSON_CONTENT_TYPE, Request, RequestBody
 from libranet.webserver.list_handlers import (
     NODES_PATH,
     SEEK_PATH,
@@ -197,6 +197,7 @@ def request(
     return Request(
         method,
         path,
+        headers={} if value is None else {"Content-Type": JSON_CONTENT_TYPE},
         client_address=client_address,
         body=RequestBody.of(body),
         authentication=authentication,

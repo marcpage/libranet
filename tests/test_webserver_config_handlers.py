@@ -106,12 +106,20 @@ class Unreadable:
         raise AssertionError("The body of a refused request was read")
 
 
-def request(method: str, path: str, value: object = None, *, body: bytes | None = None) -> Request:
-    """A ``/config`` request from a client on this machine."""
+def request(
+    method: str,
+    path: str,
+    value: object = None,
+    *,
+    body: bytes | None = None,
+    content_type: str | None = JSON_CONTENT_TYPE,
+) -> Request:
+    """A ``/config`` request from a client on this machine, its body sent as JSON unless told."""
     if body is None:
         body = b"" if value is None else dumps(value).encode("utf-8")
 
-    return Request(method, path, client_address=LOCAL, body=RequestBody.of(body))
+    headers = {"Content-Type": content_type} if body and content_type is not None else {}
+    return Request(method, path, headers=headers, client_address=LOCAL, body=RequestBody.of(body))
 
 
 def published(queues: ModuleQueues) -> list[Message]:
@@ -556,6 +564,63 @@ def test_a_registry_that_cannot_be_read_is_reported_and_left_alone(
     assert problem_type(response) == "about:blank"
     assert str(registry.path) in loads(response.body)["detail"]
     assert registry.path.read_bytes() == b"{not json"
+
+
+BODIES = [
+    (BACKUPS_PATH, {"directory": DIRECTORY}),
+    (RESTORES_PATH, {"bundle": str(BUNDLE), "directory": DIRECTORY}),
+    (BUILDS_PATH, {"directory": SITE}),
+    (EXPORTS_PATH, {"bundle": str(BUNDLE), "archive": ARCHIVE}),
+    (APPLICATIONS_PATH, {"name": "wiki", "bundle": str(APP_BUNDLE)}),
+]
+
+
+@mark.parametrize("path, value", BODIES)
+@mark.parametrize(
+    "content_type", [None, "text/plain", "application/x-www-form-urlencoded", "multipart/form-data"]
+)
+def test_a_body_not_sent_as_json_is_not_acted_on(
+    router: Router,
+    queues: ModuleQueues,
+    registry: ApplicationRegistry,
+    path: str,
+    value: object,
+    content_type: str | None,
+) -> None:
+    # The types a page on another site can send without asking this node first.
+    response = router.dispatch(request("POST", path, value, content_type=content_type))
+
+    assert response.status == 415
+    assert problem_type(response) == "about:blank"
+    assert loads(response.body)["instance"] == path
+    assert published(queues) == []
+    assert not registry.path.exists()
+
+
+@mark.parametrize("path, value", BODIES)
+def test_a_json_body_may_name_its_charset(router: Router, path: str, value: object) -> None:
+    response = router.dispatch(
+        request("POST", path, value, content_type="application/json; charset=utf-8")
+    )
+
+    assert response.status in (200, 202)
+
+
+def test_a_body_not_sent_as_json_is_still_read(router: Router) -> None:
+    refused = request("POST", BACKUPS_PATH, {"directory": DIRECTORY}, content_type="text/plain")
+
+    assert router.dispatch(refused).status == 415
+    assert refused.body.consumed
+
+
+@mark.parametrize("method, path", [("POST", f"{JOB_PATH}/run"), ("DELETE", JOB_PATH)])
+def test_an_endpoint_that_reads_no_body_asks_for_no_content_type(
+    router: Router, queues: ModuleQueues, method: str, path: str
+) -> None:
+    response = router.dispatch(request(method, path))
+
+    assert response.status == 202
+    assert len(published(queues)) == 1
 
 
 def handler_records(caplog: LogCaptureFixture) -> list[LogRecord]:

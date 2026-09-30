@@ -28,6 +28,19 @@ network:
   # Peers are asked for the same content at most once per this period.
   retry_after_seconds: 5
 
+  # The hosts /config is served as. A /config request whose Host header
+  # names any other host is refused, so that a site which points a name of
+  # its own at this machine cannot use a browser here to reach /config
+  # (HTTP API §2.3.3). Add the name you reach /config by if it is none of
+  # these, through a reverse proxy for example. Shell-style patterns,
+  # whatever their case, matched against the host without its port; write an
+  # IPv6 address without brackets. "*" serves /config as any host, which
+  # turns the check off. The list replaces the default, not adds to it.
+  config_hosts:
+    - "localhost"
+    - "127.0.0.1"
+    - "::1"
+
 peers:
   # At least one connection per 4-bit identifier bucket
   # (High-Level Design §4.6).

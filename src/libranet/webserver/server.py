@@ -46,7 +46,7 @@ from libranet.webserver.app_registry import ApplicationRegistry, RegisteredAppli
 from libranet.webserver.backup_state import BackupState
 from libranet.webserver.config_auth import ConfigAuthGuard
 from libranet.webserver.config_credential import ConfigCredential
-from libranet.webserver.config_guard import local_config_guard
+from libranet.webserver.config_guard import ConfigSiteGuard, local_config_guard
 from libranet.webserver.config_handlers import NodeDescription, config_routes
 from libranet.webserver.data_handler import DATA_PATTERN, DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
@@ -105,7 +105,8 @@ def build_router(
     reads of the ``/data`` API are served only if ``allow_unsigned_api_reads``
     is set. ``config_credential`` is the ``/config`` credential every request
     there is authenticated against, ``node`` what ``/config/api/node`` says
-    this node is, and ``backup_state`` what the backup module last reported
+    this node is, whose network settings name the hosts ``/config`` is served
+    as, and ``backup_state`` what the backup module last reported
     for them to read back. Applications, ``/config``'s among them, are
     served as the registry in ``storage``'s data directory names them, which
     ``/config/api/applications`` changes, and as ``content`` says the node
@@ -121,10 +122,12 @@ def build_router(
         storage.applications_path, RegisteredApplications(content.applications)
     )
     # A remote /config request is refused before its signature is checked or
-    # its body read, and a local one must carry the node's credential before
-    # any endpoint or signature policy sees it.
+    # its body read, and so is one another site's page made, before its
+    # credentials are looked at. The rest must carry the node's credential
+    # before any endpoint or signature policy sees them.
     router = Router(
         local_config_guard,
+        ConfigSiteGuard(node.network.config_hosts),
         ConfigAuthGuard(config_credential),
         SignatureGuard(
             authenticator,

@@ -51,7 +51,7 @@ from libranet.webserver.app_registry import Application, ApplicationRegistry
 from libranet.webserver.config_auth import CONFIG_REALM
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import NodeDescription
-from libranet.webserver.http_types import Request, RequestBody, Response
+from libranet.webserver.http_types import JSON_CONTENT_TYPE, Request, RequestBody, Response
 from libranet.webserver.server import REQUEST_PATH_HEADER, LibranetHTTPServer, build_router
 
 CONTENT = b"hello libranet"
@@ -1084,7 +1084,9 @@ def _config(
     headers: dict[str, str] | None = None,
     body: bytes | None = None,
 ) -> tuple[HTTPResponse, bytes]:
-    connection.request(method, path, body=body, headers=headers or {})
+    """A `/config` request, any body sent as JSON unless ``headers`` say otherwise."""
+    sent = {} if body is None else {"Content-Type": JSON_CONTENT_TYPE}
+    connection.request(method, path, body=body, headers={**sent, **(headers or {})})
     response = connection.getresponse()
     return response, response.read()
 
@@ -1161,6 +1163,83 @@ def test_a_remote_config_request_is_refused_before_it_can_capture_anything(
     assert response.status == 403
     assert not credential.captured
     assert _published(queues) == []
+
+
+@mark.parametrize(
+    "sent",
+    [
+        {"Sec-Fetch-Site": "cross-site", "Origin": "https://evil.example"},
+        {"Sec-Fetch-Site": "same-site", "Origin": "http://127.0.0.1:3000"},
+        {"Origin": "https://evil.example"},
+        {"Host": "evil.example:8080", "Sec-Fetch-Site": "same-origin"},
+    ],
+)
+@mark.parametrize("method", ["GET", "POST"])
+def test_another_sites_config_request_is_refused_before_it_can_capture_anything(
+    connection: HTTPConnection,
+    credential: ConfigCredential,
+    queues: ModuleQueues,
+    registry: ApplicationRegistry,
+    sent: dict[str, str],
+    method: str,
+) -> None:
+    response, body = _config(
+        connection,
+        "/config/api/applications",
+        method,
+        {**_credentials(), "Content-Type": "text/plain", **sent},
+        dumps({"name": "/", "bundle": str(APP_BUNDLE_ID)}).encode("utf-8"),
+    )
+
+    assert response.status == 403
+    assert response.getheader("Content-Type") == PROBLEM_CONTENT_TYPE
+    assert response.getheader("Access-Control-Allow-Origin") is None
+    assert loads(body)["instance"] == "/config/api/applications"
+    assert not credential.captured
+    assert not registry.path.exists()
+    assert _published(queues) == []
+
+
+def test_the_config_pages_own_requests_are_served(
+    connection: HTTPConnection, server: LibranetHTTPServer, registry: ApplicationRegistry
+) -> None:
+    host, port = server.server_address[:2]
+    page = {"Sec-Fetch-Site": "same-origin", "Origin": f"http://{str(host)}:{int(port)}"}
+    opened, _ = _config(
+        connection, "/config/api", headers={**_credentials(), "Sec-Fetch-Site": "none"}
+    )
+    registered, _ = _config(
+        connection,
+        "/config/api/applications",
+        "POST",
+        {**_credentials(), **page},
+        dumps({"name": "wiki", "bundle": str(APP_BUNDLE_ID)}).encode("utf-8"),
+    )
+
+    assert opened.status == 200
+    assert registered.status == 200
+    assert registry.applications().bundles == {"wiki": APP_BUNDLE_ID}
+
+
+@mark.parametrize("content_type", ["text/plain", "application/x-www-form-urlencoded"])
+def test_a_config_body_not_sent_as_json_is_not_acted_on(
+    connection: HTTPConnection, registry: ApplicationRegistry, content_type: str
+) -> None:
+    response, body = _config(
+        connection,
+        "/config/api/applications",
+        "POST",
+        {**_credentials(), "Content-Type": content_type},
+        dumps({"name": "/", "bundle": str(APP_BUNDLE_ID)}).encode("utf-8"),
+    )
+    # The body was read, so the connection carries the next request.
+    after, _ = _config(connection, "/config/api", headers=_credentials())
+
+    assert response.status == 415
+    assert response.getheader("Content-Type") == PROBLEM_CONTENT_TYPE
+    assert loads(body)["instance"] == "/config/api/applications"
+    assert not registry.path.exists()
+    assert after.status == 200
 
 
 @mark.parametrize("applications", [{"config": APP_BUNDLE_ID}])
