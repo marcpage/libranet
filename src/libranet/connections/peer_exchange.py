@@ -16,12 +16,11 @@ any:
 establish who the peer is; :meth:`PeerExchange.first_contact` takes the
 rest. While the connection lasts, :meth:`PeerExchange.refresh` repeats steps
 4 and 6 (§3.3), and :meth:`PeerExchange.retrieve` is step 7 for a single
-content id, for searching for it on demand (HighLevelDesign §4.7). :meth:`PeerExchange.hand_off` pushes
-one content id the peer did not ask for, for it to keep: content this node
-is letting go (HighLevelDesign §4.5). :meth:`PeerExchange.hand_off_many`
-pushes several such, pipelined: new content (§4.10), in batches (Phase 2
-Step 45). Steps 1 and 2
-wait for their
+content id, for searching for it on demand (HighLevelDesign §4.7).
+:meth:`PeerExchange.hand_off` pushes one content id the peer did not ask
+for, for it to keep: content this node is letting go (HighLevelDesign §4.5).
+:meth:`PeerExchange.hand_off_many` pushes several such, pipelined: new
+content (§4.10), in batches (Phase 2 Step 45). Steps 1 and 2 wait for their
 responses. Steps 3 to 5 are sent together, pipelined, and so are the
 requests of step 6 and of step 7.
 
@@ -108,12 +107,12 @@ _Parsed = TypeVar("_Parsed")
 class Retrieval:
     """How a peer answered a request for content.
 
-    ``retry_after`` is the seconds a peer that did not send it asked to be
-    left before being asked again, when it said (HttpApi §5.2).
+    ``retry_after_seconds`` is how long a peer that did not send it asked to
+    be left before being asked again, when it said (HttpApi §5.2).
     """
 
     found: bool
-    retry_after: int | None = None
+    retry_after_seconds: int | None = None
 
 
 class PeerExchange:
@@ -171,8 +170,8 @@ class PeerExchange:
             address.port,
             self._signer,
             self._logger,
-            connect_timeout=self._peers.connect_timeout_seconds,
-            request_timeout=self._peers.request_timeout_seconds,
+            connect_timeout_seconds=self._peers.connect_timeout_seconds,
+            request_timeout_seconds=self._peers.request_timeout_seconds,
             max_body_bytes=self._storage.max_object_bytes,
         )
 
@@ -228,7 +227,7 @@ class PeerExchange:
         if self._receive_content(session, content_id, response):
             return Retrieval(found=True)
 
-        return Retrieval(found=False, retry_after=response.retry_after)
+        return Retrieval(found=False, retry_after_seconds=response.retry_after_seconds)
 
     def hand_off(self, session: PeerSession, content_id: ContentId, body: bytes) -> bool:
         """Push ``content_id``, stored as ``body``, for the peer to keep; whether it accepted it.
@@ -246,7 +245,8 @@ class PeerExchange:
     ) -> list[bool]:
         """Push each content id in ``held``, with its stored bytes, pipelined, as :meth:`hand_off`.
 
-        Returns whether the peer accepted each, in the order of ``held``.
+        Returns:
+            Whether the peer accepted each, in the order of ``held``.
 
         Raises:
             OSError: as :meth:`first_contact`. None of them is then counted
@@ -471,7 +471,11 @@ class PeerExchange:
     def _receive_content(
         self, session: PeerSession, content_id: ContentId, response: PeerResponse
     ) -> bool:
-        """Hand what the peer sent for ``content_id`` to the validator, if it is that content."""
+        """Hand what the peer sent for ``content_id`` to the validator, if it is that content.
+
+        Returns:
+            Whether it is that content.
+        """
         found = response.status == HTTPStatus.OK and content_matches(content_id, response.body)
 
         if response.status == HTTPStatus.OK and not found:

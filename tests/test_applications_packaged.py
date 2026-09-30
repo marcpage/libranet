@@ -152,7 +152,7 @@ def test_a_bundle_records_only_what_a_files_bytes_decide(
 
     assert isinstance(entry, FileBundle)
     assert entry.metadata == Metadata(
-        size=len(page), algorithm="sha256", hash=ContentId.for_data(page, "sha256").hash
+        size_bytes=len(page), algorithm="sha256", hash=ContentId.for_data(page, "sha256").hash
     )
 
 
@@ -335,7 +335,7 @@ def test_a_new_node_serves_each_shipped_page_with_nothing_in_the_cas(
         ModuleName.UNBUNDLER,
         ModuleQueues(inbox=Queue(), outbox=Queue()),
         storage,
-        poll_interval=0.01,
+        poll_interval_seconds=0.01,
     )
     router = build_router(
         storage,

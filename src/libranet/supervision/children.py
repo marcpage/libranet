@@ -16,7 +16,7 @@ from logging import Logger
 from multiprocessing.queues import Queue as ProcessQueue
 from signal import SIG_IGN, SIGINT, SIGTERM, signal
 from types import FrameType
-from typing import Callable, Mapping
+from typing import Callable, Final, Mapping
 
 from libranet.config.models import LibranetConfig
 from libranet.logging_setup import configure_logging
@@ -27,7 +27,7 @@ from libranet.modules import ModuleName
 from libranet.supervision.specs import DispatcherEntry, ModuleFactory, ReadySignal
 
 #: Exit status of a child whose module raised an unhandled exception.
-EXIT_CRASHED = 1
+EXIT_CRASHED: Final = 1
 
 
 def run_dispatcher_process(
@@ -75,7 +75,11 @@ def run_module_process(
 
 
 def _prepare_process(config: LibranetConfig, name: ModuleName) -> Logger:
-    """Install this child's signal handling and logging."""
+    """Install this child's signal handling and logging.
+
+    Returns:
+        The logger for this child.
+    """
     signal(SIGINT, SIG_IGN)
     signal(SIGTERM, _exit_on_sigterm)
     return configure_logging(config.logging, name)

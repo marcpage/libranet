@@ -76,7 +76,7 @@ def test_a_bundle_stored_through_the_sink_loads_and_reassembles_from_the_source(
 
     with ArchiveSink.create(path) as sink:
         part = store_object(content, sink)
-        page = FileBundle((str(part),), Metadata(size=len(content)))
+        page = FileBundle((str(part),), Metadata(size_bytes=len(content)))
         bundle_id = store_bundle(DirectoryBundle({"index.html": page}), sink)
 
     with ArchiveSource.open(path) as source:

@@ -30,18 +30,18 @@ class StubModule(ModuleBase):
 
 
 class CrashingStubModule(StubModule):
-    """A stub that raises once it has been running for ``crash_after`` seconds."""
+    """A stub that raises once it has been running for ``crash_after_seconds``."""
 
     def __init__(
         self,
         name: ModuleName,
         queues: ModuleQueues,
         *,
-        crash_after: float,
-        poll_interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
+        crash_after_seconds: float,
+        poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
     ) -> None:
-        super().__init__(name, queues, poll_interval=poll_interval)
-        self._crash_after = crash_after
+        super().__init__(name, queues, poll_interval_seconds=poll_interval_seconds)
+        self._crash_after_seconds = crash_after_seconds
         self._started_at = monotonic()
 
     def on_start(self) -> None:
@@ -49,7 +49,7 @@ class CrashingStubModule(StubModule):
         self._started_at = monotonic()
 
     def on_idle(self) -> None:
-        if monotonic() - self._started_at >= self._crash_after:
+        if monotonic() - self._started_at >= self._crash_after_seconds:
             raise RuntimeError(f"Stub module {self.name} crashing on purpose")
 
 
@@ -81,11 +81,16 @@ def crashing_module_factory(
     config: LibranetConfig,
     queues: ModuleQueues,
     *,
-    crash_after: float = 0.0,
-    poll_interval: float = 0.05,
+    crash_after_seconds: float = 0.0,
+    poll_interval_seconds: float = 0.05,
 ) -> ModuleBase:
     """Factory for :class:`CrashingStubModule`; bind options with ``functools.partial``."""
-    return CrashingStubModule(name, queues, crash_after=crash_after, poll_interval=poll_interval)
+    return CrashingStubModule(
+        name,
+        queues,
+        crash_after_seconds=crash_after_seconds,
+        poll_interval_seconds=poll_interval_seconds,
+    )
 
 
 def farewell_module_factory(

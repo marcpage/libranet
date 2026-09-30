@@ -136,5 +136,9 @@ class SearchCache:
             return None
 
     def save(self, prefix: str, body: bytes) -> Path:
-        """Atomically replace the cached body for ``prefix``."""
+        """Atomically replace the cached body for ``prefix``.
+
+        Returns:
+            The path of the cached file.
+        """
         return write_atomically(self.path_for(prefix), body)

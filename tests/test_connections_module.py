@@ -285,7 +285,7 @@ class Modules:
             self._queues,
             config,
             clock=lambda: self._now[0],
-            poll_interval=0.01,
+            poll_interval_seconds=0.01,
             resolve_names=resolve_names,
         )
         self.built.append(module)
@@ -644,7 +644,7 @@ def test_a_node_that_stays_unreachable_is_given_up_on_until_it_may_be_back(
         ModuleQueues(inbox=Queue(), outbox=Queue()),
         giving_up,
         clock=lambda: now[0],
-        poll_interval=0.01,
+        poll_interval_seconds=0.01,
     )
     stats.on_start()
 

@@ -10,7 +10,7 @@ from pathlib import Path
 from socket import socket
 from threading import Event, Timer
 
-from pytest import fixture, CaptureFixture
+from pytest import CaptureFixture, fixture
 
 from libranet.cas.archive import ArchiveSink
 from libranet.cas.content_id import ContentId

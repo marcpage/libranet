@@ -27,7 +27,7 @@ class DataStats:
     last_requested: float | None = None
     last_acquired: float | None = None
     stored_seconds: float = 0.0
-    size: int | None = None
+    size_bytes: int | None = None
 
     @classmethod
     def from_row(cls, row: Row) -> DataStats:
@@ -41,7 +41,7 @@ class DataStats:
             last_requested=row["last_requested"],
             last_acquired=row["last_acquired"],
             stored_seconds=row["stored_seconds"],
-            size=row["size"],
+            size_bytes=row["size"],
         )
 
     @property

@@ -58,7 +58,9 @@ def part(number: int) -> str:
 
 def entries(count: int) -> dict[str, Entry | None]:
     return {
-        f"dir{number % 7}/file{number:05d}.txt": FileBundle((part(number),), Metadata(size=number))
+        f"dir{number % 7}/file{number:05d}.txt": FileBundle(
+            (part(number),), Metadata(size_bytes=number)
+        )
         for number in range(count)
     }
 
@@ -171,7 +173,7 @@ def test_password_protected_bundle_stored_again_writes_nothing() -> None:
 
 def test_file_bundle_is_stored() -> None:
     sink = RecordingSink()
-    bundle = FileBundle((part(1), part(2)), Metadata(size=10))
+    bundle = FileBundle((part(1), part(2)), Metadata(size_bytes=10))
 
     content_id = store_bundle(bundle, sink, PASSWORD)
 

@@ -29,10 +29,10 @@ from libranet.supervision.registry import default_module_specs
 from libranet.supervision.stubs import StubModule
 from libranet.unbundler.module import UnbundlerModule, unbundler_module_factory
 from libranet.unbundler.resolved_files import ResolvedFiles
-from libranet.webserver.http_types import Request
 from libranet.webserver.app_registry import Application, ApplicationRegistry
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import NodeDescription
+from libranet.webserver.http_types import Request
 from libranet.webserver.server import build_router
 
 INDEX = b"<html>home</html>"
@@ -58,7 +58,7 @@ def queues() -> ModuleQueues:
 
 @fixture
 def unbundler(storage: StorageConfig, queues: ModuleQueues) -> UnbundlerModule:
-    return UnbundlerModule(ModuleName.UNBUNDLER, queues, storage, poll_interval=0.01)
+    return UnbundlerModule(ModuleName.UNBUNDLER, queues, storage, poll_interval_seconds=0.01)
 
 
 def put(store: CasStore, content: bytes, *, compressed: bool = False) -> ContentId:

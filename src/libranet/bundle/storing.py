@@ -135,8 +135,8 @@ class StoredDirectory:
         except BundleTooLargeError:
             pass  # Not logged: split below, outside the handler, so errors splitting raise alone.
 
-        margin = (max_object_bytes >> _SPLIT_MARGIN_SHIFT) + _SPLIT_MARGIN_BYTES
-        chunks = split_entries(bundle.entries, max_object_bytes - margin)
+        margin_bytes = (max_object_bytes >> _SPLIT_MARGIN_SHIFT) + _SPLIT_MARGIN_BYTES
+        chunks = split_entries(bundle.entries, max_object_bytes - margin_bytes)
 
         if len(chunks) + len(bundle.extensions) > max_extensions:
             raise BundleTooLargeError(
@@ -159,6 +159,9 @@ def _store(
     bundle: Bundle, sink: ContentSink, password: bytes | None, max_object_bytes: int
 ) -> ContentId:
     """Store ``bundle`` as one object: its JSON, password-protected if there is a password.
+
+    Returns:
+        The identifier it is read back by.
 
     Raises:
         BundleTooLargeError: it does not fit in one object.

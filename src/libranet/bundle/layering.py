@@ -208,7 +208,7 @@ class Superseded:
     def expand(
         cls, bundle: ContentId, top: DirectoryBundle, load: Callable[[ContentId], Bundle]
     ) -> Superseded:
-        """``bundle``, already read as ``top``, expanded, where it sits worked out from what it lists.
+        """``bundle``, read as ``top``, expanded, where it sits worked out from what it lists.
 
         Nothing here recorded where it sits, as for a bundle restored. A
         bundle listing among its extensions a version it supersedes is an
@@ -298,7 +298,7 @@ class Superseded:
         return {path: entry for path, entry in overlaid.items() if entry is not None}
 
     def changes_content(self, entries: Mapping[str, Entry]) -> bool:
-        """Whether ``entries`` change more of this bundle's than metadata (BackupSpecification §3.3).
+        """Whether ``entries`` change more of this bundle than metadata (BackupSpecification §3.3).
 
         They do if a path is added or removed, an entry is of another kind,
         or a file's bytes or a symlink's target changed. A file's bytes are

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from string import hexdigits
 from typing import Final
 
-from libranet.cas.algorithms import AlgorithmRegistry, DEFAULT_REGISTRY
+from libranet.cas.algorithms import DEFAULT_REGISTRY, AlgorithmRegistry
 from libranet.cas.errors import InvalidContentIdError
 
 # The digits a hash may be written with, and the ones it is stored with

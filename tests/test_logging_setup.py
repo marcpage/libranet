@@ -97,6 +97,7 @@ def test_rotation_keeps_the_configured_number_of_backups(tmp_path: Path) -> None
     config = make_config(tmp_path, console=False, max_bytes=512, backup_count=2)
 
     logger = configure_logging(config, ModuleName.EVICTION)
+
     for index in range(200):
         logger.warning("record %d padded out to force rotation", index)
 

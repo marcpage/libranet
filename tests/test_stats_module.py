@@ -27,6 +27,7 @@ from libranet.stats.module import StatsModule, stats_module_factory
 from libranet.stats.schema import SeekKind
 
 CONTENT = b"content worth counting"
+CONTENT_SIZE = len(CONTENT)
 CONTENT_ID = ContentId.for_data(CONTENT, "sha256")
 OTHER_ID = ContentId.for_data(b"other content", "sha256")
 PEER_ID = ContentId.for_data(b"a peer's public key", "sha256")
@@ -52,7 +53,7 @@ def queues() -> ModuleQueues:
 
 @fixture
 def module(config: LibranetConfig, queues: ModuleQueues) -> Iterator[StatsModule]:
-    module = StatsModule(ModuleName.STATS, queues, config, poll_interval=0.01)
+    module = StatsModule(ModuleName.STATS, queues, config, poll_interval_seconds=0.01)
     module.on_start()
 
     try:
@@ -74,7 +75,7 @@ def requested(external: bool = True, content_id: ContentId = CONTENT_ID) -> Mess
     )
 
 
-def stored(content_id: ContentId = CONTENT_ID, size: int = len(CONTENT)) -> Message:
+def stored(content_id: ContentId = CONTENT_ID, size: int = CONTENT_SIZE) -> Message:
     return broadcast(
         EventType.DATA_STORED,
         {
@@ -133,7 +134,10 @@ def test_a_node_whose_ports_differ_publishes_both_for_itself(
 ) -> None:
     network = NetworkConfig(listen_port=9099, external_port=4300)
     module = StatsModule(
-        ModuleName.STATS, queues, config.model_copy(update={"network": network}), poll_interval=0.01
+        ModuleName.STATS,
+        queues,
+        config.model_copy(update={"network": network}),
+        poll_interval_seconds=0.01,
     )
     module.on_start()
 
@@ -231,7 +235,7 @@ def test_stored_content_is_counted_credited_and_no_longer_sought(
     assert data is not None and peer is not None
     assert data.pushes == 1
     assert data.last_acquired is not None
-    assert data.size == len(CONTENT)
+    assert data.size_bytes == len(CONTENT)
     assert peer.bytes_received == len(CONTENT)
     assert seek_list(config)["data"] == []
 
@@ -254,7 +258,7 @@ def test_deleted_content_is_counted_with_the_time_it_was_held(module: StatsModul
     assert deleted.deletes == 1
     assert deleted.stored_seconds >= 0
     assert deleted.last_acquired == stats.last_acquired
-    assert deleted.size is None
+    assert deleted.size_bytes is None
 
 
 def test_rejected_content_still_counts_as_a_push(module: StatsModule) -> None:
@@ -273,7 +277,7 @@ def test_rejected_content_still_counts_as_a_push(module: StatsModule) -> None:
     stats = module.database.data_stats(CONTENT_ID)
 
     assert stats is not None
-    assert (stats.pushes, stats.last_acquired, stats.size) == (1, None, None)
+    assert (stats.pushes, stats.last_acquired, stats.size_bytes) == (1, None, None)
 
 
 # -- What to let go of first (Phase 2 Step 28) --------------------------------
@@ -325,7 +329,9 @@ def still(config: LibranetConfig, queues: ModuleQueues) -> Iterator[StatsModule]
     Content held is ranked against the longest any of it has gone unused, so
     even the microseconds between stores would otherwise decide the order.
     """
-    module = StatsModule(ModuleName.STATS, queues, config, clock=lambda: NOW, poll_interval=0.01)
+    module = StatsModule(
+        ModuleName.STATS, queues, config, clock=lambda: NOW, poll_interval_seconds=0.01
+    )
     module.on_start()
 
     try:
@@ -365,7 +371,12 @@ def test_no_more_than_the_most_candidates_are_offered(
     config: LibranetConfig, queues: ModuleQueues, node_id: ContentId
 ) -> None:
     module = StatsModule(
-        ModuleName.STATS, queues, config, clock=lambda: NOW, poll_interval=0.01, max_candidates=2
+        ModuleName.STATS,
+        queues,
+        config,
+        clock=lambda: NOW,
+        poll_interval_seconds=0.01,
+        max_candidates=2,
     )
     module.on_start()
 
@@ -402,7 +413,7 @@ def test_content_gone_from_the_store_is_recorded_as_deleted_not_offered(
     assert f"{gone} is gone from the store" in caplog.text
     stats = still.database.data_stats(gone)
     assert stats is not None
-    assert (stats.size, stats.deletes) == (None, 1)
+    assert (stats.size_bytes, stats.deletes) == (None, 1)
 
 
 def test_this_nodes_own_key_is_never_offered(
@@ -435,7 +446,9 @@ def test_only_applications_used_lately_have_their_resolved_files_kept(
     config: LibranetConfig, queues: ModuleQueues
 ) -> None:
     now = [NOW]
-    module = StatsModule(ModuleName.STATS, queues, config, clock=lambda: now[0], poll_interval=0.01)
+    module = StatsModule(
+        ModuleName.STATS, queues, config, clock=lambda: now[0], poll_interval_seconds=0.01
+    )
     module.on_start()
 
     try:
@@ -781,7 +794,9 @@ def test_the_lists_are_rederived_once_the_interval_passes(
     config: LibranetConfig, queues: ModuleQueues
 ) -> None:
     now = [10_000.0]
-    module = StatsModule(ModuleName.STATS, queues, config, clock=lambda: now[0], poll_interval=0.01)
+    module = StatsModule(
+        ModuleName.STATS, queues, config, clock=lambda: now[0], poll_interval_seconds=0.01
+    )
     module.on_start()
 
     try:
@@ -802,7 +817,7 @@ def test_the_lists_are_rederived_once_the_interval_passes(
 def test_run_survives_malformed_broadcasts(
     config: LibranetConfig, queues: ModuleQueues, caplog: LogCaptureFixture
 ) -> None:
-    module = StatsModule(ModuleName.STATS, queues, config, poll_interval=0.01)
+    module = StatsModule(ModuleName.STATS, queues, config, poll_interval_seconds=0.01)
 
     for payload in ({"hash": CONTENT_ID.hash, "external": True}, {"algorithm": "sha256"}):
         queues.inbox.put(broadcast(EventType.DATA_REQUESTED, payload, ModuleName.WEBSERVER))
@@ -814,7 +829,7 @@ def test_run_survives_malformed_broadcasts(
 
     assert caplog.text.count("failed handling data.requested") == 2
 
-    stats = StatsModule(ModuleName.STATS, queues, config, poll_interval=0.01)
+    stats = StatsModule(ModuleName.STATS, queues, config, poll_interval_seconds=0.01)
     stats.on_start()
 
     try:
@@ -833,7 +848,7 @@ def test_stopping_a_module_that_never_started_is_harmless(
 ) -> None:
     # The supervisor stops a module from a `finally`, so `on_start` failing
     # must not turn into a second failure on the way out.
-    StatsModule(ModuleName.STATS, queues, config, poll_interval=0.01).on_stop()
+    StatsModule(ModuleName.STATS, queues, config, poll_interval_seconds=0.01).on_stop()
 
     assert not config.storage.database_path.exists()
 
@@ -841,7 +856,7 @@ def test_stopping_a_module_that_never_started_is_harmless(
 def test_the_database_is_closed_when_the_module_stops(
     config: LibranetConfig, queues: ModuleQueues
 ) -> None:
-    module = StatsModule(ModuleName.STATS, queues, config, poll_interval=0.01)
+    module = StatsModule(ModuleName.STATS, queues, config, poll_interval_seconds=0.01)
     module.on_start()
     module.on_stop()
 

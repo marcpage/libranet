@@ -60,7 +60,7 @@ def test_file_bundle_is_told_apart_by_a_contents_array() -> None:
         metadata=Metadata(
             created="2026-08-01T12:00:00Z",
             modified="2026-09-01T08:30:00Z",
-            size=4096,
+            size_bytes=4096,
             writable=True,
             executable=False,
             algorithm="sha256",
@@ -78,7 +78,7 @@ def test_writable_and_executable_default_to_false() -> None:
     bundle = parse_bundle({"metadata": {"size": 1}, "contents": [PART_A]})
 
     assert isinstance(bundle, FileBundle)
-    assert bundle.metadata == Metadata(size=1, writable=False, executable=False)
+    assert bundle.metadata == Metadata(size_bytes=1, writable=False, executable=False)
 
 
 def test_directory_bundle_is_told_apart_by_a_contents_object() -> None:
@@ -86,7 +86,7 @@ def test_directory_bundle_is_told_apart_by_a_contents_object() -> None:
         entries={
             "README.md": FileBundle(
                 parts=(PART_A,),
-                metadata=Metadata(size=128, algorithm="sha256", hash=WHOLE_HASH),
+                metadata=Metadata(size_bytes=128, algorithm="sha256", hash=WHOLE_HASH),
             ),
             "docs/Specification.md": FileBundle(parts=(PART_A, PART_A)),
             "docs/old-spec-link": Symlink("Specification.md"),
@@ -123,7 +123,7 @@ def test_unknown_fields_are_ignored() -> None:
         }
     )
 
-    assert bundle == FileBundle(parts=(PART_A,), metadata=Metadata(size=3))
+    assert bundle == FileBundle(parts=(PART_A,), metadata=Metadata(size_bytes=3))
 
 
 def test_paths_differing_only_in_case_are_separate_entries() -> None:

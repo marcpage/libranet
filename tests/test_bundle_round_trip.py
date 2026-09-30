@@ -41,7 +41,7 @@ def tree(tmp_path: Path) -> Path:
 
 
 def snapshot(root: Path) -> dict[str, bytes | str | None]:
-    """Every path beneath ``root``: a file's bytes, a symlink's target, or ``None`` for a directory."""
+    """Each path under ``root``: a file's bytes, a symlink's target, or ``None`` for a directory."""
     found: dict[str, bytes | str | None] = {}
 
     for directory, directories, files in walk(root):

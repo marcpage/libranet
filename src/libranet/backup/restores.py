@@ -133,8 +133,8 @@ class Restore:
 
     A restore waiting on content carries on :data:`RESUME_DELAY_SECONDS`
     after any of it arrives, or at once once all of it has, and otherwise
-    every ``ask_interval`` seconds, when its caller is to ask for whatever
-    it still lacks again. It gives up once ``give_up_after`` seconds pass
+    every ``ask_interval_seconds``, when its caller is to ask for whatever
+    it still lacks again. It gives up once ``give_up_after_seconds`` pass
     with none of it arriving, and without its being asked for again.
     """
 
@@ -142,13 +142,13 @@ class Restore:
         self,
         request: RestoreRequest,
         requested_at: float,
-        ask_interval: float,
-        give_up_after: float,
+        ask_interval_seconds: float,
+        give_up_after_seconds: float,
     ) -> None:
         self._request = request
         self._requested_at = requested_at
-        self._ask_interval = ask_interval
-        self._give_up_after = give_up_after
+        self._ask_interval_seconds = ask_interval_seconds
+        self._give_up_after_seconds = give_up_after_seconds
         self._status = RestoreStatus.WAITING
         self._error: str | None = None
         self._due_at = requested_at
@@ -498,11 +498,13 @@ class Restore:
         return ()
 
     def _wait_on(self, missing: list[ContentId], now: float) -> tuple[ContentId, ...]:
-        """Wait on ``missing``, if there is any, and return what is to be asked for now.
+        """Wait on ``missing``, if there is any.
 
-        That is all of it if it is time to ask again, and otherwise only what
-        was not waited on before. Nothing is if the restore has waited
-        ``give_up_after`` seconds with none of it arriving, since it gives up.
+        Returns:
+            What is to be asked for now: all of it if it is time to ask again,
+            and otherwise only what was not waited on before. Nothing is if
+            the restore has waited ``give_up_after_seconds`` with none of it
+            arriving, since it gives up.
         """
         waited = self._missing
         self._missing = set(missing)
@@ -515,13 +517,13 @@ class Restore:
             self._status, self._finished_at = RestoreStatus.DONE, now
             return ()
 
-        give_up_at = self._arrived_at + self._give_up_after
+        give_up_at = self._arrived_at + self._give_up_after_seconds
 
         if now >= give_up_at:
             self._give_up(now)
             return ()
 
-        if self._asked_at is None or now >= self._asked_at + self._ask_interval:
+        if self._asked_at is None or now >= self._asked_at + self._ask_interval_seconds:
             self._asked_at = now
             asking = tuple(missing)
 
@@ -529,7 +531,7 @@ class Restore:
             asking = tuple(content_id for content_id in missing if content_id not in waited)
 
         self._status = RestoreStatus.WAITING
-        self._due_at = min(self._asked_at + self._ask_interval, give_up_at)
+        self._due_at = min(self._asked_at + self._ask_interval_seconds, give_up_at)
         return asking
 
     def _give_up(self, now: float) -> None:
@@ -545,7 +547,7 @@ class Restore:
         self._status, self._finished_at, self._gave_up = RestoreStatus.FAILED, now, True
         self._error = (
             f"Gave up, as none of the content it waits on arrived in "
-            f"{self._give_up_after:g} seconds; {what}"
+            f"{self._give_up_after_seconds:g} seconds; {what}"
         )
         self._missing.clear()
 

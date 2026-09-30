@@ -40,7 +40,7 @@ def split_entries(
 
     An entry larger than ``max_bytes`` on its own is a chunk by itself.
     """
-    target = max_bytes // 2
+    target_bytes = max_bytes // 2
     chunks: list[dict[str, Entry | None]] = []
     chunk: dict[str, Entry | None] = {}
     chunk_bytes = 0
@@ -56,7 +56,7 @@ def split_entries(
         chunk[path] = entry
         chunk_bytes += entry_bytes
 
-        if _ends_chunk(path, entry_bytes, target):
+        if _ends_chunk(path, entry_bytes, target_bytes):
             chunks.append(chunk)
             chunk, chunk_bytes = {}, 0
 
@@ -72,8 +72,8 @@ def _encoded_bytes(path: str, entry: Entry | None) -> int:
     return len(dumps(path)) + len(encoded) + _ENTRY_PUNCTUATION_BYTES
 
 
-def _ends_chunk(path: str, entry_bytes: int, target: int) -> bool:
-    """Whether a chunk ends after ``path``: at odds of ``entry_bytes`` in ``target``."""
+def _ends_chunk(path: str, entry_bytes: int, target_bytes: int) -> bool:
+    """Whether a chunk ends after ``path``: at odds of ``entry_bytes`` in ``target_bytes``."""
     digest = sha256(path.encode("utf-8", "surrogatepass")).digest()
     fraction = int.from_bytes(digest[: _HASH_BITS // 8], "big")
-    return fraction * target < entry_bytes << _HASH_BITS
+    return fraction * target_bytes < entry_bytes << _HASH_BITS

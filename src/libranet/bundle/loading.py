@@ -50,12 +50,12 @@ def load_bundle(
         MalformedBundleError: the content is not a well-formed bundle.
     """
     chunks: list[bytes] = []
-    size = 0
+    size_bytes = 0
 
     for chunk in content_chunks(source, content_id):
-        size += len(chunk)
+        size_bytes += len(chunk)
 
-        if size > max_bytes:
+        if size_bytes > max_bytes:
             raise UnsupportedBundleError(f"Bundle {content_id} is larger than {max_bytes} bytes")
 
         chunks.append(chunk)

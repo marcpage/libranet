@@ -96,15 +96,17 @@ class BackupJobRequest:
         if not isinstance(directory, str):
             raise InvalidConfigRequestError('A backup job\'s "directory" must be a string')
 
-        interval = value.get("interval_seconds")
+        interval_seconds = value.get("interval_seconds")
 
-        if interval is not None and (
-            isinstance(interval, bool) or not isinstance(interval, (int, float))
+        if interval_seconds is not None and (
+            isinstance(interval_seconds, bool) or not isinstance(interval_seconds, (int, float))
         ):
             raise InvalidConfigRequestError('A backup job\'s "interval_seconds" must be a number')
 
         try:
-            return cls.create(directory, None if interval is None else float(interval))
+            return cls.create(
+                directory, None if interval_seconds is None else float(interval_seconds)
+            )
 
         except ValueError as error:
             raise InvalidConfigRequestError(str(error)) from None

@@ -343,9 +343,11 @@ def test_a_recorded_bundle_no_longer_held_is_built_from_as_recorded_and_layered_
 ) -> None:
     first = bundle_of(build(site, sink))
     about = parts_of(first, "pages/about.html", store)
+
     # Reading about.html again would store its part again.
     for content_id in (first, *about):
         store.delete(content_id)
+
     recorder.announced.clear()
     (site / "index.html").write_bytes(b"<p>home, again</p>")
     second = bundle_of(build(site, sink))
@@ -579,7 +581,7 @@ BUNDLE = ContentId.for_data(b"a bundle", "sha256")
 BENEATH = str(ContentId.for_data(b"a layer beneath", "sha256"))
 ENTRIES: dict[str, Entry] = {
     "index.html": FileBundle(
-        (str(ContentId.for_data(b"<p>home</p>", "sha256")),), Metadata(size=11, writable=True)
+        (str(ContentId.for_data(b"<p>home</p>", "sha256")),), Metadata(size_bytes=11, writable=True)
     ),
     "about": Symlink("pages/about.html"),
     "empty": DirectoryMarker(),

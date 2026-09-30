@@ -74,6 +74,9 @@ class ListDeriver:
 
         Outstanding requests and addresses not worth keeping are pruned
         first, so neither list offers them.
+
+        Returns:
+            The three files, and whether the candidate list was rewritten.
         """
         self._database.prune_seek(self._stats.seek_entry_ttl_seconds)
         self._database.prune_addresses(
@@ -117,7 +120,11 @@ class ListDeriver:
 
 
 def _write_if_changed(path: Path, body: bytes) -> bool:
-    """Replace ``path`` with ``body`` unless it already holds exactly that."""
+    """Replace ``path`` with ``body`` unless it already holds exactly that.
+
+    Returns:
+        Whether it was replaced.
+    """
     try:
         if path.read_bytes() == body:
             return False

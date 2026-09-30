@@ -16,8 +16,8 @@ from typing import Any, Final, Mapping, Protocol
 
 from libranet.identity.authentication import AuthenticationResult
 from libranet.json_format import COMPACT_SEPARATORS
-from libranet.webserver.inbound_peers import InboundConnection
 from libranet.problems import PROBLEM_CONTENT_TYPE, Problem
+from libranet.webserver.inbound_peers import InboundConnection
 
 OCTET_STREAM: Final = "application/octet-stream"
 JSON_CONTENT_TYPE: Final = "application/json"
@@ -39,28 +39,28 @@ class UnsupportedMediaTypeError(ValueError):
 class _Readable(Protocol):
     """Where body bytes come from: the connection's ``rfile``, or a buffer."""
 
-    def read(self, size: int, /) -> bytes: ...
+    def read(self, size_bytes: int, /) -> bytes: ...
 
 
 class RequestBody:
     """A request body, read from the connection only when a handler asks.
 
-    ``length`` is the declared ``Content-Length``, or ``None`` when the body
+    ``length_bytes`` is the declared ``Content-Length``, or ``None`` when the body
     is sent with a ``Transfer-Encoding`` and its size is not known up front;
     such a body cannot be read. A body left unread means the connection
     cannot be reused, since its bytes would be parsed as the next request.
     """
 
-    def __init__(self, length: int | None, stream: _Readable | None = None) -> None:
-        if length is not None and length < 0:
-            raise ValueError(f"length must not be negative, got {length}")
+    def __init__(self, length_bytes: int | None, stream: _Readable | None = None) -> None:
+        if length_bytes is not None and length_bytes < 0:
+            raise ValueError(f"length_bytes must not be negative, got {length_bytes}")
 
-        if stream is None and length != 0:
+        if stream is None and length_bytes != 0:
             raise ValueError("A body that may be non-empty needs a stream")
 
-        self._length = length
+        self._length_bytes = length_bytes
         self._stream = stream
-        self._data: bytes | None = b"" if length == 0 else None
+        self._data: bytes | None = b"" if length_bytes == 0 else None
 
     @classmethod
     def of(cls, data: bytes) -> RequestBody:
@@ -68,9 +68,9 @@ class RequestBody:
         return cls(len(data), BytesIO(data))
 
     @property
-    def length(self) -> int | None:
+    def length_bytes(self) -> int | None:
         """The declared size in bytes, or ``None`` if not known in advance."""
-        return self._length
+        return self._length_bytes
 
     @property
     def consumed(self) -> bool:
@@ -87,18 +87,18 @@ class RequestBody:
         if self._data is not None:
             return self._data
 
-        if self._length is None or self._stream is None:
+        if self._length_bytes is None or self._stream is None:
             raise ValueError("A body of unknown length cannot be read")
 
         try:
-            data = self._stream.read(self._length)
+            data = self._stream.read(self._length_bytes)
 
         except TimeoutError as error:
             raise IncompleteBodyError("Timed out reading the request body") from error
 
-        if len(data) != self._length:
+        if len(data) != self._length_bytes:
             raise IncompleteBodyError(
-                f"Request body ended after {len(data)} of {self._length} bytes"
+                f"Request body ended after {len(data)} of {self._length_bytes} bytes"
             )
 
         self._data = data

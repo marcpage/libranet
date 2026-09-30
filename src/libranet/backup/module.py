@@ -68,13 +68,14 @@ A build (:mod:`libranet.backup.builds`) makes a bundle of a directory, or a
 new version of the one it made before, and records its content id beside the
 directory, with every entry it holds. A restore of a plain bundle, such as an
 application, records it there too, so that a build makes its next version,
-and fails if a file there is not such a record. An export (:mod:`libranet.backup.exports`) writes a bundle, and
-everything needed to serve it, into a content archive. Each is done, or
-fails, the first time it runs, between two messages, after any restore due
-and ahead of any backup, in the order they were asked for. Asking for one
-again starts it over. Content an export lacks fails it, and is asked for as a
-restore asks, so asking again once it has arrived can succeed. Like
-restores, builds and exports are kept in memory only.
+and fails if a file there is not such a record. An export
+(:mod:`libranet.backup.exports`) writes a bundle, and everything needed to
+serve it, into a content archive. Each is done, or fails, the first time it
+runs, between two messages, after any restore due and ahead of any backup,
+in the order they were asked for. Asking for one again starts it over.
+Content an export lacks fails it, and is asked for as a restore asks, so
+asking again once it has arrived can succeed. Like restores, builds and
+exports are kept in memory only.
 
 Jobs, and the bundle each was last backed up to, are kept in a file
 (:mod:`libranet.backup.jobs`), and each job's bundle is kept expanded in a
@@ -214,9 +215,11 @@ class BackupModule(ModuleBase):
         *,
         logger: Logger | None = None,
         clock: Callable[[], float] = time,
-        poll_interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
+        poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
     ) -> None:
-        super().__init__(name, queues, logger=logger, clock=clock, poll_interval=poll_interval)
+        super().__init__(
+            name, queues, logger=logger, clock=clock, poll_interval_seconds=poll_interval_seconds
+        )
         self._config = config
         self._store = AnnouncingStore(CasStore.source_of_truth(config.storage), self._announce)
         self._content = LayeredSource.open(config.storage)
@@ -668,20 +671,22 @@ class BackupModule(ModuleBase):
 
         return self._secret
 
-    def _announce(self, content_id: ContentId, size: int) -> None:
+    def _announce(self, content_id: ContentId, size_bytes: int) -> None:
         self.publish(
             EventType.DATA_STORED,
             {
                 "algorithm": content_id.algorithm,
                 "hash": content_id.hash,
                 "node_id": str(self.node_id),
-                "size": size,
+                "size": size_bytes,
             },
         )
 
     def _interval_of(self, job: BackupJob) -> float:
-        interval = job.request.interval_seconds
-        return self._config.backup.interval_seconds if interval is None else interval
+        interval_seconds = job.request.interval_seconds
+        return (
+            self._config.backup.interval_seconds if interval_seconds is None else interval_seconds
+        )
 
     def _ask_interval(self) -> float:
         """How often a restore asks again for what it lacks, so it stays in the seek list."""

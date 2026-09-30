@@ -600,7 +600,8 @@ def test_oversized_upload_is_refused_without_waiting_for_the_body(
 ) -> None:
     reply = _exchange(
         server,
-        f"PUT /data/{MISSING_ID} HTTP/1.1\r\nHost: x\r\nContent-Length: {10 << 20}\r\n\r\n".encode(),
+        f"PUT /data/{MISSING_ID} HTTP/1.1\r\nHost: x\r\n".encode()
+        + f"Content-Length: {10 << 20}\r\n\r\n".encode(),
     )
 
     head, _, body = reply.partition(b"\r\n\r\n")
@@ -614,7 +615,8 @@ def test_oversized_upload_is_refused_without_waiting_for_the_body(
 def test_chunked_upload_is_411(server: LibranetHTTPServer) -> None:
     reply = _exchange(
         server,
-        f"PUT /data/{MISSING_ID} HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n".encode(),
+        f"PUT /data/{MISSING_ID} HTTP/1.1\r\nHost: x\r\n".encode()
+        + b"Transfer-Encoding: chunked\r\n\r\n",
     )
 
     head, _, body = reply.partition(b"\r\n\r\n")
@@ -715,7 +717,8 @@ def test_server_errors_and_closing_responses_are_signed(
         (b"BREW /data HTTP/1.1\r\nHost: x\r\n\r\n", 501),
         (b"GET /data HTTP/1.1\r\nHost: x\r\nContent-Length: nope\r\n\r\n", 400),
         (
-            f"PUT /data/{MISSING_ID} HTTP/1.1\r\nHost: x\r\nContent-Length: 9999999\r\n\r\n".encode(),
+            f"PUT /data/{MISSING_ID} HTTP/1.1\r\nHost: x\r\n".encode()
+            + b"Content-Length: 9999999\r\n\r\n",
             413,
         ),
     ):

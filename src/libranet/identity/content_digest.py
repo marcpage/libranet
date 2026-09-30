@@ -46,7 +46,8 @@ def verify_content_digest(value: str, body: bytes) -> None:
     try:
         digests.parse(value.encode("ascii"))
 
-    except (ValueError, UnicodeEncodeError) as error:
+    except ValueError as error:
+        # A UnicodeEncodeError, for a value that is not ASCII, is one.
         raise InvalidSignatureError(f"Malformed Content-Digest: {value!r}") from error
 
     checked = False

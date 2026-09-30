@@ -8,7 +8,7 @@ URLs, so adding an algorithm later means registering one more
 from __future__ import annotations
 from hashlib import sha256
 from logging import Logger
-from typing import Iterator, Protocol
+from typing import Final, Iterator, Protocol
 
 from libranet.cas.errors import UnknownAlgorithmError
 
@@ -70,6 +70,7 @@ class AlgorithmRegistry:
 
     def __init__(self, algorithms: tuple[HashAlgorithm, ...] = ()) -> None:
         self._algorithms: dict[str, HashAlgorithm] = {}
+
         for algorithm in algorithms:
             self.register(algorithm)
 
@@ -77,6 +78,7 @@ class AlgorithmRegistry:
         """Add ``algorithm``; registering a name twice is an error."""
         if algorithm.name in self._algorithms:
             raise ValueError(f"Hash algorithm already registered: {algorithm.name}")
+
         self._algorithms[algorithm.name] = algorithm
 
     def get(self, name: str) -> HashAlgorithm:
@@ -131,4 +133,4 @@ class UnsupportedAlgorithms:
         )
 
 
-DEFAULT_REGISTRY = AlgorithmRegistry((Sha256Algorithm(),))
+DEFAULT_REGISTRY: Final = AlgorithmRegistry((Sha256Algorithm(),))

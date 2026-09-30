@@ -23,7 +23,7 @@ class UnsupportedBundleError(BundleError):
 
 
 class PasswordProtectedBundleError(UnsupportedBundleError):
-    """The bundle is password-protected (BundleSpecification §6), and was read without a password."""
+    """The bundle is password-protected (BundleSpecification §6), and was read with no password."""
 
 
 class IncorrectPasswordError(PasswordProtectedBundleError):

@@ -67,12 +67,12 @@ def test_dispatch_pending_preserves_per_outbox_order(
 
 def test_poll_interval_must_be_positive(endpoints: dict[ModuleName, ModuleQueues]) -> None:
     with raises(ValueError):
-        Dispatcher(endpoints, poll_interval=0)
+        Dispatcher(endpoints, poll_interval_seconds=0)
 
 
 def test_run_stops_when_the_stop_signal_is_set(endpoints: dict[ModuleName, ModuleQueues]) -> None:
     stop = Event()
-    thread = Thread(target=Dispatcher(endpoints, poll_interval=0.01).run, args=(stop,))
+    thread = Thread(target=Dispatcher(endpoints, poll_interval_seconds=0.01).run, args=(stop,))
     thread.start()
     stop.set()
     thread.join(timeout=5)
@@ -95,7 +95,7 @@ class Collector(ModuleBase):
     subscriptions: ClassVar[frozenset[EventType]] = frozenset({EventType.NODE_LIST_UPDATED})
 
     def __init__(self, name: ModuleName, queues: ModuleQueues) -> None:
-        super().__init__(name, queues, poll_interval=0.01)
+        super().__init__(name, queues, poll_interval_seconds=0.01)
         self.received: list[Message] = []
 
     def handle(self, message: Message) -> None:
@@ -105,8 +105,8 @@ class Collector(ModuleBase):
 def test_modules_talk_through_a_running_dispatcher() -> None:
     """End to end over real ``multiprocessing`` queues, with threads standing in for processes."""
     endpoints = create_module_queues((ModuleName.SUPERVISOR, *MODULES))
-    dispatcher = Dispatcher(endpoints, poll_interval=0.01)
-    stats = EchoStats(ModuleName.STATS, endpoints[ModuleName.STATS], poll_interval=0.01)
+    dispatcher = Dispatcher(endpoints, poll_interval_seconds=0.01)
+    stats = EchoStats(ModuleName.STATS, endpoints[ModuleName.STATS], poll_interval_seconds=0.01)
     fetcher = Collector(ModuleName.FETCHER, endpoints[ModuleName.FETCHER])
     webserver = Collector(ModuleName.WEBSERVER, endpoints[ModuleName.WEBSERVER])
     threads = [Thread(target=runner.run) for runner in (dispatcher, stats, fetcher, webserver)]

@@ -19,7 +19,9 @@ def part(number: int) -> str:
 
 def entries(count: int) -> dict[str, Entry | None]:
     return {
-        f"dir{number % 7}/file{number:05d}.txt": FileBundle((part(number),), Metadata(size=number))
+        f"dir{number % 7}/file{number:05d}.txt": FileBundle(
+            (part(number),), Metadata(size_bytes=number)
+        )
         for number in range(count)
     }
 

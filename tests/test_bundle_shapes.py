@@ -60,12 +60,12 @@ def test_the_ancestors_of_entry_paths_are_every_directory_above_them() -> None:
 
 @mark.parametrize("size", [None, 0, 4096])
 def test_metadata_keeps_a_size_that_is_not_negative(size: int | None) -> None:
-    assert Metadata(size=size).size == size
+    assert Metadata(size_bytes=size).size_bytes == size
 
 
 def test_metadata_refuses_a_negative_size() -> None:
     with raises(MalformedBundleError, match='"size"'):
-        Metadata(size=-1)
+        Metadata(size_bytes=-1)
 
 
 def test_metadata_keeps_a_whole_file_hash() -> None:

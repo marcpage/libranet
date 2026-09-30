@@ -201,7 +201,7 @@ EXPANDED = Superseded(
     BUNDLE,
     {
         "secret plans.txt": FileBundle(
-            (str(ContentId.for_data(b"plans", "sha256")),), Metadata(size=5, writable=True)
+            (str(ContentId.for_data(b"plans", "sha256")),), Metadata(size_bytes=5, writable=True)
         ),
         "link": Symlink("secret plans.txt"),
     },
@@ -235,7 +235,7 @@ def test_a_change_held_back_is_kept_with_the_bundle(expanded: ExpandedBackups) -
     plans = EXPANDED.entries["secret plans.txt"]
     assert isinstance(plans, FileBundle)
     held_back = replace(
-        EXPANDED, held_back={"secret plans.txt": replace(plans, metadata=Metadata(size=5))}
+        EXPANDED, held_back={"secret plans.txt": replace(plans, metadata=Metadata(size_bytes=5))}
     )
     expanded.save(JOB_ID, held_back, SECRET)
 

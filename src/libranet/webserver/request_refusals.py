@@ -14,9 +14,9 @@ def unreadable_body_response(request: Request, max_bytes: int) -> Response | Non
     A body of unknown length is ``411``; one declared larger than
     ``max_bytes`` is ``413``.
     """
-    length = request.body.length
+    length_bytes = request.body.length_bytes
 
-    if length is None:
+    if length_bytes is None:
         return problem_response(
             Problem.for_status(
                 HTTPStatus.LENGTH_REQUIRED,
@@ -25,7 +25,7 @@ def unreadable_body_response(request: Request, max_bytes: int) -> Response | Non
             )
         )
 
-    if length <= max_bytes:
+    if length_bytes <= max_bytes:
         return None
 
     return problem_response(
@@ -33,7 +33,10 @@ def unreadable_body_response(request: Request, max_bytes: int) -> Response | Non
             status=HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
             title="Content too large",
             type=CONTENT_TOO_LARGE,
-            detail=f"Request bodies are limited to {max_bytes} bytes; this one declares {length}.",
+            detail=(
+                f"Request bodies are limited to {max_bytes} bytes; "
+                f"this one declares {length_bytes}."
+            ),
             instance=request.path,
             extensions={"max_bytes": max_bytes},
         )
@@ -54,7 +57,7 @@ def signature_required_response(request: Request) -> Response:
 
 
 def invalid_signature_response(request: Request, reason: str | None) -> Response:
-    """The ``401`` for a failed signature, which also ends the connection (HandshakeProtocol §5.3)."""
+    """The ``401`` for a failed signature, which ends the connection (HandshakeProtocol §5.3)."""
     response = problem_response(
         Problem(
             status=HTTPStatus.UNAUTHORIZED,

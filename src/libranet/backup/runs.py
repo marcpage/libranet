@@ -158,7 +158,11 @@ class AnnouncingStore:
         return self._store.read(content_id)
 
     def write(self, content_id: ContentId, data: bytes) -> Path:
-        """Store ``data`` as ``content_id``, then announce it."""
+        """Store ``data`` as ``content_id``, then announce it.
+
+        Returns:
+            The path it was stored at.
+        """
         path = self._store.write(content_id, data)
         self._announce(content_id, len(data))
         return path

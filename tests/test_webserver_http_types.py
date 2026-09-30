@@ -25,7 +25,7 @@ def test_body_is_not_read_until_asked() -> None:
     body = RequestBody(7, stream)
     consumed_before_reading = body.consumed
 
-    assert body.length == 7
+    assert body.length_bytes == 7
     assert stream.tell() == 0
     assert body.read() == b"payload"
     assert not consumed_before_reading
@@ -51,7 +51,7 @@ def test_empty_body_is_already_consumed() -> None:
 def test_body_of_unknown_length_cannot_be_read() -> None:
     body = RequestBody(None, BytesIO(b"5\r\nhello\r\n0\r\n\r\n"))
 
-    assert body.length is None
+    assert body.length_bytes is None
     assert not body.consumed
 
     with raises(ValueError):

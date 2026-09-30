@@ -53,14 +53,14 @@ class HeldObject:
     """One object in a store, and its size as stored."""
 
     content_id: ContentId
-    size: int
+    size_bytes: int
 
 
 @dataclass(frozen=True)
 class EvictionScorer:
     """Scores held objects against the extremes of what node ``node_hash`` holds, at ``now``.
 
-    ``longest_unused`` is the seconds since the held object unused longest
+    ``longest_unused_seconds`` is how long ago the held object unused longest
     was last used, ``most_requests`` the most requests any held object has
     had, and ``most_matching_bits`` the most leading bits any held object's
     hash shares with ``node_hash``, this node's own key aside.
@@ -68,11 +68,13 @@ class EvictionScorer:
 
     node_hash: str
     now: float
-    longest_unused: float
+    longest_unused_seconds: float
     most_requests: int
     most_matching_bits: int
 
-    def score(self, size: int, requests: int, last_used: float | None, content_hash: str) -> float:
+    def score(
+        self, size_bytes: int, requests: int, last_used: float | None, content_hash: str
+    ) -> float:
         """The score of one held object: the higher it is, the sooner the object is let go.
 
         ``last_used`` is when it was last requested or acquired, whichever
@@ -81,16 +83,16 @@ class EvictionScorer:
         factors = (
             self._unused(last_used),
             1.0 - _share(requests, self.most_requests),
-            1.0 - _share(size, MIB),
+            1.0 - _share(size_bytes, MIB),
             1.0 - _share(matching_bits(self.node_hash, content_hash), self.most_matching_bits),
         )
         return prod(FACTOR_FLOOR + (1.0 - FACTOR_FLOOR) * factor for factor in factors)
 
     def _unused(self, last_used: float | None) -> float:
-        if last_used is None or self.longest_unused <= 0:
+        if last_used is None or self.longest_unused_seconds <= 0:
             return 1.0
 
-        return _share(self.now - last_used, self.longest_unused)
+        return _share(self.now - last_used, self.longest_unused_seconds)
 
 
 def held_objects(store: CasStore) -> Iterator[HeldObject]:

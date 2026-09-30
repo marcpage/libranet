@@ -16,15 +16,15 @@ from __future__ import annotations
 from pathlib import Path
 from sys import path as import_path
 from tempfile import TemporaryDirectory
-from typing import Any
+from typing import Any, Final
 
 from hatchling.builders.config import BuilderConfig
 from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 
 # Where the package's content archives are, within a wheel.
-_ARCHIVES = "libranet/archives"
+_ARCHIVES: Final = "libranet/archives"
 
-_EDITABLE = "editable"
+_EDITABLE: Final = "editable"
 
 
 class ApplicationsBuildHook(BuildHookInterface[BuilderConfig]):

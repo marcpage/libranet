@@ -203,7 +203,7 @@ class ConfigCredential:
 
 
 def _derive(
-    credentials: str, salt: bytes, cost: int, block_size: int, parallelism: int, length: int
+    credentials: str, salt: bytes, cost: int, block_size: int, parallelism: int, length_bytes: int
 ) -> bytes:
     """The scrypt hash of ``credentials`` under the given parameters."""
     return scrypt(
@@ -212,7 +212,7 @@ def _derive(
         n=cost,
         r=block_size,
         p=parallelism,
-        dklen=length,
+        dklen=length_bytes,
         # What scrypt itself needs for these parameters, which may be more
         # than the library's default allowance.
         maxmem=128 * block_size * (cost + parallelism + 2),

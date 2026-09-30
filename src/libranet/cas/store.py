@@ -16,7 +16,7 @@ from __future__ import annotations
 from logging import getLogger
 from os import replace
 from pathlib import Path
-from typing import Iterator
+from typing import Final, Iterator
 
 from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
@@ -25,7 +25,7 @@ from libranet.config.models import StorageConfig
 
 _LOGGER = getLogger(__name__)
 
-DATA_SEGMENT = "data"
+DATA_SEGMENT: Final = "data"
 
 
 class CasStore:
@@ -114,6 +114,9 @@ class CasStore:
         Used to promote verified uploads into the source of truth. Both
         stores are expected to be on the same filesystem, making this an
         atomic rename.
+
+        Returns:
+            Its path in ``destination``.
 
         Raises:
             ContentNotFoundError: this store does not hold it.

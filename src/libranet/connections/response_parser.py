@@ -66,7 +66,7 @@ class PeerResponse:
     closes_connection: bool = False
 
     @property
-    def retry_after(self) -> int | None:
+    def retry_after_seconds(self) -> int | None:
         """The seconds the peer's ``Retry-After`` asks it be left, or ``None`` if it names none.
 
         Only a number of seconds is read, as HttpApi §5.2 gives it; the HTTP
@@ -88,17 +88,17 @@ class _Framing(Enum):
 class _Head:
     """A parsed status line and header section, and how its body is framed.
 
-    ``size`` counts every byte up to and including the blank line;
-    ``length`` is the body's size when framed by length.
+    ``size_bytes`` counts every byte up to and including the blank line;
+    ``length_bytes`` is the body's size when framed by length.
     """
 
     status: int
     reason: str
     headers: Mapping[str, str]
     closes_connection: bool
-    size: int
+    size_bytes: int
     framing: _Framing
-    length: int = 0
+    length_bytes: int = 0
 
 
 class ResponseParser:
@@ -132,18 +132,18 @@ class ResponseParser:
             return None
 
         if head.framing is _Framing.LENGTH:
-            end = head.size + head.length
+            end = head.size_bytes + head.length_bytes
 
             if len(self._buffer) < end:
                 return None
 
-            return self._take(request, head, bytes(self._buffer[head.size : end]), end)
+            return self._take(request, head, bytes(self._buffer[head.size_bytes : end]), end)
 
         if head.framing is _Framing.CHUNKED:
-            chunked = self._chunked_body(head.size)
+            chunked = self._chunked_body(head.size_bytes)
             return None if chunked is None else self._take(request, head, *chunked)
 
-        if len(self._buffer) - head.size > self._max_body_bytes:
+        if len(self._buffer) - head.size_bytes > self._max_body_bytes:
             raise MalformedResponseError(f"Response body exceeds {self._max_body_bytes} bytes")
 
         return None
@@ -166,7 +166,7 @@ class ResponseParser:
         if head is None or head.framing is not _Framing.UNTIL_CLOSE:
             raise MalformedResponseError("The connection closed partway through a response")
 
-        return self._take(request, head, bytes(self._buffer[head.size :]), len(self._buffer))
+        return self._take(request, head, bytes(self._buffer[head.size_bytes :]), len(self._buffer))
 
     def _take(self, request: RequestLine, head: _Head, body: bytes, end: int) -> PeerResponse:
         """``head``'s response to ``request`` with ``body``, after dropping its ``end`` bytes."""
@@ -186,7 +186,7 @@ class ResponseParser:
             if head.status == HTTPStatus.SWITCHING_PROTOCOLS:
                 raise MalformedResponseError("The peer switched protocols unasked")
 
-            del self._buffer[: head.size]
+            del self._buffer[: head.size_bytes]
 
     def _head(self, method: str) -> _Head | None:
         """The response head at the start of the buffer, if it has fully arrived."""
@@ -219,7 +219,7 @@ class ResponseParser:
 
         options = {token.strip().lower() for token in headers.get("Connection", "").split(",")}
         closes = "close" in options or (minor_version == "0" and "keep-alive" not in options)
-        framing, length = self._framing(method, status, headers)
+        framing, length_bytes = self._framing(method, status, headers)
         return _Head(
             status,
             reason or "",
@@ -227,7 +227,7 @@ class ResponseParser:
             closes or framing is _Framing.UNTIL_CLOSE,
             end + len(_HEAD_END),
             framing,
-            length,
+            length_bytes,
         )
 
     def _framing(
@@ -279,11 +279,11 @@ class ResponseParser:
         far past its size limit.
         """
         chunks: list[bytes] = []
-        size = 0
+        size_bytes = 0
         position = start
 
         while True:
-            line = self._framing_line(start, position, size)
+            line = self._framing_line(start, position, size_bytes)
 
             if line is None:
                 return None
@@ -294,15 +294,15 @@ class ResponseParser:
             if not _CHUNK_SIZE.fullmatch(size_text):
                 raise MalformedResponseError(f"Invalid chunk size line {size_line[:80]!r}")
 
-            chunk_size = int(size_text, 16)
+            chunk_bytes = int(size_text, 16)
 
-            if chunk_size == 0:
+            if chunk_bytes == 0:
                 break
 
-            size += chunk_size
-            end = position + chunk_size
+            size_bytes += chunk_bytes
+            end = position + chunk_bytes
 
-            if size > self._max_body_bytes:
+            if size_bytes > self._max_body_bytes:
                 raise MalformedResponseError(f"Response body exceeds {self._max_body_bytes} bytes")
 
             if len(self._buffer) < end + len(_LINE_END):
@@ -315,7 +315,7 @@ class ResponseParser:
             position = end + len(_LINE_END)
 
         while True:
-            line = self._framing_line(start, position, size)
+            line = self._framing_line(start, position, size_bytes)
 
             if line is None:
                 return None
@@ -325,13 +325,13 @@ class ResponseParser:
             if not trailer:
                 return b"".join(chunks), position
 
-    def _framing_line(self, start: int, position: int, size: int) -> tuple[bytes, int] | None:
+    def _framing_line(self, start: int, position: int, size_bytes: int) -> tuple[bytes, int] | None:
         """The chunked-framing line at ``position``, and where the next line starts.
 
-        ``start`` is where the chunked body starts and ``size`` how many data
-        bytes it has held so far, which together bound the framing allowed.
+        ``start`` is where the chunked body starts and ``size_bytes`` how many
+        data bytes it has held so far, which together bound the framing allowed.
         """
-        allowed = start + size + MAX_HEAD_BYTES
+        allowed = start + size_bytes + MAX_HEAD_BYTES
         end = self._buffer.find(_LINE_END, position, allowed)
 
         if end < 0:

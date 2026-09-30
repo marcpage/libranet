@@ -536,7 +536,11 @@ def parse_args(argv: Sequence[str] | None = None) -> Namespace:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run the network until interrupted."""
+    """Run the network until interrupted.
+
+    Returns:
+        A process exit status: 0, or 1 if the network could not be run.
+    """
     args = parse_args(argv)
     root: Path = args.dir.resolve() if args.dir is not None else Path(mkdtemp(prefix="libranet-"))
     running = RunningNetwork(

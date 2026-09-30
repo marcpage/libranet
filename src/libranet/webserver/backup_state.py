@@ -16,15 +16,15 @@ as with the application outcomes the unbundler reports.
 from __future__ import annotations
 from dataclasses import dataclass
 from threading import Lock
-from typing import Any, Mapping
+from typing import Any, Final, Mapping
 
 from libranet.messaging.envelope import Message
 
 #: Payload members of a ``backup.state`` message, and the endpoint each backs.
-JOBS_FIELD = "jobs"
-RESTORES_FIELD = "restores"
-BUILDS_FIELD = "builds"
-EXPORTS_FIELD = "exports"
+JOBS_FIELD: Final = "jobs"
+RESTORES_FIELD: Final = "restores"
+BUILDS_FIELD: Final = "builds"
+EXPORTS_FIELD: Final = "exports"
 
 
 class InvalidBackupReportError(ValueError):

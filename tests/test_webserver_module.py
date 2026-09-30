@@ -85,7 +85,7 @@ def test_module_serves_until_shutdown_and_publishes_misses(tmp_path: Path) -> No
     port = _free_port()
     queues = _queues()
     module = WebServerModule(
-        ModuleName.WEBSERVER, queues, _config(tmp_path, port), poll_interval=0.01
+        ModuleName.WEBSERVER, queues, _config(tmp_path, port), poll_interval_seconds=0.01
     )
     thread = Thread(target=module.run, daemon=True)
     thread.start()
@@ -124,7 +124,7 @@ def test_module_serves_until_shutdown_and_publishes_misses(tmp_path: Path) -> No
 def test_module_accepts_signed_uploads_and_signs_its_responses(tmp_path: Path) -> None:
     queues = _queues()
     config = _config(tmp_path, _free_port())
-    module = WebServerModule(ModuleName.WEBSERVER, queues, config, poll_interval=0.01)
+    module = WebServerModule(ModuleName.WEBSERVER, queues, config, poll_interval_seconds=0.01)
     stop = Event()
     thread = Thread(target=module.run, args=(stop,), daemon=True)
     thread.start()
@@ -162,7 +162,7 @@ def test_module_names_the_peers_connected_to_it_as_they_come_and_go_and_when_ask
 ) -> None:
     queues = _queues()
     config = _config(tmp_path, _free_port())
-    module = WebServerModule(ModuleName.WEBSERVER, queues, config, poll_interval=0.01)
+    module = WebServerModule(ModuleName.WEBSERVER, queues, config, poll_interval_seconds=0.01)
     stop = Event()
     thread = Thread(target=module.run, args=(stop,), daemon=True)
     thread.start()
@@ -204,7 +204,7 @@ def test_module_follows_the_unsigned_api_read_setting(
     tmp_path: Path, allow_unsigned_api_reads: bool, unsigned_status: int
 ) -> None:
     config = _config(tmp_path, _free_port(), allow_unsigned_api_reads)
-    module = WebServerModule(ModuleName.WEBSERVER, _queues(), config, poll_interval=0.01)
+    module = WebServerModule(ModuleName.WEBSERVER, _queues(), config, poll_interval_seconds=0.01)
     stop = Event()
     thread = Thread(target=module.run, args=(stop,), daemon=True)
     thread.start()
@@ -253,7 +253,7 @@ def test_module_answers_application_paths_from_what_the_unbundler_reported(
     ApplicationRegistry(config.storage.applications_path).register(
         Application.create("wiki", APP_BUNDLE_ID)
     )
-    module = WebServerModule(ModuleName.WEBSERVER, queues, config, poll_interval=0.01)
+    module = WebServerModule(ModuleName.WEBSERVER, queues, config, poll_interval_seconds=0.01)
     stop = Event()
     thread = Thread(target=module.run, args=(stop,), daemon=True)
     thread.start()
@@ -315,7 +315,7 @@ def _authorized(host: str, port: int, path: str, user: str = "admin") -> tuple[i
 def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: Path) -> None:
     queues = _queues()
     config = _config(tmp_path, _free_port())
-    module = WebServerModule(ModuleName.WEBSERVER, queues, config, poll_interval=0.01)
+    module = WebServerModule(ModuleName.WEBSERVER, queues, config, poll_interval_seconds=0.01)
     stop = Event()
     thread = Thread(target=module.run, args=(stop,), daemon=True)
     thread.start()
@@ -389,7 +389,7 @@ def test_module_subscribes_to_what_other_modules_report() -> None:
 
 def test_module_stops_on_the_stop_signal(tmp_path: Path) -> None:
     module = WebServerModule(
-        ModuleName.WEBSERVER, _queues(), _config(tmp_path, _free_port()), poll_interval=0.01
+        ModuleName.WEBSERVER, _queues(), _config(tmp_path, _free_port()), poll_interval_seconds=0.01
     )
     stop = Event()
     thread = Thread(target=module.run, args=(stop,), daemon=True)
@@ -410,7 +410,7 @@ def test_a_registry_that_cannot_be_read_does_not_stop_the_module(tmp_path: Path)
     config = _config(tmp_path, _free_port())
     config.storage.applications_path.parent.mkdir(parents=True)
     config.storage.applications_path.write_bytes(b"{not json")
-    module = WebServerModule(ModuleName.WEBSERVER, _queues(), config, poll_interval=0.01)
+    module = WebServerModule(ModuleName.WEBSERVER, _queues(), config, poll_interval_seconds=0.01)
     stop = Event()
     thread = Thread(target=module.run, args=(stop,), daemon=True)
     thread.start()

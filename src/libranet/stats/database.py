@@ -140,8 +140,8 @@ class StatsDatabase:
         """Count one upload of ``content_id`` to this node, valid or not."""
         self._add_to_data(content_id, _PUSHES, 1)
 
-    def record_acquired(self, content_id: ContentId, size: int) -> None:
-        """Note that ``content_id`` was just added to the source of truth, as ``size`` bytes."""
+    def record_acquired(self, content_id: ContentId, size_bytes: int) -> None:
+        """Note that ``content_id`` was just added to the source of truth, ``size_bytes`` long."""
         self._execute(
             "INSERT INTO data_stats (algorithm, hash, last_acquired, size) "
             "VALUES (:algorithm, :hash, :now, :size) "
@@ -150,7 +150,7 @@ class StatsDatabase:
                 "algorithm": content_id.algorithm,
                 "hash": content_id.hash,
                 "now": self._clock(),
-                "size": size,
+                "size": size_bytes,
             },
         )
 
@@ -221,7 +221,7 @@ class StatsDatabase:
         return EvictionScorer(
             node_hash=node_id.hash,
             now=now,
-            longest_unused=0.0 if least_recent is None else now - least_recent,
+            longest_unused_seconds=0.0 if least_recent is None else now - least_recent,
             most_requests=most_requests or 0,
             most_matching_bits=max(
                 (matching_bits(node_id.hash, row["hash"]) for row in neighbors), default=0
@@ -302,13 +302,15 @@ class StatsDatabase:
             {"node_id": str(node_id), "now": self._clock(), "remote": int(remote)},
         )
 
-    def record_transfer(self, node_id: ContentId, *, received: int = 0, sent: int = 0) -> None:
+    def record_transfer(
+        self, node_id: ContentId, *, received_bytes: int = 0, sent_bytes: int = 0
+    ) -> None:
         """Add data bytes exchanged with ``node_id``."""
-        if received:
-            self._add_to_node(node_id, _BYTES_RECEIVED, received)
+        if received_bytes:
+            self._add_to_node(node_id, _BYTES_RECEIVED, received_bytes)
 
-        if sent:
-            self._add_to_node(node_id, _BYTES_SENT, sent)
+        if sent_bytes:
+            self._add_to_node(node_id, _BYTES_SENT, sent_bytes)
 
     def record_data_lookup(self, node_id: ContentId, *, found: bool) -> None:
         """Count one attempt to fetch data from ``node_id`` by its outcome."""
@@ -469,16 +471,13 @@ class StatsDatabase:
         ]
 
     def prune_addresses(self, max_per_node: int, max_failures: int) -> int:
-        """Forget addresses not worth trying again.
+        """Forget addresses not worth trying again, and say how many were dropped.
 
         An address that has never worked goes once ``max_failures``
         attempts in a row have failed. Then each node keeps at most
         ``max_per_node``: those that have worked are kept first, the most
         recently reached first, then the rest, any not merely relayed first,
         the most recently learned first.
-
-        Returns:
-            How many addresses were dropped.
         """
         failing = self._execute(
             "DELETE FROM node_addresses "
@@ -561,11 +560,7 @@ class StatsDatabase:
         return [row["value"] for row in rows]
 
     def prune_seek(self, max_age_seconds: float) -> int:
-        """Forget outstanding requests older than ``max_age_seconds``.
-
-        Returns:
-            How many entries were dropped.
-        """
+        """Forget outstanding requests older than ``max_age_seconds``, and say how many."""
         cursor = self._execute(
             "DELETE FROM seek_entries WHERE requested_at < :cutoff",
             {"cutoff": self._clock() - max_age_seconds},

@@ -45,13 +45,13 @@ CONTENT_ID = ContentId.for_data(CONTENT, "sha256")
 MISSING_ID = ContentId.for_data(b"not stored", "sha256")
 
 
-def _connection(sock: socket, request_timeout: float = TIMEOUT) -> PeerConnection:
+def _connection(sock: socket, request_timeout_seconds: float = TIMEOUT) -> PeerConnection:
     return PeerConnection(
         sock,
         "peer.test:8080",
         CLIENT_SIGNER,
         LOGGER,
-        request_timeout=request_timeout,
+        request_timeout_seconds=request_timeout_seconds,
         max_body_bytes=MAX_BODY_BYTES,
     )
 
@@ -261,7 +261,7 @@ def test_response_nothing_asked_for_closes_the_connection(
 def test_silent_peer_times_out() -> None:
     client, peer = socketpair()
 
-    with peer, _connection(client, request_timeout=0.2) as connection:
+    with peer, _connection(client, request_timeout_seconds=0.2) as connection:
         future = connection.request("GET", "/")
 
         with raises(TimeoutError):
@@ -273,7 +273,7 @@ def test_silent_peer_times_out() -> None:
 def test_idle_connection_does_not_time_out() -> None:
     client, peer = socketpair()
 
-    with peer, _connection(client, request_timeout=0.2) as connection:
+    with peer, _connection(client, request_timeout_seconds=0.2) as connection:
         sleep(0.5)
 
         assert not connection.closed
@@ -385,8 +385,8 @@ def test_open_names_the_peer_in_host(family: int, host: str) -> None:
             port,
             CLIENT_SIGNER,
             LOGGER,
-            connect_timeout=TIMEOUT,
-            request_timeout=TIMEOUT,
+            connect_timeout_seconds=TIMEOUT,
+            request_timeout_seconds=TIMEOUT,
             max_body_bytes=MAX_BODY_BYTES,
         ) as connection,
     ):
@@ -409,7 +409,7 @@ def test_a_connection_not_over_ip_has_no_peer_ip(pair: tuple[PeerConnection, soc
 
 
 def test_a_socket_not_connected_has_no_peer_ip() -> None:
-    with _connection(socket(AF_INET), request_timeout=0.1) as connection:
+    with _connection(socket(AF_INET), request_timeout_seconds=0.1) as connection:
         assert connection.peer_ip is None
 
 
@@ -423,8 +423,8 @@ def test_open_to_nothing_raises() -> None:
             port,
             CLIENT_SIGNER,
             LOGGER,
-            connect_timeout=TIMEOUT,
-            request_timeout=TIMEOUT,
+            connect_timeout_seconds=TIMEOUT,
+            request_timeout_seconds=TIMEOUT,
             max_body_bytes=MAX_BODY_BYTES,
         )
 
@@ -473,8 +473,8 @@ def live(server: LibranetHTTPServer) -> Iterator[PeerConnection]:
         int(port),
         CLIENT_SIGNER,
         LOGGER,
-        connect_timeout=TIMEOUT,
-        request_timeout=TIMEOUT,
+        connect_timeout_seconds=TIMEOUT,
+        request_timeout_seconds=TIMEOUT,
         max_body_bytes=MAX_BODY_BYTES,
     ) as connection:
         yield connection

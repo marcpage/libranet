@@ -12,7 +12,7 @@ from logging import Logger
 from signal import SIGINT, SIGTERM, signal
 from threading import Event
 from types import FrameType
-from typing import Generator, Sequence
+from typing import Final, Generator, Sequence
 
 # `sys.stderr` is looked up at call time, not imported by name, so output
 # follows any later redirection of the stream (e.g. pytest's capsys).
@@ -32,17 +32,16 @@ from libranet.modules import ModuleName
 from libranet.supervision.process_supervisor import ProcessSupervisor
 from libranet.supervision.registry import default_module_specs
 
-EXIT_OK = 0
-EXIT_CONFIG_ERROR = 2
+EXIT_OK: Final = 0
+EXIT_CONFIG_ERROR: Final = 2
 
 
 def main(argv: Sequence[str] | None = None, *, stop: StopSignal | None = None) -> int:
     """Run a node, or validate its configuration and exit.
 
-    Args:
-        argv: Command-line arguments, defaulting to ``sys.argv[1:]``.
-        stop: When given, the node runs until it is set instead of until a
-            signal arrives; if it is already set, no module is started.
+    ``argv`` is the command line, ``sys.argv[1:]`` if not given. With
+    ``stop``, the node runs until it is set instead of until a signal
+    arrives; if it is already set, no module is started.
 
     Returns:
         A process exit status: 0 on success, 2 for a configuration problem.

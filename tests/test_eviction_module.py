@@ -82,7 +82,7 @@ class Modules:
             config,
             RETRY_DELAY,
             clock=lambda: self._now[0],
-            poll_interval=0.01,
+            poll_interval_seconds=0.01,
             free_bytes=lambda: self._free[0],
             hand_off_timeout_seconds=TIMEOUT,
             candidates_timeout_seconds=CANDIDATES_TIMEOUT,

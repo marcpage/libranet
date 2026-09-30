@@ -437,8 +437,8 @@ def test_a_response_the_peer_did_not_prove_closes_the_session(
             peer.server.server_address[1],
             MessageSigner(identity),
             LOGGER,
-            connect_timeout=TIMEOUT,
-            request_timeout=TIMEOUT,
+            connect_timeout_seconds=TIMEOUT,
+            request_timeout_seconds=TIMEOUT,
             max_body_bytes=1 << 20,
         )
         return PeerSession(connection, peer.endpoint, node_id, verifier)
@@ -779,7 +779,9 @@ def test_retrieve_hands_what_the_peer_sends_to_the_validator(
 def test_retrieve_reports_content_the_peer_lacks_and_when_to_ask_again(
     exchange: PeerExchange, session: PeerSession, queues: ModuleQueues
 ) -> None:
-    assert exchange.retrieve(session, NOWHERE_ID) == Retrieval(found=False, retry_after=RETRY_AFTER)
+    assert exchange.retrieve(session, NOWHERE_ID) == Retrieval(
+        found=False, retry_after_seconds=RETRY_AFTER
+    )
 
     (attempt,) = drain(queues, [])
     assert (attempt["event"], attempt["found"]) == (EventType.FETCH_ATTEMPTED, False)

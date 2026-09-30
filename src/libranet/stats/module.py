@@ -149,13 +149,15 @@ class StatsModule(ModuleBase):
         *,
         logger: Logger | None = None,
         clock: Callable[[], float] = time,
-        poll_interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
+        poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
         max_candidates: int = DEFAULT_MAX_CANDIDATES,
     ) -> None:
         if max_candidates < 1:
             raise ValueError(f"max_candidates must be at least 1, got {max_candidates}")
 
-        super().__init__(name, queues, logger=logger, clock=clock, poll_interval=poll_interval)
+        super().__init__(
+            name, queues, logger=logger, clock=clock, poll_interval_seconds=poll_interval_seconds
+        )
         self._config = config
         self._max_candidates = max_candidates
         self._store = CasStore.source_of_truth(config.storage)
@@ -273,11 +275,13 @@ class StatsModule(ModuleBase):
 
     def _on_data_stored(self, message: Message) -> None:
         content_id = _content_id(message)
-        size = int(message["size"])
+        size_bytes = int(message["size"])
         self.database.record_push(content_id)
-        self.database.record_acquired(content_id, size)
+        self.database.record_acquired(content_id, size_bytes)
         self.database.clear_seek(SeekKind.DATA, str(content_id))
-        self.database.record_transfer(ContentId.parse(message["node_id"]), received=size)
+        self.database.record_transfer(
+            ContentId.parse(message["node_id"]), received_bytes=size_bytes
+        )
 
     def _on_data_rejected(self, message: Message) -> None:
         self.database.record_push(_content_id(message))
@@ -344,7 +348,7 @@ class StatsModule(ModuleBase):
 
     def _on_data_sent(self, message: Message) -> None:
         self.database.record_transfer(
-            ContentId.parse(message["node_id"]), sent=int(message["size"])
+            ContentId.parse(message["node_id"]), sent_bytes=int(message["size"])
         )
 
     def _on_fetch_attempted(self, message: Message) -> None:
@@ -371,7 +375,7 @@ class StatsModule(ModuleBase):
                 continue
 
             chosen.append(held)
-            covered += held.size
+            covered += held.size_bytes
 
             if covered >= wanted:
                 break
@@ -383,7 +387,7 @@ class StatsModule(ModuleBase):
                     {
                         "algorithm": held.content_id.algorithm,
                         "hash": held.content_id.hash,
-                        "size": held.size,
+                        "size": held.size_bytes,
                     }
                     for held in chosen
                 ]
