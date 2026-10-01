@@ -114,7 +114,7 @@ def _prefix_directories(store: CasStore) -> dict[str, list[tuple[str, Path]]]:
     """The store's prefix directories by name, each with the algorithm it is under.
 
     Only directories of a registered algorithm, with a name that could be
-    the start of a hash, are included.
+    the start of a hash, are included. Any other directory is logged.
     """
     found: dict[str, list[tuple[str, Path]]] = {}
 
@@ -125,6 +125,9 @@ def _prefix_directories(store: CasStore) -> dict[str, list[tuple[str, Path]]]:
             if len(name) == store.prefix_length and LOWER_HEX_DIGITS.issuperset(name):
                 found.setdefault(name, []).append((algorithm, directory))
 
+            else:
+                _LOGGER.warning("Skipping %s, not a prefix directory of the store", directory)
+
     return found
 
 
@@ -133,16 +136,19 @@ def _objects_in(directory: Path, algorithm: str) -> list[HeldObject]:
 
     Anything else found there, such as a write still under way or a file
     that is not where the store would look for it, is skipped, as is an
-    object removed while the directory is read.
+    object removed while the directory is read. What is named as an object
+    but is not one, such as an upper-case copy of a hash, or a directory, is
+    logged too.
     """
     objects: list[HeldObject] = []
 
     for entry in directory.iterdir():
-        if not entry.name.startswith(directory.name):
+        # Whatever its case, so that an upper-case copy of a hash is caught.
+        if not entry.name.lower().startswith(directory.name):
             continue
 
         try:
-            content_id = ContentId.create(algorithm, entry.name)
+            content_id = ContentId.from_stored_name(algorithm, entry.name)
             status = entry.stat()
 
         except InvalidContentIdError as error:
@@ -153,7 +159,10 @@ def _objects_in(directory: Path, algorithm: str) -> list[HeldObject]:
             # Not logged: it was deleted while the directory was read.
             continue
 
-        if content_id.hash == entry.name and S_ISREG(status.st_mode):
-            objects.append(HeldObject(content_id, status.st_size))
+        if not S_ISREG(status.st_mode):
+            _LOGGER.warning("Skipping %s, named as CAS content but not a file", entry)
+            continue
+
+        objects.append(HeldObject(content_id, status.st_size))
 
     return objects

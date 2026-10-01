@@ -78,7 +78,7 @@ class ValidatorModule(ModuleBase):
 
         else:
             self.publish(EventType.DATA_REJECTED, payload)
-            self.logger.warning("Rejected upload of %s from %s: hash mismatch", content_id, node_id)
+            self.logger.debug("Rejected upload of %s from %s: hash mismatch", content_id, node_id)
 
         incoming.delete(content_id)
 

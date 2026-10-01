@@ -52,3 +52,12 @@ def test_an_endpoint_this_node_does_not_dial_by_design_is_not_logged(
 ) -> None:
     assert PeerAddress.of("https://peer.example:443") is None
     assert caplog.records == []
+
+
+def test_an_endpoint_naming_no_host_is_logged_as_a_warning(
+    caplog: LogCaptureFixture,
+) -> None:
+    assert PeerAddress.of("http://") is None
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage() == "Cannot dial 'http://': it names no host"

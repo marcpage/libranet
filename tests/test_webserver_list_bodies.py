@@ -162,3 +162,29 @@ def test_seek_list_entries_under_unsupported_algorithms_are_logged_once_as_a_war
     assert record.levelno == WARNING
     assert record.getMessage().startswith("A seek list names ids hashed with algorithms ")
     assert record.getMessage().endswith(": 1 under md5")
+
+
+def test_a_node_list_entry_whose_id_is_not_a_string_is_logged_at_debug(
+    caplog: LogCaptureFixture,
+) -> None:
+    caplog.set_level(DEBUG)
+
+    assert parse_node_list({"nodes": {"http://192.0.2.9:80": 7}}) == {}
+    (record,) = caplog.records
+    assert record.levelno == DEBUG
+    assert record.getMessage() == (
+        "Dropping the entry for http://192.0.2.9:80 from a node list: "
+        "its node id is 7, not a string"
+    )
+
+
+def test_a_seek_list_entry_that_is_not_a_string_is_logged_at_debug(
+    caplog: LogCaptureFixture,
+) -> None:
+    caplog.set_level(DEBUG)
+
+    assert parse_seek_list({"data": [7], "search": [None]}) == ([], [])
+    assert [(record.levelno, record.getMessage()) for record in caplog.records] == [
+        (DEBUG, "Dropping 7 from a seek list: not a string"),
+        (DEBUG, "Dropping None from a seek list: not a string"),
+    ]

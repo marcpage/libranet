@@ -126,3 +126,30 @@ def test_an_endpoint_that_does_not_parse_is_logged_at_debug(caplog: LogCaptureFi
     assert record.getMessage().startswith(
         "Dropping the entry for http://localhost:99999 from a node list: "
     )
+
+
+@mark.parametrize("endpoint", ["ftp://localhost:21", "http://:8080"])
+def test_an_endpoint_that_is_no_url_to_store_is_logged_at_debug(
+    endpoint: str, caplog: LogCaptureFixture
+) -> None:
+    caplog.set_level(DEBUG)
+
+    assert resolve_endpoint(endpoint, SOURCE) is None
+    (record,) = caplog.records
+    assert record.levelno == DEBUG
+    assert record.getMessage() == (
+        f"Dropping the entry for {endpoint} from a node list: "
+        "not an http or https URL naming a host"
+    )
+
+
+def test_localhost_with_no_source_address_is_logged_at_debug(caplog: LogCaptureFixture) -> None:
+    caplog.set_level(DEBUG)
+
+    assert resolve_endpoint("http://localhost:8080", "") is None
+    (record,) = caplog.records
+    assert record.levelno == DEBUG
+    assert record.getMessage() == (
+        "Dropping the entry for http://localhost:8080 from a node list: "
+        "no address to put in place of localhost"
+    )

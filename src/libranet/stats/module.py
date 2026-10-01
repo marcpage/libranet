@@ -32,7 +32,9 @@ The payloads it consumes, by event:
 A miss on ``GET /data/{algorithm}/{hash}`` and a ``GET /data/search/{prefix}``
 are both requests this node could not answer, so each becomes an entry in
 its own seek list until the content arrives or the entry ages out. Storing
-content clears its entry.
+content clears its entry. A miss for content the source of truth holds by
+the time it is handled, as when its ``data.stored`` was broadcast first,
+makes none.
 
 What the node holds is what ``data.stored`` announced, with its size, less
 what ``data.deleted`` reported gone. Asked by the eviction module for
@@ -259,7 +261,17 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         )
 
     def _on_data_not_found(self, message: Message) -> None:
-        self.database.record_seek(SeekKind.DATA, [str(ContentId.from_fields(message))])
+        """Seek what was missed, unless it is held by now, as when its ``data.stored`` came first.
+
+        Messages from two modules arrive in no set order.
+        """
+        content_id = ContentId.from_fields(message)
+
+        if self._store.exists(content_id):
+            self.logger.debug("%s is held, so is not sought", content_id)
+            return
+
+        self.database.record_seek(SeekKind.DATA, [str(content_id)])
 
     def _on_search_requested(self, message: Message) -> None:
         prefix = normalize_prefix(message["prefix"])

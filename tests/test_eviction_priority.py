@@ -215,3 +215,29 @@ def test_a_file_not_named_as_content_is_logged_as_a_warning(
     (record,) = caplog.records
     assert record.levelno == WARNING
     assert record.getMessage().startswith(f"Skipping {stray}, not named as CAS content: ")
+
+
+def test_what_is_named_as_content_but_is_not_is_logged_as_a_warning(
+    tmp_path: Path, caplog: LogCaptureFixture
+) -> None:
+    store = CasStore(tmp_path / "cas", 4)
+    held = sharing(0)
+    hold(store, held)
+    directory = store.path_for(held).parent
+    upper = directory / sharing(0, 2).hash.upper()
+    upper.write_bytes(b"upper-case name")
+    not_a_file = store.path_for(sharing(0, 1))
+    not_a_file.mkdir()
+    wrong_shape = store.root / DATA_SEGMENT / "sha256" / held.hash[:5]
+    wrong_shape.mkdir()
+
+    assert list(held_objects(store)) == [HeldObject(held, 3)]
+    assert {record.levelno for record in caplog.records} == {WARNING}
+    assert sorted(record.getMessage() for record in caplog.records) == sorted(
+        [
+            f"Skipping {not_a_file}, named as CAS content but not a file",
+            f"Skipping {wrong_shape}, not a prefix directory of the store",
+            f"Skipping {upper}, not named as CAS content: "
+            f"A stored hash must be lower-case, got {upper.name!r}",
+        ]
+    )

@@ -209,7 +209,7 @@ def _optional_size(metadata: dict[str, object]) -> int | None:
 
     # Note: bool is a subclass of int, so need to make sure it is not a bool
     if not isinstance(size_bytes, int) or isinstance(size_bytes, bool) or size_bytes < 0:
-        raise MalformedBundleError('"size" must be a positive integer')
+        raise MalformedBundleError('"size" must be a non-negative integer')
 
     return size_bytes
 

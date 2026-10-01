@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Final, Iterator
 
 from libranet.atomic_file import write_atomically
-from libranet.cas.content_id import ContentId
+from libranet.cas.content_id import LOWER_HEX_DIGITS, ContentId
 from libranet.cas.errors import ContentNotFoundError, InvalidContentIdError
 from libranet.config.models import StorageConfig
 
@@ -136,8 +136,10 @@ class CasStore:
         """Stored identifiers under ``algorithm`` whose hash starts with ``hash_prefix``.
 
         ``hash_prefix`` must already be lower-case hex. Only the prefix
-        subdirectories that can match are scanned. A file whose name is not
-        a lower-case hash is not one this store wrote, and is skipped.
+        subdirectories that can match are scanned. What is there that this
+        store did not write, such as a prefix directory of another length, a
+        name that is not a lower-case hash, or a directory where a file
+        belongs, is logged and skipped.
         """
         algorithm_dir = self._root / DATA_SEGMENT / algorithm
 
@@ -147,18 +149,34 @@ class CasStore:
         directory_prefix = hash_prefix[: self._prefix_length]
 
         for prefix_dir in sorted(algorithm_dir.iterdir()):
-            if not prefix_dir.is_dir() or not prefix_dir.name.startswith(directory_prefix):
+            name = prefix_dir.name
+
+            # Whatever its case, so that an upper-case copy of one is caught.
+            if not name.lower().startswith(directory_prefix):
+                continue
+
+            if (
+                not prefix_dir.is_dir()
+                or len(name) != self._prefix_length
+                or not LOWER_HEX_DIGITS.issuperset(name)
+            ):
+                _LOGGER.warning("Skipping %s, not a prefix directory of this store", prefix_dir)
                 continue
 
             for entry in sorted(prefix_dir.iterdir()):
-                if not entry.name.startswith(hash_prefix) or not entry.is_file():
+                # Whatever its case, so that an upper-case copy of a hash is caught.
+                if not entry.name.lower().startswith(hash_prefix):
                     continue
 
                 try:
-                    content_id = ContentId(algorithm, entry.name)
+                    content_id = ContentId.from_stored_name(algorithm, entry.name)
 
                 except InvalidContentIdError as error:
                     _LOGGER.warning("Skipping %s, not named as CAS content: %s", entry, error)
+                    continue
+
+                if not entry.is_file():
+                    _LOGGER.warning("Skipping %s, named as CAS content but not a file", entry)
                     continue
 
                 yield content_id

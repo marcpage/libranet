@@ -69,23 +69,20 @@ class ResolvedFiles:
     def bundles(self) -> list[ContentId]:
         """Every bundle whose files are kept here, in no particular order.
 
-        Only directories named as :meth:`path_for` names them are included.
+        Only directories named as :meth:`path_for` names them are included;
+        any other is logged.
         """
         found: list[ContentId] = []
 
         for algorithm in DEFAULT_REGISTRY.names():
             for directory in subdirectories(self._directory / algorithm):
                 try:
-                    bundle = ContentId.create(algorithm, directory.name)
+                    found.append(ContentId.from_stored_name(algorithm, directory.name))
 
                 except InvalidContentIdError as error:
                     _LOGGER.warning(
                         "Leaving %s alone, not named as resolved files: %s", directory, error
                     )
-                    continue
-
-                if bundle.hash == directory.name:
-                    found.append(bundle)
 
         return found
 

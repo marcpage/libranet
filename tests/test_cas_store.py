@@ -174,3 +174,65 @@ def test_subdirectories_are_the_directories_directly_inside(tmp_path: Path) -> N
 
 def test_a_directory_not_made_yet_has_no_subdirectories(tmp_path: Path) -> None:
     assert subdirectories(tmp_path / "missing") == []
+
+
+def test_iter_prefix_logs_a_hash_of_the_wrong_length_as_a_warning(
+    tmp_path: Path, caplog: LogCaptureFixture
+) -> None:
+    store = make_store(tmp_path, 2)
+    content_id = ContentId.for_data(b"held", "sha256")
+    store.write(content_id, b"held")
+    stray = store.path_for(content_id).parent / content_id.hash[:-1]
+    stray.write_bytes(b"")
+
+    assert list(store.iter_prefix("sha256", content_id.hash[:2])) == [content_id]
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith(f"Skipping {stray}, not named as CAS content: ")
+
+
+def test_iter_prefix_logs_a_directory_named_as_content_as_a_warning(
+    tmp_path: Path, caplog: LogCaptureFixture
+) -> None:
+    store = make_store(tmp_path, 2)
+    content_id = ContentId.for_data(b"held", "sha256")
+    store.path_for(content_id).mkdir(parents=True)
+
+    assert list(store.iter_prefix("sha256", content_id.hash[:2])) == []
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage() == (
+        f"Skipping {store.path_for(content_id)}, named as CAS content but not a file"
+    )
+
+
+def test_iter_prefix_logs_a_prefix_directory_of_another_length_as_a_warning(
+    tmp_path: Path, caplog: LogCaptureFixture
+) -> None:
+    # Content filed under another hash_prefix_length, which nothing migrates.
+    content_id = ContentId.for_data(b"held", "sha256")
+    make_store(tmp_path, 3).write(content_id, b"held")
+    store = make_store(tmp_path, 2)
+
+    assert list(store.iter_prefix("sha256", content_id.hash[:2])) == []
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage() == (
+        f"Skipping {store.path_for(content_id).parent.parent / content_id.hash[:3]}, "
+        "not a prefix directory of this store"
+    )
+
+
+def test_iter_prefix_logs_an_upper_case_copy_of_a_hash_as_a_warning(
+    tmp_path: Path, caplog: LogCaptureFixture
+) -> None:
+    store = make_store(tmp_path, 2)
+    content_id = ContentId("sha256", "ab" + "0" * 62)
+    copy = store.path_for(content_id).parent / content_id.hash.upper()
+    copy.parent.mkdir(parents=True)
+    copy.write_bytes(b"")
+
+    assert list(store.iter_prefix("sha256", "ab")) == []
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith(f"Skipping {copy}, not named as CAS content: ")
