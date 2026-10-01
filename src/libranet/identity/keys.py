@@ -132,7 +132,16 @@ def load_private_key(path: Path) -> Ed25519PrivateKey:
         KeyFileError: the file is not an unencrypted Ed25519 PEM key.
         OSError: the file cannot be read.
     """
-    return _private_key(path.read_bytes(), path)
+    try:
+        loaded = load_pem_private_key(path.read_bytes(), password=None)
+
+    except (ValueError, TypeError, UnsupportedAlgorithm) as error:
+        raise KeyFileError(f"Unreadable private key file {path}: {error}") from error
+
+    if not isinstance(loaded, Ed25519PrivateKey):
+        raise KeyFileError(f"Private key file {path} holds a {type(loaded).__name__}")
+
+    return loaded
 
 
 def load_or_create_private_key(path: Path) -> Ed25519PrivateKey:
@@ -142,7 +151,7 @@ def load_or_create_private_key(path: Path) -> Ed25519PrivateKey:
         KeyFileError: the existing file is not an unencrypted Ed25519 PEM key.
     """
     try:
-        data = path.read_bytes()
+        return load_private_key(path)
 
     except FileNotFoundError:
         key = generate_private_key()
@@ -152,9 +161,8 @@ def load_or_create_private_key(path: Path) -> Ed25519PrivateKey:
             _LOGGER.info("Created a new private key at %s", path)
             return key
 
-        data = path.read_bytes()
-
-    return _private_key(data, path)
+    # Another process created it first, so its key is the one used.
+    return load_private_key(path)
 
 
 def load_or_create_backup_secret(path: Path) -> bytes:
@@ -216,21 +224,3 @@ def write_private_file(path: Path, data: bytes) -> bool:
 
     finally:
         temp_path.unlink(missing_ok=True)
-
-
-def _private_key(data: bytes, path: Path) -> Ed25519PrivateKey:
-    """The node key ``data``, read from ``path``, holds.
-
-    Raises:
-        KeyFileError: ``data`` is not an unencrypted Ed25519 PEM key.
-    """
-    try:
-        loaded = load_pem_private_key(data, password=None)
-
-    except (ValueError, TypeError, UnsupportedAlgorithm) as error:
-        raise KeyFileError(f"Unreadable private key file {path}: {error}") from error
-
-    if not isinstance(loaded, Ed25519PrivateKey):
-        raise KeyFileError(f"Private key file {path} holds a {type(loaded).__name__}")
-
-    return loaded
