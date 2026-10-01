@@ -3,6 +3,12 @@
 The node identifier is the content id of the published public key
 (HighLevelDesign §2.1), so publishing the key into the source of truth is
 what lets peers fetch it with ``GET /data/{algorithm}/{identifier}``.
+
+Only the supervisor creates the key, and publishes the public key, as the
+node starts (:meth:`NodeIdentity.load_or_create`). Every module that needs
+the identity loads the key as it is (:meth:`NodeIdentity.load`). If a module
+could create one, a key file lost while the node runs would give the next
+module to restart an identity the others do not share.
 """
 
 from __future__ import annotations
@@ -13,7 +19,11 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig
-from libranet.identity.keys import encode_public_key, load_or_create_private_key
+from libranet.identity.keys import (
+    encode_public_key,
+    load_or_create_private_key,
+    load_private_key,
+)
 
 
 @dataclass(frozen=True)
@@ -36,7 +46,23 @@ class NodeIdentity:
 
     @classmethod
     def load(cls, config: LibranetConfig) -> NodeIdentity:
-        """This node's identity, creating its key on first run.
+        """This node's identity, from the key the node was started with.
+
+        Nothing is created or written.
+
+        Raises:
+            FileNotFoundError: the node has no key yet.
+            KeyFileError: the stored private key cannot be loaded.
+            UnknownAlgorithmError: the configured hash algorithm is unsupported.
+            OSError: the key file cannot be read.
+        """
+        return cls.from_private_key(
+            load_private_key(config.private_key_path), config.identity.hash_algorithm
+        )
+
+    @classmethod
+    def load_or_create(cls, config: LibranetConfig) -> NodeIdentity:
+        """This node's identity, creating its key on first run, as the node starts.
 
         The public key is also published into the source of truth.
 

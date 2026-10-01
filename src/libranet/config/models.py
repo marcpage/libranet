@@ -20,6 +20,12 @@ from libranet.config import paths
 
 MIB: Final = 1024 * 1024
 
+# How long the web server keeps a connection with no request on it open. A
+# connection to a peer is kept open by fetching its seek list more often
+# than this, and every node is taken to wait as long, so it is defined here,
+# where the settings are checked against it, rather than with the server.
+IDLE_TIMEOUT_SECONDS: Final = 60.0
+
 Scheme = Literal["http", "https"]
 
 LogLevel = Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"]
@@ -108,10 +114,11 @@ class PeerConfig(_Section):
     retry_delay_seconds: float = Field(default=60.0, gt=0)
 
     # How often a connected peer's seek list is fetched again, so content it
-    # still wants can be pushed (HandshakeProtocol §3.3). Shorter than the
-    # 60-second idle timeout of this node's own web server, so it also keeps
-    # the connection open. Provisional default.
-    seek_refresh_seconds: float = Field(default=30.0, gt=0)
+    # still wants can be pushed (HandshakeProtocol §3.3). It must be shorter
+    # than a peer's idle timeout, IDLE_TIMEOUT_SECONDS for this
+    # implementation, so that it also keeps the connection open. Provisional
+    # default.
+    seek_refresh_seconds: float = Field(default=30.0, gt=0, lt=IDLE_TIMEOUT_SECONDS)
 
     # How many passes a search of the connected peers for content makes before
     # it stops (HighLevelDesign §4.7, Phase 2 Step 55). Each pass after the
@@ -173,8 +180,10 @@ class StorageConfig(_Section):
 
     # HighLevelDesign §4.3: a single object is capped at 1 MiB as stored and
     # as transferred, which for compressed content means compressed. The
-    # protocol sets no limit on its size once decompressed.
-    max_object_bytes: int = Field(default=MIB, ge=1)
+    # protocol sets no limit on its size once decompressed. The cap is the
+    # protocol's, so a node may hold to less but never to more: a peer would
+    # refuse a larger object, and close the connection it came on.
+    max_object_bytes: int = Field(default=MIB, ge=1, le=MIB)
 
     # The 1 MiB cap on node and seek lists (HttpApi §10.6, §10.7.1) is on the
     # bytes transferred, so a zlib-compressed list may expand past it once
@@ -282,8 +291,10 @@ class IdentityConfig(_Section):
 
     # How many requests from an unknown sender are trusted provisionally
     # while its public key is being fetched. Provisional default — see
-    # "Open Items" in the implementation plan.
-    provisional_trust_attempts: int = Field(default=3, ge=0)
+    # "Open Items" in the implementation plan. HandshakeProtocol §3.2 forbids
+    # breaking a connection for want of a key before its first two requests,
+    # which first contact needs to exchange keys.
+    provisional_trust_attempts: int = Field(default=3, ge=2)
 
     # RFC 9421 freshness (HandshakeProtocol §2): how old a signature's
     # `created` time may be, plus the tolerance allowed for clock
@@ -329,8 +340,8 @@ class StatsConfig(_Section):
     # HttpApi §10.6 and §10.7.1 cap both lists at 1 MiB as transferred, and
     # this node serves them uncompressed, so the rendered file itself must
     # stay below this. Entries are added in priority order until the next one
-    # would not fit.
-    max_list_bytes: int = Field(default=MIB, ge=64)
+    # would not fit. The cap is the protocol's, so this may not exceed it.
+    max_list_bytes: int = Field(default=MIB, ge=64, le=MIB)
 
     # An outstanding request this node never satisfied stops being advertised
     # in its own `/data/seek` list once it is this old. Provisional default.

@@ -34,7 +34,7 @@ from urllib.parse import urlsplit
 from libranet import __version__
 from libranet.cas.layered import LayeredSource
 from libranet.cas.store import CasStore
-from libranet.config.models import StorageConfig
+from libranet.config.models import IDLE_TIMEOUT_SECONDS, StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.signatures import MessageSigner
 from libranet.problems import Problem
@@ -71,10 +71,6 @@ from libranet.webserver.router import Router
 from libranet.webserver.search import LocalSearch, SearchCache
 from libranet.webserver.search_handler import SEARCH_PATTERN, SearchHandler
 from libranet.webserver.signature_guard import SignatureGuard
-
-# Idle keep-alive connections are dropped after this long, so they cannot
-# hold request threads forever.
-IDLE_TIMEOUT_SECONDS: Final = 60.0
 
 # Every response to a request whose request line parsed echoes that
 # request's target (path and any query string) here. A pipelining client
@@ -228,6 +224,8 @@ class RequestHandler(BaseHTTPRequestHandler):
     # (Step 10), which requires every response to carry Content-Length.
     protocol_version = "HTTP/1.1"
     server_version = f"Libranet/{__version__}"
+    # Idle keep-alive connections are dropped after this long, so they cannot
+    # hold request threads forever.
     timeout = IDLE_TIMEOUT_SECONDS
 
     server: LibranetHTTPServer

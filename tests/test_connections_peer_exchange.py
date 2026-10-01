@@ -45,6 +45,8 @@ from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.server import LibranetHTTPServer, build_router
 
+from tests.helpers import with_node_key
+
 LOGGER = getLogger("test.connections")
 TIMEOUT = 5.0
 # The Retry-After the fixture peer sends with a 503.
@@ -142,10 +144,12 @@ def peer(tmp_path: Path) -> Iterator[FixturePeer]:
 @fixture
 def config(tmp_path: Path) -> LibranetConfig:
     root = tmp_path / "client"
-    return LibranetConfig(
-        storage=StorageConfig(data_dir=root / "data", cache_dir=root / "cache"),
-        identity=IdentityConfig(key_dir=root / "keys"),
-        peers=PeerConfig(connect_timeout_seconds=TIMEOUT, request_timeout_seconds=TIMEOUT),
+    return with_node_key(
+        LibranetConfig(
+            storage=StorageConfig(data_dir=root / "data", cache_dir=root / "cache"),
+            identity=IdentityConfig(key_dir=root / "keys"),
+            peers=PeerConfig(connect_timeout_seconds=TIMEOUT, request_timeout_seconds=TIMEOUT),
+        )
     )
 
 

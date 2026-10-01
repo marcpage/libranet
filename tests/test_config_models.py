@@ -4,9 +4,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from pydantic import ValidationError
-from pytest import raises
+from pytest import mark, raises
 
 from libranet.config.models import (
+    IDLE_TIMEOUT_SECONDS,
     MIB,
     BackupConfig,
     IdentityConfig,
@@ -78,6 +79,30 @@ def test_decompressed_lists_may_exceed_the_object_limit() -> None:
 
     with raises(ValidationError):
         StorageConfig(max_decompressed_list_bytes=0)
+
+
+# What the protocol constrains: an object, and a list, at most 1 MiB (HighLevelDesign
+# §4.3, HttpApi §10.6); no connection broken for want of a key before its first
+# two requests (HandshakeProtocol §3.2); and a refresh within a peer's idle timeout.
+PROTOCOL_LIMITS = [
+    (StorageConfig, "max_object_bytes", MIB, MIB + 1),
+    (StatsConfig, "max_list_bytes", MIB, MIB + 1),
+    (IdentityConfig, "provisional_trust_attempts", 2, 1),
+    (PeerConfig, "seek_refresh_seconds", IDLE_TIMEOUT_SECONDS - 0.5, IDLE_TIMEOUT_SECONDS),
+]
+
+
+@mark.parametrize(("section", "name", "allowed", "refused"), PROTOCOL_LIMITS)
+def test_a_setting_the_protocol_limits_is_held_to_its_limit(
+    section: type[StorageConfig | StatsConfig | IdentityConfig | PeerConfig],
+    name: str,
+    allowed: float,
+    refused: float,
+) -> None:
+    assert getattr(section.model_validate({name: allowed}), name) == allowed
+
+    with raises(ValidationError, match=name):
+        section.model_validate({name: refused})
 
 
 def test_no_content_archives_are_configured_by_default() -> None:

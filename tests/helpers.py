@@ -8,6 +8,7 @@ from __future__ import annotations
 from json import loads
 from queue import Empty
 
+from libranet.config.models import LibranetConfig
 from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity
 from libranet.messaging.envelope import Message
@@ -26,6 +27,12 @@ def published(queues: ModuleQueues) -> list[Message]:
 
         except Empty:
             return messages
+
+
+def with_node_key(config: LibranetConfig) -> LibranetConfig:
+    """``config``, once its node key exists, as the supervisor makes it before any module starts."""
+    NodeIdentity.load_or_create(config)
+    return config
 
 
 def new_identity() -> NodeIdentity:
