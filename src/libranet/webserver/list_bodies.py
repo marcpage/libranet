@@ -87,6 +87,11 @@ def parse_node_list(value: object) -> dict[str, ContentId]:
 
     for endpoint, node_id in nodes.items():
         if not isinstance(node_id, str):
+            _LOGGER.debug(
+                "Dropping the entry for %s from a node list: its node id is %r, not a string",
+                endpoint,
+                node_id,
+            )
             continue
 
         try:
@@ -136,6 +141,7 @@ def _normalized(values: list[object], normalize: Callable[[str], str]) -> list[s
 
     for value in values:
         if not isinstance(value, str):
+            _LOGGER.debug("Dropping %r from a seek list: not a string", value)
             continue
 
         try:

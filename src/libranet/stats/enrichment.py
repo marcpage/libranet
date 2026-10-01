@@ -69,6 +69,7 @@ def _parse_results(body: bytes) -> set[ContentId]:
         return set()
 
     if not isinstance(results, list):
+        _LOGGER.warning("Ignoring a cached search response whose results are not an array")
         return set()
 
     parsed = set()

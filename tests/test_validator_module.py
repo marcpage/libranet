@@ -1,7 +1,7 @@
 """Tests for the validator module, fed "PUT completed" messages directly."""
 
 from __future__ import annotations
-from logging import WARNING
+from logging import DEBUG
 from pathlib import Path
 from queue import Empty, Queue
 from zlib import compress
@@ -111,6 +111,8 @@ def test_mismatched_upload_is_discarded_and_reported(
     queues: ModuleQueues,
     caplog: LogCaptureFixture,
 ) -> None:
+    caplog.set_level(DEBUG)
+
     for data in (b"not the content", compress(b"not the content")):
         validator.handle(upload(storage, data))
 
@@ -124,7 +126,9 @@ def test_mismatched_upload_is_discarded_and_reported(
         assert message["node_id"] == str(NODE_ID)
         assert "size" not in message
 
-    assert [record.levelno for record in caplog.records].count(WARNING) == 2
+    # An upload a peer sent, refused, is debug.
+    rejected = [record for record in caplog.records if record.getMessage().startswith("Rejected")]
+    assert [record.levelno for record in rejected] == [DEBUG, DEBUG]
 
 
 def test_upload_of_content_already_held_is_discarded_quietly(

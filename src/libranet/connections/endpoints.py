@@ -36,7 +36,13 @@ class PeerAddress:
             _LOGGER.warning("Cannot dial %r: %s", endpoint, error)
             return None
 
-        if parts.scheme != _SCHEME or not parts.hostname:
+        # Not logged: not dialing another scheme is by design while HTTPS is
+        # deferred.
+        if parts.scheme != _SCHEME:
+            return None
+
+        if not parts.hostname:
+            _LOGGER.warning("Cannot dial %r: it names no host", endpoint)
             return None
 
         return cls(parts.hostname, port or _DEFAULT_PORT)

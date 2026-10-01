@@ -114,3 +114,15 @@ def test_a_node_keeps_resolved_files_where_it_is_configured_to(tmp_path: Path) -
     assert files.path_for(BUNDLE, "index.html") == (
         storage.resolved_files_dir / "sha256" / BUNDLE.hash / key[:3] / key
     )
+
+
+def test_an_upper_case_copy_of_a_bundle_is_logged_as_a_warning(
+    tmp_path: Path, caplog: LogCaptureFixture
+) -> None:
+    stray = tmp_path / "sha256" / ("A" * 64)
+    stray.mkdir(parents=True)
+
+    assert ResolvedFiles(tmp_path, 4).bundles() == []
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith(f"Leaving {stray} alone, not named as resolved files: ")

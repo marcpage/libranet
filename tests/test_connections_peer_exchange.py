@@ -594,12 +594,20 @@ def test_an_unusable_list_is_ignored(
     queues: ModuleQueues,
     caplog: LogCaptureFixture,
 ) -> None:
+    caplog.set_level(DEBUG)
     peer.storage.derived_dir.mkdir(parents=True)
     peer.storage.node_list_path.write_bytes(b"not a list")
 
     exchange.first_contact(session)
 
-    assert f"Ignoring a list from {session.endpoint} (GET /data/nodes)" in caplog.text
+    (record,) = [
+        record
+        for record in caplog.records
+        if record.getMessage().startswith(f"Ignoring a list from {session.endpoint}")
+    ]
+    assert "(GET /data/nodes)" in record.getMessage()
+    # A list a peer sent, refused, is debug.
+    assert record.levelno == DEBUG
     assert published(queues, EventType.NODES_RECEIVED) == []
 
 
@@ -795,11 +803,17 @@ def test_retrieve_refuses_content_that_is_not_what_was_asked_for(
     queues: ModuleQueues,
     caplog: LogCaptureFixture,
 ) -> None:
+    caplog.set_level(DEBUG)
     peer.store.write(OFFERED_ID, b"something else")
 
     assert exchange.retrieve(session, OFFERED_ID) == Retrieval(found=False)
 
-    assert f"sent content that is not {OFFERED_ID}" in caplog.text
+    (record,) = [
+        record
+        for record in caplog.records
+        if record.getMessage().endswith(f"sent content that is not {OFFERED_ID}")
+    ]
+    assert record.levelno == DEBUG
     assert not CasStore.for_node(config.storage, peer.identity.node_id).exists(OFFERED_ID)
     (attempt,) = drain(queues, [])
     assert attempt["found"] is False

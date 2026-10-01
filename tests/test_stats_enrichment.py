@@ -199,3 +199,19 @@ def test_an_unusable_entry_in_a_cache_file_is_logged_as_a_warning(
             "A cached search response holds 'not an id', not a content id",
         )
     ]
+
+
+def test_a_cache_file_whose_results_are_not_an_array_is_logged_as_a_warning(
+    enricher: SearchEnricher, cache: SearchCache, caplog: LogCaptureFixture
+) -> None:
+    cache.save(PREFIX, dumps({"results": "nope"}).encode("utf-8"))
+
+    enricher.enrich(PREFIX)
+
+    assert caplog.record_tuples == [
+        (
+            "libranet.stats.enrichment",
+            WARNING,
+            "Ignoring a cached search response whose results are not an array",
+        )
+    ]

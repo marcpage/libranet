@@ -389,14 +389,15 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
             return parse(decode_list(response.body, self._storage.max_decompressed_list_bytes))
 
         except InvalidListError as error:
-            self._logger.warning(
+            self._logger.debug(
                 "Ignoring a list from %s (%s): %s", session.endpoint, response.request, error
             )
             return None
 
     def _push(self, session: PeerSession, sought: Sequence[ContentId]) -> None:
         """Step 6: send the peer what it seeks that this node holds, each item once."""
-        wanted = [content_id for content_id in sought if content_id not in session.pushed]
+        pushed = session.pushed
+        wanted = [content_id for content_id in sought if content_id not in pushed]
 
         for batch in _batches(wanted):
             self.hand_off_many(session, self._held(batch))
@@ -405,7 +406,7 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
         self, session: PeerSession, content_id: ContentId, body: bytes, response: PeerResponse
     ) -> bool:
         """Note that ``content_id`` was pushed to the peer; whether the peer accepted it."""
-        session.pushed.add(content_id)
+        session.note_pushed(content_id)
         accepted = HTTPStatus.OK <= response.status < HTTPStatus.MULTIPLE_CHOICES
 
         if accepted:
@@ -469,7 +470,7 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
         found = response.status == HTTPStatus.OK and content_matches(content_id, response.body)
 
         if response.status == HTTPStatus.OK and not found:
-            self._logger.warning("%s sent content that is not %s", session.endpoint, content_id)
+            self._logger.debug("%s sent content that is not %s", session.endpoint, content_id)
 
         if found:
             CasStore.for_node(self._storage, session.node_id).write(content_id, response.body)

@@ -96,6 +96,26 @@ class ContentId:
         return cls.create(fields["algorithm"], fields["hash"], registry)
 
     @classmethod
+    def from_stored_name(
+        cls, algorithm: str, name: str, registry: AlgorithmRegistry = DEFAULT_REGISTRY
+    ) -> ContentId:
+        """The identifier a store keeps under ``name``, beneath the directory of ``algorithm``.
+
+        A store names what it keeps by its hash exactly as the hash is kept:
+        lower-case, and as long as its algorithm's (HttpApi §5.4).
+
+        Raises:
+            UnknownAlgorithmError: ``algorithm`` is not registered.
+            InvalidContentIdError: ``name`` is not such a hash.
+        """
+        content_id = cls.create(algorithm, name, registry)
+
+        if content_id.hash != name:
+            raise InvalidContentIdError(f"A stored hash must be lower-case, got {name!r}")
+
+        return content_id
+
+    @classmethod
     def for_data(
         cls, data: bytes, algorithm: str, registry: AlgorithmRegistry = DEFAULT_REGISTRY
     ) -> ContentId:

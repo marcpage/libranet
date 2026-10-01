@@ -1968,6 +1968,37 @@ def test_addresses_peers_were_observed_at_are_looked_up(
     assert asked == ["203.0.113.9"]
 
 
+def test_addresses_this_module_observes_peers_at_are_looked_up_too(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    # Every fixture peer is on the loopback address, which is never looked up.
+    monkeypatch.setattr("libranet.connections.reverse_dns.is_local_client", lambda _host: False)
+    peer = peers[0]
+    port = peer.server.server_address[1]
+    write_lists(peer.storage, {f"http://localhost:{port}": str(peer.node_id)})
+    write_lists(config.storage, node_list(identity, peer))
+    asked: list[str] = []
+
+    def names(address: str) -> Sequence[str]:
+        asked.append(address)
+        return ["peer.example.org"]
+
+    modules.start(config, names)
+
+    # First contact reads the peer's node list, which names it at the
+    # address this module reached it at.
+    (named,) = bus.wait_for(
+        EventType.NODES_RECEIVED, nodes={f"http://peer.example.org:{port}": str(peer.node_id)}
+    )
+    assert named["sources"] == {f"http://peer.example.org:{port}": "reverse_dns"}
+    assert asked == ["127.0.0.1"]
+
+
 def test_reverse_dns_can_be_switched_off(
     modules: Modules, config: LibranetConfig, bus: Bus
 ) -> None:

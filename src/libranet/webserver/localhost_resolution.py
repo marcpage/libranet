@@ -52,6 +52,10 @@ def resolve_endpoint(endpoint: str, source_address: str) -> str | None:
         return None
 
     if parts.scheme not in _SCHEMES or not parts.hostname:
+        _LOGGER.debug(
+            "Dropping the entry for %s from a node list: not an http or https URL naming a host",
+            endpoint,
+        )
         return None
 
     if parts.hostname != LOCALHOST:
@@ -60,6 +64,11 @@ def resolve_endpoint(endpoint: str, source_address: str) -> str | None:
     host = _url_host(source_address)
 
     if host is None:
+        _LOGGER.debug(
+            "Dropping the entry for %s from a node list: no address to put in place of %s",
+            endpoint,
+            LOCALHOST,
+        )
         return None
 
     return urlunsplit(parts._replace(netloc=host if port is None else f"{host}:{port}"))

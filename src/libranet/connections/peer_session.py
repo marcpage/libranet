@@ -9,6 +9,7 @@ connection.
 
 from __future__ import annotations
 from dataclasses import dataclass, field
+from threading import Lock
 from typing import Callable, Mapping, Sequence
 
 from libranet.cas.content_id import ContentId
@@ -50,7 +51,9 @@ class PeerSession:
         self._closed_locally = False
         # Content pushed to the peer on this connection, so a seek list that
         # still names it (it is not re-derived at once) does not get it again.
-        self.pushed: set[ContentId] = set()
+        # Pushes, hand-offs, and refreshes note it from threads of their own.
+        self._pushed: set[ContentId] = set()
+        self._pushed_lock = Lock()
 
     @property
     def endpoint(self) -> str:
@@ -71,6 +74,12 @@ class PeerSession:
     def closed(self) -> bool:
         """Whether the connection has closed, so no further request can be made."""
         return self._connection.closed
+
+    @property
+    def pushed(self) -> frozenset[ContentId]:
+        """The content pushed to the peer on this connection so far."""
+        with self._pushed_lock:
+            return frozenset(self._pushed)
 
     @property
     def closed_locally(self) -> bool:
@@ -94,6 +103,11 @@ class PeerSession:
             for request in requests
         ]
         return [self._verified(future.result()) for future in futures]
+
+    def note_pushed(self, content_id: ContentId) -> None:
+        """Note that ``content_id`` was pushed to the peer on this connection."""
+        with self._pushed_lock:
+            self._pushed.add(content_id)
 
     def close(self) -> None:
         """Close the connection because this node chose to."""

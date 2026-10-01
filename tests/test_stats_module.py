@@ -180,6 +180,25 @@ def test_a_local_miss_becomes_an_outstanding_request(
     assert seek_list(config)["data"] == [str(CONTENT_ID)]
 
 
+def test_a_miss_handled_once_its_content_is_held_is_not_sought(
+    module: StatsModule, config: LibranetConfig
+) -> None:
+    # Its data.stored was broadcast first: messages from two modules have no order.
+    CasStore.source_of_truth(config.storage).write(CONTENT_ID, CONTENT)
+    module.handle(stored())
+
+    module.handle(
+        broadcast(
+            EventType.DATA_NOT_FOUND,
+            {"algorithm": CONTENT_ID.algorithm, "hash": CONTENT_ID.hash},
+            ModuleName.WEBSERVER,
+        )
+    )
+    module.derive()
+
+    assert seek_list(config)["data"] == []
+
+
 def test_a_search_becomes_an_outstanding_request(
     module: StatsModule, config: LibranetConfig
 ) -> None:

@@ -25,7 +25,9 @@ Each address a peer was observed at (``nodes.received`` marking it
 ``observed``), whether by this module or by the web server, is looked up in
 reverse DNS on a worker thread, unless ``peers.reverse_dns`` is off, and any
 names found are published as more addresses of that peer
-(:mod:`~libranet.connections.reverse_dns`).
+(:mod:`~libranet.connections.reverse_dns`). A module never receives what it
+publishes itself, so the addresses this module observes are looked up as
+they are published.
 
 An endpoint that answers as a node other than the one expected did not reach
 the node expected there, and did reach the node that answered. That node is
@@ -117,7 +119,7 @@ from logging import Logger
 from queue import Empty, SimpleQueue
 from threading import Lock, Thread
 from time import time
-from typing import Callable, ClassVar, Final, Mapping, Sequence
+from typing import Any, Callable, ClassVar, Final, Mapping, Sequence
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError
@@ -353,7 +355,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         key stays on disk.
         """
         self._exchange = PeerExchange(
-            NodeIdentity.load(self._config), self._config, self.publish, self.logger
+            NodeIdentity.load(self._config), self._config, self._publish_learned, self.logger
         )
         self._seeds = self._load_seeds()
 
@@ -444,7 +446,25 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         self._maintain()
 
     def _on_nodes_received(self, message: Message) -> None:
-        """Look up names for the addresses peers were observed at."""
+        """Look up names for the addresses the web server observed peers at."""
+        self._look_up_observed(message)
+
+    def _publish_learned(
+        self, event: EventType, payload: Mapping[str, Any] | None = None
+    ) -> Message:
+        """Publish what talking to a peer taught, looking up names for the addresses observed.
+
+        It is :class:`PeerExchange`'s :data:`~libranet.webserver.publishing.Publish`.
+        """
+        message = self.publish(event, payload)
+
+        if event == EventType.NODES_RECEIVED:
+            self._look_up_observed(message)
+
+        return message
+
+    def _look_up_observed(self, message: Message) -> None:
+        """Look up names for each address a ``nodes.received`` marks observed."""
         if self._lookup is None:
             return
 

@@ -102,3 +102,20 @@ def test_from_fields_checks_what_create_checks() -> None:
 def test_fields_lacking_a_part_name_no_identifier(fields: dict[str, str]) -> None:
     with raises(KeyError):
         ContentId.from_fields(fields)
+
+
+def test_a_stored_name_is_the_hash_as_it_is_kept() -> None:
+    assert ContentId.from_stored_name("sha256", EMPTY_SHA256) == ContentId("sha256", EMPTY_SHA256)
+
+
+@mark.parametrize(
+    "name", [EMPTY_SHA256.upper(), EMPTY_SHA256[:-1], EMPTY_SHA256 + "0", "not-a-hash"]
+)
+def test_a_stored_name_must_be_a_lower_case_hash_of_the_right_length(name: str) -> None:
+    with raises(InvalidContentIdError):
+        ContentId.from_stored_name("sha256", name)
+
+
+def test_a_stored_name_under_an_unknown_algorithm_is_refused() -> None:
+    with raises(UnknownAlgorithmError):
+        ContentId.from_stored_name("md5", EMPTY_SHA256)
