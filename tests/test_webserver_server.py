@@ -362,7 +362,8 @@ def test_data_and_search_read_content_archives(
 
     assert (data.status, data.body) == (200, b"archived")
     assert (stored.status, stored.body) == (200, CONTENT)
-    assert loads(found.body) == {"results": [str(archived)]}
+    # The archived content matches best; what the store holds follows it.
+    assert loads(found.body)["results"][0] == str(archived)
     assert EventType.DATA_NOT_FOUND not in {message["event"] for message in _published(queues)}
 
 
@@ -380,13 +381,16 @@ def test_search_serves_a_fresh_cache_file(
     assert len(_published(queues)) == 1
 
 
-def test_search_with_no_matches_is_an_empty_list(connection: HTTPConnection) -> None:
-    other = "0" if CONTENT_ID.hash[0] != "0" else "f"
+def test_search_answers_with_what_is_held_nearest_even_sharing_no_bit(
+    connection: HTTPConnection,
+) -> None:
+    # The opposite top bit to the content's first digit, so they share none.
+    other = "0" if int(CONTENT_ID.hash[0], 16) >= 8 else "f"
 
     response, body = _get(connection, f"/data/search/{other}")
 
     assert response.status == 200
-    assert loads(body) == {"results": []}
+    assert loads(body) == {"results": [str(CONTENT_ID)]}
 
 
 def test_invalid_search_prefix_is_400(connection: HTTPConnection, queues: ModuleQueues) -> None:

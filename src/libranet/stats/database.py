@@ -244,8 +244,11 @@ class StatsDatabase:  # pylint: disable=too-many-public-methods
         lie on either side (``7`` and ``9`` are both one step from ``8``, but
         only ``9`` shares its top bit). Each side can supply the whole answer,
         so each is scanned ``limit`` deep and the two are ranked together down
-        to ``limit`` results. A hash outside both windows matches fewer leading
-        digits than every hash inside them, so none can be missed.
+        to ``limit`` results. A hash outside a full window shares no more
+        leading bits with ``prefix`` than any hash between it and ``prefix``,
+        so none matching better can be missed. One matching as well can be: of
+        hashes tied at the limit, this names those nearest ``prefix`` in order
+        of hash, which need not be those first in order of identifier.
         """
         if limit < 1:
             raise ValueError(f"limit must be at least 1, got {limit}")
