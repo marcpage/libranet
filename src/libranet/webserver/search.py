@@ -17,7 +17,7 @@ from libranet.atomic_file import write_atomically
 from libranet.cas.algorithms import DEFAULT_REGISTRY, AlgorithmRegistry
 from libranet.cas.content_id import HEX_DIGITS, ContentId
 from libranet.cas.errors import InvalidContentIdError
-from libranet.cas.prefix import nearest
+from libranet.cas.prefix import BITS_PER_HEX_DIGIT, nearest
 from libranet.config.models import StorageConfig
 from libranet.json_format import compact_json
 
@@ -77,23 +77,41 @@ class LocalSearch:
         """The best matches for a normalized ``prefix``, best first.
 
         Starts with the prefix subdirectories the query falls in and widens
-        one hex digit at a time until enough candidates are found. Every
-        hash outside a scan shares fewer leading bits than every hash inside
-        it, so the top results of the last scan are the best held matches.
+        one hex digit at a time until enough candidates are found. Past its
+        first digit, it widens a bit at a time: to the hashes whose first
+        digit shares three leading bits with the query's, then two, one, and
+        none (HttpApi §6). Every hash outside a scan shares fewer leading bits
+        than every hash inside it, so the top results of the last scan are
+        the best held matches, as :mod:`libranet.cas.prefix` ranks them.
         """
         candidates: set[ContentId] = set()
 
         for length in range(min(len(prefix), self._content.prefix_length), 0, -1):
-            candidates = {
-                content_id
-                for algorithm in self._registry.names()
-                for content_id in self._content.iter_prefix(algorithm, prefix[:length])
-            }
+            candidates = self._held(prefix[:length])
+
+            if len(candidates) >= self._max_results:
+                return nearest(prefix, candidates, self._max_results)
+
+        first = int(prefix[0], 16)
+
+        # Each round adds the first digits differing from the query's first in
+        # one more low bit, so sharing one fewer leading bit with it.
+        for differing_bits in range(1, BITS_PER_HEX_DIGIT + 1):
+            for difference in range(1 << (differing_bits - 1), 1 << differing_bits):
+                candidates |= self._held(f"{first ^ difference:x}")
 
             if len(candidates) >= self._max_results:
                 break
 
         return nearest(prefix, candidates, self._max_results)
+
+    def _held(self, prefix: str) -> set[ContentId]:
+        """Every identifier held, under any algorithm, whose hash starts with ``prefix``."""
+        return {
+            content_id
+            for algorithm in self._registry.names()
+            for content_id in self._content.iter_prefix(algorithm, prefix)
+        }
 
 
 class SearchCache:

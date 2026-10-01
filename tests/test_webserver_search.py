@@ -3,13 +3,16 @@
 from __future__ import annotations
 from os import utime
 from pathlib import Path
+from typing import Iterator
 
 from pytest import mark, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
+from libranet.cas.prefix import matching_bits
 from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
+from libranet.stats.database import StatsDatabase
 from libranet.webserver.search import LocalSearch, SearchCache, normalize_prefix
 
 
@@ -52,10 +55,80 @@ def test_search_widens_until_enough_candidates(tmp_path: Path) -> None:
     assert [content_id.hash[:4] for content_id in results] == ["a100", "a200"]
 
 
-def test_search_does_not_return_hashes_sharing_no_leading_digit(tmp_path: Path) -> None:
-    store = _store(tmp_path, "b000")
+def test_search_widens_past_the_first_digit_a_bit_at_a_time(tmp_path: Path) -> None:
+    # `a` is 1010 and `b` 1011: they differ in the first digit, but share three bits.
+    store = _store(tmp_path, "b000", "a123")
 
-    assert LocalSearch(store, max_results=5).search("a") == []
+    results = LocalSearch(store, max_results=5).search("a")
+
+    assert [content_id.hash[:4] for content_id in results] == ["a123", "b000"]
+
+
+def test_hashes_sharing_fewer_bits_are_ranked_after_those_sharing_more(tmp_path: Path) -> None:
+    # Against `a` (1010): `9` (1001) shares two bits, `e` (1110) one, `2` (0010) none.
+    store = _store(tmp_path, "2000", "e000", "9000", "b000", "a123")
+
+    results = LocalSearch(store, max_results=5).search("a")
+
+    assert [content_id.hash[:4] for content_id in results] == [
+        "a123",
+        "b000",
+        "9000",
+        "e000",
+        "2000",
+    ]
+
+
+class _AskedFor:
+    """A store that notes each prefix it is asked to scan."""
+
+    def __init__(self, store: CasStore) -> None:
+        self.store = store
+        self.asked: list[str] = []
+
+    @property
+    def prefix_length(self) -> int:
+        return self.store.prefix_length
+
+    def iter_prefix(self, algorithm: str, hash_prefix: str) -> Iterator[ContentId]:
+        self.asked.append(hash_prefix)
+        return self.store.iter_prefix(algorithm, hash_prefix)
+
+
+def test_widening_stops_once_there_are_enough_candidates(tmp_path: Path) -> None:
+    source = _AskedFor(_store(tmp_path, "a100", "b000", "e000", "2000"))
+
+    results = LocalSearch(source, max_results=2).search("a")
+
+    assert [content_id.hash[:4] for content_id in results] == ["a100", "b000"]
+    # `b` shares three bits with `a`, so no digit sharing fewer is scanned.
+    assert source.asked == ["a", "b"]
+
+
+@mark.parametrize("prefix", ["8", "80", "a", "7f", "0", "fff", "c3"])
+def test_search_agrees_with_what_stats_finds_among_the_same_hashes(
+    tmp_path: Path, prefix: str
+) -> None:
+    held = ["0000", "17ab", "7fff", "9000", "9f00", "a1b2", "b000", "e3e3", "fe00"]
+    store = _store(tmp_path, *held)
+
+    with StatsDatabase(tmp_path / "stats.sqlite3") as database:
+        for hashed in held:
+            database.record_acquired(ContentId.create("sha256", _hash(hashed)), 1)
+
+        known = database.content_ids_near(prefix, 3)
+
+    found = LocalSearch(store, max_results=3).search(prefix)
+
+    # Each finds the hashes sharing the most leading bits (HttpApi §6). Where
+    # several share as many at the limit, each may name a different one.
+    assert [matching_bits(prefix, content_id.hash) for content_id in found] == [
+        matching_bits(prefix, content_id.hash) for content_id in known
+    ]
+
+
+def test_a_search_of_an_empty_store_finds_nothing(tmp_path: Path) -> None:
+    assert LocalSearch(_store(tmp_path), max_results=5).search("a") == []
 
 
 def test_search_is_limited_to_max_results(tmp_path: Path) -> None:
