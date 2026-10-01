@@ -36,10 +36,10 @@ from stat import S_ISREG
 from typing import Final, Iterator
 
 from libranet.cas.algorithms import DEFAULT_REGISTRY
-from libranet.cas.content_id import LOWER_HEX_DIGITS, ContentId
+from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.prefix import matching_bits
-from libranet.cas.store import DATA_SEGMENT, CasStore, subdirectories
+from libranet.cas.store import DATA_SEGMENT, CasStore, StrayPrefixDirectories, subdirectories
 from libranet.config.models import MIB
 
 _LOGGER = getLogger(__name__)
@@ -113,21 +113,22 @@ def _share(part: float, whole: float) -> float:
 def _prefix_directories(store: CasStore) -> dict[str, list[tuple[str, Path]]]:
     """The store's prefix directories by name, each with the algorithm it is under.
 
-    Only directories of a registered algorithm, with a name that could be
-    the start of a hash, are included. Any other directory is logged.
+    Only directories of a registered algorithm, named as the store names its
+    prefix directories, are included. Any other directory is logged, once for
+    them all.
     """
     found: dict[str, list[tuple[str, Path]]] = {}
+    strays = StrayPrefixDirectories()
 
     for algorithm in DEFAULT_REGISTRY.names():
         for directory in subdirectories(store.root / DATA_SEGMENT / algorithm):
-            name = directory.name
-
-            if len(name) == store.prefix_length and LOWER_HEX_DIGITS.issuperset(name):
-                found.setdefault(name, []).append((algorithm, directory))
+            if store.is_prefix_directory(directory):
+                found.setdefault(directory.name, []).append((algorithm, directory))
 
             else:
-                _LOGGER.warning("Skipping %s, not a prefix directory of the store", directory)
+                strays.add(directory)
 
+    strays.log(_LOGGER, store.root / DATA_SEGMENT)
     return found
 
 

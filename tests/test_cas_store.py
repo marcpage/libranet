@@ -206,20 +206,28 @@ def test_iter_prefix_logs_a_directory_named_as_content_as_a_warning(
     )
 
 
-def test_iter_prefix_logs_a_prefix_directory_of_another_length_as_a_warning(
+def test_iter_prefix_logs_prefix_directories_of_another_length_once_as_a_warning(
     tmp_path: Path, caplog: LogCaptureFixture
 ) -> None:
-    # Content filed under another hash_prefix_length, which nothing migrates.
-    content_id = ContentId.for_data(b"held", "sha256")
-    make_store(tmp_path, 3).write(content_id, b"held")
-    store = make_store(tmp_path, 2)
+    # Content filed under another hash_prefix_length, which nothing migrates,
+    # leaves a directory for every prefix it used.
+    held = [ContentId.for_data(bytes([number]), "sha256") for number in range(20)]
+    old = make_store(tmp_path, 3)
 
-    assert list(store.iter_prefix("sha256", content_id.hash[:2])) == []
+    for content_id in held:
+        old.write(content_id, b"held")
+
+    store = make_store(tmp_path, 2)
+    algorithm_dir = store.root / "data" / "sha256"
+    first = sorted(algorithm_dir.iterdir())[0]
+
+    assert list(store.iter_prefix("sha256", "")) == []
     (record,) = caplog.records
     assert record.levelno == WARNING
     assert record.getMessage() == (
-        f"Skipping {store.path_for(content_id).parent.parent / content_id.hash[:3]}, "
-        "not a prefix directory of this store"
+        f"Skipping the directories in {algorithm_dir} that are not prefix directories of "
+        f"the store, {len(held)} in all, such as {first.name}; content filed under another "
+        "storage.hash_prefix_length is neither served, counted, nor evicted"
     )
 
 
