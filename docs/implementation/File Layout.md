@@ -220,8 +220,8 @@ directories are left behind.
   backup of its own, kept somewhere other than the node's backups.
 - **The `/config` credential can be reset** by deleting the file. It is read
   on every request, so the next `/config` request with Basic credentials
-  captures new ones, without a restart. Phase 2 Step 32 (#75) documents this
-  for operators.
+  captures new ones, without a restart. The [Operator
+  Guide](../operations/Operator%20Guide.md) §2 says how, for operators.
 
 Each file is created once and never replaced: it is written under a
 temporary name and linked into place, so two processes racing to create it
@@ -631,10 +631,8 @@ with its location printed, after a failure.
 
 ## 12. Planned Changes
 
-Planned steps that will change this layout, in Phases 2 and 3:
+Planned steps that will change this layout:
 
 - **Step 30 (#71, Phase 3)** adds a private list of blocked content ids to
   the stats database, and a list derived from it for the web server and
   validator, presumably beside the others in `lists/`.
-- **Step 32 (#75)** documents resetting the `/config` credential, and may
-  add a switch to do it.
