@@ -145,6 +145,37 @@ def test_content_archives_are_logged(config_file: Path, tmp_path: Path) -> None:
     assert f"Serving content archive {archive}" in log
 
 
+def test_an_endpoint_no_node_dials_is_logged_as_a_warning(
+    config_file: Path, tmp_path: Path
+) -> None:
+    text = config_file.read_text(encoding="utf-8")
+    config_file.write_text(
+        text.replace(
+            "network:\n",
+            "network:\n  external_scheme: https\n  external_address: node.example\n",
+        ),
+        encoding="utf-8",
+    )
+    stop = Event()
+    stop.set()
+
+    assert main(["--config", str(config_file)], stop=stop) == EXIT_OK
+    assert logged(
+        tmp_path,
+        "WARNING",
+        "No node dials https://node.example:8080, the endpoint advertised, "
+        "so peers reach this node at http://localhost:8080 instead",
+    )
+
+
+def test_an_http_endpoint_is_not_warned_about(config_file: Path, tmp_path: Path) -> None:
+    stop = Event()
+    stop.set()
+
+    assert main(["--config", str(config_file)], stop=stop) == EXIT_OK
+    assert not logged(tmp_path, "WARNING", "No node dials")
+
+
 def test_a_content_archive_that_cannot_be_opened_is_an_error(
     config_file: Path, tmp_path: Path, capsys: CaptureFixture[str]
 ) -> None:

@@ -51,27 +51,45 @@ def test_publish_public_key_stores_it_under_the_node_id(tmp_path: Path) -> None:
     assert store.read(identity.node_id) == identity.public_key
 
 
-def test_load_is_stable_across_runs(tmp_path: Path) -> None:
+def test_load_or_create_is_stable_across_runs(tmp_path: Path) -> None:
     config = make_config(tmp_path)
 
-    first = NodeIdentity.load(config)
-    second = NodeIdentity.load(config)
+    first = NodeIdentity.load_or_create(config)
+    second = NodeIdentity.load_or_create(config)
 
     assert first.node_id == second.node_id
     assert (tmp_path / "data" / "keys" / "node_private_key.pem").is_file()
 
 
-def test_load_publishes_the_public_key(tmp_path: Path) -> None:
+def test_load_or_create_publishes_the_public_key(tmp_path: Path) -> None:
     config = make_config(tmp_path)
 
-    identity = NodeIdentity.load(config)
+    identity = NodeIdentity.load_or_create(config)
 
     assert CasStore.source_of_truth(config.storage).read(identity.node_id) == identity.public_key
 
 
-def test_load_honors_the_configured_key_dir(tmp_path: Path) -> None:
+def test_load_or_create_honors_the_configured_key_dir(tmp_path: Path) -> None:
     config = make_config(tmp_path, key_dir=tmp_path / "elsewhere")
 
-    NodeIdentity.load(config)
+    NodeIdentity.load_or_create(config)
 
     assert (tmp_path / "elsewhere" / "node_private_key.pem").is_file()
+
+
+def test_load_reads_the_identity_the_node_was_started_with(tmp_path: Path) -> None:
+    config = make_config(tmp_path, key_dir=tmp_path / "elsewhere")
+    started = NodeIdentity.load_or_create(config)
+
+    assert NodeIdentity.load(config).node_id == started.node_id
+
+
+def test_load_creates_nothing_when_the_node_has_no_key(tmp_path: Path) -> None:
+    config = make_config(tmp_path)
+
+    # A module restarted after the key file was lost must not make another.
+    with raises(FileNotFoundError):
+        NodeIdentity.load(config)
+
+    assert not config.private_key_path.exists()
+    assert not (tmp_path / "data").exists()

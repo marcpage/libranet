@@ -20,6 +20,8 @@ from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.supervision.registry import default_module_specs
 
+from tests.helpers import with_node_key
+
 RETRY_DELAY = 60.0
 TIMEOUT = 300.0
 CANDIDATES_TIMEOUT = 30.0
@@ -32,12 +34,14 @@ CONTENT = [ContentId.for_data(f"content {index}".encode(), "sha256") for index i
 
 @fixture
 def config(tmp_path: Path) -> LibranetConfig:
-    return LibranetConfig(
-        storage=StorageConfig(
-            data_dir=tmp_path / "data", cache_dir=tmp_path / "cache", min_free_bytes=0
-        ),
-        identity=IdentityConfig(key_dir=tmp_path / "keys"),
-        peers=PeerConfig(retry_delay_seconds=RETRY_DELAY),
+    return with_node_key(
+        LibranetConfig(
+            storage=StorageConfig(
+                data_dir=tmp_path / "data", cache_dir=tmp_path / "cache", min_free_bytes=0
+            ),
+            identity=IdentityConfig(key_dir=tmp_path / "keys"),
+            peers=PeerConfig(retry_delay_seconds=RETRY_DELAY),
+        )
     )
 
 

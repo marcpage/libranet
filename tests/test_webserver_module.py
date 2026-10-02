@@ -33,6 +33,8 @@ from libranet.webserver.backup_state import (
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.module import WebServerModule, webserver_module_factory
 
+from tests.helpers import with_node_key
+
 
 def _free_port() -> int:
     with socket() as probe:
@@ -44,10 +46,14 @@ APP_BUNDLE_ID = ContentId.for_data(b"an application's directory bundle", "sha256
 
 
 def _config(tmp_path: Path, port: int, allow_unsigned_api_reads: bool = True) -> LibranetConfig:
-    return LibranetConfig(
-        network=NetworkConfig(listen_address="127.0.0.1", listen_port=port, retry_after_seconds=11),
-        storage=StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache"),
-        identity=IdentityConfig(allow_unsigned_api_reads=allow_unsigned_api_reads),
+    return with_node_key(
+        LibranetConfig(
+            network=NetworkConfig(
+                listen_address="127.0.0.1", listen_port=port, retry_after_seconds=11
+            ),
+            storage=StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache"),
+            identity=IdentityConfig(allow_unsigned_api_reads=allow_unsigned_api_reads),
+        )
     )
 
 
@@ -410,7 +416,7 @@ def test_module_stops_on_the_stop_signal(tmp_path: Path) -> None:
 
 def test_a_registry_that_cannot_be_read_does_not_stop_the_module(tmp_path: Path) -> None:
     config = _config(tmp_path, _free_port())
-    config.storage.applications_path.parent.mkdir(parents=True)
+    config.storage.applications_path.parent.mkdir(parents=True, exist_ok=True)
     config.storage.applications_path.write_bytes(b"{not json")
     module = WebServerModule(ModuleName.WEBSERVER, _queues(), config, poll_interval_seconds=0.01)
     stop = Event()

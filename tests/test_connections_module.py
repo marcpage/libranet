@@ -52,6 +52,8 @@ from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.router import Router
 from libranet.webserver.server import LibranetHTTPServer, RequestHandler, build_router
 
+from tests.helpers import with_node_key
+
 TIMEOUT = 5.0
 RETRY_DELAY = 30.0
 SEEK_REFRESH = 10.0
@@ -221,18 +223,20 @@ def write_seeds(path: Path, seeds: Mapping[str, str | None]) -> Path:
 @fixture
 def config(tmp_path: Path) -> LibranetConfig:
     root = tmp_path / "client"
-    return LibranetConfig(
-        storage=StorageConfig(data_dir=root / "data", cache_dir=root / "cache"),
-        identity=IdentityConfig(key_dir=root / "keys"),
-        peers=PeerConfig(
-            connect_timeout_seconds=TIMEOUT,
-            request_timeout_seconds=TIMEOUT,
-            retry_delay_seconds=RETRY_DELAY,
-            seek_refresh_seconds=SEEK_REFRESH,
-            # Step 27's search tests count on two passes, whatever the default.
-            search_passes=2,
-            seed_file=write_seeds(tmp_path / "seeds.json", {}),
-        ),
+    return with_node_key(
+        LibranetConfig(
+            storage=StorageConfig(data_dir=root / "data", cache_dir=root / "cache"),
+            identity=IdentityConfig(key_dir=root / "keys"),
+            peers=PeerConfig(
+                connect_timeout_seconds=TIMEOUT,
+                request_timeout_seconds=TIMEOUT,
+                retry_delay_seconds=RETRY_DELAY,
+                seek_refresh_seconds=SEEK_REFRESH,
+                # Step 27's search tests count on two passes, whatever the default.
+                search_passes=2,
+                seed_file=write_seeds(tmp_path / "seeds.json", {}),
+            ),
+        )
     )
 
 

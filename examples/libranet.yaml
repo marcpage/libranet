@@ -19,6 +19,8 @@ network:
   # `http://localhost:8080`, meaning "reach me at the address this
   # connection came from". Set external_port when a gateway forwards a
   # different port; set external_address when the node has a stable name.
+  # No node dials "https" yet, so a node advertising it is reached at
+  # http://localhost:{listen_port} instead, which it logs as it starts.
   external_scheme: "http"
   external_address: null
   external_port: null
@@ -60,7 +62,7 @@ peers:
   retry_delay_seconds: 60.0
   # Provisional: how often each connected peer's /data/seek list is fetched
   # again so content it still wants can be pushed (Handshake Protocol §3.3).
-  # Keep it under the peers' idle timeout (60 seconds for this
+  # It must be under the peers' idle timeout (60 seconds for this
   # implementation) so the connection stays open.
   seek_refresh_seconds: 30.0
   # How many passes a search of the connected peers for content makes before
@@ -100,7 +102,7 @@ storage:
 
   # A single object may not exceed 1 MiB as stored and as sent; compressed
   # content may be larger once decompressed, since the protocol sets no
-  # limit on that (High-Level Design §4.3).
+  # limit on that (High-Level Design §4.3). It may be lowered, never raised.
   max_object_bytes: 1048576
   # Provisional: how large a node or seek list posted by a peer may be once
   # decompressed. Its 1 MiB limit applies to the bytes sent, so a
@@ -139,7 +141,8 @@ identity:
   key_dir: null
   hash_algorithm: "sha256"
   # Provisional: requests trusted while an unknown sender's public key is
-  # still being fetched (Step 6).
+  # still being fetched (Step 6). At least 2, since first contact needs two
+  # requests to exchange keys (Handshake Protocol §3.2).
   provisional_trust_attempts: 3
   # Provisional: the longest a signed message may take to arrive (seconds
   # since its signature was created), and the clock difference tolerated
@@ -160,7 +163,7 @@ stats:
   derive_interval_seconds: 60.0
   # Neither list may reach 1 MiB as sent (HTTP API §10.6, §10.7.1), and this
   # node sends them uncompressed; entries are added best-first until the
-  # next one would not fit.
+  # next one would not fit. It may be lowered, never raised.
   max_list_bytes: 1048576
   # Provisional: how long content this node asked for and never received
   # stays in the /data/seek list it publishes.

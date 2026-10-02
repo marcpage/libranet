@@ -54,6 +54,8 @@ from libranet.webserver.config_requests import (
     RestoreRequest,
 )
 
+from tests.helpers import with_node_key
+
 INTERVAL = 100.0
 START = 1_789_000_000.0
 # 2026-09-01T08:30:00Z
@@ -62,11 +64,13 @@ WHOLE_SECOND_NS = 1_788_251_400 * 1_000_000_000
 
 @fixture
 def config(tmp_path: Path) -> LibranetConfig:
-    return LibranetConfig(
-        storage=StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache"),
-        identity=IdentityConfig(key_dir=tmp_path / "keys"),
-        logging=LoggingConfig(directory=tmp_path / "logs"),
-        backup=BackupConfig(interval_seconds=INTERVAL),
+    return with_node_key(
+        LibranetConfig(
+            storage=StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache"),
+            identity=IdentityConfig(key_dir=tmp_path / "keys"),
+            logging=LoggingConfig(directory=tmp_path / "logs"),
+            backup=BackupConfig(interval_seconds=INTERVAL),
+        )
     )
 
 

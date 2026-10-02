@@ -56,6 +56,8 @@ from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.http_types import JSON_CONTENT_TYPE, Request, RequestBody, Response
 from libranet.webserver.server import REQUEST_PATH_HEADER, LibranetHTTPServer, build_router
 
+from tests.helpers import with_node_key
+
 CONTENT = b"hello libranet"
 CONTENT_ID = ContentId.for_data(CONTENT, "sha256")
 MISSING_ID = ContentId.for_data(b"not stored", "sha256")
@@ -1050,7 +1052,9 @@ def test_posted_lists_reach_the_served_files_through_the_stats_module(
     _get(connection, f"/data/{MISSING_ID}")
 
     stats = StatsModule(
-        ModuleName.STATS, ModuleQueues(Queue(), Queue()), LibranetConfig(storage=storage)
+        ModuleName.STATS,
+        ModuleQueues(Queue(), Queue()),
+        with_node_key(LibranetConfig(storage=storage)),
     )
     stats.on_start()
 

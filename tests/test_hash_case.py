@@ -67,6 +67,8 @@ from libranet.webserver.router import Router
 from libranet.webserver.search import LocalSearch, SearchCache
 from libranet.webserver.search_handler import SEARCH_PATTERN, SearchHandler
 
+from tests.helpers import with_node_key
+
 NOW = 1_757_080_000.0
 MAX_BYTES = 4096
 RETRY_AFTER_SECONDS = 9
@@ -165,11 +167,13 @@ def config_router(queues: ModuleQueues, registry: ApplicationRegistry) -> Router
 
 @fixture
 def stats(tmp_path: Path, queues: ModuleQueues) -> Iterator[StatsModule]:
-    config = LibranetConfig(
-        network=NetworkConfig(listen_port=9099),
-        storage=StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache"),
-        identity=IdentityConfig(key_dir=tmp_path / "keys"),
-        stats=StatsConfig(derive_interval_seconds=30.0),
+    config = with_node_key(
+        LibranetConfig(
+            network=NetworkConfig(listen_port=9099),
+            storage=StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache"),
+            identity=IdentityConfig(key_dir=tmp_path / "keys"),
+            stats=StatsConfig(derive_interval_seconds=30.0),
+        )
     )
     module = StatsModule(ModuleName.STATS, queues, config)
     module.on_start()

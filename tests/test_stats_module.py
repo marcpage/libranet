@@ -26,6 +26,8 @@ from libranet.modules import ModuleName
 from libranet.stats.module import StatsModule, stats_module_factory
 from libranet.stats.schema import SeekKind
 
+from tests.helpers import with_node_key
+
 CONTENT = b"content worth counting"
 CONTENT_SIZE = len(CONTENT)
 CONTENT_ID = ContentId.for_data(CONTENT, "sha256")
@@ -38,11 +40,13 @@ SELF_ENDPOINT = "http://localhost:9099"
 
 @fixture
 def config(tmp_path: Path) -> LibranetConfig:
-    return LibranetConfig(
-        network=NetworkConfig(listen_port=9099),
-        storage=StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache"),
-        identity=IdentityConfig(key_dir=tmp_path / "keys"),
-        stats=StatsConfig(derive_interval_seconds=30.0),
+    return with_node_key(
+        LibranetConfig(
+            network=NetworkConfig(listen_port=9099),
+            storage=StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache"),
+            identity=IdentityConfig(key_dir=tmp_path / "keys"),
+            stats=StatsConfig(derive_interval_seconds=30.0),
+        )
     )
 
 
@@ -113,6 +117,22 @@ def candidates(config: LibranetConfig) -> dict[str, list[str]]:
 def seek_list(config: LibranetConfig) -> dict[str, list[str]]:
     seek: dict[str, list[str]] = loads(config.storage.seek_list_path.read_bytes())
     return seek
+
+
+def test_a_module_started_without_the_node_key_fails_rather_than_making_one(
+    tmp_path: Path, queues: ModuleQueues
+) -> None:
+    # The supervisor makes the key as the node starts; a module only loads it.
+    config = LibranetConfig(
+        storage=StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache"),
+        identity=IdentityConfig(key_dir=tmp_path / "keys"),
+    )
+    module = StatsModule(ModuleName.STATS, queues, config)
+
+    with raises(FileNotFoundError):
+        module.on_start()
+
+    assert not config.private_key_path.exists()
 
 
 @mark.usefixtures("module")

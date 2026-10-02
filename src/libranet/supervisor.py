@@ -24,6 +24,7 @@ from libranet.cas.layered import LayeredSource
 from libranet.config.loader import ConfigError, load_config
 from libranet.config.models import LibranetConfig
 from libranet.config.seeds import SeedError, load_seed_peers
+from libranet.connections.endpoints import PeerAddress
 from libranet.identity.errors import IdentityError
 from libranet.identity.node_identity import NodeIdentity
 from libranet.logging_setup import configure_logging
@@ -80,7 +81,7 @@ def main(argv: Sequence[str] | None = None, *, stop: StopSignal | None = None) -
     # Created here, before any module starts, so the key is generated once
     # and the public key is already servable from CAS.
     try:
-        identity = NodeIdentity.load(config)
+        identity = NodeIdentity.load_or_create(config)
 
     except (IdentityError, ValueError, OSError) as error:
         logger.error("Could not load the node identity: %s", error)
@@ -102,6 +103,7 @@ def main(argv: Sequence[str] | None = None, *, stop: StopSignal | None = None) -
     logger.info("Node id: %s", identity.node_id)
     logger.info("Listening on %s:%s", config.network.listen_address, config.network.listen_port)
     logger.info("Advertising endpoint %s", config.network.advertised_endpoint())
+    _report_undialable_endpoint(config, logger=logger)
 
     for archive in archives:
         logger.info("Serving content archive %s", archive)
@@ -139,6 +141,24 @@ def _stop_on_signals(stop: Event) -> Generator[None, None, None]:
         for number, handler in previous.items():
             if handler is not None:
                 signal(number, handler)
+
+
+def _report_undialable_endpoint(config: LibranetConfig, *, logger: Logger) -> None:
+    """Warn if no node running this code could dial the endpoint this node advertises.
+
+    An ``https`` endpoint is one, as HTTPS is deferred and only ``http`` ones
+    are dialed. The node is still reached at the endpoint it also publishes
+    for peers on its own network (Phase 2 Step 23).
+    """
+    network = config.network
+    advertised = network.advertised_endpoint()
+
+    if PeerAddress.of(advertised) is None:
+        logger.warning(
+            "No node dials %s, the endpoint advertised, so peers reach this node at %s instead",
+            advertised,
+            network.own_endpoints()[-1],
+        )
 
 
 def _report_seed_peers(config: LibranetConfig, *, logger: Logger) -> None:

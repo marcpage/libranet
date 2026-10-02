@@ -6,9 +6,11 @@ from logging import INFO
 from pathlib import Path
 from stat import S_IMODE
 from sys import platform
+from typing import Callable
 from zlib import compress
 
 from cryptography.hazmat.primitives.asymmetric.ec import SECP256R1, generate_private_key as ec_key
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import (
     BestAvailableEncryption,
     Encoding,
@@ -28,6 +30,7 @@ from libranet.identity.keys import (
     generate_private_key,
     load_or_create_backup_secret,
     load_or_create_private_key,
+    load_private_key,
     published_public_key,
     write_private_file,
 )
@@ -158,6 +161,27 @@ def test_private_key_is_created_once_and_reloaded(tmp_path: Path) -> None:
     assert encode_public_key(loaded.public_key()) == encode_public_key(created.public_key())
 
 
+def test_loading_a_private_key_reads_the_one_created(tmp_path: Path) -> None:
+    path = tmp_path / "keys" / "node.pem"
+    created = load_or_create_private_key(path)
+
+    loaded = load_private_key(path)
+
+    assert encode_public_key(loaded.public_key()) == encode_public_key(created.public_key())
+
+
+def test_loading_a_private_key_that_is_not_there_creates_none(tmp_path: Path) -> None:
+    path = tmp_path / "keys" / "node.pem"
+
+    with raises(FileNotFoundError):
+        load_private_key(path)
+
+    assert not path.parent.exists()
+
+
+LOADERS = mark.parametrize("load", [load_private_key, load_or_create_private_key])
+
+
 @owner_only_modes
 def test_private_key_file_is_owner_only(tmp_path: Path) -> None:
     path = tmp_path / "keys" / "node.pem"
@@ -168,15 +192,21 @@ def test_private_key_file_is_owner_only(tmp_path: Path) -> None:
     assert S_IMODE(path.parent.stat().st_mode) & 0o077 == 0
 
 
-def test_unreadable_private_key_is_a_key_file_error(tmp_path: Path) -> None:
+@LOADERS
+def test_unreadable_private_key_is_a_key_file_error(
+    tmp_path: Path, load: Callable[[Path], Ed25519PrivateKey]
+) -> None:
     path = tmp_path / "node.pem"
     path.write_bytes(b"garbage")
 
     with raises(KeyFileError, match="Unreadable"):
-        load_or_create_private_key(path)
+        load(path)
 
 
-def test_encrypted_private_key_is_a_key_file_error(tmp_path: Path) -> None:
+@LOADERS
+def test_encrypted_private_key_is_a_key_file_error(
+    tmp_path: Path, load: Callable[[Path], Ed25519PrivateKey]
+) -> None:
     path = tmp_path / "node.pem"
     path.write_bytes(
         generate_private_key().private_bytes(
@@ -185,17 +215,20 @@ def test_encrypted_private_key_is_a_key_file_error(tmp_path: Path) -> None:
     )
 
     with raises(KeyFileError, match="Unreadable"):
-        load_or_create_private_key(path)
+        load(path)
 
 
-def test_private_key_of_another_type_is_a_key_file_error(tmp_path: Path) -> None:
+@LOADERS
+def test_private_key_of_another_type_is_a_key_file_error(
+    tmp_path: Path, load: Callable[[Path], Ed25519PrivateKey]
+) -> None:
     path = tmp_path / "node.pem"
     path.write_bytes(
         ec_key(SECP256R1()).private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption())
     )
 
     with raises(KeyFileError, match="holds a"):
-        load_or_create_private_key(path)
+        load(path)
 
 
 def test_backup_secret_is_created_once_and_reloaded(tmp_path: Path) -> None:

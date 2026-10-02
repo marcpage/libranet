@@ -186,7 +186,7 @@ def test_invalid_limits_are_rejected(store: CasStore) -> None:
 def test_an_authenticator_of_a_configuration_uses_its_policy(tmp_path: Path) -> None:
     config = LibranetConfig(
         storage=StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache"),
-        identity=IdentityConfig(provisional_trust_attempts=0),
+        identity=IdentityConfig(provisional_trust_attempts=2),
     )
     known, unknown = new_identity(), new_identity()
     known.publish_public_key(CasStore.source_of_truth(config.storage))
@@ -194,6 +194,8 @@ def test_an_authenticator_of_a_configuration_uses_its_policy(tmp_path: Path) -> 
 
     for identity, status in (
         (known, AuthenticationStatus.VERIFIED),
+        (unknown, AuthenticationStatus.PROVISIONAL),
+        (unknown, AuthenticationStatus.PROVISIONAL),
         (unknown, AuthenticationStatus.REJECTED),
     ):
         headers = MessageSigner(identity).sign_request("GET", PATH, {})
