@@ -21,9 +21,10 @@ import sys
 from libranet import cli
 from libranet.cas.errors import ArchiveError
 from libranet.cas.layered import LayeredSource
-from libranet.config.loader import ConfigError, load_config
+from libranet.config.errors import ConfigError, SeedError
+from libranet.config.loader import load_config
 from libranet.config.models import LibranetConfig
-from libranet.config.seeds import SeedError, load_seed_peers
+from libranet.config.seeds import load_seed_peers
 from libranet.connections.endpoints import PeerAddress
 from libranet.identity.errors import IdentityError
 from libranet.identity.node_identity import NodeIdentity

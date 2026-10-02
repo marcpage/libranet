@@ -26,10 +26,11 @@ from libranet.problems import (
     SIGNATURE_REQUIRED,
 )
 from libranet.protocol.lists import NODES_PATH, SEEK_PATH
-from libranet.supervision.stubs import StubModule
 from libranet.webserver.http_types import Request, RequestBody, Response
 from libranet.webserver.list_handlers import ListFileHandler, NodeListHandler, SeekListHandler
 from libranet.webserver.router import Router
+
+from tests.stubs import StubModule
 
 MAX_BYTES = 512
 MAX_DECOMPRESSED_BYTES = 2048

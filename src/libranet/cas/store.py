@@ -1,7 +1,7 @@
 """Filesystem layout and read/write/exists operations for one CAS directory.
 
 The same layout is used for the shared source-of-truth directory and for
-each per-connection write directory. Paths mirror the URL structure, with
+each sending node's write directory. Paths mirror the URL structure, with
 the hash split under a fixed-length prefix subdirectory to bound directory
 size::
 
@@ -15,7 +15,6 @@ the rest of ``{root}`` free for resolved application paths (Step 14).
 from __future__ import annotations
 from dataclasses import dataclass
 from logging import Logger, getLogger
-from os import replace
 from pathlib import Path
 from stat import S_ISREG
 from typing import Final, Iterator
@@ -47,18 +46,14 @@ class CasStore:
         return cls(storage.source_of_truth_dir, storage.hash_prefix_length)
 
     @classmethod
-    def for_connection(cls, storage: StorageConfig, connection_id: str) -> CasStore:
-        """The unverified write store for one connection."""
-        return cls(storage.connection_dir(connection_id), storage.hash_prefix_length)
-
-    @classmethod
     def for_node(cls, storage: StorageConfig, node_id: ContentId) -> CasStore:
         """The unverified write store for content received from ``node_id``.
 
         Every connection with the same peer shares it, so a node's uploads are
         kept apart from other nodes' until they are verified (HttpApi §7.2).
         """
-        return cls.for_connection(storage, f"{node_id.algorithm}-{node_id.hash}")
+        directory = storage.incoming_dir / f"{node_id.algorithm}-{node_id.hash}"
+        return cls(directory, storage.hash_prefix_length)
 
     @property
     def root(self) -> Path:
@@ -94,8 +89,8 @@ class CasStore:
     def write(self, content_id: ContentId, data: bytes) -> Path:
         """Store ``data`` under ``content_id`` and return its path.
 
-        The bytes are not checked against the hash — per-connection stores
-        hold unverified uploads, and verification is the validator's job.
+        The bytes are not checked against the hash — each sending node's store
+        holds unverified uploads, and verification is the validator's job.
         The write is atomic: readers see either no file or the whole file.
         """
         return write_atomically(self.path_for(content_id), data)
@@ -110,30 +105,6 @@ class CasStore:
             return False
 
         return True
-
-    def move_to(self, content_id: ContentId, destination: CasStore) -> Path:
-        """Move ``content_id`` from this store into ``destination``.
-
-        Used to promote verified uploads into the source of truth. Both
-        stores are expected to be on the same filesystem, making this an
-        atomic rename.
-
-        Returns:
-            Its path in ``destination``.
-
-        Raises:
-            ContentNotFoundError: this store does not hold it.
-        """
-        target = destination.path_for(content_id)
-        target.parent.mkdir(parents=True, exist_ok=True)
-
-        try:
-            replace(self.path_for(content_id), target)
-
-        except FileNotFoundError:
-            raise ContentNotFoundError(f"Content not found: {content_id}") from None
-
-        return target
 
     def is_prefix_directory(self, directory: Path) -> bool:
         """Whether ``directory`` is a directory named as this store names its prefix directories.

@@ -82,11 +82,11 @@ from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import MessageSigner, MessageVerifier
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
+from libranet.protocol.errors import InvalidListError
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE, OCTET_STREAM
 from libranet.protocol.lists import (
     NODES_PATH,
     SEEK_PATH,
-    InvalidListError,
     decode_list,
     parse_node_list,
     parse_seek_list,

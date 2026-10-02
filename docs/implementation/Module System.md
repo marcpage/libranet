@@ -90,7 +90,6 @@ The modules communicate in three ways:
 | `src/libranet/supervision/children.py` | What runs first inside each child: signal handling, logging, and crash reporting |
 | `src/libranet/supervision/specs.py` | `ModuleSpec`, and the `ModuleFactory` and `DispatcherEntry` signatures |
 | `src/libranet/supervision/registry.py` | Which factory builds each module |
-| `src/libranet/supervision/stubs.py` | Placeholder modules, and ones that fail on purpose, for tests |
 | `src/libranet/messaging/events.py` | `EventType`: every event on the bus, each noting its publishers and subscribers |
 | `src/libranet/messaging/envelope.py` | Building and validating message dicts |
 | `src/libranet/messaging/queues.py` | `ModuleQueues`, a module's inbox and outbox, and the `MessageQueue` protocol |
@@ -525,8 +524,9 @@ To add a module to the node:
    should start.
 2. Write the class and its factory in `src/libranet/{area}/module.py`.
 3. Map the name to the factory in `_FACTORIES` in
-   `supervision/registry.py`. A name with no factory there runs as a
-   `StubModule`, which logs a greeting and does nothing else.
+   `supervision/registry.py`. Every spawned module but the dispatcher needs
+   one there: without it, `default_module_specs` raises `KeyError`, and the
+   node does not start.
 
 To add an event:
 
@@ -741,13 +741,13 @@ A content id is an `algorithm` and a lower-case hex `hash`, or, in
 | --- | --- | --- |
 | `data.requested` | `algorithm`, `hash`, `external` | `GET /data` asked for this content, held or not; `external` is false for a request from this machine |
 | `data.not_found` | `algorithm`, `hash` | Content was needed that this node does not hold |
-| `data.search_requested` | `prefix`, `cache_path` | A search was answered, and its result cached at `cache_path` |
+| `data.search_requested` | `prefix` | A search was answered, and its result cached in `search/` |
 | `data.put_completed` | `algorithm`, `hash`, `node_id` | Unchecked bytes wait in `node_id`'s store in `incoming/` |
 | `data.stored` | `algorithm`, `hash`, `node_id`, `size` | New content is in `cas/data`; `node_id` is where it came from, this node for its own |
 | `data.rejected` | `algorithm`, `hash`, `node_id` | An upload did not match its content id |
 | `nodes.received` | `nodes`: endpoint → node id; `sources`: endpoint → `AddressSource` | Addresses learned, and how |
 | `seek.received` | `node_id`, `data`, `search` | A peer's seek list |
-| `nodes.updated` | `path` | The candidate list at `path` changed |
+| `nodes.updated` | — | The candidate list, `lists/candidates.json`, changed |
 | `address.verified` | `node_id`, `endpoint` | The endpoint reached a node already connected at another |
 | `connection.opened` | `node_id`, `endpoint` | A peer proved its node id |
 | `connection.closed` | `node_id`, `remote` | A connection closed; `remote` is false if this node closed it |
@@ -1012,9 +1012,9 @@ data moves through files, and a message tells the reader where to look.
 | `cas/data/` | Validator; backup; web server and connection manager, peers' keys only; supervisor, this node's key | Every module | `data.stored` |
 | `cas/data/`, deletions | Eviction | — | `data.deleted` |
 | `cas/resolved/` | Unbundler | Web server | `app.path_resolved`, `resolved.reclaimed` |
-| `lists/candidates.json` | Stats | Connection manager | `nodes.updated`, which names its path |
+| `lists/candidates.json` | Stats | Connection manager | `nodes.updated` |
 | `lists/nodes.json`, `lists/seek.json` | Stats | Web server; connection manager | Nothing; read when needed |
-| `search/` | Web server; stats, adding identifiers | Web server | `data.search_requested`, which names the file |
+| `search/` | Web server; stats, adding identifiers | Web server | `data.search_requested`, which names the prefix |
 | `libranet.sqlite3` | Stats | Stats | — |
 | `applications.json` | Web server | Web server | — |
 | `backup_jobs.json` | Backup | Backup | — |
@@ -1078,7 +1078,7 @@ recurring ways:
 | Request keyed by content | The answer names the same content id, or bundle and path, as the request, and repeated requests collapse into one piece of work | `fetch.requested` and `fetch.succeeded`; `app.path_not_found` and `app.path_resolved`; `eviction.notice` and `eviction.acknowledged` |
 | One question at a time | The asker keeps one question outstanding, takes the next answer broadcast as its answer, and gives up after a timeout | `eviction.candidates_requested` and `eviction.candidates`; `resolved.reclaim_requested`, `resolved.reclaim`, and `resolved.reclaimed` |
 | Whole-state report | Each report carries everything and replaces the one before | `backup.state`; `peers.connected`, a list per direction, also sent when `peers.connected_requested` asks |
-| Pointer to a file | The message names the file or store the data is in | `data.put_completed`, `nodes.updated`, `data.search_requested` |
+| Pointer to a file | The message says where the data is: a store it names, or a file every module finds from the configuration | `data.put_completed`, `nodes.updated`, `data.search_requested` |
 | Retry over HTTP | The web server answers `503` with `Retry-After` and publishes a request; the client's retry finds the result | A `/data` miss, an unresolved application path |
 
 Several modules also limit how often they repeat themselves: the fetcher
@@ -1136,7 +1136,7 @@ assert message["event"] == EventType.DATA_STORED
 | --- | --- | --- |
 | One module | Queues from `queue.Queue`; call `handle` and the hooks directly, with a fake clock where timing matters | `tests/test_*_module.py` |
 | The bus | `Dispatcher.dispatch_pending()`, which broadcasts without threads | `tests/test_messaging_dispatcher.py` |
-| Supervision | Real `spawn` processes running the modules in `supervision/stubs.py`, which crash, linger, or publish on the way out on purpose | `tests/test_supervision.py` |
+| Supervision | Real `spawn` processes running the modules in `tests/stubs.py`, which crash, linger, or publish on the way out on purpose | `tests/test_supervision.py` |
 | A whole node | `supervisor.main(argv, stop=event)`, which runs until the event is set | `tests/test_supervisor.py` |
 | Many nodes | `scripts/local_network.py`, which runs linked nodes on `127.0.0.1` | `tests/test_local_network.py`, and by hand |
 

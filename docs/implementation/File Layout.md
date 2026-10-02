@@ -204,9 +204,6 @@ checks each upload against its content id, writes it into `cas/data` if it
 matches, and deletes it from `incoming/` either way. Emptied per-node
 directories are left behind.
 
-The accessor is still named `StorageConfig.connection_dir` from when these
-stores were per connection.
-
 ### 3.4 Keys: `identity.key_dir`
 
 | File | Contents | Created |

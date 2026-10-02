@@ -147,7 +147,6 @@ def test_starting_opens_the_database_and_writes_every_list(
     assert candidates(config) == {}
     (message,) = published(queues)
     assert message["event"] == EventType.NODE_LIST_UPDATED
-    assert message["path"] == str(config.storage.candidate_list_path)
 
 
 def test_a_node_whose_ports_differ_publishes_both_for_itself(
@@ -225,7 +224,7 @@ def test_a_search_becomes_an_outstanding_request(
     module.handle(
         broadcast(
             EventType.SEARCH_REQUESTED,
-            {"prefix": "0123ABCD", "cache_path": "ignored"},
+            {"prefix": "0123ABCD"},
             ModuleName.WEBSERVER,
         )
     )
@@ -247,7 +246,7 @@ def test_a_search_request_enriches_its_cached_response(
     module.handle(
         broadcast(
             EventType.SEARCH_REQUESTED,
-            {"prefix": prefix, "cache_path": str(cache_path)},
+            {"prefix": prefix},
             ModuleName.WEBSERVER,
         )
     )

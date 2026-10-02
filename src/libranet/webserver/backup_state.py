@@ -19,16 +19,13 @@ from threading import Lock
 from typing import Any, Final, Mapping
 
 from libranet.messaging.envelope import Message
+from libranet.webserver.errors import InvalidBackupReportError
 
 #: Payload members of a ``backup.state`` message, and the endpoint each backs.
 JOBS_FIELD: Final = "jobs"
 RESTORES_FIELD: Final = "restores"
 BUILDS_FIELD: Final = "builds"
 EXPORTS_FIELD: Final = "exports"
-
-
-class InvalidBackupReportError(ValueError):
-    """A ``backup.state`` message does not carry the lists it must."""
 
 
 @dataclass(frozen=True)

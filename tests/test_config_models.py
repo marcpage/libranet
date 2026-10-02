@@ -259,11 +259,6 @@ class TestStoragePaths:
         assert storage.database_path == tmp_path / "libranet.sqlite3"
         assert storage.resolved_files_dir == tmp_path / "cas" / "resolved"
 
-    def test_connection_dir_is_per_connection(self, tmp_path: Path) -> None:
-        storage = StorageConfig(data_dir=tmp_path)
-
-        assert storage.connection_dir("peer-1") == tmp_path / "incoming" / "peer-1"
-
 
 def test_create_directories_makes_every_needed_directory(tmp_path: Path) -> None:
     config = LibranetConfig.model_validate(

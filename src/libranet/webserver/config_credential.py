@@ -32,6 +32,7 @@ from typing import Any, Final
 from libranet.config.models import LibranetConfig
 from libranet.identity.keys import write_private_file
 from libranet.json_format import compact_json
+from libranet.webserver.errors import CredentialFileError
 
 #: The name of the hash, stored so another can be told apart from it later.
 SCHEME: Final = "scrypt"
@@ -52,10 +53,6 @@ PARALLELISM: Final = 1
 MAX_COST: Final = 1 << 18
 
 _MIN_SALT_BYTES: Final = 8
-
-
-class CredentialFileError(ValueError):
-    """The stored ``/config`` credential cannot be read."""
 
 
 @dataclass(frozen=True)

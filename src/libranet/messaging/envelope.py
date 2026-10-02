@@ -15,6 +15,7 @@ from math import isfinite
 from time import time
 from typing import Any, Callable, Final, Mapping
 
+from libranet.messaging.errors import InvalidMessageError
 from libranet.messaging.events import EventType
 from libranet.modules import ModuleName
 
@@ -24,10 +25,6 @@ EVENT_FIELD: Final = "event"
 TIMESTAMP_FIELD: Final = "timestamp"
 SOURCE_FIELD: Final = "source"
 ENVELOPE_FIELDS: Final = frozenset({EVENT_FIELD, TIMESTAMP_FIELD, SOURCE_FIELD})
-
-
-class InvalidMessageError(ValueError):
-    """A message is not a dict with a well-formed envelope."""
 
 
 def make_message(
@@ -108,8 +105,3 @@ def event_of(message: Message) -> EventType:
 def source_of(message: Message) -> ModuleName:
     """The publishing module of a validated message."""
     return ModuleName(message[SOURCE_FIELD])
-
-
-def payload_of(message: Message) -> Message:
-    """The event-specific fields of a message, without the envelope."""
-    return {key: value for key, value in message.items() if key not in ENVELOPE_FIELDS}

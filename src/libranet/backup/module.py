@@ -134,7 +134,8 @@ from logging import Logger
 from time import time
 from typing import Any, Callable, ClassVar, Final, Mapping
 
-from libranet.backup.builds import Build, BuildRecordError
+from libranet.backup.builds import Build
+from libranet.backup.errors import BuildRecordError
 from libranet.backup.exports import Export
 from libranet.backup.jobs import BackupJob, ExpandedBackups, load_jobs, save_jobs
 from libranet.backup.restores import Restore

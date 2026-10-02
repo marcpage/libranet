@@ -8,8 +8,22 @@ Storing a directory's new version as an update layer over the last (Phase 2
 Step 31). Operates purely on bundle JSON, local files, and CAS reads and writes.
 """
 
-from libranet.bundle.building import DirectoryBuild, IgnoredPaths, build_directory, build_file
-from libranet.bundle.content import ContentSource, check_held, content_chunks, parse_cas_path
+from libranet.bundle.building import (
+    EPOCH,
+    MICROSECOND,
+    NANOSECONDS_PER_MICROSECOND,
+    DirectoryBuild,
+    IgnoredPaths,
+    build_directory,
+    build_file,
+)
+from libranet.bundle.content import (
+    ContentSource,
+    check_held,
+    content_chunks,
+    normalize_cas_path,
+    parse_cas_path,
+)
 from libranet.bundle.errors import (
     BundleError,
     BundleTooLargeError,
@@ -24,10 +38,13 @@ from libranet.bundle.extensions import DEFAULT_MAX_EXTENSIONS, resolve_directory
 from libranet.bundle.layering import Layering, StoredVersion, Superseded
 from libranet.bundle.loading import DEFAULT_MAX_BUNDLE_BYTES, load_bundle
 from libranet.bundle.parsing import decode_bundle, parse_bundle
-from libranet.bundle.protection import protect, strip_targeting, unprotect
+from libranet.bundle.protection import DESCRIPTOR_SEPARATOR, protect, strip_targeting, unprotect
 from libranet.bundle.reassembly import ByteSink, write_file
 from libranet.bundle.serialization import bundle_value, encode_bundle
 from libranet.bundle.shapes import (
+    NO_STEP_SEGMENTS,
+    PARENT_SEGMENT,
+    PATH_SEPARATOR,
     Bundle,
     DirectoryBundle,
     DirectoryMarker,
@@ -35,7 +52,10 @@ from libranet.bundle.shapes import (
     FileBundle,
     Metadata,
     Symlink,
+    XattrValue,
+    ancestors,
     is_entry_path,
+    is_utf8,
 )
 from libranet.bundle.splitting import split_entries
 from libranet.bundle.storing import (
@@ -46,12 +66,21 @@ from libranet.bundle.storing import (
     store_object,
 )
 from libranet.bundle.symlinks import MAX_SYMLINK_HOPS, PathEnd, path_reached
+from libranet.bundle.xattrs import INLINE_LIMIT_BYTES, ExtendedAttributes
 
 __all__ = [
     "DEFAULT_MAX_BUNDLE_BYTES",
     "DEFAULT_MAX_EXTENSIONS",
+    "DESCRIPTOR_SEPARATOR",
+    "EPOCH",
     "HASH_ALGORITHM",
+    "INLINE_LIMIT_BYTES",
     "MAX_SYMLINK_HOPS",
+    "MICROSECOND",
+    "NANOSECONDS_PER_MICROSECOND",
+    "NO_STEP_SEGMENTS",
+    "PARENT_SEGMENT",
+    "PATH_SEPARATOR",
     "Bundle",
     "BundleError",
     "BundleTooLargeError",
@@ -63,6 +92,7 @@ __all__ = [
     "DirectoryBundle",
     "DirectoryMarker",
     "Entry",
+    "ExtendedAttributes",
     "FileBundle",
     "IgnoredPaths",
     "IncorrectPasswordError",
@@ -77,6 +107,8 @@ __all__ = [
     "Superseded",
     "Symlink",
     "UnsupportedBundleError",
+    "XattrValue",
+    "ancestors",
     "build_directory",
     "build_file",
     "bundle_value",
@@ -85,7 +117,9 @@ __all__ = [
     "decode_bundle",
     "encode_bundle",
     "is_entry_path",
+    "is_utf8",
     "load_bundle",
+    "normalize_cas_path",
     "parse_bundle",
     "parse_cas_path",
     "path_reached",

@@ -32,15 +32,12 @@ from typing import Any, Final
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
 from libranet.messaging.events import ConflictBehavior
+from libranet.protocol.errors import InvalidConfigRequestError
 
 #: Hex characters of the hash a job or restore is named by.
 IDENTIFIER_LENGTH: Final = 16
 
 _PARENT_SEGMENT: Final = ".."
-
-
-class InvalidConfigRequestError(ValueError):
-    """A ``/config`` request body is not what its endpoint accepts."""
 
 
 @dataclass(frozen=True)

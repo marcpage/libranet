@@ -11,7 +11,7 @@ The payloads it consumes, by event:
 
 ``data.requested``     ``{"algorithm", "hash", "external"}`` (Step 5)
 ``data.not_found``     ``{"algorithm", "hash"}`` (Step 5)
-``data.search_requested`` ``{"prefix", "cache_path"}`` (Step 5)
+``data.search_requested`` ``{"prefix"}`` (Step 5)
 ``data.stored``        ``{"algorithm", "hash", "node_id", "size"}`` (Step 7)
 ``data.rejected``      ``{"algorithm", "hash", "node_id"}`` (Step 7)
 ``nodes.received``     ``{"nodes": {endpoint: node id}, "sources": {endpoint: source}}``
@@ -79,8 +79,8 @@ the count again, and so does hearing from it: a node list whose sender
 names itself, the entries ``sources`` marks ``advertised`` or ``observed``.
 A node list that merely relays the node does not.
 
-It publishes ``nodes.updated`` — ``{"path": "<candidate list file>"}`` —
-whenever the derived candidate list changes, which is the connection
+It publishes ``nodes.updated``, with no payload, whenever the derived
+candidate list (``storage.candidate_list_path``) changes, which is the connection
 manager's cue to reconsider its peer mix (Step 11). The candidate list's
 shape is documented in :mod:`libranet.stats.derivation`.
 """
@@ -251,7 +251,7 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         lists = self.deriver.derive()
 
         if lists.candidate_list_changed:
-            self.publish(EventType.NODE_LIST_UPDATED, {"path": str(lists.candidate_list)})
+            self.publish(EventType.NODE_LIST_UPDATED)
             self.logger.debug("Candidate list rewritten at %s", lists.candidate_list)
 
     def _on_data_requested(self, message: Message) -> None:

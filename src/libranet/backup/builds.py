@@ -54,6 +54,7 @@ from pathlib import Path
 from typing import Any, Callable, Final, Mapping
 
 from libranet.atomic_file import write_atomically
+from libranet.backup.errors import BuildRecordError
 from libranet.backup.runs import BackupStore, BuildSettings
 from libranet.backup.tasks import Task
 from libranet.bundle.building import build_directory
@@ -69,10 +70,6 @@ _LOGGER = getLogger(__name__)
 
 #: What the file recording a build is named, after the directory's own name.
 RECORD_SUFFIX: Final = ".bundle"
-
-
-class BuildRecordError(ValueError):
-    """What is where a build's record goes cannot be read, or is not a build record."""
 
 
 @dataclass(frozen=True)

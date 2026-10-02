@@ -10,7 +10,8 @@ from pathlib import Path
 from pytest import LogCaptureFixture, fixture, mark, raises
 from xattr import xattr
 
-from libranet.backup.builds import RECORD_SUFFIX, Build, BuildRecord, BuildRecordError
+from libranet.backup.builds import RECORD_SUFFIX, Build, BuildRecord
+from libranet.backup.errors import BuildRecordError
 from libranet.backup.runs import AnnouncingStore, BuildSettings
 from libranet.backup.tasks import TaskStatus
 from libranet.bundle.errors import BundleTooLargeError, PasswordProtectedBundleError

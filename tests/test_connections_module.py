@@ -46,13 +46,13 @@ from libranet.messaging.events import ConnectionDirection, EventType
 from libranet.messaging.queues import MessageQueue, ModuleQueues
 from libranet.modules import ModuleName
 from libranet.stats.module import StatsModule
-from libranet.supervision.stubs import StubModule
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.router import Router
 from libranet.webserver.server import LibranetHTTPServer, RequestHandler, build_router
 
 from tests.helpers import with_node_key
+from tests.stubs import StubModule
 
 TIMEOUT = 5.0
 RETRY_DELAY = 30.0

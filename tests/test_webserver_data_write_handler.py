@@ -32,12 +32,13 @@ from libranet.problems import (
     PROBLEM_CONTENT_TYPE,
     SIGNATURE_REQUIRED,
 )
-from libranet.supervision.stubs import StubModule
 from libranet.webserver.data_handler import DATA_PATTERN
 from libranet.webserver.data_write_handler import DataWriteHandler
 from libranet.webserver.http_types import Request, RequestBody, Response
 from libranet.webserver.router import Router
 from libranet.webserver.signature_guard import SignatureGuard
+
+from tests.stubs import StubModule
 
 NOW = 1_757_080_000.0
 MAX_BYTES = 256

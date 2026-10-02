@@ -40,12 +40,12 @@ from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
-from libranet.supervision.stubs import StubModule
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.server import LibranetHTTPServer, build_router
 
 from tests.helpers import with_node_key
+from tests.stubs import StubModule
 
 LOGGER = getLogger("test.connections")
 TIMEOUT = 5.0

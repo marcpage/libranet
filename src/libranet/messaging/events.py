@@ -2,10 +2,9 @@
 
 One enum, shared by every module, so a publisher and its subscribers can
 never disagree on spelling. Each member notes who publishes it and who is
-expected to react. Payload fields beyond the common envelope are still an
-open item in the implementation plan and are settled by the step that first
-publishes each event. A payload value that more than one module spells gets
-an enum here too.
+expected to react. Each publishing module's docstring describes the payload
+it sends beyond the common envelope. A payload value that more than one
+module spells gets an enum here too.
 """
 
 from __future__ import annotations
@@ -15,7 +14,9 @@ from enum import StrEnum
 class EventType(StrEnum):
     """The kind of a message, carried in its envelope."""
 
-    # Lifecycle (supervisor → all). Every module stops its receive loop on it.
+    # Lifecycle. The dispatcher and every module leave their receive loops on
+    # it, but nothing in a running node publishes it: the supervisor stops its
+    # children with stop events, and tests put it straight into an inbox.
     SHUTDOWN = "shutdown"
 
     # Web server read path (Step 5).
@@ -30,7 +31,7 @@ class EventType(StrEnum):
     DATA_REJECTED = "data.rejected"  # validator → stats
 
     # Node and seek lists (Steps 8 and 9).
-    NODES_RECEIVED = "nodes.received"  # webserver, connections → stats
+    NODES_RECEIVED = "nodes.received"  # webserver, connections → stats, connections
     SEEK_RECEIVED = "seek.received"  # webserver → stats
     NODE_LIST_UPDATED = "nodes.updated"  # stats → connections
     ADDRESS_VERIFIED = "address.verified"  # connections → stats (Phase 2 Step 23)

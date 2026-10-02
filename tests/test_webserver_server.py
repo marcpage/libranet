@@ -48,7 +48,6 @@ from libranet.problems import (
 )
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE, REQUEST_PATH_HEADER
 from libranet.stats.module import StatsModule
-from libranet.supervision.stubs import StubModule
 from libranet.validator.module import ValidatorModule
 from libranet.webserver.app_registry import Application, ApplicationRegistry
 from libranet.webserver.config_auth import CONFIG_REALM
@@ -58,6 +57,7 @@ from libranet.webserver.http_types import Request, RequestBody, Response
 from libranet.webserver.server import LibranetHTTPServer, build_router
 
 from tests.helpers import with_node_key
+from tests.stubs import StubModule
 
 CONTENT = b"hello libranet"
 CONTENT_ID = ContentId.for_data(CONTENT, "sha256")
@@ -330,7 +330,6 @@ def test_search_scans_caches_and_publishes(
     (message,) = _published(queues)
     assert message["event"] == EventType.SEARCH_REQUESTED
     assert message["prefix"] == prefix.lower()
-    assert message["cache_path"] == str(cache_file)
 
 
 def test_data_and_search_read_content_archives(

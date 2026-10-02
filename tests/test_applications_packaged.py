@@ -39,7 +39,6 @@ from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
-from libranet.supervision.stubs import StubModule
 from libranet.unbundler.module import UnbundlerModule
 from libranet.webserver.app_handler import CONFIG_APP_POLICY
 from libranet.webserver.app_registry import CONFIG_APPLICATION, ROOT_APPLICATION
@@ -47,6 +46,8 @@ from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import CONFIG_API_PATH, ENDPOINTS, NodeDescription
 from libranet.webserver.http_types import Request
 from libranet.webserver.server import build_router
+
+from tests.stubs import StubModule
 
 ROOT_PAGE_SOURCE = PACKAGED_APPLICATIONS / "root" / "index.html"
 CONFIG_PAGE_SOURCE = PACKAGED_APPLICATIONS / "config" / "index.html"

@@ -16,12 +16,10 @@ from typing import Any, Final
 
 from pydantic import BaseModel, ConfigDict
 
+from libranet.config.errors import SeedError
+
 SEED_RESOURCE_PACKAGE: Final = "libranet.config"
 SEED_RESOURCE_NAME: Final = "seed_peers.json"
-
-
-class SeedError(Exception):
-    """Raised when a seed list cannot be read or does not match the schema."""
 
 
 class SeedPeer(BaseModel):

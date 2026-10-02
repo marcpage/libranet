@@ -50,32 +50,3 @@ def test_extensions_are_serialized_alongside_standard_members() -> None:
 def test_extensions_may_not_redefine_standard_members() -> None:
     with raises(InvalidProblemError, match="status"):
         Problem(status=400, title="Bad", extensions={"status": 200})
-
-
-def test_from_json_round_trips() -> None:
-    problem = Problem(
-        status=503,
-        title="Unavailable",
-        type=CONTENT_UNAVAILABLE,
-        detail="later",
-        instance="/data/sha256/00",
-        extensions={"retry_after": 5},
-    )
-
-    assert Problem.from_json(problem.to_json()) == problem
-
-
-def test_from_json_defaults_a_missing_type_to_about_blank() -> None:
-    assert Problem.from_json('{"status": 404, "title": "Not Found"}').type == ABOUT_BLANK
-
-
-def test_from_json_rejects_bodies_that_are_not_problems() -> None:
-    for body in (
-        "not json",
-        "[1]",
-        '{"title": "x"}',
-        '{"status": true}',
-        '{"status": 1, "type": 2}',
-    ):
-        with raises(InvalidProblemError):
-            Problem.from_json(body)

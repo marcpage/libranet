@@ -12,11 +12,8 @@ from typing import Any, Mapping
 from pydantic import ValidationError
 from yaml import YAMLError, safe_load
 
+from libranet.config.errors import ConfigError
 from libranet.config.models import LibranetConfig
-
-
-class ConfigError(Exception):
-    """Raised when a config file cannot be read, parsed, or validated."""
 
 
 def load_config(

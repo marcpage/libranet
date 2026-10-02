@@ -10,14 +10,8 @@ from typing import Any
 
 from pytest import LogCaptureFixture, fixture, mark, raises
 
-from libranet.backup.jobs import (
-    BackupJob,
-    ExpandedBackups,
-    JobFileError,
-    LatestBackup,
-    load_jobs,
-    save_jobs,
-)
+from libranet.backup.errors import JobFileError
+from libranet.backup.jobs import BackupJob, ExpandedBackups, LatestBackup, load_jobs, save_jobs
 from libranet.bundle.layering import Layering, Superseded
 from libranet.bundle.protection import protect
 from libranet.bundle.shapes import FileBundle, Metadata, Symlink

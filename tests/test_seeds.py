@@ -8,7 +8,8 @@ from typing import Any
 from pydantic import ValidationError
 from pytest import raises
 
-from libranet.config.seeds import SeedError, load_seed_peers
+from libranet.config.errors import SeedError
+from libranet.config.seeds import load_seed_peers
 
 
 def write_seeds(tmp_path: Path, document: Any) -> Path:

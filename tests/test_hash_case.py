@@ -46,7 +46,6 @@ from libranet.protocol.lists import NODES_PATH, SEEK_PATH
 from libranet.protocol.search import LocalSearch, SearchCache
 from libranet.stats.module import StatsModule
 from libranet.stats.schema import SeekKind
-from libranet.supervision.stubs import StubModule
 from libranet.webserver.app_registry import ApplicationRegistry
 from libranet.webserver.backup_state import BackupState
 from libranet.webserver.config_handlers import (
@@ -65,6 +64,7 @@ from libranet.webserver.router import Router
 from libranet.webserver.search_handler import SEARCH_PATTERN, SearchHandler
 
 from tests.helpers import with_node_key
+from tests.stubs import StubModule
 
 NOW = 1_757_080_000.0
 MAX_BYTES = 4096
@@ -279,7 +279,7 @@ def test_an_upload_by_any_spelling_is_stored_and_announced_normalized(
 
 @spellings
 def test_a_search_by_any_spelling_is_answered_and_cached_normalized(
-    data_router: Router, queues: ModuleQueues, spell: Spelling
+    data_router: Router, queues: ModuleQueues, storage: StorageConfig, spell: Spelling
 ) -> None:
     response = data_router.dispatch(request("GET", f"/data/search/{spell(PREFIX)}"))
 
@@ -287,7 +287,7 @@ def test_a_search_by_any_spelling_is_answered_and_cached_normalized(
     assert loads(response.body) == {"results": [str(CONTENT_ID)]}
     (message,) = published(queues)
     assert message["prefix"] == PREFIX
-    assert Path(message["cache_path"]).name == f"{PREFIX}.json"
+    assert [path.name for path in storage.search_cache_dir.rglob("*.json")] == [f"{PREFIX}.json"]
 
 
 @spellings

@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any, Final, Iterable
 
 from libranet.atomic_file import write_atomically
+from libranet.backup.errors import JobFileError
 from libranet.bundle.errors import BundleError
 from libranet.bundle.layering import Layering, Superseded
 from libranet.bundle.protection import protect, unprotect
@@ -48,10 +49,6 @@ _LOGGER = getLogger(__name__)
 # The files are this node's own, and a million-file directory's run to
 # hundreds of megabytes, so the only limit is one no directory reaches.
 _MAX_EXPANDED_BYTES: Final = 1 << 40
-
-
-class JobFileError(ValueError):
-    """The backup jobs file cannot be read, or does not hold backup jobs."""
 
 
 @dataclass(frozen=True)

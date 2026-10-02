@@ -1,9 +1,10 @@
-"""Placeholder modules for areas that have no real logic yet.
+"""Modules and dispatchers that stand in for real ones in tests.
 
-:class:`StubModule` stands in for every module until its own step replaces
-it. The crashing variants exist to demonstrate and test the supervisor's
-restart behavior, and the farewell module and unready dispatcher its
-shutdown behavior.
+:class:`StubModule` does nothing but publish, for tests that need a module's
+``publish``. The crashing variants exist to test the supervisor's restart
+behavior, and the farewell module and unready dispatcher its shutdown
+behavior. They live with the tests, since a node never runs them; the
+processes the supervisor spawns in tests import them from here.
 """
 
 from __future__ import annotations

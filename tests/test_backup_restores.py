@@ -12,7 +12,8 @@ from typing import Iterable, Iterator
 from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
 from xattr import xattr
 
-from libranet.backup.builds import Build, BuildRecord, BuildRecordError
+from libranet.backup.builds import Build, BuildRecord
+from libranet.backup.errors import BuildRecordError
 from libranet.backup.restores import RESUME_DELAY_SECONDS, Restore, RestorePass
 from libranet.backup.tasks import TaskStatus
 from libranet.backup.runs import AnnouncingStore, BuildSettings
