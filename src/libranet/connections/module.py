@@ -454,7 +454,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
     ) -> Message:
         """Publish what talking to a peer taught, looking up names for the addresses observed.
 
-        It is :class:`PeerExchange`'s :data:`~libranet.webserver.publishing.Publish`.
+        It is :class:`PeerExchange`'s :data:`~libranet.messaging.publishing.Publish`.
         """
         message = self.publish(event, payload)
 

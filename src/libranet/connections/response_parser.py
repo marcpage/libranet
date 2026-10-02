@@ -21,7 +21,7 @@ from typing import Final, Mapping
 from http_message_signatures.structures import CaseInsensitiveDict
 
 from libranet.connections.errors import MalformedResponseError
-from libranet.webserver.http_types import BODILESS_STATUSES, TOKEN
+from libranet.protocol.http_syntax import BODILESS_STATUSES, TOKEN
 
 # The most bytes a status line and header section, or any single line of
 # chunked framing, may take. Libranet responses need a small fraction of it.

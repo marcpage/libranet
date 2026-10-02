@@ -35,9 +35,9 @@ from typing import Callable, Sequence
 from urllib.parse import urlsplit, urlunsplit
 
 from libranet.messaging.events import AddressSource, EventType
-from libranet.webserver.client_origin import is_local_client
-from libranet.webserver.localhost_resolution import LOCALHOST
-from libranet.webserver.publishing import Publish
+from libranet.messaging.publishing import Publish
+from libranet.protocol.client_origin import is_local_client
+from libranet.protocol.localhost_resolution import LOCALHOST
 
 #: Finds the names a reverse DNS lookup gives an IP address.
 ResolveNames = Callable[[str], Sequence[str]]

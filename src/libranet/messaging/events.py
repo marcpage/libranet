@@ -98,3 +98,37 @@ class ConnectionDirection(StrEnum):
 
     OUTBOUND = "outbound"  # dialed by this node's connection manager
     INBOUND = "inbound"  # dialed by the peer, to this node's web server
+
+
+class PathOutcome(StrEnum):
+    """What the unbundler found at an application path, as ``app.path_resolved`` reports it.
+
+    A file is served once it is stored, so the web server keeps only the
+    other outcomes, to answer later requests for the same path without
+    asking again.
+    """
+
+    # The file is written where the web server looks for it.
+    STORED = "stored"
+
+    # The bundle holds nothing at the path.
+    NOT_FOUND = "not_found"
+
+    # The path names a directory, or reaches a file through a symlink; the
+    # message's ``location`` is the entry path to go to instead.
+    REDIRECT = "redirect"
+
+    # The bundle, or the file, cannot be served; the message's ``detail``
+    # says why.
+    UNUSABLE = "unusable"
+
+
+class ConflictBehavior(StrEnum):
+    """What a restore or an export does where what it would write is already there.
+
+    A restore into a directory that is not empty (BackupSpecification §5), or
+    an export to an archive that exists, is refused unless it may overwrite.
+    """
+
+    REFUSE = "refuse"
+    OVERWRITE = "overwrite"

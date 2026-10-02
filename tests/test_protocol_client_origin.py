@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pytest import mark
 
-from libranet.webserver.client_origin import is_local_client
+from libranet.protocol.client_origin import is_local_client
 
 
 @mark.parametrize(

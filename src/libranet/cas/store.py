@@ -13,12 +13,15 @@ the rest of ``{root}`` free for resolved application paths (Step 14).
 """
 
 from __future__ import annotations
+from dataclasses import dataclass
 from logging import Logger, getLogger
 from os import replace
 from pathlib import Path
+from stat import S_ISREG
 from typing import Final, Iterator
 
 from libranet.atomic_file import write_atomically
+from libranet.cas.algorithms import DEFAULT_REGISTRY
 from libranet.cas.content_id import LOWER_HEX_DIGITS, ContentId
 from libranet.cas.errors import ContentNotFoundError, InvalidContentIdError
 from libranet.config.models import StorageConfig
@@ -144,6 +147,16 @@ class CasStore:
             and directory.is_dir()
         )
 
+    def held_objects(self) -> Iterator[HeldObject]:
+        """Every object this store holds, and its size as stored, in no particular order.
+
+        Directories that are not prefix directories are logged once for the
+        scan, and anything named as an object but not one is logged too.
+        """
+        for directories in self._prefix_directories().values():
+            for algorithm, directory in directories:
+                yield from _objects_in(directory, algorithm)
+
     def iter_prefix(self, algorithm: str, hash_prefix: str) -> Iterator[ContentId]:
         """Stored identifiers under ``algorithm`` whose hash starts with ``hash_prefix``.
 
@@ -195,6 +208,35 @@ class CasStore:
 
                 yield content_id
 
+    def _prefix_directories(self) -> dict[str, list[tuple[str, Path]]]:
+        """The prefix directories, by name, each with the algorithm it is under.
+
+        Only directories of a registered algorithm, named as this store names
+        its prefix directories, are included. Any other directory is logged,
+        once for them all.
+        """
+        found: dict[str, list[tuple[str, Path]]] = {}
+        strays = StrayPrefixDirectories()
+
+        for algorithm in DEFAULT_REGISTRY.names():
+            for directory in subdirectories(self._root / DATA_SEGMENT / algorithm):
+                if self.is_prefix_directory(directory):
+                    found.setdefault(directory.name, []).append((algorithm, directory))
+
+                else:
+                    strays.add(directory)
+
+        strays.log(_LOGGER, self._root / DATA_SEGMENT)
+        return found
+
+
+@dataclass(frozen=True)
+class HeldObject:
+    """One object in a store, and its size as stored."""
+
+    content_id: ContentId
+    size_bytes: int
+
 
 class StrayPrefixDirectories:
     """The directories a scan found where a store keeps its prefix directories, that are not ones.
@@ -239,3 +281,40 @@ def subdirectories(directory: Path) -> list[Path]:
     except FileNotFoundError:
         # Not logged: nothing has been stored beneath a directory not made yet.
         return []
+
+
+def _objects_in(directory: Path, algorithm: str) -> list[HeldObject]:
+    """The objects stored in one prefix directory.
+
+    Anything else found there, such as a write still under way or a file
+    that is not where the store would look for it, is skipped, as is an
+    object removed while the directory is read. What is named as an object
+    but is not one, such as an upper-case copy of a hash, or a directory, is
+    logged too.
+    """
+    objects: list[HeldObject] = []
+
+    for entry in directory.iterdir():
+        # Whatever its case, so that an upper-case copy of a hash is caught.
+        if not entry.name.lower().startswith(directory.name):
+            continue
+
+        try:
+            content_id = ContentId.from_stored_name(algorithm, entry.name)
+            status = entry.stat()
+
+        except InvalidContentIdError as error:
+            _LOGGER.warning("Skipping %s, not named as CAS content: %s", entry, error)
+            continue
+
+        except FileNotFoundError:
+            # Not logged: it was deleted while the directory was read.
+            continue
+
+        if not S_ISREG(status.st_mode):
+            _LOGGER.warning("Skipping %s, named as CAS content but not a file", entry)
+            continue
+
+        objects.append(HeldObject(content_id, status.st_size))
+
+    return objects

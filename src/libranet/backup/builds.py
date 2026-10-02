@@ -63,7 +63,7 @@ from libranet.bundle.layering import Layering, StoredVersion, Superseded
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.shapes import DirectoryBundle
 from libranet.cas.content_id import ContentId
-from libranet.webserver.config_requests import BuildRequest
+from libranet.protocol.config_requests import BuildRequest
 
 _LOGGER = getLogger(__name__)
 

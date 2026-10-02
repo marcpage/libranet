@@ -7,12 +7,7 @@ from zlib import compress
 from pytest import LogCaptureFixture, mark, raises
 
 from libranet.cas.content_id import ContentId
-from libranet.webserver.list_bodies import (
-    InvalidListError,
-    decode_list,
-    parse_node_list,
-    parse_seek_list,
-)
+from libranet.protocol.lists import InvalidListError, decode_list, parse_node_list, parse_seek_list
 
 CONTENT_ID = ContentId.for_data(b"sought", "sha256")
 NODE_ID = ContentId.for_data(b"a peer's public key", "sha256")

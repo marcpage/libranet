@@ -422,7 +422,7 @@ stats first deletes the seek entries and addresses that are past keeping
 node's addresses, are called only by tests.
 
 **Eviction's ranking** is the one costly query. The score is defined in
-Python (`EvictionScorer` in `src/libranet/eviction/priority.py`) and
+Python (`EvictionScorer` in `src/libranet/stats/priority.py`) and
 registered on the connection as the SQL function `eviction_score` for each
 request; it is not stored in the file. SQLite calls it for every row of
 content held, from the row's `size`, its two request counters, the later of

@@ -12,8 +12,8 @@ from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.prefix import matching_bits
 from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
+from libranet.protocol.search import LocalSearch, SearchCache, normalize_prefix
 from libranet.stats.database import StatsDatabase
-from libranet.webserver.search import LocalSearch, SearchCache, normalize_prefix
 
 
 def _hash(prefix: str) -> str:

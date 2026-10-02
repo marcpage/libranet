@@ -9,8 +9,8 @@ from pytest import LogCaptureFixture, raises
 
 from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
+from libranet.cas.resolved_files import ResolvedFiles
 from libranet.config.models import StorageConfig
-from libranet.unbundler.resolved_files import ResolvedFiles
 
 BUNDLE = ContentId.for_data(b"a directory bundle", "sha256")
 OTHER_BUNDLE = ContentId.for_data(b"another directory bundle", "sha256")

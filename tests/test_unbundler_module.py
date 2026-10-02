@@ -17,9 +17,9 @@ from libranet.bundle.shapes import DirectoryBundle
 from libranet.cas.archive import ArchiveSink
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
+from libranet.cas.resolved_files import ResolvedFiles
 from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
-from libranet.eviction.priority import held_objects
 from libranet.identity.authentication import RequestAuthenticator
 from libranet.messaging.envelope import Message, make_message
 from libranet.messaging.events import EventType
@@ -28,7 +28,6 @@ from libranet.modules import ModuleName
 from libranet.supervision.registry import default_module_specs
 from libranet.supervision.stubs import StubModule
 from libranet.unbundler.module import UnbundlerModule, unbundler_module_factory
-from libranet.unbundler.resolved_files import ResolvedFiles
 from libranet.webserver.app_registry import Application, ApplicationRegistry
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import NodeDescription
@@ -198,7 +197,7 @@ def test_an_application_held_only_in_an_archive_is_resolved(
     tmp_path: Path,
 ) -> None:
     archive = tmp_path / "app.zip"
-    held = [stored.content_id for stored in held_objects(store)]
+    held = [stored.content_id for stored in store.held_objects()]
 
     with ArchiveSink.create(archive) as sink:
         for content_id in held:

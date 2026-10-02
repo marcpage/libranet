@@ -45,8 +45,8 @@ from typing import Final
 from urllib.parse import unquote
 
 from libranet.problems import Problem
+from libranet.protocol.client_origin import is_local_client
 from libranet.webserver.app_registry import CONFIG_APPLICATION
-from libranet.webserver.client_origin import is_local_client
 from libranet.webserver.http_types import Request, Response, problem_response
 
 _LOGGER = getLogger(__name__)

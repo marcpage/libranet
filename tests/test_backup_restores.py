@@ -34,7 +34,8 @@ from libranet.bundle.xattrs import INLINE_LIMIT_BYTES, ExtendedAttributes
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import MIB
-from libranet.webserver.config_requests import BuildRequest, ConflictBehavior, RestoreRequest
+from libranet.messaging.events import ConflictBehavior
+from libranet.protocol.config_requests import BuildRequest, RestoreRequest
 
 SECRET = b"s" * 32
 NOW = 1_789_000_000.0

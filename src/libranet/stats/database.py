@@ -17,8 +17,8 @@ takes a :class:`ContentId`, which holds only the lower-case form HttpApi
 §5.4 stores, so an identifier read back from a row is already normalized
 and is rebuilt without being checked against its algorithm again. Seek
 values are text, and callers pass them normalized, as
-:func:`~libranet.webserver.list_bodies.parse_seek_list` and
-:func:`~libranet.webserver.search.normalize_prefix` leave them.
+:func:`~libranet.protocol.lists.parse_seek_list` and
+:func:`~libranet.protocol.search.normalize_prefix` leave them.
 """
 
 from __future__ import annotations
@@ -31,8 +31,9 @@ from typing import Any, Callable, Collection, Final, Iterable, Mapping
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.prefix import matching_bits, nearest
-from libranet.eviction.priority import EvictionScorer, HeldObject
+from libranet.cas.store import HeldObject
 from libranet.messaging.events import AddressSource
+from libranet.stats.priority import EvictionScorer
 from libranet.stats.records import DataStats, NodeAddress, NodeStats
 from libranet.stats.schema import OWN_NODE, SeekKind, apply_schema
 
@@ -172,7 +173,7 @@ class StatsDatabase:  # pylint: disable=too-many-public-methods
     ) -> list[HeldObject]:
         """Up to ``limit`` of the objects held, in the order to let them go (HighLevelDesign §4.5).
 
-        Each is ranked by its :class:`~libranet.eviction.priority.EvictionScorer`
+        Each is ranked by its :class:`~libranet.stats.priority.EvictionScorer`
         score, measured against what is held now, and ties go in order of
         hash, then algorithm. The public key of ``node_id``, this node, and
         whatever ``exclude`` names are left out. SQLite calls the scorer for

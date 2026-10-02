@@ -81,16 +81,17 @@ from libranet.identity.keys import published_public_key
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import MessageSigner, MessageVerifier
 from libranet.messaging.events import EventType
-from libranet.webserver.http_types import JSON_CONTENT_TYPE, OCTET_STREAM
-from libranet.webserver.list_bodies import (
+from libranet.messaging.publishing import Publish
+from libranet.protocol.http_syntax import JSON_CONTENT_TYPE, OCTET_STREAM
+from libranet.protocol.lists import (
+    NODES_PATH,
+    SEEK_PATH,
     InvalidListError,
     decode_list,
     parse_node_list,
     parse_seek_list,
 )
-from libranet.webserver.list_handlers import NODES_PATH, SEEK_PATH
-from libranet.webserver.localhost_resolution import NodeListSender
-from libranet.webserver.publishing import Publish
+from libranet.protocol.localhost_resolution import NodeListSender
 
 # Most requests pipelined at once when pushing or asking for many items:
 # enough to keep a connection busy without holding many bodies in memory.

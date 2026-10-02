@@ -10,9 +10,9 @@ from typing import Iterator
 from pytest import LogCaptureFixture, fixture, raises
 
 from libranet.cas.content_id import ContentId
+from libranet.protocol.search import SearchCache
 from libranet.stats.database import StatsDatabase
 from libranet.stats.enrichment import SearchEnricher
-from libranet.webserver.search import SearchCache
 
 PREFIX = "8" + "0" * 63
 CACHED_ID = ContentId("sha256", "8" + "f" * 63)

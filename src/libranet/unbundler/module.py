@@ -10,7 +10,7 @@ The bundle is loaded from the source of truth, or from the node's content
 archives (Step 34), and its extensions overlaid (Step 13), and the path looked
 up in it (:mod:`libranet.unbundler.lookup`). A file is reassembled from its
 parts, checked, and written where the web server serves it from
-(:mod:`libranet.unbundler.resolved_files`), so the next request for the path
+(:mod:`libranet.cas.resolved_files`), so the next request for the path
 is served straight from disk. What happened is reported for the
 web server to answer later requests with::
 
@@ -77,15 +77,14 @@ from libranet.bundle.serialization import encode_bundle
 from libranet.bundle.shapes import Bundle, DirectoryBundle
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
+from libranet.cas.resolved_files import ResolvedFiles
 from libranet.config.models import LibranetConfig, StorageConfig
 from libranet.messaging.envelope import Message, event_of
-from libranet.messaging.events import EventType
+from libranet.messaging.events import EventType, PathOutcome
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.unbundler.lookup import FoundDirectory, ResolvedDirectory
-from libranet.unbundler.outcomes import PathOutcome
-from libranet.unbundler.resolved_files import ResolvedFiles
 
 # Provisional default: bundles whose directories are kept in memory.
 DEFAULT_MAX_CACHED_BUNDLES: Final = 8

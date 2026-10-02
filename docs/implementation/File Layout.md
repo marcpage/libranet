@@ -169,7 +169,7 @@ the search cache.
 
 When a request for an application path misses, the unbundler reassembles
 that one file from its bundle and writes it here; the web server serves it
-directly from then on (`src/libranet/unbundler/resolved_files.py`).
+directly from then on (`src/libranet/cas/resolved_files.py`).
 
 - Files are grouped by the content id of the application's bundle, which
   never changes, so a resolved file never goes stale. Registering a new
@@ -375,7 +375,7 @@ Until a list has been derived, the web server answers requests for it with
 
 The web server writes the response to each `GET /data/search/{prefix}` here,
 and reuses it until the file is older than `storage.search_cache_ttl_seconds`
-(`src/libranet/webserver/search.py`). The stats module may then rewrite a
+(`src/libranet/protocol/search.py`). The stats module may then rewrite a
 fresh file with identifiers it knows of but the node does not hold
 (`src/libranet/stats/enrichment.py`). A response lists at most
 `storage.search_max_results` hashes. A prefix shorter than

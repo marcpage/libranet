@@ -28,17 +28,21 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from logging import Logger
 from socket import AF_INET, AF_INET6
 from socketserver import TCPServer
-from typing import Any, Final
+from typing import Any
 from urllib.parse import urlsplit
 
 from libranet import __version__
 from libranet.cas.layered import LayeredSource
+from libranet.cas.resolved_files import ResolvedFiles
 from libranet.cas.store import CasStore
 from libranet.config.models import IDLE_TIMEOUT_SECONDS, StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.signatures import MessageSigner
+from libranet.messaging.publishing import Publish
 from libranet.problems import Problem
-from libranet.unbundler.resolved_files import ResolvedFiles
+from libranet.protocol.http_syntax import BODILESS_STATUSES, REQUEST_PATH_HEADER
+from libranet.protocol.lists import NODES_PATH, SEEK_PATH
+from libranet.protocol.search import LocalSearch, SearchCache
 from libranet.webserver.app_handler import APP_PATTERN, CONFIG_APP_PATTERN, AppHandler
 from libranet.webserver.app_outcomes import ApplicationOutcomes
 from libranet.webserver.app_registry import ApplicationRegistry, RegisteredApplications
@@ -51,7 +55,6 @@ from libranet.webserver.config_handlers import NodeDescription, config_routes
 from libranet.webserver.data_handler import DATA_PATTERN, DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
 from libranet.webserver.http_types import (
-    BODILESS_STATUSES,
     IncompleteBodyError,
     Request,
     RequestBody,
@@ -59,25 +62,10 @@ from libranet.webserver.http_types import (
     problem_response,
 )
 from libranet.webserver.inbound_peers import InboundConnection, InboundPeers
-from libranet.webserver.list_handlers import (
-    NODES_PATH,
-    SEEK_PATH,
-    ListFileHandler,
-    NodeListHandler,
-    SeekListHandler,
-)
-from libranet.webserver.publishing import Publish
+from libranet.webserver.list_handlers import ListFileHandler, NodeListHandler, SeekListHandler
 from libranet.webserver.router import Router
-from libranet.webserver.search import LocalSearch, SearchCache
 from libranet.webserver.search_handler import SEARCH_PATTERN, SearchHandler
 from libranet.webserver.signature_guard import SignatureGuard
-
-# Every response to a request whose request line parsed echoes that
-# request's target (path and any query string) here. A pipelining client
-# matches responses by order alone and needn't rely on it, but can spot a
-# mismatch when debugging (Step 10). Other implementations need not send
-# it, and a proxy may rewrite paths.
-REQUEST_PATH_HEADER: Final = "X-Request-Path"
 
 
 def build_router(  # pylint: disable=too-many-locals

@@ -22,7 +22,7 @@ the answer is ``202`` without waiting for that::
 Every ``localhost`` endpoint in a received node list is resolved to the
 address the request came from before the list is published (HttpApi §10.2),
 and ``sources`` says which entries were the signer's own
-(:class:`~libranet.webserver.localhost_resolution.NodeListSender`).
+(:class:`~libranet.protocol.localhost_resolution.NodeListSender`).
 """
 
 from __future__ import annotations
@@ -30,35 +30,21 @@ from dataclasses import dataclass
 from http import HTTPStatus
 from logging import getLogger
 from pathlib import Path
-from typing import Final
 
 from libranet.cas.content_id import ContentId
 from libranet.messaging.events import EventType
+from libranet.messaging.publishing import Publish
 from libranet.problems import INVALID_LIST, Problem
-from libranet.webserver.http_types import (
-    JSON_CONTENT_TYPE,
-    Request,
-    Response,
-    bytes_response,
-    problem_response,
-)
-from libranet.webserver.list_bodies import (
-    InvalidListError,
-    decode_list,
-    parse_node_list,
-    parse_seek_list,
-)
-from libranet.webserver.localhost_resolution import NodeListSender
-from libranet.webserver.publishing import Publish
+from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
+from libranet.protocol.lists import InvalidListError, decode_list, parse_node_list, parse_seek_list
+from libranet.protocol.localhost_resolution import NodeListSender
+from libranet.webserver.http_types import Request, Response, bytes_response, problem_response
 from libranet.webserver.request_refusals import (
     signature_required_response,
     unreadable_body_response,
 )
 
 _LOGGER = getLogger(__name__)
-
-NODES_PATH: Final = "/data/nodes"
-SEEK_PATH: Final = "/data/seek"
 
 
 @dataclass(frozen=True)
@@ -91,7 +77,7 @@ class NodeListHandler:
     """Publishes a peer's node list with its ``localhost`` endpoints resolved.
 
     An entry whose endpoint cannot be stored is dropped (see
-    :func:`~libranet.webserver.localhost_resolution.resolve_endpoint`). If
+    :func:`~libranet.protocol.localhost_resolution.resolve_endpoint`). If
     two entries end up with the same endpoint, the later one is kept.
     Entries naming the signer are marked as its own.
     """

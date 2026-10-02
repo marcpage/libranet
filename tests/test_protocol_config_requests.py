@@ -5,11 +5,11 @@ from __future__ import annotations
 from pytest import mark, raises
 
 from libranet.cas.content_id import ContentId
-from libranet.webserver.config_requests import (
+from libranet.messaging.events import ConflictBehavior
+from libranet.protocol.config_requests import (
     IDENTIFIER_LENGTH,
     BackupJobRequest,
     BuildRequest,
-    ConflictBehavior,
     ExportRequest,
     InvalidConfigRequestError,
     Password,

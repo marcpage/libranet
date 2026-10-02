@@ -22,7 +22,6 @@ from typing import Callable
 
 from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
-from libranet.eviction.priority import held_objects
 
 FreeBytes = Callable[[], int]
 
@@ -53,7 +52,7 @@ class StoragePressure:
         held_bytes = 0
 
         if storage.max_storage_bytes is not None:
-            held_bytes = sum(stored.size_bytes for stored in held_objects(store))
+            held_bytes = sum(stored.size_bytes for stored in store.held_objects())
 
         return cls(
             storage.min_free_bytes,

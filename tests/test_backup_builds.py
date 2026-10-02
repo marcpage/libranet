@@ -32,7 +32,7 @@ from libranet.bundle.xattrs import ExtendedAttributes
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import MIB
-from libranet.webserver.config_requests import BuildRequest, Password
+from libranet.protocol.config_requests import BuildRequest, Password
 
 REQUESTED_AT = 1_789_000_000.0
 FINISHED_AT = REQUESTED_AT + 5

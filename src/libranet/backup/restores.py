@@ -85,10 +85,11 @@ from libranet.bundle.shapes import (
     Symlink,
     ancestors,
 )
+from libranet.bundle.symlinks import PathEnd, path_reached
 from libranet.bundle.xattrs import ExtendedAttributes
 from libranet.cas.content_id import ContentId
-from libranet.unbundler.lookup import PathEnd, path_reached
-from libranet.webserver.config_requests import ConflictBehavior, RestoreRequest
+from libranet.messaging.events import ConflictBehavior
+from libranet.protocol.config_requests import RestoreRequest
 
 _LOGGER = getLogger(__name__)
 
@@ -596,7 +597,7 @@ def _leads_outside(entries: Mapping[str, Entry], path: str, link: Symlink) -> bo
     climbs from wherever a link actually led. A path not in ``entries`` is
     taken to be a directory, and one leading on beneath a file leads
     nowhere. Following more than
-    :data:`~libranet.unbundler.lookup.MAX_SYMLINK_HOPS` links is taken to
+    :data:`~libranet.bundle.symlinks.MAX_SYMLINK_HOPS` links is taken to
     lead outside, since a platform that follows more could get there.
     """
     end = path_reached(entries, path.split(PATH_SEPARATOR)[:-1], link.target)

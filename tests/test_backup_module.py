@@ -36,23 +36,21 @@ from libranet.config.models import (
     LoggingConfig,
     StorageConfig,
 )
-from libranet.eviction.priority import held_objects
 from libranet.identity.keys import load_or_create_backup_secret
 from libranet.identity.node_identity import NodeIdentity
 from libranet.messaging.envelope import Message, make_message
-from libranet.messaging.events import EventType
+from libranet.messaging.events import ConflictBehavior, EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
-from libranet.supervision.registry import default_module_specs
-from libranet.webserver.backup_state import BackupReport
-from libranet.webserver.config_requests import (
+from libranet.protocol.config_requests import (
     BackupJobRequest,
     BuildRequest,
-    ConflictBehavior,
     ExportRequest,
     Password,
     RestoreRequest,
 )
+from libranet.supervision.registry import default_module_specs
+from libranet.webserver.backup_state import BackupReport
 
 from tests.helpers import with_node_key
 
@@ -821,7 +819,7 @@ def test_a_restore_reads_content_held_only_in_an_archive(
     archive = tmp_path / "backup.zip"
 
     with ArchiveSink.create(archive) as sink:
-        for content_id in [stored.content_id for stored in held_objects(store)]:
+        for content_id in [stored.content_id for stored in store.held_objects()]:
             sink.write(content_id, store.read(content_id))
             store.delete(content_id)
 
@@ -1565,7 +1563,7 @@ def test_an_export_reads_content_held_only_in_an_archive(
     shipped = tmp_path / "shipped.zip"
 
     with ArchiveSink.create(shipped) as sink:
-        for content_id in [stored.content_id for stored in held_objects(store)]:
+        for content_id in [stored.content_id for stored in store.held_objects()]:
             sink.write(content_id, store.read(content_id))
             store.delete(content_id)
 
