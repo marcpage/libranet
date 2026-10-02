@@ -10,7 +10,7 @@ This document describes how the Python in this repository is written: how a
 file is laid out, how things are named and typed, how errors are raised and
 logged, and how tests are written. It was drawn from the code as it stands at
 Phase 2 Step 51, not from an outside standard, so each rule is one the code
-already follows. The few places where the code does not are listed in §12.
+already follows. The places where the code does not are listed in §12.
 
 A rule here is one of three kinds:
 
@@ -105,8 +105,11 @@ A module reads top to bottom in this order:
 2. Imports (§3.2).
 3. `_LOGGER`, where the module logs (§9.3).
 4. Constants (§7).
-5. Public classes and functions.
-6. Private helpers, named with a leading underscore, at the bottom.
+5. Private classes the public ones use: a base class has to come first, and
+   the bookkeeping a public class keeps (`_Progress`, `_Peer`) is read
+   before the class that keeps it.
+6. Public classes and functions.
+7. Private helper functions, named with a leading underscore, at the bottom.
 
 Within a class, `__init__` comes first, then the public methods, then the
 private ones.
@@ -139,7 +142,9 @@ from libranet.cas.content_id import ContentId
   are in `isort`'s order: `CONSTANTS`, then `Classes`, then `functions`.
 - Code imports from the submodule (`libranet.cas.content_id`), never from the
   package (`libranet.cas`). A package's `__init__.py` re-exports its public
-  names, with a sorted `__all__`, for users of the library.
+  names, with a sorted `__all__`, for users of the library, which
+  `tests/test_package_exports.py` checks. `cas/layered.py` is left out, for
+  the reason `cas/__init__.py` gives.
 - A name that would be unclear or would shadow a builtin where it is used is
   renamed as it is imported:
 
@@ -304,8 +309,10 @@ module's class, when it has no one type to belong to (`write_atomically`,
 
 ### 6.2 Dataclasses
 
-A value is a `@dataclass(frozen=True)`. A mutable dataclass is used only for
-a module's own bookkeeping, and is private (`_Progress`, `_Peer`, `_Child`).
+A value is a `@dataclass(frozen=True)`. So is an HTTP handler or guard: a
+frozen dataclass of the collaborators it is given, called once per request.
+A mutable dataclass is used only for a module's own bookkeeping, and is
+private (`_Progress`, `_Peer`, `_Child`).
 pydantic is used only in `config/`, for what an administrator writes by
 hand; the settings models are frozen and refuse unknown keys.
 
@@ -364,6 +371,9 @@ do.
       poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
   ) -> None:
   ```
+
+  A method that overrides or stands in for a standard-library one keeps that
+  one's signature (`RequestHandler.send_error`, `MessageQueue.get`).
 
 - **No more than five parameters are positional**, not counting `self` or
   `cls`, which `pylint` checks. Any more go after the `*`, where a call has
@@ -595,7 +605,9 @@ that a value already past the limit still stops it:
 - **One test file per source file**: `src/libranet/{area}/{file}.py` is
   tested by `tests/test_{area}_{file}.py`. A test of something that cuts
   across files is named for it (`test_hash_case.py`,
-  `test_exception_logging.py`).
+  `test_exception_logging.py`). A module that only defines exceptions,
+  enums, protocols, constants, or types has none of its own, and is tested
+  where it is used.
 - **Tests are plain functions**, not classes, fully annotated, returning
   `None`.
 - **A test's name is a sentence saying what is true**:
@@ -639,9 +651,61 @@ New code comes with tests, and coverage is gated at 90%.
 ## 12. Where the Code Departs
 
 These are in the code as of this version. New code follows the rules above.
-None of these is fixed in passing: a change set keeps to its task.
+None of these is fixed in passing: a change set keeps to its task. Paths are
+relative to `src/libranet/`, except those that start with `tests/`.
 
 | Where | Departure |
 | --- | --- |
 | `tests/test_config_models.py` | Three `Test…` classes (§11) |
 | `logging_setup.get_logger` | A `get_` name (§4) |
+| `applications/packaged.py` `_Objects`; `backup/builds.py` `_Earlier`; `webserver/app_registry.py` `_FileVersion` | A private class at the bottom, after the public code that uses it (§3.1) |
+| `connections/module.py` `_dialable`; `identity/keys.py` `_decompressed`; `stats/database.py` `_source_rank`; `stats/lists.py` `_cost`; `stats/module.py` `_started`; `webserver/config_guard.py` `_host_name`, `_same_authority`; `webserver/config_handlers.py` `_unreadable_registry_response`, `_body_or_refusal`, `_json_or_refusal` | A private function before public code (§3.1) |
+| `webserver/data_handler.py` `DataReadHandler`; `webserver/data_write_handler.py` `DataWriteHandler` | A handler that keeps its collaborators in private attributes set by `__init__`, where every other handler and guard class is a frozen dataclass of them (§6.2) |
+| `problems.py` `Problem` | Its JSON form is `to_dict()`, and its body `to_json()`, rather than `value()` (§6.3) |
+| `webserver/config_credential.py` `StoredCredential` | `from_json()` and `to_json()` read and write the file's bytes, rather than `from_value()` and `value()` (§6.3) |
+| 70 public callables in 36 files, listed in §12.1 | An optional parameter a call may pass by position (§6.4) |
+| `backup/tasks.py`, `config/paths.py`, `connections/peer_session.py`, `messaging/queues.py`, `stats/records.py`, `stats/schema.py`, `webserver/data_handler.py`, `webserver/request_refusals.py`, `webserver/search_handler.py` | No test file of its own: each is tested through the code that uses it (§11) |
+
+### 12.1 Optional Parameters Taken Positionally
+
+Each callable is shown with the parameters that have a default but may be
+passed by position. A constructor is shown as its class.
+
+| File | Callables |
+| --- | --- |
+| `applications/packaged.py` | `PackagedApplications.build(directory, names)` |
+| `backup/restores.py` | `Restore.attempt(xattrs)` |
+| `backup/writing.py` | `DirectoryWriter(xattrs)`, `DirectoryWriter.open(xattrs)` |
+| `bundle/building.py` | `IgnoredPaths(paths)`, `build_file(max_object_bytes)`, `build_directory(supersedes, max_object_bytes)` |
+| `bundle/extensions.py` | `resolve_directory(max_extensions)` |
+| `bundle/loading.py` | `load_bundle(max_bytes, password, targeted)` |
+| `bundle/protection.py` | `protect(max_object_bytes)` |
+| `bundle/shapes.py` | `Metadata.xattr_parts(included)` |
+| `bundle/storing.py` | `store_object(max_object_bytes)`, `store_bundle(password, max_object_bytes, max_extensions)`, `StoredDirectory.store(password, max_object_bytes, max_extensions)` |
+| `bundle/symlinks.py` | `path_reached(directories)` |
+| `bundle/xattrs.py` | `ExtendedAttributes(excluded)` |
+| `cas/algorithms.py` | `AlgorithmRegistry(algorithms)` |
+| `cas/archive.py` | `ArchiveSource(registry)`, `ArchiveSource.open(registry)` |
+| `cas/content_id.py` | `ContentId.create(registry)`, `ContentId.parse(registry)`, `ContentId.from_fields(registry)`, `ContentId.from_stored_name(registry)`, `ContentId.for_data(registry)`, `ContentId.matches(registry)` |
+| `cas/layered.py` | `packaged_archives(directory)`, `LayeredSource(archives, applications)`, `LayeredSource.open(packaged, sources)` |
+| `cas/verification.py` | `content_matches(registry)` |
+| `cli.py` | `parse_args(argv)` |
+| `config/loader.py` | `load_config(path)` |
+| `config/seeds.py` | `load_seed_peers(path)` |
+| `connections/peer_connection.py` | `PeerConnection.request(headers, body)` |
+| `eviction/pressure.py` | `StoragePressure.of(free_bytes)` |
+| `identity/authentication.py` | `RequestAuthenticator(max_tracked_signers)`, `RequestAuthenticator.authenticate(body)` |
+| `identity/signatures.py` | `MessageSigner(clock)`, `MessageSigner.sign_request(body)`, `MessageSigner.sign_response(body)`, `MessageVerifier(clock)`, `MessageVerifier.of(clock)`, `MessageVerifier.verify_request(body)`, `MessageVerifier.verify_response(body)` |
+| `messaging/dispatcher.py` | `Dispatcher.run(stop)` |
+| `messaging/envelope.py` | `make_message(payload)` |
+| `messaging/module.py` | `ModuleBase.publish(payload)`, `ModuleBase.receive(timeout_seconds)`, `ModuleBase.run(stop)` |
+| `messaging/queues.py` | `create_module_queues(start_method)` |
+| `problems.py` | `Problem.for_status(detail, instance)` |
+| `protocol/config_requests.py` | `BackupJobRequest.create(interval_seconds)`, `BuildRequest.create(password)`, `ExportRequest.create(password)` |
+| `protocol/search.py` | `normalize_prefix(registry)`, `LocalSearch(registry)` |
+| `stats/database.py` | `StatsDatabase.eviction_order(exclude)`, `StatsDatabase.record_connection_opened(endpoint)`, `StatsDatabase.last_good_endpoints(exclude)`, `StatsDatabase.candidate_endpoints(exclude)`, `StatsDatabase.record_seek(node_id)`, `StatsDatabase.clear_seek(node_id)`, `StatsDatabase.seek_values(node_id)` |
+| `supervisor.py` | `main(argv)` |
+| `webserver/app_outcomes.py` | `ApplicationOutcomes(max_outcomes)` |
+| `webserver/app_registry.py` | `ApplicationRegistry(initial)` |
+| `webserver/app_use.py` | `ApplicationUse(report_interval_seconds)` |
+| `webserver/http_types.py` | `RequestBody(stream)`, `bytes_response(content_type, headers)`, `json_response(status)`, `problem_response(headers)` |
