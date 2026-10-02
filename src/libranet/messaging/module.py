@@ -16,14 +16,8 @@ from time import monotonic, time
 from typing import Any, Callable, ClassVar, Final, Mapping, Protocol
 
 from libranet.logging_setup import get_logger
-from libranet.messaging.envelope import (
-    InvalidMessageError,
-    Message,
-    event_of,
-    make_message,
-    source_of,
-    validate_message,
-)
+from libranet.messaging.envelope import Message, event_of, make_message, source_of, validate_message
+from libranet.messaging.errors import InvalidMessageError
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName

@@ -11,10 +11,10 @@ from libranet.protocol.config_requests import (
     BackupJobRequest,
     BuildRequest,
     ExportRequest,
-    InvalidConfigRequestError,
     Password,
     RestoreRequest,
 )
+from libranet.protocol.errors import InvalidConfigRequestError
 
 DIRECTORY = "/home/me/documents"
 BUNDLE = ContentId.for_data(b"a backup bundle", "sha256")

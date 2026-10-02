@@ -28,7 +28,6 @@ from libranet.protocol.config_requests import (
     RestoreRequest,
 )
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
-from libranet.supervision.stubs import StubModule
 from libranet.webserver.app_registry import (
     ROOT_APPLICATION,
     Application,
@@ -50,6 +49,8 @@ from libranet.webserver.config_handlers import (
 )
 from libranet.webserver.http_types import Request, RequestBody, Response
 from libranet.webserver.router import Router
+
+from tests.stubs import StubModule
 
 RETRY_AFTER_SECONDS = 9
 LOCAL = "127.0.0.1"

@@ -27,16 +27,13 @@ from libranet.cas.errors import (
     StreamTooLargeError,
     UnknownAlgorithmError,
 )
+from libranet.protocol.errors import InvalidListError
 from libranet.protocol.search import normalize_prefix
 
 _LOGGER = getLogger(__name__)
 
 NODES_PATH: Final = "/data/nodes"
 SEEK_PATH: Final = "/data/seek"
-
-
-class InvalidListError(ValueError):
-    """A posted body is not a usable node list or seek list."""
 
 
 def decode_list(body: bytes, max_decompressed_bytes: int) -> object:

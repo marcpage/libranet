@@ -16,7 +16,8 @@ from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
-from libranet.supervision.stubs import StubModule
+
+from tests.stubs import StubModule
 
 TIMEOUT = 5.0
 CACHE_SECONDS = 60.0

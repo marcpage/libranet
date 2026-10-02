@@ -54,13 +54,8 @@ from libranet.webserver.config_guard import ConfigSiteGuard, local_config_guard
 from libranet.webserver.config_handlers import NodeDescription, config_routes
 from libranet.webserver.data_handler import DATA_PATTERN, DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
-from libranet.webserver.http_types import (
-    IncompleteBodyError,
-    Request,
-    RequestBody,
-    Response,
-    problem_response,
-)
+from libranet.webserver.errors import IncompleteBodyError
+from libranet.webserver.http_types import Request, RequestBody, Response, problem_response
 from libranet.webserver.inbound_peers import InboundConnection, InboundPeers
 from libranet.webserver.list_handlers import ListFileHandler, NodeListHandler, SeekListHandler
 from libranet.webserver.router import Router

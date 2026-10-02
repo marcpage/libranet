@@ -35,8 +35,9 @@ from libranet.cas.content_id import ContentId
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.problems import INVALID_LIST, Problem
+from libranet.protocol.errors import InvalidListError
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
-from libranet.protocol.lists import InvalidListError, decode_list, parse_node_list, parse_seek_list
+from libranet.protocol.lists import decode_list, parse_node_list, parse_seek_list
 from libranet.protocol.localhost_resolution import NodeListSender
 from libranet.webserver.http_types import Request, Response, bytes_response, problem_response
 from libranet.webserver.request_refusals import (

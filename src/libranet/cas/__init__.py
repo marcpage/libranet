@@ -1,6 +1,6 @@
 """Content-addressed storage library (Phase 1 Step 2).
 
-Path construction for the source-of-truth and per-connection layouts,
+Path construction for the source of truth and each sending node's store,
 hash-prefix subdirectory splitting, the hash-algorithm registry, ranking
 identifiers against a prefix, and checking content against its identifier
 (Step 7). Content archives, and reading them after the source of truth
@@ -18,10 +18,11 @@ from libranet.cas.algorithms import (
     HashAlgorithm,
     Hasher,
     Sha256Algorithm,
+    UnsupportedAlgorithms,
 )
-from libranet.cas.archive import ArchiveSink, ArchiveSource
-from libranet.cas.compression import decompressed, decompressed_chunks
-from libranet.cas.content_id import ContentId
+from libranet.cas.archive import ARCHIVE_SUFFIX, ArchiveSink, ArchiveSource
+from libranet.cas.compression import CHUNK_BYTES, decompressed, decompressed_chunks
+from libranet.cas.content_id import HEX_DIGITS, LOWER_HEX_DIGITS, ContentId
 from libranet.cas.errors import (
     ArchiveError,
     CasError,
@@ -31,13 +32,26 @@ from libranet.cas.errors import (
     StreamTooLargeError,
     UnknownAlgorithmError,
 )
-from libranet.cas.prefix import matching_bits, nearest
-from libranet.cas.resolved_files import ResolvedFiles
-from libranet.cas.store import CasStore, HeldObject, subdirectories
+from libranet.cas.prefix import BITS_PER_HEX_DIGIT, matching_bits, nearest
+from libranet.cas.resolved_files import DIRECTORY_FILE, ResolvedFiles
+from libranet.cas.store import (
+    DATA_SEGMENT,
+    CasStore,
+    HeldObject,
+    StrayPrefixDirectories,
+    subdirectories,
+)
 from libranet.cas.verification import content_matches
 
 __all__ = [
+    "ARCHIVE_SUFFIX",
+    "BITS_PER_HEX_DIGIT",
+    "CHUNK_BYTES",
+    "DATA_SEGMENT",
     "DEFAULT_REGISTRY",
+    "DIRECTORY_FILE",
+    "HEX_DIGITS",
+    "LOWER_HEX_DIGITS",
     "AlgorithmRegistry",
     "ArchiveError",
     "ArchiveSink",
@@ -53,8 +67,10 @@ __all__ = [
     "NotZlibStreamError",
     "ResolvedFiles",
     "Sha256Algorithm",
+    "StrayPrefixDirectories",
     "StreamTooLargeError",
     "UnknownAlgorithmError",
+    "UnsupportedAlgorithms",
     "content_matches",
     "decompressed",
     "decompressed_chunks",

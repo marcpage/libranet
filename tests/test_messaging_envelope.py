@@ -7,13 +7,12 @@ from typing import Any
 from pytest import mark, raises
 
 from libranet.messaging.envelope import (
-    InvalidMessageError,
     event_of,
     make_message,
-    payload_of,
     source_of,
     validate_message,
 )
+from libranet.messaging.errors import InvalidMessageError
 from libranet.messaging.events import EventType
 from libranet.modules import ModuleName
 
@@ -41,7 +40,6 @@ def test_make_message_without_payload_has_only_the_envelope() -> None:
     message = make_message(EventType.SHUTDOWN, ModuleName.SUPERVISOR)
 
     assert set(message) == {"event", "timestamp", "source"}
-    assert payload_of(message) == {}
 
 
 def test_payload_may_not_overwrite_the_envelope() -> None:
@@ -55,7 +53,6 @@ def test_accessors_read_a_built_message() -> None:
     assert validate_message(message) is message
     assert event_of(message) is EventType.PUT_COMPLETED
     assert source_of(message) is ModuleName.WEBSERVER
-    assert payload_of(message) == {"path": "/x"}
 
 
 def test_messages_survive_pickling() -> None:

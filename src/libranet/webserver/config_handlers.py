@@ -76,15 +76,10 @@ from libranet.protocol.config_requests import (
     BackupJobRequest,
     BuildRequest,
     ExportRequest,
-    InvalidConfigRequestError,
     RestoreRequest,
 )
-from libranet.webserver.app_registry import (
-    CONFIG_APPLICATION,
-    Application,
-    ApplicationRegistry,
-    RegistryFileError,
-)
+from libranet.protocol.errors import InvalidConfigRequestError
+from libranet.webserver.app_registry import CONFIG_APPLICATION, Application, ApplicationRegistry
 from libranet.webserver.backup_state import (
     BUILDS_FIELD,
     EXPORTS_FIELD,
@@ -92,13 +87,8 @@ from libranet.webserver.backup_state import (
     RESTORES_FIELD,
     BackupState,
 )
-from libranet.webserver.http_types import (
-    Request,
-    Response,
-    UnsupportedMediaTypeError,
-    json_response,
-    problem_response,
-)
+from libranet.webserver.errors import RegistryFileError, UnsupportedMediaTypeError
+from libranet.webserver.http_types import Request, Response, json_response, problem_response
 from libranet.webserver.request_refusals import unreadable_body_response
 from libranet.webserver.router import Handler
 

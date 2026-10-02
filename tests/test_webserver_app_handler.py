@@ -24,8 +24,9 @@ from libranet.webserver.app_handler import (
     content_type_for,
 )
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
-from libranet.webserver.app_registry import Application, ApplicationRegistry, RegistryFileError
+from libranet.webserver.app_registry import Application, ApplicationRegistry
 from libranet.webserver.app_use import ApplicationUse
+from libranet.webserver.errors import RegistryFileError
 from libranet.webserver.http_types import Request, Response
 
 ROOT_BUNDLE = ContentId.for_data(b"the root application's bundle", "sha256")

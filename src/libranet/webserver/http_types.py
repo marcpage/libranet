@@ -17,15 +17,8 @@ from libranet.identity.authentication import AuthenticationResult
 from libranet.json_format import compact_json
 from libranet.problems import PROBLEM_CONTENT_TYPE, Problem
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE, OCTET_STREAM
+from libranet.webserver.errors import IncompleteBodyError, UnsupportedMediaTypeError
 from libranet.webserver.inbound_peers import InboundConnection
-
-
-class IncompleteBodyError(ConnectionError):
-    """The client stopped sending before the whole declared body arrived."""
-
-
-class UnsupportedMediaTypeError(ValueError):
-    """A request's body does not say it is of the type it would be read as."""
 
 
 class _Readable(Protocol):

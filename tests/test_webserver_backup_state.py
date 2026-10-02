@@ -15,8 +15,8 @@ from libranet.webserver.backup_state import (
     RESTORES_FIELD,
     BackupReport,
     BackupState,
-    InvalidBackupReportError,
 )
+from libranet.webserver.errors import InvalidBackupReportError
 
 JOB = {"job_id": "0123456789abcdef", "directory": "/home/me/documents", "state": "idle"}
 RESTORE = {"restore_id": "fedcba9876543210", "directory": "/tmp/restored", "state": "running"}

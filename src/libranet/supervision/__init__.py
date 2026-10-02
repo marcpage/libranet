@@ -11,31 +11,33 @@ from libranet.supervision.children import (
     run_dispatcher_process,
     run_module_process,
 )
-from libranet.supervision.process_supervisor import ProcessSupervisor
+from libranet.supervision.process_supervisor import (
+    DEFAULT_MAX_RESTART_DELAY_SECONDS,
+    DEFAULT_POLL_INTERVAL_SECONDS,
+    DEFAULT_READY_TIMEOUT_SECONDS,
+    DEFAULT_RESTART_DELAY_SECONDS,
+    DEFAULT_STABLE_AFTER_SECONDS,
+    DEFAULT_STOP_TIMEOUT_SECONDS,
+    ProcessSupervisor,
+)
 from libranet.supervision.registry import default_module_specs
 from libranet.supervision.specs import DispatcherEntry, ModuleFactory, ModuleSpec, ReadySignal
-from libranet.supervision.stubs import (
-    CrashingStubModule,
-    StubModule,
-    crashing_dispatcher_main,
-    crashing_module_factory,
-    stub_module_factory,
-)
 
 __all__ = [
+    "DEFAULT_MAX_RESTART_DELAY_SECONDS",
+    "DEFAULT_POLL_INTERVAL_SECONDS",
+    "DEFAULT_READY_TIMEOUT_SECONDS",
+    "DEFAULT_RESTART_DELAY_SECONDS",
+    "DEFAULT_STABLE_AFTER_SECONDS",
+    "DEFAULT_STOP_TIMEOUT_SECONDS",
     "EXIT_CRASHED",
-    "CrashingStubModule",
     "DispatcherEntry",
     "ModuleFactory",
     "ModuleSpec",
     "ProcessSupervisor",
     "ReadySignal",
-    "StubModule",
-    "crashing_dispatcher_main",
-    "crashing_module_factory",
     "default_module_specs",
     "dispatcher_main",
     "run_dispatcher_process",
     "run_module_process",
-    "stub_module_factory",
 ]

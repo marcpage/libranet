@@ -16,9 +16,9 @@ from libranet.webserver.config_credential import (
     SALT_BYTES,
     SCHEME,
     ConfigCredential,
-    CredentialFileError,
     StoredCredential,
 )
+from libranet.webserver.errors import CredentialFileError
 
 CREDENTIALS = "admin:correct horse"
 OTHER = "admin:battery staple"

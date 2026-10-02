@@ -5,12 +5,8 @@ from io import BytesIO
 
 from pytest import mark, raises
 
-from libranet.webserver.http_types import (
-    IncompleteBodyError,
-    Request,
-    RequestBody,
-    UnsupportedMediaTypeError,
-)
+from libranet.webserver.errors import IncompleteBodyError, UnsupportedMediaTypeError
+from libranet.webserver.http_types import Request, RequestBody
 
 
 class StalledStream:

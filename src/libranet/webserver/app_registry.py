@@ -44,6 +44,7 @@ from typing import Any, Final, Mapping
 
 from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
+from libranet.webserver.errors import RegistryFileError
 
 # The application served at `/` (HttpApi §13).
 ROOT_APPLICATION: Final = "/"
@@ -55,10 +56,6 @@ CONFIG_APPLICATION: Final = "config"
 RESERVED_APPLICATION_NAMES: Final = frozenset({"data", "web", "chaos", CONFIG_APPLICATION})
 
 _UNUSABLE_SEGMENTS: Final = frozenset({"", ".", ".."})
-
-
-class RegistryFileError(ValueError):
-    """The registry file cannot be read, or does not hold an application registry."""
 
 
 @dataclass(frozen=True)

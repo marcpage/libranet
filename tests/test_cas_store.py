@@ -96,26 +96,6 @@ def test_delete(tmp_path: Path) -> None:
     assert not store.delete(content_id)
 
 
-def test_move_to_promotes_content(tmp_path: Path) -> None:
-    incoming = CasStore(tmp_path / "incoming" / "conn-1", 4)
-    truth = CasStore(tmp_path / "cas", 4)
-    content_id = ContentId.for_data(b"payload", "sha256")
-    incoming.write(content_id, b"payload")
-
-    target = incoming.move_to(content_id, truth)
-
-    assert target == truth.path_for(content_id)
-    assert truth.read(content_id) == b"payload"
-    assert not incoming.exists(content_id)
-
-
-def test_move_to_missing_raises(tmp_path: Path) -> None:
-    with raises(ContentNotFoundError):
-        make_store(tmp_path).move_to(
-            ContentId.for_data(b"x", "sha256"), CasStore(tmp_path / "other", 4)
-        )
-
-
 def test_iter_prefix(tmp_path: Path) -> None:
     store = make_store(tmp_path, 2)
     ids = [ContentId.for_data(str(index).encode(), "sha256") for index in range(200)]
@@ -151,11 +131,9 @@ def test_stores_from_config(tmp_path: Path) -> None:
     storage = StorageConfig(data_dir=tmp_path, hash_prefix_length=3)
 
     truth = CasStore.source_of_truth(storage)
-    incoming = CasStore.for_connection(storage, "conn-7")
 
     assert truth.root == storage.source_of_truth_dir
-    assert incoming.root == storage.connection_dir("conn-7")
-    assert truth.prefix_length == incoming.prefix_length == 3
+    assert truth.prefix_length == 3
 
 
 def test_node_stores_are_separate_per_node(tmp_path: Path) -> None:
@@ -165,8 +143,7 @@ def test_node_stores_are_separate_per_node(tmp_path: Path) -> None:
 
     store = CasStore.for_node(storage, first)
 
-    assert store.root == storage.connection_dir(f"sha256-{first.hash}")
-    assert store.root.parent == storage.incoming_dir
+    assert store.root == storage.incoming_dir / f"sha256-{first.hash}"
     assert store.prefix_length == 3
     assert CasStore.for_node(storage, second).root != store.root
 

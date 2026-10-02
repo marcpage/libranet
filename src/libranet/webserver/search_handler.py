@@ -2,8 +2,9 @@
 
 A fresh cached response is served as-is; otherwise the local store is
 scanned and the result cached. Every request publishes
-:attr:`EventType.SEARCH_REQUESTED` naming the cache file, so the stats module
-(Step 8) can enrich it with hashes known beyond this node's own store.
+:attr:`EventType.SEARCH_REQUESTED` naming the prefix, so the stats module
+(Step 8) can enrich the cached file with hashes known beyond this node's own
+store.
 """
 
 from __future__ import annotations
@@ -54,8 +55,5 @@ class SearchHandler:
         if body is None:
             body = self.cache.save_results(prefix, self.search.search(prefix))
 
-        self.publish(
-            EventType.SEARCH_REQUESTED,
-            {"prefix": prefix, "cache_path": str(self.cache.path_for(prefix))},
-        )
+        self.publish(EventType.SEARCH_REQUESTED, {"prefix": prefix})
         return bytes_response(body, JSON_CONTENT_TYPE)

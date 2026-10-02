@@ -17,8 +17,8 @@ from libranet.webserver.app_registry import (
     Application,
     ApplicationRegistry,
     RegisteredApplications,
-    RegistryFileError,
 )
+from libranet.webserver.errors import RegistryFileError
 
 ROOT_BUNDLE = ContentId.for_data(b"the root application's bundle", "sha256")
 WIKI_BUNDLE = ContentId.for_data(b"the wiki's bundle", "sha256")

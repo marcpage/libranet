@@ -18,13 +18,14 @@ from threading import Event, Thread
 from typing import Final, Mapping
 
 from libranet.logging_setup import get_logger
-from libranet.messaging.envelope import InvalidMessageError, Message, event_of, validate_message
+from libranet.messaging.envelope import Message, event_of, validate_message
+from libranet.messaging.errors import InvalidMessageError
 from libranet.messaging.events import EventType
 from libranet.messaging.module import StopSignal
 from libranet.messaging.queues import MessageQueue, ModuleQueues
 from libranet.modules import ModuleName
 
-DEFAULT_POLL_INTERVAL_SECONDS: Final = 0.1
+DEFAULT_DISPATCH_POLL_INTERVAL_SECONDS: Final = 0.1
 
 
 class Dispatcher:
@@ -35,7 +36,7 @@ class Dispatcher:
         endpoints: Mapping[ModuleName, ModuleQueues],
         *,
         logger: Logger | None = None,
-        poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
+        poll_interval_seconds: float = DEFAULT_DISPATCH_POLL_INTERVAL_SECONDS,
     ) -> None:
         if poll_interval_seconds <= 0:
             raise ValueError(f"poll_interval_seconds must be positive, got {poll_interval_seconds}")

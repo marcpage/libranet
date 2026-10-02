@@ -25,7 +25,8 @@ from libranet.modules import SPAWNED_MODULES, ModuleName
 from libranet.supervision.process_supervisor import ProcessSupervisor
 from libranet.supervision.registry import default_module_specs
 from libranet.supervision.specs import ModuleSpec
-from libranet.supervision.stubs import (
+
+from tests.stubs import (
     CrashingStubModule,
     crashing_dispatcher_main,
     crashing_module_factory,

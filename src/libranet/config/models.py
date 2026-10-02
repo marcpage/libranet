@@ -225,7 +225,7 @@ class StorageConfig(_Section):
 
     @property
     def incoming_dir(self) -> Path:
-        """Parent of the per-connection directories unverified writes land in."""
+        """Parent of the directories unverified writes land in, one per sending node."""
         return self.data_dir / "incoming"
 
     @property
@@ -277,10 +277,6 @@ class StorageConfig(_Section):
     def applications_path(self) -> Path:
         """The application registry, owned by the web server (Step 35)."""
         return self.data_dir / "applications.json"
-
-    def connection_dir(self, connection_id: str) -> Path:
-        """Write directory for one connection, under :attr:`incoming_dir`."""
-        return self.incoming_dir / connection_id
 
 
 class IdentityConfig(_Section):

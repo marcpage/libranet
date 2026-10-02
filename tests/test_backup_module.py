@@ -15,8 +15,9 @@ from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
 from xattr import xattr
 
 from libranet.backup.builds import Build, BuildRecord
+from libranet.backup.errors import JobFileError
 from libranet.backup.exports import Export
-from libranet.backup.jobs import ExpandedBackups, JobFileError, load_jobs
+from libranet.backup.jobs import ExpandedBackups, load_jobs
 from libranet.backup.module import BackupModule, backup_module_factory
 from libranet.backup.restores import Restore
 from libranet.bundle.building import build_directory

@@ -125,8 +125,9 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError
 from libranet.cas.prefix import nearest
 from libranet.cas.store import CasStore
+from libranet.config.errors import SeedError
 from libranet.config.models import LibranetConfig
-from libranet.config.seeds import SeedError, load_seed_peers
+from libranet.config.seeds import load_seed_peers
 from libranet.connections.candidates import Candidate, candidate_list, seed_candidates
 from libranet.connections.endpoints import PeerAddress
 from libranet.connections.peer_exchange import PIPELINE_DEPTH, PeerExchange

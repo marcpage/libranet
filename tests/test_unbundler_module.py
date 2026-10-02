@@ -26,13 +26,14 @@ from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.supervision.registry import default_module_specs
-from libranet.supervision.stubs import StubModule
 from libranet.unbundler.module import UnbundlerModule, unbundler_module_factory
 from libranet.webserver.app_registry import Application, ApplicationRegistry
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.http_types import Request
 from libranet.webserver.server import build_router
+
+from tests.stubs import StubModule
 
 INDEX = b"<html>home</html>"
 FIRST_HALF = b"first half, " * 1000

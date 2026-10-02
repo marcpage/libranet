@@ -24,7 +24,6 @@ from libranet.messaging.events import EventType, PathOutcome
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
-from libranet.supervision.stubs import StubModule
 from libranet.unbundler.module import UnbundlerModule
 from libranet.webserver.app_handler import CONFIG_APP_POLICY
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
@@ -34,6 +33,8 @@ from libranet.webserver.config_handlers import APPLICATIONS_PATH, NodeDescriptio
 from libranet.webserver.http_types import Request, RequestBody, Response
 from libranet.webserver.router import Router
 from libranet.webserver.server import build_router
+
+from tests.stubs import StubModule
 
 ADMIN_PAGE = b"<!doctype html><title>My own administration page</title>"
 ADMIN_STYLE = b"body { color: teal; }"

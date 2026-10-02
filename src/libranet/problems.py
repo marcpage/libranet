@@ -1,8 +1,7 @@
 """RFC 9457 Problem Details, the body of every Libranet HTTP error (HttpApi §17).
 
 Shared by every error path: the web server builds its error responses from
-:class:`Problem`, and outgoing clients can parse peers' errors with
-:meth:`Problem.from_json`. Libranet-specific problem types live under
+:class:`Problem`. Libranet-specific problem types live under
 :data:`PROBLEM_TYPE_BASE`; errors fully described by their status code use
 ``about:blank``, whose ``title`` is by convention the status phrase.
 """
@@ -10,7 +9,6 @@ Shared by every error path: the web server builds its error responses from
 from __future__ import annotations
 from dataclasses import dataclass, field
 from http import HTTPStatus
-from json import loads
 from typing import Any, Final, Mapping
 
 from libranet.json_format import compact_json
@@ -85,43 +83,3 @@ class Problem:
     def to_json(self) -> bytes:
         """The UTF-8 encoded JSON body."""
         return compact_json(self.to_dict())
-
-    @classmethod
-    def from_json(cls, body: bytes | str) -> Problem:
-        """Parse a Problem Details body received from a peer.
-
-        Raises:
-            InvalidProblemError: ``body`` is not a JSON object with an
-                integer ``status`` and string ``type``/``title``.
-        """
-        try:
-            parsed = loads(body)
-
-        except ValueError as error:
-            raise InvalidProblemError(f"Problem body is not JSON: {error}") from None
-
-        if not isinstance(parsed, dict):
-            raise InvalidProblemError("Problem body must be a JSON object")
-
-        status = parsed.get("status")
-        problem_type = parsed.get("type", ABOUT_BLANK)
-        title = parsed.get("title", "")
-
-        if isinstance(status, bool) or not isinstance(status, int):
-            raise InvalidProblemError(f"Problem status must be an integer, got {status!r}")
-
-        if not isinstance(problem_type, str) or not isinstance(title, str):
-            raise InvalidProblemError("Problem type and title must be strings")
-
-        detail = parsed.get("detail")
-        instance = parsed.get("instance")
-        return cls(
-            status=status,
-            title=title,
-            type=problem_type,
-            detail=detail if isinstance(detail, str) else None,
-            instance=instance if isinstance(instance, str) else None,
-            extensions={
-                key: value for key, value in parsed.items() if key not in _STANDARD_MEMBERS
-            },
-        )

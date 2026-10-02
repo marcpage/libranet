@@ -6,7 +6,8 @@ from pathlib import Path
 from pytest import raises
 from yaml import safe_load
 
-from libranet.config.loader import ConfigError, load_config
+from libranet.config.errors import ConfigError
+from libranet.config.loader import load_config
 from libranet.config.models import BackupConfig, NetworkConfig
 
 
