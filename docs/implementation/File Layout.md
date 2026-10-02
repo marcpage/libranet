@@ -619,6 +619,8 @@ testing, each with its own directories:
 | `--base-port` | `18400` | Port of `node-00`; node *n* listens on `base-port + n` |
 | `--dir` | A new temporary directory | Where the nodes' directories go |
 | `--debug` | Off | Every node sets `logging.level` to `DEBUG`, for this run only |
+| `--host` | `127.0.0.1` | Every node sets `network.listen_address` to it, and is told the others are there |
+| `--max-storage-bytes` | No limit | Every node sets `storage.max_storage_bytes` to it, for this run only |
 
 The script writes each node's key before starting it, so that the ids of
 `node-00` to `node-0f` begin with the hex digits `0` to `f`. Its config sets

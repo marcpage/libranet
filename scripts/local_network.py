@@ -1,13 +1,14 @@
 """Run a local network of Libranet nodes for manual testing.
 
-Starts ``--count`` nodes (40 by default) on ``127.0.0.1``, one per port from
-``--base-port`` up, and tells each one about all the others by posting a
-node list to its ``/data/nodes`` (HttpApi §10.5). Each node's ``/config`` is
-on its port plus 100, as a node's is by default, or plus the next multiple of
-100 above every node's port when there are more than 100 nodes. The first sixteen nodes are
-given keys whose node ids start with the hex digits ``0`` to ``f`` in order,
-so every identifier bucket (HighLevelDesign §4.6) has a node in it; any
-further nodes get random keys.
+Starts ``--count`` nodes (40 by default) at ``--host`` (``127.0.0.1`` by
+default), one per port from ``--base-port`` up, and tells each one about all
+the others, at that address, by posting a node list to its ``/data/nodes``
+(HttpApi §10.5). Each node's ``/config`` is on its port plus 100, as a node's
+is by default, or plus the next multiple of 100 above every node's port when
+there are more than 100 nodes. The first sixteen nodes are given keys whose
+node ids start with the hex digits ``0`` to ``f`` in order, so every
+identifier bucket (HighLevelDesign §4.6) has a node in it; any further nodes
+get random keys. ``--max-storage-bytes`` limits the content each node holds.
 
 While the nodes run, the script shows each one's URL and how many peers it
 is connected to, read from the ``Connected to`` and ``closed`` lines of each
@@ -25,6 +26,7 @@ from __future__ import annotations
 from argparse import ArgumentParser, Namespace
 from dataclasses import dataclass
 from functools import cached_property
+from ipaddress import ip_address
 from json import dumps
 from os import fstat, killpg
 from pathlib import Path
@@ -63,6 +65,7 @@ from libranet.modules import ModuleName
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.protocol.lists import NODES_PATH
 
+#: Where the nodes listen, and are told about each other, unless ``--host`` says otherwise.
 HOST: Final = "127.0.0.1"
 
 #: How many nodes get distinct first hex digits: one per hex digit.
@@ -118,18 +121,25 @@ def choose_keys(
 
 @dataclass(frozen=True)
 class NodePlace:
-    """Where one node of the network keeps its files, the ports it listens on, and how it logs."""
+    """Where one node of the network keeps its files, where it listens, and how it logs.
+
+    ``max_storage_bytes`` limits the content the node holds; ``None`` leaves
+    it to the node's default.
+    """
 
     index: int
     directory: Path
     port: int
     config_port: int
     debug: bool = False
+    host: str = HOST
+    max_storage_bytes: int | None = None
 
     @property
     def endpoint(self) -> str:
         """The URL the node is reached at."""
-        return f"http://{HOST}:{self.port}"
+        host = f"[{self.host}]" if ":" in self.host else self.host
+        return f"http://{host}:{self.port}"
 
     @property
     def config_path(self) -> Path:
@@ -144,17 +154,22 @@ class NodePlace:
     @property
     def document(self) -> dict[str, Any]:
         """The contents of the node's configuration file."""
+        storage: dict[str, Any] = {
+            "data_dir": str(self.directory / "data"),
+            "cache_dir": str(self.directory / "cache"),
+        }
+
+        if self.max_storage_bytes is not None:
+            storage["max_storage_bytes"] = self.max_storage_bytes
+
         return {
             "network": {
-                "listen_address": HOST,
+                "listen_address": self.host,
                 "listen_port": self.port,
                 # Stated, since the default could land on another node's port.
                 "config_port": self.config_port,
             },
-            "storage": {
-                "data_dir": str(self.directory / "data"),
-                "cache_dir": str(self.directory / "cache"),
-            },
+            "storage": storage,
             "stats": {"derive_interval_seconds": _DERIVE_INTERVAL_SECONDS},
             "logging": {
                 "directory": str(self.directory / "logs"),
@@ -211,14 +226,33 @@ class LocalNetwork:
         self.nodes = tuple(nodes)
 
     @classmethod
-    def create(cls, root: Path, count: int, base_port: int, debug: bool = False) -> LocalNetwork:
+    def create(
+        cls,
+        root: Path,
+        count: int,
+        base_port: int,
+        debug: bool = False,
+        *,
+        host: str = HOST,
+        max_storage_bytes: int | None = None,
+    ) -> LocalNetwork:
         """A network of ``count`` nodes under ``root``, reusing any keys left there.
 
         With ``debug``, every node logs at ``DEBUG`` rather than ``INFO``.
+        Every node listens at ``host``, and holds no more than
+        ``max_storage_bytes`` of content when that is given.
         """
         offset = config_port_offset(count)
         places = [
-            NodePlace(i, root / f"node-{i:02d}", base_port + i, base_port + i + offset, debug)
+            NodePlace(
+                i,
+                root / f"node-{i:02d}",
+                base_port + i,
+                base_port + i + offset,
+                debug,
+                host=host,
+                max_storage_bytes=max_storage_bytes,
+            )
             for i in range(count)
         ]
         algorithm = places[0].config.identity.hash_algorithm
@@ -459,13 +493,14 @@ class RunningNetwork:
         target = sum(self.network.connection_target(node) for node in self.network.nodes)
         filled = round(_BAR_WIDTH * made / target) if target else _BAR_WIDTH
         progress = "#" * filled + "-" * (_BAR_WIDTH - filled)
+        width = max(len(node.place.endpoint) for node in self.network.nodes)
         lines = [
             f"Libranet local network: {len(self.processes)} nodes in {self.root}",
             "Ctrl-C stops every node.",
             "",
             f"Connections [{progress}] {made}/{target}",
             "",
-            f"{'#':>3}  {'URL':<24}  {'node id':<14}  {'out':>5}  {'in':>3}",
+            f"{'#':>3}  {'URL':<{width}}  {'node id':<14}  {'out':>5}  {'in':>3}",
         ]
 
         for process in self.processes:
@@ -475,7 +510,7 @@ class RunningNetwork:
             outgoing = f"{len(process.peers)}/{self.network.connection_target(node)}"
             state = "" if process.running else f"  exited ({process.process.returncode})"
             lines.append(
-                f"{node.place.index:>3}  {node.place.endpoint:<24}  "
+                f"{node.place.index:>3}  {node.place.endpoint:<{width}}  "
                 f"{node.identity.node_id.hash[:12]:<14}  {outgoing:>5}  {incoming:>3}{state}"
             )
 
@@ -537,6 +572,17 @@ def parse_args(argv: Sequence[str] | None = None) -> Namespace:
         "--base-port", type=int, default=18400, help="port of node 0 (default 18400)"
     )
     parser.add_argument(
+        "--host",
+        default=HOST,
+        help=f"IP address the nodes listen at and are told about each other at (default "
+        f"{HOST}); one that other machines reach this one at lets them use the nodes too",
+    )
+    parser.add_argument(
+        "--max-storage-bytes",
+        type=int,
+        help="most bytes of content each node holds (default: no limit)",
+    )
+    parser.add_argument(
         "--dir",
         type=Path,
         help="keep the network's files here, reusing any keys an earlier run left, "
@@ -559,6 +605,21 @@ def parse_args(argv: Sequence[str] | None = None) -> Namespace:
     if not 1 <= args.base_port <= HIGHEST_PORT + 1 - args.count - config_port_offset(args.count):
         parser.error("--base-port leaves no room for that many ports")
 
+    try:
+        host = ip_address(args.host)
+
+    except ValueError:
+        parser.error(f"--host must be an IP address, got {args.host!r}")
+
+    # The nodes are told each other's endpoints at it, and pass them on.
+    if host.is_unspecified:
+        parser.error(f"--host must be one address the nodes are reached at, not {args.host}")
+
+    args.host = str(host)
+
+    if args.max_storage_bytes is not None and args.max_storage_bytes < 0:
+        parser.error("--max-storage-bytes must not be negative")
+
     return args
 
 
@@ -570,9 +631,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     """
     args = parse_args(argv)
     root: Path = args.dir.resolve() if args.dir is not None else Path(mkdtemp(prefix="libranet-"))
-    running = RunningNetwork(
-        LocalNetwork.create(root, args.count, args.base_port, args.debug), root
+    network = LocalNetwork.create(
+        root,
+        args.count,
+        args.base_port,
+        args.debug,
+        host=args.host,
+        max_storage_bytes=args.max_storage_bytes,
     )
+    running = RunningNetwork(network, root)
 
     # Closing the terminal or a plain kill stops the nodes too, since they
     # run in sessions of their own and would not hear it.

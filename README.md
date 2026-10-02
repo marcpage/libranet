@@ -414,6 +414,14 @@ no `--debug` is back at `INFO`. Debug logs grow fast. Each of a node's ten
 processes keeps its own log, rotated at 10 MiB with five old files kept, so a
 node can hold up to 600 MiB of them, and 40 nodes 24 GiB.
 
+`--host ADDRESS` has the nodes listen at that IP address rather than
+`127.0.0.1`, and tells each one the others are there, so other machines can
+use them. `--max-storage-bytes N` limits the content each node holds. Like
+`--debug`, both last for that run only. Sixteen nodes run this way make a
+super node, which the
+[Operator Guide](docs/operations/Operator%20Guide.md#3-running-a-super-node)
+describes.
+
 ---
 
 ## Configuration
@@ -548,7 +556,7 @@ currently find each other only through peers you configure yourself.
 | [Bundle Specification](docs/specs/BundleSpecification.md) | Bundle JSON format, splitting, and protection |
 | [Backup Specification](docs/specs/BackupSpecification.md) | Backing up and restoring local directories |
 | [Karma and Kismet](docs/specs/Karma.md) | The reputation and contribution system |
-| [Operator Guide](docs/operations/Operator%20Guide.md) | Running a node: resetting the `/config` password |
+| [Operator Guide](docs/operations/Operator%20Guide.md) | Running a node: resetting the `/config` password, running a super node |
 | [Phase 1 Plan](docs/implementation/Phase%201.md) | Implementation steps 1–20, all built |
 | [Phase 2 Plan](docs/implementation/Phase%202.md) | Implementation steps 21–29, 31–32, 41–49, and 51–55, in progress |
 | [Phase 3 Plan](docs/implementation/Phase%203.md) | Karma: steps 30 and 56 so far, planned |
