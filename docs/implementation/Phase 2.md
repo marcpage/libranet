@@ -2552,10 +2552,44 @@ operator would look.
 - Where it goes: a short operations page under `docs/`, linked from the
   README's documentation table next to the design and Karma links.
 
-**Open question:** whether a `libranet --reset-config-password` command
-should exist as well, so an operator never has to find the file by hand.
-It is a few lines on top of `ConfigCredential`, and it is the difference
-between a documented path and a usable one.
+Ruled before it was built:
+
+- **No command.** No `libranet --reset-config-password`, either to delete
+  the file or to set a new credential in its place. The guide is the
+  whole of the step, and a command can be an issue of its own.
+
+Built as [Operator Guide](../operations/Operator%20Guide.md) §2, with no
+change to code. Checked on a node of its own: a credential captured with
+`curl`, the file deleted while the node ran, a request with no credentials
+answered `401` and set nothing, the next with a new username and password
+captured them, and the old ones were refused. A file that is not JSON makes
+`/config` answer `500`, with a `CredentialFileError` in the web server's
+log, and deleting it recovers. In Chrome 154, a `/config` page left open
+set the old credential again about a second after the delete. Its lists
+refresh every five seconds, and the browser sent the credential it held
+with them unasked.
+
+My calls, not yet reviewed:
+
+- **One guide, not a page per task.** The page is
+  `docs/operations/Operator Guide.md`, with resetting the password as its
+  §2, so that later operator tasks join it.
+- **The delete and the new capture are one command**, `rm ... && curl -u
+  NEW_USER ...`. `curl` asks for the password, which keeps it out of the
+  shell's history and the process list, and the window lasts as long as
+  typing it.
+- **Closing `/config`'s tabs comes first**, because of what Chrome did.
+  The way without `curl` quits the browser instead, so that it forgets the
+  old credential.
+- **The window is said to be safe only on a machine one person uses**
+  with nothing relaying traffic into loopback. Other local users and
+  relays are named, and the guide's check after the reset tells the
+  operator whether theirs was the request that set the credential.
+- **Windows is in the table of paths**, as it is in File Layout §2,
+  though the node does not yet run there.
+- **The README's `/config` section links the guide too**, besides the
+  documentation table, since that is where an operator reads about the
+  credential. File Layout §3.4 links it, and §12 no longer lists the step.
 
 ---
 

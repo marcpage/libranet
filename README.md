@@ -255,7 +255,9 @@ It answers only on loopback, on a port of its own: 100 above the node's port
 (`8180` for a node on `8080`), or the next 100 up that is free, unless
 `network.config_port` names one. The node logs the address it chose as it
 starts. The first request carrying `Authorization: Basic` sets the node's
-credential — pick one on first use and reuse it after that.
+credential — pick one on first use and reuse it after that. To change it, or
+if it is forgotten, see the
+[Operator Guide](docs/operations/Operator%20Guide.md#2-resetting-the-config-password).
 
 A browser sends that credential with every request to `/config`'s port,
 whichever page made it, so `/config` refuses any request that another page
@@ -546,6 +548,7 @@ currently find each other only through peers you configure yourself.
 | [Bundle Specification](docs/specs/BundleSpecification.md) | Bundle JSON format, splitting, and protection |
 | [Backup Specification](docs/specs/BackupSpecification.md) | Backing up and restoring local directories |
 | [Karma and Kismet](docs/specs/Karma.md) | The reputation and contribution system |
+| [Operator Guide](docs/operations/Operator%20Guide.md) | Running a node: resetting the `/config` password |
 | [Phase 1 Plan](docs/implementation/Phase%201.md) | Implementation steps 1–20, all built |
 | [Phase 2 Plan](docs/implementation/Phase%202.md) | Implementation steps 21–29, 31–32, 41–49, and 51–55, in progress |
 | [Phase 3 Plan](docs/implementation/Phase%203.md) | Karma: steps 30 and 56 so far, planned |
