@@ -226,7 +226,10 @@ def _applications(
     retry_after_seconds: int,
     outcomes: ApplicationOutcomes | None,
 ) -> AppHandler:
-    """The handler serving the applications ``registry`` names, from ``storage``'s resolved files."""
+    """The handler serving the applications ``registry`` names, from files resolved in ``storage``.
+
+    ``outcomes`` holds what the unbundler reported for their paths.
+    """
     return AppHandler(
         registry,
         ResolvedFiles.of(storage),
