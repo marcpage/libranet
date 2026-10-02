@@ -130,6 +130,41 @@ def test_config_is_served_as_this_machine_alone_by_default() -> None:
     assert NetworkConfig().config_hosts == ("localhost", "127.0.0.1", "::1")
 
 
+def test_config_tries_every_100th_port_above_the_main_one_by_default() -> None:
+    ports = NetworkConfig(listen_port=8080).config_ports()
+
+    assert NetworkConfig().config_port is None
+    assert list(ports[:3]) == [8180, 8280, 8380]
+    assert ports[-1] == 65480
+    assert len(ports) == 574
+
+
+def test_a_config_port_set_is_the_only_one_tried() -> None:
+    assert list(NetworkConfig(config_port=9000).config_ports()) == [9000]
+
+
+def test_the_last_port_with_one_100_above_it_still_leaves_config_a_port() -> None:
+    assert list(NetworkConfig(listen_port=65435).config_ports()) == [65535]
+
+
+@mark.parametrize(
+    "settings",
+    [
+        {"listen_port": 9000, "config_port": 9000},
+        {"listen_port": 65436},
+        {"config_port": 0},
+        {"config_port": 65536},
+    ],
+)
+def test_a_config_port_that_cannot_be_config_s_own_is_refused(settings: dict[str, int]) -> None:
+    with raises(ValidationError):
+        NetworkConfig.model_validate(settings)
+
+
+def test_a_main_port_with_no_room_above_it_is_allowed_with_a_config_port_set() -> None:
+    assert NetworkConfig(listen_port=65436, config_port=8081).config_port == 8081
+
+
 def test_a_restore_gives_up_after_a_day_with_nothing_arriving_by_default() -> None:
     assert BackupConfig().restore_stall_seconds == 86400.0
 

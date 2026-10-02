@@ -2774,73 +2774,139 @@ Ruled before the specification was written:
   another site is still refused, and so is any link before a credential
   is captured, which is the capture Step 41's ruling was there to stop.
 
+Ruled once the specification was written, the user's own:
+
+- **`/config`'s port is the main port plus 100, and plus another 100 for
+  as long as that one cannot be had**, so nodes on one machine have their
+  `/config` at ports that can be told from their own. This replaced the
+  fixed 8081 I had proposed.
+
 HttpApi is written first, as the issue asks. §2.3 gives `/config` a port
-of its own, says the main port neither serves `/config` nor touches its
-credential and may redirect its page addresses, and asks that `/config`'s
-port listen only at a loopback address. §2.3.3 adds the link exception and
-requires that loading a `/config` page change nothing; its closing note on
-the hole now says how the checks keep applications out. §13 says
-applications are served on the main port, §25 puts the `/config` rows on
-`/config`'s port, and TBD item 32 is gone.
+of its own, leaves which port it is to the implementation but asks that
+it be documented and reported, says the main port neither serves
+`/config` nor touches its credential and may redirect its page addresses,
+and asks that `/config`'s port listen only at a loopback address. §2.3.3
+adds the link exception and requires that loading a `/config` page change
+nothing; its closing note on the hole now says how the checks keep
+applications out. §13 says applications are served on the main port, §25
+puts the `/config` rows on `/config`'s port, and TBD item 32 is gone.
 
-To build:
+What was built:
 
-- **`network.config_port`**, 8081 by default, refused at startup if it is
-  `listen_port`. Stated in `examples/libranet.yaml`.
-- **A second listener** in the web server module, on
-  `127.0.0.1:config_port`, on a thread of its own, started and stopped
-  with the main one. A bind failure crashes the module, as the main
-  port's does. Its responses are signed like every other, and it counts
-  no peers. The start log names both addresses.
-- **Two routers.** `build_router` keeps `/data` and the applications for
-  the main port, without the `config` application. There a `/config`
-  request from another machine is still `403`. A local `GET` or `HEAD` of
-  a page path is `302` to the same path on `/config`'s port, at the host
-  `Host` names, and anything else is `404`, naming that address. No
-  credential is asked for or looked at. A new router for `/config`'s port
-  holds the `/config` guards, `config_routes`, and the `config`
-  application, and answers every other path `404`.
-- **`ConfigSiteGuard`** gains the link exception, and the credential it
-  needs to know whether one has been captured. A link it refuses before
-  then gets a `403` that says to type the address instead.
+- **`NetworkConfig.config_port`**, unset by default, and
+  `NetworkConfig.config_ports()`: that port alone when it is set, and
+  otherwise every `CONFIG_PORT_STEP` (100) above `listen_port` up to
+  65535. A `config_port` equal to `listen_port` is refused at startup, and
+  so is a `listen_port` above 65435 with no `config_port`, which leaves
+  none. `config_port: null` is stated in `examples/libranet.yaml`.
+- **`LibranetHTTPServer.first_free(host, ports, ...)`** listens on the
+  first of the ports it can, passing over one in use or not allowed
+  (`EADDRINUSE`, `EACCES`) with a warning, and raises at once on any other
+  failure.
+- **`LibranetHTTPServer.server_bind`** refuses a port something on this
+  machine already answers on, asking at loopback for an address that
+  stands for every address. Python's servers set `SO_REUSEADDR`, and with
+  it macOS lets `127.0.0.1:P` be bound while another server holds
+  `0.0.0.0:P`, and sends this machine's connections to the newer socket.
+  Without this, a taken port would never be passed over on macOS, and
+  `/config` would quietly take the loopback traffic of the server, very
+  likely another node's main port, it shares the port with. Linux refuses
+  such a bind itself.
+- **The web server module** binds `/config`'s server first, at
+  `CONFIG_LISTEN_ADDRESS` (`127.0.0.1`), through `first_free`, then the
+  main port's, with the port `/config` took; if the main port cannot be
+  bound, `/config`'s is closed again. Each runs on a thread of its own.
+  `config_address` says where `/config` is, beside `server_address`. The
+  start log names both, and the `/config` address in full.
+- **Two routers.** `build_router` serves `/data` and the applications,
+  with `MovedConfigGuard(config_port)` after `local_config_guard`: a
+  remote `/config` request is still `403`, a local `GET` of a page path is
+  `302` to the same path on `/config`'s port at the host `Host` names, and
+  anything else is `404`, naming that address. No credential is asked for
+  or looked at there. `build_config_router` holds `local_config_guard`,
+  `ConfigSiteGuard`, `ConfigAuthGuard`, `config_routes`, and the `config`
+  application, and answers every other path `404`. Both share one opened
+  `LayeredSource`, so archives are opened and shipped applications built
+  once.
+- **`ConfigSiteGuard(hosts, credential)`** lets through a `same-site`
+  `GET` outside `/config/api` carrying `Sec-Fetch-Mode: navigate`,
+  `Sec-Fetch-Dest: document`, and `Sec-Fetch-User: ?1` once the
+  credential is captured, and before then refuses it with a `403` that
+  says to type the address. `names_config_api` and `CONFIG_API_SEGMENT`
+  (moved from `app_handler.py`) say which paths are the API's.
 - **The root page's link stays `/config`**, which the main port
-  redirects. Its text says the first visit is made by typing `/config`'s
-  address, which the node logs as it starts.
-- **Step 41's warning goes**, from the README and the register form, and
-  the README's addresses and curl examples move to port 8081.
-- **`scripts/local_network.py`** gives node `i` the config port
-  `base_port + count + i`.
-- **Module System §3.2.2**, which calls the web server the node's only
-  HTTP listener, describes both.
+  redirects. Its text says where `/config` is and that the first visit is
+  made by typing its address.
+- **Step 41's warning is gone** from the README and the register form.
+  The README says where `/config` is and what a link does, and its curl
+  examples use port 8180.
+- **`scripts/local_network.py`** states each node's `config_port`: its
+  port plus 100, as by default, or plus the next multiple of 100 above
+  every node's port when there are more than 100 nodes, so no node's
+  `/config` takes another node's port. `--base-port` leaves room for them.
+- **Module System §3.2.2** describes both listeners.
 
-Expected to be one change set, about 250 to 400 new or changed lines of
-non-test Python.
+About 490 new or changed lines of non-test Python, so it is one change
+set. All gates pass: 3,216 passed, 1 skipped, 99.02% coverage.
+
+Seen in a live run of one node on port 18610, with 18710 held at
+`0.0.0.0` by another process. The node warned that 18710 was in use and
+put `/config` on 18810, bound at `127.0.0.1` alone. curl to the main port
+had `/config/` redirected to `http://127.0.0.1:18810/config/` and
+`/config/api` answered `404` naming that address, with a credential sent
+and none captured; `/config`'s port answered `/data/nodes` with `404`.
+Chrome 154, headless and driven over the DevTools protocol with real
+mouse events, which a script's `click()` does not send:
+
+- From the root page, a `fetch` of `/config/api` on `/config`'s port, with
+  credentials, was refused as `same-site`, before and after Chrome held
+  the credential.
+- A click on the root page's link went to the main port as
+  `same-origin`, and Chrome kept `Sec-Fetch-Site: same-site` and
+  `Sec-Fetch-User: ?1` across the redirect to `/config`'s port. Before a
+  credential was captured it was refused, saying to type the address;
+  after, the page opened and its own requests were `same-origin`.
+- After capture, the root page moving the window to `/config/` by script
+  carried the credential but no `Sec-Fetch-User`, and was refused, as was
+  a form `POST` to `/config/api/applications`.
+- The main port's `/config/` opened from the address bar was redirected
+  with `Sec-Fetch-Site: none` and `Sec-Fetch-User: ?1`, and served.
 
 My calls, not yet reviewed:
 
 - **Only the port changes.** The paths stay `/config/` and `/config/api/`,
   so the `config` bundle and `config_hosts` stay as they are, and a
   script changes only its port.
-- **8081 by default**, beside `listen_port`'s 8080.
+- **A `config_port` set is the only port tried.** The steps of 100 are
+  the default's; a port an operator names is taken or the module stops,
+  as `listen_port` does.
+- **A port is passed over when it is in use or not allowed**, so a node
+  on a port below 1024 steps up to one it may listen on. Any other
+  failure stops the module.
+- **A port something answers on at loopback is in use**, for the main
+  port too, so macOS refuses what Linux refuses. A node whose
+  `listen_port` is another node's `/config` port stops rather than
+  sharing it.
+- **`/config`'s port is bound first**, since the main port's router needs
+  it. A node already running on the same ports logs a warning for
+  `/config`'s port before the main port's bind fails.
 - **Bound to `127.0.0.1`, with no setting for the address.** A
   `config_address` can follow if someone needs `[::1]`; IPv6 is Phase 4's
   Step 57.
-- **The main port redirects page addresses**, so links and bookmarks from
-  before keep working: a typed address keeps `Sec-Fetch-Site: none`
-  through the redirect. `/config/api` there is `404` naming the address,
-  not redirected, since a `302` turns many clients' `POST` into a `GET`,
-  and curl does not resend a credential to another port.
+- **The main port redirects a `GET` of a page address**, so links and
+  bookmarks from before keep working: a typed address keeps
+  `Sec-Fetch-Site: none` through the redirect. `HEAD` and `/config/api`
+  there are `404` naming the address, not redirected, since a `302` turns
+  many clients' `POST` into a `GET`, and curl does not resend a
+  credential to another port. The redirect names the host the request's
+  `Host` header did, or `127.0.0.1` if it named none.
 - **The link exception asks for `Sec-Fetch-User: ?1`**, so only a click is
   let through, never a script moving the window, and for
   `Sec-Fetch-Dest: document`, so the page never opens in a frame.
 - **`/config`'s port serves nothing else**, not even a redirect from `/`,
   as §2.3 says.
-
-To check live, as Step 41 was: Chrome refusing an application's `fetch`
-and form `POST` to `/config`'s port as `same-site`; the root page's link
-refused before a credential is captured, and opening the page after; and
-whether Chrome keeps `Sec-Fetch-User` and `same-site` across the main
-port's redirect, which the link relies on.
+- **`/config/api/node` does not report `/config`'s port.** The page that
+  reads it is already on that port.
 
 ---
 

@@ -111,7 +111,10 @@ credential a browser holds for it (§2.3.3). A node MUST NOT serve
 anything under `/config` on its main port, and MUST NOT serve anything
 but `/config` on `/config`'s port. Paths are the same on both: the
 application is at `/config/`, and the endpoints are beneath
-`/config/api/`.
+`/config/api/`. Which port `/config`'s is, is implementation-defined. An
+implementation SHOULD document how it is chosen, so that an operator can
+tell it from the node's configuration, and SHOULD report the port it
+chose as the node starts.
 
 On its main port, a node MUST NOT challenge for, check, or capture the
 `/config` credential (§2.3.1). A browser that sent the credential there

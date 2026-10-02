@@ -11,7 +11,7 @@ from sys import executable
 from typing import Iterator
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from pytest import MonkeyPatch, fixture
+from pytest import MonkeyPatch, fixture, mark, raises
 from yaml import safe_load
 
 from libranet.config.loader import load_config
@@ -26,6 +26,7 @@ from local_network import (  # pylint: disable=wrong-import-order
     NodeProcess,
     RunningNetwork,
     choose_keys,
+    config_port_offset,
     parse_args,
 )
 
@@ -136,14 +137,35 @@ def test_held_keys_are_kept_whatever_their_digit() -> None:
 
 
 def test_a_node_config_keeps_everything_under_its_directory(tmp_path: Path) -> None:
-    place = NodePlace(2, tmp_path / "node-02", 18402)
+    place = NodePlace(2, tmp_path / "node-02", 18402, 18502)
 
     assert place.endpoint == "http://127.0.0.1:18402"
     assert place.config.network.listen_address == "127.0.0.1"
     assert place.config.network.listen_port == 18402
+    assert place.config.network.config_port == 18502
     assert place.key_path.is_relative_to(place.directory)
     assert place.connections_log_path.is_relative_to(place.directory)
     assert place.config.logging.console is False
+
+
+@mark.parametrize("count, offset", [(2, 100), (40, 100), (100, 100), (101, 200), (250, 300)])
+def test_config_ports_sit_a_multiple_of_100_above_every_nodes_port(
+    tmp_path: Path, count: int, offset: int
+) -> None:
+    network = LocalNetwork.create(tmp_path, count, 18400)
+    ports = {node.place.port for node in network.nodes}
+    config_ports = [node.place.config_port for node in network.nodes]
+
+    assert config_port_offset(count) == offset
+    assert config_ports == [port + offset for port in sorted(ports)]
+    assert not ports & set(config_ports)
+
+
+def test_the_base_port_leaves_room_for_the_config_ports_too() -> None:
+    assert parse_args(["--base-port", str(65536 - 40 - 100)]).base_port == 65396
+
+    with raises(SystemExit):
+        parse_args(["--base-port", str(65536 - 40 - 99)])
 
 
 def test_the_written_config_is_the_one_the_node_reads(tmp_path: Path) -> None:

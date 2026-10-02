@@ -1,4 +1,7 @@
-"""Tests for serving ``/config`` only to clients on this machine, and to this node's own pages."""
+"""Tests for serving ``/config`` only to clients on this machine, and to this node's own pages.
+
+And for keeping ``/config`` off the main port, where the applications are.
+"""
 
 from __future__ import annotations
 from json import loads
@@ -11,7 +14,12 @@ from libranet.config.models import NetworkConfig
 from libranet.problems import PROBLEM_CONTENT_TYPE
 from libranet.webserver.config_auth import ConfigAuthGuard
 from libranet.webserver.config_credential import ConfigCredential
-from libranet.webserver.config_guard import ConfigSiteGuard, local_config_guard
+from libranet.webserver.config_guard import (
+    ConfigSiteGuard,
+    MovedConfigGuard,
+    local_config_guard,
+    names_config_api,
+)
 from libranet.webserver.http_types import Request, RequestBody, Response
 from libranet.webserver.router import Router
 
@@ -84,9 +92,19 @@ def test_the_refusal_comes_before_any_later_guard_or_handler() -> None:
     assert not body.consumed
 
 
-SITE_GUARD = ConfigSiteGuard(NetworkConfig().config_hosts)
+# A credential never captured: nothing is ever written where it is kept.
+NOT_CAPTURED = ConfigCredential(Path("/nonexistent/keys/config_credential"))
+SITE_GUARD = ConfigSiteGuard(NetworkConfig().config_hosts, NOT_CAPTURED)
 HOST = "localhost:8080"
 METHODS = ["GET", "HEAD", "POST", "DELETE", "OPTIONS"]
+# What a browser sends with a page opened by clicking a link on another page.
+FOLLOWED_LINK = {
+    "Host": HOST,
+    "Sec-Fetch-Site": "same-site",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-User": "?1",
+}
 
 
 def from_a_page(
@@ -95,6 +113,13 @@ def from_a_page(
     """A request from this machine carrying the headers ``sent``, named as Python allows."""
     headers = {name.replace("_", "-"): value for name, value in sent.items()}
     return Request(method, path, headers=headers, client_address="127.0.0.1")
+
+
+def captured_guard(tmp_path: Path) -> ConfigSiteGuard:
+    """The default guard, for a node whose credential has been captured."""
+    credential = ConfigCredential(tmp_path / "keys" / "config_credential")
+    credential.authenticate("admin:secret")
+    return ConfigSiteGuard(NetworkConfig().config_hosts, credential)
 
 
 def assert_refused(response: Request | Response, path: str) -> None:
@@ -248,7 +273,7 @@ def test_a_request_for_a_host_config_is_not_served_as_is_refused(
 
 
 def test_other_hosts_are_served_as_the_patterns_configured_name_them() -> None:
-    guard = ConfigSiteGuard(("Node.Example.org", "*.lan", "2001:db8::1"))
+    guard = ConfigSiteGuard(("Node.Example.org", "*.lan", "2001:db8::1"), NOT_CAPTURED)
 
     assert guard.serves_as("node.example.org:443")
     assert guard.serves_as("NODE.example.ORG")
@@ -261,7 +286,7 @@ def test_other_hosts_are_served_as_the_patterns_configured_name_them() -> None:
 
 
 def test_with_no_hosts_configured_config_is_served_as_none() -> None:
-    assert not ConfigSiteGuard(()).serves_as("localhost")
+    assert not ConfigSiteGuard((), NOT_CAPTURED).serves_as("localhost")
 
 
 @mark.parametrize("path", ["/", "/data/nodes", "/configuration", "/app/config", "/wiki/"])
@@ -346,3 +371,142 @@ def test_another_sites_request_is_refused_before_its_credentials_are_looked_at(
     assert not credential.captured
     assert handled == []
     assert not body.consumed
+
+
+@mark.parametrize("path", ["/config", "/config/", "/Config/index.html", "/config/backups"])
+def test_once_a_credential_is_captured_a_link_from_this_site_opens_a_config_page(
+    tmp_path: Path, path: str
+) -> None:
+    request = Request("GET", path, headers=FOLLOWED_LINK, client_address="127.0.0.1")
+
+    assert captured_guard(tmp_path)(request) is request
+
+
+def test_before_a_credential_is_captured_a_link_from_this_site_is_refused() -> None:
+    request = Request("GET", "/config/", headers=FOLLOWED_LINK, client_address="127.0.0.1")
+
+    response = SITE_GUARD(request)
+
+    assert_refused(response, "/config/")
+    assert isinstance(response, Response)
+    assert "type its address" in loads(response.body)["detail"]
+    assert not NOT_CAPTURED.captured
+
+
+@mark.parametrize(
+    "method, path, changed",
+    [
+        ("POST", "/config/", {}),
+        ("HEAD", "/config/", {}),
+        ("GET", "/config/api", {}),
+        ("GET", "/config/api/backups", {}),
+        ("GET", "/%63onfig/api/node", {}),
+        ("GET", "/config/", {"Sec-Fetch-Mode": "cors"}),
+        ("GET", "/config/", {"Sec-Fetch-Dest": "iframe"}),
+        ("GET", "/config/", {"Sec-Fetch-User": "?0"}),
+        ("GET", "/config/", {"Sec-Fetch-Mode": ""}),
+        ("GET", "/config/", {"Sec-Fetch-Site": "cross-site"}),
+    ],
+)
+def test_a_request_from_another_page_that_is_not_a_link_to_a_page_is_refused(
+    tmp_path: Path, method: str, path: str, changed: dict[str, str]
+) -> None:
+    request = Request(
+        method, path, headers={**FOLLOWED_LINK, **changed}, client_address="127.0.0.1"
+    )
+
+    assert_refused(captured_guard(tmp_path)(request), path)
+
+
+@mark.parametrize("missing", ["Sec-Fetch-Mode", "Sec-Fetch-Dest", "Sec-Fetch-User"])
+def test_a_link_lacking_any_header_a_click_sends_is_refused(tmp_path: Path, missing: str) -> None:
+    headers = {name: value for name, value in FOLLOWED_LINK.items() if name != missing}
+    request = Request("GET", "/config/", headers=headers, client_address="127.0.0.1")
+
+    assert_refused(captured_guard(tmp_path)(request), "/config/")
+
+
+@mark.parametrize(
+    "path, api",
+    [
+        ("/config/api", True),
+        ("/config/api/", True),
+        ("/config/api/backups", True),
+        ("/Config/api/node", True),
+        ("/%63onfig/api", True),
+        ("/config%2Fapi/backups", True),
+        ("/config", False),
+        ("/config/", False),
+        ("/config/API", False),
+        ("/config/apiary", False),
+        ("/config/pages/api", False),
+        ("/api", False),
+        ("/wiki/api", False),
+    ],
+)
+def test_the_api_is_the_lower_case_segment_beneath_config(path: str, api: bool) -> None:
+    assert names_config_api(path) is api
+
+
+MOVED_GUARD = MovedConfigGuard(8180)
+
+
+@mark.parametrize(
+    "host, location",
+    [
+        ("localhost:8080", "http://localhost:8180"),
+        ("127.0.0.1:8080", "http://127.0.0.1:8180"),
+        ("LocalHost", "http://localhost:8180"),
+        ("[::1]:8080", "http://[::1]:8180"),
+        (None, "http://127.0.0.1:8180"),
+    ],
+)
+@mark.parametrize("path", ["/config", "/config/", "/Config/index.html", "/%63onfig/backups"])
+def test_the_main_port_sends_a_config_page_to_configs_port(
+    host: str | None, location: str, path: str
+) -> None:
+    headers = {} if host is None else {"Host": host}
+
+    response = MOVED_GUARD(Request("GET", path, headers=headers, client_address="127.0.0.1"))
+
+    assert isinstance(response, Response)
+    assert response.status == 302
+    assert response.headers["Location"] == location + path
+    assert "WWW-Authenticate" not in response.headers
+
+
+@mark.parametrize(
+    "method, path",
+    [
+        ("GET", "/config/api"),
+        ("GET", "/config/api/backups"),
+        ("POST", "/config/api/applications"),
+        ("DELETE", "/config/api/applications/wiki"),
+        ("POST", "/config/"),
+        ("HEAD", "/config/"),
+    ],
+)
+def test_anything_else_beneath_config_is_404_on_the_main_port_naming_where_it_is(
+    method: str, path: str
+) -> None:
+    request = Request(
+        method,
+        path,
+        headers={"Host": "localhost:8080", "Authorization": "Basic YWRtaW46c2VjcmV0"},
+        client_address="127.0.0.1",
+    )
+
+    response = MOVED_GUARD(request)
+
+    assert isinstance(response, Response)
+    assert response.status == 404
+    assert response.headers["Content-Type"] == PROBLEM_CONTENT_TYPE
+    assert f"http://localhost:8180{path}" in loads(response.body)["detail"]
+    assert "WWW-Authenticate" not in response.headers
+
+
+@mark.parametrize("path", ["/", "/data/nodes", "/configuration", "/wiki/config", "/wiki/"])
+def test_the_main_port_passes_other_paths_on(path: str) -> None:
+    request = Request("GET", path, headers={"Host": "localhost:8080"}, client_address="127.0.0.1")
+
+    assert MOVED_GUARD(request) is request

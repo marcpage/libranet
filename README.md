@@ -251,26 +251,32 @@ promoted into the store, so a mismatch is rejected rather than stored.
 ### Back up a local directory into the network
 
 The `/config` surface is how an operator puts their own content into Libranet.
-It answers only on loopback, and the first request carrying
-`Authorization: Basic` sets the node's credential — pick one on first use and
-reuse it after that.
+It answers only on loopback, on a port of its own: 100 above the node's port
+(`8180` for a node on `8080`), or the next 100 up that is free, unless
+`network.config_port` names one. The node logs the address it chose as it
+starts. The first request carrying `Authorization: Basic` sets the node's
+credential — pick one on first use and reuse it after that.
 
-A browser sends that credential with every request to the node, whichever page
-made it, so `/config` refuses any request that another site's page made: one
-whose `Sec-Fetch-Site` or `Origin` header says so, or whose `Host` is not
-`localhost`, `127.0.0.1`, or `[::1]`. If you reach `/config` by another name,
-add it to `network.config_hosts`. A request body is read only if it is sent as
-`Content-Type: application/json`, and is `415` otherwise.
+A browser sends that credential with every request to `/config`'s port,
+whichever page made it, so `/config` refuses any request that another page
+made: one whose `Sec-Fetch-Site` or `Origin` header says so, or whose `Host` is
+not `localhost`, `127.0.0.1`, or `[::1]`. The applications the node serves are
+on its own port, so their pages are other pages too. If you reach `/config` by
+another name, add it to `network.config_hosts`. Once a credential is set, a
+link you click on another page of this machine, such as the root page's, opens
+the `/config` page; before then, type its address. A request body is read only
+if it is sent as `Content-Type: application/json`, and is `415` otherwise.
 
-Open `http://127.0.0.1:8080/config` in a browser for a page that does
-everything below. Scripts use the same JSON endpoints, beneath `/config/api`:
+Open `http://127.0.0.1:8180/config` in a browser for a page that does
+everything below; `http://127.0.0.1:8080/config` sends you there. Scripts use
+the same JSON endpoints, beneath `/config/api`:
 
 ```bash
-curl -u admin:secret http://127.0.0.1:8080/config/api
+curl -u admin:secret http://127.0.0.1:8180/config/api
 ```
 
 ```bash
-curl -u admin:secret -X POST http://127.0.0.1:8080/config/api/backups \
+curl -u admin:secret -X POST http://127.0.0.1:8180/config/api/backups \
   -H 'Content-Type: application/json' \
   -d '{"directory": "/home/alice/notes"}'
 ```
@@ -284,7 +290,7 @@ and writes a password-protected directory bundle naming them. `GET` the same
 path to see what came of it:
 
 ```bash
-curl -u admin:secret http://127.0.0.1:8080/config/api/backups
+curl -u admin:secret http://127.0.0.1:8180/config/api/backups
 ```
 
 ```json
@@ -309,7 +315,7 @@ never backed up.
 ### Restore a backup
 
 ```bash
-curl -u admin:secret -X POST http://127.0.0.1:8080/config/api/restores \
+curl -u admin:secret -X POST http://127.0.0.1:8180/config/api/restores \
   -H 'Content-Type: application/json' \
   -d '{"bundle": "sha256/73e75f7d5ee3...0558d941",
        "directory": "/home/alice/restored",
@@ -327,7 +333,7 @@ with no restart, its files resolved out of the bundle — and fetched from peers
 when this node lacks them — as they are first requested:
 
 ```bash
-curl -u admin:secret -X POST http://127.0.0.1:8080/config/api/applications \
+curl -u admin:secret -X POST http://127.0.0.1:8180/config/api/applications \
   -H 'Content-Type: application/json' \
   -d '{"name": "wiki", "bundle": "sha256/<hash of a directory bundle>"}'
 ```
@@ -336,11 +342,6 @@ curl -u admin:secret -X POST http://127.0.0.1:8080/config/api/applications \
 GET /wiki/
 GET /wiki/index.html
 ```
-
-Register only bundles you trust. Every application is served from the same
-origin as `/config`, so while a browser holds the `/config` login, the scripts
-of an application open in it can do anything `/config` can, which includes
-reading and writing any file the node's user can.
 
 The name `/` registers the application served at the root. A new node serves
 its own page there, shipped with it, so it needs nothing from peers. `data`,

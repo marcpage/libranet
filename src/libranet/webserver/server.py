@@ -20,15 +20,22 @@ Given :class:`~libranet.webserver.inbound_peers.InboundPeers`, the server
 tells it which peers are connected: each request carries the connection it
 arrived on, and each connection is reported closed when its thread ends
 (Phase 2 Step 53).
+
+A node has two of these servers, with routes of their own. The main port's,
+from :func:`build_router`, serves ``/data`` and the applications, and never
+``/config``. ``/config``'s port's, from :func:`build_config_router`, serves
+``/config`` and nothing else, so that no application's page shares its
+origin (HttpApi §2.3, Phase 2 Step 58).
 """
 
 from __future__ import annotations
+from errno import EACCES, EADDRINUSE
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from logging import Logger
-from socket import AF_INET, AF_INET6
+from socket import AF_INET, AF_INET6, create_connection
 from socketserver import TCPServer
-from typing import Any
+from typing import Any, Final, Iterable
 from urllib.parse import urlsplit
 
 from libranet import __version__
@@ -50,7 +57,11 @@ from libranet.webserver.app_use import ApplicationUse
 from libranet.webserver.backup_state import BackupState
 from libranet.webserver.config_auth import ConfigAuthGuard
 from libranet.webserver.config_credential import ConfigCredential
-from libranet.webserver.config_guard import ConfigSiteGuard, local_config_guard
+from libranet.webserver.config_guard import (
+    ConfigSiteGuard,
+    MovedConfigGuard,
+    local_config_guard,
+)
 from libranet.webserver.config_handlers import NodeDescription, config_routes
 from libranet.webserver.data_handler import DATA_PATTERN, DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
@@ -62,52 +73,54 @@ from libranet.webserver.router import Router
 from libranet.webserver.search_handler import SEARCH_PATTERN, SearchHandler
 from libranet.webserver.signature_guard import SignatureGuard
 
+# Why a port is passed over for the next one to listen on: it is in use, or
+# this process may not listen on it, as one below 1024 may need privileges
+# for.
+_PORT_TAKEN: Final = frozenset({EADDRINUSE, EACCES})
 
-def build_router(  # pylint: disable=too-many-locals
+# The address a port is asked about before it is bound, for each address that
+# stands for every address of its family.
+_LOOPBACK_FOR_ANY: Final = {"": "127.0.0.1", "0.0.0.0": "127.0.0.1", "::": "::1"}
+
+# How long that question waits for an answer. Something listening on this
+# machine answers at once.
+_PROBE_TIMEOUT_SECONDS: Final = 1.0
+
+
+def build_router(
     storage: StorageConfig,
     retry_after_seconds: int,
     publish: Publish,
     authenticator: RequestAuthenticator,
     *,
     allow_unsigned_api_reads: bool,
-    config_credential: ConfigCredential,
-    node: NodeDescription,
+    config_port: int,
     app_outcomes: ApplicationOutcomes | None = None,
-    backup_state: BackupState | None = None,
     content: LayeredSource | None = None,
 ) -> Router:
-    """The node's routes, serving the configured source of truth and derived lists.
+    """The main port's routes, serving the configured source of truth, derived lists, and apps.
 
     ``retry_after_seconds`` is what ``503`` responses for missing content, or
     for lists not derived yet, tell clients to wait before retrying.
     ``authenticator`` checks the signature of every signed request; unsigned
     reads of the ``/data`` API are served only if ``allow_unsigned_api_reads``
-    is set. ``config_credential`` is the ``/config`` credential every request
-    there is authenticated against, ``node`` what ``/config/api/node`` says
-    this node is, whose network settings name the hosts ``/config`` is served
-    as, and ``backup_state`` what the backup module last reported
-    for them to read back. Applications, ``/config``'s among them, are
-    served as the registry in ``storage``'s data directory names them, which
-    ``/config/api/applications`` changes, and as ``content`` says the node
-    ships them until it does. ``app_outcomes`` holds what the unbundler
-    reported for their paths. ``content`` is what ``/data`` reads and
-    searches: the source of truth, then any content archives (Step 34), and
-    the applications the node ships (Step 37). It is the source of truth
+    is set. Applications are served as the registry in ``storage``'s data
+    directory names them, and as ``content`` says the node ships them until
+    it does, but for ``/config``, whose pages are redirected to
+    ``config_port``, where it is served. ``app_outcomes`` holds what the
+    unbundler reported for their paths. ``content`` is what ``/data`` reads
+    and searches: the source of truth, then any content archives (Step 34),
+    and the applications the node ships (Step 37). It is the source of truth
     alone, shipping nothing, if none is given.
     """
     store = CasStore.source_of_truth(storage)
     content = LayeredSource(store) if content is None else content
-    registry = ApplicationRegistry(
-        storage.applications_path, RegisteredApplications(content.applications)
-    )
-    # A remote /config request is refused before its signature is checked or
-    # its body read, and so is one another site's page made, before its
-    # credentials are looked at. The rest must carry the node's credential
-    # before any endpoint or signature policy sees them.
+    # A remote /config request is refused, and any other is told where /config
+    # is, before its signature is checked or its body read. The rest have
+    # their signatures checked before any endpoint sees them.
     router = Router(
         local_config_guard,
-        ConfigSiteGuard(node.network.config_hosts),
-        ConfigAuthGuard(config_credential),
+        MovedConfigGuard(config_port),
         SignatureGuard(
             authenticator,
             storage.max_object_bytes,
@@ -140,27 +153,88 @@ def build_router(  # pylint: disable=too-many-locals
         SEEK_PATH,
         SeekListHandler(storage.max_object_bytes, storage.max_decompressed_list_bytes, publish),
     )
+    # Last, since its pattern fits every path outside the reserved names.
+    router.add(
+        "GET",
+        APP_PATTERN,
+        _applications(
+            _registry(storage, content), storage, publish, retry_after_seconds, app_outcomes
+        ),
+    )
+    return router
 
-    # The administration surface, which the guards above have already
-    # restricted to authenticated clients on this machine.
+
+def build_config_router(
+    storage: StorageConfig,
+    retry_after_seconds: int,
+    publish: Publish,
+    *,
+    config_credential: ConfigCredential,
+    node: NodeDescription,
+    app_outcomes: ApplicationOutcomes | None = None,
+    backup_state: BackupState | None = None,
+    content: LayeredSource | None = None,
+) -> Router:
+    """``/config``'s port's routes: its endpoints and its application, and nothing else.
+
+    ``config_credential`` is the ``/config`` credential every request there
+    is authenticated against, ``node`` what ``/config/api/node`` says this
+    node is, whose network settings name the hosts ``/config`` is served as,
+    and ``backup_state`` what the backup module last reported for them to
+    read back. The ``/config`` application is served as the registry in
+    ``storage``'s data directory names it, which ``/config/api/applications``
+    changes, and as ``content`` says the node ships it until it does.
+    ``retry_after_seconds`` and ``app_outcomes`` are as for
+    :func:`build_router`.
+    """
+    content = LayeredSource(CasStore.source_of_truth(storage)) if content is None else content
+    registry = _registry(storage, content)
+    # A remote request is refused before anything else, and so is one another
+    # site's page made, before its credentials are looked at. The rest must
+    # carry the node's credential before any endpoint sees them.
+    router = Router(
+        local_config_guard,
+        ConfigSiteGuard(node.network.config_hosts, config_credential),
+        ConfigAuthGuard(config_credential),
+    )
+
     for method, pattern, handler in config_routes(
         publish, backup_state or BackupState(), registry, node, retry_after_seconds
     ):
         router.add(method, pattern, handler)
 
-    applications = AppHandler(
+    # Every other path beneath /config is the /config application's.
+    router.add(
+        "GET",
+        CONFIG_APP_PATTERN,
+        _applications(registry, storage, publish, retry_after_seconds, app_outcomes),
+    )
+    return router
+
+
+def _registry(storage: StorageConfig, content: LayeredSource) -> ApplicationRegistry:
+    """The application registry in ``storage``'s data directory, seeded as ``content`` ships."""
+    return ApplicationRegistry(
+        storage.applications_path, RegisteredApplications(content.applications)
+    )
+
+
+def _applications(
+    registry: ApplicationRegistry,
+    storage: StorageConfig,
+    publish: Publish,
+    retry_after_seconds: int,
+    outcomes: ApplicationOutcomes | None,
+) -> AppHandler:
+    """The handler serving the applications ``registry`` names, from ``storage``'s resolved files."""
+    return AppHandler(
         registry,
         ResolvedFiles.of(storage),
-        app_outcomes or ApplicationOutcomes(),
+        outcomes or ApplicationOutcomes(),
         publish,
         retry_after_seconds,
         ApplicationUse(publish),
     )
-    # Every other path beneath /config is the /config application's.
-    router.add("GET", CONFIG_APP_PATTERN, applications)
-    # Last, since its pattern fits every path outside the reserved names.
-    router.add("GET", APP_PATTERN, applications)
-    return router
 
 
 class LibranetHTTPServer(ThreadingHTTPServer):
@@ -188,12 +262,61 @@ class LibranetHTTPServer(ThreadingHTTPServer):
         self.inbound_peers = inbound_peers
         super().__init__(address, RequestHandler)
 
-    def server_bind(self) -> None:
-        """Bind without ``HTTPServer``'s reverse DNS lookup of the host.
+    @classmethod
+    def first_free(
+        cls,
+        host: str,
+        ports: Iterable[int],
+        router: Router,
+        logger: Logger,
+        signer: MessageSigner,
+    ) -> LibranetHTTPServer:
+        """A server at ``host`` on the first of ``ports`` it can listen on.
 
+        A port is passed over if it is in use, or if this process may not
+        listen on it. The server counts no peers.
+
+        Raises:
+            OSError: no port of ``ports`` can be listened on, or ``host`` cannot
+                be listened at.
+        """
+        tried = 0
+
+        for port in ports:
+            try:
+                return cls((host, port), router, logger, signer)
+
+            except OSError as error:
+                if error.errno not in _PORT_TAKEN:
+                    raise
+
+                logger.warning("Cannot listen on port %s, so the next is tried: %s", port, error)
+                tried += 1
+
+        raise OSError(EADDRINUSE, f"None of the {tried} ports tried at {host} can be listened on")
+
+    def server_bind(self) -> None:
+        """Bind, refusing a port something on this machine already answers on.
+
+        macOS lets a socket bound to one address share its port with one
+        bound to every address, and sends this machine's connections to the
+        one bound more narrowly, so a server could take another's connections
+        without either being told. Linux refuses such a bind, and so does
+        this, on every platform.
+
+        It binds without ``HTTPServer``'s reverse DNS lookup of the host:
         ``socket.getfqdn`` can stall for seconds (notably on macOS), and the
         name it finds is never used.
+
+        Raises:
+            OSError: the port is in use, or cannot be bound.
         """
+        host, port = self.server_address[:2]
+
+        # Port 0 asks for any free port, which nothing can be using.
+        if port and _answered(_LOOPBACK_FOR_ANY.get(str(host), str(host)), int(port)):
+            raise OSError(EADDRINUSE, f"Port {port} is already in use on this machine")
+
         TCPServer.server_bind(self)
         host, port = self.server_address[:2]
         self.server_name = str(host)
@@ -337,3 +460,15 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         if not omit_body:
             self.wfile.write(response.body)
+
+
+def _answered(host: str, port: int) -> bool:
+    """Whether something accepts connections at ``host`` on ``port``."""
+    try:
+        with create_connection((host, port), timeout=_PROBE_TIMEOUT_SECONDS):
+            return True
+
+    except OSError:
+        # Not logged: nothing answering is the usual answer, and whatever else
+        # kept the connection from being made, binding finds and reports.
+        return False

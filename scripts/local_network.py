@@ -2,7 +2,9 @@
 
 Starts ``--count`` nodes (40 by default) on ``127.0.0.1``, one per port from
 ``--base-port`` up, and tells each one about all the others by posting a
-node list to its ``/data/nodes`` (HttpApi §10.5). The first sixteen nodes are
+node list to its ``/data/nodes`` (HttpApi §10.5). Each node's ``/config`` is
+on its port plus 100, as a node's is by default, or plus the next multiple of
+100 above every node's port when there are more than 100 nodes. The first sixteen nodes are
 given keys whose node ids start with the hex digits ``0`` to ``f`` in order,
 so every identifier bucket (HighLevelDesign §4.6) has a node in it; any
 further nodes get random keys.
@@ -42,7 +44,13 @@ from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption,
 from yaml import safe_dump
 
 from libranet.config.loader import build_config
-from libranet.config.models import MIB, LibranetConfig, LoggingConfig
+from libranet.config.models import (
+    CONFIG_PORT_STEP,
+    HIGHEST_PORT,
+    MIB,
+    LibranetConfig,
+    LoggingConfig,
+)
 from libranet.identity.keys import (
     generate_private_key,
     load_or_create_private_key,
@@ -110,11 +118,12 @@ def choose_keys(
 
 @dataclass(frozen=True)
 class NodePlace:
-    """Where one node of the network keeps its files, the port it listens on, and how it logs."""
+    """Where one node of the network keeps its files, the ports it listens on, and how it logs."""
 
     index: int
     directory: Path
     port: int
+    config_port: int
     debug: bool = False
 
     @property
@@ -136,7 +145,12 @@ class NodePlace:
     def document(self) -> dict[str, Any]:
         """The contents of the node's configuration file."""
         return {
-            "network": {"listen_address": HOST, "listen_port": self.port},
+            "network": {
+                "listen_address": HOST,
+                "listen_port": self.port,
+                # Stated, since the default could land on another node's port.
+                "config_port": self.config_port,
+            },
             "storage": {
                 "data_dir": str(self.directory / "data"),
                 "cache_dir": str(self.directory / "cache"),
@@ -202,7 +216,11 @@ class LocalNetwork:
 
         With ``debug``, every node logs at ``DEBUG`` rather than ``INFO``.
         """
-        places = [NodePlace(i, root / f"node-{i:02d}", base_port + i, debug) for i in range(count)]
+        offset = config_port_offset(count)
+        places = [
+            NodePlace(i, root / f"node-{i:02d}", base_port + i, base_port + i + offset, debug)
+            for i in range(count)
+        ]
         algorithm = places[0].config.identity.hash_algorithm
         held = {place.index: key for place in places if (key := place.held_key()) is not None}
         keys = choose_keys(count, held, algorithm)
@@ -502,6 +520,15 @@ class RunningNetwork:
             stopping = [process for process in stopping if process.running]
 
 
+def config_port_offset(count: int) -> int:
+    """How far above its own port each of ``count`` nodes has its ``/config``.
+
+    That is the default 100, or the next multiple of it above every node's
+    port, so no node's ``/config`` takes the port another node listens on.
+    """
+    return CONFIG_PORT_STEP * -(-count // CONFIG_PORT_STEP)
+
+
 def parse_args(argv: Sequence[str] | None = None) -> Namespace:
     """The command-line options."""
     parser = ArgumentParser(description="Run a local network of Libranet nodes.")
@@ -529,7 +556,7 @@ def parse_args(argv: Sequence[str] | None = None) -> Namespace:
     if args.count < 2:
         parser.error("--count must be at least 2")
 
-    if not 1 <= args.base_port <= 65536 - args.count:
+    if not 1 <= args.base_port <= HIGHEST_PORT + 1 - args.count - config_port_offset(args.count):
         parser.error("--base-port leaves no room for that many ports")
 
     return args

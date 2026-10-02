@@ -43,6 +43,14 @@ network:
     - "127.0.0.1"
     - "::1"
 
+  # The port /config listens on, at 127.0.0.1 alone, kept apart from
+  # listen_port so that no application this node serves shares an origin
+  # with /config (HTTP API §2.3). null takes listen_port + 100, or the next
+  # 100 up that is free (8180, then 8280, and so on), so nodes on one
+  # machine have theirs at predictable ports; the node logs the one it took.
+  # A port set here is the only one tried.
+  config_port: null
+
 peers:
   # At least one connection per 4-bit identifier bucket
   # (High-Level Design §4.6).

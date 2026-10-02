@@ -9,13 +9,21 @@ from queue import Empty, Queue
 from socket import socket
 from threading import Event, Thread
 from time import monotonic, sleep
+from typing import Any
 
 from pytest import mark, raises
 
 from libranet.applications.packaged import PackagedApplications
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
-from libranet.config.models import IdentityConfig, LibranetConfig, NetworkConfig, StorageConfig
+from libranet.config.models import (
+    CONFIG_PORT_STEP,
+    HIGHEST_PORT,
+    IdentityConfig,
+    LibranetConfig,
+    NetworkConfig,
+    StorageConfig,
+)
 from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import MessageSigner, MessageVerifier
@@ -36,21 +44,63 @@ from libranet.webserver.module import WebServerModule, webserver_module_factory
 from tests.helpers import with_node_key
 
 
-def _free_port() -> int:
-    with socket() as probe:
+def _free_port(other_than: int = 0) -> int:
+    """A port nothing listens on, for now, and not ``other_than``."""
+    with socket() as probe, socket() as other:
         probe.bind(("127.0.0.1", 0))
-        return int(probe.getsockname()[1])
+        port = int(probe.getsockname()[1])
+
+        if port != other_than:
+            return port
+
+        other.bind(("127.0.0.1", 0))
+        return int(other.getsockname()[1])
+
+
+def _is_free(port: int) -> bool:
+    """Whether ``port`` can be listened on at every address now."""
+    with socket() as probe:
+        try:
+            probe.bind(("0.0.0.0", port))
+            return True
+
+        except OSError:
+            return False
+
+
+def _port_with_room(steps: int) -> int:
+    """A free port, with the ``steps`` ports :data:`CONFIG_PORT_STEP` apart above it free too."""
+    for _ in range(100):
+        port = _free_port()
+        above = [port + CONFIG_PORT_STEP * step for step in range(1, steps + 1)]
+
+        if above[-1] <= HIGHEST_PORT and all(_is_free(other) for other in above):
+            return port
+
+    raise AssertionError("no port has room above it")
 
 
 APP_BUNDLE_ID = ContentId.for_data(b"an application's directory bundle", "sha256")
 
 
-def _config(tmp_path: Path, port: int, allow_unsigned_api_reads: bool = True) -> LibranetConfig:
+def _config(
+    tmp_path: Path, port: int, allow_unsigned_api_reads: bool = True, **network: Any
+) -> LibranetConfig:
+    """A node listening at ``port``, with ``/config`` at another free port unless ``network`` says.
+
+    ``network`` may set ``config_port`` to ``None`` for the port the node
+    picks itself.
+    """
+    settings = {
+        "listen_address": "127.0.0.1",
+        "listen_port": port,
+        "retry_after_seconds": 11,
+        "config_port": _free_port(other_than=port),
+        **network,
+    }
     return with_node_key(
         LibranetConfig(
-            network=NetworkConfig(
-                listen_address="127.0.0.1", listen_port=port, retry_after_seconds=11
-            ),
+            network=NetworkConfig(**settings),
             storage=StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache"),
             identity=IdentityConfig(allow_unsigned_api_reads=allow_unsigned_api_reads),
         )
@@ -73,6 +123,13 @@ def _wait_for_address(module: WebServerModule) -> tuple[str, int]:
         sleep(0.01)
 
     raise AssertionError("web server did not start")
+
+
+def _config_port(module: WebServerModule) -> int:
+    """The port ``module`` serves ``/config`` on, once started."""
+    address = module.config_address
+    assert address is not None
+    return address[1]
 
 
 def _serving(module: WebServerModule, queues: ModuleQueues) -> tuple[str, int]:
@@ -331,16 +388,17 @@ def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: P
 
     try:
         host, port = _serving(module, queues)
+        config_port = _config_port(module)
 
         # The first request captures the credential, which is then stored
         # beside the node key; a later one offering another is refused.
-        assert _authorized(host, port, "/config/api")[0] == 200
+        assert _authorized(host, config_port, "/config/api")[0] == 200
         assert ConfigCredential.of(config).captured
-        assert _authorized(host, port, "/config/api", user="someone else")[0] == 401
+        assert _authorized(host, config_port, "/config/api", user="someone else")[0] == 401
 
         # The page the node ships, which the unbundler is asked for, and what
         # the node is, as the module was started with it.
-        assert _authorized(host, port, "/config/")[0] == 503
+        assert _authorized(host, config_port, "/config/")[0] == 503
         assert queues.outbox.get(timeout=1)["event"] == EventType.APP_ACCESSED
         asked = queues.outbox.get(timeout=1)
         assert (asked["event"], asked["bundle"], asked["path"]) == (
@@ -348,7 +406,7 @@ def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: P
             str(PackagedApplications.build().bundles[CONFIG_APPLICATION]),
             "index.html",
         )
-        status, body = _authorized(host, port, "/config/api/node")
+        status, body = _authorized(host, config_port, "/config/api/node")
         assert (status, loads(body)) == (
             200,
             {
@@ -360,7 +418,7 @@ def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: P
         )
 
         # Nothing is readable back until the backup module reports.
-        assert _authorized(host, port, "/config/api/backups")[0] == 503
+        assert _authorized(host, config_port, "/config/api/backups")[0] == 503
 
         queues.inbox.put(
             make_message(
@@ -371,14 +429,17 @@ def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: P
         )
         deadline = monotonic() + 5
 
-        while _authorized(host, port, "/config/api/backups")[0] != 200 and monotonic() < deadline:
+        while (
+            _authorized(host, config_port, "/config/api/backups")[0] != 200
+            and monotonic() < deadline
+        ):
             sleep(0.01)
 
-        status, body = _authorized(host, port, "/config/api/backups")
+        status, body = _authorized(host, config_port, "/config/api/backups")
         assert (status, loads(body)) == (200, {"jobs": [job]})
-        assert loads(_authorized(host, port, "/config/api/restores")[1]) == {"restores": []}
-        assert loads(_authorized(host, port, "/config/api/builds")[1]) == {"builds": []}
-        assert loads(_authorized(host, port, "/config/api/exports")[1]) == {"exports": []}
+        assert loads(_authorized(host, config_port, "/config/api/restores")[1]) == {"restores": []}
+        assert loads(_authorized(host, config_port, "/config/api/builds")[1]) == {"builds": []}
+        assert loads(_authorized(host, config_port, "/config/api/exports")[1]) == {"exports": []}
 
     finally:
         stop.set()
@@ -439,7 +500,7 @@ def test_a_registry_that_cannot_be_read_does_not_stop_the_module(tmp_path: Path)
     try:
         host, port = _wait_for_address(module)
 
-        assert _authorized(host, port, "/config/api/applications")[0] == 500
+        assert _authorized(host, _config_port(module), "/config/api/applications")[0] == 500
         assert _status(host, port, "/wiki/") == (500, None)
 
     finally:
@@ -454,10 +515,103 @@ def test_bind_failure_propagates_so_the_supervisor_restarts(tmp_path: Path) -> N
         occupied.bind(("127.0.0.1", 0))
         occupied.listen()
         port = int(occupied.getsockname()[1])
-        module = WebServerModule(ModuleName.WEBSERVER, _queues(), _config(tmp_path, port))
+        config = _config(tmp_path, port)
+        module = WebServerModule(ModuleName.WEBSERVER, _queues(), config)
 
         with raises(OSError):
             module.run(Event())
+
+    # /config's port, bound first, has been released.
+    assert config.network.config_port is not None
+    assert _is_free(config.network.config_port)
+    assert module.config_address is None
+
+
+def test_a_config_port_set_and_taken_stops_the_module(tmp_path: Path) -> None:
+    port = _free_port()
+
+    with socket() as occupied:
+        occupied.bind(("127.0.0.1", 0))
+        occupied.listen()
+        taken = int(occupied.getsockname()[1])
+        module = WebServerModule(
+            ModuleName.WEBSERVER, _queues(), _config(tmp_path, port, config_port=taken)
+        )
+
+        with raises(OSError):
+            module.run(Event())
+
+    assert module.server_address is None
+    assert _is_free(port)
+
+
+@mark.parametrize("taken_steps", [0, 1, 2])
+def test_config_listens_100_above_the_main_port_or_the_next_100_up_that_is_free(
+    tmp_path: Path, taken_steps: int
+) -> None:
+    port = _port_with_room(taken_steps + 1)
+    queues = _queues()
+    module = WebServerModule(
+        ModuleName.WEBSERVER,
+        queues,
+        _config(tmp_path, port, config_port=None),
+        poll_interval_seconds=0.01,
+    )
+    stop = Event()
+    thread = Thread(target=module.run, args=(stop,), daemon=True)
+    held = [socket() for _ in range(taken_steps)]
+
+    try:
+        # Taken at every address, as another node on its main port takes it.
+        for step, occupied in enumerate(held, start=1):
+            occupied.bind(("0.0.0.0", port + CONFIG_PORT_STEP * step))
+            occupied.listen()
+
+        thread.start()
+        _serving(module, queues)
+
+        assert module.config_address == (
+            "127.0.0.1",
+            port + CONFIG_PORT_STEP * (taken_steps + 1),
+        )
+
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+        for occupied in held:
+            occupied.close()
+
+    assert not thread.is_alive()
+
+
+def test_config_has_a_port_of_its_own_that_the_main_port_sends_its_pages_to(
+    tmp_path: Path,
+) -> None:
+    queues = _queues()
+    module = WebServerModule(
+        ModuleName.WEBSERVER, queues, _config(tmp_path, _free_port()), poll_interval_seconds=0.01
+    )
+    stop = Event()
+    thread = Thread(target=module.run, args=(stop,), daemon=True)
+    thread.start()
+
+    try:
+        host, port = _serving(module, queues)
+        config_port = _config_port(module)
+
+        assert _status(host, port, "/config/") == (302, f"http://{host}:{config_port}/config/")
+        assert _authorized(host, port, "/config/api")[0] == 404
+        assert _authorized(host, config_port, "/config/api")[0] == 200
+        assert _status(host, config_port, "/data/nodes") == (404, None)
+
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+    assert not thread.is_alive()
+    assert module.config_address is None
+    assert _is_free(config_port)
 
 
 def test_factory_builds_a_web_server_module(tmp_path: Path) -> None:
@@ -468,3 +622,4 @@ def test_factory_builds_a_web_server_module(tmp_path: Path) -> None:
     assert isinstance(module, WebServerModule)
     assert module.name == ModuleName.WEBSERVER
     assert module.server_address is None
+    assert module.config_address is None

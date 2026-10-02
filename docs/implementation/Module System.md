@@ -143,9 +143,13 @@ results.
 
 #### 3.2.2 Web Server
 
-The node's only HTTP listener, for peers, local clients, and `/config`. The
-HTTP server runs on a thread of its own with a thread per request, while
-the module's main thread runs the receive loop. Handlers answer from what
+The node's HTTP listeners: one on the main port, for peers, local clients,
+and applications, and one for `/config` alone, at `127.0.0.1` on a port of
+its own, so that no application's page shares its origin (Phase 2 Step 58).
+That port is `network.config_port`, or else the first free of the main port
+plus 100, plus 200, and so on. Each HTTP server runs on a thread of its own
+with a thread per request, while the module's main thread runs the receive
+loop. Handlers answer from what
 is on disk, such as content, derived lists, and resolved files, and publish
 what happened. They never wait for another module: when an answer depends
 on work elsewhere, they answer `503` with `Retry-After` and publish a
