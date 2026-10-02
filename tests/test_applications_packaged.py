@@ -45,7 +45,8 @@ from libranet.webserver.app_registry import CONFIG_APPLICATION, ROOT_APPLICATION
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import CONFIG_API_PATH, ENDPOINTS, NodeDescription
 from libranet.webserver.http_types import Request
-from libranet.webserver.server import build_router
+from libranet.webserver.router import Router
+from libranet.webserver.server import build_config_router, build_router
 
 from tests.stubs import StubModule
 
@@ -116,6 +117,38 @@ def published(queues: ModuleQueues) -> list[Message]:
 
         except Empty:
             return messages
+
+
+def router_for(
+    application: str,
+    storage: StorageConfig,
+    publisher: StubModule,
+    content: LayeredSource | None = None,
+) -> Router:
+    """The routes of the port ``application`` is served on: ``/config``'s, or the main port's."""
+    config = LibranetConfig(storage=storage)
+
+    if application == CONFIG_APPLICATION:
+        return build_config_router(
+            storage,
+            5,
+            publisher.publish,
+            config_credential=ConfigCredential.of(config),
+            node=NodeDescription(
+                ContentId.for_data(b"a node's public key", "sha256"), NetworkConfig()
+            ),
+            content=content,
+        )
+
+    return build_router(
+        storage,
+        5,
+        publisher.publish,
+        RequestAuthenticator.of(config),
+        allow_unsigned_api_reads=True,
+        config_port=8180,
+        content=content,
+    )
 
 
 def test_the_node_ships_the_root_and_config_applications(built: PackagedApplications) -> None:
@@ -339,15 +372,11 @@ def test_a_new_node_serves_each_shipped_page_with_nothing_in_the_cas(
         LibranetConfig(storage=storage),
         poll_interval_seconds=0.01,
     )
-    router = build_router(
+    router = router_for(
+        application,
         storage,
-        5,
-        StubModule(ModuleName.WEBSERVER, web_queues).publish,
-        RequestAuthenticator.of(LibranetConfig(storage=storage)),
-        allow_unsigned_api_reads=True,
-        config_credential=ConfigCredential.of(LibranetConfig(storage=storage)),
-        node=NodeDescription(ContentId.for_data(b"a node's public key", "sha256"), NetworkConfig()),
-        content=LayeredSource.open(storage),
+        StubModule(ModuleName.WEBSERVER, web_queues),
+        LayeredSource.open(storage),
     )
     browse = Request("GET", path, headers=headers, client_address=client_address)
 
@@ -373,15 +402,16 @@ def test_a_new_node_serves_each_shipped_page_with_nothing_in_the_cas(
     assert not storage.applications_path.exists()
 
 
-def test_a_router_given_no_content_ships_no_applications(storage: StorageConfig) -> None:
-    router = build_router(
-        storage,
-        5,
-        StubModule(ModuleName.WEBSERVER, ModuleQueues(inbox=Queue(), outbox=Queue())).publish,
-        RequestAuthenticator.of(LibranetConfig(storage=storage)),
-        allow_unsigned_api_reads=True,
-        config_credential=ConfigCredential.of(LibranetConfig(storage=storage)),
-        node=NodeDescription(ContentId.for_data(b"a node's public key", "sha256"), NetworkConfig()),
-    )
+@mark.parametrize(
+    "application, path, headers",
+    [(ROOT_APPLICATION, "/", {}), (CONFIG_APPLICATION, "/config/", CONFIG_CREDENTIALS)],
+)
+def test_a_router_given_no_content_ships_no_applications(
+    storage: StorageConfig, application: str, path: str, headers: dict[str, str]
+) -> None:
+    publisher = StubModule(ModuleName.WEBSERVER, ModuleQueues(inbox=Queue(), outbox=Queue()))
+    router = router_for(application, storage, publisher)
 
-    assert router.dispatch(Request("GET", "/", client_address="127.0.0.1")).status == 404
+    response = router.dispatch(Request("GET", path, headers=headers, client_address="127.0.0.1"))
+
+    assert response.status == 404

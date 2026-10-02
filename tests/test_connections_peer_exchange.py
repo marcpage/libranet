@@ -40,8 +40,6 @@ from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
-from libranet.webserver.config_credential import ConfigCredential
-from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.server import LibranetHTTPServer, build_router
 
 from tests.helpers import with_node_key
@@ -91,8 +89,7 @@ class FixturePeer:
                 StubModule(ModuleName.WEBSERVER, self.queues).publish,
                 RequestAuthenticator.of(LibranetConfig(storage=self.storage)),
                 allow_unsigned_api_reads=True,
-                config_credential=ConfigCredential.of(LibranetConfig(storage=self.storage)),
-                node=NodeDescription(self.identity.node_id, NetworkConfig()),
+                config_port=8180,
             ),
             getLogger("test.webserver"),
             MessageSigner(self.identity),

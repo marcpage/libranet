@@ -8,12 +8,13 @@ Every response is expected to be signed by the server's node key.
 
 from __future__ import annotations
 from base64 import b64encode
+from errno import EADDRINUSE
 from http.client import HTTPConnection, HTTPResponse
 from json import dumps, loads
 from logging import DEBUG, WARNING, getLogger
 from pathlib import Path
 from queue import Empty, Queue
-from socket import SHUT_WR, create_connection
+from socket import SHUT_WR, create_connection, socket
 from threading import Thread
 from typing import Callable, Iterator
 from zlib import compress
@@ -54,7 +55,8 @@ from libranet.webserver.config_auth import CONFIG_REALM
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.http_types import Request, RequestBody, Response
-from libranet.webserver.server import LibranetHTTPServer, build_router
+from libranet.webserver.router import Router
+from libranet.webserver.server import LibranetHTTPServer, build_config_router, build_router
 
 from tests.helpers import with_node_key
 from tests.stubs import StubModule
@@ -117,36 +119,8 @@ def credential(storage: StorageConfig) -> ConfigCredential:
     return ConfigCredential.of(LibranetConfig(storage=storage))
 
 
-@fixture
-def server(
-    storage: StorageConfig,
-    store: CasStore,
-    queues: ModuleQueues,
-    allow_unsigned_api_reads: bool,
-    applications: dict[str, ContentId],
-    registry: ApplicationRegistry,
-    credential: ConfigCredential,
-) -> Iterator[LibranetHTTPServer]:
-    # `store` is asked for so that what it holds is there to be served.
-    # pylint: disable=unused-argument
-    for name, bundle in applications.items():
-        registry.register(Application.create(name, bundle))
-
-    publisher = StubModule(ModuleName.WEBSERVER, queues)
-    server = LibranetHTTPServer(
-        ("127.0.0.1", 0),
-        build_router(
-            storage,
-            RETRY_AFTER_SECONDS,
-            publisher.publish,
-            RequestAuthenticator.of(LibranetConfig(storage=storage)),
-            allow_unsigned_api_reads=allow_unsigned_api_reads,
-            config_credential=credential,
-            node=SERVER_NODE,
-        ),
-        getLogger("test.webserver"),
-        MessageSigner(SERVER_IDENTITY),
-    )
+def serving(server: LibranetHTTPServer) -> Iterator[LibranetHTTPServer]:
+    """``server``, serving until the test that asked for it is done."""
     thread = Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
     thread.start()
     yield server
@@ -155,12 +129,78 @@ def server(
     thread.join()
 
 
-@fixture
-def connection(server: LibranetHTTPServer) -> Iterator[HTTPConnection]:
+def connected(server: LibranetHTTPServer) -> Iterator[HTTPConnection]:
+    """A connection to ``server``, closed when the test that asked for it is done."""
     host, port = server.server_address[:2]
     connection = HTTPConnection(str(host), int(port), timeout=5)
     yield connection
     connection.close()
+
+
+@fixture
+def config_server(
+    storage: StorageConfig,
+    queues: ModuleQueues,
+    applications: dict[str, ContentId],
+    registry: ApplicationRegistry,
+    credential: ConfigCredential,
+) -> Iterator[LibranetHTTPServer]:
+    """The server on ``/config``'s port, with the applications registered."""
+    for name, bundle in applications.items():
+        registry.register(Application.create(name, bundle))
+
+    yield from serving(
+        LibranetHTTPServer(
+            ("127.0.0.1", 0),
+            build_config_router(
+                storage,
+                RETRY_AFTER_SECONDS,
+                StubModule(ModuleName.WEBSERVER, queues).publish,
+                config_credential=credential,
+                node=SERVER_NODE,
+            ),
+            getLogger("test.webserver"),
+            MessageSigner(SERVER_IDENTITY),
+        )
+    )
+
+
+@fixture
+def server(
+    storage: StorageConfig,
+    store: CasStore,
+    queues: ModuleQueues,
+    allow_unsigned_api_reads: bool,
+    config_server: LibranetHTTPServer,
+) -> Iterator[LibranetHTTPServer]:
+    """The server on the main port, which sends ``/config``'s pages to ``config_server``."""
+    # `store` is asked for so that what it holds is there to be served.
+    # pylint: disable=unused-argument
+    yield from serving(
+        LibranetHTTPServer(
+            ("127.0.0.1", 0),
+            build_router(
+                storage,
+                RETRY_AFTER_SECONDS,
+                StubModule(ModuleName.WEBSERVER, queues).publish,
+                RequestAuthenticator.of(LibranetConfig(storage=storage)),
+                allow_unsigned_api_reads=allow_unsigned_api_reads,
+                config_port=config_server.server_port,
+            ),
+            getLogger("test.webserver"),
+            MessageSigner(SERVER_IDENTITY),
+        )
+    )
+
+
+@fixture
+def connection(server: LibranetHTTPServer) -> Iterator[HTTPConnection]:
+    yield from connected(server)
+
+
+@fixture
+def config_connection(config_server: LibranetHTTPServer) -> Iterator[HTTPConnection]:
+    yield from connected(config_server)
 
 
 def _get(connection: HTTPConnection, path: str, method: str = "GET") -> tuple[HTTPResponse, bytes]:
@@ -333,11 +373,7 @@ def test_search_scans_caches_and_publishes(
 
 
 def test_data_and_search_read_content_archives(
-    storage: StorageConfig,
-    store: CasStore,
-    queues: ModuleQueues,
-    credential: ConfigCredential,
-    tmp_path: Path,
+    storage: StorageConfig, store: CasStore, queues: ModuleQueues, tmp_path: Path
 ) -> None:
     archived = ContentId.for_data(b"archived", "sha256")
     path = tmp_path / "held.zip"
@@ -352,8 +388,7 @@ def test_data_and_search_read_content_archives(
             StubModule(ModuleName.WEBSERVER, queues).publish,
             RequestAuthenticator.of(LibranetConfig(storage=storage)),
             allow_unsigned_api_reads=True,
-            config_credential=credential,
-            node=SERVER_NODE,
+            config_port=8180,
             content=LayeredSource(store, [archive]),
         )
         data = router.dispatch(Request("GET", f"/data/{archived}", client_address="127.0.0.1"))
@@ -936,10 +971,10 @@ def test_an_application_file_not_yet_resolved_is_asked_for(
 
 
 def test_config_passes_a_local_client_on_to_the_credential_challenge(
-    connection: HTTPConnection, queues: ModuleQueues
+    config_connection: HTTPConnection, queues: ModuleQueues
 ) -> None:
     # A remote client never gets this far: it is refused with 403 instead.
-    response, body = _get(connection, "/config/api/backups")
+    response, body = _get(config_connection, "/config/api/backups")
 
     assert response.status == 401
     assert (
@@ -1109,9 +1144,9 @@ def _config(
 
 
 def test_the_first_config_request_captures_its_credentials_and_is_served(
-    connection: HTTPConnection, credential: ConfigCredential
+    config_connection: HTTPConnection, credential: ConfigCredential
 ) -> None:
-    response, body = _config(connection, "/config/api", headers=_credentials())
+    response, body = _config(config_connection, "/config/api", headers=_credentials())
 
     assert response.status == 200
     assert "/config/api/backups" in {entry["path"] for entry in loads(body)["endpoints"]}
@@ -1119,12 +1154,12 @@ def test_the_first_config_request_captures_its_credentials_and_is_served(
 
 
 def test_config_requests_afterwards_are_checked_against_what_was_captured(
-    connection: HTTPConnection, queues: ModuleQueues
+    config_connection: HTTPConnection, queues: ModuleQueues
 ) -> None:
-    _config(connection, "/config/api", headers=_credentials())
-    allowed, _ = _config(connection, "/config/api/backups", headers=_credentials())
+    _config(config_connection, "/config/api", headers=_credentials())
+    allowed, _ = _config(config_connection, "/config/api/backups", headers=_credentials())
     refused, body = _config(
-        connection, "/config/api/backups", headers=_credentials(password="guessed")
+        config_connection, "/config/api/backups", headers=_credentials(password="guessed")
     )
 
     assert allowed.status == 503
@@ -1135,9 +1170,9 @@ def test_config_requests_afterwards_are_checked_against_what_was_captured(
 
 
 def test_a_config_request_without_credentials_is_challenged(
-    connection: HTTPConnection, credential: ConfigCredential
+    config_connection: HTTPConnection, credential: ConfigCredential
 ) -> None:
-    response, body = _config(connection, "/config/api/backups")
+    response, body = _config(config_connection, "/config/api/backups")
 
     assert response.status == 401
     assert response.getheader("WWW-Authenticate") == CONFIG_CHALLENGE
@@ -1147,10 +1182,10 @@ def test_a_config_request_without_credentials_is_challenged(
 
 
 def test_a_config_endpoint_publishes_what_the_backup_module_will_act_on(
-    connection: HTTPConnection, queues: ModuleQueues
+    config_connection: HTTPConnection, queues: ModuleQueues
 ) -> None:
     response, body = _config(
-        connection,
+        config_connection,
         "/config/api/backups",
         "POST",
         _credentials(),
@@ -1165,7 +1200,7 @@ def test_a_config_endpoint_publishes_what_the_backup_module_will_act_on(
 
 
 def test_a_remote_config_request_is_refused_before_it_can_capture_anything(
-    server: LibranetHTTPServer, credential: ConfigCredential, queues: ModuleQueues
+    config_server: LibranetHTTPServer, credential: ConfigCredential, queues: ModuleQueues
 ) -> None:
     # The live server only ever sees loopback clients, so the remote source
     # address is put to the router directly.
@@ -1175,7 +1210,7 @@ def test_a_remote_config_request_is_refused_before_it_can_capture_anything(
         headers=_credentials(),
         client_address="203.0.113.42",
     )
-    response = server.router.dispatch(request)
+    response = config_server.router.dispatch(request)
 
     assert response.status == 403
     assert not credential.captured
@@ -1193,7 +1228,7 @@ def test_a_remote_config_request_is_refused_before_it_can_capture_anything(
 )
 @mark.parametrize("method", ["GET", "POST"])
 def test_another_sites_config_request_is_refused_before_it_can_capture_anything(
-    connection: HTTPConnection,
+    config_connection: HTTPConnection,
     credential: ConfigCredential,
     queues: ModuleQueues,
     registry: ApplicationRegistry,
@@ -1201,7 +1236,7 @@ def test_another_sites_config_request_is_refused_before_it_can_capture_anything(
     method: str,
 ) -> None:
     response, body = _config(
-        connection,
+        config_connection,
         "/config/api/applications",
         method,
         {**_credentials(), "Content-Type": "text/plain", **sent},
@@ -1218,15 +1253,17 @@ def test_another_sites_config_request_is_refused_before_it_can_capture_anything(
 
 
 def test_the_config_pages_own_requests_are_served(
-    connection: HTTPConnection, server: LibranetHTTPServer, registry: ApplicationRegistry
+    config_connection: HTTPConnection,
+    config_server: LibranetHTTPServer,
+    registry: ApplicationRegistry,
 ) -> None:
-    host, port = server.server_address[:2]
+    host, port = config_server.server_address[:2]
     page = {"Sec-Fetch-Site": "same-origin", "Origin": f"http://{str(host)}:{int(port)}"}
     opened, _ = _config(
-        connection, "/config/api", headers={**_credentials(), "Sec-Fetch-Site": "none"}
+        config_connection, "/config/api", headers={**_credentials(), "Sec-Fetch-Site": "none"}
     )
     registered, _ = _config(
-        connection,
+        config_connection,
         "/config/api/applications",
         "POST",
         {**_credentials(), **page},
@@ -1240,17 +1277,19 @@ def test_the_config_pages_own_requests_are_served(
 
 @mark.parametrize("content_type", ["text/plain", "application/x-www-form-urlencoded"])
 def test_a_config_body_not_sent_as_json_is_not_acted_on(
-    connection: HTTPConnection, registry: ApplicationRegistry, content_type: str
+    config_connection: HTTPConnection,
+    registry: ApplicationRegistry,
+    content_type: str,
 ) -> None:
     response, body = _config(
-        connection,
+        config_connection,
         "/config/api/applications",
         "POST",
         {**_credentials(), "Content-Type": content_type},
         dumps({"name": "/", "bundle": str(APP_BUNDLE_ID)}).encode("utf-8"),
     )
     # The body was read, so the connection carries the next request.
-    after, _ = _config(connection, "/config/api", headers=_credentials())
+    after, _ = _config(config_connection, "/config/api", headers=_credentials())
 
     assert response.status == 415
     assert response.getheader("Content-Type") == PROBLEM_CONTENT_TYPE
@@ -1261,12 +1300,12 @@ def test_a_config_body_not_sent_as_json_is_not_acted_on(
 
 @mark.parametrize("applications", [{"config": APP_BUNDLE_ID}])
 def test_every_path_beneath_config_but_the_apis_is_the_config_applications(
-    connection: HTTPConnection, queues: ModuleQueues
+    config_connection: HTTPConnection, queues: ModuleQueues
 ) -> None:
-    redirect, _ = _config(connection, "/config", headers=_credentials())
+    redirect, _ = _config(config_connection, "/config", headers=_credentials())
     # Where the endpoints were before they moved beneath /config/api, too.
     statuses = [
-        _config(connection, path, headers=_credentials())[0].status
+        _config(config_connection, path, headers=_credentials())[0].status
         for path in ("/config/", "/config/backups", "/config/restores/a/b")
     ]
 
@@ -1282,17 +1321,17 @@ def test_every_path_beneath_config_but_the_apis_is_the_config_applications(
 
 
 def test_a_config_api_path_no_endpoint_serves_is_not_the_page(
-    connection: HTTPConnection,
+    config_connection: HTTPConnection,
 ) -> None:
-    response, body = _config(connection, "/config/api/unknown", headers=_credentials())
+    response, body = _config(config_connection, "/config/api/unknown", headers=_credentials())
 
     assert response.status == 404
     assert response.getheader("Content-Type") == PROBLEM_CONTENT_TYPE
     assert loads(body)["instance"] == "/config/api/unknown"
 
 
-def test_the_node_is_described_as_it_was_started(connection: HTTPConnection) -> None:
-    response, body = _config(connection, "/config/api/node", headers=_credentials())
+def test_the_node_is_described_as_it_was_started(config_connection: HTTPConnection) -> None:
+    response, body = _config(config_connection, "/config/api/node", headers=_credentials())
 
     assert response.status == 200
     assert loads(body) == SERVER_NODE.value()
@@ -1306,7 +1345,7 @@ def test_the_node_is_described_as_it_was_started(connection: HTTPConnection) -> 
     [("203.0.113.42", _credentials(), 403), ("127.0.0.1", {}, 401)],
 )
 def test_the_config_application_is_served_only_to_an_authenticated_local_client(
-    server: LibranetHTTPServer,
+    config_server: LibranetHTTPServer,
     credential: ConfigCredential,
     queues: ModuleQueues,
     path: str,
@@ -1316,7 +1355,7 @@ def test_the_config_application_is_served_only_to_an_authenticated_local_client(
 ) -> None:
     # The live server only ever sees loopback clients, so the requests are put
     # to the router directly.
-    response = server.router.dispatch(
+    response = config_server.router.dispatch(
         Request("GET", path, headers=headers, client_address=client_address)
     )
 
@@ -1328,10 +1367,13 @@ def test_the_config_application_is_served_only_to_an_authenticated_local_client(
 
 
 def test_an_application_registered_through_config_is_served_at_once(
-    connection: HTTPConnection, storage: StorageConfig, queues: ModuleQueues
+    connection: HTTPConnection,
+    config_connection: HTTPConnection,
+    storage: StorageConfig,
+    queues: ModuleQueues,
 ) -> None:
     registered, body = _config(
-        connection,
+        config_connection,
         "/config/api/applications",
         "POST",
         _credentials(),
@@ -1355,7 +1397,9 @@ def test_an_application_registered_through_config_is_served_at_once(
     )
     assert (served.status, page) == (200, b"<html>")
 
-    removed, _ = _config(connection, "/config/api/applications/WIKI", "DELETE", _credentials())
+    removed, _ = _config(
+        config_connection, "/config/api/applications/WIKI", "DELETE", _credentials()
+    )
     gone, _ = _get(connection, "/wiki/")
 
     assert removed.status == 204
@@ -1367,7 +1411,7 @@ def test_an_application_registered_through_config_is_served_at_once(
     [("203.0.113.42", _credentials(), 403), ("127.0.0.1", {}, 401)],
 )
 def test_the_registry_is_changed_only_by_an_authenticated_local_client(
-    server: LibranetHTTPServer,
+    config_server: LibranetHTTPServer,
     registry: ApplicationRegistry,
     client_address: str,
     headers: dict[str, str],
@@ -1376,7 +1420,7 @@ def test_the_registry_is_changed_only_by_an_authenticated_local_client(
     # The live server only ever sees loopback clients, so the requests are put
     # to the router directly.
     body = RequestBody.of(dumps({"name": "wiki", "bundle": str(APP_BUNDLE_ID)}).encode("utf-8"))
-    response = server.router.dispatch(
+    response = config_server.router.dispatch(
         Request(
             "POST",
             "/config/api/applications",
@@ -1392,20 +1436,182 @@ def test_the_registry_is_changed_only_by_an_authenticated_local_client(
 
 
 def test_a_registry_that_cannot_be_read_leaves_the_rest_of_the_node_served(
-    connection: HTTPConnection, registry: ApplicationRegistry
+    connection: HTTPConnection, config_connection: HTTPConnection, registry: ApplicationRegistry
 ) -> None:
     write_atomically(registry.path, b"{not json")
 
     data, _ = _get(connection, f"/data/{CONTENT_ID}")
     application, _ = _get(connection, "/wiki/")
-    index, _ = _config(connection, "/config/api", headers=_credentials())
-    listing, body = _config(connection, "/config/api/applications", headers=_credentials())
+    index, _ = _config(config_connection, "/config/api", headers=_credentials())
+    listing, body = _config(config_connection, "/config/api/applications", headers=_credentials())
 
     assert data.status == 200
     assert application.status == 500
     assert index.status == 200
     assert listing.status == 500
     assert str(registry.path) in loads(body)["detail"]
+
+
+def test_the_main_port_sends_a_config_page_to_configs_port(
+    server: LibranetHTTPServer, config_server: LibranetHTTPServer, connection: HTTPConnection
+) -> None:
+    redirect, _ = _get(connection, "/config/")
+    location = redirect.getheader("Location") or ""
+    host, port = config_server.server_address[:2]
+
+    assert redirect.status == 302
+    assert location == f"http://{str(host)}:{int(port)}/config/"
+    assert redirect.getheader("WWW-Authenticate") is None
+
+    # What is there is /config, which asks for its credential.
+    followed = HTTPConnection(str(host), int(port), timeout=5)
+
+    try:
+        followed.request("GET", "/config/")
+        challenge = followed.getresponse()
+        challenge.read()
+
+    finally:
+        followed.close()
+
+    assert challenge.status == 401
+    assert challenge.getheader("WWW-Authenticate") == CONFIG_CHALLENGE
+    assert server.server_port != int(port)
+
+
+@mark.parametrize(
+    "method, path",
+    [("GET", "/config/api"), ("GET", "/config/api/backups"), ("POST", "/config/api/backups")],
+)
+def test_the_main_port_never_takes_the_config_credential(
+    connection: HTTPConnection,
+    credential: ConfigCredential,
+    queues: ModuleQueues,
+    method: str,
+    path: str,
+) -> None:
+    response, body = _config(connection, path, method, _credentials(), b"{}")
+
+    assert response.status == 404
+    assert response.getheader("WWW-Authenticate") is None
+    assert "/config is served on port" in loads(body)["detail"]
+    assert not credential.captured
+    assert _published(queues) == []
+
+
+def test_the_main_port_refuses_config_to_a_remote_client(server: LibranetHTTPServer) -> None:
+    # The live server only ever sees loopback clients, so the remote source
+    # address is put to the router directly.
+    response = server.router.dispatch(
+        Request("GET", "/config/", headers=_credentials(), client_address="203.0.113.42")
+    )
+
+    assert response.status == 403
+    assert "Location" not in response.headers
+
+
+@mark.parametrize("applications", [{"wiki": APP_BUNDLE_ID}])
+@mark.parametrize("path", ["/", f"/data/{CONTENT_ID}", "/data/nodes", "/wiki/"])
+def test_configs_port_serves_nothing_but_config(
+    config_connection: HTTPConnection, queues: ModuleQueues, path: str
+) -> None:
+    response, _ = _get(config_connection, path)
+
+    assert response.status == 404
+    assert _published(queues) == []
+
+
+def _free_port() -> int:
+    """A port nothing listens on, for now."""
+    with socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return int(probe.getsockname()[1])
+
+
+@mark.parametrize(
+    "held_at, bound_at",
+    [("0.0.0.0", "127.0.0.1"), ("127.0.0.1", "0.0.0.0"), ("127.0.0.1", "127.0.0.1")],
+)
+def test_a_port_something_on_this_machine_answers_on_is_refused(
+    held_at: str, bound_at: str
+) -> None:
+    with socket() as held:
+        held.bind((held_at, 0))
+        held.listen()
+        port = int(held.getsockname()[1])
+
+        with raises(OSError) as raised:
+            LibranetHTTPServer(
+                (bound_at, port),
+                Router(),
+                getLogger("test.webserver"),
+                MessageSigner(SERVER_IDENTITY),
+            )
+
+    assert raised.value.errno == EADDRINUSE
+
+
+def test_the_first_free_port_is_listened_on_and_each_taken_one_logged(
+    caplog: LogCaptureFixture,
+) -> None:
+    caplog.set_level(WARNING)
+
+    with socket() as first, socket() as second:
+        for held in (first, second):
+            held.bind(("127.0.0.1", 0))
+            held.listen()
+
+        taken = [int(held.getsockname()[1]) for held in (first, second)]
+        free = _free_port()
+        server = LibranetHTTPServer.first_free(
+            "127.0.0.1",
+            [*taken, free],
+            Router(),
+            getLogger("test.webserver"),
+            MessageSigner(SERVER_IDENTITY),
+        )
+        server.server_close()
+
+    assert server.server_port == free
+    assert [record.getMessage().split(",")[0] for record in caplog.records] == [
+        f"Cannot listen on port {port}" for port in taken
+    ]
+
+
+def test_with_every_port_taken_none_is_listened_on() -> None:
+    with socket() as held:
+        held.bind(("127.0.0.1", 0))
+        held.listen()
+        port = int(held.getsockname()[1])
+
+        with raises(OSError) as raised:
+            LibranetHTTPServer.first_free(
+                "127.0.0.1",
+                [port],
+                Router(),
+                getLogger("test.webserver"),
+                MessageSigner(SERVER_IDENTITY),
+            )
+
+    assert raised.value.errno == EADDRINUSE
+
+
+def test_an_address_that_cannot_be_listened_at_stops_the_search_at_once(
+    caplog: LogCaptureFixture,
+) -> None:
+    caplog.set_level(WARNING)
+
+    with raises(OSError) as raised:
+        LibranetHTTPServer.first_free(
+            "256.0.0.1",
+            [_free_port(), _free_port()],
+            Router(),
+            getLogger("test.webserver"),
+            MessageSigner(SERVER_IDENTITY),
+        )
+
+    assert raised.value.errno != EADDRINUSE
+    assert caplog.records == []
 
 
 def test_an_invalid_content_id_is_logged_at_debug(

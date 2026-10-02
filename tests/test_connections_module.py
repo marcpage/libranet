@@ -28,7 +28,6 @@ from libranet.cas.store import CasStore
 from libranet.config.models import (
     IdentityConfig,
     LibranetConfig,
-    NetworkConfig,
     PeerConfig,
     StatsConfig,
     StorageConfig,
@@ -46,8 +45,6 @@ from libranet.messaging.events import ConnectionDirection, EventType
 from libranet.messaging.queues import MessageQueue, ModuleQueues
 from libranet.modules import ModuleName
 from libranet.stats.module import StatsModule
-from libranet.webserver.config_credential import ConfigCredential
-from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.router import Router
 from libranet.webserver.server import LibranetHTTPServer, RequestHandler, build_router
 
@@ -142,8 +139,7 @@ class FixturePeer:
                 StubModule(ModuleName.WEBSERVER, queues).publish,
                 RequestAuthenticator.of(LibranetConfig(storage=self.storage)),
                 allow_unsigned_api_reads=True,
-                config_credential=ConfigCredential.of(LibranetConfig(storage=self.storage)),
-                node=NodeDescription(self.identity.node_id, NetworkConfig()),
+                config_port=8180,
             ),
             getLogger("test.webserver"),
             MessageSigner(self.identity),

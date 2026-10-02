@@ -1,8 +1,14 @@
 """The web server module process.
 
-The HTTP server runs on a background thread for the module's lifetime, while
+The HTTP servers run on background threads for the module's lifetime, while
 :meth:`~libranet.messaging.module.ModuleBase.run` keeps the receive loop (and
-so shutdown handling) on the main thread. Request threads publish through
+so shutdown handling) on the main thread. There are two: one on the main
+port, for peers and applications, and one for ``/config`` alone, on a port
+of its own at ``127.0.0.1``, so that no application's page shares its origin
+(HttpApi §2.3, Phase 2 Step 58). That port is ``network.config_port`` if it
+is set, and otherwise the first free of the main port plus 100, plus 200,
+and so on, so nodes on one machine have theirs where they can be told.
+Request threads publish through
 :meth:`~libranet.messaging.module.ModuleBase.publish`. Responses are signed
 with the node key, which the module loads from disk rather than receiving
 across the process boundary.
@@ -28,7 +34,7 @@ from typing import Callable, ClassVar
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
-from libranet.config.models import LibranetConfig
+from libranet.config.models import CONFIG_LISTEN_ADDRESS, LibranetConfig
 from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import MessageSigner
@@ -42,7 +48,7 @@ from libranet.webserver.backup_state import BackupReport, BackupState
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.inbound_peers import InboundPeers
-from libranet.webserver.server import LibranetHTTPServer, build_router
+from libranet.webserver.server import LibranetHTTPServer, build_config_router, build_router
 
 
 class WebServerModule(ModuleBase):
@@ -70,7 +76,8 @@ class WebServerModule(ModuleBase):
         self._backup_state = BackupState()
         self._inbound_peers = InboundPeers(self.publish)
         self._server: LibranetHTTPServer | None = None
-        self._thread: Thread | None = None
+        self._config_server: LibranetHTTPServer | None = None
+        self._threads: tuple[Thread, ...] = ()
         self._route(
             {
                 EventType.APP_PATH_RESOLVED: self._on_app_path_resolved,
@@ -81,19 +88,22 @@ class WebServerModule(ModuleBase):
 
     @property
     def server_address(self) -> tuple[str, int] | None:
-        """Where the server is listening, once started."""
-        if self._server is None:
-            return None
+        """Where the main port's server is listening, once started."""
+        return _address(self._server)
 
-        host, port = self._server.server_address[:2]
-        return str(host), int(port)
+    @property
+    def config_address(self) -> tuple[str, int] | None:
+        """Where ``/config``'s server is listening, once started."""
+        return _address(self._config_server)
 
     def on_start(self) -> None:
-        """Bind the listener and start serving.
+        """Bind the listeners and start serving.
 
         A bind failure, an unusable node key, a content archive that cannot
         be opened, or shipped applications that cannot be read or built crash
-        the module. The archives stay open for as
+        the module. ``/config``'s port is bound first, so the main port can
+        send its pages there; it is passed over for the next only if
+        ``network.config_port`` is not set. The archives stay open for as
         long as the process runs. An application registry that cannot be read
         does not: requests that need it are answered ``500`` until it is
         fixed, and the rest of the node's API is served meanwhile.
@@ -101,47 +111,83 @@ class WebServerModule(ModuleBase):
         # None yet: any named before a restart are gone.
         self._inbound_peers.publish()
         network = self._config.network
-        identity = self._config.identity
+        storage = self._config.storage
         node = NodeIdentity.load(self._config)
         signer = MessageSigner(node)
-        self._server = LibranetHTTPServer(
-            (network.listen_address, network.listen_port),
-            build_router(
-                self._config.storage,
+        content = LayeredSource.open(storage)
+        config_server = LibranetHTTPServer.first_free(
+            CONFIG_LISTEN_ADDRESS,
+            network.config_ports(),
+            build_config_router(
+                storage,
                 network.retry_after_seconds,
                 self.publish,
-                RequestAuthenticator.of(self._config),
-                allow_unsigned_api_reads=identity.allow_unsigned_api_reads,
                 config_credential=ConfigCredential.of(self._config),
                 node=NodeDescription(node.node_id, network),
                 app_outcomes=self._app_outcomes,
                 backup_state=self._backup_state,
-                content=LayeredSource.open(self._config.storage),
+                content=content,
             ),
             self.logger,
             signer,
-            inbound_peers=self._inbound_peers,
         )
-        self._thread = Thread(
-            target=self._server.serve_forever, name=f"{self.name}-http", daemon=True
+
+        try:
+            server = LibranetHTTPServer(
+                (network.listen_address, network.listen_port),
+                build_router(
+                    storage,
+                    network.retry_after_seconds,
+                    self.publish,
+                    RequestAuthenticator.of(self._config),
+                    allow_unsigned_api_reads=self._config.identity.allow_unsigned_api_reads,
+                    config_port=config_server.server_port,
+                    app_outcomes=self._app_outcomes,
+                    content=content,
+                ),
+                self.logger,
+                signer,
+                inbound_peers=self._inbound_peers,
+            )
+
+        except BaseException:
+            config_server.server_close()
+            raise
+
+        self._server = server
+        self._config_server = config_server
+        self._threads = (
+            Thread(target=server.serve_forever, name=f"{self.name}-http", daemon=True),
+            Thread(target=config_server.serve_forever, name=f"{self.name}-config", daemon=True),
         )
-        self._thread.start()
-        self.logger.info("Web server listening on %s:%s", *self.server_address or ("?", "?"))
+
+        for thread in self._threads:
+            thread.start()
+
+        self.logger.info(
+            "Web server listening on %s:%s, and /config at http://%s:%s/config/",
+            network.listen_address,
+            server.server_port,
+            CONFIG_LISTEN_ADDRESS,
+            config_server.server_port,
+        )
 
     def on_stop(self) -> None:
-        """Stop accepting requests and release the listening socket."""
-        if self._server is None:
-            return
+        """Stop accepting requests and release the listening sockets."""
+        for server in (self._server, self._config_server):
+            if server is not None:
+                server.shutdown()
+                server.server_close()
 
-        self._server.shutdown()
-        self._server.server_close()
+        for thread in self._threads:
+            thread.join()
 
-        if self._thread is not None:
-            self._thread.join()
+        if self._server is not None:
+            self.logger.info("Web server stopped")
 
         self._server = None
-        self._thread = None
-        self.logger.info("Web server stopped")
+        self._config_server = None
+        self._threads = ()
 
     def _on_app_path_resolved(self, message: Message) -> None:
         """Remember what the unbundler found at a path it stored no file for."""
@@ -161,6 +207,15 @@ class WebServerModule(ModuleBase):
 
     def _on_peers_connected_requested(self, _: Message) -> None:
         self._inbound_peers.publish()
+
+
+def _address(server: LibranetHTTPServer | None) -> tuple[str, int] | None:
+    """Where ``server`` is listening, if there is one."""
+    if server is None:
+        return None
+
+    host, port = server.server_address[:2]
+    return str(host), int(port)
 
 
 def webserver_module_factory(

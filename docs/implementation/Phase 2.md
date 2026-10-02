@@ -36,8 +36,8 @@ Seven themes. The first two come first; the rest are roughly the order
 the work wants to be done in:
 
 - **Keeping other sites out of `/config`.** A browser holding the
-  `/config` credential sends it with requests other sites' pages make.
-  Step 41.
+  `/config` credential sends it with requests other sites' pages make,
+  and with requests the node's own applications make. Steps 41 and 58.
 - **Code that reads the same everywhere.** Functions that should be
   methods, caught exceptions that leave no trace, and constants defined
   more than once. Steps 42, 43, and 44, with Step 21, a correctness sweep
@@ -2445,7 +2445,8 @@ Ruled before building, each my recommendation:
   still work.
 - **The second hole gets an issue of its own**, decided later. This step
   only says, in the README and on the page's register form, that a
-  registered application can do anything `/config` can.
+  registered application can do anything `/config` can. That issue is
+  #170, and Step 58 builds it.
 - **`Host` is checked too**, against a list of names in the
   configuration that holds `localhost`, `127.0.0.1`, and `::1` by
   default.
@@ -2716,6 +2717,199 @@ refused, and so is a hold no longer than the search it follows.
 
 ---
 
+## Step 58 — A Port of Its Own for `/config`
+
+**Issue:** #170. **Depends on:** Step 41; Phase 1 Steps 35, 37, 39.
+
+Step 41 keeps other sites' pages out of `/config`, and left one hole open:
+every registered application is served from the same origin as `/config`.
+A browser that holds the `/config` credential sends it with every request
+to that origin, so once the operator has logged in, the script of any
+application open in the same browser can call `/config/api` as the
+operator. It can register, replace, or remove applications, build any
+directory the node's user can read into a bundle, which publishes it, and
+restore or export to any path the node's user can write. Applications are
+bundles fetched from the network, so that script is often a stranger's.
+
+No header tells such a request from the `/config` page's own, and a script
+of the same origin can open the page in a window and drive it. A browser
+keeps pages apart only by origin, so the fix is an origin of its own for
+`/config`.
+
+The issue offered four ways: a port of its own, a host name of its own
+(`config.localhost`), applications sandboxed with
+`Content-Security-Policy: sandbox`, or documented trust. What weighing them
+found:
+
+- **A host name** depends on name resolution the node does not control.
+  Chrome, Firefox, and curl resolve `*.localhost` to loopback themselves.
+  Microsoft's `.localhost` guide (July 2026) says Safari does not. Other
+  clients ask the operating system: macOS 27 resolves it, Linux does with
+  nss-myhostname or systemd-resolved, and Windows documents only
+  `localhost` itself. An IP address could no longer reach `/config`.
+- **A sandbox** gives each application page an opaque origin, which cannot
+  use `localStorage`, IndexedDB, or cookies at all. Module scripts, web
+  fonts, and `fetch()` of an application's own files become cross-origin
+  requests, so every application response would need CORS headers, not
+  only `/data` and `/search`. CORS for `Origin: null` is CORS for every
+  sandboxed frame on every site, which would let any site read the node's
+  `/data/seek`.
+- **Trust** would ask the operator to trust strangers' bundles with
+  everything `/config` can do.
+
+Ruled before the specification was written:
+
+- **`/config` gets a port of its own.** My recommendation. Step 41's guard
+  already refuses `Sec-Fetch-Site: same-site`, which is what a request
+  from the main port's pages to `/config`'s port carries, so the port
+  alone separates them. The node sets no cookies, which a browser shares
+  across ports.
+- **The root application is treated like any other.** My recommendation.
+  The `/` slot can be pointed at any bundle, so trusting the slot would
+  trust whatever is put in it.
+- **A link the operator follows opens the page once a credential has been
+  captured.** The user's choice over mine, which was to keep refusing
+  every link and have the root page give the address as text. This
+  relaxes Step 41's ruling for a `same-site` link only. A link from
+  another site is still refused, and so is any link before a credential
+  is captured, which is the capture Step 41's ruling was there to stop.
+
+Ruled once the specification was written, the user's own:
+
+- **`/config`'s port is the main port plus 100, and plus another 100 for
+  as long as that one cannot be had**, so nodes on one machine have their
+  `/config` at ports that can be told from their own. This replaced the
+  fixed 8081 I had proposed.
+
+HttpApi is written first, as the issue asks. §2.3 gives `/config` a port
+of its own, leaves which port it is to the implementation but asks that
+it be documented and reported, says the main port neither serves
+`/config` nor touches its credential and may redirect its page addresses,
+and asks that `/config`'s port listen only at a loopback address. §2.3.3
+adds the link exception and requires that loading a `/config` page change
+nothing; its closing note on the hole now says how the checks keep
+applications out. §13 says applications are served on the main port, §25
+puts the `/config` rows on `/config`'s port, and TBD item 32 is gone.
+
+What was built:
+
+- **`NetworkConfig.config_port`**, unset by default, and
+  `NetworkConfig.config_ports()`: that port alone when it is set, and
+  otherwise every `CONFIG_PORT_STEP` (100) above `listen_port` up to
+  65535. A `config_port` equal to `listen_port` is refused at startup, and
+  so is a `listen_port` above 65435 with no `config_port`, which leaves
+  none. `config_port: null` is stated in `examples/libranet.yaml`.
+- **`LibranetHTTPServer.first_free(host, ports, ...)`** listens on the
+  first of the ports it can, passing over one in use or not allowed
+  (`EADDRINUSE`, `EACCES`) with a warning, and raises at once on any other
+  failure.
+- **`LibranetHTTPServer.server_bind`** refuses a port something on this
+  machine already answers on, asking at loopback for an address that
+  stands for every address. Python's servers set `SO_REUSEADDR`, and with
+  it macOS lets `127.0.0.1:P` be bound while another server holds
+  `0.0.0.0:P`, and sends this machine's connections to the newer socket.
+  Without this, a taken port would never be passed over on macOS, and
+  `/config` would quietly take the loopback traffic of the server, very
+  likely another node's main port, it shares the port with. Linux refuses
+  such a bind itself.
+- **The web server module** binds `/config`'s server first, at
+  `CONFIG_LISTEN_ADDRESS` (`127.0.0.1`), through `first_free`, then the
+  main port's, with the port `/config` took; if the main port cannot be
+  bound, `/config`'s is closed again. Each runs on a thread of its own.
+  `config_address` says where `/config` is, beside `server_address`. The
+  start log names both, and the `/config` address in full.
+- **Two routers.** `build_router` serves `/data` and the applications,
+  with `MovedConfigGuard(config_port)` after `local_config_guard`: a
+  remote `/config` request is still `403`, a local `GET` of a page path is
+  `302` to the same path on `/config`'s port at the host `Host` names, and
+  anything else is `404`, naming that address. No credential is asked for
+  or looked at there. `build_config_router` holds `local_config_guard`,
+  `ConfigSiteGuard`, `ConfigAuthGuard`, `config_routes`, and the `config`
+  application, and answers every other path `404`. Both share one opened
+  `LayeredSource`, so archives are opened and shipped applications built
+  once.
+- **`ConfigSiteGuard(hosts, credential)`** lets through a `same-site`
+  `GET` outside `/config/api` carrying `Sec-Fetch-Mode: navigate`,
+  `Sec-Fetch-Dest: document`, and `Sec-Fetch-User: ?1` once the
+  credential is captured, and before then refuses it with a `403` that
+  says to type the address. `names_config_api` and `CONFIG_API_SEGMENT`
+  (moved from `app_handler.py`) say which paths are the API's.
+- **The root page's link stays `/config`**, which the main port
+  redirects. Its text says where `/config` is and that the first visit is
+  made by typing its address.
+- **Step 41's warning is gone** from the README and the register form.
+  The README says where `/config` is and what a link does, and its curl
+  examples use port 8180.
+- **`scripts/local_network.py`** states each node's `config_port`: its
+  port plus 100, as by default, or plus the next multiple of 100 above
+  every node's port when there are more than 100 nodes, so no node's
+  `/config` takes another node's port. `--base-port` leaves room for them.
+- **Module System §3.2.2** describes both listeners.
+
+About 490 new or changed lines of non-test Python, so it is one change
+set. All gates pass: 3,216 passed, 1 skipped, 99.02% coverage.
+
+Seen in a live run of one node on port 18610, with 18710 held at
+`0.0.0.0` by another process. The node warned that 18710 was in use and
+put `/config` on 18810, bound at `127.0.0.1` alone. curl to the main port
+had `/config/` redirected to `http://127.0.0.1:18810/config/` and
+`/config/api` answered `404` naming that address, with a credential sent
+and none captured; `/config`'s port answered `/data/nodes` with `404`.
+Chrome 154, headless and driven over the DevTools protocol with real
+mouse events, which a script's `click()` does not send:
+
+- From the root page, a `fetch` of `/config/api` on `/config`'s port, with
+  credentials, was refused as `same-site`, before and after Chrome held
+  the credential.
+- A click on the root page's link went to the main port as
+  `same-origin`, and Chrome kept `Sec-Fetch-Site: same-site` and
+  `Sec-Fetch-User: ?1` across the redirect to `/config`'s port. Before a
+  credential was captured it was refused, saying to type the address;
+  after, the page opened and its own requests were `same-origin`.
+- After capture, the root page moving the window to `/config/` by script
+  carried the credential but no `Sec-Fetch-User`, and was refused, as was
+  a form `POST` to `/config/api/applications`.
+- The main port's `/config/` opened from the address bar was redirected
+  with `Sec-Fetch-Site: none` and `Sec-Fetch-User: ?1`, and served.
+
+My calls, not yet reviewed:
+
+- **Only the port changes.** The paths stay `/config/` and `/config/api/`,
+  so the `config` bundle and `config_hosts` stay as they are, and a
+  script changes only its port.
+- **A `config_port` set is the only port tried.** The steps of 100 are
+  the default's; a port an operator names is taken or the module stops,
+  as `listen_port` does.
+- **A port is passed over when it is in use or not allowed**, so a node
+  on a port below 1024 steps up to one it may listen on. Any other
+  failure stops the module.
+- **A port something answers on at loopback is in use**, for the main
+  port too, so macOS refuses what Linux refuses. A node whose
+  `listen_port` is another node's `/config` port stops rather than
+  sharing it.
+- **`/config`'s port is bound first**, since the main port's router needs
+  it. A node already running on the same ports logs a warning for
+  `/config`'s port before the main port's bind fails.
+- **Bound to `127.0.0.1`, with no setting for the address.** A
+  `config_address` can follow if someone needs `[::1]`; IPv6 is Phase 4's
+  Step 57.
+- **The main port redirects a `GET` of a page address**, so links and
+  bookmarks from before keep working: a typed address keeps
+  `Sec-Fetch-Site: none` through the redirect. `HEAD` and `/config/api`
+  there are `404` naming the address, not redirected, since a `302` turns
+  many clients' `POST` into a `GET`, and curl does not resend a
+  credential to another port. The redirect names the host the request's
+  `Host` header did, or `127.0.0.1` if it named none.
+- **The link exception asks for `Sec-Fetch-User: ?1`**, so only a click is
+  let through, never a script moving the window, and for
+  `Sec-Fetch-Dest: document`, so the page never opens in a frame.
+- **`/config`'s port serves nothing else**, not even a redirect from `/`,
+  as §2.3 says.
+- **`/config/api/node` does not report `/config`'s port.** The page that
+  reads it is already on that port.
+
+---
+
 ## 4. Issues in the Milestone
 
 Every issue in the **Phase 2** milestone, by number, and where it went.
@@ -2744,7 +2938,7 @@ Every issue in the **Phase 2** milestone, by number, and where it went.
 | #100 | Log every caught exception | 43 |
 | #101 | Extended attributes in bundles | 52 |
 | #102 | Coalesce duplicate constants | 44 |
-| #108 | `/config` requests from other sites and apps | 41; apps on the same origin go to an issue of their own |
+| #108 | `/config` requests from other sites and apps | 41; apps on the same origin went to #170 |
 | #113 | `config_requests` functions that should be methods | 42; closed into #81 |
 | #114 | Record the expanded bundle when expanding or building | 48 |
 | #121 | Hand off to one peer on eviction | 46 |
@@ -2752,6 +2946,7 @@ Every issue in the **Phase 2** milestone, by number, and where it went.
 | #131 | A `--debug` switch for `scripts/local_network.py` | 54 |
 | #138 | A configurable number of search passes | 55 |
 | #140 | Keep the public keys of connected peers | 53 |
+| #170 | Applications share an origin with `/config` | 58 |
 
 Issue #80 asks for what #119 asked for later, and PR #120 built it in
 Phase 1: new content is pushed to the single best connected peer, never
@@ -2775,7 +2970,7 @@ into tiers; steps within a tier are independent of each other.
 
 | Tier | Steps | Why here |
 | --- | --- | --- |
-| A | 41 (#108) | A security hole with a small fix, so first. Its second half, applications on the same origin, waits on a specification decision and has an issue of its own. |
+| A | 41 (#108), then 58 (#170) | A security hole with a small fix, so first. Its second half, applications on the same origin, needed a specification decision, and is Step 58, whose HttpApi change is made. |
 | B | 21 (#61), 22 (#51), 32 (#75) | Small, independent, and each one something a later step leans on. Step 22 unblocks 27 and 45; Step 21 should land before anything else starts comparing hashes. |
 | C | 42 (#81), 43 (#100), 44 (#102) | Sweeps that touch many files shallowly, so best done before the large steps are open against the same files, and so that later steps are written the new way. 43 had its exemptions decided first. |
 | D | 23 (#52) | The foundation for all the peering work, and the one step known to need its own change sets. |
@@ -2831,8 +3026,8 @@ either step is built:
   miss. Pushes do not count. Settled for applications by Step 29: any
   request routed to one is a use of its bundle, which keeps the files
   resolved from it, and is not a request for the bundle's content.
-- **Seven steps change a specification** (Steps 27, 28, 41, 46, 49, 52,
-  and 55) — as with the push of new content (#119), the specification
+- **Eight steps change a specification** (Steps 27, 28, 41, 46, 49, 52,
+  55, and 58) — as with the push of new content (#119), the specification
   change is agreed and written first. All are made: HighLevelDesign §4.7
   for a data request's two passes, how the second is paced, and the pause
   after one that found nothing (Step 27), and for two passes or more and a
@@ -2841,9 +3036,9 @@ either step is built:
   §6 for a single hand-off copy (Step 46), BundleSpecification §2.4 for
   extended attributes (Step 52), BackupSpecification §3.3 and §5 for
   holding back metadata-only changes (Step 49), and HttpApi §2.3.3 for
-  the requests `/config` refuses as another site's (Step 41). Whether
-  `/config` moves to an origin of its own, which would change HttpApi
-  §2.3 again, is left to the issue that follows #108. Step 16's change
+  the requests `/config` refuses as another site's (Step 41), and HttpApi
+  §2.3, §2.3.3, §13, and §25 for a port of its own for `/config`, and
+  the link that may open it (Step 58). Step 16's change
   to HighLevelDesign §4.9.1 is made too, and went with it to Phase 4.
 - **What a blocking node answers a hand-off** (Steps 30 and 46) — now
   Phase 3's to decide, with Step 30. Step 46 does not wait for it: until

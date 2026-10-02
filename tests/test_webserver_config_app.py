@@ -18,7 +18,6 @@ from libranet.applications.packaged import BUILT_ARCHIVE, PackagedApplications
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
 from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
-from libranet.identity.authentication import RequestAuthenticator
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType, PathOutcome
 from libranet.messaging.queues import ModuleQueues
@@ -32,7 +31,7 @@ from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import APPLICATIONS_PATH, NodeDescription
 from libranet.webserver.http_types import Request, RequestBody, Response
 from libranet.webserver.router import Router
-from libranet.webserver.server import build_router
+from libranet.webserver.server import build_config_router
 
 from tests.stubs import StubModule
 
@@ -84,12 +83,10 @@ def router(
     queues: ModuleQueues,
 ) -> Router:
     config = LibranetConfig(storage=storage)
-    return build_router(
+    return build_config_router(
         storage,
         5,
         StubModule(ModuleName.WEBSERVER, queues).publish,
-        RequestAuthenticator.of(config),
-        allow_unsigned_api_reads=True,
         config_credential=ConfigCredential.of(config),
         node=NodeDescription(ContentId.for_data(b"a node's public key", "sha256"), NetworkConfig()),
         app_outcomes=outcomes,

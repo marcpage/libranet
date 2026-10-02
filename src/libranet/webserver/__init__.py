@@ -58,7 +58,14 @@ from libranet.webserver.config_credential import (
     ConfigCredential,
     StoredCredential,
 )
-from libranet.webserver.config_guard import ConfigSiteGuard, local_config_guard, names_config
+from libranet.webserver.config_guard import (
+    CONFIG_API_SEGMENT,
+    ConfigSiteGuard,
+    MovedConfigGuard,
+    local_config_guard,
+    names_config,
+    names_config_api,
+)
 from libranet.webserver.config_handlers import (
     APPLICATION_PATTERN,
     APPLICATION_TEMPLATE,
@@ -121,7 +128,12 @@ from libranet.webserver.request_refusals import (
 )
 from libranet.webserver.router import Guard, Handler, Route, Router
 from libranet.webserver.search_handler import SEARCH_PATTERN, SearchHandler
-from libranet.webserver.server import LibranetHTTPServer, RequestHandler, build_router
+from libranet.webserver.server import (
+    LibranetHTTPServer,
+    RequestHandler,
+    build_config_router,
+    build_router,
+)
 from libranet.webserver.signature_guard import API_PREFIX, SignatureGuard
 
 __all__ = [
@@ -139,6 +151,7 @@ __all__ = [
     "BUILDS_FIELD",
     "BUILDS_PATH",
     "CONFIG_API_PATH",
+    "CONFIG_API_SEGMENT",
     "CONFIG_APP_PATTERN",
     "CONFIG_APP_POLICY",
     "CONFIG_APPLICATION",
@@ -193,6 +206,7 @@ __all__ = [
     "KnownOutcome",
     "LibranetHTTPServer",
     "ListFileHandler",
+    "MovedConfigGuard",
     "NodeDescription",
     "NodeHandler",
     "NodeListHandler",
@@ -211,6 +225,7 @@ __all__ = [
     "UnsupportedMediaTypeError",
     "WebServerModule",
     "basic_credentials",
+    "build_config_router",
     "build_router",
     "bytes_response",
     "config_index",
@@ -225,6 +240,7 @@ __all__ = [
     "json_response",
     "local_config_guard",
     "names_config",
+    "names_config_api",
     "problem_response",
     "signature_required_response",
     "unreadable_body_response",

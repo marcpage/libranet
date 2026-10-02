@@ -66,7 +66,7 @@ from libranet.webserver.app_registry import (
     ApplicationRegistry,
 )
 from libranet.webserver.app_use import ApplicationUse
-from libranet.webserver.config_guard import names_config
+from libranet.webserver.config_guard import CONFIG_API_SEGMENT, names_config
 from libranet.webserver.http_types import Request, Response, bytes_response, problem_response
 from libranet.webserver.request_refusals import content_unavailable_response
 
@@ -79,11 +79,10 @@ _RESERVED: Final = "|".join(escape(name) for name in sorted(RESERVED_APPLICATION
 # with percent-encoding matches, and the handler refuses it instead.
 APP_PATTERN: Final = rf"/(?!(?i:{_RESERVED})(?:/|$)).*"
 
-# The first segment beneath /config that is the API's, never the application's.
-_CONFIG_API: Final = "api"
-
 # `/config`, in any case, and every path beneath it but the API's.
-CONFIG_APP_PATTERN: Final = rf"/(?i:{escape(CONFIG_APPLICATION)})(?:/(?!{_CONFIG_API}(?:/|$)).*)?"
+CONFIG_APP_PATTERN: Final = (
+    rf"/(?i:{escape(CONFIG_APPLICATION)})(?:/(?!{CONFIG_API_SEGMENT}(?:/|$)).*)?"
+)
 
 # What a file the /config application serves may load: its own files, inline
 # script and styles, and requests to this node. No other site may frame it.
@@ -177,7 +176,9 @@ class AppHandler:
 
         # Of the reserved names, only config's is an application's, and never
         # beneath /config/api, which is the API's however it is spelled.
-        if reserved and (name != CONFIG_APPLICATION or rest.partition("/")[0] == _CONFIG_API):
+        if reserved and (
+            name != CONFIG_APPLICATION or rest.partition("/")[0] == CONFIG_API_SEGMENT
+        ):
             return None
 
         bundles = self.registry.applications().bundles

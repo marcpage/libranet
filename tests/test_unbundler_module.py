@@ -19,7 +19,7 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.resolved_files import ResolvedFiles
 from libranet.cas.store import CasStore
-from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
+from libranet.config.models import LibranetConfig, StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
 from libranet.messaging.envelope import Message, make_message
 from libranet.messaging.events import EventType
@@ -28,8 +28,6 @@ from libranet.modules import ModuleName
 from libranet.supervision.registry import default_module_specs
 from libranet.unbundler.module import UnbundlerModule, unbundler_module_factory
 from libranet.webserver.app_registry import Application, ApplicationRegistry
-from libranet.webserver.config_credential import ConfigCredential
-from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.http_types import Request
 from libranet.webserver.server import build_router
 
@@ -632,8 +630,7 @@ def test_the_web_server_serves_what_the_unbundler_resolves(
         StubModule(ModuleName.WEBSERVER, web_queues).publish,
         RequestAuthenticator.of(LibranetConfig(storage=storage)),
         allow_unsigned_api_reads=True,
-        config_credential=ConfigCredential.of(LibranetConfig(storage=storage)),
-        node=NodeDescription(ContentId.for_data(b"a node's public key", "sha256"), NetworkConfig()),
+        config_port=8180,
     )
     browse = Request("GET", "/wiki/docs/guide.html", client_address="127.0.0.1")
 

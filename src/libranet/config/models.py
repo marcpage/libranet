@@ -26,6 +26,17 @@ MIB: Final = 1024 * 1024
 # where the settings are checked against it, rather than with the server.
 IDLE_TIMEOUT_SECONDS: Final = 60.0
 
+HIGHEST_PORT: Final = 65535
+
+# How far apart the ports /config may listen on are, starting from the one
+# above listen_port, so that nodes on one machine 1 port apart have their
+# /config ports 1 apart too, at a predictable distance (Phase 2 Step 58).
+CONFIG_PORT_STEP: Final = 100
+
+# /config is served only to this machine (HttpApi §2.3), so it listens only
+# where this machine reaches it.
+CONFIG_LISTEN_ADDRESS: Final = "127.0.0.1"
+
 Scheme = Literal["http", "https"]
 
 LogLevel = Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"]
@@ -65,6 +76,38 @@ class NetworkConfig(_Section):
     # 41). Shell-style patterns, matched whatever their case against the
     # host without its port, an IPv6 address written without its brackets.
     config_hosts: tuple[str, ...] = ("localhost", "127.0.0.1", "::1")
+
+    # The port /config listens on, at CONFIG_LISTEN_ADDRESS alone, apart from
+    # listen_port so that no application's page shares /config's origin
+    # (HttpApi §2.3, Phase 2 Step 58). Unset, it is the first port free of
+    # listen_port + 100, + 200, and so on; set, it is that port or none.
+    config_port: int | None = Field(default=None, ge=1, le=HIGHEST_PORT)
+
+    @model_validator(mode="after")
+    def _config_port_is_its_own(self) -> NetworkConfig:
+        if self.config_port == self.listen_port:
+            raise ValueError(
+                f"config_port must not be listen_port, got {self.config_port} for both"
+            )
+
+        if not self.config_ports():
+            raise ValueError(
+                f"listen_port ({self.listen_port}) leaves no port {CONFIG_PORT_STEP} above "
+                "it for /config, so config_port must be set"
+            )
+
+        return self
+
+    def config_ports(self) -> range:
+        """The ports ``/config`` may listen on, in the order they are tried.
+
+        That is ``config_port`` alone when it is set, and otherwise every
+        :data:`CONFIG_PORT_STEP` above ``listen_port``, up to the highest port.
+        """
+        if self.config_port is not None:
+            return range(self.config_port, self.config_port + 1)
+
+        return range(self.listen_port + CONFIG_PORT_STEP, HIGHEST_PORT + 1, CONFIG_PORT_STEP)
 
     def advertised_endpoint(self) -> str:
         """The endpoint string this node publishes in its own node list.
