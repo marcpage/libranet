@@ -78,8 +78,17 @@ _SAME_SITE: Final = "same-site"
 # What a browser sends with a page the person using it opened by clicking a
 # link to it, in a window of its own, rather than one a script asked for.
 _FOLLOWED_LINK: Final = {
+    # A page loaded, not a fetch() or a form's request made by a script.
     "Sec-Fetch-Mode": "navigate",
+    # Into a window, not a frame, which another page could draw over.
     "Sec-Fetch-Dest": "document",
+    # "?1" is true, written as a structured header boolean (RFC 8941). A
+    # browser sends this header only when the person using it caused the
+    # navigation, with a click or a key, and never sends it false: a script
+    # that sets location or submits a form sends none. Without it, any page
+    # of this site, which is every application on the main port, could move
+    # the operator's window to /config whenever it chose; with it, only the
+    # operator's own click opens the page (Phase 2 Step 58).
     "Sec-Fetch-User": "?1",
 }
 
