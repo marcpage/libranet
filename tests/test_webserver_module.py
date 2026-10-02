@@ -395,6 +395,19 @@ def test_module_subscribes_to_what_other_modules_report() -> None:
     }
 
 
+def test_an_event_it_does_not_handle_is_not_taken_for_a_resolved_path(tmp_path: Path) -> None:
+    module = WebServerModule(ModuleName.WEBSERVER, _queues(), _config(tmp_path, _free_port()))
+    # Shaped like what the unbundler found, but meant for the unbundler.
+    notice = make_message(
+        EventType.APP_PATH_NOT_FOUND,
+        ModuleName.WEBSERVER,
+        {"bundle": str(APP_BUNDLE_ID), "path": "index.html", "outcome": "not_found"},
+    )
+
+    with raises(KeyError):
+        module.handle(notice)
+
+
 def test_module_stops_on_the_stop_signal(tmp_path: Path) -> None:
     module = WebServerModule(
         ModuleName.WEBSERVER, _queues(), _config(tmp_path, _free_port()), poll_interval_seconds=0.01

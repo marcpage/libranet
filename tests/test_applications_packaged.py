@@ -335,7 +335,7 @@ def test_a_new_node_serves_each_shipped_page_with_nothing_in_the_cas(
     unbundler = UnbundlerModule(
         ModuleName.UNBUNDLER,
         ModuleQueues(inbox=Queue(), outbox=Queue()),
-        storage,
+        LibranetConfig(storage=storage),
         poll_interval_seconds=0.01,
     )
     router = build_router(

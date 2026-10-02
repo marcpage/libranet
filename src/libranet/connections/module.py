@@ -547,7 +547,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         self.publish(
             EventType.PEERS_CONNECTED,
             {
-                "direction": ConnectionDirection.OUTBOUND,
+                "direction": ConnectionDirection.OUTBOUND.value,
                 "node_ids": sorted(str(node_id) for node_id in self._peers),
             },
         )

@@ -64,7 +64,8 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from logging import Logger
 from pathlib import Path
-from typing import Any, ClassVar, Final
+from time import time
+from typing import Any, Callable, ClassVar, Final
 from zlib import compress, decompress, error as ZlibError
 
 from libranet.atomic_file import atomic_writer, write_atomically
@@ -78,8 +79,8 @@ from libranet.bundle.shapes import Bundle, DirectoryBundle
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
 from libranet.cas.resolved_files import ResolvedFiles
-from libranet.config.models import LibranetConfig, StorageConfig
-from libranet.messaging.envelope import Message, event_of
+from libranet.config.models import LibranetConfig
+from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType, PathOutcome
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
@@ -108,31 +109,33 @@ class UnbundlerModule(ModuleBase):
         self,
         name: ModuleName,
         queues: ModuleQueues,
-        storage: StorageConfig,
+        config: LibranetConfig,
         *,
         logger: Logger | None = None,
+        clock: Callable[[], float] = time,
         poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
         max_cached_bundles: int = DEFAULT_MAX_CACHED_BUNDLES,
     ) -> None:
         if max_cached_bundles < 1:
             raise ValueError(f"max_cached_bundles must be at least 1, got {max_cached_bundles}")
 
-        super().__init__(name, queues, logger=logger, poll_interval_seconds=poll_interval_seconds)
-        self._source = LayeredSource.open(storage)
-        self._files = ResolvedFiles.of(storage)
+        super().__init__(
+            name, queues, logger=logger, clock=clock, poll_interval_seconds=poll_interval_seconds
+        )
+        self._source = LayeredSource.open(config.storage)
+        self._files = ResolvedFiles.of(config.storage)
         self._max_cached_bundles = max_cached_bundles
         # Least recently used first.
         self._directories: OrderedDict[ContentId, ResolvedDirectory | _Unusable] = OrderedDict()
+        self._route(
+            {
+                EventType.APP_PATH_NOT_FOUND: self._on_app_path_not_found,
+                EventType.RESOLVED_RECLAIM: self._on_resolved_reclaim,
+            }
+        )
 
-    def handle(self, message: Message) -> None:
-        """Resolve one requested path, or delete resolved files not to be kept.
-
-        A malformed message raises, and :meth:`run` logs it.
-        """
-        if event_of(message) == EventType.RESOLVED_RECLAIM:
-            self._reclaim({ContentId.parse(text) for text in message["keep"]})
-            return
-
+    def _on_app_path_not_found(self, message: Message) -> None:
+        """Resolve one requested path."""
         bundle = ContentId.parse(message["bundle"])
         path: str = message["path"]
         target = self._files.path_for(bundle, path)
@@ -151,6 +154,9 @@ class UnbundlerModule(ModuleBase):
         except BundleError as error:
             # Not logged: _report logs it.
             self._report(bundle, path, PathOutcome.UNUSABLE, detail=str(error))
+
+    def _on_resolved_reclaim(self, message: Message) -> None:
+        self._reclaim({ContentId.parse(text) for text in message["keep"]})
 
     def _resolve(self, bundle: ContentId, path: str, target: Path) -> None:
         """Write the file at ``path`` to ``target``, or report why not.
@@ -322,4 +328,4 @@ def unbundler_module_factory(
     name: ModuleName, config: LibranetConfig, queues: ModuleQueues
 ) -> ModuleBase:
     """:data:`~libranet.supervision.specs.ModuleFactory` for :class:`UnbundlerModule`."""
-    return UnbundlerModule(name, queues, config.storage)
+    return UnbundlerModule(name, queues, config)

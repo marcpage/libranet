@@ -64,7 +64,7 @@ class InboundPeers:
         self._publish(
             EventType.PEERS_CONNECTED,
             {
-                "direction": ConnectionDirection.INBOUND,
+                "direction": ConnectionDirection.INBOUND.value,
                 "node_ids": sorted(str(node_id) for node_id in self._connections),
             },
         )

@@ -23,7 +23,8 @@ than being carried across the process boundary.
 from __future__ import annotations
 from logging import Logger
 from threading import Thread
-from typing import ClassVar
+from time import time
+from typing import Callable, ClassVar
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
@@ -31,7 +32,7 @@ from libranet.config.models import LibranetConfig
 from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import MessageSigner
-from libranet.messaging.envelope import Message, event_of
+from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType, PathOutcome
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
@@ -58,15 +59,25 @@ class WebServerModule(ModuleBase):
         config: LibranetConfig,
         *,
         logger: Logger | None = None,
+        clock: Callable[[], float] = time,
         poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
     ) -> None:
-        super().__init__(name, queues, logger=logger, poll_interval_seconds=poll_interval_seconds)
+        super().__init__(
+            name, queues, logger=logger, clock=clock, poll_interval_seconds=poll_interval_seconds
+        )
         self._config = config
         self._app_outcomes = ApplicationOutcomes()
         self._backup_state = BackupState()
         self._inbound_peers = InboundPeers(self.publish)
         self._server: LibranetHTTPServer | None = None
         self._thread: Thread | None = None
+        self._route(
+            {
+                EventType.APP_PATH_RESOLVED: self._on_app_path_resolved,
+                EventType.BACKUP_STATE: self._on_backup_state,
+                EventType.PEERS_CONNECTED_REQUESTED: self._on_peers_connected_requested,
+            }
+        )
 
     @property
     def server_address(self) -> tuple[str, int] | None:
@@ -76,33 +87,6 @@ class WebServerModule(ModuleBase):
 
         host, port = self._server.server_address[:2]
         return str(host), int(port)
-
-    def handle(self, message: Message) -> None:
-        """Remember what another module reported, for request threads to answer from.
-
-        Eviction asking which peers are connected is answered at once. A
-        malformed message raises, and :meth:`run` logs it.
-        """
-        event = event_of(message)
-
-        if event == EventType.BACKUP_STATE:
-            self._backup_state.report(BackupReport.from_message(message))
-            return
-
-        if event == EventType.PEERS_CONNECTED_REQUESTED:
-            self._inbound_peers.publish()
-            return
-
-        outcome = PathOutcome(message["outcome"])
-
-        if outcome == PathOutcome.STORED:
-            return
-
-        self._app_outcomes.remember(
-            ContentId.parse(message["bundle"]),
-            message["path"],
-            KnownOutcome(outcome, message.get("location", ""), message.get("detail", "")),
-        )
 
     def on_start(self) -> None:
         """Bind the listener and start serving.
@@ -158,6 +142,25 @@ class WebServerModule(ModuleBase):
         self._server = None
         self._thread = None
         self.logger.info("Web server stopped")
+
+    def _on_app_path_resolved(self, message: Message) -> None:
+        """Remember what the unbundler found at a path it stored no file for."""
+        outcome = PathOutcome(message["outcome"])
+
+        if outcome == PathOutcome.STORED:
+            return
+
+        self._app_outcomes.remember(
+            ContentId.parse(message["bundle"]),
+            message["path"],
+            KnownOutcome(outcome, message.get("location", ""), message.get("detail", "")),
+        )
+
+    def _on_backup_state(self, message: Message) -> None:
+        self._backup_state.report(BackupReport.from_message(message))
+
+    def _on_peers_connected_requested(self, _: Message) -> None:
+        self._inbound_peers.publish()
 
 
 def webserver_module_factory(

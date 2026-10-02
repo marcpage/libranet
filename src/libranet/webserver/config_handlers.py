@@ -62,6 +62,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from http import HTTPStatus
 from logging import getLogger
+from re import escape
 from typing import Any, Callable, Final, Protocol
 from urllib.parse import unquote
 
@@ -78,7 +79,12 @@ from libranet.protocol.config_requests import (
     InvalidConfigRequestError,
     RestoreRequest,
 )
-from libranet.webserver.app_registry import Application, ApplicationRegistry, RegistryFileError
+from libranet.webserver.app_registry import (
+    CONFIG_APPLICATION,
+    Application,
+    ApplicationRegistry,
+    RegistryFileError,
+)
 from libranet.webserver.backup_state import (
     BUILDS_FIELD,
     EXPORTS_FIELD,
@@ -108,6 +114,11 @@ APPLICATIONS_PATH: Final = CONFIG_API_PATH + "/applications"
 BACKUP_JOB_PATTERN: Final = BACKUPS_PATH + rf"/(?P<job_id>[0-9a-fA-F]{{{IDENTIFIER_LENGTH}}})"
 BACKUP_RUN_PATTERN: Final = BACKUP_JOB_PATTERN + "/run"
 APPLICATION_PATTERN: Final = APPLICATIONS_PATH + "/(?P<name>[^/]+)"
+
+# What each route's pattern begins with in place of /config: the name in any
+# case, as an application's name matches (HttpApi §13). So /CONFIG/api is the
+# API's (§2.3), as /CONFIG/page.html is the /config application's.
+_CONFIG_SEGMENT: Final = rf"/(?i:{escape(CONFIG_APPLICATION)})"
 
 # How the same paths are written where a person reads them.
 BACKUP_JOB_TEMPLATE: Final = BACKUPS_PATH + "/{job_id}"
@@ -421,7 +432,7 @@ def config_routes(
     )
     run = BackupJobEventHandler(publish, EventType.BACKUP_RUN_REQUESTED)
     remove = BackupJobEventHandler(publish, EventType.BACKUP_JOB_REMOVED)
-    return (
+    routes = (
         ("GET", CONFIG_API_PATH, config_index),
         ("GET", NODE_PATH, NodeHandler(node)),
         ("GET", BACKUPS_PATH, BackupReportHandler(state, JOBS_FIELD, retry_after_seconds)),
@@ -437,4 +448,8 @@ def config_routes(
         ("GET", APPLICATIONS_PATH, ApplicationListHandler(registry)),
         ("POST", APPLICATIONS_PATH, ApplicationRegistrationHandler(registry)),
         ("DELETE", APPLICATION_PATTERN, ApplicationRemovalHandler(registry)),
+    )
+    return tuple(
+        (method, _CONFIG_SEGMENT + pattern.removeprefix(f"/{CONFIG_APPLICATION}"), handler)
+        for method, pattern, handler in routes
     )

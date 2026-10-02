@@ -19,13 +19,14 @@ duplicate handled earlier) is ignored.
 
 from __future__ import annotations
 from logging import Logger
-from typing import ClassVar
+from time import time
+from typing import Callable, ClassVar
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError
 from libranet.cas.store import CasStore
 from libranet.cas.verification import content_matches
-from libranet.config.models import LibranetConfig, StorageConfig
+from libranet.config.models import LibranetConfig
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
@@ -42,17 +43,21 @@ class ValidatorModule(ModuleBase):
         self,
         name: ModuleName,
         queues: ModuleQueues,
-        storage: StorageConfig,
+        config: LibranetConfig,
         *,
         logger: Logger | None = None,
+        clock: Callable[[], float] = time,
         poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
     ) -> None:
-        super().__init__(name, queues, logger=logger, poll_interval_seconds=poll_interval_seconds)
-        self._storage = storage
-        self._source_of_truth = CasStore.source_of_truth(storage)
+        super().__init__(
+            name, queues, logger=logger, clock=clock, poll_interval_seconds=poll_interval_seconds
+        )
+        self._storage = config.storage
+        self._source_of_truth = CasStore.source_of_truth(config.storage)
+        self._route({EventType.PUT_COMPLETED: self._on_put_completed})
 
-    def handle(self, message: Message) -> None:
-        """Check one upload; a malformed message raises and is logged by :meth:`run`."""
+    def _on_put_completed(self, message: Message) -> None:
+        """Check one upload."""
         content_id = ContentId.from_fields(message)
         node_id = ContentId.parse(message["node_id"])
         incoming = CasStore.for_node(self._storage, node_id)
@@ -87,4 +92,4 @@ def validator_module_factory(
     name: ModuleName, config: LibranetConfig, queues: ModuleQueues
 ) -> ModuleBase:
     """:data:`~libranet.supervision.specs.ModuleFactory` for :class:`ValidatorModule`."""
-    return ValidatorModule(name, queues, config.storage)
+    return ValidatorModule(name, queues, config)

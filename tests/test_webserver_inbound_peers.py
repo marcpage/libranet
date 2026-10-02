@@ -23,6 +23,8 @@ class Recorder:
     def __call__(self, event: EventType, payload: Mapping[str, Any] | None = None) -> Message:
         assert event == EventType.PEERS_CONNECTED
         payload = dict(payload or {})
+        # Sent as its value, as every enum in a payload is.
+        assert not isinstance(payload["direction"], ConnectionDirection)
         assert payload["direction"] == ConnectionDirection.INBOUND
         self.lists.append(payload["node_ids"])
         return {}
