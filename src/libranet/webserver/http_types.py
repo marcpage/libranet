@@ -11,21 +11,13 @@ from dataclasses import dataclass, field
 from http import HTTPStatus
 from io import BytesIO
 from json import loads
-from re import compile as compile_pattern
-from typing import Any, Final, Mapping, Protocol
+from typing import Any, Mapping, Protocol
 
 from libranet.identity.authentication import AuthenticationResult
 from libranet.json_format import compact_json
 from libranet.problems import PROBLEM_CONTENT_TYPE, Problem
+from libranet.protocol.http_syntax import JSON_CONTENT_TYPE, OCTET_STREAM
 from libranet.webserver.inbound_peers import InboundConnection
-
-OCTET_STREAM: Final = "application/octet-stream"
-JSON_CONTENT_TYPE: Final = "application/json"
-
-# A method or header field name (RFC 9110 §5.6.2).
-TOKEN: Final = compile_pattern(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
-# Statuses whose responses never carry a body (RFC 9110 §15.3.5, §15.4.5).
-BODILESS_STATUSES: Final = frozenset({HTTPStatus.NO_CONTENT, HTTPStatus.NOT_MODIFIED})
 
 
 class IncompleteBodyError(ConnectionError):

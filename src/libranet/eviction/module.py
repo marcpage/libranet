@@ -3,7 +3,7 @@
 It keeps the node within its storage limits
 (:mod:`~libranet.eviction.pressure`), checking after each ``data.stored``
 from the validator rather than on a timer. What it lets go of goes highest
-eviction score first (:mod:`~libranet.eviction.priority`), and nothing is
+eviction score first (:mod:`~libranet.stats.priority`), and nothing is
 deleted until another node holds it (HighLevelDesign §4.5).
 
 The scores are measured from what the stats module records, so stats ranks
@@ -92,10 +92,9 @@ from time import time
 from typing import Callable, ClassVar, Final
 
 from libranet.cas.content_id import ContentId
-from libranet.cas.store import CasStore
+from libranet.cas.store import CasStore, HeldObject
 from libranet.config.models import LibranetConfig
 from libranet.eviction.pressure import FreeBytes, StoragePressure
-from libranet.eviction.priority import HeldObject
 from libranet.identity.node_identity import NodeIdentity
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import ConnectionDirection, EventType

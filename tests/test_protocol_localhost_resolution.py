@@ -6,7 +6,7 @@ from logging import DEBUG
 from pytest import LogCaptureFixture, mark
 
 from libranet.cas.content_id import ContentId
-from libranet.webserver.localhost_resolution import NodeListSender, resolve_endpoint
+from libranet.protocol.localhost_resolution import NodeListSender, resolve_endpoint
 
 SOURCE = "203.0.113.42"
 SENDER_ID = ContentId.for_data(b"the sender's public key", "sha256")

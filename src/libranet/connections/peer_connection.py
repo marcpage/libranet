@@ -47,7 +47,7 @@ from libranet.connections.errors import ConnectionClosedError, MalformedResponse
 from libranet.connections.request_encoding import encode_request
 from libranet.connections.response_parser import PeerResponse, RequestLine, ResponseParser
 from libranet.identity.signatures import MessageSigner
-from libranet.webserver.server import REQUEST_PATH_HEADER
+from libranet.protocol.http_syntax import REQUEST_PATH_HEADER
 
 _RECEIVE_BYTES: Final = 64 * 1024
 

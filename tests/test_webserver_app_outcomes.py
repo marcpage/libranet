@@ -6,7 +6,7 @@ from threading import Thread
 from pytest import raises
 
 from libranet.cas.content_id import ContentId
-from libranet.unbundler.outcomes import PathOutcome
+from libranet.messaging.events import PathOutcome
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 
 BUNDLE = ContentId.for_data(b"a directory bundle", "sha256")

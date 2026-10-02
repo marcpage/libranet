@@ -11,11 +11,11 @@ from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
+from libranet.cas.resolved_files import ResolvedFiles
 from libranet.messaging.envelope import Message
-from libranet.messaging.events import EventType
+from libranet.messaging.events import EventType, PathOutcome
 from libranet.problems import CONTENT_UNAVAILABLE, PROBLEM_CONTENT_TYPE, UNUSABLE_BUNDLE
-from libranet.unbundler.outcomes import PathOutcome
-from libranet.unbundler.resolved_files import ResolvedFiles
+from libranet.protocol.http_syntax import OCTET_STREAM
 from libranet.webserver.app_handler import (
     APP_PATTERN,
     CONFIG_APP_PATTERN,
@@ -26,7 +26,7 @@ from libranet.webserver.app_handler import (
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 from libranet.webserver.app_registry import Application, ApplicationRegistry, RegistryFileError
 from libranet.webserver.app_use import ApplicationUse
-from libranet.webserver.http_types import OCTET_STREAM, Request, Response
+from libranet.webserver.http_types import Request, Response
 
 ROOT_BUNDLE = ContentId.for_data(b"the root application's bundle", "sha256")
 WIKI_BUNDLE = ContentId.for_data(b"the wiki's bundle", "sha256")

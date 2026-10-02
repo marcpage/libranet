@@ -28,11 +28,7 @@ from libranet.webserver.app_registry import (
     RegisteredApplications,
     RegistryFileError,
 )
-from libranet.webserver.backup_state import (
-    BackupReport,
-    BackupState,
-    InvalidBackupReportError,
-)
+from libranet.webserver.backup_state import BackupReport, BackupState, InvalidBackupReportError
 from libranet.webserver.config_auth import ConfigAuthGuard, basic_credentials
 from libranet.webserver.config_credential import (
     ConfigCredential,
@@ -53,15 +49,6 @@ from libranet.webserver.config_handlers import (
     config_index,
     config_routes,
 )
-from libranet.webserver.config_requests import (
-    BackupJobRequest,
-    BuildRequest,
-    ConflictBehavior,
-    ExportRequest,
-    InvalidConfigRequestError,
-    Password,
-    RestoreRequest,
-)
 from libranet.webserver.data_handler import DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
 from libranet.webserver.http_types import (
@@ -71,14 +58,7 @@ from libranet.webserver.http_types import (
     Response,
     UnsupportedMediaTypeError,
 )
-from libranet.webserver.list_bodies import (
-    InvalidListError,
-    decode_list,
-    parse_node_list,
-    parse_seek_list,
-)
 from libranet.webserver.list_handlers import ListFileHandler, NodeListHandler, SeekListHandler
-from libranet.webserver.localhost_resolution import NodeListSender, resolve_endpoint
 from libranet.webserver.module import WebServerModule, webserver_module_factory
 from libranet.webserver.request_refusals import (
     content_unavailable_response,
@@ -87,7 +67,6 @@ from libranet.webserver.request_refusals import (
     unreadable_body_response,
 )
 from libranet.webserver.router import Guard, Handler, Router
-from libranet.webserver.search import LocalSearch, SearchCache, normalize_prefix
 from libranet.webserver.search_handler import SearchHandler
 from libranet.webserver.server import LibranetHTTPServer, RequestHandler, build_router
 from libranet.webserver.signature_guard import SignatureGuard
@@ -103,45 +82,34 @@ __all__ = [
     "ApplicationRegistry",
     "ApplicationRemovalHandler",
     "BackupJobEventHandler",
-    "BackupJobRequest",
     "BackupReport",
     "BackupReportHandler",
     "BackupRequest",
     "BackupRequestHandler",
     "BackupState",
-    "BuildRequest",
     "ConfigAuthGuard",
     "ConfigCredential",
     "ConfigSiteGuard",
-    "ConflictBehavior",
     "CredentialFileError",
     "DataReadHandler",
     "DataWriteHandler",
-    "ExportRequest",
     "Guard",
     "Handler",
     "IncompleteBodyError",
     "InvalidBackupReportError",
-    "InvalidConfigRequestError",
-    "InvalidListError",
     "KnownOutcome",
     "LibranetHTTPServer",
     "ListFileHandler",
-    "LocalSearch",
     "NodeDescription",
     "NodeHandler",
     "NodeListHandler",
-    "NodeListSender",
-    "Password",
     "RegisteredApplications",
     "RegistryFileError",
     "Request",
     "RequestBody",
     "RequestHandler",
     "Response",
-    "RestoreRequest",
     "Router",
-    "SearchCache",
     "SearchHandler",
     "SeekListHandler",
     "SignatureGuard",
@@ -154,14 +122,9 @@ __all__ = [
     "config_routes",
     "content_type_for",
     "content_unavailable_response",
-    "decode_list",
     "invalid_signature_response",
     "local_config_guard",
     "names_config",
-    "normalize_prefix",
-    "parse_node_list",
-    "parse_seek_list",
-    "resolve_endpoint",
     "signature_required_response",
     "unreadable_body_response",
     "webserver_module_factory",

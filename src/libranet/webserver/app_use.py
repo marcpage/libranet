@@ -22,7 +22,7 @@ from typing import Callable, Final
 
 from libranet.cas.content_id import ContentId
 from libranet.messaging.events import EventType
-from libranet.webserver.publishing import Publish
+from libranet.messaging.publishing import Publish
 
 # Provisional default: how often a bundle in use is reported.
 DEFAULT_REPORT_INTERVAL_SECONDS: Final = 3600.0

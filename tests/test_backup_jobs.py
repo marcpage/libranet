@@ -22,7 +22,7 @@ from libranet.bundle.layering import Layering, Superseded
 from libranet.bundle.protection import protect
 from libranet.bundle.shapes import FileBundle, Metadata, Symlink
 from libranet.cas.content_id import ContentId
-from libranet.webserver.config_requests import BackupJobRequest
+from libranet.protocol.config_requests import BackupJobRequest
 
 BUNDLE = ContentId.for_data(b"a bundle", "sha256")
 LATEST = LatestBackup(BUNDLE, 1_789_000_000.5, "e" * 64, skipped=2)

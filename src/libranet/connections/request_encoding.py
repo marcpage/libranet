@@ -11,7 +11,7 @@ from re import compile as compile_pattern
 from typing import Final, Mapping
 
 from libranet.identity.signatures import MessageSigner
-from libranet.webserver.http_types import TOKEN
+from libranet.protocol.http_syntax import TOKEN
 
 # Methods that define a meaning for a body, so even an empty one is framed
 # with `Content-Length: 0` (RFC 9110 §8.6).

@@ -39,7 +39,7 @@ makes none.
 What the node holds is what ``data.stored`` announced, with its size, less
 what ``data.deleted`` reported gone. Asked by the eviction module for
 content to let go of, it answers with the held content that scores highest
-(:class:`~libranet.eviction.priority.EvictionScorer`), best first, leaving
+(:class:`~libranet.stats.priority.EvictionScorer`), best first, leaving
 out what ``exclude`` names, until the sizes listed add up to ``bytes`` or
 the list reaches ``max_candidates`` entries::
 
@@ -92,20 +92,19 @@ from typing import Callable, ClassVar, Final, Mapping, TypeVar
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import CasError
-from libranet.cas.store import CasStore
+from libranet.cas.store import CasStore, HeldObject
 from libranet.config.models import LibranetConfig
-from libranet.eviction.priority import HeldObject
 from libranet.identity.node_identity import NodeIdentity
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import AddressSource, EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
+from libranet.protocol.search import SearchCache, normalize_prefix
 from libranet.stats.database import StatsDatabase
 from libranet.stats.derivation import ListDeriver
 from libranet.stats.enrichment import SearchEnricher
 from libranet.stats.schema import SeekKind
-from libranet.webserver.search import SearchCache, normalize_prefix
 
 _Component = TypeVar("_Component")
 

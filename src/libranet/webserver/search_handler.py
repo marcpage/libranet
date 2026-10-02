@@ -14,16 +14,11 @@ from typing import Final
 
 from libranet.cas.errors import InvalidContentIdError
 from libranet.messaging.events import EventType
+from libranet.messaging.publishing import Publish
 from libranet.problems import INVALID_SEARCH_PREFIX, Problem
-from libranet.webserver.http_types import (
-    JSON_CONTENT_TYPE,
-    Request,
-    Response,
-    bytes_response,
-    problem_response,
-)
-from libranet.webserver.publishing import Publish
-from libranet.webserver.search import LocalSearch, SearchCache, normalize_prefix
+from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
+from libranet.protocol.search import LocalSearch, SearchCache, normalize_prefix
+from libranet.webserver.http_types import Request, Response, bytes_response, problem_response
 
 _LOGGER = getLogger(__name__)
 

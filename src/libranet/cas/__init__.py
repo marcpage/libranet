@@ -32,7 +32,8 @@ from libranet.cas.errors import (
     UnknownAlgorithmError,
 )
 from libranet.cas.prefix import matching_bits, nearest
-from libranet.cas.store import CasStore, subdirectories
+from libranet.cas.resolved_files import ResolvedFiles
+from libranet.cas.store import CasStore, HeldObject, subdirectories
 from libranet.cas.verification import content_matches
 
 __all__ = [
@@ -47,8 +48,10 @@ __all__ = [
     "ContentNotFoundError",
     "HashAlgorithm",
     "Hasher",
+    "HeldObject",
     "InvalidContentIdError",
     "NotZlibStreamError",
+    "ResolvedFiles",
     "Sha256Algorithm",
     "StreamTooLargeError",
     "UnknownAlgorithmError",

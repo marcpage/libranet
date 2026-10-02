@@ -10,14 +10,17 @@ from libranet.stats.derivation import DerivedLists, ListDeriver
 from libranet.stats.enrichment import SearchEnricher
 from libranet.stats.lists import render_candidate_list, render_node_list, render_seek_list
 from libranet.stats.module import StatsModule, stats_module_factory
+from libranet.stats.priority import FACTOR_FLOOR, EvictionScorer
 from libranet.stats.records import DataStats, NodeAddress, NodeStats
 from libranet.stats.schema import OWN_NODE, SCHEMA_STATEMENTS, SeekKind, apply_schema
 
 __all__ = [
+    "FACTOR_FLOOR",
     "OWN_NODE",
     "SCHEMA_STATEMENTS",
     "DataStats",
     "DerivedLists",
+    "EvictionScorer",
     "ListDeriver",
     "NodeAddress",
     "NodeStats",

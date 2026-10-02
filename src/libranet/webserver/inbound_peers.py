@@ -23,7 +23,7 @@ from threading import Lock
 
 from libranet.cas.content_id import ContentId
 from libranet.messaging.events import ConnectionDirection, EventType
-from libranet.webserver.publishing import Publish
+from libranet.messaging.publishing import Publish
 
 
 class InboundPeers:

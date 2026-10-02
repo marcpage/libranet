@@ -151,14 +151,13 @@ from libranet.identity.errors import KeyFileError
 from libranet.identity.keys import load_or_create_backup_secret
 from libranet.identity.node_identity import NodeIdentity
 from libranet.messaging.envelope import Message
-from libranet.messaging.events import EventType
+from libranet.messaging.events import ConflictBehavior, EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
-from libranet.webserver.config_requests import (
+from libranet.protocol.config_requests import (
     BackupJobRequest,
     BuildRequest,
-    ConflictBehavior,
     ExportRequest,
     Password,
     RestoreRequest,

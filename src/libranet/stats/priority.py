@@ -1,4 +1,4 @@
-"""The order in which held content is let go (HighLevelDesign §4.5), and what is held.
+"""The order in which held content is let go (HighLevelDesign §4.5).
 
 Each object a node holds is scored on four factors (Phase 2 Step 28), and
 the highest score is let go of first. Each factor is a fraction of one,
@@ -22,38 +22,20 @@ other three rank it: an object stored at exactly 1 MiB would otherwise score
 zero, whether it is used hourly or never.
 
 The stats module holds what the factors are measured from, so it is what
-ranks the content (:class:`EvictionScorer`). What the source of truth holds is
-still listed here, since that is how the content held is first counted
-(:mod:`~libranet.eviction.pressure`).
+ranks the content, and the score is kept with it (:class:`EvictionScorer`).
+The eviction module works through the content it is sent, best first.
 """
 
 from __future__ import annotations
 from dataclasses import dataclass
-from logging import getLogger
 from math import prod
-from pathlib import Path
-from stat import S_ISREG
-from typing import Final, Iterator
+from typing import Final
 
-from libranet.cas.algorithms import DEFAULT_REGISTRY
-from libranet.cas.content_id import ContentId
-from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.prefix import matching_bits
-from libranet.cas.store import DATA_SEGMENT, CasStore, StrayPrefixDirectories, subdirectories
 from libranet.config.models import MIB
-
-_LOGGER = getLogger(__name__)
 
 #: Provisional: the least any one factor of a score counts for.
 FACTOR_FLOOR: Final = 0.01
-
-
-@dataclass(frozen=True)
-class HeldObject:
-    """One object in a store, and its size as stored."""
-
-    content_id: ContentId
-    size_bytes: int
 
 
 @dataclass(frozen=True)
@@ -95,75 +77,9 @@ class EvictionScorer:
         return _share(self.now - last_used, self.longest_unused_seconds)
 
 
-def held_objects(store: CasStore) -> Iterator[HeldObject]:
-    """Every object ``store`` holds, in no particular order."""
-    for directories in _prefix_directories(store).values():
-        for algorithm, directory in directories:
-            yield from _objects_in(directory, algorithm)
-
-
 def _share(part: float, whole: float) -> float:
     """``part`` as a fraction of ``whole``, kept within 0 and 1; 0 of a ``whole`` of 0."""
     if whole <= 0:
         return 0.0
 
     return min(1.0, max(0.0, part / whole))
-
-
-def _prefix_directories(store: CasStore) -> dict[str, list[tuple[str, Path]]]:
-    """The store's prefix directories by name, each with the algorithm it is under.
-
-    Only directories of a registered algorithm, named as the store names its
-    prefix directories, are included. Any other directory is logged, once for
-    them all.
-    """
-    found: dict[str, list[tuple[str, Path]]] = {}
-    strays = StrayPrefixDirectories()
-
-    for algorithm in DEFAULT_REGISTRY.names():
-        for directory in subdirectories(store.root / DATA_SEGMENT / algorithm):
-            if store.is_prefix_directory(directory):
-                found.setdefault(directory.name, []).append((algorithm, directory))
-
-            else:
-                strays.add(directory)
-
-    strays.log(_LOGGER, store.root / DATA_SEGMENT)
-    return found
-
-
-def _objects_in(directory: Path, algorithm: str) -> list[HeldObject]:
-    """The objects stored in one prefix directory.
-
-    Anything else found there, such as a write still under way or a file
-    that is not where the store would look for it, is skipped, as is an
-    object removed while the directory is read. What is named as an object
-    but is not one, such as an upper-case copy of a hash, or a directory, is
-    logged too.
-    """
-    objects: list[HeldObject] = []
-
-    for entry in directory.iterdir():
-        # Whatever its case, so that an upper-case copy of a hash is caught.
-        if not entry.name.lower().startswith(directory.name):
-            continue
-
-        try:
-            content_id = ContentId.from_stored_name(algorithm, entry.name)
-            status = entry.stat()
-
-        except InvalidContentIdError as error:
-            _LOGGER.warning("Skipping %s, not named as CAS content: %s", entry, error)
-            continue
-
-        except FileNotFoundError:
-            # Not logged: it was deleted while the directory was read.
-            continue
-
-        if not S_ISREG(status.st_mode):
-            _LOGGER.warning("Skipping %s, named as CAS content but not a file", entry)
-            continue
-
-        objects.append(HeldObject(content_id, status.st_size))
-
-    return objects

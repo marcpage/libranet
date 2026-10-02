@@ -68,7 +68,16 @@ from urllib.parse import unquote
 from libranet.cas.content_id import ContentId
 from libranet.config.models import NetworkConfig
 from libranet.messaging.events import EventType
+from libranet.messaging.publishing import Publish
 from libranet.problems import INVALID_CONFIG_REQUEST, Problem
+from libranet.protocol.config_requests import (
+    IDENTIFIER_LENGTH,
+    BackupJobRequest,
+    BuildRequest,
+    ExportRequest,
+    InvalidConfigRequestError,
+    RestoreRequest,
+)
 from libranet.webserver.app_registry import Application, ApplicationRegistry, RegistryFileError
 from libranet.webserver.backup_state import (
     BUILDS_FIELD,
@@ -77,14 +86,6 @@ from libranet.webserver.backup_state import (
     RESTORES_FIELD,
     BackupState,
 )
-from libranet.webserver.config_requests import (
-    IDENTIFIER_LENGTH,
-    BackupJobRequest,
-    BuildRequest,
-    ExportRequest,
-    InvalidConfigRequestError,
-    RestoreRequest,
-)
 from libranet.webserver.http_types import (
     Request,
     Response,
@@ -92,7 +93,6 @@ from libranet.webserver.http_types import (
     json_response,
     problem_response,
 )
-from libranet.webserver.publishing import Publish
 from libranet.webserver.request_refusals import unreadable_body_response
 from libranet.webserver.router import Handler
 

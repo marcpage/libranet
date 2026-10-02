@@ -18,8 +18,9 @@ from libranet.messaging.envelope import (
     source_of,
     validate_message,
 )
-from libranet.messaging.events import EventType
+from libranet.messaging.events import ConflictBehavior, EventType, PathOutcome
 from libranet.messaging.module import ModuleBase, StopSignal
+from libranet.messaging.publishing import Publish
 from libranet.messaging.queues import MessageQueue, ModuleQueues, create_module_queues
 
 __all__ = [
@@ -27,6 +28,7 @@ __all__ = [
     "EVENT_FIELD",
     "SOURCE_FIELD",
     "TIMESTAMP_FIELD",
+    "ConflictBehavior",
     "Dispatcher",
     "EventType",
     "InvalidMessageError",
@@ -34,6 +36,8 @@ __all__ = [
     "MessageQueue",
     "ModuleBase",
     "ModuleQueues",
+    "PathOutcome",
+    "Publish",
     "StopSignal",
     "create_module_queues",
     "event_of",

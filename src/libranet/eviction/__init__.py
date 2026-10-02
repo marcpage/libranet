@@ -14,20 +14,15 @@ from libranet.eviction.module import (
     eviction_module_factory,
 )
 from libranet.eviction.pressure import FreeBytes, StoragePressure, free_bytes_under
-from libranet.eviction.priority import FACTOR_FLOOR, EvictionScorer, HeldObject, held_objects
 
 __all__ = [
     "DEFAULT_CANDIDATES_TIMEOUT_SECONDS",
     "DEFAULT_HAND_OFF_TIMEOUT_SECONDS",
     "DEFAULT_MAX_HAND_OFFS",
-    "FACTOR_FLOOR",
     "HAND_OFF_COPIES",
     "EvictionModule",
-    "EvictionScorer",
     "FreeBytes",
-    "HeldObject",
     "StoragePressure",
     "eviction_module_factory",
     "free_bytes_under",
-    "held_objects",
 ]

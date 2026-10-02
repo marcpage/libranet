@@ -20,8 +20,8 @@ from logging import getLogger
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.prefix import nearest
+from libranet.protocol.search import RESULTS_FIELD, SearchCache
 from libranet.stats.database import StatsDatabase
-from libranet.webserver.search import RESULTS_FIELD, SearchCache
 
 _LOGGER = getLogger(__name__)
 

@@ -24,6 +24,7 @@ from libranet.atomic_file import write_atomically
 from libranet.cas.archive import ArchiveSink, ArchiveSource
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
+from libranet.cas.resolved_files import ResolvedFiles
 from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
@@ -45,16 +46,16 @@ from libranet.problems import (
     PROBLEM_CONTENT_TYPE,
     SIGNATURE_REQUIRED,
 )
+from libranet.protocol.http_syntax import JSON_CONTENT_TYPE, REQUEST_PATH_HEADER
 from libranet.stats.module import StatsModule
 from libranet.supervision.stubs import StubModule
-from libranet.unbundler.resolved_files import ResolvedFiles
 from libranet.validator.module import ValidatorModule
 from libranet.webserver.app_registry import Application, ApplicationRegistry
 from libranet.webserver.config_auth import CONFIG_REALM
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import NodeDescription
-from libranet.webserver.http_types import JSON_CONTENT_TYPE, Request, RequestBody, Response
-from libranet.webserver.server import REQUEST_PATH_HEADER, LibranetHTTPServer, build_router
+from libranet.webserver.http_types import Request, RequestBody, Response
+from libranet.webserver.server import LibranetHTTPServer, build_router
 
 from tests.helpers import with_node_key
 

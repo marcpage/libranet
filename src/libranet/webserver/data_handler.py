@@ -23,16 +23,12 @@ from typing import Final
 
 from libranet.bundle.content import ContentSource
 from libranet.cas.content_id import ContentId
-from libranet.cas.errors import (
-    ContentNotFoundError,
-    InvalidContentIdError,
-    UnknownAlgorithmError,
-)
+from libranet.cas.errors import ContentNotFoundError, InvalidContentIdError, UnknownAlgorithmError
 from libranet.messaging.events import EventType
+from libranet.messaging.publishing import Publish
 from libranet.problems import INVALID_CONTENT_ADDRESS, Problem
-from libranet.webserver.client_origin import is_local_client
+from libranet.protocol.client_origin import is_local_client
 from libranet.webserver.http_types import Request, Response, bytes_response, problem_response
-from libranet.webserver.publishing import Publish
 from libranet.webserver.request_refusals import content_unavailable_response
 
 _LOGGER = getLogger(__name__)

@@ -9,8 +9,8 @@ from typing import Collection, Iterator
 from pytest import fixture, mark, raises
 
 from libranet.cas.content_id import ContentId
+from libranet.cas.store import HeldObject
 from libranet.config.models import MIB
-from libranet.eviction.priority import HeldObject
 from libranet.messaging.events import AddressSource
 from libranet.stats.database import StatsDatabase
 from libranet.stats.schema import SeekKind, apply_schema

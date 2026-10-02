@@ -18,7 +18,7 @@ from threading import Lock
 from typing import Final
 
 from libranet.cas.content_id import ContentId
-from libranet.unbundler.outcomes import PathOutcome
+from libranet.messaging.events import PathOutcome
 
 # Provisional default: a few hundred KiB at most.
 DEFAULT_MAX_OUTCOMES: Final = 4096

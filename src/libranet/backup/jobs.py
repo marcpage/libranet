@@ -41,7 +41,7 @@ from libranet.bundle.layering import Layering, Superseded
 from libranet.bundle.protection import protect, unprotect
 from libranet.cas.content_id import ContentId
 from libranet.json_format import compact_json
-from libranet.webserver.config_requests import BackupJobRequest
+from libranet.protocol.config_requests import BackupJobRequest
 
 _LOGGER = getLogger(__name__)
 

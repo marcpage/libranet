@@ -52,8 +52,8 @@ from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import MessageSigner
 from libranet.logging_setup import log_file_path
 from libranet.modules import ModuleName
-from libranet.webserver.http_types import JSON_CONTENT_TYPE
-from libranet.webserver.list_handlers import NODES_PATH
+from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
+from libranet.protocol.lists import NODES_PATH
 
 HOST: Final = "127.0.0.1"
 

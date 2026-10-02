@@ -24,7 +24,7 @@ is empty or ends in ``/`` names that directory's ``index.html``, and one no
 bundle could hold (BundleSpecification §3.1) is ``404`` at once.
 
 A file the unbundler has resolved is served from disk (see
-:mod:`libranet.unbundler.resolved_files`). Failing that, an outcome the
+:mod:`libranet.cas.resolved_files`). Failing that, an outcome the
 unbundler reported for the path is answered: ``404`` for a path the bundle
 does not hold, ``302`` to where a directory or symlink leads, or ``500`` for
 a bundle or file that cannot be served. Otherwise the handler never waits: it
@@ -53,10 +53,11 @@ from urllib.parse import quote, unquote
 
 from libranet.bundle.shapes import is_entry_path
 from libranet.cas.content_id import ContentId
-from libranet.messaging.events import EventType
+from libranet.cas.resolved_files import ResolvedFiles
+from libranet.messaging.events import EventType, PathOutcome
+from libranet.messaging.publishing import Publish
 from libranet.problems import UNUSABLE_BUNDLE, Problem
-from libranet.unbundler.outcomes import PathOutcome
-from libranet.unbundler.resolved_files import ResolvedFiles
+from libranet.protocol.http_syntax import OCTET_STREAM
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 from libranet.webserver.app_registry import (
     CONFIG_APPLICATION,
@@ -66,14 +67,7 @@ from libranet.webserver.app_registry import (
 )
 from libranet.webserver.app_use import ApplicationUse
 from libranet.webserver.config_guard import names_config
-from libranet.webserver.http_types import (
-    OCTET_STREAM,
-    Request,
-    Response,
-    bytes_response,
-    problem_response,
-)
-from libranet.webserver.publishing import Publish
+from libranet.webserver.http_types import Request, Response, bytes_response, problem_response
 from libranet.webserver.request_refusals import content_unavailable_response
 
 _LOGGER = getLogger(__name__)

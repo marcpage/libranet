@@ -13,8 +13,7 @@ from libranet.cas.layered import PACKAGED_ARCHIVES, LayeredSource, packaged_arch
 from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
 from libranet.eviction.pressure import StoragePressure
-from libranet.eviction.priority import held_objects
-from libranet.webserver.search import LocalSearch
+from libranet.protocol.search import LocalSearch
 
 STORED = b"stored in the source of truth"
 FIRST = b"held in the first archive"
@@ -132,7 +131,7 @@ def test_eviction_sees_only_the_store(tmp_path: Path) -> None:
 
     with LayeredSource.open(storage, tmp_path / "none") as content:
         assert content.exists(id_of(FIRST))
-        assert [held.content_id for held in held_objects(store)] == [id_of(STORED)]
+        assert [held.content_id for held in store.held_objects()] == [id_of(STORED)]
         assert StoragePressure.of(storage, lambda: 1 << 40).held_bytes == len(STORED)
 
 

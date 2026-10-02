@@ -25,15 +25,10 @@ from libranet.problems import (
     PROBLEM_CONTENT_TYPE,
     SIGNATURE_REQUIRED,
 )
+from libranet.protocol.lists import NODES_PATH, SEEK_PATH
 from libranet.supervision.stubs import StubModule
 from libranet.webserver.http_types import Request, RequestBody, Response
-from libranet.webserver.list_handlers import (
-    NODES_PATH,
-    SEEK_PATH,
-    ListFileHandler,
-    NodeListHandler,
-    SeekListHandler,
-)
+from libranet.webserver.list_handlers import ListFileHandler, NodeListHandler, SeekListHandler
 from libranet.webserver.router import Router
 
 MAX_BYTES = 512

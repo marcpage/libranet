@@ -1,16 +1,13 @@
-"""Tests for the eviction score, and for listing what a temp CAS holds."""
+"""Tests for the eviction score."""
 
 from __future__ import annotations
-from logging import WARNING
-from pathlib import Path
 
-from pytest import LogCaptureFixture, approx, fixture, mark
+from pytest import approx, mark
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.prefix import matching_bits
-from libranet.cas.store import DATA_SEGMENT, CasStore
 from libranet.config.models import MIB
-from libranet.eviction.priority import FACTOR_FLOOR, EvictionScorer, HeldObject, held_objects
+from libranet.stats.priority import FACTOR_FLOOR, EvictionScorer
 
 HASH_BITS = 256
 NODE_ID = ContentId.for_data(b"this node's public key", "sha256")
@@ -36,16 +33,6 @@ def sharing(bits: int, variant: int = 0, node_id: ContentId = NODE_ID) -> Conten
 def floored(factor: float) -> float:
     """What ``factor`` counts for in a score."""
     return FACTOR_FLOOR + (1 - FACTOR_FLOOR) * factor
-
-
-@fixture
-def store(tmp_path: Path) -> CasStore:
-    return CasStore(tmp_path / "cas", 4)
-
-
-def hold(store: CasStore, *content_ids: ContentId, size: int = 3) -> None:
-    for content_id in content_ids:
-        store.write(content_id, b"x" * size)
 
 
 def test_sharing_builds_ids_of_the_priority_asked_for() -> None:
@@ -147,114 +134,3 @@ def test_matching_more_bits_keeps_content_longer() -> None:
 
     assert scores == sorted(scores, reverse=True)
     assert len(set(scores)) == len(scores)
-
-
-# -- What a store holds ------------------------------------------------------
-
-
-def test_every_held_object_is_listed_with_its_size(store: CasStore) -> None:
-    hold(store, sharing(0), size=5)
-    hold(store, sharing(9), sharing(9, 1), size=7)
-
-    assert sorted(held_objects(store), key=lambda held: held.content_id) == sorted(
-        [
-            HeldObject(sharing(0), 5),
-            HeldObject(sharing(9), 7),
-            HeldObject(sharing(9, 1), 7),
-        ],
-        key=lambda held: held.content_id,
-    )
-
-
-def test_an_empty_store_holds_nothing(store: CasStore) -> None:
-    assert list(held_objects(store)) == []
-
-
-def test_what_is_not_stored_content_is_skipped(store: CasStore) -> None:
-    held = sharing(0)
-    hold(store, held)
-    directory = store.path_for(held).parent
-    # A write still under way, and names that are not content ids.
-    (directory / f".{held.hash}.abc.partial").write_bytes(b"partial")
-    (directory / (held.hash[:4] + "not-a-hash")).write_bytes(b"junk")
-    (directory / sharing(0, 2).hash.upper()).write_bytes(b"upper-case name")
-    # A directory where a file should be.
-    store.path_for(sharing(0, 1)).mkdir()
-    # A file in the wrong prefix directory.
-    misplaced = sharing(40)
-    (directory / misplaced.hash).write_bytes(b"misplaced")
-    # Directories that are not prefix directories, or not of a known algorithm.
-    data = store.root / DATA_SEGMENT
-    (data / "sha256" / "zz99").mkdir()
-    (data / "sha256" / held.hash[:5]).mkdir()
-    (data / "sha256" / "stray-file").write_bytes(b"")
-    (data / "md5" / held.hash[:4]).mkdir(parents=True)
-    (data / "md5" / held.hash[:4] / held.hash).write_bytes(b"unknown algorithm")
-
-    assert list(held_objects(store)) == [HeldObject(held, 3)]
-
-
-def test_the_prefix_length_of_the_store_is_used(tmp_path: Path) -> None:
-    store = CasStore(tmp_path / "cas", 1)
-    content = [sharing(0), sharing(2), sharing(4), sharing(9)]
-    hold(store, *content)
-
-    assert sorted(held.content_id for held in held_objects(store)) == sorted(content)
-
-
-def test_a_file_not_named_as_content_is_logged_as_a_warning(
-    tmp_path: Path, caplog: LogCaptureFixture
-) -> None:
-    store = CasStore(tmp_path / "cas", 4)
-    held = sharing(0)
-    hold(store, held)
-    stray = store.path_for(held).parent / f"{held.hash[:4]}stray"
-    stray.write_bytes(b"")
-
-    assert list(held_objects(store)) == [HeldObject(held, 3)]
-    (record,) = caplog.records
-    assert record.levelno == WARNING
-    assert record.getMessage().startswith(f"Skipping {stray}, not named as CAS content: ")
-
-
-def test_what_is_named_as_content_but_is_not_is_logged_as_a_warning(
-    tmp_path: Path, caplog: LogCaptureFixture
-) -> None:
-    store = CasStore(tmp_path / "cas", 4)
-    held = sharing(0)
-    hold(store, held)
-    directory = store.path_for(held).parent
-    upper = directory / sharing(0, 2).hash.upper()
-    upper.write_bytes(b"upper-case name")
-    not_a_file = store.path_for(sharing(0, 1))
-    not_a_file.mkdir()
-    wrong_shape = store.root / DATA_SEGMENT / "sha256" / held.hash[:5]
-    wrong_shape.mkdir()
-
-    assert list(held_objects(store)) == [HeldObject(held, 3)]
-    assert {record.levelno for record in caplog.records} == {WARNING}
-    assert sorted(record.getMessage() for record in caplog.records) == sorted(
-        [
-            f"Skipping {not_a_file}, named as CAS content but not a file",
-            f"Skipping the directories in {store.root / DATA_SEGMENT} that are not prefix "
-            f"directories of the store, 1 in all, such as {wrong_shape.name}; content filed "
-            "under another storage.hash_prefix_length is neither served, counted, nor evicted",
-            f"Skipping {upper}, not named as CAS content: "
-            f"A stored hash must be lower-case, got {upper.name!r}",
-        ]
-    )
-
-
-def test_prefix_directories_of_another_length_are_logged_once(
-    tmp_path: Path, caplog: LogCaptureFixture
-) -> None:
-    # Content filed under another hash_prefix_length leaves a directory for
-    # every prefix it used.
-    old = CasStore(tmp_path / "cas", 5)
-    hold(old, *(sharing(bits) for bits in range(20)))
-    store = CasStore(tmp_path / "cas", 4)
-
-    assert list(held_objects(store)) == []
-    (record,) = caplog.records
-    assert record.levelno == WARNING
-    assert ", 20 in all, such as " in record.getMessage()

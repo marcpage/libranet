@@ -40,6 +40,10 @@ from libranet.messaging.envelope import Message, make_message
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
+from libranet.protocol.config_requests import BackupJobRequest, ExportRequest, RestoreRequest
+from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
+from libranet.protocol.lists import NODES_PATH, SEEK_PATH
+from libranet.protocol.search import LocalSearch, SearchCache
 from libranet.stats.module import StatsModule
 from libranet.stats.schema import SeekKind
 from libranet.supervision.stubs import StubModule
@@ -53,18 +57,11 @@ from libranet.webserver.config_handlers import (
     NodeDescription,
     config_routes,
 )
-from libranet.webserver.config_requests import BackupJobRequest, ExportRequest, RestoreRequest
 from libranet.webserver.data_handler import DATA_PATTERN, DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
-from libranet.webserver.http_types import JSON_CONTENT_TYPE, Request, RequestBody
-from libranet.webserver.list_handlers import (
-    NODES_PATH,
-    SEEK_PATH,
-    NodeListHandler,
-    SeekListHandler,
-)
+from libranet.webserver.http_types import Request, RequestBody
+from libranet.webserver.list_handlers import NodeListHandler, SeekListHandler
 from libranet.webserver.router import Router
-from libranet.webserver.search import LocalSearch, SearchCache
 from libranet.webserver.search_handler import SEARCH_PATTERN, SearchHandler
 
 from tests.helpers import with_node_key

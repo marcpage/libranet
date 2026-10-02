@@ -32,11 +32,10 @@ from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import MessageSigner
 from libranet.messaging.envelope import Message, event_of
-from libranet.messaging.events import EventType
+from libranet.messaging.events import EventType, PathOutcome
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
-from libranet.unbundler.outcomes import PathOutcome
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 from libranet.webserver.backup_state import BackupReport, BackupState
 from libranet.webserver.config_credential import ConfigCredential

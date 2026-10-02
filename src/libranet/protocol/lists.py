@@ -1,10 +1,12 @@
-"""Reading the node and seek lists peers ``POST`` (HttpApi §10.6, §10.7.1).
+"""Where the node and seek lists are, and reading them (HttpApi §10.6, §10.7.1).
 
-Either list may arrive zlib-compressed, so a body that is not JSON is
-decompressed and read again. The 1 MiB list limit applies to the body as
-sent, so a compressed list may expand past it, and the protocol sets no
-limit on how far. Decompression still stops at a separate, local cap, so a
-small body cannot expand without bound.
+The web server serves this node's lists and reads those peers ``POST`` to
+it; the connection manager posts this node's list and reads those it fetches
+from peers. Either list may arrive zlib-compressed, so a body that is not
+JSON is decompressed and read again. The 1 MiB list limit applies to the
+body as sent, so a compressed list may expand past it, and the protocol sets
+no limit on how far. Decompression still stops at a separate, local cap, so
+a small body cannot expand without bound.
 
 A body of the wrong shape is refused outright. A single unusable entry is
 dropped instead, so it does not cost the peer the rest of its list, which is
@@ -14,7 +16,7 @@ also how the stats module treats unusable node ids (Step 8).
 from __future__ import annotations
 from json import loads
 from logging import getLogger
-from typing import Callable
+from typing import Callable, Final
 
 from libranet.cas.algorithms import UnsupportedAlgorithms
 from libranet.cas.compression import decompressed
@@ -25,9 +27,12 @@ from libranet.cas.errors import (
     StreamTooLargeError,
     UnknownAlgorithmError,
 )
-from libranet.webserver.search import normalize_prefix
+from libranet.protocol.search import normalize_prefix
 
 _LOGGER = getLogger(__name__)
+
+NODES_PATH: Final = "/data/nodes"
+SEEK_PATH: Final = "/data/seek"
 
 
 class InvalidListError(ValueError):

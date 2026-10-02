@@ -56,7 +56,9 @@ Three rules shape the rest:
 - **Modules never call each other.** They share no memory and hold no
   references to one another. What one module needs another to know travels
   as a message through the dispatcher, or as a file on disk that a message
-  points at.
+  points at. Nor does one import another's code: what two modules share is
+  in `libranet/protocol/`, `libranet/messaging/`, or a library package below
+  them all, which `tests/test_module_imports.py` checks.
 - **Every message goes to every module.** The dispatcher does no routing.
   It copies each message into every module's inbox, and each module keeps
   only the event types it subscribes to.
@@ -94,6 +96,8 @@ The modules communicate in three ways:
 | `src/libranet/messaging/queues.py` | `ModuleQueues`, a module's inbox and outbox, and the `MessageQueue` protocol |
 | `src/libranet/messaging/module.py` | `ModuleBase`: publishing, filtering, and the receive loop |
 | `src/libranet/messaging/dispatcher.py` | `Dispatcher`: the broadcast hub |
+| `src/libranet/messaging/publishing.py` | `Publish`, the signature of `publish` that code outside a module class is handed |
+| `src/libranet/protocol/` | What nodes say to one another over HTTP, shared by the modules that do: HTTP syntax, node and seek lists, search, `localhost` resolution, and `/config` requests |
 | `src/libranet/{module}/module.py` | Each module's class and factory |
 
 ## 3. The Modules
@@ -540,7 +544,7 @@ every handler.
 
 A constant another module also needs is defined once, public, in the
 lowest module of the layer its meaning belongs to — bundle path syntax in
-`bundle/shapes.py`, HTTP syntax in `webserver/http_types.py` — and imported
+`bundle/shapes.py`, HTTP syntax in `protocol/http_syntax.py` — and imported
 from there, even where the same value could be written inline. Compact
 JSON, which no layer owns, is in `json_format.py`. Constants that only share
 a value stay apart: a protected bundle's compression level may never

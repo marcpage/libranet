@@ -21,6 +21,13 @@ from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.problems import CONTENT_TOO_LARGE, INVALID_CONFIG_REQUEST, PROBLEM_CONTENT_TYPE
+from libranet.protocol.config_requests import (
+    BackupJobRequest,
+    BuildRequest,
+    ExportRequest,
+    RestoreRequest,
+)
+from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.supervision.stubs import StubModule
 from libranet.webserver.app_registry import (
     ROOT_APPLICATION,
@@ -41,13 +48,7 @@ from libranet.webserver.config_handlers import (
     NodeDescription,
     config_routes,
 )
-from libranet.webserver.config_requests import (
-    BackupJobRequest,
-    BuildRequest,
-    ExportRequest,
-    RestoreRequest,
-)
-from libranet.webserver.http_types import JSON_CONTENT_TYPE, Request, RequestBody, Response
+from libranet.webserver.http_types import Request, RequestBody, Response
 from libranet.webserver.router import Router
 
 RETRY_AFTER_SECONDS = 9

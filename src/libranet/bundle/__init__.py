@@ -45,11 +45,13 @@ from libranet.bundle.storing import (
     store_bundle,
     store_object,
 )
+from libranet.bundle.symlinks import MAX_SYMLINK_HOPS, PathEnd, path_reached
 
 __all__ = [
     "DEFAULT_MAX_BUNDLE_BYTES",
     "DEFAULT_MAX_EXTENSIONS",
     "HASH_ALGORITHM",
+    "MAX_SYMLINK_HOPS",
     "Bundle",
     "BundleError",
     "BundleTooLargeError",
@@ -69,6 +71,7 @@ __all__ = [
     "Metadata",
     "MissingContentError",
     "PasswordProtectedBundleError",
+    "PathEnd",
     "StoredDirectory",
     "StoredVersion",
     "Superseded",
@@ -85,6 +88,7 @@ __all__ = [
     "load_bundle",
     "parse_bundle",
     "parse_cas_path",
+    "path_reached",
     "protect",
     "resolve_directory",
     "split_entries",

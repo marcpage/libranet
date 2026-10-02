@@ -24,7 +24,6 @@ filesystem on a request's behalf.
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from enum import StrEnum
 from hashlib import sha256
 from math import isfinite
 from pathlib import PurePath
@@ -32,6 +31,7 @@ from typing import Any, Final
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
+from libranet.messaging.events import ConflictBehavior
 
 #: Hex characters of the hash a job or restore is named by.
 IDENTIFIER_LENGTH: Final = 16
@@ -41,13 +41,6 @@ _PARENT_SEGMENT: Final = ".."
 
 class InvalidConfigRequestError(ValueError):
     """A ``/config`` request body is not what its endpoint accepts."""
-
-
-class ConflictBehavior(StrEnum):
-    """What a restore does when its target directory is not empty (§5)."""
-
-    REFUSE = "refuse"
-    OVERWRITE = "overwrite"
 
 
 @dataclass(frozen=True)
