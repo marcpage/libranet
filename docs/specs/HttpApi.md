@@ -102,12 +102,30 @@ distinction, whichever half it falls in: the source-address check and
 HTTP Basic Authentication gate the pages exactly as they gate the
 endpoints.
 
-`/config` is served by the same listener as every other endpoint; no
-separate listening address or binding is required. It is restricted by
-request behavior instead: a node MUST serve `/config` only to requests
-whose connecting (source) address is a loopback address (`127.0.0.0/8`
-or `::1`, including IPv4-mapped IPv6 forms such as `::ffff:127.0.0.1`).
-A `/config` request from any other source address MUST be refused with
+`/config` is served on a port of its own, called here `/config`'s port,
+and never on the port that serves `/data` and the directory-bundle
+applications (§13), called here the main port. A browser keeps pages
+apart only by origin, and the port is part of the origin, so no
+application's page shares `/config`'s origin, and none can use the
+credential a browser holds for it (§2.3.3). A node MUST NOT serve
+anything under `/config` on its main port, and MUST NOT serve anything
+but `/config` on `/config`'s port. Paths are the same on both: the
+application is at `/config/`, and the endpoints are beneath
+`/config/api/`.
+
+On its main port, a node MUST NOT challenge for, check, or capture the
+`/config` credential (§2.3.1). A browser that sent the credential there
+would hold it for the main port's origin, and would send it with the
+applications' requests. A node MAY answer a `GET` or `HEAD` there for a
+path under `/config`, outside `/config/api`, with a redirect to the same
+path on `/config`'s port, so that an address typed or bookmarked before
+`/config` had a port of its own still reaches it.
+
+A node SHOULD listen on `/config`'s port only at a loopback address.
+Wherever it listens, a node MUST serve `/config` only to requests whose
+connecting (source) address is a loopback address (`127.0.0.0/8` or
+`::1`, including IPv4-mapped IPv6 forms such as `::ffff:127.0.0.1`). A
+`/config` request from any other source address MUST be refused with
 `403 Forbidden`, regardless of the credentials it carries, and MUST NOT
 trigger credential capture (§2.3.1).
 
@@ -171,12 +189,14 @@ platform.
 #### 2.3.3 Requests From Other Sites
 
 A browser that holds the `/config` credential sends it with every request
-to the node's origin, whichever page made the request. Left at that, a
-page on any other site could change the node's configuration with the
-operator's credential, and a link from another site could make a node
-that has no credential yet capture one of that site's choosing (§2.3.1).
-A node therefore serves `/config` only to requests that a browser says
-its own pages made, and to requests that no browser made.
+to `/config`'s origin, whichever page made the request. Left at that, a
+page of any other origin, whether another site's or one of the node's own
+applications on its main port (§2.3), could change the node's
+configuration with the operator's credential. A link from such a page
+could make a node that has no credential yet capture one of that page's
+choosing (§2.3.1). A node therefore serves `/config` only to requests
+that a browser says `/config`'s own pages made or the person using it
+asked for, and to requests that no browser made.
 
 The checks below are made on every `/config` request, whatever its method
 and whichever half of the namespace it falls in, before the request's
@@ -192,8 +212,25 @@ credentials are looked at. A request that fails one MUST be refused with
   reaches `/config` under another name, through a reverse proxy for
   example, adds that name to the list.
 - **`Sec-Fetch-Site`.** A request carrying this header with any value
-  other than `same-origin` or `none` MUST be refused. That includes
-  `same-site`: another port on the same host is another origin.
+  other than `same-origin` or `none` MUST be refused, but for the one
+  exception below. That includes `same-site`: another port on the same
+  host is another origin, and the node's main port, where its
+  applications are served, is one of them.
+
+  The exception is a link the operator follows to the `/config`
+  application from another page of the same site, such as the root
+  application's. Once a credential has been captured, this check does not
+  refuse a `GET` for a path outside `/config/api` that carries
+  `Sec-Fetch-Site: same-site`, `Sec-Fetch-Mode: navigate`,
+  `Sec-Fetch-Dest: document`, and `Sec-Fetch-User: ?1`. Together these
+  say that the person using the browser chose to open the page in a
+  window of its own. The credential is still checked. Before a credential
+  is captured, such a request is refused like any other `same-site` one,
+  since it would capture whatever credential the link carries. The page
+  it opens is of another origin than the page that linked to it, which
+  can neither read it nor drive it. Loading it must change nothing either,
+  so the `/config` application MUST NOT change anything when a page of it
+  loads, whatever the address's query or fragment.
 - **`Origin`.** A request carrying `Origin` and no `Sec-Fetch-Site` MUST
   be refused unless the host and port `Origin` names are the ones its
   `Host` header names. `Origin: null` names neither, and is refused.
@@ -212,11 +249,13 @@ that type only after asking the node whether it may, and a node MUST NOT
 send `Access-Control-Allow-Origin`, or any other header granting a
 cross-origin request, on a `/config` response.
 
-None of this tells a request made by a directory-bundle application the
-node serves (§13) from one made by the `/config` application: both are
-the node's own origin. Until the two are separated, an application
-registered on a node can do anything `/config` can, with the credential
-of an operator who has logged in to `/config` in the same browser.
+These checks keep the node's own applications out too. An application's
+page is served on the node's main port (§2.3), so it is of the same site
+as `/config` but another origin. A browser marks its requests
+`same-site`, and its `Origin` names the main port. Nor can such a page
+open `/config` in a window and drive it, as a page of the same origin
+could, since a browser lets a page script only the windows of its own
+origin.
 
 ---
 
@@ -1113,7 +1152,8 @@ where each file is retrieved from CAS.
 ## 13. Web Application Routing
 
 Directory-bundle applications are exposed outside the programmatic `/data`
-namespace.
+namespace. They are served on the node's main port, as `/data` is, and
+never on `/config`'s port (§2.3).
 
 An application name is mapped to a directory bundle.
 
@@ -1654,19 +1694,19 @@ HTTP mechanisms.
 
 The following table summarizes the currently proposed HTTP API.
 
-| Endpoint                     | Method       | Purpose                                 | Status  |
-| ---------------------------- | ------------ | --------------------------------------- | ------- |
-| `/data/{algorithm}/{hash}`   | `GET`        | Retrieve CAS content                    | Defined |
-| `/data/{algorithm}/{hash}`   | `PUT`        | Upload CAS content                      | Defined |
-| `/data/{algorithm}/{hash}`   | `HEAD`       | Retrieve CAS metadata                   | TBD     |
-| `/data/search/{hash}`        | `GET`        | Search for matching hashes              | Defined |
-| `/data/nodes`                | `GET`/`POST` | Retrieve/publish peer information       | Defined |
-| `/data/seek`                 | `GET`/`POST` | Retrieve/publish outstanding requests   | Defined |
-| `/data/...`                  | Various      | Additional programmatic APIs            | TBD     |
-| `/`                          | `GET`        | Root web application                    | Defined |
-| `/{application}/...`         | `GET`        | Directory-bundle application            | Defined |
-| `/config/api/...`            | Various      | Local-only administration endpoints     | Defined |
-| `/config/...`                | `GET`        | Local-only administration application   | Defined |
+| Endpoint                   | Method       | Purpose                                                    | Status  |
+| -------------------------- | ------------ | ---------------------------------------------------------- | ------- |
+| `/data/{algorithm}/{hash}` | `GET`        | Retrieve CAS content                                       | Defined |
+| `/data/{algorithm}/{hash}` | `PUT`        | Upload CAS content                                         | Defined |
+| `/data/{algorithm}/{hash}` | `HEAD`       | Retrieve CAS metadata                                      | TBD     |
+| `/data/search/{hash}`      | `GET`        | Search for matching hashes                                 | Defined |
+| `/data/nodes`              | `GET`/`POST` | Retrieve/publish peer information                          | Defined |
+| `/data/seek`               | `GET`/`POST` | Retrieve/publish outstanding requests                      | Defined |
+| `/data/...`                | Various      | Additional programmatic APIs                               | TBD     |
+| `/`                        | `GET`        | Root web application                                       | Defined |
+| `/{application}/...`       | `GET`        | Directory-bundle application                               | Defined |
+| `/config/api/...`          | Various      | Local-only administration endpoints, on `/config`'s port   | Defined |
+| `/config/...`              | `GET`        | Local-only administration application, on `/config`'s port | Defined |
 
 ---
 
@@ -1707,8 +1747,6 @@ implementation:
 30. HTTP-specific registrations.
 31. Mechanism for pushing search-derived results to satisfy `/data/seek`
     `search` entries.
-32. Separating `/config` from the applications a node serves, which share
-    its origin (§2.3.3).
 
 ---
 
