@@ -44,10 +44,10 @@ was held::
     data.deleted           {"algorithm", "hash", "size"}
 
 Fewer means the hand-off fell short, most likely for want of connected
-peers, so no new hand-off starts for ``retry_delay_seconds``. The object is
-kept, and is offered again when stats next lists it; a peer that took it
-already answers that it holds it. Finding nothing left to let go of waits as
-long.
+peers, so no new hand-off starts for ``peers.retry_delay_seconds``. The
+object is kept, and is offered again when stats next lists it; a peer that
+took it already answers that it holds it. Finding nothing left to let go of
+waits as long.
 
 Hand-offs run a few at a time, and only as many as would bring storage back
 within its limits once they succeed. One the connection manager never
@@ -154,7 +154,6 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         name: ModuleName,
         queues: ModuleQueues,
         config: LibranetConfig,
-        retry_delay_seconds: float,
         *,
         logger: Logger | None = None,
         clock: Callable[[], float] = time,
@@ -166,9 +165,6 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         reclaim_timeout_seconds: float = DEFAULT_RECLAIM_TIMEOUT_SECONDS,
         reclaim_interval_seconds: float = DEFAULT_RECLAIM_INTERVAL_SECONDS,
     ) -> None:
-        if retry_delay_seconds < 0:
-            raise ValueError(f"retry_delay_seconds must not be negative, got {retry_delay_seconds}")
-
         if max_hand_offs < 1:
             raise ValueError(f"max_hand_offs must be at least 1, got {max_hand_offs}")
 
@@ -196,7 +192,9 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
             name, queues, logger=logger, clock=clock, poll_interval_seconds=poll_interval_seconds
         )
         self._config = config
-        self._retry_delay_seconds = retry_delay_seconds
+        # A hand-off that falls short waits as long as a peer that could not
+        # be reached does, giving the peer mix the same time to change.
+        self._retry_delay_seconds = config.peers.retry_delay_seconds
         self._free_bytes = free_bytes
         self._max_hand_offs = max_hand_offs
         self._hand_off_timeout_seconds = hand_off_timeout_seconds
@@ -477,9 +475,5 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
 def eviction_module_factory(
     name: ModuleName, config: LibranetConfig, queues: ModuleQueues
 ) -> ModuleBase:
-    """:data:`~libranet.supervision.specs.ModuleFactory` for :class:`EvictionModule`.
-
-    A hand-off that falls short waits as long as a peer that could not be
-    reached does, giving the peer mix the same time to change.
-    """
-    return EvictionModule(name, queues, config, config.peers.retry_delay_seconds)
+    """:data:`~libranet.supervision.specs.ModuleFactory` for :class:`EvictionModule`."""
+    return EvictionModule(name, queues, config)

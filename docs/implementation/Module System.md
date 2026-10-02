@@ -477,7 +477,14 @@ What each module does in them:
 
 A module is a `ModuleBase` subclass that declares its subscriptions and
 handles them, and a factory the supervisor calls inside the new process.
-Most modules route messages through a table of handlers:
+Every module's constructor takes its name, its queues, and the node's
+configuration, then, by keyword, the `logger`, `clock`, and
+`poll_interval_seconds` it passes to `ModuleBase`, and after them anything
+a test may replace. Every module gives `_route` a handler for each event it
+subscribes to, and the inherited `handle` passes each message to its
+event's handler. `_route` refuses a table that misses a subscription or
+names an event not subscribed to, and `handle` raises for an event with no
+handler rather than taking it for another:
 
 ```Python
 class ExampleModule(ModuleBase):
@@ -485,20 +492,24 @@ class ExampleModule(ModuleBase):
 
     subscriptions: ClassVar[frozenset[EventType]] = frozenset({EventType.DATA_STORED})
 
-    def __init__(self, name: ModuleName, queues: ModuleQueues, config: LibranetConfig) -> None:
-        super().__init__(name, queues)
+    def __init__(
+        self,
+        name: ModuleName,
+        queues: ModuleQueues,
+        config: LibranetConfig,
+        *,
+        logger: Logger | None = None,
+        clock: Callable[[], float] = time,
+        poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
+    ) -> None:
+        super().__init__(
+            name, queues, logger=logger, clock=clock, poll_interval_seconds=poll_interval_seconds
+        )
         self._config = config
-        self._handlers: Mapping[EventType, Callable[[Message], None]] = {
-            EventType.DATA_STORED: self._on_data_stored,
-        }
-
-    def handle(self, message: Message) -> None:
-        """React to one subscribed broadcast; a malformed one raises and run() logs it."""
-        self._handlers[event_of(message)](message)
+        self._route({EventType.DATA_STORED: self._on_data_stored})
 
     def _on_data_stored(self, message: Message) -> None:
-        content_id = ContentId.create(message["algorithm"], message["hash"])
-        self.logger.info("%s was stored", content_id)
+        self.logger.info("%s was stored", ContentId.from_fields(message))
 
 
 def example_module_factory(
@@ -522,7 +533,8 @@ To add an event:
 1. Add a member to `EventType`, with a comment naming who publishes it and
    who subscribes.
 2. Describe its payload in the publishing module's docstring.
-3. Add it to each subscriber's `subscriptions` and handler table.
+3. Add it to each subscriber's `subscriptions` and the table it gives
+   `_route`.
 
 A payload holds only plain JSON values. A content id travels as an
 `algorithm` and `hash` pair, or as a `sha256/{hex}` string, and a payload
@@ -1103,7 +1115,9 @@ hook, and read what it published from its outbox. Condensed from
 
 ```Python
 queues = ModuleQueues(inbox=Queue(), outbox=Queue())
-validator = ValidatorModule(ModuleName.VALIDATOR, queues, storage, poll_interval_seconds=0.01)
+validator = ValidatorModule(
+    ModuleName.VALIDATOR, queues, LibranetConfig(storage=storage), poll_interval_seconds=0.01
+)
 
 CasStore.for_node(storage, NODE_ID).write(CONTENT_ID, CONTENT)  # as the web server would
 validator.handle(

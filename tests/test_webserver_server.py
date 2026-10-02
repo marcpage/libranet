@@ -535,7 +535,9 @@ def test_uploaded_content_is_served_once_validated(
     connection: HTTPConnection, queues: ModuleQueues, storage: StorageConfig
 ) -> None:
     identity = _new_identity()
-    validator = ValidatorModule(ModuleName.VALIDATOR, ModuleQueues(Queue(), Queue()), storage)
+    validator = ValidatorModule(
+        ModuleName.VALIDATOR, ModuleQueues(Queue(), Queue()), LibranetConfig(storage=storage)
+    )
 
     # First contact: a peer pushes its own public key before anything else,
     # and it is held at once so the rest of the exchange can be verified. It
@@ -565,7 +567,9 @@ def test_a_key_someone_else_pushed_compressed_still_verifies_its_owner(
     connection: HTTPConnection, queues: ModuleQueues, storage: StorageConfig, store: CasStore
 ) -> None:
     owner, other = _new_identity(), _new_identity()
-    validator = ValidatorModule(ModuleName.VALIDATOR, ModuleQueues(Queue(), Queue()), storage)
+    validator = ValidatorModule(
+        ModuleName.VALIDATOR, ModuleQueues(Queue(), Queue()), LibranetConfig(storage=storage)
+    )
     compressed = compress(owner.public_key)
 
     response, _ = _put(connection, owner.node_id, compressed, other)

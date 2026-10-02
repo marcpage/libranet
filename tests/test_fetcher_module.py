@@ -7,10 +7,9 @@ from queue import Queue
 
 from pytest import LogCaptureFixture, fixture, raises
 
-from libranet.cas.archive import ArchiveSink, ArchiveSource
+from libranet.cas.archive import ArchiveSink
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
-from libranet.cas.layered import LayeredSource
 from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
 from libranet.fetcher.module import FetcherModule, fetcher_module_factory
@@ -21,7 +20,7 @@ from libranet.modules import ModuleName
 from libranet.supervision.registry import default_module_specs
 from tests.helpers import published
 
-INTERVAL = 5.0
+INTERVAL = 5
 CONTENT_ID = ContentId.for_data(b"content this node lacks", "sha256")
 OTHER_ID = ContentId.for_data(b"other content this node lacks", "sha256")
 PEER_ID = ContentId.for_data(b"a peer's public key", "sha256")
@@ -33,15 +32,25 @@ def queues() -> ModuleQueues:
 
 
 @fixture
-def store(tmp_path: Path) -> CasStore:
-    return CasStore(tmp_path / "cas", prefix_length=4)
+def storage(tmp_path: Path) -> StorageConfig:
+    return StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache")
 
 
 @fixture
-def fetcher(queues: ModuleQueues, store: CasStore) -> FetcherModule:
+def store(storage: StorageConfig) -> CasStore:
+    return CasStore.source_of_truth(storage)
+
+
+@fixture
+def fetcher(queues: ModuleQueues, storage: StorageConfig) -> FetcherModule:
     return FetcherModule(
-        ModuleName.FETCHER, queues, INTERVAL, LayeredSource(store), poll_interval_seconds=0.01
+        ModuleName.FETCHER, queues, configured(storage), poll_interval_seconds=0.01
     )
+
+
+def configured(storage: StorageConfig, interval: int = INTERVAL) -> LibranetConfig:
+    """A node over ``storage`` whose ``503`` asks to retry after ``interval`` seconds."""
+    return LibranetConfig(network=NetworkConfig(retry_after_seconds=interval), storage=storage)
 
 
 def miss(at: float, content_id: ContentId = CONTENT_ID) -> Message:
@@ -128,8 +137,8 @@ def test_a_miss_reported_out_of_order_is_judged_by_its_own_request(
     assert asked_for(queues) == [CONTENT_ID, OTHER_ID, OTHER_ID]
 
 
-def test_without_an_interval_every_miss_asks(queues: ModuleQueues, store: CasStore) -> None:
-    fetcher = FetcherModule(ModuleName.FETCHER, queues, 0.0, LayeredSource(store))
+def test_without_an_interval_every_miss_asks(queues: ModuleQueues, storage: StorageConfig) -> None:
+    fetcher = FetcherModule(ModuleName.FETCHER, queues, configured(storage, 0))
 
     for _ in range(3):
         fetcher.handle(miss(100.0))
@@ -218,11 +227,6 @@ def test_an_event_it_does_not_handle_is_not_taken_for_a_miss(
     assert published(queues) == []
 
 
-def test_a_negative_interval_is_refused(queues: ModuleQueues, store: CasStore) -> None:
-    with raises(ValueError, match="ask_interval_seconds"):
-        FetcherModule(ModuleName.FETCHER, queues, -1.0, LayeredSource(store))
-
-
 def test_the_module_subscribes_to_misses_and_fetch_outcomes() -> None:
     assert FetcherModule.subscriptions == {
         EventType.DATA_NOT_FOUND,
@@ -242,28 +246,23 @@ def test_a_miss_for_content_stored_since_asks_for_nothing(
 
 
 def test_a_miss_for_archive_content_asks_for_nothing(
-    queues: ModuleQueues, store: CasStore, tmp_path: Path
+    queues: ModuleQueues, storage: StorageConfig, tmp_path: Path
 ) -> None:
     with ArchiveSink.create(tmp_path / "held.zip") as sink:
         sink.write(CONTENT_ID, b"content this node lacks")
 
-    with ArchiveSource.open(tmp_path / "held.zip") as archive:
-        fetcher = FetcherModule(ModuleName.FETCHER, queues, 0.0, LayeredSource(store, [archive]))
-        fetcher.handle(miss(100.0))
-        fetcher.handle(miss(100.0, OTHER_ID))
+    archived = storage.model_copy(update={"archives": (tmp_path / "held.zip",)})
+    fetcher = FetcherModule(ModuleName.FETCHER, queues, configured(archived, 0))
+    fetcher.handle(miss(100.0))
+    fetcher.handle(miss(100.0, OTHER_ID))
 
     assert asked_for(queues) == [OTHER_ID]
 
 
 def test_factory_asks_at_most_once_per_retry_after_period(
-    queues: ModuleQueues, tmp_path: Path
+    queues: ModuleQueues, storage: StorageConfig
 ) -> None:
-    config = LibranetConfig(
-        network=NetworkConfig(retry_after_seconds=7),
-        storage=StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache"),
-    )
-
-    module = fetcher_module_factory(ModuleName.FETCHER, config, queues)
+    module = fetcher_module_factory(ModuleName.FETCHER, configured(storage, 7), queues)
 
     assert isinstance(module, FetcherModule)
     assert module.name == ModuleName.FETCHER

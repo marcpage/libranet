@@ -130,7 +130,6 @@ reported.
 
 from __future__ import annotations
 from dataclasses import dataclass, replace
-from enum import StrEnum
 from logging import Logger
 from time import time
 from typing import Any, Callable, ClassVar, Final, Mapping
@@ -138,9 +137,9 @@ from typing import Any, Callable, ClassVar, Final, Mapping
 from libranet.backup.builds import Build, BuildRecordError
 from libranet.backup.exports import Export
 from libranet.backup.jobs import BackupJob, ExpandedBackups, load_jobs, save_jobs
-from libranet.backup.restores import Restore, RestoreStatus
+from libranet.backup.restores import Restore
 from libranet.backup.runs import AnnouncingStore, Backup, BuildSettings, back_up
-from libranet.backup.tasks import TaskStatus
+from libranet.backup.tasks import TaskStatus, failure_reason
 from libranet.bundle.building import IgnoredPaths
 from libranet.bundle.errors import BundleError
 from libranet.cas.content_id import ContentId
@@ -168,27 +167,19 @@ from libranet.protocol.config_requests import (
 _ASKS_PER_SEEK_ENTRY_TTL: Final = 2
 
 
-class JobStatus(StrEnum):
-    """What a job is doing, as reported."""
-
-    WAITING = "waiting"
-    RUNNING = "running"
-    FAILED = "failed"
-
-
 @dataclass
 class _Progress:
     """When a job is next looked at, and how the last look went; kept in memory only."""
 
     due_at: float
     requested: bool = False
-    status: JobStatus = JobStatus.WAITING
+    status: TaskStatus = TaskStatus.WAITING
     error: str | None = None
     checked_at: float | None = None
 
     def fail(self, error: Exception) -> None:
         """Report that the job's last look failed, and why."""
-        self.status, self.error = JobStatus.FAILED, str(error) or type(error).__name__
+        self.status, self.error = TaskStatus.FAILED, failure_reason(error)
 
 
 class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
@@ -486,7 +477,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
     def _log_restore(self, restore: Restore) -> None:
         request = restore.request
 
-        if restore.status is RestoreStatus.FAILED:
+        if restore.status is TaskStatus.FAILED:
             self.logger.warning(
                 "Could not restore %s into %s: %s", request.bundle, request.directory, restore.error
             )
@@ -588,7 +579,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         """Back ``job`` up, publishing a change to metadata alone only if a backup was asked for."""
         requested, progress.requested = progress.requested, False
         progress.checked_at = self._clock()
-        progress.status = JobStatus.RUNNING
+        progress.status = TaskStatus.RUNNING
         self._report()
 
         try:
@@ -626,7 +617,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             self.logger.exception("Backing up %s failed", job.directory)
 
         else:
-            progress.status, progress.error = JobStatus.WAITING, None
+            progress.status, progress.error = TaskStatus.WAITING, None
 
         progress.due_at = self._clock() + self._interval_of(job)
         self._report()

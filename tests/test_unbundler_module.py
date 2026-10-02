@@ -57,7 +57,9 @@ def queues() -> ModuleQueues:
 
 @fixture
 def unbundler(storage: StorageConfig, queues: ModuleQueues) -> UnbundlerModule:
-    return UnbundlerModule(ModuleName.UNBUNDLER, queues, storage, poll_interval_seconds=0.01)
+    return UnbundlerModule(
+        ModuleName.UNBUNDLER, queues, LibranetConfig(storage=storage), poll_interval_seconds=0.01
+    )
 
 
 def put(store: CasStore, content: bytes, *, compressed: bool = False) -> ContentId:
@@ -205,7 +207,7 @@ def test_an_application_held_only_in_an_archive_is_resolved(
             store.delete(content_id)
 
     archived = storage.model_copy(update={"archives": (archive,)})
-    unbundler = UnbundlerModule(ModuleName.UNBUNDLER, queues, archived)
+    unbundler = UnbundlerModule(ModuleName.UNBUNDLER, queues, LibranetConfig(storage=archived))
 
     unbundler.handle(request(app_id, "docs/guide.html"))
 
@@ -395,7 +397,7 @@ def test_a_saved_directory_needs_neither_bundle_nor_extensions_held(
     published(queues)
     store.delete(app_id)
     store.delete(id_of(bundle_bytes(extension())))
-    restarted = UnbundlerModule(ModuleName.UNBUNDLER, queues, storage)
+    restarted = UnbundlerModule(ModuleName.UNBUNDLER, queues, LibranetConfig(storage=storage))
 
     restarted.handle(request(app_id, "about.html"))
     restarted.handle(request(app_id, "docs"))
@@ -445,7 +447,9 @@ def test_a_bundle_unusable_or_not_held_is_not_saved(
 def test_the_least_recently_used_bundle_is_forgotten_past_the_limit(
     storage: StorageConfig, queues: ModuleQueues, store: CasStore, caplog: LogCaptureFixture
 ) -> None:
-    unbundler = UnbundlerModule(ModuleName.UNBUNDLER, queues, storage, max_cached_bundles=2)
+    unbundler = UnbundlerModule(
+        ModuleName.UNBUNDLER, queues, LibranetConfig(storage=storage), max_cached_bundles=2
+    )
     first, second, third = (put(store, f"not bundle {n}".encode()) for n in range(3))
 
     with caplog.at_level(WARNING):
@@ -579,7 +583,25 @@ def test_the_bundle_cache_must_hold_at_least_one(
     storage: StorageConfig, queues: ModuleQueues
 ) -> None:
     with raises(ValueError, match="max_cached_bundles"):
-        UnbundlerModule(ModuleName.UNBUNDLER, queues, storage, max_cached_bundles=0)
+        UnbundlerModule(
+            ModuleName.UNBUNDLER, queues, LibranetConfig(storage=storage), max_cached_bundles=0
+        )
+
+
+def test_an_event_it_does_not_handle_is_not_taken_for_a_miss(
+    unbundler: UnbundlerModule, queues: ModuleQueues
+) -> None:
+    # Shaped like a miss, but meant for the web server.
+    notice = make_message(
+        EventType.APP_PATH_RESOLVED,
+        ModuleName.UNBUNDLER,
+        {"bundle": "sha256/" + "0" * 64, "path": "index.html", "outcome": "not_found"},
+    )
+
+    with raises(KeyError):
+        unbundler.handle(notice)
+
+    assert published(queues) == []
 
 
 def test_the_module_subscribes_to_application_misses_and_reclaiming() -> None:

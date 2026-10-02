@@ -13,7 +13,8 @@ from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
 from xattr import xattr
 
 from libranet.backup.builds import Build, BuildRecord, BuildRecordError
-from libranet.backup.restores import RESUME_DELAY_SECONDS, Restore, RestorePass, RestoreStatus
+from libranet.backup.restores import RESUME_DELAY_SECONDS, Restore, RestorePass
+from libranet.backup.tasks import TaskStatus
 from libranet.backup.runs import AnnouncingStore, BuildSettings
 from libranet.bundle.building import IgnoredPaths, build_directory, build_file
 from libranet.bundle.errors import IncorrectPasswordError, UnsupportedBundleError
@@ -203,7 +204,7 @@ def test_a_restore_rebuilds_what_was_backed_up(tree: Path, store: CasStore, targ
 
     assert attempt(restore, store) == RestorePass({}, ())
     assert described(target) == described(tree)
-    assert restore.status is RestoreStatus.DONE and restore.finished
+    assert restore.status is TaskStatus.DONE and restore.finished
     assert restore.report() == {
         "restore_id": restore.request.restore_id,
         "bundle": str(restore.request.bundle),
@@ -254,7 +255,7 @@ def test_a_bundle_not_held_is_asked_for_and_waited_on(
     restore = restore_of(bundle, target)
 
     assert attempt(restore, store) == RestorePass({}, (bundle,))
-    assert (restore.status, restore.missing) == (RestoreStatus.WAITING, frozenset({bundle}))
+    assert (restore.status, restore.missing) == (TaskStatus.WAITING, frozenset({bundle}))
     assert restore.due_at == NOW + ASK_INTERVAL
     assert not target.exists()
 
@@ -294,7 +295,7 @@ def test_extensions_not_held_are_all_asked_for_together(
     attempt(restore, store)
 
     assert len(described(target)) == 64
-    assert restore.status is RestoreStatus.DONE
+    assert restore.status is TaskStatus.DONE
 
 
 def test_files_held_are_restored_while_the_rest_wait(
@@ -405,7 +406,7 @@ def test_a_restore_nothing_arrives_for_gives_up_naming_what_it_did_not_restore(
     assert attempt(restore, store, NOW + GIVE_UP_AFTER) == RestorePass(
         {}, (), given_up={"far.txt": tuple(parts_of(far))}
     )
-    assert restore.status is RestoreStatus.FAILED and restore.finished
+    assert restore.status is TaskStatus.FAILED and restore.finished
     assert restore.report() == {
         "restore_id": restore.request.restore_id,
         "bundle": str(bundle),
@@ -452,13 +453,13 @@ def test_content_arriving_keeps_a_restore_from_giving_up_though_it_completes_not
 
     attempt(restore, store, NOW + GIVE_UP_AFTER)
 
-    assert (restore.status, restore.missing) == (RestoreStatus.WAITING, frozenset({second}))
+    assert (restore.status, restore.missing) == (TaskStatus.WAITING, frozenset({second}))
     assert restore.report()["restored"] == 0
     assert restore.due_at == NOW + 1000 + GIVE_UP_AFTER
 
     attempt(restore, store, NOW + 1000 + GIVE_UP_AFTER)
 
-    assert restore.status is RestoreStatus.FAILED
+    assert restore.status is TaskStatus.FAILED
 
 
 def test_content_found_held_though_its_arrival_was_not_noted_keeps_a_restore_from_giving_up(
@@ -473,7 +474,7 @@ def test_content_found_held_though_its_arrival_was_not_noted_keeps_a_restore_fro
     attempt(restore, store, NOW + ASK_INTERVAL)
     attempt(restore, store, NOW + GIVE_UP_AFTER)
 
-    assert restore.status is RestoreStatus.WAITING
+    assert restore.status is TaskStatus.WAITING
     assert (target / "first.txt").read_bytes() == b"first"
     assert restore.due_at == NOW + ASK_INTERVAL + GIVE_UP_AFTER
 
@@ -493,7 +494,7 @@ def test_asking_again_starts_the_time_before_giving_up_again(
 
     attempt(restore, store, NOW + 1000 + GIVE_UP_AFTER)
 
-    assert restore.status is RestoreStatus.FAILED
+    assert restore.status is TaskStatus.FAILED
 
 
 def test_asking_for_a_restore_that_gave_up_carries_it_on_where_it_left_off(
@@ -511,7 +512,7 @@ def test_asking_for_a_restore_that_gave_up_carries_it_on_where_it_left_off(
     attempt(restore, store)
     attempt(restore, store, NOW + GIVE_UP_AFTER)
 
-    assert restore.status is RestoreStatus.FAILED and restore.can_carry_on
+    assert restore.status is TaskStatus.FAILED and restore.can_carry_on
 
     copy(lacked, held, store)
     restore.ask_again(restore.request, NOW + GIVE_UP_AFTER + 1)
@@ -521,7 +522,7 @@ def test_asking_for_a_restore_that_gave_up_carries_it_on_where_it_left_off(
     assert restore.is_due(NOW + GIVE_UP_AFTER + 1) and not restore.finished
     assert attempt(restore, store, NOW + GIVE_UP_AFTER + 1) == RestorePass({}, ())
     assert described(target) == described(tree)
-    assert (restore.status, restore.report()["restored"]) == (RestoreStatus.DONE, 7)
+    assert (restore.status, restore.report()["restored"]) == (TaskStatus.DONE, 7)
     assert not restore.can_carry_on
 
 
@@ -606,7 +607,7 @@ def test_a_file_that_fails_its_checks_is_left_out_and_the_rest_restored(
     assert list(skipped) == ["forged.txt"]
     assert "does not match its whole-file hash" in skipped["forged.txt"]
     assert set(described(target)) == {"honest.txt"}
-    assert restore.status is RestoreStatus.DONE
+    assert restore.status is TaskStatus.DONE
 
 
 def test_an_entry_whose_attribute_part_cannot_be_read_is_left_out_and_the_rest_restored(
@@ -631,7 +632,7 @@ def test_an_entry_whose_attribute_part_cannot_be_read_is_left_out_and_the_rest_r
     assert "does not match" in skipped["corrupt.txt"]
     assert "blake3" in skipped["unknown.txt"]
     assert set(described(target)) == {"honest.txt"}
-    assert restore.status is RestoreStatus.DONE
+    assert restore.status is TaskStatus.DONE
 
 
 class Unknown:
@@ -656,7 +657,7 @@ def test_an_entry_of_a_kind_not_known_is_logged_as_an_error_and_left_out(
     assert [record.levelno for record in caplog.records] == [ERROR]
     assert "odd" in caplog.text and "Unknown" in caplog.text
     assert set(described(target)) == {"known.txt"}
-    assert restore.status is RestoreStatus.DONE and restore.report()["restored"] == 1
+    assert restore.status is TaskStatus.DONE and restore.report()["restored"] == 1
 
 
 class Full:
@@ -836,7 +837,7 @@ def test_extended_attributes_refused_are_reported_with_the_pass(
     restored = attempt(restore, held, xattrs=ExtendedAttributes())
 
     assert [(name, count) for (name, _), count in restored.unset_xattrs.items()] == [(too_long, 3)]
-    assert restored.skipped == {} and restore.status is RestoreStatus.DONE
+    assert restored.skipped == {} and restore.status is TaskStatus.DONE
     assert xattr(str(target / "a.txt")).get("user.tag") == b"red"
 
 
@@ -874,7 +875,7 @@ def test_a_backup_restored_is_not_recorded_and_what_is_beside_the_directory_is_k
     restore = restore_of(backed_up(tree, store), target)
     attempt(restore, store)
 
-    assert restore.status is RestoreStatus.DONE
+    assert restore.status is TaskStatus.DONE
     assert BuildRecord.beside(target).read_bytes() == b"not a record"
 
 
@@ -910,7 +911,7 @@ def test_a_restore_waiting_on_content_records_nothing_and_fails_on_what_is_not_a
     restore = restore_of(bundle, target)
     attempt(restore, store)
 
-    assert restore.status is RestoreStatus.WAITING
+    assert restore.status is TaskStatus.WAITING
     assert not BuildRecord.beside(target).exists()
 
     BuildRecord.beside(target).write_bytes(b"{not json")

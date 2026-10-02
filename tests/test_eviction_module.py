@@ -84,7 +84,6 @@ class Modules:
             ModuleName.EVICTION,
             self._queues,
             config,
-            RETRY_DELAY,
             clock=lambda: self._now[0],
             poll_interval_seconds=0.01,
             free_bytes=lambda: self._free[0],
@@ -920,7 +919,7 @@ def test_an_event_it_does_not_handle_raises(modules: Modules, config: LibranetCo
 
 
 def test_before_starting_nothing_is_known(config: LibranetConfig, queues: ModuleQueues) -> None:
-    module = EvictionModule(ModuleName.EVICTION, queues, config, RETRY_DELAY)
+    module = EvictionModule(ModuleName.EVICTION, queues, config)
 
     with raises(RuntimeError, match="not running"):
         module.node_id  # pylint: disable=pointless-statement
@@ -930,27 +929,20 @@ def test_before_starting_nothing_is_known(config: LibranetConfig, queues: Module
 
 
 def test_unusable_settings_are_refused(config: LibranetConfig, queues: ModuleQueues) -> None:
-    with raises(ValueError, match="retry_delay_seconds"):
-        EvictionModule(ModuleName.EVICTION, queues, config, -1.0)
-
     with raises(ValueError, match="max_hand_offs"):
-        EvictionModule(ModuleName.EVICTION, queues, config, RETRY_DELAY, max_hand_offs=0)
+        EvictionModule(ModuleName.EVICTION, queues, config, max_hand_offs=0)
 
     with raises(ValueError, match="hand_off_timeout_seconds"):
-        EvictionModule(ModuleName.EVICTION, queues, config, RETRY_DELAY, hand_off_timeout_seconds=0)
+        EvictionModule(ModuleName.EVICTION, queues, config, hand_off_timeout_seconds=0)
 
     with raises(ValueError, match="candidates_timeout_seconds"):
-        EvictionModule(
-            ModuleName.EVICTION, queues, config, RETRY_DELAY, candidates_timeout_seconds=0
-        )
+        EvictionModule(ModuleName.EVICTION, queues, config, candidates_timeout_seconds=0)
 
     with raises(ValueError, match="reclaim_timeout_seconds"):
-        EvictionModule(ModuleName.EVICTION, queues, config, RETRY_DELAY, reclaim_timeout_seconds=0)
+        EvictionModule(ModuleName.EVICTION, queues, config, reclaim_timeout_seconds=0)
 
     with raises(ValueError, match="reclaim_interval_seconds"):
-        EvictionModule(
-            ModuleName.EVICTION, queues, config, RETRY_DELAY, reclaim_interval_seconds=-1
-        )
+        EvictionModule(ModuleName.EVICTION, queues, config, reclaim_interval_seconds=-1)
 
 
 def test_the_module_subscribes_to_stored_content_and_answers() -> None:

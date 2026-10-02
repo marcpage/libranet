@@ -1,8 +1,9 @@
-"""Work the backup module does once, when asked: builds and exports (Phase 1 Step 38).
+"""Work the backup module does when asked: builds, exports, and restores (Phase 1 Steps 20, 38).
 
-Unlike a restore, which goes on in passes until done, a task is done or fails
-the first time it runs. Asking for it again starts it over. Tasks are kept in
-memory only, so a restart forgets them, as it forgets restores.
+A build or an export is done or fails the first time it runs, and asking for
+it again starts it over. A restore goes on in passes until done
+(:mod:`libranet.backup.restores`). Tasks are kept in memory only, so a
+restart forgets them.
 """
 
 from __future__ import annotations
@@ -11,7 +12,10 @@ from typing import Any
 
 
 class TaskStatus(StrEnum):
-    """What a task is doing, as reported."""
+    """What a task is doing, or a backup job's last look did, as reported.
+
+    A job is never done: once looked at, it waits for its next look.
+    """
 
     WAITING = "waiting"
     RUNNING = "running"
@@ -20,7 +24,7 @@ class TaskStatus(StrEnum):
 
 
 class Task:
-    """A build or an export asked for at ``requested_at``, and how it went."""
+    """A build, an export, or a restore asked for at ``requested_at``, and how it went."""
 
     def __init__(self, requested_at: float) -> None:
         self._requested_at = requested_at
@@ -44,7 +48,7 @@ class Task:
 
     def fail(self, error: Exception, now: float) -> None:
         """Note that the task failed, and why."""
-        self._failed(str(error) or type(error).__name__, now)
+        self._failed(failure_reason(error), now)
 
     def progress(self) -> dict[str, Any]:
         """What every task reports: what it is doing, why it failed, and when."""
@@ -62,3 +66,8 @@ class Task:
     def _failed(self, reason: str, now: float) -> None:
         """Note that the task failed, for ``reason``."""
         self._status, self._error, self._finished_at = TaskStatus.FAILED, reason, now
+
+
+def failure_reason(error: Exception) -> str:
+    """Why ``error`` says something failed, as reported: its message, or its type if it has none."""
+    return str(error) or type(error).__name__

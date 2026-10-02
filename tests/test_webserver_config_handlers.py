@@ -170,6 +170,20 @@ def test_the_index_names_every_endpoint(router: Router) -> None:
     }
 
 
+@mark.parametrize("path", ["/Config/api", "/CONFIG/api/node", f"/cOnFiG/api/backups/{JOB_ID}/run"])
+def test_the_config_segment_is_matched_in_any_case(router: Router, path: str) -> None:
+    # As the /config application's name is, so no spelling of it falls to neither.
+    method = "POST" if path.endswith("/run") else "GET"
+
+    assert router.dispatch(request(method, path)).status in (200, 202)
+
+
+@mark.parametrize("path", ["/config/API", "/config/Api/node"])
+def test_the_rest_of_an_endpoint_path_is_matched_exactly(router: Router, path: str) -> None:
+    # Those are paths in the /config application.
+    assert router.dispatch(request("GET", path)).status == 404
+
+
 def test_the_node_is_described_as_it_was_started(router: Router, queues: ModuleQueues) -> None:
     response = router.dispatch(request("GET", NODE_PATH))
 

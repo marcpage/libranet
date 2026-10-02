@@ -15,12 +15,12 @@ archives (Step 34), asks for nothing, so peers are never asked for what is
 already here: it was stored after the miss, or is archive content.
 
 A miss is covered by an earlier request for the same content made less than
-``ask_interval_seconds`` before it. The node sets that to the
-``Retry-After`` its ``503`` names, so a client that waits as told brings a
-fresh attempt with each retry, while a burst of requests for one missing
-object asks the peers once per interval rather than once per request. Every
-node doing the same bounds how far one miss spreads: a peer asking back for
-content this node is fetching finds it already asked for.
+``network.retry_after_seconds`` before it: the ``Retry-After`` the node's
+``503`` names, so a client that waits as told brings a fresh attempt with
+each retry, while a burst of requests for one missing object asks the peers
+once per interval rather than once per request. Every node doing the same
+bounds how far one miss spreads: a peer asking back for content this node is
+fetching finds it already asked for.
 
 The connection manager's answer, ``fetch.succeeded`` or ``fetch.failed``,
 is only logged. Content that arrived is already with the validator, and
@@ -31,9 +31,9 @@ that connect later are asked for it.
 from __future__ import annotations
 from collections import OrderedDict
 from logging import Logger
-from typing import ClassVar
+from time import time
+from typing import Callable, ClassVar
 
-from libranet.bundle.content import ContentSource
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
 from libranet.config.models import LibranetConfig
@@ -55,20 +55,18 @@ class FetcherModule(ModuleBase):
         self,
         name: ModuleName,
         queues: ModuleQueues,
-        ask_interval_seconds: float,
-        content: ContentSource,
+        config: LibranetConfig,
         *,
         logger: Logger | None = None,
+        clock: Callable[[], float] = time,
         poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
     ) -> None:
-        if ask_interval_seconds < 0:
-            raise ValueError(
-                f"ask_interval_seconds must not be negative, got {ask_interval_seconds}"
-            )
-
-        super().__init__(name, queues, logger=logger, poll_interval_seconds=poll_interval_seconds)
-        self._ask_interval_seconds = ask_interval_seconds
-        self._content = content
+        super().__init__(
+            name, queues, logger=logger, clock=clock, poll_interval_seconds=poll_interval_seconds
+        )
+        self._ask_interval_seconds = config.network.retry_after_seconds
+        # The content archives stay open for as long as the process runs.
+        self._content = LayeredSource.open(config.storage)
         # Content asked for, oldest first, with when the miss that prompted
         # each request was reported.
         self._asked: OrderedDict[ContentId, float] = OrderedDict()
@@ -123,12 +121,5 @@ class FetcherModule(ModuleBase):
 def fetcher_module_factory(
     name: ModuleName, config: LibranetConfig, queues: ModuleQueues
 ) -> ModuleBase:
-    """:data:`~libranet.supervision.specs.ModuleFactory` for :class:`FetcherModule`.
-
-    The same content is asked for at most once per the ``Retry-After`` this
-    node sends with a ``503`` for content it is still retrieving. The content
-    archives stay open for as long as the process runs.
-    """
-    return FetcherModule(
-        name, queues, config.network.retry_after_seconds, LayeredSource.open(config.storage)
-    )
+    """:data:`~libranet.supervision.specs.ModuleFactory` for :class:`FetcherModule`."""
+    return FetcherModule(name, queues, config)

@@ -99,7 +99,9 @@ def router(
 @fixture
 def unbundler(storage: StorageConfig) -> UnbundlerModule:
     return UnbundlerModule(
-        ModuleName.UNBUNDLER, ModuleQueues(inbox=Queue(), outbox=Queue()), storage
+        ModuleName.UNBUNDLER,
+        ModuleQueues(inbox=Queue(), outbox=Queue()),
+        LibranetConfig(storage=storage),
     )
 
 
