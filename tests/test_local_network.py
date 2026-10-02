@@ -196,6 +196,61 @@ def test_nodes_log_at_debug_only_with_the_switch(tmp_path: Path) -> None:
         assert load_config(node.place.config_path, required=True).logging.level == level
 
 
+def test_nodes_listen_at_and_are_listed_at_the_host_given(tmp_path: Path) -> None:
+    network = LocalNetwork.create(tmp_path, 3, 18400, host="192.168.1.10")
+    node = network.nodes[0]
+
+    node.write_files()
+
+    assert node.place.endpoint == "http://192.168.1.10:18400"
+    assert load_config(node.place.config_path, required=True).network.listen_address == (
+        "192.168.1.10"
+    )
+    assert list(loads(network.seed_list(node))["nodes"]) == [
+        "http://192.168.1.10:18401",
+        "http://192.168.1.10:18402",
+    ]
+
+
+def test_an_ipv6_host_is_bracketed_in_the_endpoint(tmp_path: Path) -> None:
+    place = NodePlace(2, tmp_path / "node-02", 18402, 18502, host="fd00::10")
+
+    assert place.endpoint == "http://[fd00::10]:18402"
+    assert place.config.network.listen_address == "fd00::10"
+
+
+def test_the_host_must_be_one_ip_address() -> None:
+    assert parse_args([]).host == "127.0.0.1"
+    assert parse_args(["--host", "192.168.1.10"]).host == "192.168.1.10"
+
+    for host in ("0.0.0.0", "::", "supernode.local"):
+        with raises(SystemExit):
+            parse_args(["--host", host])
+
+
+def test_storage_is_limited_only_with_the_switch(tmp_path: Path) -> None:
+    # A kept directory run again without the switch is rewritten back to no limit.
+    for limit in (1 << 30, None):
+        network = LocalNetwork.create(tmp_path, 2, 18400, max_storage_bytes=limit)
+        node = network.nodes[0]
+
+        node.write_files()
+
+        written = safe_load(node.place.config_path.read_text())["storage"]
+        assert written.get("max_storage_bytes") == limit
+        assert load_config(node.place.config_path, required=True).storage.max_storage_bytes == (
+            limit
+        )
+
+
+def test_the_storage_limit_must_not_be_negative() -> None:
+    assert parse_args([]).max_storage_bytes is None
+    assert parse_args(["--max-storage-bytes", "0"]).max_storage_bytes == 0
+
+    with raises(SystemExit):
+        parse_args(["--max-storage-bytes", "-1"])
+
+
 def test_keys_an_earlier_run_left_are_reused(tmp_path: Path) -> None:
     first = LocalNetwork.create(tmp_path, 3, 18400)
 
