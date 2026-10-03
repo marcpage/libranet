@@ -525,7 +525,7 @@ written to the source tree.
 | Protocol and format specifications | Drafted |
 | Phase 1 — reference node, steps 1–15, 17–20, and 33–40 | Implemented |
 | Phase 2 — steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–59 | Implemented |
-| Phase 3 — video playback, steps 64–67 | Planned |
+| Phase 3 — video playback, steps 64–73 | Planned |
 | Phase 4 — Karma, steps 30 and 56 | Planned |
 | Phase 5 — enhancements, steps 16, 50, and 57 | Planned |
 | Public network | Not yet running |
@@ -564,7 +564,7 @@ currently find each other only through peers you configure yourself.
 | [Operator Guide](docs/operations/Operator%20Guide.md) | Running a node: resetting the `/config` password, running a super node |
 | [Phase 1 Plan](docs/implementation/Phase%201.md) | Implementation steps 1–15, 17–20, and 33–40, all built |
 | [Phase 2 Plan](docs/implementation/Phase%202.md) | Implementation steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–59, all built |
-| [Phase 3 Plan](docs/implementation/Phase%203.md) | Video playback: steps 64–67, planned |
+| [Phase 3 Plan](docs/implementation/Phase%203.md) | Video playback: steps 64–73, planned |
 | [Phase 4 Plan](docs/implementation/Phase%204.md) | Karma: steps 30 and 56 so far, planned |
 | [Phase 5 Plan](docs/implementation/Phase%205.md) | Enhancements: steps 16, 50, and 57, planned |
 | [Module System](docs/implementation/Module%20System.md) | The node's processes, the message bus, and the events modules exchange |

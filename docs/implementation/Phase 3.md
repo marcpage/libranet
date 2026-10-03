@@ -1,6 +1,6 @@
 # Libranet Python Implementation Plan — Phase 3
 
-Version 0.2 • October 2026
+Version 0.3 • October 2026
 
 ---
 
@@ -59,9 +59,27 @@ that adds it:
   Step 29). No file will be resolved to disk any more: only its entry,
   which names its parts.
 
-And the application itself (Step 67): a video player that a build adds
-to a directory of videos, so that any such directory becomes an
-application that plays them.
+And the application itself (Step 67, #213): a movie library shipped with
+the node at `/movie`. It plays movies to any client. To a client on the
+node's own machine, it also offers adding movies, editing what is known of
+them, and keeping and sharing playlists. A page has nothing but the HTTP
+API to do that with, and the API lacks:
+
+- **Knowing whether the client is local, and serving only local clients**
+  (Step 68). Some `/data` endpoints serve only clients on the node's own
+  machine, and have to keep other sites' pages out as `/config` does.
+- **Reaching the person's files** (Steps 68 and 69). A browser never tells
+  a page where a chosen file lies. The node offers some folders, which a
+  local client can list and import a file from, getting back its id.
+- **Keeping anything on the node** (Step 70). Content never changes, so
+  what a playlist is now has to be kept somewhere that does: a small store
+  for each application.
+- **Reading into a bundle** that is not a registered application (Step
+  71): a movie, or a playlist, named by its id, encrypted or not.
+- **Making and changing bundles** (Step 72), without expanding them or
+  holding the parts of their files. A playlist is a directory bundle.
+- **Listing the applications** (Step 73), so that the root application can
+  link to each.
 
 ## 3. How to Read the Steps Below
 
@@ -79,9 +97,12 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
   appears under **Ruled before building**. What this plan chose without
   asking appears under **My calls, not yet reviewed**, to be reviewed
   before the step is built.
-- **Specifications change first.** Steps 64, 65, and 66 change the Bundle
-  Specification and the HTTP API, and those changes are written; each
-  step says where.
+- **Specifications change first.** Steps 64, 65, 66, and 68 to 73 change
+  the Bundle Specification and the HTTP API, and those changes are
+  written; each step says where.
+- **No upgrade path.** Until version 1.0, a node may have to be made anew
+  for each version, so no step migrates what an earlier version left, on
+  disk or in the database.
 - **Change sets follow CLAUDE.md**: a step whose non-test Python would
   run past 1,000 new or changed lines is split into sets that can each be
   reviewed and committed on their own. None of the steps below is
@@ -278,9 +299,6 @@ My calls, not yet reviewed:
   resolved files is not a request, because the resolved tree stood in for
   the content while it lasted. With no tree, the parts are the only copy,
   and a video being watched would otherwise be handed off as it played.
-- **Old resolved files are deleted.** As it starts, the unbundler deletes
-  every file in its resolved trees but the `.jzon` files, so the copies
-  written before this step free their room at once.
 - **A file without `sizes` is served from its start only**, its parts
   read in turn. It is sent with the length `metadata.size` gives, or,
   with neither, until the connection closes.
@@ -362,68 +380,518 @@ ignoring `Range`.
 
 ---
 
-## Step 67 — A Video Player Added When Building
+## Step 67 — The Movie Application
 
-**Issue:** none yet: the milestone asks for a video application, and no
-issue names one. **Depends on:** Step 64; Phase 1 Steps 37 and 38. Seen
-to play and seek only once Steps 65 and 66 are built.
+**Issue:** #213. **Depends on:** Steps 68 to 72, and Step 73 for the
+root application's link to it; Phase 1 Step 37. Seen to play and seek
+only once Steps 65, 66, and 71 are built.
+
+Settled in the issue:
+
+- An application shipped with the node keeps a library of movies. A
+  movie is added from a file on the node's machine, by a local client, or
+  by an id that anyone can be given.
+- It lists the movies and plays them, and edits what is known of each:
+  title, year, rating, cast, description, duration, and so on.
+- A playlist is this node's own. A whole playlist, part of one, or a
+  single movie can be shared.
 
 Ruled before building:
 
-- **The video application is a player that a build adds**, rather than
-  an example copied in by hand, or a player shipped with the node that
-  plays from any bundle. Building an application in `/config` (Phase 1
-  Step 38) can add one, so any directory of videos becomes an application
-  that plays them. No route is added to the node, since the videos are
-  the application's own files.
+- **This is the video application Step 67 always meant.** It replaces the
+  player a build added to a directory of videos (version 0.2 of this
+  plan), so `BuildRequest` gains no `player`.
+- **It is served at `/movie`**, and every endpoint it uses is beneath
+  `/data`.
+- **A movie's id is a directory bundle** holding the video and what is
+  known of it. Sharing a movie is sharing that id.
+- **A playlist is a directory bundle**, stored encrypted, with a file
+  giving the order of its movies. Each change makes a new bundle through
+  Step 72, which never expands the playlist or needs any movie's parts.
+- **Remote clients only play.** The page asks `/data/client` (Step 68) and
+  offers importing, editing, and making playlists only to a local client.
+  Any client may read into bundles (Step 71) and read the application's
+  store (Step 70).
+- **Choosing a playlist.** The browser remembers the last playlist chosen,
+  and may also keep the playlists it has seen. With none remembered, the
+  page offers the playlists the node knows, from its store. A local client
+  is also offered making a new playlist, or importing one by its id.
+- **Importing a playlist** lets the person choose which of its movies to
+  take.
+- **An imported file's parts are pushed at once** (Step 69). In a home
+  with a super node (Operator Guide §3), its sixteen nodes are the home
+  node's peers, so the parts go there first.
+- **Nothing keeps a movie on the node.** Eviction's priorities
+  (HighLevelDesign §4.5) keep one watched often or lately, and one seldom
+  watched may lose parts to the network. Karma (Phase 4) is to answer
+  that, by rewarding the nodes that show they still hold what was
+  uploaded to them.
 
 What is to be built:
 
-- `BuildRequest` (`protocol/config_requests.py`) gains `player`, a
-  boolean, false if the request leaves it out, read by `from_value` and
-  carried in `payload`. The build form on the `/config` page
-  (`applications/config/index.html`) gains a box to tick for it.
-- The player is one page, `applications/video/index.html`, its script
-  and styles inline as the `/config` page has them. It reads
-  `videos.json` beside it, lists the videos, and plays the one chosen in
-  a `<video controls preload="metadata">`, seeking with range requests
-  (Step 66). A video the browser cannot play shows the browser's error.
-- A build asking for the player adds two entries to what it read from the
-  directory, before the bundle is layered (Phase 2 Step 31), so that a
-  build updating an application updates them too:
-  - `index.html`: the player.
-  - `videos.json`: `{"videos": [{"path", "size", "type"}, ...]}`, every
-    file whose type `content_type_for` (`webserver/app_handler.py`)
-    gives as `video/*`, sorted by path.
-
-  A protected build stores both encrypted, as it does every file
-  (BundleSpecification §6).
+- `SHIPPED_APPLICATIONS` (`applications/packaged.py`) gains
+  `"movie": "movie"`. The page is `applications/movie/index.html`, its
+  script and styles inline as the `/config` page has them.
+- **A movie** is a plain bundle, so anyone given its id can play it. It
+  holds:
+  - the video, under the name of the file it was imported from;
+  - `info.json`: `{"title", "year", "rating", "cast": [...],
+    "description", "duration_seconds", "video", "poster"}`, where `video`
+    names the video's file, and any of the rest may be absent;
+  - `poster.jpg`, if one was taken.
+- **A playlist** is an encrypted bundle (Step 72). Its id is the encrypted
+  form (HttpApi §5), so whoever is given the id can read it, and no one
+  else can. It holds:
+  - `playlist.json`: `{"name", "order": ["<folder>", ...]}`;
+  - each movie as a folder holding the movie bundle's entries, as they
+    are.
+- **Adding a movie from a file** (local). The person browses the folders
+  offered (`/data/directory`, Step 68) and picks a video. The page imports
+  it (`POST /data/imports`, Step 69) and follows the import in
+  `GET /data/imports`. Then it makes the movie's bundle from the file and
+  an `info.json` (`POST /data/bundles`), and adds that to the playlist.
+  The duration comes from the `<video>` element once its metadata loads,
+  and a poster from a frame drawn to a canvas.
+- **Adding a movie by its id** (local) copies its bundle into a new folder
+  of the playlist (`{"from": id, "path": ""}`).
+- **Editing** (local) replaces a folder's `info.json`. Moving or removing
+  a movie changes `playlist.json` too. Each edit makes a new version of
+  the playlist.
+- **The store** (Step 70) holds `playlists`: `[{"name", "bundle"}]`, each
+  playlist this node knows, at its newest version. Each change to a
+  playlist puts its new id there, with `If-Match`. So a remote client
+  that remembered a playlist finds its newest version by name.
+- **Sharing.**
+  - A whole playlist is shared by its id.
+  - Part of one is shared by a new bundle of the chosen folders, with a
+    `playlist.json` for them.
+  - One movie is shared by a plain bundle of its folder's entries. That is
+    the movie's own bundle again, unless it was edited.
+- **Importing a playlist** (local). The page reads the playlist the given
+  id names (`playlist.json`, and each folder's `info.json`) and lists its
+  movies. It copies the ones chosen into one of the person's playlists,
+  or into a new one.
+- **Playing**: `<video controls preload="metadata">` whose source is
+  `/data/{playlist}/{folder}/{video}`, seeking with range requests (Steps
+  66 and 71). A video the browser cannot play shows the browser's error.
 
 My calls, not yet reviewed:
 
-- **The player is built with the shipped applications** into the
-  wheel's content archives (Phase 1 Step 37), but registered under no
-  name. A build reads it through `LayeredSource`, so a node run from its
-  source and one installed from a wheel add the same bytes.
-- **A directory holding its own `index.html` or `videos.json` fails the
-  build** when the player is asked for, naming the file, rather than one
-  hiding the other.
-- **The request says each time** whether to add the player. The
-  `{name}.bundle` record does not remember it, so a build without it
-  leaves the player out, and its layer removes it.
-- **Every `video/*` type is listed**, as the standard library's table
-  gives them, though a browser plays few of them besides MP4 and WebM.
+- **A movie's folder is named when it is added**, by the first 16 hex
+  digits of its bundle's hash, and keeps that name when the movie is
+  edited. `playlist.json` then changes only when the order does.
+- **`playlist.json` holds only the name and the order.** What is known of
+  a movie stays in its folder, so a copied folder carries it.
+- **The page asks `/data/client` once**, as it loads.
+- **A `412` from the store is retried** once the store has been read
+  again, since a change to a playlist touches only that playlist's entry.
+- **A poster is a JPEG** of the frame showing when the person asks for
+  one, at most 1280 pixels wide.
+- **Any `video/*` file in the offered folders is offered for import**, as
+  the standard library's table types them.
 
-About 200 new or changed lines of non-test Python, besides the page, so
+About 5 new lines of non-test Python, besides the page, so one change set.
+
+**Testable in isolation:** a test that the shipped applications include
+`movie`, built from `applications/movie/`. The page is checked in a live
+run:
+
+- A local client imports an MP4 and a WebM file, edits one's metadata, and
+  shares a movie and part of a playlist.
+- A second node's local client imports part of that playlist by its id.
+- A remote client (another machine, or this one reaching the node at its
+  network address) is offered only playing. It finds a playlist's newest
+  version after an edit, and seeks into parts not yet held.
+
+---
+
+## Step 68 — Local Clients and the Folders They May Read
+
+**Issue:** #213. **Depends on:** Phase 2 Steps 41 and 58.
+
+Ruled before building:
+
+- **A page can ask whether its client is local**, and some `/data`
+  endpoints serve only local clients. Local means a loopback source, as
+  for `/config`.
+- **`/data/directory` lists the folders a node offers**, by name, and
+  `/data/directory/Desktop` lists the Desktop. Files are imported only from
+  these folders (Step 69).
+- **The folders are configured.** On macOS they default to Desktop,
+  Documents, Downloads, Movies, Music, and Pictures, and elsewhere to the
+  same folders under each platform's own names.
+
+The specification change is written:
+
+- HttpApi §2.4, new, says what a local client is, how a page asks
+  (`GET /data/client`), which endpoints serve only local clients, and the
+  checks they make on every request.
+- §12.2, new, gives the listing, and Step 69's imports.
+- §5 names the endpoints beneath `/data` that are never hash algorithms.
+
+What is to be built:
+
+- **`LocalConfig`** (`config/models.py`), a new `local` section, with
+  `folders`: a list of paths. Each folder is offered under its own name,
+  the last segment of its path. The default list is the platform's, from
+  `platformdirs` (`config/paths.py`): the user's desktop, documents,
+  downloads, music, pictures, and videos directories. On macOS the last of
+  those is `~/Movies`, and on Linux each comes from the XDG user
+  directories. `examples/libranet.yaml` states the list.
+- **The checks** of HttpApi §2.4 for the local-only endpoints, as a
+  handler wrapping each one's (`LocalOnly`, `webserver/local_only.py`,
+  new). It refuses a source that is not loopback, then makes the checks
+  `ConfigSiteGuard` makes. Those move to a class both use
+  (`webserver/site_checks.py`), with the exception for a link the operator
+  follows left to `/config`. A body that is not `application/json` is
+  `415` as for `/config/api`.
+- **`GET /data/client`**, answering any client.
+- **`GET /data/directory[/{name}/{path}]`** (`webserver/local_folders.py`,
+  new), local only. A path is looked up beneath its folder, and must still
+  lie within the folder once every symbolic link in it is followed. A
+  directory's entries give each one's `type`, and a file's `size`,
+  `modified`, and `content_type` (as `content_type_for` gives it).
+- The new routes are registered before `DATA_PATTERN`, as the search
+  route is, since that pattern also fits them.
+
+My calls, not yet reviewed:
+
+- **The hosts checked are `network.config_hosts`**, the list `/config`
+  checks, rather than a second list.
+- **The checks wrap each handler** rather than being a guard, since the
+  store (Step 70) may be read by any client but changed only by a local
+  one.
+- **The folders are a list of paths, each named by its last segment**,
+  rather than a mapping of names to paths. Two whose last segments are
+  the same fail `--check-config`.
+- **A folder that does not exist is left out of the listing**, so a
+  machine without, say, a Music folder lists the rest.
+- **Hidden entries, those whose names begin with `.`, are not listed**,
+  nor are the node's own directories, as a build ignores them. Neither
+  can be imported.
+- **A symbolic link leading out of its folder is left out**, and a path
+  through one is `404`.
+- **A listing has no limit on its length.**
+- **`identity.allow_unsigned_api_reads` is unchanged.** A node that
+  refuses unsigned `/data` reads refuses these too, and so serves the
+  movie application to no browser.
+
+About 300 new or changed lines of non-test Python, so one change set.
+
+**Testable in isolation:**
+
+- The checks: a source that is not loopback, a `Host` not in the list,
+  `Sec-Fetch-Site` of `same-site` and `cross-site`, an `Origin` naming
+  another host, and a body of another type.
+- `/data/client` from a loopback source and from another.
+- The default folders on macOS, and on Linux with and without
+  `user-dirs.dirs`, and two folders of one name failing.
+- Listings over a temporary folder: files, directories, a hidden file, a
+  symbolic link within and one out, `..`, a `/` percent-encoded, a path
+  naming a file, and a folder that does not exist.
+
+---
+
+## Step 69 — Importing a Local File
+
+**Issue:** #213. **Depends on:** Steps 64 and 68; Phase 1 Step 38; Phase
+2 Step 63.
+
+Ruled before building:
+
+- **An endpoint, for local clients only, takes a file's path and gives
+  back its id.** The path lies within the folders Step 68 offers.
+- **The file's parts are pushed at once**, like any content a node makes
+  to share (HttpApi §7.4).
+
+The specification change is written: HttpApi §12.2.
+
+What is to be built:
+
+- **`ImportRequest`** (`protocol/config_requests.py`), a file's path,
+  read by `from_value`, carried in `payload`, and named by `import_id`,
+  which is derived from the path as `build_id` is from a directory.
+- **`POST /data/imports`**, local only, checks that the path names a file
+  within a folder offered, as Step 68 checks a listing's. It publishes the
+  file's absolute path, and answers `202`:
+
+  ```text
+  backup.import_requested  {"import_id", "path"}
+  ```
+
+- **`GET /data/imports`**, local only, answers from what the backup
+  module last reported, as `GET /config/api/builds` does. `BackupState`
+  gains `imports`, and each import is reported with the path as it was
+  asked for.
+- **The backup module imports the file** with `build_file`
+  (`bundle/building.py`), recording each part's size (Step 64). It
+  stores the file bundle, reports `bytes_read` as it goes, and announces
+  each object it stores as `data.stored`, so that it is pushed. It waits
+  while storage is full, as a build does (Phase 2 Step 63).
+
+My calls, not yet reviewed:
+
+- **The file bundle records only what the bytes decide**: the size, the
+  whole-file hash, the parts, and their sizes, but not times or
+  permissions, as the shipped applications' bundles leave them out. So
+  one video imported on two machines has one id.
+- **Imports run in the backup module, one at a time with its backups and
+  builds.** An import waits behind a long backup, and a backup behind a
+  long import. Left open (§6).
+- **A file whose size or modification time changes while it is read
+  fails to import.** Importing it again reads it again.
+- **Progress is reported at most once a second.**
+- **Imports are kept in memory**, as builds are, so a restart forgets
+  them.
+- **Any file can be imported**, not only a video. The movie page offers
+  only videos.
+- **A path that names a directory is `400`**, and one that names nothing
+  in a folder offered is `404`.
+
+About 300 new or changed lines of non-test Python, so one change set.
+
+**Testable in isolation:**
+
+- Request tests for `ImportRequest`.
+- Handler tests for `202`, a path outside the folders, a directory, a
+  missing file, a body of another type, and a remote client.
+- Backup module tests over a temporary file:
+  - its parts and file bundle are stored and announced, with sizes and
+    without times;
+  - progress is reported;
+  - a full store is waited on;
+  - a file that changes as it is read fails.
+
+---
+
+## Step 70 — An Application's Store
+
+**Issue:** #213. **Depends on:** Step 68.
+
+Ruled before building:
+
+- **The node keeps a key-value store for each application**, for what an
+  application keeps for its clients on this node.
+- **Any client may read it, and only a local client may change it.**
+
+The specification change is written: HttpApi §13.3.
+
+What is to be built:
+
+- **`ApplicationStore`** (`webserver/app_store.py`, new), one JSON file
+  for each application in `store/` beneath the data directory, replaced
+  whole as the registry is. It is read again whenever it has changed, and
+  a lock keeps the server's threads from writing it at once.
+- **`GET /data/store/{application}` and `GET`, `PUT`, and `DELETE` of
+  `/data/store/{application}/{key}`**. Reading is open to any client, and
+  `PUT` and `DELETE` are local only. Each value read carries an `ETag`,
+  and a `PUT` or `DELETE` whose `If-Match` does not match is `412`.
+
+My calls, not yet reviewed:
+
+- **A store's file is named by the SHA-256 of the application's name**,
+  which holds the name inside it. No filesystem path is built from request
+  text, as `cas/resolved_files.py` builds none.
+- **Names are those the registry allows**, `/` written `%2F`, case-folded.
+  Removing an application leaves its store.
+- **Limits are constants, not settings**: 64 KiB for a value and 1 MiB
+  for an application's store, as `/config/api` bodies have a constant
+  limit.
+- **The `ETag` is a hash of the value's JSON with sorted keys**, and
+  `If-Match: *` matches any value held.
+- **A store file that cannot be read is `500`**, and is never saved over,
+  as for the registry.
+
+About 250 new or changed lines of non-test Python, so one change set.
+
+**Testable in isolation:** store tests for reading, replacing, and
+deleting a key, the file read again when it changes, the limits, an
+unreadable file, and names that differ only in case. Handler tests for
+each method, `If-Match` matching, not matching, and `*`, `404` for a key
+not held, and a remote client reading but not writing.
+
+---
+
+## Step 71 — Reading Into Bundles
+
+**Issue:** #213. **Depends on:** Steps 64, 65, and 66.
+
+Ruled before building:
+
+- **`/data/{algorithm}/{hash}/{path}` reads into a bundle**, for any
+  client.
+- **A playlist is encrypted**, so it is read by an id that carries its
+  key.
+
+The specification changes are written:
+
+- HttpApi §12.1, new, gives reading into a bundle, by its id or its
+  encrypted id, with directories listed one level deep. Every response
+  carries a sandboxing `Content-Security-Policy`.
+- §5 says a path that goes on past an id reads into the bundle.
+- §19 extends range requests to the files read so.
+
+BundleSpecification §7 already allows an encrypted path wherever a CAS
+path is used, `extensions` and `versions` among them.
+
+What is to be built:
+
+- **Routes for `GET` and `HEAD`** of a path that goes on past an id,
+  before `DATA_PATTERN`. The handler serves a file as `AppHandler`
+  serves an application's (Steps 65 and 66), with the bundle taken from
+  the path instead of the registry. The part of `AppHandler` that serves a
+  bundle's path moves where both can use it.
+- **A directory is listed** from the bundle's resolved directory, which
+  the unbundler already saves as `directory.jzon`, one level beneath the
+  path. An application's directory is redirected to its `index.html`
+  instead, as now.
+- **Bundles read from encrypted paths.** `load_bundle`
+  (`bundle/loading.py`) takes an encrypted path, as `PartPath` reads one
+  for a part, and `parse_cas_path` (`bundle/content.py`) no longer refuses
+  one in `extensions` or `versions`. A bundle's resolved files are kept by
+  the address of what is stored, its ciphertext's.
+
+My calls, not yet reviewed:
+
+- **The key travels in messages, and is never logged.** The unbundler is
+  asked for a path of an encrypted bundle with its full id, as it must
+  read it, and every log line leaves the key out, as `parse_cas_path`'s
+  errors already do.
+- **An encrypted bundle's `directory.jzon` is written decrypted**, as any
+  bundle's is, so the node's own disk holds the plaintext while the tree
+  is kept (Phase 2 Step 29). The network holds only ciphertext.
+- **A read into a bundle is reported as a use of it**, as an
+  application's request is (Phase 2 Step 29), so its resolved tree is
+  kept while a movie plays.
+- **Responses are cached as `/data` objects are** (`immutable`), since
+  what an id names never changes. `503` and errors are not.
+- **A listing has no limit on its length.**
+
+About 300 new or changed lines of non-test Python, so one change set.
+
+**Testable in isolation:**
+
+- Routing: a read into a bundle, a raw object, and the named endpoints
+  all reach their own handlers, and an encrypted id is told from a plain
+  bundle path beginning with an encryption algorithm.
+- A file served whole and as a range, and a file bundle's own file.
+- Listings of a root, a nested directory, and a symbolic link.
+- A path not held (`404`), a part named as a bundle (`400`), and a
+  password-protected bundle (`403`).
+- Both headers on every response.
+- An encrypted bundle with encrypted extensions read, and its key absent
+  from every log line.
+
+---
+
+## Step 72 — Making and Changing Bundles
+
+**Issue:** #213. **Depends on:** Steps 68, 69, and 71; Phase 1 Step 17;
+Phase 2 Step 31.
+
+Ruled before building:
+
+- **An endpoint makes a bundle, and adds to and removes from one**, so
+  that a playlist can be a directory bundle with a file giving its order.
+- **It never expands a bundle, and never needs the parts of a file.**
+- **A playlist is encrypted.**
+
+The specification change is written: HttpApi §12.3.
+
+What is to be built:
+
+- **`BundleEditRequest`** (`protocol/bundle_requests.py`, new): `base`,
+  `encrypted`, `add`, and `remove`, read by `from_value`. Its rules, such
+  as each path being an entry path and none both added and removed, are
+  checked in `__post_init__`. What may go at a path is one of three
+  sources: a file bundle's id, a path in another bundle, or bytes.
+- **`POST /data/bundles`**, local only, makes the bundle in the request's
+  thread:
+  1. It reads the base, and every bundle a `from` names, through
+     `LayeredSource`. Those the node lacks are asked for and waited for,
+     as Step 65 waits.
+  2. It resolves their directories (`resolve_directory`).
+  3. It applies the removals, then the additions.
+  4. It cuts the bytes given into parts, encrypted when the bundle is
+     (BundleSpecification §7).
+  5. It stores the bundle as a layer over the base where `Layering`
+     (`bundle/layering.py`) allows, and whole otherwise, split into
+     chunks as any large bundle is (`bundle/splitting.py`), each chunk
+     encrypted when the bundle is.
+  6. It answers `201`, with a `Location` reading into the new bundle.
+- **Objects are stored as uploads from this node.** Each is written to
+  this node's own store in `incoming/` and announced with `data.put_completed`,
+  so the validator checks and stores it, and announces `data.stored`, as
+  for any upload. So it is pushed.
+
+My calls, not yet reviewed:
+
+- **The web server makes the bundle, not the backup module**, so that an
+  edit never waits behind an import or a backup (Step 69).
+- **An edit is not held back while storage is full**, as uploads are not.
+  It stores no more than its body and the bundle's own objects.
+- **A request body may be up to 4 MiB**, room for a poster as base64.
+- **Layers are limited by `backup.max_update_layers`**, as builds are.
+- **An edit that changes nothing answers with the base**, as a build
+  keeps the bundle when nothing changed.
+- **An entry copied into a plain bundle from an encrypted one carries its
+  parts' keys**, so whoever is given the plain bundle can read it. That
+  is what sharing part of a playlist means.
+- **Answering `201` before the validator has stored the bundle.** A read
+  of it that comes first waits for it, as Step 65 waits.
+
+About 450 new or changed lines of non-test Python, so one change set.
+
+**Testable in isolation:**
+
+- Request tests for each source, and for the rules.
+- Edit tests over a fixture CAS:
+  - a new bundle, and each source added;
+  - a file and a folder removed;
+  - a base not held, waited for;
+  - a layer and a whole bundle;
+  - a plain bundle over an encrypted one, stored whole;
+  - an encrypted bundle's id, chunks, and bytes all encrypted;
+  - an edit changing nothing;
+  - every edit made from a CAS that holds no part of any file.
+- Handler tests for `201`, `400`, `413`, `415`, and a remote client.
+
+---
+
+## Step 73 — Listing Applications
+
+**Issue:** none yet: the root application should link to the
+applications a node serves, and no issue names it. **Depends on:** Phase
+1 Steps 35 and 37.
+
+Ruled before building:
+
+- **An endpoint lists the applications**, so the root application can
+  link to each.
+
+The specification change is written: HttpApi §13.4.
+
+What is to be built:
+
+- **`GET /data/applications`**, for any client, answered by
+  `ApplicationListHandler` (`webserver/config_handlers.py`) over the main
+  port's registry, as `GET /config/api/applications` is answered.
+- **The root page** (`applications/root/index.html`) lists each
+  application as a link.
+
+My calls, not yet reviewed:
+
+- **The answer is the same as `/config/api/applications`'s**, bundle ids
+  and all.
+- **The root page lists the applications by name, leaving out `/` and
+  `config`**, which it already links to.
+
+About 20 new or changed lines of non-test Python, besides the page, so
 one change set.
 
-**Testable in isolation:** request tests for `player`. Build tests over a
-temp directory for the two entries added, `videos.json` listing only
-videos, sorted; a directory that already has either file; a protected
-build's player encrypted; and a rebuild without the player removing it.
-The page is checked in a live run: a directory of MP4 and WebM files
-built with the player, registered, played, and seeked into parts not yet
-held.
+**Testable in isolation:** a handler test on the main port's router, and
+a registration showing in the next answer. The page is checked in a live
+run.
 
 ---
 
@@ -434,21 +902,30 @@ number, and where it went.
 
 | Issue | Asks for | Step |
 | --- | --- | --- |
-| #203 | An implementation plan | None: this document, version 0.2 |
+| #203 | An implementation plan | None: this document, version 0.3 |
 | #206 | Range requests (HttpApi §19, with its three open questions) | 66 |
 | #207 | Serving a file from its parts as they are fetched, with each part's size recorded | 64, 65 |
+| #213 | A movie application shipped at `/movie`, with playlists that can be shared | 67, with 68 to 72 for what it needs |
 
-The video application (Step 67) has no issue. The milestone asks for it,
-and an issue for it would join this table.
+Listing the applications (Step 73) has no issue. An issue for it would
+join this table.
 
 ## 5. Suggested Build Order
 
 | Order | Steps | Why here |
 | --- | --- | --- |
-| 1 | 64 (#207) | Every step after it reads part sizes. Small, and its specification change is made. |
-| 2 | 65 (#207) | Streams a file from its parts, which a range sends a span of. Its specification changes are made. |
-| 3 | 66 (#206) | Needs 64's sizes to find a range's parts, and 65's streaming to send them. Its specification change is made. |
-| 4 | 67 | Needs only 64 and Phase 1 Step 38, so it can be built beside 65 and 66, but is seen to play and seek only after 66. |
+| 1 | 64 (#207) | Every step after it reads part sizes. Small. |
+| 2 | 65 (#207) | Streams a file from its parts, which a range sends a span of. |
+| 3 | 66 (#206) | Needs 64's sizes to find a range's parts, and 65's streaming to send them. |
+| 4 | 68 (#213) | Local clients and their checks, which 69, 70, and 72 need. Needs nothing in this phase. |
+| 5 | 70 (#213) | Needs only 68. |
+| 6 | 71 (#213) | Serves what 65 and 66 serve, from any bundle, and reads encrypted bundles, which 72 makes. |
+| 7 | 69 (#213) | Needs 64's sizes and 68's folders. |
+| 8 | 72 (#213) | Needs 68's checks, 69's file ids, and 71's encrypted bundles. |
+| 9 | 73 | Small, and needs nothing in this phase, so it can go anywhere. |
+| 10 | 67 (#213) | The page, which needs all of the above. |
+
+Every specification change is made.
 
 ## 6. Open Items Not Yet Decided
 
@@ -460,6 +937,20 @@ and an issue for it would join this table.
 - **How many requests may wait at once** (Step 65, HttpApi §21). Each
   holds a server thread for up to `network.app_wait_seconds`, so a client
   asking for many files not held can hold many threads.
-- **Bundles built before Step 64** have no `sizes`. Their videos play
-  from the start, but cannot seek, until they are built again.
-- **An issue for the video application** (Step 67), for §4.
+- **A file of more than about 26 GB cannot be held in a bundle.** Its
+  entry names a part for each MiB, at about 39 bytes each once
+  compressed, and an entry must fit in one 1 MiB object, since splitting
+  a bundle never splits an entry (Phase 1 Step 17). A long 4K film is
+  larger. A file with encrypted parts, whose paths carry their keys, can
+  be about half that size.
+- **The store is readable by anyone who can reach the main port** (Step
+  70), and the movie application keeps its playlists' ids there, keys
+  and all. A node reachable from the Internet shows them to anyone.
+  Encryption keeps a playlist from the network at large, not from those
+  who can reach the node.
+- **Every application can do whatever any application can** (HttpApi
+  §2.4). One registered from elsewhere can import from the folders
+  offered, and change any application's store. An origin for each
+  application, such as `movie.localhost`, would keep them apart.
+- **An import waits behind a backup**, and a backup behind an import
+  (Step 69), as both run in the backup module one at a time.

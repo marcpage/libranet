@@ -72,6 +72,11 @@ The programmatic API includes endpoints such as:
 
 These endpoints are intended for nodes and software clients.
 
+Some are meant for the browser applications a node serves (§13) as well:
+reading into a bundle (§12.1), an application's store (§13.3), and the list
+of applications (§13.4). A few serve only clients on the node's own machine
+(§2.4).
+
 ### 2.2 Web Applications
 
 Directory bundles can be exposed as HTTP applications.
@@ -264,6 +269,61 @@ open `/config` in a window and drive it, as a page of the same origin
 could, since a browser lets a page script only the windows of its own
 origin.
 
+### 2.4 Local Clients
+
+A local client is one whose connecting (source) address is a loopback
+address, as §2.3 defines one, judged by the TCP connection itself and
+never by a request header. A browser on the node's own machine is one. A
+browser elsewhere is not, even one on the same home network.
+
+An application asks whether it is being served to a local client with:
+
+```http
+GET /data/client
+```
+
+which is answered, to any client, with:
+
+```json
+{"local": true}
+```
+
+An application uses the answer to decide what to offer: one that only
+plays what the network holds for a client elsewhere might add to it and
+edit it for a local one. The answer is a convenience and not a
+protection, since every endpoint that serves only local clients checks
+for itself.
+
+These endpoints serve only local clients: listing the folders a node
+offers and importing a file from one (§12.2), making and changing bundles
+(§12.3), and changing an application's store (§13.3). A request to one of
+them from any other client MUST be refused with `403 Forbidden`.
+
+A loopback source does not show that the person at the machine made the
+request. Any site's page that a browser on the machine has open can send
+requests to the node's main port at a loopback address. Each of these
+endpoints therefore makes the checks of §2.3.3 on every request, and
+refuses one that fails them with `403 Forbidden`, with these differences:
+
+- **`Host`** is checked against the same list of hosts as `/config`'s.
+- **`Sec-Fetch-Site`** passes only `same-origin` or `none`. The exception
+  §2.3.3 makes for a link the operator follows does not apply, since none
+  of these endpoints is a page.
+- **`Origin`** is checked as §2.3.3 checks it.
+
+A request body is read as JSON only if its `Content-Type` is
+`application/json`, with or without parameters, and any other is answered
+`415 Unsupported Media Type`. No response from these endpoints carries
+`Access-Control-Allow-Origin`, or any other header granting a cross-origin
+request.
+
+These checks keep other sites out, but not the node's own applications.
+Every application is served on the main port, so each shares its origin
+with every other, and whatever one may ask of these endpoints, all may.
+What a local client can reach of the machine is therefore held to the
+folders the node's operator offers (§12.2), and an operator SHOULD
+register only applications they trust.
+
 ---
 
 ## 3. HTTP and HTTPS
@@ -311,9 +371,9 @@ The primary methods are:
 | --------- | --------------------------------------------------- |
 | `GET`     | Retrieve information or content                     |
 | `HEAD`    | Retrieve metadata without the response body         |
-| `POST`    | Publish a list, or create a `/config` resource      |
-| `PUT`     | Create or replace content at a specified identifier |
-| `DELETE`  | Remove a `/config` administration resource          |
+| `POST`    | Publish a list, or create a resource                |
+| `PUT`     | Create or replace content or a stored value         |
+| `DELETE`  | Remove a `/config` resource or a stored value       |
 
 The exact method associated with each endpoint is defined below.
 Unsupported methods MUST return `405 Method Not Allowed`.
@@ -344,6 +404,17 @@ For example:
 The hash algorithm is part of the identifier rather than being globally implied.
 
 This allows multiple hash algorithms to coexist.
+
+The names of the other endpoints beneath `/data` are never hash algorithms:
+`search`, `nodes`, `seek`, `client`, `directory`, `imports`, `bundles`,
+`store`, and `applications`.
+
+A path that goes on past `{hash}` does not retrieve an object. It reads into
+the bundle the identifier names (§12.1). That includes an identifier written
+as per-entry encryption writes one
+([Bundle Specification §7](BundleSpecification.md#7-per-entry-cas-encryption)),
+`{hash-algorithm}/{hash}/{encryption algorithm}/{key}`, which names the
+bundle stored encrypted at `{hash}` and carries the key that decrypts it.
 
 ### 5.1 Retrieve Content
 
@@ -1183,6 +1254,199 @@ directory bundle
 
 where each file is retrieved from CAS.
 
+### 12.1 Reading Into a Bundle
+
+Any client may read what a bundle holds, without the bundle being
+registered as an application:
+
+```http
+GET /data/{hash-algorithm}/{hash}/{path}
+GET /data/{hash-algorithm}/{hash}/{encryption algorithm}/{key}/{path}
+```
+
+The first names a bundle by its content identifier. The second names one
+stored encrypted, by the identifier per-entry encryption gives it (§5),
+which carries the key that decrypts it. A path whose two segments after
+`{hash}` are an encryption algorithm the node knows and a key is read as
+the second. A bundle entry whose path begins that way cannot be read into
+by the first.
+
+`{path}` is an entry path, percent-encoded, and may be empty. For the
+first form, an empty path needs its trailing `/`, as
+`/data/{hash-algorithm}/{hash}/`, since without it the object itself is
+retrieved (§5.1). The second form reads into its bundle's root with or
+without one.
+
+- **A path naming a file** is answered with the file, served as an
+  application's file is (§13.2), with range requests (§19). A file
+  bundle's own file is named by the empty path.
+- **A path naming a directory** is answered with the directory's entries,
+  one level deep, as JSON. The empty path names a directory bundle's root.
+
+  ```json
+  {"entries": {
+    "Film (2001)": {"type": "directory"},
+    "playlist.json": {"type": "file", "size": 412,
+                      "content_type": "application/json"},
+    "latest": {"type": "symlink", "target": "Film (2001)"}
+  }}
+  ```
+
+  `size` is absent for a file whose bundle does not record it.
+  `content_type` is the type the file would be served with.
+- **A path the bundle does not hold** is `404 Not Found`.
+- **Content that is not a bundle, or a bundle the node cannot read,** is
+  `400 Bad Request`. A password-protected bundle
+  ([Bundle Specification §6](BundleSpecification.md#6-password-protection))
+  is not read into, and is `403 Forbidden`.
+
+Content the node lacks, whether the bundle, an extension, or a part, is
+asked for and waited for as §13.2 describes, and is `503` if it does not
+arrive in time. A node never asks a peer to read into a bundle for it. It
+fetches the objects it lacks, as for any miss (§5.2), and reads into the
+bundle itself.
+
+Every response to a read into a bundle carries:
+
+```http
+Content-Security-Policy: sandbox
+X-Content-Type-Options: nosniff
+```
+
+A bundle that anyone may name could hold a page. Opened as a page, its
+scripts would otherwise run with the main port's origin, and could do
+whatever any application may (§2.4). A `<video>`, an `<img>`, or a `fetch`
+of the file is unaffected by either header.
+
+As for an application's file, the response's signature (§11) MAY cover its
+headers alone.
+
+### 12.2 Local Files
+
+A node MAY offer local clients (§2.4) some folders of the machine it runs
+on, to list and to import files from. A browser never tells a page where a
+file the person chose lies, so this is how an application can add one of
+the person's files to the network. The node's operator chooses the
+folders. Each has a name, and nothing outside them is offered.
+
+```http
+GET /data/directory
+GET /data/directory/{name}/{path}
+```
+
+The first lists the folders offered, by name. The second lists a folder
+within one. Both answer with JSON:
+
+```json
+{"entries": {
+  "Film.mp4": {"type": "file", "size": 4294967296,
+               "modified": "2026-09-01T08:30:00Z",
+               "content_type": "video/mp4"},
+  "Holidays": {"type": "directory"}
+}}
+```
+
+`{path}` is `/`-separated, percent-encoded, and beneath the folder `{name}`
+names. No segment of it may be empty, `.`, or `..`. A node MUST NOT list or
+import anything outside the folders it offers, however a path is spelled
+and wherever a symbolic link within one leads. A path naming anything but
+a directory is `404 Not Found`.
+
+A file is imported with:
+
+```http
+POST /data/imports
+Content-Type: application/json
+
+{"path": "Movies/Film.mp4"}
+```
+
+The path is a folder's name followed by a path beneath it, as above.
+Reading a large file takes time, so the request is answered `202 Accepted`
+at once, with what the import is known by:
+
+```json
+{"import_id": "…"}
+```
+
+`GET /data/imports` says how each import is doing. Once an import is done,
+it gives the content identifier of the file bundle it stored:
+
+```json
+{"imports": {"<import_id>": {"path": "Movies/Film.mp4", "status": "done",
+                             "bytes_read": 4294967296, "size": 4294967296,
+                             "file": "sha256/…"}}}
+```
+
+`status` is `waiting`, `running`, `done`, or `failed`, and a failed import
+also carries `error`. An import stores the file's parts and a file bundle
+([Bundle Specification §2](BundleSpecification.md#2-raw-file-bundle)) that
+names them and records each one's size. An imported file is shared, not
+private, so its parts are pushed as they are stored (§7.4). Importing the
+same path again reads the file again.
+
+Every request to these endpoints is from a local client, or refused (§2.4).
+
+### 12.3 Making and Changing Bundles
+
+A local client (§2.4) makes a directory bundle, or a new version of one,
+with:
+
+```http
+POST /data/bundles
+Content-Type: application/json
+
+{"base": "sha256/…/AES256-CBC/…",
+ "encrypted": true,
+ "add": {
+   "Film (2001)": {"from": "sha256/…", "path": ""},
+   "Film (2001)/info.json": {"text": "{\"title\": \"Film\"}"},
+   "Film (2001)/poster.jpg": {"base64": "/9j/4AAQ…"},
+   "Other.mp4": {"file": "sha256/…"}
+ },
+ "remove": ["Old Film (1999)"]}
+```
+
+and is answered `201 Created`, with the new bundle's identifier:
+
+```json
+{"bundle": "sha256/…/AES256-CBC/…"}
+```
+
+- **`base`** is the bundle this one is a new version of, or `null` or
+  absent for a new one. The new bundle lists it in `versions`
+  ([Bundle Specification §3.1](BundleSpecification.md#31-fields)), holds
+  every entry it holds but those changed, and MAY be stored as a layer
+  over it
+  ([Bundle Specification §4](BundleSpecification.md#4-directory-extensions)).
+- **`add`** maps each entry path to what goes there, replacing whatever
+  the base held at that path:
+  - `{"file": id}`: the file bundle `id` names, as an import gives (§12.2).
+  - `{"from": id, "path": p}`: what bundle `id` holds at `p`. A file is
+    copied to the path. A directory has every entry beneath it copied to
+    the same place beneath the path. `""` names the bundle's root.
+  - `{"text": s}` or `{"base64": b}`: a file of these bytes, stored by the
+    node.
+- **`remove`** lists entry paths to take out of the base. Removing a
+  directory removes every entry beneath it, and a path the base does not
+  hold is ignored.
+- **`encrypted`** stores the new bundle, and each file whose bytes the
+  request gives, with per-entry encryption, so that its identifier is the
+  encrypted form (§5). A node that receives it, and every node it passes
+  through, holds only ciphertext. An entry copied from elsewhere is copied
+  as it is, with its parts as they were stored. It defaults to whether
+  `base` is encrypted. A bundle that is not encrypted, over one that is,
+  is stored whole rather than as a layer, so that its extensions do not
+  carry the base's key.
+
+A node makes the bundle from the bundles named and nothing else. It never
+needs the parts of a file it adds, moves, or removes. A bundle it lacks is
+asked for, and waited for, as §13.2 describes. Each object it stores is
+shared, and pushed (§7.4).
+
+A request naming content that is not a bundle, a file where a directory is
+needed, or a path that is not an entry path is `400 Bad Request`.
+
 ---
 
 ## 13. Web Application Routing
@@ -1312,6 +1576,63 @@ An application response is not part of the programmatic API, and its
 signature (§11) MAY cover its headers alone, leaving out the body, so that a
 node can sign it before reading the body.
 
+### 13.3. Application Store
+
+A node keeps a small store for each application, of values the
+application keeps on this node and nowhere else, such as which of its
+bundles it last made. It is named by the application's name, as a path
+segment, whether or not an application of that name is registered, so an
+application keeps its store when it is registered under the same name
+from another bundle.
+
+```http
+GET    /data/store/{application}
+GET    /data/store/{application}/{key}
+PUT    /data/store/{application}/{key}
+DELETE /data/store/{application}/{key}
+```
+
+A key is one path segment, percent-encoded. A value is any JSON value, and
+`PUT` takes it as its body. `GET` of the application answers with every
+key it holds:
+
+```json
+{"values": {"playlists": [{"name": "Family", "bundle": "sha256/…"}]}}
+```
+
+`GET` of a key the store does not hold is `404 Not Found`. Every value read
+carries an `ETag`, and a `PUT` or `DELETE` carrying `If-Match` that does not
+match the value's current `ETag` is answered `412 Precondition Failed`, so
+that two clients changing one key do not lose each other's changes.
+
+Any client may read the store, and only a local client may change it
+(§2.4). A node MAY limit the size of a value, and of an application's
+store, and answers one that would grow past either with
+`413 Content Too Large`.
+
+The store is not content. It is kept by this node alone, never pushed,
+and lost with the node's own files. What an application needs to keep for
+longer belongs in CAS, with the store holding no more than where to find
+it.
+
+### 13.4. Listing Applications
+
+Any client may ask which applications a node serves:
+
+```http
+GET /data/applications
+```
+
+which is answered with each one's name and the bundle it is served from:
+
+```json
+{"applications": {"/": "sha256/…", "config": "sha256/…",
+                  "movie": "sha256/…"}}
+```
+
+`config` is served on its own port, and only to a local client (§2.3), so
+an application linking to it does so only for a local one.
+
 ---
 
 ## 14. HTTP Path Resolution
@@ -1380,6 +1701,7 @@ The following status codes are expected to have defined Libranet semantics.
 | `403 Forbidden`              | Request understood but not permitted      |
 | `404 Not Found`              | Requested resource is unavailable         |
 | `405 Method Not Allowed`     | HTTP method is not supported              |
+| `412 Precondition Failed`    | A stored value changed since it was read  |
 | `413 Content Too Large`      | Request exceeds permitted size            |
 | `415 Unsupported Media Type` | Request body is not of an accepted type   |
 | `429 Too Many Requests`      | Rate limit exceeded                       |
@@ -1584,8 +1906,9 @@ Because `/data/...` content is transferred in at most 1 MiB, range requests are
 not needed for `/data/...` requests, and a node MAY ignore a `Range` header on
 one, sending the whole object.
 
-A node MUST support a single byte range on an application file (§13.2) whose
-bundle records the size of each of its parts
+A node MUST support a single byte range on an application file (§13.2), or a
+file read from a bundle (§12.1), whose bundle records the size of each of its
+parts
 ([Bundle Specification §2.1](BundleSpecification.md#21-fields)), in each of its
 three forms:
 
@@ -1774,19 +2097,26 @@ HTTP mechanisms.
 
 The following table summarizes the currently proposed HTTP API.
 
-| Endpoint                   | Method       | Purpose                                                    | Status  |
-| -------------------------- | ------------ | ---------------------------------------------------------- | ------- |
-| `/data/{algorithm}/{hash}` | `GET`        | Retrieve CAS content                                       | Defined |
-| `/data/{algorithm}/{hash}` | `PUT`        | Upload CAS content                                         | Defined |
-| `/data/{algorithm}/{hash}` | `HEAD`       | Retrieve CAS metadata                                      | TBD     |
-| `/data/search/{hash}`      | `GET`        | Search for matching hashes                                 | Defined |
-| `/data/nodes`              | `GET`/`POST` | Retrieve/publish peer information                          | Defined |
-| `/data/seek`               | `GET`/`POST` | Retrieve/publish outstanding requests                      | Defined |
-| `/data/...`                | Various      | Additional programmatic APIs                               | TBD     |
-| `/`                        | `GET`        | Root web application                                       | Defined |
-| `/{application}/...`       | `GET`        | Directory-bundle application                               | Defined |
-| `/config/api/...`          | Various      | Local-only administration endpoints, on `/config`'s port   | Defined |
-| `/config/...`              | `GET`        | Local-only administration application, on `/config`'s port | Defined |
+| Endpoint                          | Method       | Purpose                                                    | Status  |
+| --------------------------------- | ------------ | ---------------------------------------------------------- | ------- |
+| `/data/{algorithm}/{hash}`        | `GET`        | Retrieve CAS content                                       | Defined |
+| `/data/{algorithm}/{hash}`        | `PUT`        | Upload CAS content                                         | Defined |
+| `/data/{algorithm}/{hash}`        | `HEAD`       | Retrieve CAS metadata                                      | TBD     |
+| `/data/search/{hash}`             | `GET`        | Search for matching hashes                                 | Defined |
+| `/data/nodes`                     | `GET`/`POST` | Retrieve/publish peer information                          | Defined |
+| `/data/seek`                      | `GET`/`POST` | Retrieve/publish outstanding requests                      | Defined |
+| `/data/{algorithm}/{hash}/{path}` | `GET`        | Read into a bundle (§12.1)                                 | Defined |
+| `/data/client`                    | `GET`        | Whether the client is local (§2.4)                         | Defined |
+| `/data/directory/...`             | `GET`        | List the folders offered to local clients (§12.2)          | Defined |
+| `/data/imports`                   | `GET`/`POST` | Import a local file, and follow imports (§12.2)            | Defined |
+| `/data/bundles`                   | `POST`       | Make or change a directory bundle, locally (§12.3)         | Defined |
+| `/data/store/{application}/...`   | Various      | An application's store on this node (§13.3)                | Defined |
+| `/data/applications`              | `GET`        | The applications this node serves (§13.4)                  | Defined |
+| `/data/...`                       | Various      | Additional programmatic APIs                               | TBD     |
+| `/`                               | `GET`        | Root web application                                       | Defined |
+| `/{application}/...`              | `GET`        | Directory-bundle application                               | Defined |
+| `/config/api/...`                 | Various      | Local-only administration endpoints, on `/config`'s port   | Defined |
+| `/config/...`                     | `GET`        | Local-only administration application, on `/config`'s port | Defined |
 
 ---
 
