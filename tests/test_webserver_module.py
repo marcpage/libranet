@@ -394,7 +394,7 @@ def test_a_request_waiting_on_the_unbundler_is_woken_by_its_report(tmp_path: Pat
 
         assert asked["event"] == EventType.APP_PATH_NOT_FOUND
         assert answers == [(404, None)]
-        # Woken by the report, rather than asking again a second on.
+        # Asked once, and woken by the report.
         assert published(queues) == []
 
     finally:

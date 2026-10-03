@@ -10,7 +10,7 @@ from threading import Timer
 from typing import Any, Mapping
 from zlib import compress
 
-from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
+from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.atomic_file import write_atomically
 from libranet.bundle.serialization import encode_bundle
@@ -650,7 +650,7 @@ def test_a_request_waits_for_the_unbundler_to_save_the_entry(
 
     assert response.status == 200
     assert body_of(response) == b"arrived"
-    # Woken by the report, rather than asking again a second on.
+    # Asked once, and woken by the report.
     assert published.messages == [
         (EventType.APP_PATH_NOT_FOUND, {"bundle": str(WIKI_BUNDLE), "path": "page.html"})
     ]
@@ -671,17 +671,15 @@ def test_a_request_waits_for_the_unbundler_to_say_the_path_holds_no_file(
     assert response.status == 404
 
 
-def test_a_request_asks_the_unbundler_again_as_it_waits_and_then_is_503(
+def test_a_request_asks_the_unbundler_once_and_is_503_if_no_answer_comes(
     registry: ApplicationRegistry,
     files: ResolvedFiles,
     store: CasStore,
     outcomes: ApplicationOutcomes,
     published: Recorder,
-    monkeypatch: MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("libranet.webserver.app_handler._ASK_UNBUNDLER_AGAIN_SECONDS", 0.02)
     handler = handler_for(
-        {"wiki": WIKI_BUNDLE}, registry, files, store, outcomes, published, wait_seconds=0.2
+        {"wiki": WIKI_BUNDLE}, registry, files, store, outcomes, published, wait_seconds=0.1
     )
 
     response = get(handler, "/wiki/page.html")
@@ -690,8 +688,9 @@ def test_a_request_asks_the_unbundler_again_as_it_waits_and_then_is_503(
     assert loads(response.body)["detail"] == (
         "This file is not resolved from its bundle yet; resolution was requested."
     )
-    assert len(published.messages) > 3
-    assert {event for event, _ in published.messages} == {EventType.APP_PATH_NOT_FOUND}
+    assert published.messages == [
+        (EventType.APP_PATH_NOT_FOUND, {"bundle": str(WIKI_BUNDLE), "path": "page.html"})
+    ]
 
 
 def test_a_request_waits_for_the_first_part_asking_for_it_and_those_after(

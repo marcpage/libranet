@@ -36,9 +36,8 @@ unbundler is asked for the file's entry::
 and the request waits for its answer, and then for the file's first part,
 for up to ``network.app_wait_seconds`` in all, since a ``<video>`` does not
 retry a ``503``. Only if either does not come in time is it answered ``503``,
-with ``Retry-After``. While it waits it asks the unbundler again, each
-second, since the unbundler says nothing while it waits for the bundle to
-arrive, and is not told when it does.
+with ``Retry-After``. The unbundler answers once it can, even if it must
+first wait for the bundle to arrive, so it is asked only once.
 
 Every request that reaches an application is reported as a use of its
 bundle (see :mod:`libranet.webserver.app_use`), so the entries resolved from
@@ -106,11 +105,6 @@ CONFIG_APP_POLICY: Final = (
 _CONFIG_APP_HEADERS: Final = {"Content-Security-Policy": CONFIG_APP_POLICY}
 
 DEFAULT_FILE: Final = "index.html"
-
-# How often a request waiting on the unbundler asks it again. It reports
-# nothing while the bundle or an extension is being fetched, and is not told
-# when one arrives, so it notices only when asked.
-_ASK_UNBUNDLER_AGAIN_SECONDS: Final = 1.0
 
 _MIME_TYPES: Final = MimeTypes()
 
@@ -215,9 +209,9 @@ class AppHandler:
     ) -> FileBundle | KnownOutcome | None:
         """The entry of the file at ``entry_path`` in ``bundle``, or the outcome reported instead.
 
-        If neither is known, the unbundler is asked, and asked again while
-        its answer is waited for, until ``deadline``, as :func:`monotonic`
-        tells it.
+        If neither is known, the unbundler is asked, and its answer waited
+        for until ``deadline``, as :func:`monotonic` tells it. It is asked
+        again only for an entry saved that could not be read.
 
         Returns:
             The entry, or the outcome, or ``None`` if neither came in time.
@@ -241,12 +235,7 @@ class AppHandler:
             self.publish(EventType.APP_PATH_NOT_FOUND, {"bundle": str(bundle), "path": entry_path})
             remaining_seconds = deadline - monotonic()
 
-            if remaining_seconds <= 0:
-                return None
-
-            wait_seconds = min(remaining_seconds, _ASK_UNBUNDLER_AGAIN_SECONDS)
-
-            if not self.outcomes.wait_for(answered, wait_seconds) and monotonic() >= deadline:
+            if remaining_seconds <= 0 or not self.outcomes.wait_for(answered, remaining_seconds):
                 return None
 
     def _file_response(

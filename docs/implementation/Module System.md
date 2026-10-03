@@ -301,7 +301,9 @@ Resolves application files one requested path at a time. For each
 file's entry, which names its parts, into `cas/resolved/`, and reports the
 outcome with `app.path_resolved`. It reads none of the file's parts: the web
 server serves the file from them. A bundle or extension the node lacks is
-asked for with `data.not_found`. On `resolved.reclaim` it deletes the
+asked for with `data.not_found`, and the path waits on it, for as long as a
+request for it waits: the `data.stored` that says it has arrived resolves
+the path again. On `resolved.reclaim` it deletes the
 resolved entries of every bundle that stats did not name to keep, and
 answers with `resolved.reclaimed`. The directories of recently used bundles
 are kept in memory.
@@ -806,7 +808,7 @@ to end its loop.
 | `data.search_requested` | P | | | S | | | | |
 | *Writing and validation* | | | | | | | | |
 | `data.put_completed` | P | P | S | | | | | |
-| `data.stored` | P | P S | P | S | | | S | P S |
+| `data.stored` | P | P S | P | S | | S | S | P S |
 | `data.rejected` | | | P | S | | | | |
 | *Peers and their lists* | | | | | | | | |
 | `nodes.received` | P | P S | | S | | | | |
@@ -853,7 +855,7 @@ to end its loop.
 | `storage.full` | | | | | | | P | S |
 | *Lifecycle* | | | | | | | | |
 | `shutdown` | S | S | S | S | S | S | S | S |
-| **Publishes / subscribes** | 16 / 3 | 14 / 6 | 2 / 1 | 3 / 18 | 1 / 3 | 3 / 2 | 6 / 6 | 4 / 8 |
+| **Publishes / subscribes** | 16 / 3 | 14 / 6 | 2 / 1 | 3 / 18 | 1 / 3 | 3 / 3 | 6 / 6 | 4 / 8 |
 
 The `shutdown` row and its subscriptions are implicit: every module
 receives it without listing it, and nothing publishes it (§6.4). The totals
@@ -1053,8 +1055,9 @@ sequenceDiagram
 ```
 
 If the bundle is not held, the unbundler publishes `data.not_found` for it,
-which starts a fetch (§8.2), and reports no outcome; the waiting request
-asks it again each second. A part of the file not held is asked for by the
+which starts a fetch (§8.2), and reports no outcome until it arrives: the
+`data.stored` that says so has it resolve the path then, which wakes the
+waiting request. A part of the file not held is asked for by the
 web server, with the few parts after it, and looked for every quarter of a
 second. A request whose entry or first part does not come within
 `network.app_wait_seconds` is answered `503`, and one whose later part does
@@ -1246,7 +1249,7 @@ side recovers:
 | Validator | The upload it was checking, if it died mid-message | The upload stays in `incoming/` until the same content arrives from the same node again |
 | Connection manager | Connections, searches, hand-offs, content not yet pushed | It dials from the candidate list again, naming no peers connected until one is; eviction times out a hand-off after 1,200 s; a fetch is asked for again at the next miss after the fetcher's interval |
 | Fetcher | Which content it asked for lately | The next miss is asked for at once |
-| Unbundler | Directories held in memory; a reclaim in progress | Directories are read back from each bundle's saved `directory.jzon`; eviction times out the reclaim |
+| Unbundler | Directories held in memory; paths waiting on content; a reclaim in progress | Directories are read back from each bundle's saved `directory.jzon`; a request waiting on a path forgotten is answered `503`, and its retry asks again; eviction times out the reclaim |
 | Eviction | Hand-offs under way; its list of candidates; which peers are connected | It counts storage again at start, says whether storage is full, asks which peers are connected, and asks stats again |
 | Backup | Restores, builds, and exports; messages set aside while it stored content | They must be asked for again; jobs are read back from `backup_jobs.json`; it asks whether storage is full |
 | Dispatcher | Messages it had read but not yet delivered, and those it held for a full inbox | Nothing recovers them; no module is started until it is back |

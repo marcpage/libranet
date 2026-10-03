@@ -312,7 +312,9 @@ building: `network.app_wait_seconds` (10), `PartReader` and `FileStream`
 `WholeFileCheck` (`bundle/reassembly.py`). About 860 added lines of
 non-test Python, 170 of them in place of lines removed, much of it
 documentation: more than the 450 planned, but under 1,000, so one change
-set. Gates green: 3,430 passed, 1 skipped, 99.09%.
+set. The unbundler taking in `data.stored`, ruled on review, added about
+120 more, and took the step to about 960. Gates green: 3,439 passed, 1
+skipped, 99.07%.
 
 Seen in a live run of one node: a directory holding a page and 5,000,000
 random bytes was built through `/config/api/builds` and registered. The
@@ -326,16 +328,23 @@ from `cas/data`, a request was sent the first two, asked for the third
 from its start, and again 5 seconds on, and was cut short at 10 seconds,
 logged at info. No module logged a warning.
 
+Ruled on review:
+
+- **The unbundler takes in `data.stored`**, so it is told when a bundle or
+  extension it lacks arrives, rather than the waiting request asking it
+  again each second. A path waits on what it lacks for
+  `network.app_wait_seconds` from when it was last asked for, as long as a
+  request for it waits, and the 1,024 that waited longest are kept
+  (provisional), since anyone can ask for any path. A request asks the
+  unbundler once. Every object stored now passes through the unbundler,
+  which passes over at once those no path waits on, and a full inbox holds
+  it alone back (Phase 2 Step 61).
+
 My calls while building, not yet reviewed:
 
 - **The entry and the first part share one wait**, so a request is
   answered within `network.app_wait_seconds`, `503` included. Each later
   part is waited for as long again.
-- **A request waiting on the unbundler asks it again each second.** The
-  unbundler says nothing while the bundle or an extension is being
-  fetched, and is not told when it arrives, so it notices only when asked.
-  Each ask it cannot yet answer costs a `data.not_found`, which the
-  fetcher passes over until its own interval is up.
 - **A part still not held is asked for again after
   `network.retry_after_seconds`**, the fetcher's interval, so that each ask
   is a fresh attempt, as a client's retry after `Retry-After` was.

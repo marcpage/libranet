@@ -8,12 +8,14 @@ yet.
 from libranet.unbundler.lookup import FoundDirectory, FoundFile, ResolvedDirectory
 from libranet.unbundler.module import (
     DEFAULT_MAX_CACHED_BUNDLES,
+    DEFAULT_MAX_WAITING_PATHS,
     UnbundlerModule,
     unbundler_module_factory,
 )
 
 __all__ = [
     "DEFAULT_MAX_CACHED_BUNDLES",
+    "DEFAULT_MAX_WAITING_PATHS",
     "FoundDirectory",
     "FoundFile",
     "ResolvedDirectory",

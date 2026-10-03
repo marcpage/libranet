@@ -19,7 +19,7 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.resolved_files import ResolvedFiles
 from libranet.cas.store import CasStore
-from libranet.config.models import LibranetConfig, StorageConfig
+from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
 from libranet.messaging.envelope import Message, make_message
 from libranet.messaging.events import EventType
@@ -120,6 +120,15 @@ def app_id(store: CasStore) -> ContentId:
 def request(bundle: ContentId, path: str) -> Message:
     return make_message(
         EventType.APP_PATH_NOT_FOUND, ModuleName.WEBSERVER, {"bundle": str(bundle), "path": path}
+    )
+
+
+def stored(content_id: ContentId) -> Message:
+    """The word that ``content_id`` is now held, as the validator gives it."""
+    return make_message(
+        EventType.DATA_STORED,
+        ModuleName.VALIDATOR,
+        {**content_id.fields(), "node_id": str(id_of(b"a peer's key")), "size": 1},
     )
 
 
@@ -304,6 +313,137 @@ def test_a_bundle_not_held_is_fetched_and_resolved_once_it_arrives(
 
     assert resolved(queues) == [{"path": "index.html", "outcome": "stored"}]
     assert written(storage, bundle, "index.html") == entry_of(INDEX)
+
+
+def test_a_path_waiting_on_its_bundle_is_resolved_once_the_bundle_is_stored(
+    unbundler: UnbundlerModule, queues: ModuleQueues, store: CasStore, storage: StorageConfig
+) -> None:
+    content = bundle_bytes({"contents": {"index.html": file_entry(INDEX)}})
+    bundle = id_of(content)
+    unbundler.handle(request(bundle, "index.html"))
+    published(queues)
+
+    put(store, content)
+    unbundler.handle(stored(bundle))
+
+    assert resolved(queues) == [{"path": "index.html", "outcome": "stored"}]
+    assert written(storage, bundle, "index.html") == entry_of(INDEX)
+
+
+def test_a_path_waits_on_each_object_it_lacks_in_turn(
+    unbundler: UnbundlerModule, queues: ModuleQueues, store: CasStore
+) -> None:
+    extended = bundle_bytes(extension())
+    content = bundle_bytes({"contents": {}, "extensions": [str(id_of(extended))]})
+    bundle = id_of(content)
+    unbundler.handle(request(bundle, "about.html"))
+    put(store, content)
+    unbundler.handle(stored(bundle))
+
+    assert fetched(queues) == [bundle, id_of(extended)]
+
+    put(store, extended)
+    unbundler.handle(stored(id_of(extended)))
+
+    assert resolved(queues) == [{"path": "about.html", "outcome": "stored"}]
+
+
+def test_every_path_waiting_on_an_object_is_resolved_once_it_is_stored(
+    unbundler: UnbundlerModule, queues: ModuleQueues, store: CasStore
+) -> None:
+    content = bundle_bytes(
+        {"contents": {"index.html": file_entry(INDEX), "about.html": file_entry(ABOUT)}}
+    )
+    bundle = id_of(content)
+
+    for path in ("index.html", "about.html", "missing.html"):
+        unbundler.handle(request(bundle, path))
+
+    published(queues)
+    put(store, content)
+    unbundler.handle(stored(bundle))
+
+    assert resolved(queues) == [
+        {"path": "index.html", "outcome": "stored"},
+        {"path": "about.html", "outcome": "stored"},
+        {"path": "missing.html", "outcome": "not_found"},
+    ]
+
+
+def test_content_no_path_waits_on_is_passed_over(
+    unbundler: UnbundlerModule, queues: ModuleQueues, app_id: ContentId
+) -> None:
+    waited_on = id_of(bundle_bytes({"contents": {}}))
+    unbundler.handle(request(waited_on, "index.html"))
+    published(queues)
+
+    unbundler.handle(stored(app_id))
+    unbundler.handle(stored(id_of(INDEX)))
+
+    assert published(queues) == []
+
+
+@mark.parametrize("waited_seconds, resolves", [(9.9, True), (10.0, False)])
+def test_a_path_waits_no_longer_than_a_request_for_it_does(
+    storage: StorageConfig,
+    queues: ModuleQueues,
+    store: CasStore,
+    waited_seconds: float,
+    resolves: bool,
+) -> None:
+    now = [1_789_000_000.0]
+    config = LibranetConfig(storage=storage, network=NetworkConfig(app_wait_seconds=10))
+    unbundler = UnbundlerModule(ModuleName.UNBUNDLER, queues, config, clock=lambda: now[0])
+    content = bundle_bytes({"contents": {"index.html": file_entry(INDEX)}})
+    bundle = id_of(content)
+    unbundler.handle(request(bundle, "index.html"))
+    published(queues)
+
+    put(store, content)
+    now[0] += waited_seconds
+    unbundler.handle(stored(bundle))
+
+    assert (written(storage, bundle, "index.html") is not None) == resolves
+
+
+def test_a_path_asked_for_again_waits_from_then(
+    storage: StorageConfig, queues: ModuleQueues, store: CasStore
+) -> None:
+    now = [1_789_000_000.0]
+    config = LibranetConfig(storage=storage, network=NetworkConfig(app_wait_seconds=10))
+    unbundler = UnbundlerModule(ModuleName.UNBUNDLER, queues, config, clock=lambda: now[0])
+    content = bundle_bytes({"contents": {"index.html": file_entry(INDEX)}})
+    bundle = id_of(content)
+    unbundler.handle(request(bundle, "index.html"))
+    now[0] += 8
+    unbundler.handle(request(bundle, "index.html"))
+    published(queues)
+
+    put(store, content)
+    now[0] += 8
+    unbundler.handle(stored(bundle))
+
+    assert resolved(queues) == [{"path": "index.html", "outcome": "stored"}]
+
+
+def test_past_the_limit_the_path_waiting_longest_stops_waiting(
+    storage: StorageConfig, queues: ModuleQueues, store: CasStore
+) -> None:
+    unbundler = UnbundlerModule(
+        ModuleName.UNBUNDLER, queues, LibranetConfig(storage=storage), max_waiting_paths=1
+    )
+    contents = [bundle_bytes({"contents": {f"{n}.html": file_entry(INDEX)}}) for n in range(2)]
+
+    for number, content in enumerate(contents):
+        unbundler.handle(request(id_of(content), f"{number}.html"))
+
+    published(queues)
+
+    for content in contents:
+        put(store, content)
+        unbundler.handle(stored(id_of(content)))
+
+    assert resolved(queues) == [{"path": "1.html", "outcome": "stored"}]
 
 
 def test_an_extension_not_held_is_fetched(
@@ -578,6 +718,13 @@ def test_the_bundle_cache_must_hold_at_least_one(
         )
 
 
+def test_at_least_one_path_may_wait(storage: StorageConfig, queues: ModuleQueues) -> None:
+    with raises(ValueError, match="max_waiting_paths"):
+        UnbundlerModule(
+            ModuleName.UNBUNDLER, queues, LibranetConfig(storage=storage), max_waiting_paths=0
+        )
+
+
 def test_an_event_it_does_not_handle_is_not_taken_for_a_miss(
     unbundler: UnbundlerModule, queues: ModuleQueues
 ) -> None:
@@ -594,9 +741,10 @@ def test_an_event_it_does_not_handle_is_not_taken_for_a_miss(
     assert published(queues) == []
 
 
-def test_the_module_subscribes_to_application_misses_and_reclaiming() -> None:
+def test_the_module_subscribes_to_application_misses_content_stored_and_reclaiming() -> None:
     assert UnbundlerModule.subscriptions == {
         EventType.APP_PATH_NOT_FOUND,
+        EventType.DATA_STORED,
         EventType.RESOLVED_RECLAIM,
     }
 
