@@ -449,7 +449,23 @@ building. The application routes, on both ports, answer `HEAD` as well as
 them in place of lines removed, much of it documentation: more than the 200
 planned, but under 1,000, so one change set. HttpApi §25 now lists `HEAD`
 for applications, Module System §8.3 says what a range reads, and the
-README no longer lists range requests as deferred.
+README no longer lists range requests as deferred. Gates green: 3,513
+tests, 99.08%.
+
+Seen in a live run of one node: a directory holding a page and 3,000,000
+random bytes was built through `/config/api/builds` and registered. On one
+connection, `bytes=0-99`, a range across the first two parts, `bytes=-1000`,
+`bytes=2500000-`, and `bytes=2999990-5000000` were each answered `206`, with
+the `Content-Range` and `Content-Length` of the bytes sent, which matched
+the file's. `bytes=3000000-` was `416` with `bytes */3000000`. An
+`If-Range` of the file's `ETag`, `"sha256-"` and its SHA-256, was sent the
+range, and one of another tag, two ranges, and `bytes=nonsense` were each
+sent the whole file. A `HEAD`, with or without `Range`, was `200` with a
+`Content-Length` of 3,000,000 and no body. With the third part taken out
+of `cas/data`, ranges within the first two were still served at once, and
+so was a `HEAD`, while `bytes=2500000-` asked the fetcher for the third
+part, again 5 seconds on, and was `503` at 10 seconds. Put back, it was
+served. No module logged a warning.
 
 My calls while building, not yet reviewed:
 
