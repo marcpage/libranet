@@ -13,7 +13,9 @@ get random keys. ``--max-storage-bytes`` limits the content each node holds.
 While the nodes run, the script shows each one's URL and how many peers it
 is connected to, read from the ``Connected to`` and ``closed`` lines of each
 node's connections log. ``Ctrl-C`` stops every node and, unless ``--dir``
-was given, deletes the network's files.
+was given, deletes the network's files. A second ``Ctrl-C`` kills whatever
+is still running, and nothing cuts that short: from then on the script
+ignores ``Ctrl-C`` until every node is killed.
 
 Run it from the repository root with::
 
@@ -32,7 +34,7 @@ from os import fstat, killpg
 from pathlib import Path
 from re import compile as compile_pattern
 from shutil import rmtree
-from signal import SIGHUP, SIGINT, SIGKILL, SIGTERM, default_int_handler, signal
+from signal import SIG_IGN, SIGHUP, SIGINT, SIGKILL, SIGTERM, default_int_handler, signal
 from subprocess import DEVNULL, STDOUT, Popen
 from sys import executable, stdout
 from tempfile import mkdtemp
@@ -554,6 +556,47 @@ class RunningNetwork:
 
             stopping = [process for process in stopping if process.running]
 
+    def shut_down(self) -> None:
+        """Stop the nodes, or kill every one still running if stopping is cut short.
+
+        A second ``Ctrl-C`` while they stop kills them at once, and so does
+        anything else that ends :meth:`stop` early, such as a closed
+        terminal that can no longer be printed to, which is then raised.
+        """
+        try:
+            self.stop()
+
+        except KeyboardInterrupt:
+            # Not logged: a second Ctrl-C is how to kill the nodes at once.
+            self.kill()
+
+        except BaseException:
+            self.kill()
+            raise
+
+    def kill(self) -> None:
+        """Kill every node, ignoring from now on the signals that would cut it short.
+
+        Another ``Ctrl-C``, or the ``SIGHUP`` or ``SIGTERM`` that :func:`main`
+        turns into one, would otherwise end the script with every node after
+        the one being killed still running. One that comes before they are
+        ignored starts the killing over, which passes the nodes already
+        killed.
+        """
+        while True:
+            try:
+                for number in (SIGINT, SIGHUP, SIGTERM):
+                    signal(number, SIG_IGN)
+
+                for process in self.processes:
+                    process.kill()
+
+                return
+
+            except KeyboardInterrupt:
+                # Not logged: it came before the signals were ignored.
+                continue
+
 
 def config_port_offset(count: int) -> int:
     """How far above its own port each of ``count`` nodes has its ``/config``.
@@ -661,12 +704,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         status = 1
 
     finally:
-        try:
-            running.stop()
-
-        except KeyboardInterrupt:
-            for process in running.processes:
-                process.kill()
+        running.shut_down()
 
     # A failed run keeps its files, so the logs that explain it can be read.
     if args.dir is None and status == 0:

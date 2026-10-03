@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 from json import loads
+from errno import EIO
 from logging import INFO, Formatter, LogRecord
+from os import getpid, kill
 from pathlib import Path
 from select import select
-from signal import SIGINT, SIGKILL
+from signal import SIGHUP, SIGINT, SIGKILL, SIGTERM, getsignal, signal
 from subprocess import DEVNULL, PIPE, Popen
 from sys import executable
 from typing import Iterator
@@ -393,3 +395,106 @@ def test_only_a_few_nodes_stop_at_once(stand_ins: StandInNodes, monkeypatch: Mon
     running.stop()
 
     assert stopping_at_each_request == [1, 2, 1]
+
+
+@fixture
+def signals_restored() -> Iterator[None]:
+    """Put back the handlers ``RunningNetwork.kill`` sets aside, so later tests can be stopped."""
+    saved = {number: getsignal(number) for number in (SIGINT, SIGHUP, SIGTERM)}
+    yield
+
+    for number, handler in saved.items():
+        if handler is not None:
+            signal(number, handler)
+
+
+def _interrupt_request(monkeypatch: MonkeyPatch, error: BaseException) -> None:
+    """Have the second node asked to stop raise ``error`` instead, as a second Ctrl-C would."""
+    request_stop = NodeProcess.request_stop
+    requested: list[NodeProcess] = []
+
+    def interrupted_request_stop(process: NodeProcess) -> None:
+        requested.append(process)
+
+        if len(requested) == 2:
+            raise error
+
+        request_stop(process)
+
+    monkeypatch.setattr(NodeProcess, "request_stop", interrupted_request_stop)
+
+
+@mark.usefixtures("signals_restored")
+def test_a_second_ctrl_c_kills_every_node(
+    stand_ins: StandInNodes, monkeypatch: MonkeyPatch
+) -> None:
+    monkeypatch.setattr("local_network._STOP_WINDOW", 1)
+    running = stand_ins.network(STUBBORN, STUBBORN, STUBBORN)
+    _interrupt_request(monkeypatch, KeyboardInterrupt())
+
+    running.shut_down()
+
+    assert [process.process.returncode for process in running.processes] == [-SIGKILL] * 3
+
+
+@mark.usefixtures("signals_restored")
+def test_stopping_that_fails_kills_every_node_and_raises(
+    stand_ins: StandInNodes, monkeypatch: MonkeyPatch
+) -> None:
+    monkeypatch.setattr("local_network._STOP_WINDOW", 1)
+    running = stand_ins.network(STUBBORN, STUBBORN, STUBBORN)
+    _interrupt_request(monkeypatch, OSError(EIO, "Input/output error"))
+
+    with raises(OSError):
+        running.shut_down()
+
+    assert [process.process.returncode for process in running.processes] == [-SIGKILL] * 3
+
+
+@mark.usefixtures("signals_restored")
+def test_a_ctrl_c_while_killing_does_not_stop_it(
+    stand_ins: StandInNodes, monkeypatch: MonkeyPatch
+) -> None:
+    running = stand_ins.network(STUBBORN, STUBBORN, STUBBORN)
+    real_kill = NodeProcess.kill
+    killed: list[int] = []
+
+    def interrupted_kill(process: NodeProcess) -> None:
+        killed.append(running.processes.index(process))
+
+        if len(killed) == 1:
+            kill(getpid(), SIGINT)
+
+        real_kill(process)
+
+    monkeypatch.setattr(NodeProcess, "kill", interrupted_kill)
+
+    running.kill()
+
+    # Each node was killed once, so the Ctrl-C never interrupted the killing.
+    assert killed == [0, 1, 2]
+    assert [process.process.returncode for process in running.processes] == [-SIGKILL] * 3
+
+
+@mark.usefixtures("signals_restored")
+def test_killing_starts_over_after_an_interrupt_before_the_signals_are_ignored(
+    stand_ins: StandInNodes, monkeypatch: MonkeyPatch
+) -> None:
+    running = stand_ins.network(STUBBORN, STUBBORN)
+    real_kill = NodeProcess.kill
+    killed: list[int] = []
+
+    def interrupted_kill(process: NodeProcess) -> None:
+        killed.append(running.processes.index(process))
+
+        if len(killed) == 2:
+            raise KeyboardInterrupt
+
+        real_kill(process)
+
+    monkeypatch.setattr(NodeProcess, "kill", interrupted_kill)
+
+    running.kill()
+
+    assert killed == [0, 1, 0, 1]
+    assert [process.process.returncode for process in running.processes] == [-SIGKILL] * 2
