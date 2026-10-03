@@ -309,7 +309,7 @@ def test_the_root_page_is_one_self_contained_document(root_page: bytes) -> None:
     assert "<link" not in page
     assert findall(r"\bsrc\s*=", page) == []
     assert "url(" not in page
-    assert findall(r'fetch\("([^"]*)"', page) == ["/data/nodes"]
+    assert findall(r'fetch\("([^"]*)"', page) == ["/data/nodes", "/data/applications"]
 
 
 def test_the_root_page_links_to_config_and_the_documentation(root_page: bytes) -> None:
@@ -400,6 +400,21 @@ def test_a_new_node_serves_each_shipped_page_with_nothing_in_the_cas(
     assert b"".join(second.stream.chunks) == source.read_bytes()
     # Nothing was stored, and the registry file was not written.
     assert not CasStore.source_of_truth(storage).exists(bundle)
+    assert not storage.applications_path.exists()
+
+
+def test_a_new_node_lists_the_applications_it_ships_to_any_client(
+    storage: StorageConfig, content: LayeredSource, built: PackagedApplications
+) -> None:
+    publisher = StubModule(ModuleName.WEBSERVER, ModuleQueues(inbox=Queue(), outbox=Queue()))
+    router = router_for(ROOT_APPLICATION, storage, publisher, content)
+
+    response = router.dispatch(Request("GET", "/data/applications", client_address="203.0.113.42"))
+
+    assert response.status == 200
+    assert loads(response.body) == {
+        "applications": {name: str(bundle) for name, bundle in built.bundles.items()}
+    }
     assert not storage.applications_path.exists()
 
 

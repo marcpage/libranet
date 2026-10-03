@@ -1021,6 +1021,45 @@ My calls, not yet reviewed:
 About 20 new or changed lines of non-test Python, besides the page, so
 one change set.
 
+Built as planned, in one change set: 44 added lines of non-test Python,
+10 of them in place of removed ones and many of them docstrings, and 51
+lines of the page. The main port's registry, which `build_router` made
+inline for its applications, is now held so that `ApplicationListHandler`
+answers `GET /data/applications` (its path is `DATA_APPLICATIONS_PATH`,
+beside the handler) from the same one. The root page lists the
+applications in a section of its own.
+
+Run live on one new node: `GET /data/applications` answered the two
+shipped applications, `/` and `config`, and the root page, drawn in
+headless Chrome, said the node serves no other applications. Then `wiki`,
+`Zeta`, and `a b` were registered through `/config/api/applications`. The
+next answer named all five, `Zeta` case-folded, and the page listed
+`a b`, `wiki`, and `zeta`, linked to `/a%20b/`, `/wiki/`, and `/zeta/`,
+each of which was served. No module logged a warning.
+
+My calls while building, not yet reviewed:
+
+- **The list is a `/data` read like any other.** A node set with
+  `allow_unsigned_api_reads: false` refuses an unsigned one `401`, as it
+  refuses a browser's request for `/data/nodes`, though HttpApi §13.4 says
+  any client may ask. The root page then says the node lists its
+  applications only to other nodes. Reading into bundles (Step 71) and
+  the store (Step 70) will meet the same refusal, so a browser
+  application, the movie application among them, cannot work on such a
+  node. Whether the reads §2.1 names for applications should pass
+  unsigned on such a node is open.
+- **A `HEAD` is `405`**, as it is for every other `/data` read.
+- **A registry file that cannot be read is `500`** here as on `/config`'s
+  port, but without saying where the file is, since any client may ask
+  and the path names the node's data directory (HttpApi §23's information
+  leakage). `ApplicationListHandler` gains a keyword-only
+  `names_the_file`, `True` by default, which the main port's route
+  unsets. The warning logged still names the file.
+- **The root page sorts the names, and links each to `/{name}/`**, the
+  name percent-encoded, so the server answers it without the redirect a
+  bare `/{name}` is sent. It says so when there are none besides `/` and
+  `config`.
+
 **Testable in isolation:** a handler test on the main port's router, and
 a registration showing in the next answer. The page is checked in a live
 run.
@@ -1038,9 +1077,7 @@ number, and where it went.
 | #206 | Range requests (HttpApi §19, with its three open questions) | 66 |
 | #207 | Serving a file from its parts as they are fetched, with each part's size recorded | 64, 65 |
 | #213 | A movie application shipped at `/movie`, with playlists that can be shared | 67, with 68 to 72 for what it needs |
-
-Listing the applications (Step 73) has no issue. An issue for it would
-join this table.
+| #218 | Listing the applications, so that the root application can link to each | 73 |
 
 ## 5. Suggested Build Order
 
@@ -1054,7 +1091,7 @@ join this table.
 | 6 | 71 (#213) | Serves what 65 and 66 serve, from any bundle, and reads encrypted bundles, which 72 makes. |
 | 7 | 69 (#213) | Needs 64's sizes and 68's folders. |
 | 8 | 72 (#213) | Needs 68's checks, 69's file ids, and 71's encrypted bundles. |
-| 9 | 73 | Small, and needs nothing in this phase, so it can go anywhere. |
+| 9 | 73 (#218) | Small, and needs nothing in this phase, so it can go anywhere. |
 | 10 | 67 (#213) | The page, which needs all of the above. |
 
 Every specification change is made.
