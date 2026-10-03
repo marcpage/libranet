@@ -501,10 +501,18 @@ def _metadata(status: stat_result, recorded: Metadata | None = None) -> Metadata
     """
     return Metadata(
         created=_created(status) if recorded is None else recorded.created,
-        modified=_timestamp(status.st_mtime_ns // NANOSECONDS_PER_MICROSECOND),
+        modified=modified_time(status),
         writable=bool(status.st_mode & S_IWUSR),
         executable=bool(status.st_mode & S_IXUSR),
     )
+
+
+def modified_time(status: stat_result) -> str | None:
+    """When ``status`` says a file or directory was last changed, as a bundle records it (§2.1).
+
+    That is RFC 3339, in UTC, to the microsecond, or ``None`` if out of range.
+    """
+    return _timestamp(status.st_mtime_ns // NANOSECONDS_PER_MICROSECOND)
 
 
 def _created(status: stat_result) -> str | None:

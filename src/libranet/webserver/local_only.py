@@ -1,0 +1,94 @@
+"""The ``/data`` endpoints serving only local clients, and how a page asks if it is one.
+
+A local client is one whose connecting address is a loopback address, judged
+by the TCP connection itself and never by a request header, as for
+``/config`` (HttpApi §2.4). ``GET /data/client`` tells any client whether it
+is one::
+
+    {"local": true}
+
+An application uses the answer to decide what to offer. It protects nothing,
+since each endpoint serving only local clients is wrapped in
+:class:`LocalOnly`, which checks for itself. That refuses, with ``403``, a
+request from any other client, and then one whose headers say another
+site's page made it (:class:`~libranet.webserver.site_checks.SiteChecks`):
+any page a browser on this machine has open can send a request to the main
+port at a loopback address. The exception ``/config`` makes for a link the
+operator follows is not made, since none of these endpoints is a page. A
+body that does not say it is JSON is ``415``, as a page on another site can
+send a form's types without asking this node first. All of this is checked
+before the endpoint sees the request, or reads its body.
+
+The checks keep other sites' pages out, but not this node's own
+applications, which share the main port's origin (Phase 3 Step 68).
+"""
+
+from __future__ import annotations
+from dataclasses import dataclass
+from http import HTTPStatus
+from logging import getLogger
+from typing import Final
+
+from libranet.problems import Problem
+from libranet.protocol.client_origin import is_local_client
+from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
+from libranet.webserver.http_types import Request, Response, json_response, problem_response
+from libranet.webserver.router import Handler
+from libranet.webserver.site_checks import SiteChecks
+
+_LOGGER = getLogger(__name__)
+
+#: Where any client asks whether it is a local one (HttpApi §2.4).
+CLIENT_PATH: Final = "/data/client"
+
+
+def client_handler(request: Request) -> Response:
+    """``GET /data/client``: whether the client asking is on this machine."""
+    return json_response({"local": is_local_client(request.client_address)})
+
+
+@dataclass(frozen=True)
+class LocalOnly:
+    """``handler``, served only to a local client, and only to this node's own pages.
+
+    ``checks`` say whether a request is another site's page's.
+    """
+
+    handler: Handler
+    checks: SiteChecks
+
+    def __call__(self, request: Request) -> Response:
+        if not is_local_client(request.client_address):
+            return problem_response(
+                Problem.for_status(
+                    HTTPStatus.FORBIDDEN,
+                    detail="This endpoint is served only to clients on this machine.",
+                    instance=request.path,
+                )
+            )
+
+        refusal = self.checks.refusal(request)
+
+        if refusal is not None:
+            _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, refusal)
+            return problem_response(
+                Problem.for_status(HTTPStatus.FORBIDDEN, detail=refusal, instance=request.path)
+            )
+
+        if request.body.length_bytes != 0 and not request.carries_json():
+            content_type = request.header("Content-Type")
+            _LOGGER.debug(
+                "Refusing %s %s: a body of type %r", request.method, request.path, content_type
+            )
+            return problem_response(
+                Problem.for_status(
+                    HTTPStatus.UNSUPPORTED_MEDIA_TYPE,
+                    detail=(
+                        f"A request body's Content-Type must be {JSON_CONTENT_TYPE}, "
+                        f"got {content_type!r}"
+                    ),
+                    instance=request.path,
+                )
+            )
+
+        return self.handler(request)

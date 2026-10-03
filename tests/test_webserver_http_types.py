@@ -107,9 +107,10 @@ def test_a_header_not_sent_is_none() -> None:
     ],
 )
 def test_a_body_that_says_it_is_json_is_read_as_json(content_type: str) -> None:
-    assert json_request(b'{"directory": "/home/me"}', content_type).json() == {
-        "directory": "/home/me"
-    }
+    request = json_request(b'{"directory": "/home/me"}', content_type)
+
+    assert request.carries_json()
+    assert request.json() == {"directory": "/home/me"}
 
 
 def test_the_content_type_is_found_however_the_header_is_capitalized() -> None:
@@ -137,8 +138,14 @@ def test_the_content_type_is_found_however_the_header_is_capitalized() -> None:
 def test_a_body_that_does_not_say_it_is_json_is_not_read_as_json(
     content_type: str | None,
 ) -> None:
+    request = json_request(b'{"directory": "/home/me"}', content_type)
+
+    assert not request.carries_json()
+
     with raises(UnsupportedMediaTypeError, match="application/json"):
-        json_request(b'{"directory": "/home/me"}', content_type).json()
+        request.json()
+
+    assert not request.body.consumed
 
 
 @mark.parametrize("body", [b"{not json", b"", b"\xff\xfe"])

@@ -30,6 +30,10 @@ another page of this site, such as the root application's, opens a
 ``/config`` page; it changes nothing, and the page that linked to it cannot
 read or drive it (Phase 2 Step 58).
 
+The endpoints serving only local clients make the same checks
+(:class:`~libranet.webserver.site_checks.SiteChecks`), but for that link,
+which only ``/config`` lets through (Phase 3 Step 68).
+
 This node's applications are kept out by the same checks: ``/config`` is
 served on a port of its own, so their pages are of this site but another
 origin. :class:`MovedConfigGuard` keeps ``/config`` off the main port, where
@@ -45,7 +49,6 @@ spelling reaches an endpoint unauthenticated either.
 
 from __future__ import annotations
 from dataclasses import dataclass
-from fnmatch import fnmatchcase
 from http import HTTPStatus
 from logging import getLogger
 from typing import Final
@@ -57,19 +60,12 @@ from libranet.protocol.client_origin import is_local_client
 from libranet.webserver.app_registry import CONFIG_APPLICATION
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.http_types import Request, Response, problem_response
+from libranet.webserver.site_checks import HOST_HEADER, SITE_HEADER, SiteChecks, host_name
 
 _LOGGER = getLogger(__name__)
 
-_HOST_HEADER: Final = "Host"
-_SITE_HEADER: Final = "Sec-Fetch-Site"
-_ORIGIN_HEADER: Final = "Origin"
-
 # The first segment beneath /config that is the API's, never the application's.
 CONFIG_API_SEGMENT: Final = "api"
-
-# What Sec-Fetch-Site says of a request this node's own page made, or that
-# the person using the browser asked for: an address typed, or a bookmark.
-_OWN_SITE: Final = frozenset({"same-origin", "none"})
 
 # What Sec-Fetch-Site says of a page on another port of this host, the main
 # port's applications among them.
@@ -136,45 +132,23 @@ class ConfigSiteGuard:
         )
 
     def refusal(self, request: Request) -> str | None:
-        """Why ``request`` is taken to be another site's, or ``None`` if it is not."""
-        host = request.header(_HOST_HEADER)
+        """Why ``request`` is taken to be another site's, or ``None`` if it is not.
 
-        if host is not None and not self.serves_as(host):
-            return (
-                f"/config is not served as {host!r}, which the Host header names "
-                "(network.config_hosts lists what it is served as)."
-            )
-
-        site = request.header(_SITE_HEADER)
-
-        if site is not None:
-            return self._site_refusal(request, site)
-
-        origin = request.header(_ORIGIN_HEADER)
-
-        if origin is None or (host is not None and _same_authority(origin, host)):
-            return None
-
-        return (
-            f"/config is served only to this node's own pages; Origin is {origin!r} "
-            f"and Host is {host!r}."
-        )
-
-    def _site_refusal(self, request: Request, site: str) -> str | None:
-        """Why ``request``, whose ``Sec-Fetch-Site`` is ``site``, is refused, if it is.
-
-        A request this node's own page made, or that the person using the
-        browser asked for, passes. So does a link that person followed from
-        another page of this site, once a credential is captured: before
-        then, the link could choose the credential.
+        A link the person using the browser followed from another page of
+        this site passes the checks the rest must, but for ``Host``'s, once
+        a credential is captured: before then, the link could choose the
+        credential.
         """
-        kind = site.strip().lower()
+        checks = self.checks
+        refusal = checks.host_refusal(request)
 
-        if kind in _OWN_SITE:
-            return None
+        if refusal is not None:
+            return refusal
 
-        if kind != _SAME_SITE or not _is_followed_link(request):
-            return f"/config is served only to this node's own pages; Sec-Fetch-Site is {site!r}."
+        site = (request.header(SITE_HEADER) or "").strip().lower()
+
+        if site != _SAME_SITE or not _is_followed_link(request):
+            return checks.page_refusal(request)
 
         if self.credential.captured:
             return None
@@ -184,10 +158,14 @@ class ConfigSiteGuard:
             "type its address to log in the first time."
         )
 
+    @property
+    def checks(self) -> SiteChecks:
+        """The checks every request but a link followed must pass."""
+        return SiteChecks(self.hosts, f"/{CONFIG_APPLICATION}")
+
     def serves_as(self, authority: str) -> bool:
         """Whether ``/config`` is served as the host ``authority`` names, whatever its port."""
-        name = _host_name(authority)
-        return any(fnmatchcase(name, pattern.casefold()) for pattern in self.hosts)
+        return self.checks.serves_as(authority)
 
 
 @dataclass(frozen=True)
@@ -223,7 +201,7 @@ class MovedConfigGuard:
 
     def location(self, request: Request) -> str:
         """Where ``request``'s path is on ``config_port``, at the host its ``Host`` header names."""
-        name = _host_name(request.header(_HOST_HEADER) or "") or CONFIG_LISTEN_ADDRESS
+        name = host_name(request.header(HOST_HEADER) or "") or CONFIG_LISTEN_ADDRESS
         host = f"[{name}]" if ":" in name else name
         return f"http://{host}:{self.config_port}{request.path}"
 
@@ -243,29 +221,6 @@ def _is_followed_link(request: Request) -> bool:
             for name, value in _FOLLOWED_LINK.items()
         )
     )
-
-
-def _host_name(authority: str) -> str:
-    """The host ``authority`` names, case-folded, without a port or an IPv6 address's brackets.
-
-    It is empty if the brackets are not closed, which names no host.
-    """
-    authority = authority.strip().casefold()
-
-    if authority.startswith("["):
-        name, closed, _ = authority[1:].partition("]")
-        return name if closed else ""
-
-    return authority.partition(":")[0]
-
-
-def _same_authority(origin: str, host: str) -> bool:
-    """Whether ``origin``, as an ``Origin`` header gives it, names the host and port ``host`` does.
-
-    An origin that names none, such as ``null``, is the same as nothing.
-    """
-    authority = origin.partition("://")[2].strip().casefold()
-    return bool(authority) and authority == host.strip().casefold()
 
 
 def names_config(path: str) -> bool:

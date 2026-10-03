@@ -3,12 +3,14 @@
 from __future__ import annotations
 from pathlib import Path
 
+from platformdirs.macos import MacOS
 from pytest import raises
 from yaml import safe_load
 
 from libranet.config.errors import ConfigError
 from libranet.config.loader import load_config
 from libranet.config.models import BackupConfig, NetworkConfig
+from libranet.config.paths import APP_NAME, default_local_folders
 
 
 def write_config(tmp_path: Path, text: str) -> Path:
@@ -142,6 +144,21 @@ def test_the_example_config_states_the_default_excluded_extended_attributes() ->
     example = Path(__file__).parent.parent / "examples" / "libranet.yaml"
 
     assert load_config(example).backup.excluded_xattrs == BackupConfig().excluded_xattrs
+
+
+def test_the_example_config_states_the_default_folders_on_macos() -> None:
+    example = Path(__file__).parent.parent / "examples" / "libranet.yaml"
+
+    assert load_config(example).local.folders == default_local_folders(
+        MacOS(appname=APP_NAME, appauthor=False)
+    )
+
+
+def test_two_folders_of_one_name_fail_to_load(tmp_path: Path) -> None:
+    path = write_config(tmp_path, 'local:\n  folders: ["/a/Movies", "/b/Movies"]\n')
+
+    with raises(ConfigError, match="both be offered as 'Movies'"):
+        load_config(path)
 
 
 def test_no_path_at_all_yields_defaults() -> None:

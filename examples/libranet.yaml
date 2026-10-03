@@ -228,6 +228,25 @@ backup:
     - "system.*"
     - "trusted.*"
 
+local:
+  # The folders on this machine that a browser on it may list, and import
+  # files from, through /data/directory (HTTP API §12.2). Nothing outside
+  # them is offered, nor anything hidden within them. Each is offered under
+  # its own name, the last segment of its path, so no two may share one, and
+  # one that does not exist is left out. A leading ~ is the home directory.
+  # The default is the user's own desktop, documents, downloads, music,
+  # pictures, and videos folders: on macOS those below, and on Linux those
+  # the XDG user directories name (user-dirs.dirs), ~/Videos and the like
+  # where they name none. The list replaces the default, not adds to it; []
+  # offers none.
+  folders:
+    - "~/Desktop"
+    - "~/Documents"
+    - "~/Downloads"
+    - "~/Music"
+    - "~/Pictures"
+    - "~/Movies"
+
 # Applications are not configured here. Which directory bundle each one
 # serves is changed while the node runs, through /config/api/applications,
 # and kept in applications.json under data_dir.

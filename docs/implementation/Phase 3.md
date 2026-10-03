@@ -710,6 +710,78 @@ My calls, not yet reviewed:
 
 About 300 new or changed lines of non-test Python, so one change set.
 
+Built as planned, in one change set: 644 added lines of non-test Python,
+84 of them in place of removed ones and many of them docstrings. The
+checks `ConfigSiteGuard` made are `SiteChecks` now
+(`webserver/site_checks.py`), which `ConfigSiteGuard` builds from the
+same arguments, with the same messages; only the exception for a link
+followed stays in `config_guard.py`. `Request.carries_json` says what
+`Request.json` checks, so that `LocalOnly` can refuse a body unread.
+`build_router` gains `config_hosts` and `local_folders`, which the web
+server module fills from `network.config_hosts` and the config, and
+which offer no folders by default. `modified_time`, which a bundle's
+`modified` came from, is public in `bundle/building.py`, so that a
+listing writes a time as a bundle does.
+
+Run live on one new node, listening at every address and offering a
+`Movies` folder in the scratchpad and a `Music` folder that did not
+exist:
+
+- `/data/client` answered `{"local":true}` at `127.0.0.1`, and
+  `{"local":false}` at the machine's own network address, which is not
+  a loopback source. There, `/data/directory` was `403`.
+- `/data/directory` listed `Movies` alone. `Movies` listed `Film.mp4`
+  (`video/mp4`, with its size and time), `Holidays`, and `inside`, a
+  symbolic link to `Holidays`, but neither `.hidden` nor `outside`, a
+  link to a folder beside it. `inside` and `Movies%2FHolidays` each listed
+  `Holidays`.
+- `Movies/outside`, `Movies/.hidden`, `Movies/../Elsewhere` (sent as
+  written), `Movies/%2e%2e/Elsewhere`, `Movies/Film.mp4`, and `Music`
+  were each `404`.
+- A `Host` of `evil.example`, a `Sec-Fetch-Site` of `cross-site` or
+  `same-site`, and an `Origin` of another host were each `403`, and
+  logged at warning. `same-origin` passed. A `HEAD` was `405`.
+
+No other warning was logged. Not checked live: a browser's own requests,
+and a folder macOS keeps from the node, since the node was pointed at no
+real folder.
+
+My calls while building, not yet reviewed:
+
+- **A folder's path must end in a name.** One ending in `/`, `.`, or
+  `..` fails `--check-config`, as two of one name do. A leading `~` is
+  the home directory, which no other path setting expands, so that
+  `examples/libranet.yaml` can state the folders for anyone.
+- **`examples/libranet.yaml` states the macOS folders as settings**, not
+  as a comment, since a section holding only comments is `null`, and
+  fails to load. On Linux, a copy of it offers those folders in place of
+  the XDG ones, and its comment says so.
+- **A path no folder could hold is `404`**, not `400`, as an
+  application's path is: an empty, `.`, `..`, or hidden segment, a NUL,
+  or what does not decode as UTF-8. So `/data/directory/` and
+  `/data/directory/Movies/` are `404`. The path is decoded before it is
+  split, so `%2F` separates segments as `/` does.
+- **Nothing hidden is reached by a link either.** A link within its
+  folder that leads to a hidden entry is left out, and a path through it
+  is `404`.
+- **A link within its folder is listed as what it leads to**, a file or
+  a directory, not as a link.
+- **Only files and directories are listed.** A FIFO, a socket, or a
+  device is left out, unlogged. A name that is not UTF-8 is left out
+  too, and a warning says how many there were in the listing.
+- **A directory the node may not read is `403`**, logged at warning, as
+  macOS answers for the desktop, documents, and downloads folders of a
+  program not granted them. A folder that cannot be looked at at all is
+  left out of `/data/directory`, logged at warning.
+- **`LocalOnly` refuses a body of another type with `415` whatever the
+  method**, before the endpoint is handed it, rather than only where an
+  endpoint reads the body as JSON, as `/config/api` does. No route of
+  this step takes a body, so a `POST` is `405` before it is looked at.
+- **A remote client refused is not logged**, as `/config` does not log
+  one. A request another site's page made is logged at warning, as
+  `/config` logs it.
+- **A refusal says "This endpoint"** where `/config`'s says `/config`.
+
 **Testable in isolation:**
 
 - The checks: a source that is not loopback, a `Host` not in the list,
@@ -1087,6 +1159,7 @@ number, and where it went.
 | #207 | Serving a file from its parts as they are fetched, with each part's size recorded | 64, 65 |
 | #213 | A movie application shipped at `/movie`, with playlists that can be shared | 67, with 68 to 72 for what it needs |
 | #218 | Listing the applications, so that the root application can link to each | 73 |
+| #219 | Local clients, the checks made of them, and the folders they may read | 68 |
 
 ## 5. Suggested Build Order
 
@@ -1095,7 +1168,7 @@ number, and where it went.
 | 1 | 64 (#207) | Every step after it reads part sizes. Small. |
 | 2 | 65 (#207) | Streams a file from its parts, which a range sends a span of. |
 | 3 | 66 (#206) | Needs 64's sizes to find a range's parts, and 65's streaming to send them. |
-| 4 | 68 (#213) | Local clients and their checks, which 69, 70, and 72 need. Needs nothing in this phase. |
+| 4 | 68 (#219) | Local clients and their checks, which 69, 70, and 72 need. Needs nothing in this phase. |
 | 5 | 70 (#213) | Needs only 68. |
 | 6 | 71 (#213) | Serves what 65 and 66 serve, from any bundle, and reads encrypted bundles, which 72 makes. |
 | 7 | 69 (#213) | Needs 64's sizes and 68's folders. |

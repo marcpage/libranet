@@ -48,7 +48,7 @@ from libranet import __version__
 from libranet.cas.layered import LayeredSource
 from libranet.cas.resolved_files import ResolvedFiles
 from libranet.cas.store import CasStore
-from libranet.config.models import IDLE_TIMEOUT_SECONDS, StorageConfig
+from libranet.config.models import DEFAULT_CONFIG_HOSTS, IDLE_TIMEOUT_SECONDS, StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.signatures import MessageSigner
 from libranet.messaging.publishing import Publish
@@ -92,9 +92,12 @@ from libranet.webserver.http_types import (
 )
 from libranet.webserver.inbound_peers import InboundConnection, InboundPeers
 from libranet.webserver.list_handlers import ListFileHandler, NodeListHandler, SeekListHandler
+from libranet.webserver.local_folders import DIRECTORY_PATTERN, DirectoryHandler, LocalFolders
+from libranet.webserver.local_only import CLIENT_PATH, LocalOnly, client_handler
 from libranet.webserver.router import Router
 from libranet.webserver.search_handler import SEARCH_PATTERN, SearchHandler
 from libranet.webserver.signature_guard import SignatureGuard
+from libranet.webserver.site_checks import SiteChecks
 
 # Why a port is passed over for the next one to listen on: it is in use, or
 # this process may not listen on it, as one below 1024 may need privileges
@@ -110,7 +113,7 @@ _LOOPBACK_FOR_ANY: Final = {"": "127.0.0.1", "0.0.0.0": "127.0.0.1", "::": "::1"
 _PROBE_TIMEOUT_SECONDS: Final = 1.0
 
 
-def build_router(
+def build_router(  # pylint: disable=too-many-locals
     storage: StorageConfig,
     retry_after_seconds: int,
     publish: Publish,
@@ -121,6 +124,8 @@ def build_router(
     app_outcomes: ApplicationOutcomes | None = None,
     content: LayeredSource | None = None,
     app_wait_seconds: float = 0.0,
+    config_hosts: tuple[str, ...] = DEFAULT_CONFIG_HOSTS,
+    local_folders: LocalFolders | None = None,
 ) -> Router:
     """The main port's routes, serving the configured source of truth, derived lists, and apps.
 
@@ -138,7 +143,10 @@ def build_router(
     their paths. ``content`` is what ``/data`` reads and searches: the source
     of truth, then any content archives (Step 34), and the applications the
     node ships (Step 37). It is the source of truth alone, shipping nothing,
-    if none is given.
+    if none is given. ``/data/client`` tells any client whether it is local,
+    and ``/data/directory`` lists ``local_folders``, none if none are given,
+    to local clients alone, served as ``config_hosts`` names, as ``/config``
+    is (Phase 3 Step 68).
     """
     store = CasStore.source_of_truth(storage)
     content = LayeredSource(store) if content is None else content
@@ -155,7 +163,15 @@ def build_router(
             allow_unsigned_api_reads=allow_unsigned_api_reads,
         ),
     )
-    # The search route must precede the data route, whose pattern it also fits.
+    folders = LocalFolders() if local_folders is None else local_folders
+    router.add("GET", CLIENT_PATH, client_handler)
+    # The directory and search routes must precede the data route, whose
+    # pattern they also fit.
+    router.add(
+        "GET",
+        DIRECTORY_PATTERN,
+        LocalOnly(DirectoryHandler(folders), SiteChecks(config_hosts, "This endpoint")),
+    )
     router.add(
         "GET",
         SEARCH_PATTERN,
