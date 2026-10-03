@@ -378,3 +378,34 @@ def test_decode_refuses_json_nested_past_the_recursion_limit() -> None:
 def test_decode_checks_the_shape_of_the_json() -> None:
     with raises(MalformedBundleError, match="JSON object"):
         decode_bundle(b"[1, 2]")
+
+
+def test_part_sizes_are_read_from_sizes() -> None:
+    bundle = parse_bundle({**FILE_BUNDLE, "sizes": [3072, 1024]})
+
+    assert isinstance(bundle, FileBundle)
+    assert bundle.part_sizes_bytes == (3072, 1024)
+
+
+def test_a_file_without_sizes_records_no_part_sizes() -> None:
+    bundle = parse_bundle(FILE_BUNDLE)
+
+    assert isinstance(bundle, FileBundle)
+    assert bundle.part_sizes_bytes is None
+
+
+@mark.parametrize("sizes", [None, 4096, "4096", [4096.0], [True], ["4096"], [[4096]], {}])
+def test_sizes_must_be_an_array_of_integers(sizes: object) -> None:
+    with raises(MalformedBundleError, match='"sizes" must be an array of integers'):
+        parse_bundle({"contents": [PART_A], "sizes": sizes})
+
+
+@mark.parametrize("sizes", [[4096], [3072, 1023], [4097, -1]])
+def test_sizes_that_do_not_fit_the_file_are_malformed(sizes: list[int]) -> None:
+    with raises(MalformedBundleError, match='"sizes"'):
+        parse_bundle({**FILE_BUNDLE, "sizes": sizes})
+
+
+def test_sizes_that_do_not_fit_a_directory_entry_are_malformed_and_named() -> None:
+    with raises(MalformedBundleError, match="Entry 'a.txt'"):
+        parse_bundle({"contents": {"a.txt": {"contents": [PART_A], "sizes": [1, 2]}}})

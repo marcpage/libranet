@@ -29,7 +29,7 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import MIB, BackupConfig, LibranetConfig, StorageConfig
 
-from tests.helpers import encrypted_part
+from tests.helpers import encrypted_part, without_part_sizes
 
 SECRET = b"s" * 32
 MADE_AT = 1_789_000_000.0
@@ -203,6 +203,30 @@ def test_a_backup_over_one_whose_parts_are_unencrypted_encrypts_every_file(
     assert second.bundle != plain
     assert all(part.encrypted for part in file_parts(second.bundle, store))
     assert restored(second.bundle, store)["big.bin"] == BIG
+
+
+def test_a_file_backed_up_before_part_sizes_were_recorded_is_kept_without_them(
+    tree: Path, backups: AnnouncingStore, store: CasStore, recorder: Recorder
+) -> None:
+    # As a node made backups before it recorded the size of each part.
+    entries = without_part_sizes(build_directory(tree, backups, encrypt_parts=True).entries)
+    earlier = LatestBackup(
+        store_bundle(DirectoryBundle(entries), backups, SECRET), MADE_AT, "made without sizes"
+    )
+    big_parts = parts_of(entries["big.bin"])
+
+    # Reading big.bin again would store its parts again.
+    for part in big_parts:
+        store.delete(part)
+
+    recorder.announced.clear()
+    (tree / "readme.txt").write_bytes(b"read me again")
+    second = backup_after(earlier, tree, backups)
+    entry = entries_of(second.bundle, store)["big.bin"]
+
+    assert recorder.content_ids.isdisjoint(big_parts)
+    assert isinstance(entry, FileBundle)
+    assert (parts_of(entry), entry.part_sizes_bytes) == (big_parts, None)
 
 
 def test_a_backup_is_encrypted_with_the_secret(

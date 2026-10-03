@@ -37,7 +37,7 @@ from libranet.cas.store import CasStore
 from libranet.config.models import MIB
 from libranet.protocol.config_requests import BuildRequest, Password
 
-from tests.helpers import encrypted_part
+from tests.helpers import encrypted_part, without_part_sizes
 
 REQUESTED_AT = 1_789_000_000.0
 FINISHED_AT = REQUESTED_AT + 5
@@ -286,6 +286,35 @@ def test_a_protected_build_over_one_whose_parts_are_unencrypted_encrypts_every_f
     assert top.extensions == (str(plain),)
     assert all(part.encrypted for part in file_parts(second, store, "correct horse"))
     assert contents(second, store, "correct horse") == contents(plain, store, "correct horse")
+
+
+def test_a_build_over_one_recorded_without_part_sizes_reads_every_file_again_for_them(
+    site: Path, sink: AnnouncingStore, store: CasStore, recorder: Recorder
+) -> None:
+    # As a node made builds before it recorded the size of each part.
+    entries = without_part_sizes(build_directory(site, sink).entries)
+    earlier = store_bundle(DirectoryBundle(entries), sink)
+    BuildRecord.of(Superseded(earlier, entries, (), Layering()), False).save(
+        BuildRecord.beside(site)
+    )
+    recorder.announced.clear()
+
+    second = bundle_of(build(site, sink))
+
+    # A layer over it, restating every file with its sizes, and nothing else.
+    top = top_of(second, store)
+    files = {path: entry for path, entry in top.entries.items() if isinstance(entry, FileBundle)}
+    assert top.extensions == (str(earlier),)
+    assert set(top.entries) == set(files)
+    assert {path: entry.part_sizes_bytes for path, entry in files.items()} == {
+        "index.html": (11,),
+        "pages/about.html": (12,),
+    }
+    assert record_of(site).expanded == Superseded(
+        second, {**entries, **files}, (str(earlier),), Layering(1, 1)
+    )
+    # Every part was held, so only the layer is stored.
+    assert recorder.announced == [second]
 
 
 def test_the_same_password_again_on_an_unchanged_directory_keeps_its_bundle(
@@ -645,7 +674,9 @@ BUNDLE = ContentId.for_data(b"a bundle", "sha256")
 BENEATH = str(ContentId.for_data(b"a layer beneath", "sha256"))
 ENTRIES: dict[str, Entry] = {
     "index.html": FileBundle(
-        (str(ContentId.for_data(b"<p>home</p>", "sha256")),), Metadata(size_bytes=11, writable=True)
+        (str(ContentId.for_data(b"<p>home</p>", "sha256")),),
+        Metadata(size_bytes=11, writable=True),
+        part_sizes_bytes=(11,),
     ),
     "about": Symlink("pages/about.html"),
     "empty": DirectoryMarker(),

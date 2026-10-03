@@ -30,8 +30,11 @@ and if it cannot be read here, having been evicted or protected with another
 password, every file is read. A file whose parts are not stored as this
 build stores them, encrypted if it is protected and plain if not, is read and
 stored again. So is every file of a protected build recorded before its parts
-were encrypted. When nothing has changed, the same entries protected alike,
-the bundle is kept, since a new one would record no change.
+were encrypted, and every file recorded before the size of each part was
+(BundleSpecification §2.1; Phase 3 Step 64), so that an application built
+again can be read from anywhere within a file. When nothing has changed, the
+same entries protected alike, the bundle is kept, since a new one would
+record no change.
 
 As with a backup, the new bundle holds only the entries that changed, as a
 layer over the one recorded, until ``max_layers`` lie above the last bundle
@@ -246,6 +249,7 @@ class Build(Task):
             previous=None if earlier is None else earlier.superseded.entries,
             xattrs=settings.xattrs,
             encrypt_parts=password is not None,
+            require_part_sizes=True,
         )
 
         if record is not None and earlier is not None and earlier.matches(build.bundle):

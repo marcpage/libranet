@@ -1,10 +1,11 @@
 """Reassembling a file from its parts (BundleSpecification §2).
 
 Parts are written out in ``contents`` order, a chunk at a time, since a
-file has no size limit. Each part is checked against its own identifier as
-it is read, and decrypted if it is encrypted (§7), and the whole file
-against the hash and size its metadata gives (§2.3), which catches what a
-part-level check alone could not.
+file has no size limit. Each part is checked against its own identifier, and
+its size if the bundle records one (§2.1), as it is read, and decrypted if
+it is encrypted (§7), and the whole file against the hash and size its
+metadata gives (§2.3), which catches what a part-level check alone could
+not.
 
 A whole-file hash under an algorithm this node lacks makes the file
 unsupported rather than unchecked.
@@ -56,10 +57,11 @@ def write_file(bundle: FileBundle, source: ContentSource, output: ByteSink) -> i
     check_held((part.content_id for part in parts), source)
     hasher = DEFAULT_REGISTRY.get(expected.algorithm).hasher() if expected else None
     expected_bytes = bundle.metadata.size_bytes
+    sizes_bytes = bundle.part_sizes_bytes or (None,) * len(parts)
     size_bytes = 0
 
-    for part in parts:
-        for chunk in part.chunks(source):
+    for part, part_bytes in zip(parts, sizes_bytes):
+        for chunk in part.chunks(source, part_bytes):
             size_bytes += len(chunk)
 
             if expected_bytes is not None and size_bytes > expected_bytes:

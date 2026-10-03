@@ -34,6 +34,9 @@ def bundle_value(bundle: Bundle) -> dict[str, Any]:
     if isinstance(bundle, FileBundle):
         value["contents"] = list(bundle.parts)
 
+        if bundle.part_sizes_bytes is not None:
+            value["sizes"] = list(bundle.part_sizes_bytes)
+
         if bundle.versions:
             value["versions"] = [list(version) for version in bundle.versions]
 

@@ -163,6 +163,7 @@ def _as_shipped(entry: Entry | None) -> Entry | None:
             Metadata(
                 size_bytes=recorded.size_bytes, algorithm=recorded.algorithm, hash=recorded.hash
             ),
+            part_sizes_bytes=entry.part_sizes_bytes,
         )
 
     if isinstance(entry, DirectoryMarker):

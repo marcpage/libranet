@@ -9,7 +9,8 @@ alone, not on how well they compress or on which zlib compressed them. The
 same file therefore gives the same parts on any node, and storing a file
 that has not changed writes nothing. The file's metadata gives its size, its
 SHA-256 as reassembled (§2.3), its times, and whether its owner may write or
-run it. An empty file has no parts.
+run it, and its bundle the size of each part (§2.1). An empty file has no
+parts.
 
 A directory may be built with every part encrypted instead (§7), as a backup
 is (BackupSpecification §4.4), and as any bundle protected with a password
@@ -46,7 +47,9 @@ aside, is kept as it was, without being read, with the attributes it has
 now. A file whose metadata changed is hashed, and if it still holds the
 bytes recorded, it keeps its parts and only its metadata is updated.
 Otherwise it is built afresh. So is a file whose parts are not stored as
-this build stores them, encrypted or not, whatever else is the same.
+this build stores them, encrypted or not, whatever else is the same, and,
+when the caller asks for every part's size, one whose entry records none, as
+one built before sizes were recorded.
 
 Times are UTC, to the microsecond. A file's creation time is recorded only
 where the platform reports it, which Linux does not. Building again keeps the
@@ -202,6 +205,7 @@ def build_directory(  # pylint: disable=too-many-branches,too-many-locals
     previous: Mapping[str, Entry] | None = None,
     xattrs: ExtendedAttributes | None = None,
     encrypt_parts: bool = False,
+    require_part_sizes: bool = False,
 ) -> DirectoryBuild:
     """The bundle for the directory at ``root``, every file's parts stored in ``sink``.
 
@@ -213,6 +217,8 @@ def build_directory(  # pylint: disable=too-many-branches,too-many-locals
     have not changed. ``xattrs`` says which extended attributes are
     recorded; without it, none are. ``encrypt_parts`` says whether every
     part, of a file or of an attribute's value, is encrypted (§7).
+    ``require_part_sizes`` says whether a file is read again, rather than
+    kept from ``previous``, if its entry there records no part sizes (§2.1).
 
     Raises:
         ValueError: ``max_object_bytes`` leaves no room for a part.
@@ -274,7 +280,9 @@ def build_directory(  # pylint: disable=too-many-branches,too-many-locals
 
                 elif item.is_file(follow_symlinks=False):
                     found = attributes(item.path)
-                    kept = _unchanged(earlier.get(path), item, found, parts)
+                    kept = _unchanged(
+                        _keepable(earlier.get(path), parts, require_part_sizes), item, found
+                    )
 
                     if kept is None:
                         file = _open_regular_file(Path(item.path))
@@ -291,7 +299,9 @@ def build_directory(  # pylint: disable=too-many-branches,too-many-locals
 
             if file is not None:
                 with file:
-                    entries[path] = _file_bundle(file, parts, found, earlier.get(path))
+                    entries[path] = _file_bundle(
+                        file, parts, found, earlier.get(path), require_part_sizes
+                    )
 
     parents = ancestors(entries.keys() | directories.keys())
 
@@ -317,22 +327,35 @@ def _identity(path: Path) -> tuple[int, int] | None:
     return status.st_dev, status.st_ino
 
 
-def _unchanged(
-    earlier: Entry | None,
-    item: DirEntry[str],
-    xattrs: Mapping[str, XattrValue],
-    parts: PartWriter,
+def _keepable(
+    earlier: Entry | None, parts: PartWriter, require_part_sizes: bool
 ) -> FileBundle | None:
-    """``earlier``, if it is a file whose recorded metadata the file ``item`` still has.
+    """``earlier``, if it is a file whose parts a build may keep.
+
+    They must be stored as ``parts`` stores them, and if
+    ``require_part_sizes``, their sizes recorded (§2.1).
+    """
+    if not isinstance(earlier, FileBundle) or not parts.keeps(earlier.parts):
+        return None
+
+    if require_part_sizes and earlier.part_sizes_bytes is None:
+        return None
+
+    return earlier
+
+
+def _unchanged(
+    earlier: FileBundle | None, item: DirEntry[str], xattrs: Mapping[str, XattrValue]
+) -> FileBundle | None:
+    """``earlier``, a file whose parts may be kept, if the file ``item`` still has its metadata.
 
     Its creation time is kept, not compared. Its extended attributes are not
-    compared either, but become ``xattrs``, the ones the file has now. Its
-    parts must be stored as ``parts`` stores them.
+    compared either, but become ``xattrs``, the ones the file has now.
 
     Raises:
         OSError: ``item`` could not be looked at.
     """
-    if not isinstance(earlier, FileBundle) or not parts.keeps(earlier.parts):
+    if earlier is None:
         return None
 
     recorded = earlier.metadata
@@ -393,41 +416,43 @@ def _file_bundle(
     parts: PartWriter,
     xattrs: Mapping[str, XattrValue],
     earlier: Entry | None = None,
+    require_part_sizes: bool = False,
 ) -> FileBundle:
     """The bundle for the open ``file``, each part stored by ``parts`` as it is read.
 
     ``xattrs`` are its extended attributes, as recorded. If ``earlier`` is a
     file that held the same bytes, in parts stored as ``parts`` stores them,
-    it keeps those parts, and nothing is stored. If it is a file at all, its
-    creation time is kept.
+    with their sizes recorded if ``require_part_sizes``, it keeps those parts,
+    and nothing is stored. If it is a file at all, its creation time is kept.
     """
     status = fstat(file.fileno())
+    keepable = _keepable(earlier, parts, require_part_sizes)
 
-    if (
-        isinstance(earlier, FileBundle)
-        and parts.keeps(earlier.parts)
-        and _holds(file, status, earlier.metadata)
-    ):
-        return FileBundle(earlier.parts, _as_recorded(status, earlier.metadata, xattrs))
+    if keepable is not None and _holds(file, status, keepable.metadata):
+        return FileBundle(
+            keepable.parts,
+            _as_recorded(status, keepable.metadata, xattrs),
+            part_sizes_bytes=keepable.part_sizes_bytes,
+        )
 
     file.seek(0)
     hasher = DEFAULT_REGISTRY.get(HASH_ALGORITHM).hasher()
     stored: list[str] = []
-    size_bytes = 0
+    sizes_bytes: list[int] = []
 
     while part := file.read(parts.part_bytes):
         hasher.update(part)
-        size_bytes += len(part)
+        sizes_bytes.append(len(part))
         stored.append(str(parts.store(part)))
 
     metadata = replace(
         _metadata(status, _recorded(earlier, FileBundle)),
-        size_bytes=size_bytes,
+        size_bytes=sum(sizes_bytes),
         algorithm=HASH_ALGORITHM,
         hash=hasher.hexdigest(),
         xattrs=xattrs,
     )
-    return FileBundle(tuple(stored), metadata)
+    return FileBundle(tuple(stored), metadata, part_sizes_bytes=tuple(sizes_bytes))
 
 
 def _holds(file: BinaryIO, status: stat_result, recorded: Metadata) -> bool:

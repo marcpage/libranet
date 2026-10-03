@@ -101,7 +101,10 @@ def _entry(fields: dict[str, object], contents: object) -> Entry:
 
     if isinstance(contents, list):
         return FileBundle(
-            _cas_paths(contents, '"contents"'), _metadata(fields), _file_versions(fields)
+            _cas_paths(contents, '"contents"'),
+            _metadata(fields),
+            _file_versions(fields),
+            _part_sizes(fields),
         )
 
     if isinstance(contents, str):
@@ -235,6 +238,22 @@ def _strings(value: object, name: str) -> tuple[str, ...]:
 def _cas_paths(value: object, name: str) -> tuple[str, ...]:
     """``value`` as a tuple of CAS paths, if it is an array of strings."""
     return tuple(normalize_cas_path(path) for path in _strings(value, name))
+
+
+def _part_sizes(fields: dict[str, object]) -> tuple[int, ...] | None:
+    """The bytes each of a file's parts contributes, as ``sizes`` gives them, if it does (§2.1)."""
+    if "sizes" not in fields:
+        return None
+
+    sizes = fields["sizes"]
+
+    # Note: bool is a subclass of int, so need to make sure none is a bool
+    if not isinstance(sizes, list) or not all(
+        isinstance(size_bytes, int) and not isinstance(size_bytes, bool) for size_bytes in sizes
+    ):
+        raise MalformedBundleError('"sizes" must be an array of integers')
+
+    return tuple(sizes)
 
 
 def _file_versions(fields: dict[str, object]) -> tuple[tuple[str, ...], ...]:

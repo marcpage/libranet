@@ -1,6 +1,7 @@
 """Tests for writing bundles back out as JSON."""
 
 from __future__ import annotations
+from dataclasses import replace
 from json import loads
 
 from pytest import mark
@@ -51,6 +52,8 @@ DIRECTORY = DirectoryBundle(
     [
         FILE,
         FileBundle(()),
+        replace(FILE, part_sizes_bytes=(3072, 1024)),
+        FileBundle((), part_sizes_bytes=()),
         DIRECTORY,
         DirectoryBundle({}),
         Symlink("../elsewhere"),
@@ -116,3 +119,11 @@ def test_an_inline_value_is_written_back_as_it_was_read() -> None:
     value = {"metadata": {"xattrs": {"user.a": "YR=="}}}
 
     assert bundle_value(parse_bundle(value)) == value
+
+
+def test_part_sizes_are_written_as_sizes_when_recorded() -> None:
+    assert bundle_value(FileBundle((PART, OTHER_PART), part_sizes_bytes=(3, 0))) == {
+        "contents": [PART, OTHER_PART],
+        "sizes": [3, 0],
+    }
+    assert bundle_value(FileBundle((), part_sizes_bytes=())) == {"contents": [], "sizes": []}

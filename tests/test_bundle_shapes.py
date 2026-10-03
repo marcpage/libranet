@@ -8,6 +8,7 @@ from libranet.bundle.errors import MalformedBundleError
 from libranet.bundle.shapes import (
     DirectoryBundle,
     DirectoryMarker,
+    FileBundle,
     Metadata,
     Symlink,
     XattrValue,
@@ -117,3 +118,35 @@ def test_extended_attribute_parts_are_listed_in_order() -> None:
 
     assert metadata.xattr_parts() == (PART, OTHER_PART, PART)
     assert metadata.xattr_parts(lambda name: name != "user.a") == (PART,)
+
+
+@mark.parametrize(
+    ("sizes", "size"),
+    [(None, 4096), ((3072, 1024), 4096), ((3072, 1024), None), ((0, 4096), 4096)],
+)
+def test_a_file_keeps_part_sizes_one_for_each_part_adding_up_to_its_size(
+    sizes: tuple[int, ...] | None, size: int | None
+) -> None:
+    bundle = FileBundle((PART, OTHER_PART), Metadata(size_bytes=size), part_sizes_bytes=sizes)
+
+    assert bundle.part_sizes_bytes == sizes
+
+
+def test_a_file_without_parts_may_record_that_it_has_no_part_sizes() -> None:
+    assert FileBundle((), Metadata(size_bytes=0), part_sizes_bytes=()).part_sizes_bytes == ()
+
+
+@mark.parametrize("sizes", [(), (4096,), (2048, 1024, 1024)])
+def test_a_file_refuses_part_sizes_not_one_for_each_part(sizes: tuple[int, ...]) -> None:
+    with raises(MalformedBundleError, match="one size for each of the 2 parts"):
+        FileBundle((PART, OTHER_PART), part_sizes_bytes=sizes)
+
+
+def test_a_file_refuses_a_negative_part_size() -> None:
+    with raises(MalformedBundleError, match="non-negative"):
+        FileBundle((PART, OTHER_PART), part_sizes_bytes=(4097, -1))
+
+
+def test_a_file_refuses_part_sizes_that_do_not_add_up_to_its_size() -> None:
+    with raises(MalformedBundleError, match="add up to 4095, not the file's size, 4096"):
+        FileBundle((PART, OTHER_PART), Metadata(size_bytes=4096), part_sizes_bytes=(3072, 1023))
