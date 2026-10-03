@@ -335,6 +335,11 @@ class StorageConfig(_Section):
         """The application registry, owned by the web server (Step 35)."""
         return self.data_dir / "applications.json"
 
+    @property
+    def application_stores_dir(self) -> Path:
+        """Each application's store, a file each, owned by the web server (Phase 3 Step 70)."""
+        return self.data_dir / "store"
+
 
 class IdentityConfig(_Section):
     """Node key material and RFC 9421 signature policy (Step 6)."""

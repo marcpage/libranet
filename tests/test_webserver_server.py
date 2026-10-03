@@ -56,6 +56,7 @@ from libranet.stats.module import StatsModule
 from libranet.validator.module import ValidatorModule
 from libranet.webserver.app_handler import CONFIG_APP_POLICY
 from libranet.webserver.app_registry import Application, ApplicationRegistry
+from libranet.webserver.app_store import StoredValue
 from libranet.webserver.config_auth import CONFIG_REALM
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import NodeDescription
@@ -1742,6 +1743,42 @@ def test_another_client_or_sites_page_is_refused_imports(
 
     assert remote.status == 403
     assert cross_site.status == 403
+
+
+def test_a_local_client_keeps_a_value_in_an_applications_store(
+    local_server: LibranetHTTPServer, local_connection: HTTPConnection, storage: StorageConfig
+) -> None:
+    local_connection.request(
+        "PUT",
+        "/data/store/Movie/last",
+        body=b'{"name": "Family"}',
+        headers={"Content-Type": JSON_CONTENT_TYPE},
+    )
+    put = local_connection.getresponse()
+    put.read()
+    read, body = _get(local_connection, "/data/store/movie/last")
+    listed, listing = _get(local_connection, "/data/store/movie")
+    # The live server only ever sees loopback clients, so the remote requests
+    # are put to the router directly.
+    remote = local_server.router.dispatch(
+        Request("GET", "/data/store/movie/last", client_address="203.0.113.42")
+    )
+    remote_put = local_server.router.dispatch(
+        Request("PUT", "/data/store/movie/last", client_address="203.0.113.42")
+    )
+
+    # Not taken for /data/{algorithm}/{hash}, whose pattern the store's fits.
+    assert put.status == 201
+    assert read.status == 200
+    assert read.getheader("ETag") == StoredValue.of({"name": "Family"}).tag()
+    assert loads(body) == {"name": "Family"}
+    assert listed.status == 200
+    assert loads(listing) == {"values": {"last": {"name": "Family"}}}
+    assert remote.status == 200
+    assert remote.body == body
+    assert remote_put.status == 403
+    (saved,) = storage.application_stores_dir.iterdir()
+    assert saved.name == f"{sha256(b'movie').hexdigest()}.json"
 
 
 def test_a_remote_client_is_told_it_is_not_local(local_server: LibranetHTTPServer) -> None:

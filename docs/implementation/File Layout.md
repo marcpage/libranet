@@ -59,7 +59,8 @@ A node on macOS with every default, after its first run, looks like this:
 │   ├── libranet.sqlite3            statistics database
 │   ├── applications.json           application registry
 │   ├── backup_jobs.json            backup jobs
-│   └── backup_jobs/                each job's last bundle, kept expanded
+│   ├── backup_jobs/                each job's last bundle, kept expanded
+│   └── store/                      each application's store
 ├── Caches/libranet/                storage.cache_dir
 │   ├── lists/                      derived node, seek, and candidate lists
 │   └── search/                     cached search responses
@@ -118,8 +119,10 @@ something is written to it.
 ├── libranet.sqlite3-shm                 only while the node runs
 ├── applications.json
 ├── backup_jobs.json
-└── backup_jobs/
-    └── {job id}                         a job's last bundle, kept expanded
+├── backup_jobs/
+│   └── {job id}                         a job's last bundle, kept expanded
+└── store/
+    └── {SHA-256 of a name}.json         an application's store
 ```
 
 | Path | Written by | Read by |
@@ -134,6 +137,7 @@ something is written to it.
 | `applications.json` | Web server | Web server |
 | `backup_jobs.json` | Backup module | Backup module |
 | `backup_jobs/` | Backup module | Backup module |
+| `store/` | Web server | Web server |
 
 ### 3.1 The Source of Truth: `cas/data`
 
@@ -345,6 +349,31 @@ before, and the file written anew. Deleting it is safe: the next backup
 reads the bundle back instead, or, if it has been evicted, every file, and
 finds any change held back again. Removing a job deletes its file.
 
+### 3.8 Application Stores: `store/`
+
+The values each application keeps on this node through `/data/store`
+(HttpApi §13.3; `src/libranet/webserver/app_store.py`), one file for each
+application that keeps any, named by the SHA-256 of its name, case-folded.
+The file holds the name too, and each value as compact JSON:
+
+```json
+{"application":"movie","values":{"playlists":[{"name":"Family","bundle":…}]}}
+```
+
+Only the web server writes these files. A store is named by the name an
+application is served at, whether or not one is registered there, so
+removing an application leaves its store, and registering another under
+the name gives it that store. Removing a store's last value removes its
+file. As for the registry, the web server checks a file's inode,
+modification time, and size on every request and rereads it when they
+change, and a file that cannot be read, or that holds another name's
+store, is an error, never saved over. A store's file is held to 1 MiB,
+and each value in it to 64 KiB.
+
+Deleting the directory, with the node stopped, makes every application
+forget what it kept here. What a store names is content, and stays in
+`cas/data` until it is evicted.
+
 ## 4. The Cache Directory
 
 ```text
@@ -533,7 +562,8 @@ them.
   target (`src/libranet/atomic_file.py`), so a reader sees the old file or
   the new one, never part of one. This covers CAS objects, resolved entries,
   derived lists, search results, the registry, the jobs file, each job's
-  last bundle, build records, and export archives. A `.partial` file left
+  last bundle, the applications' stores, build records, and export
+  archives. A `.partial` file left
   by a crash is not cleaned up, but every scan skips it.
 - **Owner-only by accident of the method.** A file replaced this way gets
   mode `0600`, because the temporary file is created with it. The database
@@ -645,9 +675,6 @@ with its location printed, after a failure.
 
 Planned steps that will change this layout:
 
-- **Step 70 (#213, Phase 3)** adds `store/` to the data directory, written
-  only by the web server: one JSON file for each application that keeps
-  values there, named by the SHA-256 of the application's name.
 - **Step 30 (#71, Phase 4)** adds a private list of blocked content ids to
   the stats database, and a list derived from it for the web server and
   validator, presumably beside the others in `lists/`.

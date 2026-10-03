@@ -6,7 +6,7 @@ from typing import cast
 
 from pytest import raises
 
-from libranet.atomic_file import atomic_writer, write_atomically
+from libranet.atomic_file import FileVersion, atomic_writer, write_atomically
 
 
 def test_missing_parent_directories_are_created(tmp_path: Path) -> None:
@@ -59,3 +59,18 @@ def test_a_writer_that_fails_leaves_the_file_as_it_was(tmp_path: Path) -> None:
 
     assert path.read_bytes() == b"old"
     assert [entry.name for entry in tmp_path.iterdir()] == ["file.bin"]
+
+
+def test_a_file_replaced_whole_is_another_version(tmp_path: Path) -> None:
+    path = write_atomically(tmp_path / "file.json", b"first")
+    first = FileVersion.of(path)
+
+    write_atomically(path, b"other")
+
+    assert FileVersion.of(path) != first
+    assert FileVersion.of(path) == FileVersion.of(path)
+
+
+def test_a_file_not_there_has_no_version(tmp_path: Path) -> None:
+    with raises(FileNotFoundError):
+        FileVersion.of(tmp_path / "missing.json")

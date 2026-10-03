@@ -983,6 +983,87 @@ My calls, not yet reviewed:
 
 About 250 new or changed lines of non-test Python, so one change set.
 
+Built as planned, in one change set: 752 added lines of non-test Python, 45
+of them in place of removed ones and many of them docstrings. The store
+(`webserver/app_store.py`) keeps each application's values as
+`StoredValues`, each value a `StoredValue` holding the compact JSON, keys
+sorted, that it is kept, sent, and tagged as, and reads `If-Match` as an
+`IfMatch`, checked under the store's lock. The registry's `_FileVersion`,
+which tells a file replaced from the one read, is `FileVersion` in
+`atomic_file.py` now, so that both use it, and `Application.folded_name`
+checks and folds a name for both. `json_or_refusal` takes a limit, so that
+a value's body is held to the store's, and
+`StorageConfig.application_stores_dir` is `store/`. HttpApi §13.3 now says
+what a `PUT` and a `DELETE` answer, and that `If-Match: *` fails for a key
+not held.
+
+Run live on one new node, listening at every address:
+
+- An empty store listed `{"values":{}}`. A `PUT` to `Movie/playlists` was
+  `201`, and one to `movie/playlists` with other spacing and key order
+  `204`. The value read back as `{"a":"Family","b":[1,2]}`, with
+  `no-cache` and an `ETag` that was the SHA-256 of those bytes, and
+  `MOVIE` listed it.
+- At the machine's own network address, which is not a loopback source,
+  the value read the same, and a `PUT` and a `DELETE` were each `403`.
+- A stale `If-Match` was `412`, naming the tag held, and a matching one
+  `204`. The old tag was then `412` for a `DELETE`, and `*` was `204`. `*`
+  for a key not held was `412`, and a `GET` and a `DELETE` of it `404`.
+- A `Sec-Fetch-Site` of `cross-site`, a `Host` of `evil.example`, and an
+  `Origin` of another host were each `403`, and logged at warning. A
+  `same-origin` request from this node's own origin was `201`. A form's
+  body was `415`, and `NaN` `400`.
+- A 70 KB body was `413` unread, and 40 KB of `é`, 120 KB once escaped,
+  `413`, naming the limit. Sixteen values of 65,002 bytes filled a store
+  to 1,040,168 bytes, and a seventeenth was `413`.
+- `%2F` kept the root application's store. `data`, `web`, `%2e%2e`,
+  `a%2Fb`, and a name or key that is not UTF-8 were each `404`.
+- A store file edited by hand was read at once. One holding `{not json`
+  was `500` for each method, saying only that the store cannot be read,
+  logged at warning with the file's path, and left as it was. Deleting the
+  root store's only value removed its file.
+
+One other warning was logged, by the upload handler. A `PUT` of
+`/data/store/movie`, naming no key, fits `/data/{algorithm}/{hash}`, so it
+is taken for an upload and is `400`, logged as an unsupported hash
+algorithm, `store`, and `HEAD` there is `405` allowing `GET, PUT`. A `PUT`
+of `/data/directory/Movies` has done the same since Step 68. Left as it is,
+and added to §6.
+
+My calls while building, not yet reviewed:
+
+- **A `PUT`'s answer carries no `ETag`.** A value is kept in a form of its
+  own, not as the body sent it, and RFC 9110 §9.3.4 forbids a validator in
+  the answer then. A client reads the value again for its tag. HttpApi
+  §13.3 now says so.
+- **A `PUT` is `201` for a key not held and `204` for one replaced, and a
+  `DELETE` is `204`.** The specification said neither.
+- **`GET` of a whole store carries no `ETag`**, for it or for any value in
+  it; a value's comes with reading it by its key. HttpApi §13.3 now says
+  "a value read by its key".
+- **`DELETE` with an `If-Match` of a key not held is `412`, not `404`**, as
+  RFC 9110 §13.2.2 checks `If-Match` first.
+- **A value's limit counts what is kept**: compact JSON with every
+  character beyond ASCII escaped, as `compact_json` writes it, so a body
+  under 64 KiB can be refused. A body over 64 KiB is refused unread.
+- **The store's limit counts its file**, compact JSON holding the name, so
+  what is counted is what is written. A store already larger, as one
+  edited by hand may be, refuses every `PUT`, and a `DELETE` still works.
+- **A store left holding nothing has no file.**
+- **Reads of a store are sent `Cache-Control: no-cache`**, since nothing
+  else beneath `/data` changes.
+- **NaN and the infinities are `400`.** Python reads them as JSON, and the
+  store would write them as text no browser reads.
+- **A key is any segment that decodes as UTF-8**, `%2F` included, kept as
+  it is cased. A name or key that does not decode is `404`, as for every
+  other path.
+- **A store file holding another name's store is an error**, `500`, as
+  is one that cannot be parsed.
+- **A `500` does not name the file**, since any client may read a store.
+  The warning logged does.
+- **A `400` is the `invalid-config-request` problem**, as for
+  `/data/imports`.
+
 **Testable in isolation:** store tests for reading, replacing, and
 deleting a key, the file read again when it changes, the limits, an
 unreadable file, and names that differ only in case. Handler tests for
@@ -1236,6 +1317,7 @@ number, and where it went.
 | #218 | Listing the applications, so that the root application can link to each | 73 |
 | #219 | Local clients, the checks made of them, and the folders they may read | 68 |
 | #220 | Importing a local file from a folder offered, and getting back its id | 69 |
+| #221 | A store for each application, read by any client and changed by local ones | 70 |
 
 ## 5. Suggested Build Order
 
@@ -1245,7 +1327,7 @@ number, and where it went.
 | 2 | 65 (#207) | Streams a file from its parts, which a range sends a span of. |
 | 3 | 66 (#206) | Needs 64's sizes to find a range's parts, and 65's streaming to send them. |
 | 4 | 68 (#219) | Local clients and their checks, which 69, 70, and 72 need. Needs nothing in this phase. |
-| 5 | 70 (#213) | Needs only 68. |
+| 5 | 70 (#221) | Needs only 68. |
 | 6 | 71 (#213) | Serves what 65 and 66 serve, from any bundle, and reads encrypted bundles, which 72 makes. |
 | 7 | 69 (#220) | Needs 64's sizes and 68's folders. |
 | 8 | 72 (#213) | Needs 68's checks, 69's file ids, and 71's encrypted bundles. |
@@ -1281,3 +1363,8 @@ Every specification change is made.
   application, such as `movie.localhost`, would keep them apart.
 - **An import waits behind a backup**, and a backup behind an import
   (Step 69), as both run in the backup module one at a time.
+- **A `PUT` beneath `/data` that no route of its own takes is an upload**
+  (Steps 68 and 70). `/data/store/movie` and `/data/directory/Movies` fit
+  `/data/{algorithm}/{hash}`, so a `PUT` of either is `400`, logged at
+  warning as an unsupported hash algorithm, rather than `405`. Keeping the
+  names §5 reserves out of that pattern would make each `405`.
