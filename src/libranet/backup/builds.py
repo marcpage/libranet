@@ -4,8 +4,11 @@ A build takes a directory and gives back a content id. The directory is built
 into a directory bundle as a backup is (Step 17): each file's parts are stored
 as they are read, and only what is not held already is written. Unlike a
 backup, the bundle is not encrypted with the node's backup secret. A password
-given with the request protects it (BundleSpecification §6), and without one
-it is left plain, so that it can be served once registered as an application.
+given with the request protects it (BundleSpecification §6), and every part
+of its files, and of extended attributes' values stored as parts, is
+encrypted as a backup's are (§7; Phase 2 Step 60), so that what the files
+hold is as hidden as their names. Without one it is left plain, parts and
+all, so that it can be served once registered as an application.
 
 Its content id is recorded beside the directory, in ``{name}.bundle``, with
 where it sits among update layers (:mod:`libranet.bundle.layering`), whether
@@ -24,8 +27,11 @@ Files are kept from the entries recorded, as a backup keeps them from the
 last one (:mod:`libranet.backup.runs`), without that bundle being read. A
 record written before entries were kept has the bundle read back instead,
 and if it cannot be read here, having been evicted or protected with another
-password, every file is read. When nothing has changed, the same entries
-protected alike, the bundle is kept, since a new one would record no change.
+password, every file is read. A file whose parts are not stored as this
+build stores them, encrypted if it is protected and plain if not, is read and
+stored again. So is every file of a protected build recorded before its parts
+were encrypted. When nothing has changed, the same entries protected alike,
+the bundle is kept, since a new one would record no change.
 
 As with a backup, the new bundle holds only the entries that changed, as a
 layer over the one recorded, until ``max_layers`` lie above the last bundle
@@ -239,6 +245,7 @@ class Build(Task):
             ignore=settings.ignore,
             previous=None if earlier is None else earlier.superseded.entries,
             xattrs=settings.xattrs,
+            encrypt_parts=password is not None,
         )
 
         if record is not None and earlier is not None and earlier.matches(build.bundle):

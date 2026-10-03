@@ -12,9 +12,9 @@ SHA-256 as reassembled (§2.3), its times, and whether its owner may write or
 run it. An empty file has no parts.
 
 A directory may be built with every part encrypted instead (§7), as a backup
-is (BackupSpecification §4.4). Parts are then cut a block short of the
-object limit, so that each fits once padded
-(:class:`~libranet.bundle.parts.PartWriter`).
+is (BackupSpecification §4.4), and as any bundle protected with a password
+must be (§6). Parts are then cut a block short of the object limit, so that
+each fits once padded (:class:`~libranet.bundle.parts.PartWriter`).
 
 A directory is walked without following symlinks. Every file and symlink
 beneath it is keyed by its full relative path, and a directory holding
