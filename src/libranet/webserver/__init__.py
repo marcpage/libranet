@@ -1,7 +1,8 @@
 """Peer-facing and `/config` HTTP endpoint (Phase 1 Steps 5, 7, 9, 14, 18, 35-37).
 
 Serves the content-addressed source of truth, the derived node and seek
-lists, and the files the unbundler resolves for applications. Writes incoming
+lists, and applications' files, from their parts, by the entries the
+unbundler resolves for them. Writes incoming
 PUT bodies to the sending node's directory, and publishes messages about what
 happened, including the lists peers POST and the application files it lacks.
 It does not validate, fetch, evict, or resolve bundles itself.
@@ -107,12 +108,20 @@ from libranet.webserver.errors import (
     IncompleteBodyError,
     InvalidBackupReportError,
     RegistryFileError,
+    ResponseCutShortError,
     UnsupportedMediaTypeError,
+)
+from libranet.webserver.file_stream import (
+    DEFAULT_PART_POLL_INTERVAL_SECONDS,
+    DEFAULT_READ_AHEAD_PARTS,
+    FileStream,
+    PartReader,
 )
 from libranet.webserver.http_types import (
     Request,
     RequestBody,
     Response,
+    StreamedBody,
     bytes_response,
     json_response,
     problem_response,
@@ -160,6 +169,8 @@ __all__ = [
     "DATA_PATTERN",
     "DEFAULT_FILE",
     "DEFAULT_MAX_OUTCOMES",
+    "DEFAULT_PART_POLL_INTERVAL_SECONDS",
+    "DEFAULT_READ_AHEAD_PARTS",
     "DEFAULT_REPORT_INTERVAL_SECONDS",
     "ENDPOINTS",
     "EXPORTS_FIELD",
@@ -197,6 +208,7 @@ __all__ = [
     "CredentialFileError",
     "DataReadHandler",
     "DataWriteHandler",
+    "FileStream",
     "Guard",
     "Handler",
     "InboundConnection",
@@ -210,11 +222,13 @@ __all__ = [
     "NodeDescription",
     "NodeHandler",
     "NodeListHandler",
+    "PartReader",
     "RegisteredApplications",
     "RegistryFileError",
     "Request",
     "RequestBody",
     "RequestHandler",
+    "ResponseCutShortError",
     "Response",
     "Route",
     "Router",
@@ -222,6 +236,7 @@ __all__ = [
     "SeekListHandler",
     "SignatureGuard",
     "StoredCredential",
+    "StreamedBody",
     "UnsupportedMediaTypeError",
     "WebServerModule",
     "basic_credentials",

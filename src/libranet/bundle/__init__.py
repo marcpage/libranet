@@ -42,7 +42,7 @@ from libranet.bundle.loading import DEFAULT_MAX_BUNDLE_BYTES, load_bundle
 from libranet.bundle.parsing import decode_bundle, parse_bundle
 from libranet.bundle.parts import CIPHER, PartPath, PartWriter
 from libranet.bundle.protection import DESCRIPTOR_SEPARATOR, protect, strip_targeting, unprotect
-from libranet.bundle.reassembly import ByteSink, write_file
+from libranet.bundle.reassembly import ByteSink, WholeFileCheck, write_file
 from libranet.bundle.serialization import bundle_value, encode_bundle
 from libranet.bundle.shapes import (
     NO_STEP_SEGMENTS,
@@ -117,6 +117,7 @@ __all__ = [
     "Superseded",
     "Symlink",
     "UnsupportedBundleError",
+    "WholeFileCheck",
     "XattrValue",
     "ancestors",
     "build_directory",

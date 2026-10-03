@@ -1,4 +1,4 @@
-"""The unbundler module process (Phase 1 Step 14).
+"""The unbundler module process (Phase 1 Step 14, Phase 3 Step 65).
 
 It resolves an application's files on demand, one requested path at a time,
 never ahead of a request. Each ``app.path_not_found`` from the web server
@@ -8,35 +8,45 @@ names a bundle and an entry path in it::
 
 The bundle is loaded from the source of truth, or from the node's content
 archives (Step 34), and its extensions overlaid (Step 13), and the path looked
-up in it (:mod:`libranet.unbundler.lookup`). A file is reassembled from its
-parts, checked, and written where the web server serves it from
-(:mod:`libranet.cas.resolved_files`), so the next request for the path
-is served straight from disk. What happened is reported for the
-web server to answer later requests with::
+up in it (:mod:`libranet.unbundler.lookup`). A file's entry, which names its
+parts, is written where the web server looks for it
+(:mod:`libranet.cas.resolved_files`), and the web server serves the file
+from those parts, asking for any it lacks itself (Phase 3 Step 65). Neither
+the file's parts nor its bytes are needed here, so none are read or asked
+for. What happened is reported for the web server to answer the request
+waiting on it, and later ones, with::
 
-    app.path_resolved  {"bundle", "path", "outcome": "stored", "size": 1234}
+    app.path_resolved  {"bundle", "path", "outcome": "stored"}
     app.path_resolved  {"bundle", "path", "outcome": "not_found"}
     app.path_resolved  {"bundle", "path", "outcome": "redirect", "location": "docs/"}
     app.path_resolved  {"bundle", "path", "outcome": "unusable", "detail": "<why>"}
 
 A path naming a directory redirects to it with a trailing ``/``, and one
 reaching a file through a symlink redirects to the file's own path, so every
-file is written once, under one path, however many symlinks reach it.
+file's entry is written once, under one path, however many symlinks reach
+it.
 
-Content not held here is not an outcome. Each missing object, whether the
-bundle, an extension, or a part, is reported as a miss would be::
+Content not held here is not an outcome. Each missing object, the bundle or
+an extension, is reported as a miss would be::
 
     data.not_found  {"algorithm": "sha256", "hash": "<hex>"}
 
-so the fetcher (Step 12) retrieves it from peers, and the web server keeps
-answering ``503`` until a request after it arrives finds everything held.
+so the fetcher (Step 12) retrieves it from peers. The path then waits on
+what it lacks, for as long as a request for it waits
+(``network.app_wait_seconds``), and is resolved again as soon as a
+``data.stored`` says one of those objects has arrived, which may find the
+next one it lacks, an extension the bundle names. Every ``data.stored`` is
+taken in for this, though nearly all are passed over at once. Anyone can ask
+for any path, so the paths that waited longest stop waiting past a fixed
+count; a request for one asks again.
 
 A bundle that cannot be served, being malformed, unsupported,
 password-protected (BundleSpecification §6), or not a directory, is
-``unusable`` for every path, as is a file that fails its checks.
+``unusable`` for every path. A file whose parts fail their checks is found
+so by the web server, as it reads them.
 
 A bundle's directory, once its extensions are overlaid, is saved beside its
-files the first time it is resolved, as a flat directory bundle,
+entries the first time it is resolved, as a flat directory bundle,
 zlib-compressed. The bundle and its extensions are then read once, and are
 not needed again even if they stop being held. The directories of the most
 recently used bundles are also kept in memory, so the saved one is not read
@@ -46,7 +56,7 @@ A bundle found unusable is remembered only in memory, not saved, since a
 later version of this node may be able to serve it.
 
 When free space runs short, the stats module names the bundles of the
-applications used lately, and the resolved files of every other bundle are
+applications used lately, and the entries of every other bundle are
 deleted, each bundle's all together, its saved directory included, and its
 directory forgotten from memory too (Phase 2 Step 29). What was deleted is
 reported for the eviction module, which waits for it before handing off any
@@ -55,8 +65,8 @@ content::
     resolved.reclaim    {"keep": ["sha256/<hex>", ...]}
     resolved.reclaimed  {"bundles": 2, "bytes": 123456}
 
-A file deleted is resolved again when next requested, which, if content it
-needs has been handed off since, fetches that content first.
+An entry deleted is resolved again when next requested, which, if the
+bundle has been handed off since, fetches it first.
 """
 
 from __future__ import annotations
@@ -65,15 +75,14 @@ from dataclasses import dataclass
 from logging import Logger
 from pathlib import Path
 from time import time
-from typing import Any, Callable, ClassVar, Final
+from typing import Any, Callable, ClassVar, Final, Iterable
 from zlib import compress, decompress, error as ZlibError
 
-from libranet.atomic_file import atomic_writer, write_atomically
+from libranet.atomic_file import write_atomically
 from libranet.bundle.errors import BundleError, MalformedBundleError, MissingContentError
 from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.parsing import decode_bundle
-from libranet.bundle.reassembly import write_file
 from libranet.bundle.serialization import encode_bundle
 from libranet.bundle.shapes import Bundle, DirectoryBundle
 from libranet.cas.content_id import ContentId
@@ -90,6 +99,13 @@ from libranet.unbundler.lookup import FoundDirectory, ResolvedDirectory
 # Provisional default: bundles whose directories are kept in memory.
 DEFAULT_MAX_CACHED_BUNDLES: Final = 8
 
+# Provisional default: paths waiting on content at once. Each is a request
+# holding one of the web server's threads, or was lately.
+DEFAULT_MAX_WAITING_PATHS: Final = 1024
+
+# A path in a bundle: the bundle, and the entry path.
+_BundlePath = tuple[ContentId, str]
+
 
 @dataclass(frozen=True)
 class _Unusable:
@@ -98,11 +114,78 @@ class _Unusable:
     detail: str
 
 
+class _WaitingPaths:
+    """The paths waiting on content this node lacks, by the content each waits on.
+
+    A path waits from when it was last asked for until ``wait_seconds``
+    later, and those that waited longest stop waiting past ``max_paths``.
+    """
+
+    def __init__(self, wait_seconds: float, max_paths: int) -> None:
+        self._wait_seconds = wait_seconds
+        self._max_paths = max_paths
+        # When each path was asked for, longest ago first, and what it lacks.
+        self._paths: OrderedDict[_BundlePath, tuple[float, tuple[ContentId, ...]]] = OrderedDict()
+        self._by_content: dict[ContentId, set[_BundlePath]] = {}
+
+    def __len__(self) -> int:
+        return len(self._paths)
+
+    def wait(self, path: _BundlePath, missing: Iterable[ContentId], now: float) -> None:
+        """Have ``path`` wait on ``missing`` from ``now``, in place of anything it waited on."""
+        self._drop(path)
+        lacked = tuple(missing)
+        self._paths[path] = (now, lacked)
+
+        for content_id in lacked:
+            self._by_content.setdefault(content_id, set()).add(path)
+
+        self._expire(now)
+
+        while len(self._paths) > self._max_paths:
+            self._drop(next(iter(self._paths)))
+
+    def arrived(self, content_id: ContentId, now: float) -> list[_BundlePath]:
+        """The paths waiting on ``content_id``, longest waiting first, which now wait no longer."""
+        self._expire(now)
+        waiting = self._by_content.get(content_id, set())
+        arrived = [path for path in self._paths if path in waiting]
+
+        for path in arrived:
+            self._drop(path)
+
+        return arrived
+
+    def _expire(self, now: float) -> None:
+        """Stop the paths asked for ``wait_seconds`` or more before ``now`` waiting."""
+        while self._paths:
+            path, (asked_at, _) = next(iter(self._paths.items()))
+
+            if now - asked_at < self._wait_seconds:
+                return
+
+            self._drop(path)
+
+    def _drop(self, path: _BundlePath) -> None:
+        """Stop ``path`` waiting, if it is."""
+        waited = self._paths.pop(path, None)
+
+        if waited is None:
+            return
+
+        for content_id in waited[1]:
+            waiting = self._by_content[content_id]
+            waiting.discard(path)
+
+            if not waiting:
+                del self._by_content[content_id]
+
+
 class UnbundlerModule(ModuleBase):
-    """Writes the application files the web server is asked for and lacks."""
+    """Writes the entries of the application files the web server is asked for and lacks."""
 
     subscriptions: ClassVar[frozenset[EventType]] = frozenset(
-        {EventType.APP_PATH_NOT_FOUND, EventType.RESOLVED_RECLAIM}
+        {EventType.APP_PATH_NOT_FOUND, EventType.DATA_STORED, EventType.RESOLVED_RECLAIM}
     )
 
     def __init__(
@@ -115,9 +198,13 @@ class UnbundlerModule(ModuleBase):
         clock: Callable[[], float] = time,
         poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
         max_cached_bundles: int = DEFAULT_MAX_CACHED_BUNDLES,
+        max_waiting_paths: int = DEFAULT_MAX_WAITING_PATHS,
     ) -> None:
         if max_cached_bundles < 1:
             raise ValueError(f"max_cached_bundles must be at least 1, got {max_cached_bundles}")
+
+        if max_waiting_paths < 1:
+            raise ValueError(f"max_waiting_paths must be at least 1, got {max_waiting_paths}")
 
         super().__init__(
             name, queues, logger=logger, clock=clock, poll_interval_seconds=poll_interval_seconds
@@ -127,18 +214,37 @@ class UnbundlerModule(ModuleBase):
         self._max_cached_bundles = max_cached_bundles
         # Least recently used first.
         self._directories: OrderedDict[ContentId, ResolvedDirectory | _Unusable] = OrderedDict()
+        self._waiting = _WaitingPaths(config.network.app_wait_seconds, max_waiting_paths)
         self._route(
             {
                 EventType.APP_PATH_NOT_FOUND: self._on_app_path_not_found,
+                EventType.DATA_STORED: self._on_data_stored,
                 EventType.RESOLVED_RECLAIM: self._on_resolved_reclaim,
             }
         )
 
     def _on_app_path_not_found(self, message: Message) -> None:
         """Resolve one requested path."""
-        bundle = ContentId.parse(message["bundle"])
-        path: str = message["path"]
-        target = self._files.path_for(bundle, path)
+        self._resolve_path(ContentId.parse(message["bundle"]), message["path"])
+
+    def _on_data_stored(self, message: Message) -> None:
+        """Resolve again each path that waited on the content just stored."""
+        # Nearly every object stored is wanted by no path, as during a backup.
+        if not self._waiting:
+            return
+
+        for bundle, path in self._waiting.arrived(ContentId.from_fields(message), self._clock()):
+            self._resolve_path(bundle, path)
+
+    def _on_resolved_reclaim(self, message: Message) -> None:
+        self._reclaim({ContentId.parse(text) for text in message["keep"]})
+
+    def _resolve_path(self, bundle: ContentId, path: str) -> None:
+        """Resolve the file at ``path`` in ``bundle``, unless it already is.
+
+        Content it lacks is asked for, and waited on.
+        """
+        target = self._files.entry_for(bundle, path)
 
         if target.is_file():
             self.logger.debug("%s in %s is already resolved", path, bundle)
@@ -151,19 +257,11 @@ class UnbundlerModule(ModuleBase):
             # Not logged: _fetch logs it.
             self._fetch(bundle, path, error.content_ids)
 
-        except BundleError as error:
-            # Not logged: _report logs it.
-            self._report(bundle, path, PathOutcome.UNUSABLE, detail=str(error))
-
-    def _on_resolved_reclaim(self, message: Message) -> None:
-        self._reclaim({ContentId.parse(text) for text in message["keep"]})
-
     def _resolve(self, bundle: ContentId, path: str, target: Path) -> None:
-        """Write the file at ``path`` to ``target``, or report why not.
+        """Write the entry of the file at ``path`` to ``target``, or report why not.
 
         Raises:
-            MissingContentError: content the bundle or file needs is not held.
-            BundleError: the file cannot be served.
+            MissingContentError: the bundle or an extension is not held.
         """
         directory = self._directory(bundle)
 
@@ -184,10 +282,8 @@ class UnbundlerModule(ModuleBase):
             self._report(bundle, path, PathOutcome.REDIRECT, location=found.path)
 
         else:
-            with atomic_writer(target) as output:
-                size_bytes = write_file(found.entry, self._source, output)
-
-            self._report(bundle, path, PathOutcome.STORED, size=size_bytes)
+            write_atomically(target, compress(encode_bundle(found.entry)))
+            self._report(bundle, path, PathOutcome.STORED)
 
     def _directory(self, bundle: ContentId) -> ResolvedDirectory | _Unusable:
         """The directory ``bundle`` describes.
@@ -280,14 +376,15 @@ class UnbundlerModule(ModuleBase):
         return load_bundle(content_id, self._source)
 
     def _fetch(self, bundle: ContentId, path: str, missing: tuple[ContentId, ...]) -> None:
-        """Ask for the content ``path`` in ``bundle`` needs and this node lacks."""
+        """Ask for the content ``path`` in ``bundle`` needs and this node lacks, and wait on it."""
         for content_id in missing:
             self.publish(EventType.DATA_NOT_FOUND, content_id.fields())
 
+        self._waiting.wait((bundle, path), missing, self._clock())
         self.logger.info("%s in %s waits on %d objects not held here", path, bundle, len(missing))
 
     def _reclaim(self, keep: set[ContentId]) -> None:
-        """Delete the resolved files of every bundle but those in ``keep``, and report it.
+        """Delete what is resolved from every bundle but those in ``keep``, and report it.
 
         A bundle whose files cannot all be deleted is passed over.
         """

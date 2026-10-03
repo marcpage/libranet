@@ -1,4 +1,4 @@
-"""Tests for where a bundle's resolved files are kept."""
+"""Tests for where what is resolved from a bundle is kept."""
 
 from __future__ import annotations
 from hashlib import sha256
@@ -16,40 +16,40 @@ BUNDLE = ContentId.for_data(b"a directory bundle", "sha256")
 OTHER_BUNDLE = ContentId.for_data(b"another directory bundle", "sha256")
 
 
-def test_a_file_is_kept_by_bundle_and_a_hash_of_its_path(tmp_path: Path) -> None:
+def test_a_files_entry_is_kept_by_bundle_and_a_hash_of_its_path(tmp_path: Path) -> None:
     key = sha256("docs/café.html".encode("utf-8")).hexdigest()
 
-    path = ResolvedFiles(tmp_path, 4).path_for(BUNDLE, "docs/café.html")
+    path = ResolvedFiles(tmp_path, 4).entry_for(BUNDLE, "docs/café.html")
 
-    assert path == tmp_path / "sha256" / BUNDLE.hash / key[:4] / key
+    assert path == tmp_path / "sha256" / BUNDLE.hash / key[:4] / f"{key}.jzon"
 
 
 def test_paths_differing_only_in_case_or_normalization_are_kept_apart(tmp_path: Path) -> None:
     files = ResolvedFiles(tmp_path, 4)
     spellings = ["Index.html", "index.html", "café", "café"]
 
-    assert len({files.path_for(BUNDLE, spelling).name for spelling in spellings}) == 4
+    assert len({files.entry_for(BUNDLE, spelling).name for spelling in spellings}) == 4
 
 
-def test_each_bundle_has_its_own_files(tmp_path: Path) -> None:
+def test_each_bundle_has_its_own_entries(tmp_path: Path) -> None:
     files = ResolvedFiles(tmp_path, 4)
 
-    assert files.path_for(BUNDLE, "index.html") != files.path_for(OTHER_BUNDLE, "index.html")
+    assert files.entry_for(BUNDLE, "index.html") != files.entry_for(OTHER_BUNDLE, "index.html")
 
 
 def test_no_request_text_reaches_the_filesystem_path(tmp_path: Path) -> None:
-    path = ResolvedFiles(tmp_path, 2).path_for(BUNDLE, "../../etc/passwd")
+    path = ResolvedFiles(tmp_path, 2).entry_for(BUNDLE, "../../etc/passwd")
 
     assert path.is_relative_to(tmp_path)
     assert ".." not in path.parts
 
 
-def test_the_saved_directory_is_kept_beside_the_bundles_files(tmp_path: Path) -> None:
+def test_the_saved_directory_is_kept_beside_the_bundles_entries(tmp_path: Path) -> None:
     files = ResolvedFiles(tmp_path, 4)
     saved = files.directory_for(BUNDLE)
 
     assert saved == tmp_path / "sha256" / BUNDLE.hash / "directory.jzon"
-    assert saved.parent == files.path_for(BUNDLE, "index.html").parent.parent
+    assert saved.parent == files.entry_for(BUNDLE, "index.html").parent.parent
     assert saved != files.directory_for(OTHER_BUNDLE)
 
 
@@ -57,9 +57,9 @@ def test_with_nothing_resolved_there_are_no_bundles(tmp_path: Path) -> None:
     assert ResolvedFiles(tmp_path / "resolved", 4).bundles() == []
 
 
-def test_every_bundle_with_files_kept_is_listed_and_nothing_else(tmp_path: Path) -> None:
+def test_every_bundle_with_entries_kept_is_listed_and_nothing_else(tmp_path: Path) -> None:
     files = ResolvedFiles(tmp_path, 4)
-    write_atomically(files.path_for(BUNDLE, "index.html"), b"page")
+    write_atomically(files.entry_for(BUNDLE, "index.html"), b"page")
     write_atomically(files.directory_for(OTHER_BUNDLE), b"saved")
     # Named as no bundle would be.
     (tmp_path / "sha256" / "not-a-hash").mkdir()
@@ -71,21 +71,21 @@ def test_every_bundle_with_files_kept_is_listed_and_nothing_else(tmp_path: Path)
     assert sorted(files.bundles()) == sorted([BUNDLE, OTHER_BUNDLE])
 
 
-def test_removing_a_bundle_deletes_all_its_files_and_says_how_large_they_were(
+def test_removing_a_bundle_deletes_all_its_entries_and_says_how_large_they_were(
     tmp_path: Path,
 ) -> None:
     files = ResolvedFiles(tmp_path, 4)
-    write_atomically(files.path_for(BUNDLE, "index.html"), b"12345")
-    write_atomically(files.path_for(BUNDLE, "docs/guide.html"), b"123")
+    write_atomically(files.entry_for(BUNDLE, "index.html"), b"12345")
+    write_atomically(files.entry_for(BUNDLE, "docs/guide.html"), b"123")
     write_atomically(files.directory_for(BUNDLE), b"12")
-    write_atomically(files.path_for(OTHER_BUNDLE, "index.html"), b"kept")
+    write_atomically(files.entry_for(OTHER_BUNDLE, "index.html"), b"kept")
 
     freed = files.remove(BUNDLE)
 
     assert freed == 10
     assert not (tmp_path / "sha256" / BUNDLE.hash).exists()
     assert files.bundles() == [OTHER_BUNDLE]
-    assert files.path_for(OTHER_BUNDLE, "index.html").read_bytes() == b"kept"
+    assert files.entry_for(OTHER_BUNDLE, "index.html").read_bytes() == b"kept"
 
 
 def test_the_prefix_length_must_be_positive(tmp_path: Path) -> None:
@@ -111,8 +111,8 @@ def test_a_node_keeps_resolved_files_where_it_is_configured_to(tmp_path: Path) -
 
     files = ResolvedFiles.of(storage)
 
-    assert files.path_for(BUNDLE, "index.html") == (
-        storage.resolved_files_dir / "sha256" / BUNDLE.hash / key[:3] / key
+    assert files.entry_for(BUNDLE, "index.html") == (
+        storage.resolved_files_dir / "sha256" / BUNDLE.hash / key[:3] / f"{key}.jzon"
     )
 
 

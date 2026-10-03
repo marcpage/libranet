@@ -1,9 +1,10 @@
-"""Tests for remembering what the unbundler found at application paths."""
+"""Tests for remembering what the unbundler found at application paths, and waiting on it."""
 
 from __future__ import annotations
-from threading import Thread
+from threading import Thread, Timer
+from time import monotonic
 
-from pytest import raises
+from pytest import mark, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.messaging.events import PathOutcome
@@ -69,3 +70,55 @@ def test_threads_can_remember_and_recall_at_once() -> None:
 def test_the_limit_must_be_positive() -> None:
     with raises(ValueError, match="max_outcomes"):
         ApplicationOutcomes(0)
+
+
+def test_a_stored_entry_is_not_remembered() -> None:
+    outcomes = ApplicationOutcomes()
+
+    outcomes.remember(BUNDLE, "index.html", KnownOutcome(PathOutcome.STORED))
+
+    assert outcomes.recall(BUNDLE, "index.html") is None
+
+
+def test_a_wait_already_answered_ends_at_once() -> None:
+    started = monotonic()
+
+    assert ApplicationOutcomes().wait_for(lambda: True, 5)
+    assert monotonic() - started < 1
+
+
+def test_a_wait_unanswered_ends_when_it_times_out() -> None:
+    assert not ApplicationOutcomes().wait_for(lambda: False, 0.05)
+
+
+@mark.parametrize(
+    "outcome", [KnownOutcome(PathOutcome.STORED), KnownOutcome(PathOutcome.NOT_FOUND)]
+)
+def test_any_outcome_reported_wakes_a_wait(outcome: KnownOutcome) -> None:
+    outcomes = ApplicationOutcomes()
+    reported: list[KnownOutcome] = []
+
+    def report() -> None:
+        reported.append(outcome)
+        outcomes.remember(BUNDLE, "a", outcome)
+
+    unbundler = Timer(0.05, report)
+    started = monotonic()
+    unbundler.start()
+
+    answered = outcomes.wait_for(lambda: bool(reported), 5)
+    unbundler.join()
+
+    assert answered
+    assert monotonic() - started < 1
+
+
+def test_what_a_wait_looks_for_may_recall_an_outcome() -> None:
+    outcomes = ApplicationOutcomes()
+    report = Timer(0.05, outcomes.remember, (BUNDLE, "a", NOT_FOUND))
+    report.start()
+
+    answered = outcomes.wait_for(lambda: outcomes.recall(BUNDLE, "a") is not None, 5)
+    report.join()
+
+    assert answered

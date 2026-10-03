@@ -1,17 +1,23 @@
-"""Tests for serving application files and asking the unbundler for the rest."""
+"""Tests for serving application files from their parts and asking the unbundler for entries."""
 
 from __future__ import annotations
+from hashlib import sha256
 from json import loads
-from logging import DEBUG
+from logging import DEBUG, WARNING
 from pathlib import Path
 from re import fullmatch
+from threading import Timer
 from typing import Any, Mapping
+from zlib import compress
 
 from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.atomic_file import write_atomically
+from libranet.bundle.serialization import encode_bundle
+from libranet.bundle.shapes import FileBundle, Metadata
 from libranet.cas.content_id import ContentId
 from libranet.cas.resolved_files import ResolvedFiles
+from libranet.cas.store import CasStore
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType, PathOutcome
 from libranet.problems import CONTENT_UNAVAILABLE, PROBLEM_CONTENT_TYPE, UNUSABLE_BUNDLE
@@ -27,6 +33,7 @@ from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 from libranet.webserver.app_registry import Application, ApplicationRegistry
 from libranet.webserver.app_use import ApplicationUse
 from libranet.webserver.errors import RegistryFileError
+from libranet.webserver.file_stream import PartReader
 from libranet.webserver.http_types import Request, Response
 
 ROOT_BUNDLE = ContentId.for_data(b"the root application's bundle", "sha256")
@@ -52,6 +59,12 @@ def files(tmp_path: Path) -> ResolvedFiles:
 
 
 @fixture
+def store(tmp_path: Path) -> CasStore:
+    """Where the parts of the files served are held."""
+    return CasStore(tmp_path / "cas", 4)
+
+
+@fixture
 def outcomes() -> ApplicationOutcomes:
     return ApplicationOutcomes()
 
@@ -68,6 +81,12 @@ def uses() -> Recorder:
 
 
 @fixture
+def reads() -> Recorder:
+    """What is published as parts are read and asked for, kept apart likewise."""
+    return Recorder()
+
+
+@fixture
 def registry(tmp_path: Path) -> ApplicationRegistry:
     return ApplicationRegistry(tmp_path / "applications.json")
 
@@ -76,11 +95,17 @@ def handler_for(
     applications: Mapping[str, ContentId],
     registry: ApplicationRegistry,
     files: ResolvedFiles,
+    store: CasStore,
     outcomes: ApplicationOutcomes,
     published: Recorder,
     uses: Recorder | None = None,
+    reads: Recorder | None = None,
+    wait_seconds: float = 0.0,
 ) -> AppHandler:
-    """A handler serving ``applications``, once they are registered in ``registry``."""
+    """A handler serving ``applications``, once they are registered in ``registry``.
+
+    It waits ``wait_seconds`` for what it lacks.
+    """
     for name, bundle in applications.items():
         registry.register(Application.create(name, bundle))
 
@@ -91,6 +116,13 @@ def handler_for(
         published,
         RETRY_AFTER_SECONDS,
         ApplicationUse(uses or Recorder()),
+        PartReader(
+            store,
+            reads or Recorder(),
+            wait_seconds,
+            RETRY_AFTER_SECONDS,
+            poll_interval_seconds=0.01,
+        ),
     )
 
 
@@ -98,21 +130,74 @@ def handler_for(
 def handler(
     registry: ApplicationRegistry,
     files: ResolvedFiles,
+    store: CasStore,
     outcomes: ApplicationOutcomes,
     published: Recorder,
     uses: Recorder,
+    reads: Recorder,
 ) -> AppHandler:
     applications = {"/": ROOT_BUNDLE, "wiki": WIKI_BUNDLE, "strasse": WIKI_BUNDLE}
-    return handler_for(applications, registry, files, outcomes, published, uses)
+    return handler_for(applications, registry, files, store, outcomes, published, uses, reads)
+
+
+@fixture
+def waiting(
+    registry: ApplicationRegistry,
+    files: ResolvedFiles,
+    store: CasStore,
+    outcomes: ApplicationOutcomes,
+    published: Recorder,
+    reads: Recorder,
+) -> AppHandler:
+    """A handler serving the wiki, which waits up to two seconds for what it lacks."""
+    return handler_for(
+        {"wiki": WIKI_BUNDLE},
+        registry,
+        files,
+        store,
+        outcomes,
+        published,
+        reads=reads,
+        wait_seconds=2,
+    )
 
 
 def get(handler: AppHandler, path: str) -> Response:
     return handler(Request("GET", path, client_address="203.0.113.42"))
 
 
-def resolve(files: ResolvedFiles, bundle: ContentId, entry_path: str, content: bytes) -> None:
-    """Write a file as the unbundler would."""
-    write_atomically(files.path_for(bundle, entry_path), content)
+def body_of(response: Response) -> bytes:
+    """What ``response`` sends, streamed or not."""
+    return response.body if response.stream is None else b"".join(response.stream.chunks)
+
+
+def entry_for(*parts: bytes, whole: bytes | None = None) -> FileBundle:
+    """The entry of a file joining ``parts``, checked against ``whole`` (their join by default)."""
+    content = b"".join(parts) if whole is None else whole
+    return FileBundle(
+        tuple(str(ContentId.for_data(part, "sha256")) for part in parts),
+        Metadata(size_bytes=len(content), algorithm="sha256", hash=sha256(content).hexdigest()),
+        part_sizes_bytes=tuple(len(part) for part in parts),
+    )
+
+
+def save_entry(files: ResolvedFiles, bundle: ContentId, entry_path: str, entry: FileBundle) -> None:
+    """Save ``entry`` for the file at ``entry_path`` in ``bundle``, as the unbundler would."""
+    write_atomically(files.entry_for(bundle, entry_path), compress(encode_bundle(entry)))
+
+
+def hold(store: CasStore, *parts: bytes) -> None:
+    """Hold each of ``parts`` in ``store``."""
+    for part in parts:
+        store.write(ContentId.for_data(part, "sha256"), part)
+
+
+def resolve(
+    files: ResolvedFiles, store: CasStore, bundle: ContentId, entry_path: str, content: bytes
+) -> None:
+    """Resolve the file at ``entry_path`` in ``bundle``, holding ``content`` as its one part."""
+    hold(store, content)
+    save_entry(files, bundle, entry_path, entry_for(content))
 
 
 @mark.parametrize(
@@ -134,32 +219,35 @@ def resolve(files: ResolvedFiles, bundle: ContentId, entry_path: str, content: b
 def test_a_resolved_file_is_served_from_its_applications_bundle(
     handler: AppHandler,
     files: ResolvedFiles,
+    store: CasStore,
     published: Recorder,
     path: str,
     bundle: ContentId,
     entry_path: str,
 ) -> None:
-    resolve(files, bundle, entry_path, b"resolved content")
+    resolve(files, store, bundle, entry_path, b"resolved content")
 
     response = get(handler, path)
 
     assert response.status == 200
-    assert response.body == b"resolved content"
+    assert body_of(response) == b"resolved content"
     assert published.messages == []
 
 
-def test_each_bundle_keeps_its_own_files(handler: AppHandler, files: ResolvedFiles) -> None:
-    resolve(files, ROOT_BUNDLE, "page.html", b"the root's page")
-    resolve(files, WIKI_BUNDLE, "page.html", b"the wiki's page")
+def test_each_bundle_keeps_its_own_files(
+    handler: AppHandler, files: ResolvedFiles, store: CasStore
+) -> None:
+    resolve(files, store, ROOT_BUNDLE, "page.html", b"the root's page")
+    resolve(files, store, WIKI_BUNDLE, "page.html", b"the wiki's page")
 
-    assert get(handler, "/page.html").body == b"the root's page"
-    assert get(handler, "/wiki/page.html").body == b"the wiki's page"
+    assert body_of(get(handler, "/page.html")) == b"the root's page"
+    assert body_of(get(handler, "/wiki/page.html")) == b"the wiki's page"
 
 
 def test_every_request_reaching_an_application_reports_its_bundle_used(
-    handler: AppHandler, files: ResolvedFiles, uses: Recorder
+    handler: AppHandler, files: ResolvedFiles, store: CasStore, uses: Recorder
 ) -> None:
-    resolve(files, WIKI_BUNDLE, "page.html", b"resolved content")
+    resolve(files, store, WIKI_BUNDLE, "page.html", b"resolved content")
 
     get(handler, "/wiki/page.html")
     get(handler, "/missing.html")
@@ -268,10 +356,10 @@ def test_an_unusable_bundle_is_a_500_saying_why(
 
 
 def test_a_resolved_file_is_served_whatever_outcome_was_known(
-    handler: AppHandler, files: ResolvedFiles, outcomes: ApplicationOutcomes
+    handler: AppHandler, files: ResolvedFiles, store: CasStore, outcomes: ApplicationOutcomes
 ) -> None:
     outcomes.remember(WIKI_BUNDLE, "page.html", KnownOutcome(PathOutcome.NOT_FOUND))
-    resolve(files, WIKI_BUNDLE, "page.html", b"here after all")
+    resolve(files, store, WIKI_BUNDLE, "page.html", b"here after all")
 
     assert get(handler, "/wiki/page.html").status == 200
 
@@ -320,28 +408,29 @@ def test_the_config_application_serves_config_however_spelled(
     handler: AppHandler,
     registry: ApplicationRegistry,
     files: ResolvedFiles,
+    store: CasStore,
     published: Recorder,
     path: str,
     entry_path: str,
 ) -> None:
     registry.register(Application.create("config", CONFIG_BUNDLE))
-    resolve(files, CONFIG_BUNDLE, entry_path, b"the administration page")
+    resolve(files, store, CONFIG_BUNDLE, entry_path, b"the administration page")
 
     response = get(handler, path)
 
     assert response.status == 200
-    assert response.body == b"the administration page"
+    assert body_of(response) == b"the administration page"
     assert response.headers["Content-Security-Policy"] == CONFIG_APP_POLICY
     assert "frame-ancestors 'none'" in CONFIG_APP_POLICY
     assert published.messages == []
 
 
 def test_only_the_config_applications_files_are_held_to_its_policy(
-    handler: AppHandler, registry: ApplicationRegistry, files: ResolvedFiles
+    handler: AppHandler, registry: ApplicationRegistry, files: ResolvedFiles, store: CasStore
 ) -> None:
     registry.register(Application.create("config", CONFIG_BUNDLE))
-    resolve(files, CONFIG_BUNDLE, "index.html", b"the administration page")
-    resolve(files, WIKI_BUNDLE, "index.html", b"the wiki")
+    resolve(files, store, CONFIG_BUNDLE, "index.html", b"the administration page")
+    resolve(files, store, WIKI_BUNDLE, "index.html", b"the wiki")
 
     redirect = get(handler, "/config")
 
@@ -358,13 +447,14 @@ def test_the_config_application_never_serves_the_apis_paths(
     handler: AppHandler,
     registry: ApplicationRegistry,
     files: ResolvedFiles,
+    store: CasStore,
     published: Recorder,
     path: str,
 ) -> None:
     registry.register(Application.create("config", CONFIG_BUNDLE))
 
     for entry_path in ("api/index.html", "api/backups", "api/x.html"):
-        resolve(files, CONFIG_BUNDLE, entry_path, b"not an endpoint")
+        resolve(files, store, CONFIG_BUNDLE, entry_path, b"not an endpoint")
 
     assert get(handler, path).status == 404
     assert published.messages == []
@@ -372,10 +462,10 @@ def test_the_config_application_never_serves_the_apis_paths(
 
 @mark.parametrize("path", ["/config", "/config/", "/Config/page.html", "/%63onfig/"])
 def test_without_a_config_application_config_is_404_and_never_the_roots(
-    handler: AppHandler, files: ResolvedFiles, published: Recorder, path: str
+    handler: AppHandler, files: ResolvedFiles, store: CasStore, published: Recorder, path: str
 ) -> None:
-    resolve(files, ROOT_BUNDLE, "config/index.html", b"the root's")
-    resolve(files, ROOT_BUNDLE, "config/page.html", b"the root's")
+    resolve(files, store, ROOT_BUNDLE, "config/index.html", b"the root's")
+    resolve(files, store, ROOT_BUNDLE, "config/page.html", b"the root's")
 
     assert get(handler, path).status == 404
     assert published.messages == []
@@ -384,10 +474,11 @@ def test_without_a_config_application_config_is_404_and_never_the_roots(
 def test_without_a_root_application_other_paths_are_404(
     registry: ApplicationRegistry,
     files: ResolvedFiles,
+    store: CasStore,
     outcomes: ApplicationOutcomes,
     published: Recorder,
 ) -> None:
-    handler = handler_for({"wiki": WIKI_BUNDLE}, registry, files, outcomes, published)
+    handler = handler_for({"wiki": WIKI_BUNDLE}, registry, files, store, outcomes, published)
 
     assert get(handler, "/").status == 404
     assert get(handler, "/page.html").status == 404
@@ -396,12 +487,12 @@ def test_without_a_root_application_other_paths_are_404(
 
 
 def test_an_encoded_slash_separates_segments_like_any_other(
-    handler: AppHandler, files: ResolvedFiles
+    handler: AppHandler, files: ResolvedFiles, store: CasStore
 ) -> None:
-    resolve(files, WIKI_BUNDLE, "docs/page.html", b"one meaning")
+    resolve(files, store, WIKI_BUNDLE, "docs/page.html", b"one meaning")
 
-    assert get(handler, "/wiki%2Fdocs%2Fpage.html").body == b"one meaning"
-    assert get(handler, "/wiki/docs%2Fpage.html").body == b"one meaning"
+    assert body_of(get(handler, "/wiki%2Fdocs%2Fpage.html")) == b"one meaning"
+    assert body_of(get(handler, "/wiki/docs%2Fpage.html")) == b"one meaning"
     assert get(handler, "/%2F/page.html").status == 404
 
 
@@ -422,9 +513,9 @@ def test_the_content_type_is_guessed_from_the_extension(entry_path: str, content
 
 
 def test_a_served_file_carries_its_guessed_content_type(
-    handler: AppHandler, files: ResolvedFiles
+    handler: AppHandler, files: ResolvedFiles, store: CasStore
 ) -> None:
-    resolve(files, WIKI_BUNDLE, "docs/style.css", b"body {}")
+    resolve(files, store, WIKI_BUNDLE, "docs/style.css", b"body {}")
 
     assert get(handler, "/wiki/docs/style.css").headers["Content-Type"] == "text/css"
 
@@ -478,20 +569,20 @@ def test_the_config_route_takes_config_and_every_path_beneath_it_but_the_apis(
 
 
 def test_a_change_to_the_registry_is_served_from_the_next_request(
-    handler: AppHandler, registry: ApplicationRegistry, files: ResolvedFiles
+    handler: AppHandler, registry: ApplicationRegistry, files: ResolvedFiles, store: CasStore
 ) -> None:
-    resolve(files, ROOT_BUNDLE, "photos/index.html", b"the root's")
-    resolve(files, WIKI_BUNDLE, "index.html", b"the wiki's")
+    resolve(files, store, ROOT_BUNDLE, "photos/index.html", b"the root's")
+    resolve(files, store, WIKI_BUNDLE, "index.html", b"the wiki's")
 
-    assert get(handler, "/photos/").body == b"the root's"
+    assert body_of(get(handler, "/photos/")) == b"the root's"
 
     registry.register(Application.create("photos", WIKI_BUNDLE))
 
-    assert get(handler, "/photos/").body == b"the wiki's"
+    assert body_of(get(handler, "/photos/")) == b"the wiki's"
 
     registry.remove("photos")
 
-    assert get(handler, "/photos/").body == b"the root's"
+    assert body_of(get(handler, "/photos/")) == b"the root's"
 
 
 def test_a_registry_that_cannot_be_read_is_raised_for_the_server_to_answer(
@@ -516,3 +607,187 @@ def test_a_path_that_is_not_utf_8_is_logged_at_debug(
     (record,) = [r for r in caplog.records if r.name == "libranet.webserver.app_handler"]
     assert record.levelno == DEBUG
     assert record.getMessage().startswith("'wiki/%FF.html' does not percent-encode UTF-8: ")
+
+
+def test_a_file_is_served_from_its_parts_each_reported_read(
+    handler: AppHandler, files: ResolvedFiles, store: CasStore, reads: Recorder
+) -> None:
+    parts = (b"first part, ", b"second part, ", b"third")
+    hold(store, *parts)
+    save_entry(files, WIKI_BUNDLE, "big.bin", entry_for(*parts))
+
+    response = get(handler, "/wiki/big.bin")
+
+    assert response.status == 200
+    assert response.body == b""
+    assert response.stream is not None
+    assert response.stream.length_bytes == len(b"".join(parts))
+    assert body_of(response) == b"".join(parts)
+    assert reads.messages == [
+        (
+            EventType.DATA_REQUESTED,
+            {**ContentId.for_data(part, "sha256").fields(), "external": False},
+        )
+        for part in parts
+    ]
+
+
+def test_a_request_waits_for_the_unbundler_to_save_the_entry(
+    waiting: AppHandler,
+    files: ResolvedFiles,
+    store: CasStore,
+    outcomes: ApplicationOutcomes,
+    published: Recorder,
+) -> None:
+    def unbundle() -> None:
+        resolve(files, store, WIKI_BUNDLE, "page.html", b"arrived")
+        outcomes.remember(WIKI_BUNDLE, "page.html", KnownOutcome(PathOutcome.STORED))
+
+    unbundler = Timer(0.05, unbundle)
+    unbundler.start()
+    response = get(waiting, "/wiki/page.html")
+    unbundler.join()
+
+    assert response.status == 200
+    assert body_of(response) == b"arrived"
+    # Asked once, and woken by the report.
+    assert published.messages == [
+        (EventType.APP_PATH_NOT_FOUND, {"bundle": str(WIKI_BUNDLE), "path": "page.html"})
+    ]
+
+
+def test_a_request_waits_for_the_unbundler_to_say_the_path_holds_no_file(
+    waiting: AppHandler, outcomes: ApplicationOutcomes
+) -> None:
+    unbundler = Timer(
+        0.05,
+        outcomes.remember,
+        (WIKI_BUNDLE, "missing.html", KnownOutcome(PathOutcome.NOT_FOUND)),
+    )
+    unbundler.start()
+    response = get(waiting, "/wiki/missing.html")
+    unbundler.join()
+
+    assert response.status == 404
+
+
+def test_a_request_asks_the_unbundler_once_and_is_503_if_no_answer_comes(
+    registry: ApplicationRegistry,
+    files: ResolvedFiles,
+    store: CasStore,
+    outcomes: ApplicationOutcomes,
+    published: Recorder,
+) -> None:
+    handler = handler_for(
+        {"wiki": WIKI_BUNDLE}, registry, files, store, outcomes, published, wait_seconds=0.1
+    )
+
+    response = get(handler, "/wiki/page.html")
+
+    assert response.status == 503
+    assert loads(response.body)["detail"] == (
+        "This file is not resolved from its bundle yet; resolution was requested."
+    )
+    assert published.messages == [
+        (EventType.APP_PATH_NOT_FOUND, {"bundle": str(WIKI_BUNDLE), "path": "page.html"})
+    ]
+
+
+def test_a_request_waits_for_the_first_part_asking_for_it_and_those_after(
+    waiting: AppHandler, files: ResolvedFiles, store: CasStore, reads: Recorder
+) -> None:
+    parts = (b"one, ", b"two, ", b"three")
+    save_entry(files, WIKI_BUNDLE, "page.html", entry_for(*parts))
+    hold(store, parts[1])
+    arrival = Timer(0.05, hold, (store, parts[0]))
+    arrival.start()
+
+    response = get(waiting, "/wiki/page.html")
+    arrival.join()
+    hold(store, parts[2])
+
+    assert response.status == 200
+    assert body_of(response) == b"".join(parts)
+    assert [message for message in reads.messages if message[0] == EventType.DATA_NOT_FOUND] == [
+        (EventType.DATA_NOT_FOUND, ContentId.for_data(part, "sha256").fields())
+        for part in (parts[0], parts[2])
+    ]
+
+
+def test_a_first_part_that_does_not_come_in_time_is_503(
+    registry: ApplicationRegistry,
+    files: ResolvedFiles,
+    store: CasStore,
+    outcomes: ApplicationOutcomes,
+    published: Recorder,
+) -> None:
+    handler = handler_for(
+        {"wiki": WIKI_BUNDLE}, registry, files, store, outcomes, published, wait_seconds=0.05
+    )
+    save_entry(files, WIKI_BUNDLE, "page.html", entry_for(b"never held"))
+
+    response = get(handler, "/wiki/page.html")
+
+    assert response.status == 503
+    assert response.headers["Retry-After"] == str(RETRY_AFTER_SECONDS)
+    assert loads(response.body)["detail"] == (
+        "Parts of this file are not held here yet; they were requested."
+    )
+    assert published.messages == []
+
+
+@mark.parametrize(
+    "entry, detail",
+    [
+        (FileBundle(("md5/" + "0" * 32,)), "md5"),
+        (entry_for(b"page", whole=b"PAGE"), "whole-file hash"),
+    ],
+)
+def test_a_file_that_cannot_be_served_from_its_parts_is_a_500_saying_why(
+    handler: AppHandler,
+    files: ResolvedFiles,
+    store: CasStore,
+    caplog: LogCaptureFixture,
+    entry: FileBundle,
+    detail: str,
+) -> None:
+    hold(store, b"page")
+    save_entry(files, WIKI_BUNDLE, "page.html", entry)
+
+    with caplog.at_level(WARNING):
+        response = get(handler, "/wiki/page.html")
+
+    assert response.status == 500
+    problem = loads(response.body)
+    assert problem["type"] == UNUSABLE_BUNDLE
+    assert detail in problem["detail"]
+    (record,) = [r for r in caplog.records if r.name == "libranet.webserver.app_handler"]
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith("/wiki/page.html cannot be served from its parts: ")
+
+
+@mark.parametrize(
+    "saved",
+    [b"not zlib", compress(b"not a bundle"), compress(b'{"contents": {}}')],
+)
+def test_a_saved_entry_that_cannot_be_read_is_discarded_and_asked_for_again(
+    handler: AppHandler,
+    files: ResolvedFiles,
+    published: Recorder,
+    caplog: LogCaptureFixture,
+    saved: bytes,
+) -> None:
+    path = files.entry_for(WIKI_BUNDLE, "page.html")
+    write_atomically(path, saved)
+
+    with caplog.at_level(WARNING):
+        response = get(handler, "/wiki/page.html")
+
+    assert response.status == 503
+    assert not path.exists()
+    assert published.messages == [
+        (EventType.APP_PATH_NOT_FOUND, {"bundle": str(WIKI_BUNDLE), "path": "page.html"})
+    ]
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith(f"Discarding the entry saved at {path}: ")

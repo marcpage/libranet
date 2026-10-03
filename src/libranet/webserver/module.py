@@ -13,11 +13,11 @@ Request threads publish through
 with the node key, which the module loads from disk rather than receiving
 across the process boundary.
 
-The receive loop takes in what the unbundler found at application paths it
-stored no file for, ``app.path_resolved`` (see
-:mod:`libranet.unbundler.module`), and what the backup module reports its
-jobs and restores are doing, ``backup.state`` (Step 19), for request threads
-to answer from. It also takes the eviction module's
+The receive loop takes in what the unbundler found at application paths,
+``app.path_resolved`` (see :mod:`libranet.unbundler.module`), which wakes the
+request threads waiting on it (Phase 3 Step 65), and what the backup module
+reports its jobs and restores are doing, ``backup.state`` (Step 19), for
+request threads to answer from. It also takes the eviction module's
 ``peers.connected_requested``, answered with the peers connected to the
 server (:mod:`libranet.webserver.inbound_peers`), which are named once as
 the server starts too (Phase 2 Step 53).
@@ -127,6 +127,7 @@ class WebServerModule(ModuleBase):
                 app_outcomes=self._app_outcomes,
                 backup_state=self._backup_state,
                 content=content,
+                app_wait_seconds=network.app_wait_seconds,
             ),
             self.logger,
             signer,
@@ -144,6 +145,7 @@ class WebServerModule(ModuleBase):
                     config_port=config_server.server_port,
                     app_outcomes=self._app_outcomes,
                     content=content,
+                    app_wait_seconds=network.app_wait_seconds,
                 ),
                 self.logger,
                 signer,
@@ -190,16 +192,15 @@ class WebServerModule(ModuleBase):
         self._threads = ()
 
     def _on_app_path_resolved(self, message: Message) -> None:
-        """Remember what the unbundler found at a path it stored no file for."""
-        outcome = PathOutcome(message["outcome"])
-
-        if outcome == PathOutcome.STORED:
-            return
-
+        """Remember what the unbundler found at a path, waking the requests waiting on it."""
         self._app_outcomes.remember(
             ContentId.parse(message["bundle"]),
             message["path"],
-            KnownOutcome(outcome, message.get("location", ""), message.get("detail", "")),
+            KnownOutcome(
+                PathOutcome(message["outcome"]),
+                message.get("location", ""),
+                message.get("detail", ""),
+            ),
         )
 
     def _on_backup_state(self, message: Message) -> None:

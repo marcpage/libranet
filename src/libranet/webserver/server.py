@@ -9,11 +9,17 @@ unknown methods, handler crashes) is also sent as Problem Details.
 
 A request body is handed to the handler unread. If the handler leaves it
 unread, the connection is closed after the response, since the body's bytes
-would otherwise be parsed as the next request.
+would otherwise be parsed as the next request. A response body may be
+streamed, written as it is produced (Phase 3 Step 65). One of unknown length
+is sent until the connection closes, and one cut short closes it, as does a
+client going away before the body is all sent, which a ``<video>`` does each
+time it seeks.
 
 Every response, including the server's own errors, is signed with the node's
 key (HighLevelDesign §2.2), which is how a peer learns and authenticates this
-node's identity (HandshakeProtocol §3). Each one also echoes the request's
+node's identity (HandshakeProtocol §3). A streamed body is not read before
+it is sent, so its response is signed over its headers alone (HttpApi
+§13.2). Each one also echoes the request's
 target in ``X-Request-Path``, to help debug pipelined clients (Step 10).
 
 Given :class:`~libranet.webserver.inbound_peers.InboundPeers`, the server
@@ -65,8 +71,15 @@ from libranet.webserver.config_guard import (
 from libranet.webserver.config_handlers import NodeDescription, config_routes
 from libranet.webserver.data_handler import DATA_PATTERN, DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
-from libranet.webserver.errors import IncompleteBodyError
-from libranet.webserver.http_types import Request, RequestBody, Response, problem_response
+from libranet.webserver.errors import IncompleteBodyError, ResponseCutShortError
+from libranet.webserver.file_stream import PartReader
+from libranet.webserver.http_types import (
+    Request,
+    RequestBody,
+    Response,
+    StreamedBody,
+    problem_response,
+)
 from libranet.webserver.inbound_peers import InboundConnection, InboundPeers
 from libranet.webserver.list_handlers import ListFileHandler, NodeListHandler, SeekListHandler
 from libranet.webserver.router import Router
@@ -97,11 +110,14 @@ def build_router(
     config_port: int,
     app_outcomes: ApplicationOutcomes | None = None,
     content: LayeredSource | None = None,
+    app_wait_seconds: float = 0.0,
 ) -> Router:
     """The main port's routes, serving the configured source of truth, derived lists, and apps.
 
     ``retry_after_seconds`` is what ``503`` responses for missing content, or
     for lists not derived yet, tell clients to wait before retrying.
+    ``app_wait_seconds`` is how long a request for an application file waits
+    for what it lacks before it is answered ``503``; none, by default.
     ``authenticator`` checks the signature of every signed request; unsigned
     reads of the ``/data`` API are served only if ``allow_unsigned_api_reads``
     is set. Applications are served as the registry in ``storage``'s data
@@ -158,7 +174,11 @@ def build_router(
         "GET",
         APP_PATTERN,
         _applications(
-            _registry(storage, content), storage, publish, retry_after_seconds, app_outcomes
+            _registry(storage, content),
+            storage,
+            PartReader(content, publish, app_wait_seconds, retry_after_seconds),
+            retry_after_seconds,
+            app_outcomes,
         ),
     )
     return router
@@ -174,6 +194,7 @@ def build_config_router(
     app_outcomes: ApplicationOutcomes | None = None,
     backup_state: BackupState | None = None,
     content: LayeredSource | None = None,
+    app_wait_seconds: float = 0.0,
 ) -> Router:
     """``/config``'s port's routes: its endpoints and its application, and nothing else.
 
@@ -184,8 +205,8 @@ def build_config_router(
     read back. The ``/config`` application is served as the registry in
     ``storage``'s data directory names it, which ``/config/api/applications``
     changes, and as ``content`` says the node ships it until it does.
-    ``retry_after_seconds`` and ``app_outcomes`` are as for
-    :func:`build_router`.
+    ``retry_after_seconds``, ``app_outcomes``, and ``app_wait_seconds`` are
+    as for :func:`build_router`.
     """
     content = LayeredSource(CasStore.source_of_truth(storage)) if content is None else content
     registry = _registry(storage, content)
@@ -207,7 +228,13 @@ def build_config_router(
     router.add(
         "GET",
         CONFIG_APP_PATTERN,
-        _applications(registry, storage, publish, retry_after_seconds, app_outcomes),
+        _applications(
+            registry,
+            storage,
+            PartReader(content, publish, app_wait_seconds, retry_after_seconds),
+            retry_after_seconds,
+            app_outcomes,
+        ),
     )
     return router
 
@@ -222,21 +249,23 @@ def _registry(storage: StorageConfig, content: LayeredSource) -> ApplicationRegi
 def _applications(
     registry: ApplicationRegistry,
     storage: StorageConfig,
-    publish: Publish,
+    parts: PartReader,
     retry_after_seconds: int,
     outcomes: ApplicationOutcomes | None,
 ) -> AppHandler:
-    """The handler serving the applications ``registry`` names, from files resolved in ``storage``.
+    """The handler serving the applications ``registry`` names, by the entries in ``storage``.
 
+    ``parts`` reads their files' parts, and publishes as the handler does.
     ``outcomes`` holds what the unbundler reported for their paths.
     """
     return AppHandler(
         registry,
         ResolvedFiles.of(storage),
         outcomes or ApplicationOutcomes(),
-        publish,
+        parts.publish,
         retry_after_seconds,
-        ApplicationUse(publish),
+        ApplicationUse(parts.publish),
+        parts,
     )
 
 
@@ -439,7 +468,9 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def _send(self, response: Response, *, close: bool = False) -> None:
         omit_body = self.command == "HEAD" or response.status in BODILESS_STATUSES
-        # Signed over the bytes actually sent, so the client can check what it received.
+        stream = response.stream
+        # Signed over the bytes actually sent, so the client can check what it
+        # received, but for a stream, which is not read until it is sent.
         headers = self.server.signer.sign_response(
             response.status, response.headers, b"" if omit_body else response.body
         )
@@ -453,16 +484,57 @@ class RequestHandler(BaseHTTPRequestHandler):
         if self.command:
             self.send_header(REQUEST_PATH_HEADER, self.path)
 
+        length_bytes = len(response.body) if stream is None else stream.length_bytes
+
         if response.status not in BODILESS_STATUSES:
-            self.send_header("Content-Length", str(len(response.body)))
+            if length_bytes is None:
+                # Without a length, only closing the connection ends the body.
+                close = True
+
+            else:
+                self.send_header("Content-Length", str(length_bytes))
 
         if close:
             self.send_header("Connection", "close")
 
         self.end_headers()
 
-        if not omit_body:
+        if omit_body:
+            return
+
+        if stream is None:
             self.wfile.write(response.body)
+
+        else:
+            self._stream(stream)
+
+    def _stream(self, stream: StreamedBody) -> None:
+        """Write ``stream`` as it is produced, closing the connection if it does not finish.
+
+        A body cut short, or one its client goes away from, can be followed
+        by no other response on the connection.
+        """
+        try:
+            for chunk in stream.chunks:
+                try:
+                    self.wfile.write(chunk)
+
+                except OSError as error:
+                    self.server.logger.debug(
+                        "%s went away from %s mid-body: %s", self.address_string(), self.path, error
+                    )
+                    self.close_connection = True
+                    return
+
+        except ResponseCutShortError:
+            # Not logged: what produced the body logged why it was cut short.
+            self.close_connection = True
+
+        except Exception:  # pylint: disable=broad-exception-caught
+            self.server.logger.exception(
+                "Streaming the body failed for %s %s", self.command, self.path
+            )
+            self.close_connection = True
 
 
 def _answered(host: str, port: int) -> bool:

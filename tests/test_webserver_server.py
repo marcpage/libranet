@@ -9,19 +9,23 @@ Every response is expected to be signed by the server's node key.
 from __future__ import annotations
 from base64 import b64encode
 from errno import EADDRINUSE
-from http.client import HTTPConnection, HTTPResponse
+from hashlib import sha256
+from http.client import HTTPConnection, HTTPResponse, IncompleteRead
 from json import dumps, loads
-from logging import DEBUG, WARNING, getLogger
+from logging import DEBUG, ERROR, WARNING, getLogger
 from pathlib import Path
 from queue import Empty, Queue
 from socket import SHUT_WR, create_connection, socket
 from threading import Thread
+from time import monotonic, sleep
 from typing import Callable, Iterator
 from zlib import compress
 
 from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.atomic_file import write_atomically
+from libranet.bundle.serialization import encode_bundle
+from libranet.bundle.shapes import FileBundle, Metadata
 from libranet.cas.archive import ArchiveSink, ArchiveSource
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
@@ -54,7 +58,8 @@ from libranet.webserver.app_registry import Application, ApplicationRegistry
 from libranet.webserver.config_auth import CONFIG_REALM
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import NodeDescription
-from libranet.webserver.http_types import Request, RequestBody, Response
+from libranet.webserver.errors import ResponseCutShortError
+from libranet.webserver.http_types import Request, RequestBody, Response, StreamedBody
 from libranet.webserver.router import Router
 from libranet.webserver.server import LibranetHTTPServer, build_config_router, build_router
 
@@ -207,6 +212,19 @@ def _get(connection: HTTPConnection, path: str, method: str = "GET") -> tuple[HT
     connection.request(method, path)
     response = connection.getresponse()
     return response, response.read()
+
+
+def _resolve(storage: StorageConfig, bundle: ContentId, entry_path: str, content: bytes) -> None:
+    """Resolve the file at ``entry_path`` in ``bundle`` as the unbundler would, holding its part."""
+    part = ContentId.for_data(content, "sha256")
+    CasStore.source_of_truth(storage).write(part, content)
+    entry = FileBundle(
+        (str(part),),
+        Metadata(size_bytes=len(content), algorithm="sha256", hash=sha256(content).hexdigest()),
+        part_sizes_bytes=(len(content),),
+    )
+    resolved = ResolvedFiles(storage.resolved_files_dir, storage.hash_prefix_length)
+    write_atomically(resolved.entry_for(bundle, entry_path), compress(encode_bundle(entry)))
 
 
 def _put(
@@ -746,6 +764,130 @@ def test_every_routed_response_is_signed_over_what_was_sent(
     assert statuses == [200, 503, 200, 404, 405, 202, 204, 401, 401]
 
 
+def _stream_at(
+    server: LibranetHTTPServer,
+    length_bytes: int | None,
+    chunks: Iterator[bytes],
+    method: str = "GET",
+) -> str:
+    """Where ``server`` answers ``method`` with ``chunks``, as a body of ``length_bytes``."""
+
+    def streamed(_request: Request) -> Response:
+        return Response(
+            200, headers={"Content-Type": "text/plain"}, stream=StreamedBody(length_bytes, chunks)
+        )
+
+    # Added under /data, since every other path is already the applications' route.
+    server.router.add(method, "/data/stream", streamed)
+    return "/data/stream"
+
+
+def test_a_streamed_body_is_sent_as_produced_and_signed_over_its_headers_alone(
+    server: LibranetHTTPServer, connection: HTTPConnection, server_keys: MessageVerifier
+) -> None:
+    path = _stream_at(server, 7, iter([b"one ", b"two"]))
+
+    response, body = _get(connection, path)
+    headers = dict(response.getheaders())
+    again, _ = _get(connection, f"/data/{CONTENT_ID}")
+
+    assert (response.status, body) == (200, b"one two")
+    assert response.getheader("Content-Length") == "7"
+    assert response.getheader("Connection") is None
+    assert CONTENT_DIGEST_HEADER not in headers
+    assert server_keys.verify_response(response.status, headers) == SERVER_IDENTITY.node_id
+    assert again.status == 200
+
+    with raises(InvalidSignatureError, match="content-digest"):
+        server_keys.verify_response(response.status, headers, body)
+
+
+def test_a_streamed_body_of_unknown_length_is_sent_until_the_connection_closes(
+    server: LibranetHTTPServer, connection: HTTPConnection
+) -> None:
+    path = _stream_at(server, None, iter([b"one ", b"two"]))
+
+    response, body = _get(connection, path)
+
+    assert (response.status, body) == (200, b"one two")
+    assert response.getheader("Content-Length") is None
+    assert response.getheader("Connection") == "close"
+
+
+def test_a_streamed_body_is_not_produced_for_a_head_request(
+    server: LibranetHTTPServer, connection: HTTPConnection
+) -> None:
+    produced: list[bytes] = []
+
+    def chunks() -> Iterator[bytes]:
+        produced.append(b"one")
+        yield b"one"
+
+    path = _stream_at(server, 3, chunks(), method="HEAD")
+
+    response, body = _get(connection, path, method="HEAD")
+
+    assert (response.status, body) == (200, b"")
+    assert response.getheader("Content-Length") == "3"
+    assert produced == []
+
+
+def _cut_short(error: Exception) -> Iterator[bytes]:
+    yield b"one "
+    raise error
+
+
+@mark.parametrize(
+    "error, logged",
+    [(ResponseCutShortError("a part did not come"), []), (RuntimeError("boom"), [ERROR])],
+)
+def test_a_streamed_body_cut_short_closes_the_connection(
+    server: LibranetHTTPServer,
+    connection: HTTPConnection,
+    caplog: LogCaptureFixture,
+    error: Exception,
+    logged: list[int],
+) -> None:
+    path = _stream_at(server, 7, _cut_short(error))
+    connection.request("GET", path)
+    response = connection.getresponse()
+
+    with caplog.at_level(WARNING), raises(IncompleteRead):
+        response.read()
+
+    assert response.status == 200
+    assert [
+        record.levelno for record in caplog.records if record.name == "test.webserver"
+    ] == logged
+
+
+def test_a_client_going_away_mid_body_is_logged_at_debug(
+    server: LibranetHTTPServer, caplog: LogCaptureFixture
+) -> None:
+    caplog.set_level(DEBUG, "test.webserver")
+    produced: list[int] = []
+
+    def chunks() -> Iterator[bytes]:
+        for count in range(64):
+            produced.append(count)
+            yield bytes(1 << 20)
+
+    path = _stream_at(server, 64 << 20, chunks())
+    host, port = server.server_address[:2]
+
+    with create_connection((str(host), int(port)), timeout=5) as client:
+        client.sendall(f"GET {path} HTTP/1.1\r\nHost: x\r\n\r\n".encode())
+        client.recv(1024)
+
+    deadline = monotonic() + 5
+
+    while "mid-body" not in caplog.text and monotonic() < deadline:
+        sleep(0.01)
+
+    assert "mid-body" in caplog.text
+    assert len(produced) < 64
+
+
 def test_a_changed_body_fails_the_response_signature(
     connection: HTTPConnection, server_keys: MessageVerifier
 ) -> None:
@@ -936,8 +1078,7 @@ def test_uploads_always_need_a_valid_signature(
 def test_unsigned_reads_outside_the_api_are_always_honored(
     server: LibranetHTTPServer, storage: StorageConfig
 ) -> None:
-    resolved = ResolvedFiles(storage.resolved_files_dir, storage.hash_prefix_length)
-    write_atomically(resolved.path_for(APP_BUNDLE_ID, "index.html"), b"<html>")
+    _resolve(storage, APP_BUNDLE_ID, "index.html", b"<html>")
     host, port = server.server_address[:2]
     connection = HTTPConnection(str(host), int(port), timeout=5)
 
@@ -1385,8 +1526,7 @@ def test_an_application_registered_through_config_is_served_at_once(
 
     asked, _ = _get(connection, "/wiki/")
     accessed, message = _published(queues)
-    resolved = ResolvedFiles(storage.resolved_files_dir, storage.hash_prefix_length)
-    write_atomically(resolved.path_for(APP_BUNDLE_ID, "index.html"), b"<html>")
+    _resolve(storage, APP_BUNDLE_ID, "index.html", b"<html>")
     served, page = _get(connection, "/wiki/")
 
     assert asked.status == 503

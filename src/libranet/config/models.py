@@ -70,6 +70,12 @@ class NetworkConfig(_Section):
     # once per this period (Step 12).
     retry_after_seconds: int = Field(default=5, ge=0)
 
+    # How long a request for an application file waits for what it lacks,
+    # its entry or a part, before it is answered `503`, or, once its body
+    # has begun, cut short (HttpApi §13.2, Phase 3 Step 65). A `<video>`
+    # does not retry a `503`. Provisional.
+    app_wait_seconds: float = Field(default=10.0, ge=0)
+
     # The hosts `/config` is served as. A request there whose `Host` header
     # names any other is refused, so a site that points a name of its own at
     # this machine is not taken for this node (HttpApi §2.3.3, Phase 2 Step

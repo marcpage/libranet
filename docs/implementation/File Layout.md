@@ -53,7 +53,7 @@ A node on macOS with every default, after its first run, looks like this:
 ~/Library/
 ├── Application Support/libranet/   config directory and storage.data_dir
 │   ├── libranet.yaml               the config file, if one was written
-│   ├── cas/                        verified content, resolved app files
+│   ├── cas/                        verified content, resolved app entries
 │   ├── incoming/                   unverified uploads
 │   ├── keys/                       identity.key_dir
 │   ├── libranet.sqlite3            statistics database
@@ -100,12 +100,12 @@ something is written to it.
 │   │   └── {algorithm}/                 e.g. sha256
 │   │       └── {hash[:4]}/              storage.hash_prefix_length characters
 │   │           └── {hash}               one object, plain or zlib-compressed
-│   └── resolved/                        application files, ready to serve
+│   └── resolved/                        application files' entries
 │       └── {algorithm}/
 │           └── {bundle hash}/
 │               ├── directory.jzon       the bundle's directory, resolved
 │               └── {key[:4]}/
-│                   └── {key}            key = SHA-256 of the entry path
+│                   └── {key}.jzon       key = SHA-256 of the entry path
 ├── incoming/                            unverified uploads
 │   └── {algorithm}-{sender node hash}/
 │       └── data/{algorithm}/{hash[:4]}/{hash}
@@ -125,7 +125,7 @@ something is written to it.
 | Path | Written by | Read by |
 | --- | --- | --- |
 | `cas/data/` | Validator; web server (a peer's own public key); supervisor (this node's public key); backup module | Most modules; deleted from only by eviction |
-| `cas/resolved/` | Unbundler | Web server, unbundler |
+| `cas/resolved/` | Unbundler; the web server deletes an entry it cannot read | Web server, unbundler |
 | `incoming/` | Web server (`PUT /data`); connection manager (content fetched from peers) | Validator, which deletes each upload it checks |
 | `keys/node_private_key.pem` | Supervisor, on first start | Every module that signs or needs the node id |
 | `keys/backup_secret` | Backup module, when first needed | Backup module |
@@ -169,29 +169,36 @@ the search cache.
 
 ### 3.2 Resolved Application Files: `cas/resolved`
 
-When a request for an application path misses, the unbundler reassembles
-that one file from its bundle and writes it here; the web server serves it
-directly from then on (`src/libranet/cas/resolved_files.py`).
+When a request for an application path misses, the unbundler writes that
+one file's entry here: the file's `FileBundle`, which names its parts, as
+zlib-compressed JSON. The web server serves the file from those parts in
+`cas/data`, reading them as it sends it
+(`src/libranet/cas/resolved_files.py`, Phase 3 Step 65). No reassembled copy
+of any file is written.
 
-- Files are grouped by the content id of the application's bundle, which
-  never changes, so a resolved file never goes stale. Registering a new
-  bundle for an application starts a new tree.
-- A file's name is `key`, the SHA-256 of its entry path's UTF-8 bytes, not
-  the path itself. Entry paths compare byte for byte, but a filesystem may
-  ignore case or Unicode normalization, limit name length, or reserve names.
-  No filesystem path is ever built from request text.
+- Entries are grouped by the content id of the application's bundle, which
+  never changes, so an entry never goes stale. Registering a new bundle for
+  an application starts a new tree.
+- An entry's name is `{key}.jzon`, `key` being the SHA-256 of its entry
+  path's UTF-8 bytes, not the path itself. Entry paths compare byte for
+  byte, but a filesystem may ignore case or Unicode normalization, limit
+  name length, or reserve names. No filesystem path is ever built from
+  request text.
 - `directory.jzon` is the bundle's directory with its extensions overlaid,
   saved as zlib-compressed JSON, so the bundle and its extensions are
   resolved only once. Its name is not hex, so no prefix directory can clash
   with it.
+- An entry the web server cannot read is deleted by it, and written again
+  by the unbundler when next asked for.
 
-Resolved files are a cache of content in `cas/data`. They are not counted
-toward `storage.max_storage_bytes`, but they take up free space. When free
-space falls below `storage.min_free_bytes`, before any object is handed off,
-the unbundler deletes the whole tree of every bundle no application has been
-served from for `storage.resolved_idle_seconds` (Phase 2 Step 29). Deleting a
-tree by hand while the node is stopped is safe too; the next request
-resolves it again.
+Resolved entries are a cache of what bundles in `cas/data` hold. They are
+not counted toward `storage.max_storage_bytes`, but they take up free
+space, though little of it. When free space falls below
+`storage.min_free_bytes`, before any object is handed off, the unbundler
+deletes the whole tree of every bundle no application has been served from
+for `storage.resolved_idle_seconds` (Phase 2 Step 29). Deleting a tree by
+hand while the node is stopped is safe too; the next request resolves it
+again.
 
 ### 3.3 Unverified Uploads: `incoming`
 
@@ -524,7 +531,7 @@ them.
 - **Replaced whole.** Nearly every file is written to a temporary file named
   `.{name}.{random}.partial` in the same directory and then renamed over the
   target (`src/libranet/atomic_file.py`), so a reader sees the old file or
-  the new one, never part of one. This covers CAS objects, resolved files,
+  the new one, never part of one. This covers CAS objects, resolved entries,
   derived lists, search results, the registry, the jobs file, each job's
   last bundle, build records, and export archives. A `.partial` file left
   by a crash is not cleaned up, but every scan skips it.
@@ -638,10 +645,6 @@ with its location printed, after a failure.
 
 Planned steps that will change this layout:
 
-- **Step 65 (#207, Phase 3)** stops writing reassembled files to
-  `cas/resolved/` (§3.2). Each tree will hold, beside `directory.jzon`,
-  one `{key}.jzon` for each file requested: the file's entry, which names
-  its parts, from which the web server streams it.
 - **Step 70 (#213, Phase 3)** adds `store/` to the data directory, written
   only by the web server: one JSON file for each application that keeps
   values there, named by the SHA-256 of the application's name.

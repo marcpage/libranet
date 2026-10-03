@@ -7,6 +7,7 @@ tested against a live server, in ``test_webserver_server.py``.
 
 from __future__ import annotations
 from base64 import b64encode
+from dataclasses import replace
 from json import dumps, loads
 from pathlib import Path
 from queue import Empty, Queue
@@ -136,16 +137,19 @@ def published(queues: ModuleQueues) -> list[Message]:
 def resolved(
     router: Router, unbundler: UnbundlerModule, queues: ModuleQueues, path: str
 ) -> Response:
-    """``path`` once the unbundler has resolved what its first request asked for."""
+    """``path`` once the unbundler has resolved what its first request asked for, read whole."""
     first = get(router, path)
-    (asked,) = [
-        message for message in published(queues) if message["event"] != EventType.APP_ACCESSED
-    ]
+    # Reports of the application used, and of the parts read for what was
+    # served before, are not asked of anyone.
+    reports = {EventType.APP_ACCESSED, EventType.DATA_REQUESTED}
+    (asked,) = [message for message in published(queues) if message["event"] not in reports]
     unbundler.handle(asked)
+    page = get(router, path)
 
     assert first.status == 503
     assert asked["event"] == EventType.APP_PATH_NOT_FOUND
-    return get(router, path)
+    assert page.stream is not None
+    return replace(page, body=b"".join(page.stream.chunks), stream=None)
 
 
 def test_config_is_served_from_the_bundle_an_administrator_points_it_at(

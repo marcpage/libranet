@@ -306,7 +306,78 @@ My calls, not yet reviewed:
   one of the server's threads for no longer than the wait. Left open
   (§6).
 
-About 450 new or changed lines of non-test Python, so one change set.
+What was built is the list above, and the calls below it, made while
+building: `network.app_wait_seconds` (10), `PartReader` and `FileStream`
+(`webserver/file_stream.py`), `StreamedBody` on `Response`, and
+`WholeFileCheck` (`bundle/reassembly.py`). About 860 added lines of
+non-test Python, 170 of them in place of lines removed, much of it
+documentation: more than the 450 planned, but under 1,000, so one change
+set. The unbundler taking in `data.stored`, ruled on review, added about
+120 more, and took the step to about 960. Gates green: 3,439 passed, 1
+skipped, 99.07%.
+
+Seen in a live run of one node: a directory holding a page and 5,000,000
+random bytes was built through `/config/api/builds` and registered. The
+first request for the large file, before the unbundler had saved its
+entry, was answered `200` within 40 ms rather than `503`, and served byte
+for byte, with `Content-Length` and a signature over `@status` alone.
+`cas/resolved/` then held `directory.jzon` and one `{key}.jzon` for each
+file asked for, and nothing else. A client closing the connection after
+100,000 bytes was logged at debug. With the third of the five parts deleted
+from `cas/data`, a request was sent the first two, asked for the third
+from its start, and again 5 seconds on, and was cut short at 10 seconds,
+logged at info. No module logged a warning.
+
+Ruled on review:
+
+- **The unbundler takes in `data.stored`**, so it is told when a bundle or
+  extension it lacks arrives, rather than the waiting request asking it
+  again each second. A path waits on what it lacks for
+  `network.app_wait_seconds` from when it was last asked for, as long as a
+  request for it waits, and the 1,024 that waited longest are kept
+  (provisional), since anyone can ask for any path. A request asks the
+  unbundler once. Every object stored now passes through the unbundler,
+  which passes over at once those no path waits on, and a full inbox holds
+  it alone back (Phase 2 Step 61).
+
+My calls while building, not yet reviewed:
+
+- **The entry and the first part share one wait**, so a request is
+  answered within `network.app_wait_seconds`, `503` included. Each later
+  part is waited for as long again.
+- **A part still not held is asked for again after
+  `network.retry_after_seconds`**, the fetcher's interval, so that each ask
+  is a fresh attempt, as a client's retry after `Retry-After` was.
+- **The read-ahead is the part being read and the 8 after it**, reading
+  "up to 8 ahead" as 8 past the one being read.
+- **Every report wakes every waiting request**, each of which looks again
+  for its own path: one condition in `ApplicationOutcomes`, not one for
+  each path. A report costs a `stat` for each request waiting.
+- **`stored` no longer carries `size`** in `app.path_resolved`. The
+  unbundler no longer reads the file, and nothing read it.
+- **The unbundler finds no file unusable**, since it reads none of the
+  parts. A file whose parts or whole-file hash this node cannot read is
+  answered `500` by the web server, which logs a warning each time, as it
+  is not remembered. A file failing its checks is `500` if its first part
+  does, or a one-part file its whole-file hash, and is cut short if a later
+  part does.
+- **The web server deletes a saved entry it cannot read**, with a warning,
+  and asks the unbundler for it again, as the unbundler does a
+  `directory.jzon` it cannot read. File Layout §3.2 says so.
+- **`build_router` and `build_config_router` wait for nothing unless
+  told** (`app_wait_seconds=0.0`). The module passes the setting, and
+  their other callers, mostly tests, keep answering at once.
+- **The whole-file checks moved into `WholeFileCheck`**, which `write_file`
+  and `FileStream` share, rather than being written twice.
+- **A streamed body that fails other than by being cut short** is logged
+  with its traceback, and its connection closed, as the server's boundary.
+- **`FileStream` takes a span already**, which nothing passes until Step
+  66, since this step's tests call for spans.
+- **`HEAD` is still `405`** for an application file, as before: its route
+  answers `GET` alone until Step 66.
+- **The Module System and File Layout documents** are brought up to date:
+  §3.1, §3.2.2, §3.2.6, §3.3, §7.2, §8.3, §9.1, §9.3, and §10.1 of the
+  first, and §2, §3, §3.2, §8, and §12 of the second.
 
 **Testable in isolation:** unbundler tests that a file's entry is
 written, and none of its parts asked for. `FileStream` tests over a
