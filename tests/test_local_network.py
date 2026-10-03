@@ -428,6 +428,7 @@ def _interrupt_request(monkeypatch: MonkeyPatch, error: BaseException) -> None:
 def test_a_second_ctrl_c_kills_every_node(
     stand_ins: StandInNodes, monkeypatch: MonkeyPatch
 ) -> None:
+    monkeypatch.setattr("local_network._STOP_TIMEOUT_SECONDS", 0.2)
     monkeypatch.setattr("local_network._STOP_WINDOW", 1)
     running = stand_ins.network(STUBBORN, STUBBORN, STUBBORN)
     _interrupt_request(monkeypatch, KeyboardInterrupt())
@@ -441,6 +442,7 @@ def test_a_second_ctrl_c_kills_every_node(
 def test_stopping_that_fails_kills_every_node_and_raises(
     stand_ins: StandInNodes, monkeypatch: MonkeyPatch
 ) -> None:
+    monkeypatch.setattr("local_network._STOP_TIMEOUT_SECONDS", 0.2)
     monkeypatch.setattr("local_network._STOP_WINDOW", 1)
     running = stand_ins.network(STUBBORN, STUBBORN, STUBBORN)
     _interrupt_request(monkeypatch, OSError(EIO, "Input/output error"))
