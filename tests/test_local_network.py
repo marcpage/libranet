@@ -369,8 +369,18 @@ def test_killing_a_node_kills_its_modules_too(stand_ins: StandInNodes) -> None:
 def test_a_node_that_does_not_stop_in_time_is_killed(
     stand_ins: StandInNodes, monkeypatch: MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("local_network._STOP_TIMEOUT_SECONDS", 0.2)
     running = stand_ins.network(OBEDIENT, STUBBORN)
+    stubborn = running.processes[1]
+    request_stop = NodeProcess.request_stop
+
+    def request_stop_in_its_time(process: NodeProcess) -> None:
+        # Only the stubborn node's time is cut short. The obedient one keeps
+        # the full time, however slow the machine is to stop it.
+        timeout = 0.2 if process is stubborn else 30.0
+        monkeypatch.setattr("local_network._STOP_TIMEOUT_SECONDS", timeout)
+        request_stop(process)
+
+    monkeypatch.setattr(NodeProcess, "request_stop", request_stop_in_its_time)
 
     running.stop()
 
