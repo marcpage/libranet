@@ -3095,6 +3095,84 @@ file encrypted.
 
 ---
 
+## Step 61 — A Module That Falls Behind No Longer Stalls the Node
+
+**Issue:** to be opened. **Depends on:** Phase 1 Step 3.
+
+- Found in a live run (2026-10-03) of `scripts/local_network.py --count 16
+  --max-storage-bytes 1000000000`, with node-15 backing up 13 GiB of
+  video. From 06:28:24 to 06:32:54 node-15's bus stopped: it deleted
+  nothing, and no peer received a `PUT` from anyone. Everything started
+  again at 06:32:54.829, 10 ms after the backup finished. Meanwhile the
+  backup went on writing, unseen by eviction and the connection manager,
+  so the node went gigabytes over its limit, and the backlog let go at
+  the end flooded its peers.
+- Why: the dispatcher put every message into every inbox, the publisher's
+  own included, and the backup module reads nothing while a backup runs.
+  Each object backed up makes about six messages. A `multiprocessing.Queue`
+  made without a size is not unbounded, as Phase 1 Step 3 took it to be:
+  it holds at most `SEM_VALUE_MAX` unread items, 32,767 on macOS, and a
+  `put` past that waits. Once the backup module's inbox was full, the
+  dispatcher's main thread waited on it, and no module received anything.
+- Ruled (2026-10-03): fix both halves. The dispatcher never waits on one
+  inbox, and each message goes only to the modules that subscribe to it.
+  A backup writing faster than eviction hands content off, and the local
+  network script's kill loop, which a further Ctrl-C cuts short, are
+  separate issues.
+
+What was built: the dispatcher keeps, for each module's inbox, the
+messages it could not put there. A message goes into an inbox without
+waiting, or, once the inbox is full, behind those held, and they go in,
+oldest first, as the module reads, before each message and at each poll.
+The inbox filling is logged as a warning, once, and how many were held,
+and for how long, at info once they are all in. `ModuleQueues` carries the
+events its module subscribes to, which `default_module_specs` takes from
+each module class through `ModuleSpec`. The dispatcher puts a message only
+into the inboxes that subscribe to its event, puts `shutdown` into all of
+them, and puts nothing into its publisher's own. While a backup runs, the
+backup module's inbox now gets only `data.stored` from other modules and
+its `/config` requests. `ModuleBase` still filters what it receives, for
+what tests put straight into an inbox. The Module System document, the
+queue docstrings, Phase 1 Step 3, and the README no longer call the
+queues unbounded or say that every message goes to every module. About
+210 new or changed lines of non-test Python, most of them documentation,
+so it is one change set. Gates green: 3,296 passed, 1 skipped,
+99.05%.
+
+Seen in a live run of 16 nodes with `--max-storage-bytes 1000000000`, on
+ports 19400 to 19415: node-15 backed up 6 GiB of random files in 4 minutes
+46 seconds. It held between 948 and 954 MiB the whole time, at its limit,
+and deleted 5,238 objects, never more than 1.4 seconds apart while the
+backup ran. Every peer took `PUT`s in every minute, and they filled evenly
+to between 731 and 795 MiB. No node's dispatcher logged a full inbox.
+
+My calls, not yet reviewed:
+
+- **One warning per filling**, not one per message held: a line when the
+  inbox fills, and one when what was held has all gone in.
+- **Held without limit, in memory.** A module that never reads again grows
+  the dispatcher until it is restarted. Routing keeps what is held for a
+  busy backup module to what other modules store meanwhile.
+- **Lost if the dispatcher restarts**, as what it had read but not
+  delivered already was.
+- **No subscriptions means every event.** A `ModuleSpec` or `ModuleQueues`
+  made without them, as the tests' stub modules are, has every event but
+  its own delivered.
+- **The subscriptions travel on `ModuleQueues`**, so `DispatcherEntry`
+  kept its signature, and the registry names each module's class beside
+  its factory.
+
+**Testable in isolation:** `test_messaging_dispatcher.py` for a message
+delivered to every inbox but its publisher's; only subscribed events and
+`shutdown` delivered; one full inbox holding up no other, with its warning
+logged once and the info line once it drains; held messages kept in order
+ahead of newer ones; `run()` delivering to the others while one inbox is
+never read; and queues carrying the subscriptions given.
+`test_supervision.py` for each default spec subscribing to what its module
+class does.
+
+---
+
 ## 4. Issues in the Milestone
 
 Every issue in the **Phase 2** milestone, by number, and where it went.
@@ -3134,6 +3212,7 @@ Every issue in the **Phase 2** milestone, by number, and where it went.
 | #170 | Applications share an origin with `/config` | 58 |
 | #176 | Update the documentation and specifications | A review of every document before release 0.2.0, and 59, which it raised |
 | #194 | Encrypt the file parts of password-protected bundles | 60 |
+| To be opened | A full inbox stalls the dispatcher, and with it the node | 61 |
 
 Issue #80 asks for what #119 asked for later, and PR #120 built it in
 Phase 1: new content is pushed to the single best connected peer, never

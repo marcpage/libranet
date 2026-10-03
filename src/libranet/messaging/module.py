@@ -36,9 +36,10 @@ class StopSignal(Protocol):
 class ModuleBase:
     """Publish/receive plumbing shared by every module.
 
-    Broadcasts reach every module, including the one that published them;
-    a module never receives its own messages back, and receives only the
-    event types in ``subscriptions`` plus :attr:`EventType.SHUTDOWN`.
+    The dispatcher delivers a module only the event types in
+    ``subscriptions`` plus :attr:`EventType.SHUTDOWN`, and never its own
+    messages, as its queues say. It filters what it receives the same way,
+    since a test may put any message straight into its inbox.
     """
 
     subscriptions: ClassVar[frozenset[EventType]] = frozenset()

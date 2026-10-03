@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Callable, Mapping, Protocol
 
 from libranet.config.models import LibranetConfig
+from libranet.messaging.events import EventType
 from libranet.messaging.module import ModuleBase, StopSignal
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
@@ -34,7 +35,13 @@ DispatcherEntry = Callable[
 
 @dataclass(frozen=True)
 class ModuleSpec:
-    """One non-dispatcher module the supervisor runs, and how to build it."""
+    """One non-dispatcher module the supervisor runs, and how to build it.
+
+    ``subscriptions`` are the events the dispatcher delivers to it besides
+    ``shutdown``, those its module class subscribes to; ``None`` delivers
+    every event.
+    """
 
     name: ModuleName
     factory: ModuleFactory
+    subscriptions: frozenset[EventType] | None = None

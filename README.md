@@ -465,9 +465,9 @@ to keep the example file honest. The common overrides have flags of their own:
 
 A node is a **supervisor process** that spawns a central **dispatcher** and
 eight module processes. Modules never call each other: they publish messages to
-the dispatcher, which broadcasts every message to every module's queue, and
-each module filters for what it cares about. A module that dies is restarted by
-the supervisor without taking the node down.
+the dispatcher, which delivers each message to the queue of every module that
+subscribes to it. A module that dies is restarted by the supervisor without
+taking the node down.
 
 | Module | Responsibility |
 | ---------- | ---------------------------------------------------------- |
