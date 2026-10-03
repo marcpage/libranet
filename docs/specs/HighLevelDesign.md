@@ -112,7 +112,7 @@ ordered exchange occurs:
 | `GET/POST /data/seek`              | Read or publish hashes being sought                                                               |
 | `GET /data/{algo}/{full-hash}`     | Retrieve content (≤ 1 MiB as transmitted, §4.3); see §4.1.1 for the compressed-retrieval fallback |
 | `PUT /data/{algo}/{full-hash}`     | Store content under its content hash                                                              |
-| `GET /data/search/{algo}/{prefix}` | Search by partial hash; returns ranked matches                                                    |
+| `GET /data/search/{prefix}`        | Search by partial hash; returns ranked matches                                                    |
 | `GET /{app-name}/…`                | Serve files from a registered directory-bundle app                                                |
 
 The `/data/...` paths constitute the programmatic interface.
@@ -180,11 +180,13 @@ requiring a separate content-addressing scheme for compressed variants.
 Partial-hash search is supported:
 
 ```text
-/data/search/{hash_algorithm}/{prefix}
+/data/search/{prefix}
 ```
 
-Search returns a ranked list of full hashes, and optional metadata, ordered by
-the number of matching binary digits (longest common prefix).
+The prefix names no hash algorithm, so the results may include hashes of any
+algorithm (HTTP API §6). Search returns a ranked list of full hashes, and
+optional metadata, ordered by the number of matching binary digits (longest
+common prefix).
 
 ### 4.3 Maximum Object Size & Bundles
 

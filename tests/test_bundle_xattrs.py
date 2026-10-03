@@ -12,6 +12,7 @@ from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
 from xattr import xattr
 
 from libranet.bundle.errors import MissingContentError
+from libranet.bundle.parts import PartPath, PartWriter
 from libranet.bundle.shapes import XattrValue
 from libranet.bundle.storing import store_object
 from libranet.bundle.xattrs import INLINE_LIMIT_BYTES, ExtendedAttributes
@@ -96,7 +97,7 @@ def test_every_name_is_included_with_no_pattern_excluded() -> None:
 def test_a_small_value_is_recorded_inline_as_base64(file: Path, store: CasStore) -> None:
     xattr(str(file)).set("user.origin", b"https://example.org/")
 
-    recorded = ExtendedAttributes().read(str(file), store, MAX_BYTES)
+    recorded = ExtendedAttributes().read(str(file), PartWriter(store, MAX_BYTES))
 
     assert recorded == {"user.origin": "aHR0cHM6Ly9leGFtcGxlLm9yZy8="}
 
@@ -110,7 +111,7 @@ def test_a_value_up_to_the_limit_is_inline_and_a_larger_one_stored_as_parts(
     xattr(str(file)).set("user.at", at_limit)
     xattr(str(file)).set("user.past", past_limit)
 
-    recorded = ExtendedAttributes().read(str(file), store, MAX_BYTES)
+    recorded = ExtendedAttributes().read(str(file), PartWriter(store, MAX_BYTES))
 
     assert recorded["user.at"] == b64encode(at_limit).decode("ascii")
     parts = recorded["user.past"]
@@ -123,7 +124,7 @@ def test_attributes_excluded_are_not_recorded(file: Path, store: CasStore) -> No
     xattr(str(file)).set("user.kept", b"1")
     xattr(str(file)).set("user.local", b"2")
 
-    recorded = ExtendedAttributes(["user.local"]).read(str(file), store, MAX_BYTES)
+    recorded = ExtendedAttributes(["user.local"]).read(str(file), PartWriter(store, MAX_BYTES))
 
     assert list(recorded) == ["user.kept"]
 
@@ -133,7 +134,9 @@ def test_a_symlink_is_not_followed(tmp_path: Path, file: Path, store: CasStore) 
     xattr(str(file)).set("user.origin", b"target's")
     symlink(file.name, tmp_path / "link")
 
-    assert "user.origin" not in ExtendedAttributes().read(str(tmp_path / "link"), store, MAX_BYTES)
+    assert "user.origin" not in ExtendedAttributes().read(
+        str(tmp_path / "link"), PartWriter(store, MAX_BYTES)
+    )
 
 
 def test_a_filesystem_keeping_no_attributes_holds_none(
@@ -141,7 +144,7 @@ def test_a_filesystem_keeping_no_attributes_holds_none(
 ) -> None:
     given(OSError(ENOTSUP, "Operation not supported"), monkeypatch)
 
-    assert ExtendedAttributes().read(str(file), store, MAX_BYTES) == {}
+    assert ExtendedAttributes().read(str(file), PartWriter(store, MAX_BYTES)) == {}
 
 
 def test_attributes_that_cannot_be_listed_are_an_error(
@@ -150,7 +153,7 @@ def test_attributes_that_cannot_be_listed_are_an_error(
     given(OSError(EACCES, "Permission denied"), monkeypatch)
 
     with raises(PermissionError):
-        ExtendedAttributes().read(str(file), store, MAX_BYTES)
+        ExtendedAttributes().read(str(file), PartWriter(store, MAX_BYTES))
 
 
 def test_a_name_that_is_not_utf8_leaves_every_attribute_out_and_is_logged(
@@ -159,7 +162,7 @@ def test_a_name_that_is_not_utf8_leaves_every_attribute_out_and_is_logged(
     given(UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"), monkeypatch)
 
     with caplog.at_level(WARNING, logger="libranet.bundle.xattrs"):
-        assert ExtendedAttributes().read(str(file), store, MAX_BYTES) == {}
+        assert ExtendedAttributes().read(str(file), PartWriter(store, MAX_BYTES)) == {}
 
     assert str(file) in caplog.text
     assert "not UTF-8" in caplog.text
@@ -170,7 +173,9 @@ def test_an_attribute_removed_since_it_was_listed_is_left_out(
 ) -> None:
     given(["user.gone", "user.kept"], monkeypatch, **{"user.kept": b"here"})
 
-    assert ExtendedAttributes().read(str(file), store, MAX_BYTES) == {"user.kept": "aGVyZQ=="}
+    assert ExtendedAttributes().read(str(file), PartWriter(store, MAX_BYTES)) == {
+        "user.kept": "aGVyZQ=="
+    }
 
 
 @mark.usefixtures("supports_xattrs")
@@ -186,6 +191,23 @@ def test_values_inline_and_as_parts_are_set(file: Path, descriptor: int, store: 
 
     assert unset == {}
     assert xattr(str(file)).get("user.small") == b"\x00small"
+    assert xattr(str(file)).get("user.large") == large
+
+
+@mark.usefixtures("supports_xattrs")
+def test_a_value_stored_as_encrypted_parts_is_set_from_them(
+    file: Path, descriptor: int, store: CasStore
+) -> None:
+    large = urandom(INLINE_LIMIT_BYTES * 2)
+    xattr(str(file)).set("user.large", large)
+    recorded = ExtendedAttributes().read(str(file), PartWriter(store, MAX_BYTES, encrypted=True))
+    xattr(str(file)).remove("user.large")
+
+    unset = ExtendedAttributes().write(descriptor, recorded, store)
+
+    parts = recorded["user.large"]
+    assert isinstance(parts, tuple) and all(PartPath.parse(part).encrypted for part in parts)
+    assert unset == {}
     assert xattr(str(file)).get("user.large") == large
 
 

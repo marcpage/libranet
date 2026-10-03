@@ -11,7 +11,7 @@ those processes work together: which modules there are and what each one is
 responsible for, how the supervisor starts, restarts, and stops them, and the
 message bus, shared files, and signals they communicate through. It is
 written for someone about to read or change the code, and describes the
-implementation as of Phase 2 Steps 29 and 53.
+implementation as of version 0.2, at the end of Phase 2.
 
 The architecture was chosen in [Phase 1](Phase%201.md) §2 and Steps 3 and 4,
 and [Phase 2](Phase%202.md) leaves it unchanged. [File
@@ -1159,7 +1159,7 @@ What the module system does not do yet:
   Each handler reads the fields it needs, and a malformed payload raises
   there and is logged.
 
-Planned steps that will change it, in Phases 2 to 4:
+Planned steps that will change it, in Phases 3 and 4:
 
 - **Step 16** (local discovery, Phase 4) runs inside the connection
   manager, with the `zeroconf` library's own threads, and publishes what
@@ -1167,11 +1167,5 @@ Planned steps that will change it, in Phases 2 to 4:
 - **Step 30** (#71, blocked data, Phase 3) keeps the blocked list in
   stats, and derives a file from it for the web server and validator,
   since neither may open SQLite.
-- **Step 45** (#96, batching) has the connection manager's push workers
-  take the new content already waiting, up to eight items, and send what is
-  bound for the same peer in one pipelined exchange. `ModuleBase.run` is
-  unchanged.
-- **Step 46** (#121) hands content off to one peer rather than two, so
-  `eviction.notice` asks for one copy.
 - **Step 50** (#85, Phase 4) brings filesystem-notification threads into
   the backup module's process.

@@ -5,9 +5,14 @@ stays in that file.
 """
 
 from __future__ import annotations
+from hashlib import sha256
 from json import loads
 from queue import Empty
+from zlib import compress
 
+from libranet.bundle.encryption import Aes256Cbc
+from libranet.bundle.parts import PartPath
+from libranet.cas.content_id import ContentId
 from libranet.config.models import LibranetConfig
 from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity
@@ -38,6 +43,19 @@ def with_node_key(config: LibranetConfig) -> LibranetConfig:
 def new_identity() -> NodeIdentity:
     """A node identity with a key of its own."""
     return NodeIdentity.from_private_key(generate_private_key(), "sha256")
+
+
+def encrypted_part(data: bytes) -> PartPath:
+    """``data`` as a backup names it, stored as one encrypted part (BundleSpecification §7).
+
+    Derived here rather than by :class:`~libranet.bundle.parts.PartWriter`,
+    so that a change to how parts are encrypted, which would stop them
+    deduplicating with those already stored, fails a test.
+    """
+    key = sha256(data).digest()
+    compressed = compress(data, 9)
+    ciphertext = Aes256Cbc(key).encrypt(compressed if len(compressed) < len(data) else data)
+    return PartPath(ContentId.for_data(ciphertext, "sha256"), key)
 
 
 def problem_type(response: Response) -> str:

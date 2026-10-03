@@ -1,6 +1,6 @@
 [project]
 name = "libranet"
-version = "0.1.0"
+version = "0.2.0"
 description = "A decentralized peer-to-peer content network that runs over ordinary HTTP"
 readme = "README.md"
 license = { file = "LICENSE" }

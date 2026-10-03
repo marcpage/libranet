@@ -246,6 +246,10 @@ Every issue in the **Phase 4** milestone, by number, and where it went.
 | #20 | mDNS/DNS-SD local discovery | 16, moved from Phase 2 |
 | #85 | Filesystem notifications for backup | 50, moved from Phase 2 |
 | #133 | IPv6 | 57 |
+| #149 | AWS S3 as another CAS store | None yet: not planned |
+| #159 | Windows support | None yet: not planned |
+| #160 | Releasing on PyPI | None yet: not planned |
+| #181 | HTTPS | None yet: not planned |
 
 ## 5. Suggested Build Order
 

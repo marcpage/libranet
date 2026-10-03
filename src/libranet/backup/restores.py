@@ -65,7 +65,7 @@ from libranet.backup.builds import BuildRecord
 from libranet.backup.tasks import Task, TaskStatus
 from libranet.backup.writing import DirectoryWriter
 from libranet.bundle.building import IgnoredPaths
-from libranet.bundle.content import ContentSource, check_held, parse_cas_path
+from libranet.bundle.content import ContentSource, check_held
 from libranet.bundle.errors import (
     BundleError,
     MissingContentError,
@@ -75,6 +75,7 @@ from libranet.bundle.errors import (
 from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.layering import Superseded
 from libranet.bundle.loading import load_bundle
+from libranet.bundle.parts import PartPath
 from libranet.bundle.shapes import (
     PATH_SEPARATOR,
     Bundle,
@@ -556,7 +557,7 @@ def _check_held(paths: Iterable[str], source: ContentSource) -> None:
         MissingContentError: some is not held; all of it is named.
         BundleError: a path is not a CAS path this node can read.
     """
-    check_held((parse_cas_path(part) for part in paths), source)
+    check_held((PartPath.parse(part).content_id for part in paths), source)
 
 
 def _beneath_other_entry(entries: Mapping[str, Entry], path: str) -> bool:

@@ -13,10 +13,12 @@ from xattr import xattr
 
 from libranet.backup.jobs import LatestBackup
 from libranet.backup.runs import AnnouncingStore, Backup, BuildSettings, back_up
+from libranet.bundle.building import build_directory
 from libranet.bundle.errors import PasswordProtectedBundleError
 from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.layering import Layering, Superseded
 from libranet.bundle.loading import load_bundle
+from libranet.bundle.parts import PartPath
 from libranet.bundle.reassembly import write_file
 from libranet.bundle.serialization import encode_bundle
 from libranet.bundle.shapes import DirectoryBundle, DirectoryMarker, Entry, FileBundle, Symlink
@@ -25,6 +27,8 @@ from libranet.bundle.xattrs import INLINE_LIMIT_BYTES, ExtendedAttributes
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import MIB, BackupConfig, LibranetConfig, StorageConfig
+
+from tests.helpers import encrypted_part
 
 SECRET = b"s" * 32
 MADE_AT = 1_789_000_000.0
@@ -148,7 +152,7 @@ def touch(path: Path, nanoseconds: int = WHOLE_SECOND_NS) -> None:
 
 def parts_of(entry: Entry) -> list[ContentId]:
     assert isinstance(entry, FileBundle)
-    return [ContentId.parse(part) for part in entry.parts]
+    return [PartPath.parse(part).content_id for part in entry.parts]
 
 
 def entries_of_expanded(backup: Backup) -> Mapping[str, Entry]:
@@ -168,6 +172,36 @@ def test_a_backup_holds_the_whole_directory(
         "link": "docs/notes.txt",
         "empty": None,
     }
+
+
+def file_parts(bundle: ContentId, store: CasStore) -> list[PartPath]:
+    """Every part of every file ``bundle`` holds."""
+    files = [entry for entry in entries_of(bundle, store).values() if isinstance(entry, FileBundle)]
+    return [PartPath.parse(part) for entry in files for part in entry.parts]
+
+
+def test_every_part_of_every_file_a_backup_holds_is_encrypted(
+    tree: Path, backups: AnnouncingStore, store: CasStore
+) -> None:
+    backup = first_backup(tree, backups)
+
+    parts = file_parts(backup.latest.bundle, store)
+    assert len(parts) >= 4
+    assert all(part.encrypted for part in parts)
+
+
+def test_a_backup_over_one_whose_parts_are_unencrypted_encrypts_every_file(
+    tree: Path, backups: AnnouncingStore, store: CasStore
+) -> None:
+    # As a node made backups before it encrypted parts.
+    plain = store_bundle(build_directory(tree, backups).bundle, backups, SECRET)
+    earlier = LatestBackup(plain, MADE_AT, "made with parts unencrypted")
+
+    second = backup_after(earlier, tree, backups)
+
+    assert second.bundle != plain
+    assert all(part.encrypted for part in file_parts(second.bundle, store))
+    assert restored(second.bundle, store)["big.bin"] == BIG
 
 
 def test_a_backup_is_encrypted_with_the_secret(
@@ -232,7 +266,7 @@ def test_backing_up_again_writes_only_what_changed(
     (tree / "readme.txt").write_bytes(b"read me again")
     second = backup_after(first, tree, backups)
 
-    changed = ContentId.for_data(b"read me again", "sha256")
+    changed = encrypted_part(b"read me again").content_id
     assert recorder.content_ids == {changed, second.bundle}
     assert restored(second.bundle, store)["readme.txt"] == b"read me again"
 
@@ -526,8 +560,8 @@ def test_a_backup_records_the_extended_attributes_asked_for(
     readme, docs = entries["readme.txt"], entries["docs"]
     assert isinstance(readme, FileBundle) and isinstance(docs, DirectoryMarker)
     assert readme.metadata.xattrs == {"user.tag": "cmVk"}
-    assert docs.metadata.xattrs == {"user.fork": (str(ContentId.for_data(fork, "sha256")),)}
-    assert ContentId.for_data(fork, "sha256") in recorder.content_ids
+    assert docs.metadata.xattrs == {"user.fork": (str(encrypted_part(fork)),)}
+    assert encrypted_part(fork).content_id in recorder.content_ids
 
 
 @mark.usefixtures("supports_xattrs")
@@ -621,7 +655,7 @@ def test_a_change_to_content_publishes_what_was_held_back_with_it(
     assert set(top.entries) == {"readme.txt", "docs/notes.txt"}
     assert top.versions == (str(first.latest.bundle),)
     assert recorder.content_ids == {
-        ContentId.for_data(b"other notes", "sha256"),
+        encrypted_part(b"other notes").content_id,
         third.latest.bundle,
     }
     assert isinstance(readme, FileBundle)

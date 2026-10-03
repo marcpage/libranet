@@ -33,11 +33,12 @@ provides — the `created` parameter (and optionally `expires`) in
 
 The residual risk of a bare timestamp-based freshness window — a
 captured signature being replayed once more before it expires — is low
-in practice: signatures cover `@method`, `@path`, and `Content-Digest`,
-and Libranet's core operations are idempotent or content-addressed, so
-replaying a captured signature mostly just repeats an already-authorized,
-harmless action (re-storing content that hashes to the same address,
-re-fetching already-public content, and so on).
+in practice: request signatures cover `@method`, `@path`, and
+`Content-Digest` (HTTP API §11), and Libranet's core operations are
+idempotent or content-addressed, so replaying a captured signature mostly
+just repeats an already-authorized, harmless action (re-storing content
+that hashes to the same address, re-fetching already-public content, and
+so on).
 
 **Freshness window:** the acceptable age of a signature (via `created`,
 and optionally bounded further by `expires`) SHOULD default to a few
@@ -64,9 +65,10 @@ handled as follows:
 - `GET` requests within `/data` (the programmatic API) SHOULD be honored
   normally. A node MAY refuse them as a stricter local policy, as HTTP
   API §7.3 allows.
-- `PUT` requests (uploads) MUST always be rejected, whatever the node's
-  local policy, since there is no identity to attribute the pushed
-  content or outstanding-request entry to.
+- `PUT` requests (uploads) and `POST` requests (published node and seek
+  lists) MUST always be rejected, whatever the node's local policy, since
+  there is no identity to attribute the pushed content or
+  outstanding-request entry to.
 
 If identity headers are present but the signature fails to verify, the
 connection MUST be terminated (§5.3), subject to the bootstrap grace
@@ -202,8 +204,8 @@ This allows a low-Karma node to still reach high-Karma servers, obtain
 node lists, and attempt to earn Karma by fulfilling outstanding requests,
 rather than being locked out for having no track record yet.
 
-HTTP API §7.5 independently lists a low ratio of fulfilled
-(`/data/seek`) requests to unfulfilled requests as an example of abusive
+HTTP API §7.5 independently lists a low ratio of desired data (what the
+host's `/data/seek` asks for) to undesired data as an example of abusive
 behavior justifying an abrupt connection break. The Karma-relative
 treatment above is this document's more detailed elaboration of that
 same rule.
@@ -250,17 +252,18 @@ here rather than restated:
   High-Level Design.
 - `/data/seek` request/response shape — see HTTP API §10.7.1.
 
-## Open Reconciliation Items
+## Reconciliation Notes
 
-Raised while cross-referencing the HTTP API spec; flagged for your
-review rather than resolved silently:
+Raised while cross-referencing the HTTP API spec, and how each was
+settled:
 
 1. **Scope of the no-headers restriction** — resolved in §2.1:
    unauthenticated `GET` requests outside `/data` are always honored,
    HTTP API §7.3's restriction applies only within `/data`, and
-   unauthenticated uploads are always rejected. Protocol Specification
-   §5.2 now requires returning stored content only to nodes that have
-   proven their identity, and defers to §2.1 for everything else.
+   unauthenticated uploads and published lists are always rejected.
+   Protocol Specification §5.2 now requires returning stored content only
+   to nodes that have proven their identity, and defers to §2.1 for
+   everything else.
 2. **§3.2 of the High-Level Design** is now superseded by §3 of this
    document (see §1). Deliberately left as-is for now rather than
    trimmed to a pointer.

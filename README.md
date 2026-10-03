@@ -67,7 +67,8 @@ directories as encrypted bundles. There is no public network to join yet — see
 - **Directory bundles** — collections of files packaged as mini-websites or
   applications, served at `/{app-name}/`
 - **Encrypted backup** — local directories become password-protected bundles
-  in the network, restorable to any node that has the password
+  in the network, every file's content encrypted too, restorable to any node
+  that has the password
 - **Self-organizing storage** — nodes prefer data that is "close" to their own
   identity and hand off the rest when space runs low
 - **Protocol fairness** — priority for peers that
@@ -288,8 +289,9 @@ curl -u admin:secret -X POST http://127.0.0.1:8180/config/api/backups \
 ```
 
 The backup module walks the directory, stores each file in the content store,
-and writes a password-protected directory bundle naming them. `GET` the same
-path to see what came of it:
+encrypted under a key derived from its own content, and writes a
+password-protected directory bundle naming the files and their keys. `GET` the
+same path to see what came of it:
 
 ```bash
 curl -u admin:secret http://127.0.0.1:8180/config/api/backups
@@ -448,6 +450,7 @@ to keep the example file honest. The common overrides have flags of their own:
 
 ```text
 -c, --config PATH     YAML config file to load
+    --version         Print the version and exit
     --data-dir PATH   Override the node data directory
     --log-dir PATH    Override the log directory
     --log-level LEVEL CRITICAL, ERROR, WARNING, INFO, or DEBUG
@@ -469,7 +472,7 @@ the supervisor without taking the node down.
 | Module | Responsibility |
 | ---------- | ---------------------------------------------------------- |
 | Web server | The only peer-facing HTTP endpoint; serves and accepts content, nothing more |
-| Connections | Outgoing peer connections, the handshake, and the 16-connection peer mix |
+| Connections | Outgoing peer connections, the handshake, and the 32-connection peer mix |
 | Validator | Verifies uploaded content against its hash and promotes it into the store |
 | Stats | The only process that touches SQLite; owns node and data statistics and derives the published lists |
 | Fetcher | Turns "asked for, not held here" into requests to peers |
@@ -514,13 +517,13 @@ written to the source tree.
 
 ## Project Status
 
-**Version 0.1** — September 2026
+**Version 0.2** — October 2026
 
 | Area | State |
 | ------------------------------------- | -------------------------- |
 | Protocol and format specifications | Drafted |
-| Phase 1 — reference node, steps 1–20 | Implemented |
-| Phase 2 — steps 21–29, 31–32, 41–49, and 51–55 | In progress |
+| Phase 1 — reference node, steps 1–15, 17–20, and 33–40 | Implemented |
+| Phase 2 — steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–59 | Implemented |
 | Phase 3 — Karma, steps 30 and 56 | Planned |
 | Phase 4 — enhancements, steps 16, 50, and 57 | Planned |
 | Public network | Not yet running |
@@ -538,7 +541,7 @@ Deliberately deferred, and specified but not yet built:
 - The [Karma/Kismet](docs/specs/Karma.md) incentive layer; node-list ordering
   uses a simpler proxy for now
 - mDNS/DNS-SD discovery on the local network
-- Signed bundles, and per-file encryption inside a bundle
+- Signed bundles, and per-file encryption anywhere but in a backup
 
 There is no bootstrap network: a node ships with an empty seed list, so nodes
 currently find each other only through peers you configure yourself.
@@ -557,13 +560,18 @@ currently find each other only through peers you configure yourself.
 | [Backup Specification](docs/specs/BackupSpecification.md) | Backing up and restoring local directories |
 | [Karma and Kismet](docs/specs/Karma.md) | The reputation and contribution system |
 | [Operator Guide](docs/operations/Operator%20Guide.md) | Running a node: resetting the `/config` password, running a super node |
-| [Phase 1 Plan](docs/implementation/Phase%201.md) | Implementation steps 1–20, all built |
-| [Phase 2 Plan](docs/implementation/Phase%202.md) | Implementation steps 21–29, 31–32, 41–49, and 51–55, in progress |
+| [Phase 1 Plan](docs/implementation/Phase%201.md) | Implementation steps 1–15, 17–20, and 33–40, all built |
+| [Phase 2 Plan](docs/implementation/Phase%202.md) | Implementation steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–59, all built |
 | [Phase 3 Plan](docs/implementation/Phase%203.md) | Karma: steps 30 and 56 so far, planned |
 | [Phase 4 Plan](docs/implementation/Phase%204.md) | Enhancements: steps 16, 50, and 57, planned |
+| [Module System](docs/implementation/Module%20System.md) | The node's processes, the message bus, and the events modules exchange |
+| [File Layout](docs/implementation/File%20Layout.md) | Every file a node reads or writes, and the settings that move them |
+| [Database Schema](docs/implementation/Database%20Schema.md) | The statistics database's tables, and what reads and writes them |
+| [Coding Style](docs/implementation/Coding%20Style.md) | The conventions the Python code follows |
 
 The specifications are normative; the implementation plans record the decisions
-the Python node made within them.
+the Python node made within them, and the other implementation documents
+describe the node as it is built.
 
 ---
 

@@ -74,8 +74,11 @@ appear in all capitals.
 
 ### 3.1 Identifier Derivation
 
-TBD: exact hash function, input material (e.g., public key), and encoding
-(hex/base32/base58) need to be pinned down here from the architecture spec.
+A Node ID is the Content Address (Section 5.1) of the node's public key: an
+Ed25519 key, encoded as PEM SubjectPublicKeyInfo, whose exact bytes are
+hashed. It is written `{hash algorithm}/{hash}`, the hash in lower-case
+hexadecimal, such as `sha256/` followed by 64 hex digits. SHA-256 is the
+recommended hash function. HTTP API §11.2 gives the details.
 
 - A Node ID MUST be derived from a cryptographic hash function with preimage and
   second-preimage resistance.
@@ -104,9 +107,9 @@ TBD: exact hash function, input material (e.g., public key), and encoding
 
 ### 4.2 Endpoint Conventions
 
-- The endpoints for all programatic access will be under the top-level `/data`
+- The endpoints for all programmatic access will be under the top-level `/data`
 - Accessing specific data is specified by `/data/{hash algorithm}/{hash}`
-- Searches for partial prefix matches is specified by `/data/search/{hash}`
+- Searches for partial prefix matches are specified by `/data/search/{hash}`
   - The top hashes that match the most prefix bits are returned regardless of
     the algorithm
 - Any breaking changes to these will be added as different names under `/data`
@@ -136,8 +139,9 @@ TBD: exact hash function, input material (e.g., public key), and encoding
 
 ### 5.3 Routing
 
-- Nodes MUST prioritizing retaining content by how many prefix bits the hash
-  matches with the Node ID.
+- Nodes MUST prioritize retaining content by how many prefix bits the hash
+  matches with the Node ID, weighed with the other factors of High-Level
+  Design §4.5.
 - Nodes SHOULD prioritize requesting content of Nodes whose ID matches more
   prefix bits with the requested hash.
 
@@ -146,8 +150,9 @@ TBD: exact hash function, input material (e.g., public key), and encoding
 - Nodes MAY discard content they hold at their own discretion, subject to any
   obligations defined by the incentive layer (see companion Karma/Kismet
   document).
-- Nodes SHOULD send content to multiple other Nodes and verify the transfer was
-  complete before discarding content.
+- Nodes SHOULD hand content off to one other Node, the best-matching connected
+  peer that accepts it (High-Level Design §4.5), and verify the transfer was
+  complete before discarding the content.
 - Nodes SHOULD prioritize discarding Content whose hash has the least prefix
   bits match with its ID.
 - Nodes MAY prioritize smaller Content as it is less expensive to acquire the
@@ -176,8 +181,8 @@ TBD: exact hash function, input material (e.g., public key), and encoding
 
 ### 6.1 Drop Structure
 
-- A drop MUST append a `null` byte and an arbitrary number of bytes as the nonce
-  to adjust the Content Address to match some number of prefix bits.
+- A drop MUST append a `null` byte and an arbitrary number of non-null bytes as
+  the nonce to adjust the Content Address to match some number of prefix bits.
 - A drop MAY expend extra compute cycles to match a higher number of bits to
   increase likelihood of it being found in a search.
 
@@ -200,11 +205,13 @@ TBD: exact hash function, input material (e.g., public key), and encoding
 
 ### 7.2 Hosting and Resolution
 
-- Apps MAY host a directory bundle at a name configured with the Node
-- App names MUST NOT be `data`, `web`, `chaos`, or `config`
+- Nodes MAY host a directory bundle as an app, at a name configured on the Node
+- App names MUST NOT be `data`, `web`, `chaos`, or `config`, except that
+  `config` names the administration application (HTTP API §2.3)
 - Nodes MUST have a preconfigured `/` app
 - Nodes MUST allow the `/` app to be changed
-- Nodes MUST allow the app to be mapped to a Directory Bundle path
+- Nodes MUST allow each app name to be mapped to a Directory Bundle's Content
+  Address
 
 ## 8. Security Considerations
 
@@ -218,14 +225,15 @@ This section is non-exhaustive and will be expanded.
 ## 9. IANA / Namespace Considerations
 
 - Node MUST locally register app names (only valid for that Node).
-- Node MUST NOT allow apps to be registered as `data`, `web`, `chaos`, or
-  `config`.
+- Node MUST NOT allow apps to be registered as `data`, `web`, or `chaos`, and
+  MUST NOT allow `config` to name anything but the administration application
+  (HTTP API §2.3).
 
 ## 10. References
 
 - RFC 2119: Key words for use in RFCs to Indicate Requirement Levels.
 - RFC 8174: Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words.
-- Libranet Architecture Spec (companion document, informative source for this
-  draft).
-- Libranet Karma/Kismet White Paper (companion document, incentive/reputation
+- [Libranet High-Level Design](HighLevelDesign.md) (companion document,
+  informative source for this draft).
+- [Karma and Kismet](Karma.md) (companion white paper, incentive/reputation
   layer).

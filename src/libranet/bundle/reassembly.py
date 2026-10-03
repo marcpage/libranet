@@ -2,8 +2,9 @@
 
 Parts are written out in ``contents`` order, a chunk at a time, since a
 file has no size limit. Each part is checked against its own identifier as
-it is read, and the whole file against the hash and size its metadata
-gives (§2.3), which catches what a part-level check alone could not.
+it is read, and decrypted if it is encrypted (§7), and the whole file
+against the hash and size its metadata gives (§2.3), which catches what a
+part-level check alone could not.
 
 A whole-file hash under an algorithm this node lacks makes the file
 unsupported rather than unchecked.
@@ -12,12 +13,13 @@ unsupported rather than unchecked.
 from __future__ import annotations
 from typing import Protocol
 
-from libranet.bundle.content import ContentSource, check_held, content_chunks, parse_cas_path
+from libranet.bundle.content import ContentSource, check_held
 from libranet.bundle.errors import (
     BundleVerificationError,
     MalformedBundleError,
     UnsupportedBundleError,
 )
+from libranet.bundle.parts import PartPath
 from libranet.bundle.shapes import FileBundle, Metadata
 from libranet.cas.algorithms import DEFAULT_REGISTRY
 from libranet.cas.content_id import ContentId
@@ -42,21 +44,22 @@ def write_file(bundle: FileBundle, source: ContentSource, output: ByteSink) -> i
     Raises:
         MissingContentError: some parts are not held locally; all are named.
         BundleVerificationError: a part, or the file as a whole, does not
-            match the hash or size the bundle gives it.
+            match the hash or size the bundle gives it, or an encrypted part
+            does not decrypt under its key.
         UnsupportedBundleError: a part or the whole-file hash uses a feature
             this node lacks.
         MalformedBundleError: a part is not a CAS path, or the whole-file
             hash is not valid for its algorithm.
     """
-    parts = [parse_cas_path(part) for part in bundle.parts]
+    parts = [PartPath.parse(part) for part in bundle.parts]
     expected = _whole_file_id(bundle.metadata)
-    check_held(parts, source)
+    check_held((part.content_id for part in parts), source)
     hasher = DEFAULT_REGISTRY.get(expected.algorithm).hasher() if expected else None
     expected_bytes = bundle.metadata.size_bytes
     size_bytes = 0
 
     for part in parts:
-        for chunk in content_chunks(source, part):
+        for chunk in part.chunks(source):
             size_bytes += len(chunk)
 
             if expected_bytes is not None and size_bytes > expected_bytes:

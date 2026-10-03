@@ -88,8 +88,9 @@ order. Steps 17–20 (backup and restore) were added that way: they depend
 only on Steps 1–14, so they can be built before or alongside Step 15.
 
 Step 16, the optional mDNS/DNS-SD local discovery step, moved to [Phase
-2](Phase%202.md) unbuilt, keeping its number. The work that follows this
-implementation pass is planned there.
+2](Phase%202.md) unbuilt, keeping its number, and has since moved on to
+[Phase 4](Phase%204.md). The work that follows this implementation pass is
+planned in Phase 2.
 
 Steps 33–40 were added after Phase 2 was planned, and so take the next
 free numbers after its. They are the rest of what the MVP needs to be
@@ -97,7 +98,8 @@ usable by a person: a node that says what it is, a page to administer it,
 a way to build an application, and a README that describes any of it.
 Each names the issue it comes from, as Phase 2's steps do. They depend on
 each other in the order they are numbered, except Step 33, which is
-independent of all of them.
+independent of all of them. Step 40, the README (#88), lost its section
+once the README was rewritten, so it has none below.
 
 ---
 
@@ -1416,7 +1418,8 @@ the relevant step is built, not before starting:
   BackupSpecification §3.2 and §4 read as bundle-only, which hides the
   names and structure but leaves the backed-up file bytes in CAS as
   plaintext that anyone who learns or guesses a content hash can read.
-  Steps 17 and 19 assume bundle-only until this is settled.
+  Steps 17 and 19 assume bundle-only until this is settled. Settled by
+  Phase 2 Step 59: the parts are encrypted too.
 - How an oversized directory bundle is split across an `extensions` chain
   on the write path (Step 17): how many entries per chunk, and how to
   keep the split stable across re-backups so unchanged chunks still dedup.
