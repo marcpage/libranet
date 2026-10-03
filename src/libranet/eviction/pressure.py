@@ -12,6 +12,12 @@ Only content counts towards ``max_storage_bytes``. The application files the
 unbundler resolves (Step 14) are kept apart from it and are not counted. They
 do take up free space, so free space running short is also what has those not
 used lately deleted (Phase 2 Step 29).
+
+Eviction aims ``headroom_bytes`` short of each limit, so that it is handing
+content off before the limit is reached. Content the node creates itself
+waits only at the limit (HighLevelDesign §4.5, Phase 2 Step 63), so with the
+headroom as much as the node hands off at once, the hand-offs keep going
+while it waits.
 """
 
 from __future__ import annotations
@@ -35,18 +41,26 @@ class StoragePressure:
         max_held_bytes: int | None,
         held_bytes: int,
         free_bytes: FreeBytes,
+        headroom_bytes: int = 0,
     ) -> None:
+        if headroom_bytes < 0:
+            raise ValueError(f"headroom_bytes must not be negative, got {headroom_bytes}")
+
         self._min_free_bytes = min_free_bytes
         self._max_held_bytes = max_held_bytes
         self._held_bytes = held_bytes
         self._free_bytes = free_bytes
+        self._headroom_bytes = headroom_bytes
 
     @classmethod
-    def of(cls, storage: StorageConfig, free_bytes: FreeBytes | None = None) -> StoragePressure:
+    def of(
+        cls, storage: StorageConfig, free_bytes: FreeBytes | None = None, headroom_bytes: int = 0
+    ) -> StoragePressure:
         """The pressure on ``storage``, with its content counted now if its size is limited.
 
         ``free_bytes`` measures the free space; by default it is measured on
-        the filesystem holding the source of truth.
+        the filesystem holding the source of truth. ``headroom_bytes`` is how
+        far short of each limit eviction aims.
         """
         store = CasStore.source_of_truth(storage)
         held_bytes = 0
@@ -59,6 +73,7 @@ class StoragePressure:
             storage.max_storage_bytes,
             held_bytes,
             free_bytes or partial(free_bytes_under, store.root),
+            headroom_bytes,
         )
 
     @property
@@ -82,13 +97,29 @@ class StoragePressure:
         return max(0, self._min_free_bytes - self._free_bytes())
 
     def excess(self) -> int:
-        """The bytes to let go of to be within every limit; ``0`` when already within them."""
-        excess = self.free_space_shortfall()
+        """The bytes to let go of to be the headroom within every limit; ``0`` when already so."""
+        excess = 0
+
+        if self._min_free_bytes > 0:
+            excess = max(0, self._min_free_bytes + self._headroom_bytes - self._free_bytes())
 
         if self._max_held_bytes is not None:
-            excess = max(excess, self._held_bytes - self._max_held_bytes)
+            excess = max(excess, self._held_bytes + self._headroom_bytes - self._max_held_bytes)
 
         return excess
+
+    def over_limits(self, adding_bytes: int = 0) -> bool:
+        """Whether storage would be over a limit with ``adding_bytes`` more content held.
+
+        The headroom plays no part: this is the limits themselves.
+        """
+        if self._min_free_bytes > 0 and self._free_bytes() - adding_bytes < self._min_free_bytes:
+            return True
+
+        return (
+            self._max_held_bytes is not None
+            and self._held_bytes + adding_bytes > self._max_held_bytes
+        )
 
 
 def free_bytes_under(path: Path) -> int:

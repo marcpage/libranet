@@ -313,7 +313,10 @@ deletes its copy once a peer has accepted it, reporting `data.deleted`. It
 never lets go of this node's own public key, nor the key of a peer
 connected either way, which the connection manager and web server name in
 `peers.connected`. Every question it asks another module has a timeout,
-so a restart of the module it asked cannot stall it.
+so a restart of the module it asked cannot stall it. It says whether
+storage is full, in `storage.full`, so that a backup or build waits rather
+than take the node past a limit, and it starts a batch of hand-offs short
+of each limit, so that what waits is not slowed to one hand-off at a time.
 
 #### 3.2.8 Backup
 
@@ -324,6 +327,8 @@ at a time on its main thread, between messages. It publishes its whole
 state as `backup.state` whenever that changes. Every object it stores is
 announced with `data.stored`, as the validator announces what it stores,
 and content a restore or export lacks is asked for with `data.not_found`.
+Before each object it stores, it looks at its inbox for `storage.full`, and
+waits while storage is full, setting other messages aside until it is done.
 Jobs are kept in `backup_jobs.json`, and each job's last bundle, kept
 expanded, in `backup_jobs/`; restores, builds, and exports are kept in
 memory only.
@@ -574,8 +579,8 @@ What each module does in them:
 | Connection manager | Read the key; name no peers connected; start the workers; load candidates; dial | Dial rested candidates; refresh peers due; resume searches due a next pass | Stop the workers; close every connection |
 | Fetcher | — | — | — |
 | Unbundler | — | — | — |
-| Eviction | Read the node id; count storage; ask which peers are connected; evict if over | Time out hand-offs and questions; resume after a pause | — |
-| Backup | Read the node id and jobs; report state | Carry on the next restore, build, export, or backup due | — |
+| Eviction | Read the node id; count storage; ask which peers are connected; say whether storage is full; evict if over | Say whether storage is full, if that changed; time out hand-offs and questions; resume after a pause | — |
+| Backup | Read the node id; ask whether storage is full; read the jobs; report state | Carry on the next restore, build, export, or backup due | — |
 
 ### 5.3 Writing a Module
 
@@ -683,8 +688,10 @@ receives.
 
 A single-threaded module does its work inside `handle` or `on_idle`, so
 long work holds up its other messages. A backup of a large directory, for
-one, runs to the end before the backup module reads its next message.
-Meanwhile its inbox fills only with what it subscribes to, and what will
+one, runs to the end before the backup module handles its next message.
+It does look at its inbox before each object it stores, for whether storage
+is full, and sets everything else aside until it is done (Phase 2 Step 63).
+Its inbox fills meanwhile only with what it subscribes to, and what will
 not fit waits in the dispatcher (§6.3), so the rest of the node carries on.
 
 ## 6. The Message Bus
@@ -837,9 +844,12 @@ to end its loop.
 | *Connected peers* | | | | | | | | |
 | `peers.connected_requested` | S | S | | | | | P | |
 | `peers.connected` | P | P | | | | | S | |
+| *Storage full* | | | | | | | | |
+| `storage.full_requested` | | | | | | | S | P |
+| `storage.full` | | | | | | | P | S |
 | *Lifecycle* | | | | | | | | |
 | `shutdown` | S | S | S | S | S | S | S | S |
-| **Publishes / subscribes** | 16 / 3 | 14 / 6 | 2 / 1 | 3 / 18 | 1 / 3 | 3 / 2 | 5 / 5 | 3 / 7 |
+| **Publishes / subscribes** | 16 / 3 | 14 / 6 | 2 / 1 | 3 / 18 | 1 / 3 | 3 / 2 | 6 / 6 | 4 / 8 |
 
 The `shutdown` row and its subscriptions are implicit: every module
 receives it without listing it, and nothing publishes it (§6.4). The totals
@@ -891,6 +901,8 @@ A content id is an `algorithm` and a lower-case hex `hash`, or, in
 | `resolved.reclaimed` | `bundles`, `bytes` | How many bundles' files were deleted, and the bytes freed |
 | `peers.connected_requested` | — | Name the peers connected now |
 | `peers.connected` | `direction`: `outbound` or `inbound`; `node_ids` | Every peer connected that way, replacing the last list for that direction |
+| `storage.full_requested` | — | Say whether storage is full now |
+| `storage.full` | `full` | Whether one more object of `storage.max_object_bytes` would take storage past a limit, so that content this node creates waits |
 | `shutdown` | — | Leave the receive loop |
 
 ### 7.3 Who Talks to Whom
@@ -934,6 +946,7 @@ flowchart TB
     fetch <-->|"fetch.requested<br/>fetch.succeeded, fetch.failed"| conn
     evict <-->|"eviction.notice, peers.connected_requested<br/>eviction.acknowledged, peers.connected"| conn
     evict <-->|"peers.connected_requested<br/>peers.connected"| web
+    evict <-->|"storage.full<br/>storage.full_requested"| backup
     evict <-->|"eviction.candidates_requested, eviction.candidates<br/>resolved.reclaim_requested"| stats
     stats -->|"resolved.reclaim"| unb
     unb -->|"resolved.reclaimed"| evict
@@ -1056,7 +1069,7 @@ sequenceDiagram
     participant peers as Peers
 
     val-)evict: data.stored
-    evict->>evict: storage is over its limits
+    evict->>evict: storage is within a batch of hand-offs of its limits
     opt free space is short, and no reclaim asked for in the last hour
         evict-)stats: resolved.reclaim_requested
         stats-)unb: resolved.reclaim, the bundles used lately
@@ -1089,6 +1102,17 @@ them. The connection manager and the web server each name their peers in
 it does when it starts. Those keys are left out of what stats is asked for
 and never handed off, and one whose peer connects while it is being handed
 off is kept.
+
+Content this node creates itself waits rather than take storage past a
+limit (HighLevelDesign §4.5, Phase 2 Step 63). Eviction says in
+`storage.full` whether one more object of `storage.max_object_bytes` would
+pass a limit, whenever that changes, and again when the backup module asks,
+as it does when it starts. Before each object a backup or build stores, the
+backup module looks at its inbox for it, and while storage is full it waits,
+setting other messages aside until it is done. Eviction starts eight
+objects' worth short of each limit, so eight hand-offs are under way while
+it waits. Storage still full after `backup.storage_stall_seconds` fails the
+backup or build.
 
 ### 8.5 A `/config` Request
 
@@ -1190,7 +1214,7 @@ recurring ways:
 | Report | Publish and forget; nobody answers | `data.requested`, `connection.opened`, `data.deleted`, `app.accessed` |
 | Request keyed by content | The answer names the same content id, or bundle and path, as the request, and repeated requests collapse into one piece of work | `fetch.requested` and `fetch.succeeded`; `app.path_not_found` and `app.path_resolved`; `eviction.notice` and `eviction.acknowledged` |
 | One question at a time | The asker keeps one question outstanding, takes the next answer broadcast as its answer, and gives up after a timeout | `eviction.candidates_requested` and `eviction.candidates`; `resolved.reclaim_requested`, `resolved.reclaim`, and `resolved.reclaimed` |
-| Whole-state report | Each report carries everything and replaces the one before | `backup.state`; `peers.connected`, a list per direction, also sent when `peers.connected_requested` asks |
+| Whole-state report | Each report carries everything and replaces the one before | `backup.state`; `peers.connected`, a list per direction, also sent when `peers.connected_requested` asks; `storage.full`, also sent when `storage.full_requested` asks |
 | Pointer to a file | The message says where the data is: a store it names, or a file every module finds from the configuration | `data.put_completed`, `nodes.updated`, `data.search_requested` |
 | Retry over HTTP | The web server answers `503` with `Retry-After` and publishes a request; the client's retry finds the result | A `/data` miss, an unresolved application path |
 
@@ -1214,8 +1238,8 @@ side recovers:
 | Connection manager | Connections, searches, hand-offs, content not yet pushed | It dials from the candidate list again, naming no peers connected until one is; eviction times out a hand-off after 1,200 s; a fetch is asked for again at the next miss after the fetcher's interval |
 | Fetcher | Which content it asked for lately | The next miss is asked for at once |
 | Unbundler | Directories held in memory; a reclaim in progress | Directories are read back from each bundle's saved `directory.jzon`; eviction times out the reclaim |
-| Eviction | Hand-offs under way; its list of candidates; which peers are connected | It counts storage again at start, asks which peers are connected, and asks stats again |
-| Backup | Restores, builds, and exports | They must be asked for again; jobs are read back from `backup_jobs.json` |
+| Eviction | Hand-offs under way; its list of candidates; which peers are connected | It counts storage again at start, says whether storage is full, asks which peers are connected, and asks stats again |
+| Backup | Restores, builds, and exports; messages set aside while it stored content | They must be asked for again; jobs are read back from `backup_jobs.json`; it asks whether storage is full |
 | Dispatcher | Messages it had read but not yet delivered, and those it held for a full inbox | Nothing recovers them; no module is started until it is back |
 
 ## 11. Testing Modules

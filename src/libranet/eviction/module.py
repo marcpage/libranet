@@ -54,6 +54,22 @@ within its limits once they succeed. One the connection manager never
 answers, as when it restarts, is given up on after
 ``hand_off_timeout_seconds``.
 
+Content this node creates itself, a backup's or a build's, waits while
+storage is full rather than take the node over its limits (HighLevelDesign
+§4.5, Phase 2 Step 63). Storage is full when one more object as large as
+``storage.max_object_bytes`` would take it over a limit. The backup module is
+told whether it is whenever that changes, when this module starts, and when
+it asks::
+
+    storage.full_requested  {}
+    storage.full            {"full": true}
+
+So that what waits does not slow to one hand-off at a time, eviction aims
+``headroom_bytes`` short of each limit: by default as much as
+``max_hand_offs`` hand-offs of objects that large move at once. Storage
+within the headroom of a limit, with nothing left to let go of, is only
+logged at debug, since no limit is passed.
+
 Public keys are never let go of while signatures are checked against them:
 this node's own, and those of the peers connected to it either way (Phase 2
 Step 53). The connection manager names the peers it dialed, and the web
@@ -146,6 +162,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
             EventType.EVICTION_CANDIDATES,
             EventType.RESOLVED_RECLAIMED,
             EventType.PEERS_CONNECTED,
+            EventType.STORAGE_FULL_REQUESTED,
         }
     )
 
@@ -164,6 +181,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         candidates_timeout_seconds: float = DEFAULT_CANDIDATES_TIMEOUT_SECONDS,
         reclaim_timeout_seconds: float = DEFAULT_RECLAIM_TIMEOUT_SECONDS,
         reclaim_interval_seconds: float = DEFAULT_RECLAIM_INTERVAL_SECONDS,
+        headroom_bytes: int | None = None,
     ) -> None:
         if max_hand_offs < 1:
             raise ValueError(f"max_hand_offs must be at least 1, got {max_hand_offs}")
@@ -188,6 +206,9 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
                 f"reclaim_interval_seconds must not be negative, got {reclaim_interval_seconds}"
             )
 
+        if headroom_bytes is not None and headroom_bytes < 0:
+            raise ValueError(f"headroom_bytes must not be negative, got {headroom_bytes}")
+
         super().__init__(
             name, queues, logger=logger, clock=clock, poll_interval_seconds=poll_interval_seconds
         )
@@ -201,6 +222,11 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         self._candidates_timeout_seconds = candidates_timeout_seconds
         self._reclaim_timeout_seconds = reclaim_timeout_seconds
         self._reclaim_interval_seconds = reclaim_interval_seconds
+        self._headroom_bytes = (
+            max_hand_offs * config.storage.max_object_bytes
+            if headroom_bytes is None
+            else headroom_bytes
+        )
         self._store = CasStore.source_of_truth(config.storage)
         self._node_id: ContentId | None = None
         self._pressure: StoragePressure | None = None
@@ -217,6 +243,8 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         self._next_reclaim_at = 0.0
         # The peers last named connected, each way, whose keys are kept.
         self._connected: dict[ConnectionDirection, frozenset[ContentId]] = {}
+        # Whether storage was last said to be full; None before it first is.
+        self._full: bool | None = None
         self._route(
             {
                 EventType.DATA_STORED: self._on_data_stored,
@@ -224,6 +252,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
                 EventType.EVICTION_CANDIDATES: self._on_eviction_candidates,
                 EventType.RESOLVED_RECLAIMED: self._on_resolved_reclaimed,
                 EventType.PEERS_CONNECTED: self._on_peers_connected,
+                EventType.STORAGE_FULL_REQUESTED: self._on_storage_full_requested,
             }
         )
 
@@ -250,15 +279,24 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         boundary, for the same reason the web server reads it: the private
         key stays on disk. Which peers are connected is asked first, since
         a restart forgets it; the answers arrive long before any hand-off
-        started meanwhile is.
+        started meanwhile is. Whether storage is full is said at once, for
+        a backup module that asked while this module was down.
         """
         self._node_id = NodeIdentity.load(self._config).node_id
-        self._pressure = StoragePressure.of(self._config.storage, self._free_bytes)
+        self._pressure = StoragePressure.of(
+            self._config.storage, self._free_bytes, self._headroom_bytes
+        )
         self.publish(EventType.PEERS_CONNECTED_REQUESTED, {})
+        self._report_full(always=True)
         self._evict()
 
     def on_idle(self) -> None:
-        """Give up on hand-offs and requests gone unanswered, and carry on once a wait is over."""
+        """Give up on hand-offs and requests gone unanswered, and carry on once a wait is over.
+
+        Whether storage is full is checked again too, as free space changes
+        with whatever else is on its filesystem.
+        """
+        self._report_full()
         now = self._clock()
         overdue = [
             content_id
@@ -350,11 +388,24 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
 
         excess = self.pressure.excess()
 
-        if excess:
-            self._paused_until = self._clock() + self._retry_delay_seconds
+        if not excess:
+            return
+
+        self._paused_until = self._clock() + self._retry_delay_seconds
+
+        if self.pressure.over_limits():
             self.logger.warning(
-                "Storage is %d bytes over its limits, with nothing left to let go of", excess
+                "Storage is over its limits, with nothing left to let go of: %d bytes are to go",
+                excess,
             )
+
+        else:
+            self.logger.debug(
+                "Nothing left to let go of, %d bytes short of the room eviction keeps", excess
+            )
+
+    def _on_storage_full_requested(self, _message: Message) -> None:
+        self._report_full(always=True)
 
     def _on_peers_connected(self, message: Message) -> None:
         """Keep the keys of the peers now connected one way, in place of those named before."""
@@ -377,8 +428,11 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
 
         With free space short, resolved files not used lately are deleted
         first. What is handed off is taken from the list stats last sent,
-        and more is asked for once that runs out.
+        and more is asked for once that runs out. Whether storage is full
+        is said first, if that changed.
         """
+        self._report_full()
+
         if self._clock() < self._paused_until or len(self._handing_off) >= self._max_hand_offs:
             return
 
@@ -426,6 +480,17 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
             },
         )
         self.logger.debug("Asked for content to free %d bytes", needed_bytes)
+
+    def _report_full(self, *, always: bool = False) -> None:
+        """Say whether storage is full: if that changed since last said, or ``always``."""
+        full = self.pressure.over_limits(self._config.storage.max_object_bytes)
+
+        if full == self._full and not always:
+            return
+
+        self._full = full
+        self.publish(EventType.STORAGE_FULL, {"full": full})
+        self.logger.debug("Storage is %s", "full" if full else "not full")
 
     def _peer_keys(self) -> frozenset[ContentId]:
         """The public keys of the peers connected either way, by their node ids."""

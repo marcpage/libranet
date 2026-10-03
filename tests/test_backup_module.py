@@ -5,11 +5,13 @@ endpoints, and the clock faked."""
 
 from __future__ import annotations
 from io import BytesIO
+from itertools import count
 from logging import ERROR, INFO, WARNING
 from os import DirEntry, mkfifo, scandir, utime
 from pathlib import Path
 from queue import Empty, Queue
-from typing import Any, Iterator
+from threading import Timer
+from typing import Any, Callable, Iterator
 
 from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
 from xattr import xattr
@@ -219,14 +221,17 @@ def restored(bundle: ContentId, store: CasStore, secret: bytes) -> dict[str, byt
     return files
 
 
-def test_the_module_reports_its_jobs_once_started(
+def test_the_module_asks_whether_storage_is_full_and_reports_its_jobs_once_started(
     config: LibranetConfig, queues: ModuleQueues, now: list[float]
 ) -> None:
     start(config, queues, now)
     messages = published(queues)
 
-    assert [message["event"] for message in messages] == [EventType.BACKUP_STATE]
-    assert BackupReport.from_message(messages[0]) == BackupReport((), ())
+    assert [message["event"] for message in messages] == [
+        EventType.STORAGE_FULL_REQUESTED,
+        EventType.BACKUP_STATE,
+    ]
+    assert BackupReport.from_message(messages[1]) == BackupReport((), ())
 
 
 def test_a_configured_job_is_backed_up_at_once(
@@ -1735,3 +1740,120 @@ def test_a_restore_due_goes_ahead_of_a_build_and_builds_and_exports_run_in_turn(
     # A backup bundle is protected with the backup secret, which no request gives.
     assert failed["status"] == "failed"
     assert "password" in failed["error"].lower()
+
+
+# -- Waiting for room (Phase 2 Step 63) -------------------------------------
+
+
+def storage_full(full: bool) -> Message:
+    return make_message(EventType.STORAGE_FULL, ModuleName.EVICTION, {"full": full})
+
+
+def stalling(config: LibranetConfig, seconds: float) -> LibranetConfig:
+    """``config`` with a backup or build giving up once storage stays full ``seconds``."""
+    backup = config.backup.model_copy(update={"storage_stall_seconds": seconds})
+    return config.model_copy(update={"backup": backup})
+
+
+def ticking(step_seconds: float) -> Callable[[], float]:
+    """A clock that moves on ``step_seconds`` each time it is read."""
+    times = count(START, step_seconds)
+    return lambda: next(times)
+
+
+def started_full(config: LibranetConfig, queues: ModuleQueues) -> BackupModule:
+    """A module whose clock ticks a second a read, told storage is full."""
+    module = BackupModule(
+        ModuleName.BACKUP, queues, config, clock=ticking(1.0), poll_interval_seconds=0.01
+    )
+    module.on_start()
+    module.handle(storage_full(True))
+    published(queues)
+    return module
+
+
+def held_ids(store: CasStore) -> set[ContentId]:
+    return {held.content_id for held in store.held_objects()}
+
+
+def test_a_backup_stores_nothing_while_storage_is_full_and_fails_once_it_stays_full(
+    config: LibranetConfig, queues: ModuleQueues, tree: Path, store: CasStore
+) -> None:
+    module = started_full(stalling(config, 30.0), queues)
+    held = held_ids(store)
+
+    configure(module, tree)
+
+    messages = published(queues)
+    final = reports(messages)[-1][0]
+    assert (final["status"], final["error"]) == (
+        "failed",
+        "Storage stayed full for 30 seconds, with no room made to store more",
+    )
+    assert final["bundle"] is None
+    assert of(messages, EventType.DATA_STORED) == []
+    assert held_ids(store) == held
+
+
+def test_a_backup_waiting_for_room_carries_on_once_eviction_makes_it(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    tree: Path,
+    store: CasStore,
+    caplog: LogCaptureFixture,
+) -> None:
+    module = started_full(config, queues)
+    room = Timer(0.1, queues.inbox.put, [storage_full(False)])
+    room.start()
+
+    with caplog.at_level(INFO):
+        configure(module, tree)
+
+    room.join()
+    messages = published(queues)
+    final = reports(messages)[-1][0]
+    assert final["status"] == "waiting"
+    assert restored(ContentId.parse(final["bundle"]), store, secret_of(config)) == {
+        "readme.txt": b"read me",
+        "docs/notes.txt": b"some notes",
+    }
+    assert f"The backup of {tree} waited" in caplog.text
+    assert "for eviction to make room" in caplog.text
+
+
+def test_messages_that_come_while_a_backup_stores_are_handled_after_it(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float], tree: Path, tmp_path: Path
+) -> None:
+    other = tmp_path / "other"
+    other.mkdir()
+    (other / "a.txt").write_bytes(b"a")
+    second = BackupJobRequest(str(other))
+    module = start(config, queues, now)
+    module.handle(storage_full(True))
+    queues.inbox.put(asked(EventType.BACKUP_JOB_CONFIGURED, **second.payload()))
+    queues.inbox.put(storage_full(False))
+
+    configure(module, tree)
+
+    assert set(module.jobs) == {job_id_of(tree)}
+    set_aside = module.receive(0.0)
+    assert set_aside is not None
+    assert set_aside["job_id"] == second.job_id
+    assert module.receive(0.0) is None
+
+    module.handle(set_aside)
+
+    assert set(module.jobs) == {job_id_of(tree), second.job_id}
+    assert all(job.latest is not None for job in module.jobs.values())
+
+
+def test_a_build_fails_once_storage_stays_full(
+    config: LibranetConfig, queues: ModuleQueues, tree: Path
+) -> None:
+    module = started_full(stalling(config, 30.0), queues)
+
+    build(module, tree)
+
+    final = builds(published(queues))[-1][0]
+    assert final["status"] == "failed"
+    assert final["error"].startswith("Storage stayed full")

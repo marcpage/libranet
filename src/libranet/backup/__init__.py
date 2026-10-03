@@ -7,7 +7,7 @@ exports a bundle as a content archive.
 """
 
 from libranet.backup.builds import RECORD_SUFFIX, Build, BuildRecord
-from libranet.backup.errors import BuildRecordError, JobFileError
+from libranet.backup.errors import BuildRecordError, JobFileError, StorageFullError
 from libranet.backup.exports import Export
 from libranet.backup.jobs import BackupJob, ExpandedBackups, LatestBackup, load_jobs, save_jobs
 from libranet.backup.module import BackupModule, backup_module_factory
@@ -18,6 +18,7 @@ from libranet.backup.runs import (
     Backup,
     BackupStore,
     BuildSettings,
+    MakeRoom,
     back_up,
 )
 from libranet.backup.tasks import Task, TaskStatus, failure_reason
@@ -41,8 +42,10 @@ __all__ = [
     "Export",
     "JobFileError",
     "LatestBackup",
+    "MakeRoom",
     "Restore",
     "RestorePass",
+    "StorageFullError",
     "Task",
     "TaskStatus",
     "back_up",

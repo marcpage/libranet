@@ -155,9 +155,11 @@ fetch it. The supervisor writes it at startup whenever it is missing, and
 eviction never deletes it.
 
 `storage.min_free_bytes` is measured on the filesystem holding `cas/`, and
-`storage.max_storage_bytes` counts only the objects in `cas/data`. When
-either is exceeded, eviction hands objects off to peers and then deletes
-them here (HighLevelDesign §4.5).
+`storage.max_storage_bytes` counts only the objects in `cas/data`. Once
+storage comes within one batch of hand-offs of either, eight objects of
+`storage.max_object_bytes`, eviction hands objects off to peers and then
+deletes them here. A backup or build waits rather than store an object that
+would take storage past either (HighLevelDesign §4.5, Phase 2 Step 63).
 
 `storage.hash_prefix_length` must not change once a node holds content.
 Every store looks only in prefix directories of the configured length, so
@@ -561,6 +563,7 @@ optional; `examples/libranet.yaml` shows them all with their defaults.
 | `backup.interval_seconds` | `3600.0` | — | How often a job's directory is checked |
 | `backup.max_update_layers` | `32` | — | Update layers a backup or build stores over its last whole bundle before storing a whole one again |
 | `backup.restore_stall_seconds` | `86400.0` | — | How long a restore waits with none of the content it lacks arriving before it gives up |
+| `backup.storage_stall_seconds` | `3600.0` | — | How long a backup or build waits for eviction to make room before it gives up |
 | `backup.excluded_xattrs` | macOS local-copy attributes; Linux `security.*`, `system.*`, `trusted.*` | — | Extended attributes a backup or build leaves out of its bundle, and a restore does not set |
 | `logging.directory` | Platform log directory | `--log-dir` | Root of §5 |
 | `logging.file_name` | `libranet.log` | — | Stem and suffix of every log file |

@@ -3,7 +3,7 @@
 from __future__ import annotations
 from pathlib import Path
 
-from pytest import fixture
+from pytest import fixture, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
@@ -138,3 +138,75 @@ def test_free_space_is_measured_where_content_is_stored_by_default(
 
     # Allowing for whatever else writes to the disk meanwhile.
     assert abs(pressure.excess() - 2**40) < 2**30
+
+
+# -- Headroom, and being over a limit (Phase 2 Step 63) ---------------------
+
+
+def test_eviction_aims_the_headroom_short_of_each_limit(storage: StorageConfig) -> None:
+    free = FixedFreeBytes(1000)
+    pressure = StoragePressure.of(
+        limited(storage, min_free_bytes=100, max_storage_bytes=100), free, headroom_bytes=20
+    )
+    pressure.stored(90)
+
+    assert pressure.excess() == 10
+
+    free.free = 105
+
+    assert pressure.excess() == 15
+
+
+def test_the_headroom_needs_a_limit_to_be_short_of(storage: StorageConfig) -> None:
+    free = FixedFreeBytes(0)
+    pressure = StoragePressure.of(
+        limited(storage, min_free_bytes=0, max_storage_bytes=None), free, headroom_bytes=20
+    )
+    pressure.stored(90)
+
+    assert pressure.excess() == 0
+    assert free.measured == 0
+
+
+def test_the_headroom_cannot_be_negative() -> None:
+    with raises(ValueError, match="headroom_bytes"):
+        StoragePressure(0, None, 0, FixedFreeBytes(0), headroom_bytes=-1)
+
+
+def test_being_over_a_limit_ignores_the_headroom(storage: StorageConfig) -> None:
+    free = FixedFreeBytes(1000)
+    pressure = StoragePressure.of(
+        limited(storage, min_free_bytes=100, max_storage_bytes=100), free, headroom_bytes=50
+    )
+    pressure.stored(90)
+
+    assert not pressure.over_limits()
+    assert not pressure.over_limits(10)
+    assert pressure.over_limits(11)
+
+    pressure.stored(11)
+
+    assert pressure.over_limits()
+
+
+def test_free_space_short_of_room_for_what_is_added_is_over_a_limit(
+    storage: StorageConfig,
+) -> None:
+    free = FixedFreeBytes(110)
+    pressure = StoragePressure.of(limited(storage, min_free_bytes=100), free)
+
+    assert not pressure.over_limits(10)
+    assert pressure.over_limits(11)
+
+    free.free = 99
+
+    assert pressure.over_limits()
+
+
+def test_no_limit_is_never_over(storage: StorageConfig) -> None:
+    free = FixedFreeBytes(0)
+    pressure = StoragePressure.of(limited(storage, min_free_bytes=0, max_storage_bytes=None), free)
+    pressure.stored(10**12)
+
+    assert not pressure.over_limits(10**12)
+    assert free.measured == 0

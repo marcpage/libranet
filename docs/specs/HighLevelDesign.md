@@ -278,6 +278,16 @@ matches it without multiplying it, which matters most where several nodes share
 one disk. The peer that accepts it pushes it on toward a better match still
 (§4.10).
 
+A node does not take itself over its storage limits with content it creates
+itself, such as a backup (BackupSpecification §3) or a newly built application
+(§5.2). It stores no more of that content while its storage is at a limit, and
+carries on as eviction makes room, so it creates content no faster than it can
+hand content off. So that this slows creation as little as it can, eviction
+starts a little short of each limit, by as much as the node hands off at once,
+while creation waits only at the limit itself. Creation that eviction makes no
+room for, as when no peer will accept what it hands off, gives up rather than
+wait for ever. Content received from other nodes is not held back this way.
+
 Node match, and handing off toward the best match, naturally segment the data
 space into **directions** defined by the binary prefixes of node identifiers,
 improving locality of search and retrieval.

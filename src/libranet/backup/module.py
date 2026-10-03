@@ -35,6 +35,21 @@ other, and the connection manager pushes it to a peer (HttpApi §7.4)::
 ``node_id`` is this node's own, since this node is where the content came
 from.
 
+A backup or a build stores no more while storage is full, rather than take
+the node over its limits (HighLevelDesign §4.5, Phase 2 Step 63). The
+eviction module says whether it is when that changes, when eviction starts,
+and when asked, as this module asks when it starts::
+
+    storage.full_requested  {}
+    storage.full            {"full": true}
+
+So before each new object a backup or build stores, the module looks at its
+inbox. It takes what eviction said, and sets every other message aside, to
+be handled in order once the backup or build is done. While storage is
+full, it waits, looking again every poll interval. Storage still full after
+``backup.storage_stall_seconds`` fails the backup or build; the next look at
+the job carries on, with what was stored kept.
+
 The node's own directories, as its config lists them, are ignored when
 backing up. Whatever holds them is backed up as though they were not there,
 and a job whose directory lies within one fails as though that directory did
@@ -129,13 +144,14 @@ reported.
 """
 
 from __future__ import annotations
+from collections import deque
 from dataclasses import dataclass, replace
 from logging import Logger
 from time import time
 from typing import Any, Callable, ClassVar, Final, Mapping
 
 from libranet.backup.builds import Build
-from libranet.backup.errors import BuildRecordError
+from libranet.backup.errors import BuildRecordError, StorageFullError
 from libranet.backup.exports import Export
 from libranet.backup.jobs import BackupJob, ExpandedBackups, load_jobs, save_jobs
 from libranet.backup.restores import Restore
@@ -150,7 +166,7 @@ from libranet.config.models import LibranetConfig
 from libranet.identity.errors import KeyFileError
 from libranet.identity.keys import load_or_create_backup_secret
 from libranet.identity.node_identity import NodeIdentity
-from libranet.messaging.envelope import Message
+from libranet.messaging.envelope import Message, event_of
 from libranet.messaging.events import ConflictBehavior, EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
@@ -195,6 +211,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             EventType.BUILD_REQUESTED,
             EventType.EXPORT_REQUESTED,
             EventType.DATA_STORED,
+            EventType.STORAGE_FULL,
         }
     )
 
@@ -212,7 +229,9 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             name, queues, logger=logger, clock=clock, poll_interval_seconds=poll_interval_seconds
         )
         self._config = config
-        self._store = AnnouncingStore(CasStore.source_of_truth(config.storage), self._announce)
+        self._store = AnnouncingStore(
+            CasStore.source_of_truth(config.storage), self._announce, self._make_room
+        )
         self._content = LayeredSource.open(config.storage)
         self._expanded = ExpandedBackups(config.storage.expanded_backups_dir)
         self._settings = BuildSettings.from_config(config)
@@ -223,6 +242,12 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._restores: dict[str, Restore] = {}
         self._builds: dict[str, Build] = {}
         self._exports: dict[str, Export] = {}
+        # Whether eviction last said storage is full.
+        self._storage_full = False
+        # Messages received while a backup or build stored content, handled after it.
+        self._set_aside: deque[Message] = deque()
+        # How long the backup or build under way has waited for room so far.
+        self._waited_seconds = 0.0
         self._route(
             {
                 EventType.BACKUP_JOB_CONFIGURED: self._on_job_configured,
@@ -232,6 +257,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
                 EventType.BUILD_REQUESTED: self._on_build_requested,
                 EventType.EXPORT_REQUESTED: self._on_export_requested,
                 EventType.DATA_STORED: self._on_data_stored,
+                EventType.STORAGE_FULL: self._on_storage_full,
             }
         )
 
@@ -275,6 +301,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
                 rather than start with no jobs and save over them.
         """
         self._node_id = NodeIdentity.load(self._config).node_id
+        self.publish(EventType.STORAGE_FULL_REQUESTED, {})
         self._jobs = load_jobs(self._config.storage.backup_jobs_path)
         now = self._clock()
         self._progress = {job_id: _Progress(now) for job_id in self._jobs}
@@ -284,6 +311,13 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
     def on_idle(self) -> None:
         """Carry on with the next restore or job due."""
         self._work_next()
+
+    def receive(self, timeout_seconds: float | None = None) -> Message | None:
+        """The first message set aside while content was stored, if any, or else the next wanted."""
+        if self._set_aside:
+            return self._set_aside.popleft()
+
+        return super().receive(timeout_seconds)
 
     def handle(self, message: Message) -> None:
         """React to one ``/config`` request, or content stored, then to the next restore or job due.
@@ -394,6 +428,9 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
 
         if any(landed):
             self._report()
+
+    def _on_storage_full(self, message: Message) -> None:
+        self._storage_full = bool(message["full"])
 
     def _work_next(self) -> None:
         """Carry on with the restore longest due, if any, or else run the build or
@@ -524,6 +561,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             else:
                 self.logger.info("Built %s as %s", directory, build.bundle)
 
+        self._log_wait(f"The build of {directory}")
         self._report()
 
     def _export(self, export: Export) -> None:
@@ -620,6 +658,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         else:
             progress.status, progress.error = TaskStatus.WAITING, None
 
+        self._log_wait(f"The backup of {job.directory}")
         progress.due_at = self._clock() + self._interval_of(job)
         self._report()
 
@@ -655,6 +694,62 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             self._secret = load_or_create_backup_secret(self._config.backup_secret_path)
 
         return self._secret
+
+    def _make_room(self) -> None:
+        """Return once eviction says storage is not full, taking what it said meanwhile first.
+
+        Raises:
+            StorageFullError: storage stayed full for ``backup.storage_stall_seconds``.
+        """
+        self._take_messages(0.0)
+
+        if not self._storage_full:
+            return
+
+        started_at = self._clock()
+        stall_seconds = self._config.backup.storage_stall_seconds
+        self.logger.debug("Storage is full; waiting for eviction to make room")
+
+        try:
+            while self._storage_full:
+                if self._clock() - started_at >= stall_seconds:
+                    raise StorageFullError(
+                        f"Storage stayed full for {stall_seconds:.0f} seconds, "
+                        f"with no room made to store more"
+                    )
+
+                self._take_messages(self._poll_interval_seconds)
+
+        finally:
+            self._waited_seconds += self._clock() - started_at
+
+    def _take_messages(self, timeout_seconds: float) -> None:
+        """Take what eviction said of storage, waiting up to ``timeout_seconds`` for a message.
+
+        Every other message is set aside, in order, to be handled once the
+        backup or build under way is done.
+        """
+        message = super().receive(timeout_seconds)
+
+        while message is not None:
+            if event_of(message) == EventType.STORAGE_FULL:
+                self._on_storage_full(message)
+
+            else:
+                self._set_aside.append(message)
+
+            message = super().receive(0.0)
+
+    def _log_wait(self, task: str) -> None:
+        """Log how long ``task`` waited for room, if it did, and count afresh."""
+        if self._waited_seconds > 0:
+            self.logger.info(
+                "%s waited %.1f seconds in all for eviction to make room",
+                task,
+                self._waited_seconds,
+            )
+
+        self._waited_seconds = 0.0
 
     def _announce(self, content_id: ContentId, size_bytes: int) -> None:
         self.publish(

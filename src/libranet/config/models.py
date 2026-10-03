@@ -429,6 +429,13 @@ class BackupConfig(_Section):
     # that is offline overnight.
     restore_stall_seconds: float = Field(default=86400.0, gt=0)
 
+    # A backup or build waits, before storing more, while storage is full, as
+    # eviction says it is; it gives up, and fails, once storage stays full
+    # this long, as when no peer takes what is handed off (Phase 2 Step 63).
+    # The next look carries on from what was stored. Provisional default: an
+    # hour, so the backup module is not held up long from restores.
+    storage_stall_seconds: float = Field(default=3600.0, gt=0)
+
     # Extended attributes a backup or build leaves out of its bundle, and a
     # restore does not set: shell-style patterns, matched case sensitively
     # (Phase 2 Step 52). By default, those describing the local copy rather
