@@ -21,7 +21,10 @@ the creation time recorded, which a restore does not bring back. A file whose
 metadata changed is hashed, and if its bytes are as recorded, it keeps its
 parts, and only its metadata is updated. Only a file whose bytes changed is
 split and stored again, or one whose parts the last bundle names unencrypted,
-as a node made them before it encrypted parts (§3.3).
+as a node made them before it encrypted parts (§3.3). One recorded before the
+size of each part was (BundleSpecification §2.1) is kept without them, as a
+backup is never served, and reading every file again would make the first
+backup after that as slow as the first ever made.
 
 A job backed up before its last bundle was kept expanded has its bundle read
 back with the secret instead, once, and kept expanded from then on. If that
@@ -237,6 +240,7 @@ def back_up(
         previous=None if earlier is None else earlier.seen,
         xattrs=settings.xattrs,
         encrypt_parts=True,
+        require_part_sizes=False,
     )
     entries = build.entries
     skipped = len(build.skipped)

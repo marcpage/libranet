@@ -179,3 +179,30 @@ def test_unreadable_part_path_is_refused_before_anything_is_written(
         write_file(FileBundle(parts=(str(FIRST_ID), part)), store, output)
 
     assert output.getvalue() == b""
+
+
+def test_parts_of_their_recorded_sizes_are_written(store: CasStore) -> None:
+    content = FIRST + SECOND
+    bundle = FileBundle(
+        (str(FIRST_ID), str(SECOND_ID)),
+        describing(content),
+        part_sizes_bytes=(len(FIRST), len(SECOND)),
+    )
+    output = BytesIO()
+
+    assert write_file(bundle, store, output) == len(content)
+    assert output.getvalue() == content
+
+
+def test_a_part_that_is_not_its_recorded_size_fails_though_the_file_matches(
+    store: CasStore,
+) -> None:
+    # Swapped, the sizes still add up to the file's, so only each part's own size can fail.
+    bundle = FileBundle(
+        (str(FIRST_ID), str(SECOND_ID)),
+        describing(FIRST + SECOND),
+        part_sizes_bytes=(len(SECOND), len(FIRST)),
+    )
+
+    with raises(BundleVerificationError, match=f"Part {FIRST_ID} is {len(FIRST)} bytes"):
+        write_file(bundle, store, BytesIO())

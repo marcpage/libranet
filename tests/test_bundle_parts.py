@@ -277,3 +277,32 @@ def test_ciphertext_larger_than_any_node_could_store_is_unsupported(
 
     with raises(UnsupportedBundleError):
         read(PartPath(content_id, KEY), store)
+
+
+@mark.parametrize("encrypted", [False, True])
+def test_a_part_of_its_size_is_read_whole(store: RecordingStore, encrypted: bool) -> None:
+    path = PartWriter(store, encrypted=encrypted).store(PART)
+
+    assert b"".join(path.chunks(store, len(PART))) == PART
+
+
+@mark.parametrize("encrypted", [False, True])
+def test_a_part_shorter_than_its_size_is_refused(store: RecordingStore, encrypted: bool) -> None:
+    path = PartWriter(store, encrypted=encrypted).store(PART)
+
+    with raises(BundleVerificationError, match=f"is {len(PART)} bytes, not its size"):
+        b"".join(path.chunks(store, len(PART) + 1))
+
+
+@mark.parametrize("encrypted", [False, True])
+def test_a_part_longer_than_its_size_is_refused_before_more_is_produced(
+    store: RecordingStore, encrypted: bool
+) -> None:
+    path = PartWriter(store, encrypted=encrypted).store(PART)
+    produced = bytearray()
+
+    with raises(BundleVerificationError, match="larger than its size, 10"):
+        for chunk in path.chunks(store, 10):
+            produced += chunk
+
+    assert len(produced) <= 10

@@ -141,20 +141,50 @@ class PartPath:
         """Whether the part is stored encrypted."""
         return self.key is not None
 
-    def chunks(self, source: ContentSource) -> Iterator[bytes]:
+    def chunks(self, source: ContentSource, size_bytes: int | None = None) -> Iterator[bytes]:
         """The part's bytes, read from ``source``, decrypted if it is encrypted.
 
         What is stored is checked against :attr:`content_id`, and a part
         decrypted, against its key, only once all of it has been produced,
-        so a caller discards what it consumed if this raises.
+        so a caller discards what it consumed if this raises. So is its
+        length against ``size_bytes``, its size as a bundle records it
+        (§2.1), if given, though no more than that is produced.
 
         Raises:
             MissingContentError: ``source`` does not hold it.
             BundleVerificationError: what is stored does not match
                 :attr:`content_id`, or does not decrypt under the key to the
-                part the key is the SHA-256 of.
+                part the key is the SHA-256 of, or the part is not
+                ``size_bytes`` long.
             UnsupportedBundleError: the ciphertext is larger than any node
                 could have stored.
+        """
+        if size_bytes is None:
+            yield from self._chunks(source)
+            return
+
+        produced_bytes = 0
+
+        for chunk in self._chunks(source):
+            produced_bytes += len(chunk)
+
+            if produced_bytes > size_bytes:
+                raise BundleVerificationError(
+                    f"Part {self.content_id} is larger than its size, {size_bytes}"
+                )
+
+            yield chunk
+
+        if produced_bytes != size_bytes:
+            raise BundleVerificationError(
+                f"Part {self.content_id} is {produced_bytes} bytes, not its size, {size_bytes}"
+            )
+
+    def _chunks(self, source: ContentSource) -> Iterator[bytes]:
+        """The part's bytes, read from ``source``, decrypted and checked as :meth:`chunks` says.
+
+        Raises:
+            As :meth:`chunks` does, but for the part's size.
         """
         if self.key is None:
             yield from content_chunks(source, self.content_id)

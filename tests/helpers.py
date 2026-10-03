@@ -5,6 +5,7 @@ stays in that file.
 """
 
 from __future__ import annotations
+from dataclasses import replace
 from hashlib import sha256
 from json import loads
 from queue import Empty
@@ -12,6 +13,7 @@ from zlib import compress
 
 from libranet.bundle.encryption import Aes256Cbc
 from libranet.bundle.parts import PartPath
+from libranet.bundle.shapes import Entry, FileBundle
 from libranet.cas.content_id import ContentId
 from libranet.config.models import LibranetConfig
 from libranet.identity.keys import generate_private_key
@@ -56,6 +58,14 @@ def encrypted_part(data: bytes) -> PartPath:
     compressed = compress(data, 9)
     ciphertext = Aes256Cbc(key).encrypt(compressed if len(compressed) < len(data) else data)
     return PartPath(ContentId.for_data(ciphertext, "sha256"), key)
+
+
+def without_part_sizes(entries: dict[str, Entry]) -> dict[str, Entry]:
+    """``entries`` as a node recorded them before it recorded each part's size."""
+    return {
+        path: replace(entry, part_sizes_bytes=None) if isinstance(entry, FileBundle) else entry
+        for path, entry in entries.items()
+    }
 
 
 def problem_type(response: Response) -> str:

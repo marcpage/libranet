@@ -148,6 +148,7 @@ def test_empty_file_has_no_parts(tmp_path: Path, store: RecordingStore) -> None:
     bundle = build_file(path, store)
 
     assert bundle.parts == ()
+    assert bundle.part_sizes_bytes == ()
     assert (bundle.metadata.size_bytes, bundle.metadata.hash) == (0, EMPTY_SHA256)
     assert store.writes == []
 
@@ -175,6 +176,7 @@ def test_file_is_cut_into_parts_of_the_object_limit(
         str(ContentId.for_data(data[start:end], "sha256"))
         for start, end in zip(offsets, offsets[1:])
     )
+    assert bundle.part_sizes_bytes == tuple(part_sizes)
     assert reassembled(bundle, store) == data
 
 
@@ -481,7 +483,7 @@ def test_file_whose_metadata_is_unchanged_is_kept_without_being_read(
     built = build_directory(tree, store).bundle.entries["file"]
     assert isinstance(built, FileBundle)
     # Parts the file could not have produced, so only an entry kept unread names them.
-    recorded = FileBundle((str(ContentId.for_data(b"elsewhere", "sha256")),), built.metadata)
+    recorded = replace(built, parts=(str(ContentId.for_data(b"elsewhere", "sha256")),))
     store.writes.clear()
 
     entries = build_directory(tree, store, previous={"file": recorded}).bundle.entries
@@ -507,6 +509,7 @@ def test_file_whose_metadata_changed_but_bytes_did_not_keeps_its_parts(
 
     assert isinstance(entry, FileBundle)
     assert entry.parts == built.parts
+    assert entry.part_sizes_bytes == built.part_sizes_bytes
     assert entry.metadata.modified == "2026-09-01T08:30:00Z"
     assert (entry.metadata.size_bytes, entry.metadata.hash) == (
         built.metadata.size_bytes,
@@ -544,6 +547,7 @@ def test_a_directory_may_be_built_with_every_part_encrypted(
     assert isinstance(entry, FileBundle)
     # Cut a block short of the limit: 48, 48, and 32 bytes.
     assert len(entry.parts) == 3
+    assert entry.part_sizes_bytes == (48, 48, 32)
     assert all(PartPath.parse(part).encrypted for part in entry.parts)
     assert entry.metadata.hash == sha256(data).hexdigest()
     assert reassembled(entry, store) == data
@@ -563,6 +567,53 @@ def test_file_whose_parts_are_not_stored_as_this_build_stores_them_is_read_again
     assert isinstance(entry, FileBundle)
     assert [PartPath.parse(part).encrypted for part in entry.parts] == [encrypted]
     assert reassembled(entry, store) == b"as it was"
+
+
+@mark.parametrize("touched", [False, True])
+def test_file_recorded_without_part_sizes_is_read_again(
+    tree: Path, store: RecordingStore, touched: bool
+) -> None:
+    (tree / "file").write_bytes(bytes(number % 251 for number in range(2 * MAX_BYTES + 1)))
+    built = build_directory(tree, store, max_object_bytes=MAX_BYTES).entries["file"]
+    assert isinstance(built, FileBundle)
+    recorded = replace(
+        built, metadata=replace(built.metadata, created=CREATED), part_sizes_bytes=None
+    )
+    store.writes.clear()
+
+    if touched:
+        utime(tree / "file", ns=(WHOLE_SECOND_NS, WHOLE_SECOND_NS))
+
+    entry = build_directory(
+        tree, store, max_object_bytes=MAX_BYTES, previous={"file": recorded}
+    ).entries["file"]
+
+    assert isinstance(entry, FileBundle)
+    assert entry.parts == built.parts
+    assert entry.part_sizes_bytes == (MAX_BYTES, MAX_BYTES, 1)
+    assert entry.metadata.created == CREATED
+    assert store.writes == []
+
+
+@mark.parametrize("touched", [False, True])
+def test_file_recorded_without_part_sizes_keeps_its_parts_when_they_are_not_required(
+    tree: Path, store: RecordingStore, touched: bool
+) -> None:
+    (tree / "file").write_bytes(b"as it was")
+    built = build_directory(tree, store).entries["file"]
+    assert isinstance(built, FileBundle)
+    recorded = replace(built, part_sizes_bytes=None)
+
+    if touched:
+        utime(tree / "file", ns=(WHOLE_SECOND_NS, WHOLE_SECOND_NS))
+
+    entry = build_directory(
+        tree, store, previous={"file": recorded}, require_part_sizes=False
+    ).entries["file"]
+
+    assert isinstance(entry, FileBundle)
+    assert (entry.parts, entry.part_sizes_bytes) == (built.parts, None)
+    assert (entry is recorded) != touched
 
 
 def test_file_recorded_without_a_hash_is_built_afresh(tree: Path, store: RecordingStore) -> None:
@@ -596,9 +647,10 @@ def test_file_kept_unread_keeps_its_recorded_creation_time(
     built = build_directory(tree, store).bundle.entries["file"]
     assert isinstance(built, FileBundle)
     # Parts the file could not have produced, so only an entry kept unread names them.
-    recorded = FileBundle(
-        (str(ContentId.for_data(b"elsewhere", "sha256")),),
-        replace(built.metadata, created=CREATED),
+    recorded = replace(
+        built,
+        parts=(str(ContentId.for_data(b"elsewhere", "sha256")),),
+        metadata=replace(built.metadata, created=CREATED),
     )
     store.writes.clear()
 
@@ -807,7 +859,7 @@ def test_file_whose_attributes_alone_changed_is_kept_unread_with_the_new_ones(
     built = build_directory(tree, store, xattrs=ExtendedAttributes()).bundle.entries["file"]
     assert isinstance(built, FileBundle)
     # Parts the file could not have produced, so only an entry kept unread names them.
-    recorded = FileBundle((str(ContentId.for_data(b"elsewhere", "sha256")),), built.metadata)
+    recorded = replace(built, parts=(str(ContentId.for_data(b"elsewhere", "sha256")),))
     xattr(str(tree / "file")).set("user.tag", b"blue")
     store.writes.clear()
 
@@ -815,8 +867,8 @@ def test_file_whose_attributes_alone_changed_is_kept_unread_with_the_new_ones(
         tree, store, previous={"file": recorded}, xattrs=ExtendedAttributes()
     ).bundle.entries
 
-    assert entries["file"] == FileBundle(
-        recorded.parts, replace(recorded.metadata, xattrs={"user.tag": "Ymx1ZQ=="})
+    assert entries["file"] == replace(
+        recorded, metadata=replace(recorded.metadata, xattrs={"user.tag": "Ymx1ZQ=="})
     )
     assert store.writes == []
 

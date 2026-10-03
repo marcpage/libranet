@@ -129,11 +129,42 @@ class Metadata:  # pylint: disable=too-many-instance-attributes
 
 @dataclass(frozen=True)
 class FileBundle:
-    """A file: its parts in order, as CAS paths (§2). Also a directory's file entry."""
+    """A file: its parts in order, as CAS paths (§2). Also a directory's file entry.
+
+    ``part_sizes_bytes`` gives, when recorded, how many bytes each part
+    contributes to the reassembled file, in the order of ``parts`` (§2.1).
+
+    Raises:
+        MalformedBundleError: there are not as many part sizes as parts, one
+            is negative, or they do not add up to the file's size.
+    """
 
     parts: tuple[str, ...]
     metadata: Metadata = field(default_factory=Metadata)
     versions: tuple[tuple[str, ...], ...] = ()
+    part_sizes_bytes: tuple[int, ...] | None = None
+
+    def __post_init__(self) -> None:
+        sizes_bytes = self.part_sizes_bytes
+
+        if sizes_bytes is None:
+            return
+
+        if len(sizes_bytes) != len(self.parts):
+            raise MalformedBundleError(
+                f'"sizes" must give one size for each of the {len(self.parts)} parts, '
+                f"got {len(sizes_bytes)}"
+            )
+
+        if any(size_bytes < 0 for size_bytes in sizes_bytes):
+            raise MalformedBundleError(f'"sizes" must be non-negative integers, got {sizes_bytes}')
+
+        expected_bytes = self.metadata.size_bytes
+
+        if expected_bytes is not None and sum(sizes_bytes) != expected_bytes:
+            raise MalformedBundleError(
+                f'"sizes" add up to {sum(sizes_bytes)}, not the file\'s size, {expected_bytes}'
+            )
 
 
 @dataclass(frozen=True)

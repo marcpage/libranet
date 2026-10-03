@@ -124,8 +124,8 @@ that does not match its address does. The example in §2 carries it.
 
 What is to be built:
 
-- `FileBundle` (`bundle/shapes.py`) gains `part_sizes: tuple[int, ...] |
-  None`, whose rules it checks in `__post_init__`: as many sizes as
+- `FileBundle` (`bundle/shapes.py`) gains `part_sizes_bytes: tuple[int,
+  ...] | None`, whose rules it checks in `__post_init__`: as many sizes as
   parts, none negative, and their sum `metadata.size_bytes` when both are
   given. The parser checks only the JSON types, and the serializer writes
   `sizes` when there are some.
@@ -150,7 +150,35 @@ My calls, not yet reviewed:
 - **A size of zero is allowed**, though no writer here makes an empty
   part, since it breaks nothing.
 
-About 150 new or changed lines of non-test Python, so one change set.
+What was built is the list above, and the calls below it, made while
+building. `build_directory`'s new `require_part_sizes`, true unless a
+caller says otherwise, reads again a file whose entry records no part
+sizes; a backup turns it off. About 155 new and 40 changed lines
+of non-test Python, about half of it documentation, so one change set.
+Gates green: 3,362 passed, 1 skipped, 99.06%.
+
+Seen in a live run of one node: a build through `/config/api/builds` of a
+directory holding a 12-byte page and 2,600,000 random bytes recorded
+`"sizes": [12]` and `"sizes": [1048576, 1048576, 502848]` in its
+`{name}.bundle`. Registered as an application, the large file was served
+byte for byte, and the shipped root application, now built with sizes, was
+served too. Building it again unchanged kept the bundle. No module logged a
+warning.
+
+My calls while building, not yet reviewed:
+
+- **`part_sizes_bytes`, not `part_sizes`**, as Coding Style §4 puts the
+  unit in the name of anything holding a quantity. The JSON key stays
+  `sizes`.
+- **A part's size is checked by `PartPath.chunks`** (`bundle/parts.py`),
+  given the size, beside its check of the part's address, rather than in
+  `write_file` alone, so that Step 65's reader checks it the same way. It
+  stops as soon as a part runs past its size.
+- **An empty file records `"sizes": []`**, saying that its sizes are
+  known, as a file with parts does.
+- **Shipped applications keep their sizes** (`applications/packaged.py`),
+  as they keep the file's size and hash: all three depend on the bytes
+  alone.
 
 **Testable in isolation:** shape tests for sizes that do not match the
 parts or the file's size; parser and serializer round trips with and
