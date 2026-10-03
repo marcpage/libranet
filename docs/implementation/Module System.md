@@ -1291,13 +1291,13 @@ What the module system does not do yet:
   Each handler reads the fields it needs, and a malformed payload raises
   there and is logged.
 
-Planned steps that will change it, in Phases 3 and 4:
+Planned steps that will change it, in Phases 4 and 5:
 
-- **Step 16** (local discovery, Phase 4) runs inside the connection
+- **Step 16** (local discovery, Phase 5) runs inside the connection
   manager, with the `zeroconf` library's own threads, and publishes what
   it finds in `nodes.received`. It adds no process.
-- **Step 30** (#71, blocked data, Phase 3) keeps the blocked list in
+- **Step 30** (#71, blocked data, Phase 4) keeps the blocked list in
   stats, and derives a file from it for the web server and validator,
   since neither may open SQLite.
-- **Step 50** (#85, Phase 4) brings filesystem-notification threads into
+- **Step 50** (#85, Phase 5) brings filesystem-notification threads into
   the backup module's process.

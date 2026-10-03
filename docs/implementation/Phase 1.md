@@ -90,7 +90,7 @@ only on Steps 1–14, so they can be built before or alongside Step 15.
 
 Step 16, the optional mDNS/DNS-SD local discovery step, moved to [Phase
 2](Phase%202.md) unbuilt, keeping its number, and has since moved on to
-[Phase 4](Phase%204.md). The work that follows this implementation pass is
+[Phase 5](Phase%205.md). The work that follows this implementation pass is
 planned in Phase 2.
 
 Steps 33–40 were added after Phase 2 was planned, and so take the next
