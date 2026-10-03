@@ -82,7 +82,7 @@ from os import (
 from os.path import realpath
 from pathlib import Path
 from stat import S_ISREG, S_IWUSR, S_IXUSR
-from typing import BinaryIO, Final, Iterable, Mapping
+from typing import BinaryIO, Callable, Final, Iterable, Mapping
 
 from libranet.bundle.errors import MalformedBundleError
 from libranet.bundle.shapes import (
@@ -183,16 +183,35 @@ class DirectoryBuild:
         return {path: entry for path, entry in self.bundle.entries.items() if entry is not None}
 
 
-def build_file(path: Path, sink: ContentSink, max_object_bytes: int = MIB) -> FileBundle:
+def build_file(
+    path: Path,
+    sink: ContentSink,
+    max_object_bytes: int = MIB,
+    *,
+    read: Callable[[int], None] | None = None,
+) -> FileBundle:
     """The bundle for the file at ``path``, its parts stored in ``sink``.
+
+    ``read``, if given, is told the size of each part once it is read and
+    stored. A file whose size or modification time changes while it is read
+    fails, rather than record bytes it never held all at once.
 
     Raises:
         ValueError: ``max_object_bytes`` is not positive.
         OSError: ``path`` is not a regular file, or could not be read, or
-            content could not be stored.
+            changed while it was read, or content could not be stored.
     """
     with _open_regular_file(path) as file:
-        return _file_bundle(file, PartWriter(sink, max_object_bytes), {})
+        before = fstat(file.fileno())
+        bundle = _file_bundle(file, PartWriter(sink, max_object_bytes), {}, read=read)
+        after = fstat(file.fileno())
+
+    unchanged = (after.st_size, after.st_mtime_ns) == (before.st_size, before.st_mtime_ns)
+
+    if not unchanged or bundle.metadata.size_bytes != before.st_size:
+        raise OSError(f"Changed while it was read: {path}")
+
+    return bundle
 
 
 def build_directory(  # pylint: disable=too-many-branches,too-many-locals
@@ -417,6 +436,8 @@ def _file_bundle(
     xattrs: Mapping[str, XattrValue],
     earlier: Entry | None = None,
     require_part_sizes: bool = True,
+    *,
+    read: Callable[[int], None] | None = None,
 ) -> FileBundle:
     """The bundle for the open ``file``, each part stored by ``parts`` as it is read.
 
@@ -424,6 +445,7 @@ def _file_bundle(
     file that held the same bytes, in parts stored as ``parts`` stores them,
     with their sizes recorded if ``require_part_sizes``, it keeps those parts,
     and nothing is stored. If it is a file at all, its creation time is kept.
+    ``read``, if given, is told the size of each part once it is stored.
     """
     status = fstat(file.fileno())
     keepable = _keepable(earlier, parts, require_part_sizes)
@@ -444,6 +466,9 @@ def _file_bundle(
         hasher.update(part)
         sizes_bytes.append(len(part))
         stored.append(str(parts.store(part)))
+
+        if read is not None:
+            read(len(part))
 
     metadata = replace(
         _metadata(status, _recorded(earlier, FileBundle)),

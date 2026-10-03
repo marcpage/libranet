@@ -16,8 +16,8 @@ across the process boundary.
 The receive loop takes in what the unbundler found at application paths,
 ``app.path_resolved`` (see :mod:`libranet.unbundler.module`), which wakes the
 request threads waiting on it (Phase 3 Step 65), and what the backup module
-reports its jobs and restores are doing, ``backup.state`` (Step 19), for
-request threads to answer from. It also takes the eviction module's
+reports its jobs, restores, and imports are doing, ``backup.state`` (Step
+19), for request threads on either port to answer from. It also takes the eviction module's
 ``peers.connected_requested``, answered with the peers connected to the
 server (:mod:`libranet.webserver.inbound_peers`), which are named once as
 the server starts too (Phase 2 Step 53).
@@ -149,6 +149,7 @@ class WebServerModule(ModuleBase):
                     app_wait_seconds=network.app_wait_seconds,
                     config_hosts=network.config_hosts,
                     local_folders=LocalFolders.of(self._config),
+                    backup_state=self._backup_state,
                 ),
                 self.logger,
                 signer,

@@ -187,6 +187,22 @@ class FileBundle:
                 f'"sizes" add up to {sum(sizes_bytes)}, not the file\'s size, {expected_bytes}'
             )
 
+    def content_only(self) -> FileBundle:
+        """This file with only what its bytes decide.
+
+        That is its parts, their sizes, its size, and its whole-file hash, but
+        none of its times, permissions, or extended attributes, nor the
+        versions it supersedes.
+        """
+        recorded = self.metadata
+        return FileBundle(
+            self.parts,
+            Metadata(
+                size_bytes=recorded.size_bytes, algorithm=recorded.algorithm, hash=recorded.hash
+            ),
+            part_sizes_bytes=self.part_sizes_bytes,
+        )
+
 
 @dataclass(frozen=True)
 class Symlink:

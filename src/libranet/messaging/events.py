@@ -51,13 +51,15 @@ class EventType(StrEnum):
     APP_PATH_NOT_FOUND = "app.path_not_found"  # webserver → unbundler
     APP_PATH_RESOLVED = "app.path_resolved"  # unbundler → webserver
 
-    # `/config` administration surface and the backup module (Steps 18-20, 38).
+    # `/config` administration surface and the backup module (Steps 18-20, 38),
+    # and importing a local file (Phase 3 Step 69).
     BACKUP_JOB_CONFIGURED = "backup.job_configured"  # webserver → backup
     BACKUP_JOB_REMOVED = "backup.job_removed"  # webserver → backup
     BACKUP_RUN_REQUESTED = "backup.run_requested"  # webserver → backup
     RESTORE_REQUESTED = "backup.restore_requested"  # webserver → backup
     BUILD_REQUESTED = "backup.build_requested"  # webserver → backup
     EXPORT_REQUESTED = "backup.export_requested"  # webserver → backup
+    IMPORT_REQUESTED = "backup.import_requested"  # webserver → backup
     BACKUP_STATE = "backup.state"  # backup → webserver
 
     # Eviction hand-off (Step 15).

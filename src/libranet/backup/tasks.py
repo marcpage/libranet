@@ -1,9 +1,10 @@
-"""Work the backup module does when asked: builds, exports, and restores (Phase 1 Steps 20, 38).
+"""Work the backup module does when asked: builds, exports, restores, and imports.
 
-A build or an export is done or fails the first time it runs, and asking for
-it again starts it over. A restore goes on in passes until done
-(:mod:`libranet.backup.restores`). Tasks are kept in memory only, so a
-restart forgets them.
+Builds, exports, and restores come from Phase 1 Steps 20 and 38, and imports
+from Phase 3 Step 69. A build, an export, or an import is done or fails the
+first time it runs, and asking for it again starts it over. A restore goes on
+in passes until done (:mod:`libranet.backup.restores`). Tasks are kept in
+memory only, so a restart forgets them.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ class TaskStatus(StrEnum):
 
 
 class Task:
-    """A build, an export, or a restore asked for at ``requested_at``, and how it went."""
+    """A build, export, restore, or import asked for at ``requested_at``, and how it went."""
 
     def __init__(self, requested_at: float) -> None:
         self._requested_at = requested_at

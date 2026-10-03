@@ -1,12 +1,13 @@
-"""Tests for listing the folders a node offers local clients, and what they hold."""
+"""Tests for listing the folders a node offers local clients, what they hold, and finding a file."""
 
 from __future__ import annotations
 from json import loads
 from logging import WARNING
 from os import chmod, geteuid, mkfifo, symlink
+from os.path import realpath
 from pathlib import Path
 
-from pytest import LogCaptureFixture, fixture, mark, skip
+from pytest import LogCaptureFixture, fixture, mark, raises, skip
 
 from libranet.bundle.building import IgnoredPaths, modified_time
 from libranet.config.models import LibranetConfig, LocalConfig, LoggingConfig, StorageConfig
@@ -281,3 +282,83 @@ def test_a_config_offers_its_folders_by_their_last_segment_and_not_its_own_direc
     }
     assert entries(folders, "Desktop") == {}
     assert listed(folders, "Desktop/libranet").status == 404
+
+
+# -- Finding a file to import (Phase 3 Step 69) ------------------------------
+
+
+@mark.parametrize(
+    "path, found",
+    [
+        ("Movies/Film.mp4", "Movies/Film.mp4"),
+        ("Movies/inside.mp4", "Movies/Film.mp4"),
+        ("Movies/Holidays/clip.webm", "Movies/Holidays/clip.webm"),
+        ("Movies/inside/clip.webm", "Movies/Holidays/clip.webm"),
+        ("Movies/README", "Movies/README"),
+    ],
+)
+def test_a_file_is_found_where_it_lies_however_it_is_reached(
+    folders: LocalFolders, machine: Path, path: str, found: str
+) -> None:
+    assert folders.find_file(path) == Path(realpath(machine / found))
+
+
+@mark.parametrize(
+    "path",
+    [
+        "",
+        "Movies/",
+        "Movies//Film.mp4",
+        "Movies/./Film.mp4",
+        "Movies/../Elsewhere/private.txt",
+        "Movies/Holidays/../../Elsewhere/private.txt",
+        "Movies/outside/private.txt",
+        "Movies/outside.txt",
+        "Movies/.hidden",
+        "Movies/.secret/kept.txt",
+        "Movies/revealed/kept.txt",
+        "Movies/node-link",
+        "Movies/dangling",
+        "Movies/pipe",
+        "Movies/missing.mp4",
+        "Movies/Film.mp4/inside",
+        "Music/song.mp3",
+        "Elsewhere/private.txt",
+        "movies/Film.mp4",
+        "Movies/Film.mp4\0",
+    ],
+)
+def test_a_path_naming_no_file_offered_finds_none(folders: LocalFolders, path: str) -> None:
+    assert folders.find_file(path) is None
+
+
+def test_a_file_within_a_node_directory_is_found_through_no_spelling(machine: Path) -> None:
+    (machine / "Movies" / "node" / "key.pem").write_bytes(b"key")
+    symlink("node/key.pem", machine / "Movies" / "key-link")
+    folders = LocalFolders(
+        {"Movies": machine / "Movies"}, IgnoredPaths([machine / "Movies" / "node"])
+    )
+
+    assert folders.find_file("Movies/node/key.pem") is None
+    assert folders.find_file("Movies/key-link") is None
+
+
+@mark.parametrize("path", ["Movies", "Movies/Holidays", "Movies/inside"])
+def test_a_path_naming_a_directory_is_not_a_file_to_find(folders: LocalFolders, path: str) -> None:
+    with raises(IsADirectoryError):
+        folders.find_file(path)
+
+
+@needs_permissions
+def test_a_file_in_a_directory_the_node_may_not_look_in_cannot_be_found(
+    folders: LocalFolders, machine: Path
+) -> None:
+    locked = machine / "Movies" / "Holidays"
+    chmod(locked, 0)
+
+    try:
+        with raises(PermissionError):
+            folders.find_file("Movies/Holidays/clip.webm")
+
+    finally:
+        chmod(locked, 0o700)

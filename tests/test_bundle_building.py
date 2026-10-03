@@ -259,6 +259,47 @@ def test_fifo_is_not_built_as_a_file_and_is_not_waited_on(
         build_file(tmp_path / "fifo", store)
 
 
+def test_each_part_of_a_file_is_told_once_it_is_read_and_stored(
+    tmp_path: Path, store: RecordingStore
+) -> None:
+    path = tmp_path / "file.bin"
+    path.write_bytes(bytes(range(150)))
+    told: list[tuple[int, int]] = []
+
+    build_file(path, store, MAX_BYTES, read=lambda size: told.append((size, len(store.writes))))
+
+    assert told == [(MAX_BYTES, 1), (MAX_BYTES, 2), (150 - 2 * MAX_BYTES, 3)]
+
+
+def test_a_file_that_grows_while_it_is_read_fails(tmp_path: Path, store: RecordingStore) -> None:
+    path = tmp_path / "file.bin"
+    path.write_bytes(bytes(range(150)))
+
+    def grow(_: int) -> None:
+        # Once only, as each part read would otherwise make another.
+        if path.stat().st_size == 150:
+            with path.open("ab") as file:
+                file.write(b"more")
+
+    with raises(OSError, match="Changed while it was read"):
+        build_file(path, store, MAX_BYTES, read=grow)
+
+
+def test_a_file_changed_in_place_while_it_is_read_fails(
+    tmp_path: Path, store: RecordingStore
+) -> None:
+    path = tmp_path / "file.bin"
+    path.write_bytes(bytes(range(150)))
+    utime(path, ns=(WHOLE_SECOND_NS, WHOLE_SECOND_NS))
+
+    def rewrite(_: int) -> None:
+        with path.open("r+b") as file:
+            file.write(b"\xff")
+
+    with raises(OSError, match="Changed while it was read"):
+        build_file(path, store, MAX_BYTES, read=rewrite)
+
+
 def test_directory_keys_files_and_symlinks_by_full_relative_path(
     tree: Path, store: RecordingStore
 ) -> None:

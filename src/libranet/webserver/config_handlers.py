@@ -187,14 +187,7 @@ class BackupReportHandler:
         report = self.state.latest
 
         if report is None:
-            return problem_response(
-                Problem.for_status(
-                    HTTPStatus.SERVICE_UNAVAILABLE,
-                    detail="The backup module has not reported its state yet.",
-                    instance=request.path,
-                ),
-                {"Retry-After": str(self.retry_after_seconds)},
-            )
+            return unreported_response(request, self.retry_after_seconds)
 
         return json_response({self.field: [dict(entry) for entry in report.entries(self.field)]})
 
@@ -222,7 +215,7 @@ class BackupRequestHandler:
     id_field: str
 
     def __call__(self, request: Request) -> Response:
-        value = _json_or_refusal(request)
+        value = json_or_refusal(request)
 
         if isinstance(value, Response):
             return value
@@ -306,7 +299,7 @@ class ApplicationRegistrationHandler:
     registry: ApplicationRegistry
 
     def __call__(self, request: Request) -> Response:
-        value = _json_or_refusal(request)
+        value = json_or_refusal(request)
 
         if isinstance(value, Response):
             return value
@@ -367,6 +360,18 @@ class ApplicationRemovalHandler:
         return Response(HTTPStatus.NO_CONTENT)
 
 
+def unreported_response(request: Request, retry_after_seconds: int) -> Response:
+    """The ``503`` for what the backup module has not reported yet."""
+    return problem_response(
+        Problem.for_status(
+            HTTPStatus.SERVICE_UNAVAILABLE,
+            detail="The backup module has not reported its state yet.",
+            instance=request.path,
+        ),
+        {"Retry-After": str(retry_after_seconds)},
+    )
+
+
 def invalid_request_response(request: Request, error: ValueError) -> Response:
     """The ``400`` for a body an endpoint cannot act on."""
     return problem_response(
@@ -395,7 +400,7 @@ def _body_or_refusal(request: Request) -> bytes | Response:
     return refusal if refusal is not None else request.body.read()
 
 
-def _json_or_refusal(request: Request) -> object | Response:
+def json_or_refusal(request: Request) -> object | Response:
     """The JSON value ``request``'s body carries, or the response refusing the body.
 
     A body that does not say it is JSON is ``415``, and one that says so and

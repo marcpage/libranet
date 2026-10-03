@@ -32,12 +32,17 @@ it leads to. A listing has no limit on its length.
 A directory the node may not read is ``403``, as macOS keeps the desktop,
 documents, and downloads folders from a program not granted them.
 
+A file to import (Phase 3 Step 69) is found as a listing's directory is, and
+is a regular file, never anything else a listing leaves out
+(:meth:`LocalFolders.find_file`).
+
 Every request here is from a local client, or refused before it is looked
 at (:class:`~libranet.webserver.local_only.LocalOnly`).
 """
 
 from __future__ import annotations
 from dataclasses import dataclass, field
+from errno import EISDIR
 from http import HTTPStatus
 from logging import getLogger
 from os import DirEntry, scandir
@@ -132,6 +137,41 @@ class LocalFolders:
             )
 
         return dict(sorted(listed.items()))
+
+    def find_file(self, path: str) -> Path | None:
+        """Where the file ``path`` names lies, every symlink followed; ``None`` if it names none.
+
+        ``path`` is as for :meth:`listing`, and is reached as a listing is.
+        Only a regular file is found: anything else a listing leaves out,
+        such as a FIFO, is ``None``.
+
+        Raises:
+            IsADirectoryError: it names a directory.
+            PermissionError: it may not be looked at.
+            OSError: it could not be looked at otherwise.
+        """
+        located = self._located(path)
+
+        if located is None:
+            return None
+
+        _, reached = located
+
+        try:
+            status = reached.stat()
+
+        except (FileNotFoundError, NotADirectoryError) as error:
+            _LOGGER.debug("No file is offered at %r: %s", path, error)
+            return None
+
+        if S_ISDIR(status.st_mode):
+            raise IsADirectoryError(EISDIR, "A directory, not a file", path)
+
+        if not S_ISREG(status.st_mode):
+            # Not logged: a listing leaves these out unlogged too.
+            return None
+
+        return reached
 
     def _located(self, path: str) -> tuple[Path, Path] | None:
         """The folder ``path`` lies in, and where it leads; ``None`` if it is not offered.

@@ -1,10 +1,10 @@
-"""The backup module process (Phase 1 Steps 19, 20, and 38).
+"""The backup module process (Phase 1 Steps 19, 20, and 38; Phase 3 Step 69).
 
 It keeps the directories configured through ``/config`` (Step 18) backed up
 as encrypted directory bundles in the source of truth (BackupSpecification
 §3), restores a backup bundle into a directory (§5), builds a directory into
 a bundle, and exports a bundle as a content archive (Step 38), as the web
-server asks::
+server asks. It also imports a file a local client asks for (HttpApi §12.2)::
 
     backup.job_configured     {"job_id", "directory", "interval_seconds"}
     backup.job_removed        {"job_id"}
@@ -12,8 +12,11 @@ server asks::
     backup.restore_requested  {"restore_id", "bundle", "directory", "on_conflict"}
     backup.build_requested    {"build_id", "directory", "password"}
     backup.export_requested   {"export_id", "bundle", "archive", "on_conflict", "password"}
+    backup.import_requested   {"import_id", "path", "local_path"}
 
-``password`` is ``null`` for none. It is never logged or reported.
+``password`` is ``null`` for none. It is never logged or reported. An
+import's ``path`` is the one the client asked for, a folder's name and a path
+beneath it, and ``local_path`` where the web server found that file.
 
 A job's directory is looked at once it is configured, again when the module
 starts, and ``interval_seconds`` after each look, or ``backup.interval_seconds``
@@ -26,8 +29,8 @@ logged, until content next changes, unless a backup was asked for
 interval anew and keeps its backups. Backups run one at a time, each between
 two messages, so a long one holds up the rest, and shutdown waits for it.
 
-Every object a backup or a build stores is announced as the validator
-announces one it stores, so eviction and stats treat that content like any
+Every object a backup, a build, or an import stores is announced as the
+validator announces one it stores, so eviction and stats treat that content like any
 other, and the connection manager pushes it to a peer (HttpApi §7.4)::
 
     data.stored  {"algorithm", "hash", "node_id", "size"}
@@ -35,20 +38,20 @@ other, and the connection manager pushes it to a peer (HttpApi §7.4)::
 ``node_id`` is this node's own, since this node is where the content came
 from.
 
-A backup or a build stores no more while storage is full, rather than take
-the node over its limits (HighLevelDesign §4.5, Phase 2 Step 63). The
+A backup, a build, or an import stores no more while storage is full,
+rather than take the node over its limits (HighLevelDesign §4.5, Phase 2 Step 63). The
 eviction module says whether it is when that changes, when eviction starts,
 and when asked, as this module asks when it starts::
 
     storage.full_requested  {}
     storage.full            {"full": true}
 
-So before each new object a backup or build stores, the module looks at its
-inbox. It takes what eviction said, and sets every other message aside, to
-be handled in order once the backup or build is done. While storage is
-full, it waits, looking again every poll interval. Storage still full after
-``backup.storage_stall_seconds`` fails the backup or build; the next look at
-the job carries on, with what was stored kept.
+So before each new object a backup, build, or import stores, the module
+looks at its inbox. It takes what eviction said, and sets every other message
+aside, to be handled in order once that work is done. While storage is full,
+it waits, looking again every poll interval. Storage still full after
+``backup.storage_stall_seconds`` fails the backup, build, or import; the next
+look at the job carries on, with what was stored kept.
 
 The node's own directories, as its config lists them, are ignored when
 backing up. Whatever holds them is backed up as though they were not there,
@@ -89,8 +92,11 @@ serve it, into a content archive. Each is done, or fails, the first time it
 runs, between two messages, after any restore due and ahead of any backup,
 in the order they were asked for. Asking for one again starts it over.
 Content an export lacks fails it, and is asked for as a restore asks, so
-asking again once it has arrived can succeed. Like restores, builds and
-exports are kept in memory only.
+asking again once it has arrived can succeed. An import
+(:mod:`libranet.backup.imports`) reads a file into parts, stores them and a
+file bundle naming them, and is done or fails as a build is, in turn with
+builds and exports. Like restores, builds, exports, and imports are kept in
+memory only.
 
 Jobs, and the bundle each was last backed up to, are kept in a file
 (:mod:`libranet.backup.jobs`), and each job's bundle is kept expanded in a
@@ -98,9 +104,10 @@ file of its own, encrypted with the backup secret, for the next backup to be
 built from. Removing a job forgets its bundle, and deletes it as kept
 expanded, but leaves the content in CAS. What every job and restore is doing is reported whenever
 it changes, for the web server to serve at ``GET /config/api/backups``,
-``restores``, ``builds``, and ``exports``::
+``restores``, ``builds``, and ``exports``, and at ``GET /data/imports``::
 
-    backup.state  {"jobs": [...], "restores": [...], "builds": [...], "exports": [...]}
+    backup.state  {"jobs": [...], "restores": [...], "builds": [...], "exports": [...],
+                   "imports": [...]}
 
 Each job is reported as::
 
@@ -135,8 +142,18 @@ Each build and export is reported, in the order they were asked for, as::
 says whether a password was given, ``bundle`` is the one the directory is
 built as, ``previous`` the one recorded before, the same if nothing changed,
 and ``skipped`` counts the paths left out, which are logged. ``objects``
-counts those an export's archive holds. Times are seconds since the epoch,
-and ``null`` until there is one.
+counts those an export's archive holds.
+
+Each import is reported, in the order they were asked for, as::
+
+    {"import_id", "path", "status", "error", "requested_at", "finished_at",
+     "bytes_read", "size", "file"}
+
+``status`` is as for a build. ``bytes_read`` counts the bytes of the file
+read so far, ``size`` is the file's once it is known, and ``file`` is the
+file bundle stored, once the import is done. While a file is read, how far it
+has got is reported at most once a second. Times are seconds since the
+epoch, and ``null`` until there is one.
 
 The backup secret is read, or first made, when a backup or restore first needs
 it (§4.2), so a problem with it fails that backup or restore, where it is
@@ -146,17 +163,21 @@ reported.
 from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, replace
+from functools import partial
 from logging import Logger
+from operator import itemgetter
+from pathlib import Path
 from time import time
-from typing import Any, Callable, ClassVar, Final, Mapping
+from typing import Any, Callable, ClassVar, Final, Iterable, Iterator, Mapping, TypeVar
 
 from libranet.backup.builds import Build
 from libranet.backup.errors import BuildRecordError, StorageFullError
 from libranet.backup.exports import Export
+from libranet.backup.imports import Import
 from libranet.backup.jobs import BackupJob, ExpandedBackups, load_jobs, save_jobs
 from libranet.backup.restores import Restore
 from libranet.backup.runs import AnnouncingStore, Backup, BuildSettings, back_up
-from libranet.backup.tasks import TaskStatus, failure_reason
+from libranet.backup.tasks import Task, TaskStatus, failure_reason
 from libranet.bundle.building import IgnoredPaths
 from libranet.bundle.errors import BundleError
 from libranet.cas.content_id import ContentId
@@ -175,13 +196,20 @@ from libranet.protocol.config_requests import (
     BackupJobRequest,
     BuildRequest,
     ExportRequest,
+    ImportRequest,
     Password,
     RestoreRequest,
+    check_path,
 )
 
 # A restore asks again for what it lacks this many times in the life of a seek
 # entry, so it never ages out of the seek list.
 _ASKS_PER_SEEK_ENTRY_TTL: Final = 2
+
+# How often, at most, how far an import has read is reported.
+_PROGRESS_INTERVAL_SECONDS: Final = 1.0
+
+_T = TypeVar("_T", bound=Task)
 
 
 @dataclass
@@ -210,6 +238,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             EventType.RESTORE_REQUESTED,
             EventType.BUILD_REQUESTED,
             EventType.EXPORT_REQUESTED,
+            EventType.IMPORT_REQUESTED,
             EventType.DATA_STORED,
             EventType.STORAGE_FULL,
         }
@@ -242,11 +271,12 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._restores: dict[str, Restore] = {}
         self._builds: dict[str, Build] = {}
         self._exports: dict[str, Export] = {}
+        self._imports: dict[str, Import] = {}
         # Whether eviction last said storage is full.
         self._storage_full = False
-        # Messages received while a backup or build stored content, handled after it.
+        # Messages received while a backup, build, or import stored content, handled after it.
         self._set_aside: deque[Message] = deque()
-        # How long the backup or build under way has waited for room so far.
+        # How long the backup, build, or import under way has waited for room so far.
         self._waited_seconds = 0.0
         self._route(
             {
@@ -256,6 +286,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
                 EventType.RESTORE_REQUESTED: self._on_restore_requested,
                 EventType.BUILD_REQUESTED: self._on_build_requested,
                 EventType.EXPORT_REQUESTED: self._on_export_requested,
+                EventType.IMPORT_REQUESTED: self._on_import_requested,
                 EventType.DATA_STORED: self._on_data_stored,
                 EventType.STORAGE_FULL: self._on_storage_full,
             }
@@ -288,6 +319,11 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
     def exports(self) -> Mapping[str, Export]:
         """Every export asked for since the module started, by id."""
         return self._exports
+
+    @property
+    def imports(self) -> Mapping[str, Import]:
+        """Every import asked for since the module started, by id."""
+        return self._imports
 
     def on_start(self) -> None:
         """Read the saved jobs and report them; each is looked at once the module is idle.
@@ -421,6 +457,19 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._report()
         self.logger.info("Exporting %s to %s", request.bundle, request.archive)
 
+    def _on_import_requested(self, message: Message) -> None:
+        request = ImportRequest(message["path"])
+        local_path: str = message["local_path"]
+        check_path(local_path, "A file to import")
+
+        if request.import_id != message["import_id"]:
+            raise ValueError(f"Import {message['import_id']} does not name {request.path}")
+
+        self._imports.pop(request.import_id, None)
+        self._imports[request.import_id] = Import(request, Path(local_path), self._clock())
+        self._report()
+        self.logger.info("Importing %s from %s", request.path, local_path)
+
     def _on_data_stored(self, message: Message) -> None:
         content_id = ContentId.from_fields(message)
         now = self._clock()
@@ -433,28 +482,26 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._storage_full = bool(message["full"])
 
     def _work_next(self) -> None:
-        """Carry on with the restore longest due, if any, or else run the build or
-        export asked for first, or else look at the next job due."""
+        """Carry on with the restore longest due, if any, or else run the build,
+        export, or import asked for first, or else look at the next job due."""
         now = self._clock()
         due = [
             (restore.due_at, restore_id)
             for restore_id, restore in self._restores.items()
             if restore.is_due(now)
         ]
-        tasks: list[Build | Export] = [*self._builds.values(), *self._exports.values()]
-        waiting = [task for task in tasks if task.status is TaskStatus.WAITING]
+        waiting = [
+            *_waiting(self._builds.values(), self._build),
+            *_waiting(self._exports.values(), self._export),
+            *_waiting(self._imports.values(), self._import),
+        ]
 
         if due:
             self._carry_on(self._restores[min(due)[-1]])
 
         elif waiting:
-            task = min(waiting, key=lambda waiting_task: waiting_task.requested_at)
-
-            if isinstance(task, Build):
-                self._build(task)
-
-            else:
-                self._export(task)
+            _, run = min(waiting, key=itemgetter(0))
+            run()
 
         else:
             self._back_up_next()
@@ -601,6 +648,38 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
 
         self._report()
 
+    def _import(self, task: Import) -> None:
+        """Import a file, as ``task`` asks, reporting how far it has read at most once a second."""
+        local_path = task.local_path
+        task.begin()
+        self._report()
+        reported_at = self._clock()
+
+        def progressed() -> None:
+            nonlocal reported_at
+            now = self._clock()
+
+            if now - reported_at >= _PROGRESS_INTERVAL_SECONDS:
+                reported_at = now
+                self._report()
+
+        try:
+            task.run(self._store, self._settings, self._clock, progressed)
+
+        except (OSError, BundleError) as error:
+            task.fail(error, self._clock())
+            self.logger.warning("Could not import %s: %s", local_path, error)
+
+        except Exception as error:  # pylint: disable=broad-exception-caught
+            task.fail(error, self._clock())
+            self.logger.exception("Importing %s failed", local_path)
+
+        else:
+            self.logger.info("Imported %s as %s", local_path, task.file)
+
+        self._log_wait(f"The import of {local_path}")
+        self._report()
+
     def _back_up_next(self) -> None:
         """Look at the job a backup was asked for, or else the one longest due, if any."""
         now = self._clock()
@@ -727,7 +806,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         """Take what eviction said of storage, waiting up to ``timeout_seconds`` for a message.
 
         Every other message is set aside, in order, to be handled once the
-        backup or build under way is done.
+        backup, build, or import under way is done.
         """
         message = super().receive(timeout_seconds)
 
@@ -777,7 +856,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._jobs = jobs
 
     def _report(self) -> None:
-        """Publish what every job, restore, build, and export is doing, for ``GET /config/api``."""
+        """Publish what every job, restore, build, export, and import is doing, to be served."""
         jobs = sorted(self._jobs.values(), key=lambda job: job.directory)
         self.publish(
             EventType.BACKUP_STATE,
@@ -786,6 +865,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
                 "restores": [restore.report() for restore in self._restores.values()],
                 "builds": [build.report() for build in self._builds.values()],
                 "exports": [export.report() for export in self._exports.values()],
+                "imports": [task.report() for task in self._imports.values()],
             },
         )
 
@@ -803,6 +883,15 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             "backed_up_at": None if latest is None else latest.made_at,
             "skipped": 0 if latest is None else latest.skipped,
         }
+
+
+def _waiting(
+    tasks: Iterable[_T], run: Callable[[_T], None]
+) -> Iterator[tuple[float, Callable[[], None]]]:
+    """Each of ``tasks`` still waiting to run, as when it was asked for and how ``run`` runs it."""
+    for task in tasks:
+        if task.status is TaskStatus.WAITING:
+            yield task.requested_at, partial(run, task)
 
 
 def backup_module_factory(

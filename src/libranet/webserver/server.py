@@ -93,6 +93,7 @@ from libranet.webserver.http_types import (
 from libranet.webserver.inbound_peers import InboundConnection, InboundPeers
 from libranet.webserver.list_handlers import ListFileHandler, NodeListHandler, SeekListHandler
 from libranet.webserver.local_folders import DIRECTORY_PATTERN, DirectoryHandler, LocalFolders
+from libranet.webserver.local_imports import IMPORTS_PATH, ImportHandler, ImportListHandler
 from libranet.webserver.local_only import CLIENT_PATH, LocalOnly, client_handler
 from libranet.webserver.router import Router
 from libranet.webserver.search_handler import SEARCH_PATTERN, SearchHandler
@@ -126,6 +127,7 @@ def build_router(  # pylint: disable=too-many-locals
     app_wait_seconds: float = 0.0,
     config_hosts: tuple[str, ...] = DEFAULT_CONFIG_HOSTS,
     local_folders: LocalFolders | None = None,
+    backup_state: BackupState | None = None,
 ) -> Router:
     """The main port's routes, serving the configured source of truth, derived lists, and apps.
 
@@ -146,7 +148,9 @@ def build_router(  # pylint: disable=too-many-locals
     if none is given. ``/data/client`` tells any client whether it is local,
     and ``/data/directory`` lists ``local_folders``, none if none are given,
     to local clients alone, served as ``config_hosts`` names, as ``/config``
-    is (Phase 3 Step 68).
+    is (Phase 3 Step 68). ``/data/imports`` imports a file from one of them,
+    for local clients alone too, and says how each import is doing from
+    what ``backup_state`` holds (Phase 3 Step 69).
     """
     store = CasStore.source_of_truth(storage)
     content = LayeredSource(store) if content is None else content
@@ -164,14 +168,16 @@ def build_router(  # pylint: disable=too-many-locals
         ),
     )
     folders = LocalFolders() if local_folders is None else local_folders
+    checks = SiteChecks(config_hosts, "This endpoint")
+    state = BackupState() if backup_state is None else backup_state
     router.add("GET", CLIENT_PATH, client_handler)
-    # The directory and search routes must precede the data route, whose
-    # pattern they also fit.
+    # The directory, import, and search routes must precede the data route,
+    # whose pattern they also fit.
+    router.add("GET", DIRECTORY_PATTERN, LocalOnly(DirectoryHandler(folders), checks))
     router.add(
-        "GET",
-        DIRECTORY_PATTERN,
-        LocalOnly(DirectoryHandler(folders), SiteChecks(config_hosts, "This endpoint")),
+        "GET", IMPORTS_PATH, LocalOnly(ImportListHandler(state, retry_after_seconds), checks)
     )
+    router.add("POST", IMPORTS_PATH, LocalOnly(ImportHandler(folders, publish), checks))
     router.add(
         "GET",
         SEARCH_PATTERN,

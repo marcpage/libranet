@@ -35,6 +35,7 @@ from libranet.webserver.app_registry import CONFIG_APPLICATION, Application, App
 from libranet.webserver.backup_state import (
     BUILDS_FIELD,
     EXPORTS_FIELD,
+    IMPORTS_FIELD,
     JOBS_FIELD,
     RESTORES_FIELD,
 )
@@ -423,6 +424,7 @@ def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: P
     thread = Thread(target=module.run, args=(stop,), daemon=True)
     thread.start()
     job = {"job_id": "0123456789abcdef", "directory": "/home/me/documents", "state": "idle"}
+    imported = {"import_id": "7766554433221100", "path": "Movies/Film.mp4", "status": "waiting"}
 
     try:
         host, port = _serving(module, queues)
@@ -457,12 +459,19 @@ def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: P
 
         # Nothing is readable back until the backup module reports.
         assert _authorized(host, config_port, "/config/api/backups")[0] == 503
+        assert _authorized(host, port, "/data/imports")[0] == 503
 
         queues.inbox.put(
             make_message(
                 EventType.BACKUP_STATE,
                 ModuleName.BACKUP,
-                {JOBS_FIELD: [job], RESTORES_FIELD: [], BUILDS_FIELD: [], EXPORTS_FIELD: []},
+                {
+                    JOBS_FIELD: [job],
+                    RESTORES_FIELD: [],
+                    BUILDS_FIELD: [],
+                    EXPORTS_FIELD: [],
+                    IMPORTS_FIELD: [imported],
+                },
             )
         )
         deadline = monotonic() + 5
@@ -478,6 +487,10 @@ def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: P
         assert loads(_authorized(host, config_port, "/config/api/restores")[1]) == {"restores": []}
         assert loads(_authorized(host, config_port, "/config/api/builds")[1]) == {"builds": []}
         assert loads(_authorized(host, config_port, "/config/api/exports")[1]) == {"exports": []}
+        # Read back on the main port too, by import.
+        assert loads(_authorized(host, port, "/data/imports")[1]) == {
+            "imports": {"7766554433221100": {"path": "Movies/Film.mp4", "status": "waiting"}}
+        }
 
     finally:
         stop.set()

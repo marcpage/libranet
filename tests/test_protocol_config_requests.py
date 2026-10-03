@@ -1,6 +1,7 @@
-"""Tests for what the ``/config`` backup and build endpoints accept."""
+"""Tests for what the ``/config`` backup and build endpoints, and ``/data/imports``, accept."""
 
 from __future__ import annotations
+from pathlib import Path
 
 from pytest import mark, raises
 
@@ -11,6 +12,7 @@ from libranet.protocol.config_requests import (
     BackupJobRequest,
     BuildRequest,
     ExportRequest,
+    ImportRequest,
     Password,
     RestoreRequest,
 )
@@ -255,6 +257,46 @@ def test_an_export_is_named_by_its_bundle_and_its_archive_alone() -> None:
 def test_an_export_this_node_cannot_act_on_is_refused(value: object) -> None:
     with raises(InvalidConfigRequestError):
         ExportRequest.from_value(value)
+
+
+def test_an_import_names_a_file_as_asked_and_carries_where_it_was_found() -> None:
+    asked = ImportRequest.from_value({"path": "Movies/Holidays/Film.mp4"})
+
+    assert asked.path == "Movies/Holidays/Film.mp4"
+    assert asked.payload(Path("/Users/me/Movies/Holidays/Film.mp4")) == {
+        "import_id": asked.import_id,
+        "path": "Movies/Holidays/Film.mp4",
+        "local_path": "/Users/me/Movies/Holidays/Film.mp4",
+    }
+
+
+def test_an_import_is_named_by_the_path_asked_for_alone() -> None:
+    asked = ImportRequest.from_value({"path": "Movies/Film.mp4"})
+    other = ImportRequest.from_value({"path": "Movies/Other.mp4"})
+
+    assert asked.import_id == ImportRequest("Movies/Film.mp4").import_id
+    assert asked.import_id != other.import_id
+    assert len(asked.import_id) == IDENTIFIER_LENGTH
+
+
+@mark.parametrize(
+    "value",
+    [
+        [],
+        {},
+        {"path": 7},
+        {"path": ""},
+        {"path": "/Users/me/Movies/Film.mp4"},
+        {"path": "Movies//Film.mp4"},
+        {"path": "Movies/./Film.mp4"},
+        {"path": "Movies/../Film.mp4"},
+        {"path": "Movies/"},
+        {"path": "Movies/Film\0.mp4"},
+    ],
+)
+def test_an_import_this_node_cannot_act_on_is_refused(value: object) -> None:
+    with raises(InvalidConfigRequestError):
+        ImportRequest.from_value(value)
 
 
 def test_a_password_is_never_shown() -> None:
