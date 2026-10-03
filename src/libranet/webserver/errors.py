@@ -1,4 +1,4 @@
-"""Exceptions raised by the web server: requests it cannot read, and files it cannot."""
+"""Exceptions raised by the web server: requests and files it cannot read, and bodies cut short."""
 
 
 class IncompleteBodyError(ConnectionError):
@@ -19,3 +19,7 @@ class CredentialFileError(ValueError):
 
 class RegistryFileError(ValueError):
     """The registry file cannot be read, or does not hold an application registry."""
+
+
+class ResponseCutShortError(RuntimeError):
+    """A streamed response body cannot be finished, so its connection is closed short of it."""

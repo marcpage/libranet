@@ -217,7 +217,7 @@ through the dispatcher.
 | 4 | Validator | `validator` | `ValidatorModule` | Checks uploads against their content ids and promotes them into `cas/data` |
 | 5 | Connection manager | `connections` | `ConnectionsModule` | Keeps the peer mix; fetches from, pushes to, and hands content off to peers |
 | 6 | Fetcher | `fetcher` | `FetcherModule` | Turns a local miss into one request to the connection manager |
-| 7 | Unbundler | `unbundler` | `UnbundlerModule` | Resolves application files from their bundles on demand, and deletes unused ones |
+| 7 | Unbundler | `unbundler` | `UnbundlerModule` | Resolves application files' entries from their bundles on demand, and deletes unused ones |
 | 8 | Eviction | `eviction` | `EvictionModule` | Keeps storage within its limits |
 | 9 | Backup | `backup` | `BackupModule` | Backs directories up as bundles; restores, builds, and exports bundles |
 
@@ -250,11 +250,14 @@ That port is `network.config_port`, or else the first free of the main port
 plus 100, plus 200, and so on. Each HTTP server runs on a thread of its own
 with a thread per request, while the module's main thread runs the receive
 loop. Handlers answer from what
-is on disk, such as content, derived lists, and resolved files, and publish
-what happened. They never wait for another module: when an answer depends
-on work elsewhere, they answer `503` with `Retry-After` and publish a
-request, and the client's retry finds the result (§9.3). It also keeps
-count of the peers connected to it, whose keys the eviction module keeps.
+is on disk, such as content, derived lists, and resolved entries, and publish
+what happened. When an answer depends on work elsewhere, they answer `503`
+with `Retry-After` and publish a request, and the client's retry finds the
+result (§9.3). The one exception is an application file, whose request
+waits, for up to `network.app_wait_seconds`, for the unbundler's answer and
+the file's first part, since a `<video>` does not retry a `503` (§8.3). It
+also keeps count of the peers connected to it, whose keys the eviction
+module keeps.
 It subscribes to only three events, `app.path_resolved`, `backup.state`,
 and `peers.connected_requested`, and publishes sixteen.
 
@@ -294,13 +297,14 @@ peers once. It opens no connections and writes no content, and only logs
 #### 3.2.6 Unbundler
 
 Resolves application files one requested path at a time. For each
-`app.path_not_found` it loads the bundle, looks up the path, reassembles
-the file into `cas/resolved/`, and reports the outcome with
-`app.path_resolved`. Content the bundle needs and the node lacks is asked
-for with `data.not_found`. On `resolved.reclaim` it deletes the resolved
-files of every bundle that stats did not name to keep, and answers with
-`resolved.reclaimed`. The directories of recently used bundles are kept in
-memory.
+`app.path_not_found` it loads the bundle, looks up the path, saves the
+file's entry, which names its parts, into `cas/resolved/`, and reports the
+outcome with `app.path_resolved`. It reads none of the file's parts: the web
+server serves the file from them. A bundle or extension the node lacks is
+asked for with `data.not_found`. On `resolved.reclaim` it deletes the
+resolved entries of every bundle that stats did not name to keep, and
+answers with `resolved.reclaimed`. The directories of recently used bundles
+are kept in memory.
 
 #### 3.2.7 Eviction
 
@@ -343,7 +347,7 @@ memory only.
 | Connections to peers | Connection manager | Publish `fetch.requested`, `eviction.notice`, or `data.stored` |
 | Promoting peer content into `cas/data` | Validator | Write to `incoming/`, then publish `data.put_completed` |
 | Deleting from `cas/data` | Eviction | — |
-| Resolved files in `cas/resolved/` | Unbundler | The web server serves them; others publish `app.path_not_found` or `resolved.reclaim` |
+| Resolved entries in `cas/resolved/` | Unbundler | The web server serves files from them, and deletes one it cannot read; others publish `app.path_not_found` or `resolved.reclaim` |
 | The application registry | Web server | — |
 | Backup jobs and the backup secret | Backup | The web server publishes `backup.*` requests |
 | The search cache in `search/` | Web server | Stats rewrites a cached result to add identifiers |
@@ -881,8 +885,8 @@ A content id is an `algorithm` and a lower-case hex `hash`, or, in
 | `fetch.attempted` | `algorithm`, `hash`, `node_id`, `found` | One peer was asked for it |
 | `fetch.succeeded` | `algorithm`, `hash`, `node_id` | `node_id` sent it, and it is on its way to the validator |
 | `fetch.failed` | `algorithm`, `hash` | The search ended without it |
-| `app.path_not_found` | `bundle`, `path` | No resolved file exists for `path` in `bundle` |
-| `app.path_resolved` | `bundle`, `path`, `outcome`, and `size`, `location`, or `detail` | `outcome` is `stored`, `not_found`, `redirect`, or `unusable` |
+| `app.path_not_found` | `bundle`, `path` | No entry is saved for the file at `path` in `bundle` |
+| `app.path_resolved` | `bundle`, `path`, `outcome`, and `location` or `detail` | `outcome` is `stored`, `not_found`, `redirect`, or `unusable` |
 | `backup.job_configured` | `job_id`, `directory`, `interval_seconds` | Keep this directory backed up |
 | `backup.job_removed` | `job_id` | Stop backing it up |
 | `backup.run_requested` | `job_id` | Back it up now |
@@ -1037,24 +1041,26 @@ sequenceDiagram
 
     browser->>web: GET /site/docs/index.html
     web-)stats: app.accessed, at most hourly per bundle
-    web->>web: no resolved file, no outcome remembered
-    web-->>browser: 503 with Retry-After
+    web->>web: no entry saved, no outcome remembered
     web-)unb: app.path_not_found
+    web->>web: wait, up to network.app_wait_seconds
     unb->>unb: load the bundle, look up the path
-    unb->>unb: reassemble the file into cas/resolved/
+    unb->>unb: save the file's entry into cas/resolved/
     unb-)web: app.path_resolved, outcome stored
-    browser->>web: GET /site/docs/index.html, after Retry-After
-    web->>web: resolved file found
-    web-->>browser: 200 with the file
+    web->>web: woken, entry found, first part read
+    web-)stats: data.requested for each part read
+    web-->>browser: 200, the file sent a part at a time
 ```
 
-If the bundle or a part of the file is not held, the unbundler publishes
-`data.not_found` for each missing object, which starts a fetch (§8.2), and
-reports no outcome. The web server keeps answering `503` until a request
-finds everything held. Outcomes other than `stored` leave no file, so the
-web server remembers them and answers the next request for the path at
-once: `404` for `not_found`, `302` for `redirect`, and `500` for
-`unusable`.
+If the bundle is not held, the unbundler publishes `data.not_found` for it,
+which starts a fetch (§8.2), and reports no outcome; the waiting request
+asks it again each second. A part of the file not held is asked for by the
+web server, with the few parts after it, and looked for every quarter of a
+second. A request whose entry or first part does not come within
+`network.app_wait_seconds` is answered `503`, and one whose later part does
+not is cut short. Outcomes other than `stored` leave no entry, so the web
+server remembers them and answers the next request for the path at once:
+`404` for `not_found`, `302` for `redirect`, and `500` for `unusable`.
 
 ### 8.4 Running Short of Space
 
@@ -1148,7 +1154,7 @@ data moves through files, and a message tells the reader where to look.
 | `incoming/{algorithm}-{node}/` | Web server, for uploads; connection manager, for fetched content | Validator, which deletes each | `data.put_completed` |
 | `cas/data/` | Validator; backup; web server and connection manager, peers' keys only; supervisor, this node's key | Every module | `data.stored` |
 | `cas/data/`, deletions | Eviction | — | `data.deleted` |
-| `cas/resolved/` | Unbundler | Web server | `app.path_resolved`, `resolved.reclaimed` |
+| `cas/resolved/` | Unbundler; the web server deletes an entry it cannot read | Web server | `app.path_resolved`, `resolved.reclaimed` |
 | `lists/candidates.json` | Stats | Connection manager | `nodes.updated` |
 | `lists/nodes.json`, `lists/seek.json` | Stats | Web server; connection manager | Nothing; read when needed |
 | `search/` | Web server; stats, adding identifiers | Web server | `data.search_requested`, which names the prefix |
@@ -1181,14 +1187,17 @@ meant for the supervisor never reaches a child directly (Phase 1 Step 33).
 
 ### 9.3 Request Threads and the Receive Loop
 
-Inside the web server, a request thread never waits on another module. It
-publishes a request and answers at once. The answer arrives later on the
-module's main thread, which keeps it in an object that request threads read
-under a lock, and the client's retry finds it there.
+Inside the web server, a request thread publishes a request and answers at
+once. The answer arrives later on the module's main thread, which keeps it
+in an object that request threads read under a lock, and the client's retry
+finds it there. A request for an application file is the exception: it
+waits on `ApplicationOutcomes`, for up to `network.app_wait_seconds`, and
+each `app.path_resolved` the main thread takes in wakes it (Phase 3 Step
+65).
 
 | Shared object | Written from | Read to answer |
 | --- | --- | --- |
-| `ApplicationOutcomes` | `app.path_resolved` with outcome `not_found`, `redirect`, or `unusable` | Application paths, with `404`, `302`, or `500` |
+| `ApplicationOutcomes` | `app.path_resolved`, keeping outcomes `not_found`, `redirect`, and `unusable`, and waking requests waiting on any | Application paths, with `404`, `302`, or `500` |
 | `BackupState` | `backup.state` | `GET /config/api/backups`, `restores`, `builds`, and `exports` |
 
 A third, `ApplicationUse`, is shared among request threads only: it
@@ -1216,7 +1225,7 @@ recurring ways:
 | One question at a time | The asker keeps one question outstanding, takes the next answer broadcast as its answer, and gives up after a timeout | `eviction.candidates_requested` and `eviction.candidates`; `resolved.reclaim_requested`, `resolved.reclaim`, and `resolved.reclaimed` |
 | Whole-state report | Each report carries everything and replaces the one before | `backup.state`; `peers.connected`, a list per direction, also sent when `peers.connected_requested` asks; `storage.full`, also sent when `storage.full_requested` asks |
 | Pointer to a file | The message says where the data is: a store it names, or a file every module finds from the configuration | `data.put_completed`, `nodes.updated`, `data.search_requested` |
-| Retry over HTTP | The web server answers `503` with `Retry-After` and publishes a request; the client's retry finds the result | A `/data` miss, an unresolved application path |
+| Retry over HTTP | The web server answers `503` with `Retry-After` and publishes a request; the client's retry finds the result | A `/data` miss; an application file whose entry or first part does not come within `network.app_wait_seconds` |
 
 Several modules also limit how often they repeat themselves: the fetcher
 asks for the same content at most once per `network.retry_after_seconds`,

@@ -41,7 +41,7 @@ from libranet.webserver.backup_state import (
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.module import WebServerModule, webserver_module_factory
 
-from tests.helpers import with_node_key
+from tests.helpers import published, with_node_key
 
 
 def _free_port(other_than: int = 0) -> int:
@@ -314,7 +314,7 @@ def test_module_answers_application_paths_from_what_the_unbundler_reported(
     tmp_path: Path,
 ) -> None:
     queues = _queues()
-    config = _config(tmp_path, _free_port())
+    config = _config(tmp_path, _free_port(), app_wait_seconds=0)
     ApplicationRegistry(config.storage.applications_path).register(
         Application.create("wiki", APP_BUNDLE_ID)
     )
@@ -366,6 +366,44 @@ def test_module_answers_application_paths_from_what_the_unbundler_reported(
     assert not thread.is_alive()
 
 
+def test_a_request_waiting_on_the_unbundler_is_woken_by_its_report(tmp_path: Path) -> None:
+    queues = _queues()
+    config = _config(tmp_path, _free_port(), app_wait_seconds=5)
+    ApplicationRegistry(config.storage.applications_path).register(
+        Application.create("wiki", APP_BUNDLE_ID)
+    )
+    module = WebServerModule(ModuleName.WEBSERVER, queues, config, poll_interval_seconds=0.01)
+    stop = Event()
+    thread = Thread(target=module.run, args=(stop,), daemon=True)
+    thread.start()
+
+    try:
+        host, port = _serving(module, queues)
+        answers: list[tuple[int, str | None]] = []
+        request = Thread(target=lambda: answers.append(_status(host, port, "/wiki/page.html")))
+        request.start()
+        _accessed, asked = [queues.outbox.get(timeout=1) for _ in range(2)]
+        queues.inbox.put(
+            make_message(
+                EventType.APP_PATH_RESOLVED,
+                ModuleName.UNBUNDLER,
+                {"bundle": str(APP_BUNDLE_ID), "path": "page.html", "outcome": "not_found"},
+            )
+        )
+        request.join(timeout=5)
+
+        assert asked["event"] == EventType.APP_PATH_NOT_FOUND
+        assert answers == [(404, None)]
+        # Woken by the report, rather than asking again a second on.
+        assert published(queues) == []
+
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+    assert not thread.is_alive()
+
+
 def _authorized(host: str, port: int, path: str, user: str = "admin") -> tuple[int, bytes]:
     """A `/config` GET carrying Basic credentials for ``user``."""
     encoded = b64encode(f"{user}:secret".encode("utf-8")).decode("ascii")
@@ -379,7 +417,7 @@ def _authorized(host: str, port: int, path: str, user: str = "admin") -> tuple[i
 
 def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: Path) -> None:
     queues = _queues()
-    config = _config(tmp_path, _free_port())
+    config = _config(tmp_path, _free_port(), app_wait_seconds=0)
     module = WebServerModule(ModuleName.WEBSERVER, queues, config, poll_interval_seconds=0.01)
     stop = Event()
     thread = Thread(target=module.run, args=(stop,), daemon=True)

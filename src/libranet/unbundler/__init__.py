@@ -1,7 +1,8 @@
-"""On-demand directory-bundle resolution (Phase 1 Step 14).
+"""On-demand directory-bundle resolution (Phase 1 Step 14, Phase 3 Step 65).
 
-Resolves a directory bundle's files into the source of truth when the web
-server reports a request for an application path it does not have yet.
+Resolves the entry of a directory bundle's file, which names its parts, when
+the web server reports a request for an application path it does not have
+yet.
 """
 
 from libranet.unbundler.lookup import FoundDirectory, FoundFile, ResolvedDirectory

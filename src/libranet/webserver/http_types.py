@@ -4,6 +4,8 @@ Handlers never touch the socket or ``BaseHTTPRequestHandler``: they take a
 :class:`Request` and return a :class:`Response`, which keeps them testable
 without a running server. A request body is read from the connection only if
 the handler asks for it, so a handler can refuse an oversized body unread.
+A response body may likewise be produced only as it is sent, as an
+application file is, from its parts (Phase 3 Step 65).
 """
 
 from __future__ import annotations
@@ -11,7 +13,7 @@ from dataclasses import dataclass, field
 from http import HTTPStatus
 from io import BytesIO
 from json import loads
-from typing import Any, Mapping, Protocol
+from typing import Any, Iterable, Mapping, Protocol
 
 from libranet.identity.authentication import AuthenticationResult
 from libranet.json_format import compact_json
@@ -153,17 +155,47 @@ class Request:  # pylint: disable=too-many-instance-attributes
 
 
 @dataclass(frozen=True)
+class StreamedBody:
+    """A response body sent as ``chunks`` produces it, rather than held whole.
+
+    ``length_bytes`` is how long it is, or ``None`` if that is not known, in
+    which case it is sent until the connection closes. ``chunks`` raises
+    :class:`~libranet.webserver.errors.ResponseCutShortError` to end the body
+    short, and the connection with it, having logged why.
+
+    Raises:
+        ValueError: ``length_bytes`` is negative.
+    """
+
+    length_bytes: int | None
+    chunks: Iterable[bytes]
+
+    def __post_init__(self) -> None:
+        if self.length_bytes is not None and self.length_bytes < 0:
+            raise ValueError(f"length_bytes must not be negative, got {self.length_bytes}")
+
+
+@dataclass(frozen=True)
 class Response:
-    """A complete response; ``Content-Length`` is added when it is sent.
+    """A response; ``Content-Length`` is added when it is sent.
 
     ``close`` ends the connection once the response is sent, as when a
-    peer's signature fails to verify (HandshakeProtocol §5.3).
+    peer's signature fails to verify (HandshakeProtocol §5.3). A response
+    with a ``stream`` sends it in place of ``body``, which is then empty.
+
+    Raises:
+        ValueError: both ``body`` and ``stream`` are given.
     """
 
     status: int
     body: bytes = b""
     headers: Mapping[str, str] = field(default_factory=dict)
     close: bool = False
+    stream: StreamedBody | None = None
+
+    def __post_init__(self) -> None:
+        if self.stream is not None and self.body:
+            raise ValueError("A response sends its body or a stream, not both")
 
 
 def bytes_response(

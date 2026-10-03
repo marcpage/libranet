@@ -13,7 +13,7 @@ from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
 
 from libranet.atomic_file import write_atomically
 from libranet.bundle.parsing import decode_bundle, parse_bundle
-from libranet.bundle.shapes import DirectoryBundle
+from libranet.bundle.shapes import Bundle, DirectoryBundle
 from libranet.cas.archive import ArchiveSink
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
@@ -161,33 +161,39 @@ def saved_directory(storage: StorageConfig, bundle: ContentId) -> Path:
     return files.directory_for(bundle)
 
 
-def written(storage: StorageConfig, bundle: ContentId, path: str) -> bytes | None:
-    target = ResolvedFiles(storage.resolved_files_dir, storage.hash_prefix_length).path_for(
+def written(storage: StorageConfig, bundle: ContentId, path: str) -> Bundle | None:
+    """The entry saved for the file at ``path`` in ``bundle``, if one is."""
+    target = ResolvedFiles(storage.resolved_files_dir, storage.hash_prefix_length).entry_for(
         bundle, path
     )
-    return target.read_bytes() if target.is_file() else None
+    return decode_bundle(decompress(target.read_bytes())) if target.is_file() else None
+
+
+def entry_of(*parts: bytes, whole: bytes | None = None) -> Bundle:
+    """The entry of a file joining ``parts``, as the unbundler saves it."""
+    return parse_bundle(file_entry(*parts, whole=whole))
 
 
 @mark.parametrize(
-    "path, content",
+    "path, entry",
     [
-        ("index.html", INDEX),
-        ("docs/guide.html", FIRST_HALF + SECOND_HALF),
-        ("about.html", ABOUT),
+        ("index.html", entry_of(INDEX)),
+        ("docs/guide.html", entry_of(FIRST_HALF, SECOND_HALF)),
+        ("about.html", entry_of(ABOUT)),
     ],
 )
-def test_a_requested_file_is_written_for_the_web_server(
+def test_a_requested_files_entry_is_written_for_the_web_server(
     unbundler: UnbundlerModule,
     queues: ModuleQueues,
     storage: StorageConfig,
     app_id: ContentId,
     path: str,
-    content: bytes,
+    entry: Bundle,
 ) -> None:
     unbundler.handle(request(app_id, path))
 
-    assert written(storage, app_id, path) == content
-    assert resolved(queues) == [{"path": path, "outcome": "stored", "size": len(content)}]
+    assert written(storage, app_id, path) == entry
+    assert resolved(queues) == [{"path": path, "outcome": "stored"}]
 
 
 def test_an_application_held_only_in_an_archive_is_resolved(
@@ -210,15 +216,12 @@ def test_an_application_held_only_in_an_archive_is_resolved(
 
     unbundler.handle(request(app_id, "docs/guide.html"))
 
-    content = FIRST_HALF + SECOND_HALF
-    assert written(storage, app_id, "docs/guide.html") == content
-    assert resolved(queues) == [
-        {"path": "docs/guide.html", "outcome": "stored", "size": len(content)}
-    ]
+    assert written(storage, app_id, "docs/guide.html") == entry_of(FIRST_HALF, SECOND_HALF)
+    assert resolved(queues) == [{"path": "docs/guide.html", "outcome": "stored"}]
     assert not any(store.exists(content_id) for content_id in held)
 
 
-def test_only_the_requested_file_is_written(
+def test_only_the_requested_files_entry_is_written(
     unbundler: UnbundlerModule, storage: StorageConfig, app_id: ContentId
 ) -> None:
     unbundler.handle(request(app_id, "index.html"))
@@ -236,7 +239,7 @@ def test_a_file_already_written_is_left_alone(
     unbundler.handle(request(app_id, "index.html"))
 
     assert published(queues) == []
-    assert written(storage, app_id, "index.html") == INDEX
+    assert written(storage, app_id, "index.html") == entry_of(INDEX)
 
 
 @mark.parametrize(
@@ -262,24 +265,33 @@ def test_a_path_with_no_file_of_its_own_is_reported(
     assert written(storage, app_id, path) is None
 
 
-def test_a_file_failing_its_checks_is_unusable_alone(
-    unbundler: UnbundlerModule, queues: ModuleQueues, storage: StorageConfig, app_id: ContentId
+def test_a_files_entry_is_written_with_none_of_its_parts_read_or_asked_for(
+    unbundler: UnbundlerModule,
+    queues: ModuleQueues,
+    store: CasStore,
+    storage: StorageConfig,
+    app_id: ContentId,
 ) -> None:
-    unbundler.handle(request(app_id, "broken.html"))
-    unbundler.handle(request(app_id, "index.html"))
+    for part in (INDEX, FIRST_HALF, SECOND_HALF):
+        store.delete(id_of(part))
 
-    broken, index = resolved(queues)
-    assert broken["outcome"] == "unusable"
-    assert "whole-file hash" in broken["detail"]
-    assert index["outcome"] == "stored"
-    assert written(storage, app_id, "broken.html") is None
+    unbundler.handle(request(app_id, "docs/guide.html"))
+    # Its parts fail their checks, which only the web server, reading them,
+    # can find.
+    unbundler.handle(request(app_id, "broken.html"))
+
+    assert resolved(queues) == [
+        {"path": "docs/guide.html", "outcome": "stored"},
+        {"path": "broken.html", "outcome": "stored"},
+    ]
+    assert written(storage, app_id, "docs/guide.html") == entry_of(FIRST_HALF, SECOND_HALF)
+    assert written(storage, app_id, "broken.html") == entry_of(INDEX, whole=INDEX.upper())
     assert list(storage.resolved_files_dir.rglob("*.partial")) == []
 
 
 def test_a_bundle_not_held_is_fetched_and_resolved_once_it_arrives(
     unbundler: UnbundlerModule, queues: ModuleQueues, store: CasStore, storage: StorageConfig
 ) -> None:
-    put(store, INDEX)
     content = bundle_bytes({"contents": {"index.html": file_entry(INDEX)}})
     bundle = id_of(content)
 
@@ -290,29 +302,8 @@ def test_a_bundle_not_held_is_fetched_and_resolved_once_it_arrives(
     put(store, content)
     unbundler.handle(request(bundle, "index.html"))
 
-    assert resolved(queues) == [{"path": "index.html", "outcome": "stored", "size": len(INDEX)}]
-    assert written(storage, bundle, "index.html") == INDEX
-
-
-def test_every_part_not_held_is_fetched_together(
-    unbundler: UnbundlerModule, queues: ModuleQueues, store: CasStore, storage: StorageConfig
-) -> None:
-    bundle = put(
-        store,
-        bundle_bytes({"contents": {"big.bin": file_entry(FIRST_HALF, SECOND_HALF, INDEX)}}),
-    )
-    put(store, SECOND_HALF)
-
-    unbundler.handle(request(bundle, "big.bin"))
-
-    assert fetched(queues) == [id_of(FIRST_HALF), id_of(INDEX)]
-    assert written(storage, bundle, "big.bin") is None
-
-    put(store, FIRST_HALF)
-    put(store, INDEX)
-    unbundler.handle(request(bundle, "big.bin"))
-
-    assert written(storage, bundle, "big.bin") == FIRST_HALF + SECOND_HALF + INDEX
+    assert resolved(queues) == [{"path": "index.html", "outcome": "stored"}]
+    assert written(storage, bundle, "index.html") == entry_of(INDEX)
 
 
 def test_an_extension_not_held_is_fetched(
@@ -402,7 +393,7 @@ def test_a_saved_directory_needs_neither_bundle_nor_extensions_held(
     restarted.handle(request(app_id, "docs"))
 
     assert resolved(queues) == [
-        {"path": "about.html", "outcome": "stored", "size": len(ABOUT)},
+        {"path": "about.html", "outcome": "stored"},
         {"path": "docs", "outcome": "redirect", "location": "docs/"},
     ]
 
@@ -424,7 +415,7 @@ def test_a_saved_directory_that_cannot_be_read_is_resolved_again(
     with caplog.at_level(WARNING):
         unbundler.handle(request(app_id, "about.html"))
 
-    assert resolved(queues) == [{"path": "about.html", "outcome": "stored", "size": len(ABOUT)}]
+    assert resolved(queues) == [{"path": "about.html", "outcome": "stored"}]
     assert any("Discarding the saved directory" in record.message for record in caplog.records)
     resaved = decode_bundle(decompress(saved_directory(storage, app_id).read_bytes()))
     assert isinstance(resaved, DirectoryBundle)
@@ -499,11 +490,11 @@ def test_the_files_of_every_bundle_not_kept_are_deleted_and_reported(
     assert (reported["bundles"], reported["bytes"]) == (1, freed)
     assert written(storage, app_id, "index.html") is None
     assert not saved_directory(storage, app_id).parent.exists()
-    assert written(storage, other_app_id, "index.html") == INDEX
+    assert written(storage, other_app_id, "index.html") == entry_of(INDEX)
     assert saved_directory(storage, other_app_id).exists()
 
 
-def test_a_deleted_file_is_resolved_again_when_next_requested(
+def test_a_deleted_entry_is_resolved_again_when_next_requested(
     unbundler: UnbundlerModule, queues: ModuleQueues, storage: StorageConfig, app_id: ContentId
 ) -> None:
     unbundler.handle(request(app_id, "index.html"))
@@ -512,8 +503,8 @@ def test_a_deleted_file_is_resolved_again_when_next_requested(
 
     unbundler.handle(request(app_id, "index.html"))
 
-    assert resolved(queues) == [{"path": "index.html", "outcome": "stored", "size": len(INDEX)}]
-    assert written(storage, app_id, "index.html") == INDEX
+    assert resolved(queues) == [{"path": "index.html", "outcome": "stored"}]
+    assert written(storage, app_id, "index.html") == entry_of(INDEX)
     # The directory was forgotten from memory too, so it is saved again.
     assert saved_directory(storage, app_id).exists()
 
@@ -560,7 +551,7 @@ def test_a_bundle_whose_files_cannot_be_deleted_is_passed_over(
     (reported,) = published(queues)
     assert reported["bundles"] == 1
     assert f"Could not delete the resolved files of {app_id}" in caplog.text
-    assert written(storage, app_id, "index.html") == INDEX
+    assert written(storage, app_id, "index.html") == entry_of(INDEX)
     assert written(storage, other_app_id, "index.html") is None
 
 
@@ -643,5 +634,6 @@ def test_the_web_server_serves_what_the_unbundler_resolves(
     assert (accessed["event"], accessed["bundle"]) == (EventType.APP_ACCESSED, str(app_id))
     assert loads(first.body)["retry_after"] == 5
     assert second.status == 200
-    assert second.body == FIRST_HALF + SECOND_HALF
+    assert second.stream is not None
+    assert b"".join(second.stream.chunks) == FIRST_HALF + SECOND_HALF
     assert second.headers["Content-Type"] == "text/html"

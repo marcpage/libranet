@@ -5,7 +5,9 @@ file has no size limit. Each part is checked against its own identifier, and
 its size if the bundle records one (§2.1), as it is read, and decrypted if
 it is encrypted (§7), and the whole file against the hash and size its
 metadata gives (§2.3), which catches what a part-level check alone could
-not.
+not. :class:`WholeFileCheck` makes those last checks, for anything that
+reads a file whole, as the web server does in streaming one (Phase 3 Step
+65).
 
 A whole-file hash under an algorithm this node lacks makes the file
 unsupported rather than unchecked.
@@ -35,6 +37,68 @@ class ByteSink(Protocol):
         ...
 
 
+class WholeFileCheck:
+    """A file's bytes checked against its size and whole-file hash (§2.3), as they are read.
+
+    Raises:
+        UnsupportedBundleError: the whole-file hash uses an algorithm this
+            node lacks.
+        MalformedBundleError: the whole-file hash is not valid for its
+            algorithm.
+    """
+
+    def __init__(self, metadata: Metadata) -> None:
+        expected = _whole_file_id(metadata)
+        self._expected = expected
+        self._hasher = DEFAULT_REGISTRY.get(expected.algorithm).hasher() if expected else None
+        self._expected_bytes = metadata.size_bytes
+        self._size_bytes = 0
+
+    @property
+    def size_bytes(self) -> int:
+        """How many bytes of the file have been taken in."""
+        return self._size_bytes
+
+    def update(self, data: bytes) -> None:
+        """Take in the file's next ``data``.
+
+        Raises:
+            BundleVerificationError: the file is now larger than its size.
+        """
+        self._size_bytes += len(data)
+        expected_bytes = self._expected_bytes
+
+        if expected_bytes is not None and self._size_bytes > expected_bytes:
+            raise BundleVerificationError(f"File is larger than its size, {expected_bytes}")
+
+        if self._hasher is not None:
+            self._hasher.update(data)
+
+    def finish(self) -> None:
+        """Check the file taken in, now that all of it has been.
+
+        Raises:
+            BundleVerificationError: the file is not its size, or does not
+                match its whole-file hash.
+        """
+        expected_bytes = self._expected_bytes
+
+        if expected_bytes is not None and self._size_bytes != expected_bytes:
+            raise BundleVerificationError(
+                f"File is {self._size_bytes} bytes, not its size, {expected_bytes}"
+            )
+
+        expected = self._expected
+
+        if self._hasher is not None and expected is not None:
+            actual = self._hasher.hexdigest()
+
+            if actual != expected.hash:
+                raise BundleVerificationError(
+                    f"File does not match its whole-file hash, {expected} vs {actual}"
+                )
+
+
 def write_file(bundle: FileBundle, source: ContentSource, output: ByteSink) -> int:
     """Write the file ``bundle`` describes to ``output``, returning its size.
 
@@ -53,34 +117,17 @@ def write_file(bundle: FileBundle, source: ContentSource, output: ByteSink) -> i
             hash is not valid for its algorithm.
     """
     parts = [PartPath.parse(part) for part in bundle.parts]
-    expected = _whole_file_id(bundle.metadata)
+    check = WholeFileCheck(bundle.metadata)
     check_held((part.content_id for part in parts), source)
-    hasher = DEFAULT_REGISTRY.get(expected.algorithm).hasher() if expected else None
-    expected_bytes = bundle.metadata.size_bytes
     sizes_bytes = bundle.part_sizes_bytes or (None,) * len(parts)
-    size_bytes = 0
 
     for part, part_bytes in zip(parts, sizes_bytes):
         for chunk in part.chunks(source, part_bytes):
-            size_bytes += len(chunk)
-
-            if expected_bytes is not None and size_bytes > expected_bytes:
-                raise BundleVerificationError(f"File is larger than its size, {expected_bytes}")
-
-            if hasher is not None:
-                hasher.update(chunk)
-
+            check.update(chunk)
             output.write(chunk)
 
-    if expected_bytes is not None and size_bytes != expected_bytes:
-        raise BundleVerificationError(f"File is {size_bytes} bytes, not its size, {expected_bytes}")
-
-    if hasher is not None and expected is not None and hasher.hexdigest() != expected.hash:
-        raise BundleVerificationError(
-            f"File does not match its whole-file hash, {expected} vs {hasher.hexdigest()}"
-        )
-
-    return size_bytes
+    check.finish()
+    return check.size_bytes
 
 
 def _whole_file_id(metadata: Metadata) -> ContentId | None:

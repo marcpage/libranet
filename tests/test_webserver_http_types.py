@@ -6,7 +6,7 @@ from io import BytesIO
 from pytest import mark, raises
 
 from libranet.webserver.errors import IncompleteBodyError, UnsupportedMediaTypeError
-from libranet.webserver.http_types import Request, RequestBody
+from libranet.webserver.http_types import Request, RequestBody, Response, StreamedBody
 
 
 class StalledStream:
@@ -147,3 +147,19 @@ def test_a_body_that_says_it_is_json_and_is_not_is_refused(body: bytes) -> None:
         json_request(body).json()
 
     assert not isinstance(raised.value, UnsupportedMediaTypeError)
+
+
+def test_a_streamed_body_may_be_of_unknown_length_but_not_negative() -> None:
+    assert StreamedBody(None, iter([b"x"])).length_bytes is None
+
+    with raises(ValueError, match="length_bytes"):
+        StreamedBody(-1, iter([]))
+
+
+def test_a_response_sends_a_body_or_a_stream_not_both() -> None:
+    stream = StreamedBody(1, iter([b"x"]))
+
+    assert Response(200, stream=stream).body == b""
+
+    with raises(ValueError, match="not both"):
+        Response(200, b"x", stream=stream)

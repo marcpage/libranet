@@ -23,18 +23,26 @@ The rest of the path is an entry path in the application's bundle. One that
 is empty or ends in ``/`` names that directory's ``index.html``, and one no
 bundle could hold (BundleSpecification §3.1) is ``404`` at once.
 
-A file the unbundler has resolved is served from disk (see
-:mod:`libranet.cas.resolved_files`). Failing that, an outcome the
-unbundler reported for the path is answered: ``404`` for a path the bundle
-does not hold, ``302`` to where a directory or symlink leads, or ``500`` for
-a bundle or file that cannot be served. Otherwise the handler never waits: it
-answers ``503`` with ``Retry-After`` and asks the unbundler for the file::
+A file whose entry the unbundler has saved (see
+:mod:`libranet.cas.resolved_files`) is served from its parts, as they are
+read (see :mod:`libranet.webserver.file_stream`, Phase 3 Step 65). Failing
+that, an outcome the unbundler reported for the path is answered: ``404``
+for a path the bundle does not hold, ``302`` to where a directory or symlink
+leads, or ``500`` for a bundle or file that cannot be served. Otherwise the
+unbundler is asked for the file's entry::
 
     app.path_not_found  {"bundle": "sha256/<hex>", "path": "docs/index.html"}
 
+and the request waits for its answer, and then for the file's first part,
+for up to ``network.app_wait_seconds`` in all, since a ``<video>`` does not
+retry a ``503``. Only if either does not come in time is it answered ``503``,
+with ``Retry-After``. While it waits it asks the unbundler again, each
+second, since the unbundler says nothing while it waits for the bundle to
+arrive, and is not told when it does.
+
 Every request that reaches an application is reported as a use of its
-bundle (see :mod:`libranet.webserver.app_use`), so the files resolved from it
-are kept while it is in use (Phase 2 Step 29).
+bundle (see :mod:`libranet.webserver.app_use`), so the entries resolved from
+it are kept while it is in use (Phase 2 Step 29).
 
 A bundle gives no content type, so it is guessed from the file's extension,
 using the standard library's own table rather than the host's, so every node
@@ -48,10 +56,14 @@ from logging import getLogger
 from mimetypes import MimeTypes
 from pathlib import Path
 from re import escape
+from time import monotonic
 from typing import Final
 from urllib.parse import quote, unquote
+from zlib import decompress, error as ZlibError
 
-from libranet.bundle.shapes import is_entry_path
+from libranet.bundle.errors import BundleError, MalformedBundleError
+from libranet.bundle.parsing import decode_bundle
+from libranet.bundle.shapes import FileBundle, is_entry_path
 from libranet.cas.content_id import ContentId
 from libranet.cas.resolved_files import ResolvedFiles
 from libranet.messaging.events import EventType, PathOutcome
@@ -67,7 +79,8 @@ from libranet.webserver.app_registry import (
 )
 from libranet.webserver.app_use import ApplicationUse
 from libranet.webserver.config_guard import CONFIG_API_SEGMENT, names_config
-from libranet.webserver.http_types import Request, Response, bytes_response, problem_response
+from libranet.webserver.file_stream import PartReader
+from libranet.webserver.http_types import Request, Response, StreamedBody, problem_response
 from libranet.webserver.request_refusals import content_unavailable_response
 
 _LOGGER = getLogger(__name__)
@@ -94,6 +107,11 @@ _CONFIG_APP_HEADERS: Final = {"Content-Security-Policy": CONFIG_APP_POLICY}
 
 DEFAULT_FILE: Final = "index.html"
 
+# How often a request waiting on the unbundler asks it again. It reports
+# nothing while the bundle or an extension is being fetched, and is not told
+# when one arrives, so it notices only when asked.
+_ASK_UNBUNDLER_AGAIN_SECONDS: Final = 1.0
+
 _MIME_TYPES: Final = MimeTypes()
 
 
@@ -113,9 +131,10 @@ def content_type_for(entry_path: str) -> str:
 
 @dataclass(frozen=True)
 class AppHandler:
-    """Serves application files the unbundler has resolved, asking it for the rest.
+    """Serves application files from their parts, asking the unbundler for their entries.
 
-    A registry file that cannot be read raises
+    ``parts`` reads the parts, and says how long a request waits for what it
+    lacks. A registry file that cannot be read raises
     :class:`~libranet.webserver.app_registry.RegistryFileError`, which the
     server logs and answers with ``500``.
     """
@@ -126,6 +145,7 @@ class AppHandler:
     publish: Publish
     retry_after_seconds: int
     use: ApplicationUse
+    parts: PartReader
 
     def __call__(self, request: Request) -> Response:
         route = self._route(request.path)
@@ -144,19 +164,20 @@ class AppHandler:
         if entry_path is None:
             return _not_found(request)
 
-        body = _read(self.files.path_for(bundle, entry_path))
+        # The entry and the first part are waited for within one wait, so a
+        # request that cannot be served is answered within it.
+        deadline = monotonic() + self.parts.wait_seconds
+        entry = self._entry(bundle, entry_path, deadline)
 
-        if body is not None:
-            headers = _CONFIG_APP_HEADERS if names_config(request.path) else None
-            return bytes_response(body, content_type_for(entry_path), headers)
+        if entry is None:
+            return self._unavailable(
+                request, "This file is not resolved from its bundle yet; resolution was requested."
+            )
 
-        known = self.outcomes.recall(bundle, entry_path)
+        if isinstance(entry, KnownOutcome):
+            return _known_response(entry, prefix, request)
 
-        if known is not None:
-            return _known_response(known, prefix, request)
-
-        self.publish(EventType.APP_PATH_NOT_FOUND, {"bundle": str(bundle), "path": entry_path})
-        return self._unavailable(request)
+        return self._file_response(entry, entry_path, deadline, request)
 
     def _route(self, path: str) -> tuple[str, ContentId, str | None] | None:
         """The application ``path`` belongs to, or ``None`` if none does.
@@ -189,13 +210,79 @@ class AppHandler:
         root = bundles.get(ROOT_APPLICATION)
         return None if root is None or reserved else ("", root, decoded)
 
-    def _unavailable(self, request: Request) -> Response:
-        """The ``503`` for a file the unbundler has been asked for."""
-        return content_unavailable_response(
-            request,
-            "This file is not resolved from its bundle yet; resolution was requested.",
-            self.retry_after_seconds,
-        )
+    def _entry(
+        self, bundle: ContentId, entry_path: str, deadline: float
+    ) -> FileBundle | KnownOutcome | None:
+        """The entry of the file at ``entry_path`` in ``bundle``, or the outcome reported instead.
+
+        If neither is known, the unbundler is asked, and asked again while
+        its answer is waited for, until ``deadline``, as :func:`monotonic`
+        tells it.
+
+        Returns:
+            The entry, or the outcome, or ``None`` if neither came in time.
+        """
+        path = self.files.entry_for(bundle, entry_path)
+
+        def answered() -> bool:
+            return path.is_file() or self.outcomes.recall(bundle, entry_path) is not None
+
+        while True:
+            entry = _saved_entry(path)
+
+            if entry is not None:
+                return entry
+
+            known = self.outcomes.recall(bundle, entry_path)
+
+            if known is not None:
+                return known
+
+            self.publish(EventType.APP_PATH_NOT_FOUND, {"bundle": str(bundle), "path": entry_path})
+            remaining_seconds = deadline - monotonic()
+
+            if remaining_seconds <= 0:
+                return None
+
+            wait_seconds = min(remaining_seconds, _ASK_UNBUNDLER_AGAIN_SECONDS)
+
+            if not self.outcomes.wait_for(answered, wait_seconds) and monotonic() >= deadline:
+                return None
+
+    def _file_response(
+        self, entry: FileBundle, entry_path: str, deadline: float, request: Request
+    ) -> Response:
+        """The response sending the file ``entry`` describes, once its first part is read.
+
+        That part is waited for until ``deadline``, as :func:`monotonic`
+        tells it.
+        """
+        try:
+            stream = self.parts.stream(entry)
+            begun = stream.begin(deadline)
+
+        except BundleError as error:
+            _LOGGER.warning("%s cannot be served from its parts: %s", request.path, error)
+            return _unusable_response(str(error), request)
+
+        if not begun:
+            return self._unavailable(
+                request, "Parts of this file are not held here yet; they were requested."
+            )
+
+        headers = {
+            "Content-Type": content_type_for(entry_path),
+            **(_CONFIG_APP_HEADERS if names_config(request.path) else {}),
+        }
+        body = StreamedBody(stream.length_bytes, stream.chunks())
+        return Response(HTTPStatus.OK, headers=headers, stream=body)
+
+    def _unavailable(self, request: Request, detail: str) -> Response:
+        """The ``503`` for a file whose entry or parts were asked for, and did not come in time.
+
+        ``detail`` says which.
+        """
+        return content_unavailable_response(request, detail, self.retry_after_seconds)
 
 
 def _decoded(text: str) -> str | None:
@@ -216,33 +303,52 @@ def _entry_path(rest: str) -> str | None:
     return rest if is_entry_path(rest) else None
 
 
-def _read(path: Path) -> bytes | None:
-    """The file at ``path``, or ``None`` if it has not been written."""
+def _saved_entry(path: Path) -> FileBundle | None:
+    """The file's entry the unbundler saved at ``path``, or ``None`` if there is none to read.
+
+    One that cannot be read is deleted, so that the unbundler saves it again
+    when next asked.
+    """
     try:
-        return path.read_bytes()
+        entry = decode_bundle(decompress(path.read_bytes()))
+
+        if not isinstance(entry, FileBundle):
+            raise MalformedBundleError("Not a file's entry")
 
     except FileNotFoundError:
-        # Not logged: a file not resolved yet is asked for.
+        # Not logged: an entry not saved yet is asked for.
         return None
+
+    except (ZlibError, BundleError) as error:
+        _LOGGER.warning("Discarding the entry saved at %s: %s", path, error)
+        path.unlink(missing_ok=True)
+        return None
+
+    return entry
 
 
 def _known_response(known: KnownOutcome, prefix: str, request: Request) -> Response:
-    """The answer to a request for a path the unbundler stored no file for."""
+    """The answer to a request for a path the unbundler saved no entry for."""
     if known.outcome == PathOutcome.REDIRECT:
         return _redirect(f"{prefix}/{quote(known.location)}")
 
     if known.outcome == PathOutcome.UNUSABLE:
-        return problem_response(
-            Problem(
-                status=HTTPStatus.INTERNAL_SERVER_ERROR,
-                title="Application cannot be served",
-                type=UNUSABLE_BUNDLE,
-                detail=known.detail,
-                instance=request.path,
-            )
-        )
+        return _unusable_response(known.detail, request)
 
     return _not_found(request)
+
+
+def _unusable_response(detail: str, request: Request) -> Response:
+    """The ``500`` for a bundle or file that cannot be served, saying why in ``detail``."""
+    return problem_response(
+        Problem(
+            status=HTTPStatus.INTERNAL_SERVER_ERROR,
+            title="Application cannot be served",
+            type=UNUSABLE_BUNDLE,
+            detail=detail,
+            instance=request.path,
+        )
+    )
 
 
 def _redirect(location: str) -> Response:

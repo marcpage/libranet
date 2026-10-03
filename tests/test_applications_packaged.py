@@ -396,7 +396,8 @@ def test_a_new_node_serves_each_shipped_page_with_nothing_in_the_cas(
     assert second.status == 200
     assert second.headers["Content-Type"] == "text/html"
     assert second.headers.get("Content-Security-Policy") == policy
-    assert second.body == source.read_bytes()
+    assert second.stream is not None
+    assert b"".join(second.stream.chunks) == source.read_bytes()
     # Nothing was stored, and the registry file was not written.
     assert not CasStore.source_of_truth(storage).exists(bundle)
     assert not storage.applications_path.exists()

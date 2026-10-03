@@ -30,6 +30,13 @@ network:
   # Peers are asked for the same content at most once per this period.
   retry_after_seconds: 5
 
+  # Seconds a request for an application's file waits for content this node
+  # lacks, the file's entry or its parts, before it is answered 503 (HTTP
+  # API §13.2), since a <video> element does not retry a 503. Once the file
+  # has begun to be sent, a part that does not come within as long ends it
+  # short. 0 answers at once.
+  app_wait_seconds: 10.0
+
   # The hosts /config is served as. A /config request whose Host header
   # names any other host is refused, so that a site which points a name of
   # its own at this machine cannot use a browser here to reach /config
