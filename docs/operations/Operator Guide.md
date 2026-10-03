@@ -218,8 +218,10 @@ storage:
   max_storage_bytes: 1073741824
 ```
 
-That is the most bytes of content the node keeps (File Layout §3.1). Past it,
-the node hands off the content it gives least priority to, and deletes it.
+That is the most bytes of content the node keeps (File Layout §3.1). Within
+8 MiB of it, the node hands off the content it gives least priority to, and
+deletes it. A backup or build waits at the limit for that to make room,
+rather than take the node past it.
 Each node is limited on its own, so the super node holds up to sixteen times
 as much. Content hashes fall evenly across the buckets, so the nodes fill at
 about the same rate.
@@ -239,8 +241,8 @@ whatever no longer fits.
 The limit counts only content. Logs, databases, and application files take
 space beyond it (§3.2). Each node also keeps 1 GiB free on the disk it uses
 (`storage.min_free_bytes`, which the script leaves at its default), and all
-sixteen use the same disk: when it comes within 1 GiB of full, every node
-hands content off.
+sixteen use the same disk: when it comes within about 1 GiB of full, every
+node hands content off.
 
 ### 3.5 Pointing Your Computers at It
 

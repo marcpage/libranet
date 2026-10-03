@@ -11,6 +11,7 @@ from typing import Mapping
 from pytest import MonkeyPatch, fixture, mark, raises
 from xattr import xattr
 
+from libranet.backup.errors import StorageFullError
 from libranet.backup.jobs import LatestBackup
 from libranet.backup.runs import AnnouncingStore, Backup, BuildSettings, back_up
 from libranet.bundle.building import build_directory
@@ -830,3 +831,31 @@ def test_settings_from_config_ignore_the_node_own_directories(tmp_path: Path) ->
     assert settings.xattrs is not None
     assert settings.xattrs.includes("user.tag")
     assert not settings.xattrs.includes("user.local")
+
+
+# -- Room to store (Phase 2 Step 63) ----------------------------------------
+
+
+def test_room_is_made_before_each_object_is_written(
+    tree: Path, store: CasStore, recorder: Recorder
+) -> None:
+    # How many objects were announced each time room was made.
+    made: list[int] = []
+    backups = AnnouncingStore(store, recorder, lambda: made.append(len(recorder.announced)))
+
+    first_backup(tree, backups)
+
+    assert made == list(range(len(recorder.announced)))
+
+
+def test_nothing_is_written_when_no_room_is_made(
+    tree: Path, store: CasStore, recorder: Recorder
+) -> None:
+    def no_room() -> None:
+        raise StorageFullError("Storage stayed full")
+
+    with raises(StorageFullError):
+        first_backup(tree, AnnouncingStore(store, recorder, no_room))
+
+    assert recorder.announced == []
+    assert list(store.held_objects()) == []

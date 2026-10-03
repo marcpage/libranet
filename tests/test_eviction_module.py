@@ -1,6 +1,8 @@
 """Tests for the eviction module, with the test standing in for the validator, the stats
 module, the connection manager, and the unbundler, and free space faked."""
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 from logging import INFO
 from pathlib import Path
@@ -91,7 +93,7 @@ class Modules:
             candidates_timeout_seconds=CANDIDATES_TIMEOUT,
             reclaim_timeout_seconds=RECLAIM_TIMEOUT,
             reclaim_interval_seconds=RECLAIM_INTERVAL,
-            **options,
+            **{"headroom_bytes": 0, **options},
         )
         self.built.append(module)
         module.on_start()
@@ -201,15 +203,23 @@ def connected(direction: ConnectionDirection, *node_ids: ContentId) -> Message:
     )
 
 
-def published(queues: ModuleQueues) -> list[Message]:
-    messages = []
+def published(queues: ModuleQueues, *, full: bool = False) -> list[Message]:
+    """What was published since last asked: only ``storage.full`` if ``full``, or all else.
+
+    Whether storage is full is said whenever it changes, so the tests of
+    anything else pass over it.
+    """
+    messages: list[Message] = []
 
     while True:
         try:
-            messages.append(queues.outbox.get(block=False))
+            message = queues.outbox.get(block=False)
 
         except Empty:
             return messages
+
+        if (message["event"] == EventType.STORAGE_FULL) == full:
+            messages.append(message)
 
 
 def events(queues: ModuleQueues) -> list[tuple[EventType, str]]:
@@ -532,6 +542,177 @@ def test_no_more_than_the_most_hand_offs_run_at_once_the_rest_of_the_list_waitin
         (EventType.DATA_DELETED, CONTENT[0].hash),
         (EventType.EVICTION_NOTICE, CONTENT[2].hash),
     ]
+
+
+# -- Whether storage is full (Phase 2 Step 63) -----------------------------
+
+
+def fullness(queues: ModuleQueues) -> list[bool]:
+    """Whether storage was said to be full, each time since last asked."""
+    return [message["full"] for message in published(queues, full=True)]
+
+
+def objects_of(config: LibranetConfig, size: int) -> LibranetConfig:
+    """``config`` with objects at most ``size`` bytes."""
+    storage = config.storage.model_copy(update={"max_object_bytes": size})
+    return config.model_copy(update={"storage": storage})
+
+
+def requested_full(module: EvictionModule) -> None:
+    module.handle(make_message(EventType.STORAGE_FULL_REQUESTED, ModuleName.BACKUP, {}))
+
+
+def test_storage_is_said_not_full_at_start_while_one_more_object_fits(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+) -> None:
+    hold(store, CONTENT[0])
+
+    modules.start(objects_of(capped(config, store, node_id, 2 * SIZE), SIZE))
+
+    assert fullness(queues) == [False]
+
+
+def test_storage_is_said_full_at_start_once_one_more_object_would_pass_a_limit(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+) -> None:
+    hold(store, CONTENT[0])
+
+    modules.start(objects_of(capped(config, store, node_id, 2 * SIZE - 1), SIZE))
+
+    assert fullness(queues) == [True]
+
+
+def test_storage_is_said_full_as_soon_as_content_stored_fills_it(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+) -> None:
+    module = modules.start(objects_of(capped(config, store, node_id, 3 * SIZE), SIZE))
+    assert fullness(queues) == [False]
+
+    hold(store, CONTENT[0])
+    module.handle(stored(CONTENT[0]))
+    assert fullness(queues) == []
+
+    hold(store, CONTENT[1])
+    module.handle(stored(CONTENT[1]))
+    hold(store, CONTENT[2])
+    module.handle(stored(CONTENT[2]))
+
+    assert fullness(queues) == [True]
+
+
+def test_storage_is_said_to_have_room_again_once_content_is_deleted(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+) -> None:
+    hold(store, *CONTENT[:2])
+    # Full with both held; evicting the headroom short of the limit makes room for one.
+    limited = objects_of(capped(config, store, node_id, 2 * SIZE), SIZE)
+    module = modules.start(limited, headroom_bytes=SIZE)
+    # Also passes over the request to stats, answered below.
+    assert fullness(queues) == [True]
+    module.handle(candidates(CONTENT[0], CONTENT[1]))
+    assert handed_off(queues) == [CONTENT[0]]
+
+    module.handle(acknowledged(CONTENT[0], PEERS[0]))
+
+    assert fullness(queues) == [False]
+
+
+def test_free_space_is_looked_at_again_while_idle(
+    modules: Modules, config: LibranetConfig, queues: ModuleQueues, free: list[int]
+) -> None:
+    storage = config.storage.model_copy(update={"min_free_bytes": 100, "max_object_bytes": SIZE})
+    free[0] = 200
+    module = modules.start(config.model_copy(update={"storage": storage}))
+    assert fullness(queues) == [False]
+
+    # Short of room for one more object, though not yet below the limit.
+    free[0] = 105
+    module.on_idle()
+    assert fullness(queues) == [True]
+
+    free[0] = 200
+    module.on_idle()
+    module.on_idle()
+
+    assert fullness(queues) == [False]
+
+
+def test_whether_storage_is_full_is_said_again_when_asked(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+) -> None:
+    module = modules.start(objects_of(capped(config, store, node_id, 3 * SIZE), SIZE))
+    assert fullness(queues) == [False]
+
+    requested_full(module)
+
+    assert fullness(queues) == [False]
+
+
+def test_eviction_starts_the_headroom_short_of_the_limit(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+) -> None:
+    hold(store, *CONTENT[:3])
+
+    modules.start(capped(config, store, node_id, 3 * SIZE + 5), headroom_bytes=SIZE)
+
+    assert requested(queues) == (5, [])
+
+
+def test_the_headroom_is_what_the_most_hand_offs_move_at_once_by_default(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+) -> None:
+    hold(store, *CONTENT[:3])
+    limited = objects_of(capped(config, store, node_id, 5 * SIZE - 5), SIZE)
+
+    modules.start(limited, max_hand_offs=2, headroom_bytes=None)
+
+    assert requested(queues) == (5, [])
+
+
+def test_nothing_left_within_the_headroom_is_no_warning(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+    caplog: LogCaptureFixture,
+) -> None:
+    hold(store, CONTENT[0])
+    module = modules.start(capped(config, store, node_id, SIZE + 5), headroom_bytes=SIZE)
+    assert requested(queues) == (5, [])
+
+    with caplog.at_level(INFO):
+        module.handle(candidates())
+
+    assert "nothing left to let go of" not in caplog.text
 
 
 # -- Answers from the connection manager -----------------------------------
@@ -944,6 +1125,9 @@ def test_unusable_settings_are_refused(config: LibranetConfig, queues: ModuleQue
     with raises(ValueError, match="reclaim_interval_seconds"):
         EvictionModule(ModuleName.EVICTION, queues, config, reclaim_interval_seconds=-1)
 
+    with raises(ValueError, match="headroom_bytes"):
+        EvictionModule(ModuleName.EVICTION, queues, config, headroom_bytes=-1)
+
 
 def test_the_module_subscribes_to_stored_content_and_answers() -> None:
     assert EvictionModule.subscriptions == {
@@ -952,6 +1136,7 @@ def test_the_module_subscribes_to_stored_content_and_answers() -> None:
         EventType.EVICTION_CANDIDATES,
         EventType.RESOLVED_RECLAIMED,
         EventType.PEERS_CONNECTED,
+        EventType.STORAGE_FULL_REQUESTED,
     }
 
 

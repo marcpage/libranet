@@ -79,6 +79,10 @@ class EventType(StrEnum):
     PEERS_CONNECTED_REQUESTED = "peers.connected_requested"  # eviction → connections, webserver
     PEERS_CONNECTED = "peers.connected"  # connections, webserver → eviction
 
+    # Whether storage is full, so content this node creates waits (Phase 2 Step 63).
+    STORAGE_FULL_REQUESTED = "storage.full_requested"  # backup → eviction
+    STORAGE_FULL = "storage.full"  # eviction → backup
+
 
 class AddressSource(StrEnum):
     """How this node learned an address of a peer (Phase 2 Step 23).

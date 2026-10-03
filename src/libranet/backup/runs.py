@@ -10,7 +10,8 @@ part, so identical content dedups across directories and across time (§4.2).
 Content goes straight into the source of truth rather than through the
 validator: this node hashed it itself, so there is nothing to check. Only
 what is not held already is written. :class:`AnnouncingStore` says what it
-writes, so each new object can be announced as the validator announces one.
+writes, so each new object can be announced as the validator announces one,
+and first waits for room to write it (Phase 2 Step 63).
 
 A directory backed up before is built from what its last bundle holds, kept
 expanded beside the job (Phase 2 Step 48), so that neither that bundle nor its
@@ -82,6 +83,10 @@ from libranet.config.models import LibranetConfig
 #: Told of each object an :class:`AnnouncingStore` writes, and its size as stored.
 Announce = Callable[[ContentId, int], None]
 
+#: Called before an :class:`AnnouncingStore` writes an object, to return once
+#: there is room for it, or raise :class:`~libranet.backup.errors.StorageFullError`.
+MakeRoom = Callable[[], None]
+
 
 class BackupStore(ContentSink, ContentSource, Protocol):
     """Where backups are stored, and the last one read back from."""
@@ -142,11 +147,18 @@ class BuildSettings:
 
 
 class AnnouncingStore:
-    """A :class:`BackupStore` over a CAS store, that says what it writes."""
+    """A :class:`BackupStore` over a CAS store, that says what it writes.
 
-    def __init__(self, store: CasStore, announce: Announce) -> None:
+    ``make_room``, if given, is called before each write, and returns once
+    there is room for it.
+    """
+
+    def __init__(
+        self, store: CasStore, announce: Announce, make_room: MakeRoom | None = None
+    ) -> None:
         self._store = store
         self._announce = announce
+        self._make_room = make_room
 
     def exists(self, content_id: ContentId) -> bool:
         """Whether ``content_id`` is held."""
@@ -161,11 +173,17 @@ class AnnouncingStore:
         return self._store.read(content_id)
 
     def write(self, content_id: ContentId, data: bytes) -> Path:
-        """Store ``data`` as ``content_id``, then announce it.
+        """Store ``data`` as ``content_id`` once there is room, then announce it.
 
         Returns:
             The path it was stored at.
+
+        Raises:
+            StorageFullError: there was no room, for too long.
         """
+        if self._make_room is not None:
+            self._make_room()
+
         path = self._store.write(content_id, data)
         self._announce(content_id, len(data))
         return path

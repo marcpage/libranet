@@ -3221,6 +3221,105 @@ killing over.
 
 ---
 
+## Step 63 — A Backup Waits for Room
+
+**Issue:** #198. **Depends on:** Steps 46 and 61.
+
+- A backup writes as fast as the disk allows, and eviction hands content
+  off only as fast as peers take it: about 19 objects a second in Step
+  61's live run, with 8 hand-offs of one `PUT` each under way, and slower
+  still over a WAN. So a large backup took its node past
+  `storage.max_storage_bytes`.
+- Ruled (2026-10-03): a backup waits while storage is full, rather than
+  have hand-offs pipelined, which would only narrow the gap. Eviction
+  starts one batch of hand-offs short of each limit, and the backup waits
+  only at the limit, so that it is not slowed to one hand-off at a time.
+  Storage that stays full fails the backup after
+  `backup.storage_stall_seconds`. The rule goes into HighLevelDesign §4.5
+  first.
+
+The specification change was written first. HighLevelDesign §4.5 now says
+a node does not take itself over its storage limits with content it
+creates itself, such as a backup or a newly built application: it stores
+no more while at a limit, and carries on as eviction makes room. Eviction
+starts a little short of each limit, by as much as the node hands off at
+once, so creation waits only at the limit. Creation that eviction makes no
+room for gives up rather than wait for ever, and content received from
+other nodes is not held back.
+
+What was built: `StoragePressure` aims eviction `headroom_bytes` short of
+each limit, and says whether storage would be over a limit with so many
+bytes more (`over_limits`). The eviction module's headroom is
+`max_hand_offs` times `storage.max_object_bytes`, 8 MiB by default. It
+publishes `storage.full`, whether one more object that large would take
+storage past a limit, whenever that changes, when it starts, and when
+`storage.full_requested` asks, as the backup module does when it starts.
+It checks again while idle, as free space changes with whatever else is
+on the disk. Within the headroom with nothing left to let go of is logged
+at debug rather than warned of, since no limit is passed.
+`AnnouncingStore` calls a `make_room` hook before each object it writes.
+The backup module's hook looks at its inbox first: it takes `storage.full`
+at once, and sets every other message aside, returned by its `receive`
+ahead of the inbox once the backup or build is done. While storage is
+full it waits, looking again every poll interval, and storage still full
+after `backup.storage_stall_seconds` (3,600, provisional) raises
+`StorageFullError`, an `OSError`, which fails the backup or build as any
+`OSError` does. How long one waited in all is logged at info. About 250
+new or changed lines of non-test Python, most of them documentation, so
+it is one change set. Gates green: 3,321 passed, 1 skipped, 99.06%.
+
+Seen in live runs:
+
+- One node with no peers, a 200,000,000-byte limit, and
+  `storage_stall_seconds` at 20, backing up 1 GiB of random files: it
+  stored 192 objects, 199,231,617 bytes, and stopped. Twenty seconds
+  later the backup failed, and `/config/api/backups` gave "Storage stayed
+  full for 20 seconds, with no room made to store more". Eviction had
+  tried two hand-offs a batch short of the limit, found no peer, and
+  paused as before.
+- Sixteen nodes with `--max-storage-bytes 1000000000`, node-15 backing up
+  6 GiB as in Step 61: done in 2 minutes 38 seconds, against 4 minutes 46
+  then. Node-15 never held more than 990,906,128 bytes, sitting at the
+  limit less the headroom, so eviction kept up on one machine and the
+  backup never had to wait. No node logged a warning or an error.
+
+My calls, not yet reviewed:
+
+- **Full is one object short of a limit**, `storage.max_object_bytes`, so
+  the object a backup is about to store fits. What eviction has not yet
+  heard of, a couple of objects at most, can still pass it.
+- **Told by message, not read from a file.** Eviction owns the count, so
+  it says; the backup module looks at its inbox only while storing, and
+  sets the rest aside rather than handle a `/config` request in the middle
+  of a backup.
+- **Builds wait too**, since they store through the same `AnnouncingStore`.
+  Restores and exports do not store through it and are unchanged, so
+  content a restore fetches is not held back.
+- **Content received from other nodes is not held back**, as HighLevelDesign
+  §4.5 now says: the validator stores what peers send whatever the limits.
+- **An hour before giving up**, provisional: long enough to outlast a peer
+  reconnecting, short enough not to hold restores up long, since the backup
+  module does nothing else while it waits. The next look at the job, an
+  interval later, carries on with what was stored.
+- **Every node now rests 8 MiB short of its limit**, the price of keeping
+  hand-offs going while a backup waits.
+- **The setting is per node, not per job**, beside `restore_stall_seconds`.
+
+**Testable in isolation:** `test_eviction_pressure.py` for the headroom
+short of each limit, none without a limit, and being over a limit with
+bytes added, ignoring the headroom. `test_eviction_module.py` for storage
+said full or not at start, as stored content fills it and deletions empty
+it, as free space changes while idle, and when asked; eviction starting
+the headroom short of the limit, by default what the most hand-offs move;
+and no warning for nothing left within the headroom. `test_backup_runs.py`
+for room made before each object written, and nothing written when none
+is. `test_backup_module.py` for a backup storing nothing while storage is
+full and failing once it stays full, carrying on once room is made, the
+messages that come meanwhile handled after it, and a build failing as a
+backup does.
+
+---
+
 ## 4. Issues in the Milestone
 
 Every issue in the **Phase 2** milestone, by number, and where it went.
@@ -3261,6 +3360,7 @@ Every issue in the **Phase 2** milestone, by number, and where it went.
 | #176 | Update the documentation and specifications | A review of every document before release 0.2.0, and 59, which it raised |
 | #194 | Encrypt the file parts of password-protected bundles | 60 |
 | #197 | A full inbox stalls the dispatcher, and with it the node | 61 |
+| #198 | A backup faster than eviction takes the node past its limit | 63 |
 | #199 | A further `Ctrl-C` leaves the local network's nodes running | 62 |
 
 Issue #80 asks for what #119 asked for later, and PR #120 built it in
