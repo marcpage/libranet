@@ -1024,11 +1024,14 @@ Run live on one new node, listening at every address:
   root store's only value removed its file.
 
 One other warning was logged, by the upload handler. A `PUT` of
-`/data/store/movie`, naming no key, fits `/data/{algorithm}/{hash}`, so it
-is taken for an upload and is `400`, logged as an unsupported hash
-algorithm, `store`, and `HEAD` there is `405` allowing `GET, PUT`. A `PUT`
-of `/data/directory/Movies` has done the same since Step 68. Left as it is,
-and added to §6.
+`/data/store/movie`, naming no key, fit `/data/{algorithm}/{hash}`, so it
+was taken for an upload and was `400`, logged as an unsupported hash
+algorithm, `store`, and `HEAD` there was `405` allowing `GET, PUT`. A `PUT`
+of `/data/directory/Movies` had done the same since Step 68. Fixed after
+the run, when asked: that pattern no longer fits a path beneath any name
+HttpApi §5 reserves (`DATA_ENDPOINT_NAMES`, `webserver/data_handler.py`),
+so each of these is `405` allowing `GET` alone, and a path beneath a name
+with no route of its own there, such as `/data/nodes/x`, is `404`.
 
 My calls while building, not yet reviewed:
 
@@ -1363,8 +1366,3 @@ Every specification change is made.
   application, such as `movie.localhost`, would keep them apart.
 - **An import waits behind a backup**, and a backup behind an import
   (Step 69), as both run in the backup module one at a time.
-- **A `PUT` beneath `/data` that no route of its own takes is an upload**
-  (Steps 68 and 70). `/data/store/movie` and `/data/directory/Movies` fit
-  `/data/{algorithm}/{hash}`, so a `PUT` of either is `400`, logged at
-  warning as an unsupported hash algorithm, rather than `405`. Keeping the
-  names §5 reserves out of that pattern would make each `405`.

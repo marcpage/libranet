@@ -122,6 +122,7 @@ from libranet.webserver.config_handlers import (
     unreported_response,
 )
 from libranet.webserver.data_handler import (
+    DATA_ENDPOINT_NAMES,
     DATA_PATTERN,
     DataReadHandler,
     content_id_or_refusal,
@@ -202,6 +203,7 @@ __all__ = [
     "CONFIG_REALM",
     "COST",
     "DATA_APPLICATIONS_PATH",
+    "DATA_ENDPOINT_NAMES",
     "DATA_PATTERN",
     "DEFAULT_FILE",
     "DEFAULT_MAX_OUTCOMES",

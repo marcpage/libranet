@@ -1781,6 +1781,46 @@ def test_a_local_client_keeps_a_value_in_an_applications_store(
     assert saved.name == f"{sha256(b'movie').hexdigest()}.json"
 
 
+@mark.parametrize(
+    "method, path, allowed",
+    [
+        ("PUT", "/data/store/movie", "GET"),
+        ("DELETE", "/data/store/movie", "GET"),
+        ("HEAD", "/data/store/movie", "GET"),
+        ("PUT", "/data/directory/Movies", "GET"),
+        ("PUT", "/data/search/ab", "GET"),
+        ("PUT", "/data/nodes/x", None),
+        ("PUT", "/data/seek/x", None),
+        ("PUT", "/data/client/x", None),
+        ("PUT", "/data/imports/x", None),
+        ("PUT", "/data/bundles/x", None),
+        ("GET", "/data/bundles/x", None),
+        ("PUT", "/data/applications/x", None),
+    ],
+)
+def test_a_path_beneath_another_data_endpoint_is_never_taken_for_content(
+    local_server: LibranetHTTPServer,
+    caplog: LogCaptureFixture,
+    method: str,
+    path: str,
+    allowed: str | None,
+) -> None:
+    sent = Request(
+        method,
+        path,
+        headers={"Content-Type": JSON_CONTENT_TYPE},
+        client_address="127.0.0.1",
+        body=RequestBody.of(b"1"),
+    )
+
+    with caplog.at_level(WARNING):
+        response = local_server.router.dispatch(sent)
+
+    assert response.status == (404 if allowed is None else 405)
+    assert response.headers.get("Allow") == allowed
+    assert caplog.text == ""
+
+
 def test_a_remote_client_is_told_it_is_not_local(local_server: LibranetHTTPServer) -> None:
     response = local_server.router.dispatch(
         Request("GET", "/data/client", client_address="203.0.113.42")
