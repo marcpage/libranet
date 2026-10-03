@@ -17,6 +17,7 @@ them. The one at `/config` drives all of them.
 """
 
 from libranet.webserver.app_handler import (
+    APP_METHODS,
     APP_PATTERN,
     CONFIG_APP_PATTERN,
     CONFIG_APP_POLICY,
@@ -42,6 +43,7 @@ from libranet.webserver.backup_state import (
     BackupReport,
     BackupState,
 )
+from libranet.webserver.byte_range import BYTES_UNIT, ByteRange
 from libranet.webserver.config_auth import (
     CONFIG_REALM,
     ConfigAuthGuard,
@@ -147,6 +149,7 @@ from libranet.webserver.signature_guard import API_PREFIX, SignatureGuard
 
 __all__ = [
     "API_PREFIX",
+    "APP_METHODS",
     "APP_PATTERN",
     "APPLICATION_PATTERN",
     "APPLICATION_TEMPLATE",
@@ -158,6 +161,7 @@ __all__ = [
     "BACKUPS_PATH",
     "BLOCK_SIZE",
     "BUILDS_FIELD",
+    "BYTES_UNIT",
     "BUILDS_PATH",
     "CONFIG_API_PATH",
     "CONFIG_API_SEGMENT",
@@ -202,6 +206,7 @@ __all__ = [
     "BackupRequest",
     "BackupRequestHandler",
     "BackupState",
+    "ByteRange",
     "ConfigAuthGuard",
     "ConfigCredential",
     "ConfigSiteGuard",

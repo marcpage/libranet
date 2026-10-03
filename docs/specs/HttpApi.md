@@ -2113,10 +2113,10 @@ The following table summarizes the currently proposed HTTP API.
 | `/data/store/{application}/...`   | Various      | An application's store on this node (§13.3)                | Defined |
 | `/data/applications`              | `GET`        | The applications this node serves (§13.4)                  | Defined |
 | `/data/...`                       | Various      | Additional programmatic APIs                               | TBD     |
-| `/`                               | `GET`        | Root web application                                       | Defined |
-| `/{application}/...`              | `GET`        | Directory-bundle application                               | Defined |
+| `/`                               | `GET`/`HEAD` | Root web application                                       | Defined |
+| `/{application}/...`              | `GET`/`HEAD` | Directory-bundle application                               | Defined |
 | `/config/api/...`                 | Various      | Local-only administration endpoints, on `/config`'s port   | Defined |
-| `/config/...`                     | `GET`        | Local-only administration application, on `/config`'s port | Defined |
+| `/config/...`                     | `GET`/`HEAD` | Local-only administration application, on `/config`'s port | Defined |
 
 ---
 

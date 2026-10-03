@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pytest import mark, raises
 
-from libranet.bundle.errors import MalformedBundleError
+from libranet.bundle.errors import MalformedBundleError, UnsupportedBundleError
 from libranet.bundle.shapes import (
     DirectoryBundle,
     DirectoryMarker,
@@ -15,6 +15,7 @@ from libranet.bundle.shapes import (
     ancestors,
     is_entry_path,
 )
+from libranet.cas.content_id import ContentId
 
 WHOLE_HASH = "c" * 64
 PART = "sha256/" + "a" * 64
@@ -81,6 +82,26 @@ def test_metadata_needs_algorithm_and_hash_together(
 ) -> None:
     with raises(MalformedBundleError, match="together"):
         Metadata(algorithm=algorithm, hash=hash_value)
+
+
+def test_the_whole_file_id_is_the_hash_checked_and_lower_cased() -> None:
+    metadata = Metadata(algorithm="SHA256", hash=WHOLE_HASH.upper())
+
+    assert metadata.whole_file_id() == ContentId("sha256", WHOLE_HASH)
+    assert Metadata().whole_file_id() is None
+
+
+@mark.parametrize(
+    ("algorithm", "hash_value", "error"),
+    [("md5", "0" * 32, UnsupportedBundleError), ("sha256", "c" * 63, MalformedBundleError)],
+)
+def test_a_whole_file_hash_this_node_cannot_check_has_no_id(
+    algorithm: str, hash_value: str, error: type[Exception]
+) -> None:
+    metadata = Metadata(algorithm=algorithm, hash=hash_value)
+
+    with raises(error, match="Whole-file hash"):
+        metadata.whole_file_id()
 
 
 def test_broken_rule_is_a_value_error() -> None:

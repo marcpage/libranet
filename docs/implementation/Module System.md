@@ -1059,7 +1059,9 @@ which starts a fetch (§8.2), and reports no outcome until it arrives: the
 `data.stored` that says so has it resolve the path then, which wakes the
 waiting request. A part of the file not held is asked for by the
 web server, with the few parts after it, and looked for every quarter of a
-second. A request whose entry or first part does not come within
+second. A request for a range of the file reads, and asks for, only the
+parts holding it, and a `HEAD` reads none (Phase 3 Step 66). A request
+whose entry or first part does not come within
 `network.app_wait_seconds` is answered `503`, and one whose later part does
 not is cut short. Outcomes other than `stored` leave no entry, so the web
 server remembers them and answers the next request for the path at once:
