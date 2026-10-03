@@ -443,6 +443,51 @@ My calls, not yet reviewed:
 
 About 200 new or changed lines of non-test Python, so one change set.
 
+What was built is the list above, and the calls below it, made while
+building. The application routes, on both ports, answer `HEAD` as well as
+`GET` (`APP_METHODS`). About 320 added lines of non-test Python, some 60 of
+them in place of lines removed, much of it documentation: more than the 200
+planned, but under 1,000, so one change set. HttpApi §25 now lists `HEAD`
+for applications, Module System §8.3 says what a range reads, and the
+README no longer lists range requests as deferred.
+
+My calls while building, not yet reviewed:
+
+- **A `HEAD` ignores `Range`**, and is answered `200` with the whole
+  file's length, as RFC 9110 §14.2 defines ranges for `GET` alone and has
+  a server ignore `Range` on any other method. It waits for the file's
+  entry, as a `GET` does, since its headers need it, but reads and asks
+  for no part, so a part not yet held does not make it `503`.
+- **`/config`'s application answers `HEAD` too**, on `/config`'s port, as
+  the same handler serves it. On the main port a `HEAD` beneath `/config`
+  is still `404`, as only a `GET` is redirected (Phase 2 Step 58).
+- **The `ETag` is drawn from the whole-file hash once checked**, lower-case
+  under an algorithm this node knows, never from the bundle's text, which
+  could hold anything, a line break included, and would go into a header.
+  So checking it moved from `bundle/reassembly.py`'s private
+  `_whole_file_id` to `Metadata.whole_file_id()` (`bundle/shapes.py`),
+  which the reassembly and the web server share. A file whose whole-file
+  hash this node cannot read is `500` for a range as for the whole file,
+  though a range is not checked against it.
+- **A range holding no bytes is a `ByteRange` too**, cut at the end of the
+  file as any range is, rather than an exception: RFC 9110 §14.1.1 calls a
+  range satisfiable just when it holds a byte of the file. Its
+  `content_range()` is `bytes */{size}`.
+- **A `416` is Problem Details**, as every other error is (HttpApi §17),
+  with `Accept-Ranges` and any `ETag` beside its `Content-Range`.
+- **`If-Range` is compared exactly**, once its surrounding whitespace is
+  trimmed: a weak tag (`W/"…"`) never matches, nor does one in another
+  case, as RFC 9110 §8.8.3.2's strong comparison has it.
+- **A header that cannot be parsed is logged at debug**, as bad data from
+  a client is (Coding Style §9.3). One naming another unit, or more than
+  one range, is not, as neither is a mistake.
+- **A header is read leniently where RFC 9110 lets it be**: the unit in any
+  case, spaces around the `=` and each range, empty list elements
+  (`bytes=,0-4,` is one range, §5.6.1), and leading zeros. A number of more
+  digits than Python reads, over 4,300, has the header ignored.
+- **`bytes=0-` is `206`**, the whole file as a range, and is checked
+  against the whole-file hash, its last part held back, as a `200` is.
+
 **Testable in isolation:** `ByteRange` tests for each form, a range past
 the end cut at the end, one wholly past it unsatisfiable, and several
 ranges and malformed headers ignored. Handler tests for `206`, `416`,
@@ -578,7 +623,7 @@ run:
 
 ## Step 68 — Local Clients and the Folders They May Read
 
-**Issue:** #213. **Depends on:** Phase 2 Steps 41 and 58.
+**Issue:** #219. **Depends on:** Phase 2 Steps 41 and 58.
 
 Ruled before building:
 
@@ -665,7 +710,7 @@ About 300 new or changed lines of non-test Python, so one change set.
 
 ## Step 69 — Importing a Local File
 
-**Issue:** #213. **Depends on:** Steps 64 and 68; Phase 1 Step 38; Phase
+**Issue:** #220. **Depends on:** Steps 64 and 68; Phase 1 Step 38; Phase
 2 Step 63.
 
 Ruled before building:
@@ -737,7 +782,7 @@ About 300 new or changed lines of non-test Python, so one change set.
 
 ## Step 70 — An Application's Store
 
-**Issue:** #213. **Depends on:** Step 68.
+**Issue:** #221. **Depends on:** Step 68.
 
 Ruled before building:
 
@@ -785,7 +830,7 @@ not held, and a remote client reading but not writing.
 
 ## Step 71 — Reading Into Bundles
 
-**Issue:** #213. **Depends on:** Steps 64, 65, and 66.
+**Issue:** #222. **Depends on:** Steps 64, 65, and 66.
 
 Ruled before building:
 
@@ -857,7 +902,7 @@ About 300 new or changed lines of non-test Python, so one change set.
 
 ## Step 72 — Making and Changing Bundles
 
-**Issue:** #213. **Depends on:** Steps 68, 69, and 71; Phase 1 Step 17;
+**Issue:** #223. **Depends on:** Steps 68, 69, and 71; Phase 1 Step 17;
 Phase 2 Step 31.
 
 Ruled before building:
@@ -931,7 +976,7 @@ About 450 new or changed lines of non-test Python, so one change set.
 
 ## Step 73 — Listing Applications
 
-**Issue:** none yet: the root application should link to the
+**Issue:** #218: the root application should link to the
 applications a node serves, and no issue names it. **Depends on:** Phase
 1 Steps 35 and 37.
 

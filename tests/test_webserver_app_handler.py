@@ -1,6 +1,7 @@
 """Tests for serving application files from their parts and asking the unbundler for entries."""
 
 from __future__ import annotations
+from dataclasses import replace
 from hashlib import sha256
 from json import loads
 from logging import DEBUG, WARNING
@@ -40,6 +41,10 @@ ROOT_BUNDLE = ContentId.for_data(b"the root application's bundle", "sha256")
 WIKI_BUNDLE = ContentId.for_data(b"the wiki's bundle", "sha256")
 CONFIG_BUNDLE = ContentId.for_data(b"the /config application's bundle", "sha256")
 RETRY_AFTER_SECONDS = 9
+# A file of three parts, of 12, 13, and 5 bytes.
+FILM_PARTS = (b"first part, ", b"second part, ", b"third")
+FILM = b"".join(FILM_PARTS)
+FILM_TAG = f'"sha256-{sha256(FILM).hexdigest()}"'
 
 
 class Recorder:
@@ -162,8 +167,12 @@ def waiting(
     )
 
 
-def get(handler: AppHandler, path: str) -> Response:
-    return handler(Request("GET", path, client_address="203.0.113.42"))
+def get(handler: AppHandler, path: str, headers: Mapping[str, str] | None = None) -> Response:
+    return handler(Request("GET", path, headers=headers or {}, client_address="203.0.113.42"))
+
+
+def head(handler: AppHandler, path: str, headers: Mapping[str, str] | None = None) -> Response:
+    return handler(Request("HEAD", path, headers=headers or {}, client_address="203.0.113.42"))
 
 
 def body_of(response: Response) -> bytes:
@@ -198,6 +207,16 @@ def resolve(
     """Resolve the file at ``entry_path`` in ``bundle``, holding ``content`` as its one part."""
     hold(store, content)
     save_entry(files, bundle, entry_path, entry_for(content))
+
+
+def parts_read(reads: Recorder) -> list[bytes]:
+    """Which of the film's parts were reported read, in order."""
+    by_id = {str(ContentId.for_data(part, "sha256")): part for part in FILM_PARTS}
+    return [
+        by_id[str(ContentId.from_fields(payload))]
+        for event, payload in reads.messages
+        if event == EventType.DATA_REQUESTED
+    ]
 
 
 @mark.parametrize(
@@ -791,3 +810,173 @@ def test_a_saved_entry_that_cannot_be_read_is_discarded_and_asked_for_again(
     (record,) = caplog.records
     assert record.levelno == WARNING
     assert record.getMessage().startswith(f"Discarding the entry saved at {path}: ")
+
+
+def test_a_file_is_sent_with_its_tag_saying_it_takes_ranges(
+    handler: AppHandler, files: ResolvedFiles, store: CasStore
+) -> None:
+    hold(store, *FILM_PARTS)
+    save_entry(files, WIKI_BUNDLE, "film.bin", entry_for(*FILM_PARTS))
+
+    response = get(handler, "/wiki/film.bin")
+
+    assert response.status == 200
+    assert body_of(response) == FILM
+    assert response.headers["Accept-Ranges"] == "bytes"
+    assert response.headers["ETag"] == FILM_TAG
+    assert "Content-Range" not in response.headers
+
+
+@mark.parametrize(
+    "header, start_bytes, stop_bytes, read",
+    [
+        ("bytes=0-4", 0, 5, FILM_PARTS[:1]),
+        ("bytes=14-17", 14, 18, FILM_PARTS[1:2]),
+        ("bytes=10-26", 10, 27, FILM_PARTS),
+        ("bytes=13-", 13, 30, FILM_PARTS[1:]),
+        ("bytes=-3", 27, 30, FILM_PARTS[2:]),
+        ("bytes=0-", 0, 30, FILM_PARTS),
+        ("bytes=20-999", 20, 30, FILM_PARTS[1:]),
+    ],
+)
+def test_a_range_is_sent_from_the_parts_holding_it_alone(
+    handler: AppHandler,
+    files: ResolvedFiles,
+    store: CasStore,
+    reads: Recorder,
+    header: str,
+    start_bytes: int,
+    stop_bytes: int,
+    read: tuple[bytes, ...],
+) -> None:
+    hold(store, *FILM_PARTS)
+    save_entry(files, WIKI_BUNDLE, "film.bin", entry_for(*FILM_PARTS))
+
+    response = get(handler, "/wiki/film.bin", {"Range": header})
+
+    assert response.status == 206
+    assert response.stream is not None
+    assert response.stream.length_bytes == stop_bytes - start_bytes
+    assert body_of(response) == FILM[start_bytes:stop_bytes]
+    assert response.headers["Content-Range"] == f"bytes {start_bytes}-{stop_bytes - 1}/30"
+    assert response.headers["Accept-Ranges"] == "bytes"
+    assert response.headers["ETag"] == FILM_TAG
+    assert parts_read(reads) == list(read)
+
+
+@mark.parametrize("header", ["bytes=30-", "bytes=31-40", "bytes=-0"])
+def test_a_range_holding_no_bytes_of_the_file_is_416_naming_its_size(
+    handler: AppHandler, files: ResolvedFiles, store: CasStore, reads: Recorder, header: str
+) -> None:
+    hold(store, *FILM_PARTS)
+    save_entry(files, WIKI_BUNDLE, "film.bin", entry_for(*FILM_PARTS))
+
+    response = get(handler, "/wiki/film.bin", {"Range": header})
+
+    assert response.status == 416
+    assert response.stream is None
+    assert response.headers["Content-Type"] == PROBLEM_CONTENT_TYPE
+    assert response.headers["Content-Range"] == "bytes */30"
+    assert response.headers["Accept-Ranges"] == "bytes"
+    assert response.headers["ETag"] == FILM_TAG
+    assert loads(response.body)["instance"] == "/wiki/film.bin"
+    assert reads.messages == []
+
+
+@mark.parametrize(
+    "if_range, status",
+    [
+        (FILM_TAG, 206),
+        (f" {FILM_TAG} ", 206),
+        (f"W/{FILM_TAG}", 200),
+        (FILM_TAG.upper(), 200),
+        ('"sha256-another"', 200),
+        ("Sat, 03 Oct 2026 12:00:00 GMT", 200),
+    ],
+)
+def test_a_range_is_sent_only_if_any_if_range_is_the_files_tag(
+    handler: AppHandler, files: ResolvedFiles, store: CasStore, if_range: str, status: int
+) -> None:
+    hold(store, *FILM_PARTS)
+    save_entry(files, WIKI_BUNDLE, "film.bin", entry_for(*FILM_PARTS))
+
+    response = get(handler, "/wiki/film.bin", {"Range": "bytes=0-4", "If-Range": if_range})
+
+    assert response.status == status
+    assert body_of(response) == (FILM[:5] if status == 206 else FILM)
+    assert ("Content-Range" in response.headers) == (status == 206)
+
+
+def test_a_file_without_a_whole_file_hash_has_no_tag_for_if_range_to_match(
+    handler: AppHandler, files: ResolvedFiles, store: CasStore
+) -> None:
+    hold(store, *FILM_PARTS)
+    entry = replace(entry_for(*FILM_PARTS), metadata=Metadata(size_bytes=len(FILM)))
+    save_entry(files, WIKI_BUNDLE, "film.bin", entry)
+
+    ranged = get(handler, "/wiki/film.bin", {"Range": "bytes=0-4"})
+    checked = get(handler, "/wiki/film.bin", {"Range": "bytes=0-4", "If-Range": '""'})
+
+    assert (ranged.status, body_of(ranged)) == (206, FILM[:5])
+    assert "ETag" not in ranged.headers
+    assert (checked.status, body_of(checked)) == (200, FILM)
+
+
+def test_a_file_without_part_sizes_is_sent_whole_saying_it_takes_no_ranges(
+    handler: AppHandler, files: ResolvedFiles, store: CasStore
+) -> None:
+    hold(store, *FILM_PARTS)
+    entry = replace(entry_for(*FILM_PARTS), part_sizes_bytes=None)
+    save_entry(files, WIKI_BUNDLE, "film.bin", entry)
+
+    response = get(handler, "/wiki/film.bin", {"Range": "bytes=0-4"})
+
+    assert response.status == 200
+    assert body_of(response) == FILM
+    assert response.headers["Accept-Ranges"] == "none"
+    assert response.headers["ETag"] == FILM_TAG
+    assert "Content-Range" not in response.headers
+
+
+@mark.parametrize("headers", [{}, {"Range": "bytes=0-4"}, {"Range": "bytes=99-"}])
+def test_a_head_is_answered_as_a_get_of_the_whole_file_waiting_for_no_part(
+    waiting: AppHandler, files: ResolvedFiles, reads: Recorder, headers: dict[str, str]
+) -> None:
+    # None of the parts is held, and a GET would wait two seconds for the first.
+    save_entry(files, WIKI_BUNDLE, "film.bin", entry_for(*FILM_PARTS))
+
+    response = head(waiting, "/wiki/film.bin", headers)
+
+    assert response.status == 200
+    assert response.stream is not None
+    assert response.stream.length_bytes == len(FILM)
+    assert response.headers["Content-Type"] == OCTET_STREAM
+    assert response.headers["Accept-Ranges"] == "bytes"
+    assert response.headers["ETag"] == FILM_TAG
+    assert "Content-Range" not in response.headers
+    # No part was asked for or read.
+    assert reads.messages == []
+
+
+def test_a_head_asks_for_the_entry_as_a_get_does(handler: AppHandler, published: Recorder) -> None:
+    response = head(handler, "/wiki/page.html")
+
+    assert response.status == 503
+    assert published.messages == [
+        (EventType.APP_PATH_NOT_FOUND, {"bundle": str(WIKI_BUNDLE), "path": "page.html"})
+    ]
+
+
+def test_a_range_of_a_file_whose_whole_file_hash_cannot_be_read_is_a_500(
+    handler: AppHandler, files: ResolvedFiles, store: CasStore, reads: Recorder
+) -> None:
+    hold(store, *FILM_PARTS)
+    metadata = Metadata(size_bytes=len(FILM), algorithm="md5", hash="0" * 32)
+    entry = replace(entry_for(*FILM_PARTS), metadata=metadata)
+    save_entry(files, WIKI_BUNDLE, "film.bin", entry)
+
+    response = get(handler, "/wiki/film.bin", {"Range": "bytes=0-4"})
+
+    assert response.status == 500
+    assert "md5" in loads(response.body)["detail"]
+    assert reads.messages == []

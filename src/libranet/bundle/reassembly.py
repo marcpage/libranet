@@ -17,16 +17,10 @@ from __future__ import annotations
 from typing import Protocol
 
 from libranet.bundle.content import ContentSource, check_held
-from libranet.bundle.errors import (
-    BundleVerificationError,
-    MalformedBundleError,
-    UnsupportedBundleError,
-)
+from libranet.bundle.errors import BundleVerificationError
 from libranet.bundle.parts import PartPath
 from libranet.bundle.shapes import FileBundle, Metadata
 from libranet.cas.algorithms import DEFAULT_REGISTRY
-from libranet.cas.content_id import ContentId
-from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
 
 
 class ByteSink(Protocol):
@@ -48,7 +42,7 @@ class WholeFileCheck:
     """
 
     def __init__(self, metadata: Metadata) -> None:
-        expected = _whole_file_id(metadata)
+        expected = metadata.whole_file_id()
         self._expected = expected
         self._hasher = DEFAULT_REGISTRY.get(expected.algorithm).hasher() if expected else None
         self._expected_bytes = metadata.size_bytes
@@ -128,18 +122,3 @@ def write_file(bundle: FileBundle, source: ContentSource, output: ByteSink) -> i
 
     check.finish()
     return check.size_bytes
-
-
-def _whole_file_id(metadata: Metadata) -> ContentId | None:
-    """The hash the reassembled file must have, if its metadata gives one."""
-    if metadata.algorithm is None or metadata.hash is None:
-        return None
-
-    try:
-        return ContentId.create(metadata.algorithm, metadata.hash)
-
-    except UnknownAlgorithmError as error:
-        raise UnsupportedBundleError(f"Whole-file hash: {error}") from None
-
-    except InvalidContentIdError as error:
-        raise MalformedBundleError(f"Whole-file hash: {error}") from None

@@ -54,6 +54,7 @@ from libranet.problems import (
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE, REQUEST_PATH_HEADER
 from libranet.stats.module import StatsModule
 from libranet.validator.module import ValidatorModule
+from libranet.webserver.app_handler import CONFIG_APP_POLICY
 from libranet.webserver.app_registry import Application, ApplicationRegistry
 from libranet.webserver.config_auth import CONFIG_REALM
 from libranet.webserver.config_credential import ConfigCredential
@@ -73,6 +74,7 @@ RETRY_AFTER_SECONDS = 7
 APP_BUNDLE_ID = ContentId.for_data(b"an application's directory bundle", "sha256")
 SERVER_IDENTITY = NodeIdentity.from_private_key(generate_private_key(), "sha256")
 SERVER_NODE = NodeDescription(SERVER_IDENTITY.node_id, NetworkConfig())
+FILM = b"0123456789"
 
 
 @fixture
@@ -208,8 +210,13 @@ def config_connection(config_server: LibranetHTTPServer) -> Iterator[HTTPConnect
     yield from connected(config_server)
 
 
-def _get(connection: HTTPConnection, path: str, method: str = "GET") -> tuple[HTTPResponse, bytes]:
-    connection.request(method, path)
+def _get(
+    connection: HTTPConnection,
+    path: str,
+    method: str = "GET",
+    headers: dict[str, str] | None = None,
+) -> tuple[HTTPResponse, bytes]:
+    connection.request(method, path, headers=headers or {})
     response = connection.getresponse()
     return response, response.read()
 
@@ -1111,6 +1118,70 @@ def test_an_application_file_not_yet_resolved_is_asked_for(
     assert (asked["bundle"], asked["path"]) == (str(APP_BUNDLE_ID), "docs/index.html")
 
 
+@mark.parametrize("applications", [{"myapp": APP_BUNDLE_ID}])
+def test_a_range_of_an_application_file_is_sent_signed_over_its_headers(
+    connection: HTTPConnection, storage: StorageConfig, server_keys: MessageVerifier
+) -> None:
+    _resolve(storage, APP_BUNDLE_ID, "film.bin", FILM)
+
+    response, body = _get(connection, "/myapp/film.bin", headers={"Range": "bytes=2-5"})
+    headers = dict(response.getheaders())
+    again, _ = _get(connection, "/myapp/film.bin")
+
+    assert (response.status, body) == (206, b"2345")
+    assert response.getheader("Content-Range") == "bytes 2-5/10"
+    assert response.getheader("Content-Length") == "4"
+    assert response.getheader("Accept-Ranges") == "bytes"
+    assert response.getheader("ETag") == f'"sha256-{sha256(FILM).hexdigest()}"'
+    assert server_keys.verify_response(response.status, headers) == SERVER_IDENTITY.node_id
+    assert response.getheader("Connection") is None
+    assert again.status == 200
+
+
+@mark.parametrize("applications", [{"myapp": APP_BUNDLE_ID}])
+def test_a_range_past_the_end_of_an_application_file_is_416(
+    connection: HTTPConnection, storage: StorageConfig
+) -> None:
+    _resolve(storage, APP_BUNDLE_ID, "film.bin", FILM)
+
+    response, body = _get(connection, "/myapp/film.bin", headers={"Range": "bytes=10-"})
+
+    assert response.status == 416
+    assert response.getheader("Content-Range") == "bytes */10"
+    assert loads(body)["status"] == 416
+
+
+@mark.parametrize("applications", [{"myapp": APP_BUNDLE_ID}])
+def test_a_head_of_an_application_file_sends_its_headers_alone(
+    connection: HTTPConnection, storage: StorageConfig
+) -> None:
+    _resolve(storage, APP_BUNDLE_ID, "film.bin", FILM)
+
+    response, body = _get(connection, "/myapp/film.bin", method="HEAD")
+    again, _ = _get(connection, "/myapp/film.bin")
+
+    assert (response.status, body) == (200, b"")
+    assert response.getheader("Content-Length") == "10"
+    assert response.getheader("Accept-Ranges") == "bytes"
+    assert (again.status, again.getheader("Content-Length")) == (200, "10")
+
+
+@mark.parametrize("applications", [{"myapp": APP_BUNDLE_ID}])
+def test_an_application_answers_get_and_head_alone(connection: HTTPConnection) -> None:
+    response, _ = _get(connection, "/myapp/film.bin", method="DELETE")
+
+    assert response.status == 405
+    assert response.getheader("Allow") == "GET, HEAD"
+
+
+def test_data_is_sent_whole_whatever_range_is_asked_for(connection: HTTPConnection) -> None:
+    response, body = _get(connection, f"/data/{CONTENT_ID}", headers={"Range": "bytes=0-1"})
+
+    assert (response.status, body) == (200, CONTENT)
+    assert response.getheader("Accept-Ranges") is None
+    assert response.getheader("Content-Range") is None
+
+
 def test_config_passes_a_local_client_on_to_the_credential_challenge(
     config_connection: HTTPConnection, queues: ModuleQueues
 ) -> None:
@@ -1505,6 +1576,19 @@ def test_the_config_application_is_served_only_to_an_authenticated_local_client(
     assert not credential.captured
     # Nothing was resolved, or asked of the unbundler.
     assert _published(queues) == []
+
+
+@mark.parametrize("applications", [{"config": APP_BUNDLE_ID}])
+def test_the_config_application_answers_a_head(
+    config_connection: HTTPConnection, storage: StorageConfig
+) -> None:
+    _resolve(storage, APP_BUNDLE_ID, "index.html", b"<html>")
+
+    response, body = _config(config_connection, "/config/", "HEAD", _credentials())
+
+    assert (response.status, body) == (200, b"")
+    assert response.getheader("Content-Length") == "6"
+    assert response.getheader("Content-Security-Policy") == CONFIG_APP_POLICY
 
 
 def test_an_application_registered_through_config_is_served_at_once(

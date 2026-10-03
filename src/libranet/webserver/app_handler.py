@@ -37,7 +37,22 @@ and the request waits for its answer, and then for the file's first part,
 for up to ``network.app_wait_seconds`` in all, since a ``<video>`` does not
 retry a ``503``. Only if either does not come in time is it answered ``503``,
 with ``Retry-After``. The unbundler answers once it can, even if it must
-first wait for the bundle to arrive, so it is asked only once.
+first wait for the bundle to arrive, so it is asked only once. A ``HEAD`` is
+answered as a ``GET`` would be, once the entry is saved, without waiting for
+any part.
+
+A ``GET`` may ask for one range of a file whose bundle records its part
+sizes (see :mod:`libranet.webserver.byte_range`, HttpApi §19, Phase 3 Step
+66), and is sent only the parts holding it, ``206``, or ``416`` if it holds
+no bytes. Every such file is sent with ``Accept-Ranges: bytes``, and one
+without part sizes with ``Accept-Ranges: none``, its ``Range`` ignored. A
+file with a whole-file hash is sent with an ``ETag`` drawn from it, which
+the file never changes under::
+
+    ETag: "sha256-<hex>"
+
+A range is sent only if any ``If-Range`` is that tag. A date there never
+matches, as no file is sent with a ``Last-Modified``.
 
 Every request that reaches an application is reported as a use of its
 bundle (see :mod:`libranet.webserver.app_use`), so the entries resolved from
@@ -56,7 +71,7 @@ from mimetypes import MimeTypes
 from pathlib import Path
 from re import escape
 from time import monotonic
-from typing import Final
+from typing import Final, Mapping
 from urllib.parse import quote, unquote
 from zlib import decompress, error as ZlibError
 
@@ -77,6 +92,7 @@ from libranet.webserver.app_registry import (
     ApplicationRegistry,
 )
 from libranet.webserver.app_use import ApplicationUse
+from libranet.webserver.byte_range import BYTES_UNIT, ByteRange
 from libranet.webserver.config_guard import CONFIG_API_SEGMENT, names_config
 from libranet.webserver.file_stream import PartReader
 from libranet.webserver.http_types import Request, Response, StreamedBody, problem_response
@@ -105,6 +121,17 @@ CONFIG_APP_POLICY: Final = (
 _CONFIG_APP_HEADERS: Final = {"Content-Security-Policy": CONFIG_APP_POLICY}
 
 DEFAULT_FILE: Final = "index.html"
+
+# What an application's route answers. A HEAD is answered as a GET would be.
+APP_METHODS: Final = ("GET", "HEAD")
+
+# Read by a request for a range of a file (RFC 9110 §13.1.5, §14.2).
+_RANGE_HEADER: Final = "Range"
+_IF_RANGE_HEADER: Final = "If-Range"
+
+# What Accept-Ranges says of a file whose part sizes are not recorded, which
+# cannot be sent a range at a time (HttpApi §19).
+_NO_RANGES: Final = "none"
 
 _MIME_TYPES: Final = MimeTypes()
 
@@ -241,14 +268,39 @@ class AppHandler:
     def _file_response(
         self, entry: FileBundle, entry_path: str, deadline: float, request: Request
     ) -> Response:
-        """The response sending the file ``entry`` describes, once its first part is read.
+        """The response sending the file ``entry`` describes, or the range of it asked for.
 
-        That part is waited for until ``deadline``, as :func:`monotonic`
-        tells it.
+        For a ``GET``, the first part sent is read first, waited for until
+        ``deadline``, as :func:`monotonic` tells it.
         """
         try:
-            stream = self.parts.stream(entry)
-            begun = stream.begin(deadline)
+            tag = _entity_tag(entry)
+            byte_range = _range_asked(entry, tag, request)
+            # What says how the file is sent a range at a time.
+            validators = {
+                "Accept-Ranges": _NO_RANGES if entry.part_sizes_bytes is None else BYTES_UNIT,
+                **({} if tag is None else {"ETag": tag}),
+            }
+            headers = {
+                "Content-Type": content_type_for(entry_path),
+                **validators,
+                **(_CONFIG_APP_HEADERS if names_config(request.path) else {}),
+            }
+
+            if byte_range is None:
+                stream = self.parts.stream(entry)
+
+            elif byte_range.satisfiable:
+                headers["Content-Range"] = byte_range.content_range()
+                stream = self.parts.stream(
+                    entry, start_bytes=byte_range.start_bytes, stop_bytes=byte_range.stop_bytes
+                )
+
+            else:
+                return _unsatisfiable_response(byte_range, validators, request)
+
+            # A HEAD sends no part, so it waits for none.
+            begun = request.method == "HEAD" or stream.begin(deadline)
 
         except BundleError as error:
             _LOGGER.warning("%s cannot be served from its parts: %s", request.path, error)
@@ -259,12 +311,9 @@ class AppHandler:
                 request, "Parts of this file are not held here yet; they were requested."
             )
 
-        headers = {
-            "Content-Type": content_type_for(entry_path),
-            **(_CONFIG_APP_HEADERS if names_config(request.path) else {}),
-        }
+        status = HTTPStatus.OK if byte_range is None else HTTPStatus.PARTIAL_CONTENT
         body = StreamedBody(stream.length_bytes, stream.chunks())
-        return Response(HTTPStatus.OK, headers=headers, stream=body)
+        return Response(status, headers=headers, stream=body)
 
     def _unavailable(self, request: Request, detail: str) -> Response:
         """The ``503`` for a file whose entry or parts were asked for, and did not come in time.
@@ -314,6 +363,57 @@ def _saved_entry(path: Path) -> FileBundle | None:
         return None
 
     return entry
+
+
+def _entity_tag(entry: FileBundle) -> str | None:
+    """The strong ``ETag`` of the file ``entry`` describes, from its whole-file hash, if it has one.
+
+    Raises:
+        UnsupportedBundleError: the whole-file hash uses an algorithm this
+            node lacks.
+        MalformedBundleError: the whole-file hash is not valid for its
+            algorithm.
+    """
+    whole_file_id = entry.metadata.whole_file_id()
+
+    if whole_file_id is None:
+        return None
+
+    return f'"{whole_file_id.algorithm}-{whole_file_id.hash}"'
+
+
+def _range_asked(entry: FileBundle, tag: str | None, request: Request) -> ByteRange | None:
+    """The range ``request`` asks for of the file ``entry`` describes, or ``None`` for all of it.
+
+    ``tag`` is the file's ``ETag``, if it has one. Only a ``GET`` is sent a
+    range (RFC 9110 §14.2), of a file whose part sizes are recorded, and only
+    if any ``If-Range`` it sends is ``tag``.
+    """
+    sizes_bytes = entry.part_sizes_bytes
+
+    if request.method != "GET" or sizes_bytes is None:
+        return None
+
+    if_range = request.header(_IF_RANGE_HEADER)
+
+    if if_range is not None and (tag is None or if_range.strip() != tag):
+        return None
+
+    return ByteRange.from_header(request.header(_RANGE_HEADER), sum(sizes_bytes))
+
+
+def _unsatisfiable_response(
+    byte_range: ByteRange, validators: Mapping[str, str], request: Request
+) -> Response:
+    """The ``416`` for ``byte_range``, which holds no bytes, carrying the file's ``validators``."""
+    return problem_response(
+        Problem.for_status(
+            HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE,
+            detail=f"The range asked for holds none of the file's {byte_range.file_bytes} bytes.",
+            instance=request.path,
+        ),
+        {**validators, "Content-Range": byte_range.content_range()},
+    )
 
 
 def _known_response(known: KnownOutcome, prefix: str, request: Request) -> Response:

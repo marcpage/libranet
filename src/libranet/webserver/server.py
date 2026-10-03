@@ -56,7 +56,12 @@ from libranet.problems import Problem
 from libranet.protocol.http_syntax import BODILESS_STATUSES, REQUEST_PATH_HEADER
 from libranet.protocol.lists import NODES_PATH, SEEK_PATH
 from libranet.protocol.search import LocalSearch, SearchCache
-from libranet.webserver.app_handler import APP_PATTERN, CONFIG_APP_PATTERN, AppHandler
+from libranet.webserver.app_handler import (
+    APP_METHODS,
+    APP_PATTERN,
+    CONFIG_APP_PATTERN,
+    AppHandler,
+)
 from libranet.webserver.app_outcomes import ApplicationOutcomes
 from libranet.webserver.app_registry import ApplicationRegistry, RegisteredApplications
 from libranet.webserver.app_use import ApplicationUse
@@ -170,17 +175,17 @@ def build_router(
         SeekListHandler(storage.max_object_bytes, storage.max_decompressed_list_bytes, publish),
     )
     # Last, since its pattern fits every path outside the reserved names.
-    router.add(
-        "GET",
-        APP_PATTERN,
-        _applications(
-            _registry(storage, content),
-            storage,
-            PartReader(content, publish, app_wait_seconds, retry_after_seconds),
-            retry_after_seconds,
-            app_outcomes,
-        ),
+    applications = _applications(
+        _registry(storage, content),
+        storage,
+        PartReader(content, publish, app_wait_seconds, retry_after_seconds),
+        retry_after_seconds,
+        app_outcomes,
     )
+
+    for method in APP_METHODS:
+        router.add(method, APP_PATTERN, applications)
+
     return router
 
 
@@ -225,17 +230,17 @@ def build_config_router(
         router.add(method, pattern, handler)
 
     # Every other path beneath /config is the /config application's.
-    router.add(
-        "GET",
-        CONFIG_APP_PATTERN,
-        _applications(
-            registry,
-            storage,
-            PartReader(content, publish, app_wait_seconds, retry_after_seconds),
-            retry_after_seconds,
-            app_outcomes,
-        ),
+    applications = _applications(
+        registry,
+        storage,
+        PartReader(content, publish, app_wait_seconds, retry_after_seconds),
+        retry_after_seconds,
+        app_outcomes,
     )
+
+    for method in APP_METHODS:
+        router.add(method, CONFIG_APP_PATTERN, applications)
+
     return router
 
 

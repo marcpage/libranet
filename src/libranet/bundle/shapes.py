@@ -22,7 +22,9 @@ from base64 import b64decode
 from dataclasses import dataclass, field
 from typing import Callable, Final, Iterable, Mapping, TypeAlias
 
-from libranet.bundle.errors import MalformedBundleError
+from libranet.bundle.errors import MalformedBundleError, UnsupportedBundleError
+from libranet.cas.content_id import ContentId
+from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
 
 # How an entry path or a symlink's target is spelled (§3.1), wherever bundle
 # code builds, splits, or follows one.
@@ -112,6 +114,25 @@ class Metadata:  # pylint: disable=too-many-instance-attributes
 
             if isinstance(value, str) and not _is_base64(value):
                 raise MalformedBundleError(f"Extended attribute {name!r} is not padded base64")
+
+    def whole_file_id(self) -> ContentId | None:
+        """The hash the reassembled file must have, if this metadata gives one.
+
+        Raises:
+            UnsupportedBundleError: the hash uses an algorithm this node lacks.
+            MalformedBundleError: the hash is not valid for its algorithm.
+        """
+        if self.algorithm is None or self.hash is None:
+            return None
+
+        try:
+            return ContentId.create(self.algorithm, self.hash)
+
+        except UnknownAlgorithmError as error:
+            raise UnsupportedBundleError(f"Whole-file hash: {error}") from None
+
+        except InvalidContentIdError as error:
+            raise MalformedBundleError(f"Whole-file hash: {error}") from None
 
     def xattr_parts(self, included: Callable[[str], bool] | None = None) -> tuple[str, ...]:
         """The CAS paths of the parts extended attributes are stored in, in order.

@@ -539,7 +539,6 @@ pressure, the local `/config` surface, and encrypted backup and restore.
 Deliberately deferred, and specified but not yet built:
 
 - HTTPS/TLS — v1 is HTTP only
-- HTTP Range requests, needed to stream video out of bundle applications
 - The [Karma/Kismet](docs/specs/Karma.md) incentive layer; node-list ordering
   uses a simpler proxy for now
 - mDNS/DNS-SD discovery on the local network
