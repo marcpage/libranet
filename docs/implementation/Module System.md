@@ -157,9 +157,11 @@ Three rules shape the rest:
   points at. Nor does one import another's code: what two modules share is
   in `libranet/protocol/`, `libranet/messaging/`, or a library package below
   them all, which `tests/test_module_imports.py` checks.
-- **Every message goes to every module.** The dispatcher does no routing.
-  It copies each message into every module's inbox, and each module keeps
-  only the event types it subscribes to.
+- **Each message goes to the modules that subscribe to it.** The
+  dispatcher puts each message into the inbox of every module that
+  subscribes to its event, other than the module that published it, and
+  puts `shutdown` into every inbox. Each module filters what it receives
+  the same way.
 - **Each resource has one owner.** Only the stats module opens the SQLite
   database, only the web server listens for HTTP, only the connection
   manager connects to peers, and only the eviction module deletes content
@@ -187,12 +189,12 @@ The modules communicate in three ways:
 | `src/libranet/supervision/process_supervisor.py` | `ProcessSupervisor`: spawning, watching, restarting, and stopping every child |
 | `src/libranet/supervision/children.py` | What runs first inside each child: signal handling, logging, and crash reporting |
 | `src/libranet/supervision/specs.py` | `ModuleSpec`, and the `ModuleFactory` and `DispatcherEntry` signatures |
-| `src/libranet/supervision/registry.py` | Which factory builds each module |
+| `src/libranet/supervision/registry.py` | Which factory builds each module, and which events it subscribes to |
 | `src/libranet/messaging/events.py` | `EventType`: every event on the bus, each noting its publishers and subscribers |
 | `src/libranet/messaging/envelope.py` | Building and validating message dicts |
-| `src/libranet/messaging/queues.py` | `ModuleQueues`, a module's inbox and outbox, and the `MessageQueue` protocol |
+| `src/libranet/messaging/queues.py` | `ModuleQueues`, a module's inbox, outbox, and subscriptions, and the `MessageQueue` protocol |
 | `src/libranet/messaging/module.py` | `ModuleBase`: publishing, filtering, and the receive loop |
-| `src/libranet/messaging/dispatcher.py` | `Dispatcher`: the broadcast hub |
+| `src/libranet/messaging/dispatcher.py` | `Dispatcher`: the hub that delivers each message to its subscribers |
 | `src/libranet/messaging/publishing.py` | `Publish`, the signature of `publish` that code outside a module class is handed |
 | `src/libranet/protocol/` | What nodes say to one another over HTTP, shared by the modules that do: HTTP syntax, node and seek lists, search, `localhost` resolution, and `/config` requests |
 | `src/libranet/{module}/module.py` | Each module's class and factory |
@@ -209,7 +211,7 @@ through the dispatcher.
 | Start | Process | `ModuleName` | Class | Job |
 | --- | --- | --- | --- | --- |
 | — | Supervisor | `supervisor` | `ProcessSupervisor` | Starts, restarts, and stops every other process |
-| 1 | Dispatcher | `dispatcher` | `Dispatcher` | Copies every published message into every module's inbox |
+| 1 | Dispatcher | `dispatcher` | `Dispatcher` | Puts each published message into the inbox of every module that subscribes to it |
 | 2 | Stats | `stats` | `StatsModule` | Records what the node sees; derives the node, seek, and candidate lists; ranks content for eviction |
 | 3 | Web server | `webserver` | `WebServerModule` | Serves the HTTP API, applications, and `/config`, and reports what it was asked |
 | 4 | Validator | `validator` | `ValidatorModule` | Checks uploads against their content ids and promotes them into `cas/data` |
@@ -408,11 +410,11 @@ of one, and never a lambda or nested function.
 | Each module | Its name | `ModuleName` |
 | Each module | Its factory | `ModuleFactory` |
 | Each module | The validated configuration | `LibranetConfig` |
-| Each module | Its inbox and outbox | `ModuleQueues` |
+| Each module | Its inbox and outbox, and the events it subscribes to | `ModuleQueues` |
 | Each module | The modules' stop event | `multiprocessing.Event` |
 | Dispatcher | Its entry point | `DispatcherEntry` |
 | Dispatcher | The configuration | `LibranetConfig` |
-| Dispatcher | Every module's queues | `Mapping[ModuleName, ModuleQueues]` |
+| Dispatcher | Every module's queues, and the events each subscribes to | `Mapping[ModuleName, ModuleQueues]` |
 | Dispatcher | Its own stop event, and a ready event | `multiprocessing.Event` |
 
 What is not passed matters as much:
@@ -436,7 +438,7 @@ exited and however often.
 | Restarted | At once, ahead of anything else | After a backoff delay |
 | Delay | None | 0.5 s, doubling with each exit in a row, at most 30 s |
 | Backoff resets | — | When the module had stayed up for 60 s |
-| While it is down | No module is started or restarted | Messages for it wait in its inbox |
+| While it is down | No module is started or restarted | Messages for it wait in its inbox, and in the dispatcher once that is full |
 
 | Exits in a row | 1 | 2 | 3 | 4 | 5 | 6 | 7 or more |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -543,7 +545,8 @@ flowchart TD
 
 `receive()` discards, while it waits, every message the module does not
 want: malformed ones, which it logs, its own, and events outside its
-`subscriptions`.
+`subscriptions`. The dispatcher delivers neither of the last two (§6.1), so
+those reach a module only when a test puts them in its inbox.
 
 `on_idle` runs only when a whole poll interval passes without a message the
 module wants. A module sent one at least every half second never idles, and
@@ -625,10 +628,11 @@ To add a module to the node:
 1. Add a member to `ModuleName`, and put it in `SPAWNED_MODULES` where it
    should start.
 2. Write the class and its factory in `src/libranet/{area}/module.py`.
-3. Map the name to the factory in `_FACTORIES` in
+3. Map the name to the factory and the class in `_MODULES` in
    `supervision/registry.py`. Every spawned module but the dispatcher needs
    one there: without it, `default_module_specs` raises `KeyError`, and the
-   node does not start.
+   node does not start. The class's `subscriptions` are what the
+   dispatcher delivers to the module.
 
 To add an event:
 
@@ -680,6 +684,8 @@ receives.
 A single-threaded module does its work inside `handle` or `on_idle`, so
 long work holds up its other messages. A backup of a large directory, for
 one, runs to the end before the backup module reads its next message.
+Meanwhile its inbox fills only with what it subscribes to, and what will
+not fit waits in the dispatcher (§6.3), so the rest of the node carries on.
 
 ## 6. The Message Bus
 
@@ -693,8 +699,8 @@ flowchart LR
     subgraph dispside["Dispatcher process"]
         reader["a reader thread per outbox"]
         pending["one pending queue"]
-        broadcast["validate, then put in every inbox"]
-        reader --> pending --> broadcast
+        deliver["validate, then put in each subscriber's inbox"]
+        reader --> pending --> deliver
     end
     subgraph subside["Each of the 8 modules"]
         rcv["receive(): validate and filter"]
@@ -702,7 +708,7 @@ flowchart LR
         rcv --> hdl
     end
     pub -->|"outbox"| reader
-    broadcast -->|"inbox"| rcv
+    deliver -->|"inbox"| rcv
 ```
 
 1. `publish()` wraps the payload in an envelope (`make_message`) and puts
@@ -712,10 +718,15 @@ flowchart LR
    one local queue, because a `multiprocessing.Queue` cannot be waited on
    alongside others.
 3. The dispatcher's main thread validates the envelope and puts the
-   message into every module's inbox, the publisher's own included.
+   message into the inbox of every module that subscribes to its event, or
+   into every inbox if it is `shutdown`, but never into its publisher's own.
+   A full inbox holds up no other: what it cannot take is held, in order,
+   and put in as the module reads (§6.3).
 4. In each module, `receive()` validates the envelope again, and keeps the
    message only if another module published it and it is either
-   `shutdown` or an event the module subscribes to.
+   `shutdown` or an event the module subscribes to. Every message the
+   dispatcher delivers passes; the check guards what a test puts straight
+   into an inbox.
 
 ### 6.2 The Envelope
 
@@ -749,16 +760,16 @@ look early.
 
 | Property | Behavior |
 | --- | --- |
-| Routing | Broadcast: every message goes to every module's inbox, and the receiver filters |
-| A module's own messages | Never delivered back to it. The backup module both publishes and subscribes to `data.stored`, and sees only other modules' |
+| Routing | By subscription: each message goes to the inbox of every module whose `ModuleQueues.subscriptions` include its event, and `shutdown` to every inbox. The receiver filters again |
+| A module's own messages | Never delivered back to it: the dispatcher skips the publisher's inbox. The backup module both publishes and subscribes to `data.stored`, and sees only other modules' |
 | Order | Messages from one module arrive in the order it published them; there is no order between modules |
 | Delivery | At most once, held in memory only |
 | A module restarts | Messages waiting in its inbox survive; one it was handling is lost |
 | The node restarts | Every message in every queue is lost |
 | A malformed message | Logged and dropped by the dispatcher, and again by the receiver |
 | A handler raises | The exception is logged, and the module carries on with its next message |
-| Capacity | Unbounded queues, with no backpressure (Phase 1 §5) |
-| Cost | Each message is pickled into the outbox, and again into each of the eight inboxes |
+| Capacity | A `multiprocessing.Queue` holds at most `SEM_VALUE_MAX` unread messages, 32,767 on macOS, and a `put` past that waits. The dispatcher never waits: what a full inbox cannot take is held in its memory, without limit, and put in as the module reads. The inbox filling is logged as a warning, and what was held at info once it is all delivered. Nothing tells publishers to slow down (Phase 2 Step 61) |
+| Cost | Each message is pickled into the outbox, and again into the inbox of each module it is delivered to |
 | Replies | None built in: no request ids, and no reply-to address (§10.1) |
 
 ### 6.4 The `shutdown` Event
@@ -1135,7 +1146,7 @@ the details of each.
 | --- | --- | --- | --- | --- |
 | Stop request | `threading.Event` | The supervisor's `SIGINT` and `SIGTERM` handler | The supervisor's run loop | The node is asked to stop |
 | Modules' stop | `multiprocessing.Event` | `shutdown()` | Every module's receive loop | Leave the loop |
-| Dispatcher's stop | `multiprocessing.Event` | `shutdown()`, once the modules have exited | The dispatcher | Stop broadcasting |
+| Dispatcher's stop | `multiprocessing.Event` | `shutdown()`, once the modules have exited | The dispatcher | Stop delivering |
 | Ready | `multiprocessing.Event`, new for each dispatcher start | The dispatcher, once it is running | The supervisor | Modules may start |
 | `SIGTERM` | OS signal | The supervisor, once a stop stage times out | A child, which raises `SystemExit` | Unwind and exit |
 | `SIGKILL` | OS signal | The supervisor, when `SIGTERM` was ignored | — | Exit now |
@@ -1205,7 +1216,7 @@ side recovers:
 | Unbundler | Directories held in memory; a reclaim in progress | Directories are read back from each bundle's saved `directory.jzon`; eviction times out the reclaim |
 | Eviction | Hand-offs under way; its list of candidates; which peers are connected | It counts storage again at start, asks which peers are connected, and asks stats again |
 | Backup | Restores, builds, and exports | They must be asked for again; jobs are read back from `backup_jobs.json` |
-| Dispatcher | Messages it had read but not yet broadcast | Nothing recovers them; no module is started until it is back |
+| Dispatcher | Messages it had read but not yet delivered, and those it held for a full inbox | Nothing recovers them; no module is started until it is back |
 
 ## 11. Testing Modules
 
@@ -1237,7 +1248,7 @@ assert message["event"] == EventType.DATA_STORED
 | Level | How | Where |
 | --- | --- | --- |
 | One module | Queues from `queue.Queue`; call `handle` and the hooks directly, with a fake clock where timing matters | `tests/test_*_module.py` |
-| The bus | `Dispatcher.dispatch_pending()`, which broadcasts without threads | `tests/test_messaging_dispatcher.py` |
+| The bus | `Dispatcher.dispatch_pending()`, which delivers without threads | `tests/test_messaging_dispatcher.py` |
 | Supervision | Real `spawn` processes running the modules in `tests/stubs.py`, which crash, linger, or publish on the way out on purpose | `tests/test_supervision.py` |
 | A whole node | `supervisor.main(argv, stop=event)`, which runs until the event is set | `tests/test_supervisor.py` |
 | Many nodes | `scripts/local_network.py`, which runs linked nodes on `127.0.0.1` | `tests/test_local_network.py`, and by hand |
@@ -1246,11 +1257,10 @@ assert message["event"] == EventType.DATA_STORED
 
 What the module system does not do yet:
 
-- **No backpressure.** Queues are unbounded (Phase 1 §5). A module that
-  falls behind grows its inbox without limit, and nothing tells publishers
-  to slow down.
-- **Broadcast costs every module.** Each message is copied into all eight
-  inboxes, including those of modules that discard it.
+- **No backpressure.** Nothing tells publishers to slow down. A module
+  that falls behind fills its inbox, which holds at most 32,767 messages on
+  macOS, and the dispatcher then holds the rest in memory without limit
+  (§6.3). A dispatcher that restarts loses what it held.
 - **`on_idle` needs a pause in traffic.** A module sent a message it wants
   at least every half second never runs `on_idle` (§5.1).
 - **Payloads have no schema.** The dispatcher checks the envelope only.

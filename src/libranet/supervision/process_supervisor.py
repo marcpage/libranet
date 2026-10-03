@@ -3,7 +3,9 @@
 Every child is started with the ``spawn`` method and handed the validated
 config object and its queues directly. The supervisor owns the queues, so
 they outlive any one child: messages published while a process is down wait
-in its queues until its replacement picks them up.
+in its queues, and in the dispatcher once its inbox is full, until its
+replacement picks them up. Each module's queues carry the events its spec
+says it subscribes to, so the dispatcher delivers it only those.
 
 Restart policy:
 
@@ -119,7 +121,11 @@ class ProcessSupervisor:  # pylint: disable=too-many-instance-attributes
         # The dispatcher has its own, set once every module has exited.
         self._dispatcher_stop = self._context.Event()
         self._stop_requested: StopSignal = self._stop
-        self._queues = create_module_queues(names, START_METHOD)
+        self._queues = create_module_queues(
+            names,
+            START_METHOD,
+            {spec.name: spec.subscriptions for spec in modules if spec.subscriptions is not None},
+        )
         self._dispatcher = _Child(ModuleName.DISPATCHER)
         self._modules = {name: _Child(name) for name in names}
         self._start_log: list[ModuleName] = []

@@ -1,6 +1,7 @@
 """Tests for the dispatcher, using fake module queues rather than subprocesses."""
 
 from __future__ import annotations
+from logging import INFO
 from queue import Empty, Queue
 from threading import Event, Thread
 from time import sleep
@@ -34,13 +35,95 @@ def _drain(queue: MessageQueue) -> list[Message]:
             return items
 
 
-def test_dispatch_broadcasts_to_every_inbox(endpoints: dict[ModuleName, ModuleQueues]) -> None:
+def test_dispatch_delivers_to_every_inbox_but_the_publishers(
+    endpoints: dict[ModuleName, ModuleQueues],
+) -> None:
     message = make_message(EventType.DATA_NOT_FOUND, ModuleName.WEBSERVER, {"hash": "01"})
 
     assert Dispatcher(endpoints).dispatch(message) == message
 
-    for queues in endpoints.values():
-        assert _drain(queues.inbox) == [message]
+    assert _drain(endpoints[ModuleName.WEBSERVER].inbox) == []
+    assert _drain(endpoints[ModuleName.FETCHER].inbox) == [message]
+    assert _drain(endpoints[ModuleName.STATS].inbox) == [message]
+
+
+def test_dispatch_delivers_only_subscribed_events_and_shutdown() -> None:
+    stats = ModuleQueues(Queue(), Queue(), frozenset({EventType.DATA_NOT_FOUND}))
+    fetcher = ModuleQueues(Queue(), Queue(), frozenset())
+    webserver = ModuleQueues(Queue(), Queue())
+    dispatcher = Dispatcher(
+        {ModuleName.STATS: stats, ModuleName.FETCHER: fetcher, ModuleName.WEBSERVER: webserver}
+    )
+    missed = make_message(EventType.DATA_NOT_FOUND, ModuleName.UNBUNDLER, {"hash": "01"})
+    searched = make_message(EventType.SEARCH_REQUESTED, ModuleName.UNBUNDLER, {"prefix": "ab"})
+    shutdown = make_message(EventType.SHUTDOWN, ModuleName.SUPERVISOR)
+
+    for message in (missed, searched, shutdown):
+        dispatcher.dispatch(message)
+
+    assert _drain(stats.inbox) == [missed, shutdown]
+    assert _drain(fetcher.inbox) == [shutdown]
+    assert _drain(webserver.inbox) == [missed, searched, shutdown]
+
+
+def _slow_endpoints(room: int) -> dict[ModuleName, ModuleQueues]:
+    """The modules of ``MODULES``, with room in the stats module's inbox for only ``room``."""
+    return {
+        module: ModuleQueues(
+            inbox=Queue(maxsize=room) if module == ModuleName.STATS else Queue(), outbox=Queue()
+        )
+        for module in MODULES
+    }
+
+
+def _numbered(count: int) -> list[Message]:
+    return [
+        make_message(EventType.DATA_NOT_FOUND, ModuleName.UNBUNDLER, {"n": number})
+        for number in range(count)
+    ]
+
+
+def test_a_full_inbox_holds_up_no_other(caplog: LogCaptureFixture) -> None:
+    endpoints = _slow_endpoints(3)
+    dispatcher = Dispatcher(endpoints)
+    messages = _numbered(5)
+
+    with caplog.at_level(INFO):
+        for message in messages:
+            dispatcher.dispatch(message)
+
+        assert _drain(endpoints[ModuleName.WEBSERVER].inbox) == messages
+        assert _drain(endpoints[ModuleName.FETCHER].inbox) == messages
+        assert _drain(endpoints[ModuleName.STATS].inbox) == messages[:3]
+        assert caplog.text.count("The stats module's inbox is full") == 1
+        assert "Delivered" not in caplog.text
+
+        dispatcher.dispatch_pending()
+
+    assert _drain(endpoints[ModuleName.STATS].inbox) == messages[3:]
+    assert "Delivered the 2 messages held for the stats module" in caplog.text
+
+
+def test_messages_held_for_a_full_inbox_keep_their_order() -> None:
+    endpoints = _slow_endpoints(2)
+    dispatcher = Dispatcher(endpoints)
+    messages = _numbered(6)
+    received: list[Message] = []
+
+    for message in messages[:3]:
+        dispatcher.dispatch(message)
+
+    received += _drain(endpoints[ModuleName.STATS].inbox)
+
+    # The inbox has room again, but what is newer waits behind what is held.
+    for message in messages[3:]:
+        dispatcher.dispatch(message)
+
+    while len(received) < len(messages):
+        dispatcher.dispatch_pending()
+        received += _drain(endpoints[ModuleName.STATS].inbox)
+
+    assert received == messages
 
 
 def test_dispatch_drops_malformed_messages(
@@ -80,6 +163,38 @@ def test_run_stops_when_the_stop_signal_is_set(endpoints: dict[ModuleName, Modul
     assert not thread.is_alive()
 
 
+def test_run_delivers_to_the_others_while_one_inbox_is_never_read() -> None:
+    endpoints = _slow_endpoints(2)
+    stop = Event()
+    thread = Thread(target=Dispatcher(endpoints, poll_interval_seconds=0.01).run, args=(stop,))
+    thread.start()
+    messages = _numbered(10)
+
+    for message in messages:
+        endpoints[ModuleName.WEBSERVER].outbox.put(message)
+
+    received: list[Message] = []
+
+    try:
+        while len(received) < len(messages):
+            received.append(endpoints[ModuleName.FETCHER].inbox.get(timeout=5))
+
+        stats_inbox = endpoints[ModuleName.STATS].inbox
+        assert isinstance(stats_inbox, Queue)
+        assert stats_inbox.full()
+
+        # Once it is read, what was held for it follows.
+        for message in messages:
+            assert endpoints[ModuleName.STATS].inbox.get(timeout=5) == message
+
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+    assert received == messages
+    assert not thread.is_alive()
+
+
 class EchoStats(ModuleBase):
     """Answers every search request with a node-list update."""
 
@@ -100,6 +215,15 @@ class Collector(ModuleBase):
 
     def handle(self, message: Message) -> None:
         self.received.append(message)
+
+
+def test_created_queues_carry_the_subscriptions_given() -> None:
+    subscribed = frozenset({EventType.SEARCH_REQUESTED})
+    endpoints = create_module_queues(MODULES, subscriptions={ModuleName.STATS: subscribed})
+
+    assert endpoints[ModuleName.STATS].subscriptions == subscribed
+    assert endpoints[ModuleName.FETCHER].subscriptions is None
+    assert endpoints[ModuleName.WEBSERVER].subscriptions is None
 
 
 def test_modules_talk_through_a_running_dispatcher() -> None:

@@ -19,12 +19,21 @@ from typing import Any, Callable, Iterator
 
 from pytest import LogCaptureFixture, MonkeyPatch, fixture, raises
 
+from libranet.backup.module import BackupModule
 from libranet.config.models import LibranetConfig
+from libranet.connections.module import ConnectionsModule
+from libranet.eviction.module import EvictionModule
+from libranet.fetcher.module import FetcherModule
+from libranet.messaging.module import ModuleBase
 from libranet.messaging.queues import START_METHOD, ModuleQueues
 from libranet.modules import SPAWNED_MODULES, ModuleName
+from libranet.stats.module import StatsModule
 from libranet.supervision.process_supervisor import ProcessSupervisor
 from libranet.supervision.registry import default_module_specs
 from libranet.supervision.specs import ModuleSpec
+from libranet.unbundler.module import UnbundlerModule
+from libranet.validator.module import ValidatorModule
+from libranet.webserver.module import WebServerModule
 
 from tests.stubs import (
     CrashingStubModule,
@@ -155,6 +164,22 @@ def test_default_specs_cover_every_module_but_the_dispatcher() -> None:
     names = tuple(spec.name for spec in default_module_specs())
 
     assert names == tuple(module for module in SPAWNED_MODULES if module != ModuleName.DISPATCHER)
+
+
+def test_default_specs_subscribe_to_what_their_modules_do() -> None:
+    classes: dict[ModuleName, type[ModuleBase]] = {
+        ModuleName.WEBSERVER: WebServerModule,
+        ModuleName.VALIDATOR: ValidatorModule,
+        ModuleName.STATS: StatsModule,
+        ModuleName.CONNECTIONS: ConnectionsModule,
+        ModuleName.FETCHER: FetcherModule,
+        ModuleName.UNBUNDLER: UnbundlerModule,
+        ModuleName.EVICTION: EvictionModule,
+        ModuleName.BACKUP: BackupModule,
+    }
+
+    for spec in default_module_specs():
+        assert spec.subscriptions == classes[spec.name].subscriptions
 
 
 def test_dispatcher_may_not_be_listed_as_a_module(config: LibranetConfig) -> None:

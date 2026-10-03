@@ -25,7 +25,8 @@ process** over `multiprocessing.Queue`. Messages are plain Python dicts
 with a small common envelope (event type, timestamp, source module) plus
 event-specific fields; event types are defined in a shared enum module.
 The dispatcher broadcasts every message to every module's queue, and each
-module filters for what it cares about.
+module filters for what it cares about. Since Phase 2 Step 61, it delivers
+each message only to the modules that subscribe to it.
 
 The modules:
 
@@ -162,7 +163,11 @@ package).
   passed into the constructor).
 - The dispatcher process itself: receives from every module's outgoing
   queue, broadcasts to every module's incoming queue. Queues are
-  unbounded for v1 — no backpressure handling yet.
+  unbounded for v1 — no backpressure handling yet. Phase 2 Step 61 found
+  they are not: on macOS a `multiprocessing.Queue` holds at most 32,767
+  unread messages, and one module's full inbox stalled the dispatcher. It
+  now holds what a full inbox cannot take, and delivers each message only
+  to the modules that subscribe to it.
 
 **Testable in isolation:** unit tests can construct a dispatcher and
 fake module queues directly, no real subprocesses needed (this is also

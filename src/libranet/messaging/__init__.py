@@ -1,7 +1,8 @@
 """Inter-module message bus (Phase 1 Step 3).
 
 The shared event-type enum, the message envelope, the module base class, and
-the dispatcher process that broadcasts every message to every module.
+the dispatcher process that delivers each message to the modules that
+subscribe to it.
 """
 
 from libranet.messaging.dispatcher import DEFAULT_DISPATCH_POLL_INTERVAL_SECONDS, Dispatcher
