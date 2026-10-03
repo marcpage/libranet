@@ -93,6 +93,12 @@
   </section>
 
   <section>
+    <h2>Applications</h2>
+    <div id="applications"><span class="note">Asking the node&hellip;</span></div>
+    <noscript><p class="note">Listing this node's applications needs JavaScript.</p></noscript>
+  </section>
+
+  <section>
     <h2>Where next</h2>
     <ul>
       <li>
@@ -231,7 +237,52 @@ async function describeNode() {
   }
 }
 
+// The applications this node serves (HttpApi 13.4), but for this one and
+// /config, which the page links to already.
+async function listApplications() {
+  let response;
+
+  try {
+    response = await fetch("/data/applications", { cache: "no-store" });
+  } catch (error) {
+    note("applications", "The node could not be reached.", "error");
+    return;
+  }
+
+  if (response.status === 401) {
+    note("applications", "This node lists its applications only to other nodes.");
+    return;
+  }
+
+  if (!response.ok) {
+    note("applications", `The applications could not be listed (${response.status}).`, "error");
+    return;
+  }
+
+  const names = Object.keys((await response.json()).applications || {})
+    .filter((name) => name !== "/" && name !== "config")
+    .sort();
+
+  if (names.length === 0) {
+    note("applications", "This node serves no other applications.");
+    return;
+  }
+
+  const list = document.createElement("ul");
+
+  for (const name of names) {
+    const link = make("a", name);
+    link.href = `/${encodeURIComponent(name)}/`;
+    const item = document.createElement("li");
+    item.append(link);
+    list.append(item);
+  }
+
+  byId("applications").replaceChildren(list);
+}
+
 describeNode();
+listApplications();
 </script>
 </body>
 </html>

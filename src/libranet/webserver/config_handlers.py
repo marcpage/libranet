@@ -42,7 +42,9 @@ themselves, and the change is served from the next request on::
     DELETE /config/api/applications/{name}   stop serving one
 
 A name in a path is percent-encoded as one segment, so the root application,
-``/``, is ``/config/api/applications/%2F``. A registry file that cannot be
+``/``, is ``/config/api/applications/%2F``. What the main port's registry
+holds is also answered to any client there, at ``GET /data/applications``
+(HttpApi §13.4), so that the root application can link to each one. A registry file that cannot be
 read is ``500``, saying why, and is never saved over: fixing or removing it
 by hand is the way back.
 
@@ -59,7 +61,7 @@ connection stays usable, whatever type it says it is.
 """
 
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import KW_ONLY, dataclass
 from http import HTTPStatus
 from logging import getLogger
 from re import escape
@@ -104,6 +106,9 @@ APPLICATIONS_PATH: Final = CONFIG_API_PATH + "/applications"
 BACKUP_JOB_PATTERN: Final = BACKUPS_PATH + rf"/(?P<job_id>[0-9a-fA-F]{{{IDENTIFIER_LENGTH}}})"
 BACKUP_RUN_PATTERN: Final = BACKUP_JOB_PATTERN + "/run"
 APPLICATION_PATTERN: Final = APPLICATIONS_PATH + "/(?P<name>[^/]+)"
+
+#: Where any client asks the main port which applications it serves (HttpApi §13.4).
+DATA_APPLICATIONS_PATH: Final = "/data/applications"
 
 # What each route's pattern begins with in place of /config: the name in any
 # case, as an application's name matches (HttpApi §13). So /CONFIG/api is the
@@ -259,9 +264,16 @@ class BackupJobEventHandler:
 
 @dataclass(frozen=True)
 class ApplicationListHandler:
-    """``GET /config/api/applications``: every registered application, by name."""
+    """``GET /config/api/applications``, or ``/data/applications``: every application, by name.
+
+    A registry file that cannot be read is ``500``, saying why, which names
+    the file, unless ``names_the_file`` is unset, as it is where any client
+    may ask (HttpApi §23).
+    """
 
     registry: ApplicationRegistry
+    _: KW_ONLY
+    names_the_file: bool = True
 
     def __call__(self, request: Request) -> Response:
         try:
@@ -269,6 +281,16 @@ class ApplicationListHandler:
 
         except RegistryFileError as error:
             _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, error)
+
+            if not self.names_the_file:
+                return problem_response(
+                    Problem.for_status(
+                        HTTPStatus.INTERNAL_SERVER_ERROR,
+                        detail="The application registry cannot be read.",
+                        instance=request.path,
+                    )
+                )
+
             return _unreadable_registry_response(request, error)
 
 

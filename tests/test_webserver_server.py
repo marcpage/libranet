@@ -1008,6 +1008,7 @@ def test_unsigned_api_reads_can_be_refused(
         f"/data/{CONTENT_ID}",
         f"/data/{MISSING_ID}",
         f"/data/search/{CONTENT_ID.hash[:4]}",
+        "/data/applications",
         "/data/no/such/endpoint",
     ]
 
@@ -1630,6 +1631,34 @@ def test_an_application_registered_through_config_is_served_at_once(
     assert gone.status == 404
 
 
+@mark.parametrize("applications", [{"myapp": APP_BUNDLE_ID}])
+def test_any_client_is_told_which_applications_are_served_as_registered(
+    server: LibranetHTTPServer, connection: HTTPConnection, config_connection: HTTPConnection
+) -> None:
+    # The live server only ever sees loopback clients, so the remote request
+    # is put to the router directly.
+    remote = server.router.dispatch(
+        Request("GET", "/data/applications", client_address="203.0.113.42")
+    )
+    registered, _ = _config(
+        config_connection,
+        "/config/api/applications",
+        "POST",
+        _credentials(),
+        dumps({"name": "Wiki", "bundle": str(APP_BUNDLE_ID)}).encode("utf-8"),
+    )
+    listed, body = _get(connection, "/data/applications")
+
+    assert remote.status == 200
+    assert loads(remote.body) == {"applications": {"myapp": str(APP_BUNDLE_ID)}}
+    assert registered.status == 200
+    assert listed.status == 200
+    assert listed.getheader("Content-Type") == JSON_CONTENT_TYPE
+    assert loads(body) == {
+        "applications": {"myapp": str(APP_BUNDLE_ID), "wiki": str(APP_BUNDLE_ID)}
+    }
+
+
 @mark.parametrize(
     "client_address, headers, status",
     [("203.0.113.42", _credentials(), 403), ("127.0.0.1", {}, 401)],
@@ -1668,9 +1697,13 @@ def test_a_registry_that_cannot_be_read_leaves_the_rest_of_the_node_served(
     application, _ = _get(connection, "/wiki/")
     index, _ = _config(config_connection, "/config/api", headers=_credentials())
     listing, body = _config(config_connection, "/config/api/applications", headers=_credentials())
+    listed, problem = _get(connection, "/data/applications")
 
     assert data.status == 200
     assert application.status == 500
+    # Any client may list the applications, and is not told where the file is.
+    assert listed.status == 500
+    assert str(registry.path) not in loads(problem)["detail"]
     assert index.status == 200
     assert listing.status == 500
     assert str(registry.path) in loads(body)["detail"]

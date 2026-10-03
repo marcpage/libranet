@@ -354,7 +354,8 @@ application itself, the administration page, which a new node also ships.
 Registering another bundle as `config` replaces that page; `/config/api` keeps
 answering whatever it names, so it can always be pointed back. `GET` the same
 path lists what is registered, and `DELETE /config/api/applications/wiki`
-removes one (the root is `%2F`).
+removes one (the root is `%2F`). Any client may list them with
+`GET /data/applications`, and the page a new node serves at `/` links to each.
 
 ### Publish a drop under a name
 

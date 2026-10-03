@@ -73,7 +73,12 @@ from libranet.webserver.config_guard import (
     MovedConfigGuard,
     local_config_guard,
 )
-from libranet.webserver.config_handlers import NodeDescription, config_routes
+from libranet.webserver.config_handlers import (
+    DATA_APPLICATIONS_PATH,
+    ApplicationListHandler,
+    NodeDescription,
+    config_routes,
+)
 from libranet.webserver.data_handler import DATA_PATTERN, DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
 from libranet.webserver.errors import IncompleteBodyError, ResponseCutShortError
@@ -128,14 +133,16 @@ def build_router(
     is set. Applications are served as the registry in ``storage``'s data
     directory names them, and as ``content`` says the node ships them until
     it does, but for ``/config``, whose pages are redirected to
-    ``config_port``, where it is served. ``app_outcomes`` holds what the
-    unbundler reported for their paths. ``content`` is what ``/data`` reads
-    and searches: the source of truth, then any content archives (Step 34),
-    and the applications the node ships (Step 37). It is the source of truth
-    alone, shipping nothing, if none is given.
+    ``config_port``, where it is served. ``/data/applications`` lists them
+    for any client. ``app_outcomes`` holds what the unbundler reported for
+    their paths. ``content`` is what ``/data`` reads and searches: the source
+    of truth, then any content archives (Step 34), and the applications the
+    node ships (Step 37). It is the source of truth alone, shipping nothing,
+    if none is given.
     """
     store = CasStore.source_of_truth(storage)
     content = LayeredSource(store) if content is None else content
+    registry = _registry(storage, content)
     # A remote /config request is refused, and any other is told where /config
     # is, before its signature is checked or its body read. The rest have
     # their signatures checked before any endpoint sees them.
@@ -174,9 +181,12 @@ def build_router(
         SEEK_PATH,
         SeekListHandler(storage.max_object_bytes, storage.max_decompressed_list_bytes, publish),
     )
+    router.add(
+        "GET", DATA_APPLICATIONS_PATH, ApplicationListHandler(registry, names_the_file=False)
+    )
     # Last, since its pattern fits every path outside the reserved names.
     applications = _applications(
-        _registry(storage, content),
+        registry,
         storage,
         PartReader(content, publish, app_wait_seconds, retry_after_seconds),
         retry_after_seconds,
