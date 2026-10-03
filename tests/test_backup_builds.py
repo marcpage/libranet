@@ -4,7 +4,7 @@ from __future__ import annotations
 from io import BytesIO
 from json import loads
 from logging import INFO
-from os import symlink
+from os import symlink, urandom
 from pathlib import Path
 
 from pytest import LogCaptureFixture, fixture, mark, raises
@@ -14,10 +14,12 @@ from libranet.backup.builds import RECORD_SUFFIX, Build, BuildRecord
 from libranet.backup.errors import BuildRecordError
 from libranet.backup.runs import AnnouncingStore, BuildSettings
 from libranet.backup.tasks import TaskStatus
+from libranet.bundle.building import build_directory
 from libranet.bundle.errors import BundleTooLargeError, PasswordProtectedBundleError
 from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.layering import Layering, Superseded
 from libranet.bundle.loading import load_bundle
+from libranet.bundle.parts import PartPath
 from libranet.bundle.reassembly import write_file
 from libranet.bundle.serialization import bundle_value
 from libranet.bundle.shapes import (
@@ -29,11 +31,13 @@ from libranet.bundle.shapes import (
     Symlink,
 )
 from libranet.bundle.storing import store_bundle
-from libranet.bundle.xattrs import ExtendedAttributes
+from libranet.bundle.xattrs import INLINE_LIMIT_BYTES, ExtendedAttributes
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import MIB
 from libranet.protocol.config_requests import BuildRequest, Password
+
+from tests.helpers import encrypted_part
 
 REQUESTED_AT = 1_789_000_000.0
 FINISHED_AT = REQUESTED_AT + 5
@@ -156,6 +160,17 @@ def parts_of(bundle: ContentId, path: str, store: CasStore) -> list[ContentId]:
     return [ContentId.parse(part) for part in entry.parts]
 
 
+def file_parts(bundle: ContentId, store: CasStore, password: str | None = None) -> list[PartPath]:
+    """Every part of every file ``bundle`` holds, once its extensions are overlaid."""
+    key = None if password is None else password.encode()
+    entries = resolve_directory(
+        top_of(bundle, store, password),
+        lambda content_id: load_bundle(content_id, store, password=key),
+    ).values()
+    files = [entry for entry in entries if isinstance(entry, FileBundle)]
+    return [PartPath.parse(part) for entry in files for part in entry.parts]
+
+
 def test_a_build_holds_the_whole_directory_plain_and_records_it_beside_it(
     site: Path, sink: AnnouncingStore, store: CasStore
 ) -> None:
@@ -242,6 +257,37 @@ def test_a_password_protects_the_bundle_and_everything_it_is_split_into(
     assert contents(bundle, store, "correct horse")["index.html"] == b"<p>home</p>"
 
 
+@mark.parametrize("password", [None, "correct horse"])
+def test_a_protected_build_encrypts_every_part_and_a_plain_one_none(
+    site: Path, sink: AnnouncingStore, store: CasStore, password: str | None
+) -> None:
+    bundle = bundle_of(build(site, sink, password))
+
+    parts = file_parts(bundle, store, password)
+    assert len(parts) == 2
+    assert all(part.encrypted == (password is not None) for part in parts)
+    # Protected, no file's bytes are stored where anyone may fetch and read them.
+    assert store.exists(ContentId.for_data(b"<p>home</p>", "sha256")) == (password is None)
+
+
+def test_a_protected_build_over_one_whose_parts_are_unencrypted_encrypts_every_file(
+    site: Path, sink: AnnouncingStore, store: CasStore
+) -> None:
+    # As a node made protected builds before it encrypted their parts.
+    entries = build_directory(site, sink).entries
+    plain = store_bundle(DirectoryBundle(entries), sink, b"correct horse")
+    BuildRecord.of(Superseded(plain, entries, (), Layering()), True).save(BuildRecord.beside(site))
+
+    second = bundle_of(build(site, sink, "correct horse"))
+
+    # A layer over it, protected alike, restating every file and nothing else.
+    top = top_of(second, store, "correct horse")
+    assert set(top.entries) == {"index.html", "pages/about.html"}
+    assert top.extensions == (str(plain),)
+    assert all(part.encrypted for part in file_parts(second, store, "correct horse"))
+    assert contents(second, store, "correct horse") == contents(plain, store, "correct horse")
+
+
 def test_the_same_password_again_on_an_unchanged_directory_keeps_its_bundle(
     site: Path, sink: AnnouncingStore
 ) -> None:
@@ -263,6 +309,7 @@ def test_protecting_a_bundle_otherwise_makes_a_new_version_though_nothing_change
     assert second != first
     assert top_of(second, store, after).versions == (str(first),)
     assert contents(second, store, after) == contents(first, store, before)
+    assert all(part.encrypted == (after is not None) for part in file_parts(second, store, after))
     # Stored whole, so whoever can read it can read all it holds.
     assert placed(site) == (second, Layering())
     assert record_of(site).protected == (after is not None)
@@ -421,7 +468,7 @@ def test_a_protected_bundle_no_longer_held_is_superseded_whole_from_what_it_reco
     second = bundle_of(build(site, sink, "correct horse"))
 
     # Only the new part and the bundle are stored: nothing unchanged was read again.
-    assert set(recorder.announced) == {ContentId.for_data(b"<p>home, again</p>", "sha256"), second}
+    assert set(recorder.announced) == {encrypted_part(b"<p>home, again</p>").content_id, second}
     assert top_of(second, store, "correct horse").extensions == ()
     assert top_of(second, store, "correct horse").versions == (str(first),)
     assert placed(site) == (second, Layering())
@@ -524,6 +571,22 @@ def test_a_build_records_the_extended_attributes_asked_for(
     index = top_of(bundle_of(task), store).entries["index.html"]
     assert isinstance(index, FileBundle)
     assert index.metadata.xattrs == {"user.tag": "cmVk"}
+
+
+@mark.usefixtures("supports_xattrs")
+def test_a_protected_build_encrypts_an_extended_attribute_stored_as_parts(
+    site: Path, sink: AnnouncingStore, store: CasStore
+) -> None:
+    fork = urandom(INLINE_LIMIT_BYTES + 1)
+    xattr(str(site / "index.html")).set("user.fork", fork)
+    task = Build(BuildRequest(str(site), Password("correct horse")), REQUESTED_AT)
+    task.begin()
+
+    task.run(sink, BuildSettings(MIB, MAX_LAYERS, xattrs=ExtendedAttributes()), lambda: FINISHED_AT)
+
+    index = top_of(bundle_of(task), store, "correct horse").entries["index.html"]
+    assert isinstance(index, FileBundle)
+    assert index.metadata.xattrs == {"user.fork": (str(encrypted_part(fork)),)}
 
 
 def test_a_build_reports_what_it_made_and_never_its_password(

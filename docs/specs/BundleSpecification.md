@@ -307,6 +307,13 @@ at once — the whole serialized bundle becomes the encrypted payload. A
 password-protected bundle is recognized because its raw bytes are **not
 valid JSON** (in fact generally not valid UTF-8 text at all).
 
+Protection hides what a bundle records, but not the content its parts name:
+each part is an object in CAS, which anyone who learns its address can fetch.
+An encoder protecting a bundle MUST therefore encrypt every part of every file
+it holds, and of every extended attribute's value stored as parts (§2.4), with
+per-entry encryption (§7). A decoder MUST still read a part that is not
+encrypted, as an encoder may have written one before this was required.
+
 ### 6.1 Encoding (write path)
 
 ```Python
@@ -464,8 +471,8 @@ data using an extended path scheme:
 This allows individual pieces of content to be encrypted while leaving the
 surrounding bundle structure (directory listings, filenames, metadata) fully
 readable — unlike §6, which encrypts the bundle structure but not the contents.
-The two combine: a password-protected bundle whose entries are encrypted hides
-both, as a backup does
+The two combine: a password-protected bundle names its parts encrypted (§6),
+and so hides both, as a backup does
 ([Backup Specification §4](BackupSpecification.md#4-backup-secret-and-encryption)).
 
 ### 7.1 Fields

@@ -68,7 +68,7 @@ the work wants to be done in:
   and restore more faithful: creation times that survive a restore (Step
   47), extended attributes (Step 52), and a restore that knows when to
   stop waiting (Step 51). And Step 59 encrypts the files a backup holds,
-  not only its bundle.
+  not only its bundle, and Step 60 those of a build given a password.
 
 Step 32 is documentation the specification asks for, and Step 54 a switch
 for the script that runs a local test network.
@@ -2998,6 +2998,7 @@ My calls, not yet reviewed:
   rather than 1 MiB, so every part fits once padded, compressed or not.
 - **Only backups encrypt.** A build (Phase 1 Step 38) stays plain,
   password or not, since it is for an application a node must serve.
+  Overruled by Step 60: a build given a password encrypts its parts too.
 - **The key is the part's plain SHA-256**, as BundleSpecification §7.2
   already named, rather than one keyed with the backup secret. Identical
   files dedup across every node, and anyone who already holds a file can
@@ -3023,6 +3024,74 @@ backup over one with unencrypted parts encrypts every file, and that
 restores read them. `tests/helpers.py` derives an encrypted part's
 address independently of `PartWriter`, so a change that would stop parts
 deduplicating fails a test.
+
+---
+
+## Step 60 — Encrypting What a Protected Build Holds
+
+**Issue:** #194. **Depends on:** Phase 1 Step 38; Steps 48 and 59.
+
+- A build given a password (Phase 1 Step 38) protected its bundle and
+  nothing else. Its files' bytes went into CAS as ordinary objects, as a
+  backup's did before Step 59, so the password hid only which files made
+  up the build and what they were called.
+- Ruled (2026-10-02): any directory bundle that is encrypted, as a backup
+  is, or password-protected, as a build, an application, and the like may
+  be, names its files' content as encrypted parts.
+
+The specification change was written first. BundleSpecification §6 now
+requires an encoder protecting a bundle to encrypt every part of every
+file it holds, and of every extended attribute's value stored as parts,
+with per-entry encryption (§7). A decoder must still read a part that is
+not encrypted. §7's introduction says the two combine.
+
+What was built: a build given a password sets `build_directory`'s
+`encrypt_parts`, which Step 59 added for backups, so its parts are
+encrypted as a backup's are, under their own SHA-256, compressed first
+when that is smaller, and cut a block short of the object limit. A build
+without one stays plain. Nothing that reads parts changed: Step 59 taught
+reassembly, restores, and exports to read encrypted ones, and the
+unbundler still refuses a protected bundle. A protected build is the only
+password-protected bundle this node makes, as a backup is protected with
+the backup secret and shipped applications are plain. About 15 new or
+changed lines of non-test Python, mostly documentation, so it is one
+change set. Gates green: 3,290 passed, 1 skipped, 99.04%.
+
+Seen in a live run of one node: a build through `/config/api/builds`,
+with a password, of a directory holding an 18-byte file, a 222,000-byte
+text file, and 2.5 MB of random bytes left seven objects in CAS. None held
+any of the files' bytes, as stored or decompressed, and none was at the
+address of a plaintext part. Read back with the password, every part was
+encrypted and every file identical. Building it again unchanged kept the
+bundle and stored nothing. A build of another directory without a
+password stored its parts plain.
+
+My calls, not yet reviewed:
+
+- **Any protected bundle, file or directory.** BundleSpecification §6
+  says it of every bundle protected with a password, since a protected
+  file bundle's parts would be as readable. This node protects only
+  directory bundles, so no other code changed.
+- **A requirement on encoders** (MUST), with decoders still reading plain
+  parts, which builds made before this step name.
+- **Re-encrypted on the next build**, as a backup is (Step 59). A
+  protected build whose record names unencrypted parts reads every file
+  again and makes a new version, a layer over the last restating every
+  file, though nothing changed. The unencrypted parts are not deleted.
+- **Made plain, stored plain.** A build without a password over a
+  protected one reads every file and stores its parts plain, rather than
+  keep encrypted parts whose keys a plain bundle would show anyway.
+- **The key is still the part's plain SHA-256**, not keyed with the
+  password, so a protected build's files dedup with anyone's, and anyone
+  who already holds a file can confirm the network holds it
+  (BundleSpecification §7.2).
+
+**Testable in isolation:** `test_backup_builds.py` for every part of a
+protected build encrypted and of a plain one plain, with no file's bytes
+stored; an extended attribute's value stored as parts encrypted; parts
+encrypted, or plain, when protection is added, changed, or removed; and
+a protected build over one whose parts are unencrypted restating every
+file encrypted.
 
 ---
 
@@ -3064,6 +3133,7 @@ Every issue in the **Phase 2** milestone, by number, and where it went.
 | #140 | Keep the public keys of connected peers | 53 |
 | #170 | Applications share an origin with `/config` | 58 |
 | #176 | Update the documentation and specifications | A review of every document before release 0.2.0, and 59, which it raised |
+| #194 | Encrypt the file parts of password-protected bundles | 60 |
 
 Issue #80 asks for what #119 asked for later, and PR #120 built it in
 Phase 1: new content is pushed to the single best connected peer, never
@@ -3096,7 +3166,7 @@ into tiers; steps within a tier are independent of each other.
 | G | 46 (#121), 28 (#68), then 29 (#69), 53 (#140) | 46 is small, and its specification change is made. 28 moves candidate selection into stats, which is where 29 also needs to reach. 53 fixes what 28's live run found, and its specification change is made. |
 | H | 47 (#98), 48 (#84, #114), then 49 (#82, #83), then 31 (#73) | The backup chain. 48's record is what 49 compares against and 31 extends. 47 fixes a comparison 49 relies on. Touches only bundles and backup, so it can run in parallel with D through G, by anyone not in the connections code. |
 | I | 51 (#99), 52 (#101), 54 (#131) | Independent of everything above. 52's specification change is made; it needs a new dependency on macOS, and is best after 49, which it relies on to hold back attribute-only changes. 54 touches only the local network script. |
-| J | 59 (#176) | Last: it changes how the backup chain (H) and extended attributes (52) store parts, and its specification change is made. |
+| J | 59 (#176), then 60 (#194) | Last: 59 changes how the backup chain (H) and extended attributes (52) store parts, and 60 has protected builds store them alike. Both specification changes are made. |
 
 ## 6. Deferred Past Phase 2
 
@@ -3111,7 +3181,8 @@ changes them:
 - Local discovery (Step 16), filesystem notifications for backup (Step
   50), and IPv6, which are [Phase 4](Phase%204.md).
 - Signed bundles (BundleSpecification §5), and per-entry CAS encryption
-  (§7) anywhere but a backup's parts (Step 59).
+  (§7) anywhere but the parts of a backup or a protected build (Steps 59
+  and 60).
 - The local "don't forward my own backup content" policy
   BackupSpecification §6 permits.
 - Hash-collision handling.
@@ -3144,22 +3215,22 @@ either step is built:
   miss. Pushes do not count. Settled for applications by Step 29: any
   request routed to one is a use of its bundle, which keeps the files
   resolved from it, and is not a request for the bundle's content.
-- **Nine steps change a specification** (Steps 27, 28, 41, 46, 49, 52,
-  55, 58, and 59) — as with the push of new content (#119), the specification
-  change is agreed and written first. All are made: HighLevelDesign §4.7
-  for a data request's two passes, how the second is paced, and the pause
-  after one that found nothing (Step 27), and for two passes or more and a
-  pause that outlasts them (Step 55), HighLevelDesign §4.5 for the
-  four factors of retention priority (Step 28), HighLevelDesign §4.5 and
-  §6 for a single hand-off copy (Step 46), BundleSpecification §2.4 for
-  extended attributes (Step 52), BackupSpecification §3.3 and §5 for
-  holding back metadata-only changes (Step 49), and HttpApi §2.3.3 for
-  the requests `/config` refuses as another site's (Step 41), and HttpApi
-  §2.3, §2.3.3, §13, and §25 for a port of its own for `/config`, and
-  the link that may open it (Step 58), and BackupSpecification §3.2, §3.3,
-  §4, §5, §6, and §7 and BundleSpecification §7 for encrypting a
-  backup's parts (Step 59). Step 16's change
-  to HighLevelDesign §4.9.1 is made too, and went with it to Phase 4.
+- **Ten steps change a specification** (Steps 27, 28, 41, 46, 49, 52, 55, 58,
+  59, and 60) — as with the push of new content (#119), the specification change
+  is agreed and written first. All are made: HighLevelDesign §4.7 for a data
+  request's two passes, how the second is paced, and the pause after one that
+  found nothing (Step 27), and for two passes or more and a pause that outlasts
+  them (Step 55), HighLevelDesign §4.5 for the four factors of retention
+  priority (Step 28), HighLevelDesign §4.5 and §6 for a single hand-off copy
+  (Step 46), BundleSpecification §2.4 for extended attributes (Step 52),
+  BackupSpecification §3.3 and §5 for holding back metadata-only changes (Step
+  49), and HttpApi §2.3.3 for the requests `/config` refuses as another site's
+  (Step 41), and HttpApi §2.3, §2.3.3, §13, and §25 for a port of its own for
+  `/config`, and the link that may open it (Step 58), and BackupSpecification
+  §3.2, §3.3, §4, §5, §6, and §7 and BundleSpecification §7 for encrypting a
+  backup's parts (Step 59), and BundleSpecification §6 and §7 for encrypting the
+  parts of any bundle protected with a password (Step 60). Step 16's change to
+  HighLevelDesign §4.9.1 is made too, and went with it to Phase 4.
 - **What a blocking node answers a hand-off** (Steps 30 and 46) — now
   Phase 3's to decide, with Step 30. Step 46 does not wait for it: until
   Step 30 is built, no node blocks anything.
