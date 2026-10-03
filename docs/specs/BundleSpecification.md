@@ -43,6 +43,7 @@ perform plain byte comparison without normalizing.
     "sha256/9f86d0...",
     "sha1/1b4f0e..."
   ],
+  "sizes": [3072, 1024],
   "versions": [
     ["sha256/aaa...", "sha256/bbb..."]
   ]
@@ -61,6 +62,16 @@ perform plain byte comparison without normalizing.
 - **`contents`** — required. An ordered list of CAS paths, one per part of the
   file, in the order the parts appear in the reconstructed file. Example:
   `["sha256/...", "sha256/...", ...]`.
+- **`sizes`** — optional. An ordered list of non-negative integers, one for
+  each part in `contents` and in the same order, each the number of bytes
+  that part contributes to the reassembled file: its length after any
+  decryption (§7) and decompression (§7.3, HTTP API §8), whatever is stored.
+  It lets a reader find the parts holding a given byte without reading the
+  parts before them (§2.3). An encoder SHOULD record it.
+  - A `sizes` whose length differs from that of `contents`, or whose sum
+    differs from `metadata.size`, makes the bundle malformed.
+  - A part that reassembles to some other length than its size fails
+    verification, as a part that does not match its address does.
 - **`versions`** — optional. A list of previous versions of this file, each
   itself a list of CAS paths (i.e., the `contents` of a prior file bundle).
   - A single entry means this version is an **update** to that version.
@@ -98,6 +109,12 @@ specifically to guard against the rare case of a hash collision or corruption
 affecting an individual part while the parts still resolve to *something*
 addressable — the whole-file hash catches what a part-level check alone
 could not.
+
+A reader that reads the whole file checks it against this hash. A reader
+that reads only part of a file, as in answering a range request
+([HTTP API §19](HttpApi.md#19-range-requests)), cannot, and relies instead on
+each part it reads matching its address and its size (§2.1). Either way, a
+part is checked before any of its bytes are used.
 
 ### 2.4 Extended attributes
 

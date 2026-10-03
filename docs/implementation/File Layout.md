@@ -638,6 +638,11 @@ with its location printed, after a failure.
 
 Planned steps that will change this layout:
 
+- **Step 65 (#207, Phase 3)** stops writing reassembled files to
+  `cas/resolved/` (§3.2). Each tree will hold, beside `directory.jzon`,
+  one `{key}.jzon` for each file requested: the file's entry, which names
+  its parts, from which the web server streams it. The reassembled files
+  already there are deleted.
 - **Step 30 (#71, Phase 4)** adds a private list of blocked content ids to
   the stats database, and a list derived from it for the web server and
   validator, presumably beside the others in `lists/`.

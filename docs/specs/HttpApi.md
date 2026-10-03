@@ -1286,6 +1286,32 @@ key.
 - Redirect behavior.
 - Whether applications can reference other applications.
 
+### 13.2. Serving Application Files
+
+A node serves an application's file from the parts its bundle lists
+([Bundle Specification §2](BundleSpecification.md#2-raw-file-bundle)),
+reading them from CAS as the response is sent. It need not hold the whole
+file, nor have reassembled it, to begin.
+
+A node checks each part, against its address and its size, before it sends
+any of the part's bytes. A response carrying the whole file SHOULD hold back
+its last part until the file has matched its whole-file hash
+([Bundle Specification §2.3](BundleSpecification.md#23-whole-file-hash)). A
+node whose file does not match MUST end the response short, closing the
+connection, rather than complete it.
+
+A node lacking content a request needs, whether the bundle, an extension, or
+a part, asks for it as for any miss (§5.2). It MAY then wait for it, for a
+bounded time, before answering `503`. A `<video>` element does not retry a
+`503`, so a node that answers at once leaves a video unable to start, or to
+seek, until every part it needs is held. The parts nearest the bytes
+requested SHOULD be asked for first. Once a response has begun, a part that
+does not arrive in time ends it short, as above.
+
+An application response is not part of the programmatic API, and its
+signature (§11) MAY cover its headers alone, leaving out the body, so that a
+node can sign it before reading the body.
+
 ---
 
 ## 14. HTTP Path Resolution
@@ -1550,26 +1576,45 @@ source IP address.
 
 ## 19. Range Requests
 
+Range requests are as
+[RFC 9110 §14](https://www.rfc-editor.org/rfc/rfc9110.html#section-14) defines
+them.
+
 Because `/data/...` content is transferred in at most 1 MiB, range requests are
-generally not needed for `/data/...` requests.
+not needed for `/data/...` requests, and a node MAY ignore a `Range` header on
+one, sending the whole object.
 
-Nodes SHOULD support range requests to benefit data in applications (requests
-outside of `/data/...`). Nodes SHOULD support enough range requests mechanism to
-support streaming video from a `<video>` tag in html.
-
-Large content may benefit from HTTP range requests.
-
-A node MAY support:
+A node MUST support a single byte range on an application file (§13.2) whose
+bundle records the size of each of its parts
+([Bundle Specification §2.1](BundleSpecification.md#21-fields)), in each of its
+three forms:
 
 ```http
-Range: bytes=...
+Range: bytes=0-499
+Range: bytes=500-
+Range: bytes=-500
 ```
 
-**TBD:**
+That is enough for a `<video>` element to play a video from an application, and
+to seek within it.
 
-- Whether range requests are required.
-- `206 Partial Content` requirements.
-- Support for multipart ranges.
+- A range that can be satisfied is answered `206 Partial Content`, with
+  `Content-Range: bytes {first}-{last}/{size}` and the `Content-Length` of the
+  range sent. A range whose last byte lies past the end of the file ends at the
+  end of the file.
+- A range that starts at or past the end of the file, or a suffix range of zero
+  bytes, is answered `416 Range Not Satisfiable`, with
+  `Content-Range: bytes */{size}`.
+- Every response for such a file carries `Accept-Ranges: bytes`. A file whose
+  part sizes are not recorded is sent whole, with `Accept-Ranges: none`, since
+  a range of it cannot be found without reading the parts before it.
+- Every response for a file with a whole-file hash carries a strong `ETag`
+  derived from that hash. A request with `If-Range` is answered with the range
+  only if `If-Range` matches that `ETag`, and otherwise with the whole file,
+  `200 OK`.
+- Multipart ranges are not supported. A request naming more than one range is
+  answered as though it carried no `Range` header, with the whole file, as RFC
+  9110 §14.2 permits. A `Range` header that cannot be parsed is ignored alike.
 
 ---
 
@@ -1772,13 +1817,12 @@ above, and the **TBD** notes in each section say what remains open:
 20. Error schema.
 21. HTTP caching semantics.
 22. ETag format.
-23. Range requests.
-24. Request and response limits.
-25. Rate limiting.
-26. API compatibility and deprecation policy.
-27. Security requirements.
-28. HTTP-specific registrations.
-29. Mechanism for pushing search-derived results to satisfy `/data/seek`
+23. Request and response limits.
+24. Rate limiting.
+25. API compatibility and deprecation policy.
+26. Security requirements.
+27. HTTP-specific registrations.
+28. Mechanism for pushing search-derived results to satisfy `/data/seek`
     `search` entries.
 
 ---
