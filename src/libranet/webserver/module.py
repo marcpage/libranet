@@ -48,6 +48,7 @@ from libranet.webserver.backup_state import BackupReport, BackupState
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.inbound_peers import InboundPeers
+from libranet.webserver.local_folders import LocalFolders
 from libranet.webserver.server import LibranetHTTPServer, build_config_router, build_router
 
 
@@ -146,6 +147,8 @@ class WebServerModule(ModuleBase):
                     app_outcomes=self._app_outcomes,
                     content=content,
                     app_wait_seconds=network.app_wait_seconds,
+                    config_hosts=network.config_hosts,
+                    local_folders=LocalFolders.of(self._config),
                 ),
                 self.logger,
                 signer,

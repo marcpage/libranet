@@ -17,6 +17,7 @@ from libranet.bundle.building import (
     IgnoredPaths,
     build_directory,
     build_file,
+    modified_time,
 )
 from libranet.bundle.content import (
     ContentSource,
@@ -130,6 +131,7 @@ __all__ = [
     "is_entry_path",
     "is_utf8",
     "load_bundle",
+    "modified_time",
     "normalize_cas_path",
     "parse_bundle",
     "parse_cas_path",

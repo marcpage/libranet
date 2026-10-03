@@ -14,6 +14,10 @@ application endpoints change the application registry, the file naming each
 application's bundle, which the web server owns, and which names the pages
 shipped with the node at `/` and at `/config` until an administrator changes
 them. The one at `/config` drives all of them.
+
+A few `/data` endpoints serve only clients on this machine, and only this
+node's own pages there, such as the listing of the folders it offers them
+(Phase 3 Step 68).
 """
 
 from libranet.webserver.app_handler import (
@@ -131,6 +135,8 @@ from libranet.webserver.http_types import (
 )
 from libranet.webserver.inbound_peers import InboundConnection, InboundPeers
 from libranet.webserver.list_handlers import ListFileHandler, NodeListHandler, SeekListHandler
+from libranet.webserver.local_folders import DIRECTORY_PATTERN, DirectoryHandler, LocalFolders
+from libranet.webserver.local_only import CLIENT_PATH, LocalOnly, client_handler
 from libranet.webserver.module import WebServerModule, webserver_module_factory
 from libranet.webserver.request_refusals import (
     content_unavailable_response,
@@ -147,6 +153,7 @@ from libranet.webserver.server import (
     build_router,
 )
 from libranet.webserver.signature_guard import API_PREFIX, SignatureGuard
+from libranet.webserver.site_checks import HOST_HEADER, SITE_HEADER, SiteChecks, host_name
 
 __all__ = [
     "API_PREFIX",
@@ -164,6 +171,7 @@ __all__ = [
     "BUILDS_FIELD",
     "BYTES_UNIT",
     "BUILDS_PATH",
+    "CLIENT_PATH",
     "CONFIG_API_PATH",
     "CONFIG_API_SEGMENT",
     "CONFIG_APP_PATTERN",
@@ -178,9 +186,11 @@ __all__ = [
     "DEFAULT_PART_POLL_INTERVAL_SECONDS",
     "DEFAULT_READ_AHEAD_PARTS",
     "DEFAULT_REPORT_INTERVAL_SECONDS",
+    "DIRECTORY_PATTERN",
     "ENDPOINTS",
     "EXPORTS_FIELD",
     "EXPORTS_PATH",
+    "HOST_HEADER",
     "JOBS_FIELD",
     "KEY_BYTES",
     "MAX_CONFIG_BODY_BYTES",
@@ -194,6 +204,7 @@ __all__ = [
     "SALT_BYTES",
     "SCHEME",
     "SEARCH_PATTERN",
+    "SITE_HEADER",
     "AppHandler",
     "Application",
     "ApplicationListHandler",
@@ -215,6 +226,7 @@ __all__ = [
     "CredentialFileError",
     "DataReadHandler",
     "DataWriteHandler",
+    "DirectoryHandler",
     "FileStream",
     "Guard",
     "Handler",
@@ -225,6 +237,8 @@ __all__ = [
     "KnownOutcome",
     "LibranetHTTPServer",
     "ListFileHandler",
+    "LocalFolders",
+    "LocalOnly",
     "MovedConfigGuard",
     "NodeDescription",
     "NodeHandler",
@@ -242,6 +256,7 @@ __all__ = [
     "SearchHandler",
     "SeekListHandler",
     "SignatureGuard",
+    "SiteChecks",
     "StoredCredential",
     "StreamedBody",
     "UnsupportedMediaTypeError",
@@ -250,12 +265,14 @@ __all__ = [
     "build_config_router",
     "build_router",
     "bytes_response",
+    "client_handler",
     "config_index",
     "config_routes",
     "content_id_or_refusal",
     "content_type_for",
     "content_unavailable_response",
     "credential_required_response",
+    "host_name",
     "invalid_address_response",
     "invalid_request_response",
     "invalid_signature_response",

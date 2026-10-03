@@ -357,6 +357,24 @@ path lists what is registered, and `DELETE /config/api/applications/wiki`
 removes one (the root is `%2F`). Any client may list them with
 `GET /data/applications`, and the page a new node serves at `/` links to each.
 
+### List the folders offered to this machine
+
+An application can ask whether its page is open on the node's own machine, and
+a page there can list the folders the node offers, set in `local.folders`
+(your desktop, documents, downloads, music, pictures, and videos folders by
+default). Nothing outside them is listed, nor anything hidden within them:
+
+```bash
+curl http://127.0.0.1:8080/data/client       # {"local":true}
+curl http://127.0.0.1:8080/data/directory    # the folders, by name
+curl http://127.0.0.1:8080/data/directory/Movies/Holidays
+```
+
+The listings are served only to clients on this machine, and, like `/config`,
+only to the node's own pages or to no browser at all, so a page another site
+opens in your browser cannot read them. They share their origin with every
+application the node serves, so register only applications you trust.
+
 ### Publish a drop under a name
 
 Compute a content hash that shares a long binary prefix with the hash of a name

@@ -123,13 +123,19 @@ class Request:  # pylint: disable=too-many-instance-attributes
 
         return None
 
-    def json(self) -> object:
-        """The JSON value the body carries, read only if the request says its body is JSON.
+    def carries_json(self) -> bool:
+        """Whether the request says its body is JSON: its ``Content-Type`` is ``application/json``.
 
         A page on another site can send this node a body of any type a
         form sends without asking it first, but one of ``application/json``
         only once the node agrees (HttpApi §2.3.3). Parameters after the
         type, such as a ``charset``, are ignored.
+        """
+        media_type = (self.header("Content-Type") or "").partition(";")[0].strip().lower()
+        return media_type == JSON_CONTENT_TYPE
+
+    def json(self) -> object:
+        """The JSON value the body carries, read only if the request :meth:`carries_json`.
 
         Raises:
             UnsupportedMediaTypeError: the ``Content-Type`` is not
@@ -137,12 +143,10 @@ class Request:  # pylint: disable=too-many-instance-attributes
             ValueError: the body is not JSON, or its length is not known.
             IncompleteBodyError: the connection closed or timed out first.
         """
-        content_type = self.header("Content-Type")
-        media_type = (content_type or "").partition(";")[0].strip().lower()
-
-        if media_type != JSON_CONTENT_TYPE:
+        if not self.carries_json():
             raise UnsupportedMediaTypeError(
-                f"A request body's Content-Type must be {JSON_CONTENT_TYPE}, got {content_type!r}"
+                f"A request body's Content-Type must be {JSON_CONTENT_TYPE}, "
+                f"got {self.header('Content-Type')!r}"
             )
 
         body = self.body.read()

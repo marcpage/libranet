@@ -12,11 +12,13 @@ from libranet.config.models import (
     BackupConfig,
     IdentityConfig,
     LibranetConfig,
+    LocalConfig,
     NetworkConfig,
     PeerConfig,
     StatsConfig,
     StorageConfig,
 )
+from libranet.config.paths import default_local_folders
 
 
 def test_defaults_produce_a_valid_config() -> None:
@@ -363,3 +365,35 @@ def test_secrets_are_kept_in_the_key_directory_configured(tmp_path: Path) -> Non
     assert config.private_key_path.parent == tmp_path / "secrets"
     assert config.backup_secret_path.parent == tmp_path / "secrets"
     assert config.config_credential_path.parent == tmp_path / "secrets"
+
+
+def test_local_clients_are_offered_the_platforms_folders_by_default() -> None:
+    assert LibranetConfig().local.folders == default_local_folders()
+
+
+def test_a_leading_tilde_in_a_folder_is_the_home_directory() -> None:
+    local = LocalConfig.model_validate({"folders": ["~/Movies", "/srv/media/~", "Music"]})
+
+    assert local.folders == (Path.home() / "Movies", Path("/srv/media/~"), Path("Music"))
+
+
+@mark.parametrize(
+    "folders",
+    [
+        ["/Users/me/Movies", "/Volumes/Media/Movies"],
+        ["~/Music", "/srv/Music/"],
+    ],
+)
+def test_two_folders_offered_under_one_name_are_refused(folders: list[str]) -> None:
+    with raises(ValidationError, match="would both be offered as"):
+        LocalConfig.model_validate({"folders": folders})
+
+
+@mark.parametrize("folder", ["/", ".", "/srv/media/..", ""])
+def test_a_folder_with_no_name_to_be_offered_under_is_refused(folder: str) -> None:
+    with raises(ValidationError, match="must each end in a name"):
+        LocalConfig.model_validate({"folders": [folder]})
+
+
+def test_no_folders_may_be_offered() -> None:
+    assert not LocalConfig(folders=()).folders

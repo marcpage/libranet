@@ -14,7 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from libranet.config import paths
 
@@ -36,6 +36,14 @@ CONFIG_PORT_STEP: Final = 100
 # /config is served only to this machine (HttpApi §2.3), so it listens only
 # where this machine reaches it.
 CONFIG_LISTEN_ADDRESS: Final = "127.0.0.1"
+
+# The hosts /config, and every endpoint serving only local clients, are
+# served as by default: this machine's own names for itself (HttpApi §2.3.3,
+# §2.4).
+DEFAULT_CONFIG_HOSTS: Final = ("localhost", "127.0.0.1", "::1")
+
+# What a folder's last segment cannot be, if it is to be offered under it.
+_UNNAMED_FOLDERS: Final = frozenset({"", ".."})
 
 Scheme = Literal["http", "https"]
 
@@ -81,7 +89,7 @@ class NetworkConfig(_Section):
     # this machine is not taken for this node (HttpApi §2.3.3, Phase 2 Step
     # 41). Shell-style patterns, matched whatever their case against the
     # host without its port, an IPv6 address written without its brackets.
-    config_hosts: tuple[str, ...] = ("localhost", "127.0.0.1", "::1")
+    config_hosts: tuple[str, ...] = DEFAULT_CONFIG_HOSTS
 
     # The port /config listens on, at CONFIG_LISTEN_ADDRESS alone, apart from
     # listen_port so that no application's page shares /config's origin
@@ -459,6 +467,46 @@ class BackupConfig(_Section):
     )
 
 
+class LocalConfig(_Section):
+    """What clients on this machine may reach of it (HttpApi §2.4, Phase 3 Step 68)."""
+
+    # The folders local clients may list, and import files from (HttpApi
+    # §12.2). Each is offered under its own name, the last segment of its
+    # path, so no two may share one, and one that does not exist is not
+    # offered. A leading ~ is the home directory. By default, the user's
+    # desktop, documents, downloads, music, pictures, and videos folders, as
+    # the platform names them.
+    folders: tuple[Path, ...] = Field(default_factory=paths.default_local_folders)
+
+    @field_validator("folders", mode="after")
+    @classmethod
+    def _home_expanded(cls, folders: tuple[Path, ...]) -> tuple[Path, ...]:
+        return tuple(folder.expanduser() for folder in folders)
+
+    @model_validator(mode="after")
+    def _names_differ(self) -> LocalConfig:
+        named: dict[str, Path] = {}
+
+        for folder in self.folders:
+            name = folder.name
+
+            if name in _UNNAMED_FOLDERS:
+                raise ValueError(
+                    "local.folders must each end in a name to be offered under, "
+                    f"got {str(folder)!r}"
+                )
+
+            if name in named:
+                raise ValueError(
+                    f"local.folders {str(named[name])!r} and {str(folder)!r} would both be "
+                    f"offered as {name!r}"
+                )
+
+            named[name] = folder
+
+        return self
+
+
 class LoggingConfig(_Section):
     """Centralized rotating-file logging setup."""
 
@@ -484,6 +532,7 @@ class LibranetConfig(_Section):
     identity: IdentityConfig = Field(default_factory=IdentityConfig)
     stats: StatsConfig = Field(default_factory=StatsConfig)
     backup: BackupConfig = Field(default_factory=BackupConfig)
+    local: LocalConfig = Field(default_factory=LocalConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
     @model_validator(mode="after")

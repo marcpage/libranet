@@ -61,6 +61,7 @@ from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.errors import ResponseCutShortError
 from libranet.webserver.http_types import Request, RequestBody, Response, StreamedBody
+from libranet.webserver.local_folders import LocalFolders
 from libranet.webserver.router import Router
 from libranet.webserver.server import LibranetHTTPServer, build_config_router, build_router
 
@@ -1009,6 +1010,8 @@ def test_unsigned_api_reads_can_be_refused(
         f"/data/{MISSING_ID}",
         f"/data/search/{CONTENT_ID.hash[:4]}",
         "/data/applications",
+        "/data/client",
+        "/data/directory",
         "/data/no/such/endpoint",
     ]
 
@@ -1629,6 +1632,79 @@ def test_an_application_registered_through_config_is_served_at_once(
 
     assert removed.status == 204
     assert gone.status == 404
+
+
+@fixture
+def local_server(
+    storage: StorageConfig, queues: ModuleQueues, tmp_path: Path
+) -> Iterator[LibranetHTTPServer]:
+    """The main port's server, offering local clients a Movies folder holding a film."""
+    (tmp_path / "Movies").mkdir()
+    (tmp_path / "Movies" / "Film.mp4").write_bytes(FILM)
+    yield from serving(
+        LibranetHTTPServer(
+            ("127.0.0.1", 0),
+            build_router(
+                storage,
+                RETRY_AFTER_SECONDS,
+                StubModule(ModuleName.WEBSERVER, queues).publish,
+                RequestAuthenticator.of(LibranetConfig(storage=storage)),
+                allow_unsigned_api_reads=True,
+                config_port=8180,
+                local_folders=LocalFolders({"Movies": tmp_path / "Movies"}),
+            ),
+            getLogger("test.webserver"),
+            MessageSigner(SERVER_IDENTITY),
+        )
+    )
+
+
+@fixture
+def local_connection(local_server: LibranetHTTPServer) -> Iterator[HTTPConnection]:
+    yield from connected(local_server)
+
+
+def test_a_local_client_lists_the_folders_offered_and_what_they_hold(
+    local_connection: HTTPConnection,
+) -> None:
+    client, client_body = _get(local_connection, "/data/client")
+    folders, folders_body = _get(local_connection, "/data/directory")
+    movies, movies_body = _get(local_connection, "/data/directory/Movies")
+    film, _ = _get(local_connection, "/data/directory/Movies/Film.mp4")
+
+    assert client.status == 200
+    assert loads(client_body) == {"local": True}
+    assert folders.status == 200
+    assert loads(folders_body) == {"entries": {"Movies": {"type": "directory"}}}
+    # Not taken for /data/{algorithm}/{hash}, whose pattern it also fits.
+    assert movies.status == 200
+    assert movies.getheader("Content-Type") == JSON_CONTENT_TYPE
+    assert loads(movies_body)["entries"]["Film.mp4"]["size"] == len(FILM)
+    assert film.status == 404
+
+
+@mark.parametrize("path", ["/data/directory", "/data/directory/Movies"])
+def test_another_client_or_sites_page_is_refused_the_folders(
+    local_server: LibranetHTTPServer, local_connection: HTTPConnection, path: str
+) -> None:
+    # The live server only ever sees loopback clients, so the remote request
+    # is put to the router directly.
+    remote = local_server.router.dispatch(Request("GET", path, client_address="203.0.113.42"))
+    named, _ = _get(local_connection, path, headers={"Host": "evil.example"})
+    cross_site, _ = _get(local_connection, path, headers={"Sec-Fetch-Site": "cross-site"})
+
+    assert remote.status == 403
+    assert named.status == 403
+    assert cross_site.status == 403
+
+
+def test_a_remote_client_is_told_it_is_not_local(local_server: LibranetHTTPServer) -> None:
+    response = local_server.router.dispatch(
+        Request("GET", "/data/client", client_address="203.0.113.42")
+    )
+
+    assert response.status == 200
+    assert loads(response.body) == {"local": False}
 
 
 @mark.parametrize("applications", [{"myapp": APP_BUNDLE_ID}])
