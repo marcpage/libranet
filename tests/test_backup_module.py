@@ -53,7 +53,7 @@ from libranet.protocol.config_requests import (
 from libranet.supervision.registry import default_module_specs
 from libranet.webserver.backup_state import BackupReport
 
-from tests.helpers import with_node_key
+from tests.helpers import encrypted_part, with_node_key
 
 INTERVAL = 100.0
 START = 1_789_000_000.0
@@ -291,7 +291,7 @@ def test_a_second_backup_writes_only_what_changed_and_supersedes_the_first(
     top = load_bundle(second, store, password=secret_of(config))
 
     assert sorted(stored_ids(messages)) == sorted(
-        [ContentId.for_data(b"read me, changed", "sha256"), second]
+        [encrypted_part(b"read me, changed").content_id, second]
     )
     assert isinstance(top, DirectoryBundle)
     assert top.versions == (first,)
@@ -333,7 +333,7 @@ def test_a_backup_is_built_from_its_last_bundle_kept_expanded_though_that_is_evi
     top = load_bundle(second, store, password=secret_of(config))
 
     assert sorted(stored_ids(messages)) == sorted(
-        [ContentId.for_data(b"read me, changed", "sha256"), second]
+        [encrypted_part(b"read me, changed").content_id, second]
     )
     assert isinstance(top, DirectoryBundle)
     assert set(top.entries) == {"readme.txt"}
@@ -847,7 +847,7 @@ def test_a_restore_asks_for_content_not_held_and_carries_on_once_it_lands(
 ) -> None:
     module = start(config, queues, now)
     bundle = backed_up_bundle(module, queues, tree)
-    part = ContentId.for_data(b"some notes", "sha256")
+    part = encrypted_part(b"some notes").content_id
     data = store.read(part)
     store.delete(part)
     target = tmp_path / "restored"
@@ -881,7 +881,7 @@ def test_a_waiting_restore_asks_again_twice_in_the_life_of_a_seek_entry(
 ) -> None:
     module = start(config, queues, now)
     bundle = backed_up_bundle(module, queues, tree)
-    part = ContentId.for_data(b"some notes", "sha256")
+    part = encrypted_part(b"some notes").content_id
     store.delete(part)
     restore(module, bundle, tmp_path / "restored")
     published(queues)
@@ -907,7 +907,7 @@ def test_asking_for_a_waiting_restore_again_carries_it_on_at_once(
 ) -> None:
     module = start(config, queues, now)
     bundle = backed_up_bundle(module, queues, tree)
-    part = ContentId.for_data(b"some notes", "sha256")
+    part = encrypted_part(b"some notes").content_id
     store.delete(part)
     restore_id = restore(module, bundle, tmp_path / "restored")
     published(queues)
@@ -956,7 +956,7 @@ def test_a_restore_nothing_arrives_for_gives_up_and_logs_what_it_did_not_restore
     )
     module = start(config, queues, now)
     bundle = backed_up_bundle(module, queues, tree)
-    part = ContentId.for_data(b"some notes", "sha256")
+    part = encrypted_part(b"some notes").content_id
     store.delete(part)
     target = tmp_path / "restored"
     restore(module, bundle, target)
@@ -993,7 +993,7 @@ def test_asking_for_a_restore_that_gave_up_carries_it_on_where_it_left_off(
 ) -> None:
     module = start(config, queues, now)
     bundle = backed_up_bundle(module, queues, tree)
-    part = ContentId.for_data(b"some notes", "sha256")
+    part = encrypted_part(b"some notes").content_id
     data = store.read(part)
     store.delete(part)
     target = tmp_path / "restored"
@@ -1710,7 +1710,7 @@ def test_a_restore_due_goes_ahead_of_a_build_and_builds_and_exports_run_in_turn(
 ) -> None:
     module = start(config, queues, now)
     bundle = backed_up_bundle(module, queues, tree)
-    store.delete(ContentId.for_data(b"some notes", "sha256"))
+    store.delete(encrypted_part(b"some notes").content_id)
     restore(module, bundle, tmp_path / "restored")
     now[0] += config.stats.seek_entry_ttl_seconds
     site = tmp_path / "site"

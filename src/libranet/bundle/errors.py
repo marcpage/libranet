@@ -17,8 +17,9 @@ class UnsupportedBundleError(BundleError):
     """The bundle may be well-formed, but this node cannot read it.
 
     It uses a feature not implemented here, such as a signed bundle (§5),
-    per-entry encryption (§7), or a hash algorithm this node lacks, or it is
-    beyond one of this node's local limits.
+    per-entry encryption (§7) anywhere but a file's parts, or a cipher or
+    hash algorithm this node lacks, or it is beyond one of this node's local
+    limits.
     """
 
 

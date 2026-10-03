@@ -154,9 +154,9 @@ content. Sixteen nodes, one per bucket, favor all of it: whatever an object's
 hash, one of them shares at least its first hex digit.
 
 A super node holds what reaches it: the content your computers push to it as
-they create it, such as backups and applications, and what they hand off when
-they run short of space (HighLevelDesign §4.10). It does not go looking for
-content it has not been sent.
+they create it, such as backups and applications (HighLevelDesign §4.10), and
+what they hand off when they run short of space (§4.5). It does not go
+looking for content it has not been sent.
 
 ### 3.2 What It Needs
 

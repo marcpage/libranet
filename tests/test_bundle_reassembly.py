@@ -14,6 +14,7 @@ from libranet.bundle.errors import (
     MissingContentError,
     UnsupportedBundleError,
 )
+from libranet.bundle.parts import PartWriter
 from libranet.bundle.reassembly import write_file
 from libranet.bundle.shapes import FileBundle, Metadata
 from libranet.cas.content_id import ContentId
@@ -61,6 +62,17 @@ def test_a_part_may_repeat(store: CasStore) -> None:
     output = BytesIO()
 
     write_file(file_bundle([FIRST_ID, SECOND_ID, FIRST_ID], describing(content)), store, output)
+
+    assert output.getvalue() == content
+
+
+def test_encrypted_parts_are_decrypted_as_they_are_written(store: CasStore) -> None:
+    secret = b"secret part, " * 100
+    encrypted = PartWriter(store, encrypted=True).store(secret)
+    content = FIRST + secret
+    output = BytesIO()
+
+    write_file(FileBundle((str(FIRST_ID), str(encrypted)), describing(content)), store, output)
 
     assert output.getvalue() == content
 
@@ -155,7 +167,7 @@ def test_whole_file_hash_of_the_wrong_length_is_malformed(store: CasStore) -> No
     [
         ("sha256/zz", MalformedBundleError),
         ("blake3/" + "a" * 64, UnsupportedBundleError),
-        (f"{FIRST_ID}/AES256-CBC/{'a1' * 32}", UnsupportedBundleError),
+        (f"{FIRST_ID}/DES-CBC/{'a1' * 8}", UnsupportedBundleError),
     ],
 )
 def test_unreadable_part_path_is_refused_before_anything_is_written(

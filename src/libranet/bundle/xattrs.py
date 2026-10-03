@@ -3,9 +3,9 @@
 A bundle holds a file or directory's extended attributes in its metadata, by
 name (BundleSpecification §2.4). A value of up to :data:`INLINE_LIMIT_BYTES`
 is held inline, base64-encoded. A larger one, such as a resource fork, is cut
-into parts at every ``max_object_bytes`` as a file is, and each part stored
-(:func:`~libranet.bundle.storing.store_object`), so it dedups like file
-content and does not grow the bundle. The limit is a constant rather than a
+into parts and each part stored as a file's are, encrypted or not
+(:class:`~libranet.bundle.parts.PartWriter`), so it dedups like file content
+and does not grow the bundle. The limit is a constant rather than a
 setting, since nodes building the same directory make the same bundle only
 if they choose alike.
 
@@ -34,9 +34,9 @@ from typing import Final, Iterable, Mapping
 
 from xattr import XATTR_NOFOLLOW, xattr
 
-from libranet.bundle.content import ContentSource, content_chunks, parse_cas_path
+from libranet.bundle.content import ContentSource
+from libranet.bundle.parts import PartPath, PartWriter
 from libranet.bundle.shapes import XattrValue
-from libranet.bundle.storing import ContentSink, store_object
 
 _LOGGER = getLogger(__name__)
 
@@ -60,12 +60,11 @@ class ExtendedAttributes:
         """Whether the attribute ``name`` is recorded and set, matching no pattern excluded."""
         return not any(fnmatchcase(name, pattern) for pattern in self._excluded)
 
-    def read(self, path: str, sink: ContentSink, max_object_bytes: int) -> dict[str, XattrValue]:
+    def read(self, path: str, parts: PartWriter) -> dict[str, XattrValue]:
         """The attributes of the file or directory at ``path``, as a bundle records them.
 
         A symlink at ``path`` is not followed. A value too large to hold
-        inline has its parts stored in ``sink``, each at most
-        ``max_object_bytes``.
+        inline has its parts stored by ``parts``.
 
         Raises:
             OSError: they could not be read, or content could not be stored.
@@ -95,7 +94,7 @@ class ExtendedAttributes:
             value: bytes | None = attributes.get(name, default=None)
 
             if value is not None:
-                recorded[name] = _recorded(value, sink, max_object_bytes)
+                recorded[name] = _recorded(value, parts)
 
         return recorded
 
@@ -132,8 +131,8 @@ class ExtendedAttributes:
         return unset
 
 
-def _recorded(value: bytes, sink: ContentSink, max_object_bytes: int) -> XattrValue:
-    """``value`` as a bundle records it: base64 if small enough, else its parts, stored in ``sink``.
+def _recorded(value: bytes, parts: PartWriter) -> XattrValue:
+    """``value`` as a bundle records it: base64 if small enough, else parts stored by ``parts``.
 
     Raises:
         OSError: a part could not be stored.
@@ -141,9 +140,9 @@ def _recorded(value: bytes, sink: ContentSink, max_object_bytes: int) -> XattrVa
     if len(value) <= INLINE_LIMIT_BYTES:
         return b64encode(value).decode("ascii")
 
+    step = parts.part_bytes
     return tuple(
-        str(store_object(value[offset : offset + max_object_bytes], sink, max_object_bytes))
-        for offset in range(0, len(value), max_object_bytes)
+        str(parts.store(value[offset : offset + step])) for offset in range(0, len(value), step)
     )
 
 
@@ -158,6 +157,4 @@ def _value_bytes(value: XattrValue, source: ContentSource) -> bytes:
     if isinstance(value, str):
         return b64decode(value)
 
-    return b"".join(
-        chunk for part in value for chunk in content_chunks(source, parse_cas_path(part))
-    )
+    return b"".join(chunk for part in value for chunk in PartPath.parse(part).chunks(source))

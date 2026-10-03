@@ -29,11 +29,7 @@ from json import loads
 from typing import Final, Mapping, Protocol
 from zlib import compress
 
-from cryptography.hazmat.primitives.ciphers import Cipher
-from cryptography.hazmat.primitives.ciphers.algorithms import AES256
-from cryptography.hazmat.primitives.ciphers.modes import CBC
-from cryptography.hazmat.primitives.padding import PKCS7
-
+from libranet.bundle.encryption import BLOCK_BYTES, Aes256Cbc
 from libranet.bundle.errors import (
     BundleTooLargeError,
     IncorrectPasswordError,
@@ -92,39 +88,30 @@ class _Scheme(Protocol):
 class _Sha256Aes256Cbc:  # pylint: disable=missing-function-docstring
     """AES-256-CBC keyed by a single SHA-256 of the password, with PKCS#7 padding."""
 
-    _BLOCK_BITS: Final = AES256.block_size
-
     @property
     def descriptor(self) -> str:
         return "PW-SHA256-AES256-CBC"
 
     @property
     def iv_bytes(self) -> int:
-        return self._BLOCK_BITS // 8
+        return BLOCK_BYTES
 
     def encrypt(self, plaintext: bytes, password: bytes, iv: bytes) -> bytes:
-        padder = PKCS7(self._BLOCK_BITS).padder()
-        padded = padder.update(plaintext) + padder.finalize()
-        encryptor = self._cipher(password, iv).encryptor()
-        return encryptor.update(padded) + encryptor.finalize()
+        return self._cipher(password, iv).encrypt(plaintext)
 
     def decrypt(self, ciphertext: bytes, password: bytes, iv: bytes) -> bytes:
-        if not ciphertext or len(ciphertext) % (self._BLOCK_BITS // 8):
+        if not ciphertext or len(ciphertext) % BLOCK_BYTES:
             raise MalformedBundleError("Password-protected bundle is not whole AES blocks")
 
-        decryptor = self._cipher(password, iv).decryptor()
-        unpadder = PKCS7(self._BLOCK_BITS).unpadder()
-
         try:
-            plaintext = unpadder.update(decryptor.update(ciphertext) + decryptor.finalize())
-            return plaintext + unpadder.finalize()
+            return self._cipher(password, iv).decrypt(ciphertext)
 
         except ValueError:
             raise IncorrectPasswordError("The password does not decrypt the bundle") from None
 
     @staticmethod
-    def _cipher(password: bytes, iv: bytes) -> Cipher[CBC]:
-        return Cipher(AES256(sha256(password).digest()), CBC(iv))
+    def _cipher(password: bytes, iv: bytes) -> Aes256Cbc:
+        return Aes256Cbc(sha256(password).digest(), iv)
 
 
 # The scheme this node writes, and every scheme it reads, by descriptor.

@@ -11,6 +11,11 @@ that has not changed writes nothing. The file's metadata gives its size, its
 SHA-256 as reassembled (§2.3), its times, and whether its owner may write or
 run it. An empty file has no parts.
 
+A directory may be built with every part encrypted instead (§7), as a backup
+is (BackupSpecification §4.4). Parts are then cut a block short of the
+object limit, so that each fits once padded
+(:class:`~libranet.bundle.parts.PartWriter`).
+
 A directory is walked without following symlinks. Every file and symlink
 beneath it is keyed by its full relative path, and a directory holding
 neither, however deep, gets a metadata-only entry, so empty directories are
@@ -40,7 +45,8 @@ holds. A file whose recorded metadata it still has, extended attributes
 aside, is kept as it was, without being read, with the attributes it has
 now. A file whose metadata changed is hashed, and if it still holds the
 bytes recorded, it keeps its parts and only its metadata is updated.
-Otherwise it is built afresh.
+Otherwise it is built afresh. So is a file whose parts are not stored as
+this build stores them, encrypted or not, whatever else is the same.
 
 Times are UTC, to the microsecond. A file's creation time is recorded only
 where the platform reports it, which Linux does not. Building again keeps the
@@ -88,7 +94,8 @@ from libranet.bundle.shapes import (
     ancestors,
     is_utf8,
 )
-from libranet.bundle.storing import HASH_ALGORITHM, ContentSink, store_object
+from libranet.bundle.parts import PartWriter
+from libranet.bundle.storing import HASH_ALGORITHM, ContentSink
 from libranet.bundle.xattrs import ExtendedAttributes
 from libranet.cas.algorithms import DEFAULT_REGISTRY
 from libranet.cas.content_id import ContentId
@@ -177,11 +184,12 @@ def build_file(path: Path, sink: ContentSink, max_object_bytes: int = MIB) -> Fi
     """The bundle for the file at ``path``, its parts stored in ``sink``.
 
     Raises:
+        ValueError: ``max_object_bytes`` is not positive.
         OSError: ``path`` is not a regular file, or could not be read, or
             content could not be stored.
     """
     with _open_regular_file(path) as file:
-        return _file_bundle(file, sink, max_object_bytes, {})
+        return _file_bundle(file, PartWriter(sink, max_object_bytes), {})
 
 
 def build_directory(  # pylint: disable=too-many-branches,too-many-locals
@@ -193,6 +201,7 @@ def build_directory(  # pylint: disable=too-many-branches,too-many-locals
     ignore: Iterable[Path] = (),
     previous: Mapping[str, Entry] | None = None,
     xattrs: ExtendedAttributes | None = None,
+    encrypt_parts: bool = False,
 ) -> DirectoryBuild:
     """The bundle for the directory at ``root``, every file's parts stored in ``sink``.
 
@@ -202,13 +211,16 @@ def build_directory(  # pylint: disable=too-many-branches,too-many-locals
     names is treated as though it were not there. ``previous`` is what the
     bundle superseded holds, by path, for files to be kept from where they
     have not changed. ``xattrs`` says which extended attributes are
-    recorded; without it, none are.
+    recorded; without it, none are. ``encrypt_parts`` says whether every
+    part, of a file or of an attribute's value, is encrypted (§7).
 
     Raises:
+        ValueError: ``max_object_bytes`` leaves no room for a part.
         OSError: ``root`` could not be listed, is or lies within a path
             ignored, a file failed partway through being read, or content
             could not be stored.
     """
+    parts = PartWriter(sink, max_object_bytes, encrypt_parts)
     ignored = IgnoredPaths(ignore)
     ignored.check(root)
     earlier = previous or {}
@@ -218,7 +230,7 @@ def build_directory(  # pylint: disable=too-many-branches,too-many-locals
     pending: list[tuple[str, Path]] = [("", root)]
 
     def attributes(path: str) -> dict[str, XattrValue]:
-        return {} if xattrs is None else xattrs.read(path, sink, max_object_bytes)
+        return {} if xattrs is None else xattrs.read(path, parts)
 
     while pending:
         prefix, directory = pending.pop()
@@ -262,7 +274,7 @@ def build_directory(  # pylint: disable=too-many-branches,too-many-locals
 
                 elif item.is_file(follow_symlinks=False):
                     found = attributes(item.path)
-                    kept = _unchanged(earlier.get(path), item, found)
+                    kept = _unchanged(earlier.get(path), item, found, parts)
 
                     if kept is None:
                         file = _open_regular_file(Path(item.path))
@@ -279,9 +291,7 @@ def build_directory(  # pylint: disable=too-many-branches,too-many-locals
 
             if file is not None:
                 with file:
-                    entries[path] = _file_bundle(
-                        file, sink, max_object_bytes, found, earlier.get(path)
-                    )
+                    entries[path] = _file_bundle(file, parts, found, earlier.get(path))
 
     parents = ancestors(entries.keys() | directories.keys())
 
@@ -308,17 +318,21 @@ def _identity(path: Path) -> tuple[int, int] | None:
 
 
 def _unchanged(
-    earlier: Entry | None, item: DirEntry[str], xattrs: Mapping[str, XattrValue]
+    earlier: Entry | None,
+    item: DirEntry[str],
+    xattrs: Mapping[str, XattrValue],
+    parts: PartWriter,
 ) -> FileBundle | None:
     """``earlier``, if it is a file whose recorded metadata the file ``item`` still has.
 
     Its creation time is kept, not compared. Its extended attributes are not
-    compared either, but become ``xattrs``, the ones the file has now.
+    compared either, but become ``xattrs``, the ones the file has now. Its
+    parts must be stored as ``parts`` stores them.
 
     Raises:
         OSError: ``item`` could not be looked at.
     """
-    if not isinstance(earlier, FileBundle):
+    if not isinstance(earlier, FileBundle) or not parts.keeps(earlier.parts):
         return None
 
     recorded = earlier.metadata
@@ -376,31 +390,35 @@ def _open_regular_file(path: Path) -> BinaryIO:
 
 def _file_bundle(
     file: BinaryIO,
-    sink: ContentSink,
-    max_object_bytes: int,
+    parts: PartWriter,
     xattrs: Mapping[str, XattrValue],
     earlier: Entry | None = None,
 ) -> FileBundle:
-    """The bundle for the open ``file``, its parts stored in ``sink`` as they are read.
+    """The bundle for the open ``file``, each part stored by ``parts`` as it is read.
 
     ``xattrs`` are its extended attributes, as recorded. If ``earlier`` is a
-    file that held the same bytes, it keeps its parts, and nothing is
-    stored. If it is a file at all, its creation time is kept.
+    file that held the same bytes, in parts stored as ``parts`` stores them,
+    it keeps those parts, and nothing is stored. If it is a file at all, its
+    creation time is kept.
     """
     status = fstat(file.fileno())
 
-    if isinstance(earlier, FileBundle) and _holds(file, status, earlier.metadata):
+    if (
+        isinstance(earlier, FileBundle)
+        and parts.keeps(earlier.parts)
+        and _holds(file, status, earlier.metadata)
+    ):
         return FileBundle(earlier.parts, _as_recorded(status, earlier.metadata, xattrs))
 
     file.seek(0)
     hasher = DEFAULT_REGISTRY.get(HASH_ALGORITHM).hasher()
-    parts: list[str] = []
+    stored: list[str] = []
     size_bytes = 0
 
-    while part := file.read(max_object_bytes):
+    while part := file.read(parts.part_bytes):
         hasher.update(part)
         size_bytes += len(part)
-        parts.append(str(store_object(part, sink, max_object_bytes)))
+        stored.append(str(parts.store(part)))
 
     metadata = replace(
         _metadata(status, _recorded(earlier, FileBundle)),
@@ -409,7 +427,7 @@ def _file_bundle(
         hash=hasher.hexdigest(),
         xattrs=xattrs,
     )
-    return FileBundle(tuple(parts), metadata)
+    return FileBundle(tuple(stored), metadata)
 
 
 def _holds(file: BinaryIO, status: stat_result, recorded: Metadata) -> bool:

@@ -56,6 +56,10 @@ chaos
 config
 ```
 
+The one use of a reserved name is `config` for the administration
+application itself (§2.3), whichever bundle or shipped resources a node
+serves it from.
+
 The root path `/` is itself a special application mapping.
 
 ### 2.1 Programmatic API
@@ -80,8 +84,8 @@ https://example.org/myapp
 
 may map to a directory bundle stored in the node's content-addressed storage.
 
-The exact application routing mechanism is specified in the Directory Bundle and
-Web Application specifications.
+The application routing mechanism is specified in §13, and the directory bundle
+format in the [Bundle Specification](BundleSpecification.md).
 
 ### 2.3 Local Configuration Interface
 
@@ -307,8 +311,9 @@ The primary methods are:
 | --------- | --------------------------------------------------- |
 | `GET`     | Retrieve information or content                     |
 | `HEAD`    | Retrieve metadata without the response body         |
-| `POST`    | Requests like prefix search                         |
+| `POST`    | Publish a list, or create a `/config` resource      |
 | `PUT`     | Create or replace content at a specified identifier |
+| `DELETE`  | Remove a `/config` administration resource          |
 
 The exact method associated with each endpoint is defined below.
 Unsupported methods MUST return `405 Method Not Allowed`.
@@ -359,10 +364,10 @@ Content-Length: ...
 
 The response body contains the content identified by the requested hash.
 
-The node MUST verify that the returned content corresponds to the requested
-content identifier.
-
-The exact verification procedure is defined by the CAS specification.
+A node that receives the content MUST verify that it corresponds to the
+requested content identifier. The body may be the content itself or a
+zlib-compressed form of it, and the verification procedure is defined in §8
+and HighLevelDesign §4.1.1.
 
 #### Content Type
 
@@ -394,19 +399,19 @@ It does not indicate that the content identifier is invalid.
 
 When a `503` is returned, the node MAY:
 
-- Put the request in it's `seek` list (for connecting clients to request and
-  push results to us)
+- Put the request in its `seek` list (for connecting clients to read, and to
+  push the content to it)
 - Forward the request to other connected nodes
 - Repeat the request to connected nodes if they in turn return a `503` (after
   the `Retry-After` period has elapsed)
 
-Configurable aspects limits:
+Configurable limits:
 
 - Maximum retry count
 - Maximum wait before returning `503`
 - Maximum total attempt time (preparing for the next `503`)
 
-If Maximum total attempt time has been exceeded, a node MAY return `404`
+If the maximum total attempt time has been exceeded, a node MAY return `404`.
 
 This gives a blend of asynchronous (through retries) as well as synchronous (if
 we can get the data in time) behavior.
@@ -509,7 +514,7 @@ hash algorithm.
 A node MUST NOT claim that content exists at a content identifier unless the
 content actually hashes to that identifier.
 
-A proposed upload interface is:
+The upload interface is:
 
 ```http
 PUT /data/{hash-algorithm}/{hash}
@@ -675,11 +680,11 @@ to the cost of creating each content.
 
 ### 9.3 Drop Target
 
-Drops are determined by the SHA256 hash of a target string.
+Drops are determined by the SHA-256 hash of a target string.
 
 For instance, messages for an individual could have a target string of
-"Messages: John Doe: 2025-05-02". The target string is hashed with SHA256. This
-becomes the target hash.
+"Messages: John Doe: 2025-05-02". The target string is hashed with SHA-256.
+This becomes the target hash.
 
 ### 9.4 Finding Drop Content
 
@@ -943,7 +948,7 @@ The body MAY contain one or more `localhost` entries as mentioned previously.
 
 ### 10.6 Peer List JSON Schema
 
-The peer list MUST be for the form {"nodes": {"node address": "node id"}.
+The peer list MUST be of the form `{"nodes": {"<node address>": "<node id>"}}`.
 
 For example:
 
@@ -1044,17 +1049,21 @@ to a server that listed that prefix in its `search` entries.
 
 Each Libranet node has a cryptographic identity.
 
-Every authenticated Libranet request MUST contain an HTTP Message Signature (per
-[RFC 9421](https://www.ietf.org/ietf-ftp/rfc/inline-errata/rfc9421.html))
+Every authenticated Libranet request, and every response a node signs, MUST
+contain an HTTP Message Signature (per
+[RFC 9421](https://www.ietf.org/ietf-ftp/rfc/inline-errata/rfc9421.html)).
 
-The signature MUST identify the Libranet node identity.
+The signature MUST identify the Libranet node identity, by its `keyid`
+parameter (§11.2).
 
-The signature MUST cover:
+A request's signature MUST cover:
 
 - @method
 - @path
-- Libranet node identity
 - Content-Digest, when a message body is present
+
+A response's signature MUST cover `@status` in place of `@method` and
+`@path`, and Content-Digest when a message body is present.
 
 The signature MUST use the node's Libranet identity key.
 
@@ -1093,8 +1102,8 @@ request the public key for the node you are communicating with.
 Typical connection initiation:
 
 ```text
-PUT /data/sha256/abc123... HTTP/1.1  # push client node public key so the server can validate can validate client requests
-GET /data/sha256/def/456... HTTP/1.1  # fetch the key received in the response so client node can start validating server authenticity
+PUT /data/sha256/abc123... HTTP/1.1  # push client node public key so the server can validate client requests
+GET /data/sha256/def456... HTTP/1.1  # fetch the key received in the response so client node can start validating server authenticity
 POST /data/nodes HTTP/1.1  # publish client node list of nodes
 GET /data/seek HTTP/1.1  # fetch the list of information the server node is seeking
 GET /data/nodes HTTP/1.1  # fetch server node list of nodes
@@ -1105,10 +1114,34 @@ GET /data/nodes HTTP/1.1  # fetch server node list of nodes
 Server nodes MUST NOT break connection due to authentication failure until after
 at least the first two requests. This allows the identity exchange to happen.
 
-**TBD:**
+### 11.2 Keys and Signature Parameters
 
-- Public-key algorithm.
-- Public-key encoding.
+- **Key algorithm.** A node identity key is an
+  [Ed25519](https://www.rfc-editor.org/rfc/rfc8032.html) key, and signatures
+  use the RFC 9421 `ed25519` algorithm (RFC 9421 §3.3.6). The `alg` parameter
+  is not sent, since no other algorithm is defined.
+- **Public-key encoding.** A node publishes its public key as PEM-encoded
+  SubjectPublicKeyInfo, the `-----BEGIN PUBLIC KEY-----` form of
+  [RFC 7468 §13](https://www.rfc-editor.org/rfc/rfc7468.html#section-13).
+  Those exact bytes are the content CAS stores for the key, and like any
+  content they MAY be sent and stored zlib-compressed (§8).
+- **Node identifier.** The node identifier is the content identifier of those
+  bytes (§5): `{hash-algorithm}/{hash}`, such as `sha256/` followed by 64
+  lower-case hex digits, so the key is retrieved with
+  `GET /data/{hash-algorithm}/{hash}`. SHA-256 is the recommended algorithm
+  (HighLevelDesign §2.1).
+- **Small-order keys.** A node MUST refuse a public key that is one of the
+  Ed25519 points of small order, since anyone can forge signatures that
+  verify under one.
+- **Label and key id.** A message carries exactly one signature, labelled
+  `libranet`. Its `keyid` parameter is the signer's node identifier.
+- **Time.** The `created` parameter is REQUIRED, and `expires` is OPTIONAL.
+  How old a signature may be is given in HandshakeProtocol §2.
+- **`Content-Digest`.** The digest a signature covers is an
+  [RFC 9530](https://www.rfc-editor.org/rfc/rfc9530.html) `Content-Digest`
+  header. A node sends `sha-256`. A receiver ignores digest algorithms it does
+  not know, but requires at least one it knows, and checks every one it knows
+  against the body. `sha-256` and `sha-512` are known.
 
 ---
 
@@ -1310,23 +1343,23 @@ bundles from bundle metadata or an equivalent authenticated source.
 
 The following status codes are expected to have defined Libranet semantics.
 
-| Status                      | Meaning                                    |
-| --------------------------- | ------------------------------------------ |
-| `200 OK`                    | Request completed successfully             |
-| `201 Created`               | New content or resource created            |
-| `202 Accepted`              | Accepted, but processing not yet complete  |
-| `204 No Content`            | Request completed without a response body  |
-| `400 Bad Request`           | Invalid request                            |
-| `401 Unauthorized`          | Authentication required or failed          |
-| `403 Forbidden`             | Request understood but not permitted       |
-| `404 Not Found`             | Requested resource is unavailable          |
-| `405 Method Not Allowed`    | HTTP method is not supported               |
-| `413 Content Too Large`     | Request exceeds permitted size             |
+| Status                       | Meaning                                   |
+| ---------------------------- | ----------------------------------------- |
+| `200 OK`                     | Request completed successfully            |
+| `201 Created`                | New content or resource created           |
+| `202 Accepted`               | Accepted, but processing not yet complete |
+| `204 No Content`             | Request completed without a response body |
+| `400 Bad Request`            | Invalid request                           |
+| `401 Unauthorized`           | Authentication required or failed         |
+| `403 Forbidden`              | Request understood but not permitted      |
+| `404 Not Found`              | Requested resource is unavailable         |
+| `405 Method Not Allowed`     | HTTP method is not supported              |
+| `413 Content Too Large`      | Request exceeds permitted size            |
 | `415 Unsupported Media Type` | Request body is not of an accepted type   |
-| `429 Too Many Requests`     | Rate limit exceeded                        |
-| `500 Internal Server Error` | Unexpected node error                      |
-| `503 Service Unavailable`   | Resource temporarily unavailable           |
-| `504 Gateway Timeout`       | Upstream peer did not respond in time      |
+| `429 Too Many Requests`      | Rate limit exceeded                       |
+| `500 Internal Server Error`  | Unexpected node error                     |
+| `503 Service Unavailable`    | Resource temporarily unavailable          |
+| `504 Gateway Timeout`        | Upstream peer did not respond in time     |
 
 ---
 
@@ -1524,7 +1557,6 @@ Nodes SHOULD support range requests to benefit data in applications (requests
 outside of `/data/...`). Nodes SHOULD support enough range requests mechanism to
 support streaming video from a `<video>` tag in html.
 
-Outside of `/data/...` requests the node
 Large content may benefit from HTTP range requests.
 
 A node MAY support:
@@ -1715,8 +1747,8 @@ The following table summarizes the currently proposed HTTP API.
 
 ## 26. TBD Summary
 
-The following areas remain unresolved and should be specified before
-implementation:
+The following areas are not yet fully specified. Some are partly defined
+above, and the **TBD** notes in each section say what remains open:
 
 1. TLS requirements.
 2. Complete HTTP method requirements.
@@ -1733,22 +1765,20 @@ implementation:
 13. Drop expiration.
 14. Peer discovery endpoint and schema.
 15. Node-list format.
-16. Node identity endpoint and schema.
-17. Node authentication.
-18. Authorization.
-19. Directory-bundle application configuration.
-20. Application path resolution.
-21. Content-type metadata.
-22. Error schema.
-23. HTTP caching semantics.
-24. ETag format.
-25. Range requests.
-26. Request and response limits.
-27. Rate limiting.
-28. API compatibility and deprecation policy.
-29. Security requirements.
-30. HTTP-specific registrations.
-31. Mechanism for pushing search-derived results to satisfy `/data/seek`
+16. Authorization.
+17. Directory-bundle application configuration.
+18. Application path resolution.
+19. Content-type metadata.
+20. Error schema.
+21. HTTP caching semantics.
+22. ETag format.
+23. Range requests.
+24. Request and response limits.
+25. Rate limiting.
+26. API compatibility and deprecation policy.
+27. Security requirements.
+28. HTTP-specific registrations.
+29. Mechanism for pushing search-derived results to satisfy `/data/seek`
     `search` entries.
 
 ---

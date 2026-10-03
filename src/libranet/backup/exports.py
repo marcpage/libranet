@@ -41,7 +41,7 @@ from typing import Any, Callable
 
 from libranet.backup.tasks import Task
 from libranet.bundle.building import IgnoredPaths
-from libranet.bundle.content import ContentSource, check_held, parse_cas_path
+from libranet.bundle.content import ContentSource, check_held
 from libranet.bundle.errors import (
     BundleVerificationError,
     MissingContentError,
@@ -49,6 +49,7 @@ from libranet.bundle.errors import (
 )
 from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.loading import load_bundle
+from libranet.bundle.parts import PartPath
 from libranet.bundle.shapes import Bundle, DirectoryBundle, DirectoryMarker, FileBundle, Symlink
 from libranet.cas.archive import ArchiveSink
 from libranet.cas.content_id import ContentId
@@ -183,6 +184,6 @@ class Export(Task):
                 )
                 raise UnsupportedBundleError(f"Not a file, a symlink, or a directory: {kind}")
 
-        parts = {parse_cas_path(part) for part in paths}
+        parts = {PartPath.parse(part).content_id for part in paths}
         check_held(sorted(parts), source)
         return sorted(needed | parts)

@@ -10,7 +10,7 @@ This document describes the SQLite database a Libranet node keeps: its
 tables, columns, and indexes, what each value means, which event writes it,
 what reads it, and how long a row lives. It is written for someone about to
 read or change `src/libranet/stats/`, or to look inside a node's database,
-and describes the implementation as of Phase 2 Step 51.
+and describes the implementation as of version 0.2, at the end of Phase 2.
 
 A node has one database, `libranet.sqlite3`, with one schema, defined in
 `src/libranet/stats/schema.py`. Everything else a node keeps is a plain

@@ -15,6 +15,7 @@ from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises, skip
 from xattr import xattr
 
 from libranet.bundle.building import build_directory, build_file
+from libranet.bundle.parts import PartPath
 from libranet.bundle.reassembly import write_file
 from libranet.bundle.shapes import DirectoryMarker, Entry, FileBundle, Metadata, Symlink
 from libranet.bundle.xattrs import INLINE_LIMIT_BYTES, ExtendedAttributes
@@ -529,6 +530,39 @@ def test_file_whose_bytes_changed_is_built_afresh(
     assert isinstance(entry, FileBundle)
     assert entry.parts == (str(ContentId.for_data(data, "sha256")),)
     assert entry.metadata.hash == sha256(data).hexdigest()
+
+
+def test_a_directory_may_be_built_with_every_part_encrypted(
+    tree: Path, store: RecordingStore
+) -> None:
+    data = urandom(MAX_BYTES * 2)
+    (tree / "file").write_bytes(data)
+
+    built = build_directory(tree, store, max_object_bytes=MAX_BYTES, encrypt_parts=True)
+
+    entry = built.bundle.entries["file"]
+    assert isinstance(entry, FileBundle)
+    # Cut a block short of the limit: 48, 48, and 32 bytes.
+    assert len(entry.parts) == 3
+    assert all(PartPath.parse(part).encrypted for part in entry.parts)
+    assert entry.metadata.hash == sha256(data).hexdigest()
+    assert reassembled(entry, store) == data
+
+
+@mark.parametrize("encrypted", [True, False])
+def test_file_whose_parts_are_not_stored_as_this_build_stores_them_is_read_again(
+    tree: Path, store: RecordingStore, encrypted: bool
+) -> None:
+    (tree / "file").write_bytes(b"as it was")
+    built = build_directory(tree, store, encrypt_parts=not encrypted).entries["file"]
+
+    entry = build_directory(
+        tree, store, previous={"file": built}, encrypt_parts=encrypted
+    ).bundle.entries["file"]
+
+    assert isinstance(entry, FileBundle)
+    assert [PartPath.parse(part).encrypted for part in entry.parts] == [encrypted]
+    assert reassembled(entry, store) == b"as it was"
 
 
 def test_file_recorded_without_a_hash_is_built_afresh(tree: Path, store: RecordingStore) -> None:

@@ -9,8 +9,8 @@ Version 0.1 • September 2026
 This document describes every file a Libranet node reads or writes: where
 it lives, what it holds, which module writes it, and which settings and
 command-line switches move it or change what goes into it. It describes the
-implementation as of Phase 2 Step 29. The protocol does not prescribe any of
-this layout; for normative behavior see [High-Level
+implementation as of version 0.2, at the end of Phase 2. The protocol does
+not prescribe any of this layout; for normative behavior see [High-Level
 Design](../specs/HighLevelDesign.md), [HTTP API](../specs/HttpApi.md), and
 [Backup Specification](../specs/BackupSpecification.md).
 

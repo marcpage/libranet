@@ -49,7 +49,9 @@ Directory Bundles with no format extensions of their own.
   representing the configured directory's current contents at the time
   of backup.
 - File contents MUST be split into CAS objects and referenced from the
-  bundle exactly as described in BundleSpecification.md §2.
+  bundle as described in BundleSpecification.md §2, and each part MUST be
+  encrypted as §4.4 describes. So MUST each part of an extended
+  attribute's value stored as parts (BundleSpecification.md §2.4).
 - The resulting bundle MUST be password-protected as described in §4
   before being written to CAS.
 
@@ -70,10 +72,12 @@ Directory Bundles with no format extensions of their own.
   current bundle, and a restore of it (§5), carries metadata as of the
   last content change. Metadata here is everything a bundle records under
   `metadata` (BundleSpecification.md §2.1), extended attributes included.
-- Because file contents are content-addressed, only files that actually
-  changed produce new CAS objects; unchanged files' existing CAS entries
-  are simply referenced again by the new bundle, avoiding redundant
-  storage or transfer.
+- Because file contents are content-addressed, and their encryption is
+  deterministic (§4.4), only files that actually changed produce new CAS
+  objects; unchanged files' existing CAS entries are simply referenced
+  again by the new bundle, avoiding redundant storage or transfer. A file
+  whose parts an earlier bundle references unencrypted is read and stored
+  again, encrypted, even if it has not changed.
 - The node MUST retain a mapping from the configured directory to the
   content hash of its current (latest) backup bundle, so that later
   backups can locate the prior version and so that restore (§5) can
@@ -86,10 +90,18 @@ Directory Bundles with no format extensions of their own.
 Backed-up directories may contain sensitive local data. Because CAS
 content is not access-controlled — any peer that learns a content hash
 can retrieve the corresponding bytes (High-Level Design §4.7, Protocol
-Specification §5.2) — backup bundles MUST be encrypted before being
-placed in CAS, using the whole-bundle password protection mechanism
-already defined in [BundleSpecification.md
-§6](BundleSpecification.md#6-password-protection).
+Specification §5.2) — backups MUST be encrypted before being placed in
+CAS, in two layers:
+
+- every part of every file is encrypted with per-entry CAS encryption
+  ([BundleSpecification.md
+  §7](BundleSpecification.md#7-per-entry-cas-encryption)), under a key
+  derived from the part itself, which only the bundle records; and
+- the bundle, which records every path, every file's metadata, and every
+  part's address and key, is encrypted with the whole-bundle password
+  protection mechanism of [BundleSpecification.md
+  §6](BundleSpecification.md#6-password-protection), under the backup
+  secret.
 
 ### 4.2 Backup Secret Generation
 
@@ -99,11 +111,13 @@ already defined in [BundleSpecification.md
   feature) and reused as the password (BundleSpecification.md §6) for
   every backup bundle produced by every configured backup job on that
   node.
-- Because the same secret is reused across jobs, backups of identical
-  file content — whether from the same directory over time or from
-  different configured directories — continue to deduplicate in CAS via
-  the convergent encryption properties already defined in
-  BundleSpecification.md §6.3 and §7.2.
+- Because the same secret is reused across jobs, identical backup bundles
+  — whether from the same directory over time or from different
+  configured directories — encrypt to identical bytes and continue to
+  deduplicate in CAS, by the determinism of BundleSpecification.md §6.3.
+  A file's parts are encrypted under keys derived from their own content
+  (BundleSpecification.md §7.2), not from the secret, so identical files
+  deduplicate too, whichever node backs them up.
 - The backup secret MUST NOT require input from the user and MUST NOT be
   displayed, transmitted, or otherwise exposed during ordinary backup
   operation. This is what allows unattended, automatic backups to
@@ -130,6 +144,11 @@ already defined in [BundleSpecification.md
   password.
 - The default all-zero IV (BundleSpecification.md §6.3) SHOULD be used,
   consistent with preserving deduplication across backups.
+- Each part of a file, and of an extended attribute's value stored as
+  parts, MUST be encrypted following BundleSpecification.md §7, with
+  `AES256-CBC` under the convergent key of §7.2. The default all-zero IV
+  SHOULD be used, for the same reason, and the part SHOULD be compressed
+  first when that makes it smaller (§7.3).
 
 ## 5. Restore
 
@@ -140,7 +159,10 @@ already defined in [BundleSpecification.md
   - a target local directory path, which MAY differ from the original
     source directory.
 - The node MUST decrypt the specified bundle using the backup secret
-  (§4.2), following BundleSpecification.md §6.5.
+  (§4.2), following BundleSpecification.md §6.5, and each encrypted part
+  with the key its path carries (BundleSpecification.md §7.3). A part
+  whose path is unencrypted, as an earlier backup may have written, is
+  read as it is.
 - The node MUST reconstruct the directory hierarchy and file contents
   described by the decrypted Directory Bundle at the specified target
   path, resolving any `extensions` (BundleSpecification.md §4) as part
@@ -161,12 +183,22 @@ already defined in [BundleSpecification.md
   trigger a backup or restore job. This is the control point that
   prevents a remote peer, or an unprivileged local script without the
   credential, from directing the node to back up an arbitrary directory.
-- Because backup bundles are encrypted (§4) before being written to CAS,
-  their contents remain confidential even though the resulting CAS
-  objects are, like all CAS content, freely replicable and fetchable by
-  any peer that learns their hash. Confidentiality rests entirely on the
-  secrecy of the backup secret (§4.2/§4.3), not on any access
+- Because backups are encrypted (§4) before being written to CAS, their
+  contents remain confidential even though the resulting CAS objects are,
+  like all CAS content, freely replicable and fetchable by any peer that
+  learns their hash. The bundle hides every path, every file's metadata,
+  and which parts make up the backup, and a part cannot be read without
+  the key that only the bundle records. Confidentiality rests entirely on
+  the secrecy of the backup secret (§4.2/§4.3), not on any access
   restriction at the CAS layer.
+- Convergent encryption (BundleSpecification.md §7.2) has one limit:
+  anyone who already holds a file can derive its parts' keys and
+  addresses, and so confirm that the network holds them. They learn
+  nothing they did not already have, but they may learn that some node
+  backed the file up.
+- Parts written unencrypted, by a node that did not yet encrypt them,
+  stay readable wherever they are held. A later backup re-encrypts the
+  files they belong to (§3.3), but cannot recall copies already made.
 - Backup content is not intended to be private: §4's encryption keeps it
   confidential wherever it is held. A node SHOULD push the content a backup
   creates like any other shared content (High-Level Design §4.10, HTTP API

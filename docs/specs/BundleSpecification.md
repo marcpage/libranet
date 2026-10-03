@@ -80,7 +80,7 @@ algorithm**. A file's parts may be addressed under old algorithms (e.g.
 "contents": [
   "sha1/abc123...",
   "sha256/def456...",
-  "blake3/789ghi..."
+  "blake3/789abc..."
 ]
 ```
 
@@ -235,8 +235,10 @@ resolve(bundle):
     return result
 ```
 
-Net priority order: **top-level bundle > first extension > second extension
-> ... > last extension's own extensions (deepest first)**.
+Net priority order: **top-level bundle > first extension > the first
+extension's own extensions > second extension > ... > last extension > the
+last extension's own extensions**. Each extension's own extensions rank
+below it and above the next extension, in the same order, recursively.
 
 ### 4.2 Overlay semantics
 
@@ -462,6 +464,9 @@ data using an extended path scheme:
 This allows individual pieces of content to be encrypted while leaving the
 surrounding bundle structure (directory listings, filenames, metadata) fully
 readable — unlike §6, which encrypts the bundle structure but not the contents.
+The two combine: a password-protected bundle whose entries are encrypted hides
+both, as a backup does
+([Backup Specification §4](BackupSpecification.md#4-backup-secret-and-encryption)).
 
 ### 7.1 Fields
 
@@ -487,8 +492,9 @@ content always produces an identical key (and, combined with the default
 all-zero IV and PKCS#7 padding, identical ciphertext and therefore an
 identical CAS address — preserving deduplication, consistent with §6.3).
 
-For AES256-based encryption, SHA256 is the standard key-derivation
-candidate: `key = SHA256(plaintext)`.
+For `AES256-CBC`, the key is the SHA-256 of the plaintext:
+`key = SHA256(plaintext)`. An encoder MUST derive it so, since a decoder
+relies on it to check what it decrypts (§7.3).
 
 Not every encryption algorithm may fit neatly into a convergent-key
 paradigm. Key derivation is therefore defined **per algorithm**, not by a
@@ -496,7 +502,30 @@ single universal rule — when support for a new encryption algorithm is
 added, its convergent-key derivation mechanism (if any) is determined at
 that time.
 
-### 7.3 Example
+Anyone who already holds a piece of content can derive its key, and so its
+ciphertext and CAS address, and can therefore confirm that the network holds
+it. What convergent encryption keeps from everyone else is the content
+itself: it cannot be read without its key, which only the path carries.
+
+### 7.3 Compression
+
+Ciphertext does not compress, so a plaintext is compressed, if at all, before
+it is encrypted. An encoder MAY encrypt a zlib stream of the plaintext in
+place of the plaintext itself, and SHOULD when the stream is the smaller. It
+compresses at a fixed level, since identical ciphertext (§7.2) depends on
+compressing alike. The key is the SHA-256 of the plaintext either way.
+
+A decoder tells which it decrypted by the key, as HTTP API §8 tells
+compressed content by its hash. Bytes whose SHA-256 is the key are the
+plaintext. Otherwise they MUST be one zlib stream that decompresses to bytes
+whose SHA-256 is the key, or the entry is invalid. The key thereby checks the
+plaintext as well as decrypting it.
+
+The object limit (HighLevelDesign §4.3) applies to the ciphertext as stored.
+PKCS#7 padding makes it up to one block longer than what was encrypted, so a
+writer cutting a file into parts leaves room for that block.
+
+### 7.4 Example
 
 ```json
 "contents": [

@@ -89,7 +89,7 @@ The fundamental design principle is:
 The system therefore attempts to create the following relationship:
 
 ```text
-Contribution -> Karma -> Repuation -> Greater network participation
+Contribution -> Karma -> Reputation -> Greater network participation
 ```
 
 rather than:
@@ -102,8 +102,8 @@ The distinction is important.
 
 A participant possessing a large Karma balance is not necessarily "wealthy."
 
-The participant has accumulated a large historical record of recognized more
-contribution than value received.
+The participant has accumulated a long historical record of recognized
+contribution exceeding the value it received.
 
 ---
 
@@ -143,9 +143,9 @@ than absolute proof of trustworthiness.
 
 The maximum Karma supply is:
 
-\[
+```text
 100,000,000,000,000 Karma
-\]
+```
 
 or:
 
@@ -153,9 +153,9 @@ or:
 
 Each Karma is divisible into:
 
-\[
+```text
 100,000,000,000,000 Kismet
-\]
+```
 
 or:
 
@@ -163,21 +163,21 @@ or:
 
 Therefore:
 
-\[
+```text
 1 Karma = 10^14 Kismet
-\]
+```
 
 and:
 
-\[
+```text
 1 Kismet = 10^-14 Karma
-\]
+```
 
 The theoretical maximum number of Kismet units is therefore:
 
-\[
+```text
 10^28
-\]
+```
 
 or:
 
@@ -225,29 +225,29 @@ New Karma is created through the generation of transaction blocks.
 
 The first transaction block generates:
 
-\[
+```text
 20 Karma
-\]
+```
 
 The reward decreases by:
 
-\[
+```text
 200 Kismet
-\]
+```
 
 for each successive generation.
 
 The general formula is:
 
-\[
+```text
 R_n = 20 Karma - (n-1)(200 Kismet)
-\]
+```
 
 where:
 
-- \(R_n\) is the newly generated Karma for generation \(n\);
-- \(n\) is the generation index;
-- \(1 Karma = 100,000,000,000,000 Kismet\).
+- `R_n` is the newly generated Karma for generation `n`;
+- `n` is the generation index;
+- `1 Karma = 100,000,000,000,000 Kismet`.
 
 Expressed entirely in Kismet:
 
@@ -287,23 +287,23 @@ predictable linear decline.
 
 The issuance schedule forms an arithmetic series.
 
-The first positive reward is approximately:
+The first positive reward is:
 
-\[
+```text
 20 Karma
-\]
+```
 
 and the final positive reward is:
 
-\[
+```text
 0.000000000002 Karma
-\]
+```
 
 The number of positive-reward generations is:
 
-\[
+```text
 10,000,000,000,000
-\]
+```
 
 or:
 
@@ -311,15 +311,16 @@ or:
 
 The sum is:
 
-\[
-S = (a_1 + a_n) / 2
-\]
+```text
+S = N (a_1 + a_n) / 2
+```
 
-which produces:
+where `N` is the number of positive-reward generations, `a_1` the first reward,
+and `a_n` the final one, which produces:
 
-\[
+```text
 S = 100,000,000,000,000 Karma
-\]
+```
 
 Therefore the emission schedule naturally produces approximately:
 
@@ -793,15 +794,15 @@ effective weight.
 
 The validator might stake:
 
-\[
+```text
 10,000 Karma
-\]
+```
 
 Its effective consensus weight may therefore be only:
 
-\[
+```text
 1,000
-\]
+```
 
 Karma.
 
@@ -810,9 +811,9 @@ If it wins again, its reduced effective weight limits its advantage.
 However, if its stake appears in the selected runner-up block and is subject to
 the protocol's loss mechanism, the validator may lose the full:
 
-\[
+```text
 10,000 Karma.
-\]
+```
 
 Thus:
 
@@ -1086,7 +1087,7 @@ schedule.
 
 ### Free network access
 
-At least half of every transaction block must contain fee-free transactions.
+At least half of the transactions in every block must be fee-free.
 
 ### Machine-to-machine incentives
 
@@ -1288,15 +1289,15 @@ Karma without providing external value.
 
 Determine whether:
 
-\[
+```text
 10,000 Karma
-\]
+```
 
 as one stake behaves differently from:
 
-\[
-100 \times 100 Karma
-\]
+```text
+100 × 100 Karma
+```
 
 as independent stakes.
 
@@ -1353,15 +1354,15 @@ as the transaction block approaches completion.
 
 Measure confirmation times as a function of:
 
-\[
+```text
 fee = 0
-\]
+```
 
 versus:
 
-\[
+```text
 fee > 0
-\]
+```
 
 especially for small fees.
 
