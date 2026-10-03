@@ -249,7 +249,6 @@ class Build(Task):
             previous=None if earlier is None else earlier.superseded.entries,
             xattrs=settings.xattrs,
             encrypt_parts=password is not None,
-            require_part_sizes=True,
         )
 
         if record is not None and earlier is not None and earlier.matches(build.bundle):

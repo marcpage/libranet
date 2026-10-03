@@ -483,7 +483,7 @@ def test_file_whose_metadata_is_unchanged_is_kept_without_being_read(
     built = build_directory(tree, store).bundle.entries["file"]
     assert isinstance(built, FileBundle)
     # Parts the file could not have produced, so only an entry kept unread names them.
-    recorded = FileBundle((str(ContentId.for_data(b"elsewhere", "sha256")),), built.metadata)
+    recorded = replace(built, parts=(str(ContentId.for_data(b"elsewhere", "sha256")),))
     store.writes.clear()
 
     entries = build_directory(tree, store, previous={"file": recorded}).bundle.entries
@@ -570,7 +570,7 @@ def test_file_whose_parts_are_not_stored_as_this_build_stores_them_is_read_again
 
 
 @mark.parametrize("touched", [False, True])
-def test_file_recorded_without_part_sizes_is_read_again_when_they_are_required(
+def test_file_recorded_without_part_sizes_is_read_again(
     tree: Path, store: RecordingStore, touched: bool
 ) -> None:
     (tree / "file").write_bytes(bytes(number % 251 for number in range(2 * MAX_BYTES + 1)))
@@ -585,11 +585,7 @@ def test_file_recorded_without_part_sizes_is_read_again_when_they_are_required(
         utime(tree / "file", ns=(WHOLE_SECOND_NS, WHOLE_SECOND_NS))
 
     entry = build_directory(
-        tree,
-        store,
-        max_object_bytes=MAX_BYTES,
-        previous={"file": recorded},
-        require_part_sizes=True,
+        tree, store, max_object_bytes=MAX_BYTES, previous={"file": recorded}
     ).entries["file"]
 
     assert isinstance(entry, FileBundle)
@@ -600,7 +596,7 @@ def test_file_recorded_without_part_sizes_is_read_again_when_they_are_required(
 
 
 @mark.parametrize("touched", [False, True])
-def test_file_recorded_without_part_sizes_keeps_its_parts_unless_they_are_required(
+def test_file_recorded_without_part_sizes_keeps_its_parts_when_they_are_not_required(
     tree: Path, store: RecordingStore, touched: bool
 ) -> None:
     (tree / "file").write_bytes(b"as it was")
@@ -611,7 +607,9 @@ def test_file_recorded_without_part_sizes_keeps_its_parts_unless_they_are_requir
     if touched:
         utime(tree / "file", ns=(WHOLE_SECOND_NS, WHOLE_SECOND_NS))
 
-    entry = build_directory(tree, store, previous={"file": recorded}).entries["file"]
+    entry = build_directory(
+        tree, store, previous={"file": recorded}, require_part_sizes=False
+    ).entries["file"]
 
     assert isinstance(entry, FileBundle)
     assert (entry.parts, entry.part_sizes_bytes) == (built.parts, None)
@@ -649,9 +647,10 @@ def test_file_kept_unread_keeps_its_recorded_creation_time(
     built = build_directory(tree, store).bundle.entries["file"]
     assert isinstance(built, FileBundle)
     # Parts the file could not have produced, so only an entry kept unread names them.
-    recorded = FileBundle(
-        (str(ContentId.for_data(b"elsewhere", "sha256")),),
-        replace(built.metadata, created=CREATED),
+    recorded = replace(
+        built,
+        parts=(str(ContentId.for_data(b"elsewhere", "sha256")),),
+        metadata=replace(built.metadata, created=CREATED),
     )
     store.writes.clear()
 
@@ -860,7 +859,7 @@ def test_file_whose_attributes_alone_changed_is_kept_unread_with_the_new_ones(
     built = build_directory(tree, store, xattrs=ExtendedAttributes()).bundle.entries["file"]
     assert isinstance(built, FileBundle)
     # Parts the file could not have produced, so only an entry kept unread names them.
-    recorded = FileBundle((str(ContentId.for_data(b"elsewhere", "sha256")),), built.metadata)
+    recorded = replace(built, parts=(str(ContentId.for_data(b"elsewhere", "sha256")),))
     xattr(str(tree / "file")).set("user.tag", b"blue")
     store.writes.clear()
 
@@ -868,8 +867,8 @@ def test_file_whose_attributes_alone_changed_is_kept_unread_with_the_new_ones(
         tree, store, previous={"file": recorded}, xattrs=ExtendedAttributes()
     ).bundle.entries
 
-    assert entries["file"] == FileBundle(
-        recorded.parts, replace(recorded.metadata, xattrs={"user.tag": "Ymx1ZQ=="})
+    assert entries["file"] == replace(
+        recorded, metadata=replace(recorded.metadata, xattrs={"user.tag": "Ymx1ZQ=="})
     )
     assert store.writes == []
 

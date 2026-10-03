@@ -48,7 +48,7 @@ now. A file whose metadata changed is hashed, and if it still holds the
 bytes recorded, it keeps its parts and only its metadata is updated.
 Otherwise it is built afresh. So is a file whose parts are not stored as
 this build stores them, encrypted or not, whatever else is the same, and,
-when the caller asks for every part's size, one whose entry records none, as
+unless the caller says otherwise, one whose entry records no part sizes, as
 one built before sizes were recorded.
 
 Times are UTC, to the microsecond. A file's creation time is recorded only
@@ -205,7 +205,7 @@ def build_directory(  # pylint: disable=too-many-branches,too-many-locals
     previous: Mapping[str, Entry] | None = None,
     xattrs: ExtendedAttributes | None = None,
     encrypt_parts: bool = False,
-    require_part_sizes: bool = False,
+    require_part_sizes: bool = True,
 ) -> DirectoryBuild:
     """The bundle for the directory at ``root``, every file's parts stored in ``sink``.
 
@@ -416,7 +416,7 @@ def _file_bundle(
     parts: PartWriter,
     xattrs: Mapping[str, XattrValue],
     earlier: Entry | None = None,
-    require_part_sizes: bool = False,
+    require_part_sizes: bool = True,
 ) -> FileBundle:
     """The bundle for the open ``file``, each part stored by ``parts`` as it is read.
 

@@ -151,8 +151,9 @@ My calls, not yet reviewed:
   part, since it breaks nothing.
 
 What was built is the list above, and the calls below it, made while
-building. A build asks for every part's size with `build_directory`'s new
-`require_part_sizes`; a backup does not. About 155 new and 40 changed lines
+building. `build_directory`'s new `require_part_sizes`, true unless a
+caller says otherwise, reads again a file whose entry records no part
+sizes; a backup turns it off. About 155 new and 40 changed lines
 of non-test Python, about half of it documentation, so one change set.
 Gates green: 3,362 passed, 1 skipped, 99.06%.
 

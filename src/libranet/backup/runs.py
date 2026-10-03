@@ -240,6 +240,7 @@ def back_up(
         previous=None if earlier is None else earlier.seen,
         xattrs=settings.xattrs,
         encrypt_parts=True,
+        require_part_sizes=False,
     )
     entries = build.entries
     skipped = len(build.skipped)
