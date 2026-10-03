@@ -1,4 +1,4 @@
-"""Tests for what the backup module last reported its jobs, restores, builds, and exports did."""
+"""Tests for what the backup module last reported its jobs, restores, builds, and the rest did."""
 
 from __future__ import annotations
 from threading import Thread
@@ -11,6 +11,7 @@ from libranet.modules import ModuleName
 from libranet.webserver.backup_state import (
     BUILDS_FIELD,
     EXPORTS_FIELD,
+    IMPORTS_FIELD,
     JOBS_FIELD,
     RESTORES_FIELD,
     BackupReport,
@@ -22,13 +23,22 @@ JOB = {"job_id": "0123456789abcdef", "directory": "/home/me/documents", "state":
 RESTORE = {"restore_id": "fedcba9876543210", "directory": "/tmp/restored", "state": "running"}
 BUILD = {"build_id": "0011223344556677", "directory": "/home/me/site", "status": "done"}
 EXPORT = {"export_id": "8899aabbccddeeff", "archive": "/tmp/site.zip", "status": "waiting"}
+IMPORT = {"import_id": "7766554433221100", "path": "Movies/Film.mp4", "status": "running"}
 
 
-def report_message(jobs: object, restores: object, builds: object, exports: object) -> Message:
+def report_message(
+    jobs: object, restores: object, builds: object, exports: object, imports: object
+) -> Message:
     return make_message(
         EventType.BACKUP_STATE,
         ModuleName.WEBSERVER,
-        {JOBS_FIELD: jobs, RESTORES_FIELD: restores, BUILDS_FIELD: builds, EXPORTS_FIELD: exports},
+        {
+            JOBS_FIELD: jobs,
+            RESTORES_FIELD: restores,
+            BUILDS_FIELD: builds,
+            EXPORTS_FIELD: exports,
+            IMPORTS_FIELD: imports,
+        },
     )
 
 
@@ -48,16 +58,20 @@ def test_a_report_replaces_the_one_before_it() -> None:
 
 
 def test_a_report_carries_the_entries_as_the_backup_module_published_them() -> None:
-    report = BackupReport.from_message(report_message([JOB], [RESTORE], [BUILD], [EXPORT]))
+    report = BackupReport.from_message(
+        report_message([JOB], [RESTORE], [BUILD], [EXPORT], [IMPORT])
+    )
 
     assert report.jobs == (JOB,)
     assert report.restores == (RESTORE,)
     assert report.builds == (BUILD,)
     assert report.exports == (EXPORT,)
+    assert report.imports == (IMPORT,)
     assert report.entries(JOBS_FIELD) == (JOB,)
     assert report.entries(RESTORES_FIELD) == (RESTORE,)
     assert report.entries(BUILDS_FIELD) == (BUILD,)
     assert report.entries(EXPORTS_FIELD) == (EXPORT,)
+    assert report.entries(IMPORTS_FIELD) == (IMPORT,)
 
 
 def test_a_report_naming_neither_list_is_an_error() -> None:
@@ -66,31 +80,34 @@ def test_a_report_naming_neither_list_is_an_error() -> None:
 
 
 @mark.parametrize(
-    "jobs,restores,builds,exports",
+    "jobs,restores,builds,exports,imports",
     [
-        ("not a list", [], [], []),
-        ([], {"job_id": "a"}, [], []),
-        ([JOB, "not an object"], [], [], []),
-        ([], [None], [], []),
-        ([], [], "not a list", []),
-        ([], [], [], [EXPORT, 7]),
-        (None, None, None, None),
+        ("not a list", [], [], [], []),
+        ([], {"job_id": "a"}, [], [], []),
+        ([JOB, "not an object"], [], [], [], []),
+        ([], [None], [], [], []),
+        ([], [], "not a list", [], []),
+        ([], [], [], [EXPORT, 7], []),
+        ([], [], [], [], {"import_id": "a"}),
+        ([], [], [], [], [IMPORT, None]),
+        (None, None, None, None, None),
     ],
 )
-def test_a_report_that_is_not_four_arrays_of_objects_is_an_error(
-    jobs: object, restores: object, builds: object, exports: object
+def test_a_report_that_is_not_five_arrays_of_objects_is_an_error(
+    jobs: object, restores: object, builds: object, exports: object, imports: object
 ) -> None:
     with raises(InvalidBackupReportError):
-        BackupReport.from_message(report_message(jobs, restores, builds, exports))
+        BackupReport.from_message(report_message(jobs, restores, builds, exports, imports))
 
 
-@mark.parametrize("missing", [RESTORES_FIELD, BUILDS_FIELD, EXPORTS_FIELD])
+@mark.parametrize("missing", [RESTORES_FIELD, BUILDS_FIELD, EXPORTS_FIELD, IMPORTS_FIELD])
 def test_a_message_missing_a_list_entirely_is_an_error(missing: str) -> None:
     lists: dict[str, object] = {
         JOBS_FIELD: [],
         RESTORES_FIELD: [],
         BUILDS_FIELD: [],
         EXPORTS_FIELD: [],
+        IMPORTS_FIELD: [],
     }
     del lists[missing]
     message = make_message(EventType.BACKUP_STATE, ModuleName.WEBSERVER, lists)

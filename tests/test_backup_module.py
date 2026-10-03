@@ -4,10 +4,11 @@ endpoints, and the clock faked."""
 # pylint: disable=too-many-lines
 
 from __future__ import annotations
+from hashlib import sha256
 from io import BytesIO
 from itertools import count
 from logging import ERROR, INFO, WARNING
-from os import DirEntry, mkfifo, scandir, utime
+from os import DirEntry, chmod, mkfifo, scandir, utime
 from pathlib import Path
 from queue import Empty, Queue
 from threading import Timer
@@ -22,10 +23,11 @@ from libranet.backup.exports import Export
 from libranet.backup.jobs import ExpandedBackups, load_jobs
 from libranet.backup.module import BackupModule, backup_module_factory
 from libranet.backup.restores import Restore
-from libranet.bundle.building import build_directory
+from libranet.bundle.building import build_directory, build_file
 from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.layering import Layering, Superseded
 from libranet.bundle.loading import load_bundle
+from libranet.bundle.parts import PartPath
 from libranet.bundle.reassembly import write_file
 from libranet.bundle.shapes import DirectoryBundle, FileBundle, Metadata
 from libranet.bundle.storing import store_bundle
@@ -49,6 +51,7 @@ from libranet.protocol.config_requests import (
     BackupJobRequest,
     BuildRequest,
     ExportRequest,
+    ImportRequest,
     Password,
     RestoreRequest,
 )
@@ -1857,3 +1860,319 @@ def test_a_build_fails_once_storage_stays_full(
     final = builds(published(queues))[-1][0]
     assert final["status"] == "failed"
     assert final["error"].startswith("Storage stayed full")
+
+
+# -- Importing a local file (Phase 3 Step 69) -------------------------------
+
+# Small, so that a small file has several parts.
+PART_BYTES = 1024
+
+
+def small_parts(config: LibranetConfig) -> LibranetConfig:
+    """``config`` storing objects of at most ``PART_BYTES``."""
+    storage = config.storage.model_copy(update={"max_object_bytes": PART_BYTES})
+    return config.model_copy(update={"storage": storage})
+
+
+def film(directory: Path, data: bytes, name: str = "Film.mp4") -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / name
+    path.write_bytes(data)
+    return path
+
+
+def imports(messages: list[Message]) -> list[list[dict[str, Any]]]:
+    """The imports each ``backup.state`` reported, in order."""
+    return [message["imports"] for message in of(messages, EventType.BACKUP_STATE)]
+
+
+def import_file(module: BackupModule, local_path: Path, path: str = "Movies/Film.mp4") -> str:
+    request = ImportRequest(path)
+    module.handle(asked(EventType.IMPORT_REQUESTED, **request.payload(local_path)))
+    return request.import_id
+
+
+def on_each_part(monkeypatch: MonkeyPatch, act: Callable[[Path], None]) -> None:
+    """Has ``act`` called with a file's path each time an import reads a part of it."""
+
+    def acting(
+        path: Path, sink: Any, max_object_bytes: int, *, read: Callable[[int], None]
+    ) -> FileBundle:
+        def part_read(size: int) -> None:
+            act(path)
+            read(size)
+
+        return build_file(path, sink, max_object_bytes, read=part_read)
+
+    monkeypatch.setattr("libranet.backup.imports.build_file", acting)
+
+
+# Four parts, each unlike the others.
+FILM = bytes(index % 251 for index in range(4 * PART_BYTES))
+
+
+def test_the_module_hears_import_requests() -> None:
+    assert EventType.IMPORT_REQUESTED in BackupModule.subscriptions
+
+
+def test_an_import_stores_the_file_and_a_bundle_of_what_its_bytes_decide(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float], tmp_path: Path, store: CasStore
+) -> None:
+    module = start(small_parts(config), queues, now)
+    published(queues)
+    path = film(tmp_path / "Movies", FILM)
+    chmod(path, 0o755)
+
+    import_id = import_file(module, path)
+
+    messages = published(queues)
+    states = imports(messages)
+    final = states[-1][0]
+    assert [state[0]["status"] for state in states] == ["waiting", "running", "done"]
+    assert final == {
+        "import_id": import_id,
+        "path": "Movies/Film.mp4",
+        "status": "done",
+        "error": None,
+        "requested_at": START,
+        "finished_at": START,
+        "bytes_read": len(FILM),
+        "size": len(FILM),
+        "file": final["file"],
+    }
+    bundle = load_bundle(ContentId.parse(final["file"]), store)
+    assert isinstance(bundle, FileBundle)
+    # No times or permissions, and plain parts, cut at the object limit.
+    assert bundle.metadata == Metadata(
+        size_bytes=len(FILM), algorithm="sha256", hash=sha256(FILM).hexdigest()
+    )
+    assert bundle.part_sizes_bytes == (PART_BYTES,) * 4
+    assert not any(PartPath.parse(part).encrypted for part in bundle.parts)
+    output = BytesIO()
+    write_file(bundle, store, output)
+    assert output.getvalue() == FILM
+
+    for message in of(messages, EventType.BACKUP_STATE):
+        BackupReport.from_message(message)
+
+
+def test_every_object_an_import_stores_is_announced_from_this_node(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float], tmp_path: Path, store: CasStore
+) -> None:
+    module = start(small_parts(config), queues, now)
+    node_id = NodeIdentity.load(config).node_id
+
+    import_file(module, film(tmp_path / "Movies", FILM))
+
+    announced = of(published(queues), EventType.DATA_STORED)
+    assert len(announced) == 5
+    assert sorted(stored_ids(announced)) == sorted(set(store.iter_prefix("sha256", "")) - {node_id})
+    assert all(message["node_id"] == str(node_id) for message in announced)
+
+
+def test_one_file_imported_from_anywhere_has_one_id(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float], tmp_path: Path
+) -> None:
+    module = start(small_parts(config), queues, now)
+    first = film(tmp_path / "Movies", FILM)
+    second = film(tmp_path / "Downloads", FILM, "Copy of Film.mp4")
+    utime(second, ns=(WHOLE_SECOND_NS, WHOLE_SECOND_NS))
+    chmod(second, 0o400)
+
+    import_file(module, first)
+    import_file(module, second, "Downloads/Copy of Film.mp4")
+
+    one, other = imports(published(queues))[-1]
+    assert (one["status"], other["status"]) == ("done", "done")
+    assert one["file"] == other["file"]
+
+
+def test_how_far_an_import_has_read_is_reported_at_most_once_a_second(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    def half_a_second(_: Path) -> None:
+        now[0] += 0.5
+
+    on_each_part(monkeypatch, half_a_second)
+    module = start(small_parts(config), queues, now)
+    published(queues)
+
+    import_file(module, film(tmp_path / "Movies", FILM))
+
+    states = [state[0] for state in imports(published(queues))]
+    running = [state["bytes_read"] for state in states if state["status"] == "running"]
+    assert running == [0, 2 * PART_BYTES, 4 * PART_BYTES]
+    assert states[-1]["status"] == "done"
+
+
+def test_importing_again_reads_the_file_again(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float], tmp_path: Path
+) -> None:
+    module = start(small_parts(config), queues, now)
+    path = film(tmp_path / "Movies", FILM)
+    import_id = import_file(module, path)
+    first = imports(published(queues))[-1][0]["file"]
+    path.write_bytes(FILM[::-1])
+    now[0] += INTERVAL
+
+    assert import_file(module, path) == import_id
+
+    (again,) = imports(published(queues))[-1]
+    assert (again["status"], again["requested_at"]) == ("done", START + INTERVAL)
+    assert again["file"] != first
+
+
+def test_a_file_that_changes_as_it_is_read_fails_to_import(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    caplog: LogCaptureFixture,
+) -> None:
+    def grow(path: Path) -> None:
+        # Once only, as each part read would otherwise make another.
+        if path.stat().st_size == len(FILM):
+            with path.open("ab") as file:
+                file.write(b"more")
+
+    on_each_part(monkeypatch, grow)
+    module = start(small_parts(config), queues, now)
+    path = film(tmp_path / "Movies", FILM)
+
+    with caplog.at_level(WARNING):
+        import_file(module, path)
+
+    final = imports(published(queues))[-1][0]
+    assert (final["status"], final["file"]) == ("failed", None)
+    assert final["error"] == f"Changed while it was read: {path}"
+    assert f"Could not import {path}" in caplog.text
+
+
+@mark.parametrize("where", ["missing", "directory", "node"])
+def test_a_file_that_cannot_be_imported_fails_and_says_why(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tmp_path: Path,
+    caplog: LogCaptureFixture,
+    where: str,
+) -> None:
+    module = start(config, queues, now)
+    local_path = {
+        "missing": tmp_path / "Movies" / "missing.mp4",
+        "directory": tmp_path,
+        "node": film(config.storage.data_dir, b"one of the node's own"),
+    }[where]
+
+    with caplog.at_level(WARNING):
+        import_file(module, local_path)
+
+    final = imports(published(queues))[-1][0]
+    assert (final["status"], final["file"]) == ("failed", None)
+    assert final["error"]
+    assert f"Could not import {local_path}" in caplog.text
+
+
+def test_an_unexpected_import_failure_fails_it_and_is_logged(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    caplog: LogCaptureFixture,
+) -> None:
+    def broken(*_: Any, **__: Any) -> FileBundle:
+        raise RuntimeError("Something no one expected")
+
+    monkeypatch.setattr("libranet.backup.imports.build_file", broken)
+    module = start(config, queues, now)
+    path = film(tmp_path / "Movies", FILM)
+
+    with caplog.at_level(ERROR):
+        import_file(module, path)
+
+    final = imports(published(queues))[-1][0]
+    assert (final["status"], final["error"]) == ("failed", "Something no one expected")
+    assert f"Importing {path} failed" in caplog.text
+
+
+@mark.parametrize(
+    "payload",
+    [
+        {"import_id": "0" * 16, "path": "Movies/Film.mp4", "local_path": "/Movies/Film.mp4"},
+        {
+            "import_id": ImportRequest("Movies/Film.mp4").import_id,
+            "path": "Movies/Film.mp4",
+            "local_path": "Movies/Film.mp4",
+        },
+        {
+            "import_id": ImportRequest("Movies/Film.mp4").import_id,
+            "path": "Movies/Film.mp4",
+            "local_path": "/Movies/../Film.mp4",
+        },
+    ],
+)
+def test_an_import_that_does_not_name_its_path_or_where_it_lies_is_refused(
+    config: LibranetConfig, queues: ModuleQueues, now: list[float], payload: dict[str, str]
+) -> None:
+    module = start(config, queues, now)
+
+    with raises(ValueError):
+        module.handle(asked(EventType.IMPORT_REQUESTED, **payload))
+
+    assert module.imports == {}
+
+
+def test_an_import_fails_once_storage_stays_full(
+    config: LibranetConfig, queues: ModuleQueues, tmp_path: Path, store: CasStore
+) -> None:
+    module = started_full(stalling(config, 30.0), queues)
+    held = held_ids(store)
+
+    import_file(module, film(tmp_path / "Movies", FILM))
+
+    messages = published(queues)
+    final = imports(messages)[-1][0]
+    assert final["status"] == "failed"
+    assert final["error"].startswith("Storage stayed full")
+    assert of(messages, EventType.DATA_STORED) == []
+    assert held_ids(store) == held
+
+
+def test_builds_exports_and_imports_run_in_the_order_asked_for(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    tree: Path,
+    tmp_path: Path,
+    store: CasStore,
+) -> None:
+    module = start(config, queues, now)
+    bundle = backed_up_bundle(module, queues, tree)
+    store.delete(encrypted_part(b"some notes").content_id)
+    restore(module, bundle, tmp_path / "restored")
+    now[0] += config.stats.seek_entry_ttl_seconds
+    import_file(module, film(tmp_path / "Movies", FILM))
+    messages = published(queues)
+
+    # The restore due carries on first, and the import waits its turn.
+    assert imports(messages)[-1][0]["status"] == "waiting"
+
+    site = tmp_path / "site"
+    site.mkdir()
+    now[0] += 1
+    build(module, site)
+    messages = published(queues)
+
+    # The import, asked for first, runs next, and the build waits its turn.
+    assert imports(messages)[-1][0]["status"] == "done"
+    assert builds(messages)[-1][0]["status"] == "waiting"
+
+    module.on_idle()
+
+    assert builds(published(queues))[-1][0]["status"] == "done"

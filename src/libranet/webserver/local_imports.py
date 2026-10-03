@@ -102,8 +102,7 @@ class ImportHandler:
                 )
             )
 
-        payload = asked.payload(found)
-        self.publish(EventType.IMPORT_REQUESTED, payload)
+        self.publish(EventType.IMPORT_REQUESTED, asked.payload(found))
         return json_response({"import_id": asked.import_id}, HTTPStatus.ACCEPTED)
 
 

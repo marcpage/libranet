@@ -854,6 +854,81 @@ My calls, not yet reviewed:
 
 About 300 new or changed lines of non-test Python, so one change set.
 
+Built as planned, in one change set: 579 added lines of non-test Python, 93
+of them in place of removed ones and many of them docstrings. The web server
+finds the file with `LocalFolders.find_file`, which reaches a path as a
+listing does, and serves both routes from `webserver/local_imports.py`, each
+wrapped in `LocalOnly`. The backup module's `Import` (`backup/imports.py`)
+reads the file with `build_file`, which gains a callback told of each part
+as it is stored, and keeps only what the bytes decide with
+`FileBundle.content_only`, which the shipped applications now use too.
+`BackupReport` gains `imports`, and `build_router` gains `backup_state`, so
+that the main port answers from the reports `/config`'s port does.
+`json_or_refusal` is public, and the `503` before the first report is
+`unreported_response`, so that `/data/imports` reads its body and answers as
+`/config/api` does. The backup module now runs whichever build, export, or
+import was asked for first by pairing each with how it is run, rather than
+taking whatever is not a build for an export.
+
+Run live on one new node, offering a `Movies` folder in the scratchpad and a
+`Music` folder that did not exist:
+
+- `Movies/Film.mp4`, 5 MiB, was `202`, and done 0.05 seconds later. Its file
+  bundle, read back through `/data`, named six parts and gave their `sizes`,
+  the file's size, and its whole-file hash, and nothing else. The parts
+  reassembled to the file. A copy with other times and permissions, and a
+  link to the film, each imported as the same file id.
+- `Movies` and `Movies/Holidays` were `400`, as was
+  `Movies/../Elsewhere/private.txt`. `Movies/missing.mp4`,
+  `Movies/.hidden.mp4`, `Movies/pipe`, a FIFO, `Movies/outside.txt`, a link
+  out of the folder, `Music/song.mp3`, and
+  `Movies/%2e%2e/Elsewhere/private.txt` were each `404`. A form's body was
+  `415`. A `Sec-Fetch-Site` of `cross-site` and a `Host` of `evil.example`
+  were each `403`, and logged at warning.
+- 300 MiB of random bytes imported in 9 seconds, about 35 MB a second, with
+  its progress reported about once a second. Imported again, it took half a
+  second, as every part was held. A fresh file appended to two seconds in
+  failed, with "Changed while it was read", logged at warning.
+
+No other warning was logged. Not checked live: a full store, and pushing the
+parts, since the node had no peers.
+
+My calls while building, not yet reviewed:
+
+- **The message carries both paths**: `path` as asked, which is reported,
+  and `local_path`, where the web server found the file, which is read. The
+  plan named only the first. The backup module refuses a `local_path` that
+  is not absolute and normalized, as it does a build's directory.
+- **An import is named by the path as asked**, so a page can work its id out,
+  and two spellings of one file, one through a link, are two imports of one
+  file id.
+- **The web server checks only that a regular file is there.** Whether the
+  node may read it is found once it is imported, and is the import's error.
+  A directory the node may not look in is `403`, as for a listing, and a FIFO
+  or anything else a listing leaves out is `404`.
+- **The backup module checks again that the file lies within none of the
+  node's own directories**, as a build checks its directory, though the web
+  server never finds one there.
+- **A `400` is the `invalid-config-request` problem**, as for `/config/api`'s
+  bodies, though `/data/imports` is not beneath `/config`.
+- **A failed import's `error` may name the file's absolute path**, which only
+  a local client can read.
+- **`size` is `null` in the report that an import is running**, and comes
+  with the first report of progress, since the file is looked at only once
+  the import starts. A file read within a second has its size reported only
+  once it is done.
+- **An import asked for while another runs is reported only once that one is
+  done**, since messages that come while content is stored are set aside
+  (Phase 2 Step 63), as for builds.
+- **Ties go to builds, then exports, then imports.** Tasks asked for at the
+  same moment, which only a faked clock gives, run in that order, as builds
+  went ahead of exports before.
+- **A change is told by the size and modification time of the open file,
+  before and after it is read**, and by the bytes read not adding up to the
+  size first seen. A change that keeps both is not caught.
+- **`build_file` fails a file that changes for every caller.** It had none
+  but tests.
+
 **Testable in isolation:**
 
 - Request tests for `ImportRequest`.
@@ -1160,6 +1235,7 @@ number, and where it went.
 | #213 | A movie application shipped at `/movie`, with playlists that can be shared | 67, with 68 to 72 for what it needs |
 | #218 | Listing the applications, so that the root application can link to each | 73 |
 | #219 | Local clients, the checks made of them, and the folders they may read | 68 |
+| #220 | Importing a local file from a folder offered, and getting back its id | 69 |
 
 ## 5. Suggested Build Order
 
@@ -1171,7 +1247,7 @@ number, and where it went.
 | 4 | 68 (#219) | Local clients and their checks, which 69, 70, and 72 need. Needs nothing in this phase. |
 | 5 | 70 (#213) | Needs only 68. |
 | 6 | 71 (#213) | Serves what 65 and 66 serve, from any bundle, and reads encrypted bundles, which 72 makes. |
-| 7 | 69 (#213) | Needs 64's sizes and 68's folders. |
+| 7 | 69 (#220) | Needs 64's sizes and 68's folders. |
 | 8 | 72 (#213) | Needs 68's checks, 69's file ids, and 71's encrypted bundles. |
 | 9 | 73 (#218) | Small, and needs nothing in this phase, so it can go anywhere. |
 | 10 | 67 (#213) | The page, which needs all of the above. |

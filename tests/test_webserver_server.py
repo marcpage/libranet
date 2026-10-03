@@ -1012,6 +1012,7 @@ def test_unsigned_api_reads_can_be_refused(
         "/data/applications",
         "/data/client",
         "/data/directory",
+        "/data/imports",
         "/data/no/such/endpoint",
     ]
 
@@ -1695,6 +1696,51 @@ def test_another_client_or_sites_page_is_refused_the_folders(
 
     assert remote.status == 403
     assert named.status == 403
+    assert cross_site.status == 403
+
+
+def test_a_local_client_imports_a_file_from_a_folder_offered(
+    local_connection: HTTPConnection, queues: ModuleQueues, tmp_path: Path
+) -> None:
+    local_connection.request(
+        "POST",
+        "/data/imports",
+        body=dumps({"path": "Movies/Film.mp4"}).encode("utf-8"),
+        headers={"Content-Type": JSON_CONTENT_TYPE},
+    )
+    response = local_connection.getresponse()
+    body = response.read()
+    status, _ = _get(local_connection, "/data/imports")
+
+    # Not taken for /data/{algorithm}/{hash}, whose pattern it also fits.
+    assert response.status == 202
+    import_id = loads(body)["import_id"]
+    (asked,) = [
+        message for message in _published(queues) if message["event"] == EventType.IMPORT_REQUESTED
+    ]
+    assert (asked["import_id"], asked["path"], asked["local_path"]) == (
+        import_id,
+        "Movies/Film.mp4",
+        str((tmp_path / "Movies" / "Film.mp4").resolve()),
+    )
+    # The backup module has reported nothing to this server.
+    assert status.status == 503
+
+
+@mark.parametrize("method", ["GET", "POST"])
+def test_another_client_or_sites_page_is_refused_imports(
+    local_server: LibranetHTTPServer, local_connection: HTTPConnection, method: str
+) -> None:
+    # The live server only ever sees loopback clients, so the remote request
+    # is put to the router directly.
+    remote = local_server.router.dispatch(
+        Request(method, "/data/imports", client_address="203.0.113.42")
+    )
+    cross_site, _ = _get(
+        local_connection, "/data/imports", method, headers={"Sec-Fetch-Site": "cross-site"}
+    )
+
+    assert remote.status == 403
     assert cross_site.status == 403
 
 

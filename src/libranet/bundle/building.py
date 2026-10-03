@@ -206,10 +206,9 @@ def build_file(
         bundle = _file_bundle(file, PartWriter(sink, max_object_bytes), {}, read=read)
         after = fstat(file.fileno())
 
-    if (
-        (after.st_size, after.st_mtime_ns) != (before.st_size, before.st_mtime_ns)
-        or bundle.metadata.size_bytes != before.st_size
-    ):
+    unchanged = (after.st_size, after.st_mtime_ns) == (before.st_size, before.st_mtime_ns)
+
+    if not unchanged or bundle.metadata.size_bytes != before.st_size:
         raise OSError(f"Changed while it was read: {path}")
 
     return bundle

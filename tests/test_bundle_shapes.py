@@ -171,3 +171,27 @@ def test_a_file_refuses_a_negative_part_size() -> None:
 def test_a_file_refuses_part_sizes_that_do_not_add_up_to_its_size() -> None:
     with raises(MalformedBundleError, match="add up to 4095, not the file's size, 4096"):
         FileBundle((PART, OTHER_PART), Metadata(size_bytes=4096), part_sizes_bytes=(3072, 1023))
+
+
+def test_a_file_with_only_what_its_bytes_decide_keeps_its_parts_their_sizes_and_its_hash() -> None:
+    recorded = FileBundle(
+        (PART, OTHER_PART),
+        Metadata(
+            created="2001-02-03T04:05:06Z",
+            modified="2026-09-01T08:30:00Z",
+            size_bytes=4096,
+            writable=True,
+            executable=True,
+            algorithm="sha256",
+            hash=WHOLE_HASH,
+            xattrs={"user.tag": "dGFn"},
+        ),
+        versions=((OTHER_PART,),),
+        part_sizes_bytes=(3072, 1024),
+    )
+
+    assert recorded.content_only() == FileBundle(
+        (PART, OTHER_PART),
+        Metadata(size_bytes=4096, algorithm="sha256", hash=WHOLE_HASH),
+        part_sizes_bytes=(3072, 1024),
+    )
