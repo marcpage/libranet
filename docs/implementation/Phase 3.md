@@ -1037,6 +1037,15 @@ next answer named all five, `Zeta` case-folded, and the page listed
 `a b`, `wiki`, and `zeta`, linked to `/a%20b/`, `/wiki/`, and `/zeta/`,
 each of which was served. No module logged a warning.
 
+Fixed with it, found when trying it: the `/config` page linked each
+application by its path alone, as it could when it was served on the main
+port (Phase 1 Step 39). Since `/config` moved to a port of its own (Phase 2
+Step 58), those links opened on `/config`'s port, which serves nothing
+else, and were `404`. The page now asks `/config/api/node` first and
+links each application on the port it names, at the host the page was
+reached at, as the main port sends `/config`'s pages to `/config`'s port.
+The `config` row is still linked on the page's own port.
+
 My calls while building, not yet reviewed:
 
 - **The list is a `/data` read like any other.** A node set with

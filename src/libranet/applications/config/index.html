@@ -684,6 +684,7 @@ async function loadNode() {
 
   const node = result.value;
   const advertised = byId("node-advertised");
+  mainPort = node.listen_port;
   byId("node-id").textContent = node.node_id;
   byId("node-listen").textContent = listenText(node.listen_address, node.listen_port);
   advertised.replaceChildren(make("code", node.advertised_endpoint));
@@ -701,14 +702,35 @@ async function loadNode() {
 
 const applicationsMessage = byId("applications-message");
 
+// Applications are served on the main port, and this page on a port of its
+// own (HttpApi 2.3), so each but this one is linked there, at the host this
+// page was reached at, as the main port sends /config's pages here. Which
+// port that is, the node says (loadNode).
+let mainPort = null;
+
 function servedAt(name) {
   return name === "/" ? "/" : `/${name}/`;
 }
 
+function applicationLink(name, path) {
+  const url = new URL(name === "/" ? "/" : `/${encodeURIComponent(name)}/`, location.href);
+
+  if (name !== "config") {
+    if (mainPort === null) {
+      return make("span", path);
+    }
+
+    url.port = String(mainPort);
+  }
+
+  const link = make("a", path);
+  link.href = url.href;
+  return link;
+}
+
 function applicationRow([name, bundle]) {
   const path = servedAt(name);
-  const link = make("a", path);
-  link.href = name === "/" ? "/" : `/${encodeURIComponent(name)}/`;
+  const link = applicationLink(name, path);
   const row = make("tr");
   const actions = cell(
     button("Remove", `Stop serving ${path}`, "danger", applicationsMessage, () =>
@@ -1152,8 +1174,8 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
-loadNode();
-views.forEach((view) => view.load());
+// The node first, since the applications are linked on the port it names.
+loadNode().finally(() => views.forEach((view) => view.load()));
 </script>
 </body>
 </html>
