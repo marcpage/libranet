@@ -3097,7 +3097,7 @@ file encrypted.
 
 ## Step 61 — A Module That Falls Behind No Longer Stalls the Node
 
-**Issue:** to be opened. **Depends on:** Phase 1 Step 3.
+**Issue:** #197. **Depends on:** Phase 1 Step 3.
 
 - Found in a live run (2026-10-03) of `scripts/local_network.py --count 16
   --max-storage-bytes 1000000000`, with node-15 backing up 13 GiB of
@@ -3116,9 +3116,9 @@ file encrypted.
   dispatcher's main thread waited on it, and no module received anything.
 - Ruled (2026-10-03): fix both halves. The dispatcher never waits on one
   inbox, and each message goes only to the modules that subscribe to it.
-  A backup writing faster than eviction hands content off, and the local
-  network script's kill loop, which a further Ctrl-C cuts short, are
-  separate issues.
+  A backup writing faster than eviction hands content off (#198), and the
+  local network script's kill loop, which a further Ctrl-C cuts short
+  (#199, Step 62), are separate issues.
 
 What was built: the dispatcher keeps, for each module's inbox, the
 messages it could not put there. A message goes into an inbox without
@@ -3173,6 +3173,54 @@ class does.
 
 ---
 
+## Step 62 — Killing Every Node of the Local Network
+
+**Issue:** #199. **Depends on:** Step 54.
+
+- A second `Ctrl-C` while `scripts/local_network.py` stops its nodes kills
+  them all at once. A third, or a `SIGHUP` or `SIGTERM`, which the script
+  turns into one, cut that loop short, and every node after the one being
+  killed went on running, with no script left to stop it. A run of 31
+  nodes on 2026-10-03 left nodes 19 to 30 so, and they joined the next
+  network through the ports in their node lists (Step 61).
+- Asked for in the issue: ignore `SIGINT`, `SIGHUP`, and `SIGTERM` while
+  killing, so the loop always finishes.
+
+What was built: `RunningNetwork.shut_down` stops the nodes as before and,
+if anything ends that early, kills every one still running. A
+`KeyboardInterrupt`, as a second `Ctrl-C` raises, ends there. Anything
+else, such as a terminal closed under the script that can no longer be
+printed to, is raised again once the nodes are dead. `RunningNetwork.kill`
+ignores the three signals before it kills, and starts over if one came
+before they were ignored, which passes the nodes already killed. The
+script's docstring and the README say that more `Ctrl-C`s are ignored.
+About 45 new or changed lines of the script, so it is one change set.
+Gates green: 3,300 passed, 1 skipped, 99.05%. Seen in a live run of six
+nodes: three `SIGINT`s sent to the script 50 ms apart started the stop,
+killed every node, and were then ignored. No node was left, and the
+script exited with status 0.
+
+My calls, not yet reviewed:
+
+- **Killed, not stopped, when stopping fails for any other reason.** A
+  terminal closed while the nodes stop leaves nothing to show progress
+  on, and killing is certain to finish.
+- **The signals stay ignored** from the moment killing starts until the
+  script exits, since nothing after it waits on the user.
+- **Starting launches is left as it is.** A `Ctrl-C` that lands while
+  `Popen` waits for a node's process to start can still leave that node
+  running, unrecorded. The window is a few milliseconds of each second
+  spent between launches.
+
+**Testable in isolation:** `test_local_network.py`, with stand-in nodes
+that ignore `SIGINT`, for a second `Ctrl-C` killing every node, those not
+yet asked to stop too; stopping that fails some other way killing every
+node and raising; a `Ctrl-C` sent while the nodes are killed interrupting
+nothing; and an interrupt before the signals are ignored starting the
+killing over.
+
+---
+
 ## 4. Issues in the Milestone
 
 Every issue in the **Phase 2** milestone, by number, and where it went.
@@ -3212,7 +3260,8 @@ Every issue in the **Phase 2** milestone, by number, and where it went.
 | #170 | Applications share an origin with `/config` | 58 |
 | #176 | Update the documentation and specifications | A review of every document before release 0.2.0, and 59, which it raised |
 | #194 | Encrypt the file parts of password-protected bundles | 60 |
-| To be opened | A full inbox stalls the dispatcher, and with it the node | 61 |
+| #197 | A full inbox stalls the dispatcher, and with it the node | 61 |
+| #199 | A further `Ctrl-C` leaves the local network's nodes running | 62 |
 
 Issue #80 asks for what #119 asked for later, and PR #120 built it in
 Phase 1: new content is pushed to the single best connected peer, never
