@@ -1,4 +1,4 @@
-"""What the backup module last said its jobs, restores, builds, and exports were doing.
+"""What the backup module last said its jobs, restores, builds, exports, and imports were doing.
 
 The web server does no backup work and keeps no job state of its own, so
 what a ``GET`` reads back is whatever the backup module (Step 19) last
@@ -26,11 +26,12 @@ JOBS_FIELD: Final = "jobs"
 RESTORES_FIELD: Final = "restores"
 BUILDS_FIELD: Final = "builds"
 EXPORTS_FIELD: Final = "exports"
+IMPORTS_FIELD: Final = "imports"
 
 
 @dataclass(frozen=True)
 class BackupReport:
-    """One report of every configured job, and every requested restore, build, and export.
+    """One report of every configured job, and every requested restore, build, export, and import.
 
     The entries are passed to clients as the backup module published them,
     so it alone decides what it says about each.
@@ -40,6 +41,7 @@ class BackupReport:
     restores: tuple[Mapping[str, Any], ...] = ()
     builds: tuple[Mapping[str, Any], ...] = ()
     exports: tuple[Mapping[str, Any], ...] = ()
+    imports: tuple[Mapping[str, Any], ...] = ()
 
     @classmethod
     def from_message(cls, message: Message) -> BackupReport:
@@ -54,10 +56,11 @@ class BackupReport:
             _entries(message, RESTORES_FIELD),
             _entries(message, BUILDS_FIELD),
             _entries(message, EXPORTS_FIELD),
+            _entries(message, IMPORTS_FIELD),
         )
 
     def entries(self, field: str) -> tuple[Mapping[str, Any], ...]:
-        """The report's ``jobs``, ``restores``, ``builds``, or ``exports``.
+        """The report's ``jobs``, ``restores``, ``builds``, ``exports``, or ``imports``.
 
         Raises:
             KeyError: ``field`` names none of them.
@@ -67,6 +70,7 @@ class BackupReport:
             RESTORES_FIELD: self.restores,
             BUILDS_FIELD: self.builds,
             EXPORTS_FIELD: self.exports,
+            IMPORTS_FIELD: self.imports,
         }[field]
 
 

@@ -1,4 +1,4 @@
-"""What the ``/config`` backup and build endpoints accept, and what identifies it.
+"""What the backup, build, and import endpoints accept, and what identifies it.
 
 BackupSpecification §7 leaves the request shapes unspecified; these are this
 node's. A backup job names a local directory to back up
@@ -6,29 +6,34 @@ node's. A backup job names a local directory to back up
 A restore names the bundle to restore, where to put it, and what to do if
 that directory is not empty (§5). A build (Step 38) names a directory to make
 a bundle of, and an export a bundle and the archive to write it to; either
-may give a password protecting the bundle (BundleSpecification §6).
+may give a password protecting the bundle (BundleSpecification §6). An import
+(Phase 3 Step 69) names a file in a folder offered to local clients, as they
+name it (HttpApi §12.2).
 
 Each request identifies itself, because the web server answers before any
 module has seen it and so cannot be told an identifier by the one that will
 do the work. An identifier is a prefix of the hash of what makes the request
 unique — the directory for a job or a build, the bundle and directory for a
-restore, the bundle and archive for an export — so configuring the same
-directory twice names the same job rather than a second one, and the caller
-can work out an identifier without asking. A password is never part of one.
+restore, the bundle and archive for an export, the path asked for by an
+import — so configuring the same directory twice names the same job rather
+than a second one, and the caller can work out an identifier without asking.
+A password is never part of one.
 
-A path is held to being absolute and already normalized, so one path has one
-spelling and therefore one identifier. Whether it exists, or can be read, is
-for the backup module to report: the web server does not touch the
-filesystem on a request's behalf.
+A local path is held to being absolute and already normalized, so one path
+has one spelling and therefore one identifier. Whether it exists, or can be
+read, is for the backup module to report: the web server does not touch the
+filesystem on a request's behalf, but to find a file to import within the
+folders it offers.
 """
 
 from __future__ import annotations
 from dataclasses import dataclass, field
 from hashlib import sha256
 from math import isfinite
-from pathlib import PurePath
+from pathlib import Path, PurePath
 from typing import Any, Final
 
+from libranet.bundle.shapes import is_entry_path
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
 from libranet.messaging.events import ConflictBehavior
@@ -350,6 +355,58 @@ class ExportRequest:
             "on_conflict": self.on_conflict.value,
             "password": None if self.password is None else self.password.text,
         }
+
+
+@dataclass(frozen=True)
+class ImportRequest:
+    """A file to import, by its path as a local client asked for it (HttpApi §12.2).
+
+    The path is a folder's name, then a path beneath it. Where that lies on
+    this machine is for the web server to find, and is carried beside it.
+
+    Raises:
+        ValueError: the path has an empty, ``.``, or ``..`` segment, or a NUL.
+    """
+
+    path: str
+
+    def __post_init__(self) -> None:
+        if not is_entry_path(self.path):
+            raise ValueError(
+                "A path to import must be a folder's name, then a path beneath it, "
+                f"with no empty, '.', or '..' segment, got {self.path!r}"
+            )
+
+    @classmethod
+    def from_value(cls, value: object) -> ImportRequest:
+        """The import a ``{"path"}`` object asks for.
+
+        Raises:
+            InvalidConfigRequestError: it is not such an object, or what it asks
+                for is not a usable import.
+        """
+        if not isinstance(value, dict):
+            raise InvalidConfigRequestError("An import must be a JSON object")
+
+        path = value.get("path")
+
+        if not isinstance(path, str):
+            raise InvalidConfigRequestError('An import\'s "path" must be a string')
+
+        try:
+            return cls(path)
+
+        except ValueError as error:
+            raise InvalidConfigRequestError(str(error)) from None
+
+    @property
+    def import_id(self) -> str:
+        """What names this import, derived from the path alone."""
+        return identifier(self.path)
+
+    def payload(self, local_path: Path) -> dict[str, Any]:
+        """The message body asking for this import of the file found at ``local_path``."""
+        return {"import_id": self.import_id, "path": self.path, "local_path": str(local_path)}
 
 
 def identifier(*parts: str) -> str:

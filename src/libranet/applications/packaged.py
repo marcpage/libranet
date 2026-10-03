@@ -27,7 +27,7 @@ from typing import Any, Final, Mapping
 
 from libranet.atomic_file import write_atomically
 from libranet.bundle.building import build_directory
-from libranet.bundle.shapes import DirectoryBundle, DirectoryMarker, Entry, FileBundle, Metadata
+from libranet.bundle.shapes import DirectoryBundle, DirectoryMarker, Entry, FileBundle
 from libranet.bundle.storing import store_bundle
 from libranet.cas.archive import ArchiveSink
 from libranet.cas.content_id import ContentId
@@ -157,14 +157,7 @@ class _Objects(dict[ContentId, bytes]):
 def _as_shipped(entry: Entry | None) -> Entry | None:
     """``entry`` with only what its path and bytes decide: none of its times or permissions."""
     if isinstance(entry, FileBundle):
-        recorded = entry.metadata
-        return FileBundle(
-            entry.parts,
-            Metadata(
-                size_bytes=recorded.size_bytes, algorithm=recorded.algorithm, hash=recorded.hash
-            ),
-            part_sizes_bytes=entry.part_sizes_bytes,
-        )
+        return entry.content_only()
 
     if isinstance(entry, DirectoryMarker):
         return DirectoryMarker()
