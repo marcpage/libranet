@@ -64,6 +64,15 @@ from libranet.webserver.app_handler import (
 )
 from libranet.webserver.app_outcomes import ApplicationOutcomes
 from libranet.webserver.app_registry import ApplicationRegistry, RegisteredApplications
+from libranet.webserver.app_store import (
+    STORE_KEY_PATTERN,
+    STORE_PATTERN,
+    ApplicationStore,
+    StoreHandler,
+    StoreRemovalHandler,
+    StoreValueHandler,
+    StoreWriteHandler,
+)
 from libranet.webserver.app_use import ApplicationUse
 from libranet.webserver.backup_state import BackupState
 from libranet.webserver.config_auth import ConfigAuthGuard
@@ -150,7 +159,9 @@ def build_router(  # pylint: disable=too-many-locals
     to local clients alone, served as ``config_hosts`` names, as ``/config``
     is (Phase 3 Step 68). ``/data/imports`` imports a file from one of them,
     for local clients alone too, and says how each import is doing from
-    what ``backup_state`` holds (Phase 3 Step 69).
+    what ``backup_state`` holds (Phase 3 Step 69). ``/data/store`` keeps each
+    application's values in ``storage``'s data directory, read by any client
+    and changed by local clients alone (Phase 3 Step 70).
     """
     store = CasStore.source_of_truth(storage)
     content = LayeredSource(store) if content is None else content
@@ -170,14 +181,19 @@ def build_router(  # pylint: disable=too-many-locals
     folders = LocalFolders() if local_folders is None else local_folders
     checks = SiteChecks(config_hosts, "This endpoint")
     state = BackupState() if backup_state is None else backup_state
+    app_store = ApplicationStore(storage.application_stores_dir)
     router.add("GET", CLIENT_PATH, client_handler)
-    # The directory, import, and search routes must precede the data route,
-    # whose pattern they also fit.
+    # The directory, import, store, and search routes must precede the data
+    # route, whose pattern they also fit.
     router.add("GET", DIRECTORY_PATTERN, LocalOnly(DirectoryHandler(folders), checks))
     router.add(
         "GET", IMPORTS_PATH, LocalOnly(ImportListHandler(state, retry_after_seconds), checks)
     )
     router.add("POST", IMPORTS_PATH, LocalOnly(ImportHandler(folders, publish), checks))
+    router.add("GET", STORE_PATTERN, StoreHandler(app_store))
+    router.add("GET", STORE_KEY_PATTERN, StoreValueHandler(app_store))
+    router.add("PUT", STORE_KEY_PATTERN, LocalOnly(StoreWriteHandler(app_store), checks))
+    router.add("DELETE", STORE_KEY_PATTERN, LocalOnly(StoreRemovalHandler(app_store), checks))
     router.add(
         "GET",
         SEARCH_PATTERN,

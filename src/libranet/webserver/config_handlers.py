@@ -394,19 +394,24 @@ def _unreadable_registry_response(request: Request, error: RegistryFileError) ->
     )
 
 
-def _body_or_refusal(request: Request) -> bytes | Response:
-    """``request``'s body, or the response refusing it unread."""
-    refusal = unreadable_body_response(request, MAX_CONFIG_BODY_BYTES)
+def _body_or_refusal(
+    request: Request, *, max_bytes: int = MAX_CONFIG_BODY_BYTES
+) -> bytes | Response:
+    """``request``'s body, or the response refusing it unread, as over ``max_bytes`` is."""
+    refusal = unreadable_body_response(request, max_bytes)
     return refusal if refusal is not None else request.body.read()
 
 
-def json_or_refusal(request: Request) -> object | Response:
+def json_or_refusal(
+    request: Request, *, max_bytes: int = MAX_CONFIG_BODY_BYTES
+) -> object | Response:
     """The JSON value ``request``'s body carries, or the response refusing the body.
 
-    A body that does not say it is JSON is ``415``, and one that says so and
-    is not is ``400``.
+    A body larger than ``max_bytes``, ``/config/api``'s limit unless it is
+    given, is ``413``. One that does not say it is JSON is ``415``, and one
+    that says so and is not is ``400``.
     """
-    body = _body_or_refusal(request)
+    body = _body_or_refusal(request, max_bytes=max_bytes)
 
     if isinstance(body, Response):
         return body

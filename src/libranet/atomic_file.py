@@ -6,10 +6,14 @@ target. A reader sees either the previous file or the new one, never a
 half-written one, and a write that fails part-way leaves the target alone.
 The rename is atomic only within one filesystem, which is why the temporary
 file is created beside its target rather than in the system temp directory.
+
+A reader that keeps what such a file held, rather than reading it on every
+use, tells whether it has been replaced by its :class:`FileVersion`.
 """
 
 from __future__ import annotations
 from contextlib import contextmanager
+from dataclasses import dataclass
 from os import replace
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -17,6 +21,30 @@ from typing import IO, Final, Iterator
 
 #: Suffix of the temporary file, so a leftover from a crash is recognizable.
 TEMP_SUFFIX: Final = ".partial"
+
+
+@dataclass(frozen=True)
+class FileVersion:
+    """What tells one version of a file from another without reading it.
+
+    The modification time alone could miss a change made within the
+    filesystem's timestamp resolution, and a file replaced whole is also
+    usually a different inode.
+    """
+
+    inode: int
+    modified_nanoseconds: int
+    size_bytes: int
+
+    @classmethod
+    def of(cls, path: Path) -> FileVersion:
+        """The version of the file at ``path`` now.
+
+        Raises:
+            OSError: it cannot be looked at, including when it is absent.
+        """
+        status = path.stat()
+        return cls(status.st_ino, status.st_mtime_ns, status.st_size)
 
 
 def write_atomically(path: Path, data: bytes) -> Path:

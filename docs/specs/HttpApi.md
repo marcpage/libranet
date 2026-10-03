@@ -1600,10 +1600,18 @@ key it holds:
 {"values": {"playlists": [{"name": "Family", "bundle": "sha256/…"}]}}
 ```
 
-`GET` of a key the store does not hold is `404 Not Found`. Every value read
-carries an `ETag`, and a `PUT` or `DELETE` carrying `If-Match` that does not
-match the value's current `ETag` is answered `412 Precondition Failed`, so
-that two clients changing one key do not lose each other's changes.
+`GET` or `DELETE` of a key the store does not hold is `404 Not Found`. A
+value read by its key carries an `ETag`, and a `PUT` or `DELETE` carrying
+`If-Match` that does not match the value's current `ETag` is answered
+`412 Precondition Failed`, so that two clients changing one key do not lose
+each other's changes. `If-Match: *` matches any value held, and so fails
+for a key not held. A `PUT` is answered `201 Created` for a key not held
+before and `204 No Content` otherwise, and a `DELETE` `204 No Content`.
+
+A node MAY keep a value in a form of its own rather than as it was sent,
+such as with its keys sorted. A `PUT`'s answer then carries no `ETag`
+([RFC 9110 §9.3.4](https://www.rfc-editor.org/rfc/rfc9110.html#section-9.3.4)),
+and a client reads the value again for it.
 
 Any client may read the store, and only a local client may change it
 (§2.4). A node MAY limit the size of a value, and of an application's

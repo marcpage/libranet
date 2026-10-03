@@ -42,7 +42,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Final, Mapping
 
-from libranet.atomic_file import write_atomically
+from libranet.atomic_file import FileVersion, write_atomically
 from libranet.cas.content_id import ContentId
 from libranet.webserver.errors import RegistryFileError
 
@@ -85,8 +85,18 @@ class Application:
             ValueError: the name is reserved for anything but the ``/config``
                 application, or is neither one path segment nor ``/``.
         """
+        return cls(cls.folded_name(name), bundle)
+
+    @classmethod
+    def folded_name(cls, name: str) -> str:
+        """``name`` as an application of that name is kept: case-folded.
+
+        Raises:
+            ValueError: the name is reserved for anything but the ``/config``
+                application, or is neither one path segment nor ``/``.
+        """
         _check_name(name)
-        return cls(name.casefold(), bundle)
+        return name.casefold()
 
     @classmethod
     def from_value(cls, value: object) -> Application:
@@ -190,7 +200,7 @@ class ApplicationRegistry:
         self._path = path
         self._initial = RegisteredApplications() if initial is None else initial
         self._lock = Lock()
-        self._version: _FileVersion | None = None
+        self._version: FileVersion | None = None
         self._applications = self._initial
 
     @property
@@ -246,7 +256,7 @@ class ApplicationRegistry:
         older than the version it is remembered as.
         """
         try:
-            version = _FileVersion.of(self._path)
+            version = FileVersion.of(self._path)
 
             if version != self._version:
                 self._applications = self._read()
@@ -287,30 +297,6 @@ class ApplicationRegistry:
         """
         write_atomically(self._path, dumps(applications.value(), indent=2).encode("utf-8"))
         self._version = None
-
-
-@dataclass(frozen=True)
-class _FileVersion:
-    """What tells one version of a file from another without reading it.
-
-    The modification time alone could miss a change made within the
-    filesystem's timestamp resolution, and a file replaced whole is also
-    usually a different inode.
-    """
-
-    inode: int
-    modified_nanoseconds: int
-    size_bytes: int
-
-    @classmethod
-    def of(cls, path: Path) -> _FileVersion:
-        """The version of the file at ``path`` now.
-
-        Raises:
-            OSError: it cannot be looked at, including when it is absent.
-        """
-        status = path.stat()
-        return cls(status.st_ino, status.st_mtime_ns, status.st_size)
 
 
 def _check_name(name: str) -> None:

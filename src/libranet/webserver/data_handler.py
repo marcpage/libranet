@@ -14,6 +14,10 @@ for the stats module (Step 8) as::
 
 ``external`` is false when the request came from this machine, which is how
 a peer's interest in content is counted apart from this node's own.
+
+The names of the other endpoints beneath ``/data`` are never hash algorithms
+(HttpApi §5), so a path beneath one is never taken for content. A method
+that endpoint's own routes do not take is ``405`` there, not an upload.
 """
 
 from __future__ import annotations
@@ -33,7 +37,22 @@ from libranet.webserver.request_refusals import content_unavailable_response
 
 _LOGGER = getLogger(__name__)
 
-DATA_PATTERN: Final = r"/data/(?P<algorithm>[^/]+)/(?P<hash>[^/]+)"
+#: The names of the endpoints beneath ``/data`` that are not content (HttpApi §5).
+DATA_ENDPOINT_NAMES: Final = (
+    "search",
+    "nodes",
+    "seek",
+    "client",
+    "directory",
+    "imports",
+    "bundles",
+    "store",
+    "applications",
+)
+
+DATA_PATTERN: Final = (
+    rf"/data/(?P<algorithm>(?!(?:{'|'.join(DATA_ENDPOINT_NAMES)})/)[^/]+)/(?P<hash>[^/]+)"
+)
 
 # CAS content never changes under its identifier (HttpApi §20).
 _IMMUTABLE_CACHE_CONTROL: Final = "public, max-age=31536000, immutable"
