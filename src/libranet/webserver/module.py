@@ -13,7 +13,7 @@ Request threads publish through
 with the node key, which the module loads from disk rather than receiving
 across the process boundary.
 
-The receive loop takes in what the unbundler found at application paths,
+The receive loop takes in what the unbundler found at paths in bundles,
 ``app.path_resolved`` (see :mod:`libranet.unbundler.module`), which wakes the
 request threads waiting on it (Phase 3 Step 65), and what the backup module
 reports its jobs, restores, and imports are doing, ``backup.state`` (Step
@@ -32,7 +32,7 @@ from threading import Thread
 from time import time
 from typing import Callable, ClassVar
 
-from libranet.cas.content_id import ContentId
+from libranet.bundle.parts import PartPath
 from libranet.cas.layered import LayeredSource
 from libranet.config.models import CONFIG_LISTEN_ADDRESS, LibranetConfig
 from libranet.identity.authentication import RequestAuthenticator
@@ -198,7 +198,7 @@ class WebServerModule(ModuleBase):
     def _on_app_path_resolved(self, message: Message) -> None:
         """Remember what the unbundler found at a path, waking the requests waiting on it."""
         self._app_outcomes.remember(
-            ContentId.parse(message["bundle"]),
+            PartPath.parse(message["bundle"]),
             message["path"],
             KnownOutcome(
                 PathOutcome(message["outcome"]),

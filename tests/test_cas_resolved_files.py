@@ -14,6 +14,8 @@ from libranet.config.models import StorageConfig
 
 BUNDLE = ContentId.for_data(b"a directory bundle", "sha256")
 OTHER_BUNDLE = ContentId.for_data(b"another directory bundle", "sha256")
+KEY = sha256(b"what a bundle stored encrypted decrypts to").digest()
+OTHER_KEY = bytes(32)
 
 
 def test_a_files_entry_is_kept_by_bundle_and_a_hash_of_its_path(tmp_path: Path) -> None:
@@ -126,3 +128,34 @@ def test_an_upper_case_copy_of_a_bundle_is_logged_as_a_warning(
     (record,) = caplog.records
     assert record.levelno == WARNING
     assert record.getMessage().startswith(f"Leaving {stray} alone, not named as resolved files: ")
+
+
+def test_what_is_decrypted_from_a_bundle_is_kept_apart_by_its_key(tmp_path: Path) -> None:
+    files = ResolvedFiles(tmp_path, 4)
+    keyed = tmp_path / "sha256" / BUNDLE.hash / "keyed" / sha256(KEY).hexdigest()
+
+    entry = files.entry_for(BUNDLE, "index.html", decrypted_with=KEY)
+    directory = files.directory_for(BUNDLE, decrypted_with=KEY)
+
+    assert entry.parent.parent == keyed
+    assert entry.name == files.entry_for(BUNDLE, "index.html").name
+    assert directory == keyed / "directory.jzon"
+    assert entry != files.entry_for(BUNDLE, "index.html")
+    assert entry != files.entry_for(BUNDLE, "index.html", decrypted_with=OTHER_KEY)
+    assert directory != files.directory_for(BUNDLE, decrypted_with=OTHER_KEY)
+    assert KEY.hex() not in str(entry)
+
+
+def test_removing_a_bundle_deletes_what_was_decrypted_from_it_under_every_key(
+    tmp_path: Path,
+) -> None:
+    files = ResolvedFiles(tmp_path, 4)
+    write_atomically(files.entry_for(BUNDLE, "index.html", decrypted_with=KEY), b"12345")
+    write_atomically(files.directory_for(BUNDLE, decrypted_with=OTHER_KEY), b"12")
+
+    listed = files.bundles()
+    freed = files.remove(BUNDLE)
+
+    assert listed == [BUNDLE]
+    assert freed == 7
+    assert files.bundles() == []

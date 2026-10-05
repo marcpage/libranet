@@ -34,6 +34,12 @@ PARENT_SEGMENT: Final = ".."
 NO_STEP_SEGMENTS: Final = frozenset(("", "."))
 _UNUSABLE_SEGMENTS: Final = NO_STEP_SEGMENTS | {PARENT_SEGMENT}
 
+# Provisional default: how many extensions a directory may reach, which is
+# enough for one of millions of files, split across extensions that each fit
+# 1 MiB as stored (§4). A writer splits a directory into no more than a
+# reader follows.
+DEFAULT_MAX_EXTENSIONS: Final = 1024
+
 
 def is_utf8(text: str) -> bool:
     """Whether ``text`` came from UTF-8, rather than holding bytes that are not."""
@@ -262,6 +268,31 @@ class DirectoryBundle:
                 raise MalformedBundleError(
                     f"Entry path must be relative, with no empty, '.', or '..' segment: {path!r}"
                 )
+
+    def children(self, path: str) -> dict[str, Entry]:
+        """The entries one level beneath the directory at ``path``, ``""`` being the root, by name.
+
+        Only this bundle's own entries are looked at, not its extensions'. A
+        directory with no entry of its own, that only leads to others, is a
+        :class:`DirectoryMarker`, and its own entry takes its place where it
+        has one. Names are in order.
+        """
+        prefix = f"{path}{PATH_SEPARATOR}" if path else ""
+        found: dict[str, Entry] = {}
+
+        for entry_path, entry in self.entries.items():
+            if entry is None or not entry_path.startswith(prefix):
+                continue
+
+            name, beneath, _ = entry_path.removeprefix(prefix).partition(PATH_SEPARATOR)
+
+            if beneath:
+                found.setdefault(name, DirectoryMarker())
+
+            else:
+                found[name] = entry
+
+        return dict(sorted(found.items()))
 
 
 Bundle: TypeAlias = FileBundle | DirectoryBundle | Symlink | DirectoryMarker

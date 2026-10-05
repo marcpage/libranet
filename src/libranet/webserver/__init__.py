@@ -17,7 +17,9 @@ them. The one at `/config` drives all of them.
 
 A few `/data` endpoints serve only clients on this machine, and only this
 node's own pages there, such as the listing of the folders it offers them
-(Phase 3 Step 68), and importing a file from one (Phase 3 Step 69).
+(Phase 3 Step 68), and importing a file from one (Phase 3 Step 69). Any
+client may read into a bundle, by its id, as an application's files are
+served (Phase 3 Step 71).
 """
 
 from libranet.webserver.app_handler import (
@@ -63,6 +65,7 @@ from libranet.webserver.backup_state import (
     BackupState,
 )
 from libranet.webserver.bundle_paths import BundlePaths, content_type_for, percent_decoded
+from libranet.webserver.bundle_reads import BUNDLE_METHODS, BUNDLE_PATTERN, BundleReadHandler
 from libranet.webserver.byte_range import BYTES_UNIT, ByteRange
 from libranet.webserver.config_auth import (
     CONFIG_REALM,
@@ -124,6 +127,7 @@ from libranet.webserver.config_handlers import (
 from libranet.webserver.data_handler import (
     DATA_ENDPOINT_NAMES,
     DATA_PATTERN,
+    IMMUTABLE_CACHE_CONTROL,
     DataReadHandler,
     content_id_or_refusal,
     invalid_address_response,
@@ -192,6 +196,8 @@ __all__ = [
     "BACKUPS_PATH",
     "BLOCK_SIZE",
     "BUILDS_FIELD",
+    "BUNDLE_METHODS",
+    "BUNDLE_PATTERN",
     "BYTES_UNIT",
     "BUILDS_PATH",
     "CLIENT_PATH",
@@ -215,6 +221,7 @@ __all__ = [
     "EXPORTS_FIELD",
     "EXPORTS_PATH",
     "HOST_HEADER",
+    "IMMUTABLE_CACHE_CONTROL",
     "IMPORTS_FIELD",
     "IMPORTS_PATH",
     "JOBS_FIELD",
@@ -252,6 +259,7 @@ __all__ = [
     "BackupRequestHandler",
     "BackupState",
     "BundlePaths",
+    "BundleReadHandler",
     "ByteRange",
     "ConfigAuthGuard",
     "ConfigCredential",

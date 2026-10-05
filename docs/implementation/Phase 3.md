@@ -1132,6 +1132,122 @@ My calls, not yet reviewed:
 
 About 300 new or changed lines of non-test Python, so one change set.
 
+Built in full: 1,059 added lines of non-test Python, about 240 of them
+moved, and 410 removed. That is past CLAUDE.md's 1,000, so it is proposed
+as two change sets, each checked green on its own:
+
+1. **`AppHandler`'s file serving moves to `BundlePaths`**
+   (`webserver/bundle_paths.py`), with no change in behavior: asking the
+   unbundler for an entry and waiting on it, sending a file or a range of
+   it, `content_type_for`, and decoding a path. `AppHandler` keeps the
+   routing, and is given a `BundlePaths`. 344 added lines, 274 removed.
+2. **The rest of the step.** 743 added lines, 164 removed.
+
+What was built is the list above, and these:
+
+- **`PartPath` names a bundle stored encrypted** as it names a part.
+  `load_bundle` takes one, `resolve_directory` hands its loader one for
+  each extension, `PartPath.is_cipher` tells a cipher's segment, and
+  `PartPath.without_keys` takes keys out of text that is logged.
+- **`BundleReadHandler`** (`webserver/bundle_reads.py`) routes `GET` and
+  `HEAD` of `BUNDLE_PATTERN`, which is `DATA_PATTERN` and the rest of the
+  path. A directory is listed from `DirectoryBundle.children`, one level
+  beneath it, and `BundlePaths.directory` reads the one the unbundler
+  saved, asking for it again if it has been deleted.
+- **The unbundler reads a file bundle**, holding its file at the empty
+  path and nothing else, reports a password-protected bundle as
+  `protected` (`PathOutcome.PROTECTED`), and saves a bundle's directory
+  again whenever a path names a directory and it has been deleted.
+- **`ApplicationOutcomes` is kept by the bundle's path**, key and all, and
+  so is the unbundler's memory of each bundle's directory.
+
+Run live on one new node, with a script holding in its source of truth
+what Step 72 will make: a directory bundle holding a 3,000,000-byte film, a
+playlist, a symlink to the film's directory, and an empty directory; an
+encrypted bundle naming the film through an encrypted extension; the film
+as a file bundle; and a password-protected bundle.
+
+- The plain bundle's root was listed on its first request, which waited
+  for the unbundler: two directories, the symlink with its target, and the
+  playlist with its size and type. `Film%20(2001)` listed the film, and
+  the empty directory nothing.
+- The film came whole, `200`, byte for byte, and `bytes=1048570-1048585`,
+  across a part's end, `206`. A `HEAD` gave its length. `latest` and
+  `latest/film.mp4` were `302` to `Film%20%282001%29/` and its film.
+- The encrypted bundle's root listed the film and the playlist, with or
+  without its trailing `/`. The film's last ten bytes came `206`, from its
+  encrypted extension, and the playlist `200`.
+- The ciphertext named without its key, and with another key, were each
+  `400`, as content that is not a bundle. A key a byte short was `400`,
+  `invalid-content-address`. The file bundle's own file came `200`, byte
+  for byte, and a path in it `404`. A part named as a bundle was `400`, and
+  the password-protected bundle `403`.
+- Every answer carried both sandboxing headers, and every one that was
+  neither an error nor a `503` was `immutable`. The bundle's own object, at
+  its id alone, was served as before, and a `PUT` beneath an id was `405`.
+- No log line held the key, at debug: the access log showed `<key>` six
+  times. Nothing on disk was named by it. The encrypted bundle's directory
+  and entries were beneath `keyed/` and the SHA-256 of the key. The
+  unbundler warned once for each of the four bundles that could not be
+  read.
+
+Where it departs from the plan, not yet reviewed:
+
+- **What is resolved is not kept by the ciphertext's address alone.** Kept
+  so, a request naming the ciphertext without the key, which any node
+  holding it knows, would be served what a request with the key had
+  decrypted. It is kept beneath `keyed/` and the SHA-256 of the key, in the
+  ciphertext's directory, so that reclaiming still deletes it by the
+  bundle's id (File Layout §3). For the same reason, what is remembered of
+  a path, in both modules, is kept by the bundle's path, key and all, so
+  that what another key found answers nothing.
+- **Only bytes ending in `0x00` and a descriptor are a password-protected
+  bundle** (`is_protected`, `bundle/protection.py`), a drop's placement
+  bytes allowed for. Before, any bytes holding a `0x00` were, so a video's
+  part named as a bundle was `403`, not `400`.
+- **An application whose bundle is a file bundle is `404`** for every
+  path, where it was `500`, "not a directory bundle", since the unbundler
+  now reads one.
+- **`parse_cas_path` still refuses an encrypted path.** `resolve_directory`
+  reads each extension with `PartPath.parse` instead, and nothing reads a
+  path in `versions` as content, only compares it. So it reads an encrypted
+  extension for every caller: a backup, a build, an export, or a restore
+  given a bundle naming one reads it too.
+- **`DEFAULT_MAX_EXTENSIONS` moved to `bundle/shapes.py`** from
+  `bundle/extensions.py`, which now imports `bundle/parts.py`, which
+  imports `bundle/storing.py`, which needs it.
+
+My calls while building, not yet reviewed:
+
+- **A path through a symlink is `302` to where it leads**, as for an
+  application, so each file is read at one path and saved once. A
+  directory named at its own path is listed, with or without its `/`.
+  HttpApi §12.1 now says so.
+- **Only a key segment that is not empty makes the encrypted form**, and
+  the cipher and key are read as written, not percent-decoded, so that the
+  log's redaction finds the key. `/data/{id}/AES256-CBC/` is the entry
+  `AES256-CBC`. HttpApi §12.1 now says "as written".
+- **Every server log line naming a path shows `<key>` in place of a key**,
+  after any segment naming the cipher, in any case.
+- **A redirect is `immutable`**, as a file and a listing are. A `503` keeps
+  its `no-store`.
+- **A `405` from the router carries no sandboxing header**, as it reads
+  nothing.
+- **A file whose parts cannot be read is `400`** for a read into a bundle,
+  logged at debug, where an application's is `500` and a warning.
+- **A listing gives a file's size from its part sizes** when its bundle
+  records those and no `size`.
+- **`HEAD` is answered as `GET` would be.** HttpApi §12.1 and §25 now say
+  so.
+- **A bundle that cannot be read is still a warning in the unbundler**,
+  once while it is remembered, though any client naming any content can
+  cause one. The unbundler cannot tell an application's request from a
+  client's.
+- **An error names an encrypted bundle's problem as a part's**, as
+  `PartPath` words it: "Encrypted part … does not decrypt under its key".
+- **A listing leaves out, and logs, an entry of no known kind** (Coding
+  Style §10.2), though a saved directory holds none.
+
 **Testable in isolation:**
 
 - Routing: a read into a bundle, a raw object, and the named endpoints
@@ -1321,6 +1437,7 @@ number, and where it went.
 | #219 | Local clients, the checks made of them, and the folders they may read | 68 |
 | #220 | Importing a local file from a folder offered, and getting back its id | 69 |
 | #221 | A store for each application, read by any client and changed by local ones | 70 |
+| #222 | Reading into a bundle by its id, or by an encrypted id carrying its key | 71 |
 
 ## 5. Suggested Build Order
 
@@ -1331,7 +1448,7 @@ number, and where it went.
 | 3 | 66 (#206) | Needs 64's sizes to find a range's parts, and 65's streaming to send them. |
 | 4 | 68 (#219) | Local clients and their checks, which 69, 70, and 72 need. Needs nothing in this phase. |
 | 5 | 70 (#221) | Needs only 68. |
-| 6 | 71 (#213) | Serves what 65 and 66 serve, from any bundle, and reads encrypted bundles, which 72 makes. |
+| 6 | 71 (#222) | Serves what 65 and 66 serve, from any bundle, and reads encrypted bundles, which 72 makes. |
 | 7 | 69 (#220) | Needs 64's sizes and 68's folders. |
 | 8 | 72 (#213) | Needs 68's checks, 69's file ids, and 71's encrypted bundles. |
 | 9 | 73 (#218) | Small, and needs nothing in this phase, so it can go anywhere. |

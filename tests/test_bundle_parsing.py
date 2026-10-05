@@ -360,6 +360,7 @@ def test_password_protected_bundle_is_unsupported() -> None:
         b"not json",
         b'{"contents": [',
         b"\xff\xfe\x8f",
+        b"\x8f\x02a file's part\x00holding a zero byte",
         b"\xef\xbb\xbf" + dumps({"contents": []}).encode(),  # UTF-8 byte-order mark
     ],
 )

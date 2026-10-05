@@ -321,8 +321,8 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
                 f"Bundle {bundle} is not a directory, so cannot be restored"
             )
 
-        def load(content_id: ContentId) -> Bundle:
-            return _load(content_id, source, secret)
+        def load(path: PartPath) -> Bundle:
+            return _load(path, source, secret)
 
         if protected:
             return resolve_directory(top, load)
@@ -527,7 +527,7 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
         self._missing.clear()
 
 
-def _load(content_id: ContentId, source: ContentSource, secret: bytes) -> Bundle:
+def _load(content_id: ContentId | PartPath, source: ContentSource, secret: bytes) -> Bundle:
     """The bundle held as ``content_id``, decrypted with ``secret``, and read as a drop if need be.
 
     Raises:

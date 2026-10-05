@@ -37,15 +37,22 @@ from libranet.bundle.errors import (
     PasswordProtectedBundleError,
     UnsupportedBundleError,
 )
-from libranet.bundle.extensions import DEFAULT_MAX_EXTENSIONS, resolve_directory
+from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.layering import Layering, StoredVersion, Superseded
 from libranet.bundle.loading import DEFAULT_MAX_BUNDLE_BYTES, load_bundle
 from libranet.bundle.parsing import decode_bundle, parse_bundle
 from libranet.bundle.parts import CIPHER, PartPath, PartWriter
-from libranet.bundle.protection import DESCRIPTOR_SEPARATOR, protect, strip_targeting, unprotect
+from libranet.bundle.protection import (
+    DESCRIPTOR_SEPARATOR,
+    is_protected,
+    protect,
+    strip_targeting,
+    unprotect,
+)
 from libranet.bundle.reassembly import ByteSink, WholeFileCheck, write_file
 from libranet.bundle.serialization import bundle_value, encode_bundle
 from libranet.bundle.shapes import (
+    DEFAULT_MAX_EXTENSIONS,
     NO_STEP_SEGMENTS,
     PARENT_SEGMENT,
     PATH_SEPARATOR,
@@ -129,6 +136,7 @@ __all__ = [
     "decode_bundle",
     "encode_bundle",
     "is_entry_path",
+    "is_protected",
     "is_utf8",
     "load_bundle",
     "modified_time",

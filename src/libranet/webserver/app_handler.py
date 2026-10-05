@@ -28,7 +28,7 @@ entry if it has not saved it (see :mod:`libranet.webserver.bundle_paths`,
 Phase 3 Steps 65 and 66). An outcome the unbundler reported instead is
 answered: ``404`` for a path the bundle does not hold, ``302`` to where a
 directory or symlink leads, or ``500`` for a bundle or file that cannot be
-served.
+served, a password-protected one among them.
 
 Every request that reaches an application is reported as a use of its
 bundle (see :mod:`libranet.webserver.app_use`), so the entries resolved from
@@ -44,6 +44,7 @@ from typing import Final
 from urllib.parse import quote
 
 from libranet.bundle.errors import BundleError
+from libranet.bundle.parts import PartPath
 from libranet.bundle.shapes import FileBundle, is_entry_path
 from libranet.cas.content_id import ContentId
 from libranet.messaging.events import PathOutcome
@@ -119,7 +120,7 @@ class AppHandler:
         # The entry and the first part are waited for within one wait, so a
         # request that cannot be served is answered within it.
         deadline = self.paths.deadline()
-        entry = self.paths.entry(bundle, entry_path, deadline)
+        entry = self.paths.entry(PartPath(bundle), entry_path, deadline)
 
         if entry is None:
             return self.paths.unavailable(
@@ -197,7 +198,7 @@ def _known_response(known: KnownOutcome, prefix: str, request: Request) -> Respo
     if known.outcome == PathOutcome.REDIRECT:
         return _redirect(f"{prefix}/{quote(known.location)}")
 
-    if known.outcome == PathOutcome.UNUSABLE:
+    if known.outcome in (PathOutcome.UNUSABLE, PathOutcome.PROTECTED):
         return _unusable_response(known.detail, request)
 
     return _not_found(request)

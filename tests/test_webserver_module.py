@@ -14,6 +14,7 @@ from typing import Any
 from pytest import mark, raises
 
 from libranet.applications.packaged import PackagedApplications
+from libranet.bundle.parts import PartPath
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import (
@@ -397,6 +398,52 @@ def test_a_request_waiting_on_the_unbundler_is_woken_by_its_report(tmp_path: Pat
         assert answers == [(404, None)]
         # Asked once, and woken by the report.
         assert published(queues) == []
+
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+    assert not thread.is_alive()
+
+
+def test_a_read_into_an_encrypted_bundle_is_answered_by_the_report_naming_its_key(
+    tmp_path: Path,
+) -> None:
+    queues = _queues()
+    config = _config(tmp_path, _free_port(), app_wait_seconds=5)
+    bundle = PartPath(APP_BUNDLE_ID, bytes(range(32)))
+    module = WebServerModule(ModuleName.WEBSERVER, queues, config, poll_interval_seconds=0.01)
+    stop = Event()
+    thread = Thread(target=module.run, args=(stop,), daemon=True)
+    thread.start()
+
+    try:
+        host, port = _serving(module, queues)
+        answers: list[tuple[int, str | None]] = []
+        request = Thread(
+            target=lambda: answers.append(_status(host, port, f"/data/{bundle}/page.html"))
+        )
+        request.start()
+        accessed, asked = [queues.outbox.get(timeout=1) for _ in range(2)]
+        # What was found without the key, or with another, answers nothing.
+        for named, outcome in (
+            (PartPath(APP_BUNDLE_ID), "unusable"),
+            (PartPath(APP_BUNDLE_ID, bytes(32)), "protected"),
+            (bundle, "not_found"),
+        ):
+            queues.inbox.put(
+                make_message(
+                    EventType.APP_PATH_RESOLVED,
+                    ModuleName.UNBUNDLER,
+                    {"bundle": str(named), "path": "page.html", "outcome": outcome},
+                )
+            )
+
+        request.join(timeout=5)
+
+        assert accessed["bundle"] == str(APP_BUNDLE_ID)
+        assert asked["bundle"] == str(bundle)
+        assert answers == [(404, None)]
 
     finally:
         stop.set()

@@ -16,6 +16,7 @@ from libranet.bundle.errors import (
     UnsupportedBundleError,
 )
 from libranet.bundle.loading import load_bundle
+from libranet.bundle.parts import PartPath, PartWriter
 from libranet.bundle.protection import protect
 from libranet.bundle.shapes import DirectoryBundle, FileBundle, Symlink
 from libranet.cas.content_id import ContentId
@@ -161,3 +162,38 @@ def test_drop_read_as_if_it_were_not_one_is_malformed(store: CasStore) -> None:
 
     with raises(MalformedBundleError):
         load_bundle(content_id, store, password=PASSWORD)
+
+
+def test_bundle_stored_encrypted_is_loaded_with_the_key_its_path_carries(store: CasStore) -> None:
+    path = PartWriter(store, encrypted=True).store(BUNDLE_JSON)
+
+    assert load_bundle(path, store) == EXPECTED
+
+
+def test_bundle_stored_encrypted_is_not_a_bundle_without_its_key(store: CasStore) -> None:
+    path = PartWriter(store, encrypted=True).store(BUNDLE_JSON)
+
+    with raises(MalformedBundleError):
+        load_bundle(path.content_id, store)
+
+
+def test_bundle_stored_encrypted_is_refused_under_another_key(store: CasStore) -> None:
+    path = PartWriter(store, encrypted=True).store(BUNDLE_JSON)
+    other_key = bytes(32)
+
+    with raises(BundleVerificationError) as raised:
+        load_bundle(PartPath(path.content_id, other_key), store)
+
+    assert other_key.hex() not in str(raised.value)
+
+
+def test_bundle_stored_encrypted_past_the_limit_is_unsupported_naming_no_key(
+    store: CasStore,
+) -> None:
+    path = PartWriter(store, encrypted=True).store(BUNDLE_JSON)
+    assert path.key is not None
+
+    with raises(UnsupportedBundleError, match="larger than") as raised:
+        load_bundle(path, store, max_bytes=len(BUNDLE_JSON) - 1)
+
+    assert path.key.hex() not in str(raised.value)

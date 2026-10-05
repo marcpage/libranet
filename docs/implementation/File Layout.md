@@ -105,8 +105,11 @@ something is written to it.
 │       └── {algorithm}/
 │           └── {bundle hash}/
 │               ├── directory.jzon       the bundle's directory, resolved
-│               └── {key[:4]}/
-│                   └── {key}.jzon       key = SHA-256 of the entry path
+│               ├── {key[:4]}/
+│               │   └── {key}.jzon       key = SHA-256 of the entry path
+│               └── keyed/               an encrypted bundle's, decrypted
+│                   └── {SHA-256 of its key}/
+│                       └── ...          as above
 ├── incoming/                            unverified uploads
 │   └── {algorithm}-{sender node hash}/
 │       └── data/{algorithm}/{hash[:4]}/{hash}
@@ -191,7 +194,11 @@ of any file is written.
 - `directory.jzon` is the bundle's directory with its extensions overlaid,
   saved as zlib-compressed JSON, so the bundle and its extensions are
   resolved only once. Its name is not hex, so no prefix directory can clash
-  with it.
+  with it. A directory read into is listed from it (Phase 3 Step 71).
+- A bundle stored encrypted (BundleSpecification §7) is grouped by the
+  content id of its ciphertext, and what is decrypted from it is kept
+  beneath `keyed/` and the SHA-256 of the key it was read with, so that only
+  a request carrying that key is answered from it. No path holds the key.
 - An entry the web server cannot read is deleted by it, and written again
   by the unbundler when next asked for.
 

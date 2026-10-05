@@ -24,11 +24,17 @@ Ciphertext is held whole to be decrypted. It is stored within the object
 limit, and does not compress, so it is capped at the protocol's limit once
 decompressed, should a node have stored it compressed (HttpApi §8): no node
 could have stored ciphertext that expands to more.
+
+A bundle stored encrypted is named, and read, as a part is: as an extension
+another bundle names, or as one a client reads into by its encrypted id
+(HttpApi §12.1, Phase 3 Step 71). The id then appears in a request's target,
+and the key it carries is left out of whatever logs that.
 """
 
 from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
+from re import IGNORECASE, compile as compile_pattern, escape
 from typing import Final, Iterable, Iterator
 from zlib import compress
 
@@ -57,6 +63,16 @@ _ADDRESS_SEGMENTS: Final = 2
 # The one cipher read or written, and how a path names an IV after it (§7.1).
 CIPHER: Final = "AES256-CBC"
 _IV_SEPARATOR: Final = "-IV:"
+
+# The cipher's segment of an encrypted path written in other text, and the
+# key's after it, which is left out of anything logged. Any case is matched,
+# so that a key is left out even where its cipher is misspelled.
+_KEY_IN_TEXT: Final = compile_pattern(
+    rf"(/{escape(CIPHER)}(?:{escape(_IV_SEPARATOR)}[^/\s]*)?/)[^/\s]+", IGNORECASE
+)
+
+# What a key is shown as in text it is left out of.
+_KEY_LEFT_OUT: Final = "<key>"
 
 # Never changed once parts are written with it, or identical parts encrypted
 # before and after would no longer dedup (§7.3).
@@ -135,6 +151,16 @@ class PartPath:
             else DEFAULT_IV
         )
         return cls(content_id, key, iv)
+
+    @staticmethod
+    def without_keys(text: str) -> str:
+        """``text``, such as a request's target, with every encrypted path's key left out."""
+        return _KEY_IN_TEXT.sub(rf"\g<1>{_KEY_LEFT_OUT}", text)
+
+    @staticmethod
+    def is_cipher(segment: str) -> bool:
+        """Whether ``segment`` names a cipher this node reads, as an encrypted path's third does."""
+        return segment.partition(_IV_SEPARATOR)[0] == CIPHER
 
     @property
     def encrypted(self) -> bool:

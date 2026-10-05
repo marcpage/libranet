@@ -306,3 +306,39 @@ def test_a_part_longer_than_its_size_is_refused_before_more_is_produced(
             produced += chunk
 
     assert len(produced) <= 10
+
+
+@mark.parametrize(
+    "segment, cipher",
+    [
+        (CIPHER, True),
+        (f"{CIPHER}-IV:{IV.hex()}", True),
+        (f"{CIPHER}-IV:not hex", True),
+        ("aes256-cbc", False),
+        (f"{CIPHER}X", False),
+        ("Film (2001)", False),
+        ("", False),
+    ],
+)
+def test_a_cipher_this_node_reads_is_told_apart(segment: str, cipher: bool) -> None:
+    assert PartPath.is_cipher(segment) is cipher
+
+
+@mark.parametrize(
+    "text, logged",
+    [
+        (
+            f"GET /data/{CONTENT_ID}/{CIPHER}/{KEY_HEX}/docs/film.mp4 HTTP/1.1",
+            f"GET /data/{CONTENT_ID}/{CIPHER}/<key>/docs/film.mp4 HTTP/1.1",
+        ),
+        (
+            f"/data/{CONTENT_ID}/{CIPHER}-IV:{IV.hex()}/{KEY_HEX}",
+            f"/data/{CONTENT_ID}/{CIPHER}-IV:{IV.hex()}/<key>",
+        ),
+        (f"/data/{CONTENT_ID}/aes256-cbc/{KEY_HEX}/", f"/data/{CONTENT_ID}/aes256-cbc/<key>/"),
+        (f"/data/{CONTENT_ID}/docs/film.mp4", f"/data/{CONTENT_ID}/docs/film.mp4"),
+        (f"/data/{CONTENT_ID}/{CIPHER}", f"/data/{CONTENT_ID}/{CIPHER}"),
+    ],
+)
+def test_the_key_an_encrypted_path_carries_is_left_out_of_text(text: str, logged: str) -> None:
+    assert PartPath.without_keys(text) == logged

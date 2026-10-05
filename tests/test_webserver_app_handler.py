@@ -14,6 +14,7 @@ from zlib import compress
 from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.atomic_file import write_atomically
+from libranet.bundle.parts import PartPath
 from libranet.bundle.serialization import encode_bundle
 from libranet.bundle.shapes import FileBundle, Metadata
 from libranet.cas.content_id import ContentId
@@ -326,7 +327,7 @@ def test_a_missing_file_is_asked_for_and_503(handler: AppHandler, published: Rec
 def test_a_path_the_bundle_lacks_is_404_once_the_unbundler_says_so(
     handler: AppHandler, outcomes: ApplicationOutcomes, published: Recorder
 ) -> None:
-    outcomes.remember(WIKI_BUNDLE, "missing.html", KnownOutcome(PathOutcome.NOT_FOUND))
+    outcomes.remember(PartPath(WIKI_BUNDLE), "missing.html", KnownOutcome(PathOutcome.NOT_FOUND))
 
     response = get(handler, "/wiki/missing.html")
 
@@ -348,7 +349,7 @@ def test_a_path_the_bundle_lacks_is_404_once_the_unbundler_says_so(
 def test_a_redirect_leads_within_the_same_application(
     handler: AppHandler, outcomes: ApplicationOutcomes, path: str, location: str, expected: str
 ) -> None:
-    bundle = ROOT_BUNDLE if path == "/docs" else WIKI_BUNDLE
+    bundle = PartPath(ROOT_BUNDLE if path == "/docs" else WIKI_BUNDLE)
     outcomes.remember(
         bundle, path.split("/", 2)[-1], KnownOutcome(PathOutcome.REDIRECT, location=location)
     )
@@ -359,13 +360,14 @@ def test_a_redirect_leads_within_the_same_application(
     assert response.headers["Location"] == expected
 
 
+@mark.parametrize("outcome", [PathOutcome.UNUSABLE, PathOutcome.PROTECTED])
 def test_an_unusable_bundle_is_a_500_saying_why(
-    handler: AppHandler, outcomes: ApplicationOutcomes
+    handler: AppHandler, outcomes: ApplicationOutcomes, outcome: PathOutcome
 ) -> None:
     outcomes.remember(
-        WIKI_BUNDLE,
+        PartPath(WIKI_BUNDLE),
         "index.html",
-        KnownOutcome(PathOutcome.UNUSABLE, detail="Bundle is password-protected"),
+        KnownOutcome(outcome, detail="Bundle is password-protected"),
     )
 
     response = get(handler, "/wiki/")
@@ -379,7 +381,7 @@ def test_an_unusable_bundle_is_a_500_saying_why(
 def test_a_resolved_file_is_served_whatever_outcome_was_known(
     handler: AppHandler, files: ResolvedFiles, store: CasStore, outcomes: ApplicationOutcomes
 ) -> None:
-    outcomes.remember(WIKI_BUNDLE, "page.html", KnownOutcome(PathOutcome.NOT_FOUND))
+    outcomes.remember(PartPath(WIKI_BUNDLE), "page.html", KnownOutcome(PathOutcome.NOT_FOUND))
     resolve(files, store, WIKI_BUNDLE, "page.html", b"here after all")
 
     assert get(handler, "/wiki/page.html").status == 200
@@ -646,7 +648,7 @@ def test_a_request_waits_for_the_unbundler_to_save_the_entry(
 ) -> None:
     def unbundle() -> None:
         resolve(files, store, WIKI_BUNDLE, "page.html", b"arrived")
-        outcomes.remember(WIKI_BUNDLE, "page.html", KnownOutcome(PathOutcome.STORED))
+        outcomes.remember(PartPath(WIKI_BUNDLE), "page.html", KnownOutcome(PathOutcome.STORED))
 
     unbundler = Timer(0.05, unbundle)
     unbundler.start()
@@ -667,7 +669,7 @@ def test_a_request_waits_for_the_unbundler_to_say_the_path_holds_no_file(
     unbundler = Timer(
         0.05,
         outcomes.remember,
-        (WIKI_BUNDLE, "missing.html", KnownOutcome(PathOutcome.NOT_FOUND)),
+        (PartPath(WIKI_BUNDLE), "missing.html", KnownOutcome(PathOutcome.NOT_FOUND)),
     )
     unbundler.start()
     response = get(waiting, "/wiki/missing.html")

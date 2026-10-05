@@ -1,7 +1,8 @@
 """Telling bundles apart by shape, and checking that shape (BundleSpecification §1).
 
-Bytes that are not JSON are a password-protected bundle, and a JSON object
-holding a ``signature`` is a signed one. Otherwise the type of ``contents``
+Bytes that are not JSON, but end in ``0x00`` and a descriptor, are a
+password-protected bundle, and a JSON object holding a ``signature`` is a
+signed one. Otherwise the type of ``contents``
 decides: an array is a file, an object a directory, a string a symlink, and
 no ``contents`` at all a metadata-only directory marker.
 
@@ -30,7 +31,7 @@ from libranet.bundle.errors import (
     PasswordProtectedBundleError,
     UnsupportedBundleError,
 )
-from libranet.bundle.protection import DESCRIPTOR_SEPARATOR
+from libranet.bundle.protection import is_protected
 from libranet.bundle.shapes import (
     Bundle,
     DirectoryBundle,
@@ -49,8 +50,9 @@ def decode_bundle(data: bytes) -> Bundle:
     """The bundle ``data`` holds, once any zlib storage compression is undone.
 
     Raises:
-        PasswordProtectedBundleError: ``data`` is not UTF-8 JSON, but holds
-            the ``0x00`` that ends a password-protected bundle's ciphertext.
+        PasswordProtectedBundleError: ``data`` is not UTF-8 JSON, but ends
+            in the ``0x00`` and descriptor that end a password-protected
+            bundle.
         MalformedBundleError: ``data`` is neither, or its JSON is not a
             well-formed bundle.
         UnsupportedBundleError: the bundle is signed (§5).
@@ -59,7 +61,7 @@ def decode_bundle(data: bytes) -> Bundle:
         value = loads(data.decode("utf-8"))
 
     except (ValueError, RecursionError):
-        if DESCRIPTOR_SEPARATOR in data:
+        if is_protected(data):
             raise PasswordProtectedBundleError("Bundle is password-protected") from None
 
         raise MalformedBundleError("Bundle is neither JSON nor password-protected") from None

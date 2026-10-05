@@ -1,9 +1,11 @@
 """Tests for the unbundler module, with real bundles in a temporary source of truth."""
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 from hashlib import sha256
 from json import dumps, loads
-from logging import WARNING
+from logging import DEBUG, WARNING
 from pathlib import Path
 from queue import Empty, Queue
 from typing import Any
@@ -12,21 +14,24 @@ from zlib import compress, decompress
 from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
 
 from libranet.atomic_file import write_atomically
+from libranet.bundle.errors import MalformedBundleError
 from libranet.bundle.parsing import decode_bundle, parse_bundle
+from libranet.bundle.parts import PartPath, PartWriter
+from libranet.bundle.protection import protect
 from libranet.bundle.shapes import Bundle, DirectoryBundle
 from libranet.cas.archive import ArchiveSink
 from libranet.cas.content_id import ContentId
-from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.resolved_files import ResolvedFiles
 from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
 from libranet.messaging.envelope import Message, make_message
-from libranet.messaging.events import EventType
+from libranet.messaging.events import EventType, PathOutcome
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.supervision.registry import default_module_specs
 from libranet.unbundler.module import UnbundlerModule, unbundler_module_factory
+from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 from libranet.webserver.app_registry import Application, ApplicationRegistry
 from libranet.webserver.http_types import Request
 from libranet.webserver.server import build_router
@@ -117,7 +122,7 @@ def app_id(store: CasStore) -> ContentId:
     return put(store, bundle_bytes(application()))
 
 
-def request(bundle: ContentId, path: str) -> Message:
+def request(bundle: ContentId | PartPath, path: str) -> Message:
     return make_message(
         EventType.APP_PATH_NOT_FOUND, ModuleName.WEBSERVER, {"bundle": str(bundle), "path": path}
     )
@@ -164,18 +169,33 @@ def fetched(queues: ModuleQueues) -> list[ContentId]:
     return [ContentId.create(message["algorithm"], message["hash"]) for message in messages]
 
 
-def saved_directory(storage: StorageConfig, bundle: ContentId) -> Path:
-    """Where the unbundler saves the directory ``bundle`` describes."""
+def saved_directory(
+    storage: StorageConfig, bundle: ContentId, *, decrypted_with: bytes | None = None
+) -> Path:
+    """Where the unbundler saves the directory ``bundle`` describes, decrypted with that key."""
     files = ResolvedFiles(storage.resolved_files_dir, storage.hash_prefix_length)
-    return files.directory_for(bundle)
+    return files.directory_for(bundle, decrypted_with=decrypted_with)
 
 
-def written(storage: StorageConfig, bundle: ContentId, path: str) -> Bundle | None:
-    """The entry saved for the file at ``path`` in ``bundle``, if one is."""
+def written(
+    storage: StorageConfig, bundle: ContentId, path: str, *, decrypted_with: bytes | None = None
+) -> Bundle | None:
+    """The entry saved for the file at ``path`` in ``bundle``, decrypted with that key, if any."""
     target = ResolvedFiles(storage.resolved_files_dir, storage.hash_prefix_length).entry_for(
-        bundle, path
+        bundle, path, decrypted_with=decrypted_with
     )
     return decode_bundle(decompress(target.read_bytes())) if target.is_file() else None
+
+
+def encrypted(store: CasStore, value: dict[str, Any]) -> PartPath:
+    """The bundle ``value`` is, held stored encrypted, as the path naming it with its key."""
+    return PartWriter(store, encrypted=True).store(bundle_bytes(value))
+
+
+def key_of(bundle: PartPath) -> bytes:
+    """The key ``bundle`` is read with."""
+    assert bundle.key is not None
+    return bundle.key
 
 
 def entry_of(*parts: bytes, whole: bytes | None = None) -> Bundle:
@@ -461,8 +481,8 @@ def test_an_extension_not_held_is_fetched(
     "content, detail",
     [
         (b"not a bundle", "neither JSON nor password-protected"),
-        (b"\x8f\x02ciphertext\x00PW-SHA256-AES256-CBC", "password-protected"),
-        (bundle_bytes({"contents": [str(id_of(INDEX))]}), "not a directory bundle"),
+        (b"\x8f\x02a file's part\x00holding a zero byte", "neither JSON nor password-protected"),
+        (bundle_bytes({"contents": "target"}), "neither a directory nor a file bundle"),
         (bundle_bytes({"signature": "x", "contents": "{}"}), "igned"),
         (bundle_bytes({"contents": {"../escape": {"contents": []}}}), "Entry path"),
     ],
@@ -702,7 +722,7 @@ def test_a_message_naming_no_valid_bundle_raises(unbundler: UnbundlerModule) -> 
         {"bundle": "sha256/not-a-hash", "path": "index.html"},
     )
 
-    with raises(InvalidContentIdError):
+    with raises(MalformedBundleError):
         unbundler.handle(message)
 
     with raises(KeyError):
@@ -785,3 +805,240 @@ def test_the_web_server_serves_what_the_unbundler_resolves(
     assert second.stream is not None
     assert b"".join(second.stream.chunks) == FIRST_HALF + SECOND_HALF
     assert second.headers["Content-Type"] == "text/html"
+
+
+def test_a_file_bundles_own_file_is_written_at_the_empty_path_and_nothing_else_is_held(
+    unbundler: UnbundlerModule, queues: ModuleQueues, storage: StorageConfig, store: CasStore
+) -> None:
+    put(store, INDEX)
+    bundle = put(store, bundle_bytes(file_entry(INDEX)))
+
+    unbundler.handle(request(bundle, ""))
+    unbundler.handle(request(bundle, "index.html"))
+
+    assert written(storage, bundle, "") == entry_of(INDEX)
+    assert resolved(queues) == [
+        {"path": "", "outcome": "stored"},
+        {"path": "index.html", "outcome": "not_found"},
+    ]
+    assert not saved_directory(storage, bundle).exists()
+
+
+def test_a_directory_bundles_root_is_a_directory(
+    unbundler: UnbundlerModule, queues: ModuleQueues, app_id: ContentId
+) -> None:
+    unbundler.handle(request(app_id, ""))
+
+    assert resolved(queues) == [{"path": "", "outcome": "redirect", "location": ""}]
+
+
+def test_a_password_protected_bundle_is_protected_for_every_path(
+    unbundler: UnbundlerModule, queues: ModuleQueues, store: CasStore
+) -> None:
+    bundle = put(store, protect(bundle_bytes(application()), b"a password"))
+
+    unbundler.handle(request(bundle, ""))
+    unbundler.handle(request(bundle, "index.html"))
+
+    reports = resolved(queues)
+    assert [report["outcome"] for report in reports] == ["protected", "protected"]
+    assert all("password-protected" in report["detail"] for report in reports)
+
+
+def test_a_directory_deleted_since_it_was_saved_is_saved_again_when_a_directory_is_asked_for(
+    unbundler: UnbundlerModule, queues: ModuleQueues, storage: StorageConfig, app_id: ContentId
+) -> None:
+    unbundler.handle(request(app_id, "index.html"))
+    saved = saved_directory(storage, app_id)
+    kept = saved.read_bytes()
+    saved.unlink()
+
+    unbundler.handle(request(app_id, "about.html"))
+    unbundler.handle(request(app_id, "docs/guide.html"))
+    still_deleted = not saved.exists()
+    unbundler.handle(request(app_id, "docs"))
+
+    assert still_deleted
+    assert saved.read_bytes() == kept
+    assert resolved(queues)[-1] == {"path": "docs", "outcome": "redirect", "location": "docs/"}
+
+
+def test_an_encrypted_bundle_is_read_with_its_key_and_resolved_apart_under_it(
+    unbundler: UnbundlerModule, queues: ModuleQueues, storage: StorageConfig, app_id: ContentId
+) -> None:
+    store = CasStore.source_of_truth(storage)
+    bundle = encrypted(store, application())
+    key = key_of(bundle)
+
+    unbundler.handle(request(bundle, "docs/guide.html"))
+    unbundler.handle(request(bundle, "about.html"))
+
+    first, second = published(queues)
+    assert first["bundle"] == str(bundle)
+    assert (first["path"], first["outcome"]) == ("docs/guide.html", "stored")
+    assert (second["path"], second["outcome"]) == ("about.html", "stored")
+    assert written(storage, bundle.content_id, "docs/guide.html", decrypted_with=key) == (
+        entry_of(FIRST_HALF, SECOND_HALF)
+    )
+    assert written(storage, bundle.content_id, "docs/guide.html") is None
+    assert saved_directory(storage, bundle.content_id, decrypted_with=key).exists()
+    assert not saved_directory(storage, bundle.content_id).exists()
+    # The same bundle held plain resolves to its own, as it always did.
+    assert written(storage, app_id, "docs/guide.html") is None
+
+
+def test_an_encrypted_bundles_encrypted_extensions_are_read_with_their_keys(
+    unbundler: UnbundlerModule, queues: ModuleQueues, storage: StorageConfig, store: CasStore
+) -> None:
+    put(store, ABOUT)
+    extended = encrypted(store, extension())
+    bundle = encrypted(store, {"contents": {}, "extensions": [str(extended)]})
+
+    unbundler.handle(request(bundle, "about.html"))
+
+    assert resolved(queues) == [{"path": "about.html", "outcome": "stored"}]
+    assert written(storage, bundle.content_id, "about.html", decrypted_with=key_of(bundle)) == (
+        entry_of(ABOUT)
+    )
+
+
+@mark.usefixtures("app_id")
+def test_an_encrypted_bundle_not_held_is_fetched_as_stored_and_resolved_once_it_arrives(
+    unbundler: UnbundlerModule, queues: ModuleQueues, storage: StorageConfig, tmp_path: Path
+) -> None:
+    elsewhere = CasStore(tmp_path / "elsewhere", 4)
+    bundle = encrypted(elsewhere, application())
+
+    unbundler.handle(request(bundle, "index.html"))
+    asked = fetched(queues)
+    CasStore.source_of_truth(storage).write(bundle.content_id, elsewhere.read(bundle.content_id))
+    unbundler.handle(stored(bundle.content_id))
+
+    assert asked == [bundle.content_id]
+    assert resolved(queues) == [{"path": "index.html", "outcome": "stored"}]
+
+
+@mark.usefixtures("app_id")
+@mark.parametrize("key", [None, bytes(32)])
+def test_an_encrypted_bundle_named_without_its_key_is_unusable_and_finds_nothing_decrypted(
+    unbundler: UnbundlerModule,
+    queues: ModuleQueues,
+    storage: StorageConfig,
+    store: CasStore,
+    key: bytes | None,
+) -> None:
+    bundle = encrypted(store, application())
+    unbundler.handle(request(bundle, "index.html"))
+    first = resolved(queues)
+
+    unbundler.handle(request(PartPath(bundle.content_id, key), "index.html"))
+
+    (report,) = resolved(queues)
+    assert first == [{"path": "index.html", "outcome": "stored"}]
+    assert report["outcome"] == "unusable"
+    assert written(storage, bundle.content_id, "index.html", decrypted_with=key) is None
+
+
+@mark.usefixtures("app_id")
+def test_another_key_found_unusable_does_not_keep_the_right_one_from_reading(
+    unbundler: UnbundlerModule, queues: ModuleQueues, store: CasStore
+) -> None:
+    bundle = encrypted(store, application())
+
+    unbundler.handle(request(PartPath(bundle.content_id, bytes(32)), "index.html"))
+    unbundler.handle(request(bundle, "index.html"))
+
+    assert [report["outcome"] for report in resolved(queues)] == ["unusable", "stored"]
+
+
+@mark.usefixtures("app_id")
+def test_no_log_line_shows_an_encrypted_bundles_key(
+    unbundler: UnbundlerModule, storage: StorageConfig, tmp_path: Path, caplog: LogCaptureFixture
+) -> None:
+    elsewhere = CasStore(tmp_path / "elsewhere", 4)
+    bundle = encrypted(elsewhere, application())
+    store = CasStore.source_of_truth(storage)
+    wrong = PartPath(bundle.content_id, bytes(range(32)))
+
+    with caplog.at_level(DEBUG):
+        unbundler.handle(request(bundle, "index.html"))
+        store.write(bundle.content_id, elsewhere.read(bundle.content_id))
+        unbundler.handle(stored(bundle.content_id))
+        unbundler.handle(request(bundle, "index.html"))
+        unbundler.handle(request(bundle, "docs"))
+        unbundler.handle(request(wrong, "index.html"))
+        unbundler.handle(reclaim())
+
+    assert str(bundle.content_id) in caplog.text
+    assert "cannot be served" in caplog.text
+    assert key_of(bundle).hex() not in caplog.text
+    assert key_of(wrong).hex() not in caplog.text
+    assert sha256(key_of(bundle)).hexdigest() not in caplog.text
+
+
+@mark.usefixtures("app_id")
+def test_an_encrypted_bundle_reclaimed_is_forgotten_under_its_key_too(
+    unbundler: UnbundlerModule, storage: StorageConfig, store: CasStore
+) -> None:
+    bundle = encrypted(store, application())
+    key = key_of(bundle)
+    unbundler.handle(request(bundle, "index.html"))
+
+    unbundler.handle(reclaim())
+    unbundler.handle(request(bundle, "index.html"))
+
+    assert written(storage, bundle.content_id, "index.html", decrypted_with=key) == entry_of(INDEX)
+    # Forgotten from memory, so read and saved again.
+    assert saved_directory(storage, bundle.content_id, decrypted_with=key).exists()
+
+
+@mark.usefixtures("app_id")
+def test_the_web_server_reads_into_an_encrypted_bundle_the_unbundler_resolves(
+    unbundler: UnbundlerModule, queues: ModuleQueues, storage: StorageConfig, store: CasStore
+) -> None:
+    bundle = encrypted(store, application())
+    web_queues = ModuleQueues(inbox=Queue(), outbox=Queue())
+    outcomes = ApplicationOutcomes()
+    router = build_router(
+        storage,
+        5,
+        StubModule(ModuleName.WEBSERVER, web_queues).publish,
+        RequestAuthenticator.of(LibranetConfig(storage=storage)),
+        allow_unsigned_api_reads=True,
+        config_port=8180,
+        app_outcomes=outcomes,
+    )
+    root = Request("GET", f"/data/{bundle}/", client_address="203.0.113.42")
+    guide = Request("GET", f"/data/{bundle}/docs/guide.html", client_address="203.0.113.42")
+
+    for browse in (root, guide):
+        router.dispatch(browse)
+
+        for asked in published(web_queues):
+            if asked["event"] == EventType.APP_PATH_NOT_FOUND:
+                unbundler.handle(asked)
+
+        # As the web server's receive loop takes in what the unbundler found.
+        for report in published(queues):
+            outcomes.remember(
+                PartPath.parse(report["bundle"]),
+                report["path"],
+                KnownOutcome(PathOutcome(report["outcome"]), report.get("location", "")),
+            )
+
+    listed = router.dispatch(root)
+    served = router.dispatch(guide)
+
+    assert listed.status == 200
+    assert loads(listed.body) == {
+        "entries": {
+            "about.html": {"type": "file", "size": len(ABOUT), "content_type": "text/html"},
+            "broken.html": {"type": "file", "size": len(INDEX), "content_type": "text/html"},
+            "docs": {"type": "directory"},
+            "index.html": {"type": "file", "size": len(INDEX), "content_type": "text/html"},
+        }
+    }
+    assert served.status == 200
+    assert served.stream is not None
+    assert b"".join(served.stream.chunks) == FIRST_HALF + SECOND_HALF
+    assert served.headers["Content-Security-Policy"] == "sandbox"

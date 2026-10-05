@@ -1267,9 +1267,10 @@ GET /data/{hash-algorithm}/{hash}/{encryption algorithm}/{key}/{path}
 The first names a bundle by its content identifier. The second names one
 stored encrypted, by the identifier per-entry encryption gives it (§5),
 which carries the key that decrypts it. A path whose two segments after
-`{hash}` are an encryption algorithm the node knows and a key is read as
-the second. A bundle entry whose path begins that way cannot be read into
-by the first.
+`{hash}`, as written rather than percent-decoded, are an encryption
+algorithm the node knows and a key is read as the second. A bundle entry
+whose path begins that way cannot be read into by the first. A `HEAD` is
+answered as a `GET` would be.
 
 `{path}` is an entry path, percent-encoded, and may be empty. For the
 first form, an empty path needs its trailing `/`, as
@@ -1294,6 +1295,9 @@ without one.
 
   `size` is absent for a file whose bundle does not record it.
   `content_type` is the type the file would be served with.
+- **A path reaching a file or a directory through a symbolic link** is
+  answered `302 Found`, with the path it leads to, so that each is read at
+  one path.
 - **A path the bundle does not hold** is `404 Not Found`.
 - **Content that is not a bundle, or a bundle the node cannot read,** is
   `400 Bad Request`. A password-protected bundle
@@ -2113,7 +2117,7 @@ The following table summarizes the currently proposed HTTP API.
 | `/data/search/{hash}`             | `GET`        | Search for matching hashes                                 | Defined |
 | `/data/nodes`                     | `GET`/`POST` | Retrieve/publish peer information                          | Defined |
 | `/data/seek`                      | `GET`/`POST` | Retrieve/publish outstanding requests                      | Defined |
-| `/data/{algorithm}/{hash}/{path}` | `GET`        | Read into a bundle (§12.1)                                 | Defined |
+| `/data/{algorithm}/{hash}/{path}` | `GET`/`HEAD` | Read into a bundle (§12.1)                                 | Defined |
 | `/data/client`                    | `GET`        | Whether the client is local (§2.4)                         | Defined |
 | `/data/directory/...`             | `GET`        | List the folders offered to local clients (§12.2)          | Defined |
 | `/data/imports`                   | `GET`/`POST` | Import a local file, and follow imports (§12.2)            | Defined |

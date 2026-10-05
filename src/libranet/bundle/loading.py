@@ -9,14 +9,19 @@ expand without bound (HttpApi §21).
 A password-protected bundle (BundleSpecification §6) is decrypted when a
 password is given, and is held to the same cap once decrypted and
 decompressed.
+
+A bundle stored encrypted (§7) is named by its encrypted path, which carries
+the key it is decrypted with, and is read as a part named so is
+(:class:`~libranet.bundle.parts.PartPath`, Phase 3 Step 71).
 """
 
 from __future__ import annotations
 from typing import Final
 
-from libranet.bundle.content import ContentSource, content_chunks
+from libranet.bundle.content import ContentSource
 from libranet.bundle.errors import PasswordProtectedBundleError, UnsupportedBundleError
 from libranet.bundle.parsing import decode_bundle
+from libranet.bundle.parts import PartPath
 from libranet.bundle.protection import strip_targeting, unprotect
 from libranet.bundle.shapes import Bundle
 from libranet.cas.content_id import ContentId
@@ -27,13 +32,13 @@ DEFAULT_MAX_BUNDLE_BYTES: Final = 16 * 1024 * 1024
 
 
 def load_bundle(
-    content_id: ContentId,
+    content_id: ContentId | PartPath,
     source: ContentSource,
     max_bytes: int = DEFAULT_MAX_BUNDLE_BYTES,
     password: bytes | None = None,
     targeted: bool = False,
 ) -> Bundle:
-    """The bundle ``source`` holds as ``content_id``.
+    """The bundle ``source`` holds as ``content_id``, or as the encrypted path it names.
 
     A bundle that is not password-protected is read as is, even when a
     ``password`` is given (§6.5). ``targeted`` says the bundle is a drop,
@@ -41,7 +46,8 @@ def load_bundle(
 
     Raises:
         MissingContentError: ``source`` does not hold ``content_id``.
-        BundleVerificationError: what is stored does not match ``content_id``.
+        BundleVerificationError: what is stored does not match ``content_id``,
+            or does not decrypt under the key its path carries.
         UnsupportedBundleError: the bundle is larger than ``max_bytes`` once
             decompressed, or is one this node cannot read.
         PasswordProtectedBundleError: the bundle is password-protected, and
@@ -49,14 +55,18 @@ def load_bundle(
         IncorrectPasswordError: ``password`` does not decrypt the bundle.
         MalformedBundleError: the content is not a well-formed bundle.
     """
+    path = content_id if isinstance(content_id, PartPath) else PartPath(content_id)
     chunks: list[bytes] = []
     size_bytes = 0
 
-    for chunk in content_chunks(source, content_id):
+    for chunk in path.chunks(source):
         size_bytes += len(chunk)
 
         if size_bytes > max_bytes:
-            raise UnsupportedBundleError(f"Bundle {content_id} is larger than {max_bytes} bytes")
+            # Only what is stored is named, since the key is what keeps it unread.
+            raise UnsupportedBundleError(
+                f"Bundle {path.content_id} is larger than {max_bytes} bytes"
+            )
 
         chunks.append(chunk)
 
