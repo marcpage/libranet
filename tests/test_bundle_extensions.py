@@ -17,6 +17,7 @@ from libranet.bundle.errors import (
 )
 from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.loading import load_bundle
+from libranet.bundle.parts import PartPath, PartWriter
 from libranet.bundle.shapes import (
     Bundle,
     DirectoryBundle,
@@ -53,14 +54,14 @@ class FakeLoader:
         self._bundles = {bundle_id(name): bundle for name, bundle in bundles.items()}
         self.loaded: list[ContentId] = []
 
-    def __call__(self, content_id: ContentId) -> Bundle:
-        self.loaded.append(content_id)
+    def __call__(self, path: PartPath) -> Bundle:
+        self.loaded.append(path.content_id)
 
         try:
-            return self._bundles[content_id]
+            return self._bundles[path.content_id]
 
         except KeyError:
-            raise MissingContentError((content_id,)) from None
+            raise MissingContentError((path.content_id,)) from None
 
 
 def test_bundle_without_extensions_is_its_own_entries() -> None:
@@ -242,7 +243,7 @@ def test_extension_path_must_be_readable(path: str, error: type[Exception]) -> N
 
 
 def test_other_load_errors_pass_through() -> None:
-    def load(content_id: ContentId) -> Bundle:
+    def load(path: PartPath) -> Bundle:
         raise PasswordProtectedBundleError("encrypted")
 
     with raises(PasswordProtectedBundleError):
@@ -261,6 +262,27 @@ def test_extensions_are_read_from_cas(tmp_path: Path) -> None:
     }
 
 
+def test_an_encrypted_extension_is_read_with_the_key_its_path_carries(tmp_path: Path) -> None:
+    store = CasStore(tmp_path, prefix_length=4)
+    extension = dumps({"contents": {"LICENSE": {"contents": []}}}).encode()
+    path = PartWriter(store, encrypted=True).store(extension)
+    top = DirectoryBundle(entries={"README.md": None}, extensions=(str(path),))
+
+    assert resolve_directory(top, lambda named: load_bundle(named, store)) == {
+        "LICENSE": FileBundle(parts=())
+    }
+
+
+def test_an_encrypted_extension_not_held_is_missing_by_what_is_stored() -> None:
+    path = PartPath(bundle_id("E"), bytes(32))
+    top = DirectoryBundle(entries={}, extensions=(str(path),))
+
+    with raises(MissingContentError) as raised:
+        resolve_directory(top, FakeLoader({}))
+
+    assert raised.value.content_ids == (bundle_id("E"),)
+
+
 def specification_resolve(bundle: DirectoryBundle, loader: FakeLoader) -> dict[str, Entry]:
     """BundleSpecification §4.1 exactly as written, to compare against."""
 
@@ -268,7 +290,7 @@ def specification_resolve(bundle: DirectoryBundle, loader: FakeLoader) -> dict[s
         result: dict[str, Entry | None] = {}
 
         for path in reversed(current.extensions):
-            extension = loader(ContentId.parse(path))
+            extension = loader(PartPath.parse(path))
             assert isinstance(extension, DirectoryBundle)
             result.update(resolve(extension))
 

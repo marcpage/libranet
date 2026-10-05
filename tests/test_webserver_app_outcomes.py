@@ -6,12 +6,13 @@ from time import monotonic
 
 from pytest import mark, raises
 
+from libranet.bundle.parts import PartPath
 from libranet.cas.content_id import ContentId
 from libranet.messaging.events import PathOutcome
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 
-BUNDLE = ContentId.for_data(b"a directory bundle", "sha256")
-OTHER_BUNDLE = ContentId.for_data(b"another directory bundle", "sha256")
+BUNDLE = PartPath(ContentId.for_data(b"a directory bundle", "sha256"))
+OTHER_BUNDLE = PartPath(ContentId.for_data(b"another directory bundle", "sha256"))
 NOT_FOUND = KnownOutcome(PathOutcome.NOT_FOUND)
 
 
@@ -122,3 +123,14 @@ def test_what_a_wait_looks_for_may_recall_an_outcome() -> None:
     report.join()
 
     assert answered
+
+
+def test_an_encrypted_bundles_outcomes_are_kept_apart_by_its_key() -> None:
+    outcomes = ApplicationOutcomes()
+    keyed = PartPath(BUNDLE.content_id, bytes(32))
+    redirect = KnownOutcome(PathOutcome.REDIRECT, location="docs/")
+    outcomes.remember(keyed, "docs", redirect)
+    outcomes.remember(PartPath(BUNDLE.content_id, bytes(range(32))), "docs", NOT_FOUND)
+
+    assert outcomes.recall(PartPath(BUNDLE.content_id, bytes(32)), "docs") == redirect
+    assert outcomes.recall(BUNDLE, "docs") is None

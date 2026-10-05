@@ -195,3 +195,41 @@ def test_a_file_with_only_what_its_bytes_decide_keeps_its_parts_their_sizes_and_
         Metadata(size_bytes=4096, algorithm="sha256", hash=WHOLE_HASH),
         part_sizes_bytes=(3072, 1024),
     )
+
+
+def test_a_directorys_children_are_the_entries_one_level_beneath_it_in_order() -> None:
+    film = FileBundle(parts=(PART,))
+    latest = Symlink("Film (2001)")
+    bundle = DirectoryBundle(
+        {
+            "playlist.json": film,
+            "latest": latest,
+            "Film (2001)/film.mp4": film,
+            "Film (2001)/extras/trailer.mp4": film,
+            "empty": DirectoryMarker(),
+            "gone": None,
+        }
+    )
+
+    assert bundle.children("") == {
+        "Film (2001)": DirectoryMarker(),
+        "empty": DirectoryMarker(),
+        "latest": latest,
+        "playlist.json": film,
+    }
+    assert list(bundle.children("")) == ["Film (2001)", "empty", "latest", "playlist.json"]
+    assert bundle.children("Film (2001)") == {"extras": DirectoryMarker(), "film.mp4": film}
+    assert bundle.children("Film (2001)/extras") == {"trailer.mp4": film}
+    assert bundle.children("empty") == {}
+    assert bundle.children("Film") == {}
+
+
+def test_a_directorys_own_entry_takes_the_place_of_one_it_leads_to() -> None:
+    marker = DirectoryMarker(Metadata(modified="2026-10-05T00:00:00Z"))
+    paths = ["docs/guide.html", "docs"]
+    entries = {path: FileBundle(parts=(PART,)) if "/" in path else marker for path in paths}
+
+    for order in (paths, list(reversed(paths))):
+        bundle = DirectoryBundle({path: entries[path] for path in order})
+
+        assert bundle.children("") == {"docs": marker}

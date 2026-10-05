@@ -7,6 +7,9 @@ behavior live in :class:`~libranet.webserver.router.Router` and its
 handlers. Every error the server itself raises (malformed requests,
 unknown methods, handler crashes) is also sent as Problem Details.
 
+No log line shows the key an encrypted bundle's id carries, the access log's
+included (HttpApi §12.1, Phase 3 Step 71).
+
 A request body is handed to the handler unread. If the handler leaves it
 unread, the connection is closed after the response, since the body's bytes
 would otherwise be parsed as the next request. A response body may be
@@ -45,6 +48,7 @@ from typing import Any, Final, Iterable
 from urllib.parse import urlsplit
 
 from libranet import __version__
+from libranet.bundle.parts import PartPath
 from libranet.cas.layered import LayeredSource
 from libranet.cas.resolved_files import ResolvedFiles
 from libranet.cas.store import CasStore
@@ -76,6 +80,7 @@ from libranet.webserver.app_store import (
 from libranet.webserver.app_use import ApplicationUse
 from libranet.webserver.backup_state import BackupState
 from libranet.webserver.bundle_paths import BundlePaths
+from libranet.webserver.bundle_reads import BUNDLE_METHODS, BUNDLE_PATTERN, BundleReadHandler
 from libranet.webserver.config_auth import ConfigAuthGuard
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_guard import (
@@ -162,7 +167,9 @@ def build_router(  # pylint: disable=too-many-locals
     for local clients alone too, and says how each import is doing from
     what ``backup_state`` holds (Phase 3 Step 69). ``/data/store`` keeps each
     application's values in ``storage``'s data directory, read by any client
-    and changed by local clients alone (Phase 3 Step 70).
+    and changed by local clients alone (Phase 3 Step 70). Any client may
+    read into a bundle ``content`` holds, as an application's files are
+    served (Phase 3 Step 71).
     """
     store = CasStore.source_of_truth(storage)
     content = LayeredSource(store) if content is None else content
@@ -183,6 +190,12 @@ def build_router(  # pylint: disable=too-many-locals
     checks = SiteChecks(config_hosts, "This endpoint")
     state = BackupState() if backup_state is None else backup_state
     app_store = ApplicationStore(storage.application_stores_dir)
+    paths = _bundle_paths(
+        storage,
+        PartReader(content, publish, app_wait_seconds, retry_after_seconds),
+        retry_after_seconds,
+        app_outcomes,
+    )
     router.add("GET", CLIENT_PATH, client_handler)
     # The directory, import, store, and search routes must precede the data
     # route, whose pattern they also fit.
@@ -204,6 +217,11 @@ def build_router(  # pylint: disable=too-many-locals
             publish=publish,
         ),
     )
+    reads = BundleReadHandler(paths)
+
+    for method in BUNDLE_METHODS:
+        router.add(method, BUNDLE_PATTERN, reads)
+
     router.add("GET", DATA_PATTERN, DataReadHandler(content, publish, retry_after_seconds))
     router.add("PUT", DATA_PATTERN, DataWriteHandler(storage, store, authenticator, publish))
     # A posted list is held to the same cap as every other request body as
@@ -224,15 +242,7 @@ def build_router(  # pylint: disable=too-many-locals
         "GET", DATA_APPLICATIONS_PATH, ApplicationListHandler(registry, names_the_file=False)
     )
     # Last, since its pattern fits every path outside the reserved names.
-    applications = AppHandler(
-        registry,
-        _bundle_paths(
-            storage,
-            PartReader(content, publish, app_wait_seconds, retry_after_seconds),
-            retry_after_seconds,
-            app_outcomes,
-        ),
-    )
+    applications = AppHandler(registry, paths)
 
     for method in APP_METHODS:
         router.add(method, APP_PATTERN, applications)
@@ -471,7 +481,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
 
         except Exception:  # pylint: disable=broad-exception-caught
-            self.server.logger.exception("Handler failed for %s %s", self.command, path)
+            self.server.logger.exception(
+                "Handler failed for %s %s", self.command, PartPath.without_keys(path)
+            )
             response = problem_response(
                 Problem.for_status(HTTPStatus.INTERNAL_SERVER_ERROR, instance=path)
             )
@@ -499,8 +511,10 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     # BaseHTTPRequestHandler names the parameter `format`.
     def log_message(self, format: str, *args: Any) -> None:  # pylint: disable=redefined-builtin
-        """Send the access log to the web server's logger rather than stderr."""
-        self.server.logger.info("%s %s", self.address_string(), format % args)
+        """Send the access log to the web server's logger rather than stderr, without keys."""
+        self.server.logger.info(
+            "%s %s", self.address_string(), PartPath.without_keys(format % args)
+        )
 
     def _request_body(self) -> RequestBody | None:
         """The request's body, or ``None`` if its framing is invalid (RFC 9112 §6.3)."""
@@ -577,7 +591,10 @@ class RequestHandler(BaseHTTPRequestHandler):
 
                 except OSError as error:
                     self.server.logger.debug(
-                        "%s went away from %s mid-body: %s", self.address_string(), self.path, error
+                        "%s went away from %s mid-body: %s",
+                        self.address_string(),
+                        PartPath.without_keys(self.path),
+                        error,
                     )
                     self.close_connection = True
                     return
@@ -588,7 +605,9 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         except Exception:  # pylint: disable=broad-exception-caught
             self.server.logger.exception(
-                "Streaming the body failed for %s %s", self.command, self.path
+                "Streaming the body failed for %s %s",
+                self.command,
+                PartPath.without_keys(self.path),
             )
             self.close_connection = True
 

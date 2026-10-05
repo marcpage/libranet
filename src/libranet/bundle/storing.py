@@ -21,10 +21,9 @@ from typing import Final, Protocol
 from zlib import compress
 
 from libranet.bundle.errors import BundleTooLargeError
-from libranet.bundle.extensions import DEFAULT_MAX_EXTENSIONS
 from libranet.bundle.protection import protect
 from libranet.bundle.serialization import encode_bundle
-from libranet.bundle.shapes import Bundle, DirectoryBundle
+from libranet.bundle.shapes import DEFAULT_MAX_EXTENSIONS, Bundle, DirectoryBundle
 from libranet.bundle.splitting import split_entries
 from libranet.cas.content_id import ContentId
 from libranet.config.models import MIB

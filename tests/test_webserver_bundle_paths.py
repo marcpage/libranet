@@ -1,12 +1,19 @@
-"""Tests for serving paths in bundles: content types, decoding, and how long a request waits."""
+"""Tests for serving paths in bundles: content types, decoding, and reading saved directories."""
 
 from __future__ import annotations
+from logging import WARNING
 from pathlib import Path
 from time import monotonic
 from typing import Any, Mapping
+from zlib import compress
 
-from pytest import fixture, mark
+from pytest import LogCaptureFixture, fixture, mark
 
+from libranet.atomic_file import write_atomically
+from libranet.bundle.parts import PartPath
+from libranet.bundle.serialization import encode_bundle
+from libranet.bundle.shapes import DirectoryBundle, FileBundle
+from libranet.cas.content_id import ContentId
 from libranet.cas.resolved_files import ResolvedFiles
 from libranet.cas.store import CasStore
 from libranet.messaging.envelope import Message
@@ -17,6 +24,9 @@ from libranet.webserver.app_use import ApplicationUse
 from libranet.webserver.bundle_paths import BundlePaths, content_type_for, percent_decoded
 from libranet.webserver.file_stream import PartReader
 
+BUNDLE = PartPath(ContentId.for_data(b"a directory bundle", "sha256"))
+ENCRYPTED = PartPath(BUNDLE.content_id, bytes(range(32)))
+DIRECTORY = DirectoryBundle({"index.html": FileBundle(())})
 WAIT_SECONDS = 5.0
 
 
@@ -53,6 +63,13 @@ def paths(files: ResolvedFiles, asked: Recorder, tmp_path: Path) -> BundlePaths:
     )
 
 
+def save(files: ResolvedFiles, bundle: PartPath, data: bytes) -> Path:
+    """Save ``data`` as the directory of ``bundle``, and say where."""
+    target = files.directory_for(bundle.content_id, decrypted_with=bundle.key)
+    write_atomically(target, data)
+    return target
+
+
 @mark.parametrize(
     "entry_path, content_type",
     [
@@ -84,3 +101,39 @@ def test_a_request_waits_no_longer_than_the_parts_are_waited_for(paths: BundlePa
     deadline = paths.deadline()
 
     assert before + WAIT_SECONDS <= deadline <= monotonic() + WAIT_SECONDS
+
+
+def test_a_saved_directory_is_read_under_the_key_its_bundle_was_read_with(
+    paths: BundlePaths, files: ResolvedFiles, asked: Recorder
+) -> None:
+    save(files, ENCRYPTED, compress(encode_bundle(DIRECTORY)))
+
+    found = paths.directory(ENCRYPTED, "", monotonic())
+    plain = paths.directory(BUNDLE, "", monotonic())
+
+    assert found == DIRECTORY
+    assert plain is None
+    assert asked.messages == [(EventType.APP_PATH_NOT_FOUND, {"bundle": str(BUNDLE), "path": ""})]
+
+
+@mark.parametrize(
+    "data", [b"not compressed", compress(b"not a bundle"), compress(b'{"contents": []}')]
+)
+def test_a_saved_directory_that_cannot_be_read_is_discarded_and_asked_for_again(
+    paths: BundlePaths,
+    files: ResolvedFiles,
+    asked: Recorder,
+    caplog: LogCaptureFixture,
+    data: bytes,
+) -> None:
+    target = save(files, BUNDLE, data)
+
+    with caplog.at_level(WARNING):
+        found = paths.directory(BUNDLE, "docs", monotonic())
+
+    assert found is None
+    assert not target.exists()
+    assert f"Discarding the directory saved at {target}: " in caplog.text
+    assert asked.messages == [
+        (EventType.APP_PATH_NOT_FOUND, {"bundle": str(BUNDLE), "path": "docs"})
+    ]

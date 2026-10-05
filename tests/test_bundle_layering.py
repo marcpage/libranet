@@ -9,11 +9,12 @@ from typing import Any, Mapping
 from pytest import LogCaptureFixture, mark, raises
 
 from libranet.bundle.errors import BundleError, PasswordProtectedBundleError
-from libranet.bundle.extensions import DEFAULT_MAX_EXTENSIONS, resolve_directory
+from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.layering import Layering, StoredVersion, Superseded
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.serialization import bundle_value
 from libranet.bundle.shapes import (
+    DEFAULT_MAX_EXTENSIONS,
     Bundle,
     DirectoryBundle,
     DirectoryMarker,

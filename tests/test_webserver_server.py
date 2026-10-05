@@ -1180,6 +1180,56 @@ def test_an_application_answers_get_and_head_alone(connection: HTTPConnection) -
     assert response.getheader("Allow") == "GET, HEAD"
 
 
+@mark.parametrize(
+    "path, reads_into",
+    [
+        (f"/data/{CONTENT_ID}", None),
+        (f"/data/{CONTENT_ID}/", ""),
+        (f"/data/{CONTENT_ID}/docs/film.mp4", "docs/film.mp4"),
+        (f"/data/{CONTENT_ID}/AES256-CBC", "AES256-CBC"),
+        (f"/data/{CONTENT_ID}/AES256-CBC/{'a1' * 32}/film.mp4", "film.mp4"),
+        (f"/data/search/{CONTENT_ID.hash[:4]}", None),
+        ("/data/store/movie", None),
+        ("/data/store/movie/last", None),
+        ("/data/client", None),
+        ("/data/applications", None),
+    ],
+)
+def test_a_path_going_on_past_an_id_reads_into_its_bundle_and_no_other_does(
+    local_server: LibranetHTTPServer, queues: ModuleQueues, path: str, reads_into: str | None
+) -> None:
+    response = local_server.router.dispatch(Request("GET", path, client_address="127.0.0.1"))
+
+    asked = [message for message in _published(queues) if message["event"] == "app.path_not_found"]
+    # Each reached a handler of its own, not the router's answer for no route.
+    assert b"No resource exists at this path." not in response.body
+    assert [message["path"] for message in asked] == ([] if reads_into is None else [reads_into])
+    sandboxed = response.headers.get("Content-Security-Policy") == "sandbox"
+    assert sandboxed is (reads_into is not None)
+
+
+def test_a_bundle_is_read_into_by_get_and_head_alone(connection: HTTPConnection) -> None:
+    head, _ = _get(connection, f"/data/{CONTENT_ID}/film.mp4", method="HEAD")
+    put, _ = _get(connection, f"/data/{CONTENT_ID}/film.mp4", method="PUT")
+
+    assert head.status == 503
+    assert put.status == 405
+    assert put.getheader("Allow") == "GET, HEAD"
+
+
+def test_the_access_log_leaves_out_the_key_of_an_encrypted_id(
+    connection: HTTPConnection, caplog: LogCaptureFixture
+) -> None:
+    key = sha256(b"what an encrypted bundle decrypts to").hexdigest()
+
+    with caplog.at_level(DEBUG, logger="test.webserver"):
+        response, _ = _get(connection, f"/data/{CONTENT_ID}/AES256-CBC/{key}/film.mp4")
+
+    assert response.status == 503
+    assert f"/data/{CONTENT_ID}/AES256-CBC/<key>/film.mp4" in caplog.text
+    assert key not in caplog.text
+
+
 def test_data_is_sent_whole_whatever_range_is_asked_for(connection: HTTPConnection) -> None:
     response, body = _get(connection, f"/data/{CONTENT_ID}", headers={"Range": "bytes=0-1"})
 

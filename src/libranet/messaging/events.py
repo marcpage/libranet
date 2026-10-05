@@ -129,6 +129,10 @@ class PathOutcome(StrEnum):
     # says why.
     UNUSABLE = "unusable"
 
+    # The bundle is password-protected (BundleSpecification §6), so it is not
+    # read into (HttpApi §12.1); the message's ``detail`` says so.
+    PROTECTED = "protected"
+
 
 class ConflictBehavior(StrEnum):
     """What a restore or an export does where what it would write is already there.

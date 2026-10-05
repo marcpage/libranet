@@ -150,9 +150,9 @@ class Export(Task):
         password = None if self._request.password is None else self._request.password.encoded
         needed = {bundle}
 
-        def load(content_id: ContentId) -> Bundle:
-            needed.add(content_id)
-            return load_bundle(content_id, source, password=password)
+        def load(path: PartPath) -> Bundle:
+            needed.add(path.content_id)
+            return load_bundle(path, source, password=password)
 
         top = load_bundle(bundle, source, password=password)
         # Each looked at as whatever it is, so that a kind of entry this does

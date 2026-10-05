@@ -1,10 +1,18 @@
-"""The unbundler module process (Phase 1 Step 14, Phase 3 Step 65).
+"""The unbundler module process (Phase 1 Step 14, Phase 3 Steps 65 and 71).
 
 It resolves an application's files on demand, one requested path at a time,
-never ahead of a request. Each ``app.path_not_found`` from the web server
-names a bundle and an entry path in it::
+never ahead of a request, and those of any bundle a client reads into
+(HttpApi §12.1). Each ``app.path_not_found`` from the web server names a
+bundle and an entry path in it::
 
     app.path_not_found  {"bundle": "sha256/<hex>", "path": "docs/index.html"}
+
+A bundle stored encrypted is named by its encrypted path, which carries the
+key it is read with (BundleSpecification §7), as
+``"sha256/<hex>/AES256-CBC/<key>"``. The key travels in messages, but no log
+line shows it: only what is stored, the ciphertext, is named in one. What is
+resolved from such a bundle is kept apart by its key
+(:mod:`libranet.cas.resolved_files`).
 
 The bundle is loaded from the source of truth, or from the node's content
 archives (Step 34), and its extensions overlaid (Step 13), and the path looked
@@ -20,6 +28,7 @@ waiting on it, and later ones, with::
     app.path_resolved  {"bundle", "path", "outcome": "not_found"}
     app.path_resolved  {"bundle", "path", "outcome": "redirect", "location": "docs/"}
     app.path_resolved  {"bundle", "path", "outcome": "unusable", "detail": "<why>"}
+    app.path_resolved  {"bundle", "path", "outcome": "protected", "detail": "<why>"}
 
 A path naming a directory redirects to it with a trailing ``/``, and one
 reaching a file through a symlink redirects to the file's own path, so every
@@ -40,17 +49,20 @@ taken in for this, though nearly all are passed over at once. Anyone can ask
 for any path, so the paths that waited longest stop waiting past a fixed
 count; a request for one asks again.
 
-A bundle that cannot be served, being malformed, unsupported,
-password-protected (BundleSpecification §6), or not a directory, is
-``unusable`` for every path. A file whose parts fail their checks is found
-so by the web server, as it reads them.
+A file bundle holds one file, at the empty path, and nothing else. A bundle
+that cannot be served, being malformed or unsupported, or neither a
+directory nor a file, is ``unusable`` for every path, and one
+password-protected (BundleSpecification §6) is ``protected``. A file whose
+parts fail their checks is found so by the web server, as it reads them.
 
 A bundle's directory, once its extensions are overlaid, is saved beside its
 entries the first time it is resolved, as a flat directory bundle,
 zlib-compressed. The bundle and its extensions are then read once, and are
 not needed again even if they stop being held. The directories of the most
 recently used bundles are also kept in memory, so the saved one is not read
-for each path either. Content addressing means none of these go stale.
+for each path either. Content addressing means none of these go stale. A
+directory is listed from the saved one (HttpApi §12.1), so it is saved again,
+if it has been deleted since, whenever a path names a directory.
 
 A bundle found unusable is remembered only in memory, not saved, since a
 later version of this node may be able to serve it.
@@ -75,16 +87,22 @@ from dataclasses import dataclass
 from logging import Logger
 from pathlib import Path
 from time import time
-from typing import Any, Callable, ClassVar, Final, Iterable
+from typing import Any, Callable, ClassVar, Final, Iterable, TypeAlias
 from zlib import compress, decompress, error as ZlibError
 
 from libranet.atomic_file import write_atomically
-from libranet.bundle.errors import BundleError, MalformedBundleError, MissingContentError
+from libranet.bundle.errors import (
+    BundleError,
+    MalformedBundleError,
+    MissingContentError,
+    PasswordProtectedBundleError,
+)
 from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.parsing import decode_bundle
+from libranet.bundle.parts import PartPath
 from libranet.bundle.serialization import encode_bundle
-from libranet.bundle.shapes import Bundle, DirectoryBundle
+from libranet.bundle.shapes import Bundle, DirectoryBundle, FileBundle
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
 from libranet.cas.resolved_files import ResolvedFiles
@@ -103,15 +121,21 @@ DEFAULT_MAX_CACHED_BUNDLES: Final = 8
 # holding one of the web server's threads, or was lately.
 DEFAULT_MAX_WAITING_PATHS: Final = 1024
 
-# A path in a bundle: the bundle, and the entry path.
-_BundlePath = tuple[ContentId, str]
+# A path in a bundle: the bundle, as the path naming it, and the entry path.
+_BundlePath = tuple[PartPath, str]
 
 
 @dataclass(frozen=True)
 class _Unusable:
-    """A bundle that cannot be served, and why."""
+    """A bundle that cannot be served, and why, and the outcome that says so."""
 
     detail: str
+    outcome: PathOutcome = PathOutcome.UNUSABLE
+
+
+# What a bundle resolves to: its directory, its one file, or why it cannot be
+# served.
+_Resolved: TypeAlias = ResolvedDirectory | FileBundle | _Unusable
 
 
 class _WaitingPaths:
@@ -182,7 +206,7 @@ class _WaitingPaths:
 
 
 class UnbundlerModule(ModuleBase):
-    """Writes the entries of the application files the web server is asked for and lacks."""
+    """Writes the entries of the files in bundles the web server is asked for and lacks."""
 
     subscriptions: ClassVar[frozenset[EventType]] = frozenset(
         {EventType.APP_PATH_NOT_FOUND, EventType.DATA_STORED, EventType.RESOLVED_RECLAIM}
@@ -213,7 +237,7 @@ class UnbundlerModule(ModuleBase):
         self._files = ResolvedFiles.of(config.storage)
         self._max_cached_bundles = max_cached_bundles
         # Least recently used first.
-        self._directories: OrderedDict[ContentId, ResolvedDirectory | _Unusable] = OrderedDict()
+        self._directories: OrderedDict[PartPath, _Resolved] = OrderedDict()
         self._waiting = _WaitingPaths(config.network.app_wait_seconds, max_waiting_paths)
         self._route(
             {
@@ -225,7 +249,7 @@ class UnbundlerModule(ModuleBase):
 
     def _on_app_path_not_found(self, message: Message) -> None:
         """Resolve one requested path."""
-        self._resolve_path(ContentId.parse(message["bundle"]), message["path"])
+        self._resolve_path(PartPath.parse(message["bundle"]), message["path"])
 
     def _on_data_stored(self, message: Message) -> None:
         """Resolve again each path that waited on the content just stored."""
@@ -239,15 +263,15 @@ class UnbundlerModule(ModuleBase):
     def _on_resolved_reclaim(self, message: Message) -> None:
         self._reclaim({ContentId.parse(text) for text in message["keep"]})
 
-    def _resolve_path(self, bundle: ContentId, path: str) -> None:
+    def _resolve_path(self, bundle: PartPath, path: str) -> None:
         """Resolve the file at ``path`` in ``bundle``, unless it already is.
 
         Content it lacks is asked for, and waited on.
         """
-        target = self._files.entry_for(bundle, path)
+        target = self._files.entry_for(bundle.content_id, path, decrypted_with=bundle.key)
 
         if target.is_file():
-            self.logger.debug("%s in %s is already resolved", path, bundle)
+            self.logger.debug("%s in %s is already resolved", path, bundle.content_id)
             return
 
         try:
@@ -257,7 +281,7 @@ class UnbundlerModule(ModuleBase):
             # Not logged: _fetch logs it.
             self._fetch(bundle, path, error.content_ids)
 
-    def _resolve(self, bundle: ContentId, path: str, target: Path) -> None:
+    def _resolve(self, bundle: PartPath, path: str, target: Path) -> None:
         """Write the entry of the file at ``path`` to ``target``, or report why not.
 
         Raises:
@@ -266,7 +290,11 @@ class UnbundlerModule(ModuleBase):
         directory = self._directory(bundle)
 
         if isinstance(directory, _Unusable):
-            self._report(bundle, path, PathOutcome.UNUSABLE, detail=directory.detail)
+            self._report(bundle, path, directory.outcome, detail=directory.detail)
+            return
+
+        if isinstance(directory, FileBundle):
+            self._resolve_file(bundle, path, target, directory)
             return
 
         found = directory.look_up(path)
@@ -275,6 +303,7 @@ class UnbundlerModule(ModuleBase):
             self._report(bundle, path, PathOutcome.NOT_FOUND)
 
         elif isinstance(found, FoundDirectory):
+            self._keep_saved(bundle, directory)
             location = f"{found.path}/" if found.path else ""
             self._report(bundle, path, PathOutcome.REDIRECT, location=location)
 
@@ -285,11 +314,24 @@ class UnbundlerModule(ModuleBase):
             write_atomically(target, compress(encode_bundle(found.entry)))
             self._report(bundle, path, PathOutcome.STORED)
 
-    def _directory(self, bundle: ContentId) -> ResolvedDirectory | _Unusable:
-        """The directory ``bundle`` describes.
+    def _resolve_file(self, bundle: PartPath, path: str, target: Path, entry: FileBundle) -> None:
+        """Write ``entry``, the file bundle ``bundle`` is, to ``target`` if ``path`` names it.
+
+        Only the empty path does, and any other is reported not found.
+        """
+        if path:
+            self._report(bundle, path, PathOutcome.NOT_FOUND)
+            return
+
+        write_atomically(target, compress(encode_bundle(entry)))
+        self._report(bundle, path, PathOutcome.STORED)
+
+    def _directory(self, bundle: PartPath) -> _Resolved:
+        """The directory ``bundle`` describes, or the one file it is.
 
         It comes from memory if it was used recently, or else as saved on
-        disk, or else is read from the source of truth and saved.
+        disk, or else is read from the source of truth, and a directory
+        saved.
 
         Raises:
             MissingContentError: the bundle or an extension is not held; this
@@ -316,11 +358,12 @@ class UnbundlerModule(ModuleBase):
 
         return directory
 
-    def _load(self, bundle: ContentId) -> ResolvedDirectory | _Unusable:
-        """Read ``bundle`` and overlay its extensions.
+    def _load(self, bundle: PartPath) -> _Resolved:
+        """Read ``bundle`` and overlay its extensions, if it is a directory.
 
         Returns:
-            The directory it resolves to, or why it cannot be served.
+            The directory it resolves to, the one file it is, or why it
+            cannot be served.
 
         Raises:
             MissingContentError: the bundle or an extension is not held.
@@ -328,8 +371,13 @@ class UnbundlerModule(ModuleBase):
         try:
             top = load_bundle(bundle, self._source)
 
+            if isinstance(top, FileBundle):
+                return top
+
             if not isinstance(top, DirectoryBundle):
-                return _Unusable(f"Bundle {bundle} is not a directory bundle")
+                return _Unusable(
+                    f"Bundle {bundle.content_id} is neither a directory nor a file bundle"
+                )
 
             return ResolvedDirectory.of(resolve_directory(top, self._load_extension))
 
@@ -337,16 +385,20 @@ class UnbundlerModule(ModuleBase):
             raise
 
         except BundleError as error:
-            self.logger.warning("Bundle %s cannot be served: %s", bundle, error)
-            return _Unusable(str(error))
+            # Only what is stored is named, since the key is what keeps it unread.
+            self.logger.warning("Bundle %s cannot be served: %s", bundle.content_id, error)
+            protected = isinstance(error, PasswordProtectedBundleError)
+            return _Unusable(
+                str(error), PathOutcome.PROTECTED if protected else PathOutcome.UNUSABLE
+            )
 
-    def _saved_directory(self, bundle: ContentId) -> ResolvedDirectory | None:
+    def _saved_directory(self, bundle: PartPath) -> ResolvedDirectory | None:
         """The directory saved for ``bundle``, if there is one.
 
         A saved directory that cannot be read back is discarded, so it is
         resolved again.
         """
-        path = self._files.directory_for(bundle)
+        path = self._saved_path(bundle)
 
         try:
             saved = decode_bundle(decompress(path.read_bytes()))
@@ -359,7 +411,9 @@ class UnbundlerModule(ModuleBase):
             return None
 
         except (ZlibError, BundleError) as error:
-            self.logger.warning("Discarding the saved directory of %s: %s", bundle, error)
+            self.logger.warning(
+                "Discarding the saved directory of %s: %s", bundle.content_id, error
+            )
             path.unlink(missing_ok=True)
             return None
 
@@ -367,21 +421,35 @@ class UnbundlerModule(ModuleBase):
             {entry_path: entry for entry_path, entry in saved.entries.items() if entry is not None}
         )
 
-    def _save_directory(self, bundle: ContentId, directory: ResolvedDirectory) -> None:
+    def _save_directory(self, bundle: PartPath, directory: ResolvedDirectory) -> None:
         """Save ``directory`` for ``bundle``, as a flat directory bundle."""
         flat = encode_bundle(DirectoryBundle(directory.entries))
-        write_atomically(self._files.directory_for(bundle), compress(flat))
+        write_atomically(self._saved_path(bundle), compress(flat))
 
-    def _load_extension(self, content_id: ContentId) -> Bundle:
-        return load_bundle(content_id, self._source)
+    def _keep_saved(self, bundle: PartPath, directory: ResolvedDirectory) -> None:
+        """Save ``directory`` for ``bundle`` again, if it has been deleted since it was saved.
 
-    def _fetch(self, bundle: ContentId, path: str, missing: tuple[ContentId, ...]) -> None:
+        A directory is listed from the one saved (HttpApi §12.1).
+        """
+        if not self._saved_path(bundle).is_file():
+            self._save_directory(bundle, directory)
+
+    def _saved_path(self, bundle: PartPath) -> Path:
+        """Where the directory ``bundle`` describes is saved."""
+        return self._files.directory_for(bundle.content_id, decrypted_with=bundle.key)
+
+    def _load_extension(self, path: PartPath) -> Bundle:
+        return load_bundle(path, self._source)
+
+    def _fetch(self, bundle: PartPath, path: str, missing: tuple[ContentId, ...]) -> None:
         """Ask for the content ``path`` in ``bundle`` needs and this node lacks, and wait on it."""
         for content_id in missing:
             self.publish(EventType.DATA_NOT_FOUND, content_id.fields())
 
         self._waiting.wait((bundle, path), missing, self._clock())
-        self.logger.info("%s in %s waits on %d objects not held here", path, bundle, len(missing))
+        self.logger.info(
+            "%s in %s waits on %d objects not held here", path, bundle.content_id, len(missing)
+        )
 
     def _reclaim(self, keep: set[ContentId]) -> None:
         """Delete what is resolved from every bundle but those in ``keep``, and report it.
@@ -395,7 +463,9 @@ class UnbundlerModule(ModuleBase):
             if bundle in keep:
                 continue
 
-            self._directories.pop(bundle, None)
+            # Under whatever key each was read with.
+            for named in [named for named in self._directories if named.content_id == bundle]:
+                del self._directories[named]
 
             try:
                 freed_bytes += self._files.remove(bundle)
@@ -413,12 +483,13 @@ class UnbundlerModule(ModuleBase):
             freed_bytes,
         )
 
-    def _report(self, bundle: ContentId, path: str, outcome: PathOutcome, **details: Any) -> None:
+    def _report(self, bundle: PartPath, path: str, outcome: PathOutcome, **details: Any) -> None:
+        """Report what was found at ``path`` in ``bundle``, naming it with its key."""
         self.publish(
             EventType.APP_PATH_RESOLVED,
             {"bundle": str(bundle), "path": path, "outcome": outcome.value, **details},
         )
-        self.logger.debug("%s in %s: %s %s", path, bundle, outcome, details or "")
+        self.logger.debug("%s in %s: %s %s", path, bundle.content_id, outcome, details or "")
 
 
 def unbundler_module_factory(

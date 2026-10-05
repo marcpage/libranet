@@ -14,34 +14,33 @@ layers beneath, and are dropped once every layer is in (§4.2).
 Every extension missing locally is found in one pass and reported together.
 Content addressing rules out cycles, so the number of extensions read is
 capped only to bound the work a hostile bundle can cause.
+
+An extension may be named by an encrypted path (§7), and is read with the
+key it carries (Phase 3 Step 71).
 """
 
 from __future__ import annotations
-from typing import Callable, Final, Iterator
+from typing import Callable, Iterator
 
-from libranet.bundle.content import parse_cas_path
 from libranet.bundle.errors import (
     MalformedBundleError,
     MissingContentError,
     UnsupportedBundleError,
 )
-from libranet.bundle.shapes import Bundle, DirectoryBundle, Entry
+from libranet.bundle.parts import PartPath
+from libranet.bundle.shapes import DEFAULT_MAX_EXTENSIONS, Bundle, DirectoryBundle, Entry
 from libranet.cas.content_id import ContentId
-
-# Provisional default: enough for a directory of millions of files, split
-# across extensions that each fit 1 MiB as stored.
-DEFAULT_MAX_EXTENSIONS: Final = 1024
 
 
 def resolve_directory(
     bundle: DirectoryBundle,
-    load: Callable[[ContentId], Bundle],
+    load: Callable[[PartPath], Bundle],
     max_extensions: int = DEFAULT_MAX_EXTENSIONS,
 ) -> dict[str, Entry]:
     """Every entry ``bundle`` holds once its extensions are overlaid, by path.
 
-    ``load`` reads an extension, such as :func:`~libranet.bundle.loading.load_bundle`
-    bound to a source.
+    ``load`` reads an extension by the path naming it, such as
+    :func:`~libranet.bundle.loading.load_bundle` bound to a source.
 
     Raises:
         MissingContentError: some extensions are not held locally; all that
@@ -52,7 +51,7 @@ def resolve_directory(
             ``load`` raised it.
     """
     resolved: dict[str, Entry | None] = dict(bundle.entries)
-    visited: set[ContentId] = set()
+    visited: set[PartPath] = set()
     missing: list[ContentId] = []
     pending: list[Iterator[str]] = [iter(bundle.extensions)]
 
@@ -63,18 +62,18 @@ def resolve_directory(
             pending.pop()
             continue
 
-        content_id = parse_cas_path(path)
+        extension_path = PartPath.parse(path)
 
-        if content_id in visited:
+        if extension_path in visited:
             continue
 
-        visited.add(content_id)
+        visited.add(extension_path)
 
         if len(visited) > max_extensions:
             raise UnsupportedBundleError(f"Directory reaches more than {max_extensions} extensions")
 
         try:
-            extension = load(content_id)
+            extension = load(extension_path)
 
         except MissingContentError as error:
             # Not logged: raised below, with everything else missing.
@@ -82,7 +81,9 @@ def resolve_directory(
             continue
 
         if not isinstance(extension, DirectoryBundle):
-            raise MalformedBundleError(f"Extension {content_id} is not a directory bundle")
+            raise MalformedBundleError(
+                f"Extension {extension_path.content_id} is not a directory bundle"
+            )
 
         for entry_path, entry in extension.entries.items():
             resolved.setdefault(entry_path, entry)

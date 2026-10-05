@@ -64,10 +64,10 @@ def normalize_cas_path(path: str) -> str:
 
 
 def parse_cas_path(path: str) -> ContentId:
-    """The content a bundle names by the CAS path ``path``.
+    """The content a bundle names by the plain CAS path ``path``.
 
-    A per-entry encrypted path (§7) names a part, which only
-    :class:`~libranet.bundle.parts.PartPath` reads.
+    A per-entry encrypted path (§7), whether it names a part or a bundle, is
+    read with its key, by :class:`~libranet.bundle.parts.PartPath`.
 
     Raises:
         UnsupportedBundleError: ``path`` is per-entry encrypted, or names a
@@ -86,9 +86,9 @@ def parse_cas_path(path: str) -> ContentId:
         raise MalformedBundleError(str(error)) from None
 
     if len(segments) == _ENCRYPTED_PATH_SEGMENTS:
-        # The path is not shown, since its key is what keeps the part unread.
+        # The path is not shown, since its key is what keeps the content unread.
         raise UnsupportedBundleError(
-            f"Per-entry encryption (§7) is read only in a file's parts, not for {content_id}"
+            f"Per-entry encryption (§7) is read with its key, not as plain {content_id}"
         )
 
     if len(segments) != _PLAIN_PATH_SEGMENTS:

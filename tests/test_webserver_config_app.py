@@ -16,6 +16,7 @@ from typing import Any
 from pytest import fixture
 
 from libranet.applications.packaged import BUILT_ARCHIVE, PackagedApplications
+from libranet.bundle.parts import PartPath
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
 from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
@@ -184,7 +185,7 @@ def test_config_api_answers_while_the_config_application_is_unusable(
     unusable = ContentId.for_data(b"not a bundle", "sha256")
     send(router, "POST", APPLICATIONS_PATH, {"name": "config", "bundle": str(unusable)})
     outcomes.remember(
-        unusable, "index.html", KnownOutcome(PathOutcome.UNUSABLE, detail="Not a bundle")
+        PartPath(unusable), "index.html", KnownOutcome(PathOutcome.UNUSABLE, detail="Not a bundle")
     )
 
     broken = get(router, "/config/")

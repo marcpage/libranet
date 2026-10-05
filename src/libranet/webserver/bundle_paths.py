@@ -1,8 +1,10 @@
 """Serving the file at a path in a bundle from its parts (HttpApi §13.2, §19, Phase 3 Step 65).
 
 An application's files are served so (see
-:mod:`libranet.webserver.app_handler`). The handler finds the bundle and the
-entry path; what follows is the same for any bundle.
+:mod:`libranet.webserver.app_handler`), and so are those of any bundle a
+client reads into (see :mod:`libranet.webserver.bundle_reads`, Phase 3 Step
+71). Each handler finds the bundle and the entry path; what follows is the
+same for both.
 
 A file whose entry the unbundler has saved (see
 :mod:`libranet.cas.resolved_files`) is served from its parts, as they are
@@ -18,7 +20,13 @@ retry a ``503``. Only if either does not come in time is it answered
 ``503``, with ``Retry-After``. The unbundler answers once it can, even if it
 must first wait for the bundle to arrive, so it is asked only once. A
 ``HEAD`` is answered as a ``GET`` would be, once the entry is saved, without
-waiting for any part.
+waiting for any part. A directory is read from the bundle's directory the
+unbundler saved, and asked for alike if it is not saved.
+
+A bundle stored encrypted is named by its encrypted path, with its key
+(BundleSpecification §7), in the message asking for it and in what is
+remembered of it, and what is resolved from it is looked for under that key.
+A request carrying another key, or none, is never answered from it.
 
 A ``GET`` may ask for one range of a file whose bundle records its part
 sizes (see :mod:`libranet.webserver.byte_range`, HttpApi §19, Phase 3 Step
@@ -45,14 +53,14 @@ from logging import getLogger
 from mimetypes import MimeTypes
 from pathlib import Path
 from time import monotonic
-from typing import Final, Mapping
+from typing import Final, Mapping, TypeVar
 from urllib.parse import unquote
 from zlib import decompress, error as ZlibError
 
 from libranet.bundle.errors import BundleError, MalformedBundleError
 from libranet.bundle.parsing import decode_bundle
-from libranet.bundle.shapes import FileBundle
-from libranet.cas.content_id import ContentId
+from libranet.bundle.parts import PartPath
+from libranet.bundle.shapes import DirectoryBundle, FileBundle
 from libranet.cas.resolved_files import ResolvedFiles
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
@@ -76,6 +84,9 @@ _IF_RANGE_HEADER: Final = "If-Range"
 _NO_RANGES: Final = "none"
 
 _MIME_TYPES: Final = MimeTypes()
+
+# What the unbundler saves: a file's entry, or a bundle's directory.
+_Saved = TypeVar("_Saved", FileBundle, DirectoryBundle)
 
 
 def content_type_for(entry_path: str) -> str:
@@ -125,7 +136,7 @@ class BundlePaths:
         return monotonic() + self.parts.wait_seconds
 
     def entry(
-        self, bundle: ContentId, entry_path: str, deadline: float
+        self, bundle: PartPath, entry_path: str, deadline: float
     ) -> FileBundle | KnownOutcome | None:
         """The entry of the file at ``entry_path`` in ``bundle``, or the outcome reported instead.
 
@@ -136,13 +147,13 @@ class BundlePaths:
         Returns:
             The entry, or the outcome, or ``None`` if neither came in time.
         """
-        path = self.files.entry_for(bundle, entry_path)
+        path = self.files.entry_for(bundle.content_id, entry_path, decrypted_with=bundle.key)
 
         def answered() -> bool:
             return path.is_file() or self.outcomes.recall(bundle, entry_path) is not None
 
         while True:
-            entry = _saved_entry(path)
+            entry = _saved(path, FileBundle, "entry")
 
             if entry is not None:
                 return entry
@@ -152,10 +163,39 @@ class BundlePaths:
             if known is not None:
                 return known
 
-            self.publish(EventType.APP_PATH_NOT_FOUND, {"bundle": str(bundle), "path": entry_path})
+            self._ask(bundle, entry_path)
             remaining_seconds = deadline - monotonic()
 
             if remaining_seconds <= 0 or not self.outcomes.wait_for(answered, remaining_seconds):
+                return None
+
+    def directory(
+        self, bundle: PartPath, entry_path: str, deadline: float
+    ) -> DirectoryBundle | None:
+        """The directory ``bundle`` describes, flat, with its extensions overlaid.
+
+        It is the one the unbundler saved. If none is, the unbundler is asked
+        for ``entry_path``, a directory in ``bundle``, which saves it again,
+        and that is waited for until ``deadline``, as :func:`monotonic`
+        tells it.
+
+        Returns:
+            The directory, or ``None`` if it was not saved in time.
+        """
+        path = self.files.directory_for(bundle.content_id, decrypted_with=bundle.key)
+
+        while True:
+            directory = _saved(path, DirectoryBundle, "directory")
+
+            if directory is not None:
+                return directory
+
+            self._ask(bundle, entry_path)
+            remaining_seconds = deadline - monotonic()
+
+            if remaining_seconds <= 0 or not self.outcomes.wait_for(
+                path.is_file, remaining_seconds
+            ):
                 return None
 
     def file_response(
@@ -213,29 +253,33 @@ class BundlePaths:
         """The ``503`` for what was asked for, and did not come in time; ``detail`` says what."""
         return content_unavailable_response(request, detail, self.retry_after_seconds)
 
+    def _ask(self, bundle: PartPath, entry_path: str) -> None:
+        """Ask the unbundler for ``entry_path`` in ``bundle``, naming it with its key."""
+        self.publish(EventType.APP_PATH_NOT_FOUND, {"bundle": str(bundle), "path": entry_path})
 
-def _saved_entry(path: Path) -> FileBundle | None:
-    """The file's entry the unbundler saved at ``path``, or ``None`` if there is none to read.
+
+def _saved(path: Path, kind: type[_Saved], what: str) -> _Saved | None:
+    """The ``kind`` the unbundler saved at ``path``, or ``None`` if there is none to read.
 
     One that cannot be read is deleted, so that the unbundler saves it again
-    when next asked.
+    when next asked. ``what`` it is says which was deleted.
     """
     try:
-        entry = decode_bundle(decompress(path.read_bytes()))
+        saved = decode_bundle(decompress(path.read_bytes()))
 
-        if not isinstance(entry, FileBundle):
-            raise MalformedBundleError("Not a file's entry")
+        if not isinstance(saved, kind):
+            raise MalformedBundleError(f"Not a {what}")
 
     except FileNotFoundError:
-        # Not logged: an entry not saved yet is asked for.
+        # Not logged: what is not saved yet is asked for.
         return None
 
     except (ZlibError, BundleError) as error:
-        _LOGGER.warning("Discarding the entry saved at %s: %s", path, error)
+        _LOGGER.warning("Discarding the %s saved at %s: %s", what, path, error)
         path.unlink(missing_ok=True)
         return None
 
-    return entry
+    return saved
 
 
 def _entity_tag(entry: FileBundle) -> str | None:

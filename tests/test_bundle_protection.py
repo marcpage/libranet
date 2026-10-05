@@ -16,7 +16,7 @@ from libranet.bundle.errors import (
     MalformedBundleError,
     UnsupportedBundleError,
 )
-from libranet.bundle.protection import protect, strip_targeting, unprotect
+from libranet.bundle.protection import is_protected, protect, strip_targeting, unprotect
 
 PLAINTEXT = b'{"contents":{"README.md":{"contents":["sha256/' + b"a" * 64 + b'"]}}}'
 PASSWORD = b"correct horse battery staple"
@@ -223,3 +223,33 @@ def test_targeting_is_stripped_from_a_plain_bundle() -> None:
 
 def test_data_without_a_separator_has_no_targeting_to_strip() -> None:
     assert strip_targeting(PLAINTEXT) == PLAINTEXT
+
+
+@mark.parametrize(
+    "data",
+    [
+        protect(PLAINTEXT, PASSWORD),
+        protect(PLAINTEXT, PASSWORD) + b"\0placement",
+        b"ciphertext\0PW-SHA256-AES256-GCM",
+        b"ciphertext\0PW-",
+    ],
+)
+def test_a_protected_bundle_is_told_by_its_descriptor(data: bytes) -> None:
+    assert is_protected(data)
+
+
+@mark.parametrize(
+    "data",
+    [
+        b"",
+        b"no zero byte",
+        b"\x8f\x02a file's part\0holding a zero byte",
+        b"\x8f\x02two\0zero\0bytes",
+        b"ciphertext\0PW",
+        b"\0",
+    ],
+)
+def test_other_content_holding_a_zero_byte_is_not_taken_for_a_protected_bundle(
+    data: bytes,
+) -> None:
+    assert not is_protected(data)

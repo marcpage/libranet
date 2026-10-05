@@ -888,7 +888,7 @@ A content id is an `algorithm` and a lower-case hex `hash`, or, in
 | `fetch.succeeded` | `algorithm`, `hash`, `node_id` | `node_id` sent it, and it is on its way to the validator |
 | `fetch.failed` | `algorithm`, `hash` | The search ended without it |
 | `app.path_not_found` | `bundle`, `path` | No entry is saved for the file at `path` in `bundle` |
-| `app.path_resolved` | `bundle`, `path`, `outcome`, and `location` or `detail` | `outcome` is `stored`, `not_found`, `redirect`, or `unusable` |
+| `app.path_resolved` | `bundle`, `path`, `outcome`, and `location` or `detail` | `outcome` is `stored`, `not_found`, `redirect`, `unusable`, or `protected` |
 | `backup.job_configured` | `job_id`, `directory`, `interval_seconds` | Keep this directory backed up |
 | `backup.job_removed` | `job_id` | Stop backing it up |
 | `backup.run_requested` | `job_id` | Back it up now |

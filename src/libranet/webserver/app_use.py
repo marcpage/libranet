@@ -1,10 +1,11 @@
 """Reporting which applications are used, so their resolved files are kept (Phase 2 Step 29).
 
 Every request that reaches an application is a use of the bundle it is
-served from, whether its file is served from disk or asked for. It is
-reported for the stats module to record, by bundle rather than by name,
-since resolved files are kept by bundle and a name can be pointed at
-another::
+served from, whether its file is served from disk or asked for, and so is
+every read into a bundle (Phase 3 Step 71). It is reported for the stats
+module to record, by bundle rather than by name, since resolved files are
+kept by bundle and a name can be pointed at another. A bundle stored
+encrypted is named by what is stored, without its key::
 
     app.accessed  {"bundle": "sha256/<hex>"}
 

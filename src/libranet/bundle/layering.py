@@ -44,10 +44,12 @@ from typing import Any, Callable, Final, Mapping
 
 from libranet.bundle.content import normalize_cas_path
 from libranet.bundle.errors import BundleError, BundleTooLargeError
-from libranet.bundle.extensions import DEFAULT_MAX_EXTENSIONS, resolve_directory
+from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.parsing import parse_bundle
+from libranet.bundle.parts import PartPath
 from libranet.bundle.serialization import bundle_value
 from libranet.bundle.shapes import (
+    DEFAULT_MAX_EXTENSIONS,
     Bundle,
     DirectoryBundle,
     DirectoryMarker,
@@ -151,14 +153,14 @@ class Superseded:
 
     @classmethod
     def read(
-        cls, bundle: ContentId, load: Callable[[ContentId], Bundle], layering: Layering | None
+        cls, bundle: ContentId, load: Callable[[PartPath], Bundle], layering: Layering | None
     ) -> Superseded | None:
         """``bundle`` and its extensions, as ``load`` reads them.
 
         ``None`` if it cannot be read here, or is not a directory.
         """
         try:
-            top = load(bundle)
+            top = load(PartPath(bundle))
 
             if not isinstance(top, DirectoryBundle):
                 return None
@@ -176,7 +178,7 @@ class Superseded:
         cls,
         bundle: ContentId,
         top: DirectoryBundle,
-        load: Callable[[ContentId], Bundle],
+        load: Callable[[PartPath], Bundle],
         layering: Layering | None,
     ) -> Superseded:
         """``bundle``, already read as ``top``, with its extensions as ``load`` reads them.
@@ -206,7 +208,7 @@ class Superseded:
 
     @classmethod
     def expand(
-        cls, bundle: ContentId, top: DirectoryBundle, load: Callable[[ContentId], Bundle]
+        cls, bundle: ContentId, top: DirectoryBundle, load: Callable[[PartPath], Bundle]
     ) -> Superseded:
         """``bundle``, read as ``top``, expanded, where it sits worked out from what it lists.
 
@@ -222,9 +224,9 @@ class Superseded:
         """
         reached: list[ContentId] = []
 
-        def counted(content_id: ContentId) -> Bundle:
-            extension = load(content_id)
-            reached.append(content_id)
+        def counted(path: PartPath) -> Bundle:
+            extension = load(path)
+            reached.append(path.content_id)
             return extension
 
         entries = resolve_directory(top, counted)

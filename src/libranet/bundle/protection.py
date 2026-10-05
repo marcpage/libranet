@@ -52,6 +52,9 @@ _DESCRIPTOR_FIELD_SEPARATOR: Final = "-"
 _SCHEME_FIELDS: Final = 4
 _IV_PREFIX: Final = "IV:"
 
+# How every descriptor starts, whatever scheme it names.
+_DESCRIPTOR_START: Final = f"{_DESCRIPTOR_PREFIX}{_DESCRIPTOR_FIELD_SEPARATOR}".encode("ascii")
+
 # Never changed once bundles are written with it, or identical bundles
 # written before and after would no longer dedup (§6.3).
 _COMPRESSION_LEVEL: Final = 9
@@ -170,6 +173,26 @@ def unprotect(data: bytes, password: bytes, max_bytes: int) -> bytes:
         return decrypted
 
     return _decompressed(decrypted, max_bytes)
+
+
+def is_protected(data: bytes) -> bool:
+    """Whether ``data`` ends as a password-protected bundle does: in ``0x00`` and a descriptor.
+
+    A drop's placement bytes may follow the descriptor, after a further
+    ``0x00`` (§6.4). Only a descriptor's first field is looked at, so that
+    one naming a scheme this node lacks is still told apart (§6.1), but other
+    content holding a ``0x00``, such as a file's part, is not taken for a
+    bundle.
+    """
+    rest, separator, last = data.rpartition(DESCRIPTOR_SEPARATOR)
+
+    if not separator:
+        return False
+
+    _, separator, before = rest.rpartition(DESCRIPTOR_SEPARATOR)
+    return last.startswith(_DESCRIPTOR_START) or (
+        bool(separator) and before.startswith(_DESCRIPTOR_START)
+    )
 
 
 def strip_targeting(data: bytes) -> bytes:

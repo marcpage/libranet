@@ -26,6 +26,8 @@ from logging import Logger, getLogger
 from typing import Final
 
 from libranet.bundle.content import ContentSource
+from libranet.bundle.errors import BundleError
+from libranet.bundle.parts import PartPath
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError, InvalidContentIdError, UnknownAlgorithmError
 from libranet.messaging.events import EventType
@@ -55,11 +57,16 @@ DATA_PATTERN: Final = (
 )
 
 # CAS content never changes under its identifier (HttpApi §20).
-_IMMUTABLE_CACHE_CONTROL: Final = "public, max-age=31536000, immutable"
+IMMUTABLE_CACHE_CONTROL: Final = "public, max-age=31536000, immutable"
 
 
-def invalid_address_response(error: InvalidContentIdError, request: Request) -> Response:
-    """The ``400`` for a ``/data/{algorithm}/{hash}`` path naming no valid id (HttpApi §5.4)."""
+def invalid_address_response(
+    error: InvalidContentIdError | BundleError, request: Request
+) -> Response:
+    """The ``400`` for a ``/data/{algorithm}/{hash}`` path naming no valid id (HttpApi §5.4).
+
+    That includes an encrypted id whose key cannot be read (§12.1).
+    """
     return problem_response(
         Problem(
             status=HTTPStatus.BAD_REQUEST,
@@ -74,17 +81,22 @@ def invalid_address_response(error: InvalidContentIdError, request: Request) -> 
 def content_id_or_refusal(request: Request, logger: Logger) -> ContentId | Response:
     """The content a ``/data/{algorithm}/{hash}`` path names, or the response refusing it.
 
-    ``logger`` is the handler's own, which the refusal is logged with.
+    ``logger`` is the handler's own, which the refusal is logged with, but for
+    any key the path carries (§12.1).
     """
     try:
         return ContentId.from_fields(request.params)
 
     except UnknownAlgorithmError as error:
-        logger.warning("Refusing %s %s: %s", request.method, request.path, error)
+        logger.warning(
+            "Refusing %s %s: %s", request.method, PartPath.without_keys(request.path), error
+        )
         return invalid_address_response(error, request)
 
     except InvalidContentIdError as error:
-        logger.debug("Refusing %s %s: %s", request.method, request.path, error)
+        logger.debug(
+            "Refusing %s %s: %s", request.method, PartPath.without_keys(request.path), error
+        )
         return invalid_address_response(error, request)
 
 
@@ -117,7 +129,7 @@ class DataReadHandler:
             _LOGGER.debug("%s is not held here, so it is asked for", content_id)
             return self._not_found(content_id, request)
 
-        return bytes_response(body, headers={"Cache-Control": _IMMUTABLE_CACHE_CONTROL})
+        return bytes_response(body, headers={"Cache-Control": IMMUTABLE_CACHE_CONTROL})
 
     def _not_found(self, content_id: ContentId, request: Request) -> Response:
         self._publish(EventType.DATA_NOT_FOUND, content_id.fields())
