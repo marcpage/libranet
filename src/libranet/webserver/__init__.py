@@ -27,7 +27,6 @@ from libranet.webserver.app_handler import (
     CONFIG_APP_POLICY,
     DEFAULT_FILE,
     AppHandler,
-    content_type_for,
 )
 from libranet.webserver.app_outcomes import DEFAULT_MAX_OUTCOMES, ApplicationOutcomes, KnownOutcome
 from libranet.webserver.app_registry import (
@@ -63,6 +62,7 @@ from libranet.webserver.backup_state import (
     BackupReport,
     BackupState,
 )
+from libranet.webserver.bundle_paths import BundlePaths, content_type_for, percent_decoded
 from libranet.webserver.byte_range import BYTES_UNIT, ByteRange
 from libranet.webserver.config_auth import (
     CONFIG_REALM,
@@ -251,6 +251,7 @@ __all__ = [
     "BackupRequest",
     "BackupRequestHandler",
     "BackupState",
+    "BundlePaths",
     "ByteRange",
     "ConfigAuthGuard",
     "ConfigCredential",
@@ -325,6 +326,7 @@ __all__ = [
     "local_config_guard",
     "names_config",
     "names_config_api",
+    "percent_decoded",
     "problem_response",
     "signature_required_response",
     "unreadable_body_response",

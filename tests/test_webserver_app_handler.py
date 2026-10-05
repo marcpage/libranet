@@ -28,11 +28,11 @@ from libranet.webserver.app_handler import (
     CONFIG_APP_PATTERN,
     CONFIG_APP_POLICY,
     AppHandler,
-    content_type_for,
 )
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 from libranet.webserver.app_registry import Application, ApplicationRegistry
 from libranet.webserver.app_use import ApplicationUse
+from libranet.webserver.bundle_paths import BundlePaths
 from libranet.webserver.errors import RegistryFileError
 from libranet.webserver.file_stream import PartReader
 from libranet.webserver.http_types import Request, Response
@@ -116,17 +116,19 @@ def handler_for(
 
     return AppHandler(
         registry,
-        files,
-        outcomes,
-        published,
-        RETRY_AFTER_SECONDS,
-        ApplicationUse(uses or Recorder()),
-        PartReader(
-            store,
-            reads or Recorder(),
-            wait_seconds,
+        BundlePaths(
+            files,
+            outcomes,
+            published,
             RETRY_AFTER_SECONDS,
-            poll_interval_seconds=0.01,
+            ApplicationUse(uses or Recorder()),
+            PartReader(
+                store,
+                reads or Recorder(),
+                wait_seconds,
+                RETRY_AFTER_SECONDS,
+                poll_interval_seconds=0.01,
+            ),
         ),
     )
 
@@ -515,22 +517,6 @@ def test_an_encoded_slash_separates_segments_like_any_other(
     assert get(handler, "/%2F/page.html").status == 404
 
 
-@mark.parametrize(
-    "entry_path, content_type",
-    [
-        ("index.html", "text/html"),
-        ("docs/style.css", "text/css"),
-        ("images/Logo.PNG", "image/png"),
-        ("data.json", "application/json"),
-        ("archive.tar.gz", OCTET_STREAM),
-        ("README", OCTET_STREAM),
-        ("notes.unknown-extension", OCTET_STREAM),
-    ],
-)
-def test_the_content_type_is_guessed_from_the_extension(entry_path: str, content_type: str) -> None:
-    assert content_type_for(entry_path) == content_type
-
-
 def test_a_served_file_carries_its_guessed_content_type(
     handler: AppHandler, files: ResolvedFiles, store: CasStore
 ) -> None:
@@ -623,7 +609,7 @@ def test_a_path_that_is_not_utf_8_is_logged_at_debug(
     caplog.set_level(DEBUG)
 
     assert get(handler, "/wiki/%FF.html").status == 404
-    (record,) = [r for r in caplog.records if r.name == "libranet.webserver.app_handler"]
+    (record,) = [r for r in caplog.records if r.name == "libranet.webserver.bundle_paths"]
     assert record.levelno == DEBUG
     assert record.getMessage().startswith("'wiki/%FF.html' does not percent-encode UTF-8: ")
 

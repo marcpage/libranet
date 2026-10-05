@@ -75,6 +75,7 @@ from libranet.webserver.app_store import (
 )
 from libranet.webserver.app_use import ApplicationUse
 from libranet.webserver.backup_state import BackupState
+from libranet.webserver.bundle_paths import BundlePaths
 from libranet.webserver.config_auth import ConfigAuthGuard
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_guard import (
@@ -223,12 +224,14 @@ def build_router(  # pylint: disable=too-many-locals
         "GET", DATA_APPLICATIONS_PATH, ApplicationListHandler(registry, names_the_file=False)
     )
     # Last, since its pattern fits every path outside the reserved names.
-    applications = _applications(
+    applications = AppHandler(
         registry,
-        storage,
-        PartReader(content, publish, app_wait_seconds, retry_after_seconds),
-        retry_after_seconds,
-        app_outcomes,
+        _bundle_paths(
+            storage,
+            PartReader(content, publish, app_wait_seconds, retry_after_seconds),
+            retry_after_seconds,
+            app_outcomes,
+        ),
     )
 
     for method in APP_METHODS:
@@ -278,12 +281,14 @@ def build_config_router(
         router.add(method, pattern, handler)
 
     # Every other path beneath /config is the /config application's.
-    applications = _applications(
+    applications = AppHandler(
         registry,
-        storage,
-        PartReader(content, publish, app_wait_seconds, retry_after_seconds),
-        retry_after_seconds,
-        app_outcomes,
+        _bundle_paths(
+            storage,
+            PartReader(content, publish, app_wait_seconds, retry_after_seconds),
+            retry_after_seconds,
+            app_outcomes,
+        ),
     )
 
     for method in APP_METHODS:
@@ -299,20 +304,18 @@ def _registry(storage: StorageConfig, content: LayeredSource) -> ApplicationRegi
     )
 
 
-def _applications(
-    registry: ApplicationRegistry,
+def _bundle_paths(
     storage: StorageConfig,
     parts: PartReader,
     retry_after_seconds: int,
     outcomes: ApplicationOutcomes | None,
-) -> AppHandler:
-    """The handler serving the applications ``registry`` names, by the entries in ``storage``.
+) -> BundlePaths:
+    """What serves the files at paths in bundles, by the entries in ``storage``.
 
-    ``parts`` reads their files' parts, and publishes as the handler does.
+    ``parts`` reads their parts, and publishes as what serves them does.
     ``outcomes`` holds what the unbundler reported for their paths.
     """
-    return AppHandler(
-        registry,
+    return BundlePaths(
         ResolvedFiles.of(storage),
         outcomes or ApplicationOutcomes(),
         parts.publish,

@@ -56,7 +56,7 @@ from libranet.bundle.building import IgnoredPaths, modified_time
 from libranet.bundle.shapes import PATH_SEPARATOR, is_entry_path, is_utf8
 from libranet.config.models import LibranetConfig
 from libranet.problems import Problem
-from libranet.webserver.app_handler import content_type_for
+from libranet.webserver.bundle_paths import content_type_for
 from libranet.webserver.http_types import Request, Response, json_response, problem_response
 
 _LOGGER = getLogger(__name__)
