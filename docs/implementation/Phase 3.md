@@ -1,6 +1,6 @@
 # Libranet Python Implementation Plan — Phase 3
 
-Version 0.3 • October 2026
+Version 0.4 • October 2026
 
 ---
 
@@ -80,6 +80,11 @@ API to do that with, and the API lacks:
   holding the parts of their files. A playlist is a directory bundle.
 - **Listing the applications** (Step 73), so that the root application can
   link to each.
+- **Keeping applications apart** (Step 74). Every application shares the
+  main port's origin, so any of them could import from the folders
+  offered and change any application's store. Only one the operator
+  trusts may now, and each store answers only its own application's
+  pages.
 
 ## 3. How to Read the Steps Below
 
@@ -97,7 +102,7 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
   appears under **Ruled before building**. What this plan chose without
   asking appears under **My calls, not yet reviewed**, to be reviewed
   before the step is built.
-- **Specifications change first.** Steps 64, 65, 66, and 68 to 73 change
+- **Specifications change first.** Steps 64, 65, 66, and 68 to 74 change
   the Bundle Specification and the HTTP API, and those changes are
   written; each step says where.
 - **No upgrade path.** Until version 1.0, a node may have to be made anew
@@ -514,8 +519,8 @@ ignoring `Range`.
 
 ## Step 67 — The Movie Application
 
-**Issue:** #213. **Depends on:** Steps 68 to 72, and Step 73 for the
-root application's link to it; Phase 1 Step 37. Seen to play and seek
+**Issue:** #213. **Depends on:** Steps 68 to 72, Step 73 for the root
+application's link to it, and Step 74; Phase 1 Step 37. Seen to play and seek
 only once Steps 65, 66, and 71 are built.
 
 Settled in the issue:
@@ -1536,6 +1541,137 @@ run.
 
 ---
 
+## Step 74 — Keeping Applications Apart
+
+**Issue:** #215. **Depends on:** Steps 68 to 73, whose endpoints it
+guards; Phase 1 Step 35. Built before Step 67, so that the movie
+application is written for it.
+
+Settled in the issue:
+
+- Applications are not kept from each other. Any of them can do whatever
+  any other can, importing included, and can use any application's
+  store.
+- An application's store should be used only by that application.
+
+Ruled before building:
+
+- **No origin for each application, for now**: neither a port of its own
+  nor a name such as `movie.localhost`. What an application can do is
+  limited instead.
+- **An application is trusted or not**, and only the operator says which,
+  through `/config`. One is untrusted when it is registered, and again
+  when it is registered from another bundle. The root and movie
+  applications shipped with the node start trusted.
+- **An untrusted application is served in a sandbox**:
+  `Content-Security-Policy: sandbox allow-scripts allow-forms
+  allow-popups`, with `X-Content-Type-Options: nosniff`.
+- **Every endpoint meant only for browsers requires a `Referer`**, for
+  reads and changes alike, `/config/api` included. It names a page of the
+  node; for an application's store, a page of that application; for the
+  folders, imports, and making bundles, a page of a trusted application.
+- **The register form and the README say plainly what trusting an
+  application gives it.**
+- **`PATCH /config/api/applications/{name}`**, with `{"trusted": true}`
+  or `false`, changes it.
+- **Not done:** limiting imports to media files, since the folders the
+  operator offers are enough; and letting a sandboxed application read
+  `/data`, which would take a CORS header.
+
+The specification changes are written: HttpApi §2.1, §2.3.3, and §2.4,
+§2.5 (new), §12.1 to §12.3, §13.3, §13.4, and §13.5 (new).
+
+What is to be built:
+
+- **Trust in the registry** (`webserver/app_registry.py`):
+  `RegisteredApplications.trusted`, saved as a `"trusted"` list of names
+  beside `"applications"`. Registering another bundle under a name takes
+  it off the list, and so does removing the application. The registry a
+  new node starts with trusts the shipped root application, and the
+  movie application once Step 67 ships it.
+- **The sandbox** (`webserver/app_handler.py`): `AppHandler` adds both
+  headers to every response for a path of an untrusted application:
+  files, redirects, and refusals alike. The routing that names the
+  application a path belongs to becomes a method the `Referer` check
+  uses too.
+- **The `Referer` check** (`webserver/site_checks.py`, or a module beside
+  it): the application a request's `Referer` names, if its host and port
+  are `Host`'s and its path is routed to one as `AppHandler` routes a
+  path. One wrapper for each requirement: any page of the node, a page of
+  the store's application, and a page of a trusted application, which
+  `LocalOnly` takes for the folders, imports, and bundles.
+- **`/config/api`** (`webserver/config_guard.py`): `ConfigSiteGuard`
+  refuses a `/config/api` request whose `Referer` is not a page of the
+  `/config` application on its port, with its other checks, before the
+  credentials are looked at.
+- **`PATCH /config/api/applications/{name}`**
+  (`webserver/config_handlers.py`), and `"trusted"` in the answers to
+  `GET /config/api/applications` and `GET /data/applications`.
+- **The `/config` page**: a trusted box on each application's row, and
+  the register form saying what it gives. The README's register section
+  says it too, and its `curl` examples, and the Operator Guide's, send a
+  `Referer` with `-e`.
+
+My calls, not yet reviewed:
+
+- **Registering the same bundle again keeps an application's trust.**
+  Only another bundle resets it.
+- **A `Referer` of the origin alone is the root application's page**, as
+  its path, `/`, is routed. A browser sends one from a page asking for
+  `Referrer-Policy: origin`, and from a sandboxed page, whose own origin
+  is another. The sandbox's refusals, not the `Referer`, are what keep
+  such a page out.
+- **The `Referer`'s host and port are compared with `Host`'s**, with a
+  scheme's default port filled in for either. The scheme is not compared.
+- **`trusted` is a list beside `applications`**, in the registry file and
+  in both answers, so that neither answer changes shape for what reads it
+  now.
+- **A registry file without `trusted` trusts nothing.** There is no
+  upgrade path before 1.0, so a node made before this step serves its
+  root application sandboxed until the operator trusts it, and the root
+  page's list of applications is empty until then.
+- **`config` can be neither trusted nor untrusted.** A `PATCH` of it is
+  `400`, and it is never sandboxed, since it is served only on its own
+  port.
+- **A `PATCH` is answered `204`**, and `404` for an application not
+  registered. Its body is read as every `/config/api` body is (`415`,
+  `400`).
+- **The sandbox lets through only what was ruled**, so an untrusted page
+  cannot open `alert` or `confirm` dialogs, or start a download.
+  `allow-modals` and `allow-downloads` would let those through, at no
+  risk I can see.
+- **The node sends no `Referrer-Policy`.** Every current browser's
+  default sends a page's full address with requests to its own origin.
+- **A request refused for its `Referer` is logged at warning**, as the
+  site checks' refusals are.
+
+To be checked in the live run:
+
+- **That `<video>` range requests carry a `Referer`**, in Chrome and in
+  Safari. If one browser's do not, a video in a bundle cannot play there,
+  and the requirement on reading into bundles has to be looked at again.
+- **That a sandboxed page's requests are refused** as another site's, and
+  that its `<img>` and `<video>` still load.
+
+A link into a bundle opened from outside the node, whether typed,
+bookmarked, or followed from another site, carries no `Referer` of the
+node's and is `403`.
+
+About 450 new or changed lines of non-test Python, so one change set.
+Most tests calling the endpoints it guards gain a `Referer`.
+
+**Testable in isolation:** registry tests for trust saved and read, reset
+by another bundle, kept by the same one, and dropped with the
+application. Handler tests for both headers on a file, a redirect, and a
+`404` of an untrusted application, and on none of a trusted one.
+`Referer` tests for none, another host or port, a path beneath a reserved
+name, the origin alone, another application's page for a store, and an
+untrusted application's page for an import. A `/config/api` request
+without one is `403` and captures no credential. `PATCH` tests for each
+answer.
+
+---
+
 ## 4. Issues in the Milestone
 
 Every issue in the **Phase 3 - Support Video Playback** milestone, by
@@ -1543,10 +1679,11 @@ number, and where it went.
 
 | Issue | Asks for | Step |
 | --- | --- | --- |
-| #203 | An implementation plan | None: this document, version 0.3 |
+| #203 | An implementation plan | None: this document, version 0.4 |
 | #206 | Range requests (HttpApi §19, with its three open questions) | 66 |
 | #207 | Serving a file from its parts as they are fetched, with each part's size recorded | 64, 65 |
 | #213 | A movie application shipped at `/movie`, with playlists that can be shared | 67, with 68 to 72 for what it needs |
+| #215 | Keeping applications from each other, and from each other's stores | 74 |
 | #218 | Listing the applications, so that the root application can link to each | 73 |
 | #219 | Local clients, the checks made of them, and the folders they may read | 68 |
 | #220 | Importing a local file from a folder offered, and getting back its id | 69 |
@@ -1567,7 +1704,8 @@ number, and where it went.
 | 7 | 69 (#220) | Needs 64's sizes and 68's folders. |
 | 8 | 72 (#223) | Needs 68's checks, 69's file ids, and 71's encrypted bundles. |
 | 9 | 73 (#218) | Small, and needs nothing in this phase, so it can go anywhere. |
-| 10 | 67 (#213) | The page, which needs all of the above. |
+| 10 | 74 (#215) | Guards what 68 to 73 serve, and the movie application is written for it. |
+| 11 | 67 (#213) | The page, which needs all of the above. |
 
 Every specification change is made.
 
@@ -1591,10 +1729,12 @@ Every specification change is made.
   70), and the movie application keeps its playlists' ids there, keys
   and all. A node reachable from the Internet shows them to anyone.
   Encryption keeps a playlist from the network at large, not from those
-  who can reach the node.
-- **Every application can do whatever any application can** (HttpApi
-  §2.4). One registered from elsewhere can import from the folders
-  offered, and change any application's store. An origin for each
-  application, such as `movie.localhost`, would keep them apart.
+  who can reach the node. The `Referer` Step 74 requires is one any
+  client can send.
+- **A trusted application can do whatever any trusted application can**
+  (Step 74, HttpApi §2.4). They share the main port's origin, so a page
+  of one can send the `Referer` of another's page, and script another's
+  window. An origin for each application, a port of its own or a name
+  such as `movie.localhost`, would keep them apart.
 - **An import waits behind a backup**, and a backup behind an import
   (Step 69), as both run in the backup module one at a time.
