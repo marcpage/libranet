@@ -13,11 +13,16 @@ stored in its place keeps its metadata and versions, holds no entries, and
 lists the chunks as extensions ahead of any it had. Chunks hold disjoint
 paths, so their order does not matter. Placed first, they rank above the
 bundle's own extensions, as its entries did (§4.1).
+
+A directory bundle may instead be stored with per-entry encryption (§7), as
+a part is, by a writer such as :class:`~libranet.bundle.parts.PartWriter`,
+so that what names it carries its key. Each chunk is then stored so too, and
+named with its key among the extensions (Phase 3 Step 72).
 """
 
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Final, Protocol
+from typing import Callable, Final, Protocol
 from zlib import compress
 
 from libranet.bundle.errors import BundleTooLargeError
@@ -50,6 +55,31 @@ class ContentSink(Protocol):
     def write(self, content_id: ContentId, data: bytes) -> object:
         """Store ``data``, the content of ``content_id`` as is or zlib-compressed."""
         ...
+
+
+class StoredObject(Protocol):
+    """An object as a bundle names it, such as a :class:`~libranet.bundle.parts.PartPath`.
+
+    Its text is the CAS path a bundle names it by, which carries its key if
+    it is stored encrypted (§7).
+    """
+
+    @property
+    def content_id(self) -> ContentId:
+        """What is stored: the object itself, or its ciphertext."""
+        ...
+
+    @property
+    def key(self) -> bytes | None:
+        """The key the object is encrypted under, with the default IV, or ``None`` if it is not."""
+        ...
+
+
+#: Stores the bytes of one object, unless they are held, and gives what a
+#: bundle names it by, as :meth:`~libranet.bundle.parts.PartWriter.store`
+#: does. It raises :class:`BundleTooLargeError` for bytes not held that do
+#: not fit in one object.
+ObjectWriter = Callable[[bytes], StoredObject]
 
 
 def store_object(data: bytes, sink: ContentSink, max_object_bytes: int = MIB) -> ContentId:
@@ -104,10 +134,15 @@ def store_bundle(
 
 @dataclass(frozen=True)
 class StoredDirectory:
-    """A directory bundle as stored: what it is read back by, and the chunks it was split into."""
+    """A directory bundle as stored: what it is read back by, and the chunks it was split into.
+
+    ``key`` is the key it is encrypted under (§7), with the default IV, if
+    it is stored encrypted.
+    """
 
     content_id: ContentId
     chunks: int = 0
+    key: bytes | None = None
 
     @classmethod
     def store(
@@ -117,10 +152,14 @@ class StoredDirectory:
         password: bytes | None = None,
         max_object_bytes: int = MIB,
         max_extensions: int = DEFAULT_MAX_EXTENSIONS,
+        *,
+        write: ObjectWriter | None = None,
     ) -> StoredDirectory:
         """Store ``bundle`` in ``sink``, split across extensions if it does not fit in one object.
 
-        It is password-protected with ``password``, if one is given.
+        It is password-protected with ``password``, if one is given. Each
+        object, the bundle and each chunk, is stored by ``write`` in place
+        of ``sink``, if it is given, and named as it says.
 
         Raises:
             BundleTooLargeError: ``bundle`` does not fit in one object, and
@@ -128,8 +167,16 @@ class StoredDirectory:
                 and extensions than ``max_extensions``, which readers do not
                 follow.
         """
+
+        def stored(directory: DirectoryBundle) -> StoredObject | ContentId:
+            """``directory`` stored as one object, by ``write`` if it is given."""
+            if write is None:
+                return _store(directory, sink, password, max_object_bytes)
+
+            return write(_encoded(directory, password, max_object_bytes))
+
         try:
-            return cls(_store(bundle, sink, password, max_object_bytes))
+            return cls._of(stored(bundle))
 
         except BundleTooLargeError:
             pass  # Not logged: split below, outside the handler, so errors splitting raise alone.
@@ -143,15 +190,20 @@ class StoredDirectory:
                 f"more than the {max_extensions} extensions a reader follows"
             )
 
-        stored_chunks = tuple(
-            str(_store(DirectoryBundle(chunk), sink, password, max_object_bytes))
-            for chunk in chunks
-        )
+        stored_chunks = tuple(str(stored(DirectoryBundle(chunk))) for chunk in chunks)
         top = DirectoryBundle(
             {}, bundle.metadata, bundle.versions, stored_chunks + bundle.extensions
         )
 
-        return cls(_store(top, sink, password, max_object_bytes), len(stored_chunks))
+        return cls._of(stored(top), len(stored_chunks))
+
+    @classmethod
+    def _of(cls, stored: StoredObject | ContentId, chunks: int = 0) -> StoredDirectory:
+        """The directory stored as ``stored``, by its id or as a writer named it, in ``chunks``."""
+        if isinstance(stored, ContentId):
+            return cls(stored, chunks)
+
+        return cls(stored.content_id, chunks, stored.key)
 
 
 def _store(
@@ -165,9 +217,18 @@ def _store(
     Raises:
         BundleTooLargeError: it does not fit in one object.
     """
+    return store_object(_encoded(bundle, password, max_object_bytes), sink, max_object_bytes)
+
+
+def _encoded(bundle: Bundle, password: bytes | None, max_object_bytes: int) -> bytes:
+    """``bundle``'s JSON, password-protected if there is a password.
+
+    Raises:
+        BundleTooLargeError: it is protected, and does not fit in one object.
+    """
     encoded = encode_bundle(bundle)
 
     if password is not None:
         encoded = protect(encoded, password, max_object_bytes)
 
-    return store_object(encoded, sink, max_object_bytes)
+    return encoded
