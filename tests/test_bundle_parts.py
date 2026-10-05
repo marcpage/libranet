@@ -342,3 +342,31 @@ def test_a_cipher_this_node_reads_is_told_apart(segment: str, cipher: bool) -> N
 )
 def test_the_key_an_encrypted_path_carries_is_left_out_of_text(text: str, logged: str) -> None:
     assert PartPath.without_keys(text) == logged
+
+
+@mark.parametrize("encrypted", [False, True])
+def test_a_file_of_bytes_given_is_cut_into_parts_with_their_sizes(
+    store: RecordingStore, encrypted: bool
+) -> None:
+    writer = PartWriter(store, MAX_BYTES, encrypted)
+    data = urandom(writer.part_bytes * 2 + 5)
+
+    file = writer.file(data)
+
+    paths = [PartPath.parse(part) for part in file.parts]
+    assert b"".join(read(path, store) for path in paths) == data
+    assert all(path.encrypted == encrypted for path in paths)
+    assert file.part_sizes_bytes == (writer.part_bytes, writer.part_bytes, 5)
+    assert (file.metadata.size_bytes, file.metadata.algorithm, file.metadata.hash) == (
+        len(data),
+        "sha256",
+        sha256(data).hexdigest(),
+    )
+    assert (file.metadata.created, file.metadata.modified) == (None, None)
+
+
+def test_an_empty_file_of_bytes_given_has_no_parts(store: RecordingStore) -> None:
+    file = PartWriter(store, MAX_BYTES).file(b"")
+
+    assert (file.parts, file.part_sizes_bytes, file.metadata.size_bytes) == ((), (), 0)
+    assert store.writes == []

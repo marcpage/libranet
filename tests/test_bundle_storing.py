@@ -11,6 +11,7 @@ from pytest import raises
 from libranet.bundle.errors import BundleTooLargeError
 from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.loading import load_bundle
+from libranet.bundle.parts import PartPath, PartWriter
 from libranet.bundle.serialization import encode_bundle
 from libranet.bundle.shapes import (
     Bundle,
@@ -318,3 +319,39 @@ def test_directory_needing_too_many_extensions_is_refused_before_anything_is_sto
         )
 
     assert sink.writes == []
+
+
+def test_a_directory_stored_by_a_writer_is_named_with_its_key() -> None:
+    sink = RecordingSink()
+    bundle = DirectoryBundle(entries(3))
+
+    stored = StoredDirectory.store(
+        bundle, sink, None, MAX_BYTES, write=PartWriter(sink, MAX_BYTES, encrypted=True).store
+    )
+
+    assert stored.key is not None
+    assert load_bundle(PartPath(stored.content_id, stored.key), sink) == bundle
+    assert all(b"file" not in data for data in sink.held.values())
+
+
+def test_a_split_directory_stored_by_a_writer_names_each_chunk_with_its_key() -> None:
+    sink = RecordingSink()
+    bundle = DirectoryBundle(entries(500))
+
+    stored = StoredDirectory.store(
+        bundle, sink, None, MAX_BYTES, write=PartWriter(sink, MAX_BYTES, encrypted=True).store
+    )
+
+    top = load_bundle(PartPath(stored.content_id, stored.key), sink)
+    assert isinstance(top, DirectoryBundle)
+    assert stored.chunks == len(top.extensions) > 1
+    assert all(PartPath.parse(extension).encrypted for extension in top.extensions)
+    assert resolve_directory(top, partial(load_bundle, source=sink)) == bundle.entries
+    assert all(len(data) <= MAX_BYTES for data in sink.held.values())
+    assert all(b"file" not in data for data in sink.held.values())
+
+
+def test_a_directory_stored_plain_has_no_key() -> None:
+    stored = StoredDirectory.store(DirectoryBundle(entries(3)), RecordingSink(), None, MAX_BYTES)
+
+    assert stored.key is None

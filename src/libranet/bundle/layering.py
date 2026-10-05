@@ -35,6 +35,12 @@ A backup whose directory changed in metadata alone keeps its bundle, and
 keeps that change beside it, held back, until content next changes
 (BackupSpecification §3.3; Phase 2 Step 49). The next version is layered
 over the bundle as it is, so it carries what was held back with it.
+
+A bundle stored with per-entry encryption (§7) is named with its key, as a
+part is, and so is a layer over it, which is stored encrypted too, as is
+each of its chunks. A layer that is not encrypted is never written over one
+that is, since its extensions would carry that bundle's key; it is stored
+whole instead (Phase 3 Step 72).
 """
 
 from __future__ import annotations
@@ -43,10 +49,11 @@ from logging import getLogger
 from typing import Any, Callable, Final, Mapping
 
 from libranet.bundle.content import normalize_cas_path
+from libranet.bundle.encryption import DEFAULT_IV
 from libranet.bundle.errors import BundleError, BundleTooLargeError
 from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.parsing import parse_bundle
-from libranet.bundle.parts import PartPath
+from libranet.bundle.parts import PartPath, PartWriter
 from libranet.bundle.serialization import bundle_value
 from libranet.bundle.shapes import (
     DEFAULT_MAX_EXTENSIONS,
@@ -58,7 +65,7 @@ from libranet.bundle.shapes import (
     Symlink,
     ancestors,
 )
-from libranet.bundle.storing import ContentSink, StoredDirectory
+from libranet.bundle.storing import ContentSink, ObjectWriter, StoredDirectory
 from libranet.cas.content_id import ContentId
 
 _LOGGER = getLogger(__name__)
@@ -122,7 +129,9 @@ class Superseded:
     lists them last among its extensions: one for each layer ``layering``
     counts, and none if it is not known. ``held_back`` is what a backup found
     changed since, in metadata alone, and did not publish: each entry
-    changed, and ``None`` for each gone, as a layer holds them.
+    changed, and ``None`` for each gone, as a layer holds them. ``key`` is
+    the key the bundle is encrypted under (§7), if it is stored encrypted,
+    and ``iv`` the IV it is encrypted with.
 
     It is what a directory's last bundle is kept as, expanded, and its JSON
     form is a directory bundle holding every entry, with the bundle's id and
@@ -135,6 +144,8 @@ class Superseded:
     Raises:
         ValueError: ``beneath`` lists a layer more or fewer than
             ``layering`` counts.
+        MalformedBundleError: ``key`` is not an AES-256 key, or ``iv`` is not
+            one block.
     """
 
     bundle: ContentId
@@ -142,6 +153,8 @@ class Superseded:
     beneath: tuple[str, ...] = ()
     layering: Layering | None = None
     held_back: Mapping[str, Entry | None] = field(default_factory=dict)
+    key: bytes | None = None
+    iv: bytes = DEFAULT_IV
 
     def __post_init__(self) -> None:
         layers = 0 if self.layering is None else self.layering.layers
@@ -150,6 +163,9 @@ class Superseded:
             raise ValueError(
                 f"A bundle {layers} layers up lists as many beneath it, not {len(self.beneath)}"
             )
+
+        # A key or an IV that PartPath refuses names nothing.
+        _ = self.path
 
     @classmethod
     def read(
@@ -208,11 +224,15 @@ class Superseded:
 
     @classmethod
     def expand(
-        cls, bundle: ContentId, top: DirectoryBundle, load: Callable[[PartPath], Bundle]
+        cls,
+        bundle: ContentId | PartPath,
+        top: DirectoryBundle,
+        load: Callable[[PartPath], Bundle],
     ) -> Superseded:
         """``bundle``, read as ``top``, expanded, where it sits worked out from what it lists.
 
-        Nothing here recorded where it sits, as for a bundle restored. A
+        ``bundle`` is named with its key if it is stored encrypted. Nothing
+        here recorded where it sits, as for a bundle restored. A
         bundle listing among its extensions a version it supersedes is an
         update layer over that version (§4), and the extensions it lists
         from there on are the layers beneath it. It reaches the extensions
@@ -222,6 +242,7 @@ class Superseded:
         Raises:
             BundleError: an extension cannot be read, or is not a directory.
         """
+        path = bundle if isinstance(bundle, PartPath) else PartPath(bundle)
         reached: list[ContentId] = []
 
         def counted(path: PartPath) -> Bundle:
@@ -237,13 +258,15 @@ class Superseded:
         beneath = top.extensions[first:]
 
         if len(set(beneath)) < len(beneath):
+            # Only what is stored is named, since the key is what keeps it unread.
             _LOGGER.warning(
                 "%s lists a layer beneath it twice, so the version after it is stored whole",
-                bundle,
+                path.content_id,
             )
-            return cls(bundle, entries)
+            return cls(path.content_id, entries, key=path.key, iv=path.iv)
 
-        return cls(bundle, entries, beneath, Layering(len(beneath), len(reached)))
+        layering = Layering(len(beneath), len(reached))
+        return cls(path.content_id, entries, beneath, layering, key=path.key, iv=path.iv)
 
     @classmethod
     def from_value(cls, value: object) -> Superseded:
@@ -268,18 +291,27 @@ class Superseded:
 
         layering = value.get("layering")
 
+        try:
+            bundle = PartPath.parse(value["bundle"])
+
+        except BundleError as error:
+            # Parsing leaves the key out of its errors.
+            raise ValueError(f'"bundle" names no bundle: {error}') from None
+
         return cls(
-            ContentId.parse(value["bundle"]),
+            bundle.content_id,
             entries,
             tuple(normalize_cas_path(path) for path in beneath),
             None if layering is None else Layering.from_value(layering),
             _directory_entries(value.get("held_back", {}), '"held_back"'),
+            bundle.key,
+            bundle.iv,
         )
 
     def value(self) -> dict[str, Any]:
         """The JSON object this is kept as."""
         value: dict[str, Any] = {
-            "bundle": str(self.bundle),
+            "bundle": str(self.path),
             "layering": None if self.layering is None else self.layering.value(),
             "beneath": list(self.beneath),
             **bundle_value(DirectoryBundle(self.entries)),
@@ -289,6 +321,11 @@ class Superseded:
             value["held_back"] = bundle_value(DirectoryBundle(self.held_back))["contents"]
 
         return value
+
+    @property
+    def path(self) -> PartPath:
+        """What names the bundle, with its key if it is stored encrypted."""
+        return PartPath(self.bundle, self.key, self.iv)
 
     @property
     def seen(self) -> Mapping[str, Entry]:
@@ -332,17 +369,23 @@ class Superseded:
         *,
         max_layers: int,
         max_extensions: int = DEFAULT_MAX_EXTENSIONS,
+        encrypted: bool = False,
     ) -> StoredVersion | None:
         """``version`` stored as a layer over this bundle, as :meth:`StoredVersion.store` describes.
 
         ``None`` if where this bundle sits is not known, or the layer would
         lie more than ``max_layers`` above the last whole bundle, reach more
         than ``max_extensions`` distinct extensions, or not fit in one
-        object even split.
+        object even split. ``None`` too if this bundle is stored encrypted
+        and the layer is not to be, since its extensions would carry this
+        bundle's key.
         """
         layering = self.layering
 
         if layering is None or layering.layers >= max_layers:
+            return None
+
+        if self.key is not None and not encrypted:
             return None
 
         # This bundle and every extension it reaches, the layers beneath it among them.
@@ -354,7 +397,7 @@ class Superseded:
         layer = replace(
             version,
             entries=self.changes(version.entries),
-            extensions=(str(self.bundle),) + self.beneath,
+            extensions=(str(self.path),) + self.beneath,
         )
 
         try:
@@ -366,6 +409,7 @@ class Superseded:
                 password,
                 max_object_bytes,
                 max_extensions - reached + len(layer.extensions),
+                write=_writer(sink, max_object_bytes, encrypted),
             )
 
         except BundleTooLargeError:
@@ -376,6 +420,7 @@ class Superseded:
             stored.content_id,
             Layering(layering.layers + 1, reached + stored.chunks),
             layer.extensions,
+            stored.key,
         )
 
 
@@ -385,15 +430,18 @@ class StoredVersion:
 
     ``beneath`` is the layers beneath it, newest first, as it lists them
     last among its extensions: one for each layer ``layering`` counts.
+    ``key`` is the key it is encrypted under (§7), if it is stored encrypted.
 
     Raises:
         ValueError: ``beneath`` lists a layer more or fewer than
             ``layering`` counts.
+        MalformedBundleError: ``key`` is not an AES-256 key.
     """
 
     bundle: ContentId
     layering: Layering = field(default_factory=Layering)
     beneath: tuple[str, ...] = ()
+    key: bytes | None = None
 
     def __post_init__(self) -> None:
         if len(self.beneath) != self.layering.layers:
@@ -401,6 +449,9 @@ class StoredVersion:
                 f"A bundle {self.layering.layers} layers up lists as many beneath it, "
                 f"not {len(self.beneath)}"
             )
+
+        # A key that is not an AES-256 key names nothing, as PartPath checks.
+        _ = self.path
 
     @classmethod
     def store(
@@ -413,6 +464,7 @@ class StoredVersion:
         *,
         max_layers: int,
         max_extensions: int = DEFAULT_MAX_EXTENSIONS,
+        encrypted: bool = False,
     ) -> StoredVersion:
         """Store ``version`` as a layer over ``superseded`` if the limits allow, or else whole.
 
@@ -420,7 +472,9 @@ class StoredVersion:
         supersedes in its versions, and extending nothing. It is
         password-protected with ``password``, if one is given, which must be
         how ``superseded`` is protected, or some readers of the layer could
-        not read what lies beneath it.
+        not read what lies beneath it. ``encrypted`` stores it, and each of
+        its chunks, with per-entry encryption (§7), so that what names it
+        carries its key.
 
         Raises:
             BundleTooLargeError: ``version`` does not fit in one object even
@@ -434,17 +488,38 @@ class StoredVersion:
                 max_object_bytes,
                 max_layers=max_layers,
                 max_extensions=max_extensions,
+                encrypted=encrypted,
             )
 
             if layered is not None:
                 return layered
 
-        whole = StoredDirectory.store(version, sink, password, max_object_bytes, max_extensions)
-        return cls(whole.content_id, Layering(0, whole.chunks))
+        whole = StoredDirectory.store(
+            version,
+            sink,
+            password,
+            max_object_bytes,
+            max_extensions,
+            write=_writer(sink, max_object_bytes, encrypted),
+        )
+        return cls(whole.content_id, Layering(0, whole.chunks), key=whole.key)
+
+    @property
+    def path(self) -> PartPath:
+        """What names the bundle, with its key if it is stored encrypted."""
+        return PartPath(self.bundle, self.key)
 
     def expanded(self, entries: Mapping[str, Entry]) -> Superseded:
         """This version, holding ``entries`` once its extensions are overlaid, kept expanded."""
-        return Superseded(self.bundle, entries, self.beneath, self.layering)
+        return Superseded(self.bundle, entries, self.beneath, self.layering, key=self.key)
+
+
+def _writer(sink: ContentSink, max_object_bytes: int, encrypted: bool) -> ObjectWriter | None:
+    """What stores each object of a directory bundle in ``sink`` encrypted, if it is to be.
+
+    ``None`` stores it as it is.
+    """
+    return PartWriter(sink, max_object_bytes, encrypted=True).store if encrypted else None
 
 
 def _count(value: dict[str, Any], key: str) -> int:
