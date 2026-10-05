@@ -1411,11 +1411,16 @@ Content-Type: application/json
  "remove": ["Old Film (1999)"]}
 ```
 
-and is answered `201 Created`, with the new bundle's identifier:
+and is answered `201 Created`, with the new bundle's identifier, and a
+`Location` reading into it (§12.1):
 
 ```json
 {"bundle": "sha256/…/AES256-CBC/…"}
 ```
+
+A request that changes nothing, such as one adding a file the base already
+holds at that path, makes no bundle, and is answered `200 OK` with the
+base's identifier, as the request named it.
 
 - **`base`** is the bundle this one is a new version of, or `null` or
   absent for a new one. The new bundle lists it in `versions`
@@ -1426,30 +1431,42 @@ and is answered `201 Created`, with the new bundle's identifier:
 - **`add`** maps each entry path to what goes there, replacing whatever
   the base held at that path:
   - `{"file": id}`: the file bundle `id` names, as an import gives (§12.2).
-  - `{"from": id, "path": p}`: what bundle `id` holds at `p`. A file is
-    copied to the path. A directory has every entry beneath it copied to
-    the same place beneath the path. `""` names the bundle's root.
+  - `{"from": id, "path": p}`: what bundle `id` holds at `p`. A file or a
+    symbolic link is copied to the path, a link as it is, not followed. A
+    directory has every entry beneath it copied to the same place beneath
+    the path, and its own metadata-only entry, if it has one, to the path
+    itself. A directory holding nothing is still there once copied. `""`
+    names the bundle's root, or a file bundle's own file.
   - `{"text": s}` or `{"base64": b}`: a file of these bytes, stored by the
     node.
+
+  The additions are made after the removals, in order of path, so that one
+  beneath another goes into what that one put there.
 - **`remove`** lists entry paths to take out of the base. Removing a
   directory removes every entry beneath it, and a path the base does not
-  hold is ignored.
+  hold is ignored. No path may be both added and removed.
 - **`encrypted`** stores the new bundle, and each file whose bytes the
   request gives, with per-entry encryption, so that its identifier is the
   encrypted form (§5). A node that receives it, and every node it passes
   through, holds only ciphertext. An entry copied from elsewhere is copied
   as it is, with its parts as they were stored. It defaults to whether
   `base` is encrypted. A bundle that is not encrypted, over one that is,
-  is stored whole rather than as a layer, so that its extensions do not
-  carry the base's key.
+  is stored whole rather than as a layer, and does not list the base in
+  `versions`, so that it nowhere carries the base's key.
 
 A node makes the bundle from the bundles named and nothing else. It never
 needs the parts of a file it adds, moves, or removes. A bundle it lacks is
-asked for, and waited for, as §13.2 describes. Each object it stores is
-shared, and pushed (§7.4).
+asked for, and waited for, as §13.2 describes, and the request is
+`503 Service Unavailable` if it does not arrive in time. Each object it
+stores is shared, and pushed (§7.4).
 
 A request naming content that is not a bundle, a file where a directory is
-needed, or a path that is not an entry path is `400 Bad Request`.
+needed or a directory where a file is, a path the bundle named does not
+hold, or a path that is not an entry path is `400 Bad Request`. So is one
+whose bundle cannot be stored, as when one entry alone does not fit in an
+object (HighLevelDesign §4.3). A password-protected bundle is not read, and
+is `403 Forbidden`, as in §12.1. A body larger than the node takes is
+`413 Content Too Large` (§21).
 
 ---
 

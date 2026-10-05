@@ -1704,6 +1704,7 @@ def local_server(
                 allow_unsigned_api_reads=True,
                 config_port=8180,
                 local_folders=LocalFolders({"Movies": tmp_path / "Movies"}),
+                node_id=SERVER_IDENTITY.node_id,
             ),
             getLogger("test.webserver"),
             MessageSigner(SERVER_IDENTITY),
@@ -1795,6 +1796,57 @@ def test_another_client_or_sites_page_is_refused_imports(
     assert cross_site.status == 403
 
 
+def test_a_local_client_makes_a_bundle_stored_as_an_upload_from_this_node(
+    local_server: LibranetHTTPServer,
+    local_connection: HTTPConnection,
+    storage: StorageConfig,
+    queues: ModuleQueues,
+) -> None:
+    local_connection.request(
+        "POST",
+        "/data/bundles",
+        body=b'{"add": {"info.json": {"text": "{}"}}}',
+        headers={"Content-Type": JSON_CONTENT_TYPE},
+    )
+    response = local_connection.getresponse()
+    made = ContentId.parse(loads(response.read())["bundle"])
+    # The live server only ever sees loopback clients, so the remote request
+    # is put to the router directly.
+    remote = local_server.router.dispatch(
+        Request("POST", "/data/bundles", client_address="203.0.113.42")
+    )
+
+    # Not taken for /data/{algorithm}/{hash}, whose pattern it also fits.
+    assert response.status == 201
+    assert response.getheader("Location") == f"/data/{made}/"
+    assert CasStore.for_node(storage, SERVER_IDENTITY.node_id).exists(made)
+    assert {**made.fields(), "node_id": str(SERVER_IDENTITY.node_id)} in [
+        {key: message[key] for key in ("algorithm", "hash", "node_id")}
+        for message in _published(queues)
+        if message["event"] == EventType.PUT_COMPLETED
+    ]
+    assert remote.status == 403
+
+
+def test_bundles_are_made_only_by_a_node_that_knows_its_id(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    router = build_router(
+        storage,
+        RETRY_AFTER_SECONDS,
+        StubModule(ModuleName.WEBSERVER, queues).publish,
+        RequestAuthenticator.of(LibranetConfig(storage=storage)),
+        allow_unsigned_api_reads=True,
+        config_port=8180,
+    )
+
+    response = router.dispatch(
+        Request("POST", "/data/bundles", client_address="127.0.0.1", body=RequestBody.of(b"{}"))
+    )
+
+    assert response.status == 404
+
+
 def test_a_local_client_keeps_a_value_in_an_applications_store(
     local_server: LibranetHTTPServer, local_connection: HTTPConnection, storage: StorageConfig
 ) -> None:
@@ -1845,6 +1897,7 @@ def test_a_local_client_keeps_a_value_in_an_applications_store(
         ("PUT", "/data/imports/x", None),
         ("PUT", "/data/bundles/x", None),
         ("GET", "/data/bundles/x", None),
+        ("GET", "/data/bundles", "POST"),
         ("PUT", "/data/applications/x", None),
     ],
 )

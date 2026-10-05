@@ -49,6 +49,7 @@ from urllib.parse import urlsplit
 
 from libranet import __version__
 from libranet.bundle.parts import PartPath
+from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
 from libranet.cas.resolved_files import ResolvedFiles
 from libranet.cas.store import CasStore
@@ -79,6 +80,7 @@ from libranet.webserver.app_store import (
 )
 from libranet.webserver.app_use import ApplicationUse
 from libranet.webserver.backup_state import BackupState
+from libranet.webserver.bundle_edits import BUNDLES_PATH, BundleEditHandler, OwnUploads
 from libranet.webserver.bundle_paths import BundlePaths
 from libranet.webserver.bundle_reads import BUNDLE_METHODS, BUNDLE_PATTERN, BundleReadHandler
 from libranet.webserver.config_auth import ConfigAuthGuard
@@ -143,6 +145,8 @@ def build_router(  # pylint: disable=too-many-locals
     config_hosts: tuple[str, ...] = DEFAULT_CONFIG_HOSTS,
     local_folders: LocalFolders | None = None,
     backup_state: BackupState | None = None,
+    node_id: ContentId | None = None,
+    max_update_layers: int = 0,
 ) -> Router:
     """The main port's routes, serving the configured source of truth, derived lists, and apps.
 
@@ -169,7 +173,11 @@ def build_router(  # pylint: disable=too-many-locals
     application's values in ``storage``'s data directory, read by any client
     and changed by local clients alone (Phase 3 Step 70). Any client may
     read into a bundle ``content`` holds, as an application's files are
-    served (Phase 3 Step 71).
+    served (Phase 3 Step 71). Given ``node_id``, ``/data/bundles`` makes
+    bundles for local clients alone, from what ``content`` holds, storing
+    what it makes as uploads from ``node_id``, each no more than
+    ``max_update_layers`` update layers above the last bundle stored whole;
+    none, by default (Phase 3 Step 72).
     """
     store = CasStore.source_of_truth(storage)
     content = LayeredSource(store) if content is None else content
@@ -197,8 +205,8 @@ def build_router(  # pylint: disable=too-many-locals
         app_outcomes,
     )
     router.add("GET", CLIENT_PATH, client_handler)
-    # The directory, import, store, and search routes must precede the data
-    # route, whose pattern they also fit.
+    # The directory, import, store, bundle, and search routes must precede the
+    # data route, whose pattern they also fit.
     router.add("GET", DIRECTORY_PATTERN, LocalOnly(DirectoryHandler(folders), checks))
     router.add(
         "GET", IMPORTS_PATH, LocalOnly(ImportListHandler(state, retry_after_seconds), checks)
@@ -208,6 +216,18 @@ def build_router(  # pylint: disable=too-many-locals
     router.add("GET", STORE_KEY_PATTERN, StoreValueHandler(app_store))
     router.add("PUT", STORE_KEY_PATTERN, LocalOnly(StoreWriteHandler(app_store), checks))
     router.add("DELETE", STORE_KEY_PATTERN, LocalOnly(StoreRemovalHandler(app_store), checks))
+
+    if node_id is not None:
+        edits = BundleEditHandler(
+            OwnUploads.of(storage, content, node_id, publish),
+            publish,
+            app_wait_seconds,
+            retry_after_seconds,
+            storage.max_object_bytes,
+            max_update_layers,
+        )
+        router.add("POST", BUNDLES_PATH, LocalOnly(edits, checks))
+
     router.add(
         "GET",
         SEARCH_PATTERN,
