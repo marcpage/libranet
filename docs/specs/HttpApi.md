@@ -72,10 +72,12 @@ The programmatic API includes endpoints such as:
 
 These endpoints are intended for nodes and software clients.
 
-Some are meant for the browser applications a node serves (§13) as well:
-reading into a bundle (§12.1), an application's store (§13.3), and the list
-of applications (§13.4). A few serve only clients on the node's own machine
-(§2.4).
+Some are meant only for the browser applications a node serves (§13), and
+never for another node: whether the client is local (§2.4), reading into a
+bundle (§12.1), the folders and imports (§12.2), making bundles (§12.3), an
+application's store (§13.3), and the list of applications (§13.4). Each
+requires a `Referer` naming a page of the node (§2.5). A few serve only
+clients on the node's own machine (§2.4).
 
 ### 2.2 Web Applications
 
@@ -251,7 +253,9 @@ A request carrying none of these headers passes. Every current browser
 sends `Host` with every request, `Sec-Fetch-Site` with every request to a
 loopback origin, and `Origin` with every cross-origin request that is not
 a `GET` or `HEAD`, so a request without them comes from a script or a
-command-line client, which holds the credential itself.
+command-line client, which holds the credential itself. A request to
+`/config/api` must also carry a `Referer` naming a page of the `/config`
+application, whether a browser sends it or not (§2.5).
 
 A `/config/api` endpoint MUST read a request body as JSON only if the
 request's `Content-Type` is `application/json`, with or without
@@ -282,7 +286,7 @@ An application asks whether it is being served to a local client with:
 GET /data/client
 ```
 
-which is answered, to any client, with:
+which is answered, to any client, from a page of the node (§2.5), with:
 
 ```json
 {"local": true}
@@ -297,7 +301,10 @@ for itself.
 These endpoints serve only local clients: listing the folders a node
 offers and importing a file from one (§12.2), making and changing bundles
 (§12.3), and changing an application's store (§13.3). A request to one of
-them from any other client MUST be refused with `403 Forbidden`.
+them from any other client MUST be refused with `403 Forbidden`. The
+folders, imports, and bundles are served only from a page of a trusted
+application, and an application's store is changed only from a page of
+its own (§2.5).
 
 A loopback source does not show that the person at the machine made the
 request. Any site's page that a browser on the machine has open can send
@@ -317,12 +324,63 @@ A request body is read as JSON only if its `Content-Type` is
 `Access-Control-Allow-Origin`, or any other header granting a cross-origin
 request.
 
-These checks keep other sites out, but not the node's own applications.
-Every application is served on the main port, so each shares its origin
-with every other, and whatever one may ask of these endpoints, all may.
-What a local client can reach of the machine is therefore held to the
-folders the node's operator offers (§12.2), and an operator SHOULD
-register only applications they trust.
+These checks keep other sites out. They keep out an application the
+operator has not trusted as well, since it is served in a sandbox, and a
+browser marks its requests as another site's (§13.5). They do not keep
+trusted applications from each other. Every trusted application is served
+on the main port's origin, which it shares with every other, and whatever
+one may ask of these endpoints, all may: a page can send the `Referer` of
+any page of its origin (§2.5), and script any window of it. What a local
+client can reach of the machine is therefore held to the folders the
+node's operator offers (§12.2), and an operator SHOULD trust only
+applications they would trust with those folders.
+
+### 2.5 Requests From the Node's Own Pages
+
+Some endpoints are meant only for the pages a node serves, and never for
+another node:
+
+- on the main port: whether the client is local (§2.4), reading into a
+  bundle (§12.1), the folders and imports (§12.2), making bundles (§12.3),
+  an application's store (§13.3), and the list of applications (§13.4);
+- on `/config`'s port: every endpoint beneath `/config/api` (§2.3).
+
+A request to one of them MUST carry a `Referer` naming a page that the
+node serves at the host and port the request's `Host` header names, and
+MUST be refused with `403 Forbidden` otherwise. The scheme is not
+compared, since `Host` carries none.
+
+- **On the main port**, the page is an application's: the one whose name
+  is its path's first segment, or the root application's, for a path no
+  other application's name begins (§13). A path beneath a reserved name
+  (§2) is no application's page.
+- **On `/config`'s port**, the page is the `/config` application's: a
+  path beneath `/config`, and outside `/config/api`.
+
+Some endpoints ask more of the page:
+
+- **An application's store** is read and changed only from a page of the
+  application whose store it is (§13.3).
+- **The folders, imports, and making bundles** are served only from a page
+  of a trusted application (§13.5).
+
+A browser sends a page's full address as the `Referer` of each request the
+page makes of its own origin, unless the page asks it not to, as with
+`Referrer-Policy: no-referrer`. Such a page cannot use these endpoints. A
+script or a command-line client sends a `Referer` naming the page it
+stands in for, as `curl -e` does.
+
+The `Referer` is not a protection against a page that means harm. A page
+may set its requests' `Referer` to any address of its own origin, and
+every trusted application shares the main port's (§2.4). It keeps out a
+request that no page of the node made, and one application's request that
+names another's store. The checks of §2.3.3 and §2.4 keep other sites'
+pages out, and the sandbox of §13.5 keeps out an application the operator
+has not trusted.
+
+For `/config/api`, the `Referer` is checked with the checks of §2.3.3,
+before the request's credentials are looked at, and a request it refuses
+MUST NOT trigger credential capture (§2.3.1).
 
 ---
 
@@ -1256,8 +1314,8 @@ where each file is retrieved from CAS.
 
 ### 12.1 Reading Into a Bundle
 
-Any client may read what a bundle holds, without the bundle being
-registered as an application:
+Any client may read what a bundle holds, from a page of the node (§2.5),
+without the bundle being registered as an application:
 
 ```http
 GET /data/{hash-algorithm}/{hash}/{path}
@@ -1319,8 +1377,8 @@ X-Content-Type-Options: nosniff
 
 A bundle that anyone may name could hold a page. Opened as a page, its
 scripts would otherwise run with the main port's origin, and could do
-whatever any application may (§2.4). A `<video>`, an `<img>`, or a `fetch`
-of the file is unaffected by either header.
+whatever a trusted application may (§13.5). A `<video>`, an `<img>`, or a
+`fetch` of the file is unaffected by either header.
 
 As for an application's file, the response's signature (§11) MAY cover its
 headers alone.
@@ -1389,12 +1447,13 @@ names them and records each one's size. An imported file is shared, not
 private, so its parts are pushed as they are stored (§7.4). Importing the
 same path again reads the file again.
 
-Every request to these endpoints is from a local client, or refused (§2.4).
+Every request to these endpoints is from a local client, on a page of a
+trusted application, or refused (§2.4, §2.5).
 
 ### 12.3 Making and Changing Bundles
 
-A local client (§2.4) makes a directory bundle, or a new version of one,
-with:
+A local client (§2.4), on a page of a trusted application (§2.5), makes a
+directory bundle, or a new version of one, with:
 
 ```http
 POST /data/bundles
@@ -1635,7 +1694,8 @@ such as with its keys sorted. A `PUT`'s answer then carries no `ETag`
 and a client reads the value again for it.
 
 Any client may read the store, and only a local client may change it
-(§2.4). A node MAY limit the size of a value, and of an application's
+(§2.4), each from a page of the application whose store it is (§2.5). A
+node MAY limit the size of a value, and of an application's
 store, and answers one that would grow past either with
 `413 Content Too Large`.
 
@@ -1646,21 +1706,59 @@ it.
 
 ### 13.4. Listing Applications
 
-Any client may ask which applications a node serves:
+Any client may ask, from a page of the node (§2.5), which applications a
+node serves:
 
 ```http
 GET /data/applications
 ```
 
-which is answered with each one's name and the bundle it is served from:
+which is answered with each one's name and the bundle it is served from,
+and which of them are trusted (§13.5):
 
 ```json
 {"applications": {"/": "sha256/…", "config": "sha256/…",
-                  "movie": "sha256/…"}}
+                  "movie": "sha256/…"},
+ "trusted": ["/", "movie"]}
 ```
 
 `config` is served on its own port, and only to a local client (§2.3), so
 an application linking to it does so only for a local one.
+
+### 13.5. Trusted Applications
+
+An application is trusted or not, as the node's operator chooses through
+`/config` (§2.3). It is untrusted when it is registered, and again when it
+is registered from a bundle other than the one it is served from. Being
+registered again from the same bundle leaves it as it was. A node MAY
+trust the applications shipped with it from the start.
+
+Every response for a path of an untrusted application (§13), whatever its
+status, carries:
+
+```http
+Content-Security-Policy: sandbox allow-scripts allow-forms allow-popups
+X-Content-Type-Options: nosniff
+```
+
+A browser gives a page served with these an origin of its own, which no
+other page shares. Its scripts run, and it can show what the network
+holds, as an `<img>`, a `<video>`, or a link does. But it is another
+origin than the main port's. A browser lets it read nothing it asks of
+the node's endpoints, since none grants a cross-origin request, and marks
+its requests as another site's, which the endpoints serving only local
+clients refuse (§2.4). It keeps nothing in the browser's storage, and a
+window it opens is sandboxed as it is.
+
+A trusted application is served without these headers, on the main
+port's origin. A page of one, open in a local client, may list and import
+from the folders offered (§12.2), make bundles (§12.3), and change its own
+application's store (§13.3). Trusted applications share that origin, so
+each can do whatever another can (§2.4).
+
+The `/config` application is neither trusted nor untrusted. It is served
+only on its own port (§2.3), where trust gives nothing, and never in a
+sandbox.
 
 ---
 
