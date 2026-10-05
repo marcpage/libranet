@@ -6,6 +6,8 @@ back out as JSON. Building bundles from local files and directories, storing
 them in CAS within the object limit, and password protection (Step 17).
 Storing a directory's new version as an update layer over the last (Phase 2
 Step 31). Encrypting a file's parts, and reading them back (Phase 2 Step 59).
+Storing a directory bundle, and each of its chunks, encrypted as a part is
+(Phase 3 Step 72).
 Operates purely on bundle JSON, local files, and CAS reads and writes.
 """
 
@@ -72,7 +74,9 @@ from libranet.bundle.splitting import split_entries
 from libranet.bundle.storing import (
     HASH_ALGORITHM,
     ContentSink,
+    ObjectWriter,
     StoredDirectory,
+    StoredObject,
     store_bundle,
     store_object,
 )
@@ -116,11 +120,13 @@ __all__ = [
     "MalformedBundleError",
     "Metadata",
     "MissingContentError",
+    "ObjectWriter",
     "PartPath",
     "PartWriter",
     "PasswordProtectedBundleError",
     "PathEnd",
     "StoredDirectory",
+    "StoredObject",
     "StoredVersion",
     "Superseded",
     "Symlink",

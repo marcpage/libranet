@@ -17,9 +17,10 @@ them. The one at `/config` drives all of them.
 
 A few `/data` endpoints serve only clients on this machine, and only this
 node's own pages there, such as the listing of the folders it offers them
-(Phase 3 Step 68), and importing a file from one (Phase 3 Step 69). Any
-client may read into a bundle, by its id, as an application's files are
-served (Phase 3 Step 71).
+(Phase 3 Step 68), importing a file from one (Phase 3 Step 69), and making a
+bundle, or a new version of one, from the bundles a request names, stored as
+uploads from this node (Phase 3 Step 72). Any client may read into a bundle,
+by its id, as an application's files are served (Phase 3 Step 71).
 """
 
 from libranet.webserver.app_handler import (
@@ -63,6 +64,13 @@ from libranet.webserver.backup_state import (
     RESTORES_FIELD,
     BackupReport,
     BackupState,
+)
+from libranet.webserver.bundle_edits import (
+    BUNDLES_PATH,
+    MAX_EDIT_BODY_BYTES,
+    BundleEdit,
+    BundleEditHandler,
+    OwnUploads,
 )
 from libranet.webserver.bundle_paths import BundlePaths, content_type_for, percent_decoded
 from libranet.webserver.bundle_reads import BUNDLE_METHODS, BUNDLE_PATTERN, BundleReadHandler
@@ -134,6 +142,7 @@ from libranet.webserver.data_handler import (
 )
 from libranet.webserver.data_write_handler import DataWriteHandler
 from libranet.webserver.errors import (
+    BundleEditError,
     CredentialFileError,
     IncompleteBodyError,
     InvalidBackupReportError,
@@ -198,6 +207,7 @@ __all__ = [
     "BUILDS_FIELD",
     "BUNDLE_METHODS",
     "BUNDLE_PATTERN",
+    "BUNDLES_PATH",
     "BYTES_UNIT",
     "BUILDS_PATH",
     "CLIENT_PATH",
@@ -228,6 +238,7 @@ __all__ = [
     "KEY_BYTES",
     "MAX_CONFIG_BODY_BYTES",
     "MAX_COST",
+    "MAX_EDIT_BODY_BYTES",
     "MAX_STORE_BYTES",
     "MAX_VALUE_BYTES",
     "NODE_PATH",
@@ -258,6 +269,9 @@ __all__ = [
     "BackupRequest",
     "BackupRequestHandler",
     "BackupState",
+    "BundleEdit",
+    "BundleEditError",
+    "BundleEditHandler",
     "BundlePaths",
     "BundleReadHandler",
     "ByteRange",
@@ -287,6 +301,7 @@ __all__ = [
     "NodeDescription",
     "NodeHandler",
     "NodeListHandler",
+    "OwnUploads",
     "PartReader",
     "RegisteredApplications",
     "RegistryFileError",

@@ -20,6 +20,10 @@ Padding makes ciphertext up to one block longer than what was encrypted, so
 an encrypted file is cut into parts a block short of the object limit, which
 every part then fits even when it does not compress.
 
+A file whose bytes are at hand, as a request gives them, is cut into parts
+here, as a file read from disk is (:mod:`libranet.bundle.building`), and its
+bundle records what its bytes decide (Phase 3 Step 72).
+
 Ciphertext is held whole to be decrypted. It is stored within the object
 limit, and does not compress, so it is capped at the protocol's limit once
 decompressed, should a node have stored it compressed (HttpApi §8): no node
@@ -47,6 +51,7 @@ from libranet.bundle.errors import (
     MalformedBundleError,
     UnsupportedBundleError,
 )
+from libranet.bundle.shapes import FileBundle, Metadata
 from libranet.bundle.storing import HASH_ALGORITHM, ContentSink, store_object
 from libranet.cas.compression import decompressed_chunks
 from libranet.cas.content_id import ContentId
@@ -321,6 +326,26 @@ class PartWriter:
             self.sink.write(content_id, ciphertext)
 
         return PartPath(content_id, key)
+
+    def file(self, data: bytes) -> FileBundle:
+        """The bundle for a file of ``data``, each part stored unless it is held.
+
+        It records only what the bytes decide: their size, each part's, and
+        their whole-file hash (§2.1, §2.3), with no times or permissions. An
+        empty file has no parts.
+        """
+        pieces = [
+            data[start : start + self.part_bytes] for start in range(0, len(data), self.part_bytes)
+        ]
+        return FileBundle(
+            tuple(str(self.store(part)) for part in pieces),
+            Metadata(
+                size_bytes=len(data),
+                algorithm=HASH_ALGORITHM,
+                hash=ContentId.for_data(data, HASH_ALGORITHM).hash,
+            ),
+            part_sizes_bytes=tuple(len(part) for part in pieces),
+        )
 
     def keeps(self, parts: Iterable[str]) -> bool:
         """Whether ``parts``, named by an earlier bundle, are stored as this writer stores them.

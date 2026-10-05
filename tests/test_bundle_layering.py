@@ -8,10 +8,15 @@ from typing import Any, Mapping
 
 from pytest import LogCaptureFixture, mark, raises
 
-from libranet.bundle.errors import BundleError, PasswordProtectedBundleError
+from libranet.bundle.errors import (
+    BundleError,
+    MalformedBundleError,
+    PasswordProtectedBundleError,
+)
 from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.layering import Layering, StoredVersion, Superseded
 from libranet.bundle.loading import load_bundle
+from libranet.bundle.parts import PartPath
 from libranet.bundle.serialization import bundle_value
 from libranet.bundle.shapes import (
     DEFAULT_MAX_EXTENSIONS,
@@ -644,3 +649,125 @@ def test_an_entry_of_no_kind_known_is_logged_and_changes_content(
             "odd is no kind of entry known, so it is taken to change content",
         )
     ]
+
+
+def read_top(sink: Sink, path: PartPath) -> DirectoryBundle:
+    bundle = load_bundle(path, sink)
+    assert isinstance(bundle, DirectoryBundle)
+    return bundle
+
+
+def store_named(
+    sink: Sink,
+    held: Mapping[str, Entry],
+    previous: StoredVersion | None = None,
+    *,
+    encrypted: bool,
+) -> StoredVersion:
+    """``held`` stored as the version after ``previous``, read back by what names it."""
+    versions = () if previous is None else (str(previous.path),)
+    over = (
+        None
+        if previous is None
+        else Superseded.expand(
+            previous.path, read_top(sink, previous.path), partial(load_bundle, source=sink)
+        )
+    )
+    return StoredVersion.store(
+        DirectoryBundle(dict(held), versions=versions),
+        over,
+        sink,
+        None,
+        MAX_BYTES,
+        max_layers=MAX_LAYERS,
+        encrypted=encrypted,
+    )
+
+
+def resolved_path(sink: Sink, path: PartPath) -> dict[str, Entry]:
+    return resolve_directory(read_top(sink, path), partial(load_bundle, source=sink))
+
+
+def test_an_encrypted_version_is_named_with_its_key_and_stored_as_ciphertext() -> None:
+    sink = Sink()
+
+    stored = store_named(sink, entries(300), encrypted=True)
+
+    assert stored.key is not None
+    assert stored.layering == Layering(0, len(read_top(sink, stored.path).extensions))
+    assert resolved_path(sink, stored.path) == entries(300)
+    assert all(b"file" not in data for data in sink.held.values())
+
+
+def test_an_encrypted_version_over_an_encrypted_one_is_a_layer_naming_it_with_its_key() -> None:
+    sink = Sink()
+    first = store_named(sink, entries(10), encrypted=True)
+    held = {**entries(10), "added.txt": FileBundle((part(101),), Metadata(size_bytes=101))}
+
+    second = store_named(sink, held, first, encrypted=True)
+
+    layer = read_top(sink, second.path)
+    assert second.key is not None
+    assert layer.entries == {"added.txt": held["added.txt"]}
+    assert layer.extensions == layer.versions == (str(first.path),)
+    assert second.layering == Layering(1, 1)
+    assert resolved_path(sink, second.path) == held
+
+
+def test_an_encrypted_version_over_a_plain_one_is_a_layer() -> None:
+    sink = Sink()
+    first = store_named(sink, entries(10), encrypted=False)
+
+    second = store_named(sink, entries(11), first, encrypted=True)
+
+    assert second.key is not None
+    assert read_top(sink, second.path).extensions == (str(first.bundle),)
+    assert resolved_path(sink, second.path) == entries(11)
+
+
+def test_a_plain_version_over_an_encrypted_one_is_stored_whole_so_it_carries_no_key() -> None:
+    sink = Sink()
+    first = store_named(sink, entries(10), encrypted=True)
+
+    second = store_named(sink, entries(11), first, encrypted=False)
+
+    assert second.key is None
+    assert second.layering == Layering()
+    assert read_top(sink, second.path).extensions == ()
+    assert resolved_path(sink, second.path) == entries(11)
+
+
+def test_an_encrypted_bundle_expanded_keeps_its_key() -> None:
+    sink = Sink()
+    first = store_named(sink, entries(10), encrypted=True)
+    second = store_named(sink, entries(11), first, encrypted=True)
+
+    expanded = Superseded.expand(
+        second.path, read_top(sink, second.path), partial(load_bundle, source=sink)
+    )
+
+    assert expanded == second.expanded(entries(11))
+    assert expanded.path == second.path
+
+
+def test_a_bundle_kept_expanded_keeps_its_key_and_iv() -> None:
+    kept = Superseded(ContentId.parse(part(0)), KEPT, key=bytes(32), iv=bytes(range(16)))
+
+    value = kept.value()
+
+    assert value["bundle"] == str(kept.path)
+    assert Superseded.from_value(value) == kept
+
+
+def test_a_bundle_kept_expanded_under_a_cipher_not_known_is_an_error() -> None:
+    with raises(ValueError, match="names no bundle"):
+        Superseded.from_value(kept_value(bundle=f"{part(0)}/AES128-CBC/{bytes(16).hex()}"))
+
+
+@mark.parametrize("key", [b"", bytes(31)])
+def test_a_bundle_with_a_key_that_is_not_an_aes_256_key_is_refused(key: bytes) -> None:
+    with raises(MalformedBundleError):
+        Superseded(ContentId.parse(part(0)), KEPT, key=key)
+
+    with raises(MalformedBundleError):
+        StoredVersion(ContentId.parse(part(0)), key=key)

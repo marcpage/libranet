@@ -2,12 +2,20 @@
 
 The web server answers requests and the connection manager makes them, so
 the syntax both speak, the lists both read, how ``localhost`` in a node list
-is resolved, search prefixes and the cached search responses, and the
-``/config`` request bodies the backup module acts on are each defined once,
-here. No module package imports another; what two modules share is here, in
+is resolved, search prefixes and the cached search responses, the
+``/config`` request bodies the backup module acts on, and the bundles local
+clients ask the web server to make are each defined once, here. No module
+package imports another; what two modules share is here, in
 :mod:`libranet.messaging`, or in a library package below them both.
 """
 
+from libranet.protocol.bundle_requests import (
+    BundleEditRequest,
+    BytesSource,
+    CopySource,
+    EntrySource,
+    FileSource,
+)
 from libranet.protocol.client_origin import is_local_client
 from libranet.protocol.config_requests import (
     IDENTIFIER_LENGTH,
@@ -60,7 +68,12 @@ __all__ = [
     "TOKEN",
     "BackupJobRequest",
     "BuildRequest",
+    "BundleEditRequest",
+    "BytesSource",
+    "CopySource",
+    "EntrySource",
     "ExportRequest",
+    "FileSource",
     "ImportRequest",
     "InvalidConfigRequestError",
     "InvalidListError",
