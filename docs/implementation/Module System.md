@@ -255,7 +255,11 @@ what happened. When an answer depends on work elsewhere, they answer `503`
 with `Retry-After` and publish a request, and the client's retry finds the
 result (§9.3). The one exception is an application file, whose request
 waits, for up to `network.app_wait_seconds`, for the unbundler's answer and
-the file's first part, since a `<video>` does not retry a `503` (§8.3). It
+the file's first part, since a `<video>` does not retry a `503` (§8.3). A
+bundle a local client makes (`POST /data/bundles`, Phase 3 Step 72) waits
+alike for the bundles it reads, and each object of it is written to this
+node's own store in `incoming/`, so that it reaches `cas/data` through the
+validator, as an upload does. It
 also keeps count of the peers connected to it, whose keys the eviction
 module keeps.
 It subscribes to only three events, `app.path_resolved`, `backup.state`,
@@ -1156,7 +1160,7 @@ data moves through files, and a message tells the reader where to look.
 
 | File or directory | Written by | Read by | Announced by |
 | --- | --- | --- | --- |
-| `incoming/{algorithm}-{node}/` | Web server, for uploads; connection manager, for fetched content | Validator, which deletes each | `data.put_completed` |
+| `incoming/{algorithm}-{node}/` | Web server, for uploads, and for the bundles local clients make, as this node's; connection manager, for fetched content | Validator, which deletes each | `data.put_completed` |
 | `cas/data/` | Validator; backup; web server and connection manager, peers' keys only; supervisor, this node's key | Every module | `data.stored` |
 | `cas/data/`, deletions | Eviction | — | `data.deleted` |
 | `cas/resolved/` | Unbundler; the web server deletes an entry it cannot read | Web server | `app.path_resolved`, `resolved.reclaimed` |

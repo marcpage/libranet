@@ -33,5 +33,9 @@ class ValueChangedError(ValueError):
     """A stored value is not the one a change was asked of (HttpApi §13.3)."""
 
 
+class BundleEditError(ValueError):
+    """An edit names content that is not what it must be, or puts an entry beneath a file."""
+
+
 class ResponseCutShortError(RuntimeError):
     """A streamed response body cannot be finished, so its connection is closed short of it."""

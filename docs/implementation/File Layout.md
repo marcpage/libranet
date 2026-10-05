@@ -132,7 +132,7 @@ something is written to it.
 | --- | --- | --- |
 | `cas/data/` | Validator; web server (a peer's own public key); supervisor (this node's public key); backup module | Most modules; deleted from only by eviction |
 | `cas/resolved/` | Unbundler; the web server deletes an entry it cannot read | Web server, unbundler |
-| `incoming/` | Web server (`PUT /data`); connection manager (content fetched from peers) | Validator, which deletes each upload it checks |
+| `incoming/` | Web server (`PUT /data`, and `POST /data/bundles` as this node); connection manager (content fetched from peers) | Validator, which deletes each upload it checks |
 | `keys/node_private_key.pem` | Supervisor, on first start | Every module that signs or needs the node id |
 | `keys/backup_secret` | Backup module, when first needed | Backup module |
 | `keys/config_credential` | Web server, on the first `/config` request | Web server |
@@ -219,7 +219,11 @@ uploads are kept apart from another's until checked (HttpApi §7.2). Each has
 the same `data/{algorithm}/{prefix}/{hash}` layout as the source of truth.
 
 The web server writes uploads from `PUT /data/{algorithm}/{hash}`, and the
-connection manager writes content it fetched from peers. The validator
+connection manager writes content it fetched from peers. The web server
+also writes each object of a bundle a local client makes
+(`POST /data/bundles`, Phase 3 Step 72) to this node's own store, as an
+upload from itself, and reads it back from there until the validator has
+moved it. The validator
 checks each upload against its content id, writes it into `cas/data` if it
 matches, and deletes it from `incoming/` either way. Emptied per-node
 directories are left behind.

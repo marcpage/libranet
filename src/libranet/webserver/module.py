@@ -150,6 +150,8 @@ class WebServerModule(ModuleBase):
                     config_hosts=network.config_hosts,
                     local_folders=LocalFolders.of(self._config),
                     backup_state=self._backup_state,
+                    node_id=node.node_id,
+                    max_update_layers=self._config.backup.max_update_layers,
                 ),
                 self.logger,
                 signer,

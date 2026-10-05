@@ -1321,6 +1321,120 @@ My calls, not yet reviewed:
 
 About 450 new or changed lines of non-test Python, so one change set.
 
+Built in full: 1,061 added lines of non-test Python, about half of them
+documentation, and 35 removed. That is past CLAUDE.md's 1,000, so it is
+proposed as two change sets, the first checked green on its own:
+
+1. **Storing a directory bundle encrypted** (`bundle/`), which nothing
+   uses until the second set: an object writer for `StoredDirectory`, a
+   key on `Superseded` and `StoredVersion`, encrypted layers, and
+   `PartWriter.file`. 193 added lines, 26 removed.
+2. **The endpoint**, with the specification and documents. 868 added
+   lines, 9 removed.
+
+What was built is the list above, and these:
+
+- **`BundleEditRequest`** reads its sources as `FileSource`, `CopySource`,
+  and `BytesSource`, and `encrypts` says whether the new bundle is
+  encrypted, as asked or as its base is.
+- **`BundleEditHandler`** (`webserver/bundle_edits.py`) answers
+  `POST /data/bundles`, behind `LocalOnly`. `BundleEdit.read` reads the
+  base, expanded by `Superseded.expand`, and what each source names, each
+  bundle once however often it is named, and names together everything
+  missing. That is asked for with `data.not_found`, again every
+  `network.retry_after_seconds`, and looked for every 0.25 s for up to
+  `network.app_wait_seconds`. `BundleEdit.entries` makes the removals and
+  then the additions, and `BundleEdit.store` stores the bytes given, with
+  `PartWriter.file`, and the bundle, with `StoredVersion.store`.
+- **`OwnUploads`** writes each object to this node's own store in
+  `incoming/`, announcing it with `data.put_completed`, and reads what the
+  node holds and then those uploads.
+- **`StoredDirectory.store` takes an object writer** (`write`), such as a
+  `PartWriter`'s `store`, which stores the bundle and each chunk, and names
+  them, with their keys. `StoredObject` is what a writer gives back.
+- **`Superseded` and `StoredVersion` carry a key**, and `Superseded` an
+  IV, beside the bundle's id, and `path` names the bundle with them.
+  `Superseded.layer` and `StoredVersion.store` take `encrypted`, and a
+  layer that is not encrypted is never written over a bundle that is.
+  `Superseded.expand` takes a bundle by its encrypted path, and
+  `Superseded.value` and `from_value` keep the key.
+- **`PartWriter.file`** gives the bundle of a file whose bytes are at
+  hand, cut into parts, with what its bytes decide and nothing else.
+- **`build_router` routes `/data/bundles` only when given the node's
+  id**, with `max_update_layers`, which the module sets from
+  `backup.max_update_layers`.
+
+Run live on one new node, with a 3,000,000-byte file in a folder offered:
+
+- The file was imported, and a movie bundle made of it and an
+  `info.json`, `201`. An encrypted playlist was made of a folder copied
+  from the movie and a `playlist.json`, and was read into at once, before
+  the validator could be counted on to have stored it: its root, the
+  folder, and `playlist.json` were listed or served, and the film came
+  `200` byte for byte, and `206` for a range across a part's end.
+- A new version replacing the folder's `info.json` was encrypted, and a
+  layer: its top bundle held only that entry, and named the playlist,
+  with its key, in `extensions` and `versions`. Its `info.json` was
+  served as edited.
+- The folder shared as a plain bundle, from the encrypted version, named
+  no version and extended nothing, and its film came byte for byte.
+- The edit made again changed nothing, and was `200` with the version it
+  named. An addition beneath `playlist.json` was `400`, a body of
+  `text/plain` `415`, and one `Sec-Fetch-Site: cross-site` `403`.
+- The validator stored all eight objects, each from this node's own id,
+  and `incoming/` was left empty. Nothing was fetched, and no module
+  logged a warning, but for the cross-site refusal asked for.
+
+Where it departs from the plan, not yet reviewed:
+
+- **A bundle that is not encrypted, over one that is, does not list it in
+  `versions`.** Listed, the base would be named with its key, as in its
+  extensions, which the plan already kept it out of. HttpApi §12.3 now
+  says so.
+- **`Superseded` and `StoredVersion` carry the key beside the id**,
+  rather than being named by a `PartPath`, so that the backup module's
+  code reading them, and their saved form, are unchanged.
+- **`StoredDirectory.store` is given a writer that encrypts**, rather than
+  encrypting itself, since `bundle/parts.py`, where encryption is, imports
+  `bundle/storing.py`.
+- **About 1,060 lines, not 450**, so two change sets, not one.
+
+My calls while building, not yet reviewed:
+
+- **An edit that changes nothing is `200`**, naming the base as the
+  request named it, since nothing was made. A base stored again with
+  other encryption is a change.
+- **A password-protected bundle is `403`**, as for a read into one
+  (§12.1). Any other bundle that cannot be used, as the edit asks, is
+  `400`, `unusable-bundle`: one that is not a bundle, a file where a
+  directory is needed or the reverse, a `from` path the bundle does not
+  hold, or an entry too large for an object. A request that is not an
+  edit is `400`, `invalid-config-request`, as an import is. HttpApi §12.3
+  now says so.
+- **An id under a hash algorithm or a cipher this node lacks is logged as
+  a warning**, and the rest at debug.
+- **An edit reads this node's uploads the validator has not stored yet**,
+  so that a client can name what its last edit made at once, without a
+  fetch. What a content archive holds is held, and not uploaded.
+- **A directory copied brings its own metadata-only entry**, to the path
+  it is copied to, and a directory holding nothing is still there, as a
+  metadata-only entry. A symbolic link is copied as it is, not followed.
+  HttpApi §12.3 now says so.
+- **The additions are made in order of path**, after the removals, so
+  that one beneath another goes into what that one put there, whatever
+  order the request lists them in. Only the same path may not be both
+  added and removed; an addition beneath a directory removed is allowed.
+- **The bytes given are stored only once the paths are checked**, so a
+  refused edit uploads nothing. One that changes nothing may still upload
+  a part of a file it gives, if the node does not hold it.
+- **The new bundle keeps the base's own directory metadata**, as its top
+  bundle records it.
+- **What is not held is asked for again every
+  `network.retry_after_seconds`** while the edit waits, as a file's parts
+  are.
+- **`build_router`'s `max_update_layers` is 0 unless given**, so a router
+  built for a test stores every edit whole.
+
 **Testable in isolation:**
 
 - Request tests for each source, and for the rules.
@@ -1438,6 +1552,7 @@ number, and where it went.
 | #220 | Importing a local file from a folder offered, and getting back its id | 69 |
 | #221 | A store for each application, read by any client and changed by local ones | 70 |
 | #222 | Reading into a bundle by its id, or by an encrypted id carrying its key | 71 |
+| #223 | Making a bundle, and adding to and removing from one, without expanding it | 72 |
 
 ## 5. Suggested Build Order
 
@@ -1450,7 +1565,7 @@ number, and where it went.
 | 5 | 70 (#221) | Needs only 68. |
 | 6 | 71 (#222) | Serves what 65 and 66 serve, from any bundle, and reads encrypted bundles, which 72 makes. |
 | 7 | 69 (#220) | Needs 64's sizes and 68's folders. |
-| 8 | 72 (#213) | Needs 68's checks, 69's file ids, and 71's encrypted bundles. |
+| 8 | 72 (#223) | Needs 68's checks, 69's file ids, and 71's encrypted bundles. |
 | 9 | 73 (#218) | Small, and needs nothing in this phase, so it can go anywhere. |
 | 10 | 67 (#213) | The page, which needs all of the above. |
 
