@@ -30,10 +30,14 @@ every one of which would fill its inbox (Phase 2 Step 61). One that does not
 come within ``wait_seconds`` ends the response: with ``503`` if it has not
 begun, and short if it has.
 
-Each part read is reported as this node's own request for it, as a ``/data``
-read from this machine is. With no reassembled copy, the parts are the only
-copy, and a file being watched would otherwise be handed off as it played
-(Phase 2 Step 29)::
+Each part is reported as this node's own request for it, as a ``/data``
+read from this machine is, when the response first asks for it: once it is
+the next to be read, or one of the parts read ahead, held or not. With no
+reassembled copy, the parts are the only copy, and a file being watched
+would otherwise be handed off as it played (Phase 2 Step 29). Reported only
+once it was read, a part fetched for the response would count no request
+when it arrived, and be let go of before the parts already sent (Phase 3
+Step 75)::
 
     data.requested  {"algorithm": "sha256", "hash": "<hex>", "external": false}
 """
@@ -89,8 +93,8 @@ class _Piece:
 class PartReader:
     """Where the parts of application files are read from, and how one not held is waited for.
 
-    ``content`` holds the parts, and ``publish`` asks for those it lacks and
-    reports those read. A part not held is waited for up to
+    ``content`` holds the parts, and ``publish`` reports each as requested
+    and asks for those it lacks. A part not held is waited for up to
     ``wait_seconds``, looked for every ``poll_interval_seconds``, and asked
     for again every ``ask_again_seconds``, along with as many as
     ``read_ahead_parts`` after it.
@@ -140,7 +144,7 @@ class PartReader:
         return FileStream(self, entry, start_bytes=start_bytes, stop_bytes=stop_bytes)
 
 
-class FileStream:
+class FileStream:  # pylint: disable=too-many-instance-attributes
     """One response's read of a file, or of a span of it, from its parts, a part at a time.
 
     :meth:`begin` reads the first part the response sends, waiting for it if
@@ -199,6 +203,8 @@ class FileStream:
         self._check = WholeFileCheck(entry.metadata) if whole else None
         # When each part not held was last asked for, as monotonic() tells.
         self._asked: dict[ContentId, float] = {}
+        # The pieces before this one have been reported as requested.
+        self._requested_through = 0
         # The next piece to read, and what begin() read of the one before it.
         self._position = 0
         self._begun: bytes | None = None
@@ -299,9 +305,6 @@ class FileStream:
 
                 sleep(min(remaining_seconds, self._reader.poll_interval_seconds))
 
-        self._reader.publish(
-            EventType.DATA_REQUESTED, {**piece.path.content_id.fields(), "external": False}
-        )
         self._position += 1
 
         if self._check is not None:
@@ -313,16 +316,23 @@ class FileStream:
         return piece.sent(part)
 
     def _ask_ahead(self) -> None:
-        """Ask for the parts not held from the next piece's on, as many as are read ahead.
+        """Ask for the parts from the next piece's on, as many as are read ahead.
 
-        A part asked for less than ``ask_again_seconds`` ago is not asked for
-        again.
+        Each is reported as requested the first time it is among them, and
+        asked of the network if it is not held. A part asked for less than
+        ``ask_again_seconds`` ago is not asked for again.
         """
         now = monotonic()
-        window = self._pieces[self._position : self._position + self._reader.read_ahead_parts + 1]
+        end = min(self._position + self._reader.read_ahead_parts + 1, len(self._pieces))
 
-        for piece in window:
-            content_id = piece.path.content_id
+        for index in range(self._position, end):
+            content_id = self._pieces[index].path.content_id
+
+            if index >= self._requested_through:
+                self._reader.publish(
+                    EventType.DATA_REQUESTED, {**content_id.fields(), "external": False}
+                )
+
             asked_at = self._asked.get(content_id)
 
             if asked_at is not None and now - asked_at < self._reader.ask_again_seconds:
@@ -333,6 +343,8 @@ class FileStream:
 
             self._asked[content_id] = now
             self._reader.publish(EventType.DATA_NOT_FOUND, content_id.fields())
+
+        self._requested_through = max(self._requested_through, end)
 
 
 def _span(

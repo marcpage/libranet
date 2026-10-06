@@ -267,6 +267,12 @@ When storage pressure requires eviction:
   connection open with, in either direction: each signature that peer sends
   is checked against its key (§2.2). A peer’s key may go once no connection
   to it remains, since the next handshake brings it back (§3.2).
+- It never selects an object it stored only a short time before, whatever
+  brought it. A node most often fetches content because a request is waiting
+  to read it. Let go at once, to the peer that just sent it, the content would
+  be gone before the request read it, and be fetched again, without end.
+  Storage may go over a limit by what the node stores in that time, until the
+  earliest of it may go.
 - Before deletion it pushes each object to a single peer: its best outgoing
   connection (§4.6), the one to the peer whose identifier shares the longest
   binary prefix with the object’s hash. A peer that does not accept it is
