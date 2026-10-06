@@ -971,7 +971,10 @@ def test_content_stored_again_is_kept_from_when_it_was_stored_last(
     hold(store, CONTENT[4])
     module.handle(stored(CONTENT[4]))
 
-    assert requested(queues) == (SIZE, sorted(str(content) for content in CONTENT[1:5:3]))
+    byte_count, exclude = requested(queues)
+    assert byte_count == SIZE
+    # What is left out is a set, sent in no particular order.
+    assert sorted(exclude) == sorted(str(content) for content in CONTENT[1:5:3])
 
 
 def test_a_hand_off_answered_for_content_stored_again_meanwhile_keeps_it(
