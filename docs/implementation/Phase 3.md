@@ -629,6 +629,122 @@ My calls, not yet reviewed:
 
 About 5 new lines of non-test Python, besides the page, so one change set.
 
+Built as planned, in one change set: 5 changed lines of non-test Python,
+4 of them comments and docstrings, and the page, 1,917 lines, most of them
+its script. The page keeps playlists, plays, imports from the folders,
+adds by id, edits with a poster, moves and removes, shares whole, in part,
+and one movie at a time, and imports a playlist. Each change it makes is
+the edit of a new bundle (Step 72), and the store's `playlists` is changed
+with `If-Match` after it.
+
+Run live on three new nodes on one machine, each listening at every
+address, in headless Chrome 154. The first offered a folder holding a 23
+MB H.264 MP4, a 257 kB VP9 WebM, and a text file:
+
+- Its local client was offered every change. It made `Family`, and the
+  folder listed the two videos, with "1 other file here, not videos."
+  Each import showed its progress, and was added. The editor filled each
+  duration from the video (`1:00`, `0:20`), took a poster from the MP4's
+  frame at 10 s, and saved a year, a rating, two cast names, and a
+  description. Read back, the movie's folder held the film, `info.json`
+  as the plan gives it, and a 48,623-byte `poster.jpg`. Moving the WebM
+  first changed only `playlist.json`.
+- Sharing the edited MP4 made a plain bundle. Sharing part of `Family`
+  made an encrypted one, named `Tests for Bea`. A new playlist named
+  `Family` was refused. A playlist `Kids` took the shared movie by its
+  id, pasted as a link, and refused it the second time, a bad id, and
+  `Family`'s id, which holds no `info.json`.
+- A remote client, the same browser reaching the node at its network
+  address, was offered only playing. It chose `Family` from the store,
+  played the MP4, and seeked to 45 s. After the local client renamed the
+  WebM, the remote client, reloaded, opened the newest version by the
+  name it remembered. A `PUT` to the store and a `POST /data/bundles`
+  from that address were `403`.
+- An edit saved from a version the store had moved past, as from a
+  second tab, was refused, and the newest version read. The editor stayed
+  open with what had been typed, and saving again kept it.
+- A third film imported and not edited, shared, gave back its own bundle:
+  the shared id began with its folder's name.
+- The second node, seeded with the first, started empty. Its local client
+  imported `Tests for Bea` as a new playlist, then `Family`'s newest
+  version into it, which skipped the MP4 it held already. Playing the MP4
+  fetched 20 of its parts from the first node as it began, and 3 more as
+  the seek to 45 s asked for them. A remote client of the second node
+  then played it too.
+- The third film's parts had been pushed to the second node as they were
+  imported (Step 69), so a third node, started after the import, imported
+  that film alone from `Family`. Its remote client played it and seeked
+  to 30 s, the node fetching all 22 parts within those two seconds.
+- The root page linked to `/movie/`, and `/movie/` was served trusted,
+  without the sandbox. Every node stopped cleanly, and none logged a
+  warning.
+
+Not checked: Safari and Firefox, a `412` from the store (two changes to
+it at once), and a film too large for the browser to buffer.
+
+Fixed while trying it: an edit refused as made from an old version first
+reopened the playlist, which closed the player, and with it the editor,
+what had been typed, and the message saying why. The page now reads the
+newest version in place, and says what went wrong in the playlist's
+section when the place it would have said it is gone.
+
+My calls while building, not yet reviewed:
+
+- **A movie imported from a file is added before it is edited.** Its
+  first bundle holds the video and an `info.json` with only a `title`, the
+  file's name without its extension, and `video`. The page then opens the
+  editor on it, where the duration comes from the `<video>`, and saving
+  makes the playlist's next version. A browser plays the file only from a
+  bundle that names it, since a file bundle's own file has no name to
+  type it by, so the movie's own bundle carries neither a duration nor a
+  poster, and a movie shared once edited is a new bundle.
+- **A change made from a version the store has moved past is refused**,
+  not merged or saved over. A `412` is retried, up to 5 times, by reading
+  the store again, but only while the playlist's entry still names the
+  version the change was made from. Otherwise another client changed that
+  playlist, and keeping this change would drop that one.
+- **The first playlist is `PUT` without `If-Match`**, as `If-Match: *`
+  fails for a key not held, and HttpApi §13.3 has no `If-None-Match`. Two
+  clients making the first playlist at once can lose one.
+- **A playlist's name is its own on the node.** Making one, or importing
+  one as new, under a name the store keeps already is refused, before
+  any bundle is made.
+- **Changes are made one at a time in a page**, each from the version the
+  one before made, so two imports ending together do not refuse each
+  other.
+- **An import goes on when its dialog closes**, its progress shown in the
+  playlist's section, and its movie is added to the playlist it was begun
+  for, even with another open by then. The page asks after it every
+  second, with no limit. A page reloaded before it ends loses it: the
+  node finishes the import, and importing the file again reads it again.
+- **The browser remembers the last playlist chosen and no other**, as
+  `{name, bundle}` under `movie.playlist`. Remembered, it opens at the
+  newest version the store keeps of that name, or as remembered if the
+  store cannot be read or keeps it no longer.
+- **A read answered `503` is asked again** up to 6 times, after its
+  `Retry-After`, or 5 s. A poster is asked for 3 times, 5 s apart. A
+  video that fails shows the browser's message with a "Try again".
+- **Adding by id needs an `info.json`.** Anything else is not a movie,
+  and a playlist's id is pointed to importing. An id may be pasted as a
+  link reading into its bundle.
+- **Importing into a playlist skips the movies it holds**, by folder
+  name, and says how many.
+- **Only a local client is offered sharing**, the whole playlist's id
+  included, though the store shows it to any client. A part shared is
+  named, by default as its playlist is.
+- **A remote client plays only the playlists the node keeps.** It is
+  offered no way to open one by id.
+- **`info.json` keeps its keys in the plan's order**, and any others a
+  movie had after them, indented by two spaces, as `playlist.json` is.
+  `year` is a number, `rating` text, `cast` one name to a line, and
+  `duration_seconds` whole seconds, typed as seconds or as `1:52:30`. A
+  poster is a JPEG at quality 0.85.
+- **Only the folders `playlist.json` orders are shown**, and a folder
+  named twice is shown once. One whose `info.json` cannot be read is
+  shown by its name, and can be removed, but not played or edited.
+- **A playlist cannot be renamed, or removed from the store.** The plan
+  asks for neither.
+
 **Testable in isolation:** a test that the shipped applications include
 `movie`, built from `applications/movie/`. The page is checked in a live
 run:

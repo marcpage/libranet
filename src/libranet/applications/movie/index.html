@@ -1,0 +1,1917 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Movies</title>
+<style>
+  :root {
+    --background: #f6f6f4;
+    --surface: #ffffff;
+    --text: #1d1d1b;
+    --muted: #5d5d58;
+    --border: #d8d8d2;
+    --accent: #2a5db0;
+    --accent-text: #ffffff;
+    --bad: #b3261e;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --background: #161615;
+      --surface: #1f1f1d;
+      --text: #ececea;
+      --muted: #a8a8a2;
+      --border: #3a3a36;
+      --accent: #7ea9f0;
+      --accent-text: #0e1a2e;
+      --bad: #f2877e;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  header, main { max-width: 76rem; margin: 0 auto; padding: 0 1rem; }
+  header {
+    padding-top: 1.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+  }
+  main { padding-bottom: 2rem; }
+  h1 { font-size: 1.5rem; margin: 0; }
+  h2 { font-size: 1.15rem; margin: 0; }
+  h3 { font-size: 1.05rem; margin: 0 0 0.75rem; }
+  h4 { font-size: 0.95rem; margin: 1.25rem 0 0.5rem; }
+
+  section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin: 1.25rem 0;
+  }
+
+  .subtitle, .hint, .note { color: var(--muted); }
+  .subtitle { margin: 0.25rem 0 0; }
+  .hint { margin: 0 0 0.75rem; }
+  .note { font-size: 0.9em; }
+  .state { margin: 1rem 0 0; }
+  .result { margin: 0.75rem 0 0; }
+  .error { color: var(--bad); }
+
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em; }
+
+  /* A content id: one click selects all of it. */
+  .id { user-select: all; word-break: break-all; }
+
+  .heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 1rem; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.75rem 0 0; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; margin: 1rem 0 0; }
+
+  button {
+    font: inherit;
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    padding: 0.4rem 0.9rem;
+    background: var(--accent);
+    color: var(--accent-text);
+    cursor: pointer;
+  }
+
+  button.secondary { background: transparent; color: var(--accent); }
+  button.danger { background: transparent; color: var(--bad); border-color: var(--bad); }
+  button.small { padding: 0.2rem 0.55rem; font-size: 0.85rem; }
+  button:disabled { opacity: 0.6; cursor: default; }
+
+  label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; color: var(--muted); }
+  label.wide { flex: 1 1 16rem; }
+  label.check { flex-direction: row; align-items: center; gap: 0.5rem; font-size: 1rem; color: var(--text); }
+  .fields { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end; margin: 0 0 0.75rem; }
+
+  input, select, textarea {
+    font: inherit;
+    font-size: 1rem;
+    color: var(--text);
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.4rem 0.55rem;
+  }
+
+  textarea { width: 100%; resize: vertical; }
+
+  /* The movie playing, and what is known of it. */
+  .player {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(16rem, 2fr);
+    gap: 1.25rem;
+    align-items: start;
+  }
+
+  @media (max-width: 52rem) {
+    .player { grid-template-columns: minmax(0, 1fr); }
+  }
+
+  video { display: block; width: 100%; max-height: 70vh; background: #000; border-radius: 6px; }
+  .details p { margin: 0.4rem 0; }
+  .description { white-space: pre-wrap; }
+  .poster-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin: 0 0 0.75rem; }
+  .poster-row img { width: 8rem; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 4px; }
+
+  /* The playlist's movies. */
+  .movies {
+    list-style: none;
+    margin: 1rem 0 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+    gap: 1rem;
+  }
+
+  button.pick {
+    display: block;
+    width: 100%;
+    padding: 0.35rem;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text);
+    text-align: left;
+  }
+
+  button.pick[aria-pressed="true"] { border-color: var(--accent); }
+
+  .poster {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    border-radius: 6px;
+    background: var(--border);
+  }
+
+  span.poster { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 1.75rem; }
+  .caption { display: block; padding: 0.4rem 0.15rem 0; }
+  .caption strong, .caption .note { display: block; overflow-wrap: anywhere; }
+
+  /* Lists of choices: playlists, folders, and movies to take. */
+  .choices { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .choices button[aria-current="true"] { background: var(--accent); color: var(--accent-text); }
+
+  .entries {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 50vh;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+
+  .entries li { padding: 0.35rem 0.6rem; }
+  .entries li + li { border-top: 1px solid var(--border); }
+
+  .entries button {
+    display: flex;
+    width: 100%;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.15rem 0;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    text-align: left;
+  }
+
+  .entries button span:first-child { overflow-wrap: anywhere; }
+  .crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; margin: 0 0 0.5rem; }
+  .crumbs button { padding: 0.1rem 0.4rem; }
+
+  .activity { list-style: none; margin: 0.75rem 0 0; padding: 0; }
+  .activity li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; margin: 0.35rem 0; }
+  .activity progress { flex: 0 1 12rem; }
+
+  dialog {
+    width: min(40rem, calc(100vw - 2rem));
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem;
+    background: var(--surface);
+    color: var(--text);
+  }
+
+  dialog::backdrop { background: rgb(0 0 0 / 0.5); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Movies</h1>
+    <p class="subtitle" id="client-note">Asking the node&hellip;</p>
+  </div>
+  <button type="button" class="secondary" id="choose-playlist" hidden>Playlists</button>
+</header>
+
+<main>
+  <noscript><section><p>This page needs JavaScript.</p></section></noscript>
+  <p class="state" id="page-state" role="status" hidden></p>
+
+  <section id="chooser" aria-labelledby="chooser-heading" hidden>
+    <h2 id="chooser-heading">Playlists</h2>
+    <p class="state" id="chooser-state" role="status" hidden></p>
+    <ul class="choices state" id="chooser-list"></ul>
+    <div class="toolbar local-only" hidden>
+      <button type="button" id="new-playlist">New playlist</button>
+      <button type="button" class="secondary" id="import-playlist">Import a playlist</button>
+    </div>
+  </section>
+
+  <section id="player-section" aria-labelledby="movie-title" hidden>
+    <div class="player">
+      <div>
+        <video id="video" controls preload="metadata" playsinline></video>
+        <div id="video-trouble" hidden>
+          <p class="result error" id="video-state" role="alert"></p>
+          <div class="toolbar">
+            <button type="button" class="secondary small" id="video-again">Try again</button>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="details" id="details">
+          <h2 id="movie-title"></h2>
+          <p class="note" id="movie-facts"></p>
+          <p id="movie-cast"></p>
+          <p class="description" id="movie-description"></p>
+          <div class="toolbar local-only" hidden>
+            <button type="button" id="edit-movie">Edit</button>
+            <button type="button" class="secondary" id="share-movie">Share</button>
+            <button type="button" class="secondary" id="move-up">Earlier</button>
+            <button type="button" class="secondary" id="move-down">Later</button>
+            <button type="button" class="danger" id="remove-movie">Remove</button>
+          </div>
+          <p class="result" id="movie-result" role="status" hidden></p>
+        </div>
+        <form id="editor" hidden>
+          <h3>What is known of this movie</h3>
+          <div class="fields">
+            <label class="wide">Title <input id="edit-title" autocomplete="off"></label>
+            <label>Year <input id="edit-year" inputmode="numeric" size="5" autocomplete="off"></label>
+            <label>Rating <input id="edit-rating" size="6" autocomplete="off"></label>
+            <label>Duration <input id="edit-duration" size="8" autocomplete="off" placeholder="1:52:30"></label>
+          </div>
+          <div class="fields">
+            <label class="wide">Cast, one to a line <textarea id="edit-cast" rows="3"></textarea></label>
+          </div>
+          <div class="fields">
+            <label class="wide">Description <textarea id="edit-description" rows="4"></textarea></label>
+          </div>
+          <div class="poster-row">
+            <img id="poster-preview" alt="The poster" hidden>
+            <button type="button" class="secondary small" id="take-poster">Use the frame showing as the poster</button>
+          </div>
+          <p class="result" id="poster-result" role="status" hidden></p>
+          <div class="buttons">
+            <button type="button" class="secondary" id="cancel-edit">Cancel</button>
+            <button type="submit">Save</button>
+          </div>
+          <p class="result" id="editor-result" role="status" hidden></p>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <section id="library" aria-labelledby="playlist-name" hidden>
+    <div class="heading">
+      <h2 id="playlist-name"></h2>
+      <span class="note" id="playlist-count"></span>
+    </div>
+    <div class="toolbar local-only" hidden>
+      <button type="button" id="add-file">Add from a file</button>
+      <button type="button" class="secondary" id="add-id">Add by id</button>
+      <button type="button" class="secondary" id="share-playlist">Share</button>
+    </div>
+    <ul class="activity" id="activity"></ul>
+    <p class="result" id="library-result" role="status" hidden></p>
+    <p class="state" id="library-state" hidden></p>
+    <ol class="movies" id="movies"></ol>
+  </section>
+</main>
+
+<dialog id="new-dialog" aria-labelledby="new-heading">
+  <form id="new-form">
+    <h3 id="new-heading">New playlist</h3>
+    <div class="fields">
+      <label class="wide">Name <input id="new-name" required autocomplete="off"></label>
+    </div>
+    <p class="hint">Only this node keeps its list of playlists. A playlist itself is held by the
+    network, encrypted, and can be read only by whoever is given its id.</p>
+    <p class="result" id="new-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="submit">Make</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="file-dialog" aria-labelledby="file-heading">
+  <h3 id="file-heading">Add a movie from a file</h3>
+  <p class="hint">The folders this node offers. Choose a video, and it is imported into the
+  network, and added to this playlist.</p>
+  <nav class="crumbs" id="folder-path" aria-label="Where in the folders"></nav>
+  <ul class="entries" id="folder-entries"></ul>
+  <p class="result" id="folder-state" role="status" hidden></p>
+  <div class="buttons">
+    <button type="button" class="secondary" data-close>Close</button>
+  </div>
+</dialog>
+
+<dialog id="id-dialog" aria-labelledby="id-heading">
+  <form id="id-form">
+    <h3 id="id-heading">Add a movie by its id</h3>
+    <div class="fields">
+      <label class="wide">Movie id
+        <input id="movie-id" required autocomplete="off" spellcheck="false" placeholder="sha256/…">
+      </label>
+    </div>
+    <p class="result" id="id-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="submit">Add</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="share-dialog" aria-labelledby="share-heading">
+  <h3 id="share-heading">Share this playlist</h3>
+  <p class="hint">Whoever is given this id can play the whole playlist as it is now, and import
+  it on their own node. No one else can read it.</p>
+  <p><code class="id" id="share-whole"></code></p>
+  <div class="toolbar"><button type="button" class="secondary small" data-copy="share-whole">Copy</button></div>
+  <h4>Part of it</h4>
+  <p class="hint">Choose the movies to share, and an id is made for them alone.</p>
+  <ul class="entries" id="share-choices"></ul>
+  <div class="fields state">
+    <label class="wide">Name <input id="share-name" autocomplete="off"></label>
+    <button type="button" id="share-part">Make an id</button>
+  </div>
+  <p class="result" id="share-state" role="status" hidden></p>
+  <div id="share-made" hidden>
+    <p><code class="id" id="share-part-id"></code></p>
+    <div class="toolbar"><button type="button" class="secondary small" data-copy="share-part-id">Copy</button></div>
+  </div>
+  <div class="buttons">
+    <button type="button" class="secondary" data-close>Done</button>
+  </div>
+</dialog>
+
+<dialog id="shared-dialog" aria-labelledby="shared-heading">
+  <h3 id="shared-heading"></h3>
+  <p class="hint">Whoever is given this id can play this movie, and add it to a playlist of their
+  own.</p>
+  <p><code class="id" id="shared-id"></code></p>
+  <div class="toolbar"><button type="button" class="secondary small" data-copy="shared-id">Copy</button></div>
+  <div class="buttons">
+    <button type="button" class="secondary" data-close>Done</button>
+  </div>
+</dialog>
+
+<dialog id="import-dialog" aria-labelledby="import-heading">
+  <h3 id="import-heading">Import a playlist</h3>
+  <form id="import-read">
+    <div class="fields">
+      <label class="wide">Playlist id
+        <input id="import-id" required autocomplete="off" spellcheck="false" placeholder="sha256/…">
+      </label>
+      <button type="submit">Read</button>
+    </div>
+    <p class="result" id="import-read-result" role="status" hidden></p>
+  </form>
+  <div id="import-choose" hidden>
+    <p class="hint" id="import-summary"></p>
+    <ul class="entries" id="import-choices"></ul>
+    <div class="fields state">
+      <label>Into <select id="import-target"></select></label>
+      <label class="wide" id="import-name-label">Name <input id="import-name" autocomplete="off"></label>
+    </div>
+    <p class="result" id="import-state" role="status" hidden></p>
+  </div>
+  <div class="buttons">
+    <button type="button" class="secondary" data-close>Close</button>
+    <button type="button" id="import-go" hidden>Import</button>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+
+// The endpoints this page uses (HttpApi 2.4, 12.2, 12.3, 13.3). What a
+// bundle holds is read at DATA, then its id, then a path (HttpApi 12.1).
+const CLIENT = "/data/client";
+const DIRECTORY = "/data/directory";
+const IMPORTS = "/data/imports";
+const BUNDLES = "/data/bundles";
+const STORE = "/data/store/movie";
+const DATA = "/data/";
+
+// The key of this application's store listing the playlists this node keeps.
+const PLAYLISTS = "playlists";
+
+// Where this browser remembers the last playlist chosen.
+const REMEMBERED = "movie.playlist";
+
+// What a playlist and a movie hold.
+const PLAYLIST_FILE = "playlist.json";
+const INFO_FILE = "info.json";
+const POSTER_FILE = "poster.jpg";
+
+// What a movie's info.json holds, in the order it is written.
+const INFO_KEYS = [
+  "title", "year", "rating", "cast", "description", "duration_seconds", "video", "poster",
+];
+
+// How many hex digits of a movie bundle's hash name its folder in a playlist.
+const FOLDER_DIGITS = 16;
+
+// A poster is a JPEG of the frame showing, no wider than this.
+const POSTER_MAX_WIDTH = 1280;
+const POSTER_QUALITY = 0.85;
+
+// How often an import is asked after.
+const IMPORT_POLL_SECONDS = 1;
+
+// What a 503 that does not say is waited for, and how many are waited out
+// before the answer is given up on.
+const DEFAULT_RETRY_SECONDS = 5;
+const MAX_WAITS = 6;
+
+// How many times a poster is asked for before it is given up on.
+const POSTER_TRIES = 3;
+
+// How many times a change to the store is made again when another came first.
+const STORE_ATTEMPTS = 5;
+
+// A content id, plain or carrying the key of a bundle stored encrypted (HttpApi 5).
+const CONTENT_ID = /^[a-z0-9-]+\/[0-9a-f]+(?:\/[A-Za-z0-9:-]+\/[0-9a-f]+)?$/;
+
+const state = {
+  // Whether this browser is on the node's own machine (HttpApi 2.4).
+  local: false,
+  // The playlist open, and the folder of the movie chosen in it.
+  playlist: null,
+  selected: null,
+  // The poster taken while editing: its bytes, as base64, and a URL showing it.
+  poster: null,
+};
+
+function byId(id) {
+  return document.getElementById(id);
+}
+
+function make(tag, text, className) {
+  const node = document.createElement(tag);
+
+  if (text !== undefined && text !== null) {
+    node.textContent = String(text);
+  }
+
+  if (className) {
+    node.className = className;
+  }
+
+  return node;
+}
+
+function show(element, message, isError = false) {
+  element.textContent = message;
+  element.classList.toggle("error", isError);
+  element.hidden = !message;
+}
+
+function sleep(seconds) {
+  return new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+}
+
+function isObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isText(value) {
+  return typeof value === "string" && value !== "";
+}
+
+// Whether a value from a movie's info.json is one this page shows.
+function isShown(value) {
+  return isText(value) || (typeof value === "number" && Number.isFinite(value));
+}
+
+function plural(count, one, many) {
+  return count === 1 ? `1 ${one}` : `${count} ${many}`;
+}
+
+function formatDuration(seconds) {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) {
+    return "";
+  }
+
+  const whole = Math.round(seconds);
+  const hours = Math.floor(whole / 3600);
+  const minutes = Math.floor(whole / 60) % 60;
+  const two = (count) => String(count).padStart(2, "0");
+  return hours ? `${hours}:${two(minutes)}:${two(whole % 60)}` : `${minutes}:${two(whole % 60)}`;
+}
+
+// Seconds, from "5025", "83:45", or "1:23:45": null for nothing, NaN for anything else.
+function parseDuration(text) {
+  if (text === "") {
+    return null;
+  }
+
+  if (!/^\d+(?::[0-5]?\d){0,2}$/.test(text)) {
+    return NaN;
+  }
+
+  return text.split(":").reduce((total, part) => total * 60 + Number(part), 0);
+}
+
+function formatSize(bytes) {
+  if (typeof bytes !== "number") {
+    return "";
+  }
+
+  for (const [unit, size] of [["GB", 1e9], ["MB", 1e6], ["kB", 1e3]]) {
+    if (bytes >= size) {
+      return `${(bytes / size).toFixed(1)} ${unit}`;
+    }
+  }
+
+  return `${bytes} B`;
+}
+
+function retryAfter(headers) {
+  const seconds = Number.parseInt(headers.get("Retry-After") || "", 10);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : DEFAULT_RETRY_SECONDS;
+}
+
+// The node could not be reached at all.
+class Unreachable extends Error {}
+
+// An answer that is not what was asked for, saying what the node said of it.
+class Refusal extends Error {
+  constructor(result) {
+    const problem = isObject(result.value) ? result.value : {};
+    super(problem.detail || problem.title || `The node answered ${result.status}.`);
+    this.status = result.status;
+  }
+}
+
+// One request to the node. `value` is the body read as JSON, or null. What
+// changes is never answered from the browser's cache; what a bundle holds
+// never changes, and may be.
+async function call(method, path, { body, headers = {}, cache = "no-store" } = {}) {
+  const init = { method, cache, headers: { ...headers } };
+
+  if (body !== undefined) {
+    init.headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(body);
+  }
+
+  let response;
+
+  try {
+    response = await fetch(path, init);
+  } catch (error) {
+    throw new Unreachable(`The node could not be reached: ${error.message}`);
+  }
+
+  const text = await response.text();
+  let value = null;
+
+  try {
+    value = text ? JSON.parse(text) : null;
+  } catch (error) {
+    value = null;
+  }
+
+  return { status: response.status, ok: response.ok, headers: response.headers, value };
+}
+
+// As call, but waiting out the 503s the node answers while it fetches what it lacks.
+async function patiently(method, path, options) {
+  for (let waits = 0; ; waits += 1) {
+    const result = await call(method, path, options);
+
+    if (result.status !== 503 || waits >= MAX_WAITS) {
+      return result;
+    }
+
+    await sleep(retryAfter(result.headers));
+  }
+}
+
+function encodedPath(path) {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
+// Where the entry at `path` in `bundle` is read. The empty path is the
+// bundle's root, which needs its "/" (HttpApi 12.1).
+function entryUrl(bundle, path) {
+  return `${DATA}${bundle}/${encodedPath(path)}`;
+}
+
+// The JSON at `path` in `bundle`: a file, or a directory's entries.
+async function readEntry(bundle, path) {
+  const result = await patiently("GET", entryUrl(bundle, path), { cache: "default" });
+
+  if (!result.ok) {
+    throw new Refusal(result);
+  }
+
+  if (result.value === null) {
+    throw new Error(`${path} is not JSON.`);
+  }
+
+  return result.value;
+}
+
+// The id a person pasted: alone, or in a link reading into its bundle.
+function parseId(text) {
+  let id = text.trim();
+  const at = id.indexOf(DATA);
+
+  if (at >= 0) {
+    id = id.slice(at + DATA.length);
+  }
+
+  id = id.replace(/\/+$/, "");
+  return CONTENT_ID.test(id) ? id : null;
+}
+
+// The folder a movie is added to a playlist in, named by its bundle's hash.
+function folderOf(movie) {
+  return movie.split("/")[1].slice(0, FOLDER_DIGITS);
+}
+
+function playlistText(name, order) {
+  return `${JSON.stringify({ name, order }, null, 2)}\n`;
+}
+
+// A movie's info.json, its keys in their order, and any others it had after them.
+function infoText(info) {
+  const ordered = {};
+
+  for (const key of [...INFO_KEYS, ...Object.keys(info)]) {
+    if (!(key in ordered) && info[key] !== undefined) {
+      ordered[key] = info[key];
+    }
+  }
+
+  return `${JSON.stringify(ordered, null, 2)}\n`;
+}
+
+// Makes a bundle (HttpApi 12.3) and returns its id.
+async function makeBundle(edit) {
+  const result = await patiently("POST", BUNDLES, { body: edit });
+
+  if (!result.ok || !isObject(result.value) || typeof result.value.bundle !== "string") {
+    throw new Refusal(result);
+  }
+
+  return result.value.bundle;
+}
+
+// One version of a playlist: its bundle, the order of its movies' folders,
+// and what is known of each movie, or null where that could not be read.
+class Playlist {
+  constructor(name, bundle, order, movies) {
+    this.name = name;
+    this.bundle = bundle;
+    this.order = order;
+    this.movies = movies;
+  }
+
+  // The playlist `bundle` holds, named `name`, or as its playlist.json names it.
+  static async read(bundle, name) {
+    const file = await readEntry(bundle, PLAYLIST_FILE);
+
+    if (!isObject(file) || !Array.isArray(file.order) || !file.order.every(isText)) {
+      throw new Error(`That bundle's ${PLAYLIST_FILE} is not a playlist's.`);
+    }
+
+    const order = [...new Set(file.order)];
+    const infos = await Promise.all(order.map((folder) => Playlist.info(bundle, folder)));
+    const movies = new Map(order.map((folder, index) => [folder, infos[index]]));
+    return new Playlist(name || (isText(file.name) ? file.name : "Untitled"), bundle, order, movies);
+  }
+
+  // What is known of the movie in `folder` of `bundle`, or null.
+  static async info(bundle, folder) {
+    try {
+      const info = await readEntry(bundle, `${folder}/${INFO_FILE}`);
+      return isObject(info) ? info : null;
+    } catch (error) {
+      console.warn(`The ${INFO_FILE} of ${folder} could not be read: ${error.message}`);
+      return null;
+    }
+  }
+
+  url(folder, file) {
+    return entryUrl(this.bundle, `${folder}/${file}`);
+  }
+
+  title(folder) {
+    const info = this.movies.get(folder);
+    return (info && (isText(info.title) ? info.title : info.video)) || folder;
+  }
+
+  holds(folder) {
+    return this.order.includes(folder);
+  }
+
+  entry() {
+    return { name: this.name, bundle: this.bundle };
+  }
+
+  with(bundle, order, movies) {
+    return new Playlist(this.name, bundle, order, movies);
+  }
+}
+
+function isEntry(entry) {
+  return isObject(entry) && isText(entry.name) && isText(entry.bundle);
+}
+
+// The playlists this node keeps, each by name at its newest version, as
+// this application's store lists them (HttpApi 13.3).
+class Kept {
+  constructor(list, tag) {
+    this.list = list;
+    this.tag = tag;
+  }
+
+  static async read() {
+    const result = await call("GET", `${STORE}/${PLAYLISTS}`);
+
+    if (result.status === 404) {
+      return new Kept([], null);
+    }
+
+    if (!result.ok) {
+      throw new Refusal(result);
+    }
+
+    const list = Array.isArray(result.value) ? result.value.filter(isEntry) : [];
+    return new Kept(list, result.headers.get("ETag"));
+  }
+
+  // Keeps the list `change` makes of the one kept, reading it again and
+  // making the change again whenever another change came first.
+  static async change(change) {
+    for (let attempt = 1; ; attempt += 1) {
+      const kept = await Kept.read();
+      const list = change(kept.list);
+      const headers = kept.tag ? { "If-Match": kept.tag } : {};
+      const result = await call("PUT", `${STORE}/${PLAYLISTS}`, { body: list, headers });
+
+      if (result.ok) {
+        return new Kept(list, null);
+      }
+
+      if (result.status !== 412 || attempt >= STORE_ATTEMPTS) {
+        throw new Refusal(result);
+      }
+    }
+  }
+
+  find(name) {
+    return this.list.find((entry) => entry.name === name) || null;
+  }
+}
+
+function recall() {
+  try {
+    const entry = JSON.parse(localStorage.getItem(REMEMBERED) || "null");
+    return isEntry(entry) ? entry : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function remember(entry) {
+  try {
+    localStorage.setItem(REMEMBERED, JSON.stringify(entry));
+  } catch (error) {
+    console.warn(`This browser cannot remember the playlist chosen: ${error.message}`);
+  }
+}
+
+// A playlist was changed elsewhere since this page read it.
+class Conflict extends Error {}
+
+// Keeps `next` as its playlist's newest version: `previous` is the version
+// it was made from, or null for a new playlist.
+async function keepVersion(previous, next) {
+  await Kept.change((list) => {
+    const index = list.findIndex((entry) => entry.name === next.name);
+
+    if (previous === null && index >= 0) {
+      throw new Error(`This node already keeps a playlist named “${next.name}”.`);
+    }
+
+    if (index < 0) {
+      return [...list, next.entry()];
+    }
+
+    if (list[index].bundle !== previous.bundle) {
+      throw new Conflict(`“${next.name}” was changed elsewhere since this page read it.`);
+    }
+
+    return list.map((entry, at) => (at === index ? next.entry() : entry));
+  });
+  remember(next.entry());
+}
+
+// Changes to playlists are made one at a time, each from the version the
+// one before it made.
+let changing = Promise.resolve();
+
+function serially(action) {
+  const run = changing.then(action);
+  changing = run.catch(() => undefined);
+  return run;
+}
+
+// The newest version this page knows of the playlist named `name`.
+async function newest(name) {
+  if (state.playlist && state.playlist.name === name) {
+    return state.playlist;
+  }
+
+  const entry = (await Kept.read()).find(name);
+
+  if (!entry) {
+    throw new Error(`This node no longer keeps a playlist named “${name}”.`);
+  }
+
+  return Playlist.read(entry.bundle, name);
+}
+
+// Makes a new version of `playlist`, keeps it as the newest, and returns it.
+// Its playlist.json is written again only if the order changed.
+async function changePlaylist(
+  playlist, { add = {}, remove = [], order = playlist.order, movies = playlist.movies },
+) {
+  const additions = { ...add };
+
+  if (JSON.stringify(order) !== JSON.stringify(playlist.order)) {
+    additions[PLAYLIST_FILE] = { text: playlistText(playlist.name, order) };
+  }
+
+  const bundle = await makeBundle({ base: playlist.bundle, add: additions, remove });
+  const next = playlist.with(bundle, order, movies);
+
+  if (bundle !== playlist.bundle) {
+    try {
+      await keepVersion(playlist, next);
+    } catch (error) {
+      if (!(error instanceof Conflict)) {
+        throw error;
+      }
+
+      if (state.playlist && state.playlist.name === playlist.name) {
+        await reopen(playlist.name);
+      }
+
+      throw new Error(`${error.message} Its newest version has been read, so make the change again.`);
+    }
+  }
+
+  if (state.playlist && state.playlist.name === next.name) {
+    state.playlist = next;
+    renderLibrary();
+  }
+
+  return next;
+}
+
+// Makes a playlist named `name`, holding the movies in `folders` of
+// `source`, if any, and keeps it.
+async function makePlaylist(name, folders = [], source = null) {
+  if ((await Kept.read()).find(name)) {
+    throw new Error(`This node already keeps a playlist named “${name}”.`);
+  }
+
+  const add = { [PLAYLIST_FILE]: { text: playlistText(name, folders) } };
+
+  for (const folder of folders) {
+    add[folder] = { from: source.bundle, path: folder };
+  }
+
+  const bundle = await makeBundle({ encrypted: true, add });
+  const movies = new Map(folders.map((folder) => [folder, source.movies.get(folder)]));
+  const playlist = new Playlist(name, bundle, folders, movies);
+  await keepVersion(null, playlist);
+  return playlist;
+}
+
+// Adds the movie bundle `movie` to `playlist`, in a folder of its own, and
+// returns the folder.
+async function addMovie(playlist, movie, info) {
+  const folder = folderOf(movie);
+
+  if (playlist.holds(folder)) {
+    throw new Error(`“${playlist.name}” already holds that movie.`);
+  }
+
+  await changePlaylist(playlist, {
+    add: { [folder]: { from: movie, path: "" } },
+    order: [...playlist.order, folder],
+    movies: new Map(playlist.movies).set(folder, info),
+  });
+  return folder;
+}
+
+// Opening a playlist, and choosing one.
+
+function closePlayer() {
+  const video = byId("video");
+  video.pause();
+  video.removeAttribute("src");
+  video.removeAttribute("poster");
+  delete video.dataset.source;
+  video.load();
+  stopEditing();
+  state.selected = null;
+  byId("video-trouble").hidden = true;
+  byId("player-section").hidden = true;
+}
+
+function showPlaylist(playlist) {
+  closePlayer();
+  state.playlist = playlist;
+  remember(playlist.entry());
+  byId("chooser").hidden = true;
+  show(byId("library-result"), "");
+  renderLibrary();
+}
+
+async function openPlaylist(entry) {
+  const status = byId("page-state");
+  show(status, `Reading “${entry.name}”…`);
+
+  try {
+    showPlaylist(await Playlist.read(entry.bundle, entry.name));
+  } finally {
+    show(status, "");
+  }
+}
+
+// Reads again the newest version the store keeps of the playlist open,
+// named `name`, leaving the movie chosen open, and any edit to it.
+async function reopen(name) {
+  const entry = (await Kept.read()).find(name);
+
+  if (entry) {
+    state.playlist = await Playlist.read(entry.bundle, entry.name);
+    remember(state.playlist.entry());
+    renderLibrary();
+  }
+}
+
+async function showChooser() {
+  const chooser = byId("chooser");
+  const status = byId("chooser-state");
+  const list = byId("chooser-list");
+  chooser.hidden = false;
+  list.replaceChildren();
+  show(status, "Asking the node…");
+  let kept;
+
+  try {
+    kept = await Kept.read();
+  } catch (error) {
+    show(status, `The playlists could not be read: ${error.message}`, true);
+    return;
+  }
+
+  list.replaceChildren(...kept.list.map((entry) => playlistChoice(entry)));
+
+  if (kept.list.length > 0) {
+    show(status, "Choose a playlist.");
+  } else if (state.local) {
+    show(status, "This node keeps no playlists yet. Make one, or import one by its id.");
+  } else {
+    show(status, "This node keeps no playlists yet. They are made in a browser on the node's own machine.");
+  }
+}
+
+function playlistChoice(entry) {
+  const item = make("li");
+  const control = make("button", entry.name, "secondary");
+  control.type = "button";
+
+  if (state.playlist && state.playlist.name === entry.name) {
+    control.setAttribute("aria-current", "true");
+  }
+
+  control.addEventListener("click", () => perform(control, byId("chooser-state"), () => openPlaylist(entry)));
+  item.append(control);
+  return item;
+}
+
+// The playlist and its movies.
+
+function renderLibrary() {
+  const playlist = state.playlist;
+  const count = playlist.order.length;
+  byId("library").hidden = false;
+  byId("playlist-name").textContent = playlist.name;
+  byId("playlist-count").textContent = plural(count, "movie", "movies");
+  byId("movies").replaceChildren(...playlist.order.map((folder) => movieItem(playlist, folder)));
+
+  if (count > 0) {
+    show(byId("library-state"), "");
+  } else if (state.local) {
+    show(byId("library-state"), "This playlist holds no movies yet. Add one from a file, or by its id.");
+  } else {
+    show(byId("library-state"), "This playlist holds no movies yet.");
+  }
+
+  if (state.selected !== null && !playlist.holds(state.selected)) {
+    closePlayer();
+  } else if (state.selected !== null) {
+    showDetails();
+  }
+}
+
+function movieItem(playlist, folder) {
+  const info = playlist.movies.get(folder);
+  const item = make("li");
+  const pick = make("button", null, "pick");
+  pick.type = "button";
+  pick.dataset.folder = folder;
+  pick.setAttribute("aria-pressed", String(folder === state.selected));
+  pick.append(posterImage(playlist, folder, info), caption(playlist, folder, info));
+  pick.addEventListener("click", () => select(folder));
+  item.append(pick);
+  return item;
+}
+
+function noPoster() {
+  const placeholder = make("span", "▶", "poster");
+  placeholder.setAttribute("aria-hidden", "true");
+  return placeholder;
+}
+
+// A movie's poster, asked for again a few times if the node is still fetching it.
+function posterImage(playlist, folder, info) {
+  if (!info || !isText(info.poster)) {
+    return noPoster();
+  }
+
+  const image = make("img", null, "poster");
+  const url = playlist.url(folder, info.poster);
+  let tries = 1;
+  image.alt = "";
+  image.loading = "lazy";
+  image.addEventListener("error", () => {
+    if (tries >= POSTER_TRIES) {
+      image.replaceWith(noPoster());
+      return;
+    }
+
+    tries += 1;
+    setTimeout(() => { image.src = url; }, DEFAULT_RETRY_SECONDS * 1000);
+  });
+  image.src = url;
+  return image;
+}
+
+function facts(info) {
+  if (!info) {
+    return "What is known of this movie could not be read.";
+  }
+
+  return [info.year, info.rating, formatDuration(info.duration_seconds)].filter(isShown).join(" · ");
+}
+
+function caption(playlist, folder, info) {
+  const text = make("span", null, "caption");
+  text.append(make("strong", playlist.title(folder)), make("span", facts(info), "note"));
+  return text;
+}
+
+// The movie playing.
+
+function select(folder) {
+  const playlist = state.playlist;
+  const info = playlist.movies.get(folder);
+  const video = byId("video");
+  const source = info && isText(info.video) ? `${folder}/${info.video}` : "";
+  stopEditing();
+  state.selected = folder;
+  show(byId("movie-result"), "");
+
+  // The same movie of a newer version of the playlist plays on where it was.
+  if (video.dataset.source !== source) {
+    video.dataset.source = source;
+    byId("video-trouble").hidden = true;
+
+    if (source) {
+      video.src = playlist.url(folder, info.video);
+    } else {
+      video.removeAttribute("src");
+      video.load();
+    }
+  }
+
+  byId("player-section").hidden = false;
+  showDetails();
+  byId("player-section").scrollIntoView({ block: "start", behavior: "smooth" });
+}
+
+function showDetails() {
+  const playlist = state.playlist;
+  const folder = state.selected;
+  const info = playlist.movies.get(folder);
+  const cast = info && Array.isArray(info.cast) ? info.cast.filter(isText) : [];
+  const video = byId("video");
+  byId("movie-title").textContent = playlist.title(folder);
+  byId("movie-facts").textContent = facts(info);
+  byId("movie-cast").textContent = cast.length ? `With ${cast.join(", ")}` : "";
+  byId("movie-description").textContent = info && isText(info.description) ? info.description : "";
+
+  if (info && isText(info.poster)) {
+    video.poster = playlist.url(folder, info.poster);
+  } else {
+    video.removeAttribute("poster");
+  }
+
+  for (const pick of byId("movies").querySelectorAll("button.pick")) {
+    pick.setAttribute("aria-pressed", String(pick.dataset.folder === folder));
+  }
+
+  refreshControls();
+}
+
+// Enables only the changes that can be made to the movie chosen.
+function refreshControls() {
+  const playlist = state.playlist;
+  const at = playlist && state.selected !== null ? playlist.order.indexOf(state.selected) : -1;
+  byId("move-up").disabled = at <= 0;
+  byId("move-down").disabled = at < 0 || at >= playlist.order.length - 1;
+  byId("edit-movie").disabled = at < 0 || !playlist.movies.get(state.selected);
+}
+
+function videoTrouble() {
+  const video = byId("video");
+
+  if (!video.getAttribute("src")) {
+    return;
+  }
+
+  const said = video.error && video.error.message ? `: ${video.error.message}` : ".";
+  byId("video-state").textContent = `This video could not be played${said} `
+    + "If the node was still fetching it, try again.";
+  byId("video-trouble").hidden = false;
+}
+
+// Editing what is known of a movie.
+
+function startEditing() {
+  const playlist = state.playlist;
+  const folder = state.selected;
+  const info = playlist.movies.get(folder);
+
+  if (!info) {
+    return;
+  }
+
+  const preview = byId("poster-preview");
+  byId("edit-title").value = isText(info.title) ? info.title : "";
+  byId("edit-year").value = isShown(info.year) ? String(info.year) : "";
+  byId("edit-rating").value = isShown(info.rating) ? String(info.rating) : "";
+  byId("edit-duration").value = formatDuration(info.duration_seconds);
+  byId("edit-cast").value = Array.isArray(info.cast) ? info.cast.filter(isText).join("\n") : "";
+  byId("edit-description").value = isText(info.description) ? info.description : "";
+  forgetPoster();
+
+  if (isText(info.poster)) {
+    preview.src = playlist.url(folder, info.poster);
+    preview.hidden = false;
+  } else {
+    preview.removeAttribute("src");
+    preview.hidden = true;
+  }
+
+  show(byId("poster-result"), "");
+  show(byId("editor-result"), "");
+  byId("details").hidden = true;
+  byId("editor").hidden = false;
+  fillDuration();
+  byId("edit-title").focus();
+}
+
+function forgetPoster() {
+  if (state.poster) {
+    URL.revokeObjectURL(state.poster.url);
+  }
+
+  state.poster = null;
+}
+
+function stopEditing() {
+  forgetPoster();
+  byId("editor").hidden = true;
+  byId("details").hidden = false;
+}
+
+// The duration, from the video, unless the person has given one.
+function fillDuration() {
+  const video = byId("video");
+  const field = byId("edit-duration");
+
+  if (!byId("editor").hidden && field.value === "" && Number.isFinite(video.duration)
+      && video.duration > 0) {
+    field.value = formatDuration(video.duration);
+  }
+}
+
+// What is known of the movie, as the form now says, kept with whatever
+// else its info.json held.
+function editedInfo(info) {
+  const year = byId("edit-year").value.trim();
+  const duration = parseDuration(byId("edit-duration").value.trim());
+  const cast = byId("edit-cast").value.split("\n").map((name) => name.trim()).filter(isText);
+
+  if (year && !/^\d{1,4}$/.test(year)) {
+    throw new Error("A year is a number, such as 2001.");
+  }
+
+  if (Number.isNaN(duration)) {
+    throw new Error("A duration is in seconds, or as hours, minutes, and seconds, such as 1:52:30.");
+  }
+
+  return {
+    ...info,
+    title: byId("edit-title").value.trim() || undefined,
+    year: year ? Number(year) : undefined,
+    rating: byId("edit-rating").value.trim() || undefined,
+    cast: cast.length ? cast : undefined,
+    description: byId("edit-description").value.trim() || undefined,
+    duration_seconds: duration === null ? undefined : duration,
+  };
+}
+
+function base64Of(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",", 2)[1]);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+// A JPEG of the frame the video shows.
+async function takePoster() {
+  const video = byId("video");
+
+  if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth) {
+    throw new Error("The video shows no picture yet. Play it, or seek to a frame, first.");
+  }
+
+  const scale = Math.min(1, POSTER_MAX_WIDTH / video.videoWidth);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(video.videoWidth * scale);
+  canvas.height = Math.round(video.videoHeight * scale);
+  canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", POSTER_QUALITY));
+
+  if (!blob) {
+    throw new Error("This browser could not make a picture of the frame.");
+  }
+
+  forgetPoster();
+  state.poster = { base64: await base64Of(blob), url: URL.createObjectURL(blob) };
+  byId("poster-preview").src = state.poster.url;
+  byId("poster-preview").hidden = false;
+  return ["The poster is taken. Save to keep it.", false];
+}
+
+async function saveEdit() {
+  const folder = state.selected;
+  const poster = state.poster;
+  const edited = editedInfo(state.playlist.movies.get(folder));
+
+  await serially(async () => {
+    const playlist = state.playlist;
+    const add = {};
+    const info = { ...edited };
+
+    if (poster) {
+      info.poster = POSTER_FILE;
+      add[`${folder}/${POSTER_FILE}`] = { base64: poster.base64 };
+    }
+
+    add[`${folder}/${INFO_FILE}`] = { text: infoText(info) };
+    await changePlaylist(playlist, { add, movies: new Map(playlist.movies).set(folder, info) });
+  });
+
+  stopEditing();
+  return ["Saved.", false];
+}
+
+// Moving, removing, and sharing a movie.
+
+async function move(delta) {
+  const folder = state.selected;
+
+  await serially(async () => {
+    const playlist = state.playlist;
+    const order = [...playlist.order];
+    const at = order.indexOf(folder);
+    const to = at + delta;
+
+    if (at >= 0 && to >= 0 && to < order.length) {
+      [order[at], order[to]] = [order[to], order[at]];
+      await changePlaylist(playlist, { order });
+    }
+  });
+}
+
+async function removeMovie() {
+  const folder = state.selected;
+  const title = state.playlist.title(folder);
+
+  if (!window.confirm(`Remove “${title}” from “${state.playlist.name}”?`)) {
+    return null;
+  }
+
+  await serially(async () => {
+    const playlist = state.playlist;
+    const movies = new Map(playlist.movies);
+    movies.delete(folder);
+    await changePlaylist(playlist, {
+      remove: [folder],
+      order: playlist.order.filter((each) => each !== folder),
+      movies,
+    });
+  });
+
+  show(byId("library-result"), `Removed “${title}”.`);
+  return null;
+}
+
+// A plain bundle of what the movie's folder holds: the movie's own bundle
+// again, unless it was edited.
+async function shareMovie() {
+  const playlist = state.playlist;
+  const folder = state.selected;
+  const listing = await readEntry(playlist.bundle, folder);
+  const names = isObject(listing) && isObject(listing.entries) ? Object.keys(listing.entries) : [];
+
+  if (names.length === 0) {
+    throw new Error("This movie's folder holds nothing to share.");
+  }
+
+  const add = {};
+
+  for (const name of names) {
+    add[name] = { from: playlist.bundle, path: `${folder}/${name}` };
+  }
+
+  const movie = await makeBundle({ add });
+  byId("shared-heading").textContent = `Share “${playlist.title(folder)}”`;
+  byId("shared-id").textContent = movie;
+  byId("shared-dialog").showModal();
+  return null;
+}
+
+// Adding a movie from a file in the folders the node offers.
+
+function crumb(text, segments) {
+  const control = make("button", text, "secondary small");
+  control.type = "button";
+  control.addEventListener("click", () => browse(segments));
+  return control;
+}
+
+function entryRow(text, detail, action) {
+  const item = make("li");
+  const control = make("button");
+  control.type = "button";
+  control.append(make("span", text), make("span", detail, "note"));
+  control.addEventListener("click", action);
+  item.append(control);
+  return item;
+}
+
+async function browse(segments) {
+  const list = byId("folder-entries");
+  const status = byId("folder-state");
+  const crumbs = [crumb("Folders", [])];
+
+  segments.forEach((segment, index) => {
+    crumbs.push(make("span", "›", "note"), crumb(segment, segments.slice(0, index + 1)));
+  });
+
+  byId("folder-path").replaceChildren(...crumbs);
+  list.replaceChildren();
+  list.hidden = true;
+  show(status, "Asking the node…");
+  const path = segments.length ? `${DIRECTORY}/${encodedPath(segments.join("/"))}` : DIRECTORY;
+  let result;
+
+  try {
+    result = await call("GET", path);
+  } catch (error) {
+    show(status, error.message, true);
+    return;
+  }
+
+  if (!result.ok || !isObject(result.value) || !isObject(result.value.entries)) {
+    show(status, new Refusal(result).message, true);
+    return;
+  }
+
+  const entries = Object.entries(result.value.entries).filter(([, entry]) => isObject(entry))
+    .sort(([one], [other]) => one.localeCompare(other));
+  const folders = entries.filter(([, entry]) => entry.type === "directory");
+  const videos = entries.filter(([, entry]) => entry.type === "file"
+    && isText(entry.content_type) && entry.content_type.startsWith("video/"));
+  const others = entries.length - folders.length - videos.length;
+
+  list.replaceChildren(
+    ...folders.map(([name]) => entryRow(`${name}/`, "", () => browse([...segments, name]))),
+    ...videos.map(([name, entry]) => entryRow(name, formatSize(entry.size), () => {
+      byId("file-dialog").close();
+      startImport([...segments, name].join("/"), name);
+    })),
+  );
+  list.hidden = folders.length + videos.length === 0;
+
+  if (segments.length === 0 && entries.length === 0) {
+    show(status, "This node offers no folders. Its operator chooses them, in local.folders.");
+  } else if (folders.length + videos.length === 0) {
+    show(status, "This folder holds no videos.");
+  } else {
+    show(status, others ? `${plural(others, "other file", "other files")} here, not videos.` : "");
+  }
+}
+
+// What the node says of an import, until it is done: the file bundle it stored.
+async function followImport(importId, progress) {
+  for (;;) {
+    const result = await call("GET", IMPORTS);
+
+    if (result.status === 503) {
+      await sleep(retryAfter(result.headers));
+      continue;
+    }
+
+    if (!result.ok) {
+      throw new Refusal(result);
+    }
+
+    const imports = isObject(result.value) && isObject(result.value.imports) ? result.value.imports : {};
+    const record = imports[importId];
+
+    if (isObject(record)) {
+      if (record.status === "done" && isText(record.file)) {
+        return record.file;
+      }
+
+      if (record.status === "failed") {
+        throw new Error(record.error || "The node did not say why the import failed.");
+      }
+
+      progress(record);
+    }
+
+    await sleep(IMPORT_POLL_SECONDS);
+  }
+}
+
+// Imports the file at `path`, makes a movie of it, and adds that to the
+// playlist named `target`. Returns the movie's folder.
+async function importMovie(path, name, target, progress) {
+  const started = await call("POST", IMPORTS, { body: { path } });
+
+  if (started.status !== 202 || !isObject(started.value) || !isText(started.value.import_id)) {
+    throw new Refusal(started);
+  }
+
+  const file = await followImport(started.value.import_id, progress);
+  const info = { title: name.replace(/\.[^.]*$/, "") || name, video: name };
+  const movie = await makeBundle({ add: { [name]: { file }, [INFO_FILE]: { text: infoText(info) } } });
+  return serially(async () => addMovie(await newest(target), movie, info));
+}
+
+function startImport(path, name) {
+  const target = state.playlist.name;
+  const item = make("li");
+  const label = make("span", `Importing “${name}”`);
+  const bar = make("progress");
+  const note = make("span", "", "note");
+  bar.setAttribute("aria-label", `How much of “${name}” is imported`);
+  item.append(label, bar, note);
+  byId("activity").append(item);
+
+  const progress = (record) => {
+    if (typeof record.size === "number" && record.size > 0 && typeof record.bytes_read === "number") {
+      bar.max = record.size;
+      bar.value = record.bytes_read;
+      note.textContent = `${formatSize(record.bytes_read)} of ${formatSize(record.size)}`;
+    } else {
+      note.textContent = record.status === "waiting" ? "Waiting its turn." : "";
+    }
+  };
+
+  importMovie(path, name, target, progress).then((folder) => {
+    item.remove();
+    show(byId("library-result"), `Added “${name}” to “${target}”.`);
+
+    if (state.playlist && state.playlist.name === target && byId("editor").hidden) {
+      select(folder);
+      startEditing();
+    }
+  }, (error) => {
+    const dismiss = make("button", "Dismiss", "secondary small");
+    dismiss.type = "button";
+    dismiss.addEventListener("click", () => item.remove());
+    label.textContent = `“${name}” was not added: ${error.message}`;
+    label.className = "error";
+    bar.remove();
+    note.remove();
+    item.append(dismiss);
+  });
+}
+
+// Adding a movie by its id.
+
+async function addById() {
+  const movie = parseId(byId("movie-id").value);
+
+  if (!movie) {
+    throw new Error("That is not a content id, such as sha256/….");
+  }
+
+  let info;
+
+  try {
+    info = await readEntry(movie, INFO_FILE);
+  } catch (error) {
+    if (error.status === 404) {
+      throw new Error(`That bundle holds no ${INFO_FILE}, so it is not a movie. A playlist's id is imported from Playlists.`);
+    }
+
+    throw error;
+  }
+
+  if (!isObject(info)) {
+    throw new Error(`That movie's ${INFO_FILE} is not what this page reads.`);
+  }
+
+  const target = state.playlist.name;
+  const folder = await serially(async () => addMovie(await newest(target), movie, info));
+  byId("id-dialog").close();
+  select(folder);
+  return null;
+}
+
+// Sharing a playlist, whole or in part.
+
+function checkbox(value, text, checked) {
+  const item = make("li");
+  const label = make("label", null, "check");
+  const box = make("input");
+  box.type = "checkbox";
+  box.value = value;
+  box.checked = checked;
+  label.append(box, make("span", text));
+  item.append(label);
+  return item;
+}
+
+function checked(listId) {
+  return [...byId(listId).querySelectorAll("input[type=checkbox]:checked")].map((box) => box.value);
+}
+
+function openShare() {
+  const playlist = state.playlist;
+  byId("share-heading").textContent = `Share “${playlist.name}”`;
+  byId("share-whole").textContent = playlist.bundle;
+  byId("share-name").value = playlist.name;
+  byId("share-choices").replaceChildren(
+    ...playlist.order.map((folder) => checkbox(folder, playlist.title(folder), false)),
+  );
+  byId("share-choices").hidden = playlist.order.length === 0;
+  byId("share-made").hidden = true;
+  show(byId("share-state"), playlist.order.length ? "" : "This playlist holds no movies yet.");
+  byId("share-dialog").showModal();
+}
+
+// An encrypted bundle of the movies chosen, with a playlist.json for them.
+async function sharePart() {
+  const playlist = state.playlist;
+  const folders = checked("share-choices");
+  const name = byId("share-name").value.trim() || playlist.name;
+
+  if (folders.length === 0) {
+    throw new Error("Choose at least one movie.");
+  }
+
+  const add = { [PLAYLIST_FILE]: { text: playlistText(name, folders) } };
+
+  for (const folder of folders) {
+    add[folder] = { from: playlist.bundle, path: folder };
+  }
+
+  byId("share-made").hidden = true;
+  byId("share-part-id").textContent = await makeBundle({ encrypted: true, add });
+  byId("share-made").hidden = false;
+  return [`An id for ${plural(folders.length, "movie", "movies")} of “${playlist.name}”:`, false];
+}
+
+// Importing a playlist by its id.
+
+let importing = null;
+
+async function openImport() {
+  importing = null;
+  byId("import-read").reset();
+  show(byId("import-read-result"), "");
+  byId("import-choose").hidden = true;
+  byId("import-go").hidden = true;
+  byId("import-dialog").showModal();
+}
+
+async function readImport() {
+  const bundle = parseId(byId("import-id").value);
+
+  if (!bundle) {
+    throw new Error("That is not a content id, such as sha256/….");
+  }
+
+  let source;
+
+  try {
+    source = await Playlist.read(bundle);
+  } catch (error) {
+    if (error.status === 404) {
+      throw new Error(`That bundle holds no ${PLAYLIST_FILE}, so it is not a playlist. A movie's id is added to a playlist with Add by id.`);
+    }
+
+    throw error;
+  }
+
+  const kept = await Kept.read();
+  const target = byId("import-target");
+  const options = [make("option", "A new playlist")];
+  options[0].value = "";
+
+  for (const entry of kept.list) {
+    const option = make("option", entry.name);
+    option.value = entry.name;
+    options.push(option);
+  }
+
+  target.replaceChildren(...options);
+  target.value = state.playlist && kept.find(state.playlist.name) ? state.playlist.name : "";
+  importing = source;
+  byId("import-name").value = source.name;
+  byId("import-name-label").hidden = target.value !== "";
+  byId("import-summary").textContent = `“${source.name}” holds ${plural(source.order.length, "movie", "movies")}. Choose which to take.`;
+  byId("import-choices").replaceChildren(
+    ...source.order.map((folder) => checkbox(folder, source.title(folder), true)),
+  );
+  show(byId("import-state"), "");
+  byId("import-choose").hidden = false;
+  byId("import-go").hidden = false;
+  return null;
+}
+
+async function importChosen() {
+  const source = importing;
+  const folders = checked("import-choices");
+  const target = byId("import-target").value;
+  const name = byId("import-name").value.trim();
+
+  if (folders.length === 0) {
+    throw new Error("Choose at least one movie.");
+  }
+
+  if (target === "" && !name) {
+    throw new Error("Give the new playlist a name.");
+  }
+
+  let skipped = 0;
+  const playlist = await serially(async () => {
+    if (target === "") {
+      return makePlaylist(name, folders, source);
+    }
+
+    const into = await newest(target);
+    const taken = folders.filter((folder) => !into.holds(folder));
+    skipped = folders.length - taken.length;
+
+    if (taken.length === 0) {
+      throw new Error(`“${target}” already holds every movie chosen.`);
+    }
+
+    const add = {};
+    const movies = new Map(into.movies);
+
+    for (const folder of taken) {
+      add[folder] = { from: source.bundle, path: folder };
+      movies.set(folder, source.movies.get(folder));
+    }
+
+    return changePlaylist(into, { add, order: [...into.order, ...taken], movies });
+  });
+
+  byId("import-dialog").close();
+  showPlaylist(playlist);
+
+  if (skipped) {
+    show(byId("library-result"), `${plural(skipped, "movie", "movies")} chosen ${skipped === 1 ? "was" : "were"} here already.`);
+  }
+
+  return null;
+}
+
+// Runs `action` with `control` disabled, and says what it returned in
+// `message`. An action returns [text, isError], or nothing to say nothing.
+async function perform(control, message, action) {
+  control.disabled = true;
+
+  try {
+    const outcome = await action();
+
+    if (outcome) {
+      show(message, ...outcome);
+    } else {
+      show(message, "");
+    }
+  } catch (error) {
+    show(message, error.message, true);
+
+    // The movie it was said of is gone, and with it, where it was said.
+    if (message.parentElement.closest("[hidden]")) {
+      show(byId("library-result"), error.message, true);
+    }
+  } finally {
+    control.disabled = false;
+    refreshControls();
+  }
+}
+
+function onClick(id, message, action) {
+  const control = byId(id);
+  control.addEventListener("click", () => perform(control, byId(message), action));
+}
+
+function onSubmit(id, message, action) {
+  const form = byId(id);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    perform(form.querySelector("button[type=submit]"), byId(message), action);
+  });
+}
+
+async function askClient() {
+  try {
+    const result = await call("GET", CLIENT);
+    return result.ok && isObject(result.value) && result.value.local === true;
+  } catch (error) {
+    console.warn(error.message);
+    return false;
+  }
+}
+
+async function start() {
+  state.local = await askClient();
+
+  for (const element of document.querySelectorAll(".local-only")) {
+    element.hidden = !state.local;
+  }
+
+  byId("client-note").textContent = state.local
+    ? "This browser is on the node's own machine: add movies, edit them, and keep and share playlists."
+    : "This browser is not on the node's own machine, so it can only play. Movies are added there.";
+  byId("choose-playlist").hidden = false;
+  const remembered = recall();
+
+  if (!remembered) {
+    await showChooser();
+    return;
+  }
+
+  // A playlist remembered is played at the newest version the node keeps.
+  let entry = remembered;
+
+  try {
+    entry = (await Kept.read()).find(remembered.name) || remembered;
+  } catch (error) {
+    console.warn(`The playlists could not be read: ${error.message}`);
+  }
+
+  try {
+    await openPlaylist(entry);
+  } catch (error) {
+    await showChooser();
+    show(byId("chooser-state"), `“${remembered.name}” could not be read: ${error.message}`, true);
+  }
+}
+
+const video = byId("video");
+video.addEventListener("loadedmetadata", fillDuration);
+video.addEventListener("error", videoTrouble);
+video.addEventListener("loadeddata", () => { byId("video-trouble").hidden = true; });
+byId("video-again").addEventListener("click", () => {
+  byId("video-trouble").hidden = true;
+  video.load();
+});
+
+for (const control of document.querySelectorAll("[data-close]")) {
+  control.addEventListener("click", () => control.closest("dialog").close());
+}
+
+for (const control of document.querySelectorAll("[data-copy]")) {
+  control.addEventListener("click", async () => {
+    const text = byId(control.dataset.copy).textContent;
+
+    try {
+      await navigator.clipboard.writeText(text);
+      control.textContent = "Copied";
+    } catch (error) {
+      window.getSelection().selectAllChildren(byId(control.dataset.copy));
+      control.textContent = "Selected: copy it";
+    }
+
+    setTimeout(() => { control.textContent = "Copy"; }, 2000);
+  });
+}
+
+byId("choose-playlist").addEventListener("click", showChooser);
+byId("new-playlist").addEventListener("click", () => {
+  byId("new-form").reset();
+  show(byId("new-result"), "");
+  byId("new-dialog").showModal();
+});
+byId("import-playlist").addEventListener("click", openImport);
+byId("add-file").addEventListener("click", () => {
+  byId("file-dialog").showModal();
+  browse([]);
+});
+byId("add-id").addEventListener("click", () => {
+  byId("id-form").reset();
+  show(byId("id-result"), "");
+  byId("id-dialog").showModal();
+});
+byId("share-playlist").addEventListener("click", openShare);
+byId("edit-movie").addEventListener("click", startEditing);
+byId("cancel-edit").addEventListener("click", stopEditing);
+byId("import-target").addEventListener("change", () => {
+  byId("import-name-label").hidden = byId("import-target").value !== "";
+});
+
+onSubmit("new-form", "new-result", async () => {
+  const name = byId("new-name").value.trim();
+
+  if (!name) {
+    throw new Error("Give the playlist a name.");
+  }
+
+  const playlist = await serially(() => makePlaylist(name));
+  byId("new-dialog").close();
+  showPlaylist(playlist);
+  return null;
+});
+onSubmit("id-form", "id-result", addById);
+onSubmit("editor", "editor-result", saveEdit);
+onSubmit("import-read", "import-read-result", readImport);
+onClick("take-poster", "poster-result", takePoster);
+onClick("share-movie", "movie-result", shareMovie);
+onClick("move-up", "movie-result", () => move(-1));
+onClick("move-down", "movie-result", () => move(1));
+onClick("remove-movie", "movie-result", removeMovie);
+onClick("share-part", "share-state", sharePart);
+onClick("import-go", "import-state", importChosen);
+
+start();
+</script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-"""Tests for the applications shipped with the node, and the root and ``/config`` pages.
+"""Tests for the applications shipped with the node, and the root, ``/config``, and movie pages.
 
 Which way they were shipped, built into a wheel or run from source, is known
 only to the layered source, and is tested through it.
@@ -11,7 +11,7 @@ from json import loads
 from os import chmod, symlink, utime
 from pathlib import Path
 from queue import Empty, Queue
-from re import findall
+from re import findall, fullmatch
 from shutil import copytree
 from typing import Iterator
 
@@ -42,16 +42,24 @@ from libranet.modules import ModuleName
 from libranet.unbundler.module import UnbundlerModule
 from libranet.webserver.app_handler import CONFIG_APP_POLICY
 from libranet.webserver.app_registry import CONFIG_APPLICATION, ROOT_APPLICATION
+from libranet.webserver.app_store import STORE_KEY_PATTERN, STORE_PATH
+from libranet.webserver.bundle_edits import BUNDLES_PATH
+from libranet.webserver.bundle_reads import BUNDLE_PATTERN
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import CONFIG_API_PATH, ENDPOINTS, NodeDescription
 from libranet.webserver.http_types import Request
+from libranet.webserver.local_folders import DIRECTORY_PATTERN
+from libranet.webserver.local_imports import IMPORTS_PATH
+from libranet.webserver.local_only import CLIENT_PATH
 from libranet.webserver.router import Router
 from libranet.webserver.server import build_config_router, build_router
 
 from tests.stubs import StubModule
 
+MOVIE_APPLICATION = "movie"
 ROOT_PAGE_SOURCE = PACKAGED_APPLICATIONS / "root" / "index.html"
 CONFIG_PAGE_SOURCE = PACKAGED_APPLICATIONS / "config" / "index.html"
+MOVIE_PAGE_SOURCE = PACKAGED_APPLICATIONS / "movie" / "index.html"
 CONFIG_CREDENTIALS = {"Authorization": "Basic " + b64encode(b"admin:secret").decode("ascii")}
 
 
@@ -85,6 +93,11 @@ def root_page(content: LayeredSource, root_bundle: ContentId) -> bytes:
 @fixture
 def config_page(content: LayeredSource, built: PackagedApplications) -> str:
     return index_page(built.bundles[CONFIG_APPLICATION], content).decode("utf-8")
+
+
+@fixture
+def movie_page(content: LayeredSource, built: PackagedApplications) -> str:
+    return index_page(built.bundles[MOVIE_APPLICATION], content).decode("utf-8")
 
 
 def index_page(bundle_id: ContentId, content: LayeredSource) -> bytes:
@@ -151,8 +164,14 @@ def router_for(
     )
 
 
-def test_the_node_ships_the_root_and_config_applications(built: PackagedApplications) -> None:
-    assert set(SHIPPED_APPLICATIONS) == set(built.bundles) == {ROOT_APPLICATION, CONFIG_APPLICATION}
+def test_the_node_ships_the_root_config_and_movie_applications(
+    built: PackagedApplications,
+) -> None:
+    assert (
+        set(SHIPPED_APPLICATIONS)
+        == set(built.bundles)
+        == {ROOT_APPLICATION, CONFIG_APPLICATION, MOVIE_APPLICATION}
+    )
 
 
 def test_every_build_is_the_same(built: PackagedApplications) -> None:
@@ -339,10 +358,47 @@ def test_the_config_page_calls_only_endpoints_the_node_serves(config_page: str) 
     assert called <= served
 
 
+def test_the_movie_application_is_built_from_its_directory(movie_page: str) -> None:
+    assert movie_page == MOVIE_PAGE_SOURCE.read_text(encoding="utf-8")
+
+
+def test_the_movie_page_is_one_self_contained_document(movie_page: str) -> None:
+    assert movie_page.startswith("<!doctype html>")
+    # Nothing is loaded from a file of its own, or from anywhere else.
+    assert "<link" not in movie_page
+    assert findall(r"<script[^>]*\bsrc", movie_page) == []
+    assert "url(" not in movie_page.split("<style>", 1)[1].split("</style>", 1)[0]
+    assert "http:" not in movie_page
+    assert "https:" not in movie_page
+
+
+def test_the_movie_page_calls_only_endpoints_the_node_serves(movie_page: str) -> None:
+    called = set(findall(r'"(/data/[^"]*)"', movie_page))
+    hex_digits = "0123456789abcdef" * 4
+
+    assert called == {
+        CLIENT_PATH,
+        "/data/directory",
+        IMPORTS_PATH,
+        BUNDLES_PATH,
+        f"{STORE_PATH}/{MOVIE_APPLICATION}",
+        "/data/",
+    }
+    # The folders, the playlists in its store, and a movie's file in a playlist.
+    assert fullmatch(DIRECTORY_PATTERN, "/data/directory/Movies/Holidays")
+    assert fullmatch(STORE_KEY_PATTERN, f"{STORE_PATH}/{MOVIE_APPLICATION}/playlists")
+    assert fullmatch(
+        BUNDLE_PATTERN,
+        f"/data/sha256/{hex_digits}/AES256-CBC/{hex_digits}/{hex_digits[:16]}/Film.mp4",
+    )
+
+
 @mark.parametrize(
     "application, path, source, client_address, headers, policy",
     [
         (ROOT_APPLICATION, "/", ROOT_PAGE_SOURCE, "203.0.113.42", {}, None),
+        # Trusted, so served without a sandbox, and to a remote client, which only plays.
+        (MOVIE_APPLICATION, "/movie/", MOVIE_PAGE_SOURCE, "203.0.113.42", {}, None),
         (
             CONFIG_APPLICATION,
             "/config/",
