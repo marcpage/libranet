@@ -3,9 +3,9 @@
 Each is a directory in this package, built into a directory bundle: into
 the wheel's content archives when a wheel is built, or in memory as each
 process starts when the node is run from its source. The root application,
-served at ``/`` until an administrator changes it, is ``root/``, and the
+served at ``/`` until an administrator changes it, is ``root/``, the
 administration page, served at ``/config`` until one changes that, is
-``config/``.
+``config/``, and the movie library, served at ``/movie``, is ``movie/``.
 """
 
 from libranet.applications.packaged import (

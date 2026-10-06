@@ -37,9 +37,9 @@ PACKAGED_APPLICATIONS: Final = Path(__file__).resolve().parent
 
 #: Each application shipped, by the name it is registered under, and the
 #: directory beside this module it is built from. ``/`` is the root
-#: application (HttpApi §13), and ``config`` the one serving ``/config``
-#: (HttpApi §2.3).
-SHIPPED_APPLICATIONS: Final = MappingProxyType({"/": "root", "config": "config"})
+#: application (HttpApi §13), ``config`` the one serving ``/config``
+#: (HttpApi §2.3), and ``movie`` the movie library (Phase 3 Step 67).
+SHIPPED_APPLICATIONS: Final = MappingProxyType({"/": "root", "config": "config", "movie": "movie"})
 
 #: What a wheel's content archives name the applications' objects, and the
 #: file giving their content ids.

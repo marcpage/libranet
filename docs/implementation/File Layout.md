@@ -471,7 +471,8 @@ libranet/                         the installed package
 │   └── seed_peers.json           the default seed list
 ├── applications/                 source checkouts only
 │   ├── root/index.html           the application served at /
-│   └── config/index.html         the application served at /config
+│   ├── config/index.html         the application served at /config
+│   └── movie/index.html          the application served at /movie
 └── archives/                     wheels only
     ├── applications.zip          the shipped applications, built
     └── applications.json         each shipped application's bundle id

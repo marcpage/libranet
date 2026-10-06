@@ -402,6 +402,19 @@ ships. Trusted
 applications share their origin with each other, so trust only applications
 you would trust with your folders.
 
+### Watch movies
+
+A new node also ships a movie library, at `/movie/`. In a browser on the node's
+own machine, it imports a video from the folders the node offers, takes what you
+know of it (title, year, rating, cast, a description, and a poster from a
+frame), and keeps playlists. A playlist is shared whole, in part, or a movie at
+a time, by an id that another node's movie page imports. A browser elsewhere is
+offered only playing the playlists the node keeps.
+
+A playlist is an encrypted bundle, so only those given its id can read it from
+the network. The node keeps its playlists' ids, keys and all, in the
+application's store, which any browser that can reach the node can read.
+
 ### Publish a drop under a name
 
 Compute a content hash that shares a long binary prefix with the hash of a name
