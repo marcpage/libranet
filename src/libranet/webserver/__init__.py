@@ -21,6 +21,11 @@ node's own pages there, such as the listing of the folders it offers them
 bundle, or a new version of one, from the bundles a request names, stored as
 uploads from this node (Phase 3 Step 72). Any client may read into a bundle,
 by its id, as an application's files are served (Phase 3 Step 71).
+
+Every endpoint meant only for browsers, `/config/api` included, is served
+only to a request whose `Referer` names one of this node's pages, and some
+only to a trusted application's. An application the operator has not trusted
+is served in a sandbox (Phase 3 Step 74).
 """
 
 from libranet.webserver.app_handler import (
@@ -29,10 +34,12 @@ from libranet.webserver.app_handler import (
     CONFIG_APP_PATTERN,
     CONFIG_APP_POLICY,
     DEFAULT_FILE,
+    UNTRUSTED_APP_HEADERS,
     AppHandler,
 )
 from libranet.webserver.app_outcomes import DEFAULT_MAX_OUTCOMES, ApplicationOutcomes, KnownOutcome
 from libranet.webserver.app_registry import (
+    CONFIG_API_SEGMENT,
     CONFIG_APPLICATION,
     RESERVED_APPLICATION_NAMES,
     ROOT_APPLICATION,
@@ -93,7 +100,6 @@ from libranet.webserver.config_credential import (
     StoredCredential,
 )
 from libranet.webserver.config_guard import (
-    CONFIG_API_SEGMENT,
     ConfigSiteGuard,
     MovedConfigGuard,
     local_config_guard,
@@ -120,6 +126,7 @@ from libranet.webserver.config_handlers import (
     ApplicationListHandler,
     ApplicationRegistrationHandler,
     ApplicationRemovalHandler,
+    ApplicationTrustHandler,
     BackupJobEventHandler,
     BackupReportHandler,
     BackupRequest,
@@ -174,6 +181,12 @@ from libranet.webserver.local_folders import DIRECTORY_PATTERN, DirectoryHandler
 from libranet.webserver.local_imports import IMPORTS_PATH, ImportHandler, ImportListHandler
 from libranet.webserver.local_only import CLIENT_PATH, LocalOnly, client_handler
 from libranet.webserver.module import WebServerModule, webserver_module_factory
+from libranet.webserver.own_pages import (
+    REFERER_HEADER,
+    OwnPageOnly,
+    OwnPages,
+    RefererPage,
+)
 from libranet.webserver.request_refusals import (
     content_unavailable_response,
     invalid_signature_response,
@@ -245,6 +258,7 @@ __all__ = [
     "PARALLELISM",
     "RESERVED_APPLICATION_NAMES",
     "RESTORES_FIELD",
+    "REFERER_HEADER",
     "RESTORES_PATH",
     "ROOT_APPLICATION",
     "SALT_BYTES",
@@ -254,6 +268,7 @@ __all__ = [
     "STORE_KEY_PATTERN",
     "STORE_PATH",
     "STORE_PATTERN",
+    "UNTRUSTED_APP_HEADERS",
     "AppHandler",
     "Application",
     "ApplicationListHandler",
@@ -262,6 +277,7 @@ __all__ = [
     "ApplicationRegistry",
     "ApplicationRemovalHandler",
     "ApplicationStore",
+    "ApplicationTrustHandler",
     "ApplicationUse",
     "BackupJobEventHandler",
     "BackupReport",
@@ -301,8 +317,11 @@ __all__ = [
     "NodeDescription",
     "NodeHandler",
     "NodeListHandler",
+    "OwnPageOnly",
+    "OwnPages",
     "OwnUploads",
     "PartReader",
+    "RefererPage",
     "RegisteredApplications",
     "RegistryFileError",
     "Request",

@@ -283,9 +283,14 @@ The registry names the bundle each application is served from
     "/": "sha256/70eb028a…",
     "config": "sha256/87a24e6e…",
     "site": "sha256/54e4b7ee…"
-  }
+  },
+  "trusted": ["/"]
 }
 ```
+
+`trusted` names the applications the operator trusts (Phase 3 Step 74). Any
+other is served in a sandbox. The applications a node ships are trusted, but
+`config`, which is never sandboxed. A file without `trusted` trusts nothing.
 
 Applications are not configured in the YAML file. They change while the node
 runs, through `/config/api/applications`, and only the web server writes this

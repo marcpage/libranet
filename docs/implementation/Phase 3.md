@@ -1618,9 +1618,8 @@ My calls, not yet reviewed:
   Only another bundle resets it.
 - **A `Referer` of the origin alone is the root application's page**, as
   its path, `/`, is routed. A browser sends one from a page asking for
-  `Referrer-Policy: origin`, and from a sandboxed page, whose own origin
-  is another. The sandbox's refusals, not the `Referer`, are what keep
-  such a page out.
+  `Referrer-Policy: origin`. (Not from a sandboxed page, as this said
+  before the live run, which sends none.)
 - **The `Referer`'s host and port are compared with `Host`'s**, with a
   scheme's default port filled in for either. The scheme is not compared.
 - **`trusted` is a list beside `applications`**, in the registry file and
@@ -1659,6 +1658,93 @@ node's and is `403`.
 
 About 450 new or changed lines of non-test Python, so one change set.
 Most tests calling the endpoints it guards gain a `Referer`.
+
+Built as planned, in one change set: 675 added lines of non-test Python,
+92 of them in place of removed ones, many of them docstrings.
+`webserver/own_pages.py` (new) holds `RefererPage`, the page a `Referer`
+names at `Host`'s host and port; `OwnPages`, whose application's page
+that is, by the registry; and `OwnPageOnly`. That wraps `/data/client`,
+reads into bundles, and `/data/applications`, and, trusted only and
+within `LocalOnly`, the folders, imports, and bundles. The store's
+handlers check that the page is the store's own application's, once the
+name is read. `ConfigSiteGuard` checks a `/config/api` request's
+`Referer` with its other checks. The registry keeps `trusted`
+(`RegisteredApplications.trusted`, `with_trust`, `shipped`;
+`ApplicationRegistry.trust`), and routing a path to its application moved
+from `AppHandler` to `RegisteredApplications.application_at`, which the
+`Referer` check uses too. `AppHandler` adds `UNTRUSTED_APP_HEADERS` to
+every response for an untrusted application's path. `CONFIG_API_SEGMENT`
+moved to `app_registry.py`, beside the names. `PATCH` is
+`ApplicationTrustHandler`. The `/config` page has a Trusted column of
+boxes. The README's `curl` examples and the Operator Guide's send `-e`,
+and File Layout §3.6 shows `trusted`.
+
+Run live on one new node, listening at a loopback address and offering one
+folder:
+
+- `/config/api` without a `Referer` was `403`, and no credential was
+  captured. With `-e` naming the `/config` page it was `200`, and the
+  credential was captured. One naming the main port's root page was
+  `403`, naming both ports.
+- The new node listed `"trusted": ["/"]`. A bundle built and registered
+  as `probe` was served with both headers on its page, its redirect, and
+  a `404`, and the root page with neither.
+- `/data/client` was `403` without a `Referer`, and with one naming
+  `/config/` on the main port, another port, or `localhost` where `Host`
+  named `127.0.0.1`. It was `200` from the root page or `probe`'s.
+- From `probe`'s page, the folders, an import, and making a bundle were
+  each `403`, naming `probe` as not trusted, and the folders were `200`
+  from the root page. `probe`'s store took a `PUT` from its page (`201`),
+  and refused the root page's `PUT` and `GET` (`403`). Reading into the
+  bundle was `403` without a `Referer`, and `200` from either page.
+- `PATCH` trusted `probe`, whose page lost both headers and could list
+  the folders. Registering the same bundle as `PROBE` kept its trust, and
+  another bundle took it away. `config` was `400`, a name not registered
+  `404`, `"yes"` `400`, a text body `415`, and no `Referer` `403`. The
+  file listed `trusted` as the endpoint did.
+- In headless Chrome 154, `probe`'s page, untrusted, had `origin: null`,
+  `localStorage` threw `SecurityError`, and every `fetch` failed. The node
+  saw `/data/client`, `/data/applications`, the stores, and the reads into
+  the bundle with no `Referer` at all, and `/data/directory` as
+  `cross-site`. The browser asked `OPTIONS` before the `POST` and the
+  `PUT`, was answered `405`, and never sent them. The page's `<img>` and
+  `<video>` reading into the bundle were `403`.
+- Trusted, the same page read every answer: `/data/client` and the
+  folders `200`, the import `202`, its own store `200` and `204`, and the
+  root application's store `403`. Its `<img>` loaded, and its `<video>`'s
+  range request carried a `Referer` and was `206`.
+- The `/config` page, behind a proxy adding the credential, listed each
+  application with a box, ticked for `/` and `probe`, and "Always" for
+  `config`. The root page still linked to `probe`.
+- The node stopped cleanly, and logged no error.
+
+Not checked: Safari, whose `<video>` may or may not send a `Referer`.
+
+Departure from the plan: **a sandboxed page sends no `Referer`**, not the
+origin alone, as my call above took it to. So an untrusted application can
+show its own files, and nothing read from a bundle. HttpApi §13.5, the
+README, and the `/config` page say so now. Letting it would take reading
+into a bundle without a `Referer`.
+
+My calls while building, not yet reviewed:
+
+- **A registry that cannot be read is `500`** for every endpoint checking a
+  `Referer`, logged at warning, and not naming the file, as
+  `/data/applications` was answered before. `RegistryFileError` is a
+  `ValueError`, and caught as one it had been a `403` naming the file.
+- **A reserved path is no application's without the registry being
+  read** (`RegisteredApplications.reserves`), as `AppHandler` had it.
+- **The `Referer` is checked after `LocalOnly`'s checks**, and before the
+  handler. For a store, it is checked once the name is read, so a name no
+  application could have is still `404`.
+- **A page beneath `/config` is no page on the main port**, since
+  `config` is not served there.
+- **No refusal or log line repeats a `Referer`'s path**, which could carry
+  a key. A path logged leaves out a bundle's key, as the access log's
+  does.
+- **A `PATCH` body's other members are ignored**, as registration's are.
+- **Ticking a box asks first, naming what trust gives**, and unticking one
+  does not.
 
 **Testable in isolation:** registry tests for trust saved and read, reset
 by another bundle, kept by the same one, and dropped with the

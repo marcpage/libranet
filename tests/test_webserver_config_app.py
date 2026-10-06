@@ -105,19 +105,27 @@ def unbundler(storage: StorageConfig) -> UnbundlerModule:
     )
 
 
+# Where a request from the /config page says it is from, as that page's own do.
+FROM_CONFIG_PAGE = {"Host": "localhost:8180", "Referer": "http://localhost:8180/config/"}
+
+
 def get(router: Router, path: str) -> Response:
-    """An authenticated request from this machine."""
-    return router.dispatch(Request("GET", path, headers=CREDENTIALS, client_address="127.0.0.1"))
+    """An authenticated request from the ``/config`` page on this machine."""
+    return router.dispatch(
+        Request(
+            "GET", path, headers={**CREDENTIALS, **FROM_CONFIG_PAGE}, client_address="127.0.0.1"
+        )
+    )
 
 
 def send(router: Router, method: str, path: str, value: Any = None) -> Response:
-    """An authenticated request from this machine, carrying ``value`` as JSON if given."""
+    """An authenticated request from the ``/config`` page, carrying ``value`` as JSON if given."""
     body = b"" if value is None else dumps(value).encode("utf-8")
     return router.dispatch(
         Request(
             method,
             path,
-            headers={**CREDENTIALS, "Content-Type": JSON_CONTENT_TYPE},
+            headers={**CREDENTIALS, **FROM_CONFIG_PAGE, "Content-Type": JSON_CONTENT_TYPE},
             client_address="127.0.0.1",
             body=RequestBody.of(body),
         )

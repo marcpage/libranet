@@ -29,6 +29,7 @@ from libranet.protocol.config_requests import (
 )
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.webserver.app_registry import (
+    CONFIG_APPLICATION,
     ROOT_APPLICATION,
     Application,
     ApplicationRegistry,
@@ -167,6 +168,7 @@ def test_the_index_names_every_endpoint(router: Router) -> None:
         ("POST", "/config/api/exports"),
         ("GET", "/config/api/applications"),
         ("POST", "/config/api/applications"),
+        ("PATCH", "/config/api/applications/{name}"),
         ("DELETE", "/config/api/applications/{name}"),
     }
 
@@ -453,7 +455,7 @@ def test_no_applications_are_listed_until_one_is_registered(router: Router) -> N
     response = router.dispatch(request("GET", APPLICATIONS_PATH))
 
     assert response.status == 200
-    assert json_body(response) == {"applications": {}}
+    assert json_body(response) == {"applications": {}, "trusted": []}
 
 
 def test_registering_an_application_serves_it_and_answers_with_its_name(
@@ -467,7 +469,8 @@ def test_registering_an_application_serves_it_and_answers_with_its_name(
     assert json_body(response) == {"name": "wiki", "bundle": str(APP_BUNDLE)}
     assert registry.applications().bundles == {"wiki": APP_BUNDLE}
     assert json_body(router.dispatch(request("GET", APPLICATIONS_PATH))) == {
-        "applications": {"wiki": str(APP_BUNDLE)}
+        "applications": {"wiki": str(APP_BUNDLE)},
+        "trusted": [],
     }
     assert published(queues) == []
 
@@ -562,11 +565,86 @@ def test_removing_what_is_not_registered_is_not_found(
     assert registry.applications().bundles == {"photos": APP_BUNDLE}
 
 
+@mark.parametrize("path", [WIKI_PATH, f"{APPLICATIONS_PATH}/WIKI", f"{APPLICATIONS_PATH}/%77iki"])
+def test_an_application_is_trusted_and_no_longer_trusted_by_its_name(
+    router: Router, registry: ApplicationRegistry, queues: ModuleQueues, path: str
+) -> None:
+    registry.register(Application.create("wiki", APP_BUNDLE))
+
+    trusted = router.dispatch(request("PATCH", path, {"trusted": True}))
+    listed = json_body(router.dispatch(request("GET", APPLICATIONS_PATH)))
+
+    assert (trusted.status, trusted.body) == (204, b"")
+    assert registry.applications().trusted == {"wiki"}
+    assert listed == {"applications": {"wiki": str(APP_BUNDLE)}, "trusted": ["wiki"]}
+
+    untrusted = router.dispatch(request("PATCH", path, {"trusted": False}))
+
+    assert untrusted.status == 204
+    assert registry.applications().trusted == frozenset()
+    assert published(queues) == []
+
+
+@mark.parametrize("path", [WIKI_PATH, f"{APPLICATIONS_PATH}/%FF"])
+def test_trusting_what_is_not_registered_is_not_found(
+    router: Router, registry: ApplicationRegistry, path: str
+) -> None:
+    registry.register(Application.create("photos", APP_BUNDLE))
+
+    response = router.dispatch(request("PATCH", path, {"trusted": True}))
+
+    assert response.status == 404
+    assert registry.applications().trusted == frozenset()
+
+
+@mark.parametrize("trusted", [True, False])
+def test_the_config_application_can_be_neither_trusted_nor_untrusted(
+    router: Router, registry: ApplicationRegistry, trusted: bool
+) -> None:
+    registry.register(Application.create(CONFIG_APPLICATION, APP_BUNDLE))
+
+    response = router.dispatch(
+        request("PATCH", f"{APPLICATIONS_PATH}/Config", {"trusted": trusted})
+    )
+
+    assert response.status == 400
+    assert problem_type(response) == INVALID_CONFIG_REQUEST
+    assert "own port" in loads(response.body)["detail"]
+
+
+@mark.parametrize("value", [None, {}, {"trusted": "yes"}, {"trusted": 1}, [True], True])
+def test_a_trust_request_that_is_not_trusted_true_or_false_is_refused(
+    router: Router, registry: ApplicationRegistry, value: object
+) -> None:
+    registry.register(Application.create("wiki", APP_BUNDLE))
+    body = dumps(value).encode("utf-8")
+
+    response = router.dispatch(request("PATCH", WIKI_PATH, body=body))
+
+    assert response.status == 400
+    assert problem_type(response) == INVALID_CONFIG_REQUEST
+    assert registry.applications().trusted == frozenset()
+
+
+def test_a_trust_request_not_sent_as_json_is_refused(
+    router: Router, registry: ApplicationRegistry
+) -> None:
+    registry.register(Application.create("wiki", APP_BUNDLE))
+
+    response = router.dispatch(
+        request("PATCH", WIKI_PATH, {"trusted": True}, content_type="text/plain")
+    )
+
+    assert response.status == 415
+    assert registry.applications().trusted == frozenset()
+
+
 @mark.parametrize(
     "method, path, value",
     [
         ("GET", APPLICATIONS_PATH, None),
         ("POST", APPLICATIONS_PATH, {"name": "wiki", "bundle": str(APP_BUNDLE)}),
+        ("PATCH", WIKI_PATH, {"trusted": True}),
         ("DELETE", WIKI_PATH, None),
     ],
 )

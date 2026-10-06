@@ -30,6 +30,13 @@ another page of this site, such as the root application's, opens a
 ``/config`` page; it changes nothing, and the page that linked to it cannot
 read or drive it (Phase 2 Step 58).
 
+A request to ``/config/api`` must also carry a ``Referer`` naming a page of
+the ``/config`` application, at the host and port its ``Host`` names, whether
+a browser sends it or not, and is refused with ``403`` otherwise (HttpApi
+§2.5, Phase 3 Step 74). It is not a protection: a script names the page it
+stands in for, as ``curl -e`` does. It keeps out a request that no
+``/config`` page made.
+
 The endpoints serving only local clients make the same checks
 (:class:`~libranet.webserver.site_checks.SiteChecks`), but for that link,
 which only ``/config`` lets through (Phase 3 Step 68).
@@ -57,15 +64,13 @@ from urllib.parse import unquote
 from libranet.config.models import CONFIG_LISTEN_ADDRESS
 from libranet.problems import Problem
 from libranet.protocol.client_origin import is_local_client
-from libranet.webserver.app_registry import CONFIG_APPLICATION
+from libranet.webserver.app_registry import CONFIG_API_SEGMENT, CONFIG_APPLICATION
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.http_types import Request, Response, problem_response
+from libranet.webserver.own_pages import RefererPage
 from libranet.webserver.site_checks import HOST_HEADER, SITE_HEADER, SiteChecks, host_name
 
 _LOGGER = getLogger(__name__)
-
-# The first segment beneath /config that is the API's, never the application's.
-CONFIG_API_SEGMENT: Final = "api"
 
 # What Sec-Fetch-Site says of a page on another port of this host, the main
 # port's applications among them.
@@ -137,7 +142,8 @@ class ConfigSiteGuard:
         A link the person using the browser followed from another page of
         this site passes the checks the rest must, but for ``Host``'s, once
         a credential is captured: before then, the link could choose the
-        credential.
+        credential. A request to ``/config/api`` must also be from a page of
+        the ``/config`` application, as its ``Referer`` names it.
         """
         checks = self.checks
         refusal = checks.host_refusal(request)
@@ -148,7 +154,8 @@ class ConfigSiteGuard:
         site = (request.header(SITE_HEADER) or "").strip().lower()
 
         if site != _SAME_SITE or not _is_followed_link(request):
-            return checks.page_refusal(request)
+            refusal = checks.page_refusal(request)
+            return refusal if refusal is not None else _api_page_refusal(request)
 
         if self.credential.captured:
             return None
@@ -220,6 +227,30 @@ def _is_followed_link(request: Request) -> bool:
             (request.header(name) or "").strip().lower() == value
             for name, value in _FOLLOWED_LINK.items()
         )
+    )
+
+
+def _api_page_refusal(request: Request) -> str | None:
+    """Why ``request``, to ``/config/api``, is from no page of the ``/config`` application.
+
+    ``None`` if it is from one, or is not to ``/config/api`` (HttpApi §2.5).
+    """
+    if not names_config_api(request.path):
+        return None
+
+    try:
+        page = RefererPage.of(request)
+
+    except ValueError as error:
+        # Not logged: the refusal is, by the guard refusing the request.
+        return f"/config/api is served only to the /config application's pages: {error}."
+
+    if names_config(page.path) and not names_config_api(page.path):
+        return None
+
+    return (
+        "/config/api is served only to the /config application's pages; "
+        "the Referer names a page outside it."
     )
 
 

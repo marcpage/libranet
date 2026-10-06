@@ -223,6 +223,16 @@ def _get(
     return response, response.read()
 
 
+def _from_page(connection: HTTPConnection, page: str) -> dict[str, str]:
+    """The ``Referer`` a request from the page at ``page`` on ``connection``'s node carries."""
+    return {"Referer": f"http://{connection.host}:{connection.port}{page}"}
+
+
+# What a request put to a router directly says of where it is from: a page
+# of the movie application, which the local server trusts.
+MOVIE_PAGE = {"Host": "localhost:8080", "Referer": "http://localhost:8080/movie/"}
+
+
 def _resolve(storage: StorageConfig, bundle: ContentId, entry_path: str, content: bytes) -> None:
     """Resolve the file at ``entry_path`` in ``bundle`` as the unbundler would, holding its part."""
     part = ContentId.for_data(content, "sha256")
@@ -1198,7 +1208,9 @@ def test_an_application_answers_get_and_head_alone(connection: HTTPConnection) -
 def test_a_path_going_on_past_an_id_reads_into_its_bundle_and_no_other_does(
     local_server: LibranetHTTPServer, queues: ModuleQueues, path: str, reads_into: str | None
 ) -> None:
-    response = local_server.router.dispatch(Request("GET", path, client_address="127.0.0.1"))
+    response = local_server.router.dispatch(
+        Request("GET", path, headers=MOVIE_PAGE, client_address="127.0.0.1")
+    )
 
     asked = [message for message in _published(queues) if message["event"] == "app.path_not_found"]
     # Each reached a handler of its own, not the router's answer for no route.
@@ -1208,22 +1220,26 @@ def test_a_path_going_on_past_an_id_reads_into_its_bundle_and_no_other_does(
     assert sandboxed is (reads_into is not None)
 
 
+@mark.parametrize("applications", [{"/": APP_BUNDLE_ID}])
 def test_a_bundle_is_read_into_by_get_and_head_alone(connection: HTTPConnection) -> None:
-    head, _ = _get(connection, f"/data/{CONTENT_ID}/film.mp4", method="HEAD")
-    put, _ = _get(connection, f"/data/{CONTENT_ID}/film.mp4", method="PUT")
+    page = _from_page(connection, "/")
+    head, _ = _get(connection, f"/data/{CONTENT_ID}/film.mp4", method="HEAD", headers=page)
+    put, _ = _get(connection, f"/data/{CONTENT_ID}/film.mp4", method="PUT", headers=page)
 
     assert head.status == 503
     assert put.status == 405
     assert put.getheader("Allow") == "GET, HEAD"
 
 
+@mark.parametrize("applications", [{"/": APP_BUNDLE_ID}])
 def test_the_access_log_leaves_out_the_key_of_an_encrypted_id(
     connection: HTTPConnection, caplog: LogCaptureFixture
 ) -> None:
     key = sha256(b"what an encrypted bundle decrypts to").hexdigest()
+    path = f"/data/{CONTENT_ID}/AES256-CBC/{key}/film.mp4"
 
     with caplog.at_level(DEBUG, logger="test.webserver"):
-        response, _ = _get(connection, f"/data/{CONTENT_ID}/AES256-CBC/{key}/film.mp4")
+        response, _ = _get(connection, path, headers=_from_page(connection, "/"))
 
     assert response.status == 503
     assert f"/data/{CONTENT_ID}/AES256-CBC/<key>/film.mp4" in caplog.text
@@ -1242,7 +1258,7 @@ def test_config_passes_a_local_client_on_to_the_credential_challenge(
     config_connection: HTTPConnection, queues: ModuleQueues
 ) -> None:
     # A remote client never gets this far: it is refused with 403 instead.
-    response, body = _get(config_connection, "/config/api/backups")
+    response, body = _config(config_connection, "/config/api/backups")
 
     assert response.status == 401
     assert (
@@ -1404,8 +1420,14 @@ def _config(
     headers: dict[str, str] | None = None,
     body: bytes | None = None,
 ) -> tuple[HTTPResponse, bytes]:
-    """A `/config` request, any body sent as JSON unless ``headers`` say otherwise."""
-    sent = {} if body is None else {"Content-Type": JSON_CONTENT_TYPE}
+    """A `/config` request, any body sent as JSON unless ``headers`` say otherwise.
+
+    It is from the `/config` page, as its `Referer` says, as the page's own are.
+    """
+    sent = {
+        **_from_page(connection, "/config/"),
+        **({} if body is None else {"Content-Type": JSON_CONTENT_TYPE}),
+    }
     connection.request(method, path, body=body, headers={**sent, **(headers or {})})
     response = connection.getresponse()
     return response, response.read()
@@ -1690,9 +1712,15 @@ def test_an_application_registered_through_config_is_served_at_once(
 def local_server(
     storage: StorageConfig, queues: ModuleQueues, tmp_path: Path
 ) -> Iterator[LibranetHTTPServer]:
-    """The main port's server, offering local clients a Movies folder holding a film."""
+    """The main port's server, offering local clients a Movies folder holding a film.
+
+    It serves a movie application, which the operator trusts.
+    """
     (tmp_path / "Movies").mkdir()
     (tmp_path / "Movies" / "Film.mp4").write_bytes(FILM)
+    registry = ApplicationRegistry(storage.applications_path)
+    registry.register(Application.create("movie", APP_BUNDLE_ID))
+    registry.trust("movie", True)
     yield from serving(
         LibranetHTTPServer(
             ("127.0.0.1", 0),
@@ -1720,10 +1748,11 @@ def local_connection(local_server: LibranetHTTPServer) -> Iterator[HTTPConnectio
 def test_a_local_client_lists_the_folders_offered_and_what_they_hold(
     local_connection: HTTPConnection,
 ) -> None:
-    client, client_body = _get(local_connection, "/data/client")
-    folders, folders_body = _get(local_connection, "/data/directory")
-    movies, movies_body = _get(local_connection, "/data/directory/Movies")
-    film, _ = _get(local_connection, "/data/directory/Movies/Film.mp4")
+    page = _from_page(local_connection, "/movie/")
+    client, client_body = _get(local_connection, "/data/client", headers=page)
+    folders, folders_body = _get(local_connection, "/data/directory", headers=page)
+    movies, movies_body = _get(local_connection, "/data/directory/Movies", headers=page)
+    film, _ = _get(local_connection, "/data/directory/Movies/Film.mp4", headers=page)
 
     assert client.status == 200
     assert loads(client_body) == {"local": True}
@@ -1758,11 +1787,13 @@ def test_a_local_client_imports_a_file_from_a_folder_offered(
         "POST",
         "/data/imports",
         body=dumps({"path": "Movies/Film.mp4"}).encode("utf-8"),
-        headers={"Content-Type": JSON_CONTENT_TYPE},
+        headers={"Content-Type": JSON_CONTENT_TYPE, **_from_page(local_connection, "/movie/")},
     )
     response = local_connection.getresponse()
     body = response.read()
-    status, _ = _get(local_connection, "/data/imports")
+    status, _ = _get(
+        local_connection, "/data/imports", headers=_from_page(local_connection, "/movie/")
+    )
 
     # Not taken for /data/{algorithm}/{hash}, whose pattern it also fits.
     assert response.status == 202
@@ -1777,6 +1808,45 @@ def test_a_local_client_imports_a_file_from_a_folder_offered(
     )
     # The backup module has reported nothing to this server.
     assert status.status == 503
+
+
+@mark.parametrize(
+    "path, method",
+    [
+        ("/data/directory", "GET"),
+        ("/data/imports", "GET"),
+        ("/data/imports", "POST"),
+        ("/data/bundles", "POST"),
+    ],
+)
+def test_an_untrusted_applications_page_is_refused_what_only_trusted_ones_may_ask(
+    local_server: LibranetHTTPServer,
+    storage: StorageConfig,
+    queues: ModuleQueues,
+    path: str,
+    method: str,
+) -> None:
+    ApplicationRegistry(storage.applications_path).register(
+        Application.create("other", APP_BUNDLE_ID)
+    )
+    body = b'{"path": "Movies/Film.mp4"}' if path == "/data/imports" else b'{"add": {}}'
+    sent = Request(
+        method,
+        path,
+        headers={
+            "Host": "localhost:8080",
+            "Referer": "http://localhost:8080/other/",
+            "Content-Type": JSON_CONTENT_TYPE,
+        },
+        client_address="127.0.0.1",
+        body=RequestBody.of(body if method == "POST" else b""),
+    )
+
+    response = local_server.router.dispatch(sent)
+
+    assert response.status == 403
+    assert "'other', which is not trusted" in loads(response.body)["detail"]
+    assert _published(queues) == []
 
 
 @mark.parametrize("method", ["GET", "POST"])
@@ -1806,7 +1876,7 @@ def test_a_local_client_makes_a_bundle_stored_as_an_upload_from_this_node(
         "POST",
         "/data/bundles",
         body=b'{"add": {"info.json": {"text": "{}"}}}',
-        headers={"Content-Type": JSON_CONTENT_TYPE},
+        headers={"Content-Type": JSON_CONTENT_TYPE, **_from_page(local_connection, "/movie/")},
     )
     response = local_connection.getresponse()
     made = ContentId.parse(loads(response.read())["bundle"])
@@ -1854,19 +1924,23 @@ def test_a_local_client_keeps_a_value_in_an_applications_store(
         "PUT",
         "/data/store/Movie/last",
         body=b'{"name": "Family"}',
-        headers={"Content-Type": JSON_CONTENT_TYPE},
+        headers={"Content-Type": JSON_CONTENT_TYPE, **_from_page(local_connection, "/Movie/")},
     )
     put = local_connection.getresponse()
     put.read()
-    read, body = _get(local_connection, "/data/store/movie/last")
-    listed, listing = _get(local_connection, "/data/store/movie")
+    page = _from_page(local_connection, "/movie/index.html")
+    read, body = _get(local_connection, "/data/store/movie/last", headers=page)
+    listed, listing = _get(local_connection, "/data/store/movie", headers=page)
+    other, _ = _get(
+        local_connection, "/data/store/movie", headers=_from_page(local_connection, "/")
+    )
     # The live server only ever sees loopback clients, so the remote requests
     # are put to the router directly.
     remote = local_server.router.dispatch(
-        Request("GET", "/data/store/movie/last", client_address="203.0.113.42")
+        Request("GET", "/data/store/movie/last", headers=MOVIE_PAGE, client_address="203.0.113.42")
     )
     remote_put = local_server.router.dispatch(
-        Request("PUT", "/data/store/movie/last", client_address="203.0.113.42")
+        Request("PUT", "/data/store/movie/last", headers=MOVIE_PAGE, client_address="203.0.113.42")
     )
 
     # Not taken for /data/{algorithm}/{hash}, whose pattern the store's fits.
@@ -1876,6 +1950,7 @@ def test_a_local_client_keeps_a_value_in_an_applications_store(
     assert loads(body) == {"name": "Family"}
     assert listed.status == 200
     assert loads(listing) == {"values": {"last": {"name": "Family"}}}
+    assert other.status == 403
     assert remote.status == 200
     assert remote.body == body
     assert remote_put.status == 403
@@ -1926,7 +2001,7 @@ def test_a_path_beneath_another_data_endpoint_is_never_taken_for_content(
 
 def test_a_remote_client_is_told_it_is_not_local(local_server: LibranetHTTPServer) -> None:
     response = local_server.router.dispatch(
-        Request("GET", "/data/client", client_address="203.0.113.42")
+        Request("GET", "/data/client", headers=MOVIE_PAGE, client_address="203.0.113.42")
     )
 
     assert response.status == 200
@@ -1939,8 +2014,9 @@ def test_any_client_is_told_which_applications_are_served_as_registered(
 ) -> None:
     # The live server only ever sees loopback clients, so the remote request
     # is put to the router directly.
+    page = {"Host": "localhost:8080", "Referer": "http://localhost:8080/myapp/"}
     remote = server.router.dispatch(
-        Request("GET", "/data/applications", client_address="203.0.113.42")
+        Request("GET", "/data/applications", headers=page, client_address="203.0.113.42")
     )
     registered, _ = _config(
         config_connection,
@@ -1949,21 +2025,27 @@ def test_any_client_is_told_which_applications_are_served_as_registered(
         _credentials(),
         dumps({"name": "Wiki", "bundle": str(APP_BUNDLE_ID)}).encode("utf-8"),
     )
-    listed, body = _get(connection, "/data/applications")
+    listed, body = _get(connection, "/data/applications", headers=_from_page(connection, "/wiki/"))
+    unnamed, _ = _get(connection, "/data/applications")
 
     assert remote.status == 200
-    assert loads(remote.body) == {"applications": {"myapp": str(APP_BUNDLE_ID)}}
+    assert loads(remote.body) == {"applications": {"myapp": str(APP_BUNDLE_ID)}, "trusted": []}
     assert registered.status == 200
     assert listed.status == 200
     assert listed.getheader("Content-Type") == JSON_CONTENT_TYPE
     assert loads(body) == {
-        "applications": {"myapp": str(APP_BUNDLE_ID), "wiki": str(APP_BUNDLE_ID)}
+        "applications": {"myapp": str(APP_BUNDLE_ID), "wiki": str(APP_BUNDLE_ID)},
+        "trusted": [],
     }
+    assert unnamed.status == 403
 
 
 @mark.parametrize(
     "client_address, headers, status",
-    [("203.0.113.42", _credentials(), 403), ("127.0.0.1", {}, 401)],
+    [
+        ("203.0.113.42", _credentials(), 403),
+        ("127.0.0.1", {"Host": "localhost:8180", "Referer": "http://localhost:8180/config/"}, 401),
+    ],
 )
 def test_the_registry_is_changed_only_by_an_authenticated_local_client(
     config_server: LibranetHTTPServer,
@@ -1999,7 +2081,7 @@ def test_a_registry_that_cannot_be_read_leaves_the_rest_of_the_node_served(
     application, _ = _get(connection, "/wiki/")
     index, _ = _config(config_connection, "/config/api", headers=_credentials())
     listing, body = _config(config_connection, "/config/api/applications", headers=_credentials())
-    listed, problem = _get(connection, "/data/applications")
+    listed, problem = _get(connection, "/data/applications", headers=_from_page(connection, "/"))
 
     assert data.status == 200
     assert application.status == 500

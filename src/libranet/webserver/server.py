@@ -112,6 +112,7 @@ from libranet.webserver.list_handlers import ListFileHandler, NodeListHandler, S
 from libranet.webserver.local_folders import DIRECTORY_PATTERN, DirectoryHandler, LocalFolders
 from libranet.webserver.local_imports import IMPORTS_PATH, ImportHandler, ImportListHandler
 from libranet.webserver.local_only import CLIENT_PATH, LocalOnly, client_handler
+from libranet.webserver.own_pages import OwnPageOnly, OwnPages
 from libranet.webserver.router import Router
 from libranet.webserver.search_handler import SEARCH_PATTERN, SearchHandler
 from libranet.webserver.signature_guard import SignatureGuard
@@ -163,21 +164,27 @@ def build_router(  # pylint: disable=too-many-locals
     for any client. ``app_outcomes`` holds what the unbundler reported for
     their paths. ``content`` is what ``/data`` reads and searches: the source
     of truth, then any content archives (Step 34), and the applications the
-    node ships (Step 37). It is the source of truth alone, shipping nothing,
-    if none is given. ``/data/client`` tells any client whether it is local,
-    and ``/data/directory`` lists ``local_folders``, none if none are given,
-    to local clients alone, served as ``config_hosts`` names, as ``/config``
-    is (Phase 3 Step 68). ``/data/imports`` imports a file from one of them,
-    for local clients alone too, and says how each import is doing from
-    what ``backup_state`` holds (Phase 3 Step 69). ``/data/store`` keeps each
-    application's values in ``storage``'s data directory, read by any client
-    and changed by local clients alone (Phase 3 Step 70). Any client may
-    read into a bundle ``content`` holds, as an application's files are
-    served (Phase 3 Step 71). Given ``node_id``, ``/data/bundles`` makes
-    bundles for local clients alone, from what ``content`` holds, storing
-    what it makes as uploads from ``node_id``, each no more than
-    ``max_update_layers`` update layers above the last bundle stored whole;
-    none, by default (Phase 3 Step 72).
+    node ships (Step 37), each trusted but ``config``. It is the source of
+    truth alone, shipping nothing, if none is given. ``/data/client`` tells
+    any client whether it is local, and ``/data/directory`` lists
+    ``local_folders``, none if none are given, to local clients alone,
+    served as ``config_hosts`` names, as ``/config`` is (Phase 3 Step 68).
+    ``/data/imports`` imports a file from one of them, for local clients
+    alone too, and says how each import is doing from what ``backup_state``
+    holds (Phase 3 Step 69). ``/data/store`` keeps each application's values
+    in ``storage``'s data directory, read by any client and changed by local
+    clients alone (Phase 3 Step 70). Any client may read into a bundle
+    ``content`` holds, as an application's files are served (Phase 3 Step
+    71). Given ``node_id``, ``/data/bundles`` makes bundles for local clients
+    alone, from what ``content`` holds, storing what it makes as uploads
+    from ``node_id``, each no more than ``max_update_layers`` update layers
+    above the last bundle stored whole; none, by default (Phase 3 Step 72).
+
+    Each of those is served only to this node's own pages, as a request's
+    ``Referer`` names them: an application's store to its own, and the
+    folders, imports, and bundles to those of applications the operator
+    trusts. An application the operator has not trusted is served in a
+    sandbox (Phase 3 Step 74).
     """
     store = CasStore.source_of_truth(storage)
     content = LayeredSource(store) if content is None else content
@@ -196,6 +203,7 @@ def build_router(  # pylint: disable=too-many-locals
     )
     folders = LocalFolders() if local_folders is None else local_folders
     checks = SiteChecks(config_hosts, "This endpoint")
+    pages = OwnPages(registry)
     state = BackupState() if backup_state is None else backup_state
     app_store = ApplicationStore(storage.application_stores_dir)
     paths = _bundle_paths(
@@ -204,18 +212,27 @@ def build_router(  # pylint: disable=too-many-locals
         retry_after_seconds,
         app_outcomes,
     )
-    router.add("GET", CLIENT_PATH, client_handler)
+    router.add("GET", CLIENT_PATH, OwnPageOnly(client_handler, pages))
     # The directory, import, store, bundle, and search routes must precede the
     # data route, whose pattern they also fit.
-    router.add("GET", DIRECTORY_PATTERN, LocalOnly(DirectoryHandler(folders), checks))
     router.add(
-        "GET", IMPORTS_PATH, LocalOnly(ImportListHandler(state, retry_after_seconds), checks)
+        "GET",
+        DIRECTORY_PATTERN,
+        LocalOnly(OwnPageOnly(DirectoryHandler(folders), pages, trusted=True), checks),
     )
-    router.add("POST", IMPORTS_PATH, LocalOnly(ImportHandler(folders, publish), checks))
-    router.add("GET", STORE_PATTERN, StoreHandler(app_store))
-    router.add("GET", STORE_KEY_PATTERN, StoreValueHandler(app_store))
-    router.add("PUT", STORE_KEY_PATTERN, LocalOnly(StoreWriteHandler(app_store), checks))
-    router.add("DELETE", STORE_KEY_PATTERN, LocalOnly(StoreRemovalHandler(app_store), checks))
+    imports = ImportListHandler(state, retry_after_seconds)
+    router.add("GET", IMPORTS_PATH, LocalOnly(OwnPageOnly(imports, pages, trusted=True), checks))
+    router.add(
+        "POST",
+        IMPORTS_PATH,
+        LocalOnly(OwnPageOnly(ImportHandler(folders, publish), pages, trusted=True), checks),
+    )
+    router.add("GET", STORE_PATTERN, StoreHandler(app_store, pages))
+    router.add("GET", STORE_KEY_PATTERN, StoreValueHandler(app_store, pages))
+    router.add("PUT", STORE_KEY_PATTERN, LocalOnly(StoreWriteHandler(app_store, pages), checks))
+    router.add(
+        "DELETE", STORE_KEY_PATTERN, LocalOnly(StoreRemovalHandler(app_store, pages), checks)
+    )
 
     if node_id is not None:
         edits = BundleEditHandler(
@@ -226,7 +243,7 @@ def build_router(  # pylint: disable=too-many-locals
             storage.max_object_bytes,
             max_update_layers,
         )
-        router.add("POST", BUNDLES_PATH, LocalOnly(edits, checks))
+        router.add("POST", BUNDLES_PATH, LocalOnly(OwnPageOnly(edits, pages, trusted=True), checks))
 
     router.add(
         "GET",
@@ -237,7 +254,7 @@ def build_router(  # pylint: disable=too-many-locals
             publish=publish,
         ),
     )
-    reads = BundleReadHandler(paths)
+    reads = OwnPageOnly(BundleReadHandler(paths), pages)
 
     for method in BUNDLE_METHODS:
         router.add(method, BUNDLE_PATTERN, reads)
@@ -259,7 +276,9 @@ def build_router(  # pylint: disable=too-many-locals
         SeekListHandler(storage.max_object_bytes, storage.max_decompressed_list_bytes, publish),
     )
     router.add(
-        "GET", DATA_APPLICATIONS_PATH, ApplicationListHandler(registry, names_the_file=False)
+        "GET",
+        DATA_APPLICATIONS_PATH,
+        OwnPageOnly(ApplicationListHandler(registry, names_the_file=False), pages),
     )
     # Last, since its pattern fits every path outside the reserved names.
     applications = AppHandler(registry, paths)
@@ -330,7 +349,7 @@ def build_config_router(
 def _registry(storage: StorageConfig, content: LayeredSource) -> ApplicationRegistry:
     """The application registry in ``storage``'s data directory, seeded as ``content`` ships."""
     return ApplicationRegistry(
-        storage.applications_path, RegisteredApplications(content.applications)
+        storage.applications_path, RegisteredApplications.shipped(content.applications)
     )
 
 

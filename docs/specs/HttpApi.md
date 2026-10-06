@@ -1742,13 +1742,14 @@ X-Content-Type-Options: nosniff
 ```
 
 A browser gives a page served with these an origin of its own, which no
-other page shares. Its scripts run, and it can show what the network
-holds, as an `<img>`, a `<video>`, or a link does. But it is another
-origin than the main port's. A browser lets it read nothing it asks of
-the node's endpoints, since none grants a cross-origin request, and marks
-its requests as another site's, which the endpoints serving only local
-clients refuse (§2.4). It keeps nothing in the browser's storage, and a
-window it opens is sandboxed as it is.
+other page shares. Its scripts run, and it can show its own application's
+files. But it is another origin than the main port's. A browser lets it
+read nothing it asks of the node's endpoints, since none grants a
+cross-origin request, and marks its requests as another site's, which the
+endpoints serving only local clients refuse (§2.4). A current browser
+sends no `Referer` with them either, so not even an `<img>` or a
+`<video>` of it can read into a bundle (§2.5, §12.1). It keeps nothing in
+the browser's storage, and a window it opens is sandboxed as it is.
 
 A trusted application is served without these headers, on the main
 port's origin. A page of one, open in a local client, may list and import

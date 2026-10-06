@@ -61,7 +61,8 @@ def test_a_registered_application_is_saved_and_read_back(
 
     assert registry.applications().bundles == {"/": ROOT_BUNDLE, "wiki": WIKI_BUNDLE}
     assert loads(path.read_bytes()) == {
-        "applications": {"/": str(ROOT_BUNDLE), "wiki": str(WIKI_BUNDLE)}
+        "applications": {"/": str(ROOT_BUNDLE), "wiki": str(WIKI_BUNDLE)},
+        "trusted": [],
     }
     assert ApplicationRegistry(path).applications() == registry.applications()
 
@@ -242,6 +243,15 @@ def test_a_hand_edited_file_is_read_with_its_names_case_folded(
             ).encode("utf-8"),
             "named twice",
         ),
+        (dumps({"applications": {}, "trusted": "wiki"}).encode("utf-8"), "list"),
+        (dumps({"applications": {}, "trusted": [7]}).encode("utf-8"), "list"),
+        (dumps({"applications": {}, "trusted": ["wiki"]}).encode("utf-8"), "not registered"),
+        (
+            dumps({"applications": {"config": str(CONFIG_BUNDLE)}, "trusted": ["config"]}).encode(
+                "utf-8"
+            ),
+            "own port",
+        ),
     ],
 )
 def test_a_file_that_holds_no_usable_registry_is_an_error(
@@ -302,7 +312,8 @@ def test_a_registry_holds_what_it_starts_with_until_its_file_is_written(path: Pa
     registry.register(Application.create("wiki", WIKI_BUNDLE))
 
     assert loads(path.read_bytes()) == {
-        "applications": {"/": str(ROOT_BUNDLE), "wiki": str(WIKI_BUNDLE)}
+        "applications": {"/": str(ROOT_BUNDLE), "wiki": str(WIKI_BUNDLE)},
+        "trusted": [],
     }
 
 
@@ -310,7 +321,7 @@ def test_removing_what_a_registry_starts_with_is_saved(path: Path) -> None:
     initial = RegisteredApplications({ROOT_APPLICATION: ROOT_BUNDLE})
 
     assert ApplicationRegistry(path, initial).remove(ROOT_APPLICATION)
-    assert loads(path.read_bytes()) == {"applications": {}}
+    assert loads(path.read_bytes()) == {"applications": {}, "trusted": []}
     # A written file is what is served, whatever a registry starts with.
     assert ApplicationRegistry(path, initial).applications() == RegisteredApplications()
 
@@ -325,3 +336,121 @@ def test_a_registry_starts_again_from_the_beginning_if_its_file_is_removed(path:
     path.unlink()
 
     assert registry.applications() == initial
+
+
+def test_an_application_is_untrusted_until_it_is_trusted(
+    registry: ApplicationRegistry, path: Path
+) -> None:
+    registry.register(Application.create("wiki", WIKI_BUNDLE))
+
+    assert registry.applications().sandboxes("wiki")
+
+    assert registry.trust("Wiki", True)
+
+    assert registry.applications().trusted == {"wiki"}
+    assert not registry.applications().sandboxes("wiki")
+    assert loads(path.read_bytes())["trusted"] == ["wiki"]
+    assert ApplicationRegistry(path).applications() == registry.applications()
+
+    assert registry.trust("wiki", False)
+
+    assert registry.applications().trusted == frozenset()
+
+
+def test_trusting_what_is_not_registered_leaves_the_file_alone(
+    registry: ApplicationRegistry, path: Path
+) -> None:
+    assert not registry.trust("wiki", True)
+    assert not path.exists()
+
+
+def test_the_config_application_can_be_neither_trusted_nor_untrusted(
+    registry: ApplicationRegistry,
+) -> None:
+    registry.register(Application.create(CONFIG_APPLICATION, CONFIG_BUNDLE))
+
+    for trusted in (True, False):
+        with raises(ValueError, match="own port"):
+            registry.trust(CONFIG_APPLICATION, trusted)
+
+    assert not registry.applications().sandboxes(CONFIG_APPLICATION)
+
+
+def test_registering_another_bundle_takes_an_applications_trust_away(
+    registry: ApplicationRegistry,
+) -> None:
+    registry.register(Application.create("wiki", WIKI_BUNDLE))
+    registry.trust("wiki", True)
+    registry.register(Application.create("WIKI", WIKI_BUNDLE))
+
+    assert registry.applications().trusted == {"wiki"}
+
+    registry.register(Application.create("wiki", ROOT_BUNDLE))
+
+    assert registry.applications().trusted == frozenset()
+
+
+def test_removing_an_application_takes_its_trust_with_it(registry: ApplicationRegistry) -> None:
+    registry.register(Application.create("wiki", WIKI_BUNDLE))
+    registry.trust("wiki", True)
+    registry.remove("wiki")
+    registry.register(Application.create("wiki", WIKI_BUNDLE))
+
+    assert registry.applications().sandboxes("wiki")
+
+
+def test_a_hand_edited_file_without_trust_trusts_nothing(
+    registry: ApplicationRegistry, path: Path
+) -> None:
+    saved(path, {"/": str(ROOT_BUNDLE)})
+
+    assert registry.applications().trusted == frozenset()
+
+
+def test_a_hand_edited_file_is_read_with_its_trusted_names_case_folded(
+    registry: ApplicationRegistry, path: Path
+) -> None:
+    write_atomically(
+        path, dumps({"applications": {"wiki": str(WIKI_BUNDLE)}, "trusted": ["WIKI"]}).encode()
+    )
+
+    assert registry.applications().trusted == {"wiki"}
+
+
+def test_the_applications_a_node_ships_are_trusted_but_config() -> None:
+    shipped = RegisteredApplications.shipped(
+        {ROOT_APPLICATION: ROOT_BUNDLE, CONFIG_APPLICATION: CONFIG_BUNDLE, "movie": WIKI_BUNDLE}
+    )
+
+    assert shipped.trusted == {ROOT_APPLICATION, "movie"}
+
+
+@mark.parametrize(
+    "path, application",
+    [
+        ("", ROOT_APPLICATION),
+        ("index.html", ROOT_APPLICATION),
+        ("wiki", "wiki"),
+        ("Wiki/page.html", "wiki"),
+        ("wikis/page.html", ROOT_APPLICATION),
+        ("config/", CONFIG_APPLICATION),
+        ("CONFIG/index.html", CONFIG_APPLICATION),
+        ("config/api", None),
+        ("config/api/backups", None),
+        ("data/sha256/x", None),
+        ("Web", None),
+    ],
+)
+def test_a_path_belongs_to_the_application_its_first_segment_names_or_the_root(
+    path: str, application: str | None
+) -> None:
+    applications = RegisteredApplications(
+        {ROOT_APPLICATION: ROOT_BUNDLE, "wiki": WIKI_BUNDLE, CONFIG_APPLICATION: CONFIG_BUNDLE}
+    )
+
+    assert applications.application_at(path) == application
+
+
+def test_without_a_root_application_a_path_no_application_names_is_none() -> None:
+    assert RegisteredApplications({"wiki": WIKI_BUNDLE}).application_at("other") is None
+    assert RegisteredApplications({"wiki": WIKI_BUNDLE}).application_at("config/") is None

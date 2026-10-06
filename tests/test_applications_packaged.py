@@ -409,11 +409,16 @@ def test_a_new_node_lists_the_applications_it_ships_to_any_client(
     publisher = StubModule(ModuleName.WEBSERVER, ModuleQueues(inbox=Queue(), outbox=Queue()))
     router = router_for(ROOT_APPLICATION, storage, publisher, content)
 
-    response = router.dispatch(Request("GET", "/data/applications", client_address="203.0.113.42"))
+    page = {"Host": "localhost:8080", "Referer": "http://localhost:8080/"}
+    response = router.dispatch(
+        Request("GET", "/data/applications", headers=page, client_address="203.0.113.42")
+    )
 
     assert response.status == 200
+    # Each is trusted but config, which is served only on its own port.
     assert loads(response.body) == {
-        "applications": {name: str(bundle) for name, bundle in built.bundles.items()}
+        "applications": {name: str(bundle) for name, bundle in built.bundles.items()},
+        "trusted": sorted(name for name in built.bundles if name != CONFIG_APPLICATION),
     }
     assert not storage.applications_path.exists()
 

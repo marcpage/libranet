@@ -17,7 +17,10 @@ A key is one path segment too, percent-decoded, and kept as it is cased.
 
 Any client may read a store, and only a local client may change it, so
 ``PUT`` and ``DELETE`` are wrapped in
-:class:`~libranet.webserver.local_only.LocalOnly`. A value read by its key
+:class:`~libranet.webserver.local_only.LocalOnly`. Either is served only to a
+page of the application whose store it is, as the request's ``Referer`` names
+it (:mod:`libranet.webserver.own_pages`, HttpApi §2.5, Phase 3 Step 74), and
+refused with ``403`` otherwise. A value read by its key
 carries an ``ETag``, and a change carrying ``If-Match`` that it does not
 match is ``412``, so that two clients changing one key do not lose each
 other's changes. A ``PUT`` answers ``201`` for a key not held before and
@@ -58,6 +61,7 @@ from libranet.webserver.app_registry import Application
 from libranet.webserver.config_handlers import invalid_request_response, json_or_refusal
 from libranet.webserver.errors import StoreFileError, StoreLimitError, ValueChangedError
 from libranet.webserver.http_types import Request, Response, problem_response
+from libranet.webserver.own_pages import OwnPages
 from libranet.webserver.request_refusals import unreadable_body_response
 
 _LOGGER = getLogger(__name__)
@@ -388,12 +392,16 @@ class ApplicationStore:
 
 @dataclass(frozen=True)
 class StoreHandler:
-    """``GET /data/store/{application}``: every value an application keeps, by key."""
+    """``GET /data/store/{application}``: every value an application keeps, by key.
+
+    Served only to the application's own pages, as ``pages`` holds them.
+    """
 
     store: ApplicationStore
+    pages: OwnPages
 
     def __call__(self, request: Request) -> Response:
-        application = _application(request)
+        application = _application(request, self.pages)
 
         if isinstance(application, Response):
             return application
@@ -414,12 +422,16 @@ class StoreHandler:
 
 @dataclass(frozen=True)
 class StoreValueHandler:
-    """``GET /data/store/{application}/{key}``: one value an application keeps, with its tag."""
+    """``GET /data/store/{application}/{key}``: one value an application keeps, with its tag.
+
+    Served only to the application's own pages, as ``pages`` holds them.
+    """
 
     store: ApplicationStore
+    pages: OwnPages
 
     def __call__(self, request: Request) -> Response:
-        names = _names(request)
+        names = _names(request, self.pages)
 
         if isinstance(names, Response):
             return names
@@ -445,12 +457,16 @@ class StoreValueHandler:
 
 @dataclass(frozen=True)
 class StoreWriteHandler:
-    """``PUT /data/store/{application}/{key}``: keep the JSON value the body carries."""
+    """``PUT /data/store/{application}/{key}``: keep the JSON value the body carries.
+
+    Served only to the application's own pages, as ``pages`` holds them.
+    """
 
     store: ApplicationStore
+    pages: OwnPages
 
     def __call__(self, request: Request) -> Response:
-        names = _names(request)
+        names = _names(request, self.pages)
 
         if isinstance(names, Response):
             return names
@@ -492,12 +508,16 @@ class StoreWriteHandler:
 
 @dataclass(frozen=True)
 class StoreRemovalHandler:
-    """``DELETE /data/store/{application}/{key}``: keep a value no longer."""
+    """``DELETE /data/store/{application}/{key}``: keep a value no longer.
+
+    Served only to the application's own pages, as ``pages`` holds them.
+    """
 
     store: ApplicationStore
+    pages: OwnPages
 
     def __call__(self, request: Request) -> Response:
-        names = _names(request)
+        names = _names(request, self.pages)
 
         if isinstance(names, Response):
             return names
@@ -542,10 +562,17 @@ def _check(if_match: IfMatch | None, held: StoredValue | None) -> None:
         )
 
 
-def _application(request: Request) -> str | Response:
-    """The application, case-folded, whose store ``request`` names, or the ``404`` if none could."""
+def _application(request: Request, pages: OwnPages) -> str | Response:
+    """The application, case-folded, whose store ``request`` names, or the response refusing it.
+
+    That is ``404`` if no application could have the name, and ``403`` if
+    ``request`` is from none of its pages that ``pages`` holds, or ``500`` if
+    the registry naming them cannot be read.
+    """
     try:
-        return Application.folded_name(unquote(request.params["application"], errors="strict"))
+        application = Application.folded_name(
+            unquote(request.params["application"], errors="strict")
+        )
 
     except ValueError as error:
         _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
@@ -557,10 +584,17 @@ def _application(request: Request) -> str | Response:
             )
         )
 
+    refused = pages.refused(request, application)
+    return application if refused is None else refused
 
-def _names(request: Request) -> tuple[str, str] | Response:
-    """The application, case-folded, and the key ``request`` names, or the ``404`` if none could."""
-    application = _application(request)
+
+def _names(request: Request, pages: OwnPages) -> tuple[str, str] | Response:
+    """The application, case-folded, and the key ``request`` names, or the response refusing it.
+
+    That is ``404`` if no application could have the name, or no key, and
+    ``403`` if ``request`` is from none of its pages that ``pages`` holds.
+    """
+    application = _application(request, pages)
 
     if isinstance(application, Response):
         return application

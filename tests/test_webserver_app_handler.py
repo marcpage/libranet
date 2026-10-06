@@ -1,5 +1,7 @@
 """Tests for serving application files from their parts and asking the unbundler for entries."""
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 from dataclasses import replace
 from hashlib import sha256
@@ -28,6 +30,7 @@ from libranet.webserver.app_handler import (
     APP_PATTERN,
     CONFIG_APP_PATTERN,
     CONFIG_APP_POLICY,
+    UNTRUSTED_APP_HEADERS,
     AppHandler,
 )
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
@@ -455,12 +458,53 @@ def test_only_the_config_applications_files_are_held_to_its_policy(
     resolve(files, store, CONFIG_BUNDLE, "index.html", b"the administration page")
     resolve(files, store, WIKI_BUNDLE, "index.html", b"the wiki")
 
+    registry.trust("wiki", True)
+
     redirect = get(handler, "/config")
 
     assert redirect.status == 302
     assert redirect.headers["Location"] == "/config/"
     assert "Content-Security-Policy" in get(handler, "/config/").headers
     assert "Content-Security-Policy" not in get(handler, "/wiki/").headers
+
+
+def test_every_answer_for_an_untrusted_applications_path_is_sandboxed(
+    handler: AppHandler, files: ResolvedFiles, store: CasStore
+) -> None:
+    resolve(files, store, WIKI_BUNDLE, "index.html", b"the wiki")
+
+    for path, status in (("/wiki/", 200), ("/wiki", 302), ("/wiki/a%00b", 404)):
+        response = get(handler, path)
+
+        assert response.status == status
+        assert UNTRUSTED_APP_HEADERS.items() <= response.headers.items()
+
+
+def test_a_trusted_applications_answers_are_not_sandboxed(
+    handler: AppHandler, registry: ApplicationRegistry, files: ResolvedFiles, store: CasStore
+) -> None:
+    resolve(files, store, WIKI_BUNDLE, "index.html", b"the wiki")
+    registry.trust("wiki", True)
+
+    for path in ("/wiki/", "/wiki"):
+        response = get(handler, path)
+
+        assert "Content-Security-Policy" not in response.headers
+        assert "X-Content-Type-Options" not in response.headers
+
+    assert get(handler, "/strasse/").headers["Content-Security-Policy"].startswith("sandbox")
+
+
+def test_the_config_application_is_never_sandboxed(
+    handler: AppHandler, registry: ApplicationRegistry, files: ResolvedFiles, store: CasStore
+) -> None:
+    registry.register(Application.create("config", CONFIG_BUNDLE))
+    resolve(files, store, CONFIG_BUNDLE, "index.html", b"the administration page")
+
+    response = get(handler, "/config/")
+
+    assert response.headers["Content-Security-Policy"] == CONFIG_APP_POLICY
+    assert "X-Content-Type-Options" not in response.headers
 
 
 @mark.parametrize(

@@ -19,8 +19,14 @@ body that does not say it is JSON is ``415``, as a page on another site can
 send a form's types without asking this node first. All of this is checked
 before the endpoint sees the request, or reads its body.
 
-The checks keep other sites' pages out, but not this node's own
-applications, which share the main port's origin (Phase 3 Step 68).
+The checks keep other sites' pages out (Phase 3 Step 68), and an
+application the operator has not trusted, which is served in a sandbox whose
+requests a browser marks as another site's. The folders, imports, and
+bundles are also served only to the pages of applications the operator
+trusts, and an application's store is changed only from its own, as the
+request's ``Referer`` names them (:mod:`libranet.webserver.own_pages`,
+Phase 3 Step 74). Trusted applications share the main port's origin, so
+each can do whatever another can.
 """
 
 from __future__ import annotations
