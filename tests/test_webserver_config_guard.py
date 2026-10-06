@@ -110,8 +110,16 @@ FOLLOWED_LINK = {
 def from_a_page(
     method: str = "POST", path: str = "/config/api/applications", **sent: str
 ) -> Request:
-    """A request from this machine carrying the headers ``sent``, named as Python allows."""
+    """A request from this machine carrying the headers ``sent``, named as Python allows.
+
+    One sending ``Host`` and no ``Referer`` also sends the ``/config`` page's
+    address there as its ``Referer``, as that page's requests do.
+    """
     headers = {name.replace("_", "-"): value for name, value in sent.items()}
+
+    if "Host" in headers and "Referer" not in headers:
+        headers["Referer"] = f"http://{headers['Host'].strip()}/config/"
+
     return Request(method, path, headers=headers, client_address="127.0.0.1")
 
 
@@ -216,12 +224,102 @@ def test_sec_fetch_site_decides_when_a_browser_sends_it() -> None:
     assert_refused(SITE_GUARD(refused), "/config/api/applications")
 
 
+# What a script calling /config/api names as the page it stands in for.
+CONFIG_PAGE = f"http://{HOST}/config/"
+
+
 @mark.parametrize("method", METHODS)
-@mark.parametrize("headers", [{}, {"Host": HOST}, {"Authorization": "Basic dXNlcjpwYXNz"}])
+@mark.parametrize(
+    "headers",
+    [
+        {"Host": HOST, "Referer": CONFIG_PAGE},
+        {"Host": HOST, "Referer": CONFIG_PAGE, "Authorization": "Basic dXNlcjpwYXNz"},
+    ],
+)
 def test_a_request_no_browser_made_is_passed_on(method: str, headers: dict[str, str]) -> None:
     request = Request(method, "/config/api", headers=headers, client_address="127.0.0.1")
 
     assert SITE_GUARD(request) is request
+
+
+@mark.parametrize("method", METHODS)
+@mark.parametrize("headers", [{}, {"Host": HOST}, {"Authorization": "Basic dXNlcjpwYXNz"}])
+@mark.parametrize("path", ["/config", "/config/", "/config/index.html"])
+def test_a_config_page_needs_no_referer(method: str, headers: dict[str, str], path: str) -> None:
+    request = Request(method, path, headers=headers, client_address="127.0.0.1")
+
+    assert SITE_GUARD(request) is request
+
+
+@mark.parametrize(
+    "referer",
+    [
+        f"http://{HOST}/config/",
+        f"http://{HOST}/config",
+        f"http://{HOST}/Config/backups.html",
+        f"https://{HOST}/%63onfig/",
+        "http://LocalHost:8080/config/?tab=backups",
+    ],
+)
+def test_an_api_request_from_a_config_page_is_passed_on(referer: str) -> None:
+    request = from_a_page(Host=HOST, Sec_Fetch_Site="same-origin", Referer=referer)
+
+    assert SITE_GUARD(request) is request
+
+
+@mark.parametrize(
+    "headers, named",
+    [
+        ({"Host": HOST}, "carries no Referer"),
+        ({"Host": HOST, "Referer": f"http://{HOST}/"}, "outside it"),
+        ({"Host": HOST, "Referer": f"http://{HOST}/wiki/"}, "outside it"),
+        ({"Host": HOST, "Referer": f"http://{HOST}/config/api"}, "outside it"),
+        ({"Host": HOST, "Referer": f"http://{HOST}/config/api/node"}, "outside it"),
+        ({"Host": HOST, "Referer": "http://localhost:8180/config/"}, "localhost:8180"),
+        ({"Host": HOST, "Referer": "http://127.0.0.1:8080/config/"}, "127.0.0.1:8080"),
+        ({"Host": HOST, "Referer": "http://evil.example/config/"}, "evil.example:80"),
+        ({"Host": HOST, "Referer": "/config/"}, "not an address"),
+        ({"Host": HOST, "Referer": "file:///config/"}, "not an address"),
+        ({"Host": HOST, "Referer": "http://localhost:99999/config/"}, "not an address"),
+        ({"Referer": CONFIG_PAGE}, "Host header names ''"),
+    ],
+)
+@mark.parametrize("site", [{}, {"Sec-Fetch-Site": "same-origin"}])
+def test_an_api_request_from_no_config_page_is_refused(
+    headers: dict[str, str], named: str, site: dict[str, str]
+) -> None:
+    request = Request(
+        "GET", "/config/api/node", headers={**headers, **site}, client_address="127.0.0.1"
+    )
+
+    response = SITE_GUARD(request)
+
+    assert_refused(response, "/config/api/node")
+    assert isinstance(response, Response)
+    assert named in loads(response.body)["detail"]
+
+
+def test_the_default_port_is_the_referers_schemes() -> None:
+    passed = from_a_page(Host="localhost", Referer="http://localhost:80/config/")
+    refused = from_a_page(Host="localhost", Referer="https://localhost:80/config/")
+
+    assert SITE_GUARD(passed) is passed
+    assert_refused(SITE_GUARD(refused), "/config/api/applications")
+
+
+def test_an_api_request_without_a_referer_captures_no_credential(tmp_path: Path) -> None:
+    credential = ConfigCredential(tmp_path / "keys" / "config_credential")
+    router = Router(local_config_guard, SITE_GUARD, ConfigAuthGuard(credential))
+    router.add("GET", r"/config/.*", lambda _request: Response(200))
+    request = Request(
+        "GET",
+        "/config/api",
+        headers={"Host": HOST, "Authorization": "Basic ZXZpbDpjaG9zZW4="},
+        client_address="127.0.0.1",
+    )
+
+    assert router.dispatch(request).status == 403
+    assert not credential.captured
 
 
 @mark.parametrize(

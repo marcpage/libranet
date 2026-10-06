@@ -1,6 +1,7 @@
 """Tests for each application's store, the files it is kept in, and its endpoints."""
 
 from __future__ import annotations
+from dataclasses import replace
 from hashlib import sha256
 from json import dumps, loads
 from logging import WARNING
@@ -10,9 +11,11 @@ from threading import Thread
 from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.atomic_file import write_atomically
+from libranet.cas.content_id import ContentId
 from libranet.config.models import DEFAULT_CONFIG_HOSTS, StorageConfig
 from libranet.problems import CONTENT_TOO_LARGE, INVALID_CONFIG_REQUEST, PROBLEM_CONTENT_TYPE
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
+from libranet.webserver.app_registry import ApplicationRegistry, RegisteredApplications
 from libranet.webserver.app_store import (
     MAX_STORE_BYTES,
     MAX_VALUE_BYTES,
@@ -30,12 +33,18 @@ from libranet.webserver.app_store import (
 from libranet.webserver.errors import StoreFileError, StoreLimitError, ValueChangedError
 from libranet.webserver.http_types import Request, RequestBody, Response
 from libranet.webserver.local_only import LocalOnly
+from libranet.webserver.own_pages import OwnPages
 from libranet.webserver.router import Router
 from libranet.webserver.site_checks import SiteChecks
 
 PLAYLISTS = [{"name": "Family", "bundle": "sha256/" + "a" * 64}]
 LOCAL = "127.0.0.1"
 REMOTE = "203.0.113.42"
+HOST = "localhost:8080"
+# The applications whose pages ask for their stores.
+APPLICATIONS = RegisteredApplications(
+    dict.fromkeys(("/", "movie", "mövie", "wiki"), ContentId.for_data(b"a page", "sha256"))
+)
 
 
 @fixture
@@ -49,14 +58,15 @@ def store(directory: Path) -> ApplicationStore:
 
 
 @fixture
-def router(store: ApplicationStore) -> Router:
+def router(store: ApplicationStore, tmp_path: Path) -> Router:
     """The store's routes, changed only by local clients, as the main port serves them."""
     checks = SiteChecks(DEFAULT_CONFIG_HOSTS, "This endpoint")
+    pages = OwnPages(ApplicationRegistry(tmp_path / "applications.json", APPLICATIONS))
     router = Router()
-    router.add("GET", STORE_PATTERN, StoreHandler(store))
-    router.add("GET", STORE_KEY_PATTERN, StoreValueHandler(store))
-    router.add("PUT", STORE_KEY_PATTERN, LocalOnly(StoreWriteHandler(store), checks))
-    router.add("DELETE", STORE_KEY_PATTERN, LocalOnly(StoreRemovalHandler(store), checks))
+    router.add("GET", STORE_PATTERN, StoreHandler(store, pages))
+    router.add("GET", STORE_KEY_PATTERN, StoreValueHandler(store, pages))
+    router.add("PUT", STORE_KEY_PATTERN, LocalOnly(StoreWriteHandler(store, pages), checks))
+    router.add("DELETE", STORE_KEY_PATTERN, LocalOnly(StoreRemovalHandler(store, pages), checks))
     return router
 
 
@@ -78,14 +88,24 @@ def request(
     headers: dict[str, str] | None = None,
     client_address: str = LOCAL,
 ) -> Request:
-    """A request for ``path``; a ``PUT`` carries ``value`` as JSON unless ``body`` is given."""
+    """A request for ``path``; a ``PUT`` carries ``value`` as JSON unless ``body`` is given.
+
+    It is from a page of the application whose store ``path`` names, as
+    ``Referer`` says, unless ``headers`` say otherwise.
+    """
     if body is None:
         body = dumps(value).encode("utf-8") if method == "PUT" else b""
 
+    page = f"http://{HOST}/{path.split('/')[3]}/"
     return Request(
         method,
         path,
-        headers={"Content-Type": JSON_CONTENT_TYPE, **(headers or {})},
+        headers={
+            "Content-Type": JSON_CONTENT_TYPE,
+            "Host": HOST,
+            "Referer": page,
+            **(headers or {}),
+        },
         client_address=client_address,
         body=RequestBody.of(body),
     )
@@ -593,3 +613,56 @@ def test_a_store_file_that_cannot_be_read_is_500_without_naming_it(
     assert str(store.path("movie")) not in str(found["detail"])
     assert str(store.path("movie")) in caplog.text
     assert store.path("movie").read_bytes() == b"{not json"
+
+
+@mark.parametrize(
+    "method, path",
+    [
+        ("GET", "/data/store/movie"),
+        ("GET", "/data/store/movie/last"),
+        ("PUT", "/data/store/movie/last"),
+        ("DELETE", "/data/store/movie/last"),
+    ],
+)
+@mark.parametrize(
+    "referer, named",
+    [
+        (None, "carries no Referer"),
+        (f"http://{HOST}/wiki/", "'wiki'"),
+        (f"http://{HOST}/", "'/'"),
+        (f"http://{HOST}/films/", "'/'"),
+        (f"http://{HOST}/config/", "no application's page"),
+        (f"http://{HOST}/data/sha256/{'a' * 64}/page.html", "no application's page"),
+        ("http://localhost:9000/movie/", "localhost:9000"),
+    ],
+)
+def test_a_store_is_served_only_to_its_own_applications_pages(
+    router: Router,
+    store: ApplicationStore,
+    caplog: LogCaptureFixture,
+    method: str,
+    path: str,
+    referer: str | None,
+    named: str,
+) -> None:
+    router.dispatch(request("PUT", "/data/store/movie/last", value=1))
+    sent = request(method, path, value=2)
+    headers = {name: value for name, value in sent.headers.items() if name != "Referer"}
+
+    with caplog.at_level(WARNING):
+        response = router.dispatch(
+            replace(sent, headers=headers if referer is None else {**headers, "Referer": referer})
+        )
+
+    assert named in str(problem(response, 403)["detail"])
+    assert store.values("movie").values == {"last": kept(1)}
+    assert f"Refusing {method} {path}: " in caplog.text
+
+
+def test_the_root_applications_store_is_its_pages_whatever_their_path(router: Router) -> None:
+    for page in ("", "/", "/index.html", "/films/"):
+        headers = {"Referer": f"http://{HOST}{page}"}
+
+        response = router.dispatch(request("PUT", "/data/store/%2F/last", value=1, headers=headers))
+
+        assert response.status in (201, 204)

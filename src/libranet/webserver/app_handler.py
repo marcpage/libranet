@@ -19,6 +19,13 @@ unauthenticated client before its path is looked at. Whatever bundle it
 serves, a file from it may load only what this node serves, and no other
 site may frame it.
 
+An application the operator has not trusted is served in a sandbox: every
+response for one of its paths carries :data:`UNTRUSTED_APP_HEADERS`, so its
+pages have an origin of their own, which no other page shares. A browser
+lets them read nothing this node answers, and marks their requests as
+another site's, which what serves only local clients refuses (HttpApi
+§13.5, Phase 3 Step 74). ``config`` is never sandboxed.
+
 The rest of the path is an entry path in the application's bundle. One that
 is empty or ends in ``/`` names that directory's ``index.html``, and one no
 bundle could hold (BundleSpecification §3.1) is ``404`` at once.
@@ -36,7 +43,7 @@ it are kept while it is in use (Phase 2 Step 29).
 """
 
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from http import HTTPStatus
 from logging import getLogger
 from re import escape
@@ -51,13 +58,15 @@ from libranet.messaging.events import PathOutcome
 from libranet.problems import UNUSABLE_BUNDLE, Problem
 from libranet.webserver.app_outcomes import KnownOutcome
 from libranet.webserver.app_registry import (
+    CONFIG_API_SEGMENT,
     CONFIG_APPLICATION,
     RESERVED_APPLICATION_NAMES,
     ROOT_APPLICATION,
     ApplicationRegistry,
+    RegisteredApplications,
 )
 from libranet.webserver.bundle_paths import BundlePaths, percent_decoded
-from libranet.webserver.config_guard import CONFIG_API_SEGMENT, names_config
+from libranet.webserver.config_guard import names_config
 from libranet.webserver.http_types import Request, Response, problem_response
 
 _LOGGER = getLogger(__name__)
@@ -81,6 +90,16 @@ CONFIG_APP_POLICY: Final = (
     "base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 )
 _CONFIG_APP_HEADERS: Final = {"Content-Security-Policy": CONFIG_APP_POLICY}
+
+#: Carried by every response for a path of an application the operator has not
+#: trusted (HttpApi §13.5). Its pages get an origin of their own, which can
+#: read nothing this node answers and is refused what serves local clients.
+UNTRUSTED_APP_HEADERS: Final = {
+    "Content-Security-Policy": (
+        "sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads"
+    ),
+    "X-Content-Type-Options": "nosniff",
+}
 
 DEFAULT_FILE: Final = "index.html"
 
@@ -106,7 +125,21 @@ class AppHandler:
         if route is None:
             return _not_found(request)
 
-        prefix, bundle, rest = route
+        sandboxed, prefix, bundle, rest = route
+        response = self._response(request, prefix, bundle, rest)
+
+        if not sandboxed:
+            return response
+
+        return replace(response, headers={**response.headers, **UNTRUSTED_APP_HEADERS})
+
+    def _response(
+        self, request: Request, prefix: str, bundle: ContentId, rest: str | None
+    ) -> Response:
+        """The response to ``request``, for the path ``rest`` of the application at ``prefix``.
+
+        ``bundle`` is the application's bundle.
+        """
         self.paths.use.used(bundle)
 
         if rest is None:
@@ -132,36 +165,35 @@ class AppHandler:
 
         return self._file_response(entry, entry_path, deadline, request)
 
-    def _route(self, path: str) -> tuple[str, ContentId, str | None] | None:
+    def _route(self, path: str) -> tuple[bool, str, ContentId, str | None] | None:
         """The application ``path`` belongs to, or ``None`` if none does.
 
-        That is the prefix of the application's paths, its bundle, and the
-        rest of ``path``, decoded, after the prefix and its ``/``. The rest is
-        ``None`` if ``path`` is the prefix alone.
+        That is whether the application is served in a sandbox, the prefix of
+        its paths, its bundle, and the rest of ``path``, decoded, after the
+        prefix and its ``/``. The rest is ``None`` if ``path`` is the prefix
+        alone.
         """
         decoded = percent_decoded(path.removeprefix("/"))
 
-        if decoded is None:
+        # A reserved path is no application's whatever the registry holds, so
+        # it is not read for one.
+        if decoded is None or RegisteredApplications.reserves(decoded):
             return None
+
+        applications = self.registry.applications()
+        name = applications.application_at(decoded)
+
+        if name is None:
+            return None
+
+        sandboxed = applications.sandboxes(name)
+        bundle = applications.bundles[name]
+
+        if name == ROOT_APPLICATION:
+            return sandboxed, "", bundle, decoded
 
         first, slash, rest = decoded.partition("/")
-        name = first.casefold()
-        reserved = name in RESERVED_APPLICATION_NAMES
-
-        # Of the reserved names, only config's is an application's, and never
-        # beneath /config/api, which is the API's however it is spelled.
-        if reserved and (
-            name != CONFIG_APPLICATION or rest.partition("/")[0] == CONFIG_API_SEGMENT
-        ):
-            return None
-
-        bundles = self.registry.applications().bundles
-
-        if name in bundles:
-            return f"/{quote(first)}", bundles[name], rest if slash else None
-
-        root = bundles.get(ROOT_APPLICATION)
-        return None if root is None or reserved else ("", root, decoded)
+        return sandboxed, f"/{quote(first)}", bundle, rest if slash else None
 
     def _file_response(
         self, entry: FileBundle, entry_path: str, deadline: float, request: Request

@@ -39,7 +39,13 @@ themselves, and the change is served from the next request on::
 
     GET    /config/api/applications          what the registry holds
     POST   /config/api/applications          register {"name", "bundle"}
+    PATCH  /config/api/applications/{name}   trust one, or not: {"trusted": true}
     DELETE /config/api/applications/{name}   stop serving one
+
+An application is untrusted when it is registered, and again when it is
+registered from another bundle, and is served in a sandbox until the
+operator trusts it (HttpApi §13.5, Phase 3 Step 74). ``config`` is never
+sandboxed, and can be neither trusted nor untrusted.
 
 A name in a path is percent-encoded as one segment, so the root application,
 ``/``, is ``/config/api/applications/%2F``. What the main port's registry
@@ -120,6 +126,9 @@ BACKUP_JOB_TEMPLATE: Final = BACKUPS_PATH + "/{job_id}"
 BACKUP_RUN_TEMPLATE: Final = BACKUP_JOB_TEMPLATE + "/run"
 APPLICATION_TEMPLATE: Final = APPLICATIONS_PATH + "/{name}"
 
+# Whether an application is trusted, in a request changing it (HttpApi §13.5).
+_TRUSTED_FIELD: Final = "trusted"
+
 # A job, restore, build, export, or application request is a small object of a few
 # strings. Anything larger is a mistake, and is refused before it is read.
 MAX_CONFIG_BODY_BYTES: Final = 64 * 1024
@@ -139,6 +148,11 @@ ENDPOINTS: Final = (
     {"method": "POST", "path": EXPORTS_PATH, "description": "Export a bundle as an archive"},
     {"method": "GET", "path": APPLICATIONS_PATH, "description": "Registered applications"},
     {"method": "POST", "path": APPLICATIONS_PATH, "description": "Register an application"},
+    {
+        "method": "PATCH",
+        "path": APPLICATION_TEMPLATE,
+        "description": "Trust an application, or not",
+    },
     {"method": "DELETE", "path": APPLICATION_TEMPLATE, "description": "Remove an application"},
 )
 
@@ -322,6 +336,53 @@ class ApplicationRegistrationHandler:
 
 
 @dataclass(frozen=True)
+class ApplicationTrustHandler:
+    """``PATCH /config/api/applications/{name}``: trust an application, or stop trusting it.
+
+    The body is ``{"trusted": true}`` or ``{"trusted": false}``. An application
+    not registered is ``404``, and ``config``, which is never sandboxed,
+    ``400``.
+    """
+
+    registry: ApplicationRegistry
+
+    def __call__(self, request: Request) -> Response:
+        value = json_or_refusal(request)
+
+        if isinstance(value, Response):
+            return value
+
+        trusted = value.get(_TRUSTED_FIELD) if isinstance(value, dict) else None
+
+        if not isinstance(trusted, bool):
+            error = ValueError('An application\'s trust must be {"trusted": true} or false')
+            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
+            return invalid_request_response(request, error)
+
+        try:
+            registered = self.registry.trust(
+                unquote(request.params["name"], errors="strict"), trusted
+            )
+
+        except UnicodeDecodeError as error:
+            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
+            registered = False
+
+        except RegistryFileError as error:
+            _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, error)
+            return _unreadable_registry_response(request, error)
+
+        except ValueError as error:
+            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
+            return invalid_request_response(request, error)
+
+        if not registered:
+            return _not_registered_response(request)
+
+        return Response(HTTPStatus.NO_CONTENT)
+
+
+@dataclass(frozen=True)
 class ApplicationRemovalHandler:
     """``DELETE /config/api/applications/{name}``: stop serving an application.
 
@@ -349,13 +410,7 @@ class ApplicationRemovalHandler:
             return _unreadable_registry_response(request, error)
 
         if not removed:
-            return problem_response(
-                Problem.for_status(
-                    HTTPStatus.NOT_FOUND,
-                    detail="No application of this name is registered.",
-                    instance=request.path,
-                )
-            )
+            return _not_registered_response(request)
 
         return Response(HTTPStatus.NO_CONTENT)
 
@@ -380,6 +435,17 @@ def invalid_request_response(request: Request, error: ValueError) -> Response:
             title="Invalid configuration request",
             type=INVALID_CONFIG_REQUEST,
             detail=str(error),
+            instance=request.path,
+        )
+    )
+
+
+def _not_registered_response(request: Request) -> Response:
+    """The ``404`` for a path naming no registered application."""
+    return problem_response(
+        Problem.for_status(
+            HTTPStatus.NOT_FOUND,
+            detail="No application of this name is registered.",
             instance=request.path,
         )
     )
@@ -469,6 +535,7 @@ def config_routes(
         ("DELETE", BACKUP_JOB_PATTERN, remove),
         ("GET", APPLICATIONS_PATH, ApplicationListHandler(registry)),
         ("POST", APPLICATIONS_PATH, ApplicationRegistrationHandler(registry)),
+        ("PATCH", APPLICATION_PATTERN, ApplicationTrustHandler(registry)),
         ("DELETE", APPLICATION_PATTERN, ApplicationRemovalHandler(registry)),
     )
     return tuple(

@@ -74,11 +74,14 @@ so deleting it takes effect at once, with no restart.
 
    ```bash
    rm ~/Library/Application\ Support/libranet/keys/config_credential &&
-     curl -u NEW_USER http://127.0.0.1:8180/config/api
+     curl -u NEW_USER -e http://127.0.0.1:8180/config/ \
+       http://127.0.0.1:8180/config/api
    ```
 
    `curl` asks for the new password, which keeps it out of the shell's
-   history, and sends the request that sets it. The node answers with the
+   history, and sends the request that sets it. `-e` names the `/config`
+   page as the request's `Referer`, which every `/config/api` request
+   needs. The node answers with the
    list of `/config`'s endpoints.
 3. **Check that it took.** The same `curl` again, with the new password,
    gets that list again. A `401` means another request set a credential

@@ -168,6 +168,10 @@
     <h2 id="applications-heading">Applications</h2>
     <p class="hint">Each serves a directory bundle as a website at <code>/{name}/</code>. The
     root application, named <code>/</code>, also answers every path no other one claims.</p>
+    <p class="hint">An application you have not trusted is served in a sandbox: its pages can
+    show what the network holds, and nothing more. A trusted one can import any file from the
+    folders this node offers, make bundles, and read and change every application's store, so
+    trust only one you would trust with those folders.</p>
     <p class="state" id="applications-state">Loading…</p>
     <div class="table-wrap">
       <table id="applications-table" aria-labelledby="applications-heading" hidden>
@@ -175,6 +179,7 @@
           <tr>
             <th scope="col">Served at</th>
             <th scope="col">Bundle</th>
+            <th scope="col">Trusted</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -196,7 +201,8 @@
         <button type="submit">Register</button>
       </div>
       <p class="hint">A name already registered, however it is cased, serves the new bundle
-      instead.</p>
+      instead. An application is not trusted once it is registered, or given another bundle,
+      until you trust it in the list above.</p>
       <p class="result" role="status" hidden></p>
     </form>
   </section>
@@ -728,7 +734,7 @@ function applicationLink(name, path) {
   return link;
 }
 
-function applicationRow([name, bundle]) {
+function applicationRow([name, bundle, trusted]) {
   const path = servedAt(name);
   const link = applicationLink(name, path);
   const row = make("tr");
@@ -738,8 +744,53 @@ function applicationRow([name, bundle]) {
     ),
   );
   actions.className = "actions";
-  row.append(cell(link, name === "/" ? " (root)" : ""), cell(contentId(bundle)), actions);
+  row.append(
+    cell(link, name === "/" ? " (root)" : ""),
+    cell(contentId(bundle)),
+    cell(trustBox(name, path, trusted)),
+    actions,
+  );
   return row;
+}
+
+// Whether the application is trusted, which a click changes. This page's own
+// application is served on this port alone, and is never sandboxed (HttpApi 13.5).
+function trustBox(name, path, trusted) {
+  if (name === "config") {
+    return make("span", "Always", "note");
+  }
+
+  const box = make("input");
+  box.type = "checkbox";
+  box.checked = trusted;
+  box.setAttribute("aria-label", `Trust ${path}`);
+  box.addEventListener("change", () =>
+    perform(box, applicationsMessage, () => trustApplication(box, name, path)),
+  );
+  return box;
+}
+
+async function trustApplication(box, name, path) {
+  const trusted = box.checked;
+  const question =
+    `Trust ${path}?\n\nIt will be able to import any file from the folders this node ` +
+    "offers, make bundles, and read and change every application's store.";
+
+  if (trusted && !confirm(question)) {
+    box.checked = false;
+    return null;
+  }
+
+  const result = await call("PATCH", `/applications/${encodeURIComponent(name)}`, { trusted });
+  applications.load();
+
+  if (!result.ok) {
+    box.checked = !trusted;
+    return [failure(result), true];
+  }
+
+  const outcome = trusted ? "is trusted" : "is no longer trusted, and is served in a sandbox";
+  return [`${path} ${outcome}.`, false];
 }
 
 async function removeApplication(name, path, bundle) {
@@ -763,10 +814,16 @@ const applications = new ListView({
   path: "/applications",
   table: byId("applications-table"),
   state: byId("applications-state"),
-  entries: (value) =>
-    value && value.applications && typeof value.applications === "object"
-      ? Object.entries(value.applications).sort(([one], [other]) => one.localeCompare(other))
-      : null,
+  entries: (value) => {
+    if (!value || !value.applications || typeof value.applications !== "object") {
+      return null;
+    }
+
+    const trusted = new Set(Array.isArray(value.trusted) ? value.trusted : []);
+    return Object.entries(value.applications)
+      .sort(([one], [other]) => one.localeCompare(other))
+      .map(([name, bundle]) => [name, bundle, trusted.has(name)]);
+  },
   row: applicationRow,
   empty: "No applications are registered.",
 });

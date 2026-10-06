@@ -272,14 +272,18 @@ if it is sent as `Content-Type: application/json`, and is `415` otherwise.
 
 Open `http://127.0.0.1:8180/config` in a browser for a page that does
 everything below; `http://127.0.0.1:8080/config` sends you there. Scripts use
-the same JSON endpoints, beneath `/config/api`:
+the same JSON endpoints, beneath `/config/api`. They are meant for that page,
+so a request must name it as its `Referer`, as `curl -e` does, and is `403`
+otherwise:
 
 ```bash
-curl -u admin:secret http://127.0.0.1:8180/config/api
+curl -u admin:secret -e http://127.0.0.1:8180/config/ \
+  http://127.0.0.1:8180/config/api
 ```
 
 ```bash
-curl -u admin:secret -X POST http://127.0.0.1:8180/config/api/backups \
+curl -u admin:secret -e http://127.0.0.1:8180/config/ \
+  -X POST http://127.0.0.1:8180/config/api/backups \
   -H 'Content-Type: application/json' \
   -d '{"directory": "/home/alice/notes"}'
 ```
@@ -294,7 +298,8 @@ password-protected directory bundle naming the files and their keys. `GET` the
 same path to see what came of it:
 
 ```bash
-curl -u admin:secret http://127.0.0.1:8180/config/api/backups
+curl -u admin:secret -e http://127.0.0.1:8180/config/ \
+  http://127.0.0.1:8180/config/api/backups
 ```
 
 ```json
@@ -319,7 +324,8 @@ never backed up.
 ### Restore a backup
 
 ```bash
-curl -u admin:secret -X POST http://127.0.0.1:8180/config/api/restores \
+curl -u admin:secret -e http://127.0.0.1:8180/config/ \
+  -X POST http://127.0.0.1:8180/config/api/restores \
   -H 'Content-Type: application/json' \
   -d '{"bundle": "sha256/73e75f7d5ee3...0558d941",
        "directory": "/home/alice/restored",
@@ -337,7 +343,8 @@ with no restart, its files resolved out of the bundle — and fetched from peers
 when this node lacks them — as they are first requested:
 
 ```bash
-curl -u admin:secret -X POST http://127.0.0.1:8180/config/api/applications \
+curl -u admin:secret -e http://127.0.0.1:8180/config/ \
+  -X POST http://127.0.0.1:8180/config/api/applications \
   -H 'Content-Type: application/json' \
   -d '{"name": "wiki", "bundle": "sha256/<hash of a directory bundle>"}'
 ```
@@ -357,6 +364,21 @@ path lists what is registered, and `DELETE /config/api/applications/wiki`
 removes one (the root is `%2F`). Any client may list them with
 `GET /data/applications`, and the page a new node serves at `/` links to each.
 
+An application you register is not trusted, and is served in a sandbox: its
+pages can show what the network holds, and nothing more. A trusted application
+can import any file from the folders this node offers, make bundles, and read
+and change every application's store, so trust only one you would trust with
+those folders. Tick its box on the `/config` page, or:
+
+```bash
+curl -u admin:secret -e http://127.0.0.1:8180/config/ \
+  -X PATCH http://127.0.0.1:8180/config/api/applications/wiki \
+  -H 'Content-Type: application/json' -d '{"trusted": true}'
+```
+
+Registering another bundle under its name makes it untrusted again. The
+applications a new node ships are trusted from the start.
+
 ### List the folders offered to this machine
 
 An application can ask whether its page is open on the node's own machine, and
@@ -365,15 +387,20 @@ a page there can list the folders the node offers, set in `local.folders`
 default). Nothing outside them is listed, nor anything hidden within them:
 
 ```bash
-curl http://127.0.0.1:8080/data/client       # {"local":true}
-curl http://127.0.0.1:8080/data/directory    # the folders, by name
-curl http://127.0.0.1:8080/data/directory/Movies/Holidays
+page=http://127.0.0.1:8080/    # the root page, named as each request's Referer
+curl -e $page http://127.0.0.1:8080/data/client       # {"local":true}
+curl -e $page http://127.0.0.1:8080/data/directory    # the folders, by name
+curl -e $page http://127.0.0.1:8080/data/directory/Movies/Holidays
 ```
 
 The listings are served only to clients on this machine, and, like `/config`,
 only to the node's own pages or to no browser at all, so a page another site
-opens in your browser cannot read them. They share their origin with every
-application the node serves, so register only applications you trust.
+opens in your browser cannot read them. Every endpoint meant for the node's
+pages, these among them, needs a `Referer` naming one, which `-e` sends; the
+folders need a trusted application's page, such as the root page a new node
+ships. Trusted
+applications share their origin with each other, so trust only applications
+you would trust with your folders.
 
 ### Publish a drop under a name
 

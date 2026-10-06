@@ -304,8 +304,9 @@ def test_module_follows_the_unsigned_api_read_setting(
 
 
 def _status(host: str, port: int, path: str) -> tuple[int, str | None]:
+    """A GET from the root application's page, as a page of the node it reads into sends."""
     connection = HTTPConnection(host, port, timeout=5)
-    connection.request("GET", path)
+    connection.request("GET", path, headers={"Referer": f"http://{host}:{port}/"})
     response = connection.getresponse()
     response.read()
     connection.close()
@@ -452,11 +453,14 @@ def test_a_read_into_an_encrypted_bundle_is_answered_by_the_report_naming_its_ke
     assert not thread.is_alive()
 
 
-def _authorized(host: str, port: int, path: str, user: str = "admin") -> tuple[int, bytes]:
-    """A `/config` GET carrying Basic credentials for ``user``."""
+def _authorized(
+    host: str, port: int, path: str, user: str = "admin", page: str = "/config/"
+) -> tuple[int, bytes]:
+    """A GET carrying Basic credentials for ``user``, from the page ``page`` names."""
     encoded = b64encode(f"{user}:secret".encode("utf-8")).decode("ascii")
     connection = HTTPConnection(host, port, timeout=5)
-    connection.request("GET", path, headers={"Authorization": f"Basic {encoded}"})
+    headers = {"Authorization": f"Basic {encoded}", "Referer": f"http://{host}:{port}{page}"}
+    connection.request("GET", path, headers=headers)
     response = connection.getresponse()
     body = response.read()
     connection.close()
@@ -506,7 +510,7 @@ def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: P
 
         # Nothing is readable back until the backup module reports.
         assert _authorized(host, config_port, "/config/api/backups")[0] == 503
-        assert _authorized(host, port, "/data/imports")[0] == 503
+        assert _authorized(host, port, "/data/imports", page="/")[0] == 503
 
         queues.inbox.put(
             make_message(
@@ -535,7 +539,7 @@ def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: P
         assert loads(_authorized(host, config_port, "/config/api/builds")[1]) == {"builds": []}
         assert loads(_authorized(host, config_port, "/config/api/exports")[1]) == {"exports": []}
         # Read back on the main port too, by import.
-        assert loads(_authorized(host, port, "/data/imports")[1]) == {
+        assert loads(_authorized(host, port, "/data/imports", page="/")[1]) == {
             "imports": {"7766554433221100": {"path": "Movies/Film.mp4", "status": "waiting"}}
         }
 
