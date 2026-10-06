@@ -4,11 +4,14 @@ The endpoints meant only for browsers, and never for another node, require a
 ``Referer`` naming a page this node serves at the host and port the
 request's ``Host`` header names (Phase 3 Step 74):
 
-- on the main port, whether a client is local, reading into a bundle, the
-  folders and imports, making bundles, an application's store, and the list
-  of applications;
+- on the main port, whether a client is local, the folders and imports,
+  making bundles, an application's store, and the list of applications;
 - on ``/config``'s port, every endpoint beneath ``/config/api``
   (:mod:`libranet.webserver.config_guard`).
+
+Reading into a bundle is meant for browsers too, and asks for none: any
+client can have what it serves by the bundle's objects, and a page served in
+a sandbox sends no ``Referer``, so could show no file of a bundle otherwise.
 
 On the main port, a page is an application's: the one its path belongs to,
 as the application route finds it

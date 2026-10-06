@@ -22,10 +22,11 @@ bundle, or a new version of one, from the bundles a request names, stored as
 uploads from this node (Phase 3 Step 72). Any client may read into a bundle,
 by its id, as an application's files are served (Phase 3 Step 71).
 
-Every endpoint meant only for browsers, `/config/api` included, is served
-only to a request whose `Referer` names one of this node's pages, and some
-only to a trusted application's. An application the operator has not trusted
-is served in a sandbox (Phase 3 Step 74).
+Every endpoint meant only for browsers but reading into a bundle,
+`/config/api` included, is served only to a request whose `Referer` names
+one of this node's pages, and some only to a trusted application's. An
+application the operator has not trusted is served in a sandbox (Phase 3
+Step 74).
 """
 
 from libranet.webserver.app_handler import (

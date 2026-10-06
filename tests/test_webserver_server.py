@@ -1220,26 +1220,23 @@ def test_a_path_going_on_past_an_id_reads_into_its_bundle_and_no_other_does(
     assert sandboxed is (reads_into is not None)
 
 
-@mark.parametrize("applications", [{"/": APP_BUNDLE_ID}])
 def test_a_bundle_is_read_into_by_get_and_head_alone(connection: HTTPConnection) -> None:
-    page = _from_page(connection, "/")
-    head, _ = _get(connection, f"/data/{CONTENT_ID}/film.mp4", method="HEAD", headers=page)
-    put, _ = _get(connection, f"/data/{CONTENT_ID}/film.mp4", method="PUT", headers=page)
+    # Without a Referer, which reading into a bundle never asks for.
+    head, _ = _get(connection, f"/data/{CONTENT_ID}/film.mp4", method="HEAD")
+    put, _ = _get(connection, f"/data/{CONTENT_ID}/film.mp4", method="PUT")
 
     assert head.status == 503
     assert put.status == 405
     assert put.getheader("Allow") == "GET, HEAD"
 
 
-@mark.parametrize("applications", [{"/": APP_BUNDLE_ID}])
 def test_the_access_log_leaves_out_the_key_of_an_encrypted_id(
     connection: HTTPConnection, caplog: LogCaptureFixture
 ) -> None:
     key = sha256(b"what an encrypted bundle decrypts to").hexdigest()
-    path = f"/data/{CONTENT_ID}/AES256-CBC/{key}/film.mp4"
 
     with caplog.at_level(DEBUG, logger="test.webserver"):
-        response, _ = _get(connection, path, headers=_from_page(connection, "/"))
+        response, _ = _get(connection, f"/data/{CONTENT_ID}/AES256-CBC/{key}/film.mp4")
 
     assert response.status == 503
     assert f"/data/{CONTENT_ID}/AES256-CBC/<key>/film.mp4" in caplog.text

@@ -1,9 +1,11 @@
 """``GET /data/{algorithm}/{hash}/{path}``: reading into a bundle (HttpApi §12.1, Phase 3 Step 71).
 
 Any client may read what a bundle holds, without the bundle being registered
-as an application. A bundle stored encrypted (BundleSpecification §7) is
-named by the id per-entry encryption gives it, which carries the key it is
-decrypted with::
+as an application, and without a ``Referer`` naming one of this node's pages,
+which every other endpoint meant for browsers asks for (HttpApi §2.5, Phase 3
+Step 74): a page served in a sandbox sends none. A bundle stored encrypted
+(BundleSpecification §7) is named by the id per-entry encryption gives it,
+which carries the key it is decrypted with::
 
     GET /data/{algorithm}/{hash}/{path}
     GET /data/{algorithm}/{hash}/{cipher}/{key}/{path}

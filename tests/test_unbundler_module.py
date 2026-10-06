@@ -42,8 +42,6 @@ INDEX = b"<html>home</html>"
 FIRST_HALF = b"first half, " * 1000
 SECOND_HALF = b"second half, " * 1000
 ABOUT = b"<html>about</html>"
-# What a request from a page of the wiki application says of where it is from.
-WIKI_PAGE = {"Host": "localhost:8080", "Referer": "http://localhost:8080/wiki/"}
 
 
 @fixture
@@ -1001,10 +999,6 @@ def test_the_web_server_reads_into_an_encrypted_bundle_the_unbundler_resolves(
     bundle = encrypted(store, application())
     web_queues = ModuleQueues(inbox=Queue(), outbox=Queue())
     outcomes = ApplicationOutcomes()
-    # An application whose page the reads are from.
-    ApplicationRegistry(storage.applications_path).register(
-        Application.create("wiki", bundle.content_id)
-    )
     router = build_router(
         storage,
         5,
@@ -1014,10 +1008,8 @@ def test_the_web_server_reads_into_an_encrypted_bundle_the_unbundler_resolves(
         config_port=8180,
         app_outcomes=outcomes,
     )
-    root = Request("GET", f"/data/{bundle}/", headers=WIKI_PAGE, client_address="203.0.113.42")
-    guide = Request(
-        "GET", f"/data/{bundle}/docs/guide.html", headers=WIKI_PAGE, client_address="203.0.113.42"
-    )
+    root = Request("GET", f"/data/{bundle}/", client_address="203.0.113.42")
+    guide = Request("GET", f"/data/{bundle}/docs/guide.html", client_address="203.0.113.42")
 
     for browse in (root, guide):
         router.dispatch(browse)

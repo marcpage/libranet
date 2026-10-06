@@ -365,7 +365,7 @@ removes one (the root is `%2F`). Any client may list them with
 `GET /data/applications`, and the page a new node serves at `/` links to each.
 
 An application you register is not trusted, and is served in a sandbox: its
-pages can show their own files, and nothing more. A trusted application
+pages can show what the network holds, and nothing more. A trusted application
 can import any file from the folders this node offers, make bundles, and read
 and change every application's store, so trust only one you would trust with
 those folders. Tick its box on the `/config` page, or:

@@ -76,8 +76,8 @@ Some are meant only for the browser applications a node serves (§13), and
 never for another node: whether the client is local (§2.4), reading into a
 bundle (§12.1), the folders and imports (§12.2), making bundles (§12.3), an
 application's store (§13.3), and the list of applications (§13.4). Each
-requires a `Referer` naming a page of the node (§2.5). A few serve only
-clients on the node's own machine (§2.4).
+but reading into a bundle requires a `Referer` naming a page of the node
+(§2.5). A few serve only clients on the node's own machine (§2.4).
 
 ### 2.2 Web Applications
 
@@ -340,10 +340,16 @@ applications they would trust with those folders.
 Some endpoints are meant only for the pages a node serves, and never for
 another node:
 
-- on the main port: whether the client is local (§2.4), reading into a
-  bundle (§12.1), the folders and imports (§12.2), making bundles (§12.3),
-  an application's store (§13.3), and the list of applications (§13.4);
+- on the main port: whether the client is local (§2.4), the folders and
+  imports (§12.2), making bundles (§12.3), an application's store
+  (§13.3), and the list of applications (§13.4);
 - on `/config`'s port: every endpoint beneath `/config/api` (§2.3).
+
+Reading into a bundle (§12.1) is meant for those pages too, but is not
+among them. What it serves, any client can have from the node another way,
+by the bundle's objects (§5.1), and a page served in a sandbox (§13.5), or
+a link opened from elsewhere, sends no `Referer`, and could show no file
+of a bundle if one were required.
 
 A request to one of them MUST carry a `Referer` naming a page that the
 node serves at the host and port the request's `Host` header names, and
@@ -1314,8 +1320,8 @@ where each file is retrieved from CAS.
 
 ### 12.1 Reading Into a Bundle
 
-Any client may read what a bundle holds, from a page of the node (§2.5),
-without the bundle being registered as an application:
+Any client may read what a bundle holds, without the bundle being
+registered as an application, and without a `Referer` (§2.5):
 
 ```http
 GET /data/{hash-algorithm}/{hash}/{path}
@@ -1737,19 +1743,20 @@ Every response for a path of an untrusted application (§13), whatever its
 status, carries:
 
 ```http
-Content-Security-Policy: sandbox allow-scripts allow-forms allow-popups
+Content-Security-Policy: sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads
 X-Content-Type-Options: nosniff
 ```
 
 A browser gives a page served with these an origin of its own, which no
-other page shares. Its scripts run, and it can show its own application's
-files. But it is another origin than the main port's. A browser lets it
-read nothing it asks of the node's endpoints, since none grants a
-cross-origin request, and marks its requests as another site's, which the
-endpoints serving only local clients refuse (§2.4). A current browser
-sends no `Referer` with them either, so not even an `<img>` or a
-`<video>` of it can read into a bundle (§2.5, §12.1). It keeps nothing in
-the browser's storage, and a window it opens is sandboxed as it is.
+other page shares. Its scripts run, it can open dialogs and start
+downloads, and it can show what the network holds, as an `<img>`, a
+`<video>`, or a link reading into a bundle does (§12.1). But it is another
+origin than the main port's. A browser lets it read nothing it asks of
+the node's endpoints, since none grants a cross-origin request, and marks
+its requests as another site's, which the endpoints serving only local
+clients refuse (§2.4). A current browser sends no `Referer` with them
+either (§2.5). It keeps nothing in the browser's storage, and a window it
+opens is sandboxed as it is.
 
 A trusted application is served without these headers, on the main
 port's origin. A page of one, open in a local client, may list and import

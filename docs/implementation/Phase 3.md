@@ -1638,7 +1638,7 @@ My calls, not yet reviewed:
 - **The sandbox lets through only what was ruled**, so an untrusted page
   cannot open `alert` or `confirm` dialogs, or start a download.
   `allow-modals` and `allow-downloads` would let those through, at no
-  risk I can see.
+  risk I can see. (Ruled after building: they are let through.)
 - **The node sends no `Referrer-Policy`.** Every current browser's
   default sends a page's full address with requests to its own origin.
 - **A request refused for its `Referer` is logged at warning**, as the
@@ -1719,12 +1719,25 @@ folder:
 - The node stopped cleanly, and logged no error.
 
 Not checked: Safari, whose `<video>` may or may not send a `Referer`.
+Since reading into a bundle asks for none (below), it no longer matters.
 
 Departure from the plan: **a sandboxed page sends no `Referer`**, not the
-origin alone, as my call above took it to. So an untrusted application can
-show its own files, and nothing read from a bundle. HttpApi §13.5, the
-README, and the `/config` page say so now. Letting it would take reading
-into a bundle without a `Referer`.
+origin alone, as my call above took it to. So an untrusted application
+could show its own files, and nothing read from a bundle.
+
+Ruled after building:
+
+- **Reading into a bundle asks for no `Referer`.** It is the one endpoint
+  meant for browsers that does not (HttpApi §2.1, §2.5, §12.1), so an
+  untrusted application can show what the network holds.
+- **The sandbox also allows modals and downloads**:
+  `Content-Security-Policy: sandbox allow-scripts allow-forms allow-popups
+  allow-modals allow-downloads` (HttpApi §13.5).
+
+Run live again on the same node: `probe`, untrusted, was served with the
+wider sandbox, and a read into its bundle was `200` with no `Referer`. In
+headless Chrome 154, its page's `<img>` loaded, and its `<video>`'s range
+request was `206`, while its other requests were refused as before.
 
 My calls while building, not yet reviewed:
 

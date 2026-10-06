@@ -95,7 +95,9 @@ _CONFIG_APP_HEADERS: Final = {"Content-Security-Policy": CONFIG_APP_POLICY}
 #: trusted (HttpApi §13.5). Its pages get an origin of their own, which can
 #: read nothing this node answers and is refused what serves local clients.
 UNTRUSTED_APP_HEADERS: Final = {
-    "Content-Security-Policy": "sandbox allow-scripts allow-forms allow-popups",
+    "Content-Security-Policy": (
+        "sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads"
+    ),
     "X-Content-Type-Options": "nosniff",
 }
 

@@ -180,10 +180,10 @@ def build_router(  # pylint: disable=too-many-locals
     from ``node_id``, each no more than ``max_update_layers`` update layers
     above the last bundle stored whole; none, by default (Phase 3 Step 72).
 
-    Each of those is served only to this node's own pages, as a request's
-    ``Referer`` names them: an application's store to its own, and the
-    folders, imports, and bundles to those of applications the operator
-    trusts. An application the operator has not trusted is served in a
+    Each of those but reading into a bundle is served only to this node's
+    own pages, as a request's ``Referer`` names them: an application's store
+    to its own, and the folders, imports, and bundles to those of
+    applications the operator trusts. An application the operator has not trusted is served in a
     sandbox (Phase 3 Step 74).
     """
     store = CasStore.source_of_truth(storage)
@@ -254,7 +254,7 @@ def build_router(  # pylint: disable=too-many-locals
             publish=publish,
         ),
     )
-    reads = OwnPageOnly(BundleReadHandler(paths), pages)
+    reads = BundleReadHandler(paths)
 
     for method in BUNDLE_METHODS:
         router.add(method, BUNDLE_PATTERN, reads)
