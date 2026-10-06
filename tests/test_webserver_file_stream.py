@@ -119,7 +119,7 @@ def test_a_whole_file_is_sent_a_part_at_a_time(reader: PartReader, store: CasSto
     assert sent(stream) == list(PARTS)
 
 
-def test_each_part_read_is_reported_as_this_nodes_own_request(
+def test_each_part_is_reported_as_this_nodes_own_request(
     reader: PartReader, store: CasStore, published: Recorder
 ) -> None:
     hold(store, *PARTS)
@@ -269,7 +269,8 @@ def test_the_first_part_is_asked_for_with_those_after_it_in_order(
     assert not begun
     # The second part is held, and the sixth on lie past the read-ahead.
     assert published.ids(EventType.DATA_NOT_FOUND) == [id_of(parts[i]) for i in (0, 2, 3, 4)]
-    assert published.ids(EventType.DATA_REQUESTED) == []
+    # Each is requested all the same, held or not, though none was read.
+    assert published.ids(EventType.DATA_REQUESTED) == [id_of(part) for part in parts[:5]]
 
 
 def test_more_parts_are_asked_for_as_the_response_moves_on(
@@ -305,6 +306,38 @@ def test_a_part_still_not_held_is_asked_for_again_only_once_due(
 
     assert asked_once == [id_of(b"aaaa")]
     assert len(published.ids(EventType.DATA_NOT_FOUND)) > 3
+
+
+def test_parts_are_reported_as_requested_once_each_as_they_come_within_the_read_ahead(
+    store: CasStore, published: Recorder
+) -> None:
+    parts = tuple(bytes([letter]) * 4 for letter in b"abcdef")
+    hold(store, *parts)
+    stream = reader_for(store, published, read_ahead_parts=2).stream(entry_of(*parts))
+    chunks = stream.chunks()
+
+    assert stream.begin(monotonic())
+    assert published.ids(EventType.DATA_REQUESTED) == [id_of(part) for part in parts[:3]]
+
+    assert next(chunks) == parts[0]
+    assert next(chunks) == parts[1]
+    assert published.ids(EventType.DATA_REQUESTED) == [id_of(part) for part in parts[:4]]
+
+    assert list(chunks) == list(parts[2:])
+    assert published.ids(EventType.DATA_REQUESTED) == [id_of(part) for part in parts]
+
+
+def test_a_part_not_held_is_reported_as_requested_once_however_often_it_is_asked_for(
+    store: CasStore, published: Recorder
+) -> None:
+    reader = reader_for(store, published, wait_seconds=0.1, read_ahead_parts=0, ask_again_seconds=0)
+
+    assert not reader.stream(entry_of(b"aaaa")).begin(monotonic() + 0.1)
+
+    assert len(published.ids(EventType.DATA_NOT_FOUND)) > 3
+    assert published.ids(EventType.DATA_REQUESTED) == [id_of(b"aaaa")]
+    # It is requested before it is first asked of the network.
+    assert published.messages[0][0] == EventType.DATA_REQUESTED
 
 
 def test_a_part_arriving_during_the_wait_is_sent(reader: PartReader, store: CasStore) -> None:

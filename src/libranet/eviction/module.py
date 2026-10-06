@@ -54,6 +54,16 @@ within its limits once they succeed. One the connection manager never
 answers, as when it restarts, is given up on after
 ``hand_off_timeout_seconds``.
 
+Content stored within the last ``stored_grace_seconds`` is never let go of,
+whatever brought it (Phase 3 Step 75). Content fetched is most likely
+wanted by a request waiting to read it. Handed off at once, to the peer that
+had just sent it, it would be gone before that request read it, and be
+fetched again, without end. It is left out of what stats is asked for,
+passed over in the list stats sent, and kept if a hand-off of it is
+answered meanwhile. When it is all there is left to let go of, eviction
+carries on as soon as the earliest of it is out of its grace, rather than
+wait as it does when nothing at all is left.
+
 Content this node creates itself, a backup's or a build's, waits while
 storage is full rather than take the node over its limits (HighLevelDesign
 §4.5, Phase 2 Step 63). Storage is full when one more object as large as
@@ -135,6 +145,11 @@ DEFAULT_HAND_OFF_TIMEOUT_SECONDS: Final = 1200.0
 # content to let go of. Ranking it reads every row of content held.
 DEFAULT_CANDIDATES_TIMEOUT_SECONDS: Final = 60.0
 
+# Provisional default: how long content just stored is kept from being let go
+# of, so that a request waiting for it reads it first (Phase 3 Step 75). A
+# waiting request looks for it four times a second.
+DEFAULT_STORED_GRACE_SECONDS: Final = 30.0
+
 # Provisional default: how long the unbundler may take to answer that it has
 # deleted the resolved files not used lately.
 DEFAULT_RECLAIM_TIMEOUT_SECONDS: Final = 60.0
@@ -182,6 +197,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         reclaim_timeout_seconds: float = DEFAULT_RECLAIM_TIMEOUT_SECONDS,
         reclaim_interval_seconds: float = DEFAULT_RECLAIM_INTERVAL_SECONDS,
         headroom_bytes: int | None = None,
+        stored_grace_seconds: float = DEFAULT_STORED_GRACE_SECONDS,
     ) -> None:
         if max_hand_offs < 1:
             raise ValueError(f"max_hand_offs must be at least 1, got {max_hand_offs}")
@@ -209,6 +225,11 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         if headroom_bytes is not None and headroom_bytes < 0:
             raise ValueError(f"headroom_bytes must not be negative, got {headroom_bytes}")
 
+        if stored_grace_seconds < 0:
+            raise ValueError(
+                f"stored_grace_seconds must not be negative, got {stored_grace_seconds}"
+            )
+
         super().__init__(
             name, queues, logger=logger, clock=clock, poll_interval_seconds=poll_interval_seconds
         )
@@ -227,6 +248,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
             if headroom_bytes is None
             else headroom_bytes
         )
+        self._stored_grace_seconds = stored_grace_seconds
         self._store = CasStore.source_of_truth(config.storage)
         self._node_id: ContentId | None = None
         self._pressure: StoragePressure | None = None
@@ -245,6 +267,8 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         self._connected: dict[ConnectionDirection, frozenset[ContentId]] = {}
         # Whether storage was last said to be full; None before it first is.
         self._full: bool | None = None
+        # The content stored within its grace, and when, the earliest first.
+        self._stored_at: dict[ContentId, float] = {}
         self._route(
             {
                 EventType.DATA_STORED: self._on_data_stored,
@@ -334,6 +358,11 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
             self._evict()
 
     def _on_data_stored(self, message: Message) -> None:
+        content_id = ContentId.from_fields(message)
+        self._forget_old_stores()
+        # Stored again, it goes to the end, as the latest.
+        self._stored_at.pop(content_id, None)
+        self._stored_at[content_id] = self._clock()
         self.pressure.stored(int(message["size"]))
         self._evict()
 
@@ -357,10 +386,15 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
             )
             return
 
+        self._forget_old_stores()
+
         if self._kept(content_id):
             self.logger.info(
                 "%s is the key of a peer connected meanwhile, so it is kept", content_id
             )
+
+        elif content_id in self._stored_at:
+            self.logger.info("%s was stored again meanwhile, so it is kept for now", content_id)
 
         else:
             self._delete(content_id)
@@ -389,6 +423,18 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         excess = self.pressure.excess()
 
         if not excess:
+            return
+
+        self._forget_old_stores()
+
+        if self._stored_at:
+            self._paused_until = next(iter(self._stored_at.values())) + self._stored_grace_seconds
+            self.logger.debug(
+                "Only content stored in the last %s seconds is left to let go of, "
+                "so %d bytes wait for it",
+                self._stored_grace_seconds,
+                excess,
+            )
             return
 
         self._paused_until = self._clock() + self._retry_delay_seconds
@@ -450,6 +496,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
             return
 
         freeing_bytes = sum(hand_off.size_bytes for hand_off in self._handing_off.values())
+        self._forget_old_stores()
 
         while freeing_bytes < excess and len(self._handing_off) < self._max_hand_offs:
             if not self._candidates:
@@ -457,8 +504,13 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
                 return
 
             held = self._candidates.popleft()
+            content_id = held.content_id
 
-            if self._kept(held.content_id) or held.content_id in self._handing_off:
+            if (
+                self._kept(content_id)
+                or content_id in self._handing_off
+                or content_id in self._stored_at
+            ):
                 continue
 
             self._hand_off(held)
@@ -475,11 +527,21 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
             {
                 "bytes": needed_bytes,
                 "exclude": [
-                    str(content_id) for content_id in self._handing_off.keys() | self._peer_keys()
+                    str(content_id)
+                    for content_id in self._handing_off.keys()
+                    | self._peer_keys()
+                    | self._stored_at.keys()
                 ],
             },
         )
         self.logger.debug("Asked for content to free %d bytes", needed_bytes)
+
+    def _forget_old_stores(self) -> None:
+        """Forget the content stored longest ago whose grace is over."""
+        since = self._clock() - self._stored_grace_seconds
+
+        while self._stored_at and next(iter(self._stored_at.values())) <= since:
+            del self._stored_at[next(iter(self._stored_at))]
 
     def _report_full(self, *, always: bool = False) -> None:
         """Say whether storage is full: if that changed since last said, or ``always``."""

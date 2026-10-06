@@ -29,6 +29,7 @@ TIMEOUT = 300.0
 CANDIDATES_TIMEOUT = 30.0
 RECLAIM_TIMEOUT = 20.0
 RECLAIM_INTERVAL = 600.0
+GRACE = 30.0
 SIZE = 10
 PEERS = [ContentId.for_data(f"peer {index}'s key".encode(), "sha256") for index in range(3)]
 CONTENT = [ContentId.for_data(f"content {index}".encode(), "sha256") for index in range(5)]
@@ -93,7 +94,7 @@ class Modules:
             candidates_timeout_seconds=CANDIDATES_TIMEOUT,
             reclaim_timeout_seconds=RECLAIM_TIMEOUT,
             reclaim_interval_seconds=RECLAIM_INTERVAL,
-            **{"headroom_bytes": 0, **options},
+            **{"headroom_bytes": 0, "stored_grace_seconds": 0, **options},
         )
         self.built.append(module)
         module.on_start()
@@ -888,6 +889,143 @@ def test_an_answer_for_content_no_longer_held_deletes_nothing(
     assert published(queues) == []
 
 
+# -- Content just stored (Phase 3 Step 75) ---------------------------------
+
+
+def test_content_just_stored_is_left_out_of_what_stats_is_asked_for(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+) -> None:
+    hold(store, CONTENT[0])
+    module = modules.start(capped(config, store, node_id, SIZE), stored_grace_seconds=GRACE)
+
+    hold(store, CONTENT[1])
+    module.handle(stored(CONTENT[1]))
+
+    assert requested(queues) == (SIZE, [str(CONTENT[1])])
+
+
+def test_content_just_stored_is_passed_over_when_stats_lists_it(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+) -> None:
+    hold(store, CONTENT[0])
+    module = modules.start(capped(config, store, node_id, SIZE), stored_grace_seconds=GRACE)
+    hold(store, CONTENT[1])
+    module.handle(stored(CONTENT[1]))
+    requested(queues)
+
+    # As stats might list it, had it been asked before the content was stored.
+    module.handle(candidates(CONTENT[1], CONTENT[0]))
+
+    assert handed_off(queues) == [CONTENT[0]]
+
+
+def test_content_stored_can_go_once_its_grace_is_over(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+    now: list[float],
+) -> None:
+    hold(store, *CONTENT[:3])
+    module = modules.start(capped(config, store, node_id, 3 * SIZE), stored_grace_seconds=GRACE)
+    module.handle(stored(CONTENT[1], 0))
+    now[0] += GRACE
+    hold(store, CONTENT[3])
+
+    module.handle(stored(CONTENT[3]))
+
+    assert requested(queues) == (SIZE, [str(CONTENT[3])])
+
+    module.handle(candidates(CONTENT[1], CONTENT[3]))
+
+    assert handed_off(queues) == [CONTENT[1]]
+
+
+def test_content_stored_again_is_kept_from_when_it_was_stored_last(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+    now: list[float],
+) -> None:
+    hold(store, *CONTENT[:4])
+    module = modules.start(capped(config, store, node_id, 4 * SIZE), stored_grace_seconds=GRACE)
+    module.handle(stored(CONTENT[1], 0))
+    now[0] += 10
+    module.handle(stored(CONTENT[2], 0))
+    now[0] += 10
+    module.handle(stored(CONTENT[1], 0))
+    # The grace CONTENT[2] was stored with is over, and CONTENT[1]'s goes on.
+    now[0] += GRACE - 5
+
+    hold(store, CONTENT[4])
+    module.handle(stored(CONTENT[4]))
+
+    assert requested(queues) == (SIZE, sorted(str(content) for content in CONTENT[1:5:3]))
+
+
+def test_a_hand_off_answered_for_content_stored_again_meanwhile_keeps_it(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+    caplog: LogCaptureFixture,
+) -> None:
+    hold(store, CONTENT[0])
+    module = modules.start(capped(config, store, node_id, 0), stored_grace_seconds=GRACE)
+    requested(queues)
+    module.handle(candidates(CONTENT[0]))
+    assert handed_off(queues) == [CONTENT[0]]
+    module.handle(stored(CONTENT[0], 0))
+
+    with caplog.at_level(INFO):
+        module.handle(acknowledged(CONTENT[0], PEERS[0]))
+
+    assert f"{CONTENT[0]} was stored again meanwhile, so it is kept for now" in caplog.text
+    assert store.exists(CONTENT[0])
+    assert EventType.DATA_DELETED not in {message["event"] for message in published(queues)}
+
+
+def test_only_content_just_stored_left_waits_for_its_grace_without_a_warning(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+    now: list[float],
+    caplog: LogCaptureFixture,
+) -> None:
+    module = modules.start(capped(config, store, node_id, 0), stored_grace_seconds=GRACE)
+    hold(store, CONTENT[0])
+    module.handle(stored(CONTENT[0]))
+    assert requested(queues) == (SIZE, [str(CONTENT[0])])
+
+    with caplog.at_level(INFO):
+        module.handle(candidates())
+
+    assert "nothing left to let go of" not in caplog.text
+    now[0] += GRACE - 1
+    module.on_idle()
+    assert published(queues) == []
+
+    # Long before the wait for a hand-off that fell short would be over.
+    now[0] += 1
+    module.on_idle()
+
+    assert requested(queues) == (SIZE, [])
+
+
 # -- Keys of connected peers (Phase 2 Step 53) ------------------------------
 
 
@@ -1127,6 +1265,9 @@ def test_unusable_settings_are_refused(config: LibranetConfig, queues: ModuleQue
 
     with raises(ValueError, match="headroom_bytes"):
         EvictionModule(ModuleName.EVICTION, queues, config, headroom_bytes=-1)
+
+    with raises(ValueError, match="stored_grace_seconds"):
+        EvictionModule(ModuleName.EVICTION, queues, config, stored_grace_seconds=-1)
 
 
 def test_the_module_subscribes_to_stored_content_and_answers() -> None:

@@ -86,6 +86,13 @@ API to do that with, and the API lacks:
   trusts may now, and each store answers only its own application's
   pages.
 
+Trying the application on sixteen nodes found one more thing the node
+lacked:
+
+- **Keeping a part until it is read** (Step 75). A node at its storage
+  limit let go of each part it fetched for a film before the film's
+  response read it. Nothing just stored is let go of now for a time.
+
 ## 3. How to Read the Steps Below
 
 The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
@@ -681,6 +688,10 @@ MB H.264 MP4, a 257 kB VP9 WebM, and a text file:
 
 Not checked: Safari and Firefox, a `412` from the store (two changes to
 it at once), and a film too large for the browser to buffer.
+
+Found later, on sixteen nodes of 1 GB each with films of 1 to 2 GiB: a
+node at its storage limit let go of each part it fetched for a film before
+reading it, so no film would play. That is Step 75.
 
 Fixed while trying it: an edit refused as made from an old version first
 reopened the playlist, which closed the player, and with it the editor,
@@ -1887,6 +1898,143 @@ answer.
 
 ---
 
+## Step 75 — Keeping Content Just Stored
+
+**Issue:** none yet. Found when the movie application (Step 67) was tried
+on sixteen nodes. **Depends on:** Phase 1 Step 15, Phase 2 Step 28, and
+Step 65.
+
+What was found: sixteen nodes run by `scripts/local_network.py`, each
+with `max_storage_bytes` of 1,000,000,000, and four films of 1 to 2 GiB
+imported on one of them. Each film's import filled that node, which
+handed most of the film off as it was read in. Then a poster could not
+be taken of the fourth, and none of the four would play: the node's log
+showed one part of each, the same part each time, that "did not arrive
+within 10.0 seconds". It had arrived every time:
+
+- The film's response asked for the part, and the fetcher fetched it from
+  the peer it had been handed off to. The validator stored it.
+- The node was at its limit, so eviction asked stats what to let go of.
+  The part had no request yet, since a response reports a part as
+  requested only once it reads it (Step 65), while each part already
+  played had one. "Rarely requested" then counted for more than its
+  being the newest, by up to a hundredfold. Replayed against a copy of
+  the reproduction's database below, a part just fetched and not yet read
+  ranked 8th of 37 to let go of, and one read ranked last. Stats named
+  it among the first.
+- Eviction handed it off, to the peer that matched its hash best, the one
+  that had just sent it, which took it at once. The local copy was
+  deleted about 30 ms after it was stored. The response looks for a part
+  four times a second, so it never saw it.
+- Five seconds later the response asked again, and the same happened,
+  until its ten seconds were up.
+
+The node also let go of each playlist and movie bundle the page had just
+made or read, since small content ranks early. Those were fetched again
+when next read, so the page carried on.
+
+Reproduced on four nodes on one machine, the importing node capped at 40
+MB and a 100 MB film read through `/data/{id}/Big.mp4`: the response was
+cut short after 28 MiB. The part it waited for was fetched, stored, handed
+off, and deleted four times over, between 12 and 252 ms after it arrived.
+
+Ruled before building:
+
+- **Nothing a node has just stored is let go of for a time, whatever
+  brought it**, rather than only what it asked the network for, or
+  counting a part as requested when it is asked for. A grace period
+  keeps the bundles a page has just made too.
+- **It is a step of its own**, rather than part of Step 67.
+
+The specification change is written: HighLevelDesign §4.5.
+
+What was built, in one change set: 94 added lines of non-test Python, 18
+of them in place of removed ones, about half of them comments.
+
+- **The grace** (`eviction/module.py`): `EvictionModule` takes
+  `stored_grace_seconds`, `DEFAULT_STORED_GRACE_SECONDS` (30 s) by
+  default, and notes when it hears of each object stored. Until its grace
+  is over, an object is left out of what stats is asked for, passed over
+  in the list stats sent, and kept if a hand-off of it is answered.
+- **What waits on it.** When stats names nothing else to let go of, and
+  some content is in its grace, eviction carries on as soon as the
+  earliest of it may go, rather than wait `peers.retry_delay_seconds` as
+  when nothing at all is left.
+- **A part is requested when it is asked for** (`webserver/file_stream.py`,
+  ruled after the grace was built, below). A response reports each part
+  as this node's own request the first time the part comes within its
+  read-ahead, held or not, and no longer once it reads it. Each part
+  still counts once for each response. This reverses the timing of Step
+  65's call, which reported a part only once it was read.
+
+Run live again on the same four nodes, with the importing node capped at
+60 MB:
+
+- The 100 MB film, read at 1 MB/s, came whole, and nothing was cut short.
+  The node fetched 94 parts as it was read, and let 75 go.
+- Read at full speed, it came whole in 2.3 s. The node held 78 MB while
+  all it held was in its grace, waited for that grace, and was back to 50
+  MB 29 s after the read began.
+- In headless Chrome 154, the movie page played the film from the
+  start, and seeked to 80, 30, 95, 55, and 10 s, playing on each time
+  with no error shown. Chrome read the whole film ahead, so the node held
+  96 MB, and was back to 50 MB within 30 s.
+- No node logged a warning.
+
+Ruled after building:
+
+- **A part is reported as requested when the response asks for it**, not
+  once it reads it. A part fetched for the response then counts a request
+  as it arrives, and ranks with the parts already sent, among which it is
+  the newest. The grace keeps it while it is waited for. The count keeps a
+  part read ahead, past its grace, from going before the parts already
+  played.
+
+Run live again with that, on the same four nodes: a read of the film from
+its start, dropped after 3 MB, had sent about its first four parts and
+asked for eight beyond them. Each of the first twelve parts gained one
+request in the stats database as the read began, and was held. The
+thirteenth on gained none. No node logged a warning.
+
+Not checked: the sixteen nodes and four films the problem was found
+with.
+
+My calls while building, not yet reviewed:
+
+- **30 s**, provisional, and a default of the module, as its other
+  timeouts are, rather than a setting. A response waiting for a part looks
+  for it four times a second, and a page reads what it has just made at
+  once. A part read ahead, and not read within the grace, may go, and is
+  fetched again when the response reaches it.
+- **Storage may go over a limit by what is stored in one grace**, when
+  everything older has gone: by 18 MB and by 36 MB in the run above, each
+  time for under 30 s. A node holding at least that much older content
+  never does. Content waiting on it is logged at debug, with no warning,
+  even over a limit.
+- **The grace begins when eviction hears of the content stored**, so a
+  backlog in its inbox lengthens it, and never shortens it. Content stored
+  again begins it again. Content held when eviction starts has none.
+- **A hand-off answered for content stored again meanwhile keeps it.**
+  That copy may be the one a request is waiting for.
+- **The tests' modules have no grace unless a test gives one**, as they
+  have no headroom, so that the tests from before are unchanged.
+- **A part asked for and never sent still counts its request**, as when
+  the browser drops a response and asks for another span. It was asked
+  for, and a part read again counted twice before too.
+- **`FileStream` disables `too-many-instance-attributes`**, which it
+  outgrew by the one counter, as the Coding Style allows for a limit on
+  size.
+
+**Testable in isolation:** module tests for content just stored left out
+of what stats is asked for, passed over when stats lists it, let go once
+its grace is over, kept from when it was stored last, kept when a hand-off
+of it is answered, and waited for without a warning when it is all that is
+left. Stream tests for each part reported as requested once, as it comes
+within the read-ahead, and for a part not held reported before it is asked
+of the network, and once however often it is asked again.
+
+---
+
 ## 4. Issues in the Milestone
 
 Every issue in the **Phase 3 - Support Video Playback** milestone, by
@@ -1906,6 +2054,8 @@ number, and where it went.
 | #222 | Reading into a bundle by its id, or by an encrypted id carrying its key | 71 |
 | #223 | Making a bundle, and adding to and removing from one, without expanding it | 72 |
 
+Step 75 has no issue yet. It was found trying Step 67.
+
 ## 5. Suggested Build Order
 
 | Order | Steps | Why here |
@@ -1921,6 +2071,7 @@ number, and where it went.
 | 9 | 73 (#218) | Small, and needs nothing in this phase, so it can go anywhere. |
 | 10 | 74 (#215) | Guards what 68 to 73 serve, and the movie application is written for it. |
 | 11 | 67 (#213) | The page, which needs all of the above. |
+| 12 | 75 | Found trying 67, whose films a full node could not play without it. |
 
 Every specification change is made.
 
