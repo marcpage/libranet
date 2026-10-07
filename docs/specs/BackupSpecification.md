@@ -212,8 +212,13 @@ The following were identified during design discussion but not yet
 resolved:
 
 - Exact change-detection mechanism per platform (filesystem notification
-  APIs vs. polling), and default polling interval if polling is used.
-- Conflict-resolution behavior for restore into a non-empty directory.
+  APIs vs. polling), and default polling interval if polling is used. The
+  reference node polls, walking the directory once an hour by default, or
+  at the interval a job gives, and reads again only the files whose metadata
+  changed.
+- Conflict-resolution behavior for restore into a non-empty directory. The
+  reference node offers two choices: to refuse a directory that is not empty,
+  which it does by default, or to overwrite what is there.
 - Whether a node should prune old `versions` entries after some
   retention period, or retain the full backup history indefinitely.
 - Whether backup bundles should be marked or discoverable as such (e.g.
@@ -222,4 +227,7 @@ resolved:
   BundleSpecification.md §1's shape-based discrimination.
 - `/config` request/response shapes (job configuration schema, restore
   request schema) — not yet defined; this document specifies behavior,
-  not wire format.
+  not wire format. The reference node's are its own: a job is
+  `{"directory", "interval_seconds"}`, and a restore
+  `{"bundle", "directory", "on_conflict"}`, `on_conflict` being `refuse` or
+  `overwrite`.

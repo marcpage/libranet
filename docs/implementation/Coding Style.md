@@ -287,8 +287,10 @@ nothing says `-> None`.
   message payload or a value about to be written, and for what a library
   hands over untyped.
 - **No `cast`.** Narrow with `isinstance`, or restructure.
-- **`Protocol` for an interface**, not an abstract base class. `ModuleBase`
-  is the one `ABC`, because it carries the receive loop its subclasses share.
+- **`Protocol` for an interface**, not an abstract base class. No class
+  derives from `ABC`. `ModuleBase` is a plain base class, because it carries
+  the receive loop its subclasses share, and its hooks do nothing until a
+  module overrides them.
 - **`StrEnum` for a string more than one module spells**, such as
   `EventType` and `ModuleName`.
 - **`TypeAlias` for a union with a name**:
@@ -650,35 +652,40 @@ New code comes with tests, and coverage is gated at 90%.
 
 ## 12. Where the Code Departs
 
-These are in the code as of this version. New code follows the rules above.
-None of these is fixed in passing: a change set keeps to its task. Paths are
-relative to `src/libranet/`, except those that start with `tests/`.
+These are in the code as of Phase 3 Step 77. New code follows the rules
+above. None of these is fixed in passing: a change set keeps to its task.
+Paths are relative to `src/libranet/`, except those that start with `tests/`.
 
 | Where | Departure |
 | --- | --- |
 | `tests/test_config_models.py` | Three `Test…` classes (§11) |
 | `logging_setup.get_logger` | A `get_` name (§4) |
-| `applications/packaged.py` `_Objects`; `backup/builds.py` `_Earlier`; `webserver/app_registry.py` `_FileVersion` | A private class at the bottom, after the public code that uses it (§3.1) |
-| `connections/module.py` `_dialable`; `identity/keys.py` `_decompressed`; `stats/database.py` `_source_rank`; `stats/lists.py` `_cost`; `stats/module.py` `_started`; `webserver/config_guard.py` `_host_name`, `_same_authority`; `webserver/config_handlers.py` `_unreadable_registry_response`, `_body_or_refusal`, `_json_or_refusal` | A private function before public code (§3.1) |
+| `applications/packaged.py` `_Objects`; `backup/builds.py` `_Earlier` | A private class at the bottom, after the public code that uses it (§3.1) |
+| `backup/module.py` `_waiting`; `bundle/building.py` every private function from `_identity` to `_metadata`, eleven, before `modified_time`; `connections/module.py` `_dialable`; `identity/keys.py` `_decompressed`; `stats/database.py` `_source_rank`; `stats/lists.py` `_cost`; `stats/module.py` `_started`; `webserver/config_guard.py` `_is_followed_link`, `_api_page_refusal`; `webserver/config_handlers.py` `_not_registered_response`, `_unreadable_registry_response`, `_body_or_refusal`; `webserver/module.py` `_address`; `webserver/server.py` `_registry`, `_bundle_paths` | A private function before public code (§3.1) |
 | `webserver/data_handler.py` `DataReadHandler`; `webserver/data_write_handler.py` `DataWriteHandler` | A handler that keeps its collaborators in private attributes set by `__init__`, where every other handler and guard class is a frozen dataclass of them (§6.2) |
 | `problems.py` `Problem` | Its JSON form is `to_dict()`, and its body `to_json()`, rather than `value()` (§6.3) |
 | `webserver/config_credential.py` `StoredCredential` | `from_json()` and `to_json()` read and write the file's bytes, rather than `from_value()` and `value()` (§6.3) |
-| 70 public callables in 36 files, listed in §12.1 | An optional parameter a call may pass by position (§6.4) |
-| `backup/tasks.py`, `config/paths.py`, `connections/peer_session.py`, `messaging/queues.py`, `stats/records.py`, `stats/schema.py`, `webserver/data_handler.py`, `webserver/request_refusals.py`, `webserver/search_handler.py` | No test file of its own: each is tested through the code that uses it (§11) |
+| 82 public callables in 42 files, listed in §12.1 | An optional parameter a call may pass by position (§6.4) |
+| `backup/imports.py`, `backup/tasks.py`, `connections/peer_session.py`, `messaging/queues.py`, `stats/records.py`, `stats/schema.py`, `webserver/data_handler.py`, `webserver/request_refusals.py`, `webserver/search_handler.py`, `webserver/site_checks.py` | No test file of its own: each is tested through the code that uses it (§11) |
 
 ### 12.1 Optional Parameters Taken Positionally
 
 Each callable is shown with the parameters that have a default but may be
-passed by position. A constructor is shown as its class.
+passed by position. A constructor is shown as its class. A method that keeps
+the signature of the one it overrides or stands in for is not counted
+(§6.4).
 
 | File | Callables |
 | --- | --- |
 | `applications/packaged.py` | `PackagedApplications.build(directory, names)` |
 | `backup/restores.py` | `Restore.attempt(xattrs)` |
+| `backup/runs.py` | `AnnouncingStore(make_room)` |
 | `backup/writing.py` | `DirectoryWriter(xattrs)`, `DirectoryWriter.open(xattrs)` |
 | `bundle/building.py` | `IgnoredPaths(paths)`, `build_file(max_object_bytes)`, `build_directory(supersedes, max_object_bytes)` |
+| `bundle/encryption.py` | `Aes256Cbc(iv)` |
 | `bundle/extensions.py` | `resolve_directory(max_extensions)` |
 | `bundle/loading.py` | `load_bundle(max_bytes, password, targeted)` |
+| `bundle/parts.py` | `PartPath.chunks(size_bytes)` |
 | `bundle/protection.py` | `protect(max_object_bytes)` |
 | `bundle/shapes.py` | `Metadata.xattr_parts(included)` |
 | `bundle/storing.py` | `store_object(max_object_bytes)`, `store_bundle(password, max_object_bytes, max_extensions)`, `StoredDirectory.store(password, max_object_bytes, max_extensions)` |
@@ -691,15 +698,17 @@ passed by position. A constructor is shown as its class.
 | `cas/verification.py` | `content_matches(registry)` |
 | `cli.py` | `parse_args(argv)` |
 | `config/loader.py` | `load_config(path)` |
+| `config/paths.py` | `default_local_folders(dirs)` |
 | `config/seeds.py` | `load_seed_peers(path)` |
 | `connections/peer_connection.py` | `PeerConnection.request(headers, body)` |
-| `eviction/pressure.py` | `StoragePressure.of(free_bytes)` |
+| `eviction/pressure.py` | `StoragePressure(headroom_bytes)`, `StoragePressure.of(free_bytes, headroom_bytes)`, `StoragePressure.over_limits(adding_bytes)` |
 | `identity/authentication.py` | `RequestAuthenticator(max_tracked_signers)`, `RequestAuthenticator.authenticate(body)` |
 | `identity/signatures.py` | `MessageSigner(clock)`, `MessageSigner.sign_request(body)`, `MessageSigner.sign_response(body)`, `MessageVerifier(clock)`, `MessageVerifier.of(clock)`, `MessageVerifier.verify_request(body)`, `MessageVerifier.verify_response(body)` |
+| `local_network.py` | `LocalNetwork.create(debug)`, `ConnectionLog(offset, inode)`, `parse_args(argv)`, `main(argv)` |
 | `messaging/dispatcher.py` | `Dispatcher.run(stop)` |
 | `messaging/envelope.py` | `make_message(payload)` |
 | `messaging/module.py` | `ModuleBase.publish(payload)`, `ModuleBase.receive(timeout_seconds)`, `ModuleBase.run(stop)` |
-| `messaging/queues.py` | `create_module_queues(start_method)` |
+| `messaging/queues.py` | `create_module_queues(start_method, subscriptions)` |
 | `problems.py` | `Problem.for_status(detail, instance)` |
 | `protocol/config_requests.py` | `BackupJobRequest.create(interval_seconds)`, `BuildRequest.create(password)`, `ExportRequest.create(password)` |
 | `protocol/search.py` | `normalize_prefix(registry)`, `LocalSearch(registry)` |
@@ -709,3 +718,4 @@ passed by position. A constructor is shown as its class.
 | `webserver/app_registry.py` | `ApplicationRegistry(initial)` |
 | `webserver/app_use.py` | `ApplicationUse(report_interval_seconds)` |
 | `webserver/http_types.py` | `RequestBody(stream)`, `bytes_response(content_type, headers)`, `json_response(status)`, `problem_response(headers)` |
+| `webserver/own_pages.py` | `OwnPages.refusal(application)`, `OwnPages.refused(application)` |

@@ -70,6 +70,14 @@ handled as follows:
   there is no identity to attribute the pushed content or
   outstanding-request entry to.
 
+The endpoints meant only for the pages a node serves, and never for another
+node (HTTP API §2.5), are none of these. A browser sends every request to them
+unsigned, writes included, and each is served as HTTP API §2.4 and §2.5
+describe: one that changes anything, only to a client on the node's own
+machine. A node that refuses unsigned reads within `/data`, as the rule above
+allows, refuses the reads among them as well, so its applications cannot use
+them.
+
 If identity headers are present but the signature fails to verify, the
 connection MUST be terminated (§5.3), subject to the bootstrap grace
 period in §3.2. This is distinct from omitting authentication

@@ -11,11 +11,11 @@ those processes work together: which modules there are and what each one is
 responsible for, how the supervisor starts, restarts, and stops them, and the
 message bus, shared files, and signals they communicate through. It is
 written for someone about to read or change the code, and describes the
-implementation as of version 0.2, at the end of Phase 2.
+implementation as of version 0.2 and Phase 3, up to Step 77.
 
 The architecture was chosen in [Phase 1](Phase%201.md) §2 and Steps 3 and 4,
-and [Phase 2](Phase%202.md) leaves it unchanged. [File
-Layout](File%20Layout.md) describes the files the modules share. For the
+and [Phase 2](Phase%202.md) and [Phase 3](Phase%203.md) leave it unchanged.
+[File Layout](File%20Layout.md) describes the files the modules share. For the
 protocol behavior the modules implement, see [High-Level
 Design](../specs/HighLevelDesign.md) and [HTTP API](../specs/HttpApi.md).
 
@@ -231,7 +231,7 @@ that subscriber's inbox.
 #### 3.2.1 Stats
 
 The node's memory, and the only process that opens `libranet.sqlite3`. It
-subscribes to 18 of the 40 events, nearly everything the other modules
+subscribes to 18 of the 43 events, nearly everything the other modules
 report, and records each in one small statement. Every
 `stats.derive_interval_seconds` it rewrites the node, seek, and candidate
 lists into `lists/`, which the web server and connection manager read as
@@ -259,11 +259,13 @@ the file's first part, since a `<video>` does not retry a `503` (§8.3). A
 bundle a local client makes (`POST /data/bundles`, Phase 3 Step 72) waits
 alike for the bundles it reads, and each object of it is written to this
 node's own store in `incoming/`, so that it reaches `cas/data` through the
-validator, as an upload does. It
+validator, as an upload does. It keeps each application's store in `store/`
+itself (Phase 3 Step 70), and hands a file a local client asks to import to
+the backup module, once it has found it in a folder offered (Step 69). It
 also keeps count of the peers connected to it, whose keys the eviction
 module keeps.
 It subscribes to only three events, `app.path_resolved`, `backup.state`,
-and `peers.connected_requested`, and publishes sixteen.
+and `peers.connected_requested`, and publishes seventeen.
 
 #### 3.2.3 Validator
 
@@ -324,24 +326,25 @@ never lets go of this node's own public key, nor the key of a peer
 connected either way, which the connection manager and web server name in
 `peers.connected`. Every question it asks another module has a timeout,
 so a restart of the module it asked cannot stall it. It says whether
-storage is full, in `storage.full`, so that a backup or build waits rather
-than take the node past a limit, and it starts a batch of hand-offs short
+storage is full, in `storage.full`, so that a backup, build, or import waits
+rather than take the node past a limit, and it starts a batch of hand-offs short
 of each limit, so that what waits is not slowed to one hand-off at a time.
 
 #### 3.2.8 Backup
 
 Does the `/config` work that takes time: backing up directories, and
-restoring, building, and exporting bundles. The web server publishes each
-request and answers at once, and the backup module works through them one
-at a time on its main thread, between messages. It publishes its whole
+restoring, building, and exporting bundles. It also imports a file a local
+client asks for (Phase 3 Step 69). The web server publishes each request and
+answers at once, and the backup module works through them one at a time on
+its main thread, between messages. It publishes its whole
 state as `backup.state` whenever that changes. Every object it stores is
 announced with `data.stored`, as the validator announces what it stores,
 and content a restore or export lacks is asked for with `data.not_found`.
 Before each object it stores, it looks at its inbox for `storage.full`, and
 waits while storage is full, setting other messages aside until it is done.
 Jobs are kept in `backup_jobs.json`, and each job's last bundle, kept
-expanded, in `backup_jobs/`; restores, builds, and exports are kept in
-memory only.
+expanded, in `backup_jobs/`; restores, builds, exports, and imports are kept
+in memory only.
 
 ### 3.3 What Each Module Owns
 
@@ -355,6 +358,7 @@ memory only.
 | Deleting from `cas/data` | Eviction | — |
 | Resolved entries in `cas/resolved/` | Unbundler | The web server serves files from them, and deletes one it cannot read; others publish `app.path_not_found` or `resolved.reclaim` |
 | The application registry | Web server | — |
+| Applications' stores in `store/` | Web server | — |
 | Backup jobs and the backup secret | Backup | The web server publishes `backup.*` requests |
 | The search cache in `search/` | Web server | Stats rewrites a cached result to add identifiers |
 
@@ -590,7 +594,7 @@ What each module does in them:
 | Fetcher | — | — | — |
 | Unbundler | — | — | — |
 | Eviction | Read the node id; count storage; ask which peers are connected; say whether storage is full; evict if over | Say whether storage is full, if that changed; time out hand-offs and questions; resume after a pause | — |
-| Backup | Read the node id; ask whether storage is full; read the jobs; report state | Carry on the next restore, build, export, or backup due | — |
+| Backup | Read the node id; ask whether storage is full; read the jobs; report state | Carry on the next restore, build, export, import, or backup due | — |
 
 ### 5.3 Writing a Module
 
@@ -839,6 +843,7 @@ to end its loop.
 | `backup.restore_requested` | P | | | | | | | S |
 | `backup.build_requested` | P | | | | | | | S |
 | `backup.export_requested` | P | | | | | | | S |
+| `backup.import_requested` | P | | | | | | | S |
 | `backup.state` | S | | | | | | | P |
 | *Eviction* | | | | | | | | |
 | `eviction.notice` | | S | | | | | P | |
@@ -859,7 +864,7 @@ to end its loop.
 | `storage.full` | | | | | | | P | S |
 | *Lifecycle* | | | | | | | | |
 | `shutdown` | S | S | S | S | S | S | S | S |
-| **Publishes / subscribes** | 16 / 3 | 14 / 6 | 2 / 1 | 3 / 18 | 1 / 3 | 3 / 3 | 6 / 6 | 4 / 8 |
+| **Publishes / subscribes** | 17 / 3 | 14 / 6 | 2 / 1 | 3 / 18 | 1 / 3 | 3 / 3 | 6 / 6 | 4 / 9 |
 
 The `shutdown` row and its subscriptions are implicit: every module
 receives it without listing it, and nothing publishes it (§6.4). The totals
@@ -872,7 +877,7 @@ A content id is an `algorithm` and a lower-case hex `hash`, or, in
 
 | Event | Payload | Meaning |
 | --- | --- | --- |
-| `data.requested` | `algorithm`, `hash`, `external` | `GET /data` asked for this content, held or not; `external` is false for a request from this machine |
+| `data.requested` | `algorithm`, `hash`, `external` | `GET /data` asked for this content, held or not, or a file served from its parts asked for this part; `external` is false for a request from this machine, and for a part |
 | `data.not_found` | `algorithm`, `hash` | Content was needed that this node does not hold |
 | `data.search_requested` | `prefix` | A search was answered, and its result cached in `search/` |
 | `data.put_completed` | `algorithm`, `hash`, `node_id` | Unchecked bytes wait in `node_id`'s store in `incoming/` |
@@ -899,7 +904,8 @@ A content id is an `algorithm` and a lower-case hex `hash`, or, in
 | `backup.restore_requested` | `restore_id`, `bundle`, `directory`, `on_conflict` | Restore a bundle into a directory |
 | `backup.build_requested` | `build_id`, `directory`, `password` | Build a directory into a bundle; `password` is never logged |
 | `backup.export_requested` | `export_id`, `bundle`, `archive`, `on_conflict`, `password` | Write a bundle into a content archive |
-| `backup.state` | `jobs`, `restores`, `builds`, `exports` | Everything the backup module is doing, replacing the last report |
+| `backup.import_requested` | `import_id`, `path`, `local_path` | Import the file the web server found at `local_path`, which a local client asked for as `path` |
+| `backup.state` | `jobs`, `restores`, `builds`, `exports`, `imports` | Everything the backup module is doing, replacing the last report |
 | `eviction.notice` | `algorithm`, `hash`, `copies` | Hand this content off to `copies` peers |
 | `eviction.acknowledged` | `algorithm`, `hash`, `node_ids` | The peers that accepted it, best match first |
 | `data.deleted` | `algorithm`, `hash`, `size` | Content was deleted from `cas/data` |
@@ -949,6 +955,7 @@ flowchart TB
     stored --> conn
     stored --> evict
     stored --> backup
+    stored --> unb
     web --> missing
     unb --> missing
     backup --> missing
@@ -1054,7 +1061,7 @@ sequenceDiagram
     unb->>unb: save the file's entry into cas/resolved/
     unb-)web: app.path_resolved, outcome stored
     web->>web: woken, entry found, first part read
-    web-)stats: data.requested for each part read
+    web-)stats: data.requested for each part, as it is asked for
     web-->>browser: 200, the file sent a part at a time
 ```
 
@@ -1069,7 +1076,14 @@ whose entry or first part does not come within
 `network.app_wait_seconds` is answered `503`, and one whose later part does
 not is cut short. Outcomes other than `stored` leave no entry, so the web
 server remembers them and answers the next request for the path at once:
-`404` for `not_found`, `302` for `redirect`, and `500` for `unusable`.
+`404` for `not_found`, `302` for `redirect`, and `500` for `unusable` and
+`protected`. A read into a bundle (Phase 3 Step 71) is served the same way,
+but answers `400` for `unusable` and `403` for `protected`, and lists a
+directory rather than redirecting to it.
+
+Each part is reported to stats as this node's own request for it, once, when
+the response first asks for it, so that the parts of a file being served are
+not handed off before they are sent (Phase 3 Steps 65 and 75).
 
 ### 8.4 Running Short of Space
 
@@ -1122,12 +1136,12 @@ Content this node creates itself waits rather than take storage past a
 limit (HighLevelDesign §4.5, Phase 2 Step 63). Eviction says in
 `storage.full` whether one more object of `storage.max_object_bytes` would
 pass a limit, whenever that changes, and again when the backup module asks,
-as it does when it starts. Before each object a backup or build stores, the
-backup module looks at its inbox for it, and while storage is full it waits,
-setting other messages aside until it is done. Eviction starts eight
-objects' worth short of each limit, so eight hand-offs are under way while
-it waits. Storage still full after `backup.storage_stall_seconds` fails the
-backup or build.
+as it does when it starts. Before each object a backup, build, or import
+stores, the backup module looks at its inbox for it, and while storage is
+full it waits, setting other messages aside until it is done. Eviction starts
+eight objects' worth short of each limit, so eight hand-offs are under way
+while it waits. Storage still full after `backup.storage_stall_seconds` fails
+the backup, build, or import.
 
 ### 8.5 A `/config` Request
 
@@ -1169,9 +1183,11 @@ data moves through files, and a message tells the reader where to look.
 | `search/` | Web server; stats, adding identifiers | Web server | `data.search_requested`, which names the prefix |
 | `libranet.sqlite3` | Stats | Stats | — |
 | `applications.json` | Web server | Web server | — |
+| `store/` | Web server | Web server | — |
 | `backup_jobs.json` | Backup | Backup | — |
 | `backup_jobs/` | Backup | Backup | — |
 | `keys/` | Supervisor; backup; web server | Modules that need them, in `on_start` | — |
+| The folders `local.folders` offers | — | Web server, listing them and finding a file to import; backup, reading that file | `backup.import_requested`, which names the file |
 
 Two things make sharing these safe without locks. Every file is replaced
 whole, by renaming a finished temporary file over it (File Layout §8), so a
@@ -1206,8 +1222,8 @@ each `app.path_resolved` the main thread takes in wakes it (Phase 3 Step
 
 | Shared object | Written from | Read to answer |
 | --- | --- | --- |
-| `ApplicationOutcomes` | `app.path_resolved`, keeping outcomes `not_found`, `redirect`, and `unusable`, and waking requests waiting on any | Application paths, with `404`, `302`, or `500` |
-| `BackupState` | `backup.state` | `GET /config/api/backups`, `restores`, `builds`, and `exports` |
+| `ApplicationOutcomes` | `app.path_resolved`, keeping outcomes `not_found`, `redirect`, `unusable`, and `protected`, and waking requests waiting on any | Application paths and reads into bundles, with `404`, `302`, `400`, `403`, or `500` |
+| `BackupState` | `backup.state` | `GET /config/api/backups`, `restores`, `builds`, and `exports`, and `GET /data/imports` |
 
 A third, `ApplicationUse`, is shared among request threads only: it
 remembers when each bundle's use was last reported, so `app.accessed` goes
@@ -1251,13 +1267,13 @@ side recovers:
 | Module restarted | What is lost | How the node recovers |
 | --- | --- | --- |
 | Stats | An answer it owed the eviction module | The database is kept, and the lists are derived again at start; eviction times out and asks again |
-| Web server | Remembered outcomes; the last `backup.state`; requests in progress; its connections | Paths are asked of the unbundler again. The `/config/api` backup endpoints answer `503` until the backup module next reports, which it does only when something changes. It names no peers connected as it starts, and peers that dial again are named anew |
+| Web server | Remembered outcomes; the last `backup.state`; requests in progress; its connections | Paths are asked of the unbundler again. The `/config/api` backup endpoints, and `GET /data/imports`, answer `503` until the backup module next reports, which it does only when something changes. It names no peers connected as it starts, and peers that dial again are named anew |
 | Validator | The upload it was checking, if it died mid-message | The upload stays in `incoming/` until the same content arrives from the same node again |
 | Connection manager | Connections, searches, hand-offs, content not yet pushed | It dials from the candidate list again, naming no peers connected until one is; eviction times out a hand-off after 1,200 s; a fetch is asked for again at the next miss after the fetcher's interval |
 | Fetcher | Which content it asked for lately | The next miss is asked for at once |
 | Unbundler | Directories held in memory; paths waiting on content; a reclaim in progress | Directories are read back from each bundle's saved `directory.jzon`; a request waiting on a path forgotten is answered `503`, and its retry asks again; eviction times out the reclaim |
 | Eviction | Hand-offs under way; its list of candidates; which peers are connected | It counts storage again at start, says whether storage is full, asks which peers are connected, and asks stats again |
-| Backup | Restores, builds, and exports; messages set aside while it stored content | They must be asked for again; jobs are read back from `backup_jobs.json`; it asks whether storage is full |
+| Backup | Restores, builds, exports, and imports; messages set aside while it stored content | They must be asked for again; jobs are read back from `backup_jobs.json`; it asks whether storage is full |
 | Dispatcher | Messages it had read but not yet delivered, and those it held for a full inbox | Nothing recovers them; no module is started until it is back |
 
 ## 11. Testing Modules

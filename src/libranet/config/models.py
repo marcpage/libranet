@@ -317,7 +317,7 @@ class StorageConfig(_Section):
 
     @property
     def resolved_files_dir(self) -> Path:
-        """Files the unbundler resolves from applications' bundles, to serve as-is (Step 14)."""
+        """Entries the unbundler resolves from bundles, naming parts to serve (Phase 3 Step 65)."""
         return self.source_of_truth_dir / "resolved"
 
     @property
@@ -448,9 +448,10 @@ class BackupConfig(_Section):
     # that is offline overnight.
     restore_stall_seconds: float = Field(default=86400.0, gt=0)
 
-    # A backup or build waits, before storing more, while storage is full, as
-    # eviction says it is; it gives up, and fails, once storage stays full
-    # this long, as when no peer takes what is handed off (Phase 2 Step 63).
+    # A backup, build, or import waits, before storing more, while storage is
+    # full, as eviction says it is; it gives up, and fails, once storage stays
+    # full this long, as when no peer takes what is handed off (Phase 2 Step
+    # 63, Phase 3 Step 69).
     # The next look carries on from what was stored. Provisional default: an
     # hour, so the backup module is not held up long from restores.
     storage_stall_seconds: float = Field(default=3600.0, gt=0)

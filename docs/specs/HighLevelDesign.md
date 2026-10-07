@@ -120,6 +120,11 @@ The `/data/...` paths constitute the programmatic interface.
 The special convenience path `/data/seek` may be used to read or write the set
 of hashes a node is currently seeking.
 
+Beneath `/data` a node also serves endpoints meant only for the applications it
+serves, and never for another node: reading into a bundle, the folders and
+imports a local client may use, making bundles, an application's store, and the
+list of applications (HTTP API §2.4, §2.5, §12, §13).
+
 #### 3.3.1 Reserved Top-Level Paths
 
 The following top-level path segments are reserved and may never be used as an
@@ -519,6 +524,11 @@ The browser accesses an application through:
 
 The node resolves the application name to its registered directory-bundle
 content hash and serves the files described by that bundle.
+
+The node's operator chooses which applications to trust. One that is not
+trusted is served in a browser sandbox, with an origin of its own, so that it
+can show what the network holds but cannot use the endpoints that reach the
+node's own machine (HTTP API §13.5).
 
 The default application is accessed through:
 

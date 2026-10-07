@@ -119,7 +119,7 @@ class AppHandler:
     """Serves application files, from the bundles ``registry`` names, as ``paths`` serves them.
 
     A registry file that cannot be read raises
-    :class:`~libranet.webserver.app_registry.RegistryFileError`, which the
+    :class:`~libranet.webserver.errors.RegistryFileError`, which the
     server logs and answers with ``500``.
     """
 

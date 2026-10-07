@@ -119,15 +119,16 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
   asking appears under **My calls, not yet reviewed**, to be reviewed
   before the step is built.
 - **Specifications change first.** Steps 64, 65, 66, and 68 to 74 change
-  the Bundle Specification and the HTTP API, and those changes are
-  written; each step says where.
+  the Bundle Specification and the HTTP API, and Step 75 the High-Level
+  Design, and those changes are written; each step says where.
 - **No upgrade path.** Until version 1.0, a node may have to be made anew
   for each version, so no step migrates what an earlier version left, on
   disk or in the database.
 - **Change sets follow CLAUDE.md**: a step whose non-test Python would
   run past 1,000 new or changed lines is split into sets that can each be
-  reviewed and committed on their own. None of the steps below is
-  expected to need it.
+  reviewed and committed on their own. None of the steps below was
+  expected to need it. Steps 71 and 72 ran past it when built, and each
+  went in as two sets.
 - Every change set must pass `uv run black --check .`, `uv run flake8`,
   `uv run mypy`, `uv run pylint src tests hatch_build.py`,
   `uv run pytest --cov` (90% floor), and
@@ -1909,9 +1910,9 @@ answer.
 
 ## Step 75 — Keeping Content Just Stored
 
-**Issue:** none yet. Found when the movie application (Step 67) was tried
-on sixteen nodes. **Depends on:** Phase 1 Step 15, Phase 2 Step 28, and
-Step 65.
+**Issue:** #240, which reports what the movie application (Step 67) showed
+when tried on sixteen nodes. **Depends on:** Phase 1 Step 15, Phase 2 Step
+28, and Step 65.
 
 What was found: sixteen nodes run by `scripts/local_network.py`, each
 with `max_storage_bytes` of 1,000,000,000, and four films of 1 to 2 GiB
@@ -2106,9 +2107,9 @@ from the package.
 
 The issue asks for a review of the code for inconsistencies and for
 duplicate code or logic. Two reviews like it were made before this phase,
-#172 and #175 (merged as #182, and as #183 to #189). This one reads what
-this phase added since, about 8,000 lines of Python, and what those
-reviews left open. Pylint's `duplicate-code` check, at four similar lines,
+for issues #172 and #175 (merged as #182, and as #183 to #189). This one
+reads what this phase added since, about 8,000 lines of Python, and what
+those reviews left open. Pylint's `duplicate-code` check, at four similar lines,
 found four copied blocks in `src/`. The rest was found by reading: the
 same rule, or the same format, written out in more than one place.
 
@@ -2282,10 +2283,17 @@ number, and where it went.
 | #221 | A store for each application, read by any client and changed by local ones | 70 |
 | #222 | Reading into a bundle by its id, or by an encrypted id carrying its key | 71 |
 | #223 | Making a bundle, and adding to and removing from one, without expanding it | 72 |
+| #226 | The `/config` page's links to applications, which opened on `/config`'s port | 73, found trying it, and fixed with it: a regression of Phase 2 Step 58 |
+| #230 | A `PUT /data/store/{application}` with no key, taken for a content upload | 70, fixed with it: no name of an endpoint beneath `/data` is taken for a hash algorithm |
+| #240 | Films that would not play on a node at its storage limit | 75 |
 | #242 | Looking for inconsistencies, and duplicate code or logic | 77 |
+| #243 | Reviewing every document against the code, and the specifications for what the code can clarify | None: a review of the documents |
+| #244 | A README about what the network does, with the backup and movie applications as its examples; its technical detail moved to the Operator Guide; and a guide for application developers | None yet: not planned |
 | #245 | Shipping `scripts/local_network.py` as part of Libranet | 76 |
+| #246 | A test of Step 75 that failed in CI | 75: the test compared a list whose order follows the hash seed |
+| #249 | A test of Step 75 that failed in CI | 75: the file stream's tests of waiting now keep time by a clock of their own, not real time |
 
-Step 75 has no issue yet. It was found trying Step 67.
+Step 75 was found trying Step 67, and #240 reports it.
 
 ## 5. Suggested Build Order
 
