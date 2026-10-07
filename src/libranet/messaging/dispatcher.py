@@ -29,7 +29,7 @@ from time import monotonic
 from typing import Final, Mapping
 
 from libranet.logging_setup import get_logger
-from libranet.messaging.envelope import Message, event_of, source_of, validate_message
+from libranet.messaging.envelope import Message, delivered_to, event_of, validate_message
 from libranet.messaging.errors import InvalidMessageError
 from libranet.messaging.events import EventType
 from libranet.messaging.module import StopSignal
@@ -54,20 +54,8 @@ class _Inbox:
         self._full_since = 0.0
 
     def wants(self, message: Message) -> bool:
-        """Whether ``message`` is delivered to this module.
-
-        It is unless the module published it, or it is not ``shutdown`` and
-        not an event the module subscribes to.
-        """
-        if source_of(message) == self._module:
-            return False
-
-        event = event_of(message)
-        return (
-            event == EventType.SHUTDOWN
-            or self._subscriptions is None
-            or event in self._subscriptions
-        )
+        """Whether ``message`` is delivered to this module, as it subscribes."""
+        return delivered_to(message, self._module, self._subscriptions)
 
     def put(self, message: Message) -> None:
         """Deliver ``message``, or hold it, behind those held already, while the inbox is full."""

@@ -4,7 +4,6 @@ from __future__ import annotations
 from json import dumps, loads
 from logging import INFO
 from pathlib import Path
-from queue import Empty, Queue
 from typing import Any, Iterator, Mapping
 
 from pytest import LogCaptureFixture, fixture, mark, raises
@@ -26,7 +25,7 @@ from libranet.modules import ModuleName
 from libranet.stats.module import StatsModule, stats_module_factory
 from libranet.stats.schema import SeekKind
 
-from tests.helpers import with_node_key
+from tests.helpers import published, with_node_key
 
 CONTENT = b"content worth counting"
 CONTENT_SIZE = len(CONTENT)
@@ -48,11 +47,6 @@ def config(tmp_path: Path) -> LibranetConfig:
             stats=StatsConfig(derive_interval_seconds=30.0),
         )
     )
-
-
-@fixture
-def queues() -> ModuleQueues:
-    return ModuleQueues(inbox=Queue(), outbox=Queue())
 
 
 @fixture
@@ -90,17 +84,6 @@ def stored(content_id: ContentId = CONTENT_ID, size: int = CONTENT_SIZE) -> Mess
         },
         ModuleName.VALIDATOR,
     )
-
-
-def published(queues: ModuleQueues) -> list[Message]:
-    messages = []
-
-    while True:
-        try:
-            messages.append(queues.outbox.get(block=False))
-
-        except Empty:
-            return messages
 
 
 def node_list(config: LibranetConfig) -> dict[str, str]:

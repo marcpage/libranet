@@ -1,19 +1,13 @@
 """Tests for measuring how far storage is over its limits, with free space faked."""
 
 from __future__ import annotations
-from pathlib import Path
 
-from pytest import fixture, raises
+from pytest import raises
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
 from libranet.eviction.pressure import StoragePressure, free_bytes_under
-
-
-@fixture
-def storage(tmp_path: Path) -> StorageConfig:
-    return StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache")
 
 
 def limited(storage: StorageConfig, **limits: int | None) -> StorageConfig:

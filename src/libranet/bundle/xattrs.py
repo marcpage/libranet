@@ -140,10 +140,7 @@ def _recorded(value: bytes, parts: PartWriter) -> XattrValue:
     if len(value) <= INLINE_LIMIT_BYTES:
         return b64encode(value).decode("ascii")
 
-    step = parts.part_bytes
-    return tuple(
-        str(parts.store(value[offset : offset + step])) for offset in range(0, len(value), step)
-    )
+    return tuple(str(parts.store(part)) for part in parts.cut(value))
 
 
 def _value_bytes(value: XattrValue, source: ContentSource) -> bytes:

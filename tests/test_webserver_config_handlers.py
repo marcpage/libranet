@@ -10,17 +10,15 @@ from __future__ import annotations
 from json import dumps, loads
 from logging import DEBUG, WARNING, LogRecord
 from pathlib import Path
-from queue import Empty, Queue
 
 from pytest import LogCaptureFixture, fixture, mark
 
 from libranet.cas.content_id import ContentId
 from libranet.config.models import NetworkConfig
-from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
-from libranet.problems import CONTENT_TOO_LARGE, INVALID_CONFIG_REQUEST, PROBLEM_CONTENT_TYPE
+from libranet.problems import CONTENT_TOO_LARGE, INVALID_CONFIG_REQUEST
 from libranet.protocol.config_requests import (
     BackupJobRequest,
     BuildRequest,
@@ -53,6 +51,8 @@ from libranet.webserver.router import Router
 
 from tests.stubs import StubModule
 
+from tests.helpers import problem_type, published
+
 RETRY_AFTER_SECONDS = 9
 LOCAL = "127.0.0.1"
 DIRECTORY = "/home/me/documents"
@@ -72,11 +72,6 @@ BUILD_ENTRY = {"build_id": BUILD_ID, "directory": SITE, "status": "done"}
 EXPORT_ENTRY = {"export_id": EXPORT_ID, "archive": ARCHIVE, "status": "waiting"}
 NODE_ID = ContentId.for_data(b"this node's public key", "sha256")
 NETWORK = NetworkConfig(listen_address="0.0.0.0", listen_port=8080, external_port=4300)
-
-
-@fixture
-def queues() -> ModuleQueues:
-    return ModuleQueues(inbox=Queue(), outbox=Queue())
 
 
 @fixture
@@ -125,27 +120,9 @@ def request(
     return Request(method, path, headers=headers, client_address=LOCAL, body=RequestBody.of(body))
 
 
-def published(queues: ModuleQueues) -> list[Message]:
-    messages = []
-
-    while True:
-        try:
-            messages.append(queues.outbox.get(block=False))
-
-        except Empty:
-            return messages
-
-
 def json_body(response: Response) -> object:
     assert response.headers["Content-Type"] == JSON_CONTENT_TYPE
     return loads(response.body)
-
-
-def problem_type(response: Response) -> str:
-    assert response.headers["Content-Type"] == PROBLEM_CONTENT_TYPE
-    problem = loads(response.body)
-    assert problem["status"] == response.status
-    return str(problem["type"])
 
 
 def test_the_index_names_every_endpoint(router: Router) -> None:
@@ -729,7 +706,6 @@ def handler_records(caplog: LogCaptureFixture) -> list[LogRecord]:
         ("POST", BUILDS_PATH, b"{not json"),
         ("POST", EXPORTS_PATH, b"{not json"),
         ("POST", APPLICATIONS_PATH, b"{not json"),
-        ("DELETE", f"{APPLICATIONS_PATH}/%FF", b""),
     ],
 )
 def test_a_refused_request_is_logged_at_debug(
@@ -742,6 +718,18 @@ def test_a_refused_request_is_logged_at_debug(
     (record,) = handler_records(caplog)
     assert record.levelno == DEBUG
     assert record.getMessage().startswith(f"Refusing {method} {path}: ")
+
+
+def test_a_name_that_is_not_utf_8_is_logged_at_debug(
+    router: Router, caplog: LogCaptureFixture
+) -> None:
+    caplog.set_level(DEBUG)
+
+    router.dispatch(request("DELETE", f"{APPLICATIONS_PATH}/%FF", body=b""))
+
+    (record,) = [r for r in caplog.records if r.name == "libranet.webserver.http_types"]
+    assert record.levelno == DEBUG
+    assert record.getMessage().startswith("'%FF' does not percent-encode UTF-8: ")
 
 
 @mark.parametrize(

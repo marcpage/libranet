@@ -38,7 +38,6 @@ from typing import Final
 
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
-from libranet.problems import Problem
 from libranet.protocol.config_requests import ImportRequest
 from libranet.protocol.errors import InvalidConfigRequestError
 from libranet.webserver.backup_state import BackupState
@@ -47,7 +46,7 @@ from libranet.webserver.config_handlers import (
     json_or_refusal,
     unreported_response,
 )
-from libranet.webserver.http_types import Request, Response, json_response, problem_response
+from libranet.webserver.http_types import Request, Response, json_response, status_response
 from libranet.webserver.local_folders import LocalFolders
 
 _LOGGER = getLogger(__name__)
@@ -85,21 +84,15 @@ class ImportHandler:
 
         except PermissionError as error:
             _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, error)
-            return problem_response(
-                Problem.for_status(
-                    HTTPStatus.FORBIDDEN,
-                    detail=f"This node may not look at this file: {error.strerror}",
-                    instance=request.path,
-                )
+            return status_response(
+                request,
+                HTTPStatus.FORBIDDEN,
+                f"This node may not look at this file: {error.strerror}",
             )
 
         if found is None:
-            return problem_response(
-                Problem.for_status(
-                    HTTPStatus.NOT_FOUND,
-                    detail=f"No file offered is at {asked.path!r}.",
-                    instance=request.path,
-                )
+            return status_response(
+                request, HTTPStatus.NOT_FOUND, f"No file offered is at {asked.path!r}."
             )
 
         self.publish(EventType.IMPORT_REQUESTED, asked.payload(found))

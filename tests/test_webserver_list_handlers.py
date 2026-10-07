@@ -8,29 +8,28 @@ from __future__ import annotations
 from json import dumps, loads
 from logging import DEBUG
 from pathlib import Path
-from queue import Empty, Queue
 from zlib import compress
 
 from pytest import LogCaptureFixture, fixture, mark
 
 from libranet.cas.content_id import ContentId
 from libranet.identity.authentication import AuthenticationResult, AuthenticationStatus
-from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.problems import (
     CONTENT_TOO_LARGE,
     INVALID_LIST,
-    PROBLEM_CONTENT_TYPE,
     SIGNATURE_REQUIRED,
 )
 from libranet.protocol.lists import NODES_PATH, SEEK_PATH
-from libranet.webserver.http_types import Request, RequestBody, Response
+from libranet.webserver.http_types import Request, RequestBody
 from libranet.webserver.list_handlers import ListFileHandler, NodeListHandler, SeekListHandler
 from libranet.webserver.router import Router
 
 from tests.stubs import StubModule
+
+from tests.helpers import problem_type, published
 
 MAX_BYTES = 512
 MAX_DECOMPRESSED_BYTES = 2048
@@ -40,11 +39,6 @@ SENDER_ID = ContentId.for_data(b"the sender's public key", "sha256")
 OTHER_ID = ContentId.for_data(b"another node's public key", "sha256")
 SOUGHT_ID = ContentId.for_data(b"sought content", "sha256")
 VERIFIED = AuthenticationResult(AuthenticationStatus.VERIFIED, SENDER_ID)
-
-
-@fixture
-def queues() -> ModuleQueues:
-    return ModuleQueues(inbox=Queue(), outbox=Queue())
 
 
 @fixture
@@ -84,24 +78,6 @@ def post(
         body=RequestBody.of(compress(body) if compressed else body),
         authentication=authentication,
     )
-
-
-def published(queues: ModuleQueues) -> list[Message]:
-    messages = []
-
-    while True:
-        try:
-            messages.append(queues.outbox.get(block=False))
-
-        except Empty:
-            return messages
-
-
-def problem_type(response: Response) -> str:
-    assert response.headers["Content-Type"] == PROBLEM_CONTENT_TYPE
-    problem = loads(response.body)
-    assert problem["status"] == response.status
-    return str(problem["type"])
 
 
 @mark.parametrize("path", [NODES_PATH, SEEK_PATH])

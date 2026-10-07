@@ -7,7 +7,7 @@ from hashlib import sha256
 from json import dumps, loads
 from logging import DEBUG, WARNING
 from pathlib import Path
-from queue import Empty, Queue
+from queue import Queue
 from typing import Any
 from zlib import compress, decompress
 
@@ -38,6 +38,8 @@ from libranet.webserver.server import build_router
 
 from tests.stubs import StubModule
 
+from tests.helpers import published
+
 INDEX = b"<html>home</html>"
 FIRST_HALF = b"first half, " * 1000
 SECOND_HALF = b"second half, " * 1000
@@ -45,18 +47,8 @@ ABOUT = b"<html>about</html>"
 
 
 @fixture
-def storage(tmp_path: Path) -> StorageConfig:
-    return StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache")
-
-
-@fixture
 def store(storage: StorageConfig) -> CasStore:
     return CasStore.source_of_truth(storage)
-
-
-@fixture
-def queues() -> ModuleQueues:
-    return ModuleQueues(inbox=Queue(), outbox=Queue())
 
 
 @fixture
@@ -135,17 +127,6 @@ def stored(content_id: ContentId) -> Message:
         ModuleName.VALIDATOR,
         {**content_id.fields(), "node_id": str(id_of(b"a peer's key")), "size": 1},
     )
-
-
-def published(queues: ModuleQueues) -> list[Message]:
-    messages = []
-
-    while True:
-        try:
-            messages.append(queues.outbox.get(block=False))
-
-        except Empty:
-            return messages
 
 
 def resolved(queues: ModuleQueues) -> list[dict[str, Any]]:
@@ -576,7 +557,7 @@ def test_a_saved_directory_that_cannot_be_read_is_resolved_again(
         unbundler.handle(request(app_id, "about.html"))
 
     assert resolved(queues) == [{"path": "about.html", "outcome": "stored"}]
-    assert any("Discarding the saved directory" in record.message for record in caplog.records)
+    assert any("Discarding the bundle saved at" in record.message for record in caplog.records)
     resaved = decode_bundle(decompress(saved_directory(storage, app_id).read_bytes()))
     assert isinstance(resaved, DirectoryBundle)
 

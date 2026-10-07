@@ -5,7 +5,6 @@ from io import BytesIO
 from json import loads
 from logging import DEBUG, WARNING
 from pathlib import Path
-from queue import Empty, Queue
 from zlib import compress
 
 from pytest import LogCaptureFixture, fixture
@@ -21,7 +20,6 @@ from libranet.identity.authentication import (
 from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import MessageSigner, MessageVerifier
-from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
@@ -29,16 +27,17 @@ from libranet.problems import (
     CONTENT_TOO_LARGE,
     INVALID_CONTENT_ADDRESS,
     INVALID_SIGNATURE,
-    PROBLEM_CONTENT_TYPE,
     SIGNATURE_REQUIRED,
 )
 from libranet.webserver.data_handler import DATA_PATTERN
 from libranet.webserver.data_write_handler import DataWriteHandler
-from libranet.webserver.http_types import Request, RequestBody, Response
+from libranet.webserver.http_types import Request, RequestBody
 from libranet.webserver.router import Router
 from libranet.webserver.signature_guard import SignatureGuard
 
 from tests.stubs import StubModule
+
+from tests.helpers import new_identity, problem_type, published
 
 NOW = 1_757_080_000.0
 MAX_BYTES = 256
@@ -56,11 +55,6 @@ def storage(tmp_path: Path) -> StorageConfig:
 @fixture
 def truth(storage: StorageConfig) -> CasStore:
     return CasStore.source_of_truth(storage)
-
-
-@fixture
-def queues() -> ModuleQueues:
-    return ModuleQueues(inbox=Queue(), outbox=Queue())
 
 
 @fixture
@@ -95,10 +89,6 @@ def known(truth: CasStore) -> NodeIdentity:
     return identity
 
 
-def new_identity() -> NodeIdentity:
-    return NodeIdentity.from_private_key(generate_private_key(), "sha256")
-
-
 def signed_request(
     identity: NodeIdentity | None,
     body: bytes,
@@ -115,17 +105,6 @@ def signed_request(
     return Request(
         "PUT", path, headers=headers, body=RequestBody.of(body if sent is None else sent)
     )
-
-
-def published(queues: ModuleQueues) -> list[Message]:
-    messages = []
-
-    while True:
-        try:
-            messages.append(queues.outbox.get(block=False))
-
-        except Empty:
-            return messages
 
 
 def announced(queues: ModuleQueues) -> list[dict[str, object]]:
@@ -149,13 +128,6 @@ def stored_payload(signer: NodeIdentity, size: int) -> dict[str, object]:
         "node_id": str(signer.node_id),
         "size": size,
     }
-
-
-def problem_type(response: Response) -> str:
-    assert response.headers["Content-Type"] == PROBLEM_CONTENT_TYPE
-    problem = loads(response.body)
-    assert problem["status"] == response.status
-    return str(problem["type"])
 
 
 def test_signed_upload_is_stored_for_its_node_and_published(

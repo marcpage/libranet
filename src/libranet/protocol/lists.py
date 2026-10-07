@@ -11,12 +11,16 @@ a small body cannot expand without bound.
 A body of the wrong shape is refused outright. A single unusable entry is
 dropped instead, so it does not cost the peer the rest of its list, which is
 also how the stats module treats unusable node ids (Step 8).
+
+Every node list this node sends is written here too, compactly: the one the
+stats module derives, the one the connection manager sends before there is
+one, and the one the local network script seeds each node with.
 """
 
 from __future__ import annotations
 from json import loads
 from logging import getLogger
-from typing import Callable, Final
+from typing import Callable, Final, Mapping
 
 from libranet.cas.algorithms import UnsupportedAlgorithms
 from libranet.cas.compression import decompressed
@@ -27,6 +31,7 @@ from libranet.cas.errors import (
     StreamTooLargeError,
     UnknownAlgorithmError,
 )
+from libranet.json_format import compact_json
 from libranet.protocol.errors import InvalidListError
 from libranet.protocol.search import normalize_prefix
 
@@ -66,6 +71,11 @@ def decode_list(body: bytes, max_decompressed_bytes: int) -> object:
 
     except ValueError:
         raise InvalidListError("The decompressed body is not JSON") from None
+
+
+def node_list_body(nodes: Mapping[str, str]) -> bytes:
+    """The node list naming ``nodes``, ``endpoint → node id``, as it is sent (HttpApi §10.6)."""
+    return compact_json({"nodes": dict(nodes)})
 
 
 def parse_node_list(value: object) -> dict[str, ContentId]:

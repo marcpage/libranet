@@ -5,7 +5,6 @@ from json import dumps, loads
 from os import chmod, geteuid, mkfifo
 from os.path import realpath
 from pathlib import Path
-from queue import Queue
 
 from pytest import fixture, mark
 
@@ -44,11 +43,6 @@ def machine(tmp_path: Path) -> Path:
     (tmp_path / "private.txt").write_bytes(b"private")
     mkfifo(movies / "pipe")
     return tmp_path
-
-
-@fixture
-def queues() -> ModuleQueues:
-    return ModuleQueues(inbox=Queue(), outbox=Queue())
 
 
 @fixture

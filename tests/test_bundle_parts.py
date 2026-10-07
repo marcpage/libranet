@@ -370,3 +370,25 @@ def test_an_empty_file_of_bytes_given_has_no_parts(store: RecordingStore) -> Non
 
     assert (file.parts, file.part_sizes_bytes, file.metadata.size_bytes) == ((), (), 0)
     assert store.writes == []
+
+
+def test_bytes_are_cut_into_parts_as_long_as_one_holds_but_the_last(store: RecordingStore) -> None:
+    writer = PartWriter(store, MAX_BYTES)
+    data = urandom(MAX_BYTES * 2 + 1)
+
+    assert list(writer.cut(data)) == [data[:MAX_BYTES], data[MAX_BYTES:-1], data[-1:]]
+    assert list(writer.cut(b"")) == []
+
+
+def test_a_file_of_parts_given_tells_of_each_part_once_it_is_stored(
+    store: RecordingStore,
+) -> None:
+    writer = PartWriter(store, MAX_BYTES)
+    told: list[tuple[int, int]] = []
+
+    file = writer.file_of(
+        [b"a" * MAX_BYTES, b"b" * 3], stored=lambda size: told.append((size, len(store.writes)))
+    )
+
+    assert told == [(MAX_BYTES, 1), (3, 2)]
+    assert file == writer.file(b"a" * MAX_BYTES + b"b" * 3)

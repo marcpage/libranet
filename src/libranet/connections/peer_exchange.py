@@ -60,7 +60,7 @@ defined yet (HttpApi §10.7.2).
 from __future__ import annotations
 from dataclasses import dataclass
 from http import HTTPStatus
-from json import dumps, loads
+from json import loads
 from logging import Logger
 from time import time
 from typing import Callable, Final, Iterator, Mapping, Sequence, TypeVar
@@ -88,6 +88,7 @@ from libranet.protocol.lists import (
     NODES_PATH,
     SEEK_PATH,
     decode_list,
+    node_list_body,
     parse_node_list,
     parse_seek_list,
 )
@@ -341,7 +342,7 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
         except OSError:
             # Not logged: there is none before the first derivation, as above.
             own = {endpoint: str(self._identity.node_id) for endpoint in self._own_endpoints}
-            return dumps({"nodes": own}).encode("utf-8")
+            return node_list_body(own)
 
     def _receive_node_list(self, session: PeerSession, response: PeerResponse) -> None:
         """Publish the nodes the peer's node list names, for the stats module to keep."""

@@ -3,7 +3,6 @@
 from __future__ import annotations
 from logging import INFO
 from pathlib import Path
-from queue import Queue
 
 from pytest import LogCaptureFixture, fixture, raises
 
@@ -24,16 +23,6 @@ INTERVAL = 5
 CONTENT_ID = ContentId.for_data(b"content this node lacks", "sha256")
 OTHER_ID = ContentId.for_data(b"other content this node lacks", "sha256")
 PEER_ID = ContentId.for_data(b"a peer's public key", "sha256")
-
-
-@fixture
-def queues() -> ModuleQueues:
-    return ModuleQueues(inbox=Queue(), outbox=Queue())
-
-
-@fixture
-def storage(tmp_path: Path) -> StorageConfig:
-    return StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache")
 
 
 @fixture

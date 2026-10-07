@@ -10,7 +10,7 @@ from base64 import b64encode
 from dataclasses import replace
 from json import dumps, loads
 from pathlib import Path
-from queue import Empty, Queue
+from queue import Queue
 from typing import Any
 
 from pytest import fixture
@@ -20,7 +20,6 @@ from libranet.bundle.parts import PartPath
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
 from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
-from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType, PathOutcome
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
@@ -36,6 +35,8 @@ from libranet.webserver.router import Router
 from libranet.webserver.server import build_config_router
 
 from tests.stubs import StubModule
+
+from tests.helpers import published
 
 ADMIN_PAGE = b"<!doctype html><title>My own administration page</title>"
 ADMIN_STYLE = b"body { color: teal; }"
@@ -70,11 +71,6 @@ def content(storage: StorageConfig) -> LayeredSource:
 @fixture
 def outcomes() -> ApplicationOutcomes:
     return ApplicationOutcomes()
-
-
-@fixture
-def queues() -> ModuleQueues:
-    return ModuleQueues(inbox=Queue(), outbox=Queue())
 
 
 @fixture
@@ -130,17 +126,6 @@ def send(router: Router, method: str, path: str, value: Any = None) -> Response:
             body=RequestBody.of(body),
         )
     )
-
-
-def published(queues: ModuleQueues) -> list[Message]:
-    messages = []
-
-    while True:
-        try:
-            messages.append(queues.outbox.get(block=False))
-
-        except Empty:
-            return messages
 
 
 def resolved(

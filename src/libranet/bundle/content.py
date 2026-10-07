@@ -17,22 +17,25 @@ from libranet.bundle.errors import (
     UnsupportedBundleError,
 )
 from libranet.cas.algorithms import DEFAULT_REGISTRY
-from libranet.cas.compression import decompressed_chunks
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import (
+    ContentMismatchError,
     ContentNotFoundError,
     InvalidContentIdError,
-    NotZlibStreamError,
     UnknownAlgorithmError,
 )
+from libranet.cas.verification import matching_chunks
 
-_SEPARATOR: Final = "/"
-_PLAIN_PATH_SEGMENTS: Final = 2
+#: What separates a CAS path's segments, plain or encrypted.
+CAS_PATH_SEPARATOR: Final = "/"
 
-# A per-entry encrypted path adds two segments to the stored ciphertext's
-# (BundleSpecification §7):
-# {hash algorithm}/{encrypted data hash}/{encryption algorithm}/{encryption key}.
-_ENCRYPTED_PATH_SEGMENTS: Final = 4
+#: A plain CAS path's segments: ``{hash algorithm}/{hash}``.
+PLAIN_PATH_SEGMENTS: Final = 2
+
+#: A per-entry encrypted path adds two segments to the stored ciphertext's
+#: (BundleSpecification §7):
+#: ``{hash algorithm}/{encrypted data hash}/{encryption algorithm}/{encryption key}``.
+ENCRYPTED_PATH_SEGMENTS: Final = 4
 
 
 class ContentSource(Protocol):
@@ -58,9 +61,9 @@ def normalize_cas_path(path: str) -> str:
     segments a per-entry encrypted path adds (§7) are kept as written, since
     the cipher's name is not a hash.
     """
-    segments = path.split(_SEPARATOR, _PLAIN_PATH_SEGMENTS)
-    address = [segment.lower() for segment in segments[:_PLAIN_PATH_SEGMENTS]]
-    return _SEPARATOR.join(address + segments[_PLAIN_PATH_SEGMENTS:])
+    segments = path.split(CAS_PATH_SEPARATOR, PLAIN_PATH_SEGMENTS)
+    address = [segment.lower() for segment in segments[:PLAIN_PATH_SEGMENTS]]
+    return CAS_PATH_SEPARATOR.join(address + segments[PLAIN_PATH_SEGMENTS:])
 
 
 def parse_cas_path(path: str) -> ContentId:
@@ -74,10 +77,10 @@ def parse_cas_path(path: str) -> ContentId:
             hash algorithm this node lacks.
         MalformedBundleError: ``path`` is not a CAS path.
     """
-    segments = path.split(_SEPARATOR)
+    segments = path.split(CAS_PATH_SEPARATOR)
 
     try:
-        content_id = ContentId.parse(_SEPARATOR.join(segments[:_PLAIN_PATH_SEGMENTS]))
+        content_id = ContentId.parse(CAS_PATH_SEPARATOR.join(segments[:PLAIN_PATH_SEGMENTS]))
 
     except UnknownAlgorithmError as error:
         raise UnsupportedBundleError(str(error)) from None
@@ -85,13 +88,13 @@ def parse_cas_path(path: str) -> ContentId:
     except InvalidContentIdError as error:
         raise MalformedBundleError(str(error)) from None
 
-    if len(segments) == _ENCRYPTED_PATH_SEGMENTS:
+    if len(segments) == ENCRYPTED_PATH_SEGMENTS:
         # The path is not shown, since its key is what keeps the content unread.
         raise UnsupportedBundleError(
             f"Per-entry encryption (§7) is read with its key, not as plain {content_id}"
         )
 
-    if len(segments) != _PLAIN_PATH_SEGMENTS:
+    if len(segments) != PLAIN_PATH_SEGMENTS:
         raise MalformedBundleError(f"Not a CAS path: {path!r}")
 
     return content_id
@@ -127,21 +130,10 @@ def content_chunks(source: ContentSource, content_id: ContentId) -> Iterator[byt
     except ContentNotFoundError:
         raise MissingContentError((content_id,)) from None
 
-    algorithm = DEFAULT_REGISTRY.get(content_id.algorithm)
-
-    if algorithm.hexdigest(data) == content_id.hash:
-        yield data
-        return
-
-    hasher = algorithm.hasher()
-
     try:
-        for chunk in decompressed_chunks(data):
-            hasher.update(chunk)
-            yield chunk
+        yield from matching_chunks(
+            data, DEFAULT_REGISTRY.get(content_id.algorithm), content_id.hash
+        )
 
-    except NotZlibStreamError:
+    except ContentMismatchError:
         raise BundleVerificationError(f"Stored content does not match {content_id}") from None
-
-    if hasher.hexdigest() != content_id.hash:
-        raise BundleVerificationError(f"Stored content does not match {content_id}")

@@ -21,6 +21,7 @@ from json import dumps
 from typing import Final, Iterable, Sequence
 
 from libranet.json_format import compact_json
+from libranet.protocol.lists import node_list_body
 
 #: `{"nodes":{}}`, the smallest node list.
 _NODE_LIST_BASE_BYTES: Final = 12
@@ -55,7 +56,7 @@ def render_node_list(entries: Iterable[tuple[str, str]], max_bytes: int) -> byte
         nodes[endpoint] = node_id
         used_bytes += cost_bytes
 
-    return compact_json({"nodes": nodes})
+    return node_list_body(nodes)
 
 
 def render_candidate_list(nodes: Iterable[tuple[str, Sequence[str]]]) -> bytes:

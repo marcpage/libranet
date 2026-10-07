@@ -64,6 +64,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from errno import ENOENT
+from functools import partial
 from logging import getLogger
 from os import (
     O_NOFOLLOW,
@@ -458,26 +459,15 @@ def _file_bundle(
         )
 
     file.seek(0)
-    hasher = DEFAULT_REGISTRY.get(HASH_ALGORITHM).hasher()
-    stored: list[str] = []
-    sizes_bytes: list[int] = []
-
-    while part := file.read(parts.part_bytes):
-        hasher.update(part)
-        sizes_bytes.append(len(part))
-        stored.append(str(parts.store(part)))
-
-        if read is not None:
-            read(len(part))
-
+    content = parts.file_of(iter(partial(file.read, parts.part_bytes), b""), stored=read)
     metadata = replace(
         _metadata(status, _recorded(earlier, FileBundle)),
-        size_bytes=sum(sizes_bytes),
-        algorithm=HASH_ALGORITHM,
-        hash=hasher.hexdigest(),
+        size_bytes=content.metadata.size_bytes,
+        algorithm=content.metadata.algorithm,
+        hash=content.metadata.hash,
         xattrs=xattrs,
     )
-    return FileBundle(tuple(stored), metadata, part_sizes_bytes=tuple(sizes_bytes))
+    return replace(content, metadata=metadata)
 
 
 def _holds(file: BinaryIO, status: stat_result, recorded: Metadata) -> bool:

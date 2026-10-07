@@ -41,10 +41,9 @@ class SearchHandler:
         except InvalidContentIdError as error:
             _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
             return problem_response(
-                Problem(
-                    status=HTTPStatus.BAD_REQUEST,
-                    title="Invalid search prefix",
-                    type=INVALID_SEARCH_PREFIX,
+                Problem.of_type(
+                    INVALID_SEARCH_PREFIX,
+                    HTTPStatus.BAD_REQUEST,
                     detail=str(error),
                     instance=request.path,
                 )

@@ -1,7 +1,6 @@
 """Tests for the module base class, using plain in-process queues."""
 
 from __future__ import annotations
-from queue import Queue
 from threading import Event, Thread
 from typing import ClassVar
 
@@ -48,11 +47,6 @@ class RoutingModule(ModuleBase):
         super().__init__(ModuleName.FETCHER, queues)
         self.handled: dict[EventType, list[Message]] = {event: [] for event in events}
         self._route({event: self.handled[event].append for event in events})
-
-
-@fixture
-def queues() -> ModuleQueues:
-    return ModuleQueues(inbox=Queue(), outbox=Queue())
 
 
 @fixture

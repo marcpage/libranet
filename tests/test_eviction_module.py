@@ -6,7 +6,7 @@ module, the connection manager, and the unbundler, and free space faked."""
 from __future__ import annotations
 from logging import INFO
 from pathlib import Path
-from queue import Empty, Queue
+from queue import Empty
 from typing import Any, Iterator
 
 from pytest import LogCaptureFixture, fixture, raises
@@ -56,11 +56,6 @@ def node_id(config: LibranetConfig) -> ContentId:
 @fixture
 def store(config: LibranetConfig) -> CasStore:
     return CasStore.source_of_truth(config.storage)
-
-
-@fixture
-def queues() -> ModuleQueues:
-    return ModuleQueues(inbox=Queue(), outbox=Queue())
 
 
 @fixture

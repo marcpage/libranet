@@ -1,6 +1,7 @@
 """Tests for reading the node and seek lists peers post."""
 
 from __future__ import annotations
+from json import loads
 from logging import DEBUG, WARNING
 from zlib import compress
 
@@ -8,7 +9,12 @@ from pytest import LogCaptureFixture, mark, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.protocol.errors import InvalidListError
-from libranet.protocol.lists import decode_list, parse_node_list, parse_seek_list
+from libranet.protocol.lists import (
+    decode_list,
+    node_list_body,
+    parse_node_list,
+    parse_seek_list,
+)
 
 CONTENT_ID = ContentId.for_data(b"sought", "sha256")
 NODE_ID = ContentId.for_data(b"a peer's public key", "sha256")
@@ -184,3 +190,14 @@ def test_a_seek_list_entry_that_is_not_a_string_is_logged_at_debug(
         (DEBUG, "Dropping 7 from a seek list: not a string"),
         (DEBUG, "Dropping None from a seek list: not a string"),
     ]
+
+
+def test_a_node_list_is_sent_compactly_and_read_back_as_written() -> None:
+    nodes = {"http://203.0.113.42:4300": "sha256/" + "a" * 64}
+
+    body = node_list_body(nodes)
+
+    assert body == b'{"nodes":{"http://203.0.113.42:4300":"sha256/' + b"a" * 64 + b'"}}'
+    assert {
+        endpoint: str(node_id) for endpoint, node_id in parse_node_list(loads(body)).items()
+    } == nodes

@@ -6,6 +6,9 @@ without a running server. A request body is read from the connection only if
 the handler asks for it, so a handler can refuse an oversized body unread.
 A response body may likewise be produced only as it is sent, as an
 application file is, from its parts (Phase 3 Step 65).
+
+The responses every handler may give are built here too, as is what more
+than one reads from a request's path.
 """
 
 from __future__ import annotations
@@ -13,14 +16,19 @@ from dataclasses import dataclass, field
 from http import HTTPStatus
 from io import BytesIO
 from json import loads
+from logging import getLogger
 from typing import Any, Iterable, Mapping, Protocol
+from urllib.parse import unquote
 
+from libranet.cas.content_id import ContentId
 from libranet.identity.authentication import AuthenticationResult
 from libranet.json_format import compact_json
 from libranet.problems import PROBLEM_CONTENT_TYPE, Problem
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE, OCTET_STREAM
 from libranet.webserver.errors import IncompleteBodyError, UnsupportedMediaTypeError
 from libranet.webserver.inbound_peers import InboundConnection
+
+_LOGGER = getLogger(__name__)
 
 
 class _Readable(Protocol):
@@ -134,6 +142,19 @@ class Request:  # pylint: disable=too-many-instance-attributes
         media_type = (self.header("Content-Type") or "").partition(";")[0].strip().lower()
         return media_type == JSON_CONTENT_TYPE
 
+    def require_json(self) -> None:
+        """Raise unless the request :meth:`carries_json`.
+
+        Raises:
+            UnsupportedMediaTypeError: the ``Content-Type`` is not
+                ``application/json``.
+        """
+        if not self.carries_json():
+            raise UnsupportedMediaTypeError(
+                f"A request body's Content-Type must be {JSON_CONTENT_TYPE}, "
+                f"got {self.header('Content-Type')!r}"
+            )
+
     def json(self) -> object:
         """The JSON value the body carries, read only if the request :meth:`carries_json`.
 
@@ -143,12 +164,7 @@ class Request:  # pylint: disable=too-many-instance-attributes
             ValueError: the body is not JSON, or its length is not known.
             IncompleteBodyError: the connection closed or timed out first.
         """
-        if not self.carries_json():
-            raise UnsupportedMediaTypeError(
-                f"A request body's Content-Type must be {JSON_CONTENT_TYPE}, "
-                f"got {self.header('Content-Type')!r}"
-            )
-
+        self.require_json()
         body = self.body.read()
 
         try:
@@ -223,3 +239,33 @@ def problem_response(problem: Problem, headers: Mapping[str, str] | None = None)
         problem.to_json(),
         {"Content-Type": PROBLEM_CONTENT_TYPE, **(headers or {})},
     )
+
+
+def status_response(
+    request: Request, status: HTTPStatus, detail: str, *, headers: Mapping[str, str] | None = None
+) -> Response:
+    """The error response to ``request`` that ``status`` describes, ``detail`` saying why.
+
+    Its problem is ``about:blank``, titled with the status phrase.
+    """
+    return problem_response(Problem.for_status(status, detail, request.path), headers)
+
+
+def redirect_response(location: str) -> Response:
+    """A ``302`` to ``location``."""
+    return Response(HTTPStatus.FOUND, headers={"Location": location})
+
+
+def entity_tag(content_id: ContentId) -> str:
+    """The strong ``ETag`` of what hashes to ``content_id``, naming its algorithm and hash."""
+    return f'"{content_id.algorithm}-{content_id.hash}"'
+
+
+def percent_decoded(text: str) -> str | None:
+    """``text`` percent-decoded, or ``None`` if what it encodes is not UTF-8."""
+    try:
+        return unquote(text, errors="strict")
+
+    except UnicodeDecodeError as error:
+        _LOGGER.debug("%r does not percent-encode UTF-8: %s", text, error)
+        return None

@@ -12,7 +12,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from json import dumps, loads
 from pathlib import Path
-from queue import Empty, Queue
 from typing import Any, Callable, Iterator
 
 from pytest import fixture, mark
@@ -63,7 +62,7 @@ from libranet.webserver.list_handlers import NodeListHandler, SeekListHandler
 from libranet.webserver.router import Router
 from libranet.webserver.search_handler import SEARCH_PATTERN, SearchHandler
 
-from tests.helpers import with_node_key
+from tests.helpers import published, with_node_key
 from tests.stubs import StubModule
 
 NOW = 1_757_080_000.0
@@ -104,11 +103,6 @@ spellings = mark.parametrize(
 def spelled(content_id: ContentId, spell: Spelling) -> str:
     """``content_id`` in its ``{algorithm}/{hash}`` form, spelled by ``spell``."""
     return spell(str(content_id))
-
-
-@fixture
-def queues() -> ModuleQueues:
-    return ModuleQueues(inbox=Queue(), outbox=Queue())
 
 
 @fixture
@@ -203,17 +197,6 @@ def request(
         body=RequestBody.of(body),
         authentication=authentication,
     )
-
-
-def published(queues: ModuleQueues) -> list[Message]:
-    messages = []
-
-    while True:
-        try:
-            messages.append(queues.outbox.get(block=False))
-
-        except Empty:
-            return messages
 
 
 def stored_names(store: CasStore) -> list[str]:

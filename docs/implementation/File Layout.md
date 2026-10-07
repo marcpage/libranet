@@ -181,7 +181,8 @@ one file's entry here: the file's `FileBundle`, which names its parts, as
 zlib-compressed JSON. The web server serves the file from those parts in
 `cas/data`, reading them as it sends it
 (`src/libranet/cas/resolved_files.py`, Phase 3 Step 65). No reassembled copy
-of any file is written.
+of any file is written. Both modules write and read what is saved here as
+`src/libranet/bundle/saved.py` does.
 
 - Entries are grouped by the content id of the application's bundle, which
   never changes, so an entry never goes stale. Registering a new bundle for

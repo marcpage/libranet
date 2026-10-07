@@ -31,5 +31,9 @@ class NotZlibStreamError(CasError, ValueError):
     """Bytes are not one complete zlib stream."""
 
 
+class ContentMismatchError(CasError, ValueError):
+    """Bytes are not the content they are checked against, as-is or zlib-compressed."""
+
+
 class StreamTooLargeError(CasError, ValueError):
     """A zlib stream decompresses to more than it may."""

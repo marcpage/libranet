@@ -88,20 +88,16 @@ from logging import Logger
 from pathlib import Path
 from time import time
 from typing import Any, Callable, ClassVar, Final, Iterable, TypeAlias
-from zlib import compress, decompress, error as ZlibError
 
-from libranet.atomic_file import write_atomically
 from libranet.bundle.errors import (
     BundleError,
-    MalformedBundleError,
     MissingContentError,
     PasswordProtectedBundleError,
 )
 from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.loading import load_bundle
-from libranet.bundle.parsing import decode_bundle
 from libranet.bundle.parts import PartPath
-from libranet.bundle.serialization import encode_bundle
+from libranet.bundle.saved import save_bundle, saved_bundle
 from libranet.bundle.shapes import Bundle, DirectoryBundle, FileBundle
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
@@ -311,7 +307,7 @@ class UnbundlerModule(ModuleBase):
             self._report(bundle, path, PathOutcome.REDIRECT, location=found.path)
 
         else:
-            write_atomically(target, compress(encode_bundle(found.entry)))
+            save_bundle(target, found.entry)
             self._report(bundle, path, PathOutcome.STORED)
 
     def _resolve_file(self, bundle: PartPath, path: str, target: Path, entry: FileBundle) -> None:
@@ -323,7 +319,7 @@ class UnbundlerModule(ModuleBase):
             self._report(bundle, path, PathOutcome.NOT_FOUND)
             return
 
-        write_atomically(target, compress(encode_bundle(entry)))
+        save_bundle(target, entry)
         self._report(bundle, path, PathOutcome.STORED)
 
     def _directory(self, bundle: PartPath) -> _Resolved:
@@ -398,23 +394,9 @@ class UnbundlerModule(ModuleBase):
         A saved directory that cannot be read back is discarded, so it is
         resolved again.
         """
-        path = self._saved_path(bundle)
+        saved = saved_bundle(self._saved_path(bundle), DirectoryBundle)
 
-        try:
-            saved = decode_bundle(decompress(path.read_bytes()))
-
-            if not isinstance(saved, DirectoryBundle):
-                raise MalformedBundleError("Not a directory bundle")
-
-        except FileNotFoundError:
-            # Not logged: a directory not saved yet is saved once resolved.
-            return None
-
-        except (ZlibError, BundleError) as error:
-            self.logger.warning(
-                "Discarding the saved directory of %s: %s", bundle.content_id, error
-            )
-            path.unlink(missing_ok=True)
+        if saved is None:
             return None
 
         return ResolvedDirectory.of(
@@ -423,8 +405,7 @@ class UnbundlerModule(ModuleBase):
 
     def _save_directory(self, bundle: PartPath, directory: ResolvedDirectory) -> None:
         """Save ``directory`` for ``bundle``, as a flat directory bundle."""
-        flat = encode_bundle(DirectoryBundle(directory.entries))
-        write_atomically(self._saved_path(bundle), compress(flat))
+        save_bundle(self._saved_path(bundle), DirectoryBundle(directory.entries))
 
     def _keep_saved(self, bundle: PartPath, directory: ResolvedDirectory) -> None:
         """Save ``directory`` for ``bundle`` again, if it has been deleted since it was saved.

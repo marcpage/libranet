@@ -13,8 +13,7 @@ from http import HTTPStatus
 from re import Pattern, compile as compile_pattern
 from typing import Callable
 
-from libranet.problems import Problem
-from libranet.webserver.http_types import Request, Response, problem_response
+from libranet.webserver.http_types import Request, Response, status_response
 
 Handler = Callable[[Request], Response]
 
@@ -72,19 +71,11 @@ class Router:
             return route.handler(replace(request, params=params))
 
         if allowed:
-            return problem_response(
-                Problem.for_status(
-                    HTTPStatus.METHOD_NOT_ALLOWED,
-                    detail=f"{request.method} is not supported for this resource.",
-                    instance=request.path,
-                ),
-                {"Allow": ", ".join(sorted(set(allowed)))},
+            return status_response(
+                request,
+                HTTPStatus.METHOD_NOT_ALLOWED,
+                f"{request.method} is not supported for this resource.",
+                headers={"Allow": ", ".join(sorted(set(allowed)))},
             )
 
-        return problem_response(
-            Problem.for_status(
-                HTTPStatus.NOT_FOUND,
-                detail="No resource exists at this path.",
-                instance=request.path,
-            )
-        )
+        return status_response(request, HTTPStatus.NOT_FOUND, "No resource exists at this path.")

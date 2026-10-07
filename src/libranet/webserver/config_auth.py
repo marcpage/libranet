@@ -90,10 +90,9 @@ def basic_credentials(headers: Mapping[str, str]) -> str | None:
 def credential_required_response(request: Request) -> Response:
     """The ``401`` challenging a ``/config`` request for its credentials."""
     return problem_response(
-        Problem(
-            status=HTTPStatus.UNAUTHORIZED,
-            title="Credential required",
-            type=CREDENTIAL_REQUIRED,
+        Problem.of_type(
+            CREDENTIAL_REQUIRED,
+            HTTPStatus.UNAUTHORIZED,
             detail="/config requires the username and password this node captured.",
             instance=request.path,
         ),

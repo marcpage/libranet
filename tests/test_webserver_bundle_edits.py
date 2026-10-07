@@ -7,7 +7,6 @@ from hashlib import sha256
 from io import BytesIO
 from json import dumps, loads
 from logging import ERROR, WARNING
-from pathlib import Path
 from threading import Timer
 from typing import Any, Iterator, Mapping
 
@@ -79,11 +78,6 @@ class Recorder:
 
     def payloads(self, event: EventType) -> list[dict[str, Any]]:
         return [payload for published, payload in self.messages if published == event]
-
-
-@fixture
-def storage(tmp_path: Path) -> StorageConfig:
-    return StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache")
 
 
 @fixture

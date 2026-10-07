@@ -252,11 +252,6 @@ def identity(config: LibranetConfig) -> NodeIdentity:
 
 
 @fixture
-def queues() -> ModuleQueues:
-    return ModuleQueues(inbox=Queue(), outbox=Queue())
-
-
-@fixture
 def bus(queues: ModuleQueues) -> Bus:
     return Bus(queues.outbox)
 

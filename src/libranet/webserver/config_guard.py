@@ -62,11 +62,15 @@ from typing import Final
 from urllib.parse import unquote
 
 from libranet.config.models import CONFIG_LISTEN_ADDRESS
-from libranet.problems import Problem
 from libranet.protocol.client_origin import is_local_client
 from libranet.webserver.app_registry import CONFIG_API_SEGMENT, CONFIG_APPLICATION
 from libranet.webserver.config_credential import ConfigCredential
-from libranet.webserver.http_types import Request, Response, problem_response
+from libranet.webserver.http_types import (
+    Request,
+    Response,
+    redirect_response,
+    status_response,
+)
 from libranet.webserver.own_pages import RefererPage
 from libranet.webserver.site_checks import HOST_HEADER, SITE_HEADER, SiteChecks, host_name
 
@@ -99,12 +103,8 @@ def local_config_guard(request: Request) -> Request | Response:
     if not names_config(request.path) or is_local_client(request.client_address):
         return request
 
-    return problem_response(
-        Problem.for_status(
-            HTTPStatus.FORBIDDEN,
-            detail="/config is served only to clients on this machine.",
-            instance=request.path,
-        )
+    return status_response(
+        request, HTTPStatus.FORBIDDEN, "/config is served only to clients on this machine."
     )
 
 
@@ -132,9 +132,7 @@ class ConfigSiteGuard:
             return request
 
         _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, refusal)
-        return problem_response(
-            Problem.for_status(HTTPStatus.FORBIDDEN, detail=refusal, instance=request.path)
-        )
+        return status_response(request, HTTPStatus.FORBIDDEN, refusal)
 
     def refusal(self, request: Request) -> str | None:
         """Why ``request`` is taken to be another site's, or ``None`` if it is not.
@@ -196,14 +194,12 @@ class MovedConfigGuard:
         location = self.location(request)
 
         if request.method == "GET" and not names_config_api(request.path):
-            return Response(HTTPStatus.FOUND, headers={"Location": location})
+            return redirect_response(location)
 
-        return problem_response(
-            Problem.for_status(
-                HTTPStatus.NOT_FOUND,
-                detail=f"/config is served on port {self.config_port}, at {location}",
-                instance=request.path,
-            )
+        return status_response(
+            request,
+            HTTPStatus.NOT_FOUND,
+            f"/config is served on port {self.config_port}, at {location}",
         )
 
     def location(self, request: Request) -> str:

@@ -70,6 +70,56 @@ DEFAULT_READ_AHEAD_PARTS: Final = 8
 DEFAULT_PART_POLL_INTERVAL_SECONDS: Final = 0.25
 
 
+class ContentWait:
+    """A request's wait for content this node lacks, which it asks the network for.
+
+    Each object is asked for with ``publish``, as any miss is, and asked for
+    again only once ``ask_again_seconds`` have passed since, as
+    :func:`monotonic` tells them::
+
+        data.not_found  {"algorithm": "sha256", "hash": "<hex>"}
+
+    What was asked for is looked for again every ``poll_interval_seconds``.
+    """
+
+    def __init__(
+        self, publish: Publish, ask_again_seconds: float, poll_interval_seconds: float
+    ) -> None:
+        self._publish = publish
+        self._ask_again_seconds = ask_again_seconds
+        self._poll_interval_seconds = poll_interval_seconds
+        # When each object was last asked for, as monotonic() tells.
+        self._asked: dict[ContentId, float] = {}
+
+    def ask(self, content_id: ContentId) -> None:
+        """Ask for ``content_id``, unless it was asked for less than ``ask_again_seconds`` ago."""
+        now = monotonic()
+        asked_at = self._asked.get(content_id)
+
+        if asked_at is not None and now - asked_at < self._ask_again_seconds:
+            return
+
+        self._asked[content_id] = now
+        self._publish(EventType.DATA_NOT_FOUND, content_id.fields())
+
+    def pause(self, deadline: float) -> bool:
+        """Wait to look again, for a poll interval, but not past ``deadline``.
+
+        ``deadline`` is as :func:`monotonic` tells it.
+
+        Returns:
+            Whether ``deadline`` had not passed, so that looking again may
+            find what was asked for in time.
+        """
+        remaining_seconds = deadline - monotonic()
+
+        if remaining_seconds <= 0:
+            return False
+
+        sleep(min(remaining_seconds, self._poll_interval_seconds))
+        return True
+
+
 @dataclass(frozen=True)
 class _Piece:
     """A part a response reads, and the slice of it the response sends.
@@ -201,8 +251,9 @@ class FileStream:  # pylint: disable=too-many-instance-attributes
 
         self._reader = reader
         self._check = WholeFileCheck(entry.metadata) if whole else None
-        # When each part not held was last asked for, as monotonic() tells.
-        self._asked: dict[ContentId, float] = {}
+        self._wait = ContentWait(
+            reader.publish, reader.ask_again_seconds, reader.poll_interval_seconds
+        )
         # The pieces before this one have been reported as requested.
         self._requested_through = 0
         # The next piece to read, and what begin() read of the one before it.
@@ -298,12 +349,8 @@ class FileStream:  # pylint: disable=too-many-instance-attributes
 
             except MissingContentError:
                 # Not logged: a part not held is asked for, and waited for.
-                remaining_seconds = deadline - monotonic()
-
-                if remaining_seconds <= 0:
+                if not self._wait.pause(deadline):
                     return None
-
-                sleep(min(remaining_seconds, self._reader.poll_interval_seconds))
 
         self._position += 1
 
@@ -322,7 +369,6 @@ class FileStream:  # pylint: disable=too-many-instance-attributes
         asked of the network if it is not held. A part asked for less than
         ``ask_again_seconds`` ago is not asked for again.
         """
-        now = monotonic()
         end = min(self._position + self._reader.read_ahead_parts + 1, len(self._pieces))
 
         for index in range(self._position, end):
@@ -333,16 +379,8 @@ class FileStream:  # pylint: disable=too-many-instance-attributes
                     EventType.DATA_REQUESTED, {**content_id.fields(), "external": False}
                 )
 
-            asked_at = self._asked.get(content_id)
-
-            if asked_at is not None and now - asked_at < self._reader.ask_again_seconds:
-                continue
-
-            if self._reader.content.exists(content_id):
-                continue
-
-            self._asked[content_id] = now
-            self._reader.publish(EventType.DATA_NOT_FOUND, content_id.fields())
+            if not self._reader.content.exists(content_id):
+                self._wait.ask(content_id)
 
         self._requested_through = max(self._requested_through, end)
 

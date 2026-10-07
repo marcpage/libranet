@@ -4,10 +4,13 @@ from __future__ import annotations
 from os import urandom
 from zlib import compress, compressobj
 
-from pytest import mark
+from pytest import mark, raises
 
+from libranet.cas.algorithms import DEFAULT_REGISTRY
+from libranet.cas.compression import CHUNK_BYTES
 from libranet.cas.content_id import ContentId
-from libranet.cas.verification import content_matches
+from libranet.cas.errors import ContentMismatchError
+from libranet.cas.verification import content_matches, matching_chunks
 
 CONTENT = b"libranet content " * 64
 CONTENT_ID = ContentId.for_data(CONTENT, "sha256")
@@ -65,3 +68,29 @@ def test_raw_deflate_and_gzip_are_not_zlib() -> None:
 
 def test_compressing_twice_does_not_match() -> None:
     assert not content_matches(CONTENT_ID, compress(compress(CONTENT)))
+
+
+def test_content_as_it_is_is_produced_whole() -> None:
+    algorithm = DEFAULT_REGISTRY.get("sha256")
+
+    assert list(matching_chunks(CONTENT, algorithm, CONTENT_ID.hash)) == [CONTENT]
+
+
+def test_compressed_content_is_produced_decompressed_a_chunk_at_a_time() -> None:
+    content = b"\0" * (CHUNK_BYTES * 3)
+    algorithm = DEFAULT_REGISTRY.get("sha256")
+
+    chunks = list(matching_chunks(compress(content), algorithm, algorithm.hexdigest(content)))
+
+    assert b"".join(chunks) == content
+    assert max(map(len, chunks)) <= CHUNK_BYTES
+
+
+@mark.parametrize(
+    "data",
+    [b"something else", compress(b"something else"), compress(CONTENT)[:-4]],
+    ids=["other content", "other content compressed", "truncated stream"],
+)
+def test_data_that_is_not_the_content_raises_once_produced(data: bytes) -> None:
+    with raises(ContentMismatchError):
+        list(matching_chunks(data, DEFAULT_REGISTRY.get("sha256"), CONTENT_ID.hash))

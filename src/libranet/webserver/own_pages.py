@@ -44,10 +44,10 @@ from typing import Final
 from urllib.parse import unquote, urlsplit
 
 from libranet.bundle.parts import PartPath
-from libranet.problems import Problem
 from libranet.webserver.app_registry import CONFIG_APPLICATION, ApplicationRegistry
 from libranet.webserver.errors import RegistryFileError
-from libranet.webserver.http_types import Request, Response, problem_response
+from libranet.webserver.http_types import Request, Response, status_response
+from libranet.webserver.request_refusals import unreadable_registry_response
 from libranet.webserver.router import Handler
 from libranet.webserver.site_checks import HOST_HEADER
 
@@ -184,21 +184,13 @@ class OwnPages:
 
         except RegistryFileError as error:
             _LOGGER.warning("Refusing %s %s: %s", request.method, _logged_path(request), error)
-            return problem_response(
-                Problem.for_status(
-                    HTTPStatus.INTERNAL_SERVER_ERROR,
-                    detail="The application registry cannot be read.",
-                    instance=request.path,
-                )
-            )
+            return unreadable_registry_response(request)
 
         if refusal is None:
             return None
 
         _LOGGER.warning("Refusing %s %s: %s", request.method, _logged_path(request), refusal)
-        return problem_response(
-            Problem.for_status(HTTPStatus.FORBIDDEN, detail=refusal, instance=request.path)
-        )
+        return status_response(request, HTTPStatus.FORBIDDEN, refusal)
 
     def trusted_refusal(self, request: Request) -> str | None:
         """Why ``request`` is from no page of a trusted application, or ``None`` if it is."""

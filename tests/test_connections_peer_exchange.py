@@ -42,7 +42,7 @@ from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.webserver.server import LibranetHTTPServer, build_router
 
-from tests.helpers import with_node_key
+from tests.helpers import new_identity, with_node_key
 from tests.stubs import StubModule
 
 LOGGER = getLogger("test.connections")
@@ -57,10 +57,6 @@ OFFERED_ID = ContentId.for_data(OFFERED, "sha256")
 NOWHERE_ID = ContentId.for_data(b"content nobody holds", "sha256")
 OTHER_ID = ContentId.for_data(b"some other node's key", "sha256")
 THIRD_ID = ContentId.for_data(b"a third node's key", "sha256")
-
-
-def new_identity() -> NodeIdentity:
-    return NodeIdentity.from_private_key(generate_private_key(), "sha256")
 
 
 def drain(queue: ModuleQueues, into: list[Message]) -> list[Message]:
@@ -153,11 +149,6 @@ def config(tmp_path: Path) -> LibranetConfig:
 @fixture
 def identity(config: LibranetConfig) -> NodeIdentity:
     return NodeIdentity.load(config)
-
-
-@fixture
-def queues() -> ModuleQueues:
-    return ModuleQueues(inbox=Queue(), outbox=Queue())
 
 
 @fixture

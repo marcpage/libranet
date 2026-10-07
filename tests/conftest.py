@@ -3,12 +3,15 @@
 from __future__ import annotations
 from logging import getLogger
 from pathlib import Path
+from queue import Queue
 from typing import Iterator
 
 from pytest import fixture, skip
 from xattr import xattr
 
+from libranet.config.models import StorageConfig
 from libranet.logging_setup import LOGGER_ROOT
+from libranet.messaging.queues import ModuleQueues
 
 
 @fixture(autouse=True)
@@ -50,3 +53,15 @@ def supports_xattrs(tmp_path: Path) -> None:
 
     finally:
         probe.unlink()
+
+
+@fixture
+def queues() -> ModuleQueues:
+    """A module's inbox and outbox, read and written in the test's own process."""
+    return ModuleQueues(inbox=Queue(), outbox=Queue())
+
+
+@fixture
+def storage(tmp_path: Path) -> StorageConfig:
+    """Storage beneath the test's temp directory, with every other setting at its default."""
+    return StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache")
