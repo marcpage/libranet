@@ -1,12 +1,24 @@
 """Tests for the request body handlers read lazily, and what a request says of itself."""
 
 from __future__ import annotations
+from http import HTTPStatus
 from io import BytesIO
+from json import loads
 
 from pytest import mark, raises
 
+from libranet.cas.content_id import ContentId
 from libranet.webserver.errors import IncompleteBodyError, UnsupportedMediaTypeError
-from libranet.webserver.http_types import Request, RequestBody, Response, StreamedBody
+from libranet.webserver.http_types import (
+    Request,
+    RequestBody,
+    Response,
+    StreamedBody,
+    entity_tag,
+    percent_decoded,
+    redirect_response,
+    status_response,
+)
 
 
 class StalledStream:
@@ -170,3 +182,50 @@ def test_a_response_sends_a_body_or_a_stream_not_both() -> None:
 
     with raises(ValueError, match="not both"):
         Response(200, b"x", stream=stream)
+
+
+@mark.parametrize(
+    "text, decoded",
+    [("Film%20(2001)/a%2Fb", "Film (2001)/a/b"), ("caf%C3%A9", "café"), ("%FF", None)],
+)
+def test_a_path_is_percent_decoded_if_it_encodes_utf_8(text: str, decoded: str | None) -> None:
+    assert percent_decoded(text) == decoded
+
+
+def test_a_status_response_is_a_problem_titled_with_the_status_phrase() -> None:
+    response = status_response(
+        Request("GET", "/x"), HTTPStatus.NOT_FOUND, "Nothing here.", headers={"Retry-After": "5"}
+    )
+
+    assert response.status == HTTPStatus.NOT_FOUND
+    assert response.headers["Retry-After"] == "5"
+    assert loads(response.body) == {
+        "type": "about:blank",
+        "title": "Not Found",
+        "status": 404,
+        "detail": "Nothing here.",
+        "instance": "/x",
+    }
+
+
+def test_a_redirect_is_a_302_to_its_location() -> None:
+    response = redirect_response("/movie/")
+
+    assert (response.status, response.headers, response.body) == (
+        HTTPStatus.FOUND,
+        {"Location": "/movie/"},
+        b"",
+    )
+
+
+def test_an_entity_tag_names_the_hash_and_its_algorithm() -> None:
+    content_id = ContentId.for_data(b"a file", "sha256")
+
+    assert entity_tag(content_id) == f'"sha256-{content_id.hash}"'
+
+
+def test_a_request_saying_its_body_is_json_is_required_to() -> None:
+    Request("PUT", "/x", headers={"Content-Type": "application/json"}).require_json()
+
+    with raises(UnsupportedMediaTypeError, match="text/plain"):
+        Request("PUT", "/x", headers={"Content-Type": "text/plain"}).require_json()

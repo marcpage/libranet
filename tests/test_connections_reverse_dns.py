@@ -3,7 +3,7 @@
 from __future__ import annotations
 from itertools import count
 from logging import getLogger
-from queue import Empty, Queue
+from queue import Empty
 from socket import herror
 from time import monotonic, sleep
 from typing import Iterator, Sequence
@@ -48,11 +48,6 @@ class FakeResolver:
 @fixture
 def resolver() -> FakeResolver:
     return FakeResolver({"203.0.113.9": ["peer.example.org", "alias.example.org"]})
-
-
-@fixture
-def queues() -> ModuleQueues:
-    return ModuleQueues(inbox=Queue(), outbox=Queue())
 
 
 @fixture

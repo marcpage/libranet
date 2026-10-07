@@ -105,3 +105,18 @@ def event_of(message: Message) -> EventType:
 def source_of(message: Message) -> ModuleName:
     """The publishing module of a validated message."""
     return ModuleName(message[SOURCE_FIELD])
+
+
+def delivered_to(
+    message: Message, module: ModuleName, subscriptions: frozenset[EventType] | None
+) -> bool:
+    """Whether a validated ``message`` is for ``module``, which subscribes to ``subscriptions``.
+
+    It is unless the module published it, or it is not ``shutdown`` and not
+    an event the module subscribes to. ``None`` subscribes to every event.
+    """
+    if source_of(message) == module:
+        return False
+
+    event = event_of(message)
+    return event == EventType.SHUTDOWN or subscriptions is None or event in subscriptions

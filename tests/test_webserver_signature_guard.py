@@ -11,7 +11,6 @@ from pytest import fixture, mark
 
 from libranet.cas.store import CasStore
 from libranet.identity.authentication import AuthenticationStatus, RequestAuthenticator
-from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import SIGNATURE_HEADER, MessageSigner, MessageVerifier
 from libranet.messaging.envelope import Message
@@ -20,6 +19,8 @@ from libranet.problems import CONTENT_TOO_LARGE, INVALID_SIGNATURE, SIGNATURE_RE
 from libranet.webserver.http_types import Request, RequestBody, Response
 from libranet.webserver.inbound_peers import InboundPeers
 from libranet.webserver.signature_guard import SignatureGuard
+
+from tests.helpers import new_identity
 
 NOW = 1_757_080_000.0
 MAX_BYTES = 32
@@ -53,10 +54,6 @@ def known(keys: CasStore) -> NodeIdentity:
     identity = new_identity()
     identity.publish_public_key(keys)
     return identity
-
-
-def new_identity() -> NodeIdentity:
-    return NodeIdentity.from_private_key(generate_private_key(), "sha256")
 
 
 def signed(

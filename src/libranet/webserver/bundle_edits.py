@@ -47,7 +47,7 @@ from dataclasses import KW_ONLY, dataclass, replace
 from http import HTTPStatus
 from logging import getLogger
 from pathlib import Path
-from time import monotonic, sleep
+from time import monotonic
 from typing import Final, Mapping
 
 from libranet.bundle.content import ContentSource
@@ -91,8 +91,14 @@ from libranet.protocol.bundle_requests import (
 from libranet.protocol.errors import InvalidConfigRequestError
 from libranet.webserver.config_handlers import invalid_request_response, json_or_refusal
 from libranet.webserver.errors import BundleEditError
-from libranet.webserver.file_stream import DEFAULT_PART_POLL_INTERVAL_SECONDS
-from libranet.webserver.http_types import Request, Response, json_response, problem_response
+from libranet.webserver.file_stream import DEFAULT_PART_POLL_INTERVAL_SECONDS, ContentWait
+from libranet.webserver.http_types import (
+    Request,
+    Response,
+    json_response,
+    problem_response,
+    status_response,
+)
 from libranet.webserver.request_refusals import content_unavailable_response
 
 _LOGGER = getLogger(__name__)
@@ -532,8 +538,7 @@ class BundleEditHandler:
                 names something other than what it must.
         """
         deadline = monotonic() + self.wait_seconds
-        # When each bundle not held was last asked for, as monotonic() tells.
-        requested: dict[ContentId, float] = {}
+        wait = ContentWait(self.publish, self.retry_after_seconds, self.poll_interval_seconds)
 
         while True:
             try:
@@ -543,21 +548,11 @@ class BundleEditHandler:
                 # Not logged: what is not held is asked for, and waited for.
                 lacking = error.content_ids
 
-            now = monotonic()
-
             for content_id in lacking:
-                requested_at = requested.get(content_id)
+                wait.ask(content_id)
 
-                if requested_at is None or now - requested_at >= self.retry_after_seconds:
-                    requested[content_id] = now
-                    self.publish(EventType.DATA_NOT_FOUND, content_id.fields())
-
-            remaining_seconds = deadline - now
-
-            if remaining_seconds <= 0:
+            if not wait.pause(deadline):
                 return None
-
-            sleep(min(remaining_seconds, self.poll_interval_seconds))
 
 
 def _remove(entries: dict[str, Entry], path: str) -> None:
@@ -578,9 +573,7 @@ def _refusal(error: BundleError | BundleEditError, request: Request) -> Response
     """
     if isinstance(error, PasswordProtectedBundleError):
         _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-        return problem_response(
-            Problem.for_status(HTTPStatus.FORBIDDEN, detail=str(error), instance=request.path)
-        )
+        return status_response(request, HTTPStatus.FORBIDDEN, str(error))
 
     if isinstance(error, UnsupportedBundleError):
         _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, error)
@@ -589,20 +582,12 @@ def _refusal(error: BundleError | BundleEditError, request: Request) -> Response
         _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
 
     if isinstance(error, BundleTooLargeError):
-        return problem_response(
-            Problem.for_status(
-                HTTPStatus.BAD_REQUEST,
-                detail=f"The bundle asked for cannot be stored: {error}",
-                instance=request.path,
-            )
+        return status_response(
+            request, HTTPStatus.BAD_REQUEST, f"The bundle asked for cannot be stored: {error}"
         )
 
     return problem_response(
-        Problem(
-            status=HTTPStatus.BAD_REQUEST,
-            title="Bundle cannot be used",
-            type=UNUSABLE_BUNDLE,
-            detail=str(error),
-            instance=request.path,
+        Problem.of_type(
+            UNUSABLE_BUNDLE, HTTPStatus.BAD_REQUEST, detail=str(error), instance=request.path
         )
     )

@@ -65,9 +65,16 @@ from libranet.webserver.app_registry import (
     ApplicationRegistry,
     RegisteredApplications,
 )
-from libranet.webserver.bundle_paths import BundlePaths, percent_decoded
+from libranet.webserver.bundle_paths import BundlePaths
 from libranet.webserver.config_guard import names_config
-from libranet.webserver.http_types import Request, Response, problem_response
+from libranet.webserver.http_types import (
+    Request,
+    Response,
+    percent_decoded,
+    problem_response,
+    redirect_response,
+    status_response,
+)
 
 _LOGGER = getLogger(__name__)
 
@@ -143,7 +150,8 @@ class AppHandler:
         self.paths.use.used(bundle)
 
         if rest is None:
-            return _redirect(f"{prefix}/")
+            # A 302, since an application may later be given another bundle.
+            return redirect_response(f"{prefix}/")
 
         entry_path = _entry_path(rest)
 
@@ -228,7 +236,7 @@ def _entry_path(rest: str) -> str | None:
 def _known_response(known: KnownOutcome, prefix: str, request: Request) -> Response:
     """The answer to a request for a path the unbundler saved no entry for."""
     if known.outcome == PathOutcome.REDIRECT:
-        return _redirect(f"{prefix}/{quote(known.location)}")
+        return redirect_response(f"{prefix}/{quote(known.location)}")
 
     if known.outcome in (PathOutcome.UNUSABLE, PathOutcome.PROTECTED):
         return _unusable_response(known.detail, request)
@@ -239,26 +247,14 @@ def _known_response(known: KnownOutcome, prefix: str, request: Request) -> Respo
 def _unusable_response(detail: str, request: Request) -> Response:
     """The ``500`` for a bundle or file that cannot be served, saying why in ``detail``."""
     return problem_response(
-        Problem(
-            status=HTTPStatus.INTERNAL_SERVER_ERROR,
-            title="Application cannot be served",
-            type=UNUSABLE_BUNDLE,
+        Problem.of_type(
+            UNUSABLE_BUNDLE,
+            HTTPStatus.INTERNAL_SERVER_ERROR,
             detail=detail,
             instance=request.path,
         )
     )
 
 
-def _redirect(location: str) -> Response:
-    """A ``302``, since an application may later be given another bundle."""
-    return Response(HTTPStatus.FOUND, headers={"Location": location})
-
-
 def _not_found(request: Request) -> Response:
-    return problem_response(
-        Problem.for_status(
-            HTTPStatus.NOT_FOUND,
-            detail="No application has a file at this path.",
-            instance=request.path,
-        )
-    )
+    return status_response(request, HTTPStatus.NOT_FOUND, "No application has a file at this path.")

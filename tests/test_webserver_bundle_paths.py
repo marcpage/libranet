@@ -21,7 +21,7 @@ from libranet.messaging.events import EventType
 from libranet.protocol.http_syntax import OCTET_STREAM
 from libranet.webserver.app_outcomes import ApplicationOutcomes
 from libranet.webserver.app_use import ApplicationUse
-from libranet.webserver.bundle_paths import BundlePaths, content_type_for, percent_decoded
+from libranet.webserver.bundle_paths import BundlePaths, content_type_for
 from libranet.webserver.file_stream import PartReader
 
 BUNDLE = PartPath(ContentId.for_data(b"a directory bundle", "sha256"))
@@ -87,14 +87,6 @@ def test_the_content_type_is_guessed_from_the_extension(entry_path: str, content
     assert content_type_for(entry_path) == content_type
 
 
-@mark.parametrize(
-    "text, decoded",
-    [("Film%20(2001)/a%2Fb", "Film (2001)/a/b"), ("caf%C3%A9", "café"), ("%FF", None)],
-)
-def test_a_path_is_percent_decoded_if_it_encodes_utf_8(text: str, decoded: str | None) -> None:
-    assert percent_decoded(text) == decoded
-
-
 def test_a_request_waits_no_longer_than_the_parts_are_waited_for(paths: BundlePaths) -> None:
     before = monotonic()
 
@@ -133,7 +125,7 @@ def test_a_saved_directory_that_cannot_be_read_is_discarded_and_asked_for_again(
 
     assert found is None
     assert not target.exists()
-    assert f"Discarding the directory saved at {target}: " in caplog.text
+    assert f"Discarding the bundle saved at {target}: " in caplog.text
     assert asked.messages == [
         (EventType.APP_PATH_NOT_FOUND, {"bundle": str(BUNDLE), "path": "docs"})
     ]

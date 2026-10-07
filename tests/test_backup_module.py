@@ -10,7 +10,6 @@ from itertools import count
 from logging import ERROR, INFO, WARNING
 from os import DirEntry, chmod, mkfifo, scandir, utime
 from pathlib import Path
-from queue import Empty, Queue
 from threading import Timer
 from typing import Any, Callable, Iterator
 
@@ -58,7 +57,7 @@ from libranet.protocol.config_requests import (
 from libranet.supervision.registry import default_module_specs
 from libranet.webserver.backup_state import BackupReport
 
-from tests.helpers import encrypted_part, with_node_key
+from tests.helpers import encrypted_part, published, with_node_key
 
 INTERVAL = 100.0
 START = 1_789_000_000.0
@@ -76,11 +75,6 @@ def config(tmp_path: Path) -> LibranetConfig:
             backup=BackupConfig(interval_seconds=INTERVAL),
         )
     )
-
-
-@fixture
-def queues() -> ModuleQueues:
-    return ModuleQueues(inbox=Queue(), outbox=Queue())
 
 
 @fixture
@@ -115,17 +109,6 @@ def start(
     )
     module.on_start()
     return module
-
-
-def published(queues: ModuleQueues) -> list[Message]:
-    messages = []
-
-    while True:
-        try:
-            messages.append(queues.outbox.get(block=False))
-
-        except Empty:
-            return messages
 
 
 def of(messages: list[Message], event: EventType) -> list[Message]:

@@ -72,7 +72,6 @@ from http import HTTPStatus
 from logging import getLogger
 from re import escape
 from typing import Any, Callable, Final, Protocol
-from urllib.parse import unquote
 
 from libranet.cas.content_id import ContentId
 from libranet.config.models import NetworkConfig
@@ -96,8 +95,19 @@ from libranet.webserver.backup_state import (
     BackupState,
 )
 from libranet.webserver.errors import RegistryFileError, UnsupportedMediaTypeError
-from libranet.webserver.http_types import Request, Response, json_response, problem_response
-from libranet.webserver.request_refusals import unreadable_body_response
+from libranet.webserver.http_types import (
+    Request,
+    Response,
+    json_response,
+    percent_decoded,
+    problem_response,
+    status_response,
+)
+from libranet.webserver.request_refusals import (
+    unreadable_body_response,
+    unreadable_registry_response,
+    unsupported_media_type_response,
+)
 from libranet.webserver.router import Handler
 
 _LOGGER = getLogger(__name__)
@@ -290,13 +300,7 @@ class ApplicationListHandler:
             _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, error)
 
             if not self.names_the_file:
-                return problem_response(
-                    Problem.for_status(
-                        HTTPStatus.INTERNAL_SERVER_ERROR,
-                        detail="The application registry cannot be read.",
-                        instance=request.path,
-                    )
-                )
+                return unreadable_registry_response(request)
 
             return _unreadable_registry_response(request, error)
 
@@ -359,14 +363,10 @@ class ApplicationTrustHandler:
             _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
             return invalid_request_response(request, error)
 
-        try:
-            registered = self.registry.trust(
-                unquote(request.params["name"], errors="strict"), trusted
-            )
+        name = percent_decoded(request.params["name"])
 
-        except UnicodeDecodeError as error:
-            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            registered = False
+        try:
+            registered = name is not None and self.registry.trust(name, trusted)
 
         except RegistryFileError as error:
             _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, error)
@@ -398,12 +398,10 @@ class ApplicationRemovalHandler:
         if isinstance(body, Response):
             return body
 
-        try:
-            removed = self.registry.remove(unquote(request.params["name"], errors="strict"))
+        name = percent_decoded(request.params["name"])
 
-        except UnicodeDecodeError as error:
-            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            removed = False
+        try:
+            removed = name is not None and self.registry.remove(name)
 
         except RegistryFileError as error:
             _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, error)
@@ -417,23 +415,20 @@ class ApplicationRemovalHandler:
 
 def unreported_response(request: Request, retry_after_seconds: int) -> Response:
     """The ``503`` for what the backup module has not reported yet."""
-    return problem_response(
-        Problem.for_status(
-            HTTPStatus.SERVICE_UNAVAILABLE,
-            detail="The backup module has not reported its state yet.",
-            instance=request.path,
-        ),
-        {"Retry-After": str(retry_after_seconds)},
+    return status_response(
+        request,
+        HTTPStatus.SERVICE_UNAVAILABLE,
+        "The backup module has not reported its state yet.",
+        headers={"Retry-After": str(retry_after_seconds)},
     )
 
 
 def invalid_request_response(request: Request, error: ValueError) -> Response:
     """The ``400`` for a body an endpoint cannot act on."""
     return problem_response(
-        Problem(
-            status=HTTPStatus.BAD_REQUEST,
-            title="Invalid configuration request",
-            type=INVALID_CONFIG_REQUEST,
+        Problem.of_type(
+            INVALID_CONFIG_REQUEST,
+            HTTPStatus.BAD_REQUEST,
             detail=str(error),
             instance=request.path,
         )
@@ -442,22 +437,14 @@ def invalid_request_response(request: Request, error: ValueError) -> Response:
 
 def _not_registered_response(request: Request) -> Response:
     """The ``404`` for a path naming no registered application."""
-    return problem_response(
-        Problem.for_status(
-            HTTPStatus.NOT_FOUND,
-            detail="No application of this name is registered.",
-            instance=request.path,
-        )
+    return status_response(
+        request, HTTPStatus.NOT_FOUND, "No application of this name is registered."
     )
 
 
 def _unreadable_registry_response(request: Request, error: RegistryFileError) -> Response:
     """The ``500`` for a registry file that must be fixed by hand before it can be changed."""
-    return problem_response(
-        Problem.for_status(
-            HTTPStatus.INTERNAL_SERVER_ERROR, detail=str(error), instance=request.path
-        )
-    )
+    return status_response(request, HTTPStatus.INTERNAL_SERVER_ERROR, str(error))
 
 
 def _body_or_refusal(
@@ -487,11 +474,7 @@ def json_or_refusal(
 
     except UnsupportedMediaTypeError as error:
         _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-        return problem_response(
-            Problem.for_status(
-                HTTPStatus.UNSUPPORTED_MEDIA_TYPE, detail=str(error), instance=request.path
-            )
-        )
+        return unsupported_media_type_response(request, error)
 
     except ValueError as error:
         _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)

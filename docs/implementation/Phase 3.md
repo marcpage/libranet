@@ -93,12 +93,14 @@ lacked:
   limit let go of each part it fetched for a film before the film's
   response read it. Nothing just stored is let go of now for a time.
 
-One more was asked for after:
+Two more were asked for after:
 
 - **Shipping the local network script** (Step 76). The command that runs
   a super node (Operator Guide §3) is installed with the package, as
   `libranet-local-network`, rather than left in the repository's
   `scripts/`.
+- **Cleaning up duplicate code** (Step 77). What this phase wrote more
+  than once, a rule or a format, has one home.
 
 ## 3. How to Read the Steps Below
 
@@ -2098,6 +2100,170 @@ from the package.
 
 ---
 
+## Step 77 — Cleaning Up Duplicate Code
+
+**Issue:** #242. **Depends on:** nothing not yet built.
+
+The issue asks for a review of the code for inconsistencies and for
+duplicate code or logic. Two reviews like it were made before this phase,
+#172 and #175 (merged as #182, and as #183 to #189). This one reads what
+this phase added since, about 8,000 lines of Python, and what those
+reviews left open. Pylint's `duplicate-code` check, at four similar lines,
+found four copied blocks in `src/`. The rest was found by reading: the
+same rule, or the same format, written out in more than one place.
+
+Nothing was ruled before building. What was chosen is under **My calls**
+below.
+
+What was built, in one change set: 737 added lines of non-test Python and
+614 removed, many of those added the docstrings and exports of the
+homes below. What the node does is unchanged, but for what the calls
+below name.
+
+- **One check of content against its hash**
+  (`cas/verification.py`'s `matching_chunks`). Bytes stored as the content
+  or as a zlib stream of it, hashed as they are decompressed, were checked
+  in three places: `content_matches`, `bundle/content.py`'s
+  `content_chunks`, and an encrypted part decrypted, against its key
+  (`bundle/parts.py`). Each now calls the one, and raises its own error
+  when it raises `ContentMismatchError`, new in `cas/errors.py`.
+- **One way to cut bytes into parts** (`PartWriter.cut` and
+  `PartWriter.file_of`), for a file read from disk, a file whose bytes an
+  edit gives (Step 72), and an extended attribute's value too large to
+  hold inline.
+- **A CAS path's segments.** `bundle/content.py`'s separator and segment
+  counts were written again in `bundle/parts.py`. They are public in the
+  first now (`CAS_PATH_SEPARATOR`, `PLAIN_PATH_SEGMENTS`,
+  `ENCRYPTED_PATH_SEGMENTS`), as Phase 2 Step 44's rulings have shared
+  constants.
+- **One home for what the unbundler saves** (`bundle/saved.py`). The
+  unbundler wrote a file's entry and a bundle's directory, and read back
+  the directory, and the web server read both, each in its own way.
+  `save_bundle` and `saved_bundle` do it for both.
+- **The web server's responses:**
+  - `status_response` (`webserver/http_types.py`) in place of
+    `problem_response(Problem.for_status(…))`, written out in 31 places,
+    and `redirect_response` in place of two `_redirect`s and the
+    `/config` guard's own `302`.
+  - Each problem type has one title, kept beside it in `problems.py`
+    (`Problem.of_type`), as HttpApi §17.1 describes a title. Each was
+    written where its problem was made: `content-too-large`'s twice, and
+    `unusable-bundle` under three titles.
+  - `webserver/request_refusals.py` gives the `413`
+    (`content_too_large_response`), the `415`
+    (`unsupported_media_type_response`), and the `500` for a registry that
+    cannot be read (`unreadable_registry_response`), each given in two
+    places before. `Request.require_json` holds the check that a body says
+    it is JSON, and its words, which `LocalOnly` and `Request.json` each
+    made.
+  - `percent_decoded` moves to `webserver/http_types.py`, and decodes the
+    path segments that the application endpoints, the store, and the
+    folders each decoded in their own way.
+  - `entity_tag` spells the `ETag` of an application's file (Step 66) and
+    of a stored value (Step 70).
+  - A stored value is written by `compact_json`, which takes `sort_keys`
+    and `allow_nan`, rather than with separators of its own, as Phase 2
+    Step 44's "inline copies count" asks.
+  - `LISTED_FILE`, `LISTED_DIRECTORY`, and `LISTED_SYMLINK`, beside
+    `content_type_for`, are what both listings name each kind of entry
+    (HttpApi §12.1, §12.2), which each wrote.
+  - `BundlePaths` asks the unbundler for a path, and waits for its
+    answer, in one place, for an entry and for a directory alike.
+  - `ContentWait` (`webserver/file_stream.py`) asks the network for what
+    a request lacks, again only once an interval has passed, and pauses
+    to look again. `FileStream` and the bundle-edit handler each did both.
+- **Messaging.** `delivered_to` (`messaging/envelope.py`) is the rule
+  for which messages a module is given, which the dispatcher and
+  `ModuleBase` each wrote.
+- **Node lists.** `node_list_body` (`protocol/lists.py`) writes every
+  node list this node sends: the one stats derives, the one the
+  connection manager sends before there is one, and the seed list the
+  local network script sends each node.
+- **Tests.** The `queues` fixture (17 copies) and the `storage` fixture
+  (8 alike) are in `tests/conftest.py`. The 10 copies of `published`, 4
+  of `new_identity`, and 3 of `problem_type`, each the same as the one in
+  `tests/helpers.py`, use that one. Five tests follow a log line now
+  written once, by another module.
+
+Checked: every gate is green, 4,269 tests passed (40 new), at 98.28%.
+Pylint's `duplicate-code`, at four similar lines, finds one copied block
+in `src/` where it found four, and 21 in the tests where it found 29.
+
+Run live on three nodes started by `libranet-local-network`: the root
+application was served. A path it does not hold was `404`, an invalid id
+`400` titled "Invalid content address", and a `POST /data/bundles` sent as
+`text/plain` was `415`. An encrypted bundle made with `POST /data/bundles`
+was listed, its file served whole with its `ETag`, a range of it `206`,
+and a range past it `416`. The second node read the same file. Reading
+into the first node's public key was `400`, titled "Unusable bundle". A
+stored value's `ETag` was the hash of the same bytes as before, a change
+not matching it `412`, and a value over the limit `413`. The only warning
+logged was the unbundler's, for that public key.
+
+My calls while building, not yet reviewed:
+
+- **`unusable-bundle` is titled "Unusable bundle"**, naming its type, as
+  each other type's title does, in place of "Application cannot be
+  served", "Bundle cannot be read", and "Bundle cannot be used". A client
+  must not parse a title (HttpApi §17.1), but one that shows it sees it
+  change.
+- **Every node list is sent compactly.** The connection manager's first
+  list and the seed list lose the spaces `json`'s default separators put
+  in, which Phase 2 Step 44 left alone because it changes what is sent.
+  What a peer reads from them is the same.
+- **One warning for a saved bundle discarded,** "Discarding the bundle
+  saved at {path}: {why}", from `bundle/saved.py`. The unbundler's named
+  the bundle, and the web server's said "entry" or "directory". The path
+  names the bundle's hash, and never a key.
+- **A path segment that is not UTF-8 is logged by `percent_decoded`**, at
+  debug, in place of the handler's own "Refusing" line. Two are decoded
+  where they were: an application's name in a store's path, refused as
+  any name no application could have is, and a `Referer`'s path, which is
+  never logged, as it may carry a key.
+- **`LocalOnly` logs the `415`'s reason** rather than "a body of type …".
+- **`bundle/saved.py` is in the bundle library**, not beside
+  `cas/resolved_files.py`, which says where the files are, so that the CAS
+  library gains no import of the bundle library.
+- **`ContentWait` is in `webserver/file_stream.py`**, which the
+  bundle-edit handler already took its poll interval from. `FileStream`
+  now looks whether a part is held before whether it was asked for
+  lately, one look more each poll for a part it waits for.
+- **The store's own `413`, for a value or a store too large, still names
+  no `max_bytes`**, since either of two limits may be what was passed.
+- **`status_response` takes its `detail` as required**, so it adds no
+  optional parameter taken positionally (Coding Style §12.1).
+
+Looked at, and left as they are:
+
+- the backup module's runs of a build, an export, and an import, each
+  failed and logged alike: the exception logging convention, as #172 left
+  them;
+- the application handler's and the bundle-read handler's way from an
+  entry to a response, which differ in what each answers: status, where a
+  redirect goes, listing, and how loudly a file that cannot be served is
+  logged;
+- the small helpers each shipped application's page has: each is a
+  bundle of its own, served under its own policy, and loads nothing from
+  another;
+- the registry's unusable segments and `config_requests.py`'s `..`, which
+  Phase 2 Step 44 ruled stay apart, and the zlib levels of storing,
+  protection, and parts, which share only a value;
+- `FileStream`'s check that a span lies within the file, which
+  `ByteRange` makes too: each type checks its own values;
+- two handlers refusing a `PermissionError`, each in its own words, which
+  pylint still reports;
+- test helpers sharing a name with a different one elsewhere, such as
+  `store` in three forms, a `published` fixture, `entries`, `Recorder`,
+  `files`, and `outcomes`: one in `tests/conftest.py` would be overridden
+  in some files and not others.
+
+**Testable in isolation:** the tests from before, and tests for each
+shared piece: the check against a hash, cutting parts, saved bundles,
+problem titles, the responses, `ContentWait`, the delivery rule, and the
+node list body.
+
+---
+
 ## 4. Issues in the Milestone
 
 Every issue in the **Phase 3 - Support Video Playback** milestone, by
@@ -2116,6 +2282,7 @@ number, and where it went.
 | #221 | A store for each application, read by any client and changed by local ones | 70 |
 | #222 | Reading into a bundle by its id, or by an encrypted id carrying its key | 71 |
 | #223 | Making a bundle, and adding to and removing from one, without expanding it | 72 |
+| #242 | Looking for inconsistencies, and duplicate code or logic | 77 |
 | #245 | Shipping `scripts/local_network.py` as part of Libranet | 76 |
 
 Step 75 has no issue yet. It was found trying Step 67.
@@ -2137,6 +2304,7 @@ Step 75 has no issue yet. It was found trying Step 67.
 | 11 | 67 (#213) | The page, which needs all of the above. |
 | 12 | 75 | Found trying 67, whose films a full node could not play without it. |
 | 13 | 76 (#245) | Asked for after 75. Moves a script, and needs nothing in this phase. |
+| 14 | 77 (#242) | Asked for after 76. Reviews what the steps before it wrote. |
 
 Every specification change is made.
 

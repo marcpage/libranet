@@ -30,7 +30,6 @@ from argparse import ArgumentParser, Namespace
 from dataclasses import dataclass
 from functools import cached_property
 from ipaddress import ip_address
-from json import dumps
 from os import fstat, killpg
 from pathlib import Path
 from re import compile as compile_pattern
@@ -66,7 +65,7 @@ from libranet.identity.signatures import MessageSigner
 from libranet.logging_setup import log_file_path
 from libranet.modules import ModuleName
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
-from libranet.protocol.lists import NODES_PATH
+from libranet.protocol.lists import NODES_PATH, node_list_body
 
 #: Where the nodes listen, and are told about each other, unless ``--host`` says otherwise.
 HOST: Final = "127.0.0.1"
@@ -275,7 +274,7 @@ class LocalNetwork:
             for other in self.nodes
             if other is not node
         }
-        return dumps({"nodes": nodes}).encode("utf-8")
+        return node_list_body(nodes)
 
     def connection_target(self, node: LocalNode) -> int:
         """How many outgoing connections ``node`` aims for in this network."""

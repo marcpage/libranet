@@ -22,7 +22,7 @@ from libranet.cas.store import CasStore
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.webserver.errors import ResponseCutShortError
-from libranet.webserver.file_stream import FileStream, PartReader
+from libranet.webserver.file_stream import ContentWait, FileStream, PartReader
 
 PARTS = (b"aaaa", b"bbbb", b"cc")
 CONTENT = b"".join(PARTS)
@@ -501,3 +501,26 @@ def test_a_reader_refuses_settings_it_cannot_work_with(
 
     with raises(ValueError, match=message):
         PartReader(store, published, **values)
+
+
+def test_a_wait_asks_for_each_object_again_only_once_its_interval_is_over() -> None:
+    published = Recorder()
+    first, second = (ContentId.for_data(data, "sha256") for data in PARTS[:2])
+    soon = ContentWait(published, ASK_AGAIN_SECONDS, 0.01)
+    again = ContentWait(published, 0, 0.01)
+
+    for wait in (soon, soon, again, again):
+        wait.ask(first)
+
+    soon.ask(second)
+
+    assert published.ids(EventType.DATA_NOT_FOUND) == [first, first, first, second]
+
+
+def test_a_wait_pauses_until_its_deadline_and_no_longer() -> None:
+    wait = ContentWait(Recorder(), ASK_AGAIN_SECONDS, 0.01)
+    before = monotonic()
+
+    assert wait.pause(before + 5.0)
+    assert 0.01 <= monotonic() - before < 1.0
+    assert not wait.pause(monotonic())

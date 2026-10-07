@@ -43,6 +43,7 @@ from libranet.protocol.lists import (
     NODES_PATH,
     SEEK_PATH,
     decode_list,
+    node_list_body,
     parse_node_list,
     parse_seek_list,
 )
@@ -89,6 +90,7 @@ __all__ = [
     "decode_list",
     "identifier",
     "is_local_client",
+    "node_list_body",
     "normalize_prefix",
     "normalized_directory",
     "parse_node_list",

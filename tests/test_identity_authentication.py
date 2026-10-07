@@ -13,9 +13,10 @@ from libranet.identity.authentication import (
     AuthenticationStatus,
     RequestAuthenticator,
 )
-from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import MessageSigner, MessageVerifier
+
+from tests.helpers import new_identity
 
 NOW = 1_757_080_000.0
 PATH = "/data/nodes"
@@ -24,10 +25,6 @@ PATH = "/data/nodes"
 @fixture
 def store(tmp_path: Path) -> CasStore:
     return CasStore(tmp_path / "cas", 4)
-
-
-def new_identity() -> NodeIdentity:
-    return NodeIdentity.from_private_key(generate_private_key(), "sha256")
 
 
 def signed_headers(identity: NodeIdentity, body: bytes = b"") -> dict[str, str]:

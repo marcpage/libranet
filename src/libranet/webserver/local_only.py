@@ -35,10 +35,10 @@ from http import HTTPStatus
 from logging import getLogger
 from typing import Final
 
-from libranet.problems import Problem
 from libranet.protocol.client_origin import is_local_client
-from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
-from libranet.webserver.http_types import Request, Response, json_response, problem_response
+from libranet.webserver.errors import UnsupportedMediaTypeError
+from libranet.webserver.http_types import Request, Response, json_response, status_response
+from libranet.webserver.request_refusals import unsupported_media_type_response
 from libranet.webserver.router import Handler
 from libranet.webserver.site_checks import SiteChecks
 
@@ -65,36 +65,24 @@ class LocalOnly:
 
     def __call__(self, request: Request) -> Response:
         if not is_local_client(request.client_address):
-            return problem_response(
-                Problem.for_status(
-                    HTTPStatus.FORBIDDEN,
-                    detail="This endpoint is served only to clients on this machine.",
-                    instance=request.path,
-                )
+            return status_response(
+                request,
+                HTTPStatus.FORBIDDEN,
+                "This endpoint is served only to clients on this machine.",
             )
 
         refusal = self.checks.refusal(request)
 
         if refusal is not None:
             _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, refusal)
-            return problem_response(
-                Problem.for_status(HTTPStatus.FORBIDDEN, detail=refusal, instance=request.path)
-            )
+            return status_response(request, HTTPStatus.FORBIDDEN, refusal)
 
-        if request.body.length_bytes != 0 and not request.carries_json():
-            content_type = request.header("Content-Type")
-            _LOGGER.debug(
-                "Refusing %s %s: a body of type %r", request.method, request.path, content_type
-            )
-            return problem_response(
-                Problem.for_status(
-                    HTTPStatus.UNSUPPORTED_MEDIA_TYPE,
-                    detail=(
-                        f"A request body's Content-Type must be {JSON_CONTENT_TYPE}, "
-                        f"got {content_type!r}"
-                    ),
-                    instance=request.path,
-                )
-            )
+        try:
+            if request.body.length_bytes != 0:
+                request.require_json()
+
+        except UnsupportedMediaTypeError as error:
+            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
+            return unsupported_media_type_response(request, error)
 
         return self.handler(request)

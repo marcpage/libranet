@@ -80,11 +80,6 @@ FILM = b"0123456789"
 
 
 @fixture
-def storage(tmp_path: Path) -> StorageConfig:
-    return StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache")
-
-
-@fixture
 def store(storage: StorageConfig) -> CasStore:
     store = CasStore.source_of_truth(storage)
     store.write(CONTENT_ID, CONTENT)
@@ -97,11 +92,6 @@ def server_keys(tmp_path: Path) -> MessageVerifier:
     keys = CasStore(tmp_path / "client-keys", 4)
     SERVER_IDENTITY.publish_public_key(keys)
     return MessageVerifier(keys, 5.0, 30.0)
-
-
-@fixture
-def queues() -> ModuleQueues:
-    return ModuleQueues(inbox=Queue(), outbox=Queue())
 
 
 @fixture

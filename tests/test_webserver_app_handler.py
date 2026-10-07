@@ -655,7 +655,7 @@ def test_a_path_that_is_not_utf_8_is_logged_at_debug(
     caplog.set_level(DEBUG)
 
     assert get(handler, "/wiki/%FF.html").status == 404
-    (record,) = [r for r in caplog.records if r.name == "libranet.webserver.bundle_paths"]
+    (record,) = [r for r in caplog.records if r.name == "libranet.webserver.http_types"]
     assert record.levelno == DEBUG
     assert record.getMessage().startswith("'wiki/%FF.html' does not percent-encode UTF-8: ")
 
@@ -841,7 +841,7 @@ def test_a_saved_entry_that_cannot_be_read_is_discarded_and_asked_for_again(
     ]
     (record,) = caplog.records
     assert record.levelno == WARNING
-    assert record.getMessage().startswith(f"Discarding the entry saved at {path}: ")
+    assert record.getMessage().startswith(f"Discarding the bundle saved at {path}: ")
 
 
 def test_a_file_is_sent_with_its_tag_saying_it_takes_ranges(

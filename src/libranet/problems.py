@@ -2,7 +2,8 @@
 
 Shared by every error path: the web server builds its error responses from
 :class:`Problem`. Libranet-specific problem types live under
-:data:`PROBLEM_TYPE_BASE`; errors fully described by their status code use
+:data:`PROBLEM_TYPE_BASE`, each with the one ``title`` that summarizes it
+(HttpApi §17.1); errors fully described by their status code use
 ``about:blank``, whose ``title`` is by convention the status phrase.
 """
 
@@ -27,6 +28,20 @@ CREDENTIAL_REQUIRED: Final = PROBLEM_TYPE_BASE + "credential-required"
 INVALID_CONFIG_REQUEST: Final = PROBLEM_TYPE_BASE + "invalid-config-request"
 UNUSABLE_BUNDLE: Final = PROBLEM_TYPE_BASE + "unusable-bundle"
 _STANDARD_MEMBERS: Final = frozenset({"type", "title", "status", "detail", "instance"})
+
+# The title of each problem type, whatever the occurrence (RFC 9457 §3.1.3).
+_TITLES: Final[Mapping[str, str]] = {
+    INVALID_CONTENT_ADDRESS: "Invalid content address",
+    INVALID_SEARCH_PREFIX: "Invalid search prefix",
+    CONTENT_UNAVAILABLE: "Content temporarily unavailable",
+    CONTENT_TOO_LARGE: "Content too large",
+    SIGNATURE_REQUIRED: "Signature required",
+    INVALID_SIGNATURE: "Invalid signature",
+    INVALID_LIST: "Invalid list",
+    CREDENTIAL_REQUIRED: "Credential required",
+    INVALID_CONFIG_REQUEST: "Invalid configuration request",
+    UNUSABLE_BUNDLE: "Unusable bundle",
+}
 
 
 class InvalidProblemError(ValueError):
@@ -66,6 +81,30 @@ class Problem:
         """An ``about:blank`` problem titled with the status phrase."""
         status = HTTPStatus(status)
         return cls(status=status.value, title=status.phrase, detail=detail, instance=instance)
+
+    @classmethod
+    def of_type(
+        cls,
+        problem_type: str,
+        status: HTTPStatus | int,
+        *,
+        detail: str | None = None,
+        instance: str | None = None,
+        extensions: Mapping[str, Any] | None = None,
+    ) -> Problem:
+        """A problem of one of the types defined here, titled as that type always is.
+
+        Raises:
+            KeyError: ``problem_type`` is not one of them.
+        """
+        return cls(
+            status=int(status),
+            title=_TITLES[problem_type],
+            type=problem_type,
+            detail=detail,
+            instance=instance,
+            extensions=extensions or {},
+        )
 
     def to_dict(self) -> dict[str, Any]:
         """The JSON object, omitting unset optional members."""

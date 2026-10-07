@@ -68,10 +68,9 @@ def invalid_address_response(
     That includes an encrypted id whose key cannot be read (§12.1).
     """
     return problem_response(
-        Problem(
-            status=HTTPStatus.BAD_REQUEST,
-            title="Invalid content address",
-            type=INVALID_CONTENT_ADDRESS,
+        Problem.of_type(
+            INVALID_CONTENT_ADDRESS,
+            HTTPStatus.BAD_REQUEST,
             detail=str(error),
             instance=request.path,
         )

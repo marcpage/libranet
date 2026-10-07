@@ -7,6 +7,7 @@ from typing import Any
 from pytest import mark, raises
 
 from libranet.messaging.envelope import (
+    delivered_to,
     event_of,
     make_message,
     source_of,
@@ -86,3 +87,26 @@ def test_event_type_values_are_unique() -> None:
     values = [event.value for event in EventType]
 
     assert len(values) == len(set(values))
+
+
+@mark.parametrize(
+    "event, source, subscriptions, delivered",
+    [
+        (EventType.DATA_STORED, ModuleName.VALIDATOR, frozenset({EventType.DATA_STORED}), True),
+        (EventType.DATA_STORED, ModuleName.STATS, frozenset({EventType.DATA_STORED}), False),
+        (EventType.DATA_STORED, ModuleName.VALIDATOR, frozenset(), False),
+        (EventType.SHUTDOWN, ModuleName.VALIDATOR, frozenset(), True),
+        (EventType.DATA_STORED, ModuleName.VALIDATOR, None, True),
+        (EventType.SHUTDOWN, ModuleName.STATS, None, False),
+    ],
+    ids=["subscribed", "its own", "not subscribed", "shutdown", "every event", "its own shutdown"],
+)
+def test_a_message_is_delivered_to_a_module_that_subscribes_and_did_not_publish_it(
+    event: EventType,
+    source: ModuleName,
+    subscriptions: frozenset[EventType] | None,
+    delivered: bool,
+) -> None:
+    message = make_message(event, source, {}, clock=lambda: 1.0)
+
+    assert delivered_to(message, ModuleName.STATS, subscriptions) == delivered

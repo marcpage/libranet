@@ -17,6 +17,15 @@ from typing import Any, Final
 _SEPARATORS: Final = (",", ":")
 
 
-def compact_json(value: Any) -> bytes:
-    """``value`` as compact JSON text, in UTF-8."""
-    return dumps(value, separators=_SEPARATORS).encode("utf-8")
+def compact_json(value: Any, *, sort_keys: bool = False, allow_nan: bool = True) -> bytes:
+    """``value`` as compact JSON text, in UTF-8.
+
+    ``sort_keys`` sorts every object's keys, and ``allow_nan`` unset refuses
+    NaN and the infinities, which are not JSON, rather than write them.
+
+    Raises:
+        ValueError: ``allow_nan`` is unset, and ``value`` holds one of them.
+    """
+    return dumps(value, separators=_SEPARATORS, sort_keys=sort_keys, allow_nan=allow_nan).encode(
+        "utf-8"
+    )

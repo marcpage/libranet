@@ -46,7 +46,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from http import HTTPStatus
-from json import dumps, loads
+from json import loads
 from logging import getLogger
 from pathlib import Path
 from threading import Lock
@@ -54,15 +54,24 @@ from typing import Any, Final, Mapping
 from urllib.parse import unquote
 
 from libranet.atomic_file import FileVersion, write_atomically
+from libranet.cas.content_id import ContentId
 from libranet.json_format import compact_json
-from libranet.problems import CONTENT_TOO_LARGE, Problem
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.webserver.app_registry import Application
 from libranet.webserver.config_handlers import invalid_request_response, json_or_refusal
 from libranet.webserver.errors import StoreFileError, StoreLimitError, ValueChangedError
-from libranet.webserver.http_types import Request, Response, problem_response
+from libranet.webserver.http_types import (
+    Request,
+    Response,
+    entity_tag,
+    percent_decoded,
+    status_response,
+)
 from libranet.webserver.own_pages import OwnPages
-from libranet.webserver.request_refusals import unreadable_body_response
+from libranet.webserver.request_refusals import (
+    content_too_large_response,
+    unreadable_body_response,
+)
 
 _LOGGER = getLogger(__name__)
 
@@ -105,13 +114,11 @@ class StoredValue:
             ValueError: ``value`` is not JSON, as NaN and the infinities are
                 not, though Python reads them.
         """
-        return cls(
-            dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
-        )
+        return cls(compact_json(value, sort_keys=True, allow_nan=False))
 
     def tag(self) -> str:
         """The strong ``ETag`` of this value."""
-        return f'"{_TAG_ALGORITHM}-{sha256(self.text).hexdigest()}"'
+        return entity_tag(ContentId.for_data(self.text, _TAG_ALGORITHM))
 
     def value(self) -> Any:
         """This value, as JSON decodes it."""
@@ -487,15 +494,7 @@ class StoreWriteHandler:
 
         except StoreLimitError as error:
             _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            return problem_response(
-                Problem(
-                    status=HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
-                    title="Content too large",
-                    type=CONTENT_TOO_LARGE,
-                    detail=str(error),
-                    instance=request.path,
-                )
-            )
+            return content_too_large_response(request, str(error))
 
         except StoreFileError as error:
             _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, error)
@@ -570,18 +569,16 @@ def _application(request: Request, pages: OwnPages) -> str | Response:
     the registry naming them cannot be read.
     """
     try:
+        # Decoded here, not by percent_decoded, since a name that is not
+        # UTF-8 raises a ValueError too, and is refused as an unusable one is.
         application = Application.folded_name(
             unquote(request.params["application"], errors="strict")
         )
 
     except ValueError as error:
         _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-        return problem_response(
-            Problem.for_status(
-                HTTPStatus.NOT_FOUND,
-                detail="No application could have this name.",
-                instance=request.path,
-            )
+        return status_response(
+            request, HTTPStatus.NOT_FOUND, "No application could have this name."
         )
 
     refused = pages.refused(request, application)
@@ -599,12 +596,8 @@ def _names(request: Request, pages: OwnPages) -> tuple[str, str] | Response:
     if isinstance(application, Response):
         return application
 
-    try:
-        return application, unquote(request.params["key"], errors="strict")
-
-    except UnicodeDecodeError as error:
-        _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-        return _not_held_response(request)
+    key = percent_decoded(request.params["key"])
+    return _not_held_response(request) if key is None else (application, key)
 
 
 def _value_or_refusal(request: Request) -> StoredValue | Response:
@@ -624,20 +617,14 @@ def _value_or_refusal(request: Request) -> StoredValue | Response:
 
 def _not_held_response(request: Request) -> Response:
     """The ``404`` for a key the application's store does not hold."""
-    return problem_response(
-        Problem.for_status(
-            HTTPStatus.NOT_FOUND,
-            detail="This application keeps no value under this key.",
-            instance=request.path,
-        )
+    return status_response(
+        request, HTTPStatus.NOT_FOUND, "This application keeps no value under this key."
     )
 
 
 def _changed_response(request: Request, error: ValueChangedError) -> Response:
     """The ``412`` for a change asked of a value other than the one held."""
-    return problem_response(
-        Problem.for_status(HTTPStatus.PRECONDITION_FAILED, detail=str(error), instance=request.path)
-    )
+    return status_response(request, HTTPStatus.PRECONDITION_FAILED, str(error))
 
 
 def _unreadable_store_response(request: Request) -> Response:
@@ -646,10 +633,6 @@ def _unreadable_store_response(request: Request) -> Response:
     It does not say why, which names the file, since any client may read a
     store.
     """
-    return problem_response(
-        Problem.for_status(
-            HTTPStatus.INTERNAL_SERVER_ERROR,
-            detail="This application's store cannot be read.",
-            instance=request.path,
-        )
+    return status_response(
+        request, HTTPStatus.INTERNAL_SERVER_ERROR, "This application's store cannot be read."
     )

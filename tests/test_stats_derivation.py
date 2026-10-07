@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 from json import loads
-from pathlib import Path
 from typing import Iterator
 
 from pytest import fixture
@@ -20,11 +19,6 @@ OTHER_PEER_ID = ContentId.for_data(b"another peer's public key", "sha256")
 CONTENT_ID = ContentId.for_data(b"content this node wants", "sha256")
 SELF_ENDPOINT = "http://localhost:8080"
 DIRECT_ENDPOINT = "http://localhost:9090"
-
-
-@fixture
-def storage(tmp_path: Path) -> StorageConfig:
-    return StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache")
 
 
 @fixture

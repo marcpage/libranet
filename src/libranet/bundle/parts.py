@@ -39,10 +39,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
 from re import IGNORECASE, compile as compile_pattern, escape
-from typing import Final, Iterable, Iterator
+from typing import Callable, Final, Iterable, Iterator
 from zlib import compress
 
-from libranet.bundle.content import ContentSource, content_chunks, parse_cas_path
+from libranet.bundle.content import (
+    CAS_PATH_SEPARATOR,
+    ENCRYPTED_PATH_SEGMENTS,
+    PLAIN_PATH_SEGMENTS,
+    ContentSource,
+    content_chunks,
+    parse_cas_path,
+)
 from libranet.bundle.encryption import BLOCK_BYTES, DEFAULT_IV, KEY_BYTES, Aes256Cbc
 from libranet.bundle.errors import (
     BundleError,
@@ -53,17 +60,11 @@ from libranet.bundle.errors import (
 )
 from libranet.bundle.shapes import FileBundle, Metadata
 from libranet.bundle.storing import HASH_ALGORITHM, ContentSink, store_object
-from libranet.cas.compression import decompressed_chunks
+from libranet.cas.algorithms import DEFAULT_REGISTRY, Sha256Algorithm
 from libranet.cas.content_id import ContentId
-from libranet.cas.errors import NotZlibStreamError
+from libranet.cas.errors import ContentMismatchError
+from libranet.cas.verification import matching_chunks
 from libranet.config.models import MIB
-
-_SEPARATOR: Final = "/"
-
-# {hash algorithm}/{encrypted data hash}/{encryption algorithm}/{encryption key}
-# (§7): the stored object's two segments, then the cipher's and the key's.
-_ENCRYPTED_PATH_SEGMENTS: Final = 4
-_ADDRESS_SEGMENTS: Final = 2
 
 # The one cipher read or written, and how a path names an IV after it (§7.1).
 CIPHER: Final = "AES256-CBC"
@@ -86,6 +87,9 @@ _COMPRESSION_LEVEL: Final = 9
 # No node could have stored ciphertext larger than the object limit, since it
 # does not compress.
 _MAX_CIPHERTEXT_BYTES: Final = MIB
+
+# What a key is the hash of a part with, whatever the CAS hashes with (§7.2).
+_KEY_ALGORITHM: Final = Sha256Algorithm()
 
 
 @dataclass(frozen=True)
@@ -116,7 +120,7 @@ class PartPath:
             return str(self.content_id)
 
         cipher = CIPHER if self.iv == DEFAULT_IV else f"{CIPHER}{_IV_SEPARATOR}{self.iv.hex()}"
-        return _SEPARATOR.join((str(self.content_id), cipher, self.key.hex()))
+        return CAS_PATH_SEPARATOR.join((str(self.content_id), cipher, self.key.hex()))
 
     @classmethod
     def parse(cls, path: str) -> PartPath:
@@ -131,19 +135,19 @@ class PartPath:
             MalformedBundleError: ``path`` is not a CAS path, or its key or
                 IV is not hex of the right length.
         """
-        segments = path.split(_SEPARATOR)
+        segments = path.split(CAS_PATH_SEPARATOR)
 
-        if len(segments) <= _ADDRESS_SEGMENTS:
+        if len(segments) <= PLAIN_PATH_SEGMENTS:
             return cls(parse_cas_path(path))
 
-        if len(segments) != _ENCRYPTED_PATH_SEGMENTS:
+        if len(segments) != ENCRYPTED_PATH_SEGMENTS:
             raise MalformedBundleError(
-                f"A part's CAS path has {_ADDRESS_SEGMENTS} or {_ENCRYPTED_PATH_SEGMENTS} "
+                f"A part's CAS path has {PLAIN_PATH_SEGMENTS} or {ENCRYPTED_PATH_SEGMENTS} "
                 f"segments, got {len(segments)}"
             )
 
-        content_id = parse_cas_path(_SEPARATOR.join(segments[:_ADDRESS_SEGMENTS]))
-        cipher, key_hex = segments[_ADDRESS_SEGMENTS:]
+        content_id = parse_cas_path(CAS_PATH_SEPARATOR.join(segments[:PLAIN_PATH_SEGMENTS]))
+        cipher, key_hex = segments[PLAIN_PATH_SEGMENTS:]
         name, separator, iv_hex = cipher.partition(_IV_SEPARATOR)
 
         if name != CIPHER:
@@ -223,27 +227,13 @@ class PartPath:
 
         decrypted = self._decrypted(source, self.key)
 
-        # The key is the part's SHA-256, whatever the CAS hashes with (§7.2).
-        if sha256(decrypted).digest() == self.key:
-            yield decrypted
-            return
-
-        hasher = sha256()
-
         try:
-            for chunk in decompressed_chunks(decrypted):
-                hasher.update(chunk)
-                yield chunk
+            yield from matching_chunks(decrypted, _KEY_ALGORITHM, self.key.hex())
 
-        except NotZlibStreamError:
+        except ContentMismatchError:
             raise BundleVerificationError(
                 f"Encrypted part {self.content_id} does not decrypt to the part its key names"
             ) from None
-
-        if hasher.digest() != self.key:
-            raise BundleVerificationError(
-                f"Encrypted part {self.content_id} does not decrypt to the part its key names"
-            )
 
     def _decrypted(self, source: ContentSource, key: bytes) -> bytes:
         """The ciphertext ``source`` holds for this part, decrypted under ``key``.
@@ -334,18 +324,41 @@ class PartWriter:
         their whole-file hash (§2.1, §2.3), with no times or permissions. An
         empty file has no parts.
         """
-        pieces = [
-            data[start : start + self.part_bytes] for start in range(0, len(data), self.part_bytes)
-        ]
-        return FileBundle(
-            tuple(str(self.store(part)) for part in pieces),
-            Metadata(
-                size_bytes=len(data),
-                algorithm=HASH_ALGORITHM,
-                hash=ContentId.for_data(data, HASH_ALGORITHM).hash,
-            ),
-            part_sizes_bytes=tuple(len(part) for part in pieces),
+        return self.file_of(self.cut(data))
+
+    def file_of(
+        self, parts: Iterable[bytes], *, stored: Callable[[int], None] | None = None
+    ) -> FileBundle:
+        """The bundle for a file whose bytes are ``parts``, in order, each stored unless held.
+
+        It records only what :meth:`file` does. Each part is no longer than
+        :attr:`part_bytes`. ``stored``, if given, is told the size of each
+        part once it is stored.
+
+        Raises:
+            BundleTooLargeError: a part is not held, and is too long to store.
+        """
+        hasher = DEFAULT_REGISTRY.get(HASH_ALGORITHM).hasher()
+        paths: list[str] = []
+        sizes_bytes: list[int] = []
+
+        for part in parts:
+            hasher.update(part)
+            paths.append(str(self.store(part)))
+            sizes_bytes.append(len(part))
+
+            if stored is not None:
+                stored(len(part))
+
+        metadata = Metadata(
+            size_bytes=sum(sizes_bytes), algorithm=HASH_ALGORITHM, hash=hasher.hexdigest()
         )
+        return FileBundle(tuple(paths), metadata, part_sizes_bytes=tuple(sizes_bytes))
+
+    def cut(self, data: bytes) -> Iterator[bytes]:
+        """``data`` cut into parts, each :attr:`part_bytes` long but the last."""
+        step = self.part_bytes
+        return (data[start : start + step] for start in range(0, len(data), step))
 
     def keeps(self, parts: Iterable[str]) -> bool:
         """Whether ``parts``, named by an earlier bundle, are stored as this writer stores them.

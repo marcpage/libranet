@@ -49,31 +49,29 @@ guesses alike.
 from __future__ import annotations
 from dataclasses import dataclass
 from http import HTTPStatus
-from logging import getLogger
 from mimetypes import MimeTypes
-from pathlib import Path
 from time import monotonic
-from typing import Final, Mapping, TypeVar
-from urllib.parse import unquote
-from zlib import decompress, error as ZlibError
+from typing import Callable, Final, Mapping
 
-from libranet.bundle.errors import BundleError, MalformedBundleError
-from libranet.bundle.parsing import decode_bundle
 from libranet.bundle.parts import PartPath
+from libranet.bundle.saved import saved_bundle
 from libranet.bundle.shapes import DirectoryBundle, FileBundle
 from libranet.cas.resolved_files import ResolvedFiles
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
-from libranet.problems import Problem
 from libranet.protocol.http_syntax import OCTET_STREAM
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 from libranet.webserver.app_use import ApplicationUse
 from libranet.webserver.byte_range import BYTES_UNIT, ByteRange
 from libranet.webserver.file_stream import PartReader
-from libranet.webserver.http_types import Request, Response, StreamedBody, problem_response
+from libranet.webserver.http_types import (
+    Request,
+    Response,
+    StreamedBody,
+    entity_tag,
+    status_response,
+)
 from libranet.webserver.request_refusals import content_unavailable_response
-
-_LOGGER = getLogger(__name__)
 
 # Read by a request for a range of a file (RFC 9110 §13.1.5, §14.2).
 _RANGE_HEADER: Final = "Range"
@@ -85,8 +83,10 @@ _NO_RANGES: Final = "none"
 
 _MIME_TYPES: Final = MimeTypes()
 
-# What the unbundler saves: a file's entry, or a bundle's directory.
-_Saved = TypeVar("_Saved", FileBundle, DirectoryBundle)
+#: How a listing names each kind of entry (HttpApi §12.1, §12.2).
+LISTED_FILE: Final = "file"
+LISTED_DIRECTORY: Final = "directory"
+LISTED_SYMLINK: Final = "symlink"
 
 
 def content_type_for(entry_path: str) -> str:
@@ -101,16 +101,6 @@ def content_type_for(entry_path: str) -> str:
         return OCTET_STREAM
 
     return guessed
-
-
-def percent_decoded(text: str) -> str | None:
-    """``text`` percent-decoded, or ``None`` if what it encodes is not UTF-8."""
-    try:
-        return unquote(text, errors="strict")
-
-    except UnicodeDecodeError as error:
-        _LOGGER.debug("%r does not percent-encode UTF-8: %s", text, error)
-        return None
 
 
 @dataclass(frozen=True)
@@ -153,20 +143,13 @@ class BundlePaths:
             return path.is_file() or self.outcomes.recall(bundle, entry_path) is not None
 
         while True:
-            entry = _saved(path, FileBundle, "entry")
+            entry = saved_bundle(path, FileBundle)
+            found = entry if entry is not None else self.outcomes.recall(bundle, entry_path)
 
-            if entry is not None:
-                return entry
+            if found is not None:
+                return found
 
-            known = self.outcomes.recall(bundle, entry_path)
-
-            if known is not None:
-                return known
-
-            self._ask(bundle, entry_path)
-            remaining_seconds = deadline - monotonic()
-
-            if remaining_seconds <= 0 or not self.outcomes.wait_for(answered, remaining_seconds):
+            if not self._asked(bundle, entry_path, answered, deadline):
                 return None
 
     def directory(
@@ -185,17 +168,12 @@ class BundlePaths:
         path = self.files.directory_for(bundle.content_id, decrypted_with=bundle.key)
 
         while True:
-            directory = _saved(path, DirectoryBundle, "directory")
+            directory = saved_bundle(path, DirectoryBundle)
 
             if directory is not None:
                 return directory
 
-            self._ask(bundle, entry_path)
-            remaining_seconds = deadline - monotonic()
-
-            if remaining_seconds <= 0 or not self.outcomes.wait_for(
-                path.is_file, remaining_seconds
-            ):
+            if not self._asked(bundle, entry_path, path.is_file, deadline):
                 return None
 
     def file_response(
@@ -253,33 +231,21 @@ class BundlePaths:
         """The ``503`` for what was asked for, and did not come in time; ``detail`` says what."""
         return content_unavailable_response(request, detail, self.retry_after_seconds)
 
-    def _ask(self, bundle: PartPath, entry_path: str) -> None:
-        """Ask the unbundler for ``entry_path`` in ``bundle``, naming it with its key."""
+    def _asked(
+        self, bundle: PartPath, entry_path: str, answered: Callable[[], bool], deadline: float
+    ) -> bool:
+        """Ask the unbundler for ``entry_path`` in ``bundle``, and wait for it to answer.
+
+        It is asked naming the bundle with its key. Its answer is waited for
+        until ``answered`` says it has come, or until ``deadline``, as
+        :func:`monotonic` tells it.
+
+        Returns:
+            Whether it answered in time.
+        """
         self.publish(EventType.APP_PATH_NOT_FOUND, {"bundle": str(bundle), "path": entry_path})
-
-
-def _saved(path: Path, kind: type[_Saved], what: str) -> _Saved | None:
-    """The ``kind`` the unbundler saved at ``path``, or ``None`` if there is none to read.
-
-    One that cannot be read is deleted, so that the unbundler saves it again
-    when next asked. ``what`` it is says which was deleted.
-    """
-    try:
-        saved = decode_bundle(decompress(path.read_bytes()))
-
-        if not isinstance(saved, kind):
-            raise MalformedBundleError(f"Not a {what}")
-
-    except FileNotFoundError:
-        # Not logged: what is not saved yet is asked for.
-        return None
-
-    except (ZlibError, BundleError) as error:
-        _LOGGER.warning("Discarding the %s saved at %s: %s", what, path, error)
-        path.unlink(missing_ok=True)
-        return None
-
-    return saved
+        remaining_seconds = deadline - monotonic()
+        return remaining_seconds > 0 and self.outcomes.wait_for(answered, remaining_seconds)
 
 
 def _entity_tag(entry: FileBundle) -> str | None:
@@ -292,11 +258,7 @@ def _entity_tag(entry: FileBundle) -> str | None:
             algorithm.
     """
     whole_file_id = entry.metadata.whole_file_id()
-
-    if whole_file_id is None:
-        return None
-
-    return f'"{whole_file_id.algorithm}-{whole_file_id.hash}"'
+    return None if whole_file_id is None else entity_tag(whole_file_id)
 
 
 def _range_asked(entry: FileBundle, tag: str | None, request: Request) -> ByteRange | None:
@@ -323,11 +285,9 @@ def _unsatisfiable_response(
     byte_range: ByteRange, validators: Mapping[str, str], request: Request
 ) -> Response:
     """The ``416`` for ``byte_range``, which holds no bytes, carrying the file's ``validators``."""
-    return problem_response(
-        Problem.for_status(
-            HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE,
-            detail=f"The range asked for holds none of the file's {byte_range.file_bytes} bytes.",
-            instance=request.path,
-        ),
-        {**validators, "Content-Range": byte_range.content_range()},
+    return status_response(
+        request,
+        HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE,
+        f"The range asked for holds none of the file's {byte_range.file_bytes} bytes.",
+        headers={**validators, "Content-Range": byte_range.content_range()},
     )

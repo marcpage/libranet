@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 from logging import DEBUG
-from pathlib import Path
-from queue import Empty, Queue
 from zlib import compress
 
 from pytest import LogCaptureFixture, fixture
@@ -17,6 +15,8 @@ from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.validator.module import ValidatorModule, validator_module_factory
 
+from tests.helpers import published
+
 CONTENT = b"validated content " * 32
 CONTENT_ID = ContentId.for_data(CONTENT, "sha256")
 NODE_ID = ContentId.for_data(b"a node's public key", "sha256")
@@ -24,18 +24,8 @@ OTHER_NODE_ID = ContentId.for_data(b"another node's public key", "sha256")
 
 
 @fixture
-def storage(tmp_path: Path) -> StorageConfig:
-    return StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache")
-
-
-@fixture
 def truth(storage: StorageConfig) -> CasStore:
     return CasStore.source_of_truth(storage)
-
-
-@fixture
-def queues() -> ModuleQueues:
-    return ModuleQueues(inbox=Queue(), outbox=Queue())
 
 
 @fixture
@@ -62,17 +52,6 @@ def completed(content_id: ContentId = CONTENT_ID, node_id: ContentId = NODE_ID) 
         ModuleName.WEBSERVER,
         {"algorithm": content_id.algorithm, "hash": content_id.hash, "node_id": str(node_id)},
     )
-
-
-def published(queues: ModuleQueues) -> list[Message]:
-    messages = []
-
-    while True:
-        try:
-            messages.append(queues.outbox.get(block=False))
-
-        except Empty:
-            return messages
 
 
 def test_valid_upload_is_promoted_and_announced(

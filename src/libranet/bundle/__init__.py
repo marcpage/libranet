@@ -7,7 +7,8 @@ them in CAS within the object limit, and password protection (Step 17).
 Storing a directory's new version as an update layer over the last (Phase 2
 Step 31). Encrypting a file's parts, and reading them back (Phase 2 Step 59).
 Storing a directory bundle, and each of its chunks, encrypted as a part is
-(Phase 3 Step 72).
+(Phase 3 Step 72). Saving what is resolved from a bundle to a local file
+(Phase 3 Step 65).
 Operates purely on bundle JSON, local files, and CAS reads and writes.
 """
 
@@ -22,6 +23,9 @@ from libranet.bundle.building import (
     modified_time,
 )
 from libranet.bundle.content import (
+    CAS_PATH_SEPARATOR,
+    ENCRYPTED_PATH_SEGMENTS,
+    PLAIN_PATH_SEGMENTS,
     ContentSource,
     check_held,
     content_chunks,
@@ -52,6 +56,7 @@ from libranet.bundle.protection import (
     unprotect,
 )
 from libranet.bundle.reassembly import ByteSink, WholeFileCheck, write_file
+from libranet.bundle.saved import save_bundle, saved_bundle
 from libranet.bundle.serialization import bundle_value, encode_bundle
 from libranet.bundle.shapes import (
     DEFAULT_MAX_EXTENSIONS,
@@ -85,11 +90,13 @@ from libranet.bundle.xattrs import INLINE_LIMIT_BYTES, ExtendedAttributes
 
 __all__ = [
     "BLOCK_BYTES",
+    "CAS_PATH_SEPARATOR",
     "CIPHER",
     "DEFAULT_IV",
     "DEFAULT_MAX_BUNDLE_BYTES",
     "DEFAULT_MAX_EXTENSIONS",
     "DESCRIPTOR_SEPARATOR",
+    "ENCRYPTED_PATH_SEGMENTS",
     "EPOCH",
     "HASH_ALGORITHM",
     "INLINE_LIMIT_BYTES",
@@ -100,6 +107,7 @@ __all__ = [
     "NO_STEP_SEGMENTS",
     "PARENT_SEGMENT",
     "PATH_SEPARATOR",
+    "PLAIN_PATH_SEGMENTS",
     "Aes256Cbc",
     "Bundle",
     "BundleError",
@@ -152,6 +160,8 @@ __all__ = [
     "path_reached",
     "protect",
     "resolve_directory",
+    "save_bundle",
+    "saved_bundle",
     "split_entries",
     "store_bundle",
     "store_object",

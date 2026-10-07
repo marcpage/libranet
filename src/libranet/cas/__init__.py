@@ -26,6 +26,7 @@ from libranet.cas.content_id import HEX_DIGITS, LOWER_HEX_DIGITS, ContentId
 from libranet.cas.errors import (
     ArchiveError,
     CasError,
+    ContentMismatchError,
     ContentNotFoundError,
     InvalidContentIdError,
     NotZlibStreamError,
@@ -41,7 +42,7 @@ from libranet.cas.store import (
     StrayPrefixDirectories,
     subdirectories,
 )
-from libranet.cas.verification import content_matches
+from libranet.cas.verification import content_matches, matching_chunks
 
 __all__ = [
     "ARCHIVE_SUFFIX",
@@ -59,6 +60,7 @@ __all__ = [
     "CasError",
     "CasStore",
     "ContentId",
+    "ContentMismatchError",
     "ContentNotFoundError",
     "HashAlgorithm",
     "Hasher",
@@ -75,6 +77,7 @@ __all__ = [
     "decompressed",
     "decompressed_chunks",
     "matching_bits",
+    "matching_chunks",
     "nearest",
     "subdirectories",
 ]

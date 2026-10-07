@@ -62,14 +62,28 @@ from libranet.bundle.shapes import DirectoryMarker, FileBundle, Symlink, is_entr
 from libranet.messaging.events import PathOutcome
 from libranet.problems import UNUSABLE_BUNDLE, Problem
 from libranet.webserver.app_outcomes import KnownOutcome
-from libranet.webserver.bundle_paths import BundlePaths, content_type_for, percent_decoded
+from libranet.webserver.bundle_paths import (
+    LISTED_DIRECTORY,
+    LISTED_FILE,
+    LISTED_SYMLINK,
+    BundlePaths,
+    content_type_for,
+)
 from libranet.webserver.data_handler import (
     DATA_PATTERN,
     IMMUTABLE_CACHE_CONTROL,
     content_id_or_refusal,
     invalid_address_response,
 )
-from libranet.webserver.http_types import Request, Response, json_response, problem_response
+from libranet.webserver.http_types import (
+    Request,
+    Response,
+    json_response,
+    percent_decoded,
+    problem_response,
+    redirect_response,
+    status_response,
+)
 
 _LOGGER = getLogger(__name__)
 
@@ -85,11 +99,6 @@ _SANDBOX_HEADERS: Final = {
     "Content-Security-Policy": "sandbox",
     "X-Content-Type-Options": "nosniff",
 }
-
-# How a listing names each kind of entry (HttpApi §12.1).
-_FILE: Final = "file"
-_DIRECTORY: Final = "directory"
-_SYMLINK: Final = "symlink"
 
 
 @dataclass(frozen=True)
@@ -161,15 +170,13 @@ class BundleReadHandler:
             if known.location == (f"{entry_path}/" if entry_path else ""):
                 return self._listing(bundle, entry_path, deadline, request)
 
-            return _redirect(f"/data/{bundle}/{quote(known.location)}")
+            return redirect_response(f"/data/{bundle}/{quote(known.location)}")
 
         if known.outcome == PathOutcome.UNUSABLE:
             return _unreadable_response(known.detail, request)
 
         if known.outcome == PathOutcome.PROTECTED:
-            return problem_response(
-                Problem.for_status(HTTPStatus.FORBIDDEN, detail=known.detail, instance=request.path)
-            )
+            return status_response(request, HTTPStatus.FORBIDDEN, known.detail)
 
         return _not_found(request)
 
@@ -239,16 +246,16 @@ def _described(entry: object, entry_path: str) -> dict[str, Any] | None:
             size_bytes = sum(entry.part_sizes_bytes)
 
         return {
-            "type": _FILE,
+            "type": LISTED_FILE,
             **({} if size_bytes is None else {"size": size_bytes}),
             "content_type": content_type_for(entry_path),
         }
 
     if isinstance(entry, Symlink):
-        return {"type": _SYMLINK, "target": entry.target}
+        return {"type": LISTED_SYMLINK, "target": entry.target}
 
     if isinstance(entry, DirectoryMarker):
-        return {"type": _DIRECTORY}
+        return {"type": LISTED_DIRECTORY}
 
     _LOGGER.error(
         "Leaving %s out of its listing, as a %s is not a file, a symlink, or a directory",
@@ -261,26 +268,11 @@ def _described(entry: object, entry_path: str) -> dict[str, Any] | None:
 def _unreadable_response(detail: str, request: Request) -> Response:
     """The ``400`` for content this node cannot read as a bundle, as ``detail`` says."""
     return problem_response(
-        Problem(
-            status=HTTPStatus.BAD_REQUEST,
-            title="Bundle cannot be read",
-            type=UNUSABLE_BUNDLE,
-            detail=detail,
-            instance=request.path,
+        Problem.of_type(
+            UNUSABLE_BUNDLE, HTTPStatus.BAD_REQUEST, detail=detail, instance=request.path
         )
     )
-
-
-def _redirect(location: str) -> Response:
-    """A ``302`` to where a symlink leads, at ``location``."""
-    return Response(HTTPStatus.FOUND, headers={"Location": location})
 
 
 def _not_found(request: Request) -> Response:
-    return problem_response(
-        Problem.for_status(
-            HTTPStatus.NOT_FOUND,
-            detail="The bundle holds nothing at this path.",
-            instance=request.path,
-        )
-    )
+    return status_response(request, HTTPStatus.NOT_FOUND, "The bundle holds nothing at this path.")

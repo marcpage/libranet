@@ -50,14 +50,18 @@ from os.path import realpath
 from pathlib import Path
 from stat import S_ISDIR, S_ISREG
 from typing import Any, Final, Mapping
-from urllib.parse import unquote
 
 from libranet.bundle.building import IgnoredPaths, modified_time
 from libranet.bundle.shapes import PATH_SEPARATOR, is_entry_path, is_utf8
 from libranet.config.models import LibranetConfig
-from libranet.problems import Problem
-from libranet.webserver.bundle_paths import content_type_for
-from libranet.webserver.http_types import Request, Response, json_response, problem_response
+from libranet.webserver.bundle_paths import LISTED_DIRECTORY, LISTED_FILE, content_type_for
+from libranet.webserver.http_types import (
+    Request,
+    Response,
+    json_response,
+    percent_decoded,
+    status_response,
+)
 
 _LOGGER = getLogger(__name__)
 
@@ -216,14 +220,14 @@ class LocalFolders:
             return None
 
         if S_ISDIR(status.st_mode):
-            return {"type": "directory"}
+            return {"type": LISTED_DIRECTORY}
 
         if not S_ISREG(status.st_mode):
             return None
 
         modified = modified_time(status)
         return {
-            "type": "file",
+            "type": LISTED_FILE,
             "size": status.st_size,
             **({} if modified is None else {"modified": modified}),
             "content_type": content_type_for(item.name),
@@ -274,33 +278,25 @@ class DirectoryHandler:
 
         if path is None:
             return json_response(
-                {"entries": {name: {"type": "directory"} for name in self.folders.offered()}}
+                {"entries": {name: {"type": LISTED_DIRECTORY} for name in self.folders.offered()}}
             )
 
-        try:
-            entries = self.folders.listing(unquote(path, errors="strict"))
+        decoded = percent_decoded(path)
 
-        except UnicodeDecodeError as error:
-            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            entries = None
+        try:
+            entries = None if decoded is None else self.folders.listing(decoded)
 
         except PermissionError as error:
             _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, error)
-            return problem_response(
-                Problem.for_status(
-                    HTTPStatus.FORBIDDEN,
-                    detail=f"This node may not read this directory: {error.strerror}",
-                    instance=request.path,
-                )
+            return status_response(
+                request,
+                HTTPStatus.FORBIDDEN,
+                f"This node may not read this directory: {error.strerror}",
             )
 
         if entries is None:
-            return problem_response(
-                Problem.for_status(
-                    HTTPStatus.NOT_FOUND,
-                    detail="No directory offered is at this path.",
-                    instance=request.path,
-                )
+            return status_response(
+                request, HTTPStatus.NOT_FOUND, "No directory offered is at this path."
             )
 
         return json_response({"entries": entries})
