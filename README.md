@@ -18,18 +18,24 @@
 
 **A decentralized peer-to-peer content network that runs over ordinary HTTP.**
 
-Libranet nodes find each other, exchange content addressed by cryptographic
-hash, and serve collections of files as ordinary websites — with no central
-servers and no custom wire protocol. A node is a plain HTTP server, so any
-browser or HTTP client can read from the network.
+Libranet is a network of computers that share their storage. Each runs a
+node, which keeps content, passes it on to other nodes, and fetches what it
+lacks from them. Any node can serve anything the network holds, and a
+collection of files can be served as an ordinary website. There are no
+central servers, and a node is a plain web server, so a browser is all it
+takes to use one.
 
-This repository holds the protocol specifications and the reference Python
-node. The node runs today: it stores and serves content, signs and verifies
-requests, maintains a peer mix, fetches missing data from peers, serves
-directory bundles as web applications, backs up and restores local directories
-as encrypted bundles, and ships a movie library that plays video from the
-network. There is no public network to join yet — see
-[Project Status](#project-status).
+Two applications ship with every node, and show what the network is for:
+
+- **Backups.** Keep folders on your computer backed up into the network,
+  encrypted so that only your node can read them.
+- **Movies.** Keep a movie library, play films from the network in a
+  browser, and share playlists with your friends.
+
+This repository holds the protocol specifications and the reference node,
+written in Python. The node runs today on macOS and Linux. There is no
+public network to join yet, but you can run nodes on your own computers —
+see [Project Status](#project-status).
 
 ---
 
@@ -37,14 +43,12 @@ network. There is no public network to join yet — see
 
 - [Features](#features)
   - [Hasn't this already been done?](#hasnt-this-already-been-done)
+- [What You Can Do With It](#what-you-can-do-with-it)
+  - [Back up your files](#back-up-your-files)
+  - [Watch movies](#watch-movies)
+  - [Use and share applications](#use-and-share-applications)
 - [How It Works](#how-it-works)
-- [Requirements](#requirements)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Usage](#usage)
-- [Configuration](#configuration)
-- [Architecture](#architecture)
-- [Development](#development)
+- [Getting Started](#getting-started)
 - [Project Status](#project-status)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
@@ -55,26 +59,26 @@ network. There is no public network to join yet — see
 
 ## Features
 
-- **Content-addressed storage** — data is identified and retrieved by its
-  cryptographic hash
-- **Pure HTTP** — works with standard web infrastructure; no custom protocol
-  and no special client
-- **Signed requests** — nodes identify themselves with RFC 9421 HTTP message
-  signatures over their public-key-derived node id
-- **Peer discovery** — nodes exchange address lists and lists of content they
-  are still looking for
-- **Prefix-based placement** — data can be left at predictable logical
-  locations ("drops")
-- **Directory bundles** — collections of files packaged as mini-websites or
-  applications, served at `/{app-name}/`
-- **Encrypted backup** — local directories become password-protected bundles
-  in the network, every file's content encrypted too, restorable to any node
-  that has the password
-- **Self-organizing storage** — nodes prefer data that is "close" to their own
-  identity and hand off the rest when space runs low
-- **Protocol fairness** — priority for peers that
-  [add more net value to the network](docs/specs/Karma.md) (designed, not yet
-  implemented)
+- **No central servers.** Nodes find each other, and each keeps a share of
+  what the network holds.
+- **Plain HTTP.** A node is an ordinary web server. Any browser can read
+  from the network through it, with nothing to install.
+- **Content named by what it is.** Everything is found by an id made from
+  its own bytes, so it can come from any node, and whoever receives it can
+  check that it is what they asked for.
+- **Encrypted backup.** Folders are backed up into the network, and
+  restored from it, with every file encrypted.
+- **Video from the network.** A film starts playing, and can be skipped
+  through, before the node holds the whole of it.
+- **Applications.** Any collection of web pages can be served from the
+  network as a website, and the ones you have not trusted run in a sandbox.
+- **Self-organizing storage.** Each node keeps the content closest to its
+  own identity, and hands on the rest when it runs short of space.
+- **Signed requests.** Nodes sign what they send each other, so each knows
+  which node it is talking to.
+- **Fairness.** Priority for nodes that
+  [add more to the network than they take](docs/specs/Karma.md) (designed,
+  not yet built).
 
 [Vote for the next feature](https://github.com/marcpage/libranet/issues?q=is%3Aissue+state%3Aopen+sort%3Areactions-%2B1)
 by giving a Thumbs Up to the description of your favorite issues.
@@ -97,46 +101,103 @@ projects together.
 
 ---
 
+## What You Can Do With It
+
+### Back up your files
+
+Open your node's administration page in a browser, and name a folder to back
+up. The node encrypts every file in it, stores it in the network, and makes
+a backup: a list of the files and how to read them, itself encrypted. It
+looks at the folder again every hour, and makes a new backup whenever
+something has changed, storing only what is new. The pieces are passed on
+to other nodes as they are stored, so a backup does not live only on the
+disk it came from.
+
+Only your node can read your backups. Each file is encrypted under a key
+made from its own contents, and the backup, which holds those keys, is
+encrypted with a secret your node keeps. Other nodes hold the pieces without
+being able to read them. Keep a copy of that secret somewhere safe, apart
+from the backups: without it, no one can read them, you included.
+
+To get your files back, give the administration page the backup's id and a
+folder to restore into. The node fetches from other nodes whatever it no
+longer holds. The
+[Operator Guide](docs/operations/Operator%20Guide.md#5-backing-up-and-restoring)
+says where the secret is, and how to restore onto a new computer.
+
+### Watch movies
+
+Every node ships a movie library, at `/movie/` on the node. In a browser on
+the node's own computer, it imports a video from your Movies folder, or
+another the node offers, and keeps what you know of it: its title, year,
+rating, cast, a description, and a poster taken from a frame. Movies go into
+playlists.
+
+Share a playlist with a friend by giving them its id. Their node's movie
+library imports it, all of it or only the movies they choose, and plays the
+films from the network. A film starts playing as soon as its first pieces
+arrive, and skipping ahead fetches the pieces from there, so no one waits
+for the whole film.
+
+A playlist is encrypted, so only those given its id can see what is in it.
+The films themselves are not. A browser on another computer can play the
+playlists your node keeps, but cannot change them, and anyone who can reach
+your node can see those playlists' ids.
+
+### Use and share applications
+
+Any collection of web pages can be served as an application. Give your node
+a folder holding one, and it makes the folder into a bundle, with an id of
+its own. Register the bundle under a name, and the node serves it at that
+name, as an ordinary website. Your node's front page links to each one.
+
+Anyone you give the id to can register the same application on their own
+node, which fetches its files from the network as they are first asked
+for. A new version of an application is a new bundle, with a new id, so
+what you registered never changes under you.
+
+An application you have not trusted runs in a sandbox: its pages can show
+what the network holds, and nothing more. A trusted one can also import
+files from the folders your node offers, make bundles, and keep data on your
+node, as the movie library does. The
+[App Developer Guide](docs/operations/App%20Developer%20Guide.md) describes
+what an application can do, and how to write one.
+
+---
+
 ## How It Works
 
-Every piece of data in Libranet lives at a path like:
+Everything in Libranet is found by its content id, a cryptographic hash of
+its bytes. No object is larger than 1 MiB, so a larger file is cut into
+pieces, and a **bundle** lists the pieces. A directory bundle lists files
+and folders, and is how a backup, a playlist, and an application are kept.
+Content never changes: a changed file, or a new version of a folder, is new
+content, with a new id, which names the version it came from.
 
-```text
-/data/sha256/<content-hash>
-```
+A node asked for content it does not hold asks its peers for it, and serves
+it once it arrives. What it still cannot find goes on a list it publishes,
+so that a peer that has it can send it.
 
-Nodes talk to each other with ordinary HTTP requests. No object exceeds 1 MiB,
-so larger content is split into **bundles**: JSON containers that describe a
-file or a directory and name the pieces it is made of. Collections of files
-become **directory bundles**, which can be registered as applications and
-served like a normal website.
+Each node has a key pair, and its node id is the hash of its public key.
+Content belongs closest to the nodes whose ids share the most leading bits
+with its id. A node passes on new content toward those nodes, so that it is
+held in more than one place. It keeps the content closest to itself first,
+and when it runs short of space it hands on what it cares about least, to
+the peer that cares about it most. So the network organizes itself, with no
+one deciding where anything goes.
 
-A node that is asked for content it does not have answers `503` with a
-`Retry-After`, asks its peers for the content, and serves it on a later
-request. What it cannot find stays on the `/data/seek` list it publishes, so
-peers that do have it can push it.
-
-The network is self-organizing: a node keeps data whose hash shares many
-leading bits with its own identity, and hands off the rest when free space runs
-low.
-
----
-
-## Requirements
-
-- Python 3.11 or newer (CI covers 3.11 and 3.14)
-- macOS or Linux (Windows is expected to follow on)
-- [uv](https://docs.astral.sh/uv/) for development
-
-Runtime dependencies are `cryptography`, `http-message-signatures`,
-`platformdirs`, `pydantic`, `pyyaml`, and `xattr`; they install with the
-package.
+A node runs as several processes, and the one that faces the network does
+as little as it can, so that a flaw there reaches very little. The
+[High-Level Design](docs/specs/HighLevelDesign.md) describes the network in
+full.
 
 ---
 
-## Installation
+## Getting Started
 
-Libranet is not on PyPI yet, so install it from a checkout:
+You need Python 3.11 or newer, on macOS or Linux, and
+[uv](https://docs.astral.sh/uv/). Libranet is not on PyPI yet, so install it
+from a clone:
 
 ```bash
 git clone https://github.com/marcpage/libranet.git
@@ -144,435 +205,38 @@ cd libranet
 uv sync
 ```
 
-That creates a virtual environment with the package and its development tools,
-and `uv run libranet` runs the node from it. To install the `libranet` command
-onto your PATH instead:
+Start a node:
 
 ```bash
-uv tool install .    # or: pip install .
+uv run libranet
 ```
 
----
+Then open `http://127.0.0.1:8080/` in a browser. That is your node's front
+page, which says who the node is and links to its applications: the movie
+library at `http://127.0.0.1:8080/movie/`, and the administration page,
+where you back up folders and register applications. The administration page
+is at `http://127.0.0.1:8180/config/`, unless that port was taken, and the
+node prints the address it took as it starts. It opens only in a browser on
+the same computer, and the first time, you type its address. The first
+username and password you give it become the ones it asks for from then on.
 
-## Quick Start
+`Ctrl-C` stops the node. It keeps its content and settings between runs, and
+needs no configuration to start.
 
-Check the configuration a node would start with, without starting it:
+A node finds other nodes through the ones it is told about, and there is no
+public network to tell it about yet, so it starts alone. To join the nodes
+on your own computers into a network, give each one a list naming another,
+or run a super node on a computer that is always on, which tries to hold
+everything your other computers share. To try a network of many nodes on
+one computer:
 
 ```bash
-uv run libranet --check-config
+uv run libranet-local-network --count 8
 ```
 
-Every setting is optional, so a node runs with no config file at all. Start one
-on a scratch data directory:
-
-```bash
-uv run libranet --data-dir ./node --log-dir ./node/logs --port 8080
-```
-
-On first start the node generates its key pair, derives its node id from the
-public key, and begins serving. Ask it who it is:
-
-```bash
-curl http://127.0.0.1:8080/data/nodes
-```
-
-```json
-{"nodes": {"http://localhost:8080": "sha256/3702ca37bc341...c967e0ce"}}
-```
-
-`http://localhost:8080` means "reach me at the address this connection came
-from" — the node advertises a real address once one is configured. Every
-response is signed, so `Signature` and `Signature-Input` headers accompany it.
-
-A browser pointed at `http://127.0.0.1:8080/` gets the same answer as a page,
-with links to the node's administration page and to this documentation.
-
-`Ctrl-C` stops the node and every process under it.
-
----
-
-## Usage
-
-A running node is reached over plain HTTP. Reads are open by default; uploads
-of content and lists to `/data` require a valid signature from a node, the
-endpoints meant for the node's own applications make changes only for a
-browser on this machine, and `/config` is restricted to this machine.
-
-### Fetch content by hash
-
-```http
-GET /data/sha256/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-```
-
-Content the node holds comes back directly. Content it does not hold yet gets a
-`503` with `Retry-After` while the node asks its peers for it:
-
-```json
-{
-  "type": "https://libranet.org/problems/content-unavailable",
-  "title": "Content temporarily unavailable",
-  "status": 503,
-  "detail": "The requested content is not stored here yet; retrieval was requested.",
-  "instance": "/data/sha256/e3b0c442...",
-  "retry_after": 5
-}
-```
-
-### Search by hash prefix
-
-```http
-GET /data/search/e3b0c44298fc1c14
-```
-
-Returns the stored hashes matching the most leading bits of the prefix, best
-match first:
-
-```json
-{"results": ["sha256/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"]}
-```
-
-### Read the peer and seek lists
-
-```http
-GET /data/nodes
-GET /data/seek
-```
-
-`/data/nodes` is the node's view of the network; `/data/seek` is what it is
-still looking for. Peers `POST` their own lists to the same paths.
-
-### Upload content
-
-```http
-PUT /data/sha256/<content-hash>
-```
-
-An upload must carry an RFC 9421 signature from a node identity — an unsigned
-`PUT` is `401`. The body is verified against the hash in the path before it is
-promoted into the store, so a mismatch is rejected rather than stored.
-
-### Back up a local directory into the network
-
-The `/config` surface is how an operator puts their own content into Libranet.
-It answers only on loopback, on a port of its own: 100 above the node's port
-(`8180` for a node on `8080`), or the next 100 up that is free, unless
-`network.config_port` names one. The node logs the address it chose as it
-starts. The first request carrying `Authorization: Basic` sets the node's
-credential — pick one on first use and reuse it after that. To change it, or
-if it is forgotten, see the
-[Operator Guide](docs/operations/Operator%20Guide.md#2-resetting-the-config-password).
-
-A browser sends that credential with every request to `/config`'s port,
-whichever page made it, so `/config` refuses any request that another page
-made: one whose `Sec-Fetch-Site` or `Origin` header says so, or whose `Host` is
-not `localhost`, `127.0.0.1`, or `[::1]`. The applications the node serves are
-on its own port, so their pages are other pages too. If you reach `/config` by
-another name, add it to `network.config_hosts`. Once a credential is set, a
-link you click on another page of this machine, such as the root page's, opens
-the `/config` page; before then, type its address. A request body is read only
-if it is sent as `Content-Type: application/json`, and is `415` otherwise.
-
-Open `http://127.0.0.1:8180/config` in a browser for a page that does
-everything below; `http://127.0.0.1:8080/config` sends you there. Scripts use
-the same JSON endpoints, beneath `/config/api`. They are meant for that page,
-so a request must name it as its `Referer`, as `curl -e` does, and is `403`
-otherwise:
-
-```bash
-curl -u admin:secret -e http://127.0.0.1:8180/config/ \
-  http://127.0.0.1:8180/config/api
-```
-
-```bash
-curl -u admin:secret -e http://127.0.0.1:8180/config/ \
-  -X POST http://127.0.0.1:8180/config/api/backups \
-  -H 'Content-Type: application/json' \
-  -d '{"directory": "/home/alice/notes"}'
-```
-
-```json
-{"job_id": "94b5fd7931f38cf4"}
-```
-
-The backup module walks the directory, stores each file in the content store,
-encrypted under a key derived from its own content, and writes a
-password-protected directory bundle naming the files and their keys. `GET` the
-same path to see what came of it:
-
-```bash
-curl -u admin:secret -e http://127.0.0.1:8180/config/ \
-  http://127.0.0.1:8180/config/api/backups
-```
-
-```json
-{"jobs": [{
-  "job_id": "94b5fd7931f38cf4",
-  "directory": "/home/alice/notes",
-  "interval_seconds": 3600.0,
-  "status": "waiting",
-  "bundle": "sha256/73e75f7d5ee39da51411d68ef27a383905f6514df2443f7828aad7710558d941",
-  "skipped": 0
-}]}
-```
-
-The job is re-checked on its interval, reading only the files whose size,
-times, or permissions changed. A new bundle is made only when content
-changed: a file's bytes, a path added or removed, or a symlink's target. A
-change to times, permissions, or extended attributes alone waits for the
-next one, unless you ask for a backup with
-`POST /config/api/backups/{job_id}/run`. The node's own data directory is
-never backed up.
-
-### Restore a backup
-
-```bash
-curl -u admin:secret -e http://127.0.0.1:8180/config/ \
-  -X POST http://127.0.0.1:8180/config/api/restores \
-  -H 'Content-Type: application/json' \
-  -d '{"bundle": "sha256/73e75f7d5ee3...0558d941",
-       "directory": "/home/alice/restored",
-       "on_conflict": "refuse"}'
-```
-
-Files the node is missing are fetched from peers as the restore runs; `GET
-/config/api/restores` reports how many were restored, skipped, and still
-missing.
-
-### Serve a directory bundle as an application
-
-Register a bundle under a name and it is served as an ordinary website at once,
-with no restart, its files resolved out of the bundle — and fetched from peers
-when this node lacks them — as they are first requested:
-
-```bash
-curl -u admin:secret -e http://127.0.0.1:8180/config/ \
-  -X POST http://127.0.0.1:8180/config/api/applications \
-  -H 'Content-Type: application/json' \
-  -d '{"name": "wiki", "bundle": "sha256/<hash of a directory bundle>"}'
-```
-
-```http
-GET /wiki/
-GET /wiki/index.html
-```
-
-The name `/` registers the application served at the root. A new node serves
-its own page there, shipped with it, so it needs nothing from peers. `data`,
-`web`, and `chaos` are reserved, and `config` is reserved for the `/config`
-application itself, the administration page, which a new node also ships.
-Registering another bundle as `config` replaces that page; `/config/api` keeps
-answering whatever it names, so it can always be pointed back. `GET` the same
-path lists what is registered, and `DELETE /config/api/applications/wiki`
-removes one (the root is `%2F`). Any client may list them with
-`GET /data/applications`, and the page a new node serves at `/` links to each.
-
-An application you register is not trusted, and is served in a sandbox: its
-pages can show what the network holds, and nothing more. A trusted application
-can import any file from the folders this node offers, make bundles, and read
-and change every application's store, so trust only one you would trust with
-those folders. Tick its box on the `/config` page, or:
-
-```bash
-curl -u admin:secret -e http://127.0.0.1:8180/config/ \
-  -X PATCH http://127.0.0.1:8180/config/api/applications/wiki \
-  -H 'Content-Type: application/json' -d '{"trusted": true}'
-```
-
-Registering another bundle under its name makes it untrusted again. The
-applications a new node ships are trusted from the start.
-
-### List the folders offered to this machine
-
-An application can ask whether its page is open on the node's own machine, and
-a page there can list the folders the node offers, set in `local.folders`
-(your desktop, documents, downloads, music, pictures, and videos folders by
-default). Nothing outside them is listed, nor anything hidden within them:
-
-```bash
-page=http://127.0.0.1:8080/    # the root page, named as each request's Referer
-curl -e $page http://127.0.0.1:8080/data/client       # {"local":true}
-curl -e $page http://127.0.0.1:8080/data/directory    # the folders, by name
-curl -e $page http://127.0.0.1:8080/data/directory/Movies/Holidays
-```
-
-The listings are served only to clients on this machine, and, like `/config`,
-only to the node's own pages or to no browser at all, so a page another site
-opens in your browser cannot read them. Every endpoint meant for the node's
-pages, these among them, needs a `Referer` naming one, which `-e` sends; the
-folders need a trusted application's page, such as the root page a new node
-ships. Trusted
-applications share their origin with each other, so trust only applications
-you would trust with your folders.
-
-### Watch movies
-
-A new node also ships a movie library, at `/movie/`. In a browser on the node's
-own machine, it imports a video from the folders the node offers, takes what you
-know of it (title, year, rating, cast, a description, and a poster from a
-frame), and keeps playlists. A playlist is shared whole, in part, or a movie at
-a time, by an id that another node's movie page imports. A browser elsewhere is
-offered only playing the playlists the node keeps.
-
-A playlist is an encrypted bundle, so only those given its id can read it from
-the network. The node keeps its playlists' ids, keys and all, in the
-application's store, which any browser that can reach the node can read.
-
-### Publish a drop under a name
-
-Compute a content hash that shares a long binary prefix with the hash of a name
-(e.g. `"Alice"`) by appending a null byte and a nonce, then publish the object
-under its full content hash. Recipients search by that prefix to discover the
-data. The proof-of-work in finding the nonce is what makes drop-bombing
-expensive.
-
-### Run a local test network
-
-`libranet-local-network`, installed with `libranet`, starts a network of nodes
-on this machine for trying Libranet out by hand. From a clone:
-
-```bash
-uv run libranet-local-network
-```
-
-It starts 40 nodes on `127.0.0.1`, on ports 18400 to 18439, and tells each one
-about all the others by posting it a node list. The first sixteen get keys
-whose node ids start with the hex digits `0` to `f` in turn, so every
-identifier bucket holds a node; the other 24 get random keys. It then shows
-each node's URL and connections, updated as they change:
-
-```text
-Libranet local network: 40 nodes in /tmp/libranet-k3v9x2
-Ctrl-C stops every node.
-
-Connections [#####################################---] 1187/1280
-
-  #  URL                       node id           out   in
-  0  http://127.0.0.1:18400    04493b6b71ff    32/32   31
-  1  http://127.0.0.1:18401    1c546f6facc2    32/32   29
-  2  http://127.0.0.1:18402    2214b7267367    32/32   33
-...
- 39  http://127.0.0.1:18439    a90213c4e8d1    27/32   30
-```
-
-`out` counts the node's connections to peers against the 32 it aims for:
-sixteen spread across the identifier buckets, one per bucket, and sixteen more
-among its neighbors, the peers whose ids start with its own first hex digit. A
-network this small has too few neighbors to fill that second set, so other
-peers make up the number. With fewer than 33 nodes, each aims for every other
-node. `in` counts the other nodes connected to it. Open any URL in a browser to
-use that node. `Ctrl-C` stops every node and deletes the network's
-files. Nodes stop four at a time, so a large network takes a while; a second
-`Ctrl-C` kills whatever is left at once, and the script ignores any more until
-every node is killed.
-
-`--count` sets how many nodes run and `--base-port` the port of the first.
-`--dir DIR` keeps the network's files in `DIR`, and a later run with the same
-`DIR` brings back the same nodes. Each idle node uses about 320 MB of memory,
-so the default 40 need about 13 GB to spare; on a smaller machine, run fewer.
-
-`--debug` has every node log at `DEBUG` rather than `INFO`, to see why the
-nodes do what they do. It lasts for that run only: the script writes each
-node's configuration afresh every time, so a later run with the same `DIR` and
-no `--debug` is back at `INFO`. Debug logs grow fast. Each of a node's ten
-processes keeps its own log, rotated at 10 MiB with five old files kept, so a
-node can hold up to 600 MiB of them, and 40 nodes 24 GiB.
-
-`--host ADDRESS` has the nodes listen at that IP address rather than
-`127.0.0.1`, and tells each one the others are there, so other machines can
-use them. `--max-storage-bytes N` limits the content each node holds. Like
-`--debug`, both last for that run only. Sixteen nodes run this way make a
-super node, which the
-[Operator Guide](docs/operations/Operator%20Guide.md#3-running-a-super-node)
-describes.
-
----
-
-## Configuration
-
-A node reads a YAML file from the platform config directory, or from `--config
-PATH`. Every setting is optional and has a default, so the file only needs what
-you want to change; unknown keys are rejected at startup rather than silently
-ignored.
-
-[`examples/libranet.yaml`](examples/libranet.yaml) documents every setting at
-its default value — listener and advertised address, peer-mix size and
-timeouts, storage limits and eviction thresholds, identity and signature
-policy, backup interval, and logging. Copy it and edit what you need.
-Applications are not configured there: they are registered through `/config`
-while the node runs.
-
-```bash
-uv run libranet --config examples/libranet.yaml --check-config
-```
-
-`--check-config` prints the fully resolved configuration — file, then
-command-line overrides, then defaults — and exits, which is also what CI uses
-to keep the example file honest. The common overrides have flags of their own:
-
-```text
--c, --config PATH     YAML config file to load
-    --version         Print the version and exit
-    --data-dir PATH   Override the node data directory
-    --log-dir PATH    Override the log directory
-    --log-level LEVEL CRITICAL, ERROR, WARNING, INFO, or DEBUG
-    --port PORT       Override the peer-facing HTTP listen port
-    --no-console-log  Log only to files, not to the console
-    --check-config    Load and validate the configuration, print it, and exit
-```
-
----
-
-## Architecture
-
-A node is a **supervisor process** that spawns a central **dispatcher** and
-eight module processes. Modules never call each other: they publish messages to
-the dispatcher, which delivers each message to the queue of every module that
-subscribes to it. A module that dies is restarted by the supervisor without
-taking the node down.
-
-| Module | Responsibility |
-| ---------- | ---------------------------------------------------------- |
-| Web server | The only peer-facing HTTP endpoint; serves and accepts content, serves applications' files from their parts, and makes bundles for this machine's browser |
-| Connections | Outgoing peer connections, the handshake, and the 32-connection peer mix |
-| Validator | Verifies uploaded content against its hash and promotes it into the store |
-| Stats | The only process that touches SQLite; owns node and data statistics and derives the published lists |
-| Fetcher | Turns "asked for, not held here" into requests to peers |
-| Unbundler | Resolves a directory bundle's files on demand for application paths |
-| Eviction | Watches free space and hands off low-priority content before deleting it |
-| Backup | Turns local directories into encrypted bundles, and restores them; builds and exports bundles, and imports files |
-
-Keeping the web server minimal is deliberate: the process exposed to the
-network does not validate uploads, fetch, evict, or resolve applications'
-files, so a flaw there reaches very little.
-
----
-
-## Development
-
-```bash
-uv sync                  # install the package and dev tools
-uv run pytest            # run the test suite
-uv run pytest --cov      # with coverage (the build fails under 90%)
-uv run black .           # format (line length 100)
-uv run flake8            # lint
-uv run mypy              # type-check (strict)
-uv run pylint src tests hatch_build.py   # lint further
-```
-
-CI runs the lint and type checks once, and the test suite on Ubuntu and macOS
-against Python 3.11 and 3.14. It also verifies that
-[`examples/libranet.yaml`](examples/libranet.yaml) still loads.
-
-The layout is one package per module area under
-[`src/libranet/`](src/libranet/), with a matching `tests/test_<area>_<file>.py`
-for each source file.
-
-The applications a node ships with, such as the page at `/`, are directories
-under [`src/libranet/applications/`](src/libranet/applications/). Run from the
-source, the node builds them in memory as it starts, so a changed page is
-served once it restarts. `uv build` builds them into the wheel instead, as a
-content archive, through [`hatch_build.py`](hatch_build.py); nothing built is
-written to the source tree.
+The [Operator Guide](docs/operations/Operator%20Guide.md) covers all of
+this: installing and configuring a node, the administration page, backups,
+applications, and running test networks and super nodes.
 
 ---
 
@@ -620,6 +284,8 @@ currently find each other only through peers you configure yourself.
 
 | Document | What it covers |
 | ------------------------------------------------------------------- | ------------------------------------------------------- |
+| [Operator Guide](docs/operations/Operator%20Guide.md) | Running a node: installing and configuring it, the `/config` administration page, backups, applications, logs, test networks, and super nodes |
+| [App Developer Guide](docs/operations/App%20Developer%20Guide.md) | Writing applications: building and sharing them, trust, and the endpoints a page can use |
 | [High-Level Design](docs/specs/HighLevelDesign.md) | Network architecture, identity, storage, and the peer mix |
 | [Protocol Specification](docs/specs/ProtocolSpecification.md) | Normative protocol behavior |
 | [HTTP API](docs/specs/HttpApi.md) | Endpoints, status codes, headers, and error format |
@@ -627,7 +293,6 @@ currently find each other only through peers you configure yourself.
 | [Bundle Specification](docs/specs/BundleSpecification.md) | Bundle JSON format, splitting, and protection |
 | [Backup Specification](docs/specs/BackupSpecification.md) | Backing up and restoring local directories |
 | [Karma and Kismet](docs/specs/Karma.md) | The reputation and contribution system |
-| [Operator Guide](docs/operations/Operator%20Guide.md) | Running a node: resetting the `/config` password, running a super node |
 | [Phase 1 Plan](docs/implementation/Phase%201.md) | Implementation steps 1–15, 17–20, and 33–40, all built |
 | [Phase 2 Plan](docs/implementation/Phase%202.md) | Implementation steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–63, all built |
 | [Phase 3 Plan](docs/implementation/Phase%203.md) | Video playback: steps 64–77, all built |
@@ -638,9 +303,10 @@ currently find each other only through peers you configure yourself.
 | [Database Schema](docs/implementation/Database%20Schema.md) | The statistics database's tables, and what reads and writes them |
 | [Coding Style](docs/implementation/Coding%20Style.md) | The conventions the Python code follows |
 
-The specifications are normative; the implementation plans record the decisions
-the Python node made within them, and the other implementation documents
-describe the node as it is built.
+The guides describe the Python node in this repository. The specifications
+are normative; the implementation plans record the decisions the Python node
+made within them, and the other implementation documents describe the node as
+it is built.
 
 ---
 
@@ -649,11 +315,28 @@ describe the node as it is built.
 Issues and pull requests are welcome at
 [github.com/marcpage/libranet](https://github.com/marcpage/libranet/issues).
 
+```bash
+uv sync                  # install the package and dev tools
+uv run pytest            # run the test suite
+uv run pytest --cov      # with coverage (the build fails under 90%)
+uv run black .           # format (line length 100)
+uv run flake8            # lint
+uv run mypy              # type-check (strict)
+uv run pylint src tests hatch_build.py   # lint further
+```
+
 Before opening a pull request, please make sure `black`, `flake8`, `mypy`,
-`pylint`, and `pytest` all pass — see [Development](#development). New code is expected to
-come with tests; coverage is gated at 90%. Changes to protocol behavior should
-say which section of which specification they implement, and specification
-changes are best raised as an issue first.
+`pylint`, and `pytest` all pass. CI runs the lint and type checks once, and
+the test suite on Ubuntu and macOS against Python 3.11 and 3.14. It also
+verifies that [`examples/libranet.yaml`](examples/libranet.yaml) still loads.
+
+The layout is one package per module area under
+[`src/libranet/`](src/libranet/), with a matching `tests/test_<area>_<file>.py`
+for each source file. New code is expected to come with tests; coverage is
+gated at 90%. Changes to protocol behavior should say which section of which
+specification they implement, and specification changes are best raised as
+an issue first. The applications a node ships with are described in the
+[App Developer Guide](docs/operations/App%20Developer%20Guide.md#9-changing-the-shipped-applications).
 
 ---
 
