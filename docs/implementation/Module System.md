@@ -1293,7 +1293,7 @@ assert message["event"] == EventType.DATA_STORED
 | The bus | `Dispatcher.dispatch_pending()`, which delivers without threads | `tests/test_messaging_dispatcher.py` |
 | Supervision | Real `spawn` processes running the modules in `tests/stubs.py`, which crash, linger, or publish on the way out on purpose | `tests/test_supervision.py` |
 | A whole node | `supervisor.main(argv, stop=event)`, which runs until the event is set | `tests/test_supervisor.py` |
-| Many nodes | `scripts/local_network.py`, which runs linked nodes on `127.0.0.1` | `tests/test_local_network.py`, and by hand |
+| Many nodes | `libranet-local-network`, which runs linked nodes on `127.0.0.1` | `tests/test_local_network.py`, and by hand |
 
 ## 12. Limits and Planned Changes
 

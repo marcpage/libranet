@@ -163,8 +163,8 @@ looking for content it has not been sent.
 
 ### 3.2 What It Needs
 
-- **A clone of this repository.** The super node is run by
-  `scripts/local_network.py`, which is not part of the installed package.
+- **A clone of this repository**, since Libranet is not on PyPI yet. The
+  super node is run by `libranet-local-network`, installed with `libranet`.
 - **Memory:** about 320 MB for each idle node, so about 5 GB for sixteen.
 - **Disk:** room for the content limit (§3.4), and more. Each node also keeps
   its database, the application files it has served, and up to 600 MiB of
@@ -186,7 +186,7 @@ In the clone, run the script with the machine's address in place of
 `192.168.1.10`:
 
 ```bash
-uv run python scripts/local_network.py --count 16 \
+uv run libranet-local-network --count 16 \
   --dir ~/libranet-super-node --host 192.168.1.10 \
   --max-storage-bytes 1073741824
 ```
@@ -306,12 +306,13 @@ exits with status 1 when a node fails to start, and the service manager
 starts it again. That covers the machine's address not being ready yet: the
 nodes cannot listen at it, and the script gives up after two minutes.
 
-Both examples run the clone's own Python, `.venv/bin/python`, which is what
-`uv run` runs, so the service needs no `uv` on its path. §3.3's `uv run`
-creates it; after updating the clone, run `uv sync` before the service next
-starts. Run the service as yourself, not as root. Without a terminal, the
-script prints its table of connections whenever a connection opens or
-closes, so its output grows slowly while it runs.
+Both examples run the command from the clone's own environment,
+`.venv/bin/libranet-local-network`, which is what `uv run` runs, so the
+service needs no `uv` on its path. §3.3's `uv run` creates it; after
+updating the clone, run `uv sync` before the service next starts. Run the
+service as yourself, not as root. Without a terminal, the script prints its
+table of connections whenever a connection opens or closes, so its output
+grows slowly while it runs.
 
 #### 3.7.1 macOS
 
@@ -336,8 +337,7 @@ and address in place of the ones shown, save this as
   <string>/Users/alice/libranet</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/alice/libranet/.venv/bin/python</string>
-    <string>scripts/local_network.py</string>
+    <string>/Users/alice/libranet/.venv/bin/libranet-local-network</string>
     <string>--count</string>
     <string>16</string>
     <string>--dir</string>
@@ -394,7 +394,7 @@ After=network-online.target
 [Service]
 User=alice
 WorkingDirectory=/home/alice/libranet
-ExecStart=/home/alice/libranet/.venv/bin/python scripts/local_network.py \
+ExecStart=/home/alice/libranet/.venv/bin/libranet-local-network \
   --count 16 --dir /home/alice/libranet-super-node --host 192.168.1.10 \
   --max-storage-bytes 1073741824
 KillMode=mixed

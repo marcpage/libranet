@@ -16,6 +16,7 @@ dependencies = [
 
 [project.scripts]
 libranet = "libranet.supervisor:main"
+libranet-local-network = "libranet.local_network:main"
 
 [project.urls]
 Homepage = "https://github.com/marcpage/libranet"
@@ -52,7 +53,7 @@ target-version = ["py311"]
 
 [tool.mypy]
 python_version = "3.11"
-files = ["src", "tests", "scripts"]
+files = ["src", "tests"]
 strict = true
 warn_unreachable = true
 disallow_untyped_defs = true
@@ -120,8 +121,6 @@ per-file-ignores = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Lets tests import the scripts, which are not part of the package.
-pythonpath = ["scripts"]
 addopts = "-q"
 
 [tool.coverage.run]

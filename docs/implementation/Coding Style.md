@@ -31,7 +31,7 @@ processes fit together is in [Module System](Module%20System.md).
 uv run black .           # format
 uv run flake8            # lint
 uv run mypy              # type-check
-uv run pylint src tests scripts hatch_build.py   # lint further
+uv run pylint src tests hatch_build.py   # lint further
 uv run pytest --cov      # tests, with coverage
 ```
 
@@ -42,8 +42,8 @@ against Python 3.11 and 3.14.
 | --- | --- | --- |
 | `black` | Line length 100, target `py311` | Layout of code: quotes, wrapping, trailing commas |
 | `flake8` | `.flake8`, with `flake8-bugbear`; `F401` allowed in a package's `__init__.py` | Unused names, undefined names, PEP 8 spacing, likely bugs, and any line past 110 columns (`B950`) |
-| `mypy` | `strict`, `warn_unreachable`, over `src`, `tests`, and `scripts` | Every annotation, in tests too |
-| `pylint` | `[tool.pylint]` in `pyproject.toml`, with `pylint-per-file-ignores`; over `src`, `tests`, `scripts`, and `hatch_build.py` | Docstrings, unused arguments, names, how large a function or class may grow, mistakes it can infer, and any line past 100 columns |
+| `mypy` | `strict`, `warn_unreachable`, over `src` and `tests` | Every annotation, in tests too |
+| `pylint` | `[tool.pylint]` in `pyproject.toml`, with `pylint-per-file-ignores`; over `src`, `tests`, and `hatch_build.py` | Docstrings, unused arguments, names, how large a function or class may grow, mistakes it can infer, and any line past 100 columns |
 | `pytest` | Branch coverage, failing under 90% | Behavior |
 
 Code is written for Python 3.11, the oldest version supported.
@@ -522,7 +522,7 @@ be.
 
 A module process logs with `self.logger`. Code with no logger at hand uses a
 module-level `_LOGGER = getLogger(__name__)`. `print` is for the command
-line only: the supervisor's startup errors and `scripts/`.
+line only: the supervisor's startup errors and `libranet-local-network`.
 
 ```Python
 _LOGGER.warning("Cannot read %s, so the last backup is read back: %s", path, error)

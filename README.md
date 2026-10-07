@@ -425,12 +425,11 @@ expensive.
 
 ### Run a local test network
 
-[`scripts/local_network.py`](scripts/local_network.py) starts a network of
-nodes on this machine for trying Libranet out by hand. It is not part of the
-installed package, so run it from a clone:
+`libranet-local-network`, installed with `libranet`, starts a network of nodes
+on this machine for trying Libranet out by hand. From a clone:
 
 ```bash
-uv run python scripts/local_network.py
+uv run libranet-local-network
 ```
 
 It starts 40 nodes on `127.0.0.1`, on ports 18400 to 18439, and tells each one
@@ -555,7 +554,7 @@ uv run pytest --cov      # with coverage (the build fails under 90%)
 uv run black .           # format (line length 100)
 uv run flake8            # lint
 uv run mypy              # type-check (strict)
-uv run pylint src tests scripts hatch_build.py   # lint further
+uv run pylint src tests hatch_build.py   # lint further
 ```
 
 CI runs the lint and type checks once, and the test suite on Ubuntu and macOS

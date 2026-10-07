@@ -653,8 +653,9 @@ opened.
 
 ## 11. The Local Network Script
 
-`scripts/local_network.py` runs a network of nodes on `127.0.0.1` for manual
-testing, each with its own directories:
+`libranet-local-network`, or `python -m libranet.local_network`, runs a
+network of nodes on `127.0.0.1` for manual testing
+(`src/libranet/local_network.py`), each with its own directories:
 
 ```text
 {--dir, or a temporary libranet-* directory}/

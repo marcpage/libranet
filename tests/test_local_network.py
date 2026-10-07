@@ -20,7 +20,7 @@ from libranet.config.loader import load_config
 from libranet.config.models import LoggingConfig
 from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity
-from local_network import (  # pylint: disable=wrong-import-order
+from libranet.local_network import (
     DISTINCT_DIGITS,
     ConnectionLog,
     LocalNetwork,
@@ -377,7 +377,7 @@ def test_a_node_that_does_not_stop_in_time_is_killed(
         # Only the stubborn node's time is cut short. The obedient one keeps
         # the full time, however slow the machine is to stop it.
         timeout = 0.2 if process is stubborn else 30.0
-        monkeypatch.setattr("local_network._STOP_TIMEOUT_SECONDS", timeout)
+        monkeypatch.setattr("libranet.local_network._STOP_TIMEOUT_SECONDS", timeout)
         request_stop(process)
 
     monkeypatch.setattr(NodeProcess, "request_stop", request_stop_in_its_time)
@@ -388,8 +388,8 @@ def test_a_node_that_does_not_stop_in_time_is_killed(
 
 
 def test_only_a_few_nodes_stop_at_once(stand_ins: StandInNodes, monkeypatch: MonkeyPatch) -> None:
-    monkeypatch.setattr("local_network._STOP_TIMEOUT_SECONDS", 0.2)
-    monkeypatch.setattr("local_network._STOP_WINDOW", 2)
+    monkeypatch.setattr("libranet.local_network._STOP_TIMEOUT_SECONDS", 0.2)
+    monkeypatch.setattr("libranet.local_network._STOP_WINDOW", 2)
     running = stand_ins.network(STUBBORN, STUBBORN, STUBBORN)
     request_stop = NodeProcess.request_stop
     requested: list[NodeProcess] = []
@@ -438,8 +438,8 @@ def _interrupt_request(monkeypatch: MonkeyPatch, error: BaseException) -> None:
 def test_a_second_ctrl_c_kills_every_node(
     stand_ins: StandInNodes, monkeypatch: MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("local_network._STOP_TIMEOUT_SECONDS", 0.2)
-    monkeypatch.setattr("local_network._STOP_WINDOW", 1)
+    monkeypatch.setattr("libranet.local_network._STOP_TIMEOUT_SECONDS", 0.2)
+    monkeypatch.setattr("libranet.local_network._STOP_WINDOW", 1)
     running = stand_ins.network(STUBBORN, STUBBORN, STUBBORN)
     _interrupt_request(monkeypatch, KeyboardInterrupt())
 
@@ -452,8 +452,8 @@ def test_a_second_ctrl_c_kills_every_node(
 def test_stopping_that_fails_kills_every_node_and_raises(
     stand_ins: StandInNodes, monkeypatch: MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("local_network._STOP_TIMEOUT_SECONDS", 0.2)
-    monkeypatch.setattr("local_network._STOP_WINDOW", 1)
+    monkeypatch.setattr("libranet.local_network._STOP_TIMEOUT_SECONDS", 0.2)
+    monkeypatch.setattr("libranet.local_network._STOP_WINDOW", 1)
     running = stand_ins.network(STUBBORN, STUBBORN, STUBBORN)
     _interrupt_request(monkeypatch, OSError(EIO, "Input/output error"))
 
