@@ -8,7 +8,7 @@ from threading import Timer
 from time import monotonic
 from typing import Any, Mapping
 
-from pytest import LogCaptureFixture, fixture, mark, raises
+from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
 
 from libranet.bundle.errors import (
     BundleVerificationError,
@@ -42,6 +42,27 @@ class Recorder:
     def ids(self, event: EventType) -> list[ContentId]:
         """The content each message of ``event`` names, in order."""
         return [ContentId.from_fields(payload) for sent, payload in self.messages if sent == event]
+
+
+class FakeClock:
+    """Stands in for the module's ``monotonic`` and ``sleep``, so a wait is counted in polls."""
+
+    def __init__(self, now: float = 1_000.0) -> None:
+        self.now = now
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
+@fixture
+def clock(monkeypatch: MonkeyPatch) -> FakeClock:
+    clock = FakeClock()
+    monkeypatch.setattr("libranet.webserver.file_stream.monotonic", clock)
+    monkeypatch.setattr("libranet.webserver.file_stream.sleep", clock.advance)
+    return clock
 
 
 @fixture
@@ -295,14 +316,14 @@ def test_more_parts_are_asked_for_as_the_response_moves_on(
 
 
 def test_a_part_still_not_held_is_asked_for_again_only_once_due(
-    store: CasStore, published: Recorder
+    store: CasStore, published: Recorder, clock: FakeClock
 ) -> None:
     waits = reader_for(store, published, wait_seconds=0.1, read_ahead_parts=0)
     again = reader_for(store, published, wait_seconds=0.1, read_ahead_parts=0, ask_again_seconds=0)
 
-    assert not waits.stream(entry_of(b"aaaa")).begin(monotonic() + 0.1)
+    assert not waits.stream(entry_of(b"aaaa")).begin(clock() + 0.1)
     asked_once = published.ids(EventType.DATA_NOT_FOUND)
-    assert not again.stream(entry_of(b"aaaa")).begin(monotonic() + 0.1)
+    assert not again.stream(entry_of(b"aaaa")).begin(clock() + 0.1)
 
     assert asked_once == [id_of(b"aaaa")]
     assert len(published.ids(EventType.DATA_NOT_FOUND)) > 3
@@ -328,11 +349,11 @@ def test_parts_are_reported_as_requested_once_each_as_they_come_within_the_read_
 
 
 def test_a_part_not_held_is_reported_as_requested_once_however_often_it_is_asked_for(
-    store: CasStore, published: Recorder
+    store: CasStore, published: Recorder, clock: FakeClock
 ) -> None:
     reader = reader_for(store, published, wait_seconds=0.1, read_ahead_parts=0, ask_again_seconds=0)
 
-    assert not reader.stream(entry_of(b"aaaa")).begin(monotonic() + 0.1)
+    assert not reader.stream(entry_of(b"aaaa")).begin(clock() + 0.1)
 
     assert len(published.ids(EventType.DATA_NOT_FOUND)) > 3
     assert published.ids(EventType.DATA_REQUESTED) == [id_of(b"aaaa")]
