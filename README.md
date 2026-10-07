@@ -26,8 +26,9 @@ browser or HTTP client can read from the network.
 This repository holds the protocol specifications and the reference Python
 node. The node runs today: it stores and serves content, signs and verifies
 requests, maintains a peer mix, fetches missing data from peers, serves
-directory bundles as web applications, and backs up and restores local
-directories as encrypted bundles. There is no public network to join yet — see
+directory bundles as web applications, backs up and restores local directories
+as encrypted bundles, and ships a movie library that plays video from the
+network. There is no public network to join yet — see
 [Project Status](#project-status).
 
 ---
@@ -192,9 +193,10 @@ with links to the node's administration page and to this documentation.
 
 ## Usage
 
-A running node is reached over plain HTTP. Reads are open by default; writes to
-`/data` require a valid signature from a node, and `/config` is restricted to
-this machine.
+A running node is reached over plain HTTP. Reads are open by default; uploads
+of content and lists to `/data` require a valid signature from a node, the
+endpoints meant for the node's own applications make changes only for a
+browser on this machine, and `/config` is restricted to this machine.
 
 ### Fetch content by hash
 
@@ -530,18 +532,18 @@ taking the node down.
 
 | Module | Responsibility |
 | ---------- | ---------------------------------------------------------- |
-| Web server | The only peer-facing HTTP endpoint; serves and accepts content, nothing more |
+| Web server | The only peer-facing HTTP endpoint; serves and accepts content, serves applications' files from their parts, and makes bundles for this machine's browser |
 | Connections | Outgoing peer connections, the handshake, and the 32-connection peer mix |
 | Validator | Verifies uploaded content against its hash and promotes it into the store |
 | Stats | The only process that touches SQLite; owns node and data statistics and derives the published lists |
 | Fetcher | Turns "asked for, not held here" into requests to peers |
 | Unbundler | Resolves a directory bundle's files on demand for application paths |
 | Eviction | Watches free space and hands off low-priority content before deleting it |
-| Backup | Turns local directories into encrypted bundles, and restores them |
+| Backup | Turns local directories into encrypted bundles, and restores them; builds and exports bundles, and imports files |
 
 Keeping the web server minimal is deliberate: the process exposed to the
-network does not validate, fetch, evict, or resolve bundles, so a flaw there
-reaches very little.
+network does not validate uploads, fetch, evict, or resolve applications'
+files, so a flaw there reaches very little.
 
 ---
 
@@ -582,17 +584,22 @@ written to the source tree.
 | ------------------------------------- | -------------------------- |
 | Protocol and format specifications | Drafted |
 | Phase 1 — reference node, steps 1–15, 17–20, and 33–40 | Implemented |
-| Phase 2 — steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–59 | Implemented |
-| Phase 3 — video playback, steps 64–74 | Planned |
+| Phase 2 — steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–63 | Implemented |
+| Phase 3 — video playback, steps 64–77 | Implemented |
 | Phase 4 — Karma, steps 30 and 56 | Planned |
 | Phase 5 — enhancements, steps 16, 50, and 57 | Planned |
+| Phase 6 — a seed node | Not yet planned |
 | Public network | Not yet running |
 
 Working today: content-addressed storage with prefix search, node identity and
 RFC 9421 request signing, the peer handshake and peer-mix maintenance, fetching
 missing content from peers, bundles (building, splitting, reassembly, password
-protection), directory bundles served as applications, eviction under space
-pressure, the local `/config` surface, and encrypted backup and restore.
+protection, per-file encryption), directory bundles served as applications,
+files served from their parts with range requests, eviction under space
+pressure, the local `/config` surface, encrypted backup and restore, the
+endpoints applications use (reading into bundles, making bundles, importing
+local files, a store for each application), trusted and sandboxed
+applications, and the movie library.
 
 Deliberately deferred, and specified but not yet built:
 
@@ -600,7 +607,9 @@ Deliberately deferred, and specified but not yet built:
 - The [Karma/Kismet](docs/specs/Karma.md) incentive layer; node-list ordering
   uses a simpler proxy for now
 - mDNS/DNS-SD discovery on the local network
-- Signed bundles, and per-file encryption anywhere but in a backup
+- Searching peers for a hash prefix (High-Level Design §4.7): a node answers
+  a search from what it holds and has heard of
+- Signed bundles, and password-protected applications (HTTP API §13.1)
 
 There is no bootstrap network: a node ships with an empty seed list, so nodes
 currently find each other only through peers you configure yourself.
@@ -620,8 +629,8 @@ currently find each other only through peers you configure yourself.
 | [Karma and Kismet](docs/specs/Karma.md) | The reputation and contribution system |
 | [Operator Guide](docs/operations/Operator%20Guide.md) | Running a node: resetting the `/config` password, running a super node |
 | [Phase 1 Plan](docs/implementation/Phase%201.md) | Implementation steps 1–15, 17–20, and 33–40, all built |
-| [Phase 2 Plan](docs/implementation/Phase%202.md) | Implementation steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–59, all built |
-| [Phase 3 Plan](docs/implementation/Phase%203.md) | Video playback: steps 64–74, planned |
+| [Phase 2 Plan](docs/implementation/Phase%202.md) | Implementation steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–63, all built |
+| [Phase 3 Plan](docs/implementation/Phase%203.md) | Video playback: steps 64–77, all built |
 | [Phase 4 Plan](docs/implementation/Phase%204.md) | Karma: steps 30 and 56 so far, planned |
 | [Phase 5 Plan](docs/implementation/Phase%205.md) | Enhancements: steps 16, 50, and 57, planned |
 | [Module System](docs/implementation/Module%20System.md) | The node's processes, the message bus, and the events modules exchange |

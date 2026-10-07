@@ -9,7 +9,7 @@ Version 0.1 • September 2026
 This document describes every file a Libranet node reads or writes: where
 it lives, what it holds, which module writes it, and which settings and
 command-line switches move it or change what goes into it. It describes the
-implementation as of version 0.2, at the end of Phase 2. The protocol does
+implementation as of version 0.2 and Phase 3, up to Step 77. The protocol does
 not prescribe any of this layout; for normative behavior see [High-Level
 Design](../specs/HighLevelDesign.md), [HTTP API](../specs/HttpApi.md), and
 [Backup Specification](../specs/BackupSpecification.md).
@@ -165,8 +165,9 @@ eviction never deletes it.
 `storage.max_storage_bytes` counts only the objects in `cas/data`. Once
 storage comes within one batch of hand-offs of either, eight objects of
 `storage.max_object_bytes`, eviction hands objects off to peers and then
-deletes them here. A backup or build waits rather than store an object that
-would take storage past either (HighLevelDesign §4.5, Phase 2 Step 63).
+deletes them here. A backup, build, or import waits rather than store an
+object that would take storage past either (HighLevelDesign §4.5, Phase 2
+Step 63).
 
 `storage.hash_prefix_length` must not change once a node holds content.
 Every store looks only in prefix directories of the configured length, so
@@ -524,6 +525,9 @@ anything but objects, stops the node at startup with exit status 2. Exports
 ## 7. Files Outside the Node's Directories
 
 Requests to `/config/api` can read and write anywhere the node's user can.
+Requests from local clients to `/data/directory` and `/data/imports` read
+only within the folders `local.folders` offers (HttpApi §12.2, Phase 3 Steps
+68 and 69).
 
 ```text
 /home/me/
@@ -534,10 +538,17 @@ Requests to `/config/api` can read and write anywhere the node's user can.
 ├── site.zip              an archive written by POST /config/api/exports
 ├── restored/             a restore's target directory
 │   └── .restore-{16 hex digits}.partial    a file being restored
-└── restored.bundle       its record, once done, if what it restored was plain
+├── restored.bundle       its record, once done, if what it restored was plain
+└── Movies/               a folder local.folders offers: listed and read
+    └── Film.mp4          a file imported with POST /data/imports
 ```
 
 - **Backups** read the job's directory and write only into `cas/data`.
+- **Imports** read one file in a folder offered and write only into
+  `cas/data`. The web server lists the folders and finds the file, never
+  following a symbolic link out of them or listing a hidden name, and the
+  backup module reads it. A file whose size or modification time changes
+  while it is read fails the import.
 - **Builds** write a record named `{directory name}.bundle` beside the
   directory (`src/libranet/backup/builds.py`), holding the bundle kept
   expanded, as §3.7 describes, in the clear, and whether it is
@@ -620,6 +631,7 @@ optional; `examples/libranet.yaml` shows them all with their defaults.
 | `backup.restore_stall_seconds` | `86400.0` | — | How long a restore waits with none of the content it lacks arriving before it gives up |
 | `backup.storage_stall_seconds` | `3600.0` | — | How long a backup or build waits for eviction to make room before it gives up |
 | `backup.excluded_xattrs` | macOS local-copy attributes; Linux `security.*`, `system.*`, `trusted.*` | — | Extended attributes a backup or build leaves out of its bundle, and a restore does not set |
+| `local.folders` | The user's desktop, documents, downloads, music, pictures, and videos folders | — | The folders local clients may list and import files from (§7) |
 | `logging.directory` | Platform log directory | `--log-dir` | Root of §5 |
 | `logging.file_name` | `libranet.log` | — | Stem and suffix of every log file |
 | `logging.max_bytes` | `10485760` | — | Size at which a log rotates |

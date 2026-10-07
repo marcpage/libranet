@@ -437,6 +437,7 @@ The primary methods are:
 | `HEAD`    | Retrieve metadata without the response body         |
 | `POST`    | Publish a list, or create a resource                |
 | `PUT`     | Create or replace content or a stored value         |
+| `PATCH`   | Change part of a `/config` resource                 |
 | `DELETE`  | Remove a `/config` resource or a stored value       |
 
 The exact method associated with each endpoint is defined below.
@@ -1418,7 +1419,10 @@ within one. Both answer with JSON:
 names. No segment of it may be empty, `.`, or `..`. A node MUST NOT list or
 import anything outside the folders it offers, however a path is spelled
 and wherever a symbolic link within one leads. A path naming anything but
-a directory is `404 Not Found`.
+a directory is `404 Not Found`. A node MAY also keep back what lies within
+a folder, such as hidden names, beginning with `.`, and its own directories,
+leaving them out of a listing and answering a path to them as one to nothing.
+A directory the node may not read is `403 Forbidden`.
 
 A file is imported with:
 
@@ -1569,10 +1573,17 @@ The root application MAY be remapped to a different directory bundle.
 The root application MAY therefore serve a directory bundle without requiring a
 literal `/index.html` stored as the root object.
 
-Application names are case-insensitive.
+Application names are case-insensitive. A name is one path segment, neither
+empty, `.`, nor `..`, or `/` for the root application.
 
 A trailing slash for the application is optional and maps to the default file in
-the directory bundle (`index.html` if unspecified in the bundle).
+the directory bundle (`index.html` if unspecified in the bundle). A node MAY
+answer `/{app-name}` with a `302 Found` to `/{app-name}/`, so that the relative
+links in the application's pages resolve within it. A path that ends in `/`
+names the default file of that directory alike, and one that names a
+directory without the `/` MAY be redirected to it with the `/`. A path that
+reaches a file or a directory through a symbolic link MAY be answered
+`302 Found` with the path it leads to, as reading into a bundle is (§12.1).
 
 If a directory bundle indicates that it is discoverable, then an index is
 generated whenever a directory within the bundle is referenced directly.
@@ -1580,10 +1591,21 @@ generated whenever a directory within the bundle is referenced directly.
 The directory bundle MAY specify content type (if so, that is the type that
 should be used). If the directory bundle does not specify content type, the node
 MAY use an internal extension lookup table to determine content type. The node
-SHOULD make a best guess effort to determine content type.
+SHOULD make a best guess effort to determine content type. A node SHOULD use a
+table of its own rather than its host's, so that every node serves a file with
+the same type. A file whose name says it is compressed, such as `.tar.gz`,
+SHOULD be served as `application/octet-stream`, since a type guessed from the
+name would describe the file once decompressed.
 
 If a file requested is not in the bundle, a standard `404` error should be
 returned. Directory bundles may specify a specific `404` page file.
+
+A bundle has no field yet for its default file, for being discoverable, for a
+file's content type, or for a `404` page
+([Bundle Specification §8](BundleSpecification.md#8-open-items--not-yet-specified)).
+Until it does, the default file is `index.html`, no index is generated, a
+file's content type is found from its name, and a path the bundle does not
+hold is a plain `404`.
 
 Applications are defined on the local node. Each node will have its own list of
 application mappings. This allows someone to configure their specific view and
@@ -1632,8 +1654,7 @@ key.
 
 - Exact configuration format.
 - Default root application.
-- Application-name syntax.
-- Redirect behavior.
+- Which characters an application name may hold.
 - Whether applications can reference other applications.
 
 ### 13.2. Serving Application Files
@@ -1817,7 +1838,9 @@ bundles from bundle metadata or an equivalent authenticated source.
 
 **TBD:**
 
-- Whether content sniffing is prohibited.
+- Whether content sniffing is prohibited everywhere, and not only for reads
+  into a bundle (§12.1) and untrusted applications (§13.5), which send
+  `X-Content-Type-Options: nosniff`.
 
 ---
 
@@ -1831,14 +1854,18 @@ The following status codes are expected to have defined Libranet semantics.
 | `201 Created`                | New content or resource created           |
 | `202 Accepted`               | Accepted, but processing not yet complete |
 | `204 No Content`             | Request completed without a response body |
+| `206 Partial Content`        | The range of a file asked for (§19)       |
+| `302 Found`                  | The resource is at another path           |
 | `400 Bad Request`            | Invalid request                           |
 | `401 Unauthorized`           | Authentication required or failed         |
 | `403 Forbidden`              | Request understood but not permitted      |
 | `404 Not Found`              | Requested resource is unavailable         |
 | `405 Method Not Allowed`     | HTTP method is not supported              |
+| `411 Length Required`        | A body was sent without a length (§21)    |
 | `412 Precondition Failed`    | A stored value changed since it was read  |
 | `413 Content Too Large`      | Request exceeds permitted size            |
 | `415 Unsupported Media Type` | Request body is not of an accepted type   |
+| `416 Range Not Satisfiable`  | The range asked for holds no bytes (§19)  |
 | `429 Too Many Requests`      | Rate limit exceeded                       |
 | `500 Internal Server Error`  | Unexpected node error                     |
 | `503 Service Unavailable`    | Resource temporarily unavailable          |
@@ -1901,13 +1928,25 @@ for machine-readable processing.
 Libranet-specific problem types SHOULD use URIs under a Libranet-controlled
 namespace.
 
-For example:
+These are defined so far, each named by its last segment beneath
+`https://libranet.org/problems/`:
 
-```text
-https://libranet.org/problems/invalid-content-address
-https://libranet.org/problems/content-unavailable
-https://libranet.org/problems/invalid-bundle
-```
+| Type | Status | Meaning |
+| --- | --- | --- |
+| `invalid-content-address` | `400` | A `/data/{hash-algorithm}/{hash}` path that names no valid content identifier, or one under an algorithm the node does not know (§5.4), or an encrypted identifier whose key cannot be read (§12.1) |
+| `invalid-search-prefix` | `400` | A search prefix that is not from one hex digit up to the length of the longest hash the node knows (§6) |
+| `content-unavailable` | `503` | Content the node does not hold yet, and has asked for (§5.2). The extension member `retry_after` repeats `Retry-After`, in seconds |
+| `content-too-large` | `413` | A request body, or what it would store, larger than the node takes (§21). The extension member `max_bytes`, where one limit applies, is that limit |
+| `signature-required` | `401` | An unsigned request that needs a node identity (HandshakeProtocol §2.1) |
+| `invalid-signature` | `401` | A signature that fails verification; the connection is closed (HandshakeProtocol §5.3) |
+| `invalid-list` | `400` | A node list or seek list that is not well-formed (§10.6, §10.7.1) |
+| `credential-required` | `401` | A `/config` request without the credential the node holds (§2.3.1) |
+| `invalid-config-request` | `400` | A JSON body an endpoint cannot act on: one beneath `/config/api` (§2.3), or of the folders and imports (§12.2), making bundles (§12.3), or an application's store (§13.3) |
+| `unusable-bundle` | `400` or `500` | Content that is not a bundle, or a bundle the node cannot read: `400` when a request named it (§12.1, §12.3), and `500` when it is an application's (§13) |
+| `bundle-authentication-required` | `401` | A password-protected application, asking for its password (§13.1) |
+
+An error its status code describes fully uses `about:blank`, whose `title` is
+the status code's reason phrase (RFC 9457 §4.2.1).
 
 The documentation associated with a problem type SHOULD describe:
 
@@ -2008,7 +2047,22 @@ Authorization
 Signature-Input
 Signature
 Range
+Accept-Ranges
+Content-Range
+If-Range
+If-Match
+Allow
+WWW-Authenticate
+Referer
+Content-Security-Policy
+X-Content-Type-Options
 ```
+
+A node MAY add headers of its own to help debug a client, as one that echoes
+each request's target in `X-Request-Path` does, so that a client pipelining
+requests can see which request a response answers. A client MUST NOT rely on
+such a header: a response answers the oldest request still waiting on its
+connection (RFC 9112 §9.3.2).
 
 Content-addressed responses have naturally strong cache semantics because the
 content identifier identifies the content itself.
@@ -2103,9 +2157,21 @@ application name -> bundle mapping
 
 have different caching semantics.
 
+A node SHOULD send a CAS object (§5.1), and any answer to a read into a bundle
+that is not an error (§12.1), as cacheable for as long as a cache keeps
+anything, since what an identifier names never changes:
+
+```http
+Cache-Control: public, max-age=31536000, immutable
+```
+
+A `503` for content not held yet (§5.2) SHOULD carry
+`Cache-Control: no-store`, since a retry is meant to find the content. A
+value from an application's store (§13.3) may change at any time, and SHOULD
+carry `Cache-Control: no-cache`, so that a cache asks again before using it.
+
 **TBD:**
 
-- Default cache durations.
 - Application mapping cache behavior.
 - Cache invalidation.
 - Whether nodes may retain content indefinitely.
@@ -2132,11 +2198,16 @@ Potential limits include:
 - maximum peer requests;
 - maximum drop-search work.
 
+A request whose body is larger than the node takes is refused with
+`413 Content Too Large` (§17.2, `content-too-large`), unread if its
+`Content-Length` already says so. A body whose length is not declared, sent
+with `Transfer-Encoding`, is refused with `411 Length Required` by an endpoint
+that must know a body's size before it reads it.
+
 **TBD:**
 
 - Default limits.
 - Negotiation of limits.
-- Required behavior when limits are exceeded.
 - Whether limits are protocol parameters or local policy.
 
 ---
@@ -2212,9 +2283,8 @@ CAS paths MUST resolve only to content addressed by the Libranet storage system.
 - Required request authentication.
 - Rate limiting requirements.
 - Resource quotas.
-- Bundle execution/sandboxing rules.
-- Cross-origin policy.
-- Security headers.
+- Bundle execution/sandboxing rules, cross-origin policy, and security
+  headers, beyond what §2.3.3, §2.4, §12.1, and §13.5 give.
 - SSRF protections.
 - Maximum bundle recursion.
 - Maximum remote-fetch depth.

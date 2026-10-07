@@ -214,6 +214,11 @@ backup:
   # once this long passes with none of that content arriving. Asking for the
   # same restore again carries it on where it left off.
   restore_stall_seconds: 86400.0
+  # Provisional: a backup, build, or import waits, before storing more, while
+  # storage is full, and gives up, and fails, once it has stayed full this
+  # long, as when no peer takes what is handed off. The next look at a
+  # backup job carries on from what was stored.
+  storage_stall_seconds: 3600.0
   # Extended attributes a backup or build leaves out, and a restore does not
   # set: shell-style patterns, case sensitive. These describe the local copy
   # rather than the content on macOS, or on Linux are namespaces only a
@@ -260,3 +265,5 @@ logging:
   max_bytes: 10485760
   backup_count: 5
   console: true
+  # The layout of each log line, as Python's logging module formats it.
+  format: "%(asctime)s %(levelname)-8s %(name)-24s %(message)s"

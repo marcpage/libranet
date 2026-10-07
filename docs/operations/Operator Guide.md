@@ -223,8 +223,8 @@ storage:
 
 That is the most bytes of content the node keeps (File Layout §3.1). Within
 8 MiB of it, the node hands off the content it gives least priority to, and
-deletes it. A backup or build waits at the limit for that to make room,
-rather than take the node past it.
+deletes it. A backup, build, or import waits at the limit for that to make
+room, rather than take the node past it.
 Each node is limited on its own, so the super node holds up to sixteen times
 as much. Content hashes fall evenly across the buckets, so the nodes fill at
 about the same rate.

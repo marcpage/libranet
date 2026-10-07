@@ -335,7 +335,7 @@ encrypted, as an encoder may have written one before this was required.
 
 ```Python
 plaintext   = JSON-serialized raw bundle (file or directory bundle)
-compressed  = zlib_compress(plaintext, level = author's choice)
+compressed  = zlib_compress(plaintext, level = a fixed level, see §6.3)
 padded      = pkcs7_pad(compressed, cipher block size)   # 16 bytes for AES
 key         = hash_algorithm(password)          # single-pass hash, e.g. SHA256
 iv          = explicit IV, or all-zero bytes if not specified
@@ -407,7 +407,8 @@ token is registered yet (§8).
 The default IV (all-zero, when not explicitly specified) combined with
 deterministic key derivation and padding (§6.1) means **encrypting
 identical content with an identical password always produces byte-for-byte
-identical ciphertext**.
+identical ciphertext**, provided every encoder compresses alike. An encoder
+therefore compresses at a fixed level, as per-entry encryption does (§7.3).
 This is intentional: it allows two independently encrypted copies of the
 same (content, password) pair to resolve to the same CAS address, enabling
 natural deduplication consistent with the rest of the format's CAS-native
@@ -570,6 +571,21 @@ The following were identified during design discussion but not yet resolved:
 
 - Full canonical list/registry of supported `algorithm` tokens (e.g.
   `sha256`, `sha1`, `blake3`) and `cipher`/`mode` tokens (e.g. `AES256-CBC`).
+  The reference node knows `sha256` alone as a hash algorithm, and
+  `AES256-CBC` alone as a cipher (§7.1) and `PW-SHA256-AES256-CBC` alone as
+  a password descriptor (§6.1), each of those two with or without an `-IV:`
+  suffix.
+- The zlib level an encoder compresses at before it encrypts (§6.3, §7.3),
+  which identical ciphertext depends on. The reference node uses level 9.
+- How many extensions a reader must follow from one bundle (§4.1). Content
+  addressing rules out a cycle, but not a bundle that reaches a great many. A
+  reader that limits them refuses a bundle past its limit, so a writer that
+  splits a directory across extensions has to keep within what readers follow.
+  The reference node follows up to 1,024 distinct extensions, and splits a
+  directory into no more.
+- Fields an application's directory bundle could carry for serving it (HTTP
+  API §13): a default file in place of `index.html`, whether a directory's
+  index is generated, a file's content type, and a page for a path not found.
 - Whether readers should validate/reject non-NFC path or symlink-target
   strings, or purely rely on producer conformance (current guidance:
   recommended, not enforced, no validation required).

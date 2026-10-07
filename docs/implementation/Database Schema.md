@@ -10,7 +10,8 @@ This document describes the SQLite database a Libranet node keeps: its
 tables, columns, and indexes, what each value means, which event writes it,
 what reads it, and how long a row lives. It is written for someone about to
 read or change `src/libranet/stats/`, or to look inside a node's database,
-and describes the implementation as of version 0.2, at the end of Phase 2.
+and describes the implementation as of version 0.2 and Phase 3, up to Step
+77. Phase 3 changed no table.
 
 A node has one database, `libranet.sqlite3`, with one schema, defined in
 `src/libranet/stats/schema.py`. Everything else a node keeps is a plain
@@ -193,7 +194,7 @@ or deleted, and is never deleted.
 | `algorithm` | TEXT | no | — | Hash algorithm of the content id |
 | `hash` | TEXT | no | — | Its hash, in lower-case hex |
 | `external_requests` | INTEGER | no | 0 | `GET /data/{algorithm}/{hash}` requests from another machine |
-| `internal_requests` | INTEGER | no | 0 | The same requests from this machine, a loopback address |
+| `internal_requests` | INTEGER | no | 0 | The same requests from this machine, a loopback address, and a part asked for by a file this node serves from its parts |
 | `pushes` | INTEGER | no | 0 | Times it arrived: stored, or refused for not matching its hash |
 | `deletes` | INTEGER | no | 0 | Times it was deleted from the source of truth |
 | `last_requested` | REAL | yes | — | When it was last requested, from either |
@@ -208,6 +209,10 @@ or deleted, and is never deleted.
 - **A request is counted whether or not it is answered.** A `GET` of
   content the node lacks makes a row, so the table holds ids the node has
   never held.
+- **A part of a file being served counts as this node's own request**, once
+  for each response, when the response first asks for it, held or not (Phase
+  3 Steps 65 and 75). With no reassembled copy of the file, its parts are
+  the only copy, so they are kept as content in use.
 - **An upload of content already held is not counted** in `pushes`; nothing
   announces it.
 - **`stored_seconds` grows only at a deletion**, by the time since
@@ -254,9 +259,10 @@ content exchanged with it, and is never deleted.
 - **`last_connected` no longer orders any list.** Since Phase 2 Step 23 the
   lists are ordered by `node_addresses.last_success`. It is kept to measure
   `connected_seconds`.
-- **This node can have a row of its own.** Content the backup module makes
-  is announced as coming from this node, so its size is added to this
-  node's own `bytes_received`.
+- **This node can have a row of its own.** Content this node makes itself,
+  whether a backup, build, or import, or a bundle a local client makes
+  (Phase 3 Steps 69 and 72), is announced as coming from this node, so its
+  size is added to this node's own `bytes_received`.
 
 Index: the primary key only.
 
