@@ -93,6 +93,13 @@ lacked:
   limit let go of each part it fetched for a film before the film's
   response read it. Nothing just stored is let go of now for a time.
 
+One more was asked for after:
+
+- **Shipping the local network script** (Step 76). The command that runs
+  a super node (Operator Guide §3) is installed with the package, as
+  `libranet-local-network`, rather than left in the repository's
+  `scripts/`.
+
 ## 3. How to Read the Steps Below
 
 The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
@@ -120,7 +127,7 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
   reviewed and committed on their own. None of the steps below is
   expected to need it.
 - Every change set must pass `uv run black --check .`, `uv run flake8`,
-  `uv run mypy`, `uv run pylint src tests scripts hatch_build.py`,
+  `uv run mypy`, `uv run pylint src tests hatch_build.py`,
   `uv run pytest --cov` (90% floor), and
   `uv run libranet --config examples/libranet.yaml --check-config`.
 
@@ -2035,6 +2042,62 @@ of the network, and once however often it is asked again.
 
 ---
 
+## Step 76 — Shipping the Local Network Script
+
+**Issue:** #245. **Depends on:** nothing not yet built.
+
+`scripts/local_network.py` runs a network of nodes on one machine, and
+the Operator Guide (§3) runs a super node with it. It was left out of the
+wheel when it was written (#118), so it could be run only from a clone,
+by the path of its file.
+
+Ruled before building:
+
+- **It ships with the package**, as the issue asks.
+
+What was built, in one change set: the script moved into the package,
+with 9 added lines of non-test Python, 2 of them in place of removed
+ones, all comments and docstring. What it does is unchanged.
+
+- **The module** (`src/libranet/local_network.py`, moved from
+  `scripts/`). Six of its handlers gain the `# Not logged:` reason the
+  package's checker asks for (Phase 2 Step 43), and its docstring names
+  the command.
+- **The command** (`pyproject.toml`): `libranet-local-network`, running
+  `libranet.local_network:main`, beside `libranet`.
+  `python -m libranet.local_network` runs it too.
+- **No `scripts/`.** mypy, pylint, CI, and pytest no longer name it, and
+  the tests import `libranet.local_network`.
+- **The documents**: the README, Operator Guide §3, File Layout §11,
+  Module System §11, and Coding Style §2 and §9.3.
+
+Checked: a wheel and sdist built with `uv build` hold
+`libranet/local_network.py`, and the wheel names both commands. Installed
+from that wheel into a new virtual environment, `libranet-local-network
+--count 2` started both nodes, linked them, and stopped them on `SIGTERM`,
+leaving no process behind.
+
+My calls while building, not yet reviewed:
+
+- **`libranet-local-network`**, named after the module, rather than a
+  subcommand of `libranet`, whose switches are a node's.
+- **A module at the top of the package**, beside `supervisor.py` and
+  `cli.py`, rather than a package of its own. It is one file, and nothing
+  in the package imports it.
+- **Coverage now counts it.** Its tests cover 71% of it, as before;
+  starting, linking, and showing the nodes are left to running it by
+  hand. The package is at 98.3%, above its 90% floor.
+- **The Operator Guide still runs it from a clone**, since Libranet is
+  not on PyPI yet. Its services run `.venv/bin/libranet-local-network`,
+  and keep a working directory, though nothing needs one now.
+- **Earlier steps still name `scripts/local_network.py`**, where it was
+  when they were written.
+
+**Testable in isolation:** the tests from before, importing the module
+from the package.
+
+---
+
 ## 4. Issues in the Milestone
 
 Every issue in the **Phase 3 - Support Video Playback** milestone, by
@@ -2053,6 +2116,7 @@ number, and where it went.
 | #221 | A store for each application, read by any client and changed by local ones | 70 |
 | #222 | Reading into a bundle by its id, or by an encrypted id carrying its key | 71 |
 | #223 | Making a bundle, and adding to and removing from one, without expanding it | 72 |
+| #245 | Shipping `scripts/local_network.py` as part of Libranet | 76 |
 
 Step 75 has no issue yet. It was found trying Step 67.
 
@@ -2072,6 +2136,7 @@ Step 75 has no issue yet. It was found trying Step 67.
 | 10 | 74 (#215) | Guards what 68 to 73 serve, and the movie application is written for it. |
 | 11 | 67 (#213) | The page, which needs all of the above. |
 | 12 | 75 | Found trying 67, whose films a full node could not play without it. |
+| 13 | 76 (#245) | Asked for after 75. Moves a script, and needs nothing in this phase. |
 
 Every specification change is made.
 

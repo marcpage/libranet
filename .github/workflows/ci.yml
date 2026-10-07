@@ -37,7 +37,7 @@ jobs:
         run: uv run mypy
 
       - name: pylint
-        run: uv run pylint src tests scripts hatch_build.py
+        run: uv run pylint src tests hatch_build.py
 
   test:
     name: Tests (Python ${{ matrix.python-version }}, ${{ matrix.os }})

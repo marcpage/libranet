@@ -17,9 +17,10 @@ was given, deletes the network's files. A second ``Ctrl-C`` kills whatever
 is still running, and nothing cuts that short: from then on the script
 ignores ``Ctrl-C`` until every node is killed.
 
-Run it from the repository root with::
+It is installed with the package as the ``libranet-local-network`` command,
+which a clone runs with::
 
-    uv run python scripts/local_network.py
+    uv run libranet-local-network
 
 Each idle node takes about 320 MB of memory.
 """
@@ -300,6 +301,7 @@ class ConnectionLog:
             status = path.stat()
 
         except FileNotFoundError:
+            # Not logged: a node that has not run yet has no log.
             return cls(path)
 
         return cls(path, status.st_size, status.st_ino)
@@ -320,6 +322,7 @@ class ConnectionLog:
                 data = log.read()
 
         except FileNotFoundError:
+            # Not logged: the node has not written its log yet.
             return
 
         self._offset += len(data)
@@ -399,6 +402,7 @@ class NodeProcess:
                 killpg(self.process.pid, SIGKILL)
 
             except ProcessLookupError:
+                # Not logged: every process of the node has exited already.
                 pass
 
         self.process.wait()
@@ -412,6 +416,7 @@ class NodeProcess:
                 return True
 
         except (URLError, OSError):
+            # Not logged: a node not serving yet refuses, which is what this asks.
             return False
 
 
@@ -697,9 +702,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         running.watch()
 
     except KeyboardInterrupt:
+        # Not logged: Ctrl-C is how the network is stopped.
         pass
 
     except RuntimeError as error:
+        # Not logged: the command has no log of its own, so it prints the error.
         print(f"\n{error}", flush=True)
         status = 1
 
