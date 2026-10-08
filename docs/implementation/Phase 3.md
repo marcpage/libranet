@@ -109,9 +109,10 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
 - **Step numbers stay stable**, and new steps take the next free number.
   Phase 2 ends at Step 63, the highest assigned before this phase, so
   this phase starts at Step 64. The Karma and enhancement plans were
-  Phases 3 and 4 until this phase took the place of the first; they are
-  now [Phase 4](Phase%204.md) and [Phase 5](Phase%205.md), and their
-  steps kept their numbers.
+  Phases 3 and 4 until this phase took the place of the first; after
+  [Phase 4](Phase%204.md), user accounts, took the place of the next,
+  they are now [Phase 5](Phase%205.md) and [Phase 6](Phase%206.md), and
+  their steps kept their numbers.
 - **A step of an earlier phase is named with its phase**, as Phase 2
   names Phase 1's. A step number alone is a step of this document.
 - **What was asked, and what was chosen.** What was ruled when asked
@@ -577,7 +578,7 @@ Ruled before building:
   node's peers, so the parts go there first.
 - **Nothing keeps a movie on the node.** Eviction's priorities
   (HighLevelDesign §4.5) keep one watched often or lately, and one seldom
-  watched may lose parts to the network. Karma (Phase 4) is to answer
+  watched may lose parts to the network. Karma (Phase 5) is to answer
   that, by rewarding the nodes that show they still hold what was
   uploaded to them.
 
@@ -2287,11 +2288,12 @@ number, and where it went.
 | #230 | A `PUT /data/store/{application}` with no key, taken for a content upload | 70, fixed with it: no name of an endpoint beneath `/data` is taken for a hash algorithm |
 | #240 | Films that would not play on a node at its storage limit | 75 |
 | #242 | Looking for inconsistencies, and duplicate code or logic | 77 |
-| #243 | Reviewing every document against the code, and the specifications for what the code can clarify | None: a review of the documents |
-| #244 | A README about what the network does, with the backup and movie applications as its examples; its technical detail moved to the Operator Guide; and a guide for application developers | None yet: not planned |
+| #243 | Reviewing every document against the code, and the specifications for what the code can clarify | None: a review of the documents, by PR #252 |
+| #244 | A README about what the network does, with the backup and movie applications as its examples; its technical detail moved to the Operator Guide; and a guide for application developers | None: the README and the [App Developer Guide](../operations/App%20Developer%20Guide.md), by PR #253 |
 | #245 | Shipping `scripts/local_network.py` as part of Libranet | 76 |
 | #246 | A test of Step 75 that failed in CI | 75: the test compared a list whose order follows the hash seed |
 | #249 | A test of Step 75 that failed in CI | 75: the file stream's tests of waiting now keep time by a clock of their own, not real time |
+| #254 | Movies that would not play | None: a Safari bug, gone once Safari was relaunched |
 
 Step 75 was found trying Step 67, and #240 reports it.
 

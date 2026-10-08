@@ -706,6 +706,6 @@ with its location printed, after a failure.
 
 Planned steps that will change this layout:
 
-- **Step 30 (#71, Phase 4)** adds a private list of blocked content ids to
+- **Step 30 (#71, Phase 5)** adds a private list of blocked content ids to
   the stats database, and a list derived from it for the web server and
   validator, presumably beside the others in `lists/`.
