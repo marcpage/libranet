@@ -76,6 +76,9 @@ see [Project Status](#project-status).
   network as a website, and the ones you have not trusted run in a sandbox.
 - **Self-organizing storage.** Each node keeps the content closest to its
   own identity, and hands on the rest when it runs short of space.
+- **Drops.** Data can be left at a place named by a string, such as
+  "Messages for Alice", for whoever searches there (specified; nothing in
+  the node makes one yet).
 - **Signed requests.** Nodes sign what they send each other, so each knows
   which node it is talking to.
 - **Fairness.** Priority for nodes that

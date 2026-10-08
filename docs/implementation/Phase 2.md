@@ -2559,16 +2559,15 @@ Ruled before it was built:
   the file or to set a new credential in its place. The guide is the
   whole of the step, and a command can be an issue of its own.
 
-Built as [Operator Guide](../operations/Operator%20Guide.md) §2, with no
-change to code. Checked on a node of its own: a credential captured with
+Built as [Operator Guide](../operations/Operator%20Guide.md) §2 (now §8), with
+no change to code. Checked on a node of its own: a credential captured with
 `curl`, the file deleted while the node ran, a request with no credentials
 answered `401` and set nothing, the next with a new username and password
 captured them, and the old ones were refused. A file that is not JSON makes
-`/config` answer `500`, with a `CredentialFileError` in the web server's
-log, and deleting it recovers. In Chrome 154, a `/config` page left open
-set the old credential again about a second after the delete. Its lists
-refresh every five seconds, and the browser sent the credential it held
-with them unasked.
+`/config` answer `500`, with a `CredentialFileError` in the web server's log,
+and deleting it recovers. In Chrome 154, a `/config` page left open set the old
+credential again about a second after the delete. Its lists refresh every five
+seconds, and the browser sent the credential it held with them unasked.
 
 My calls, not yet reviewed:
 

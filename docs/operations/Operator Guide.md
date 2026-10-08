@@ -468,9 +468,12 @@ directory is, as `Data directory: ...`.
 
 ### 7.3 What It Knows
 
-A node's lists and content can be read by any HTTP client. Every response is
-signed, so `Signature` and `Signature-Input` headers accompany it. Ask a
-node who it is, and whom it knows:
+A node's lists and content can be read by any HTTP client, unless
+`identity.allow_unsigned_api_reads` is `false`, which keeps every read
+beneath `/data` for signing nodes, and breaks the applications' pages,
+whose browsers do not sign. Every response is signed, so `Signature` and
+`Signature-Input` headers accompany it. Ask a node who it is, and whom it
+knows:
 
 ```bash
 curl http://127.0.0.1:8080/data/nodes
