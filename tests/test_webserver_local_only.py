@@ -11,7 +11,7 @@ from libranet.config.models import DEFAULT_CONFIG_HOSTS
 from libranet.problems import PROBLEM_CONTENT_TYPE
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.webserver.http_types import Request, RequestBody, Response
-from libranet.webserver.local_only import LocalOnly, client_handler
+from libranet.webserver.local_only import LocalOnly, OwnSiteOnly, client_handler
 from libranet.webserver.site_checks import SiteChecks
 
 PATH = "/data/directory/Movies"
@@ -167,6 +167,61 @@ def test_a_json_body_is_left_to_the_endpoint(content_type: str) -> None:
 
     assert LocalOnly(endpoint, CHECKS)(request).body == b"handled"
     assert not endpoint.handled[0].body.consumed
+
+
+@mark.parametrize("address", [*REMOTE, *LOCAL])
+@mark.parametrize("host", [HOST, "node.lan:8080", "192.168.1.5:8080"])
+def test_any_client_on_this_nodes_own_page_is_served_where_any_may_be(
+    address: str, host: str
+) -> None:
+    endpoint = Endpoint()
+    request = asked(
+        "POST",
+        address,
+        b"{}",
+        Host=host,
+        Sec_Fetch_Site="same-origin",
+        Origin=f"http://{host}",
+        Content_Type=JSON_CONTENT_TYPE,
+    )
+
+    assert OwnSiteOnly(endpoint, CHECKS)(request).body == b"handled"
+    assert not endpoint.handled[0].body.consumed
+
+
+@mark.parametrize(
+    "sent, named",
+    [
+        ({"Host": "node.lan:8080", "Sec-Fetch-Site": "cross-site"}, "'cross-site'"),
+        ({"Host": "node.lan:8080", "Sec-Fetch-Site": "same-site"}, "'same-site'"),
+        ({"Host": "node.lan:8080", "Origin": "https://evil.example"}, "'https://evil.example'"),
+    ],
+)
+def test_another_sites_page_is_refused_where_any_client_may_be_served(
+    caplog: LogCaptureFixture, sent: dict[str, str], named: str
+) -> None:
+    caplog.set_level(WARNING)
+    endpoint = Endpoint()
+    request = Request("POST", PATH, headers=sent, client_address="203.0.113.42")
+
+    response = OwnSiteOnly(endpoint, CHECKS)(request)
+
+    assert_refused(response, 403)
+    assert named in loads(response.body)["detail"]
+    assert endpoint.handled == []
+    (record,) = [r for r in caplog.records if r.name == "libranet.webserver.local_only"]
+    assert record.levelno == WARNING
+
+
+def test_a_body_that_does_not_say_it_is_json_is_415_where_any_client_may_be_served() -> None:
+    endpoint = Endpoint()
+    request = asked("POST", "203.0.113.42", b"{}", Host="node.lan:8080", Content_Type="text/plain")
+
+    response = OwnSiteOnly(endpoint, CHECKS)(request)
+
+    assert_refused(response, 415)
+    assert endpoint.handled == []
+    assert not request.body.consumed
 
 
 @mark.parametrize("address", LOCAL)

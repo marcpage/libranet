@@ -140,6 +140,16 @@ def test_the_example_config_states_the_default_config_hosts() -> None:
     )
 
 
+def test_the_example_config_states_the_default_drop_ceilings() -> None:
+    example = Path(__file__).parent.parent / "examples" / "libranet.yaml"
+    network = load_config(example).network
+
+    assert (network.drop_max_seconds, network.drop_max_minimum_bits) == (
+        NetworkConfig().drop_max_seconds,
+        NetworkConfig().drop_max_minimum_bits,
+    )
+
+
 def test_the_example_config_states_the_default_excluded_extended_attributes() -> None:
     example = Path(__file__).parent.parent / "examples" / "libranet.yaml"
 

@@ -34,16 +34,20 @@ content, and so is everything kept for them.
 
 ## 2. What Phase 4 Adds
 
-So far, six steps:
+So far, eight steps, in the order they are built (§5):
 
-- **Writing a block from the browser.** A page can store a block of
-  data of its own, at most 1 MiB compressed, targeted at a drop (HttpApi
-  §9) and encrypted for a person or by a username and password. Step 78.
-  Each step after it stores what it keeps this way.
+- **Making a drop.** A page can have the node store a block of data of
+  its own, at most 1 MiB compressed, targeted at a drop (HttpApi §9.6).
+  Step 89. Each step after it stores what it keeps this way.
+- **A costly derivation from a password.** A key derived from a username
+  and password at a cost that puts guessing out of reach, for what a
+  person's password opens. Step 90.
 - **A person's identity.** A key pair made from a username and password,
   whose public key's hash is the person's id, and whose private key is
   kept encrypted in a drop that the username names. Signing in starts a
   session. Step 79.
+- **Encrypting a block.** A block a page stores can be encrypted for a
+  person, or by a username and password. Step 78.
 - **What a person says of themselves.** Metadata, signed, kept in a drop
   named by the person's id. Step 80.
 - **A way back from a lost key.** A fallback identity, named once in
@@ -61,7 +65,9 @@ The conventions of [Phase 2](Phase%202.md) §3 and
 [Phase 3](Phase%203.md) §3 carry over. In addition:
 
 - **Step numbers stay stable**, and new steps take the next free number.
-  Phase 3 ends at Step 77, so this phase starts at Step 78. The Karma and
+  Phase 3 ends at Step 77, so this phase starts at Step 78. Steps 89 and
+  90 were split out of Steps 78 and 79 later, so they took the next free
+  numbers, and are built before both (§5). The Karma and
   enhancement plans were Phases 4 and 5 until this phase took the place
   of the first; they are now [Phase 5](Phase%205.md) and
   [Phase 6](Phase%206.md), and their steps kept their numbers.
@@ -72,74 +78,54 @@ The conventions of [Phase 2](Phase%202.md) §3 and
   into it appears under **My calls, not yet reviewed**, to be reviewed
   before the step is built.
 - **Specifications change first.** A person's identity, the session, and
-  the endpoint of Step 78 are new to the HTTP API, and the key a password
+  the endpoint of Step 89 are new to the HTTP API, and the key a password
   derives needs a token the Bundle Specification does not yet register
-  (§8). Each is written before its step is built.
+  (§8, Step 90). Each is written before its step is built.
 
 ---
 
-## Step 78 — Adding a Data Block Directly
+## Step 78 — Encrypting a Data Block
 
-**Issue:** #257. **Depends on:** Phase 1 Steps 7, 17; Phase 3 Steps 68,
-74.
+**Issue:** #257, in part. **Depends on:** Steps 79, 89, and 90.
 
-A page can already make bundles (Phase 3 Step 72) and import a local
-file (Phase 3 Step 69), but cannot store a block it made itself. A
-`PUT /data/{hash-algorithm}/{hash}` has to be signed by a node
-(HttpApi §7), which a browser is not.
+Step 89 lets a page store a block of its own at a drop. The issue also asks
+that the block can be encrypted, which is left to this step, since
+encrypting for a person needs the person's public key (Step 79).
 
 Settled in the issue:
 
-- An endpoint that stores data from the browser, up to 1 MiB once
-  compressed (HttpApi §7.1).
-- It can target a drop (HttpApi §9), encrypt for a specific person, and
-  encrypt by a username and password.
-- The request says how long to spend finding a nonce. The node spends
-  all of it, keeping the nonce whose content hash best matches the drop
-  target, rather than stopping at a match of some fixed length.
+- A block stored from the browser can be encrypted for a specific person,
+  or by a username and password.
 
 Work this implies:
 
-- A drop is made by the node, not the page. A nonce is searched for by
-  hashing the payload again and again (HttpApi §9.2), which is cheap in
-  Python and slow in a page's script.
 - Encrypting for a person needs their public key (Step 79), fetched by
-  their id as a node's is. Encrypting by a username and password needs a
-  key derived from both, at a cost (BundleSpecification §6.2).
-- The block is stored and pushed like any new content (HighLevelDesign
-  §4.10), and its id returned.
+  their id as a node's is. Encrypting by a username and password needs the
+  key Step 90 derives from both.
 
 My calls, not yet reviewed:
 
-- A local client only (Phase 3 Step 68), from a trusted application
-  (Phase 3 Step 74), as the other endpoints that write are. The time to
-  spend is bounded by a setting, since a request holds a server thread
-  for all of it (HttpApi §21).
+- The encryption is asked for in the body of `POST /data/drop` (HttpApi
+  §9.6), as making bundles asks for its own (HttpApi §12.3), rather than at
+  an endpoint of its own.
 
 **Open questions:**
 
-- Where it lives: beneath `/data`, as the bundle endpoints do (HttpApi
-  §12.3), or of its own.
 - What encrypting for a person is. Node keys are Ed25519, which signs
   and cannot encrypt. Step 79's RSA keys can encrypt a key, but not a
   block of 1 MiB, so a block is encrypted by a key of its own and that
   key by theirs. How that is written down belongs in the Bundle
   Specification, beside §6 and §7.
-- What derivation a username and password name, and with what cost. No
-  costly token is registered yet (BundleSpecification §8).
-- Whether the nonce search runs in the web server's request thread, or
-  in a module of its own, so that a long search does not hold one.
 
 **Testable in isolation:** web server tests over a temp CAS asserting a
-block is stored, encrypted as asked, refused past 1 MiB compressed, and
-refused from a client that is not local; a drop test, with a fake clock,
-asserting the best match found within the time is the one kept.
+block is stored encrypted as asked, and is opened by the right password,
+or the right private key, and by nothing else.
 
 ---
 
 ## Step 79 — User Identities
 
-**Issue:** #256. **Depends on:** Step 78; Phase 1 Step 6.
+**Issue:** #256. **Depends on:** Steps 89 and 90; Phase 1 Step 6.
 
 Settled in the issue:
 
@@ -170,8 +156,8 @@ Work this implies:
 
 My calls, not yet reviewed:
 
-- Signing in and making an identity are open to a local client only, as
-  Step 78 is.
+- Signing in and making an identity are open to a local client only
+  (Phase 3 Step 68), though making a drop is open to any (Step 89).
 - The cookie is `HttpOnly`, `SameSite=Strict`, and scoped to the main
   port, so a page of one application can use the session but not read
   its cookie.
@@ -185,7 +171,7 @@ My calls, not yet reviewed:
   holds for the session outlives the page, and is in the node's memory.
 - How long a session lasts, and what ends it.
 - Whether a key size is all that "how long to spend" sets, or whether the
-  derivation's cost (Step 78) is also chosen by it.
+  derivation's cost (Step 90) is also chosen by it.
 - Drop bombing (HttpApi §9.5): anyone can store blocks at
   `user:{username}`, so a well-known name may need many to be tried. The
   time spent on the nonce when the identity is made decides how near the
@@ -300,8 +286,8 @@ Work this implies:
 - `SHIPPED_APPLICATIONS` (`applications/packaged.py`) gains
   `"mail": "mail"`, and the page is `applications/mail/index.html`, as
   the movie application's is (Phase 3 Step 67).
-- A message is stored by Step 78, targeted at each recipient's drop for
-  the day, and encrypted for that recipient.
+- A message is stored as a drop (Step 89), targeted at each recipient's
+  drop for the day, and encrypted for that recipient (Step 78).
 
 **Open questions:**
 
@@ -317,8 +303,8 @@ Work this implies:
 - How a person learns another's id to begin with.
 
 **Testable in isolation:** the page's logic is checked by hand, as the
-movie application's is; tests of the endpoints it uses are Step 78's and
-Step 79's.
+movie application's is; tests of the endpoints it uses are those of
+Steps 78, 79, and 89.
 
 ---
 
@@ -348,6 +334,164 @@ people on one node.
 
 ---
 
+## Step 89 — Making a Drop
+
+**Issue:** #257, in part. **Depends on:** Phase 1 Steps 7 and 17; Phase 3
+Steps 68, 72, and 74.
+
+A page can already make bundles (Phase 3 Step 72) and import a local
+file (Phase 3 Step 69), but cannot store a block it made itself, nor
+target one at a drop. A `PUT /data/{hash-algorithm}/{hash}` has to be
+signed by a node (HttpApi §7), which a browser is not, and a drop's nonce
+is found by hashing the block again and again (HttpApi §9.2), which is
+cheap in Python and slow in a page's script. Step 79 keeps a person's
+private key at a drop, so this part of the issue is built first, and the
+encryption the issue also asks for is left to Step 78.
+
+Settled in the issue:
+
+- An endpoint that stores data from the browser, up to 1 MiB once
+  compressed (HttpApi §7.1), targeted at a drop (HttpApi §9).
+- The request says how long to spend finding a nonce. The node spends
+  all of it, keeping the nonce whose content hash best matches the drop
+  target, rather than stopping at a match of some fixed length.
+
+Ruled before building:
+
+- **A minimum as well as a time.** A search that has not matched a
+  request's minimum number of bits when its time is up goes on until it
+  has.
+- **Ceilings on both**, from the node's settings, 60 seconds and 26 bits
+  by default. A request asking for more than either is refused before any
+  search.
+- **The search runs in the request's thread**, on one core. One search
+  runs at a time, and a request that comes during one waits its turn.
+- **A `POST` of JSON**, as making bundles is, naming the target string,
+  which the node hashes, rather than a target hash in the path.
+- **Any client may make a drop**, from a page of the node (HttpApi §2.5),
+  not only a local client.
+
+The specification change is written: HttpApi §9.6, new, gives the
+endpoint, and §2.1, §2.5, §21, and §25 name it.
+
+What is to be built:
+
+- **`DropTarget`** (`cas/drops.py`, new), the hash of a target string,
+  which places content at its drop, searching for a nonce for a time and
+  until a minimum is matched, and gives the **`Drop`** made.
+- **`DropRequest`** (`protocol/drop_requests.py`, new), a request's
+  body, its content given as `text` or `base64` as making bundles gives a
+  file's bytes.
+- **`POST /data/drop`** (`webserver/drop_handler.py`, new). The drop is
+  stored as an upload from this node, as making bundles stores what it
+  makes, so that the validator stores it and it is pushed.
+- **`OwnSiteOnly`** (`webserver/local_only.py`), the page checks of
+  HttpApi §2.3.3 and the `415` of §2.4 for an endpoint any client may use:
+  `LocalOnly`'s checks without the loopback source and the `Host` check.
+- **`network.drop_max_seconds`** and **`network.drop_max_minimum_bits`**
+  (`config/models.py`), the ceilings.
+
+My calls, not yet reviewed:
+
+- **The path is `/data/drop`.**
+- **`seconds` is required**, and `minimum_bits` is 0 if absent. The target
+  string is hashed as its UTF-8 bytes, unchanged. Step 79 normalizes a
+  username before naming its drop.
+- **The answer gives the target hash**, beside the drop's id and how many
+  bits it matched, so that a page can search for the drop without hashing
+  anything itself.
+- **The nonce is a decimal counter**, in ASCII, so it never holds a null.
+- **The best match is the hash nearest the target**, read as numbers
+  apart by exclusive or, which ranks first by leading bits matched, as a
+  search does (`cas/prefix.py`). The content is hashed once, and each try
+  hashes only its nonce. Waiting for a turn is not counted in `seconds`.
+- **A drop is stored as making bundles stores an object**, as one zlib
+  stream at level 9 when that is smaller (HttpApi §8). Content too large
+  for an object either way is `413`, found before any search.
+- **The `Host` check is left out**, since a client elsewhere reaches the
+  node by its own name on the network. A site that points a name of its
+  own at the node, by DNS rebinding, can then have a visiting browser make
+  drops, which any client on the network can do anyway. A sandboxed
+  application sends no `Referer`, so only the pages of trusted
+  applications can make a drop.
+
+Built as planned, in one change set: 534 added lines of non-test Python,
+16 of them in place of removed ones and many of them docstrings, and 545
+of tests. The drop is stored by `store_object` (`bundle/storing.py`), as
+making bundles stores an object, and `LocalOnly` is now its own loopback
+and `Host` checks in front of an `OwnSiteOnly`, with the same messages.
+
+My calls while building, not yet reviewed:
+
+- **The empty nonce is tried first**, then each count from 0, so a search
+  of no time and no minimum stores the content and its null byte alone.
+- **A drop the node already holds is not uploaded again**, and so not
+  announced again, as `store_object` does for any object.
+- **Content that fits in an object, but not with its nonce**, is found
+  too large only once its search is done, and is `413` then.
+- **A refused body is the `invalid-config-request` problem**, as making
+  bundles refuses one.
+- **The `text` and `base64` reading moved onto `BytesSource`**
+  (`of_text`, `of_base64`), which making bundles and making a drop both
+  use, with the messages they gave.
+- **Turns are taken in the order they were asked for.** The tests show a
+  request waiting for another's search, but not the order of several.
+
+A live run of one node from the scratchpad: a drop of `hi` at
+`user:alice`, searched for 2 seconds with a minimum of 16 bits, matched 21
+and was the first result of a search for the target hash. One made from
+the machine's network address, as a client elsewhere, was `201`. Of two
+sent at once for 2 seconds each, one took 2.1 seconds and the other 4.0.
+Requests with no `Referer`, marked `cross-site`, or asking for 61 seconds
+were refused.
+
+**Testable in isolation:** drop tests, with a fake clock, asserting the
+best match found within the time is the one kept, and that the search goes
+past its time to its minimum; web server tests over a temp CAS asserting a
+drop is stored and announced, refused past either ceiling or too large,
+and that a second request waits for the first.
+
+---
+
+## Step 90 — A Costly Derivation From a Password
+
+**Issues:** #256 and #257, in part. **Depends on:** Phase 1 Step 17.
+
+Step 79 keeps a person's private key in a block encrypted by a key derived
+from their username and password, and Step 78 encrypts blocks by one. The
+block is content, pushed to other nodes, so anyone who knows the username
+can fetch it and test passwords against it offline, without limit. The
+only derivation the node has, a single SHA-256 (BundleSpecification §6.1),
+lets a GPU test billions of guesses a second, and a password a person
+chooses has too little randomness to withstand that. BundleSpecification
+§6.2 asks for a deliberately costly derivation for such a password, and
+§8 registers none yet.
+
+Ruled before building:
+
+- **A step of its own**, built before Step 79, so that no identity is
+  made with the weaker derivation.
+
+**Open questions:**
+
+- Which function: Argon2id (RFC 9106), which `cryptography` provides, or
+  scrypt, which BundleSpecification §6.2 names as its example, and which
+  the `/config` credential already uses (`webserver/config_credential.py`,
+  at a cost of 2^14, block size 8, and parallelism 1).
+- Its cost parameters: time and memory for each derivation.
+- The fixed salt, taken from the username, so that every node derives the
+  same key, and no one table of guesses applies to every person.
+- The token naming it, and whether it carries its parameters.
+- One cost for every block. Signing in tries every block at a drop, and a
+  cost set per block would let decoys there make it slow.
+
+**Testable in isolation:** derivation tests asserting the same username
+and password derive the same key, and a different username a different
+key; protection tests asserting a block encrypted under the new token is
+opened by the right password alone.
+
+---
+
 ## 4. Issues in the Milestone
 
 Every issue in the **Phase 4 User Accounts** milestone, by number, and
@@ -355,8 +499,8 @@ where it went.
 
 | Issue | Asks for | Step |
 | --- | --- | --- |
-| #256 | Creating user ids | 79 |
-| #257 | Adding a data block directly | 78 |
+| #256 | Creating user ids | 79, 90 |
+| #257 | Adding a data block directly | 78, 89, 90 |
 | #258 | A messaging application | 82 |
 | #259 | User metadata | 80 |
 | #260 | A fallback identity | 81 |
@@ -366,11 +510,13 @@ where it went.
 
 | Order | Steps | Why here |
 | --- | --- | --- |
-| 1 | 78 (#257) | Every step after it stores what it keeps this way. Its encryption questions are settled first, in the Bundle Specification. |
-| 2 | 79 (#256) | Needs 78 to keep the private key. |
-| 3 | 80 (#259) | Needs 79's identity to sign it. |
-| 4 | 81 (#260) | Needs 80's metadata, and has to be settled before any account is made, since a fallback is named only then. |
-| 5 | 82 (#258), 83 (#261) | Applications of the steps before them, independent of each other. |
+| 1 | 89 (#257) | Every step after it stores what it keeps this way. |
+| 2 | 90 (#256, #257) | Needed before any identity is made, so that no private key is kept under the weaker derivation. |
+| 3 | 79 (#256) | Needs 89 to keep the private key, and 90 to encrypt it. |
+| 4 | 78 (#257) | Needs 79's public keys to encrypt for a person, and 90 to encrypt by a password. Its encryption questions are settled first, in the Bundle Specification. |
+| 5 | 80 (#259) | Needs 79's identity to sign it. |
+| 6 | 81 (#260) | Needs 80's metadata, and has to be settled before any account is made, since a fallback is named only then. |
+| 7 | 82 (#258), 83 (#261) | Applications of the steps before them, independent of each other. |
 
 ## 6. Open Items Not Yet Decided
 
@@ -380,9 +526,9 @@ ones that cut across more than one step:
 - **Finding the newest version of anything** (Steps 80 and 82, and Phase
   5 Step 56). Metadata, the address book, and Karma's blocks each change,
   and a search finds what is nearest a target, not what is newest.
-- **A costly derivation from a password** (Steps 78 and 79).
-  BundleSpecification §6.2 says a password a person chooses should use
-  one, and §8 has none registered.
+- **A costly derivation from a password** (Steps 78 and 79), which is
+  Step 90. BundleSpecification §6.2 says a password a person chooses
+  should use one, and §8 has none registered.
 - **Encrypting for a person** (Steps 78, 79, and 82). Node keys cannot
   encrypt; RSA can encrypt only a key. How a block encrypted for a person
   is written down is a new section of the Bundle Specification.

@@ -71,6 +71,35 @@ class BytesSource:
 
     data: bytes
 
+    @classmethod
+    def of_text(cls, text: str, given: str) -> BytesSource:
+        """The UTF-8 bytes of ``text``, a request's ``"text"``.
+
+        ``given`` says in an error what the text was given for, as ``for 'a.txt'``.
+
+        Raises:
+            ValueError: ``text`` is not UTF-8, as it holds a lone surrogate.
+        """
+        if not is_utf8(text):
+            raise ValueError(f'The "text" {given} is not UTF-8')
+
+        return cls(text.encode("utf-8"))
+
+    @classmethod
+    def of_base64(cls, text: str, given: str) -> BytesSource:
+        """The bytes ``text``, a request's ``"base64"``, encodes.
+
+        ``given`` says in an error what the text was given for, as ``for 'a.txt'``.
+
+        Raises:
+            ValueError: ``text`` is not base64.
+        """
+        try:
+            return cls(b64decode(text, validate=True))
+
+        except ValueError:
+            raise ValueError(f'The "base64" {given} is not base64') from None
+
 
 EntrySource: TypeAlias = FileSource | CopySource | BytesSource
 
@@ -179,17 +208,10 @@ def _source(value: object, path: str) -> EntrySource:
         return CopySource(PartPath.parse(value["from"]), value["path"])
 
     if keys == _TEXT_KEYS and isinstance(value["text"], str):
-        if not is_utf8(value["text"]):
-            raise ValueError(f'The "text" for {path!r} is not UTF-8')
-
-        return BytesSource(value["text"].encode("utf-8"))
+        return BytesSource.of_text(value["text"], f"for {path!r}")
 
     if keys == _BASE64_KEYS and isinstance(value["base64"], str):
-        try:
-            return BytesSource(b64decode(value["base64"], validate=True))
-
-        except ValueError:
-            raise ValueError(f'The "base64" for {path!r} is not base64') from None
+        return BytesSource.of_base64(value["base64"], f"for {path!r}")
 
     raise ValueError(
         f'What goes at {path!r} must be {{"file"}}, {{"from", "path"}}, {{"text"}}, '

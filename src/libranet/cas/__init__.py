@@ -4,7 +4,8 @@ Path construction for the source of truth and each sending node's store,
 hash-prefix subdirectory splitting, the hash-algorithm registry, ranking
 identifiers against a prefix, and checking content against its identifier
 (Step 7). Content archives, and reading them after the source of truth
-(Step 34). Pure library code: no network, no messaging.
+(Step 34). Placing content at a drop (Phase 4 Step 89). Pure library code:
+no network, no messaging.
 
 :class:`~libranet.cas.layered.LayeredSource` is not exported here. It builds
 the applications the node ships (Step 37) with the bundle library, which
@@ -23,6 +24,7 @@ from libranet.cas.algorithms import (
 from libranet.cas.archive import ARCHIVE_SUFFIX, ArchiveSink, ArchiveSource
 from libranet.cas.compression import CHUNK_BYTES, decompressed, decompressed_chunks
 from libranet.cas.content_id import HEX_DIGITS, LOWER_HEX_DIGITS, ContentId
+from libranet.cas.drops import DROP_SEPARATOR, TARGET_BITS, TRIES_PER_CLOCK_READ, Drop, DropTarget
 from libranet.cas.errors import (
     ArchiveError,
     CasError,
@@ -51,8 +53,11 @@ __all__ = [
     "DATA_SEGMENT",
     "DEFAULT_REGISTRY",
     "DIRECTORY_FILE",
+    "DROP_SEPARATOR",
     "HEX_DIGITS",
     "LOWER_HEX_DIGITS",
+    "TARGET_BITS",
+    "TRIES_PER_CLOCK_READ",
     "AlgorithmRegistry",
     "ArchiveError",
     "ArchiveSink",
@@ -62,6 +67,8 @@ __all__ = [
     "ContentId",
     "ContentMismatchError",
     "ContentNotFoundError",
+    "Drop",
+    "DropTarget",
     "HashAlgorithm",
     "Hasher",
     "HeldObject",

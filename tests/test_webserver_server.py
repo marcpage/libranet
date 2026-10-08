@@ -1720,6 +1720,8 @@ def local_server(
                 config_port=8180,
                 local_folders=LocalFolders({"Movies": tmp_path / "Movies"}),
                 node_id=SERVER_IDENTITY.node_id,
+                max_drop_seconds=1.0,
+                max_drop_minimum_bits=8,
             ),
             getLogger("test.webserver"),
             MessageSigner(SERVER_IDENTITY),
@@ -1883,6 +1885,65 @@ def test_a_local_client_makes_a_bundle_stored_as_an_upload_from_this_node(
         if message["event"] == EventType.PUT_COMPLETED
     ]
     assert remote.status == 403
+
+
+def test_any_client_on_a_page_of_this_node_makes_a_drop_stored_as_an_upload(
+    local_server: LibranetHTTPServer, storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    body = b'{"target": "user:alice", "text": "hello", "seconds": 0, "minimum_bits": 8}'
+    # A client elsewhere names this node as it knows it, which /config's hosts do not.
+    headers = {
+        "Host": "node.lan:8080",
+        "Referer": "http://node.lan:8080/movie/",
+        "Content-Type": JSON_CONTENT_TYPE,
+    }
+
+    response = local_server.router.dispatch(
+        Request(
+            "POST",
+            "/data/drop",
+            headers=headers,
+            client_address="203.0.113.42",
+            body=RequestBody.of(body),
+        )
+    )
+
+    assert response.status == 201
+    made = ContentId.parse(loads(response.body)["id"])
+    assert loads(response.body)["matching_bits"] >= 8
+    assert CasStore.for_node(storage, SERVER_IDENTITY.node_id).exists(made)
+    assert {**made.fields(), "node_id": str(SERVER_IDENTITY.node_id)} in [
+        {key: message[key] for key in ("algorithm", "hash", "node_id")}
+        for message in _published(queues)
+        if message["event"] == EventType.PUT_COMPLETED
+    ]
+
+
+@mark.parametrize(
+    "headers",
+    [
+        {"Host": "node.lan:8080"},
+        {"Host": "node.lan:8080", "Referer": "http://node.lan:8080/data/client"},
+        {**MOVIE_PAGE, "Sec-Fetch-Site": "cross-site"},
+    ],
+)
+def test_a_drop_is_made_only_from_a_page_of_this_node(
+    local_server: LibranetHTTPServer, queues: ModuleQueues, headers: dict[str, str]
+) -> None:
+    body = b'{"target": "user:alice", "text": "hello", "seconds": 0}'
+
+    response = local_server.router.dispatch(
+        Request(
+            "POST",
+            "/data/drop",
+            headers={**headers, "Content-Type": JSON_CONTENT_TYPE},
+            client_address="203.0.113.42",
+            body=RequestBody.of(body),
+        )
+    )
+
+    assert response.status == 403
+    assert _published(queues) == []
 
 
 def test_bundles_are_made_only_by_a_node_that_knows_its_id(
