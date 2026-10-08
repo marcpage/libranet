@@ -73,9 +73,10 @@ The programmatic API includes endpoints such as:
 These endpoints are intended for nodes and software clients.
 
 Some are meant only for the browser applications a node serves (§13), and
-never for another node: whether the client is local (§2.4), reading into a
-bundle (§12.1), the folders and imports (§12.2), making bundles (§12.3), an
-application's store (§13.3), and the list of applications (§13.4). Each
+never for another node: whether the client is local (§2.4), making a drop
+(§9.6), reading into a bundle (§12.1), the folders and imports (§12.2),
+making bundles (§12.3), an application's store (§13.3), and the list of
+applications (§13.4). Each
 but reading into a bundle requires a `Referer` naming a page of the node
 (§2.5). A few serve only clients on the node's own machine (§2.4).
 
@@ -340,9 +341,9 @@ applications they would trust with those folders.
 Some endpoints are meant only for the pages a node serves, and never for
 another node:
 
-- on the main port: whether the client is local (§2.4), the folders and
-  imports (§12.2), making bundles (§12.3), an application's store
-  (§13.3), and the list of applications (§13.4);
+- on the main port: whether the client is local (§2.4), making a drop
+  (§9.6), the folders and imports (§12.2), making bundles (§12.3), an
+  application's store (§13.3), and the list of applications (§13.4);
 - on `/config`'s port: every endpoint beneath `/config/api` (§2.3).
 
 Reading into a bundle (§12.1) is meant for those pages too, but is not
@@ -798,6 +799,8 @@ Drops are pushed like any other data.
 PUT /data/{hash-algorithm}/{hash}
 ```
 
+A page of the node has the node make one for it (§9.6).
+
 ### 9.2 Nonce Usage
 
 The nonce may be of any length (including length of 0).
@@ -841,6 +844,60 @@ content targeted at that hash. The solution is to increase how many matching
 bits you generate for your targeted drop. This makes it prohibitively expensive
 to generate spam at an address. Addresses could also be ephemeral to minimize
 noise at a particular location (e.g. "Messages for John Doe 2025-05")
+
+### 9.6 Making a Drop From a Page
+
+A browser cannot sign a `PUT` (§11), and a page's script is slow at the
+nonce search (§9.2). A page of the node asks the node to make a drop
+instead:
+
+```http
+POST /data/drop
+Content-Type: application/json
+
+{"target": "user:alice", "text": "…", "seconds": 5, "minimum_bits": 16}
+```
+
+- **`target`** is the target string (§9.3). The node hashes its UTF-8
+  bytes, as they are, with SHA-256.
+- **`text`** or **`base64`**, exactly one of them, gives the content, as
+  for making bundles (§12.3).
+- **`seconds`** is how long the node searches for a nonce. It searches for
+  all of it, and keeps the nonce whose drop has the hash nearest the target
+  hash, sharing the most leading bits with it.
+- **`minimum_bits`**, 0 if absent, is how many leading bits the drop's hash
+  must share with the target hash. A search that has not reached it when its
+  time is up goes on until it has.
+
+The drop is the content, a null byte, and the nonce (§9). The request is
+answered `201 Created`, with a `Location` naming the drop (§5.1):
+
+```json
+{"id": "sha256/…", "target": "<target hash>", "matching_bits": 21}
+```
+
+`target` is the target hash, in lower-case hex, by which a page searches
+for the drop (§9.4) without hashing anything itself.
+
+The node stores the drop as content it uploaded itself, and pushes it as it
+does any new content (§7.4). A drop larger than an object
+(HighLevelDesign §4.3) is stored compressed (§8). One too large even
+compressed is `413 Content Too Large`.
+
+A node limits both `seconds` and `minimum_bits` (§21), and a request
+asking for more than either is `400 Bad Request`, before any search. Each
+bit more doubles the work a search does, on average. A node searches for
+one drop at a time. A request that comes while another is searched for
+waits its turn, and the time it waits is not counted in its `seconds`.
+
+Any client may make a drop, from a page of the node (§2.5). The checks
+§2.3.3 makes of `Sec-Fetch-Site` and `Origin` are made on every request,
+as §2.4 makes them, but not of `Host`, since a client elsewhere reaches the
+node by a name of the node's own. A request body is read as JSON only if
+its `Content-Type` is `application/json`, with or without parameters, and
+any other is answered `415 Unsupported Media Type`. No response carries
+`Access-Control-Allow-Origin`, or any other header granting a cross-origin
+request.
 
 ---
 
@@ -2198,6 +2255,9 @@ Potential limits include:
 - maximum peer requests;
 - maximum drop-search work.
 
+A node limits the drop-search work a page asks of it by how long a search
+may take and how many bits it must match (§9.6).
+
 A request whose body is larger than the node takes is refused with
 `413 Content Too Large` (§17.2, `content-too-large`), unread if its
 `Content-Length` already says so. A body whose length is not declared, sent
@@ -2312,6 +2372,7 @@ The following table summarizes the currently proposed HTTP API.
 | `/data/seek`                      | `GET`/`POST` | Retrieve/publish outstanding requests                      | Defined |
 | `/data/{algorithm}/{hash}/{path}` | `GET`/`HEAD` | Read into a bundle (§12.1)                                 | Defined |
 | `/data/client`                    | `GET`        | Whether the client is local (§2.4)                         | Defined |
+| `/data/drop`                      | `POST`       | Make a drop, from a page of the node (§9.6)                | Defined |
 | `/data/directory/...`             | `GET`        | List the folders offered to local clients (§12.2)          | Defined |
 | `/data/imports`                   | `GET`/`POST` | Import a local file, and follow imports (§12.2)            | Defined |
 | `/data/bundles`                   | `POST`       | Make or change a directory bundle, locally (§12.3)         | Defined |

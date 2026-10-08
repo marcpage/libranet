@@ -98,6 +98,7 @@ from libranet.webserver.config_handlers import (
 )
 from libranet.webserver.data_handler import DATA_PATTERN, DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
+from libranet.webserver.drop_handler import DROP_PATH, DropHandler
 from libranet.webserver.errors import IncompleteBodyError, ResponseCutShortError
 from libranet.webserver.file_stream import PartReader
 from libranet.webserver.http_types import (
@@ -111,7 +112,7 @@ from libranet.webserver.inbound_peers import InboundConnection, InboundPeers
 from libranet.webserver.list_handlers import ListFileHandler, NodeListHandler, SeekListHandler
 from libranet.webserver.local_folders import DIRECTORY_PATTERN, DirectoryHandler, LocalFolders
 from libranet.webserver.local_imports import IMPORTS_PATH, ImportHandler, ImportListHandler
-from libranet.webserver.local_only import CLIENT_PATH, LocalOnly, client_handler
+from libranet.webserver.local_only import CLIENT_PATH, LocalOnly, OwnSiteOnly, client_handler
 from libranet.webserver.own_pages import OwnPageOnly, OwnPages
 from libranet.webserver.router import Router
 from libranet.webserver.search_handler import SEARCH_PATTERN, SearchHandler
@@ -148,6 +149,8 @@ def build_router(  # pylint: disable=too-many-locals
     backup_state: BackupState | None = None,
     node_id: ContentId | None = None,
     max_update_layers: int = 0,
+    max_drop_seconds: float = 0.0,
+    max_drop_minimum_bits: int = 0,
 ) -> Router:
     """The main port's routes, serving the configured source of truth, derived lists, and apps.
 
@@ -179,6 +182,9 @@ def build_router(  # pylint: disable=too-many-locals
     alone, from what ``content`` holds, storing what it makes as uploads
     from ``node_id``, each no more than ``max_update_layers`` update layers
     above the last bundle stored whole; none, by default (Phase 3 Step 72).
+    ``/data/drop`` makes drops for any client, stored as those are, searching
+    for each no more than ``max_drop_seconds`` and asked to match no more
+    than ``max_drop_minimum_bits``; neither, by default (Phase 4 Step 89).
 
     Each of those but reading into a bundle is served only to this node's
     own pages, as a request's ``Referer`` names them: an application's store
@@ -235,8 +241,9 @@ def build_router(  # pylint: disable=too-many-locals
     )
 
     if node_id is not None:
+        uploads = OwnUploads.of(storage, content, node_id, publish)
         edits = BundleEditHandler(
-            OwnUploads.of(storage, content, node_id, publish),
+            uploads,
             publish,
             app_wait_seconds,
             retry_after_seconds,
@@ -244,6 +251,10 @@ def build_router(  # pylint: disable=too-many-locals
             max_update_layers,
         )
         router.add("POST", BUNDLES_PATH, LocalOnly(OwnPageOnly(edits, pages, trusted=True), checks))
+        drops = DropHandler(
+            uploads, storage.max_object_bytes, max_drop_seconds, max_drop_minimum_bits
+        )
+        router.add("POST", DROP_PATH, OwnSiteOnly(OwnPageOnly(drops, pages), checks))
 
     router.add(
         "GET",

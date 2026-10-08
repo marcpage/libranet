@@ -27,6 +27,11 @@ trusts, and an application's store is changed only from its own, as the
 request's ``Referer`` names them (:mod:`libranet.webserver.own_pages`,
 Phase 3 Step 74). Trusted applications share the main port's origin, so
 each can do whatever another can.
+
+Making a drop serves any client, from this node's own pages
+(:class:`OwnSiteOnly`, Phase 4 Step 89). It makes the same checks, but for
+the loopback source and ``Host``, since a client elsewhere reaches this node
+by a name of its own on the network.
 """
 
 from __future__ import annotations
@@ -71,7 +76,29 @@ class LocalOnly:
                 "This endpoint is served only to clients on this machine.",
             )
 
-        refusal = self.checks.refusal(request)
+        refusal = self.checks.host_refusal(request)
+
+        if refusal is not None:
+            _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, refusal)
+            return status_response(request, HTTPStatus.FORBIDDEN, refusal)
+
+        return OwnSiteOnly(self.handler, self.checks)(request)
+
+
+@dataclass(frozen=True)
+class OwnSiteOnly:
+    """``handler``, served to any client, but only when no other site's page made the request.
+
+    ``checks`` say whether a browser says another site's page made it. Its
+    ``Host`` is not checked, so that a client elsewhere can reach this node
+    by a name of its own on the network.
+    """
+
+    handler: Handler
+    checks: SiteChecks
+
+    def __call__(self, request: Request) -> Response:
+        refusal = self.checks.page_refusal(request)
 
         if refusal is not None:
             _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, refusal)

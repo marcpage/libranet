@@ -152,6 +152,8 @@ class WebServerModule(ModuleBase):
                     backup_state=self._backup_state,
                     node_id=node.node_id,
                     max_update_layers=self._config.backup.max_update_layers,
+                    max_drop_seconds=network.drop_max_seconds,
+                    max_drop_minimum_bits=network.drop_max_minimum_bits,
                 ),
                 self.logger,
                 signer,

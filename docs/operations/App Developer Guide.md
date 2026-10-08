@@ -242,6 +242,7 @@ when trusted. `self.origin === "null"` tells a page it is sandboxed.
 | `/data/store/{application}/...` | `GET` | Any | Its own application's | Read the application's store (§6.6) |
 | `/data/store/{application}/{key}` | `PUT`, `DELETE` | Local | Its own application's | Change the application's store (§6.6) |
 | `/data/applications` | `GET` | Any | Any application's | The applications the node serves (§6.7) |
+| `/data/drop` | `POST` | Any | Any application's | Place content at a drop (§6.9) |
 | `/data/nodes`, `/data/seek` | `GET` | Any | Any, or none | The peers the node knows, and what it seeks (§6.8) |
 
 ### 5.3 Waiting for Content
@@ -545,6 +546,47 @@ the node itself first, and `GET /data/seek` the content it is still looking
 for. Both answer `503` until the node has first worked them out. Every
 answer of the node is signed, in its `Signature` and `Signature-Input`
 headers (HTTP API §11).
+
+### 6.9 Making a Drop
+
+A drop is content placed where others can find it by a name they know,
+such as `user:alice`, rather than by its id (HTTP API §9). `POST /data/drop`
+has the node make one of content the page gives:
+
+```js
+const response = await fetch("/data/drop", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    target: "user:alice",
+    text: "hello",
+    seconds: 5,
+    minimum_bits: 16,
+  }),
+});
+const { id, target, matching_bits } = await response.json();
+```
+
+- **`target`** is the name the drop is found by. The node hashes it with
+  SHA-256, as it is.
+- **`text`** or **`base64`**, one of them, gives the content.
+- **`seconds`** is how long the node searches for a nonce that puts the
+  drop's id near the target hash. It searches for all of it.
+- **`minimum_bits`**, 0 if left out, is how many leading bits the drop's id
+  must share with the target hash. The search goes on past `seconds` until
+  it does. Each bit more doubles the search, on average.
+
+The drop is answered `201 Created`, with its `id`, the `target` hash, and
+how many bits they share, and a `Location` naming it. Find it later with
+`GET /data/search/{target}` (§6.1), which lists what lies nearest the
+target hash first: the more bits a drop matches, the nearer the top it is,
+however much else is placed there.
+
+The node searches for one drop at a time, and a request that comes during
+another's search waits for it. A node limits both `seconds` and
+`minimum_bits`, by default to 60 and 26, and answers a request asking for
+more with `400`. Content that does not fit in an object, 1 MiB, even
+compressed, is `413`. Any client may make a drop, not only a local one.
 
 ## 7. Patterns From the Movie Library
 

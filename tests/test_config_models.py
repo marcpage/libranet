@@ -61,6 +61,19 @@ def test_an_application_request_waits_ten_seconds_by_default_and_never_a_negativ
         NetworkConfig(app_wait_seconds=-0.5)
 
 
+def test_a_drop_may_be_searched_for_a_minute_and_to_26_bits_by_default() -> None:
+    assert NetworkConfig().drop_max_seconds == 60.0
+    assert NetworkConfig().drop_max_minimum_bits == 26
+    assert NetworkConfig(drop_max_minimum_bits=256).drop_max_minimum_bits == 256
+
+    with raises(ValidationError):
+        NetworkConfig(drop_max_seconds=-1)
+
+    for wrong in (-1, 257):
+        with raises(ValidationError):
+            NetworkConfig(drop_max_minimum_bits=wrong)
+
+
 def test_a_peer_is_given_up_on_after_five_failures_for_a_day() -> None:
     stats = StatsConfig()
 

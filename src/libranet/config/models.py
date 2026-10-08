@@ -84,6 +84,14 @@ class NetworkConfig(_Section):
     # does not retry a `503`. Provisional.
     app_wait_seconds: float = Field(default=10.0, ge=0)
 
+    # The most a page may ask this node to spend searching for a drop's
+    # nonce, and the most leading bits it may ask that the drop share with
+    # its target, each bit doubling the work, on average (HttpApi §9.6,
+    # Phase 4 Step 89). A request asking for more is refused. One search
+    # runs at a time, holding a web server thread and a core.
+    drop_max_seconds: float = Field(default=60.0, ge=0)
+    drop_max_minimum_bits: int = Field(default=26, ge=0, le=256)
+
     # The hosts `/config` is served as. A request there whose `Host` header
     # names any other is refused, so a site that points a name of its own at
     # this machine is not taken for this node (HttpApi §2.3.3, Phase 2 Step
