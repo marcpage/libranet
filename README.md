@@ -41,19 +41,21 @@ see [Project Status](#project-status).
 
 ## Table of Contents
 
-- [Features](#features)
-  - [Hasn't this already been done?](#hasnt-this-already-been-done)
-- [What You Can Do With It](#what-you-can-do-with-it)
-  - [Back up your files](#back-up-your-files)
-  - [Watch movies](#watch-movies)
-  - [Use and share applications](#use-and-share-applications)
-- [How It Works](#how-it-works)
-- [Getting Started](#getting-started)
-- [Project Status](#project-status)
-- [Documentation](#documentation)
-- [Contributing](#contributing)
-- [Not to be confused with](#not-to-be-confused-with)
-- [License](#license)
+- [Libranet](#libranet)
+  - [Table of Contents](#table-of-contents)
+  - [Features](#features)
+    - [Hasn't this already been done?](#hasnt-this-already-been-done)
+  - [What You Can Do With It](#what-you-can-do-with-it)
+    - [Back up your files](#back-up-your-files)
+    - [Watch movies](#watch-movies)
+    - [Use and share applications](#use-and-share-applications)
+  - [How It Works](#how-it-works)
+  - [Getting Started](#getting-started)
+  - [Project Status](#project-status)
+  - [Documentation](#documentation)
+  - [Contributing](#contributing)
+  - [Not to be confused with](#not-to-be-confused-with)
+  - [License](#license)
 
 ---
 
@@ -92,7 +94,7 @@ Libranet sits in a fairly specific spot —
 [IPFS](https://en.wikipedia.org/wiki/InterPlanetary_File_System)-like addressing
 and
 [DHT](https://medium.com/pubky/mainline-dht-censorship-explained-b62763db39cb)-adjacent
-placement, [Freenet](https://freenet.org)-like prefix-locality caching, a
+placement, [Freenet](https://freenet.org)-like prefix-locality caching, [BitTorrent](https://www.bittorrent.org)-like caching of requested data, a
 [Filecoin](https://www.filecoin.io)/[Storj](https://www.storj.io)-like incentive
 layer (but reputation-flavored rather than financial), and a
 [ZeroNet](https://zeronet.io)-like "serve websites P2P" application layer —
