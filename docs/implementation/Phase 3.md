@@ -96,7 +96,7 @@ lacked:
 Two more were asked for after:
 
 - **Shipping the local network script** (Step 76). The command that runs
-  a super node (Operator Guide §3) is installed with the package, as
+  a super node (Operator Guide §10) is installed with the package, as
   `libranet-local-network`, rather than left in the repository's
   `scripts/`.
 - **Cleaning up duplicate code** (Step 77). What this phase wrote more
@@ -574,7 +574,7 @@ Ruled before building:
 - **Importing a playlist** lets the person choose which of its movies to
   take.
 - **An imported file's parts are pushed at once** (Step 69). In a home
-  with a super node (Operator Guide §3), its sixteen nodes are the home
+  with a super node (Operator Guide §10), its sixteen nodes are the home
   node's peers, so the parts go there first.
 - **Nothing keeps a movie on the node.** Eviction's priorities
   (HighLevelDesign §4.5) keep one watched often or lately, and one seldom
@@ -2051,7 +2051,7 @@ of the network, and once however often it is asked again.
 **Issue:** #245. **Depends on:** nothing not yet built.
 
 `scripts/local_network.py` runs a network of nodes on one machine, and
-the Operator Guide (§3) runs a super node with it. It was left out of the
+the Operator Guide (§10) runs a super node with it. It was left out of the
 wheel when it was written (#118), so it could be run only from a clone,
 by the path of its file.
 
@@ -2072,7 +2072,7 @@ ones, all comments and docstring. What it does is unchanged.
   `python -m libranet.local_network` runs it too.
 - **No `scripts/`.** mypy, pylint, CI, and pytest no longer name it, and
   the tests import `libranet.local_network`.
-- **The documents**: the README, Operator Guide §3, File Layout §11,
+- **The documents**: the README, Operator Guide §10, File Layout §11,
   Module System §11, and Coding Style §2 and §9.3.
 
 Checked: a wheel and sdist built with `uv build` hold

@@ -223,6 +223,10 @@ when trusted. `self.origin === "null"` tells a page it is sandboxed.
   (§6.2) to decide what to offer.
 - **JSON bodies**, sent with `Content-Type: application/json`. A body of any
   other type is `415`.
+- **Unsigned reads.** A browser does not sign its requests, as nodes do. An
+  operator who sets `identity.allow_unsigned_api_reads` to `false` has every
+  `GET` beneath `/data` from a browser answered `401`, which leaves an
+  application its own files and nothing more.
 
 ### 5.2 The Endpoints
 
@@ -538,10 +542,9 @@ of its own, and only to a local client, so link to it only for one.
 
 `GET /data/nodes` gives the peers the node knows, by address and node id,
 the node itself first, and `GET /data/seek` the content it is still looking
-for. Both answer `503` until the node has first worked them out, and `401`
-if the operator shares them only with other nodes
-(`identity.allow_unsigned_api_reads`). Every answer of the node is signed,
-in its `Signature` and `Signature-Input` headers (HTTP API §11).
+for. Both answer `503` until the node has first worked them out. Every
+answer of the node is signed, in its `Signature` and `Signature-Input`
+headers (HTTP API §11).
 
 ## 7. Patterns From the Movie Library
 
@@ -556,8 +559,9 @@ of HTML and script, and uses every endpoint above. What it does, and why:
   with the one before as its `base`. The store's `playlists` key lists each
   playlist's name and newest id.
 - **Changes that do not cross.** The list of playlists is changed as
-  §6.6 shows, and a playlist edited from an older version than the newest
-  is refused, telling the person to reload, rather than merged.
+  §6.6 shows. An edit made to an older version of a playlist than the
+  newest is refused, and the page opens the newest, rather than merge the
+  two.
 - **More for a local client.** The page asks `/data/client` as it loads,
   and shows adding and editing only to a local client. A browser elsewhere
   plays.

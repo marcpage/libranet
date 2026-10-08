@@ -247,7 +247,7 @@ directories are left behind.
 - **The `/config` credential can be reset** by deleting the file. It is read
   on every request, so the next `/config` request with Basic credentials
   captures new ones, without a restart. The [Operator
-  Guide](../operations/Operator%20Guide.md) §2 says how, for operators.
+  Guide](../operations/Operator%20Guide.md) §8 says how, for operators.
 
 Each file is created once and never replaced: it is written under a
 temporary name and linked into place, so two processes racing to create it
