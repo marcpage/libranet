@@ -324,6 +324,9 @@ at once — the whole serialized bundle becomes the encrypted payload. A
 password-protected bundle is recognized because its raw bytes are **not
 valid JSON** (in fact generally not valid UTF-8 text at all).
 
+A person's identity block (HTTP API §11.3) is protected the same way,
+though the JSON it protects is not a bundle.
+
 Protection hides what a bundle records, but not the content its parts name:
 each part is an object in CAS, which anyone who learns its address can fetch.
 An encoder protecting a bundle MUST therefore encrypt every part of every file

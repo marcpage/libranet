@@ -1,11 +1,12 @@
 """Tests for local prefix search and the search-result cache."""
 
 from __future__ import annotations
+from logging import WARNING
 from os import utime
 from pathlib import Path
 from typing import Iterator
 
-from pytest import mark, raises
+from pytest import LogCaptureFixture, mark, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
@@ -137,6 +138,10 @@ def test_search_is_limited_to_max_results(tmp_path: Path) -> None:
     assert len(LocalSearch(store, max_results=2).search("aa")) == 2
 
 
+def test_a_search_says_how_many_matches_it_gives(tmp_path: Path) -> None:
+    assert LocalSearch(_store(tmp_path), max_results=7).max_results == 7
+
+
 def test_search_rejects_a_zero_limit(tmp_path: Path) -> None:
     with raises(ValueError):
         LocalSearch(_store(tmp_path), max_results=0)
@@ -190,6 +195,42 @@ def test_results_are_cached_as_the_response_body_that_lists_them(tmp_path: Path)
         _hash("ab00").encode(),
     )
     assert cache.load("ab") == body
+
+
+def test_cached_results_are_read_back_best_first(tmp_path: Path) -> None:
+    cache = SearchCache(tmp_path, ttl_seconds=10, prefix_length=2)
+    results = [ContentId.create("sha256", _hash("abc1")), ContentId.create("sha256", _hash("ab00"))]
+    cache.save_results("ab", results)
+
+    assert cache.load_results("ab") == results
+    assert cache.load_results("cd") is None
+
+
+@mark.parametrize("body", [b"not json", b"[]", b'{"found": []}', b'{"results": "sha256/00"}'])
+def test_cached_results_that_cannot_be_read_list_nothing(
+    tmp_path: Path, caplog: LogCaptureFixture, body: bytes
+) -> None:
+    cache = SearchCache(tmp_path, ttl_seconds=10, prefix_length=2)
+    cache.save("ab", body)
+
+    with caplog.at_level(WARNING):
+        assert cache.load_results("ab") == []
+
+    assert "cached search for ab" in caplog.text
+
+
+def test_a_cached_result_that_is_no_content_id_is_left_out(
+    tmp_path: Path, caplog: LogCaptureFixture
+) -> None:
+    cache = SearchCache(tmp_path, ttl_seconds=10, prefix_length=2)
+    kept = ContentId.create("sha256", _hash("ab00"))
+    cache.save("ab", b'{"results": [7, "sha256/zz", "%s"]}' % str(kept).encode())
+
+    with caplog.at_level(WARNING):
+        assert cache.load_results("ab") == [kept]
+
+    assert "holds 7, not a content id" in caplog.text
+    assert "holds 'sha256/zz', not a content id" in caplog.text
 
 
 def test_a_node_caches_searches_where_and_for_as_long_as_it_is_configured_to(
