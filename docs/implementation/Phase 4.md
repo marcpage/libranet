@@ -126,57 +126,156 @@ Settled in the issue:
   content leaves it only as the nodes holding it each decide, separately,
   to stop.
 
-Work this implies:
+Ruled before building:
 
-- Stats gains the block — a table of its own, or a flag on `data_stats` —
-  and a derived list, because the web server and the validator have to
-  check it and neither may open SQLite.
-- The validator refuses a blocked id instead of promoting it out of the
-  node-specific directory; the write path can refuse the `PUT` before the
-  body is stored. Which of the two does it decides whether a blocked push
-  costs disk.
-- `LocalSearch` and the stats search filter blocked ids out of results.
-- Eviction deletes blocked content ahead of anything the Phase 2 Step
-  28 score produces — it is not a low-priority object, it is one this
-  node has decided not to hold.
-- A block has to outlive the content it names. Deleting the content and
-  forgetting the block invites the next peer to push it straight back.
-- A blocked id is answered as content the node does not hold, `404`,
-  since anything more specific would advertise the block.
-- **An endpoint a page asks to block a content id**, for the user
-  directory (Step 92), new to the HTTP API.
-- **Blocking is a message to stats**, since the web server may not open
-  SQLite. The endpoint sends it, and so does making an identity, which
-  blocks the directory bundles it finds replaced (Step 92).
+- **Only a local client may block**, from a page of a trusted application,
+  as making an identity is (Step 79). The list is the node's, so what one
+  page blocks, no client of the node is given again. A page served to a
+  client elsewhere, such as the directory's (Step 92), still merges, but
+  does not block. The node blocks on its own as it makes an identity (Step
+  92), whoever asked.
+- **A push of blocked content is accepted and discarded**: the black hole
+  the issue describes, answered as any upload accepted is. An eviction
+  hand-off is a push like any other, so the node handing it off takes the
+  acceptance as a copy kept, and deletes its own. With the single hand-off
+  copy of Phase 2 Step 46, one node's block can so take the last copy off
+  the network, which HighLevelDesign §4.11 and §6 now say.
+- **A block is permanent.** It never expires, nothing lifts it, and there
+  is no `/config` endpoint for it. Deleting the database is the only reset,
+  as for everything stats keeps. Karma's merges (Phase 5 Step 56) will send
+  stats the message the endpoint sends.
+- **Held content that becomes blocked is deleted at once**, whether or not
+  storage is short, and handed off to no peer.
 
-**Open questions:**
+The specification change is written: HighLevelDesign §4.11, new, says what
+a node does with blocked content, and §4.5 and §6 name it. HttpApi §5.5,
+new, gives how a node answers for blocked content and
+`DELETE /data/{hash-algorithm}/{hash}`, and §2.1, §2.4, §2.5, §4, §6,
+§7.1, and §25 name them.
 
-- Who may block. The list is the node's, not a person's, so what one
-  page blocks, no client of the node is given again. Only a local
-  client, on a page of a trusted application, as making an identity is
-  (Step 79); or any client, as making a drop is (Step 89), which lets
-  anyone who reaches the node make it a black hole for anything.
-- Whether a page may block only what it can show is superseded, such as
-  a bundle at a drop it reads, or any content id.
-- Whether there is also an operator endpoint under `/config` (Phase 1
-  Step 18), and, for Karma, a message from whatever decides a block is
-  superseded (Phase 5 Step 56).
-- Whether a block ever expires, and whether there is an unblock.
-- What a push of blocked content is answered. Accepting it and deleting
-  it is the black hole the issue describes. But an eviction hand-off
-  takes any `2xx` as a copy kept, and the evicting node then deletes its
-  own. With the single hand-off copy of Phase 2 Step 46, one node
-  blocking what it is handed is enough to take that content off the
-  network — which is what the issue says no single node can do. So a
-  hand-off, at least, wants a refusal, which sends the evicting node to
-  its next peer and says only that this node did not take it.
+Built in one change set: 482 added lines of non-test Python, 46 of them in
+place of removed ones and many of them docstrings, and 523 of tests.
+
+- **`BlockedContent`** (`cas/blocked.py`, new), the list of blocked content
+  ids as the stats module derives it, which the web server, the validator,
+  and the fetcher check.
+- **`data_stats.blocked_at`** (`stats/schema.py`), with the partial index
+  `data_stats_blocked`, and `StatsDatabase.record_blocked`, `is_blocked`,
+  and `blocked_ids`. `content_ids_near` leaves blocked content out.
+- **`lists/blocked.json`** (`StorageConfig.blocked_list_path`), written by
+  `ListDeriver.write_blocked_list` at each derivation and at once when a
+  block is added.
+- **`data.blocked`** `{"algorithm", "hash"}`, from the web server to stats,
+  which records it and stops seeking the content, and to eviction, which
+  deletes any copy held.
+- **`DELETE /data/{algorithm}/{hash}`** (`webserver/block_handler.py`,
+  new), behind `LocalOnly` and `OwnPageOnly(trusted=True)`.
+- **`DataReadHandler`** answers blocked content `404`, **`DataWriteHandler`**
+  accepts it `202` unwritten, and **`SearchHandler`** leaves it out of
+  every answer, each given the router's one `BlockedContent` as an optional
+  keyword. The validator discards a blocked upload, and the fetcher asks
+  for no blocked content.
+- The Database Schema, File Layout, and Module System documents, and the
+  App Developer Guide §4, §5.2, and §6.11 (new).
+
+My calls, not yet reviewed:
+
+- **Any content id may be blocked**, not only one a page can show is
+  superseded, since the node cannot tell what replaces what. That only a
+  trusted application's page on a local client may block is the guard.
+- **A `GET` of blocked content is `404`**, as content the node will not
+  try to retrieve (HttpApi §5.3), even one a content archive holds. It is
+  still counted as a request. A `404` differs from the `503` the node
+  gives other content it lacks, so a client can tell the node will not
+  fetch it, though not why.
+- **A blocked push is answered `202`** once its signature passes, as an
+  upload validated later is, and nothing is written. One unsigned, or
+  badly signed, is refused as any upload is.
+- **The validator discards blocked uploads too**, unannounced, for content
+  that reaches it by another way: fetched, made by a page as a drop or a
+  bundle, or uploaded before the block.
+- **Only `GET /data/{id}` answers `404`.** Elsewhere the fetcher asks for no
+  blocked content and stats never seeks it, so a request that needs it,
+  such as reading into a blocked bundle (HttpApi §12.1) or an application's
+  part, waits as for content no peer has, and is `503`.
+- **The list file names every block**, `{"blocked": [...]}`, uncapped. Each
+  reader keeps what it read, and reads it again only once it is replaced,
+  so a check is one `stat` of the file. Stats writes it at once when a block
+  is added, so that a block holds within moments rather than at the next
+  derivation, up to a minute later. Until it is first written, nothing is
+  blocked.
+- **One message goes to stats and eviction both**, rather than stats telling
+  eviction to delete. Eviction drops the content from the list stats last
+  sent, so it is not handed off afterwards. Content blocked while a hand-off
+  of it is under way may still be answered, and that answer is acted on as
+  any is.
+- **A key that signatures are checked against is kept**, though blocked:
+  this node's own, and a connected peer's (Phase 2 Step 53). It is held,
+  but not served or found. Nothing deletes it once its peer goes, until
+  stats lists it to let go of, when it is handed off as any content is.
+  Nothing else sweeps the store for blocked content either.
+- **Every search answer is read and filtered** before it is sent, rather
+  than a cached one sent as it was stored, so that a block holds for answers
+  cached before it. A cached entry that is not a content id is now dropped,
+  with a warning, which one test had relied on.
+
+Ruled after building:
+
+- **Blocking is `DELETE /data/{algorithm}/{hash}`**, HTTP's own method for
+  removing what a URI names, in place of the
+  `PUT /data/blocked/{algorithm}/{hash}` first built. Afterwards a `GET` of
+  the same URI is `404`, as a `DELETE` leads a client to expect, and no name
+  beneath `/data` is reserved for it. HttpApi §4 now lists content among
+  what `DELETE` removes.
+- **A block is a column of `data_stats`**, `blocked_at`, when the content
+  was blocked, or `NULL`, in place of the table `blocked_content` first
+  built. A block is something known of one content id, and a row of
+  `data_stats` is never deleted, so it outlives the content as a table's
+  row would. The search reads one table again. An existing database must
+  be deleted (Database Schema §9.2), as no node is kept before version 1.0.
+
+My calls on these, not yet reviewed:
+
+- **A `DELETE` always blocks.** There is no `DELETE` that only frees the
+  disk, since content deleted and not blocked would be fetched again by the
+  next request for it, or pushed back by the next peer.
+- **It deletes from this node alone**, and tells no peer, as HttpApi §5.5
+  says, since the method alone does not.
+- **It has no body, and is `204`** whether or not the content was held or
+  blocked before, since the web server cannot say.
+- **A path into a bundle is not deleted**: a `DELETE` of
+  `/data/{algorithm}/{hash}/{path}` is `405`, as any method that route does
+  not take is.
+- **`blocked_at` keeps the first time** content was blocked. Blocking it
+  again changes nothing.
+- **A partial index, `data_stats_blocked`**, as `data_stats_held` is, so
+  that deriving the blocked list each minute reads only the rows blocked,
+  not every id the node has heard of.
+
+A live run of one node from the scratchpad, after both rulings: a drop of
+`superseded` was `201`, served, and the first result of a search for its
+target. A `DELETE` of it with no `Referer` was `403`, one of a path into it
+`405`, and one from the movie application's page `204`. Within 3
+milliseconds eviction had deleted it and stats had recorded it, its
+`data_stats` row with `blocked_at` set and `size` cleared, a `GET` was
+`404`, and the search left it out. The same drop made again was `201`, and
+the validator discarded the upload, so a `GET` was still `404`. With the
+node stopped and `lists/blocked.json` deleted, the restarted node wrote it
+again from the database, and the content was still `404`. No warning was
+logged. The run before the ruling, with `PUT /data/blocked/...`, went the
+same way.
+
+The full test suite failed one test once, in the first of three runs, and
+passed in the other two. Its name was not kept. The new tests use fake
+clocks or synchronous queues, and none waits on another thread.
 
 **Testable in isolation:** stats tests over a temp database for the
-marking and the derived list; validator and web server tests with a fake
-list asserting a blocked push is refused and a blocked id is absent from
-search results; an eviction test asserting blocked content goes first;
-web server tests asserting the endpoint blocks for the clients it serves
-and refuses the rest.
+marking and the derived list; validator and web server tests with a
+written list asserting a blocked push is accepted and discarded, a blocked
+id is `404`, and absent from search results; an eviction test asserting
+blocked content is deleted at once, and handed off to no peer; web server
+tests asserting the endpoint blocks for the clients it serves and refuses
+the rest.
 
 ---
 
@@ -1007,8 +1106,9 @@ My calls, not yet reviewed:
   whether a person added then rewrites only the bundle that extends the
   rest. Only the top-level bundle is blocked when replaced, since a newer
   one may extend the same bundles.
-- Who may block, which is Step 30's question. A page that may not block
-  still merges, and makes a bundle holding every id.
+- Who may block was ruled in Step 30: a local client, from a trusted
+  application's page. A page served elsewhere still merges, and makes a
+  bundle holding every id, but does not block.
 
 **Testable in isolation:** identity tests over a temp CAS asserting that
 making an identity adds it to the newest directory, takes in the ids
@@ -1063,15 +1163,13 @@ ones that cut across more than one step:
   Phase 5 Step 56). Metadata, the address book, the user directory, and
   Karma's blocks each change, and a search finds what is nearest a
   target, not what is newest.
-- **Who may block** (Steps 30 and 92). A node's block list is its own,
-  not a person's, so a page that blocks a content id, such as a
-  directory bundle it found replaced, blocks it for every client of the
-  node.
+- **Who may block** (Steps 30 and 92) — ruled in Step 30: only a local
+  client, from a page of a trusted application, since a node's block list
+  is its own, not a person's.
 - **What a blocking node answers a hand-off** (Step 30, and Phase 2 Step
-  46) — moved here from Phase 5 §6, with Step 30. With a single hand-off
-  copy, a node that takes content it blocks and deletes it is enough to
-  take that content off the network, which #71 says no single node can
-  do. Until Step 30 is built, no node blocks anything.
+  46) — ruled in Step 30: it accepts the content and discards it, as it
+  does any push of it, so with a single hand-off copy one node's block can
+  take the last copy off the network (HighLevelDesign §4.11).
 - **Encrypting for a person** (Steps 78, 79, and 82). Node keys cannot
   encrypt; RSA can encrypt only a key. How a block encrypted for a person
   is written down is a new section of the Bundle Specification.

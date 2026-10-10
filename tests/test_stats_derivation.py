@@ -104,6 +104,22 @@ def test_every_file_exists_even_with_nothing_to_report(
     assert lists.candidate_list == storage.candidate_list_path
     assert candidates(lists) == []
     assert lists.candidate_list_changed
+    assert lists.blocked_list == storage.blocked_list_path
+    assert loads(lists.blocked_list.read_bytes()) == {"blocked": []}
+
+
+def test_the_blocked_list_names_what_the_database_blocks(
+    deriver: ListDeriver, database: StatsDatabase, storage: StorageConfig
+) -> None:
+    deriver.derive()
+    database.record_blocked(CONTENT_ID)
+
+    rewritten = deriver.write_blocked_list()
+    again = deriver.write_blocked_list()
+
+    assert rewritten
+    assert not again
+    assert loads(storage.blocked_list_path.read_bytes()) == {"blocked": [str(CONTENT_ID)]}
 
 
 def test_a_derivation_that_changes_nothing_rewrites_nothing(

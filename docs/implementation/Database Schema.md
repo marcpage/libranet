@@ -11,7 +11,7 @@ tables, columns, and indexes, what each value means, which event writes it,
 what reads it, and how long a row lives. It is written for someone about to
 read or change `src/libranet/stats/`, or to look inside a node's database,
 and describes the implementation as of version 0.2 and Phase 3, up to Step
-77. Phase 3 changed no table.
+77, and Phase 4's Step 30. Phase 3 changed no table.
 
 A node has one database, `libranet.sqlite3`, with one schema, defined in
 `src/libranet/stats/schema.py`. Everything else a node keeps is a plain
@@ -71,7 +71,7 @@ a new database and leaves an existing one alone. There is no other schema
 code: no migration, no version check, no trigger, and no view. §9 describes
 what that means for a database made by an older version.
 
-The schema is five tables and two indexes, plus the index SQLite makes for
+The schema is five tables and three indexes, plus the index SQLite makes for
 each table's primary key. All five are ordinary rowid tables; none is
 `STRICT` or `WITHOUT ROWID`.
 
@@ -135,6 +135,7 @@ erDiagram
         REAL last_acquired "nullable"
         REAL stored_seconds
         INTEGER size "nullable"
+        REAL blocked_at "nullable"
     }
     app_bundles {
         TEXT algorithm PK
@@ -187,7 +188,7 @@ content archive may have no `data_stats` row. No statement joins two tables.
 
 What the node knows about one content id, whether or not it holds the
 content. A row is made the first time the id is requested, pushed, stored,
-or deleted, and is never deleted.
+deleted, or blocked, and is never deleted.
 
 | Column | Type | Null | Default | Meaning |
 | --- | --- | --- | --- | --- |
@@ -201,6 +202,7 @@ or deleted, and is never deleted.
 | `last_acquired` | REAL | yes | — | When it was last added to the source of truth; kept after a deletion |
 | `stored_seconds` | REAL | no | 0 | How long copies were held before each deletion, added up |
 | `size` | INTEGER | yes | — | Its size in bytes as stored, while the node holds it; `NULL` otherwise |
+| `blocked_at` | REAL | yes | — | When this node blocked it (Phase 4 Step 30); `NULL` if it has not |
 
 - **`size` is what says content is held.** `data.stored` sets it, and
   `data.deleted` clears it. Stats never walks the store, so content stored
@@ -222,8 +224,18 @@ or deleted, and is never deleted.
 - **This node's own public key** is written at startup without an
   announcement, so it has no `size`, and eviction's ranking leaves it out by
   name as well.
+- **`blocked_at` says content is blocked**: content this node will not hold,
+  and refuses (HighLevelDesign §4.11). `data.blocked` sets it, if it is not
+  set already, and nothing clears it. The content is deleted at once, since
+  the eviction module hears the same `data.blocked`, and `size` is cleared
+  as for any content deleted, but the block stays, since the row does, so
+  the node never takes the content back from a peer that pushes it.
+  Deleting the database is the only way to lift one (§9.1). The list derived
+  from it (§7.2) is what the web server, the validator, and the fetcher
+  check, since none of them may open the file.
 
-Indexes: the primary key, `data_stats_by_hash`, and `data_stats_held` (§5).
+Indexes: the primary key, `data_stats_by_hash`, `data_stats_held`, and
+`data_stats_blocked` (§5).
 
 ### 4.2 `node_stats`
 
@@ -364,6 +376,7 @@ Index: the primary key only, which also finds one node's entries of a kind.
 | `sqlite_autoindex_data_stats_1` | `data_stats (algorithm, hash)` | Primary key | Every upsert of one content id |
 | `data_stats_by_hash` | `data_stats (hash)` | Schema | Search: the known hashes either side of a prefix, across every algorithm |
 | `data_stats_held` | `data_stats (hash) WHERE size IS NOT NULL` | Schema | Eviction: the held hashes either side of the node id's |
+| `data_stats_blocked` | `data_stats (hash) WHERE blocked_at IS NOT NULL` | Schema | The blocked list: every blocked row, however many others there are |
 | `sqlite_autoindex_node_stats_1` | `node_stats (node_id)` | Primary key | Every upsert of one node |
 | `sqlite_autoindex_node_addresses_1` | `node_addresses (node_id, endpoint)` | Primary key | Every upsert of one address; a node's addresses |
 | `sqlite_autoindex_app_bundles_1` | `app_bundles (algorithm, hash)` | Primary key | Every upsert of one bundle |
@@ -376,7 +389,8 @@ the index, out of order, measured four times slower at 500,000 objects
 (Phase 2 Step 28).
 
 Nothing indexes a time. Every query that filters or sorts on one scans its
-table (§7).
+table (§7), but for the blocked list, which reads only the rows
+`data_stats_blocked` holds.
 
 ## 6. What Writes Each Row
 
@@ -388,7 +402,7 @@ event happened.
 | Event | From | Writes |
 | --- | --- | --- |
 | `data.requested` | Web server | `data_stats`: `external_requests` or `internal_requests` + 1; `last_requested` = now |
-| `data.not_found` | Web server, unbundler, backup | `seek_entries`: this node's `data` entry added or refreshed |
+| `data.not_found` | Web server, unbundler, backup | `seek_entries`: this node's `data` entry added or refreshed, unless the content is blocked |
 | `data.search_requested` | Web server | `seek_entries`: this node's `search` entry added or refreshed |
 | `data.stored` | Validator, backup, web server, connection manager | `data_stats`: `pushes` + 1, then `last_acquired` = now and `size` set. `seek_entries`: this node's `data` entry for it deleted. `node_stats`: `bytes_received` + size, for the node it came from |
 | `data.rejected` | Validator | `data_stats`: `pushes` + 1 |
@@ -404,6 +418,7 @@ event happened.
 | `fetch.attempted` | Connection manager | `node_stats`: `data_found` or `data_not_found` + 1 |
 | `app.accessed` | Web server | `app_bundles`: `last_accessed` = now |
 | `eviction.candidates_requested` | Eviction | `data_stats`: as `data.deleted`, for any object it would list that is gone from the store |
+| `data.blocked` | Web server | `data_stats`: `blocked_at` = now, unless it is set already. `seek_entries`: this node's `data` entry for it deleted |
 
 Two more writes come from no event. Each time the lists are derived (§7.2),
 stats first deletes the seek entries and addresses that are past keeping
@@ -416,13 +431,15 @@ stats first deletes the seek entries and addresses that are past keeping
 | Query (`StatsDatabase`) | Run when | Reads | How |
 | --- | --- | --- | --- |
 | `eviction_order` | `eviction.candidates_requested` | `data_stats` | Two scans of the whole table, and two seeks in `data_stats_held` |
-| `content_ids_near` | `data.search_requested` | `data_stats` | Two range scans of `data_stats_by_hash`, up to `storage.search_max_results` rows each |
+| `content_ids_near` | `data.search_requested` | `data_stats` | Two range scans of `data_stats_by_hash`, up to `storage.search_max_results` rows each that are not blocked |
 | `last_good_endpoints` | Each derivation | `node_addresses` | Whole table, with a window function |
 | `candidate_endpoints` | Each derivation | `node_addresses` | Whole table, with two window functions |
 | `given_up_nodes` | Each derivation | `node_stats` | Whole table |
 | `seek_values` | Each derivation, once for each kind | `seek_entries` | Primary key prefix, then sorted |
 | `apps_accessed_since` | `resolved.reclaim_requested` | `app_bundles` | Whole table |
 | `node_stats` | `node.unreached`, to read the new count | `node_stats` | Primary key |
+| `is_blocked` | `data.not_found` | `data_stats` | Primary key |
+| `blocked_ids` | Each derivation, and each new block | `data_stats` | Every row of `data_stats_blocked`, sorted |
 
 `data_stats` and `node_addresses`, which return one content id's row and one
 node's addresses, are called only by tests.
@@ -439,15 +456,17 @@ during which stats records nothing else.
 
 ### 7.2 The Files Derived From It
 
-The web server and the connection manager may not open the database, so
-stats writes what they need into `{storage.cache_dir}/lists/` (File Layout
-§4.1), replacing a file only when its contents change.
+The web server, the connection manager, the validator, and the fetcher may
+not open the database, so stats writes what they need into
+`{storage.cache_dir}/lists/` (File Layout §4.1), replacing a file only when
+its contents change.
 
 | File | Built from | Order |
 | --- | --- | --- |
 | `nodes.json` | This node's own endpoints, then `last_good_endpoints` | Each node's last reached address, if it has not failed since; most recently reached first |
 | `candidates.json` | `candidate_endpoints`, less `given_up_nodes` | Nodes that have been reached first, most recently first, then the rest, most recently learned first |
 | `seek.json` | `seek_values` for this node, of each kind | Most recently asked for first |
+| `blocked.json` | `blocked_ids` | By hash |
 
 A node is given up on while its `consecutive_failures` is at least
 `stats.max_node_failures` (5) and its `last_failure` is within the last
@@ -456,7 +475,8 @@ list leaves out this node's own id.
 
 The lists are derived when stats starts, then once
 `stats.derive_interval_seconds` (60) has passed and the module is idle, and
-at once when a node is given up on.
+at once when a node is given up on. `blocked.json` is also written at once
+when content is first blocked.
 
 Stats also answers two events from what it reads: `eviction.candidates`,
 with the objects to let go of first, and `resolved.reclaim`, with the
@@ -472,7 +492,7 @@ to a cached search response (`src/libranet/stats/enrichment.py`).
 | `node_stats` | Never | Every node ever dialed, or content exchanged with |
 | `node_addresses` | At each derivation, by the two rules below | The nodes known, up to `stats.max_addresses_per_node` each |
 | `app_bundles` | Never | Every bundle ever served |
-| `seek_entries` | When its content is stored, for this node's `data` entries; and at each derivation, once older than `stats.seek_entry_ttl_seconds` (3600) | The requests of the last hour |
+| `seek_entries` | When its content is stored or blocked, for this node's `data` entries; and at each derivation, once older than `stats.seek_entry_ttl_seconds` (3600) | The requests of the last hour |
 
 An address is deleted, each time the lists are derived, when:
 
@@ -508,11 +528,13 @@ Because every statement is `IF NOT EXISTS`:
   table keeps the one it was made with.
 
 So far each step that added a column has required the database to be
-deleted, on the grounds that nothing has shipped. A database made by Phase 2
-Step 28 or later works with the current code. An older one does not:
-applying the schema fails on `data_stats_held` with `no such column: size`,
-the stats module fails on start, and the supervisor keeps restarting it
-(Module System §4.3) until the file is deleted.
+deleted, on the grounds that nothing has shipped, and no node needs to be
+kept before version 1.0. A database made by Phase 4 Step 30 or later works
+with the current code. An older one does not: applying the schema fails on
+`data_stats_blocked` with `no such column: blocked_at`, or on
+`data_stats_held` with `no such column: size` before Phase 2 Step 28, the
+stats module fails on start, and the supervisor keeps restarting it (Module
+System §4.3) until the file is deleted.
 
 Deleting the database, with the node stopped, loses:
 
@@ -526,7 +548,9 @@ Deleting the database, with the node stopped, loses:
   row are deleted the next time space is reclaimed, and resolved again when
   asked for;
 - this node's outstanding requests, which are recorded again when asked for
-  again.
+  again;
+- every block, so content blocked before is kept and served again when it
+  next arrives.
 
 ### 9.2 History
 
@@ -538,6 +562,7 @@ Deleting the database, with the node stopped, loses:
 | Phase 2 Step 28 (#139) | `data_stats` gains `last_requested` and `size`; the index `data_stats_held` | Must be deleted |
 | Phase 2 Step 29 (#143) | `app_bundles` | Gains the new table |
 | #173 | `node_stats.node_id` is declared `NOT NULL` | Keeps the old declaration, which allows a null; nothing writes one, so it works as it is |
+| Phase 4 Step 30 (#71) | `data_stats` gains `blocked_at`; the index `data_stats_blocked` | Must be deleted |
 
 ### 9.3 What a Change Touches
 
@@ -643,9 +668,4 @@ What the schema does not do yet:
   `CHECK` and no foreign key.
 - **An event's statements are not one transaction** (§2.2).
 
-Planned steps that will change it:
-
-- **Step 30** (#71, blocked data, Phase 4) adds a private list of blocked
-  content ids: a table of its own, or a flag on `data_stats`. Either way a
-  block has to outlive the content it names, and a list is derived from it
-  for the web server and the validator, since neither may open SQLite.
+No planned step changes it yet.

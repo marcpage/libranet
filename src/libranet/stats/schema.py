@@ -14,7 +14,11 @@ Five tables cover what the implementation plan asks a node to remember:
     otherwise (Phase 2 Step 28): what the node holds is known from the
     content announced as stored, less what is reported deleted.
     ``stored_seconds`` accumulates how long copies of it were held before
-    being deleted.
+    being deleted. ``blocked_at`` is when this node blocked it, as content
+    it will not hold and refuses, and ``NULL`` if it has not (Phase 4 Step
+    30). A row is never deleted, so a block outlives the content it names:
+    a node that forgot it would take the content back from the next peer to
+    push it.
 
 ``node_stats``
     One row per peer node id. ``last_connected`` is when the last successful
@@ -80,6 +84,7 @@ SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
         last_acquired REAL,
         stored_seconds REAL NOT NULL DEFAULT 0,
         size INTEGER,
+        blocked_at REAL,
         PRIMARY KEY (algorithm, hash)
     )
     """,
@@ -89,6 +94,9 @@ SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
     # Ranking what to evict looks only at content held, and finds the held
     # hashes on either side of the node id's.
     "CREATE INDEX IF NOT EXISTS data_stats_held ON data_stats (hash) WHERE size IS NOT NULL",
+    # The blocked list is derived from the few rows blocked, of however many.
+    "CREATE INDEX IF NOT EXISTS data_stats_blocked ON data_stats (hash) "
+    "WHERE blocked_at IS NOT NULL",
     """
     CREATE TABLE IF NOT EXISTS node_stats (
         node_id TEXT NOT NULL PRIMARY KEY,

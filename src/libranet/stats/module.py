@@ -28,6 +28,7 @@ The payloads it consumes, by event:
 ``eviction.candidates_requested`` ``{"bytes", "exclude"}`` (Phase 2 Step 28)
 ``app.accessed``       ``{"bundle"}`` (Phase 2 Step 29)
 ``resolved.reclaim_requested`` ``{}`` (Phase 2 Step 29)
+``data.blocked``       ``{"algorithm", "hash"}`` (Phase 4 Step 30)
 
 A miss on ``GET /data/{algorithm}/{hash}`` and a ``GET /data/search/{prefix}``
 are both requests this node could not answer, so each becomes an entry in
@@ -35,6 +36,12 @@ its own seek list until the content arrives or the entry ages out. Storing
 content clears its entry. A miss for content the source of truth holds by
 the time it is handled, as when its ``data.stored`` was broadcast first,
 makes none.
+
+``data.blocked`` names content this node will not hold, for good (Phase 4
+Step 30). It is recorded, and no longer sought, and the blocked list
+(:mod:`libranet.cas.blocked`) is written again at once, rather than at the
+next derivation, for the modules that refuse blocked content. A miss for
+blocked content is not sought, and a search is never given it.
 
 What the node holds is what ``data.stored`` announced, with its size, less
 what ``data.deleted`` reported gone. Asked by the eviction module for
@@ -139,6 +146,7 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             EventType.EVICTION_CANDIDATES_REQUESTED,
             EventType.APP_ACCESSED,
             EventType.RESOLVED_RECLAIM_REQUESTED,
+            EventType.DATA_BLOCKED,
         }
     )
 
@@ -187,6 +195,7 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
                 EventType.EVICTION_CANDIDATES_REQUESTED: self._on_candidates_requested,
                 EventType.APP_ACCESSED: self._on_app_accessed,
                 EventType.RESOLVED_RECLAIM_REQUESTED: self._on_reclaim_requested,
+                EventType.DATA_BLOCKED: self._on_data_blocked,
             }
         )
 
@@ -262,12 +271,17 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
     def _on_data_not_found(self, message: Message) -> None:
         """Seek what was missed, unless it is held by now, as when its ``data.stored`` came first.
 
-        Messages from two modules arrive in no set order.
+        Messages from two modules arrive in no set order. Blocked content is
+        never sought.
         """
         content_id = ContentId.from_fields(message)
 
         if self._store.exists(content_id):
             self.logger.debug("%s is held, so is not sought", content_id)
+            return
+
+        if self.database.is_blocked(content_id):
+            self.logger.debug("%s is blocked, so is not sought", content_id)
             return
 
         self.database.record_seek(SeekKind.DATA, [str(content_id)])
@@ -393,6 +407,18 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
 
     def _on_app_accessed(self, message: Message) -> None:
         self.database.record_app_access(ContentId.parse(message["bundle"]))
+
+    def _on_data_blocked(self, message: Message) -> None:
+        """Block the content, stop seeking it, and list it for the modules refusing it."""
+        content_id = ContentId.from_fields(message)
+
+        if not self.database.record_blocked(content_id):
+            self.logger.debug("%s was blocked already", content_id)
+            return
+
+        self.database.clear_seek(SeekKind.DATA, str(content_id))
+        self.deriver.write_blocked_list()
+        self.logger.info("Blocked %s", content_id)
 
     def _on_reclaim_requested(self, _message: Message) -> None:
         """Tell the unbundler whose resolved files to keep: those of applications used lately."""

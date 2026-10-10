@@ -1,4 +1,4 @@
-"""Deriving the plain ``/data/nodes`` and ``/data/seek`` files, and the candidate list.
+"""Deriving the plain ``/data/nodes`` and ``/data/seek`` files, and the candidate and blocked lists.
 
 The web server serves the first two as static files (Step 9), so the stats
 module rewrites them periodically rather than answering a request per read.
@@ -15,6 +15,10 @@ come first, the most recently reached first, then the rest, the most
 recently learned of first; each node's addresses follow the same rule::
 
     {"nodes": [{"node_id": "sha256/<hex>", "endpoints": ["http://203.0.113.9:4300", ...]}]}
+
+The blocked list names the content this node will not hold, for the modules
+that refuse it (Phase 4 Step 30), in the shape
+:class:`~libranet.cas.blocked.BlockedContent` reads.
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ from pathlib import Path
 from typing import Sequence
 
 from libranet.atomic_file import write_atomically
+from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.config.models import StatsConfig, StorageConfig
 from libranet.stats.database import StatsDatabase
@@ -32,18 +37,20 @@ from libranet.stats.schema import SeekKind
 
 @dataclass(frozen=True)
 class DerivedLists:
-    """The three files a derivation maintains, and whether the candidate list changed.
+    """The four files a derivation maintains, and whether the candidate list changed.
 
     Only the candidate list carries a changed flag, because only it is
     announced: a new one is the connection manager's cue to reconsider its
-    peer mix (Step 11). Nothing is published about the other two — a peer
-    reads them from the file when it asks — so whether they were rewritten
-    is this module's business alone.
+    peer mix (Step 11). Nothing is published about the others — a peer
+    reads them from the file when it asks, and a module refusing blocked
+    content when it looks — so whether they were rewritten is this module's
+    business alone.
     """
 
     node_list: Path
     seek_list: Path
     candidate_list: Path
+    blocked_list: Path
     candidate_list_changed: bool
 
 
@@ -76,7 +83,7 @@ class ListDeriver:
         first, so neither list offers them.
 
         Returns:
-            The three files, and whether the candidate list was rewritten.
+            The four files, and whether the candidate list was rewritten.
         """
         self._database.prune_seek(self._stats.seek_entry_ttl_seconds)
         self._database.prune_addresses(
@@ -87,11 +94,23 @@ class ListDeriver:
         candidate_list_changed = _write_if_changed(
             self._storage.candidate_list_path, render_candidate_list(self._candidates())
         )
+        self.write_blocked_list()
         return DerivedLists(
             node_list=self._storage.node_list_path,
             seek_list=self._storage.seek_list_path,
             candidate_list=self._storage.candidate_list_path,
+            blocked_list=self._storage.blocked_list_path,
             candidate_list_changed=candidate_list_changed,
+        )
+
+    def write_blocked_list(self) -> bool:
+        """Rewrite the blocked list, unless it names what the database does already.
+
+        Returns:
+            Whether it was rewritten.
+        """
+        return _write_if_changed(
+            self._storage.blocked_list_path, BlockedContent.body(self._database.blocked_ids())
         )
 
     def _node_list_body(self) -> bytes:

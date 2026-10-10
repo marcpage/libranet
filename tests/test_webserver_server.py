@@ -27,6 +27,7 @@ from pytest import LogCaptureFixture, fixture, mark, raises
 from libranet.atomic_file import write_atomically
 from libranet.bundle.serialization import encode_bundle
 from libranet.bundle.shapes import FileBundle, Metadata
+from libranet.cas.blocked import BlockedContent
 from libranet.cas.archive import ArchiveSink, ArchiveSource
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
@@ -438,12 +439,13 @@ def test_search_serves_a_fresh_cache_file(
 ) -> None:
     cache_file = storage.search_cache_dir / "abcd" / "abcdef.json"
     cache_file.parent.mkdir(parents=True)
-    cache_file.write_bytes(b'{"results":["sha256/enriched"]}')
+    enriched = f"sha256/{'ab' * 32}"
+    cache_file.write_bytes(f'{{"results":["{enriched}"]}}'.encode())
 
     response, body = _get(connection, "/data/search/abcdef")
 
     assert response.status == 200
-    assert body == b'{"results":["sha256/enriched"]}'
+    assert loads(body) == {"results": [enriched]}
     assert len(_published(queues)) == 1
 
 
@@ -483,7 +485,7 @@ def test_unsupported_method_is_405_and_closes_when_a_body_was_sent(
     body = response.read()
 
     assert response.status == 405
-    assert response.getheader("Allow") == "GET, PUT"
+    assert response.getheader("Allow") == "DELETE, GET, PUT"
     assert response.getheader("Connection") == "close"
     assert loads(body)["status"] == 405
 
@@ -2037,6 +2039,130 @@ def test_a_person_key_is_made_only_at_the_sizes_the_router_is_given(
 
     assert response.status == 400
     assert loads(response.body)["detail"] == '"key_bits" must be one of 4096 here, got 2048'
+
+
+# -- Blocked content (Phase 4 Step 30) -----------------------------------------
+
+
+def test_a_local_client_deletes_and_blocks_content_from_a_trusted_page(
+    local_connection: HTTPConnection, queues: ModuleQueues
+) -> None:
+    page = _from_page(local_connection, "/movie/")
+
+    response, body = _get(local_connection, f"/data/{MISSING_ID}", "DELETE", headers=page)
+    again, _ = _get(local_connection, f"/data/{MISSING_ID}", "DELETE", headers=page)
+
+    assert response.status == 204
+    assert body == b""
+    # The node cannot say whether it was blocked before, so both are alike.
+    assert again.status == 204
+    assert [
+        (message["event"], message["algorithm"], message["hash"]) for message in _published(queues)
+    ] == [(EventType.DATA_BLOCKED, "sha256", MISSING_ID.hash)] * 2
+
+
+@mark.parametrize(
+    "client, headers",
+    [
+        # A client elsewhere names this node as it knows it, which /config's hosts do not.
+        ("203.0.113.42", {"Host": "node.lan:8080", "Referer": "http://node.lan:8080/movie/"}),
+        ("127.0.0.1", {"Host": "localhost:8080"}),
+        ("127.0.0.1", {"Host": "localhost:8080", "Referer": "http://localhost:8080/other/"}),
+        ("127.0.0.1", {**MOVIE_PAGE, "Sec-Fetch-Site": "cross-site"}),
+    ],
+)
+def test_content_is_blocked_only_for_a_local_client_on_a_trusted_page(
+    local_server: LibranetHTTPServer,
+    storage: StorageConfig,
+    queues: ModuleQueues,
+    client: str,
+    headers: dict[str, str],
+) -> None:
+    ApplicationRegistry(storage.applications_path).register(
+        Application.create("other", APP_BUNDLE_ID)
+    )
+
+    response = local_server.router.dispatch(
+        Request("DELETE", f"/data/{CONTENT_ID}", headers=headers, client_address=client)
+    )
+
+    assert response.status == 403
+    assert _published(queues) == []
+
+
+@mark.parametrize("path", [f"/data/sha256/{'x' * 64}", f"/data/md5/{'0' * 32}"])
+def test_deleting_what_is_no_content_id_is_refused(
+    local_connection: HTTPConnection, queues: ModuleQueues, path: str
+) -> None:
+    response, body = _get(local_connection, path, "DELETE", _from_page(local_connection, "/movie/"))
+
+    assert response.status == 400
+    assert loads(body)["type"] == INVALID_CONTENT_ADDRESS
+    assert _published(queues) == []
+
+
+def test_a_path_into_a_bundle_is_not_deleted(
+    local_connection: HTTPConnection, queues: ModuleQueues
+) -> None:
+    page = _from_page(local_connection, "/movie/")
+
+    response, _ = _get(local_connection, f"/data/{CONTENT_ID}/index.html", "DELETE", headers=page)
+
+    assert response.status == 405
+    assert _published(queues) == []
+
+
+def test_blocked_content_is_not_found_and_not_asked_for(
+    connection: HTTPConnection, queues: ModuleQueues, storage: StorageConfig
+) -> None:
+    write_atomically(storage.blocked_list_path, BlockedContent.body([CONTENT_ID, MISSING_ID]))
+
+    held, _ = _get(connection, f"/data/{CONTENT_ID}")
+    missing, _ = _get(connection, f"/data/{MISSING_ID}")
+
+    assert held.status == 404
+    assert missing.status == 404
+    assert [message["event"] for message in _published(queues)] == [
+        EventType.DATA_REQUESTED,
+        EventType.DATA_REQUESTED,
+    ]
+
+
+def test_an_upload_of_blocked_content_is_accepted_and_discarded(
+    connection: HTTPConnection, queues: ModuleQueues, storage: StorageConfig
+) -> None:
+    write_atomically(storage.blocked_list_path, BlockedContent.body([MISSING_ID]))
+    identity = _new_identity()
+
+    response, reply = _put(connection, MISSING_ID, b"not stored", identity)
+    unsigned, _ = _put(connection, MISSING_ID, b"not stored", None)
+
+    # As an upload validated later is, so the sender learns nothing of the block.
+    assert response.status == 202
+    assert reply == b""
+    assert not CasStore.for_node(storage, identity.node_id).exists(MISSING_ID)
+    assert _published(queues) == []
+    # Refused as any upload is, for want of a signature.
+    assert unsigned.status == 401
+
+
+def test_a_search_leaves_blocked_content_out_even_when_cached(
+    connection: HTTPConnection, storage: StorageConfig
+) -> None:
+    cached = ContentId("sha256", "abcdef" + "0" * 58)
+    other = ContentId("sha256", "abcdef" + "1" * 58)
+    cache_file = storage.search_cache_dir / "abcd" / "abcdef.json"
+    cache_file.parent.mkdir(parents=True)
+    cache_file.write_bytes(dumps({"results": [str(cached), str(other)]}).encode())
+    write_atomically(storage.blocked_list_path, BlockedContent.body([cached, CONTENT_ID]))
+
+    from_cache, cache_body = _get(connection, "/data/search/abcdef")
+    scanned, scan_body = _get(connection, f"/data/search/{CONTENT_ID.hash}")
+
+    assert from_cache.status == 200
+    assert loads(cache_body) == {"results": [str(other)]}
+    assert scanned.status == 200
+    assert str(CONTENT_ID) not in loads(scan_body)["results"]
 
 
 # Making Alice's identity at the smallest key size, with no search.

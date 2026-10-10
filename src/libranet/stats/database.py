@@ -238,7 +238,7 @@ class StatsDatabase:  # pylint: disable=too-many-public-methods
         return None if row is None else DataStats.from_row(row)
 
     def content_ids_near(self, prefix: str, limit: int) -> list[ContentId]:
-        """The ``limit`` known identifiers whose hash best matches ``prefix``.
+        """The ``limit`` known identifiers whose hash best matches ``prefix``, none blocked.
 
         Both sides of ``prefix`` are scanned — the nearest hashes at or above
         it and the nearest below — because the best match by leading bits can
@@ -255,11 +255,11 @@ class StatsDatabase:  # pylint: disable=too-many-public-methods
             raise ValueError(f"limit must be at least 1, got {limit}")
 
         rows = self._query(
-            "SELECT algorithm, hash FROM data_stats WHERE hash >= :prefix "
+            "SELECT algorithm, hash FROM data_stats WHERE hash >= :prefix AND blocked_at IS NULL "
             "ORDER BY hash ASC LIMIT :limit",
             {"prefix": prefix, "limit": limit},
         ) + self._query(
-            "SELECT algorithm, hash FROM data_stats WHERE hash < :prefix "
+            "SELECT algorithm, hash FROM data_stats WHERE hash < :prefix AND blocked_at IS NULL "
             "ORDER BY hash DESC LIMIT :limit",
             {"prefix": prefix, "limit": limit},
         )
@@ -570,6 +570,40 @@ class StatsDatabase:  # pylint: disable=too-many-public-methods
             {"cutoff": self._clock() - max_age_seconds},
         )
         return cursor.rowcount
+
+    # -- Blocked content (Phase 4 Step 30) -------------------------------
+
+    def record_blocked(self, content_id: ContentId) -> bool:
+        """Block ``content_id``, for good, noting when, unless it was blocked already.
+
+        Returns:
+            Whether it was not blocked before.
+        """
+        cursor = self._execute(
+            "INSERT INTO data_stats (algorithm, hash, blocked_at) VALUES (:algorithm, :hash, :now) "
+            "ON CONFLICT (algorithm, hash) DO UPDATE SET blocked_at = :now "
+            "WHERE blocked_at IS NULL",
+            {"algorithm": content_id.algorithm, "hash": content_id.hash, "now": self._clock()},
+        )
+        return cursor.rowcount > 0
+
+    def is_blocked(self, content_id: ContentId) -> bool:
+        """Whether ``content_id`` is blocked."""
+        row = self._query_one(
+            "SELECT 1 FROM data_stats "
+            "WHERE algorithm = :algorithm AND hash = :hash AND blocked_at IS NOT NULL",
+            {"algorithm": content_id.algorithm, "hash": content_id.hash},
+        )
+        return row is not None
+
+    def blocked_ids(self) -> list[ContentId]:
+        """Every content id blocked, by hash."""
+        rows = self._query(
+            "SELECT algorithm, hash FROM data_stats WHERE blocked_at IS NOT NULL "
+            "ORDER BY hash, algorithm",
+            {},
+        )
+        return [ContentId(row["algorithm"], row["hash"]) for row in rows]
 
     # -- Statement plumbing ----------------------------------------------
 

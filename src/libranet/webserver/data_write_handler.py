@@ -16,7 +16,10 @@ announced with :attr:`EventType.PUT_COMPLETED`, whose payload is::
     {"algorithm": "sha256", "hash": "<hex>", "node_id": "sha256/<hex>"}
 
 Content the source of truth already holds is not written again (HttpApi
-§7.1).
+§7.1). Content this node has blocked is answered ``202``, as an upload
+accepted is, and discarded unwritten and unannounced, so a peer pushing it,
+or handing it off, learns nothing of the block (HttpApi §5.5, Phase 4 Step
+30).
 
 The one upload stored at once is a signer's own public key, which a peer
 pushes first on contact (HandshakeProtocol §3). The rest of that exchange is
@@ -36,6 +39,7 @@ from __future__ import annotations
 from http import HTTPStatus
 from logging import getLogger
 
+from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
@@ -56,7 +60,10 @@ _LOGGER = getLogger(__name__)
 
 
 class DataWriteHandler:
-    """Writes signed uploads to per-node stores and reports them."""
+    """Writes signed uploads to per-node stores and reports them, less those ``blocked`` names.
+
+    Those are discarded. Without ``blocked``, nothing is.
+    """
 
     def __init__(
         self,
@@ -64,11 +71,14 @@ class DataWriteHandler:
         source_of_truth: CasStore,
         authenticator: RequestAuthenticator,
         publish: Publish,
+        *,
+        blocked: BlockedContent | None = None,
     ) -> None:
         self._storage = storage
         self._source_of_truth = source_of_truth
         self._authenticator = authenticator
         self._publish = publish
+        self._blocked = blocked
 
     def __call__(self, request: Request) -> Response:  # pylint: disable=too-many-return-statements
         content_id = content_id_or_refusal(request, _LOGGER)
@@ -94,6 +104,10 @@ class DataWriteHandler:
 
         if result.node_id is None:
             return signature_required_response(request)
+
+        if self._blocked is not None and self._blocked.blocks(content_id):
+            _LOGGER.debug("Discarding the upload of blocked %s from %s", content_id, result.node_id)
+            return Response(HTTPStatus.ACCEPTED)
 
         if self._source_of_truth.exists(content_id):
             return Response(HTTPStatus.NO_CONTENT)

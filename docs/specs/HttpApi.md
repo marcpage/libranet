@@ -73,8 +73,9 @@ The programmatic API includes endpoints such as:
 These endpoints are intended for nodes and software clients.
 
 Some are meant only for the browser applications a node serves (§13), and
-never for another node: whether the client is local (§2.4), making a drop
-(§9.6), making an identity and signing in (§11.3, §11.4), reading into a
+never for another node: whether the client is local (§2.4), blocking
+content (§5.5), making a drop (§9.6), making an identity and signing in
+(§11.3, §11.4), reading into a
 bundle (§12.1), the folders and imports (§12.2), making bundles (§12.3), an
 application's store (§13.3), and the list of applications (§13.4). Each
 but reading into a bundle requires a `Referer` naming a page of the node
@@ -299,13 +300,14 @@ edit it for a local one. The answer is a convenience and not a
 protection, since every endpoint that serves only local clients checks
 for itself.
 
-These endpoints serve only local clients: making an identity and the
-session (§11.3, §11.4), listing the folders a node offers and importing a
-file from one (§12.2), making and changing bundles (§12.3), and changing an
-application's store (§13.3). A request to one of them from any other client
-MUST be refused with `403 Forbidden`. The identities, session, folders,
-imports, and bundles are served only from a page of a trusted application,
-and an application's store is changed only from a page of its own (§2.5).
+These endpoints serve only local clients: blocking content (§5.5), making
+an identity and the session (§11.3, §11.4), listing the folders a node
+offers and importing a file from one (§12.2), making and changing bundles
+(§12.3), and changing an application's store (§13.3). A request to one of
+them from any other client MUST be refused with `403 Forbidden`. Blocking,
+the identities, session, folders, imports, and bundles are served only from
+a page of a trusted application, and an application's store is changed only
+from a page of its own (§2.5).
 
 A loopback source does not show that the person at the machine made the
 request. Any site's page that a browser on the machine has open can send
@@ -341,10 +343,10 @@ applications they would trust with those folders.
 Some endpoints are meant only for the pages a node serves, and never for
 another node:
 
-- on the main port: whether the client is local (§2.4), making a drop
-  (§9.6), making an identity and the session (§11.3, §11.4), the folders
-  and imports (§12.2), making bundles (§12.3), an application's store
-  (§13.3), and the list of applications (§13.4);
+- on the main port: whether the client is local (§2.4), blocking content
+  (§5.5), making a drop (§9.6), making an identity and the session (§11.3,
+  §11.4), the folders and imports (§12.2), making bundles (§12.3), an
+  application's store (§13.3), and the list of applications (§13.4);
 - on `/config`'s port: every endpoint beneath `/config/api` (§2.3).
 
 Reading into a bundle (§12.1) is meant for those pages too, but is not
@@ -369,8 +371,9 @@ Some endpoints ask more of the page:
 
 - **An application's store** is read and changed only from a page of the
   application whose store it is (§13.3).
-- **Making an identity, the session, the folders, imports, and making
-  bundles** are served only from a page of a trusted application (§13.5).
+- **Blocking content, making an identity, the session, the folders,
+  imports, and making bundles** are served only from a page of a trusted
+  application (§13.5).
 
 A browser sends a page's full address as the `Referer` of each request the
 page makes of its own origin, unless the page asks it not to, as with
@@ -433,14 +436,14 @@ Libranet uses standard HTTP methods where their semantics are appropriate.
 
 The primary methods are:
 
-| Method    | General purpose                                     |
-| --------- | --------------------------------------------------- |
-| `GET`     | Retrieve information or content                     |
-| `HEAD`    | Retrieve metadata without the response body         |
-| `POST`    | Publish a list, or create a resource                |
-| `PUT`     | Create or replace content or a stored value         |
-| `PATCH`   | Change part of a `/config` resource                 |
-| `DELETE`  | Remove a `/config` resource or a stored value       |
+| Method   | General purpose                                                        |
+| -------- | ---------------------------------------------------------------------- |
+| `GET`    | Retrieve information or content                                        |
+| `HEAD`   | Retrieve metadata without the response body                            |
+| `POST`   | Publish a list, or create a resource                                   |
+| `PUT`    | Create or replace content or a stored value                            |
+| `PATCH`  | Change part of a `/config` resource                                    |
+| `DELETE` | Remove a `/config` resource, a stored value, or content from this node |
 
 The exact method associated with each endpoint is defined below.
 Unsupported methods MUST return `405 Method Not Allowed`.
@@ -594,6 +597,44 @@ Hashes MUST be stored as hexadecimal.
 
 ---
 
+### 5.5 Blocked Content
+
+A node MAY keep a private list of content it will not hold
+(HighLevelDesign §4.11). It MUST NOT publish the list, and answers for
+blocked content as it would for content it does not hold:
+
+- A `GET` of blocked content is answered `404 Not Found` (§5.3), and the
+  node does not try to retrieve it.
+- A `PUT` of blocked content is answered `202 Accepted`, as an upload
+  validated later is (§7.2), and the content is discarded unstored. A
+  request that is refused for any other reason, such as a signature, is
+  refused as any upload is.
+- A search (§6) leaves blocked content out of its results, and the node's
+  outstanding requests (§10.7) never name it.
+
+A block outlives the content it names, and is never lifted.
+
+A page of a trusted application asks the node to delete content, and block
+it, with:
+
+```http
+DELETE /data/{hash-algorithm}/{hash}
+```
+
+The request has no body. The node deletes any copy it holds, without
+pushing it to a peer first, and blocks the content, so that the identifier
+names nothing the node will serve or keep again. It asks only this node: no
+other node is told. It is answered `204 No Content`, whether or not the node
+held the content, and whether or not it was blocked before. An identifier
+that is not valid is `400 Bad Request` (§5.4). No endpoint lifts a block,
+and none reads the list.
+
+Only a local client may block content (§2.4), from a page of a trusted
+application (§2.5). The list is the node's, and not a person's: what one
+page blocks, the node gives no client again.
+
+---
+
 ## 6. Content Search
 
 Libranet supports prefix-based content discovery.
@@ -620,7 +661,7 @@ The node returns the best matching content hashes known to it.
 The node MUST have a configurable limit to the number of results it returns for
 search. The list MUST contain the hashes that match the most number of leading
 bits in the hash known to the node. The node MAY return hashes it is aware of
-but may not actually have locally.
+but may not actually have locally. It leaves out content it has blocked (§5.5).
 
 ### 6.1 Search Response
 
@@ -678,6 +719,8 @@ collision variants are kept and a random variant is returned.
 
 If the hash already exists and the content is the same as an existing content
 for that hash, it can be safely discarded.
+
+Content the node has blocked is accepted and discarded (§5.5).
 
 ### 7.2 Content Storage
 
@@ -2514,6 +2557,7 @@ The following table summarizes the currently proposed HTTP API.
 | `/data/{algorithm}/{hash}`        | `GET`        | Retrieve CAS content                                       | Defined |
 | `/data/{algorithm}/{hash}`        | `PUT`        | Upload CAS content                                         | Defined |
 | `/data/{algorithm}/{hash}`        | `HEAD`       | Retrieve CAS metadata                                      | TBD     |
+| `/data/{algorithm}/{hash}`        | `DELETE`     | Delete and block content, locally (§5.5)                   | Defined |
 | `/data/search/{hash}`             | `GET`        | Search for matching hashes                                 | Defined |
 | `/data/nodes`                     | `GET`/`POST` | Retrieve/publish peer information                          | Defined |
 | `/data/seek`                      | `GET`/`POST` | Retrieve/publish outstanding requests                      | Defined |

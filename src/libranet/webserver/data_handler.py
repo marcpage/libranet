@@ -15,6 +15,10 @@ for the stats module (Step 8) as::
 ``external`` is false when the request came from this machine, which is how
 a peer's interest in content is counted apart from this node's own.
 
+Content this node has blocked is answered ``404``, as content the node will
+not try to retrieve (HttpApi §5.3, §5.5; Phase 4 Step 30), and is not asked
+for, whether or not a content archive holds it.
+
 The names of the other endpoints beneath ``/data`` are never hash algorithms
 (HttpApi §5), so a path beneath one is never taken for content. A method
 that endpoint's own routes do not take is ``405`` there, not an upload.
@@ -28,13 +32,20 @@ from typing import Final
 from libranet.bundle.content import ContentSource
 from libranet.bundle.errors import BundleError
 from libranet.bundle.parts import PartPath
+from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError, InvalidContentIdError, UnknownAlgorithmError
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.problems import INVALID_CONTENT_ADDRESS, Problem
 from libranet.protocol.client_origin import is_local_client
-from libranet.webserver.http_types import Request, Response, bytes_response, problem_response
+from libranet.webserver.http_types import (
+    Request,
+    Response,
+    bytes_response,
+    problem_response,
+    status_response,
+)
 from libranet.webserver.request_refusals import content_unavailable_response
 
 _LOGGER = getLogger(__name__)
@@ -100,15 +111,26 @@ def content_id_or_refusal(request: Request, logger: Logger) -> ContentId | Respo
 
 
 class DataReadHandler:
-    """Serves the CAS content ``content`` holds, reporting misses."""
+    """Serves the CAS content ``content`` holds, reporting misses, but none ``blocked`` names.
 
-    def __init__(self, content: ContentSource, publish: Publish, retry_after_seconds: int) -> None:
+    Without ``blocked``, nothing is refused.
+    """
+
+    def __init__(
+        self,
+        content: ContentSource,
+        publish: Publish,
+        retry_after_seconds: int,
+        *,
+        blocked: BlockedContent | None = None,
+    ) -> None:
         if retry_after_seconds < 0:
             raise ValueError(f"retry_after_seconds must not be negative, got {retry_after_seconds}")
 
         self._content = content
         self._publish = publish
         self._retry_after_seconds = retry_after_seconds
+        self._blocked = blocked
 
     def __call__(self, request: Request) -> Response:
         content_id = content_id_or_refusal(request, _LOGGER)
@@ -120,6 +142,14 @@ class DataReadHandler:
             EventType.DATA_REQUESTED,
             {**content_id.fields(), "external": not is_local_client(request.client_address)},
         )
+
+        if self._blocked is not None and self._blocked.blocks(content_id):
+            _LOGGER.debug("%s is blocked, so it is neither served nor asked for", content_id)
+            return status_response(
+                request,
+                HTTPStatus.NOT_FOUND,
+                "The requested content is not stored here, and will not be retrieved.",
+            )
 
         try:
             body = self._content.read(content_id)

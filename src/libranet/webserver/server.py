@@ -49,6 +49,7 @@ from urllib.parse import urlsplit
 
 from libranet import __version__
 from libranet.bundle.parts import PartPath
+from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
 from libranet.cas.resolved_files import ResolvedFiles
@@ -86,6 +87,7 @@ from libranet.webserver.app_store import (
 )
 from libranet.webserver.app_use import ApplicationUse
 from libranet.webserver.backup_state import BackupState
+from libranet.webserver.block_handler import BlockHandler
 from libranet.webserver.bundle_edits import BUNDLES_PATH, BundleEditHandler, OwnUploads
 from libranet.webserver.bundle_paths import BundlePaths
 from libranet.webserver.bundle_reads import BUNDLE_METHODS, BUNDLE_PATTERN, BundleReadHandler
@@ -202,12 +204,16 @@ def build_router(  # pylint: disable=too-many-locals
     alone, each session ending once unused for ``session_idle_seconds``
     (Phase 4 Step 79). Drops are searched for, and keys derived, one at a
     time, in the turns of ``costly_work``, which ``/config``'s port shares;
-    in turns of their own if none is given.
+    in turns of their own if none is given. A ``DELETE`` of
+    ``/data/{algorithm}/{hash}`` deletes and blocks content for local
+    clients alone, which ``/data`` then neither serves, stores, nor finds in
+    a search, as the blocked list in ``storage``'s cache directory names it
+    (Phase 4 Step 30).
 
     Each of those but reading into a bundle is served only to this node's
     own pages, as a request's ``Referer`` names them: an application's store
-    to its own, and the folders, imports, bundles, identities, and session to
-    those of applications the operator trusts. An application the operator
+    to its own, and the folders, imports, bundles, identities, session, and
+    blocking to those of applications the operator trusts. An application the operator
     has not trusted is served in a sandbox (Phase 3 Step 74).
     """
     store = CasStore.source_of_truth(storage)
@@ -236,10 +242,12 @@ def build_router(  # pylint: disable=too-many-locals
         retry_after_seconds,
         app_outcomes,
     )
+    blocked = BlockedContent.of(storage)
     search = SearchHandler(
         search=LocalSearch(content, storage.search_max_results),
         cache=SearchCache.of(storage),
         publish=publish,
+        blocked=blocked,
     )
     router.add("GET", CLIENT_PATH, OwnPageOnly(client_handler, pages))
     # The directory, import, store, bundle, and search routes must precede the
@@ -308,8 +316,21 @@ def build_router(  # pylint: disable=too-many-locals
     for method in BUNDLE_METHODS:
         router.add(method, BUNDLE_PATTERN, reads)
 
-    router.add("GET", DATA_PATTERN, DataReadHandler(content, publish, retry_after_seconds))
-    router.add("PUT", DATA_PATTERN, DataWriteHandler(storage, store, authenticator, publish))
+    router.add(
+        "GET",
+        DATA_PATTERN,
+        DataReadHandler(content, publish, retry_after_seconds, blocked=blocked),
+    )
+    router.add(
+        "PUT",
+        DATA_PATTERN,
+        DataWriteHandler(storage, store, authenticator, publish, blocked=blocked),
+    )
+    router.add(
+        "DELETE",
+        DATA_PATTERN,
+        LocalOnly(OwnPageOnly(BlockHandler(publish), pages, trusted=True), checks),
+    )
     # A posted list is held to the same cap as every other request body as
     # sent, and to its own once decompressed.
     router.add("GET", NODES_PATH, ListFileHandler(storage.node_list_path, retry_after_seconds))
@@ -439,7 +460,10 @@ def _config_identities(
     return Identities(
         uploads,
         SearchHandler(
-            LocalSearch(content, storage.search_max_results), SearchCache.of(storage), publish
+            LocalSearch(content, storage.search_max_results),
+            SearchCache.of(storage),
+            publish,
+            BlockedContent.of(storage),
         ),
         DropHandler(
             uploads,

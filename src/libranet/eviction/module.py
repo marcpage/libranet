@@ -80,6 +80,15 @@ So that what waits does not slow to one hand-off at a time, eviction aims
 within the headroom of a limit, with nothing left to let go of, is only
 logged at debug, since no limit is passed.
 
+Content this node has blocked is deleted at once, and handed off to no
+peer, whether or not storage is short, since the node will not hold it
+(HighLevelDesign §4.11, Phase 4 Step 30)::
+
+    data.blocked           {"algorithm", "hash"}
+
+Its deletion is reported as any other is. It is no longer handed off,
+though a hand-off under way may still be answered.
+
 Public keys are never let go of while signatures are checked against them:
 this node's own, and those of the peers connected to it either way (Phase 2
 Step 53). The connection manager names the peers it dialed, and the web
@@ -90,9 +99,9 @@ asked, as this module asks when it starts::
     peers.connected            {"direction": "outbound", "node_ids": ["sha256/<hex>", ...]}
 
 Their keys are left out of what stats is asked for and are not handed off,
-and one whose peer connects while it is being handed off is not deleted. A
-peer's key may go once it is connected neither way, since the next
-handshake brings it back.
+and one whose peer connects while it is being handed off is not deleted.
+One that is blocked is kept all the same. A peer's key may go once it is
+connected neither way, since the next handshake brings it back.
 
 The application files the unbundler resolves are not content, nor counted
 as content held, but they take up free space. So when free space runs
@@ -178,6 +187,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
             EventType.RESOLVED_RECLAIMED,
             EventType.PEERS_CONNECTED,
             EventType.STORAGE_FULL_REQUESTED,
+            EventType.DATA_BLOCKED,
         }
     )
 
@@ -277,6 +287,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
                 EventType.RESOLVED_RECLAIMED: self._on_resolved_reclaimed,
                 EventType.PEERS_CONNECTED: self._on_peers_connected,
                 EventType.STORAGE_FULL_REQUESTED: self._on_storage_full_requested,
+                EventType.DATA_BLOCKED: self._on_data_blocked,
             }
         )
 
@@ -396,8 +407,8 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         elif content_id in self._stored_at:
             self.logger.info("%s was stored again meanwhile, so it is kept for now", content_id)
 
-        else:
-            self._delete(content_id)
+        elif self._delete(content_id):
+            self.logger.info("Deleted %s, which other nodes now hold", content_id)
 
         self._evict()
 
@@ -449,6 +460,27 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
             self.logger.debug(
                 "Nothing left to let go of, %d bytes short of the room eviction keeps", excess
             )
+
+    def _on_data_blocked(self, message: Message) -> None:
+        """Delete the content, which this node will not hold, without handing it off.
+
+        A public key that signatures are checked against now is kept all the
+        same.
+        """
+        content_id = ContentId.from_fields(message)
+
+        if self._kept(content_id):
+            self.logger.info(
+                "%s is blocked, but signatures are checked against it, so it is kept", content_id
+            )
+            return
+
+        self._stored_at.pop(content_id, None)
+        self._candidates = deque(held for held in self._candidates if held.content_id != content_id)
+
+        if self._delete(content_id):
+            self.logger.info("Deleted %s, which this node has blocked", content_id)
+            self._evict()
 
     def _on_storage_full_requested(self, _message: Message) -> None:
         self._report_full(always=True)
@@ -579,8 +611,12 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         )
         self.logger.debug("Asked for %s to be handed off", content_id)
 
-    def _delete(self, content_id: ContentId) -> None:
-        """Delete this node's copy of ``content_id``, and report it if there was one."""
+    def _delete(self, content_id: ContentId) -> bool:
+        """Delete this node's copy of ``content_id``, and report it if there was one.
+
+        Returns:
+            Whether there was one.
+        """
         path = self._store.path_for(content_id)
 
         try:
@@ -589,14 +625,14 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
 
         except FileNotFoundError:
             # Not logged: already gone, so there is nothing to report.
-            return
+            return False
 
         self.pressure.deleted(size_bytes)
         self.publish(
             EventType.DATA_DELETED,
             {**content_id.fields(), "size": size_bytes},
         )
-        self.logger.info("Deleted %s, which other nodes now hold", content_id)
+        return True
 
 
 def eviction_module_factory(

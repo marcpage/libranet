@@ -19,8 +19,9 @@ A few `/data` endpoints serve only clients on this machine, and only this
 node's own pages there, such as the listing of the folders it offers them
 (Phase 3 Step 68), importing a file from one (Phase 3 Step 69), and making a
 bundle, or a new version of one, from the bundles a request names, stored as
-uploads from this node (Phase 3 Step 72), and making a person's identity,
-and signing them in and out (Phase 4 Step 79). Any client may read into a
+uploads from this node (Phase 3 Step 72), making a person's identity,
+and signing them in and out (Phase 4 Step 79), and blocking content (Phase 4
+Step 30). Any client may read into a
 bundle, by its id, as an application's files are served (Phase 3 Step 71).
 
 Every endpoint meant only for browsers but reading into a bundle,
@@ -74,6 +75,7 @@ from libranet.webserver.backup_state import (
     BackupReport,
     BackupState,
 )
+from libranet.webserver.block_handler import BlockHandler
 from libranet.webserver.bundle_edits import (
     BUNDLES_PATH,
     MAX_EDIT_BODY_BYTES,
@@ -321,6 +323,7 @@ __all__ = [
     "BackupRequest",
     "BackupRequestHandler",
     "BackupState",
+    "BlockHandler",
     "BundleEdit",
     "BundleEditError",
     "BundleEditHandler",

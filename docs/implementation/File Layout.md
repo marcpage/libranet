@@ -9,7 +9,8 @@ Version 0.1 • September 2026
 This document describes every file a Libranet node reads or writes: where
 it lives, what it holds, which module writes it, and which settings and
 command-line switches move it or change what goes into it. It describes the
-implementation as of version 0.2 and Phase 3, up to Step 77. The protocol does
+implementation as of version 0.2 and Phase 3, up to Step 77, and Phase 4's
+Step 30. The protocol does
 not prescribe any of this layout; for normative behavior see [High-Level
 Design](../specs/HighLevelDesign.md), [HTTP API](../specs/HttpApi.md), and
 [Backup Specification](../specs/BackupSpecification.md).
@@ -271,8 +272,9 @@ It runs in write-ahead-log mode, so `libranet.sqlite3-wal` and
 `libranet.sqlite3-shm` sit beside it while the node runs. Its location
 follows `storage.data_dir` and cannot be set on its own.
 
-Deleting it, with the node stopped, makes the node forget every peer and
-every statistic. Knowing no peers, it falls back to the seed list (§6.1).
+Deleting it, with the node stopped, makes the node forget every peer, every
+statistic, and every block (Phase 4 Step 30). Knowing no peers, it falls back
+to the seed list (§6.1).
 
 ### 3.6 The Application Registry: `applications.json`
 
@@ -399,7 +401,8 @@ forget what it kept here. What a store names is content, and stays in
 ├── lists/
 │   ├── nodes.json            body of GET /data/nodes
 │   ├── seek.json             body of GET /data/seek
-│   └── candidates.json       every known address of every peer
+│   ├── candidates.json       every known address of every peer
+│   └── blocked.json          the content this node has blocked
 └── search/
     └── {prefix[:4]}/         storage.hash_prefix_length characters
         └── {prefix}.json     body of GET /data/search/{prefix}
@@ -412,14 +415,20 @@ directory can be deleted while the node is stopped.
 
 The stats module derives these from its database every
 `stats.derive_interval_seconds` and replaces a file only when its contents
-change (`src/libranet/stats/derivation.py`). They let the web server and the
-connection manager answer from plain files, since neither may open SQLite.
+change (`src/libranet/stats/derivation.py`). They let the web server, the
+connection manager, the validator, and the fetcher answer from plain files,
+since none of them may open SQLite.
 
 | File | Read by | Bounded by |
 | --- | --- | --- |
 | `nodes.json` | Web server (`GET /data/nodes`); connection manager (the list it sends peers) | `stats.max_list_bytes` |
 | `seek.json` | Web server (`GET /data/seek`); connection manager | `stats.max_list_bytes`, `stats.seek_entry_ttl_seconds` |
 | `candidates.json` | Connection manager, choosing whom to dial | `stats.max_addresses_per_node` |
+| `blocked.json` | Web server, validator, and fetcher, refusing blocked content (`src/libranet/cas/blocked.py`) | Nothing: every block the database holds |
+
+`blocked.json` is also written at once when content is first blocked
+(Phase 4 Step 30), and each reader reads it again only once it is replaced.
+Until it is derived, nothing is blocked.
 
 Until a list has been derived, the web server answers requests for it with
 `503` and a `Retry-After` of `network.retry_after_seconds`.
@@ -704,8 +713,4 @@ with its location printed, after a failure.
 
 ## 12. Planned Changes
 
-Planned steps that will change this layout:
-
-- **Step 30 (#71, Phase 4)** adds a private list of blocked content ids to
-  the stats database, and a list derived from it for the web server and
-  validator, presumably beside the others in `lists/`.
+No planned step changes this layout yet.

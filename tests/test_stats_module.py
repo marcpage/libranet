@@ -8,6 +8,7 @@ from typing import Any, Iterator, Mapping
 
 from pytest import LogCaptureFixture, fixture, mark, raises
 
+from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import (
@@ -102,6 +103,22 @@ def seek_list(config: LibranetConfig) -> dict[str, list[str]]:
     return seek
 
 
+def not_found(content_id: ContentId = CONTENT_ID) -> Message:
+    return broadcast(
+        EventType.DATA_NOT_FOUND,
+        {"algorithm": content_id.algorithm, "hash": content_id.hash},
+        ModuleName.WEBSERVER,
+    )
+
+
+def blocked(content_id: ContentId = CONTENT_ID) -> Message:
+    return broadcast(
+        EventType.DATA_BLOCKED,
+        {"algorithm": content_id.algorithm, "hash": content_id.hash},
+        ModuleName.WEBSERVER,
+    )
+
+
 def test_a_module_started_without_the_node_key_fails_rather_than_making_one(
     tmp_path: Path, queues: ModuleQueues
 ) -> None:
@@ -128,6 +145,7 @@ def test_starting_opens_the_database_and_writes_every_list(
     assert node_list(config) == {SELF_ENDPOINT: str(identity.node_id)}
     assert seek_list(config) == {"data": [], "search": []}
     assert candidates(config) == {}
+    assert loads(config.storage.blocked_list_path.read_bytes()) == {"blocked": []}
     (message,) = published(queues)
     assert message["event"] == EventType.NODE_LIST_UPDATED
 
@@ -235,6 +253,62 @@ def test_a_search_request_enriches_its_cached_response(
     )
 
     assert loads(cache_path.read_bytes())["results"] == [str(nearer)]
+
+
+def test_blocked_content_is_listed_at_once_and_no_longer_sought(
+    module: StatsModule, config: LibranetConfig, caplog: LogCaptureFixture
+) -> None:
+    module.handle(not_found())
+
+    with caplog.at_level(INFO, logger=module.logger.name):
+        module.handle(blocked())
+
+    # Listed before any derivation, for the modules refusing it.
+    listed = BlockedContent.of(config.storage).blocks(CONTENT_ID)
+    module.derive()
+
+    assert module.database.is_blocked(CONTENT_ID)
+    assert listed
+    assert seek_list(config)["data"] == []
+    assert f"Blocked {CONTENT_ID}" in caplog.text
+
+
+def test_content_blocked_again_is_not_listed_again(
+    module: StatsModule, config: LibranetConfig
+) -> None:
+    module.handle(blocked())
+    written_at = config.storage.blocked_list_path.stat().st_mtime_ns
+
+    module.handle(blocked())
+
+    assert config.storage.blocked_list_path.stat().st_mtime_ns == written_at
+
+
+def test_a_miss_for_blocked_content_is_not_sought(
+    module: StatsModule, config: LibranetConfig
+) -> None:
+    module.handle(blocked())
+
+    module.handle(not_found())
+    module.derive()
+
+    assert seek_list(config)["data"] == []
+
+
+def test_a_search_request_never_adds_blocked_content(
+    module: StatsModule, config: LibranetConfig
+) -> None:
+    prefix = "8" + "0" * 63
+    nearer = ContentId("sha256", "8" + "0" * 62 + "1")
+    module.database.record_request(nearer, external=True)
+    module.handle(blocked(nearer))
+    cache_path = config.storage.search_cache_dir / prefix[:4] / f"{prefix}.json"
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_bytes(dumps({"results": []}).encode("utf-8"))
+
+    module.handle(broadcast(EventType.SEARCH_REQUESTED, {"prefix": prefix}, ModuleName.WEBSERVER))
+
+    assert loads(cache_path.read_bytes())["results"] == []
 
 
 def test_stored_content_is_counted_credited_and_no_longer_sought(
@@ -894,6 +968,7 @@ def test_the_module_subscribes_to_what_it_records() -> None:
     assert EventType.EVICTION_CANDIDATES_REQUESTED in StatsModule.subscriptions
     assert EventType.APP_ACCESSED in StatsModule.subscriptions
     assert EventType.RESOLVED_RECLAIM_REQUESTED in StatsModule.subscriptions
+    assert EventType.DATA_BLOCKED in StatsModule.subscriptions
     assert EventType.PUT_COMPLETED not in StatsModule.subscriptions
     assert EventType.NODE_LIST_UPDATED not in StatsModule.subscriptions
 
