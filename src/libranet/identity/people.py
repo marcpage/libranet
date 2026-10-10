@@ -181,9 +181,7 @@ class PersonKey:
             ValueError: ``created`` is not a UTC time to the second.
         """
         public_key = _encoded_public_key(private_key)
-        return cls(
-            private_key, public_key, ContentId.for_data(public_key, HASH_ALGORITHM), created
-        )
+        return cls(private_key, public_key, ContentId.for_data(public_key, HASH_ALGORITHM), created)
 
     @classmethod
     def opened(cls, drop: bytes, key: PasswordKey) -> PersonKey:
@@ -223,7 +221,9 @@ class PersonKey:
             made = datetime.strptime(created, _CREATED_FORMAT).replace(tzinfo=UTC)
 
         except ValueError:
-            raise KeyFileError(f"The identity block's {_CREATED_FIELD} is no time: {created!r}")
+            raise KeyFileError(
+                f"The identity block's {_CREATED_FIELD} is no time: {created!r}"
+            ) from None
 
         try:
             private_key = load_pem_private_key(encoded.encode("utf-8"), password=None)
