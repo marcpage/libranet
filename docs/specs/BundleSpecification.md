@@ -337,7 +337,7 @@ encrypted, as an encoder may have written one before this was required.
 plaintext   = JSON-serialized raw bundle (file or directory bundle)
 compressed  = zlib_compress(plaintext, level = a fixed level, see §6.3)
 padded      = pkcs7_pad(compressed, cipher block size)   # 16 bytes for AES
-key         = hash_algorithm(password)          # single-pass hash, e.g. SHA256
+key         = derive(hash_algorithm, password, username)   # see §6.2
 iv          = explicit IV, or all-zero bytes if not specified
 ciphertext  = cipher_encrypt(padded, key, iv)   # e.g. AES-256-CBC
 
@@ -351,6 +351,8 @@ Example descriptor strings:
 
 - `PW-SHA256-AES256-CBC` (default all-zero IV)
 - `PW-SHA256-AES256-CBC-IV:a1b2c3...` (explicit IV)
+- `PW-ARGON2ID-AES256-CBC` (a costly derivation from a username and
+  password, §6.2.1)
 
 Block ciphers such as AES encrypt whole blocks, so the compressed bundle is
 padded with **PKCS#7**
@@ -364,15 +366,21 @@ decrypting.
 
 ### 6.2 Key derivation
 
-The password is hashed with a **single-pass hash** (e.g. plain SHA256 over
-the password bytes) unless a different, stronger scheme is explicitly named
-in the descriptor.
+The descriptor's hash algorithm names how the key is derived. Two are
+registered:
 
-**No salt is used.** This is required rather than merely convenient. The
-byte-for-byte identical ciphertext §6.3 depends on comes from every node
-deriving the same key from the same password, which a per-bundle salt would
-defeat. Salting and deduplication cannot both be had, and this format
-chooses deduplication.
+| Token | Key |
+| --- | --- |
+| `SHA256` | A **single-pass hash**: one SHA-256 of the password's bytes |
+| `ARGON2ID` | A **costly derivation**: Argon2id of a username and password, at a fixed cost (§6.2.1) |
+
+**No random salt is used.** This is required rather than merely convenient.
+The byte-for-byte identical ciphertext §6.3 depends on comes from every node
+deriving the same key from the same password, which a salt chosen afresh for
+each bundle would defeat. Salting each bundle and deduplication cannot both
+be had, and this format chooses deduplication. A single-pass hash takes no
+salt at all; `ARGON2ID` takes one that every node derives alike from the
+username.
 
 What a single-pass hash costs must be understood before choosing a
 password for one. The ciphertext is a stored artifact, and on a
@@ -395,12 +403,46 @@ which is CSPRNG output and is never displayed or typed.
 Where the password is instead chosen by a person, as in the Basic
 Authentication prompt of
 [HTTP API §13.1](HttpApi.md#131-password-protected-apps), an encoder SHOULD
-name a deliberately costly key derivation function in the descriptor
-instead, and a decoder MUST honor the one named. Cost and determinism are
-compatible: a function such as scrypt under a fixed salt derives the same
-key from the same password on every node, preserving §6.3, while making
-each guess expensive enough to put offline search out of reach. No such
-token is registered yet (§8).
+name the costly derivation, `ARGON2ID`, in the descriptor instead, and a
+decoder MUST honor the one named. Cost and determinism are compatible: a
+costly function under a fixed salt derives the same key from the same
+password on every node, preserving §6.3, while making each guess expensive
+enough to put offline search out of reach.
+
+#### 6.2.1 ARGON2ID
+
+```Python
+salt = SHA256(UTF8("libranet-user:" + NFC(username)))
+key  = Argon2id(password   = UTF8(NFC(password)),
+                salt       = salt,
+                passes     = 3,        # t
+                memory     = 65536,    # m, in KiB: 64 MiB
+                lanes      = 4,        # p
+                length     = 32,       # an AES-256 key
+                secret     = none,
+                associated = none)     # Argon2 version 0x13
+```
+
+Argon2id is the hybrid Argon2 of
+[RFC 9106](https://www.rfc-editor.org/rfc/rfc9106). Its cost is the RFC's
+second recommended setting (RFC 9106 §4), which it gives for where memory is
+limited, as it may be on any node.
+
+The cost is fixed by the token, not written in it, so every block naming
+`ARGON2ID` costs the same to open. A reader that tries many blocks with one
+username and password, as one does with the blocks found at a drop (§6.4),
+derives the key once. A costlier setting would be a new token, and decoders
+would go on reading this one.
+
+The salt is taken from the username, so every node derives the same key from
+the same username and password (§6.3), and a table of guesses made for one
+username serves for no other. The username is not written in the
+descriptor: whoever decodes supplies it with the password. Its prefix keeps
+the salt apart from any other hash of a username.
+
+The username and password are each normalized to Unicode Normalization Form
+C before they are encoded, so that a password typed on a keyboard that
+composes its characters differently derives the same key.
 
 ### 6.3 Determinism and deduplication
 
@@ -444,7 +486,7 @@ ciphertext = input[:idx]
 descriptor = input[idx+1:]         # e.g. "PW-SHA256-AES256-CBC-IV:a1b2..."
 parse descriptor -> hash_algorithm, cipher, mode, iv (all-zero if not specified)
 
-key = hash_algorithm(password)
+key = derive(hash_algorithm, password, username)   # §6.2
 padded = cipher_decrypt(ciphertext, key, iv, cipher, mode)
 
 if not is_valid_pkcs7(padded):
@@ -572,9 +614,9 @@ The following were identified during design discussion but not yet resolved:
 - Full canonical list/registry of supported `algorithm` tokens (e.g.
   `sha256`, `sha1`, `blake3`) and `cipher`/`mode` tokens (e.g. `AES256-CBC`).
   The reference node knows `sha256` alone as a hash algorithm, and
-  `AES256-CBC` alone as a cipher (§7.1) and `PW-SHA256-AES256-CBC` alone as
-  a password descriptor (§6.1), each of those two with or without an `-IV:`
-  suffix.
+  `AES256-CBC` alone as a cipher (§7.1), and `PW-SHA256-AES256-CBC` and
+  `PW-ARGON2ID-AES256-CBC` alone as password descriptors (§6.1), each with
+  or without an `-IV:` suffix.
 - The zlib level an encoder compresses at before it encrypts (§6.3, §7.3),
   which identical ciphertext depends on. The reference node uses level 9.
 - How many extensions a reader must follow from one bundle (§4.1). Content
@@ -590,8 +632,3 @@ The following were identified during design discussion but not yet resolved:
   strings, or purely rely on producer conformance (current guidance:
   recommended, not enforced, no validation required).
 - Formal JSON Schema for machine validation of bundle structure.
-- The algorithm token, and the cost parameters it carries, for the costly
-  key derivation §6.2 calls for when a password is chosen by a person. The
-  token has to name enough for any decoder to reproduce the key, keep the
-  derivation deterministic across nodes so §6.3 still holds, and fit the
-  `PW-{hash algorithm}-{cipher}-{mode}` descriptor shape of §6.1.
