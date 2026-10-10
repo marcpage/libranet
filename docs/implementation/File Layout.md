@@ -263,10 +263,10 @@ files together; there is no switch for it.
 ### 3.5 The Statistics Database
 
 `libranet.sqlite3` holds what the node knows about content and peers, in the
-tables `data_stats`, `node_stats`, `node_addresses`, `app_bundles`,
-`seek_entries`, and `blocked_content` (`src/libranet/stats/schema.py`). Only
-the stats module ever opens it; every other module learns from messages and
-from the lists derived into the cache directory.
+tables `data_stats`, `node_stats`, `node_addresses`, `app_bundles`, and
+`seek_entries` (`src/libranet/stats/schema.py`). Only the stats module ever
+opens it; every other module learns from messages and from the lists derived
+into the cache directory.
 
 It runs in write-ahead-log mode, so `libranet.sqlite3-wal` and
 `libranet.sqlite3-shm` sit beside it while the node runs. Its location

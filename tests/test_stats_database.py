@@ -86,7 +86,7 @@ def test_no_primary_key_column_may_be_null() -> None:
             if primary_key and not not_null
         ]
 
-    assert len(tables) == 6
+    assert len(tables) == 5
     assert nullable == []
 
 
@@ -592,14 +592,26 @@ def test_a_nearby_scan_leaves_blocked_content_out(database: StatsDatabase) -> No
 
 
 def test_content_is_blocked_once_and_for_good(database: StatsDatabase, clock: FakeClock) -> None:
+    blocked_at = clock.now
     first = database.record_blocked(CONTENT_ID)
     clock.advance(60.0)
     again = database.record_blocked(CONTENT_ID)
+    stats = database.data_stats(CONTENT_ID)
 
     assert first
     assert not again
     assert database.is_blocked(CONTENT_ID)
     assert not database.is_blocked(OTHER_ID)
+    assert stats is not None
+    assert stats.blocked_at == blocked_at
+
+
+def test_content_already_known_is_blocked_as_any_is(database: StatsDatabase) -> None:
+    database.record_request(CONTENT_ID, external=True)
+
+    assert database.record_blocked(CONTENT_ID)
+    assert database.is_blocked(CONTENT_ID)
+    assert database.blocked_ids() == [CONTENT_ID]
 
 
 def test_blocked_content_is_listed_by_hash(database: StatsDatabase) -> None:

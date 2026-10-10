@@ -159,9 +159,9 @@ place of removed ones and many of them docstrings, and 523 of tests.
 - **`BlockedContent`** (`cas/blocked.py`, new), the list of blocked content
   ids as the stats module derives it, which the web server, the validator,
   and the fetcher check.
-- **`blocked_content`** (`stats/schema.py`), a table of its own, and
-  `StatsDatabase.record_blocked`, `is_blocked`, and `blocked_ids`.
-  `content_ids_near` leaves blocked content out.
+- **`data_stats.blocked_at`** (`stats/schema.py`), with the partial index
+  `data_stats_blocked`, and `StatsDatabase.record_blocked`, `is_blocked`,
+  and `blocked_ids`. `content_ids_near` leaves blocked content out.
 - **`lists/blocked.json`** (`StorageConfig.blocked_list_path`), written by
   `ListDeriver.write_blocked_list` at each derivation and at once when a
   block is added.
@@ -198,8 +198,6 @@ My calls, not yet reviewed:
   blocked content and stats never seeks it, so a request that needs it,
   such as reading into a blocked bundle (HttpApi §12.1) or an application's
   part, waits as for content no peer has, and is `503`.
-- **A table of its own**, rather than a flag on `data_stats`, so that an
-  existing database gains it with no deletion (Database Schema §9.2).
 - **The list file names every block**, `{"blocked": [...]}`, uncapped. Each
   reader keeps what it read, and reads it again only once it is replaced,
   so a check is one `stat` of the file. Stats writes it at once when a block
@@ -229,8 +227,14 @@ Ruled after building:
   the same URI is `404`, as a `DELETE` leads a client to expect, and no name
   beneath `/data` is reserved for it. HttpApi §4 now lists content among
   what `DELETE` removes.
+- **A block is a column of `data_stats`**, `blocked_at`, when the content
+  was blocked, or `NULL`, in place of the table `blocked_content` first
+  built. A block is something known of one content id, and a row of
+  `data_stats` is never deleted, so it outlives the content as a table's
+  row would. The search reads one table again. An existing database must
+  be deleted (Database Schema §9.2), as no node is kept before version 1.0.
 
-My calls on it, not yet reviewed:
+My calls on these, not yet reviewed:
 
 - **A `DELETE` always blocks.** There is no `DELETE` that only frees the
   disk, since content deleted and not blocked would be fetched again by the
@@ -242,12 +246,18 @@ My calls on it, not yet reviewed:
 - **A path into a bundle is not deleted**: a `DELETE` of
   `/data/{algorithm}/{hash}/{path}` is `405`, as any method that route does
   not take is.
+- **`blocked_at` keeps the first time** content was blocked. Blocking it
+  again changes nothing.
+- **A partial index, `data_stats_blocked`**, as `data_stats_held` is, so
+  that deriving the blocked list each minute reads only the rows blocked,
+  not every id the node has heard of.
 
-A live run of one node from the scratchpad, after the ruling: a drop of
+A live run of one node from the scratchpad, after both rulings: a drop of
 `superseded` was `201`, served, and the first result of a search for its
 target. A `DELETE` of it with no `Referer` was `403`, one of a path into it
 `405`, and one from the movie application's page `204`. Within 3
-milliseconds eviction had deleted it and stats had recorded it, a `GET` was
+milliseconds eviction had deleted it and stats had recorded it, its
+`data_stats` row with `blocked_at` set and `size` cleared, a `GET` was
 `404`, and the search left it out. The same drop made again was `201`, and
 the validator discarded the upload, so a `GET` was still `404`. With the
 node stopped and `lists/blocked.json` deleted, the restarted node wrote it
