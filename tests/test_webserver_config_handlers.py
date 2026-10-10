@@ -7,6 +7,7 @@ Authentication is a router guard and is tested separately.
 """
 
 from __future__ import annotations
+from http import HTTPStatus
 from json import dumps, loads
 from logging import DEBUG, WARNING, LogRecord
 from pathlib import Path
@@ -39,6 +40,7 @@ from libranet.webserver.config_handlers import (
     BACKUPS_PATH,
     BUILDS_PATH,
     CONFIG_API_PATH,
+    CONFIG_USERS_PATH,
     EXPORTS_PATH,
     MAX_CONFIG_BODY_BYTES,
     NODE_PATH,
@@ -84,13 +86,26 @@ def registry(tmp_path: Path) -> ApplicationRegistry:
     return ApplicationRegistry(tmp_path / "applications.json")
 
 
+def making_a_user(request: Request) -> Response:
+    """Stands in for making a person's identity, answering with what it was sent.
+
+    Making one is tested where the routers that make them are built.
+    """
+    return Response(HTTPStatus.CREATED, request.body.read())
+
+
 @fixture
 def router(queues: ModuleQueues, state: BackupState, registry: ApplicationRegistry) -> Router:
     publish = StubModule(ModuleName.WEBSERVER, queues).publish
     router = Router()
 
     for method, pattern, handler in config_routes(
-        publish, state, registry, NodeDescription(NODE_ID, NETWORK), RETRY_AFTER_SECONDS
+        publish,
+        state,
+        registry,
+        NodeDescription(NODE_ID, NETWORK),
+        RETRY_AFTER_SECONDS,
+        users=making_a_user,
     ):
         router.add(method, pattern, handler)
 
@@ -147,6 +162,7 @@ def test_the_index_names_every_endpoint(router: Router) -> None:
         ("POST", "/config/api/applications"),
         ("PATCH", "/config/api/applications/{name}"),
         ("DELETE", "/config/api/applications/{name}"),
+        ("POST", "/config/api/users"),
     }
 
 
@@ -174,7 +190,30 @@ def test_the_node_is_described_as_it_was_started(router: Router, queues: ModuleQ
         "listen_port": 8080,
         # With no external address, `localhost` means the address a peer reached it at.
         "advertised_endpoint": "http://localhost:4300",
+        # What a person's identity made here may ask for, as the node makes them by default.
+        "person_key_bits": [2048, 3072, 4096],
+        "drop_max_seconds": 60.0,
+        "drop_max_minimum_bits": 26,
     }
+    assert published(queues) == []
+
+
+def test_the_node_names_the_key_sizes_it_was_started_with() -> None:
+    node = NodeDescription(NODE_ID, NETWORK, person_key_bits=(4096,))
+
+    assert node.value()["person_key_bits"] == [4096]
+
+
+@mark.parametrize("path", [CONFIG_USERS_PATH, "/CONFIG/api/users"])
+def test_making_a_user_is_left_to_the_handler_given(
+    router: Router, queues: ModuleQueues, path: str
+) -> None:
+    sent = {"username": "alice", "password": "correct horse", "key_bits": 2048, "seconds": 0}
+
+    response = router.dispatch(request("POST", path, sent))
+
+    assert response.status == 201
+    assert loads(response.body) == sent
     assert published(queues) == []
 
 

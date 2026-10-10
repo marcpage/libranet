@@ -625,7 +625,9 @@ const { id, username, drop, target, matching_bits } = await response.json();
   the identity's drop matches, the nearer the top of a search it is.
 
 It is answered `201 Created`, and the person is signed in. A username and
-password that already open an identity on this node are `409`.
+password that already open an identity on this node are `409`. An operator
+can also create one on the `/config` page, which signs no one in
+([Operator Guide](Operator%20Guide.md) §6.5).
 
 Sign in, ask who is signed in, and sign out at `/data/session`:
 

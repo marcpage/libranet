@@ -153,9 +153,9 @@ learns the others that node knows.
 ## 4. The Administration Page: `/config`
 
 `/config` is how an operator puts their own content into Libranet: it backs
-up and restores directories, builds bundles, and registers applications. It
-is a page for a browser, and a set of JSON endpoints beneath `/config/api`
-for scripts.
+up and restores directories, builds bundles, registers applications, and
+creates users. It is a page for a browser, and a set of JSON endpoints
+beneath `/config/api` for scripts.
 
 ### 4.1 Where It Is
 
@@ -211,7 +211,7 @@ curl -u admin:secret -e http://127.0.0.1:8180/config/ \
 
 | Method | Path | What it does |
 | --- | --- | --- |
-| `GET` | `/config/api/node` | What this node is, and where it listens |
+| `GET` | `/config/api/node` | What this node is, where it listens, and what a user made here may ask for |
 | `GET`, `POST` | `/config/api/backups` | Backup jobs (§5.1) |
 | `DELETE` | `/config/api/backups/{job_id}` | Remove a backup job |
 | `POST` | `/config/api/backups/{job_id}/run` | Back up a job now |
@@ -220,6 +220,7 @@ curl -u admin:secret -e http://127.0.0.1:8180/config/ \
 | `GET`, `POST` | `/config/api/exports` | Exporting a bundle as an archive (§6.4) |
 | `GET`, `POST` | `/config/api/applications` | Registered applications (§6.1) |
 | `PATCH`, `DELETE` | `/config/api/applications/{name}` | Trust an application, or not (§6.2), or remove one |
+| `POST` | `/config/api/users` | Create a user (§6.5) |
 
 A backup, restore, build, or export is answered `202` at once, with the id
 it is known by, and its `GET` says how it is doing. Restores, builds, and
@@ -426,6 +427,40 @@ registered there, without fetching anything from peers. From a script,
 `POST /config/api/exports` takes `{"bundle": ..., "archive": ...,
 "on_conflict": "refuse"}`, with `"overwrite"` to replace a file already
 there, and a `password` for a protected bundle.
+
+### 6.5 Creating a User
+
+A person signs in to a trusted application with a username and password
+([App Developer Guide](App%20Developer%20Guide.md) §6.10). Their identity is
+a key pair kept in the network, its private key encrypted by the username
+and password together, so they can sign in with them on any node that holds
+it. A node keeps no list of the people who have one, and a forgotten
+password cannot be reset.
+
+On the `/config` page, under **Users**, give the username, the password
+twice, and the size of the person's key, one of `identity.person_key_bits`,
+which are 2048, 3072, and 4096 bits by default. A larger key takes longer to
+make, and to guess.
+
+A username is the same however it is cased, and a password is at least 8
+characters. People may share a username, each with a password of their
+own, but the same username and password twice is refused. Creating a user
+takes about ten seconds, and does not sign you in.
+
+From a script, `seconds` and `minimum_bits` also say how long the node
+searches for where to keep the identity, and how many bits it must match
+there, as the [App Developer Guide](App%20Developer%20Guide.md) §6.10 gives
+them. The page asks for 10 seconds and 16 bits:
+
+```bash
+curl -u admin:secret -e http://127.0.0.1:8180/config/ \
+  -X POST http://127.0.0.1:8180/config/api/users \
+  -H 'Content-Type: application/json' \
+  -d '{"username": "alice", "password": "<8 characters or more>",
+       "key_bits": 3072, "seconds": 10, "minimum_bits": 16}'
+```
+
+It is answered `201`, with the person's id, once the search is done.
 
 ## 7. Watching a Running Node
 

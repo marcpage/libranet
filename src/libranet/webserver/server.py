@@ -104,7 +104,7 @@ from libranet.webserver.config_handlers import (
 )
 from libranet.webserver.data_handler import DATA_PATTERN, DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
-from libranet.webserver.drop_handler import DROP_PATH, DropHandler
+from libranet.webserver.drop_handler import DROP_PATH, CostlyWork, DropHandler
 from libranet.webserver.errors import IncompleteBodyError, ResponseCutShortError
 from libranet.webserver.file_stream import PartReader
 from libranet.webserver.http_types import (
@@ -161,6 +161,7 @@ def build_router(  # pylint: disable=too-many-locals
     max_drop_minimum_bits: int = 0,
     session_idle_seconds: float = DEFAULT_SESSION_IDLE_SECONDS,
     person_key_bits: tuple[int, ...] = DEFAULT_PERSON_KEY_BITS,
+    costly_work: CostlyWork | None = None,
 ) -> Router:
     """The main port's routes, serving the configured source of truth, derived lists, and apps.
 
@@ -199,7 +200,9 @@ def build_router(  # pylint: disable=too-many-locals
     one of the sizes ``person_key_bits`` names, kept at a drop made as those
     are, and ``/data/session`` signs them in and out, for local clients
     alone, each session ending once unused for ``session_idle_seconds``
-    (Phase 4 Step 79).
+    (Phase 4 Step 79). Drops are searched for, and keys derived, one at a
+    time, in the turns of ``costly_work``, which ``/config``'s port shares;
+    in turns of their own if none is given.
 
     Each of those but reading into a bundle is served only to this node's
     own pages, as a request's ``Referer`` names them: an application's store
@@ -261,6 +264,7 @@ def build_router(  # pylint: disable=too-many-locals
     )
 
     if node_id is not None:
+        work = CostlyWork() if costly_work is None else costly_work
         uploads = OwnUploads.of(storage, content, node_id, publish)
         edits = BundleEditHandler(
             uploads,
@@ -272,7 +276,11 @@ def build_router(  # pylint: disable=too-many-locals
         )
         router.add("POST", BUNDLES_PATH, LocalOnly(OwnPageOnly(edits, pages, trusted=True), checks))
         drops = DropHandler(
-            uploads, storage.max_object_bytes, max_drop_seconds, max_drop_minimum_bits
+            uploads,
+            storage.max_object_bytes,
+            max_drop_seconds,
+            max_drop_minimum_bits,
+            turns=work.searches,
         )
         router.add("POST", DROP_PATH, OwnSiteOnly(OwnPageOnly(drops, pages), checks))
         identities = Identities(
@@ -283,6 +291,7 @@ def build_router(  # pylint: disable=too-many-locals
             publish,
             retry_after_seconds=retry_after_seconds,
             key_bits=person_key_bits,
+            derivations=work.derivations,
         )
 
         for method, path, handler in (
@@ -329,7 +338,7 @@ def build_router(  # pylint: disable=too-many-locals
     return router
 
 
-def build_config_router(
+def build_config_router(  # pylint: disable=too-many-locals
     storage: StorageConfig,
     retry_after_seconds: int,
     publish: Publish,
@@ -340,6 +349,7 @@ def build_config_router(
     backup_state: BackupState | None = None,
     content: LayeredSource | None = None,
     app_wait_seconds: float = 0.0,
+    costly_work: CostlyWork | None = None,
 ) -> Router:
     """``/config``'s port's routes: its endpoints and its application, and nothing else.
 
@@ -350,11 +360,24 @@ def build_config_router(
     read back. The ``/config`` application is served as the registry in
     ``storage``'s data directory names it, which ``/config/api/applications``
     changes, and as ``content`` says the node ships it until it does.
-    ``retry_after_seconds``, ``app_outcomes``, and ``app_wait_seconds`` are
-    as for :func:`build_router`.
+    ``/config/api/users`` makes people's identities as the main port's
+    ``/data/users`` does, from what ``content`` holds and as ``node`` limits,
+    storing them as uploads from ``node``, but signs no one in (Phase 4 Step
+    91). Its drops are searched for, and its keys derived, in the turns of
+    ``costly_work``, shared with the main port; in turns of their own if none
+    is given. ``retry_after_seconds``, ``app_outcomes``, and
+    ``app_wait_seconds`` are as for :func:`build_router`.
     """
     content = LayeredSource(CasStore.source_of_truth(storage)) if content is None else content
     registry = _registry(storage, content)
+    identities = _config_identities(
+        storage,
+        content,
+        node,
+        publish,
+        retry_after_seconds=retry_after_seconds,
+        costly_work=CostlyWork() if costly_work is None else costly_work,
+    )
     # A remote request is refused before anything else, and so is one another
     # site's page made, before its credentials are looked at. The rest must
     # carry the node's credential before any endpoint sees them.
@@ -365,7 +388,12 @@ def build_config_router(
     )
 
     for method, pattern, handler in config_routes(
-        publish, backup_state or BackupState(), registry, node, retry_after_seconds
+        publish,
+        backup_state or BackupState(),
+        registry,
+        node,
+        retry_after_seconds,
+        users=identities.make_without_signing_in,
     ):
         router.add(method, pattern, handler)
 
@@ -390,6 +418,42 @@ def _registry(storage: StorageConfig, content: LayeredSource) -> ApplicationRegi
     """The application registry in ``storage``'s data directory, seeded as ``content`` ships."""
     return ApplicationRegistry(
         storage.applications_path, RegisteredApplications.shipped(content.applications)
+    )
+
+
+def _config_identities(
+    storage: StorageConfig,
+    content: LayeredSource,
+    node: NodeDescription,
+    publish: Publish,
+    *,
+    retry_after_seconds: int,
+    costly_work: CostlyWork,
+) -> Identities:
+    """What makes people's identities on ``/config``'s port, as the main port's do.
+
+    They are read from ``content`` and stored as uploads from ``node``, as
+    ``node`` limits them, waiting in ``costly_work``'s turns.
+    """
+    uploads = OwnUploads.of(storage, content, node.node_id, publish)
+    return Identities(
+        uploads,
+        SearchHandler(
+            LocalSearch(content, storage.search_max_results), SearchCache.of(storage), publish
+        ),
+        DropHandler(
+            uploads,
+            storage.max_object_bytes,
+            node.network.drop_max_seconds,
+            node.network.drop_max_minimum_bits,
+            turns=costly_work.searches,
+        ),
+        # No one signs in on this port, so these stay empty.
+        Sessions(node.network.session_idle_seconds),
+        publish,
+        retry_after_seconds=retry_after_seconds,
+        key_bits=node.person_key_bits,
+        derivations=costly_work.derivations,
     )
 
 

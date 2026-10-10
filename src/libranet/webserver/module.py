@@ -8,6 +8,10 @@ of its own at ``127.0.0.1``, so that no application's page shares its origin
 (HttpApi §2.3, Phase 2 Step 58). That port is ``network.config_port`` if it
 is set, and otherwise the first free of the main port plus 100, plus 200,
 and so on, so nodes on one machine have theirs where they can be told.
+Both make people's identities, and the costly work that takes waits in turns
+they share (:class:`~libranet.webserver.drop_handler.CostlyWork`), so the node
+searches for one drop, and derives one key, at a time, whichever port asks
+(Phase 4 Step 91).
 Request threads publish through
 :meth:`~libranet.messaging.module.ModuleBase.publish`. Responses are signed
 with the node key, which the module loads from disk rather than receiving
@@ -47,6 +51,7 @@ from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 from libranet.webserver.backup_state import BackupReport, BackupState
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import NodeDescription
+from libranet.webserver.drop_handler import CostlyWork
 from libranet.webserver.inbound_peers import InboundPeers
 from libranet.webserver.local_folders import LocalFolders
 from libranet.webserver.server import LibranetHTTPServer, build_config_router, build_router
@@ -116,6 +121,7 @@ class WebServerModule(ModuleBase):
         node = NodeIdentity.load(self._config)
         signer = MessageSigner(node)
         content = LayeredSource.open(storage)
+        costly_work = CostlyWork()
         config_server = LibranetHTTPServer.first_free(
             CONFIG_LISTEN_ADDRESS,
             network.config_ports(),
@@ -124,11 +130,16 @@ class WebServerModule(ModuleBase):
                 network.retry_after_seconds,
                 self.publish,
                 config_credential=ConfigCredential.of(self._config),
-                node=NodeDescription(node.node_id, network),
+                node=NodeDescription(
+                    node.node_id,
+                    network,
+                    person_key_bits=self._config.identity.person_key_bits,
+                ),
                 app_outcomes=self._app_outcomes,
                 backup_state=self._backup_state,
                 content=content,
                 app_wait_seconds=network.app_wait_seconds,
+                costly_work=costly_work,
             ),
             self.logger,
             signer,
@@ -156,6 +167,7 @@ class WebServerModule(ModuleBase):
                     max_drop_minimum_bits=network.drop_max_minimum_bits,
                     session_idle_seconds=network.session_idle_seconds,
                     person_key_bits=self._config.identity.person_key_bits,
+                    costly_work=costly_work,
                 ),
                 self.logger,
                 signer,

@@ -5,7 +5,14 @@ the administration application's own pages.
 
 ``GET /config/api/node`` says what this node is: its identity, the address
 and port it listens on, and the endpoint it advertises to peers
-(HttpApi §10.1), as it was started with them.
+(HttpApi §10.1), as it was started with them, and what a person's identity
+made here may ask for: the sizes it makes a key at, and how long it searches
+for the identity's drop, and how many bits it may be asked to match.
+
+``POST /config/api/users`` makes a person's identity, as ``POST /data/users``
+does, but signs no one in (HttpApi §11.3, Phase 4 Step 91). Its handler is
+given to :func:`config_routes`, made as the main port's are
+(:class:`~libranet.webserver.identity_handlers.Identities`).
 
 The web server does none of the backup work. Each backup endpoint checks its
 own input, publishes one message, and answers ``202`` at once with the
@@ -74,7 +81,7 @@ from re import escape
 from typing import Any, Callable, Final, Protocol
 
 from libranet.cas.content_id import ContentId
-from libranet.config.models import NetworkConfig
+from libranet.config.models import DEFAULT_PERSON_KEY_BITS, NetworkConfig
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.problems import INVALID_CONFIG_REQUEST, Problem
@@ -119,6 +126,7 @@ RESTORES_PATH: Final = CONFIG_API_PATH + "/restores"
 BUILDS_PATH: Final = CONFIG_API_PATH + "/builds"
 EXPORTS_PATH: Final = CONFIG_API_PATH + "/exports"
 APPLICATIONS_PATH: Final = CONFIG_API_PATH + "/applications"
+CONFIG_USERS_PATH: Final = CONFIG_API_PATH + "/users"
 BACKUP_JOB_PATTERN: Final = BACKUPS_PATH + rf"/(?P<job_id>[0-9a-fA-F]{{{IDENTIFIER_LENGTH}}})"
 BACKUP_RUN_PATTERN: Final = BACKUP_JOB_PATTERN + "/run"
 APPLICATION_PATTERN: Final = APPLICATIONS_PATH + "/(?P<name>[^/]+)"
@@ -164,6 +172,7 @@ ENDPOINTS: Final = (
         "description": "Trust an application, or not",
     },
     {"method": "DELETE", "path": APPLICATION_TEMPLATE, "description": "Remove an application"},
+    {"method": "POST", "path": CONFIG_USERS_PATH, "description": "Create a person's identity"},
 )
 
 
@@ -174,10 +183,16 @@ def config_index(_request: Request) -> Response:
 
 @dataclass(frozen=True)
 class NodeDescription:
-    """What this node is: its identity, where it listens, and what it advertises."""
+    """What this node is: its identity, where it listens, and what it advertises.
+
+    It makes a person's key at the sizes ``person_key_bits`` names, and
+    searches for the drop keeping it as ``network`` limits (HttpApi §11.3).
+    """
 
     node_id: ContentId
     network: NetworkConfig
+    _: KW_ONLY
+    person_key_bits: tuple[int, ...] = DEFAULT_PERSON_KEY_BITS
 
     def value(self) -> dict[str, Any]:
         """The JSON object ``GET /config/api/node`` answers."""
@@ -186,6 +201,9 @@ class NodeDescription:
             "listen_address": self.network.listen_address,
             "listen_port": self.network.listen_port,
             "advertised_endpoint": self.network.advertised_endpoint(),
+            "person_key_bits": list(self.person_key_bits),
+            "drop_max_seconds": self.network.drop_max_seconds,
+            "drop_max_minimum_bits": self.network.drop_max_minimum_bits,
         }
 
 
@@ -487,8 +505,13 @@ def config_routes(
     registry: ApplicationRegistry,
     node: NodeDescription,
     retry_after_seconds: int,
+    *,
+    users: Handler | None = None,
 ) -> tuple[tuple[str, str, Handler], ...]:
-    """Every ``/config/api`` route, as ``(method, pattern, handler)`` in route order."""
+    """Every ``/config/api`` route, as ``(method, pattern, handler)`` in route order.
+
+    ``users`` makes a person's identity. Without it, no route makes one.
+    """
     configure = BackupRequestHandler(
         publish, BackupJobRequest.from_value, EventType.BACKUP_JOB_CONFIGURED, "job_id"
     )
@@ -520,6 +543,7 @@ def config_routes(
         ("POST", APPLICATIONS_PATH, ApplicationRegistrationHandler(registry)),
         ("PATCH", APPLICATION_PATTERN, ApplicationTrustHandler(registry)),
         ("DELETE", APPLICATION_PATTERN, ApplicationRemovalHandler(registry)),
+        *(() if users is None else (("POST", CONFIG_USERS_PATH, users),)),
     )
     return tuple(
         (method, _CONFIG_SEGMENT + pattern.removeprefix(f"/{CONFIG_APPLICATION}"), handler)

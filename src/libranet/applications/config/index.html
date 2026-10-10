@@ -207,6 +207,43 @@
     </form>
   </section>
 
+  <section aria-labelledby="users-heading">
+    <h2 id="users-heading">Users</h2>
+    <p class="hint">A person signs in to this node's applications with a username and password.
+    Their identity is kept in the network, encrypted by both, so they can sign in with them on
+    any node that holds it. This node keeps no list of the people who have one, and a forgotten
+    password cannot be reset.</p>
+    <form id="user-form">
+      <h3>Create a user</h3>
+      <div class="fields">
+        <label>Username
+          <input id="user-name" required autocomplete="off" spellcheck="false"
+                 placeholder="alice">
+        </label>
+        <label>Password
+          <input id="user-password" type="password" required minlength="8"
+                 autocomplete="new-password">
+        </label>
+        <label>Password again
+          <input id="user-password-again" type="password" required minlength="8"
+                 autocomplete="new-password">
+        </label>
+        <label>Key
+          <select id="user-key-bits">
+            <option value="2048">2048 bits, quickest</option>
+            <option value="3072" selected>3072 bits</option>
+            <option value="4096">4096 bits, strongest</option>
+          </select>
+        </label>
+        <button type="submit">Create</button>
+      </div>
+      <p class="hint">A username is the same however it is cased, and a password is at least 8
+      characters. A larger key takes longer to make, and to guess. Creating a user takes about
+      ten seconds, and does not sign you in.</p>
+      <p class="result" role="status" hidden></p>
+    </form>
+  </section>
+
   <section aria-labelledby="builds-heading">
     <h2 id="builds-heading">Builds</h2>
     <p class="hint">Each makes a directory on this machine into a bundle, and records the
@@ -702,6 +739,7 @@ async function loadNode() {
 
   show(state, "");
   byId("node-details").hidden = false;
+  offerUserChoices(node);
 }
 
 // ---- Applications ----
@@ -842,6 +880,74 @@ onSubmit(byId("application-form"), async () => {
   byId("application-form").reset();
   applications.load();
   return [`${servedAt(result.value.name)} now serves ${result.value.bundle}.`, false];
+});
+
+// ---- Users ----
+
+// How long the node searches for where to keep a new identity, and how many
+// bits it must match there, so that it is found near the top however many
+// blocks others place at the username (HttpApi 11.3), as the App Developer
+// Guide's example asks. Held to the node's own limits once it says them.
+let userSeconds = 10;
+let userMinimumBits = 16;
+
+// Offers the key sizes this node makes, the middle one first, and holds the
+// search to the node's limits, as the node says them (loadNode). Until then,
+// the form offers what a node makes by default.
+function offerUserChoices(node) {
+  const sizes = Array.isArray(node.person_key_bits)
+    ? node.person_key_bits.filter(Number.isInteger).sort((one, other) => one - other)
+    : [];
+
+  if (sizes.length > 0) {
+    const chosen = sizes[Math.floor(sizes.length / 2)];
+    const options = sizes.map((size, index) => {
+      const extreme = index === 0 ? ", quickest" : index === sizes.length - 1 ? ", strongest" : "";
+      const option = make("option", `${size} bits${sizes.length > 1 ? extreme : ""}`);
+      option.value = String(size);
+      option.defaultSelected = size === chosen;
+      option.selected = size === chosen;
+      return option;
+    });
+    byId("user-key-bits").replaceChildren(...options);
+  }
+
+  if (typeof node.drop_max_seconds === "number") {
+    userSeconds = Math.min(userSeconds, node.drop_max_seconds);
+  }
+
+  if (typeof node.drop_max_minimum_bits === "number") {
+    userMinimumBits = Math.min(userMinimumBits, node.drop_max_minimum_bits);
+  }
+}
+
+onSubmit(byId("user-form"), async () => {
+  const password = byId("user-password").value;
+
+  if (password !== byId("user-password-again").value) {
+    return ["The two passwords differ.", true];
+  }
+
+  const request = {
+    username: byId("user-name").value,
+    password,
+    key_bits: Number(byId("user-key-bits").value),
+    seconds: userSeconds,
+    minimum_bits: userMinimumBits,
+  };
+  // The node searches for at least that long before it answers.
+  const message = byId("user-form").querySelector(".result");
+  const wait = request.seconds > 0 ? ` This takes ${request.seconds} s or more.` : "";
+  show(message, `Creating the user…${wait}`);
+  const result = await call("POST", "/users", request);
+
+  if (!result.ok) {
+    return [failure(result), true];
+  }
+
+  byId("user-form").reset();
+  const { id, username } = result.value;
+  return [`The user ${username} was created, as ${id}, and can sign in now.`, false];
 });
 
 // ---- Builds ----

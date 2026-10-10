@@ -27,7 +27,8 @@ and announces it, and it is pushed as any new content is.
 
 Making a person's identity makes a drop too (HttpApi §11.3, Phase 4 Step 79),
 under the same ceilings, and takes its turn with the rest
-(:meth:`DropHandler.placed`).
+(:meth:`DropHandler.placed`), on ``/config``'s port as well (Phase 4 Step
+91), which shares the turns (:class:`CostlyWork`).
 """
 
 from __future__ import annotations
@@ -89,6 +90,19 @@ class Turns:
             with self._condition:
                 self._serving += 1
                 self._condition.notify_all()
+
+
+@dataclass(frozen=True)
+class CostlyWork:
+    """Where costly work waits its turn, whichever of the node's ports asks for it.
+
+    One drop is searched for at a time, in ``searches``, and one key is
+    derived from a username and password at a time, in ``derivations``
+    (HttpApi §9.6, §11.4). The main port and ``/config``'s share them.
+    """
+
+    searches: Turns = field(default_factory=Turns)
+    derivations: Turns = field(default_factory=Turns)
 
 
 @dataclass(frozen=True)

@@ -34,7 +34,7 @@ content, and so is everything kept for them.
 
 ## 2. What Phase 4 Adds
 
-So far, eight steps, in the order they are built (§5):
+So far, nine steps, in the order they are built (§5):
 
 - **Making a drop.** A page can have the node store a block of data of
   its own, at most 1 MiB compressed, targeted at a drop (HttpApi §9.6).
@@ -46,6 +46,9 @@ So far, eight steps, in the order they are built (§5):
   whose public key's hash is the person's id, and whose private key is
   kept encrypted in a drop that the username names. Signing in starts a
   session. Step 79.
+- **Creating a user from `/config`.** The operator makes a person's
+  identity on the `/config` page, as a trusted application's page makes
+  one. Step 91.
 - **Encrypting a block.** A block a page stores can be encrypted for a
   person, or by a username and password. Step 78.
 - **What a person says of themselves.** Metadata, signed, kept in a drop
@@ -669,6 +672,106 @@ opened by the right password alone.
 
 ---
 
+## Step 91 — Creating a User From `/config`
+
+**Issue:** #274. **Depends on:** Step 79; Phase 1 Step 36; Phase 2 Step
+58.
+
+Step 79 lets a trusted application's page make a person's identity, at
+`POST /data/users`, but no page the node ships does, so no one could get
+an identity without writing a page of their own.
+
+Settled in the issue:
+
+- A section of `/config` that creates a new user.
+
+The specification change is written: HttpApi §11.3 gives
+`POST /config/api/users`, and §11.4 and §21 say that a node derives one
+key, and searches for one drop, at a time, whichever of its ports is asked.
+
+Built in one change set: 183 added lines of non-test Python, 25 of them in
+place of removed ones and many of them docstrings, 106 of the page, and 202
+of tests.
+
+- **`POST /config/api/users`**, on `/config`'s port, behind its guards
+  (`config_routes` in `config_handlers.py`, built in `build_config_router`).
+  It makes an identity as `POST /data/users` does
+  (`Identities.make_without_signing_in`), and is answered and refused the
+  same way, but signs no one in and gives no `Location`.
+- **`CostlyWork`** (`drop_handler.py`), the turns that drop searches and
+  key derivations wait in. The web server module makes one and gives it to
+  both ports' routers.
+- **`GET /config/api/node`** also answers `person_key_bits`,
+  `drop_max_seconds`, and `drop_max_minimum_bits`, which `NodeDescription`
+  now carries, so the page offers only the key sizes the node makes, and
+  asks for no more search than it allows.
+- **A Users section on the `/config` page**, after Applications: a
+  username, the password twice, and a key size.
+- The Operator Guide §4, §4.4, and §6.5 (new), and a line in the App
+  Developer Guide §6.10.
+
+My calls, not yet reviewed:
+
+- **An endpoint of `/config`'s own**, rather than the page calling
+  `/data/users`. The `/config` page is of another origin than the main port
+  (HttpApi §2.3), and `/data/users` serves only trusted applications'
+  pages, so the page could reach it only through CORS and a hole in both
+  ports' page checks.
+- **Creating a user signs no one in.** The operator may be making it for
+  someone else. A browser keeps cookies by host and not by port, so a
+  session cookie set on `/config`'s port would sign the operator's browser
+  in as that person in every application, and replace any session it had.
+- **No `Location`**, since `/config`'s port serves nothing beneath `/data`.
+  The answer is otherwise `POST /data/users`'s.
+- **Both ports share the turns**, rather than each keeping its own, so the
+  node still derives one key, and searches for one drop, at a time.
+  `build_router` and `build_config_router` each make turns of their own when
+  not given any, as the tests build them.
+- **The page learns the key sizes and ceilings from `/config/api/node`**,
+  rather than from a `400`, as Step 79 leaves an application's page to.
+  `NodeDescription` takes `person_key_bits` as a keyword, the node's default
+  sizes if it is not given.
+- **The section is "Users", and its form "Create a user"**, as the issue
+  names them, though the specification speaks of a person's identity.
+- **The password is asked for twice**, and the page checks that the two
+  match, since a mistyped password can never be reset.
+- **The form starts at the middle key size**, 3072 bits by default.
+- **The page asks for 10 seconds and 16 bits**, as the App Developer Guide's
+  example does, or the node's ceilings where they are lower, so that a node
+  set lower still takes the page's requests. While it waits, the page says
+  that it takes at least the seconds asked for.
+- **The page says a forgotten password cannot be reset**, and that the node
+  keeps no list of users, since it cannot list who has an identity. So the
+  section has no list.
+- **`config_routes` takes `users` as an optional keyword**, so that its
+  callers keep working. Without it, no route makes a user, though
+  `GET /config/api` lists the endpoint whatever.
+
+Ruled after building:
+
+- **The form asks for no search time and no bits.** How hard the node
+  searches for where to keep the identity is no question for the person
+  creating a user, so the page sends values of its own, and says nothing of
+  how many bits were matched. `POST /config/api/users` still takes both, as
+  `POST /data/users` does, for scripts.
+
+A live run of one node from the scratchpad, its `/config` page driven in
+headless Chrome 154, after the ruling: the form offered 2048, 3072, and
+4096 bits with 3072 chosen. Differing passwords were caught in the page.
+` Alice `, at 2048 bits, was `201` as `alice` after 10.6 seconds, and set no
+cookie on either port. Making it again was `409`, and a short password
+`400`, each shown under the form. Signing in as `alice` from a page of the
+movie application on the main port was `200`. In the run before the ruling,
+a wrong password there was `403` `no-identity`.
+
+**Testable in isolation:** handler tests that an identity made without
+signing in starts no session and is refused as any is; router tests that
+each port takes its turns in the work it is given; and a live-server test
+that a user made on `/config`'s port signs in from a trusted application on
+the main port.
+
+---
+
 ## 4. Issues in the Milestone
 
 Every issue in the **Phase 4 User Accounts** milestone, by number, and
@@ -682,6 +785,7 @@ where it went.
 | #259 | User metadata | 80 |
 | #260 | A fallback identity | 81 |
 | #261 | Movie playlists per user | 83 |
+| #274 | Creating a user from `/config` | 91 |
 
 ## 5. Suggested Build Order
 
@@ -690,10 +794,11 @@ where it went.
 | 1 | 89 (#257) | Every step after it stores what it keeps this way. |
 | 2 | 90 (#256, #257) | Needed before any identity is made, so that no private key is kept under the weaker derivation. |
 | 3 | 79 (#256) | Needs 89 to keep the private key, and 90 to encrypt it. |
-| 4 | 78 (#257) | Needs 79's public keys to encrypt for a person, and 90 to encrypt by a password. Its encryption questions are settled first, in the Bundle Specification. |
-| 5 | 80 (#259) | Needs 79's identity to sign it. |
-| 6 | 81 (#260) | Needs 80's metadata, and has to be settled before any account is made, since a fallback is named only then. |
-| 7 | 82 (#258), 83 (#261) | Applications of the steps before them, independent of each other. |
+| 4 | 91 (#274) | Needs 79's identities. Until a page the node ships makes one, no one has an identity to sign in with. |
+| 5 | 78 (#257) | Needs 79's public keys to encrypt for a person, and 90 to encrypt by a password. Its encryption questions are settled first, in the Bundle Specification. |
+| 6 | 80 (#259) | Needs 79's identity to sign it. |
+| 7 | 81 (#260) | Needs 80's metadata, and has to be settled before any account is made, since a fallback is named only then. |
+| 8 | 82 (#258), 83 (#261) | Applications of the steps before them, independent of each other. |
 
 ## 6. Open Items Not Yet Decided
 
