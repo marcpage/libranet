@@ -53,7 +53,12 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
 from libranet.cas.resolved_files import ResolvedFiles
 from libranet.cas.store import CasStore
-from libranet.config.models import DEFAULT_CONFIG_HOSTS, IDLE_TIMEOUT_SECONDS, StorageConfig
+from libranet.config.models import (
+    DEFAULT_CONFIG_HOSTS,
+    DEFAULT_SESSION_IDLE_SECONDS,
+    IDLE_TIMEOUT_SECONDS,
+    StorageConfig,
+)
 from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.signatures import MessageSigner
 from libranet.messaging.publishing import Publish
@@ -108,6 +113,7 @@ from libranet.webserver.http_types import (
     StreamedBody,
     problem_response,
 )
+from libranet.webserver.identity_handlers import SESSION_PATH, USERS_PATH, Identities
 from libranet.webserver.inbound_peers import InboundConnection, InboundPeers
 from libranet.webserver.list_handlers import ListFileHandler, NodeListHandler, SeekListHandler
 from libranet.webserver.local_folders import DIRECTORY_PATTERN, DirectoryHandler, LocalFolders
@@ -116,6 +122,7 @@ from libranet.webserver.local_only import CLIENT_PATH, LocalOnly, OwnSiteOnly, c
 from libranet.webserver.own_pages import OwnPageOnly, OwnPages
 from libranet.webserver.router import Router
 from libranet.webserver.search_handler import SEARCH_PATTERN, SearchHandler
+from libranet.webserver.sessions import Sessions
 from libranet.webserver.signature_guard import SignatureGuard
 from libranet.webserver.site_checks import SiteChecks
 
@@ -151,6 +158,7 @@ def build_router(  # pylint: disable=too-many-locals
     max_update_layers: int = 0,
     max_drop_seconds: float = 0.0,
     max_drop_minimum_bits: int = 0,
+    session_idle_seconds: float = DEFAULT_SESSION_IDLE_SECONDS,
 ) -> Router:
     """The main port's routes, serving the configured source of truth, derived lists, and apps.
 
@@ -185,12 +193,16 @@ def build_router(  # pylint: disable=too-many-locals
     ``/data/drop`` makes drops for any client, stored as those are, searching
     for each no more than ``max_drop_seconds`` and asked to match no more
     than ``max_drop_minimum_bits``; neither, by default (Phase 4 Step 89).
+    With it, ``/data/users`` makes people's identities, each kept at a drop
+    made as those are, and ``/data/session`` signs them in and out, for local
+    clients alone, each session ending once unused for
+    ``session_idle_seconds`` (Phase 4 Step 79).
 
     Each of those but reading into a bundle is served only to this node's
     own pages, as a request's ``Referer`` names them: an application's store
-    to its own, and the folders, imports, and bundles to those of
-    applications the operator trusts. An application the operator has not trusted is served in a
-    sandbox (Phase 3 Step 74).
+    to its own, and the folders, imports, bundles, identities, and session to
+    those of applications the operator trusts. An application the operator
+    has not trusted is served in a sandbox (Phase 3 Step 74).
     """
     store = CasStore.source_of_truth(storage)
     content = LayeredSource(store) if content is None else content
@@ -217,6 +229,11 @@ def build_router(  # pylint: disable=too-many-locals
         PartReader(content, publish, app_wait_seconds, retry_after_seconds),
         retry_after_seconds,
         app_outcomes,
+    )
+    search = SearchHandler(
+        search=LocalSearch(content, storage.search_max_results),
+        cache=SearchCache.of(storage),
+        publish=publish,
     )
     router.add("GET", CLIENT_PATH, OwnPageOnly(client_handler, pages))
     # The directory, import, store, bundle, and search routes must precede the
@@ -255,16 +272,24 @@ def build_router(  # pylint: disable=too-many-locals
             uploads, storage.max_object_bytes, max_drop_seconds, max_drop_minimum_bits
         )
         router.add("POST", DROP_PATH, OwnSiteOnly(OwnPageOnly(drops, pages), checks))
+        identities = Identities(
+            uploads,
+            search,
+            drops,
+            Sessions(session_idle_seconds),
+            publish,
+            retry_after_seconds=retry_after_seconds,
+        )
 
-    router.add(
-        "GET",
-        SEARCH_PATTERN,
-        SearchHandler(
-            search=LocalSearch(content, storage.search_max_results),
-            cache=SearchCache.of(storage),
-            publish=publish,
-        ),
-    )
+        for method, path, handler in (
+            ("POST", USERS_PATH, identities.make),
+            ("POST", SESSION_PATH, identities.sign_in),
+            ("GET", SESSION_PATH, identities.signed_in),
+            ("DELETE", SESSION_PATH, identities.sign_out),
+        ):
+            router.add(method, path, LocalOnly(OwnPageOnly(handler, pages, trusted=True), checks))
+
+    router.add("GET", SEARCH_PATTERN, search)
     reads = BundleReadHandler(paths)
 
     for method in BUNDLE_METHODS:

@@ -46,6 +46,12 @@ network:
   drop_max_seconds: 60.0
   drop_max_minimum_bits: 26
 
+  # How long a person's session lasts unused before it ends, in seconds
+  # (HTTP API §11.4). The node holds the person's private key in memory for
+  # as long as the session lasts. Signing out, or the node stopping, ends a
+  # session sooner.
+  session_idle_seconds: 86400.0
+
   # The hosts /config is served as. A /config request whose Host header
   # names any other host is refused, so that a site which points a name of
   # its own at this machine cannot use a browser here to reach /config

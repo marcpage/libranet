@@ -24,6 +24,10 @@ The drop is stored as an upload from this node
 (:class:`~libranet.webserver.bundle_edits.OwnUploads`), compressed if that is
 smaller, as making bundles stores what it makes, so the validator stores it
 and announces it, and it is pushed as any new content is.
+
+Making a person's identity makes a drop too (HttpApi §11.3, Phase 4 Step 79),
+under the same ceilings, and takes its turn with the rest
+(:meth:`DropHandler.placed`).
 """
 
 from __future__ import annotations
@@ -37,7 +41,8 @@ from zlib import compress
 
 from libranet.bundle.errors import BundleTooLargeError
 from libranet.bundle.storing import ContentSink, store_object
-from libranet.cas.drops import DROP_SEPARATOR, TARGET_BITS
+from libranet.cas.content_id import ContentId
+from libranet.cas.drops import DROP_SEPARATOR, TARGET_BITS, DropTarget
 from libranet.config.models import MIB
 from libranet.protocol.drop_requests import DropRequest
 from libranet.protocol.errors import InvalidConfigRequestError
@@ -87,6 +92,23 @@ class Turns:
 
 
 @dataclass(frozen=True)
+class StoredDrop:
+    """A drop stored as ``content_id``, placed at ``target``, sharing ``matching_bits`` with it."""
+
+    content_id: ContentId
+    target: DropTarget
+    matching_bits: int
+
+    def value(self) -> dict[str, object]:
+        """What names it to a page: its id, the target hash, and how many bits they share."""
+        return {
+            "id": str(self.content_id),
+            "target": self.target.hex,
+            "matching_bits": self.matching_bits,
+        }
+
+
+@dataclass(frozen=True)
 class DropHandler:
     """``POST /data/drop``: make the drop a request asks for, and answer with what names it.
 
@@ -122,7 +144,29 @@ class DropHandler:
             return value
 
         try:
-            asked = self._within_ceilings(DropRequest.from_value(value))
+            asked = DropRequest.from_value(value)
+
+        except InvalidConfigRequestError as error:
+            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
+            return invalid_request_response(request, error)
+
+        stored = self.placed(request, asked)
+
+        if isinstance(stored, Response):
+            return stored
+
+        response = json_response(stored.value(), HTTPStatus.CREATED)
+        location = f"/data/{stored.content_id}"
+        return replace(response, headers={**response.headers, "Location": location})
+
+    def placed(self, request: Request, asked: DropRequest) -> StoredDrop | Response:
+        """The drop ``request`` asks for, as ``asked``, stored; or the response refusing it.
+
+        Asking for more search than this node allows is ``400``, and content
+        that does not fit in an object ``413``. The search waits its turn.
+        """
+        try:
+            self.within_ceilings(asked.seconds, asked.minimum_bits)
 
         except InvalidConfigRequestError as error:
             _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
@@ -143,35 +187,24 @@ class DropHandler:
             _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
             return self._too_large_response(request, len(drop.data))
 
-        response = json_response(
-            {
-                "id": str(content_id),
-                "target": asked.target.hex,
-                "matching_bits": drop.matching_bits,
-            },
-            HTTPStatus.CREATED,
-        )
-        return replace(response, headers={**response.headers, "Location": f"/data/{content_id}"})
+        return StoredDrop(content_id, asked.target, drop.matching_bits)
 
-    def _within_ceilings(self, asked: DropRequest) -> DropRequest:
-        """``asked``, if it asks for no more search than this node allows.
+    def within_ceilings(self, seconds: float, minimum_bits: int) -> None:
+        """Raise if ``seconds`` and ``minimum_bits`` ask for more search than this node allows.
 
         Raises:
-            InvalidConfigRequestError: it asks for more ``seconds`` or more
-                ``minimum_bits``.
+            InvalidConfigRequestError: ``seconds`` or ``minimum_bits`` is
+                more than its ceiling.
         """
-        if asked.seconds > self.max_seconds:
+        if seconds > self.max_seconds:
             raise InvalidConfigRequestError(
-                f'"seconds" may be at most {self.max_seconds} here, got {asked.seconds}'
+                f'"seconds" may be at most {self.max_seconds} here, got {seconds}'
             )
 
-        if asked.minimum_bits > self.max_minimum_bits:
+        if minimum_bits > self.max_minimum_bits:
             raise InvalidConfigRequestError(
-                f'"minimum_bits" may be at most {self.max_minimum_bits} here, '
-                f"got {asked.minimum_bits}"
+                f'"minimum_bits" may be at most {self.max_minimum_bits} here, got {minimum_bits}'
             )
-
-        return asked
 
     def _fits(self, content: bytes) -> bool:
         """Whether ``content`` as a drop with no nonce yet fits in an object, compressed or not.

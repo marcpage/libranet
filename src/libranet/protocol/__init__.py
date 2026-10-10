@@ -4,8 +4,8 @@ The web server answers requests and the connection manager makes them, so
 the syntax both speak, the lists both read, how ``localhost`` in a node list
 is resolved, search prefixes and the cached search responses, the
 ``/config`` request bodies the backup module acts on, the bundles local
-clients ask the web server to make, and the drops pages ask it to make are
-each defined once, here. No module
+clients ask the web server to make, the drops pages ask it to make, and the
+identities and sign-ins local clients ask for are each defined once, here. No module
 package imports another; what two modules share is here, in
 :mod:`libranet.messaging`, or in a library package below them both.
 """
@@ -41,6 +41,11 @@ from libranet.protocol.http_syntax import (
     REQUEST_PATH_HEADER,
     TOKEN,
 )
+from libranet.protocol.identity_requests import (
+    MIN_PASSWORD_CHARACTERS,
+    IdentityRequest,
+    SignInRequest,
+)
 from libranet.protocol.lists import (
     NODES_PATH,
     SEEK_PATH,
@@ -63,6 +68,7 @@ __all__ = [
     "IDENTIFIER_LENGTH",
     "JSON_CONTENT_TYPE",
     "LOCALHOST",
+    "MIN_PASSWORD_CHARACTERS",
     "NODES_PATH",
     "OCTET_STREAM",
     "REQUEST_PATH_HEADER",
@@ -78,6 +84,7 @@ __all__ = [
     "EntrySource",
     "ExportRequest",
     "FileSource",
+    "IdentityRequest",
     "ImportRequest",
     "InvalidConfigRequestError",
     "InvalidListError",
@@ -87,6 +94,7 @@ __all__ = [
     "PrefixSource",
     "RestoreRequest",
     "SearchCache",
+    "SignInRequest",
     "check_directory",
     "check_named",
     "check_path",

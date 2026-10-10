@@ -61,6 +61,15 @@ def test_an_application_request_waits_ten_seconds_by_default_and_never_a_negativ
         NetworkConfig(app_wait_seconds=-0.5)
 
 
+def test_a_session_ends_after_a_day_unused_by_default_and_never_at_once() -> None:
+    assert NetworkConfig().session_idle_seconds == 86_400.0
+    assert NetworkConfig(session_idle_seconds=0.5).session_idle_seconds == 0.5
+
+    for wrong in (0, -1):
+        with raises(ValidationError):
+            NetworkConfig(session_idle_seconds=wrong)
+
+
 def test_a_drop_may_be_searched_for_a_minute_and_to_26_bits_by_default() -> None:
     assert NetworkConfig().drop_max_seconds == 60.0
     assert NetworkConfig().drop_max_minimum_bits == 26

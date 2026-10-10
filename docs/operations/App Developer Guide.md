@@ -243,6 +243,8 @@ when trusted. `self.origin === "null"` tells a page it is sandboxed.
 | `/data/store/{application}/{key}` | `PUT`, `DELETE` | Local | Its own application's | Change the application's store (§6.6) |
 | `/data/applications` | `GET` | Any | Any application's | The applications the node serves (§6.7) |
 | `/data/drop` | `POST` | Any | Any application's | Place content at a drop (§6.9) |
+| `/data/users` | `POST` | Local | A trusted application's | Make a person's identity (§6.10) |
+| `/data/session` | `GET`, `POST`, `DELETE` | Local | A trusted application's | Who is signed in; sign in and out (§6.10) |
 | `/data/nodes`, `/data/seek` | `GET` | Any | Any, or none | The peers the node knows, and what it seeks (§6.8) |
 
 ### 5.3 Waiting for Content
@@ -587,6 +589,69 @@ another's search waits for it. A node limits both `seconds` and
 `minimum_bits`, by default to 60 and 26, and answers a request asking for
 more with `400`. Content that does not fit in an object, 1 MiB, even
 compressed, is `413`. Any client may make a drop, not only a local one.
+
+### 6.10 Identities and Signing In
+
+A person has an identity of their own, apart from any node's: an RSA key
+pair, whose public key's id is the person's id (HTTP API §11.3). The private
+key is kept in the network too, encrypted by the person's username and
+password, at the drop `user:{username}`, so they can sign in on any node that
+holds it. Make one with:
+
+```js
+const response = await fetch("/data/users", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    username: "alice",
+    password,
+    key_bits: 3072,
+    seconds: 10,
+    minimum_bits: 16,
+  }),
+});
+const { id, username, drop, target, matching_bits } = await response.json();
+```
+
+- **`username`** is case-folded, with spaces around it dropped, so `Alice`
+  and `alice` are one. It is from 1 to 64 characters.
+- **`password`** is at least 8 characters.
+- **`key_bits`** is 2048, 3072, or 4096. A larger key takes longer to make:
+  offer them as quick, stronger, and strongest.
+- **`seconds`** and **`minimum_bits`** are as for making a drop (§6.9), and
+  limited alike. Anyone can place blocks at `user:alice`, and the more bits
+  the identity's drop matches, the nearer the top of a search it is.
+
+It is answered `201 Created`, and the person is signed in. A username and
+password that already open an identity on this node are `409`.
+
+Sign in, ask who is signed in, and sign out at `/data/session`:
+
+```js
+await fetch("/data/session", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ username: "alice", password }),
+});
+const { id, username } = await (await fetch("/data/session")).json();
+await fetch("/data/session", { method: "DELETE" });
+```
+
+Signing in answers with the person's `id` and `username`, and asking who is
+signed in answers the same, or both `null` when no one is. A wrong password
+is `403`, with the problem type `no-identity`. A node that has found nothing
+at the drop yet, or has found blocks it does not hold, answers `503` while
+it asks its peers for them, so wait as §5.3 shows. Each sign-in costs the
+node a fifth of a second or so, by design, and it signs in one person at a
+time.
+
+The session is named by a cookie the browser keeps, which no page's script
+can read. The node holds the person's private key while they are signed in,
+and no page ever sees it. A session ends when it is signed out, when it goes
+unused for `network.session_idle_seconds`, a day by default, or when the
+node stops. Each of these is for a local client only, from a trusted
+application's page, since a password sent from elsewhere would cross the
+network as it was typed.
 
 ## 7. Patterns From the Movie Library
 

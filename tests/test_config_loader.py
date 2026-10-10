@@ -150,6 +150,12 @@ def test_the_example_config_states_the_default_drop_ceilings() -> None:
     )
 
 
+def test_the_example_config_states_the_default_session_idle_time() -> None:
+    example = Path(__file__).parent.parent / "examples" / "libranet.yaml"
+
+    assert load_config(example).network.session_idle_seconds == NetworkConfig().session_idle_seconds
+
+
 def test_the_example_config_states_the_default_excluded_extended_attributes() -> None:
     example = Path(__file__).parent.parent / "examples" / "libranet.yaml"
 

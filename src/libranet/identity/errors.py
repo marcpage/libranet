@@ -10,7 +10,7 @@ class IdentityError(Exception):
 
 
 class KeyFileError(IdentityError, ValueError):
-    """Stored or received key material cannot be decoded as a node key."""
+    """Stored or received key material cannot be decoded as a node's key, or a person's."""
 
 
 class SignatureError(IdentityError):
