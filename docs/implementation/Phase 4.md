@@ -1079,22 +1079,34 @@ Ruled after building:
   `webserver/user_directory.py`, the call from `Identities`, and their
   tests. HttpApi §11.5 went with it, and the App Developer Guide §6.12
   now says what the directory is.
+- **The `/config` page hands a user it creates to the directory.** It
+  cannot add them itself: its port is another origin, its own policy lets
+  it fetch only from that port, and the main port's endpoints refuse
+  another origin's requests. So its message, once a user is created, links
+  to `/directory/?add={id}` on the main port, as it links the
+  applications. The directory page checks that the id names a public key
+  the node holds, and offers an **Add to the directory** button. Opening
+  the link writes nothing, since a link from anywhere can name anyone, and
+  a write costs the node a nonce search.
 
 The specification change is written: HttpApi §12.3 gives the whole-bundle
 form of `POST /data/bundles`, and §25 names it. The directory itself is
 written up in the App Developer Guide §6.12, as an application's.
 
 Built in one change set: 86 added lines of non-test Python, 16 of them in
-place of removed ones, 643 of the page, and 113 of tests.
+place of removed ones, 756 of the directory page, 24 of the `/config`
+page, and 113 of tests.
 
 - **`applications/directory/index.html`** (new), and
-  `SHIPPED_APPLICATIONS` gains `"directory": "directory"`.
+  `SHIPPED_APPLICATIONS` gains `"directory": "directory"`. The
+  `/config` page (`applications/config/index.html`) links each user it
+  creates to it.
 - **`WholeBundleRequest`** (`protocol/bundle_requests.py`) and
   `BundleEditHandler`'s branch storing it, re-encoded, with
   `store_object`. It knows nothing of directories: it stores whatever
   well-formed bundle a page wrote.
 - HttpApi §12.3 and §25; the App Developer Guide §5.2, §6.5, §6.12 (new),
-  and §9; the Operator Guide §6; File Layout; and the README.
+  and §9; the Operator Guide §6 and §6.5; File Layout; and the README.
 
 My calls, not yet reviewed:
 
@@ -1150,6 +1162,13 @@ My calls, not yet reviewed:
 - **A page elsewhere** reads, merges, and makes a directory, but blocks
   nothing, as it asks `/data/client` first, and cannot extend: it says
   that only a browser on the node's machine can.
+- **The link opens the directory in a new tab**, so the operator stays
+  on `/config`. The directory page loads and merges as usual first, then
+  makes its offer. An id it does not hold yet is "not held yet", whether
+  it was just made or never was, since the page cannot tell them apart. A
+  held object that does not begin as a PEM public key is refused. Once
+  the person is added, the page drops `?add` from its address, so a reload
+  asks nothing.
 - **The whole-bundle form** re-encodes the bundle as the node writes any,
   with sorted keys and lower-case hashes, reads nothing it names, takes
   any well-formed bundle, and is `201` even when the bundle was held.
@@ -1174,6 +1193,15 @@ of 16 KiB so that a few hundred people outgrow a drop, and headless Chrome
   directory, and wrote nothing.
 - No warning or error was logged. A load that wrote a directory took about
   12 seconds, 10 of them the nonce search.
+
+A second run, after the `/config` page's link: creating Dave on the
+`/config` page showed **Add them to the user directory**, linking to
+`/directory/?add=…` on the main port in a new tab. There the page, finding
+no directory, offered Dave, and the click wrote a directory listing him.
+Reloaded, it offered nothing. The same link again said Dave is listed; one
+naming Alice's identity block, which the node holds, said it names no
+public key; `?add=garbage` said it is no id; and a made-up id said its key
+is not held yet. No warning or error was logged.
 
 An earlier run, with the node's directory code, also showed the first
 search answered from the cache, lacking a directory stored moments before,

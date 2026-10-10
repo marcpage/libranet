@@ -64,6 +64,7 @@
   .you { color: var(--good); font-weight: 600; margin-left: 0.5rem; }
   .note, footer { color: var(--muted); }
   .error { color: var(--bad); }
+  button { font: inherit; padding: 0.35rem 0.9rem; }
   ol { margin: 0; padding-left: 1.75rem; }
   li + li { margin-top: 0.35rem; }
   #status { margin: 0.25rem 0 0; padding: 0; list-style: none; }
@@ -77,16 +78,23 @@
   <ul id="status"><li class="note">Reading the directory&hellip;</li></ul>
   <noscript><p class="note">Reading the directory needs JavaScript.</p></noscript>
 
+  <section id="asked" hidden>
+    <h2>Add a person</h2>
+    <p id="asked-text"></p>
+    <button id="asked-add" type="button" hidden>Add to the directory</button>
+  </section>
+
   <section>
     <h2 id="count">People</h2>
     <div id="people"><span class="note">Asking the node&hellip;</span></div>
   </section>
 
   <footer>
-    Everyone who has opened this page signed in is listed here by their id,
-    the content id of their public key. The list is kept at the drop
-    <code>user directory</code>. Opening this page merges what each copy found
-    there lists, and adds whoever is signed in.
+    People are listed here by their id, the content id of their public key,
+    once they open this page signed in, or are added from a link, such as the
+    one the administration page gives for a user it creates. The list is kept
+    at the drop <code>user directory</code>, and opening this page merges what
+    each copy found there lists.
   </footer>
 </main>
 <script>
@@ -116,6 +124,10 @@ const MAX_EXTENSIONS = 1024;
 // A person's id, an entry's path, and an extension's id: the only hash the
 // node knows, in lower-case hex (HttpApi 5).
 const CONTENT_ID = /^sha256\/[0-9a-f]{64}$/;
+
+// What a person's public key begins with: PEM-encoded SubjectPublicKeyInfo
+// (HttpApi 11.3).
+const PUBLIC_KEY_PEM = "-----BEGIN PUBLIC KEY-----";
 
 // JSON as written begins with "{", which no zlib stream does (HttpApi 8),
 // and a drop's content ends at its last null byte (HttpApi 9).
@@ -516,12 +528,13 @@ async function blocked(ids, local) {
 }
 
 // Make a directory listing everyone, if the newest does not, and block
-// those it replaces.
+// those it replaces. Whether a directory listing everyone is at the drop now.
 async function reconcile(merge, everyone, local) {
   const newest = merge.newest;
   const outlisted = newest === null ? [] : merge.replaced(newest.people, newest.id);
   const listing = merge.rewritten(everyone);
   let replaced = outlisted;
+  let listed = listing === null;
 
   if (listing !== null) {
     status.say(`Writing a directory of ${plural(everyone.size, "person", "people")}; this takes about ${DROP_SECONDS} seconds.`);
@@ -534,6 +547,7 @@ async function reconcile(merge, everyone, local) {
     if (made.id) {
       status.say(`Wrote the directory ${made.id}, listing everyone.`, "note");
       replaced = merge.replaced(everyone, null);
+      listed = true;
     } else {
       status.say(`The directory could not be written: ${made.error}`, "error");
     }
@@ -544,6 +558,8 @@ async function reconcile(merge, everyone, local) {
   if (count > 0) {
     status.say(`Blocked ${plural(count, "directory", "directories")} that another lists everyone in.`);
   }
+
+  return listed;
 }
 
 // Whoever is signed in, by id; null if no one is, or this client cannot say.
@@ -614,9 +630,11 @@ function directoriesIn(read) {
   return [...read.values()].filter((found) => found.directory).map((found) => found.directory);
 }
 
-async function load() {
-  const [you, local] = await Promise.all([signedIn(), isLocal()]);
-  const added = you === null ? [] : [you];
+// Read the directory, and make one listing everyone if the newest does not,
+// with whoever is signed in and the people `extra` names. Who that is, and
+// whether a directory listing them all is at the drop now.
+async function load(you, local, extra) {
+  const added = [...(you === null ? [] : [you]), ...extra];
   const read = new Map();
   await searched(read);
   showPeople(new Merge(directoriesIn(read)).everyone(added), you);
@@ -625,7 +643,8 @@ async function load() {
   // what it has heard of to the cache, so the second finds it.
   await searched(read);
   const merge = new Merge(directoriesIn(read));
-  showPeople(merge.everyone(added), you);
+  const everyone = merge.everyone(added);
+  showPeople(everyone, you);
 
   const missing = [...read.values()].filter((found) => found.missing).length;
   status.say(`Read ${plural(merge.directories.length, "directory", "directories")} at the drop.`);
@@ -634,10 +653,104 @@ async function load() {
     status.say(`${plural(missing, "more", "more")} found there ${missing === 1 ? "is" : "are"} not held here yet. The node asked its peers for ${missing === 1 ? "it" : "them"}, and any directory among them is merged when this page is opened again.`);
   }
 
-  await reconcile(merge, merge.everyone(added), local);
+  return { everyone, listed: await reconcile(merge, everyone, local) };
 }
 
-load().catch((error) => status.say(error.message, "error"));
+// Whether `id` names a person's public key the node holds; null if the node
+// does not hold it yet.
+async function isPublicKey(id) {
+  let bytes;
+
+  try {
+    bytes = await held(id);
+  } catch (error) {
+    if (error instanceof Unreachable) {
+      throw error;
+    }
+
+    return false;
+  }
+
+  if (bytes === null) {
+    return null;
+  }
+
+  return new TextDecoder().decode(bytes.subarray(0, PUBLIC_KEY_PEM.length)) === PUBLIC_KEY_PEM;
+}
+
+function sayAsked(text, className) {
+  byId("asked").hidden = false;
+  const said = byId("asked-text");
+  said.textContent = text;
+  said.className = className || "";
+}
+
+// Offer to add the person a link names, as `?add={id}`, as the /config page
+// links here once it creates a user. A link from anywhere can name anyone, so
+// opening one writes nothing: only a click adds them, and only if the id
+// names a public key the node holds.
+async function offer(asked, everyone, you, local) {
+  if (!CONTENT_ID.test(asked)) {
+    sayAsked(`The link asks to add ${asked}, which is not a person's id.`, "error");
+    return;
+  }
+
+  if (everyone.has(asked)) {
+    sayAsked(`${asked} is listed.`);
+    return;
+  }
+
+  const key = await isPublicKey(asked);
+
+  if (key === null) {
+    sayAsked(`This node does not hold the public key ${asked} names yet. Open the link again shortly.`, "error");
+    return;
+  }
+
+  if (!key) {
+    sayAsked(`${asked} names no person's public key, so it cannot be added.`, "error");
+    return;
+  }
+
+  sayAsked(`Add ${asked} to the directory? It names a person's public key, which this node holds.`);
+  const add = byId("asked-add");
+  add.hidden = false;
+  add.addEventListener("click", async () => {
+    add.disabled = true;
+    status.started = false;
+    status.say(`Adding ${asked}\u2026`);
+
+    try {
+      const { listed } = await load(you, local, [asked]);
+
+      if (!listed) {
+        sayAsked(`${asked} could not be added. The reason is above.`, "error");
+        add.disabled = false;
+        return;
+      }
+
+      sayAsked(`${asked} is listed.`);
+      add.hidden = true;
+      // A reload asks nothing again.
+      history.replaceState(null, "", location.pathname);
+    } catch (error) {
+      status.say(error.message, "error");
+      add.disabled = false;
+    }
+  });
+}
+
+async function start() {
+  const [you, local] = await Promise.all([signedIn(), isLocal()]);
+  const { everyone } = await load(you, local, []);
+  const asked = new URLSearchParams(location.search).get("add");
+
+  if (asked !== null) {
+    await offer(asked, everyone, you, local);
+  }
+}
+
+start().catch((error) => status.say(error.message, "error"));
 </script>
 </body>
 </html>

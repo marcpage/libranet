@@ -734,6 +734,12 @@ rules, so that copies made by different pages and nodes come together:
   copy it was made from; when none is needed, every copy but the newest.
   Never block an extension: it is not at the drop, and later copies name it.
 
+To have someone added who is not signed in, link to
+`/directory/?add={id}`, as the `/config` page does for a user it creates.
+The directory application checks that the id names a public key the node
+holds, and adds them only when the person at the browser clicks **Add to
+the directory**, since a link from anywhere can name anyone.
+
 ## 7. Patterns From the Movie Library
 
 The movie library, `src/libranet/applications/movie/index.html`, is one page
