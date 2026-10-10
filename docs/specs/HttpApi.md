@@ -1345,8 +1345,10 @@ SubjectPublicKeyInfo stored as ordinary content, and the person's id is the
 content identifier of those bytes, such as `sha256/` followed by 64
 lower-case hex digits.
 
-The private key is kept in CAS too, encrypted, so that a person can sign in
-on any node that holds it. Its **identity block** is the JSON object
+The private key is kept in CAS too, encrypted, so that a person can sign in on
+any node that holds it. A person's key is at least 2048 bits, and a node
+neither makes nor opens a smaller one, whatever sizes it makes. Its **identity
+block** is the JSON object
 
 ```json
 {"private_key": "-----BEGIN PRIVATE KEY-----\n…"}
@@ -1384,8 +1386,10 @@ Content-Type: application/json
 
 - **`username`** and **`password`** are strings. A password is at least 8
   characters.
-- **`key_bits`** is the size of the RSA key: 2048, 3072, or 4096. A larger
-  key takes longer to make, and to guess.
+- **`key_bits`** is the size of the RSA key, one of the sizes the node
+  makes, which it sets. 2048, 3072, and 4096 are RECOMMENDED. A larger key
+  takes longer to make, and to guess. A size the node does not make is
+  `400 Bad Request`.
 - **`seconds`** and **`minimum_bits`** are as for making a drop (§9.6), and
   limited alike. `minimum_bits` is 0 if absent.
 

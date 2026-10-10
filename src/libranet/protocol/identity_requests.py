@@ -22,7 +22,8 @@ from unicodedata import normalize
 
 from libranet.bundle.shapes import is_utf8
 from libranet.cas.drops import TARGET_BITS
-from libranet.identity.people import KEY_BITS, Username
+from libranet.config.models import MIN_PERSON_KEY_BITS
+from libranet.identity.people import Username
 from libranet.protocol.errors import InvalidConfigRequestError
 
 #: The fewest characters a new identity's password has, once in NFC (HttpApi §11.3).
@@ -70,13 +71,14 @@ class IdentityRequest:
 
     Its key is ``key_bits`` long, and the drop keeping it is searched for
     ``seconds``, and until ``minimum_bits`` match, as making a drop is.
+    Whether this node makes a key that size is checked where the request is
+    answered, as the ceilings of a drop's search are.
 
     Raises:
         ValueError: ``password`` is shorter than
-            :data:`MIN_PASSWORD_CHARACTERS` or not UTF-8, ``key_bits`` is not
-            one of :data:`~libranet.identity.people.KEY_BITS`, ``seconds`` is
-            negative or not finite, or ``minimum_bits`` is negative or more
-            than a hash has.
+            :data:`MIN_PASSWORD_CHARACTERS` or not UTF-8, ``key_bits`` is
+            under ``MIN_PERSON_KEY_BITS``, ``seconds`` is negative or not
+            finite, or ``minimum_bits`` is negative or more than a hash has.
     """
 
     username: Username
@@ -91,8 +93,10 @@ class IdentityRequest:
         if len(normalize(_NORMAL_FORM, self.password)) < MIN_PASSWORD_CHARACTERS:
             raise ValueError(f'"password" must be at least {MIN_PASSWORD_CHARACTERS} characters')
 
-        if self.key_bits not in KEY_BITS:
-            raise ValueError(f'"key_bits" must be one of {KEY_BITS}, got {self.key_bits}')
+        if self.key_bits < MIN_PERSON_KEY_BITS:
+            raise ValueError(
+                f'"key_bits" must be at least {MIN_PERSON_KEY_BITS}, got {self.key_bits}'
+            )
 
         if not isfinite(self.seconds) or self.seconds < 0:
             raise ValueError(f'"seconds" must be a number, not negative, got {self.seconds}')

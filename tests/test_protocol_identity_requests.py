@@ -25,6 +25,10 @@ def test_an_identity_request_is_read_with_its_username_normalized() -> None:
     assert asked == IdentityRequest(Username.create("alice"), PASSWORD, 3072, 5.0, 16)
 
 
+def test_any_key_size_from_the_smallest_up_is_read_whatever_this_node_makes() -> None:
+    assert IdentityRequest.from_value({**ASKED, "key_bits": 8192}).key_bits == 8192
+
+
 def test_minimum_bits_is_zero_if_absent() -> None:
     value = {name: given for name, given in ASKED.items() if name != "minimum_bits"}
 
@@ -49,7 +53,7 @@ def test_no_password_is_in_a_requests_repr() -> None:
         ({"password": "pass\ud800word"}, '"password" is not UTF-8'),
         ({"key_bits": "3072"}, '"key_bits" must be an integer'),
         ({"key_bits": True}, '"key_bits" must be an integer'),
-        ({"key_bits": 1024}, '"key_bits" must be one of'),
+        ({"key_bits": 1024}, '"key_bits" must be at least 2048, got 1024'),
         ({"seconds": None}, '"seconds" must be a number'),
         ({"seconds": -1}, '"seconds" must be a number, not negative'),
         ({"minimum_bits": 1.5}, '"minimum_bits" must be an integer'),

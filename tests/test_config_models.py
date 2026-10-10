@@ -203,6 +203,20 @@ def test_unsigned_api_reads_are_allowed_unless_disabled() -> None:
     assert config.identity == IdentityConfig(allow_unsigned_api_reads=False)
 
 
+def test_a_persons_key_is_made_at_2048_3072_or_4096_bits_by_default() -> None:
+    # A YAML list is read as the tuple.
+    configured = IdentityConfig.model_validate({"person_key_bits": [8192]})
+
+    assert IdentityConfig().person_key_bits == (2048, 3072, 4096)
+    assert configured.person_key_bits == (8192,)
+
+
+@mark.parametrize("sizes", [(), (1024, 2048), (2047,)])
+def test_no_person_key_size_under_2048_bits_is_configured(sizes: tuple[int, ...]) -> None:
+    with raises(ValidationError, match="person_key_bits"):
+        IdentityConfig(person_key_bits=sizes)
+
+
 class TestAdvertisedEndpoint:
     """HttpApi §10.1 self-description rules."""
 

@@ -42,6 +42,15 @@ CONFIG_LISTEN_ADDRESS: Final = "127.0.0.1"
 # §2.4).
 DEFAULT_CONFIG_HOSTS: Final = ("localhost", "127.0.0.1", "::1")
 
+# The smallest RSA key a person's identity has, made or opened (HttpApi
+# §11.3, Phase 4 Step 79). Every node opens what any other makes, so it is
+# no setting.
+MIN_PERSON_KEY_BITS: Final = 2048
+
+# The sizes a person's RSA key is made at, by default, which a page offers
+# as quick, stronger, and strongest (HttpApi §11.3, Phase 4 Step 79).
+DEFAULT_PERSON_KEY_BITS: Final = (2048, 3072, 4096)
+
 # What a folder's last segment cannot be, if it is to be offered under it.
 _UNNAMED_FOLDERS: Final = frozenset({"", ".."})
 
@@ -374,6 +383,27 @@ class IdentityConfig(_Section):
     # signed request is checked and a failed signature closes the connection,
     # and uploads always need a valid signature.
     allow_unsigned_api_reads: bool = True
+
+    # The sizes, in bits, a person's RSA key may be made at here (HttpApi
+    # §11.3, Phase 4 Step 79). A larger key takes longer to make: on an Apple
+    # M2, 0.08 seconds at 2048 bits, 0.31 at 3072, and 0.69 at 4096, on
+    # average. None is under MIN_PERSON_KEY_BITS.
+    person_key_bits: tuple[int, ...] = DEFAULT_PERSON_KEY_BITS
+
+    @field_validator("person_key_bits", mode="after")
+    @classmethod
+    def _person_key_bits_usable(cls, sizes: tuple[int, ...]) -> tuple[int, ...]:
+        if not sizes:
+            raise ValueError("person_key_bits must name at least one size")
+
+        too_small = [size for size in sizes if size < MIN_PERSON_KEY_BITS]
+
+        if too_small:
+            raise ValueError(
+                f"person_key_bits must each be at least {MIN_PERSON_KEY_BITS}, got {too_small}"
+            )
+
+        return sizes
 
     def resolved_key_dir(self, storage: StorageConfig) -> Path:
         """Key directory, defaulting to ``keys/`` under the data directory."""

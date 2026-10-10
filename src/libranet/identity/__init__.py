@@ -38,7 +38,6 @@ from libranet.identity.keys import (
 )
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.people import (
-    KEY_BITS,
     MAX_IDENTITY_BYTES,
     MAX_USERNAME_CHARACTERS,
     PersonKey,
@@ -60,7 +59,6 @@ __all__ = [
     "BACKUP_SECRET_BYTES",
     "CONTENT_DIGEST_HEADER",
     "DIGEST_COMPONENT",
-    "KEY_BITS",
     "MAX_IDENTITY_BYTES",
     "MAX_PUBLIC_KEY_BYTES",
     "MAX_TRACKED_SIGNERS",

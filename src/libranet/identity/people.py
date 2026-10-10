@@ -37,11 +37,9 @@ from libranet.bundle.shapes import is_utf8
 from libranet.bundle.storing import HASH_ALGORITHM
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
+from libranet.config.models import MIN_PERSON_KEY_BITS
 from libranet.identity.errors import KeyFileError
 from libranet.json_format import compact_json
-
-#: The sizes, in bits, a person's RSA key is made at (HttpApi §11.3).
-KEY_BITS: Final = (2048, 3072, 4096)
 
 #: The most characters a normalized username has (HttpApi §11.3).
 MAX_USERNAME_CHARACTERS: Final = 64
@@ -143,13 +141,16 @@ class PersonKey:
 
     @classmethod
     def generate(cls, key_bits: int) -> PersonKey:
-        """A new key pair of ``key_bits``, one of :data:`KEY_BITS`.
+        """A new key pair of ``key_bits``, at least ``MIN_PERSON_KEY_BITS``.
+
+        Which sizes a node makes is its own setting
+        (``identity.person_key_bits``), checked by whoever asks for one.
 
         Raises:
-            ValueError: ``key_bits`` is not one of :data:`KEY_BITS`.
+            ValueError: ``key_bits`` is under ``MIN_PERSON_KEY_BITS``.
         """
-        if key_bits not in KEY_BITS:
-            raise ValueError(f"key_bits must be one of {KEY_BITS}, got {key_bits}")
+        if key_bits < MIN_PERSON_KEY_BITS:
+            raise ValueError(f"key_bits must be at least {MIN_PERSON_KEY_BITS}, got {key_bits}")
 
         return cls.of(generate_private_key(_PUBLIC_EXPONENT, key_bits))
 
@@ -170,7 +171,8 @@ class PersonKey:
                 lacks, or is larger than :data:`MAX_IDENTITY_BYTES` opened.
             MalformedBundleError: it is not a protected block.
             KeyFileError: it opens, but to no identity block holding an RSA
-                key of at least the smallest of :data:`KEY_BITS`.
+                key of at least ``MIN_PERSON_KEY_BITS``, whatever sizes this
+                node makes.
         """
         opened = key.unprotect(strip_targeting(drop), MAX_IDENTITY_BYTES)
 
@@ -194,10 +196,10 @@ class PersonKey:
         if not isinstance(private_key, RSAPrivateKey):
             raise KeyFileError(f"The identity block holds a {type(private_key).__name__}")
 
-        if private_key.key_size < KEY_BITS[0]:
+        if private_key.key_size < MIN_PERSON_KEY_BITS:
             raise KeyFileError(
                 f"The identity block holds a key of {private_key.key_size} bits, "
-                f"under {KEY_BITS[0]}"
+                f"under {MIN_PERSON_KEY_BITS}"
             )
 
         return cls.of(private_key)

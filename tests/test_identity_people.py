@@ -112,9 +112,9 @@ def test_neither_key_is_in_the_repr(person: PersonKey) -> None:
     assert str(person.person_id.hash) in shown
 
 
-@mark.parametrize("key_bits", [1024, 2047, 8192])
-def test_only_the_key_sizes_offered_are_made(key_bits: int) -> None:
-    with raises(ValueError, match="key_bits must be one of"):
+@mark.parametrize("key_bits", [1024, 2047])
+def test_no_key_under_the_smallest_a_person_may_have_is_made(key_bits: int) -> None:
+    with raises(ValueError, match="key_bits must be at least 2048"):
         PersonKey.generate(key_bits)
 
 
