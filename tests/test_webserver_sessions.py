@@ -64,7 +64,11 @@ def test_each_session_has_a_token_of_its_own(sessions: Sessions, session: Sessio
 
 
 def test_the_session_says_who_is_signed_in(session: Session) -> None:
-    assert session.value() == {"id": str(session.key.person_id), "username": "alice"}
+    assert session.value() == {
+        "id": str(session.key.person_id),
+        "username": "alice",
+        "created": session.key.created_text,
+    }
 
 
 @mark.parametrize(

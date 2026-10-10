@@ -54,8 +54,15 @@ class Session:
     key: PersonKey
 
     def value(self) -> dict[str, str]:
-        """What says who is signed in: the person's id and their username (HttpApi §11.4)."""
-        return {"id": str(self.key.person_id), "username": self.username.text}
+        """What says who is signed in: the person's id, username, and when the id was made.
+
+        As HttpApi §11.4 gives it.
+        """
+        return {
+            "id": str(self.key.person_id),
+            "username": self.username.text,
+            "created": self.key.created_text,
+        }
 
 
 @dataclass

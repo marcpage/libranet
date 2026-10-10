@@ -1977,10 +1977,14 @@ def test_a_local_client_makes_an_identity_and_is_signed_in_by_a_cookie(
         ContentId.parse(answer["drop"])
     )
     assert who.status == 200
-    assert loads(who_body) == {"id": answer["id"], "username": "alice"}
+    assert loads(who_body) == {
+        "id": answer["id"],
+        "username": "alice",
+        "created": answer["created"],
+    }
     assert out.status == 204
     assert after.status == 200
-    assert loads(after_body) == {"id": None, "username": None}
+    assert loads(after_body) == {"id": None, "username": None, "created": None}
 
 
 @mark.parametrize(
@@ -2215,7 +2219,11 @@ def test_an_identity_made_on_the_config_page_signs_in_at_an_application(
     assert made.getheader("Set-Cookie") is None
     assert made.getheader("Location") is None
     assert signed_in.status == 200
-    assert loads(signed_in.read()) == {"id": answer["id"], "username": "alice"}
+    assert loads(signed_in.read()) == {
+        "id": answer["id"],
+        "username": "alice",
+        "created": answer["created"],
+    }
 
 
 def test_the_main_port_takes_its_turns_in_the_costly_work_it_is_given(

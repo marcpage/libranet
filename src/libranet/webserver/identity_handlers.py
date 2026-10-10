@@ -10,7 +10,7 @@ key in an identity block (:class:`~libranet.identity.people.PersonKey`), made
 a drop at ``user:{username}`` as ``POST /data/drop`` makes one, under the same
 ceilings and taking its turn with the rest. It answers ``201``, signed in::
 
-    {"id": "sha256/…", "username": "alice",
+    {"id": "sha256/…", "username": "alice", "created": "2026-10-10T14:03:22Z",
      "drop": "sha256/…", "target": "<hex>", "matching_bits": 21}
 
 ``POST /config/api/users`` makes one the same way, for the ``/config``
@@ -18,7 +18,7 @@ application, so that the operator can make one for a person (Phase 4 Step
 91). It is answered the same, but signs no one in, and has no ``Location``.
 
 ``POST /data/session`` signs in with a username and password, ``GET`` says who
-is signed in, as ``{"id": …, "username": …}`` or both ``null``, and
+is signed in, as ``{"id": …, "username": …, "created": …}`` or each ``null``, and
 ``DELETE`` signs out. Signing in tries each block a search of the drop finds,
 held here or uploaded and not yet stored, with the key the username and
 password derive, and the first that opens is the person's. Blocks found and
@@ -82,7 +82,7 @@ USERS_PATH: Final = "/data/users"
 SESSION_PATH: Final = "/data/session"
 
 # What says that no one is signed in (HttpApi §11.4).
-_NO_ONE: Final = {"id": None, "username": None}
+_NO_ONE: Final = {"id": None, "username": None, "created": None}
 
 # Kept by no cache, since each names a session.
 _NOT_STORED: Final = {"Cache-Control": "no-store"}

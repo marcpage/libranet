@@ -155,12 +155,17 @@ def test_making_an_identity_keeps_its_keys_and_signs_it_in(
         uploaded(storage, drop_id), Username.create("alice").password_key(PASSWORD)
     )
     assert key.person_id == person_id
+    assert answer["created"] == key.created_text
     assert recorder.payloads(EventType.PUT_COMPLETED) == [
         {**drop_id.fields(), "node_id": str(NODE_ID)},
         {**person_id.fields(), "node_id": str(NODE_ID)},
     ]
     who = identities.signed_in(asked("GET", SESSION_PATH, headers=cookie_of(response)))
-    assert loads(who.body) == {"id": str(person_id), "username": "alice"}
+    assert loads(who.body) == {
+        "id": str(person_id),
+        "username": "alice",
+        "created": answer["created"],
+    }
 
 
 def test_an_identity_made_without_signing_in_starts_no_session(
@@ -179,7 +184,11 @@ def test_an_identity_made_without_signing_in_starts_no_session(
     validated(storage, ContentId.parse(answer["id"]), ContentId.parse(answer["drop"]))
     signed_in = identities.sign_in(signing_in())
     assert signed_in.status == 200, signed_in.body
-    assert loads(signed_in.body) == {"id": answer["id"], "username": "alice"}
+    assert loads(signed_in.body) == {
+        "id": answer["id"],
+        "username": "alice",
+        "created": answer["created"],
+    }
 
 
 def test_making_without_signing_in_is_refused_as_making_is(
@@ -198,12 +207,17 @@ def test_making_without_signing_in_is_refused_as_making_is(
 def test_signing_in_opens_the_identity_at_the_usernames_drop(
     identities: Identities, storage: StorageConfig
 ) -> None:
-    person_id = made(storage, identities, making())["id"]
+    answer = made(storage, identities, making())
+    person_id = answer["id"]
 
     response = identities.sign_in(signing_in("ALICE"))
 
     assert response.status == 200, response.body
-    assert loads(response.body) == {"id": person_id, "username": "alice"}
+    assert loads(response.body) == {
+        "id": person_id,
+        "username": "alice",
+        "created": answer["created"],
+    }
     assert response.headers["Cache-Control"] == "no-store"
     assert response.headers["Set-Cookie"].endswith("; Path=/; HttpOnly; SameSite=Strict")
     who = identities.signed_in(asked("GET", SESSION_PATH, headers=cookie_of(response)))
@@ -421,7 +435,7 @@ def test_no_one_is_signed_in_without_a_session(identities: Identities) -> None:
     response = identities.signed_in(asked("GET", SESSION_PATH))
 
     assert response.status == 200
-    assert loads(response.body) == {"id": None, "username": None}
+    assert loads(response.body) == {"id": None, "username": None, "created": None}
     assert response.headers["Cache-Control"] == "no-store"
 
 
@@ -436,7 +450,7 @@ def test_signing_out_ends_the_session_and_removes_its_cookie(
     assert response.status == 204
     assert response.headers["Set-Cookie"].endswith("Max-Age=0")
     who = identities.signed_in(asked("GET", SESSION_PATH, headers=cookie))
-    assert loads(who.body) == {"id": None, "username": None}
+    assert loads(who.body) == {"id": None, "username": None, "created": None}
 
 
 def test_a_sign_in_waits_while_another_key_is_derived(identities: Identities) -> None:
