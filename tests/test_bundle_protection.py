@@ -7,8 +7,9 @@ from zlib import compress, decompress
 from cryptography.hazmat.primitives.ciphers import Cipher
 from cryptography.hazmat.primitives.ciphers.algorithms import AES256
 from cryptography.hazmat.primitives.ciphers.modes import CBC
+from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
 from cryptography.hazmat.primitives.padding import PKCS7
-from pytest import mark, raises
+from pytest import fixture, mark, raises
 
 from libranet.bundle.errors import (
     BundleTooLargeError,
@@ -16,7 +17,13 @@ from libranet.bundle.errors import (
     MalformedBundleError,
     UnsupportedBundleError,
 )
-from libranet.bundle.protection import is_protected, protect, strip_targeting, unprotect
+from libranet.bundle.protection import (
+    PasswordKey,
+    is_protected,
+    protect,
+    strip_targeting,
+    unprotect,
+)
 
 PLAINTEXT = b'{"contents":{"README.md":{"contents":["sha256/' + b"a" * 64 + b'"]}}}'
 PASSWORD = b"correct horse battery staple"
@@ -24,6 +31,21 @@ DESCRIPTOR = b"PW-SHA256-AES256-CBC"
 MAX_BYTES = 1 << 20
 IV = bytes(range(16))
 ZERO_IV = bytes(16)
+USERNAME = "alice"
+USER_PASSWORD = "correct horse battery staple"
+USER_DESCRIPTOR = b"PW-ARGON2ID-AES256-CBC"
+
+
+@fixture(scope="module")
+def user_key() -> PasswordKey:
+    """The key ``USERNAME`` and ``USER_PASSWORD`` derive, derived once for every test."""
+    return PasswordKey.of_user(USERNAME, USER_PASSWORD)
+
+
+def argon2id(username: bytes, password: bytes) -> bytes:
+    """The key §6.2.1 derives, done here independently of the library."""
+    salt = sha256(b"libranet-user:" + username).digest()
+    return Argon2id(salt=salt, length=32, iterations=3, lanes=4, memory_cost=65536).derive(password)
 
 
 def encrypt(data: bytes, password: bytes = PASSWORD, iv: bytes = ZERO_IV) -> bytes:
@@ -253,3 +275,144 @@ def test_other_content_holding_a_zero_byte_is_not_taken_for_a_protected_bundle(
     data: bytes,
 ) -> None:
     assert not is_protected(data)
+
+
+def test_user_key_is_argon2id_salted_by_a_hash_of_the_username(user_key: PasswordKey) -> None:
+    assert user_key.key == argon2id(USERNAME.encode(), USER_PASSWORD.encode())
+
+
+def test_same_username_and_password_derive_the_same_key(user_key: PasswordKey) -> None:
+    assert PasswordKey.of_user(USERNAME, USER_PASSWORD) == user_key
+
+
+def test_another_username_derives_another_key(user_key: PasswordKey) -> None:
+    assert PasswordKey.of_user("bob", USER_PASSWORD).key != user_key.key
+
+
+def test_another_password_derives_another_key(user_key: PasswordKey) -> None:
+    assert PasswordKey.of_user(USERNAME, "another password").key != user_key.key
+
+
+def test_username_and_password_are_normalized_before_they_are_derived_from() -> None:
+    decomposed = PasswordKey.of_user("Zoe\u0301", "cafe\u0301")
+
+    assert decomposed.key == argon2id("Zoé".encode(), "café".encode())
+
+
+@mark.parametrize(("username", "password"), [("\ud800", "password"), ("alice", "\udfff")])
+def test_user_key_of_what_utf8_cannot_encode_is_refused(username: str, password: str) -> None:
+    with raises(ValueError):
+        PasswordKey.of_user(username, password)
+
+
+def test_key_is_left_out_of_its_repr(user_key: PasswordKey) -> None:
+    assert user_key.key.hex() not in repr(user_key)
+    assert repr(user_key.key) not in repr(user_key)
+
+
+def test_key_of_an_unknown_derivation_is_refused() -> None:
+    with raises(ValueError, match="Unknown key derivation"):
+        PasswordKey("SHA512", bytes(32))
+
+
+@mark.parametrize("length", [0, 16, 33])
+def test_key_that_is_not_an_aes_256_key_is_refused(length: int) -> None:
+    with raises(ValueError, match="32 bytes"):
+        PasswordKey("SHA256", bytes(length))
+
+
+def test_password_key_is_a_single_sha256_of_the_password() -> None:
+    assert PasswordKey.of_password(PASSWORD) == PasswordKey("SHA256", sha256(PASSWORD).digest())
+
+
+def test_bundle_protected_by_a_user_key_names_argon2id(user_key: PasswordKey) -> None:
+    assert user_key.protect(PLAINTEXT).rpartition(b"\0")[2] == USER_DESCRIPTOR
+
+
+def test_bundle_protected_by_a_user_key_is_encrypted_by_it(user_key: PasswordKey) -> None:
+    ciphertext = user_key.protect(PLAINTEXT).rpartition(b"\0")[0]
+    decryptor = Cipher(AES256(user_key.key), CBC(ZERO_IV)).decryptor()
+    unpadder = PKCS7(128).unpadder()
+    padded = decryptor.update(ciphertext) + decryptor.finalize()
+
+    assert decompress(unpadder.update(padded) + unpadder.finalize()) == PLAINTEXT
+
+
+def test_same_content_and_user_key_give_identical_bytes(user_key: PasswordKey) -> None:
+    assert user_key.protect(PLAINTEXT) == PasswordKey.of_user(USERNAME, USER_PASSWORD).protect(
+        PLAINTEXT
+    )
+
+
+def test_bundle_protected_by_a_user_key_is_opened_by_it(user_key: PasswordKey) -> None:
+    assert user_key.unprotect(user_key.protect(PLAINTEXT), MAX_BYTES) == PLAINTEXT
+
+
+def test_one_user_key_opens_every_bundle_it_protected(user_key: PasswordKey) -> None:
+    other = b'{"contents":{}}'
+    protected = [user_key.protect(PLAINTEXT), user_key.protect(other)]
+
+    assert [user_key.unprotect(data, MAX_BYTES) for data in protected] == [PLAINTEXT, other]
+
+
+def test_bundle_protected_by_a_user_key_is_refused_with_another_password(
+    user_key: PasswordKey,
+) -> None:
+    protected = user_key.protect(PLAINTEXT)
+
+    with raises(IncorrectPasswordError):
+        PasswordKey.of_user(USERNAME, "wrong password").unprotect(protected, MAX_BYTES)
+
+
+def test_bundle_protected_by_a_user_key_is_refused_under_another_username(
+    user_key: PasswordKey,
+) -> None:
+    protected = user_key.protect(PLAINTEXT)
+
+    with raises(IncorrectPasswordError):
+        PasswordKey.of_user("bob", USER_PASSWORD).unprotect(protected, MAX_BYTES)
+
+
+def test_bundle_protected_by_a_user_key_is_refused_by_a_single_hash_of_its_password(
+    user_key: PasswordKey,
+) -> None:
+    protected = user_key.protect(PLAINTEXT)
+
+    with raises(IncorrectPasswordError, match="derived by ARGON2ID, not SHA256"):
+        unprotect(protected, USER_PASSWORD.encode(), MAX_BYTES)
+
+
+def test_bundle_protected_by_a_single_hash_is_refused_by_a_user_key(
+    user_key: PasswordKey,
+) -> None:
+    protected = protect(PLAINTEXT, USER_PASSWORD.encode())
+
+    with raises(IncorrectPasswordError, match="derived by SHA256, not ARGON2ID"):
+        user_key.unprotect(protected, MAX_BYTES)
+
+
+def test_bundle_protected_by_the_user_key_itself_as_a_password_is_refused(
+    user_key: PasswordKey,
+) -> None:
+    protected = PasswordKey("SHA256", user_key.key).protect(PLAINTEXT)
+
+    with raises(IncorrectPasswordError):
+        user_key.unprotect(protected, MAX_BYTES)
+
+
+def test_bundle_protected_by_a_user_key_with_an_explicit_iv_is_opened(
+    user_key: PasswordKey,
+) -> None:
+    encryptor = Cipher(AES256(user_key.key), CBC(IV)).encryptor()
+    padder = PKCS7(128).padder()
+    padded = padder.update(compress(PLAINTEXT)) + padder.finalize()
+    ciphertext = encryptor.update(padded) + encryptor.finalize()
+    protected = ciphertext + b"\0" + USER_DESCRIPTOR + b"-IV:" + IV.hex().encode()
+
+    assert user_key.unprotect(protected, MAX_BYTES) == PLAINTEXT
+
+
+def test_bundle_protected_by_a_user_key_is_told_by_its_descriptor(
+    user_key: PasswordKey,
+) -> None:
+    assert is_protected(user_key.protect(PLAINTEXT) + b"\0placement")

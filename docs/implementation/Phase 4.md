@@ -78,9 +78,9 @@ The conventions of [Phase 2](Phase%202.md) §3 and
   into it appears under **My calls, not yet reviewed**, to be reviewed
   before the step is built.
 - **Specifications change first.** A person's identity, the session, and
-  the endpoint of Step 89 are new to the HTTP API, and the key a password
-  derives needs a token the Bundle Specification does not yet register
-  (§8, Step 90). Each is written before its step is built.
+  the endpoint of Step 89 are new to the HTTP API, and the costly
+  derivation of Step 90 is new to the Bundle Specification (§6.2.1). Each
+  is written before its step is built.
 
 ---
 
@@ -170,8 +170,9 @@ My calls, not yet reviewed:
   ever holding it, and is lost when the page is closed. A key the node
   holds for the session outlives the page, and is in the node's memory.
 - How long a session lasts, and what ends it.
-- Whether a key size is all that "how long to spend" sets, or whether the
-  derivation's cost (Step 90) is also chosen by it.
+- Whether a key size is all that "how long to spend" sets. It cannot set
+  the derivation's cost, which Step 90 fixes by its token, but it could
+  set the time spent on the drop's nonce.
 - Drop bombing (HttpApi §9.5): anyone can store blocks at
   `user:{username}`, so a well-known name may need many to be tried. The
   time spent on the nonce when the identity is made decides how near the
@@ -465,25 +466,79 @@ only derivation the node has, a single SHA-256 (BundleSpecification §6.1),
 lets a GPU test billions of guesses a second, and a password a person
 chooses has too little randomness to withstand that. BundleSpecification
 §6.2 asks for a deliberately costly derivation for such a password, and
-§8 registers none yet.
+none was registered until this step.
 
 Ruled before building:
 
 - **A step of its own**, built before Step 79, so that no identity is
   made with the weaker derivation.
+- **Argon2id** (RFC 9106), which `cryptography` provides, rather than
+  scrypt, the example BundleSpecification §6.2 gave, which the `/config`
+  credential uses.
+- **RFC 9106's second recommended cost**: 3 passes over 64 MiB in 4
+  lanes. One derivation took 0.17 seconds on an Apple M2; 256 MiB and 4
+  passes took 0.86, and the RFC's first choice, 2 GiB and 1 pass, 3.8.
+- **The cost is fixed by the token**, not written in it. Every block
+  naming it costs the same to open, so signing in derives the key once
+  however many decoys a drop holds. A costlier setting would be a new
+  token.
+- **Builds keep the single hash** for now. Their password is chosen by a
+  person, but a build has no username to take a salt from. They can move
+  once protected applications are served (HttpApi §13.1), whose Basic
+  prompt supplies one.
 
-**Open questions:**
+The specification change is written: BundleSpecification §6.2 registers
+`SHA256` and `ARGON2ID` as the two derivations, §6.2.1, new, gives
+`ARGON2ID`, §6.1 and §6.5 derive the key from the username as well, and §8
+lists `PW-ARGON2ID-AES256-CBC` and no longer leaves the token open.
 
-- Which function: Argon2id (RFC 9106), which `cryptography` provides, or
-  scrypt, which BundleSpecification §6.2 names as its example, and which
-  the `/config` credential already uses (`webserver/config_credential.py`,
-  at a cost of 2^14, block size 8, and parallelism 1).
-- Its cost parameters: time and memory for each derivation.
-- The fixed salt, taken from the username, so that every node derives the
-  same key, and no one table of guesses applies to every person.
-- The token naming it, and whether it carries its parameters.
-- One cost for every block. Signing in tries every block at a drop, and a
-  cost set per block would let decoys there make it slow.
+What is to be built:
+
+- **`PasswordKey`** (`bundle/protection.py`), a key and the derivation
+  that made it, from `of_password`, a single SHA-256, or `of_user`,
+  Argon2id of a username and password. It protects and opens any number
+  of blocks.
+- **`PW-ARGON2ID-AES256-CBC`**, written and read beside
+  `PW-SHA256-AES256-CBC`, both AES-256-CBC, differing only in the key.
+
+My calls, not yet reviewed:
+
+- **The salt is a SHA-256** of `libranet-user:` and the username: 32
+  bytes whatever the username's length, where Argon2 needs at least 8,
+  and kept apart from other hashes of a username by its prefix. It is not
+  the hash of the drop `user:{username}`, since Step 78 encrypts blocks
+  kept at other drops.
+- **The username is the salt alone**, and the password alone is what
+  Argon2id hashes. The key depends on both.
+- **Both are normalized to NFC**, as RFC 8265 normalizes a password, and
+  encoded as UTF-8. Step 79 may normalize a username further before it is
+  given, as it does for the name of its drop.
+- **The token goes in the descriptor's hash algorithm field**, as
+  `ARGON2ID`, beside the `SHA256` it takes the place of. The key is 32
+  bytes, and Argon2id is given no secret and no associated data.
+
+Built as planned, in one change set: 183 added lines of non-test Python,
+54 of them in place of removed ones and many of them docstrings, and 165
+of tests. The scheme `PW-SHA256-AES256-CBC` became `_Aes256CbcScheme`,
+keyed by a key rather than a password, and named by its derivation.
+
+My calls while building, not yet reviewed:
+
+- **`protect` and `unprotect` keep their signatures**, as the single
+  SHA-256, so builds and backups are unchanged. Each is now
+  `PasswordKey.of_password(password)` and the method of that name.
+- **A key opens only blocks naming its derivation.** One naming `SHA256`
+  is refused by an `ARGON2ID` key, and the other way about, as a wrong
+  password (`IncorrectPasswordError`), even where the key's bytes would
+  decrypt it, so that a block is opened only as its descriptor says (§6.2).
+- **`PasswordKey` checks its own values**: a derivation this node writes,
+  and a 32-byte key. Its `repr` leaves the key out, as `Password`'s leaves
+  out the password, so no key reaches a log.
+- **Nothing here limits how many derivations run at once.** Each holds 64
+  MiB for a fifth of a second, and the endpoints of Steps 78 and 79 decide
+  how many they let run, as Step 89 runs one search at a time.
+- **An empty username or password is not refused here.** What a username
+  and password may be is Step 79's question.
 
 **Testable in isolation:** derivation tests asserting the same username
 and password derive the same key, and a different username a different
@@ -526,9 +581,6 @@ ones that cut across more than one step:
 - **Finding the newest version of anything** (Steps 80 and 82, and Phase
   5 Step 56). Metadata, the address book, and Karma's blocks each change,
   and a search finds what is nearest a target, not what is newest.
-- **A costly derivation from a password** (Steps 78 and 79), which is
-  Step 90. BundleSpecification §6.2 says a password a person chooses
-  should use one, and §8 has none registered.
 - **Encrypting for a person** (Steps 78, 79, and 82). Node keys cannot
   encrypt; RSA can encrypt only a key. How a block encrypted for a person
   is written down is a new section of the Bundle Specification.

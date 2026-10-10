@@ -50,6 +50,7 @@ from libranet.bundle.parsing import decode_bundle, parse_bundle
 from libranet.bundle.parts import CIPHER, PartPath, PartWriter
 from libranet.bundle.protection import (
     DESCRIPTOR_SEPARATOR,
+    PasswordKey,
     is_protected,
     protect,
     strip_targeting,
@@ -131,6 +132,7 @@ __all__ = [
     "ObjectWriter",
     "PartPath",
     "PartWriter",
+    "PasswordKey",
     "PasswordProtectedBundleError",
     "PathEnd",
     "StoredDirectory",
