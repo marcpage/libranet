@@ -105,9 +105,10 @@ The conventions of [Phase 2](Phase%202.md) §3 and
 
 Planned in Phase 2, and moved unbuilt to Phase 5, with #71, since the
 use the issue names is Karma's. It came here with #71, unbuilt again,
-since the user directory (Step 92) needs it first: a page there blocks
-each directory bundle a newer one has replaced. Karma's merges (Phase 5
-Step 56) come later, and use it the same way.
+since the user directory (Step 92) needs it first: the directory's page,
+and the node as it makes an identity, block each directory bundle that
+adds no one to the newest, so that the drop holds fewer stale copies.
+Karma's merges (Phase 5 Step 56) come later, and use it the same way.
 
 Settled in the issue:
 
@@ -142,8 +143,11 @@ Work this implies:
   forgetting the block invites the next peer to push it straight back.
 - A blocked id is answered as content the node does not hold, `404`,
   since anything more specific would advertise the block.
-- **An endpoint a page asks to block an id**, for the user directory
-  (Step 92), new to the HTTP API.
+- **An endpoint a page asks to block a content id**, for the user
+  directory (Step 92), new to the HTTP API.
+- **Blocking is a message to stats**, since the web server may not open
+  SQLite. The endpoint sends it, and so does making an identity, which
+  blocks the directory bundles it finds replaced (Step 92).
 
 **Open questions:**
 
@@ -153,7 +157,7 @@ Work this implies:
   (Step 79); or any client, as making a drop is (Step 89), which lets
   anyone who reaches the node make it a black hole for anything.
 - Whether a page may block only what it can show is superseded, such as
-  a bundle at a drop it reads, or any id.
+  a bundle at a drop it reads, or any content id.
 - Whether there is also an operator endpoint under `/config` (Phase 1
   Step 18), and, for Karma, a message from whatever decides a block is
   superseded (Phase 5 Step 56).
@@ -481,13 +485,44 @@ Settled in the issue:
 - **The fallback never changes** after the account is made. Anyone can
   check that a fallback is the right one by walking the metadata's
   history back to its first version.
+- **Every load checks the history.** Whenever an identity's metadata is
+  loaded, as much of its history as can be found is loaded with it, to
+  check that the fallback has never changed.
+- **A fallback that changes, or is missing, means the identity is
+  compromised.**
+
+Work this implies:
+
+- Every reader of a person's metadata walks its history: the directory
+  (Steps 80 and 92), mail (Step 82), and any application that shows who
+  someone is.
+- **Making an identity names a fallback.** Steps 79 and 91, built, make
+  identities with no metadata, and so with no fallback, and each would
+  read as compromised. They change to name one. An identity made before
+  this step is made again, since there is no upgrade path before 1.0
+  (Phase 3 §3).
+- **A person's metadata is never blocked** (Step 30), though each version
+  is replaced by the next, since every load reads the versions before
+  it. Only the directory's bundles are blocked once replaced (Step 92).
+
+My calls, not yet reviewed:
+
+- **The node walks the history**, and answers a person's metadata with
+  whether the fallback held, so that each application does not walk it
+  its own way.
 
 **Open questions:**
 
 - Who may say the identity is compromised. Whoever holds a stolen key can
-  sign anything the person can, including a statement that sends
-  readers to the fallback, which is harmless, or new metadata with no
-  statement at all.
+  sign anything the person can. Metadata that changes or leaves out the
+  fallback now marks the identity compromised, but metadata that keeps it
+  says nothing, and the thief goes on signing as the person.
+- What "missing" is. A version that leaves the fallback out plainly is.
+  Metadata the node cannot find at all, or a history with a version
+  missing from it, perhaps evicted, is not plainly anything: whether
+  either reads as compromised, or as not yet known.
+- What making an identity asks for: the id of a fallback the person
+  already has, or a second password, from which the node makes one.
 - What makes the first version the first. Whoever holds the key can make
   another first version naming a fallback of their own, and walking back
   reaches whichever one they started from. Something that cannot be made
@@ -500,8 +535,8 @@ Settled in the issue:
   some point is no longer trusted, and how a reader learns that point.
 
 **Testable in isolation:** tests over a chain of metadata versions
-asserting a fallback that changes is refused, and a compromised identity
-resolves to its fallback.
+asserting a fallback that changes, or goes missing, marks the identity
+compromised, and a compromised identity resolves to its fallback.
 
 ---
 
@@ -868,8 +903,8 @@ the main port.
 
 ## Step 92 — The User Directory
 
-**Issue:** #276. **Depends on:** Steps 30, 79, and 89; Phase 3 Steps 67
-and 74.
+**Issue:** #276. **Depends on:** Steps 30, 79, 89, and 91; Phase 3 Steps
+67 and 74.
 
 Step 79 gives people ids, and Step 91 lets an operator make them, but the
 node keeps no list of who has one (Step 91), and a search finds what is
@@ -894,11 +929,31 @@ Settled in the issue:
 - **The application shows the list of ids**, and no more. Step 80 adds
   what each person says of themselves (#259).
 
+Ruled before building:
+
+- **The application is `directory`**, at `/directory/`, as the issues
+  name it. Applications are not served from beneath `/data`, so
+  `/data/directory` (Phase 3 Step 68) is no conflict.
+- **The node adds a person when it makes their identity**, at
+  `POST /data/users` (Step 79) and `POST /config/api/users` (Step 91).
+  **The application adds whoever is signed in** when the directory does
+  not list them.
+- **What is blocked is a bundle, not a person.** The content id of each
+  top-level directory bundle that adds no one to the newest is blocked.
+  The people it lists stay in the directory, in the newest bundle.
+- **Directory bundles have no `versions`.** A bundle replaced is blocked,
+  not named by the bundle that replaces it.
+- **Blocking keeps the drop clean.** Fewer copies at the drop make the
+  newest directory easier to find, and no node needs a directory that
+  another holds all of. As each node blocks the directories it has seen
+  replaced, they leave the network.
+
 Work this implies:
 
 - A shipped application, as the movie application is (Phase 3 Step 67):
-  `SHIPPED_APPLICATIONS` (`applications/packaged.py`) gains it, and its
-  page is `applications/{name}/index.html`.
+  `SHIPPED_APPLICATIONS` (`applications/packaged.py`) gains
+  `"directory": "directory"`, and its page is
+  `applications/directory/index.html`.
 - The page makes each bundle a drop with `POST /data/drop` (Step 89),
   the bundle's JSON as its text, since `POST /data/bundles` stores a
   bundle at its own address and not at a drop. Each file entry names the
@@ -906,6 +961,11 @@ Work this implies:
   holds no key's bytes: about 45 bytes a person once compressed, so some
   23,000 people before an extension is needed.
 - The page asks the node to block a bundle, at Step 30's endpoint.
+- **The node keeps the directory as the page does.** Making an identity
+  finds the newest bundle at the drop, takes in the ids the others hold,
+  blocks those that add no one, and makes a bundle holding every id and
+  the new person's. The rule is written twice, in Python and in the
+  page's script.
 - A drop is its content, a null byte, and a nonce (HttpApi §9).
   BundleSpecification §6.4 says a protected bundle is read up to the null
   byte. Whether the node's bundle reader, and reading into a bundle
@@ -914,9 +974,6 @@ Work this implies:
 
 My calls, not yet reviewed:
 
-- **The application is `users`**, at `/users/`, beside `/data/users`,
-  rather than `directory`, since `/data/directory` already names the
-  folders offered to local clients (Phase 3 Step 68).
 - **A file's path is the id itself**, `sha256/{hash}`, which a directory
   bundle reads as a file named by the hash in a folder `sha256`. An entry
   whose path is not the content id it names is passed over, so a bundle
@@ -926,34 +983,39 @@ My calls, not yet reviewed:
 - **The page asks for 10 seconds and 16 bits** for each bundle it makes,
   as Step 91's page does, since no one using the directory decides how
   hard the node searches.
+- **The node adds a person in the request that makes them**, after the
+  identity is stored, in the same turn (Step 91's `CostlyWork`), and
+  searches for the bundle's nonce as the request asks for the
+  identity's. A person it fails to add, because a bundle cannot be had
+  in time, say, is logged, and the identity is still made: the
+  application adds them when they sign in.
 
 **Open questions:**
 
-- **Who adds a person**: the node, as it makes an identity (Step 79's
-  `POST /data/users`, and Step 91's `/config`), so that the directory is
-  complete without anyone opening it; or the page, adding whoever is
-  signed in. The issue says how the directory is rewritten when a person
-  is added, not who adds them.
-- **How the newest bundle is found**: by the `created` time in its
-  metadata (BundleSpecification §3), or by `versions`, each bundle naming
-  those it replaces. Whoever makes a bundle writes either. A bundle dated
-  in the future would stay newest, and have every load make a new bundle,
-  unless such a date is refused.
-- **What may join the directory.** Anyone can make a drop at `user
-  directory`, so a bundle of ids made up, or of content ids that are not
-  public keys, joins every directory that loads it. Checking that each id
-  names a public key fetches every key.
+- **How the newest bundle is found**, with no `versions`: by the
+  `created` time in its metadata (BundleSpecification §3), which whoever
+  makes a bundle writes. A bundle dated in the future would stay newest,
+  and, if it lacked anyone, have every load make a new bundle, unless such
+  a date is refused.
+- **Whether an id is checked before it is carried forward.** Any client
+  can make a drop (Step 89), so a bundle at `user directory` can list an
+  id that is not a person's: a made-up hash, or the id of content that
+  is not a public key. A load that takes it in writes it into every
+  bundle after. Checking that an id names a public key means fetching the
+  key, once for each id taken in from a bundle other than the newest.
 - Which ids go in an extension once the directory is over 1 MiB, and
   whether a person added then rewrites only the bundle that extends the
-  rest.
-- Who may block, which is Step 30's question. A page that cannot block
+  rest. Only the top-level bundle is blocked when replaced, since a newer
+  one may extend the same bundles.
+- Who may block, which is Step 30's question. A page that may not block
   still merges, and makes a bundle holding every id.
 
-**Testable in isolation:** the page is checked by hand, as the movie
-application's is, on a node holding bundles at the drop made to disagree:
-the newest found, the ids it lacks taken from the others and written in a
-new bundle, and a bundle with nothing new blocked. Step 30's and Step 89's
-endpoints have tests of their own.
+**Testable in isolation:** identity tests over a temp CAS asserting that
+making an identity adds it to the newest directory, takes in the ids
+another bundle holds, and blocks a bundle that adds no one. The page is
+checked by hand, as the movie application's is, on a node holding
+bundles at the drop made to disagree, and signed in as a person the
+directory does not list.
 
 ---
 
@@ -986,10 +1048,10 @@ Issue #261, movie playlists per user, left the milestone unbuilt for
 | 3 | 79 (#256) | Needs 89 to keep the private key, and 90 to encrypt it. |
 | 4 | 91 (#274) | Needs 79's identities. Until a page the node ships makes one, no one has an identity to sign in with. |
 | 5 | 30 (#71) | Needed by 92 to block the bundles a newer one replaces. Independent of the identity steps; Phase 2 Step 28, which it reaches into, is built. |
-| 6 | 92 (#276) | Needs 30, 89's drops, and 79's ids. It lists the people 79 and 91 make. |
+| 6 | 92 (#276) | Needs 30, 89's drops, and 79's ids. It changes 79's and 91's endpoints to add each person they make. |
 | 7 | 78 (#257) | Needs 79's public keys to encrypt for a person, and 90 to encrypt by a password. Its encryption questions are settled first, in the Bundle Specification. |
 | 8 | 80 (#259) | Needs 79's identity to sign it, and 92's directory to show it. |
-| 9 | 81 (#260) | Needs 80's metadata, and has to be settled before any account is made, since a fallback is named only then. |
+| 9 | 81 (#260) | Needs 80's metadata. A fallback is named only when an account is made, and an identity with none reads as compromised, so it changes 79's and 91's endpoints to name one, and identities made before it are made again. |
 | 10 | 82 (#258) | An application of the steps before it. |
 
 ## 6. Open Items Not Yet Decided
@@ -1002,8 +1064,9 @@ ones that cut across more than one step:
   Karma's blocks each change, and a search finds what is nearest a
   target, not what is newest.
 - **Who may block** (Steps 30 and 92). A node's block list is its own,
-  not a person's, so a page that blocks an id blocks it for every client
-  of the node.
+  not a person's, so a page that blocks a content id, such as a
+  directory bundle it found replaced, blocks it for every client of the
+  node.
 - **What a blocking node answers a hand-off** (Step 30, and Phase 2 Step
   46) — moved here from Phase 5 §6, with Step 30. With a single hand-off
   copy, a node that takes content it blocks and deletes it is enough to
