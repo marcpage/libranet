@@ -645,7 +645,7 @@ What the schema does not do yet:
 
 Planned steps that will change it:
 
-- **Step 30** (#71, blocked data, Phase 5) adds a private list of blocked
+- **Step 30** (#71, blocked data, Phase 4) adds a private list of blocked
   content ids: a table of its own, or a flag on `data_stats`. Either way a
   block has to outlive the content it names, and a list is derived from it
   for the web server and the validator, since neither may open SQLite.

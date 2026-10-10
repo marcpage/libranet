@@ -83,10 +83,11 @@ The conventions of Phase 1 §3 carry over. In addition:
   Step 41. A step that moves to another phase keeps its number, so
   nothing that already refers to it comes to mean something else. Step
   16 moved here from Phase 1 unbuilt, and has moved on to [Phase
-  6](Phase%206.md) with Step 50; Step 30 has moved to [Phase
-  5](Phase%205.md). Each went with its issue when the issue changed
-  milestone, and a mention of one below means the step there. Step 24
-  was dropped (§4), and its number is not reused.
+  6](Phase%206.md) with Step 50; Step 30 has moved, by way of
+  [Phase 5](Phase%205.md), to [Phase 4](Phase%204.md). Each went with
+  its issue when the issue changed milestone, and a mention of one below
+  means the step there. Step 24 was dropped (§4), and its number is not
+  reused.
 - **Each step names its issues.** The issue is the source of record for
   what was asked for; this document is the source of record for how it is
   built and what was decided along the way. Where an issue settled a
@@ -1654,7 +1655,7 @@ next best; and a worker told to stop while taking a batch still stops. A
   #119, so content handed to one peer keeps moving toward the best match
   rather than stopping there.
 - What a node that blocks content answers a hand-off of it is Step 30's
-  question, and one copy makes it matter more ([Phase 5](Phase%205.md)
+  question, and one copy makes it matter more ([Phase 4](Phase%204.md)
   §6).
 
 It came to 12 new or changed lines of the eviction module, so it is one
@@ -3385,7 +3386,8 @@ Three issues left the milestone unbuilt, and their steps went with them,
 issue #71 (Step 30) to **Phase 5**, and #20 (Step 16) and #85 (Step 50)
 to **Phase 6**. Those were Phases 3 and 4 when the issues moved, until
 video playback became Phase 3, and Phases 4 and 5 until user accounts
-became Phase 4.
+became Phase 4. Issue #71 has since moved on to **Phase 4**, whose user
+directory needs Step 30 first.
 
 ---
 
@@ -3414,9 +3416,9 @@ changes them:
 
 - HTTP Range requests for `<video>` streaming from bundle applications,
   which are [Phase 3](Phase%203.md), with a video application.
-- Karma/Kismet incentive integration, which is [Phase 5](Phase%205.md),
-  along with the blocked data list (Step 30) it needs to let go of
-  superseded blocks.
+- Karma/Kismet incentive integration, which is [Phase 5](Phase%205.md).
+  The blocked data list (Step 30) it needs to let go of superseded blocks
+  is [Phase 4](Phase%204.md)'s.
 - Local discovery (Step 16), filesystem notifications for backup (Step
   50), IPv6, and HTTPS/TLS, which are [Phase 6](Phase%206.md).
 - Signed bundles (BundleSpecification §5), and per-entry CAS encryption
@@ -3471,7 +3473,7 @@ either step is built:
   parts of any bundle protected with a password (Step 60). Step 16's change to
   HighLevelDesign §4.9.1 is made too, and went with it to Phase 6.
 - **What a blocking node answers a hand-off** (Steps 30 and 46) — now
-  Phase 5's to decide, with Step 30. Step 46 does not wait for it: until
+  Phase 4's to decide, with Step 30. Step 46 does not wait for it: until
   Step 30 is built, no node blocks anything.
 - **One local record of the last bundle** (Steps 48, 49, and 31, and
   Phase 6's Step 50) — settled by Step 48: a job's is a file of its own
