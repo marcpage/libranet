@@ -42,6 +42,10 @@ CONFIG_LISTEN_ADDRESS: Final = "127.0.0.1"
 # §2.4).
 DEFAULT_CONFIG_HOSTS: Final = ("localhost", "127.0.0.1", "::1")
 
+# How long a person's session lasts unused before it ends, by default
+# (HttpApi §11.4, Phase 4 Step 79).
+DEFAULT_SESSION_IDLE_SECONDS: Final = 24 * 60 * 60.0
+
 # The smallest RSA key a person's identity has, made or opened (HttpApi
 # §11.3, Phase 4 Step 79). Every node opens what any other makes, so it is
 # no setting.
@@ -100,6 +104,11 @@ class NetworkConfig(_Section):
     # runs at a time, holding a web server thread and a core.
     drop_max_seconds: float = Field(default=60.0, ge=0)
     drop_max_minimum_bits: int = Field(default=26, ge=0, le=256)
+
+    # How long a person's session goes unused before it ends, the private
+    # key it holds in the web server's memory with it (HttpApi §11.4, Phase
+    # 4 Step 79). Signing out, or the web server stopping, ends one sooner.
+    session_idle_seconds: float = Field(default=DEFAULT_SESSION_IDLE_SECONDS, gt=0)
 
     # The hosts `/config` is served as. A request there whose `Host` header
     # names any other is refused, so a site that points a name of its own at

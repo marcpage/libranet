@@ -5,6 +5,11 @@ scanned and the result cached. Every request publishes
 :attr:`EventType.SEARCH_REQUESTED` naming the prefix, so the stats module
 (Step 8) can enrich the cached file with hashes known beyond this node's own
 store.
+
+Signing in searches a drop as a page would, but scans the store every time
+(:meth:`SearchHandler.fresh_results`), so that a block stored since the last
+search is found at once rather than once the cached answer expires (Phase 4
+Step 79).
 """
 
 from __future__ import annotations
@@ -13,7 +18,9 @@ from http import HTTPStatus
 from logging import getLogger
 from typing import Final
 
+from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
+from libranet.cas.prefix import nearest
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.problems import INVALID_SEARCH_PREFIX, Problem
@@ -56,3 +63,17 @@ class SearchHandler:
 
         self.publish(EventType.SEARCH_REQUESTED, {"prefix": prefix})
         return bytes_response(body, JSON_CONTENT_TYPE)
+
+    def fresh_results(self, prefix: str) -> list[ContentId]:
+        """What is held nearest a normalized ``prefix``, with what was heard of, best first.
+
+        The store is scanned whether or not an answer is cached, and what the
+        cached answer lists is kept among the matches, since the stats module
+        adds what this node has heard of but does not hold. The result is
+        cached, and announced as any search is.
+        """
+        cached = self.cache.load_results(prefix) or []
+        found = nearest(prefix, {*self.search.search(prefix), *cached}, self.search.max_results)
+        self.cache.save_results(prefix, found)
+        self.publish(EventType.SEARCH_REQUESTED, {"prefix": prefix})
+        return found

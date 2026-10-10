@@ -154,6 +154,8 @@ class WebServerModule(ModuleBase):
                     max_update_layers=self._config.backup.max_update_layers,
                     max_drop_seconds=network.drop_max_seconds,
                     max_drop_minimum_bits=network.drop_max_minimum_bits,
+                    session_idle_seconds=network.session_idle_seconds,
+                    person_key_bits=self._config.identity.person_key_bits,
                 ),
                 self.logger,
                 signer,
