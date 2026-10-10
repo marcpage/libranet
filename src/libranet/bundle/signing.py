@@ -113,11 +113,15 @@ class SignedBundle:
         if not isinstance(value, dict) or "signature" not in value:
             raise MalformedBundleError('A signed bundle is an object with a "signature"')
 
-        fields = {name: value.get(name) for name in _FIELDS}
+        fields: dict[str, str] = {}
 
-        for name, given in fields.items():
+        for name in _FIELDS:
+            given = value.get(name)
+
             if not isinstance(given, str) or not is_utf8(given):
                 raise MalformedBundleError(f'A signed bundle\'s "{name}" must be a string')
+
+            fields[name] = given
 
         if fields["algorithm"] != SIGNED_HASH_ALGORITHM:
             raise UnsupportedBundleError(
