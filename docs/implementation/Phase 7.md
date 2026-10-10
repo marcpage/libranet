@@ -51,8 +51,8 @@ Running the seed node itself, and shipping its address in
 The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
 
 - **Step numbers stay stable**, and new steps take the next free number.
-  [Phase 4](Phase%204.md) ends at Step 83, so this phase starts at Step
-  84.
+  Step 84 was the next free number when this plan was written, so this
+  phase starts there.
 - **A step of an earlier phase is named with its phase**, as Phase 2
   names Phase 1's. A step number alone is a step of this document.
 

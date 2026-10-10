@@ -1,6 +1,6 @@
 # Libranet Python Implementation Plan — Improve Movie Web App
 
-Version 0.1 • October 2026
+Version 0.2 • October 2026
 
 ---
 
@@ -8,8 +8,10 @@ Version 0.1 • October 2026
 
 This document plans changes to the movie application that
 [Phase 3](Phase%203.md) Step 67 shipped at `/movie`: what it calls a
-list of movies, how it looks and is used, and a page left reading a
-playlist it cannot find. None of it changes the node.
+list of movies, whose lists they are, how it looks and is used, and a
+page left reading a playlist it cannot find. None of it changes the
+node, unless Step 83 keeps a person's lists where the node has to keep
+others out.
 
 Every step below comes from an issue in the GitHub **Improve Movie Web
 App** milestone, and each step names its issues. Every issue in the
@@ -19,8 +21,11 @@ any phase.
 
 ## 2. What It Adds
 
-So far, four steps, each in `applications/movie/index.html` alone:
+So far, five steps, the last four in `applications/movie/index.html`
+alone:
 
+- **Each person's playlists are their own.** Step 83, moved here from
+  [Phase 4](Phase%204.md).
 - **A playlist that is not found is not waited on forever.** Step 85.
 - **Playlists are called collections.** Step 86.
 - **A dark theme.** Step 87.
@@ -32,12 +37,40 @@ The conventions of [Phase 3](Phase%203.md) §3 carry over. In addition:
 
 - **Step numbers stay stable**, and new steps take the next free number.
   [Phase 7](Phase%207.md) ends at Step 84, so this plan starts at Step
-  85.
+  85. Step 83 was planned in [Phase 4](Phase%204.md), and moved here
+  unbuilt with #261, keeping its number.
 - **A step of a phase is named with its phase.** A step number alone is
   a step of this document.
 - **Testing.** The page has no automated tests; each step is checked by
   hand, in at least Safari and one other browser, on a local client and
   on one that is not.
+
+---
+
+## Step 83 — Playlists per User
+
+**Issue:** #261, which names the goal and no more. **Depends on:** Phase
+4 Step 79; Phase 3 Steps 67, 70.
+
+Moved from Phase 4 unbuilt, with #261.
+
+The movie application keeps the playlists a node knows in its store
+(Phase 3 Step 70), one list for every client of the node.
+
+**Open questions:**
+
+- Whether a person's playlists are kept in the application's store under
+  a key of theirs, or in the CAS for them, encrypted for them (Phase 4
+  Step 78), so that they follow the person from node to node.
+- What a client that is not signed in sees: the node's playlists as now,
+  or none.
+- Whether a playlist may be shared with another person, named from the
+  user directory (Phase 4 Step 92), as well as by its id.
+- Step 86 renames playlists to collections. Whichever is built second
+  uses the other's name.
+
+**Testable in isolation:** checked by hand in the page, signed in as two
+people on one node.
 
 ---
 
@@ -98,8 +131,8 @@ Work this implies:
 - Whether the stored names are renamed after all, as a new node would
   have to be made anyway before 1.0.
 - The README, the App Developer Guide, and an example in the HTTP API
-  speak of the movie application's playlists, and change with it. So does [Phase 4](Phase%204.md) Step 83,
-  whichever is built second.
+  speak of the movie application's playlists, and change with it. So
+  does Step 83, whichever is built second.
 
 ---
 
@@ -158,6 +191,7 @@ where it went.
 | Issue | Asks for | Step |
 | --- | --- | --- |
 | #255 | A page left reading “Movies” | 85 |
+| #261 | Movie playlists per user | 83, moved from Phase 4 |
 | #262 | Calling a playlist a collection | 86 |
 | #263 | A dark theme | 87 |
 | #264 | Full keyboard navigation | 88 |
@@ -168,10 +202,10 @@ where it went.
 | --- | --- | --- |
 | 1 | 85 (#255) | A bug, and small. |
 | 2 | 86 (#262) | Renames what the steps after it touch, so that they are written in the new words. |
-| 3 | 87 (#263), 88 (#264) | Independent of each other. |
+| 3 | 83 (#261), 87 (#263), 88 (#264) | Independent of each other. 83 needs Phase 4 Step 79's sessions, which are built, and Phase 4 Step 78 as well if a person's collections are kept encrypted for them. |
 
 ## 6. Open Items Not Yet Decided
 
-- **Playlists per user** ([Phase 4](Phase%204.md) Step 83, #261) changes
-  the same page, and reads its collections differently. Whichever is
-  built second takes the other's changes into account.
+- **Playlists per user** (Step 83) changes how the page finds and reads
+  its collections, as Steps 85 and 86 do. Whichever is built later takes
+  the others' changes into account.

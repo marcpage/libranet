@@ -255,11 +255,11 @@ applications, and running test networks and super nodes.
 | Phase 1 — reference node, steps 1–15, 17–20, and 33–40 | Implemented |
 | Phase 2 — steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–63 | Implemented |
 | Phase 3 — video playback, steps 64–77 | Implemented |
-| Phase 4 — user accounts, steps 78–83 | Planned |
-| Phase 5 — Karma, steps 30 and 56 | Planned |
+| Phase 4 — user accounts, steps 30, 78–82, and 89–92 | In progress |
+| Phase 5 — Karma, step 56 | Planned |
 | Phase 6 — enhancements, steps 16, 50, and 57 | Planned |
 | Phase 7 — a seed node, step 84 | Planned |
-| Improving the movie application, steps 85–88 | Planned |
+| Improving the movie application, steps 83 and 85–88 | Planned |
 | Public network | Not yet running |
 
 Working today: content-addressed storage with prefix search, node identity and
@@ -303,11 +303,11 @@ currently find each other only through peers you configure yourself.
 | [Phase 1 Plan](docs/implementation/Phase%201.md) | Implementation steps 1–15, 17–20, and 33–40, all built |
 | [Phase 2 Plan](docs/implementation/Phase%202.md) | Implementation steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–63, all built |
 | [Phase 3 Plan](docs/implementation/Phase%203.md) | Video playback: steps 64–77, all built |
-| [Phase 4 Plan](docs/implementation/Phase%204.md) | User accounts: steps 78–83, planned |
-| [Phase 5 Plan](docs/implementation/Phase%205.md) | Karma: steps 30 and 56 so far, planned |
+| [Phase 4 Plan](docs/implementation/Phase%204.md) | User accounts: steps 30, 78–82, and 89–92; 79 and 89–91 built |
+| [Phase 5 Plan](docs/implementation/Phase%205.md) | Karma: step 56 so far, planned |
 | [Phase 6 Plan](docs/implementation/Phase%206.md) | Enhancements: steps 16, 50, and 57, planned |
 | [Phase 7 Plan](docs/implementation/Phase%207.md) | A seed node: step 84, planned |
-| [Movie App Plan](docs/implementation/Improve%20Movie%20Web%20App.md) | Improving the movie application: steps 85–88, planned |
+| [Movie App Plan](docs/implementation/Improve%20Movie%20Web%20App.md) | Improving the movie application: steps 83 and 85–88, planned |
 | [Module System](docs/implementation/Module%20System.md) | The node's processes, the message bus, and the events modules exchange |
 | [File Layout](docs/implementation/File%20Layout.md) | Every file a node reads or writes, and the settings that move them |
 | [Database Schema](docs/implementation/Database%20Schema.md) | The statistics database's tables, and what reads and writes them |
