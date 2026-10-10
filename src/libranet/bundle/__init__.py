@@ -8,7 +8,8 @@ Storing a directory's new version as an update layer over the last (Phase 2
 Step 31). Encrypting a file's parts, and reading them back (Phase 2 Step 59).
 Storing a directory bundle, and each of its chunks, encrypted as a part is
 (Phase 3 Step 72). Saving what is resolved from a bundle to a local file
-(Phase 3 Step 65).
+(Phase 3 Step 65). Signing JSON as a person, and checking it (Phase 4 Step
+80).
 Operates purely on bundle JSON, local files, and CAS reads and writes.
 """
 
@@ -35,6 +36,7 @@ from libranet.bundle.content import (
 from libranet.bundle.encryption import BLOCK_BYTES, DEFAULT_IV, KEY_BYTES, Aes256Cbc
 from libranet.bundle.errors import (
     BundleError,
+    BundleSignatureError,
     BundleTooLargeError,
     BundleVerificationError,
     IncorrectPasswordError,
@@ -76,6 +78,7 @@ from libranet.bundle.shapes import (
     is_entry_path,
     is_utf8,
 )
+from libranet.bundle.signing import SIGNED_HASH_ALGORITHM, SignedBundle
 from libranet.bundle.splitting import split_entries
 from libranet.bundle.storing import (
     HASH_ALGORITHM,
@@ -109,9 +112,11 @@ __all__ = [
     "PARENT_SEGMENT",
     "PATH_SEPARATOR",
     "PLAIN_PATH_SEGMENTS",
+    "SIGNED_HASH_ALGORITHM",
     "Aes256Cbc",
     "Bundle",
     "BundleError",
+    "BundleSignatureError",
     "BundleTooLargeError",
     "BundleVerificationError",
     "ByteSink",
@@ -135,6 +140,7 @@ __all__ = [
     "PasswordKey",
     "PasswordProtectedBundleError",
     "PathEnd",
+    "SignedBundle",
     "StoredDirectory",
     "StoredObject",
     "StoredVersion",

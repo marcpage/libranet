@@ -75,7 +75,7 @@ These endpoints are intended for nodes and software clients.
 Some are meant only for the browser applications a node serves (§13), and
 never for another node: whether the client is local (§2.4), blocking
 content (§5.5), making a drop (§9.6), making an identity and signing in
-(§11.3, §11.4), reading into a
+(§11.3, §11.4), signing as a person (§11.5), reading into a
 bundle (§12.1), the folders and imports (§12.2), making bundles (§12.3), an
 application's store (§13.3), and the list of applications (§13.4). Each
 but reading into a bundle requires a `Referer` naming a page of the node
@@ -301,13 +301,13 @@ protection, since every endpoint that serves only local clients checks
 for itself.
 
 These endpoints serve only local clients: blocking content (§5.5), making
-an identity and the session (§11.3, §11.4), listing the folders a node
-offers and importing a file from one (§12.2), making and changing bundles
-(§12.3), and changing an application's store (§13.3). A request to one of
-them from any other client MUST be refused with `403 Forbidden`. Blocking,
-the identities, session, folders, imports, and bundles are served only from
-a page of a trusted application, and an application's store is changed only
-from a page of its own (§2.5).
+an identity and the session (§11.3, §11.4), making a signed drop (§11.5),
+listing the folders a node offers and importing a file from one (§12.2),
+making and changing bundles (§12.3), and changing an application's store
+(§13.3). A request to one of them from any other client MUST be refused with
+`403 Forbidden`. Blocking, the identities, session, signed drops, folders,
+imports, and bundles are served only from a page of a trusted application,
+and an application's store is changed only from a page of its own (§2.5).
 
 A loopback source does not show that the person at the machine made the
 request. Any site's page that a browser on the machine has open can send
@@ -345,8 +345,9 @@ another node:
 
 - on the main port: whether the client is local (§2.4), blocking content
   (§5.5), making a drop (§9.6), making an identity and the session (§11.3,
-  §11.4), the folders and imports (§12.2), making bundles (§12.3), an
-  application's store (§13.3), and the list of applications (§13.4);
+  §11.4), making a signed drop (§11.5), the folders and imports (§12.2),
+  making bundles (§12.3), an application's store (§13.3), and the list of
+  applications (§13.4);
 - on `/config`'s port: every endpoint beneath `/config/api` (§2.3).
 
 Reading into a bundle (§12.1) is meant for those pages too, but is not
@@ -371,9 +372,9 @@ Some endpoints ask more of the page:
 
 - **An application's store** is read and changed only from a page of the
   application whose store it is (§13.3).
-- **Blocking content, making an identity, the session, the folders,
-  imports, and making bundles** are served only from a page of a trusted
-  application (§13.5).
+- **Blocking content, making an identity, the session, making a signed
+  drop, the folders, imports, and making bundles** are served only from a
+  page of a trusted application (§13.5).
 
 A browser sends a page's full address as the `Referer` of each request the
 page makes of its own origin, unless the page asks it not to, as with
@@ -477,7 +478,7 @@ This allows multiple hash algorithms to coexist.
 
 The names of the other endpoints beneath `/data` are never hash algorithms:
 `search`, `nodes`, `seek`, `client`, `directory`, `imports`, `bundles`,
-`store`, and `applications`.
+`store`, `applications`, and `signed`.
 
 A path that goes on past `{hash}` does not retrieve an object. It reads into
 the bundle the identifier names (§12.1). That includes an identifier written
@@ -1394,12 +1395,15 @@ neither makes nor opens a smaller one, whatever sizes it makes. Its **identity
 block** is the JSON object
 
 ```json
-{"private_key": "-----BEGIN PRIVATE KEY-----\n…"}
+{"private_key": "-----BEGIN PRIVATE KEY-----\n…", "created": "2026-10-10T14:03:22Z"}
 ```
 
 whose `private_key` is the key PEM-encoded as unencrypted PKCS #8, the
 `-----BEGIN PRIVATE KEY-----` form of
-[RFC 7468 §10](https://www.rfc-editor.org/rfc/rfc7468.html#section-10).
+[RFC 7468 §10](https://www.rfc-editor.org/rfc/rfc7468.html#section-10),
+and whose `created` is when the identity was made: a UTC time to the second,
+as [RFC 3339 §5.6](https://www.rfc-editor.org/rfc/rfc3339.html#section-5.6)
+writes one, ending `Z`. A block without either opens to no identity.
 The block is protected as a bundle's JSON is (BundleSpecification §6.1), by
 the costly derivation `ARGON2ID` from the person's username and password
 (BundleSpecification §6.2.1), with the default IV, and is made a drop (§9)
@@ -1441,10 +1445,12 @@ block a drop, as §9.6 makes one. It answers `201 Created`, with a
 `Location` naming the public key, and signs the person in (§11.4):
 
 ```json
-{"id": "sha256/…", "username": "alice", "drop": "sha256/…", "target": "<target hash>", "matching_bits": 21}
+{"id": "sha256/…", "username": "alice", "created": "2026-10-10T14:03:22Z",
+ "drop": "sha256/…", "target": "<target hash>", "matching_bits": 21}
 ```
 
-`id` is the person's id and `username` the normalized username. `drop`,
+`id` is the person's id, `username` the normalized username, and `created`
+when the identity was made, as its block records it. `drop`,
 `target`, and `matching_bits` are the identity block's id, the target hash,
 and how many leading bits the two share, as §9.6 gives them. A request is
 `409 Conflict` if the username and password already open an identity at
@@ -1490,10 +1496,12 @@ Set-Cookie: libranet-session=…; Path=/; HttpOnly; SameSite=Strict
 ```
 
 ```json
-{"id": "sha256/…", "username": "alice"}
+{"id": "sha256/…", "username": "alice", "created": "2026-10-10T14:03:22Z"}
 ```
 
-When no block opens, a node that has found nothing at the drop, or has
+`created` is when the identity was made, as its block records it (§11.3), so
+that what a person says of themselves can say when their id was made. When no
+block opens, a node that has found nothing at the drop, or has
 found blocks it does not hold, asks its peers for them and answers
 `503 Service Unavailable` with `Retry-After`, as for missing content
 (§5.2). One that holds every block it found, and none opens, answers
@@ -1509,7 +1517,7 @@ it. A browser keeps cookies by host and not by port, so the cookie is sent to
 every port of the node's host, `/config`'s too, which ignores it.
 
 `GET /data/session` says who is signed in, as signing in answers, or
-`{"id": null, "username": null}` when no one is. `DELETE /data/session`
+`{"id": null, "username": null, "created": null}` when no one is. `DELETE /data/session`
 signs out, and is answered `204 No Content`, removing the cookie. A session
 also ends when it goes unused for a time the node sets, and when the node
 restarts. Every response that names a session carries
@@ -1522,6 +1530,72 @@ elsewhere would cross the network as it was typed. Each identity made, and
 each sign-in, derives a key, at a cost that is high by design
 (BundleSpecification §6.2.1), and a node derives one at a time, whichever
 of its ports is asked, as it searches for one drop at a time (§9.6).
+
+### 11.5 Signing as a Person
+
+A page cannot sign as a person, since it never reads their private key
+(§11.4). Nor can it check a signature, since a page reached over the network
+is not a secure context, where a browser offers its cryptography. The node
+does both for it, as a signed bundle
+([Bundle Specification §5](BundleSpecification.md#5-signed-bundle)), whose
+`contents` is JSON a page wrote.
+
+A page has the node make a drop signed by whoever is signed in with:
+
+```http
+POST /data/signed
+Content-Type: application/json
+
+{"target": "user:sha256/…", "text": "{\"version\":1}", "seconds": 10, "minimum_bits": 16}
+```
+
+`text` is the JSON text of an object, which the node signs as it is, with
+the person's key, as a signed bundle's `contents`. `target`, `seconds`, and
+`minimum_bits` are as for making a drop (§9.6). The node makes the signed
+bundle a drop as §9.6 makes one, under the same limits, and in the same
+turns, and answers `201 Created`, with a `Location` naming the drop:
+
+```json
+{"id": "sha256/…", "target": "<target hash>", "matching_bits": 21, "signer": "sha256/…"}
+```
+
+`signer` is the person's id. A request from a browser no one is signed in
+on is `401 Unauthorized`, with the problem type `session-required` (§17.2).
+`text` that is not the JSON text of an object, or content given as `base64`,
+is `400 Bad Request`, and a signed bundle that does not fit in an object even
+compressed is `413 Content Too Large`. Making a signed drop serves only local
+clients, from a page of a trusted application (§2.4, §2.5), as the session
+does.
+
+Any client has the node check signed content, and read what it signs, with:
+
+```http
+GET /data/signed/{hash-algorithm}/{hash}
+```
+
+The node reads the object the identifier names, as §5.1 serves it, and takes
+what it holds before its last null byte as a drop's content, should it hold
+one (§9). If that is a signed bundle whose `hash` and `signature` check
+under the public key its `signer` names, it answers `200 OK`:
+
+```json
+{"id": "sha256/…", "signer": "sha256/…", "contents": "{\"version\":1}"}
+```
+
+`contents` is the text signed, exactly as it was signed. An object, or a
+signer's public key, that the node does not hold is asked for, as for any
+miss, and is `503 Service Unavailable` with `Retry-After` (§5.2). Content the
+node has blocked is `404 Not Found` (§5.5). Content that is not a signed
+bundle is `400 Bad Request` with the problem type `unusable-bundle`, and one
+whose `hash` or `signature` does not check, or whose `signer` names no RSA
+public key of at least 2048 bits, is `400 Bad Request` with
+`invalid-bundle-signature`. An answer never changes for an identifier, and is
+cached as content is (§20).
+
+A signature says only that whoever holds the signer's key signed the
+contents. Anyone may sign content with a key of their own and place it at
+any drop, so a page checks that `signer` is whoever it expects, such as the
+person whose id the drop's target string names.
 
 ---
 
@@ -2204,10 +2278,12 @@ These are defined so far, each named by its last segment beneath
 | `invalid-signature` | `401` | A signature that fails verification; the connection is closed (HandshakeProtocol §5.3) |
 | `invalid-list` | `400` | A node list or seek list that is not well-formed (§10.6, §10.7.1) |
 | `credential-required` | `401` | A `/config` request without the credential the node holds (§2.3.1) |
-| `invalid-config-request` | `400` | A JSON body an endpoint cannot act on: one beneath `/config/api` (§2.3), or of making an identity or signing in (§11.3, §11.4), the folders and imports (§12.2), making bundles (§12.3), or an application's store (§13.3) |
+| `invalid-config-request` | `400` | A JSON body an endpoint cannot act on: one beneath `/config/api` (§2.3), or of making an identity, signing in, or making a signed drop (§11.3–§11.5), the folders and imports (§12.2), making bundles (§12.3), or an application's store (§13.3) |
 | `unusable-bundle` | `400` or `500` | Content that is not a bundle, or a bundle the node cannot read: `400` when a request named it (§12.1, §12.3), and `500` when it is an application's (§13) |
 | `bundle-authentication-required` | `401` | A password-protected application, asking for its password (§13.1) |
 | `no-identity` | `403` | A username and password that open none of the blocks the node holds at their drop (§11.4) |
+| `session-required` | `401` | A request to sign as a person, from a browser no one is signed in on (§11.5) |
+| `invalid-bundle-signature` | `400` | Signed content whose hash or signature does not check, or whose signer names no key that can sign it (§11.5) |
 
 An error its status code describes fully uses `about:blank`, whose `title` is
 the status code's reason phrase (RFC 9457 §4.2.1).
@@ -2421,9 +2497,10 @@ application name -> bundle mapping
 
 have different caching semantics.
 
-A node SHOULD send a CAS object (§5.1), and any answer to a read into a bundle
-that is not an error (§12.1), as cacheable for as long as a cache keeps
-anything, since what an identifier names never changes:
+A node SHOULD send a CAS object (§5.1), any answer to a read into a bundle
+that is not an error (§12.1), and a check of signed content that passes
+(§11.5), as cacheable for as long as a cache keeps anything, since what an
+identifier names never changes:
 
 ```http
 Cache-Control: public, max-age=31536000, immutable
@@ -2464,8 +2541,9 @@ Potential limits include:
 - maximum concurrent key derivations.
 
 A node limits the drop-search work a page asks of it by how long a search
-may take and how many bits it must match (§9.6). It derives one key from a
-username and password at a time, whichever of its ports is asked (§11.4).
+may take and how many bits it must match, signed or not (§9.6, §11.5). It
+derives one key from a username and password at a time, whichever of its
+ports is asked (§11.4).
 
 A request whose body is larger than the node takes is refused with
 `413 Content Too Large` (§17.2, `content-too-large`), unread if its
@@ -2585,6 +2663,8 @@ The following table summarizes the currently proposed HTTP API.
 | `/data/drop`                      | `POST`       | Make a drop, from a page of the node (§9.6)                | Defined |
 | `/data/users`                     | `POST`       | Make a person's identity, locally (§11.3)                  | Defined |
 | `/data/session`                   | Various      | Sign in, say who is signed in, sign out, locally (§11.4)   | Defined |
+| `/data/signed`                    | `POST`       | Make a drop signed as a person, locally (§11.5)            | Defined |
+| `/data/signed/{algorithm}/{hash}` | `GET`        | Check signed content, and read what it signs (§11.5)       | Defined |
 | `/data/directory/...`             | `GET`        | List the folders offered to local clients (§12.2)          | Defined |
 | `/data/imports`                   | `GET`/`POST` | Import a local file, and follow imports (§12.2)            | Defined |
 | `/data/bundles`                   | `POST`       | Make, change, or store a bundle, locally (§12.3)           | Defined |

@@ -305,15 +305,39 @@ Resolution: resolve `B` → `{README.md: v1, LICENSE}`. Overlay `A` →
 ```
 
 - **`signer`** — a relative CAS path pointing to the public key of the signer.
-- **`algorithm`** — hashing algorithm used to hash the bundle contents.
-- **`hash`** — the hash of `contents`.
-- **`signature`** — the signature over the hash.
+  It is a person's public key (HTTP API §11.3): an RSA key of at least 2048
+  bits, PEM-encoded SubjectPublicKeyInfo, whose content identifier is the
+  person's id.
+- **`algorithm`** — hashing algorithm used to hash the bundle contents:
+  `sha256`.
+- **`hash`** — the hash of `contents`, of its UTF-8 bytes, in lower-case hex.
+- **`signature`** — the signature over the hash, base64-encoded (RFC 4648
+  §4, with padding). It is RSASSA-PSS
+  ([RFC 8017 §8.1](https://www.rfc-editor.org/rfc/rfc8017.html#section-8.1))
+  with SHA-256, the mask generation function MGF1 with SHA-256, and a salt
+  of 32 bytes, the hash's length, so that it signs `contents` through its
+  hash.
 - **`contents`** — the raw bundle (file or directory bundle), serialized as
   **JSON text with standard string escaping** (not base64 — base64 would
   take up more space than escaped JSON text).
 
 A bundle is identified as a signed bundle by the presence of the `signature`
 key.
+
+A reader trusts nothing in `contents` until it has checked both: that `hash`
+is the hash of `contents`, and that `signature` verifies over it under the
+public key `signer` names. A signed bundle that fails either, or whose
+`signer` names anything but such a key, is refused whole. Neither check says
+who the signer is to the reader. Anyone can sign content with a key of their
+own and place it anywhere, so a reader also checks that `signer` is whoever
+it expects.
+
+A page has a node sign for a person, and check a signature for it, since a
+page never reads a person's private key, and a page reached over the network
+has no cryptography of the browser's to check one with (HTTP API §11.5). The
+JSON a node signs need not be a bundle: a person's metadata is signed the
+same way, though it is not a bundle, as an identity block is protected as a
+bundle is (§6). A reader tells what `contents` is by where it found it.
 
 ---
 
@@ -628,6 +652,9 @@ The following were identified during design discussion but not yet resolved:
   splits a directory across extensions has to keep within what readers follow.
   The reference node follows up to 1,024 distinct extensions, and splits a
   directory into no more.
+- Which other keys sign a bundle (§5), such as a node's Ed25519 key, and how
+  a reader tells which scheme a signature is in. The reference node signs and
+  checks with a person's RSA key alone.
 - Fields an application's directory bundle could carry for serving it (HTTP
   API §13): a default file in place of `index.html`, whether a directory's
   index is generated, a file's content type, and a page for a path not found.
