@@ -1,7 +1,8 @@
 """Node identity and RFC 9421 message signatures (Phase 1 Step 6).
 
 Node key generation and storage, signing outgoing requests, and verifying
-incoming ones.
+incoming ones. A person's identity too, kept at a drop their username names
+(Phase 4 Step 79).
 """
 
 from libranet.identity.authentication import (
@@ -36,6 +37,12 @@ from libranet.identity.keys import (
     write_private_file,
 )
 from libranet.identity.node_identity import NodeIdentity
+from libranet.identity.people import (
+    MAX_IDENTITY_BYTES,
+    MAX_USERNAME_CHARACTERS,
+    PersonKey,
+    Username,
+)
 from libranet.identity.signatures import (
     DIGEST_COMPONENT,
     REQUEST_COMPONENTS,
@@ -52,8 +59,10 @@ __all__ = [
     "BACKUP_SECRET_BYTES",
     "CONTENT_DIGEST_HEADER",
     "DIGEST_COMPONENT",
+    "MAX_IDENTITY_BYTES",
     "MAX_PUBLIC_KEY_BYTES",
     "MAX_TRACKED_SIGNERS",
+    "MAX_USERNAME_CHARACTERS",
     "REQUEST_COMPONENTS",
     "RESPONSE_COMPONENTS",
     "SIGNATURE_HEADER",
@@ -69,9 +78,11 @@ __all__ = [
     "MessageVerifier",
     "MissingSignatureError",
     "NodeIdentity",
+    "PersonKey",
     "RequestAuthenticator",
     "SignatureError",
     "UnknownKeyError",
+    "Username",
     "content_digest",
     "decode_public_key",
     "encode_public_key",

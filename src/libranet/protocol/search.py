@@ -9,6 +9,8 @@ better results it knows about.
 """
 
 from __future__ import annotations
+from json import loads
+from logging import getLogger
 from pathlib import Path
 from time import time
 from typing import Callable, Final, Iterable, Iterator, Protocol
@@ -20,6 +22,8 @@ from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.prefix import BITS_PER_HEX_DIGIT, nearest
 from libranet.config.models import StorageConfig
 from libranet.json_format import compact_json
+
+_LOGGER = getLogger(__name__)
 
 # The member of a search response that lists what was found (HttpApi §6.1).
 RESULTS_FIELD: Final = "results"
@@ -72,6 +76,11 @@ class LocalSearch:
         self._content = content
         self._max_results = max_results
         self._registry = registry
+
+    @property
+    def max_results(self) -> int:
+        """The most matches a search gives."""
+        return self._max_results
 
     def search(self, prefix: str) -> list[ContentId]:
         """The best matches for a normalized ``prefix``, best first.
@@ -167,6 +176,39 @@ class SearchCache:
         except FileNotFoundError:
             # Not logged: a prefix not searched for lately has no cached response.
             return None
+
+    def load_results(self, prefix: str) -> list[ContentId] | None:
+        """The ids the cached response for ``prefix`` lists, best first; ``None`` if none is fresh.
+
+        A response that cannot be read lists none, and an entry that is not a
+        content id is left out, each logged.
+        """
+        body = self.load(prefix)
+
+        if body is None:
+            return None
+
+        try:
+            results = loads(body)[RESULTS_FIELD]
+
+        except (ValueError, KeyError, TypeError) as error:
+            _LOGGER.warning("Ignoring the unreadable cached search for %s: %s", prefix, error)
+            return []
+
+        if not isinstance(results, list):
+            _LOGGER.warning("Ignoring the cached search for %s, whose results are no array", prefix)
+            return []
+
+        found = []
+
+        for text in results:
+            try:
+                found.append(ContentId.parse(text))
+
+            except (InvalidContentIdError, AttributeError):
+                _LOGGER.warning("The cached search for %s holds %r, not a content id", prefix, text)
+
+        return found
 
     def save(self, prefix: str, body: bytes) -> Path:
         """Atomically replace the cached body for ``prefix``.

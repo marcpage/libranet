@@ -155,7 +155,13 @@ from libranet.webserver.data_handler import (
     invalid_address_response,
 )
 from libranet.webserver.data_write_handler import DataWriteHandler
-from libranet.webserver.drop_handler import DROP_PATH, MAX_DROP_BODY_BYTES, DropHandler, Turns
+from libranet.webserver.drop_handler import (
+    DROP_PATH,
+    MAX_DROP_BODY_BYTES,
+    DropHandler,
+    StoredDrop,
+    Turns,
+)
 from libranet.webserver.errors import (
     BundleEditError,
     CredentialFileError,
@@ -366,6 +372,7 @@ __all__ = [
     "StoreValueHandler",
     "StoreWriteHandler",
     "StoredCredential",
+    "StoredDrop",
     "StoredValue",
     "StoredValues",
     "StreamedBody",

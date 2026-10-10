@@ -241,6 +241,10 @@ convention for the *order* of early requests, not a stateful protocol
 phase — a node could, in principle, jump straight to step 7 and it would
 still be a valid (if impolite) sequence of ordinary HTTP requests.
 
+The session a person signs in to (HTTP API §11.4) is between a browser and
+its own node, and is no part of this protocol. No node sends another a
+session's cookie, or learns of a session from another.
+
 ## 7. Versioning
 
 The handshake has no version number of its own. It is a purely

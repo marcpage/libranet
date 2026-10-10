@@ -74,9 +74,9 @@ These endpoints are intended for nodes and software clients.
 
 Some are meant only for the browser applications a node serves (§13), and
 never for another node: whether the client is local (§2.4), making a drop
-(§9.6), reading into a bundle (§12.1), the folders and imports (§12.2),
-making bundles (§12.3), an application's store (§13.3), and the list of
-applications (§13.4). Each
+(§9.6), making an identity and signing in (§11.3, §11.4), reading into a
+bundle (§12.1), the folders and imports (§12.2), making bundles (§12.3), an
+application's store (§13.3), and the list of applications (§13.4). Each
 but reading into a bundle requires a `Referer` naming a page of the node
 (§2.5). A few serve only clients on the node's own machine (§2.4).
 
@@ -299,13 +299,13 @@ edit it for a local one. The answer is a convenience and not a
 protection, since every endpoint that serves only local clients checks
 for itself.
 
-These endpoints serve only local clients: listing the folders a node
-offers and importing a file from one (§12.2), making and changing bundles
-(§12.3), and changing an application's store (§13.3). A request to one of
-them from any other client MUST be refused with `403 Forbidden`. The
-folders, imports, and bundles are served only from a page of a trusted
-application, and an application's store is changed only from a page of
-its own (§2.5).
+These endpoints serve only local clients: making an identity and the
+session (§11.3, §11.4), listing the folders a node offers and importing a
+file from one (§12.2), making and changing bundles (§12.3), and changing an
+application's store (§13.3). A request to one of them from any other client
+MUST be refused with `403 Forbidden`. The identities, session, folders,
+imports, and bundles are served only from a page of a trusted application,
+and an application's store is changed only from a page of its own (§2.5).
 
 A loopback source does not show that the person at the machine made the
 request. Any site's page that a browser on the machine has open can send
@@ -342,8 +342,9 @@ Some endpoints are meant only for the pages a node serves, and never for
 another node:
 
 - on the main port: whether the client is local (§2.4), making a drop
-  (§9.6), the folders and imports (§12.2), making bundles (§12.3), an
-  application's store (§13.3), and the list of applications (§13.4);
+  (§9.6), making an identity and the session (§11.3, §11.4), the folders
+  and imports (§12.2), making bundles (§12.3), an application's store
+  (§13.3), and the list of applications (§13.4);
 - on `/config`'s port: every endpoint beneath `/config/api` (§2.3).
 
 Reading into a bundle (§12.1) is meant for those pages too, but is not
@@ -368,8 +369,8 @@ Some endpoints ask more of the page:
 
 - **An application's store** is read and changed only from a page of the
   application whose store it is (§13.3).
-- **The folders, imports, and making bundles** are served only from a page
-  of a trusted application (§13.5).
+- **Making an identity, the session, the folders, imports, and making
+  bundles** are served only from a page of a trusted application (§13.5).
 
 A browser sends a page's full address as the `Referer` of each request the
 page makes of its own origin, unless the page asks it not to, as with
@@ -1336,6 +1337,129 @@ at least the first two requests. This allows the identity exchange to happen.
   not know, but requires at least one it knows, and checks every one it knows
   against the body. `sha-256` and `sha-512` are known.
 
+### 11.3 A Person's Identity
+
+A person has an identity of their own, apart from any node's: an RSA key
+pair. Its public key is published as a node's is (§11.2), PEM-encoded
+SubjectPublicKeyInfo stored as ordinary content, and the person's id is the
+content identifier of those bytes, such as `sha256/` followed by 64
+lower-case hex digits.
+
+The private key is kept in CAS too, encrypted, so that a person can sign in on
+any node that holds it. A person's key is at least 2048 bits, and a node
+neither makes nor opens a smaller one, whatever sizes it makes. Its **identity
+block** is the JSON object
+
+```json
+{"private_key": "-----BEGIN PRIVATE KEY-----\n…"}
+```
+
+whose `private_key` is the key PEM-encoded as unencrypted PKCS #8, the
+`-----BEGIN PRIVATE KEY-----` form of
+[RFC 7468 §10](https://www.rfc-editor.org/rfc/rfc7468.html#section-10).
+The block is protected as a bundle's JSON is (BundleSpecification §6.1), by
+the costly derivation `ARGON2ID` from the person's username and password
+(BundleSpecification §6.2.1), with the default IV, and is made a drop (§9)
+at the target string `user:{username}`. It is not a bundle.
+
+A **username** is normalized before it names a drop or derives a key:
+white space around it is removed, and it is case-folded (Unicode default
+case folding) and put in Normalization Form C. A normalized username is
+from 1 to 64 characters, none of them a control character. `Alice` and
+`alice` are one username.
+
+Anyone can store a block at `user:{username}`, and two people may choose one
+username. Each finds only the block their own password opens. The more
+leading bits an identity block's id shares with the target hash, the nearer
+the top of a search for it it is, however many other blocks are placed there
+(§9.4, §9.5), so a person says how long to search for its nonce when the
+identity is made.
+
+A page of the node makes an identity with:
+
+```http
+POST /data/users
+Content-Type: application/json
+
+{"username": "alice", "password": "…", "key_bits": 3072, "seconds": 10, "minimum_bits": 16}
+```
+
+- **`username`** and **`password`** are strings. A password is at least 8
+  characters.
+- **`key_bits`** is the size of the RSA key, one of the sizes the node
+  makes, which it sets. 2048, 3072, and 4096 are RECOMMENDED. A larger key
+  takes longer to make, and to guess. A size the node does not make is
+  `400 Bad Request`.
+- **`seconds`** and **`minimum_bits`** are as for making a drop (§9.6), and
+  limited alike. `minimum_bits` is 0 if absent.
+
+The node makes the key pair, stores the public key, and makes the identity
+block a drop, as §9.6 makes one. It answers `201 Created`, with a
+`Location` naming the public key, and signs the person in (§11.4):
+
+```json
+{"id": "sha256/…", "username": "alice", "drop": "sha256/…", "target": "<target hash>", "matching_bits": 21}
+```
+
+`id` is the person's id and `username` the normalized username. `drop`,
+`target`, and `matching_bits` are the identity block's id, the target hash,
+and how many leading bits the two share, as §9.6 gives them. A request is
+`409 Conflict` if the username and password already open an identity at
+the drop, among the blocks the node holds, since signing in would then find
+either one.
+
+### 11.4 Signing In
+
+A person signs in to a node from one of its pages:
+
+```http
+POST /data/session
+Content-Type: application/json
+
+{"username": "alice", "password": "…"}
+```
+
+The node searches the drop `user:{username}` (§9.4), and tries each block
+found with the key the username and password derive. The first that opens
+to an identity block is the person's. The node answers `200 OK` with the
+person's id and username, and a cookie naming a new session:
+
+```http
+Set-Cookie: libranet-session=…; Path=/; HttpOnly; SameSite=Strict
+```
+
+```json
+{"id": "sha256/…", "username": "alice"}
+```
+
+When no block opens, a node that has found nothing at the drop, or has
+found blocks it does not hold, asks its peers for them and answers
+`503 Service Unavailable` with `Retry-After`, as for missing content
+(§5.2). One that holds every block it found, and none opens, answers
+`403 Forbidden` with the problem type `no-identity` (§17.2). A node stores
+the person's public key again if it no longer holds it.
+
+A session is between a browser and its node, and is no part of the protocol
+between nodes (HandshakeProtocol §6). The node holds the person's private key
+for the session, in memory, so that it can sign and decrypt with it for a page,
+which never reads the key. The session's cookie is `HttpOnly`, so no page's
+script reads it either, and `SameSite=Strict`, so no other site's page sends
+it. A browser keeps cookies by host and not by port, so the cookie is sent to
+every port of the node's host, `/config`'s too, which ignores it.
+
+`GET /data/session` says who is signed in, as signing in answers, or
+`{"id": null, "username": null}` when no one is. `DELETE /data/session`
+signs out, and is answered `204 No Content`, removing the cookie. A session
+also ends when it goes unused for a time the node sets, and when the node
+restarts. Every response that names a session carries
+`Cache-Control: no-store`.
+
+Making an identity, signing in, and the session serve only local clients,
+from a page of a trusted application (§2.4, §2.5), since a password sent
+from elsewhere would cross the network as it was typed. Each identity made,
+and each sign-in, derives a key, at a cost that is high by design
+(BundleSpecification §6.2.1), and a node derives one at a time.
+
 ---
 
 ## 12. Directory Bundles
@@ -1998,9 +2122,10 @@ These are defined so far, each named by its last segment beneath
 | `invalid-signature` | `401` | A signature that fails verification; the connection is closed (HandshakeProtocol §5.3) |
 | `invalid-list` | `400` | A node list or seek list that is not well-formed (§10.6, §10.7.1) |
 | `credential-required` | `401` | A `/config` request without the credential the node holds (§2.3.1) |
-| `invalid-config-request` | `400` | A JSON body an endpoint cannot act on: one beneath `/config/api` (§2.3), or of the folders and imports (§12.2), making bundles (§12.3), or an application's store (§13.3) |
+| `invalid-config-request` | `400` | A JSON body an endpoint cannot act on: one beneath `/config/api` (§2.3), or of making an identity or signing in (§11.3, §11.4), the folders and imports (§12.2), making bundles (§12.3), or an application's store (§13.3) |
 | `unusable-bundle` | `400` or `500` | Content that is not a bundle, or a bundle the node cannot read: `400` when a request named it (§12.1, §12.3), and `500` when it is an application's (§13) |
 | `bundle-authentication-required` | `401` | A password-protected application, asking for its password (§13.1) |
+| `no-identity` | `403` | A username and password that open none of the blocks the node holds at their drop (§11.4) |
 
 An error its status code describes fully uses `about:blank`, whose `title` is
 the status code's reason phrase (RFC 9457 §4.2.1).
@@ -2253,10 +2378,12 @@ Potential limits include:
 - maximum upload duration;
 - maximum CAS retrieval duration;
 - maximum peer requests;
-- maximum drop-search work.
+- maximum drop-search work;
+- maximum concurrent key derivations.
 
 A node limits the drop-search work a page asks of it by how long a search
-may take and how many bits it must match (§9.6).
+may take and how many bits it must match (§9.6). It derives one key from a
+username and password at a time (§11.4).
 
 A request whose body is larger than the node takes is refused with
 `413 Content Too Large` (§17.2, `content-too-large`), unread if its
@@ -2373,6 +2500,8 @@ The following table summarizes the currently proposed HTTP API.
 | `/data/{algorithm}/{hash}/{path}` | `GET`/`HEAD` | Read into a bundle (§12.1)                                 | Defined |
 | `/data/client`                    | `GET`        | Whether the client is local (§2.4)                         | Defined |
 | `/data/drop`                      | `POST`       | Make a drop, from a page of the node (§9.6)                | Defined |
+| `/data/users`                     | `POST`       | Make a person's identity, locally (§11.3)                  | Defined |
+| `/data/session`                   | Various      | Sign in, say who is signed in, sign out, locally (§11.4)   | Defined |
 | `/data/directory/...`             | `GET`        | List the folders offered to local clients (§12.2)          | Defined |
 | `/data/imports`                   | `GET`/`POST` | Import a local file, and follow imports (§12.2)            | Defined |
 | `/data/bundles`                   | `POST`       | Make or change a directory bundle, locally (§12.3)         | Defined |

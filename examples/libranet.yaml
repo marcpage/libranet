@@ -179,6 +179,11 @@ identity:
   # and a failed signature closes the connection (HandshakeProtocol §2.1),
   # and uploads (PUT) always require a valid signature.
   allow_unsigned_api_reads: true
+  # The sizes, in bits, a person's RSA key may be made at on this node (HTTP
+  # API §11.3), which a page offers as quick, stronger, and strongest. A
+  # larger key takes longer to make: under a second at 4096 bits, on
+  # average, on a recent laptop. None may be under 2048.
+  person_key_bits: [2048, 3072, 4096]
 
 stats:
   # How often the plain /data/nodes and /data/seek files are rewritten from

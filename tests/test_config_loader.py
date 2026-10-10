@@ -9,7 +9,7 @@ from yaml import safe_load
 
 from libranet.config.errors import ConfigError
 from libranet.config.loader import load_config
-from libranet.config.models import BackupConfig, NetworkConfig
+from libranet.config.models import BackupConfig, IdentityConfig, NetworkConfig
 from libranet.config.paths import APP_NAME, default_local_folders
 
 
@@ -148,6 +148,12 @@ def test_the_example_config_states_the_default_drop_ceilings() -> None:
         NetworkConfig().drop_max_seconds,
         NetworkConfig().drop_max_minimum_bits,
     )
+
+
+def test_the_example_config_states_the_default_person_key_sizes() -> None:
+    example = Path(__file__).parent.parent / "examples" / "libranet.yaml"
+
+    assert load_config(example).identity.person_key_bits == IdentityConfig().person_key_bits
 
 
 def test_the_example_config_states_the_default_excluded_extended_attributes() -> None:
