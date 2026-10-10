@@ -2,8 +2,7 @@
 
 Node key generation and storage, signing outgoing requests, and verifying
 incoming ones. A person's identity too, kept at a drop their username names
-(Phase 4 Step 79), and the directory listing every person's id (Phase 4 Step
-92).
+(Phase 4 Step 79).
 """
 
 from libranet.identity.authentication import (
@@ -16,12 +15,6 @@ from libranet.identity.content_digest import (
     CONTENT_DIGEST_HEADER,
     content_digest,
     verify_content_digest,
-)
-from libranet.identity.directory import (
-    DIRECTORY_TARGET,
-    DirectoryMerge,
-    FoundDirectory,
-    PeopleListing,
 )
 from libranet.identity.errors import (
     IdentityError,
@@ -66,7 +59,6 @@ __all__ = [
     "BACKUP_SECRET_BYTES",
     "CONTENT_DIGEST_HEADER",
     "DIGEST_COMPONENT",
-    "DIRECTORY_TARGET",
     "MAX_IDENTITY_BYTES",
     "MAX_PUBLIC_KEY_BYTES",
     "MAX_TRACKED_SIGNERS",
@@ -79,8 +71,6 @@ __all__ = [
     "AuthenticationResult",
     "AuthenticationStatus",
     "Clock",
-    "DirectoryMerge",
-    "FoundDirectory",
     "IdentityError",
     "InvalidSignatureError",
     "KeyFileError",
@@ -88,7 +78,6 @@ __all__ = [
     "MessageVerifier",
     "MissingSignatureError",
     "NodeIdentity",
-    "PeopleListing",
     "PersonKey",
     "RequestAuthenticator",
     "SignatureError",

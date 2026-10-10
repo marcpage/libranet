@@ -31,12 +31,12 @@ from libranet.bundle.loading import load_bundle
 from libranet.bundle.reassembly import write_file
 from libranet.bundle.shapes import DirectoryBundle, DirectoryMarker, FileBundle, Metadata, Symlink
 from libranet.cas.content_id import ContentId
+from libranet.cas.drops import DropTarget
 from libranet.cas.errors import ArchiveError
 from libranet.cas.layered import LayeredSource
 from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
-from libranet.identity.directory import DIRECTORY_TARGET
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
@@ -68,7 +68,8 @@ ROOT_PAGE_SOURCE = PACKAGED_APPLICATIONS / "root" / "index.html"
 CONFIG_PAGE_SOURCE = PACKAGED_APPLICATIONS / "config" / "index.html"
 MOVIE_PAGE_SOURCE = PACKAGED_APPLICATIONS / "movie" / "index.html"
 DIRECTORY_PAGE_SOURCE = PACKAGED_APPLICATIONS / "directory" / "index.html"
-DIRECTORY_TARGET_STRING = "user directory"
+# Where the directory application keeps the user directory (Phase 4 Step 92).
+DIRECTORY_TARGET = DropTarget.of("user directory")
 CONFIG_CREDENTIALS = {"Authorization": "Basic " + b64encode(b"admin:secret").decode("ascii")}
 
 
@@ -425,7 +426,7 @@ def test_the_directory_page_keeps_the_directory_where_the_node_does(directory_pa
     [seconds] = findall(r"const DROP_SECONDS = (\d+);", directory_page)
     [minimum_bits] = findall(r"const DROP_MINIMUM_BITS = (\d+);", directory_page)
 
-    assert f'const DIRECTORY_TARGET = "{DIRECTORY_TARGET_STRING}";' in directory_page
+    assert 'const DIRECTORY_TARGET = "user directory";' in directory_page
     assert f'const DIRECTORY_TARGET_HASH = "{DIRECTORY_TARGET.hex}";' in directory_page
     # Within the ceilings a node sets unless its operator lowers them.
     assert int(seconds) <= network.drop_max_seconds

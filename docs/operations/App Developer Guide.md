@@ -692,19 +692,19 @@ Blocking is for a local client only, from a trusted application's page.
 
 ### 6.12 The User Directory
 
-Every person with an identity is listed in the user directory, a directory
-bundle kept at the drop `user directory` (HTTP API §11.5). Each person is
-an entry whose path is their id, and whose only part is that id, their
-public key:
+The user directory lists the people who have opened it, by their ids. It
+is kept by applications, not by the node, which knows nothing of it: the
+shipped `directory` application, at `/directory/`, lists everyone, and
+adds whoever is signed in (§6.10). It is a directory bundle made a drop at
+`user directory`. Each person is an entry whose path is their id, and
+whose only part is that id, their public key:
 
 ```json
 {"contents": {"sha256/…": {"contents": ["sha256/…"]}}}
 ```
 
-The node adds each person whose identity it makes (§6.10), and the shipped
-`directory` application, at `/directory/`, lists everyone and adds whoever
-is signed in. An application that reads the directory itself follows the
-same rules, so that copies made by different pages and nodes come together:
+An application that reads or adds to the directory follows the same
+rules, so that copies made by different pages and nodes come together:
 
 - **Find every copy.** Search the drop (§6.1), and read each result with
   `GET /data/{id}`. The node serves an object as it is stored, zlib

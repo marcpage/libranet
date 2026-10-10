@@ -21,11 +21,12 @@ removed. A bundle is named by its id, or by the id per-entry encryption gives
 it, which carries its key (BundleSpecification §7). Whether the new bundle is
 encrypted defaults to whether its base is.
 
-A page that has made a bundle itself, such as an extension of the user
-directory (HttpApi §11.5), gives it whole instead, to be stored as it is
-(:class:`WholeBundleRequest`, Phase 4 Step 92)::
+A page that has written a bundle's JSON itself, such as an extension of the
+user directory the directory application keeps, gives it whole instead, to
+be stored as it is (:class:`WholeBundleRequest`, Phase 4 Step 92)::
 
-    {"bundle": {"contents": {"sha256/…": {"contents": ["sha256/…"]}}}}
+    {"bundle": {"contents": {"notes.txt": {"contents": ["sha256/…"]}},
+                "extensions": ["sha256/…"]}}
 """
 
 from __future__ import annotations

@@ -232,7 +232,6 @@ from libranet.webserver.server import (
 from libranet.webserver.sessions import SESSION_COOKIE, Session, Sessions
 from libranet.webserver.signature_guard import API_PREFIX, SignatureGuard
 from libranet.webserver.site_checks import HOST_HEADER, SITE_HEADER, SiteChecks, host_name
-from libranet.webserver.user_directory import UserDirectory
 
 __all__ = [
     "API_PREFIX",
@@ -395,7 +394,6 @@ __all__ = [
     "StreamedBody",
     "Turns",
     "UnsupportedMediaTypeError",
-    "UserDirectory",
     "ValueChangedError",
     "WebServerModule",
     "basic_credentials",

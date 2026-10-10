@@ -83,16 +83,16 @@
   </section>
 
   <footer>
-    Everyone with an identity is listed here by their id, the content id of
-    their public key. The list is kept at the drop <code>user directory</code>,
-    where every node that makes an identity adds the person. Opening this page
-    merges what each copy found there lists, and adds whoever is signed in.
+    Everyone who has opened this page signed in is listed here by their id,
+    the content id of their public key. The list is kept at the drop
+    <code>user directory</code>. Opening this page merges what each copy found
+    there lists, and adds whoever is signed in.
   </footer>
 </main>
 <script>
 "use strict";
 
-// The drop the directory is kept at (HttpApi 11.5), and the SHA-256 of that
+// The drop the directory is kept at (HttpApi 9.3), and the SHA-256 of that
 // string, which a search names. A page reached over the network is not a
 // secure context, which a browser hashes in, so it is written out here.
 const DIRECTORY_TARGET = "user directory";
@@ -109,7 +109,8 @@ const DROP_MINIMUM_BITS = 16;
 const DEFAULT_RETRY_SECONDS = 5;
 const MAX_WAITS = 1;
 
-// The most extensions a directory is read through, as the node reads one.
+// The most extensions a directory is read through, as many as the node
+// follows in a bundle it reads.
 const MAX_EXTENSIONS = 1024;
 
 // A person's id, an entry's path, and an extension's id: the only hash the
@@ -265,7 +266,7 @@ function jsonOf(bytes) {
 
 // The people a directory bundle lists itself, by id, and the extensions it
 // names; null if it holds anything but people, each an entry whose path is
-// their id and whose only part is that id (HttpApi 11.5).
+// their id and whose only part is that id.
 function listingOf(bundle) {
   if (!isObject(bundle) || !isObject(bundle.contents)) {
     return null;
@@ -378,8 +379,7 @@ function without(people, less) {
   return new Set([...people].filter((person) => !less.has(person)));
 }
 
-// The directories found, and the one to make so that one lists everyone,
-// written by the same rules the node keeps them by (HttpApi 11.5).
+// The directories found, and the one to make so that one lists everyone.
 class Merge {
   constructor(directories) {
     this.directories = directories;
