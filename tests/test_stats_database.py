@@ -86,7 +86,7 @@ def test_no_primary_key_column_may_be_null() -> None:
             if primary_key and not not_null
         ]
 
-    assert len(tables) == 5
+    assert len(tables) == 6
     assert nullable == []
 
 
@@ -576,6 +576,47 @@ def test_a_nearby_scan_returns_everything_known_when_that_is_under_the_limit(
 def test_a_nearby_scan_needs_room_for_at_least_one_result(database: StatsDatabase) -> None:
     with raises(ValueError, match="limit must be at least 1"):
         database.content_ids_near("5", 0)
+
+
+def test_a_nearby_scan_leaves_blocked_content_out(database: StatsDatabase) -> None:
+    store_hashes(database, *(f"{index}" + "0" * 63 for index in range(10)))
+    database.record_blocked(ContentId("sha256", "5" + "0" * 63))
+
+    found = database.content_ids_near("5" + "0" * 63, 3)
+
+    # `4` shares three bits of `5`, then `6` and `7` two.
+    assert [content_id.hash[0] for content_id in found] == ["4", "6", "7"]
+
+
+# -- Blocked content (Phase 4 Step 30) ----------------------------------------
+
+
+def test_content_is_blocked_once_and_for_good(database: StatsDatabase, clock: FakeClock) -> None:
+    first = database.record_blocked(CONTENT_ID)
+    clock.advance(60.0)
+    again = database.record_blocked(CONTENT_ID)
+
+    assert first
+    assert not again
+    assert database.is_blocked(CONTENT_ID)
+    assert not database.is_blocked(OTHER_ID)
+
+
+def test_blocked_content_is_listed_by_hash(database: StatsDatabase) -> None:
+    later, earlier = sorted([CONTENT_ID, OTHER_ID], key=lambda content_id: content_id.hash)[::-1]
+    database.record_blocked(later)
+    database.record_blocked(earlier)
+
+    assert database.blocked_ids() == [earlier, later]
+
+
+def test_a_block_outlives_the_content_it_names(database: StatsDatabase) -> None:
+    database.record_acquired(CONTENT_ID, 10)
+    database.record_blocked(CONTENT_ID)
+
+    database.record_deleted(CONTENT_ID)
+
+    assert database.is_blocked(CONTENT_ID)
 
 
 # -- What to let go of first (Phase 2 Step 28) --------------------------------

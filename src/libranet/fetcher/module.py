@@ -12,7 +12,9 @@ an upload. The fetcher opens no connections and writes no content itself.
 
 A miss for content this node holds, in the source of truth or its content
 archives (Step 34), asks for nothing, so peers are never asked for what is
-already here: it was stored after the miss, or is archive content.
+already here: it was stored after the miss, or is archive content. Nor is
+content this node has blocked asked for (HighLevelDesign §4.11, Phase 4
+Step 30), as the stats module lists it (:mod:`libranet.cas.blocked`).
 
 A miss is covered by an earlier request for the same content made less than
 ``network.retry_after_seconds`` before it: the ``Retry-After`` the node's
@@ -34,6 +36,7 @@ from logging import Logger
 from time import time
 from typing import Callable, ClassVar
 
+from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
 from libranet.config.models import LibranetConfig
@@ -67,6 +70,7 @@ class FetcherModule(ModuleBase):
         self._ask_interval_seconds = config.network.retry_after_seconds
         # The content archives stay open for as long as the process runs.
         self._content = LayeredSource.open(config.storage)
+        self._blocked = BlockedContent.of(config.storage)
         # Content asked for, oldest first, with when the miss that prompted
         # each request was reported.
         self._asked: OrderedDict[ContentId, float] = OrderedDict()
@@ -83,6 +87,10 @@ class FetcherModule(ModuleBase):
 
         if self._content.exists(content_id):
             self.logger.debug("%s is held, so is not asked for", content_id)
+            return
+
+        if self._blocked.blocks(content_id):
+            self.logger.debug("%s is blocked, so is not asked for", content_id)
             return
 
         # Timed by when each miss was reported rather than when it is handled,

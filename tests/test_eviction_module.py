@@ -1106,6 +1106,111 @@ def test_each_way_names_its_peers_anew_and_a_peer_connected_neither_way_loses_it
     assert handed_off(queues) == [PEERS[0]]
 
 
+# -- Blocked content (Phase 4 Step 30) -----------------------------------------
+
+
+def blocked(content_id: ContentId) -> Message:
+    return make_message(
+        EventType.DATA_BLOCKED,
+        ModuleName.WEBSERVER,
+        {"algorithm": content_id.algorithm, "hash": content_id.hash},
+    )
+
+
+def test_blocked_content_is_deleted_at_once_and_handed_off_to_no_peer(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+    caplog: LogCaptureFixture,
+) -> None:
+    hold(store, *CONTENT[:2])
+    # Storage within its limits: blocked content goes whether or not it is short.
+    module = modules.start(capped(config, store, node_id, 3 * SIZE))
+    held = module.pressure.held_bytes
+
+    with caplog.at_level(INFO):
+        module.handle(blocked(CONTENT[0]))
+
+    assert not store.exists(CONTENT[0])
+    assert store.exists(CONTENT[1])
+    assert module.pressure.held_bytes == held - SIZE
+    (deleted,) = published(queues)
+    assert deleted["event"] == EventType.DATA_DELETED
+    assert (deleted["hash"], deleted["size"]) == (CONTENT[0].hash, SIZE)
+    assert f"Deleted {CONTENT[0]}, which this node has blocked" in caplog.text
+
+
+def test_blocked_content_not_held_deletes_nothing(
+    modules: Modules, config: LibranetConfig, queues: ModuleQueues
+) -> None:
+    module = modules.start(config)
+
+    module.handle(blocked(CONTENT[0]))
+
+    assert published(queues) == []
+
+
+def test_blocked_content_just_stored_is_deleted_all_the_same(
+    modules: Modules, config: LibranetConfig, store: CasStore, queues: ModuleQueues
+) -> None:
+    module = modules.start(config, stored_grace_seconds=GRACE)
+    hold(store, CONTENT[0])
+    module.handle(stored(CONTENT[0]))
+
+    module.handle(blocked(CONTENT[0]))
+
+    assert not store.exists(CONTENT[0])
+    assert events(queues) == [(EventType.DATA_DELETED, CONTENT[0].hash)]
+
+
+def test_blocked_content_stats_listed_is_passed_over(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+) -> None:
+    first, listed, last = CONTENT[:3]
+    hold(store, first, listed, last)
+    module = modules.start(capped(config, store, node_id, 0), max_hand_offs=1)
+    requested(queues)
+    module.handle(candidates(first, listed, last))
+    assert handed_off(queues) == [first]
+
+    module.handle(blocked(listed))
+    module.handle(acknowledged(first, PEERS[0]))
+
+    assert events(queues) == [
+        (EventType.DATA_DELETED, listed.hash),
+        (EventType.DATA_DELETED, first.hash),
+        (EventType.EVICTION_NOTICE, last.hash),
+    ]
+
+
+def test_a_blocked_key_that_signatures_are_checked_against_is_kept(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+    caplog: LogCaptureFixture,
+) -> None:
+    hold(store, PEERS[0])
+    module = modules.start(config)
+    module.handle(connected(ConnectionDirection.OUTBOUND, PEERS[0]))
+
+    with caplog.at_level(INFO):
+        module.handle(blocked(PEERS[0]))
+        module.handle(blocked(node_id))
+
+    assert store.exists(PEERS[0])
+    assert store.exists(node_id)
+    assert published(queues) == []
+    assert "signatures are checked against it, so it is kept" in caplog.text
+
+
 # -- Resolved files first (Phase 2 Step 29) ---------------------------------
 
 
@@ -1276,6 +1381,7 @@ def test_the_module_subscribes_to_stored_content_and_answers() -> None:
         EventType.RESOLVED_RECLAIMED,
         EventType.PEERS_CONNECTED,
         EventType.STORAGE_FULL_REQUESTED,
+        EventType.DATA_BLOCKED,
     }
 
 

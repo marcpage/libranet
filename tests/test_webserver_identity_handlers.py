@@ -10,6 +10,8 @@ from zlib import decompress
 
 from pytest import LogCaptureFixture, fixture, mark
 
+from libranet.atomic_file import write_atomically
+from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
 from libranet.cas.prefix import matching_bits
@@ -303,6 +305,23 @@ def test_an_identity_stored_since_a_search_was_cached_is_found_at_once(
 
     assert response.status == 200, response.body
     assert loads(response.body)["id"] == person_id
+
+
+def test_a_search_of_a_drop_leaves_out_what_this_node_has_blocked(
+    storage: StorageConfig, recorder: Recorder
+) -> None:
+    truth = CasStore.source_of_truth(storage)
+    kept, blocked = (ContentId.for_data(data, "sha256") for data in (b"kept", b"blocked"))
+    truth.write(kept, b"kept")
+    truth.write(blocked, b"blocked")
+    write_atomically(storage.blocked_list_path, BlockedContent.body([blocked]))
+    cache = SearchCache.of(storage)
+    search = SearchHandler(LocalSearch(truth, 8), cache, recorder, BlockedContent.of(storage))
+
+    found = search.fresh_results(blocked.hash)
+
+    assert found == [kept]
+    assert cache.load_results(blocked.hash) == [kept]
 
 
 def test_the_same_username_and_password_make_no_second_identity(

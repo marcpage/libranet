@@ -4,7 +4,7 @@ Every statement is ``IF NOT EXISTS``, so :func:`apply_schema` both creates a
 fresh database and leaves an existing one alone. It is applied on every
 start; no other process opens this file.
 
-Five tables cover what the implementation plan asks a node to remember:
+Six tables cover what the implementation plan asks a node to remember:
 
 ``data_stats``
     One row per content identifier the node has heard of, whether or not it
@@ -48,6 +48,13 @@ Five tables cover what the implementation plan asks a node to remember:
     asked for but not answered. ``node_id`` is :data:`OWN_NODE` for this
     node's own list (HttpApi §10.7.1) and a peer's id for a list it
     published to us (Step 9).
+
+``blocked_content``
+    One row per content identifier this node has blocked: content it will
+    not hold, and refuses (Phase 4 Step 30). ``blocked_at`` is when it was
+    first blocked. A row is never deleted, since a block outlives the
+    content it names: a node that forgot it would take the content back
+    from the next peer to push it.
 """
 
 from __future__ import annotations
@@ -134,6 +141,14 @@ SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
         value TEXT NOT NULL,
         requested_at REAL NOT NULL,
         PRIMARY KEY (node_id, kind, value)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS blocked_content (
+        algorithm TEXT NOT NULL,
+        hash TEXT NOT NULL,
+        blocked_at REAL NOT NULL,
+        PRIMARY KEY (algorithm, hash)
     )
     """,
 )

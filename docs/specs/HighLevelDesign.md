@@ -284,6 +284,9 @@ When storage pressure requires eviction:
   passed over for the next best.
 - Only after a peer has accepted the object may it be deleted locally.
 
+Content the node has blocked (§4.11) is not evicted, since the node does not
+keep it: it is deleted at once, and pushed to no peer.
+
 One copy, rather than several, moves the object toward the node that best
 matches it without multiplying it, which matters most where several nodes share
 one disk. The peer that accepts it pushes it on toward a better match still
@@ -474,6 +477,35 @@ object's hash.
 Pushing toward the best match carries data to the nodes that prioritize
 retaining it (§4.5) and that request routing asks first (§4.7).
 
+### 4.11 Blocked Content
+
+A node MAY keep a private list of content it will not hold, its **blocked**
+content. Content leaves the network this way when nothing needs it any
+more, as when a newer object replaces an older one entirely: each node that
+learns it is replaced blocks the older one, and stops carrying it.
+
+- The list is the node's own. It never publishes or advertises it, and
+  answers for blocked content as it would for content it does not hold.
+- Blocked content the node holds is deleted at once, without being pushed
+  to a peer first (§4.5).
+- A request for blocked content is answered as one for content the node
+  will not try to retrieve (HTTP API §5.3), and the node never asks a peer
+  for it.
+- Blocked content pushed to the node, whether new (§4.10) or handed off by
+  a peer that means to delete its own copy (§4.5), is accepted and
+  discarded, so the peer pushing it learns nothing of the block.
+- Blocked content is left out of search results (§4.2) and out of the data
+  the node seeks (§4.8).
+- A block outlives the content it names. A node that forgot a block once
+  the content was gone would take the content back from the next peer to
+  push it.
+
+No node can delete content from the nodes that hold it. Content leaves the
+network as the nodes holding it each decide, separately, to stop. A
+hand-off is the exception (§6): a peer handing off an object deletes its
+own copy once a node accepts it, and a node that has blocked it accepts it
+and discards it, so the copy handed off is gone.
+
 ---
 
 ## 5. Application Layer
@@ -587,7 +619,8 @@ The four protocol layers provide complementary security properties:
   accepts it (§4.5), which preserves the directional locality property. The
   evicting node's deletion then relies on that one peer keeping what it
   accepted: a peer that accepts an object and then loses or discards it can
-  take the last copy with it.
+  take the last copy with it. A peer that has blocked the object (§4.11)
+  discards it this way, by design.
 
 ### Applications
 

@@ -224,6 +224,11 @@ class SearchCache:
         Returns:
             The response's body, shaped as HttpApi §6.1 requires.
         """
-        body = compact_json({RESULTS_FIELD: [str(content_id) for content_id in results]})
+        body = self.body(results)
         self.save(prefix, body)
         return body
+
+    @staticmethod
+    def body(results: Iterable[ContentId]) -> bytes:
+        """The response to a search finding ``results``, best first (HttpApi §6.1)."""
+        return compact_json({RESULTS_FIELD: [str(content_id) for content_id in results]})

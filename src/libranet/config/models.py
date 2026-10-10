@@ -342,6 +342,11 @@ class StorageConfig(_Section):
         return self.derived_dir / "candidates.json"
 
     @property
+    def blocked_list_path(self) -> Path:
+        """The content this node has blocked, for the modules refusing it (Phase 4 Step 30)."""
+        return self.derived_dir / "blocked.json"
+
+    @property
     def resolved_files_dir(self) -> Path:
         """Entries the unbundler resolves from bundles, naming parts to serve (Phase 3 Step 65)."""
         return self.source_of_truth_dir / "resolved"

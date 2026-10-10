@@ -174,6 +174,7 @@ network holds.
 | Keep anything in the browser: `localStorage`, IndexedDB, cookies | No | Yes, shared with every trusted application |
 | Read and change its own store (§6.6) | No | Yes; changes from a local client |
 | List and import from the folders offered, and make bundles (§6.3–§6.5) | No | From a local client |
+| Block content the node will no longer hold (§6.11) | No | From a local client |
 
 An untrusted application is served with:
 
@@ -245,6 +246,7 @@ when trusted. `self.origin === "null"` tells a page it is sandboxed.
 | `/data/drop` | `POST` | Any | Any application's | Place content at a drop (§6.9) |
 | `/data/users` | `POST` | Local | A trusted application's | Make a person's identity (§6.10) |
 | `/data/session` | `GET`, `POST`, `DELETE` | Local | A trusted application's | Who is signed in; sign in and out (§6.10) |
+| `/data/blocked/{id}` | `PUT` | Local | A trusted application's | Block content the node will no longer hold (§6.11) |
 | `/data/nodes`, `/data/seek` | `GET` | Any | Any, or none | The peers the node knows, and what it seeks (§6.8) |
 
 ### 5.3 Waiting for Content
@@ -656,6 +658,28 @@ unused for `network.session_idle_seconds`, a day by default, or when the
 node stops. Each of these is for a local client only, from a trusted
 application's page, since a password sent from elsewhere would cross the
 network as it was typed.
+
+### 6.11 Blocking Content
+
+When a page replaces content entirely, as a newer version of a list that
+holds everything the older one did, the older one need not be kept. Ask the
+node to stop holding it with:
+
+```js
+await fetch(`/data/blocked/${id}`, { method: "PUT" });
+```
+
+The node answers `204`, whether or not it held the content or had blocked it
+before. It deletes its copy at once, and from then on answers a `GET` of it
+with `404`, leaves it out of searches, never asks a peer for it, and
+discards it when a peer pushes it (HTTP API §5.5). As each node that learns
+the content is replaced blocks it, the content leaves the network.
+
+A block is the node's, not the person's: once one page blocks content, no
+application on the node can have it again. There is no unblocking, and no
+list of what is blocked. So block only content your application made, and
+only once something holds all it did. An id that is not valid is `400`.
+Blocking is for a local client only, from a trusted application's page.
 
 ## 7. Patterns From the Movie Library
 

@@ -6,7 +6,9 @@ from pathlib import Path
 
 from pytest import LogCaptureFixture, fixture, raises
 
+from libranet.atomic_file import write_atomically
 from libranet.cas.archive import ArchiveSink
+from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.store import CasStore
@@ -242,6 +244,17 @@ def test_a_miss_for_archive_content_asks_for_nothing(
 
     archived = storage.model_copy(update={"archives": (tmp_path / "held.zip",)})
     fetcher = FetcherModule(ModuleName.FETCHER, queues, configured(archived, 0))
+    fetcher.handle(miss(100.0))
+    fetcher.handle(miss(100.0, OTHER_ID))
+
+    assert asked_for(queues) == [OTHER_ID]
+
+
+def test_a_miss_for_blocked_content_asks_for_nothing(
+    fetcher: FetcherModule, queues: ModuleQueues, storage: StorageConfig
+) -> None:
+    write_atomically(storage.blocked_list_path, BlockedContent.body([CONTENT_ID]))
+
     fetcher.handle(miss(100.0))
     fetcher.handle(miss(100.0, OTHER_ID))
 

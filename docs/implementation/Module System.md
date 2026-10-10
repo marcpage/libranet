@@ -11,7 +11,8 @@ those processes work together: which modules there are and what each one is
 responsible for, how the supervisor starts, restarts, and stops them, and the
 message bus, shared files, and signals they communicate through. It is
 written for someone about to read or change the code, and describes the
-implementation as of version 0.2 and Phase 3, up to Step 77.
+implementation as of version 0.2 and Phase 3, up to Step 77, and Phase 4's
+Step 30.
 
 The architecture was chosen in [Phase 1](Phase%201.md) §2 and Steps 3 and 4,
 and [Phase 2](Phase%202.md) and [Phase 3](Phase%203.md) leave it unchanged.
@@ -243,11 +244,14 @@ that subscriber's inbox.
 #### 3.2.1 Stats
 
 The node's memory, and the only process that opens `libranet.sqlite3`. It
-subscribes to 18 of the 43 events, nearly everything the other modules
+subscribes to 19 of the 44 events, nearly everything the other modules
 report, and records each in one small statement. Every
-`stats.derive_interval_seconds` it rewrites the node, seek, and candidate
-lists into `lists/`, which the web server and connection manager read as
-plain files, and publishes `nodes.updated` when the candidate list changed.
+`stats.derive_interval_seconds` it rewrites the node, seek, candidate, and
+blocked lists into `lists/`, which the web server, connection manager,
+validator, and fetcher read as plain files, and publishes `nodes.updated`
+when the candidate list changed. It keeps the content the node has blocked
+(`data.blocked`, Phase 4 Step 30), and writes the blocked list at once when
+that grows.
 It answers two questions from the eviction module: which content to let go
 of first (`eviction.candidates`), and which bundles' resolved files to keep
 (`resolved.reclaim`). It also adds identifiers it knows of to cached search
@@ -275,9 +279,11 @@ validator, as an upload does. It keeps each application's store in `store/`
 itself (Phase 3 Step 70), and hands a file a local client asks to import to
 the backup module, once it has found it in a folder offered (Step 69). It
 also keeps count of the peers connected to it, whose keys the eviction
-module keeps.
+module keeps. A page that blocks content (`PUT /data/blocked/...`, Phase 4
+Step 30) has it publish `data.blocked`, and it answers for blocked content,
+as `lists/blocked.json` names it, as for content it does not hold.
 It subscribes to only three events, `app.path_resolved`, `backup.state`,
-and `peers.connected_requested`, and publishes seventeen.
+and `peers.connected_requested`, and publishes eighteen.
 
 #### 3.2.3 Validator
 
@@ -287,7 +293,9 @@ content id, writes it into `cas/data` if it matches, and deletes the upload
 either way, publishing `data.stored` or `data.rejected`. It is the only way
 content from a peer enters `cas/data`, with one exception: a peer's own
 public key, which the web server and connection manager check and store
-themselves.
+themselves. An upload of content the node has blocked, as
+`lists/blocked.json` names it, is deleted unchecked, and announced by
+neither.
 
 #### 3.2.4 Connection Manager
 
@@ -309,8 +317,9 @@ for the eviction module whenever they change (`peers.connected`).
 Small and single-threaded. Each `data.not_found` for content the node does
 not hold becomes one `fetch.requested`, at most once per content id every
 `network.retry_after_seconds`, so a burst of misses for one object asks the
-peers once. It opens no connections and writes no content, and only logs
-`fetch.succeeded` and `fetch.failed`.
+peers once. Content the node has blocked, as `lists/blocked.json` names it,
+is never asked for. It opens no connections and writes no content, and only
+logs `fetch.succeeded` and `fetch.failed`.
 
 #### 3.2.6 Unbundler
 
@@ -341,6 +350,8 @@ so a restart of the module it asked cannot stall it. It says whether
 storage is full, in `storage.full`, so that a backup, build, or import waits
 rather than take the node past a limit, and it starts a batch of hand-offs short
 of each limit, so that what waits is not slowed to one hand-off at a time.
+Content the node blocks (`data.blocked`) it deletes at once, handing it off
+to no peer, but for a key it keeps.
 
 #### 3.2.8 Backup
 
@@ -874,9 +885,11 @@ to end its loop.
 | *Storage full* | | | | | | | | |
 | `storage.full_requested` | | | | | | | S | P |
 | `storage.full` | | | | | | | P | S |
+| *Blocked content* | | | | | | | | |
+| `data.blocked` | P | | | S | | | S | |
 | *Lifecycle* | | | | | | | | |
 | `shutdown` | S | S | S | S | S | S | S | S |
-| **Publishes / subscribes** | 17 / 3 | 14 / 6 | 2 / 1 | 3 / 18 | 1 / 3 | 3 / 3 | 6 / 6 | 4 / 9 |
+| **Publishes / subscribes** | 18 / 3 | 14 / 6 | 2 / 1 | 3 / 19 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 |
 
 The `shutdown` row and its subscriptions are implicit: every module
 receives it without listing it, and nothing publishes it (§6.4). The totals
@@ -931,6 +944,7 @@ A content id is an `algorithm` and a lower-case hex `hash`, or, in
 | `peers.connected` | `direction`: `outbound` or `inbound`; `node_ids` | Every peer connected that way, replacing the last list for that direction |
 | `storage.full_requested` | — | Say whether storage is full now |
 | `storage.full` | `full` | Whether one more object of `storage.max_object_bytes` would take storage past a limit, so that content this node creates waits |
+| `data.blocked` | `algorithm`, `hash` | This node will not hold this content, for good |
 | `shutdown` | — | Leave the receive loop |
 
 ### 7.3 Who Talks to Whom
@@ -974,7 +988,7 @@ flowchart TB
     missing --> fetch
     fetch <-->|"fetch.requested<br/>fetch.succeeded, fetch.failed"| conn
     evict <-->|"eviction.notice, peers.connected_requested<br/>eviction.acknowledged, peers.connected"| conn
-    evict <-->|"peers.connected_requested<br/>peers.connected"| web
+    evict <-->|"peers.connected_requested<br/>peers.connected, data.blocked"| web
     evict <-->|"storage.full<br/>storage.full_requested"| backup
     evict <-->|"eviction.candidates_requested, eviction.candidates<br/>resolved.reclaim_requested"| stats
     stats -->|"resolved.reclaim"| unb
@@ -1192,6 +1206,7 @@ data moves through files, and a message tells the reader where to look.
 | `cas/resolved/` | Unbundler; the web server deletes an entry it cannot read | Web server | `app.path_resolved`, `resolved.reclaimed` |
 | `lists/candidates.json` | Stats | Connection manager | `nodes.updated` |
 | `lists/nodes.json`, `lists/seek.json` | Stats | Web server; connection manager | Nothing; read when needed |
+| `lists/blocked.json` | Stats | Web server; validator; fetcher | Nothing; read again once replaced |
 | `search/` | Web server; stats, adding identifiers | Web server | `data.search_requested`, which names the prefix |
 | `libranet.sqlite3` | Stats | Stats | — |
 | `applications.json` | Web server | Web server | — |
@@ -1337,13 +1352,10 @@ What the module system does not do yet:
   Each handler reads the fields it needs, and a malformed payload raises
   there and is logged.
 
-Planned steps that will change it, in Phases 4 and 6:
+Planned steps that will change it, in Phase 6:
 
 - **Step 16** (local discovery, Phase 6) runs inside the connection
   manager, with the `zeroconf` library's own threads, and publishes what
   it finds in `nodes.received`. It adds no process.
-- **Step 30** (#71, blocked data, Phase 4) keeps the blocked list in
-  stats, and derives a file from it for the web server and validator,
-  since neither may open SQLite.
 - **Step 50** (#85, Phase 6) brings filesystem-notification threads into
   the backup module's process.
