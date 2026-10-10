@@ -143,43 +143,165 @@ Settled in the issue:
 - A later version may keep the private key on a USB drive rather than in
   the CAS.
 
-Work this implies:
+Ruled before building:
 
-- Signing in searches the drop `user:{username}` (HttpApi §9.4) and tries
-  each block it finds with the key the username and password derive. The
-  first that decrypts to a private key whose public key is held, or can
-  be fetched, is the person's.
-- The session, its cookie, and an endpoint that says who is signed in
-  are new to the HTTP API, and HandshakeProtocol §6 says the protocol
-  has no sessions; this one is local to the node and the browser, not
-  between nodes.
+- **The node holds the private key while a person is signed in**, in the
+  web server's memory, under a random session id that an `HttpOnly` cookie
+  carries. No page reads the key. Later steps (78, 80) add the endpoints that
+  sign and decrypt with it.
+- **A session ends** when it is signed out, when the web server restarts,
+  or when it goes unused for `network.session_idle_seconds`, a day by
+  default. The cookie has no `Max-Age`, so closing the browser drops it too.
+- **"How long to spend" is two choices.** The request names a key size,
+  2048, 3072, or 4096 bits, which a page can offer as quick, stronger, and
+  strongest, and `seconds` and `minimum_bits` for the drop's nonce, as
+  `POST /data/drop` takes them and under the same ceilings. The nonce is
+  what keeps the real block near the top of a drop others bomb. On an Apple
+  M2, a 2048-bit key took 0.08 seconds to make on average, 3072 bits 0.31,
+  and 4096 bits 0.69.
+- **Usernames are case-folded.** A username is trimmed, case-folded, and
+  put in NFC, so `Alice` and `alice` are one, and is from 1 to 64
+  characters, none a control character. People may share a username, each
+  with a password of their own. Making an identity is `409` only when the
+  same username and password already open one at the drop, since signing in
+  would then find either.
+
+The specification change is written: HttpApi §11.3 and §11.4, new, give a
+person's identity, its identity block, `POST /data/users`, and
+`/data/session`, and §2.1, §2.4, §2.5, §17.2 (`no-identity`), §21, and §25
+name them. HandshakeProtocol §6 says the session is no part of the protocol
+between nodes, and BundleSpecification §6 that an identity block is
+protected as a bundle is.
+
+What is to be built:
+
+- **`Username`** and **`PersonKey`** (`identity/people.py`, new). A
+  username normalizes itself, names its drop, and derives its key with a
+  password (Step 90). A key pair is generated at one of the sizes, sealed in
+  an identity block, and opened from one.
+- **`IdentityRequest`** and **`SignInRequest`**
+  (`protocol/identity_requests.py`, new), the bodies the two `POST`s take.
+- **`Sessions`** (`webserver/sessions.py`, new), held in memory, found by
+  the cookie, and ended when idle.
+- **`Identities`** (`webserver/identity_handlers.py`, new), the four
+  endpoints: `POST /data/users`, and `POST`, `GET`, and `DELETE` of
+  `/data/session`.
+- **`DropHandler.placed`** and **`within_ceilings`**
+  (`webserver/drop_handler.py`), so that making an identity makes its drop as
+  `/data/drop` does, under the same ceilings, taking its turn with the rest.
+- **`SearchHandler.fresh_results`** (`webserver/search_handler.py`) and
+  **`SearchCache.load_results`** (`protocol/search.py`), the search a
+  sign-in makes of the drop.
+- **`network.session_idle_seconds`** and **`identity.person_key_bits`**
+  (`config/models.py`).
 
 My calls, not yet reviewed:
 
-- Signing in and making an identity are open to a local client only
-  (Phase 3 Step 68), though making a drop is open to any (Step 89).
-- The cookie is `HttpOnly`, `SameSite=Strict`, and scoped to the main
-  port, so a page of one application can use the session but not read
-  its cookie.
+- **Making an identity and the session serve only local clients**, from a
+  page of a trusted application, though making a drop serves any client
+  (Step 89). A password sent from elsewhere would cross the network as it
+  was typed.
+- **The cookie is `libranet-session`, `HttpOnly`, `SameSite=Strict`, and
+  `Path=/`.** The plan had it scoped to the main port, but a browser keeps
+  cookies by host and not by port, so `/config`'s port is sent it too, and
+  ignores it.
+- **The paths are `/data/users` and `/data/session`.**
+- **The identity block is the JSON `{"private_key": …}`**, the key as
+  unencrypted PKCS #8 PEM, protected as a bundle's JSON is
+  (BundleSpecification §6.1), by `ARGON2ID`, with the default IV. It is not
+  a bundle. The public key is PEM SubjectPublicKeyInfo, as a node's is, and
+  the person's id is its `sha256` content id.
+- **A new identity's password is at least 8 characters**, counted in NFC.
+  Signing in takes any password that is not empty, so that a rule made
+  later does not lock anyone out.
+- **Making an identity signs the person in**, answering `201` with a
+  `Location` naming the public key.
+- **Signing in answers `503` with `Retry-After`** while blocks found at the
+  drop are not held, which it asks for, or while nothing is found at all,
+  and **`403` with `no-identity`** once every block found is held and none
+  opens. A wrong password is told apart from a username with no identity
+  here only by the second case's `503`.
+- **One key is derived at a time**, for making an identity and signing in
+  alike, as one drop is searched for at a time (Step 89).
+- **Who is signed in is answered `{"id": null, "username": null}`** when no
+  one is, not `404`.
+- **Every response naming a session carries `Cache-Control: no-store`.**
 
-**Open questions:**
+Built in full: 1,131 added lines of non-test Python, 51 of them in place of
+removed ones and many of them docstrings, and 1,028 of tests, with the key
+sizes made a setting (below). That is past the 1,000-line threshold, so it
+is two change sets, each green alone:
 
-- Where the private key is while signed in. The issue has the browser
-  sign and the session decrypt. A key imported into the browser's
-  cryptography as not extractable can sign and decrypt without the node
-  ever holding it, and is lost when the page is closed. A key the node
-  holds for the session outlives the page, and is in the node's memory.
-- How long a session lasts, and what ends it.
-- Whether a key size is all that "how long to spend" sets. It cannot set
-  the derivation's cost, which Step 90 fixes by its token, but it could
-  set the time spent on the drop's nonce.
-- Drop bombing (HttpApi §9.5): anyone can store blocks at
-  `user:{username}`, so a well-known name may need many to be tried. The
-  time spent on the nonce when the identity is made decides how near the
-  top of a search the real one is.
-- Two people choosing one username. Each finds only the block their own
-  password opens, so both work; whether that is to be allowed, or
-  warned of, is open.
+1. **The library** (+553/−27, and 376 of tests): `identity/people.py`,
+   `protocol/identity_requests.py`, `SearchCache.load_results`, the
+   `DropHandler` refactor and `StoredDrop`, `identity.person_key_bits`, the
+   package exports, and their tests, with the specification changes.
+2. **The endpoints** (+578/−24, and 652 of tests): `webserver/sessions.py`,
+   `webserver/identity_handlers.py`, `SearchHandler.fresh_results`, the
+   routes, `network.session_idle_seconds`, the `no-identity` problem type,
+   their tests, the App Developer Guide, the example configuration, and
+   this section.
+
+My calls while building, not yet reviewed:
+
+- **A sign-in scans the store every time** (`fresh_results`), rather than
+  serve a cached search, so that an identity stored since a search of its
+  drop was cached is found at once and not five minutes later. What the
+  cached answer lists is kept among the matches, since the stats module adds
+  what the node has heard of there, and the merged answer is cached and
+  announced as any search is.
+- **A search always finds something** on a node that holds anything, since
+  it gives the nearest content whatever its distance. So a node signs in a
+  username it has no identity for with `403` at once, not `503`: in the live
+  run, the shipped applications' objects were the "blocks" found. Searches
+  do not reach peers yet (HttpApi §10.7.2), so a `503` would only have
+  delayed the same answer.
+- **Only the drop's first 64 KiB are read**, and a block larger is passed
+  over, since an identity block of a 4096-bit key is under 4 KiB. A block
+  held that does not hash to its id is passed over with a warning.
+- **The drop is placed before the public key is stored**, so a drop
+  refused as too large leaves nothing behind. A sign-in stores the public
+  key again, should it have been evicted.
+- **An identity block's key is checked as it loads**, as the
+  `cryptography` library does by default, and a key under 2048 bits is
+  refused. The check took 0.67 seconds for a 4096-bit key on a loaded
+  machine, once per sign-in.
+- **The conflict check reads only blocks already held**, and asks for
+  none, so making an identity does not wait on peers.
+- **`DropHandler` lends its ceilings and storing to making an identity**
+  (`within_ceilings`, `placed`), and its turns with them, rather than the
+  identity endpoints repeating them.
+
+Ruled after building:
+
+- **The key sizes are a setting**, `identity.person_key_bits`, 2048, 3072,
+  and 4096 bits by default, in place of a constant.
+
+My calls on it, not yet reviewed:
+
+- **It is in `identity`**, beside the node's own key settings, rather than
+  in `network` beside the drop ceilings.
+- **The smallest key is no setting.** A person's key is at least 2048 bits
+  (`MIN_PERSON_KEY_BITS`), and a node neither makes nor opens a smaller one,
+  since each node opens what any other makes: a node set to make only 3072
+  and 4096 still signs in a person whose key another node made at 2048. The
+  setting refuses any size under it.
+- **The request checks only that floor**, and the endpoint whether the node
+  makes that size, as a drop's request is checked against its ceilings where
+  it is answered (Step 89). Any other size is `400`, its detail naming the
+  sizes the node makes. A page learns them only that way.
+
+A live run of one node from the scratchpad: an identity for ` Alice `,
+3072 bits, searched for 2 seconds with a minimum of 12, matched 16 bits and
+was `201`, with the cookie, `Location` naming the public key, and the
+username `alice`. Signing in as `ALICE` was `200`; who is signed in was
+answered by the cookie from making it and `null` without one; a wrong
+password and an unknown username were `403` `no-identity`; making it again
+was `409`; requests marked `cross-site`, or with no `Referer`, were `403`;
+and signing out was `204`, removing the cookie, after which no one was
+signed in. The machine's load average was over 30 throughout, from other
+processes, so its timings were several times the M2's: one derivation took
+about a second, and an identity of 4096 bits with no search 4.0 seconds.
 
 **Testable in isolation:** a test making an identity at a small key size
 into a temp CAS, signing in with the right password and failing with a

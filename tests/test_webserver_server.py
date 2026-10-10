@@ -1806,6 +1806,10 @@ def test_a_local_client_imports_a_file_from_a_folder_offered(
         ("/data/imports", "GET"),
         ("/data/imports", "POST"),
         ("/data/bundles", "POST"),
+        ("/data/users", "POST"),
+        ("/data/session", "POST"),
+        ("/data/session", "GET"),
+        ("/data/session", "DELETE"),
     ],
 )
 def test_an_untrusted_applications_page_is_refused_what_only_trusted_ones_may_ask(
@@ -1944,6 +1948,93 @@ def test_a_drop_is_made_only_from_a_page_of_this_node(
 
     assert response.status == 403
     assert _published(queues) == []
+
+
+def test_a_local_client_makes_an_identity_and_is_signed_in_by_a_cookie(
+    local_connection: HTTPConnection, storage: StorageConfig
+) -> None:
+    page = _from_page(local_connection, "/movie/")
+    local_connection.request(
+        "POST",
+        "/data/users",
+        body=b'{"username": "Alice", "password": "correct horse", "key_bits": 2048, "seconds": 0}',
+        headers={"Content-Type": JSON_CONTENT_TYPE, **page},
+    )
+    response = local_connection.getresponse()
+    answer = loads(response.read())
+    cookie = {"Cookie": (response.getheader("Set-Cookie") or "").partition(";")[0]}
+    who, who_body = _get(local_connection, "/data/session", headers={**page, **cookie})
+    out, _ = _get(local_connection, "/data/session", "DELETE", headers={**page, **cookie})
+    after, after_body = _get(local_connection, "/data/session", headers={**page, **cookie})
+
+    assert response.status == 201
+    assert response.getheader("Location") == f"/data/{answer['id']}"
+    assert CasStore.for_node(storage, SERVER_IDENTITY.node_id).exists(
+        ContentId.parse(answer["drop"])
+    )
+    assert who.status == 200
+    assert loads(who_body) == {"id": answer["id"], "username": "alice"}
+    assert out.status == 204
+    assert after.status == 200
+    assert loads(after_body) == {"id": None, "username": None}
+
+
+@mark.parametrize(
+    "path, method", [("/data/users", "POST"), ("/data/session", "POST"), ("/data/session", "GET")]
+)
+def test_another_client_is_refused_identities_and_sessions(
+    local_server: LibranetHTTPServer, queues: ModuleQueues, path: str, method: str
+) -> None:
+    body = b'{"username": "alice", "password": "correct horse"}' if method == "POST" else b""
+    # A client elsewhere names this node as it knows it, which /config's hosts do not.
+    sent = Request(
+        method,
+        path,
+        headers={
+            "Host": "node.lan:8080",
+            "Referer": "http://node.lan:8080/movie/",
+            "Content-Type": JSON_CONTENT_TYPE,
+        },
+        client_address="203.0.113.42",
+        body=RequestBody.of(body),
+    )
+
+    response = local_server.router.dispatch(sent)
+
+    assert response.status == 403
+    assert _published(queues) == []
+
+
+def test_a_person_key_is_made_only_at_the_sizes_the_router_is_given(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    registry = ApplicationRegistry(storage.applications_path)
+    registry.register(Application.create("movie", APP_BUNDLE_ID))
+    registry.trust("movie", True)
+    router = build_router(
+        storage,
+        RETRY_AFTER_SECONDS,
+        StubModule(ModuleName.WEBSERVER, queues).publish,
+        RequestAuthenticator.of(LibranetConfig(storage=storage)),
+        allow_unsigned_api_reads=True,
+        config_port=8180,
+        node_id=SERVER_IDENTITY.node_id,
+        person_key_bits=(4096,),
+    )
+    body = b'{"username": "alice", "password": "correct horse", "key_bits": 2048, "seconds": 0}'
+
+    response = router.dispatch(
+        Request(
+            "POST",
+            "/data/users",
+            headers={**MOVIE_PAGE, "Content-Type": JSON_CONTENT_TYPE},
+            client_address="127.0.0.1",
+            body=RequestBody.of(body),
+        )
+    )
+
+    assert response.status == 400
+    assert loads(response.body)["detail"] == '"key_bits" must be one of 4096 here, got 2048'
 
 
 def test_bundles_are_made_only_by_a_node_that_knows_its_id(

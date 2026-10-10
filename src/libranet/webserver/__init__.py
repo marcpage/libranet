@@ -19,8 +19,9 @@ A few `/data` endpoints serve only clients on this machine, and only this
 node's own pages there, such as the listing of the folders it offers them
 (Phase 3 Step 68), importing a file from one (Phase 3 Step 69), and making a
 bundle, or a new version of one, from the bundles a request names, stored as
-uploads from this node (Phase 3 Step 72). Any client may read into a bundle,
-by its id, as an application's files are served (Phase 3 Step 71).
+uploads from this node (Phase 3 Step 72), and making a person's identity,
+and signing them in and out (Phase 4 Step 79). Any client may read into a
+bundle, by its id, as an application's files are served (Phase 3 Step 71).
 
 Every endpoint meant only for browsers but reading into a bundle,
 `/config/api` included, is served only to a request whose `Referer` names
@@ -194,6 +195,7 @@ from libranet.webserver.http_types import (
     redirect_response,
     status_response,
 )
+from libranet.webserver.identity_handlers import SESSION_PATH, USERS_PATH, Identities
 from libranet.webserver.inbound_peers import InboundConnection, InboundPeers
 from libranet.webserver.list_handlers import ListFileHandler, NodeListHandler, SeekListHandler
 from libranet.webserver.local_folders import DIRECTORY_PATTERN, DirectoryHandler, LocalFolders
@@ -223,34 +225,35 @@ from libranet.webserver.server import (
     build_config_router,
     build_router,
 )
+from libranet.webserver.sessions import SESSION_COOKIE, Session, Sessions
 from libranet.webserver.signature_guard import API_PREFIX, SignatureGuard
 from libranet.webserver.site_checks import HOST_HEADER, SITE_HEADER, SiteChecks, host_name
 
 __all__ = [
     "API_PREFIX",
-    "APP_METHODS",
-    "APP_PATTERN",
+    "APPLICATIONS_PATH",
     "APPLICATION_PATTERN",
     "APPLICATION_TEMPLATE",
-    "APPLICATIONS_PATH",
+    "APP_METHODS",
+    "APP_PATTERN",
+    "BACKUPS_PATH",
     "BACKUP_JOB_PATTERN",
     "BACKUP_JOB_TEMPLATE",
     "BACKUP_RUN_PATTERN",
     "BACKUP_RUN_TEMPLATE",
-    "BACKUPS_PATH",
     "BLOCK_SIZE",
     "BUILDS_FIELD",
+    "BUILDS_PATH",
+    "BUNDLES_PATH",
     "BUNDLE_METHODS",
     "BUNDLE_PATTERN",
-    "BUNDLES_PATH",
     "BYTES_UNIT",
-    "BUILDS_PATH",
     "CLIENT_PATH",
     "CONFIG_API_PATH",
     "CONFIG_API_SEGMENT",
+    "CONFIG_APPLICATION",
     "CONFIG_APP_PATTERN",
     "CONFIG_APP_POLICY",
-    "CONFIG_APPLICATION",
     "CONFIG_REALM",
     "COST",
     "DATA_APPLICATIONS_PATH",
@@ -283,19 +286,22 @@ __all__ = [
     "MAX_VALUE_BYTES",
     "NODE_PATH",
     "PARALLELISM",
+    "REFERER_HEADER",
     "RESERVED_APPLICATION_NAMES",
     "RESTORES_FIELD",
-    "REFERER_HEADER",
     "RESTORES_PATH",
     "ROOT_APPLICATION",
     "SALT_BYTES",
     "SCHEME",
     "SEARCH_PATTERN",
+    "SESSION_COOKIE",
+    "SESSION_PATH",
     "SITE_HEADER",
     "STORE_KEY_PATTERN",
     "STORE_PATH",
     "STORE_PATTERN",
     "UNTRUSTED_APP_HEADERS",
+    "USERS_PATH",
     "AppHandler",
     "Application",
     "ApplicationListHandler",
@@ -330,6 +336,7 @@ __all__ = [
     "FileStream",
     "Guard",
     "Handler",
+    "Identities",
     "IfMatch",
     "ImportHandler",
     "ImportListHandler",
@@ -357,12 +364,14 @@ __all__ = [
     "Request",
     "RequestBody",
     "RequestHandler",
-    "ResponseCutShortError",
     "Response",
+    "ResponseCutShortError",
     "Route",
     "Router",
     "SearchHandler",
     "SeekListHandler",
+    "Session",
+    "Sessions",
     "SignatureGuard",
     "SiteChecks",
     "StoreFileError",
