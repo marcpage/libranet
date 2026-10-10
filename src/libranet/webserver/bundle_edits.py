@@ -33,6 +33,12 @@ large bundle is. An encrypted bundle, and each of its chunks, is stored with
 per-entry encryption, so its id carries its key. An edit that changes nothing
 is answered ``200`` with the base.
 
+A page that has made a bundle itself, such as an extension of the user
+directory (Phase 4 Step 92), gives it whole, as ``{"bundle": {…}}``. It is
+checked, written as any bundle is, and stored as one object, reading no
+bundle it names, and is answered ``201`` as an edit is. One that does not fit
+in an object is ``400``.
+
 Every object is stored as an upload from this node (:class:`OwnUploads`), so
 the validator stores it and announces it, and it is pushed as any new
 content is. The answer may come before the validator has stored the bundle;
@@ -73,7 +79,8 @@ from libranet.bundle.shapes import (
     Symlink,
     ancestors,
 )
-from libranet.bundle.storing import ContentSink
+from libranet.bundle.serialization import encode_bundle
+from libranet.bundle.storing import ContentSink, store_object
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError
 from libranet.cas.store import CasStore
@@ -87,6 +94,7 @@ from libranet.protocol.bundle_requests import (
     CopySource,
     EntrySource,
     FileSource,
+    WholeBundleRequest,
 )
 from libranet.protocol.errors import InvalidConfigRequestError
 from libranet.webserver.config_handlers import invalid_request_response, json_or_refusal
@@ -498,18 +506,25 @@ class BundleEditHandler:
         if isinstance(value, Response):
             return value
 
+        base: PartPath | None = None
+
         try:
-            asked = BundleEditRequest.from_value(value)
-            edit = self._read(asked)
+            if WholeBundleRequest.asked_for(value):
+                made = self._stored_whole(WholeBundleRequest.from_value(value))
 
-            if edit is None:
-                return content_unavailable_response(
-                    request,
-                    "Bundles this edit reads are not held here yet; they were requested.",
-                    self.retry_after_seconds,
-                )
+            else:
+                asked = BundleEditRequest.from_value(value)
+                base = asked.base
+                edit = self._read(asked)
 
-            made = edit.store(self.uploads, self.max_object_bytes, self.max_layers)
+                if edit is None:
+                    return content_unavailable_response(
+                        request,
+                        "Bundles this edit reads are not held here yet; they were requested.",
+                        self.retry_after_seconds,
+                    )
+
+                made = edit.store(self.uploads, self.max_object_bytes, self.max_layers)
 
         except InvalidConfigRequestError as error:
             _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
@@ -519,10 +534,20 @@ class BundleEditHandler:
             # Not logged: the refusal logs it, at the level its kind calls for.
             return _refusal(error, request)
 
-        status = HTTPStatus.OK if made == asked.base else HTTPStatus.CREATED
+        status = HTTPStatus.OK if made == base else HTTPStatus.CREATED
         response = json_response({"bundle": str(made)}, status)
         # It reads into the bundle (HttpApi §12.1).
         return replace(response, headers={**response.headers, "Location": f"/data/{made}/"})
+
+    def _stored_whole(self, asked: WholeBundleRequest) -> PartPath:
+        """Store the bundle ``asked`` gives, as one object, and return what names it.
+
+        Raises:
+            BundleTooLargeError: it does not fit in one object, even compressed.
+        """
+        return PartPath(
+            store_object(encode_bundle(asked.bundle), self.uploads, self.max_object_bytes)
+        )
 
     def _read(self, asked: BundleEditRequest) -> BundleEdit | None:
         """``asked``, with the bundles it names read, once they are held.

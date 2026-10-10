@@ -11,12 +11,15 @@ from zlib import decompress
 from pytest import LogCaptureFixture, fixture, mark
 
 from libranet.atomic_file import write_atomically
+from libranet.bundle.parts import PartPath
+from libranet.bundle.shapes import Bundle
 from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
 from libranet.cas.prefix import matching_bits
 from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
+from libranet.identity.directory import DIRECTORY_TARGET, FoundDirectory
 from libranet.identity.people import PersonKey, Username
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
@@ -53,6 +56,9 @@ class Recorder:
 
     def payloads(self, event: EventType) -> list[dict[str, Any]]:
         return [payload for published, payload in self.messages if published == event]
+
+    def ids(self, event: EventType) -> list[ContentId]:
+        return [ContentId.from_fields(payload) for payload in self.payloads(event)]
 
 
 @fixture
@@ -128,6 +134,10 @@ def made(storage: StorageConfig, identities: Identities, request: Request) -> di
     return answer
 
 
+def no_extension(path: PartPath) -> Bundle:
+    raise AssertionError(f"No extension is read, but {path} was")
+
+
 def placed(storage: StorageConfig, content: bytes, minimum_bits: int) -> ContentId:
     """``content`` stored in the source of truth as a drop at Alice's, matching ``minimum_bits``."""
     drop = TARGET.placed(content, 0, minimum_bits)
@@ -155,7 +165,8 @@ def test_making_an_identity_keeps_its_keys_and_signs_it_in(
         uploaded(storage, drop_id), Username.create("alice").password_key(PASSWORD)
     )
     assert key.person_id == person_id
-    assert recorder.payloads(EventType.PUT_COMPLETED) == [
+    # The user directory is uploaded after them.
+    assert recorder.payloads(EventType.PUT_COMPLETED)[:2] == [
         {**drop_id.fields(), "node_id": str(NODE_ID)},
         {**person_id.fields(), "node_id": str(NODE_ID)},
     ]
@@ -175,11 +186,25 @@ def test_an_identity_made_without_signing_in_starts_no_session(
     assert answer["matching_bits"] >= 4
     assert "Set-Cookie" not in response.headers
     assert "Location" not in response.headers
-    assert len(recorder.payloads(EventType.PUT_COMPLETED)) == 2
+    assert len(recorder.payloads(EventType.PUT_COMPLETED)) == 3
     validated(storage, ContentId.parse(answer["id"]), ContentId.parse(answer["drop"]))
     signed_in = identities.sign_in(signing_in())
     assert signed_in.status == 200, signed_in.body
     assert loads(signed_in.body) == {"id": answer["id"], "username": "alice"}
+
+
+@mark.parametrize("asked_to", ["make", "make_without_signing_in"])
+def test_making_an_identity_adds_the_person_to_the_user_directory(
+    identities: Identities, storage: StorageConfig, recorder: Recorder, asked_to: str
+) -> None:
+    response = getattr(identities, asked_to)(making(changes={"minimum_bits": 4}))
+
+    assert response.status == 201, response.body
+    *_, directory = recorder.ids(EventType.PUT_COMPLETED)
+    found = FoundDirectory.read(directory, uploaded(storage, directory), no_extension)
+    assert found is not None
+    assert found.people == {ContentId.parse(loads(response.body)["id"])}
+    assert matching_bits(directory.hash, DIRECTORY_TARGET.hex) >= 4
 
 
 def test_making_without_signing_in_is_refused_as_making_is(

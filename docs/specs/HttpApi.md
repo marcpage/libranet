@@ -1449,7 +1449,7 @@ block a drop, as §9.6 makes one. It answers `201 Created`, with a
 and how many leading bits the two share, as §9.6 gives them. A request is
 `409 Conflict` if the username and password already open an identity at
 the drop, among the blocks the node holds, since signing in would then find
-either one.
+either one. The node adds the person to the user directory (§11.5).
 
 The `/config` application (§2.3) makes an identity too, so that a node's
 operator can make one for a person:
@@ -1522,6 +1522,70 @@ elsewhere would cross the network as it was typed. Each identity made, and
 each sign-in, derives a key, at a cost that is high by design
 (BundleSpecification §6.2.1), and a node derives one at a time, whichever
 of its ports is asked, as it searches for one drop at a time (§9.6).
+
+### 11.5 The User Directory
+
+A search finds what is nearest a target, not every identity there is, so
+the people a page could name are listed in the **user directory**: a
+directory bundle
+([Bundle Specification §3](BundleSpecification.md#3-raw-directory-bundle))
+made a drop (§9) at the target string `user directory`. Each person is an
+entry whose path is the person's id, and whose only part is that id, their
+public key (§11.3):
+
+```json
+{"contents": {"sha256/…": {"contents": ["sha256/…"]}}}
+```
+
+Content found at the drop is a directory only if it is a drop, holding a
+null byte, whose content before it is a directory bundle every entry of
+which is such an entry: a file entry whose path is a content identifier
+(§5), and whose `contents` is exactly that identifier. Anything else found
+there, such as content that is only the nearest the node holds, is passed
+over. It is neither read for people nor blocked. A directory has no
+`versions`, since one that is replaced is blocked, not named by the one
+replacing it.
+
+A directory is rewritten whole as people are added, rather than extended,
+so that reading it reads as few objects as it can. Only once one would not
+fit in a drop (§9.6) are the entries the newest holds itself moved into an
+**extension**
+([Bundle Specification §4](BundleSpecification.md#4-directory-extensions)):
+a directory bundle of the same shape, extending whatever the newest
+extended, and stored at its own identifier, not as a drop. The directory
+made then holds the people no extension lists, and names the new
+extension. The directories after it name the same one, until one is full
+again. An extension is never at the drop, so it is never blocked, and the
+people it lists stay listed while directories that name it come and go. A
+directory's people are those it lists with those of its extensions, every
+one of which has the same shape.
+
+A client loads the directory by searching the drop (§9.4), and reading
+each directory found, with its extensions. A directory it cannot read in
+full, as it lacks the directory or an extension, is neither merged nor
+blocked.
+
+- **The newest** is the directory listing the most people, and of two that
+  list as many, the one whose identifier is first in byte order. Every
+  directory made lists every person known to its maker, so a newer one
+  never lists fewer.
+- **Every person** in any directory read is in the directory. When the
+  newest lacks any of them, the client makes a new directory holding them
+  all, so that one directory holds everyone again.
+- **What is replaced is blocked** (§5.5). Once a new directory is stored,
+  every directory it was made from is blocked, since each lists no one it
+  does not. When no new one is needed, every directory but the newest is
+  blocked. Only the directories at the drop are blocked, never an
+  extension, and only by a client that may block. Any other still merges,
+  and makes a new directory, but blocks nothing.
+
+Making an identity adds the person (§11.3): the node loads the directory,
+and makes a new one holding the person too, searching for its nonce as the
+request asks for the identity's. A person the node cannot add, as when no
+directory can be stored, is still given their identity. A page adds the
+person signed in (§11.4) when the directory does not list them. A page
+makes a directory with `POST /data/drop` (§9.6), and an extension with
+`POST /data/bundles` (§12.3), which serves only local clients.
 
 ---
 
@@ -1780,6 +1844,25 @@ whose bundle cannot be stored, as when one entry alone does not fit in an
 object (HighLevelDesign §4.3). A password-protected bundle is not read, and
 is `403 Forbidden`, as in §12.1. A body larger than the node takes is
 `413 Content Too Large` (§21).
+
+A page that has made a bundle itself, such as an extension of the user
+directory (§11.5), has the node store it whole with:
+
+```http
+POST /data/bundles
+Content-Type: application/json
+
+{"bundle": {"contents": {"sha256/…": {"contents": ["sha256/…"]}},
+            "extensions": ["sha256/…"]}}
+```
+
+`bundle` is the bundle's JSON object, given alone, with no other member.
+The node checks that it is a well-formed bundle, stores it as one object at
+its own identifier, written as the node writes any bundle it makes, and
+answers `201 Created` as above, with the identifier it is stored at, which
+the page uses rather than one it works out. It reads no bundle the JSON
+names. A bundle that is not well-formed, or that does not fit in one
+object even compressed (§8), is `400 Bad Request`.
 
 ---
 
@@ -2568,7 +2651,7 @@ The following table summarizes the currently proposed HTTP API.
 | `/data/session`                   | Various      | Sign in, say who is signed in, sign out, locally (§11.4)   | Defined |
 | `/data/directory/...`             | `GET`        | List the folders offered to local clients (§12.2)          | Defined |
 | `/data/imports`                   | `GET`/`POST` | Import a local file, and follow imports (§12.2)            | Defined |
-| `/data/bundles`                   | `POST`       | Make or change a directory bundle, locally (§12.3)         | Defined |
+| `/data/bundles`                   | `POST`       | Make, change, or store a bundle, locally (§12.3)           | Defined |
 | `/data/store/{application}/...`   | Various      | An application's store on this node (§13.3)                | Defined |
 | `/data/applications`              | `GET`        | The applications this node serves (§13.4)                  | Defined |
 | `/data/...`                       | Various      | Additional programmatic APIs                               | TBD     |

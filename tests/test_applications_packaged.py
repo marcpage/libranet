@@ -1,4 +1,5 @@
-"""Tests for the applications shipped with the node, and the root, ``/config``, and movie pages.
+"""Tests for the applications shipped with the node, and the root, ``/config``, movie, and
+directory pages.
 
 Which way they were shipped, built into a wheel or run from source, is known
 only to the layered source, and is tested through it.
@@ -35,6 +36,7 @@ from libranet.cas.layered import LayeredSource
 from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
+from libranet.identity.directory import DIRECTORY_TARGET
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
@@ -46,11 +48,14 @@ from libranet.webserver.bundle_edits import BUNDLES_PATH
 from libranet.webserver.bundle_reads import BUNDLE_PATTERN
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import CONFIG_API_PATH, ENDPOINTS, NodeDescription
+from libranet.webserver.drop_handler import DROP_PATH
 from libranet.webserver.http_types import Request
+from libranet.webserver.identity_handlers import SESSION_PATH
 from libranet.webserver.local_folders import DIRECTORY_PATTERN
 from libranet.webserver.local_imports import IMPORTS_PATH
 from libranet.webserver.local_only import CLIENT_PATH
 from libranet.webserver.router import Router
+from libranet.webserver.search_handler import SEARCH_PATTERN
 from libranet.webserver.server import build_config_router, build_router
 
 from tests.stubs import StubModule
@@ -58,9 +63,12 @@ from tests.stubs import StubModule
 from tests.helpers import published
 
 MOVIE_APPLICATION = "movie"
+DIRECTORY_APPLICATION = "directory"
 ROOT_PAGE_SOURCE = PACKAGED_APPLICATIONS / "root" / "index.html"
 CONFIG_PAGE_SOURCE = PACKAGED_APPLICATIONS / "config" / "index.html"
 MOVIE_PAGE_SOURCE = PACKAGED_APPLICATIONS / "movie" / "index.html"
+DIRECTORY_PAGE_SOURCE = PACKAGED_APPLICATIONS / "directory" / "index.html"
+DIRECTORY_TARGET_STRING = "user directory"
 CONFIG_CREDENTIALS = {"Authorization": "Basic " + b64encode(b"admin:secret").decode("ascii")}
 
 
@@ -94,6 +102,11 @@ def config_page(content: LayeredSource, built: PackagedApplications) -> str:
 @fixture
 def movie_page(content: LayeredSource, built: PackagedApplications) -> str:
     return index_page(built.bundles[MOVIE_APPLICATION], content).decode("utf-8")
+
+
+@fixture
+def directory_page(content: LayeredSource, built: PackagedApplications) -> str:
+    return index_page(built.bundles[DIRECTORY_APPLICATION], content).decode("utf-8")
 
 
 def index_page(bundle_id: ContentId, content: LayeredSource) -> bytes:
@@ -149,13 +162,13 @@ def router_for(
     )
 
 
-def test_the_node_ships_the_root_config_and_movie_applications(
+def test_the_node_ships_the_root_config_movie_and_directory_applications(
     built: PackagedApplications,
 ) -> None:
     assert (
         set(SHIPPED_APPLICATIONS)
         == set(built.bundles)
-        == {ROOT_APPLICATION, CONFIG_APPLICATION, MOVIE_APPLICATION}
+        == {ROOT_APPLICATION, CONFIG_APPLICATION, MOVIE_APPLICATION, DIRECTORY_APPLICATION}
     )
 
 
@@ -386,12 +399,46 @@ def test_the_movie_page_calls_only_endpoints_the_node_serves(movie_page: str) ->
     )
 
 
+def test_the_directory_application_is_built_from_its_directory(directory_page: str) -> None:
+    assert directory_page == DIRECTORY_PAGE_SOURCE.read_text(encoding="utf-8")
+
+
+def test_the_directory_page_is_one_self_contained_document(directory_page: str) -> None:
+    assert directory_page.startswith("<!doctype html>")
+    # Nothing is loaded from a file of its own, or from anywhere else.
+    assert "<link" not in directory_page
+    assert findall(r"<script[^>]*\bsrc", directory_page) == []
+    assert "url(" not in directory_page.split("<style>", 1)[1].split("</style>", 1)[0]
+    assert "http:" not in directory_page
+    assert "https:" not in directory_page
+
+
+def test_the_directory_page_calls_only_endpoints_the_node_serves(directory_page: str) -> None:
+    called = set(findall(r'["`](/data/[^"`$]*)', directory_page))
+
+    assert called == {CLIENT_PATH, SESSION_PATH, DROP_PATH, BUNDLES_PATH, "/data/search/", "/data/"}
+    assert fullmatch(SEARCH_PATTERN, f"/data/search/{DIRECTORY_TARGET.hex}")
+
+
+def test_the_directory_page_keeps_the_directory_where_the_node_does(directory_page: str) -> None:
+    network = NetworkConfig()
+    [seconds] = findall(r"const DROP_SECONDS = (\d+);", directory_page)
+    [minimum_bits] = findall(r"const DROP_MINIMUM_BITS = (\d+);", directory_page)
+
+    assert f'const DIRECTORY_TARGET = "{DIRECTORY_TARGET_STRING}";' in directory_page
+    assert f'const DIRECTORY_TARGET_HASH = "{DIRECTORY_TARGET.hex}";' in directory_page
+    # Within the ceilings a node sets unless its operator lowers them.
+    assert int(seconds) <= network.drop_max_seconds
+    assert int(minimum_bits) <= network.drop_max_minimum_bits
+
+
 @mark.parametrize(
     "application, path, source, client_address, headers, policy",
     [
         (ROOT_APPLICATION, "/", ROOT_PAGE_SOURCE, "203.0.113.42", {}, None),
         # Trusted, so served without a sandbox, and to a remote client, which only plays.
         (MOVIE_APPLICATION, "/movie/", MOVIE_PAGE_SOURCE, "203.0.113.42", {}, None),
+        (DIRECTORY_APPLICATION, "/directory/", DIRECTORY_PAGE_SOURCE, "203.0.113.42", {}, None),
         (
             CONFIG_APPLICATION,
             "/config/",

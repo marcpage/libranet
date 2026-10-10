@@ -8,7 +8,9 @@ The node makes an RSA key pair, of one of the sizes it makes
 (``identity.person_key_bits``), stores its public key, and keeps the private
 key in an identity block (:class:`~libranet.identity.people.PersonKey`), made
 a drop at ``user:{username}`` as ``POST /data/drop`` makes one, under the same
-ceilings and taking its turn with the rest. It answers ``201``, signed in::
+ceilings and taking its turn with the rest. It adds the person to the user
+directory (:mod:`libranet.webserver.user_directory`, Phase 4 Step 92), and
+answers ``201``, signed in::
 
     {"id": "sha256/…", "username": "alice",
      "drop": "sha256/…", "target": "<hex>", "matching_bits": 21}
@@ -72,6 +74,7 @@ from libranet.webserver.http_types import (
 from libranet.webserver.request_refusals import content_unavailable_response
 from libranet.webserver.search_handler import SearchHandler
 from libranet.webserver.sessions import Session, Sessions
+from libranet.webserver.user_directory import UserDirectory
 
 _LOGGER = getLogger(__name__)
 
@@ -136,6 +139,11 @@ class Identities:  # pylint: disable=too-many-instance-attributes
     retry_after_seconds: int
     key_bits: tuple[int, ...] = DEFAULT_PERSON_KEY_BITS
     derivations: Turns = field(default_factory=Turns)
+
+    @property
+    def directory(self) -> UserDirectory:
+        """The user directory each identity made is added to (HttpApi §11.5)."""
+        return UserDirectory(self.uploads, self.search, self.drops, self.publish)
 
     def make(self, request: Request) -> Response:
         """``POST /data/users``: make the identity ``request`` asks for, and sign it in."""
@@ -203,6 +211,7 @@ class Identities:  # pylint: disable=too-many-instance-attributes
 
         store_object(person.public_key, self.uploads, self.drops.max_object_bytes)
         _LOGGER.info("Made the identity %s, kept at %s", person.person_id, stored.content_id)
+        self.directory.add(request, person.person_id, asked.seconds, asked.minimum_bits)
         return _Made(Session(asked.username, person), stored)
 
     def sign_in(self, request: Request) -> Response:
