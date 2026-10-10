@@ -849,3 +849,65 @@ def test_an_entry_of_no_kind_known_is_logged_and_not_copied(
         BundleEdit.read(BundleEditRequest(add={"a": CopySource(library, "odd")}), store)
 
     assert [record.levelno for record in caplog.records] == [ERROR]
+
+
+def test_a_bundle_given_whole_is_stored_as_the_node_writes_one(
+    router: Router, uploads: OwnUploads, recorder: Recorder
+) -> None:
+    person = part(1)
+    # Neither is held, since nothing a bundle given whole names is read.
+    given = {"contents": {person: {"contents": [person.upper()]}}, "extensions": [part(2)]}
+    bundle = DirectoryBundle({person: FileBundle((person,))}, extensions=(part(2),))
+
+    response = router.dispatch(edit_request({"bundle": given}))
+
+    named = made(response)
+    assert named == PartPath(ContentId.for_data(encode_bundle(bundle), "sha256"))
+    assert load_bundle(named, uploads) == bundle
+    assert recorder.payloads(EventType.DATA_NOT_FOUND) == []
+    assert recorder.payloads(EventType.PUT_COMPLETED) == [
+        {**named.content_id.fields(), "node_id": str(NODE_ID)}
+    ]
+
+
+@mark.parametrize(
+    "value",
+    [
+        {"bundle": {"contents": {}}, "add": {}},
+        {"bundle": {"contents": {}}, "base": None},
+        {"bundle": '{"contents": {}}'},
+        {"bundle": None},
+    ],
+)
+def test_a_bundle_given_with_more_or_not_as_an_object_is_refused(
+    router: Router, storage: StorageConfig, value: object
+) -> None:
+    response = router.dispatch(edit_request(value))
+
+    assert response.status == 400
+    assert problem_type(response) == INVALID_CONFIG_REQUEST
+    assert list(uploaded(storage)) == []
+
+
+def test_a_bundle_given_whole_that_is_not_well_formed_is_unusable(
+    router: Router, storage: StorageConfig
+) -> None:
+    response = router.dispatch(edit_request({"bundle": {"contents": {"../a": {"contents": []}}}}))
+
+    assert response.status == 400
+    assert problem_type(response) == UNUSABLE_BUNDLE
+    assert list(uploaded(storage)) == []
+
+
+def test_a_bundle_given_whole_that_cannot_fit_in_an_object_is_refused(
+    router: Router, storage: StorageConfig
+) -> None:
+    # Hex hashes compress only to about half, so 200 part paths fill more
+    # than one object.
+    given = {"contents": list(film(1, 200).parts)}
+
+    response = router.dispatch(edit_request({"bundle": given}))
+
+    assert response.status == 400
+    assert "cannot be stored" in loads(response.body)["detail"]
+    assert list(uploaded(storage)) == []

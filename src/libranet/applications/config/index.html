@@ -212,7 +212,8 @@
     <p class="hint">A person signs in to this node's applications with a username and password.
     Their identity is kept in the network, encrypted by both, so they can sign in with them on
     any node that holds it. This node keeps no list of the people who have one, and a forgotten
-    password cannot be reset.</p>
+    password cannot be reset. Once you create one, you are offered a link that adds them to the
+    user directory.</p>
     <form id="user-form">
       <h3>Create a user</h3>
       <div class="fields">
@@ -947,8 +948,29 @@ onSubmit(byId("user-form"), async () => {
 
   byId("user-form").reset();
   const { id, username } = result.value;
-  return [`The user ${username} was created, as ${id}, and can sign in now.`, false];
+  show(message, `The user ${username} was created, as ${id}, and can sign in now. `);
+  message.append(directoryLink(id));
+  return null;
 });
+
+// Where the user directory offers to add the person `id` names (Phase 4 Step
+// 92), on the main port, as the applications are linked (applicationLink).
+// This page cannot add them itself: the directory is the application's, and
+// this port's pages may not ask the main port's endpoints.
+function directoryLink(id) {
+  if (mainPort === null) {
+    return make("span", "Open the user directory to add them.");
+  }
+
+  const url = new URL("/directory/", location.href);
+  url.port = String(mainPort);
+  url.searchParams.set("add", id);
+  const link = make("a", "Add them to the user directory");
+  link.href = url.href;
+  link.target = "_blank";
+  link.rel = "noopener";
+  return link;
+}
 
 // ---- Builds ----
 

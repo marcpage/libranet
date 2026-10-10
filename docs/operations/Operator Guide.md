@@ -325,9 +325,10 @@ replaced. The new node also needs peers that hold the backup's content
 ## 6. Applications
 
 An application is a directory bundle served as a website at `/{name}/` on
-the node's port. A new node ships three: its front page at `/`, the
-`/config` page, and the movie library at `/movie/`. The
-[App Developer Guide](App%20Developer%20Guide.md) describes writing one.
+the node's port. A new node ships four: its front page at `/`, the
+`/config` page, the movie library at `/movie/`, and the user directory at
+`/directory/`. The [App Developer Guide](App%20Developer%20Guide.md)
+describes writing one.
 
 ### 6.1 Registering an Application
 
@@ -446,6 +447,12 @@ A username is the same however it is cased, and a password is at least 8
 characters. People may share a username, each with a password of their
 own, but the same username and password twice is refused. Creating a user
 takes about ten seconds, and does not sign you in.
+
+The node does not list the person in the user directory, which the
+`directory` application keeps, at `/directory/`. Once the user is created,
+the page offers a link, **Add them to the user directory**, which opens the
+directory, and its **Add to the directory** button lists them. Otherwise
+they are listed the first time they open the directory signed in.
 
 From a script, `seconds` and `minimum_bits` also say how long the node
 searches for where to keep the identity, and how many bits it must match

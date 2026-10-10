@@ -16,6 +16,7 @@ from libranet.protocol.bundle_requests import (
     CopySource,
     EntrySource,
     FileSource,
+    WholeBundleRequest,
 )
 from libranet.protocol.client_origin import is_local_client
 from libranet.protocol.config_requests import (
@@ -95,6 +96,7 @@ __all__ = [
     "RestoreRequest",
     "SearchCache",
     "SignInRequest",
+    "WholeBundleRequest",
     "check_directory",
     "check_named",
     "check_path",

@@ -1781,6 +1781,25 @@ object (HighLevelDesign §4.3). A password-protected bundle is not read, and
 is `403 Forbidden`, as in §12.1. A body larger than the node takes is
 `413 Content Too Large` (§21).
 
+A page that has written a bundle's JSON itself, such as one naming
+`extensions` it chose, has the node store it whole with:
+
+```http
+POST /data/bundles
+Content-Type: application/json
+
+{"bundle": {"contents": {"notes.txt": {"contents": ["sha256/…"]}},
+            "extensions": ["sha256/…"]}}
+```
+
+`bundle` is the bundle's JSON object, given alone, with no other member.
+The node checks that it is a well-formed bundle, stores it as one object at
+its own identifier, written as the node writes any bundle it makes, and
+answers `201 Created` as above, with the identifier it is stored at, which
+the page uses rather than one it works out. It reads no bundle the JSON
+names. A bundle that is not well-formed, or that does not fit in one
+object even compressed (§8), is `400 Bad Request`.
+
 ---
 
 ## 13. Web Application Routing
@@ -2568,7 +2587,7 @@ The following table summarizes the currently proposed HTTP API.
 | `/data/session`                   | Various      | Sign in, say who is signed in, sign out, locally (§11.4)   | Defined |
 | `/data/directory/...`             | `GET`        | List the folders offered to local clients (§12.2)          | Defined |
 | `/data/imports`                   | `GET`/`POST` | Import a local file, and follow imports (§12.2)            | Defined |
-| `/data/bundles`                   | `POST`       | Make or change a directory bundle, locally (§12.3)         | Defined |
+| `/data/bundles`                   | `POST`       | Make, change, or store a bundle, locally (§12.3)           | Defined |
 | `/data/store/{application}/...`   | Various      | An application's store on this node (§13.3)                | Defined |
 | `/data/applications`              | `GET`        | The applications this node serves (§13.4)                  | Defined |
 | `/data/...`                       | Various      | Additional programmatic APIs                               | TBD     |
