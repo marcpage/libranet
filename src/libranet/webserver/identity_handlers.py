@@ -13,6 +13,10 @@ ceilings and taking its turn with the rest. It answers ``201``, signed in::
     {"id": "sha256/…", "username": "alice",
      "drop": "sha256/…", "target": "<hex>", "matching_bits": 21}
 
+``POST /config/api/users`` makes one the same way, for the ``/config``
+application, so that the operator can make one for a person (Phase 4 Step
+91). It is answered the same, but signs no one in, and has no ``Location``.
+
 ``POST /data/session`` signs in with a username and password, ``GET`` says who
 is signed in, as ``{"id": …, "username": …}`` or both ``null``, and
 ``DELETE`` signs out. Signing in tries each block a search of the drop finds,
@@ -57,7 +61,7 @@ from libranet.protocol.errors import InvalidConfigRequestError
 from libranet.protocol.identity_requests import IdentityRequest, SignInRequest
 from libranet.webserver.bundle_edits import OwnUploads
 from libranet.webserver.config_handlers import invalid_request_response, json_or_refusal
-from libranet.webserver.drop_handler import DropHandler, Turns
+from libranet.webserver.drop_handler import DropHandler, StoredDrop, Turns
 from libranet.webserver.http_types import (
     Request,
     Response,
@@ -94,6 +98,23 @@ class _Found:
 
 
 @dataclass(frozen=True)
+class _Made:
+    """An identity just made: who it is, as a session names them, and the drop keeping it."""
+
+    session: Session
+    drop: StoredDrop
+
+    def value(self) -> dict[str, object]:
+        """What making it answers (HttpApi §11.3)."""
+        return {
+            **self.session.value(),
+            "drop": str(self.drop.content_id),
+            "target": self.drop.target.hex,
+            "matching_bits": self.drop.matching_bits,
+        }
+
+
+@dataclass(frozen=True)
 class Identities:  # pylint: disable=too-many-instance-attributes
     """The endpoints making people's identities, and signing them in and out.
 
@@ -118,6 +139,35 @@ class Identities:  # pylint: disable=too-many-instance-attributes
 
     def make(self, request: Request) -> Response:
         """``POST /data/users``: make the identity ``request`` asks for, and sign it in."""
+        made = self._made(request)
+
+        if isinstance(made, Response):
+            return made
+
+        return _with_headers(
+            json_response(made.value(), HTTPStatus.CREATED),
+            {
+                "Location": f"/data/{made.session.key.person_id}",
+                "Set-Cookie": self.sessions.start(made.session),
+            },
+        )
+
+    def make_without_signing_in(self, request: Request) -> Response:
+        """``POST /config/api/users``: make the identity ``request`` asks for, signing no one in.
+
+        The operator makes it for a person, who may not be the one at the
+        browser (HttpApi §11.3), and ``/config``'s port serves no public key
+        for a ``Location`` to name.
+        """
+        made = self._made(request)
+
+        if isinstance(made, Response):
+            return made
+
+        return json_response(made.value(), HTTPStatus.CREATED)
+
+    def _made(self, request: Request) -> _Made | Response:
+        """The identity ``request`` asks for, made and stored; or the response refusing it."""
         value = json_or_refusal(request)
 
         if isinstance(value, Response):
@@ -152,18 +202,8 @@ class Identities:  # pylint: disable=too-many-instance-attributes
             return stored
 
         store_object(person.public_key, self.uploads, self.drops.max_object_bytes)
-        session = Session(asked.username, person)
         _LOGGER.info("Made the identity %s, kept at %s", person.person_id, stored.content_id)
-        answer = {
-            **session.value(),
-            "drop": str(stored.content_id),
-            "target": stored.target.hex,
-            "matching_bits": stored.matching_bits,
-        }
-        return _with_headers(
-            json_response(answer, HTTPStatus.CREATED),
-            {"Location": f"/data/{person.person_id}", "Set-Cookie": self.sessions.start(session)},
-        )
+        return _Made(Session(asked.username, person), stored)
 
     def sign_in(self, request: Request) -> Response:
         """``POST /data/session``: sign in the person ``request`` names, if it is them."""

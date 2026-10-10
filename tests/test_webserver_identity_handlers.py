@@ -161,6 +161,38 @@ def test_making_an_identity_keeps_its_keys_and_signs_it_in(
     assert loads(who.body) == {"id": str(person_id), "username": "alice"}
 
 
+def test_an_identity_made_without_signing_in_starts_no_session(
+    identities: Identities, storage: StorageConfig, recorder: Recorder
+) -> None:
+    response = identities.make_without_signing_in(making(" Alice ", changes={"minimum_bits": 4}))
+
+    assert response.status == 201, response.body
+    answer = loads(response.body)
+    assert answer["username"] == "alice"
+    assert answer["target"] == TARGET.hex
+    assert answer["matching_bits"] >= 4
+    assert "Set-Cookie" not in response.headers
+    assert "Location" not in response.headers
+    assert len(recorder.payloads(EventType.PUT_COMPLETED)) == 2
+    validated(storage, ContentId.parse(answer["id"]), ContentId.parse(answer["drop"]))
+    signed_in = identities.sign_in(signing_in())
+    assert signed_in.status == 200, signed_in.body
+    assert loads(signed_in.body) == {"id": answer["id"], "username": "alice"}
+
+
+def test_making_without_signing_in_is_refused_as_making_is(
+    identities: Identities, storage: StorageConfig
+) -> None:
+    made(storage, identities, making())
+
+    again = identities.make_without_signing_in(making("ALICE"))
+    short = identities.make_without_signing_in(making("bob", "short"))
+
+    assert again.status == 409
+    assert short.status == 400
+    assert problem_type(short) == INVALID_CONFIG_REQUEST
+
+
 def test_signing_in_opens_the_identity_at_the_usernames_drop(
     identities: Identities, storage: StorageConfig
 ) -> None:

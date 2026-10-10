@@ -1408,6 +1408,24 @@ and how many leading bits the two share, as §9.6 gives them. A request is
 the drop, among the blocks the node holds, since signing in would then find
 either one.
 
+The `/config` application (§2.3) makes an identity too, so that a node's
+operator can make one for a person:
+
+```http
+POST /config/api/users
+Content-Type: application/json
+
+{"username": "alice", "password": "…", "key_bits": 3072, "seconds": 10, "minimum_bits": 16}
+```
+
+It takes the same body as `POST /data/users`, makes the identity the same
+way, and is answered or refused the same way, but it signs no one in. The
+person it is made for may not be the one at the browser, and a browser
+keeps cookies by host and not by port (§11.4), so a session started on
+`/config`'s port would be the browser's on the main port too. Nor does a
+`Location` name the public key, since `/config`'s port serves nothing
+beneath `/data`.
+
 ### 11.4 Signing In
 
 A person signs in to a node from one of its pages:
@@ -1455,10 +1473,12 @@ restarts. Every response that names a session carries
 `Cache-Control: no-store`.
 
 Making an identity, signing in, and the session serve only local clients,
-from a page of a trusted application (§2.4, §2.5), since a password sent
-from elsewhere would cross the network as it was typed. Each identity made,
-and each sign-in, derives a key, at a cost that is high by design
-(BundleSpecification §6.2.1), and a node derives one at a time.
+from a page of a trusted application (§2.4, §2.5), or, for making an
+identity, from the `/config` application (§2.3), since a password sent from
+elsewhere would cross the network as it was typed. Each identity made, and
+each sign-in, derives a key, at a cost that is high by design
+(BundleSpecification §6.2.1), and a node derives one at a time, whichever
+of its ports is asked, as it searches for one drop at a time (§9.6).
 
 ---
 
@@ -2383,7 +2403,7 @@ Potential limits include:
 
 A node limits the drop-search work a page asks of it by how long a search
 may take and how many bits it must match (§9.6). It derives one key from a
-username and password at a time (§11.4).
+username and password at a time, whichever of its ports is asked (§11.4).
 
 A request whose body is larger than the node takes is refused with
 `413 Content Too Large` (§17.2, `content-too-large`), unread if its

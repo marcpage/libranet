@@ -8,6 +8,7 @@ Every response is expected to be signed by the server's node key.
 
 from __future__ import annotations
 from base64 import b64encode
+from contextlib import contextmanager
 from errno import EADDRINUSE
 from hashlib import sha256
 from http.client import HTTPConnection, HTTPResponse, IncompleteRead
@@ -60,6 +61,7 @@ from libranet.webserver.app_store import StoredValue
 from libranet.webserver.config_auth import CONFIG_REALM
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import NodeDescription
+from libranet.webserver.drop_handler import CostlyWork, Turns
 from libranet.webserver.errors import ResponseCutShortError
 from libranet.webserver.http_types import Request, RequestBody, Response, StreamedBody
 from libranet.webserver.local_folders import LocalFolders
@@ -2035,6 +2037,118 @@ def test_a_person_key_is_made_only_at_the_sizes_the_router_is_given(
 
     assert response.status == 400
     assert loads(response.body)["detail"] == '"key_bits" must be one of 4096 here, got 2048'
+
+
+# Making Alice's identity at the smallest key size, with no search.
+MAKING_ALICE = b'{"username": "Alice", "password": "correct horse", "key_bits": 2048, "seconds": 0}'
+
+# Where a request put to a router directly says it is from: the /config page.
+CONFIG_PAGE = {"Host": "localhost:8180", "Referer": "http://localhost:8180/config/"}
+
+
+class AskedTurns(Turns):
+    """Turns that count how many were asked for."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.asked = 0
+
+    @contextmanager
+    def turn(self) -> Iterator[None]:
+        self.asked += 1
+
+        with super().turn():
+            yield
+
+
+def test_an_identity_made_on_the_config_page_signs_in_at_an_application(
+    config_connection: HTTPConnection, local_connection: HTTPConnection, storage: StorageConfig
+) -> None:
+    made, body = _config(
+        config_connection, "/config/api/users", "POST", _credentials(), MAKING_ALICE
+    )
+    answer = loads(body)
+    uploads = CasStore.for_node(storage, SERVER_IDENTITY.node_id)
+
+    # Stored as the validator stores what this node uploads.
+    for name in ("id", "drop"):
+        content_id = ContentId.parse(answer[name])
+        CasStore.source_of_truth(storage).write(content_id, uploads.read(content_id))
+
+    local_connection.request(
+        "POST",
+        "/data/session",
+        body=b'{"username": "alice", "password": "correct horse"}',
+        headers={"Content-Type": JSON_CONTENT_TYPE, **_from_page(local_connection, "/movie/")},
+    )
+    signed_in = local_connection.getresponse()
+
+    assert made.status == 201
+    assert answer["username"] == "alice"
+    # The person it is made for may not be the one at the browser.
+    assert made.getheader("Set-Cookie") is None
+    assert made.getheader("Location") is None
+    assert signed_in.status == 200
+    assert loads(signed_in.read()) == {"id": answer["id"], "username": "alice"}
+
+
+def test_the_main_port_takes_its_turns_in_the_costly_work_it_is_given(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    registry = ApplicationRegistry(storage.applications_path)
+    registry.register(Application.create("movie", APP_BUNDLE_ID))
+    registry.trust("movie", True)
+    searches, derivations = AskedTurns(), AskedTurns()
+    router = build_router(
+        storage,
+        RETRY_AFTER_SECONDS,
+        StubModule(ModuleName.WEBSERVER, queues).publish,
+        RequestAuthenticator.of(LibranetConfig(storage=storage)),
+        allow_unsigned_api_reads=True,
+        config_port=8180,
+        node_id=SERVER_IDENTITY.node_id,
+        costly_work=CostlyWork(searches, derivations),
+    )
+
+    response = router.dispatch(
+        Request(
+            "POST",
+            "/data/users",
+            headers={**MOVIE_PAGE, "Content-Type": JSON_CONTENT_TYPE},
+            client_address="127.0.0.1",
+            body=RequestBody.of(MAKING_ALICE),
+        )
+    )
+
+    assert response.status == 201, response.body
+    assert (searches.asked, derivations.asked) == (1, 1)
+
+
+def test_the_config_port_takes_its_turns_in_the_costly_work_it_is_given(
+    storage: StorageConfig, queues: ModuleQueues, credential: ConfigCredential
+) -> None:
+    searches, derivations = AskedTurns(), AskedTurns()
+    router = build_config_router(
+        storage,
+        RETRY_AFTER_SECONDS,
+        StubModule(ModuleName.WEBSERVER, queues).publish,
+        config_credential=credential,
+        node=SERVER_NODE,
+        costly_work=CostlyWork(searches, derivations),
+    )
+
+    response = router.dispatch(
+        Request(
+            "POST",
+            "/config/api/users",
+            headers={**_credentials(), **CONFIG_PAGE, "Content-Type": JSON_CONTENT_TYPE},
+            client_address="127.0.0.1",
+            body=RequestBody.of(MAKING_ALICE),
+        )
+    )
+
+    assert response.status == 201, response.body
+    assert (searches.asked, derivations.asked) == (1, 1)
 
 
 def test_bundles_are_made_only_by_a_node_that_knows_its_id(

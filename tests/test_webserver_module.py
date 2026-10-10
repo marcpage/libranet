@@ -469,7 +469,10 @@ def _authorized(
 
 def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: Path) -> None:
     queues = _queues()
-    config = _config(tmp_path, _free_port(), app_wait_seconds=0)
+    config = _config(tmp_path, _free_port(), app_wait_seconds=0, drop_max_seconds=5.0)
+    config = config.model_copy(
+        update={"identity": config.identity.model_copy(update={"person_key_bits": (4096,)})}
+    )
     module = WebServerModule(ModuleName.WEBSERVER, queues, config, poll_interval_seconds=0.01)
     stop = Event()
     thread = Thread(target=module.run, args=(stop,), daemon=True)
@@ -505,6 +508,9 @@ def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: P
                 "listen_address": "127.0.0.1",
                 "listen_port": port,
                 "advertised_endpoint": f"http://localhost:{port}",
+                "person_key_bits": [4096],
+                "drop_max_seconds": 5.0,
+                "drop_max_minimum_bits": 26,
             },
         )
 
