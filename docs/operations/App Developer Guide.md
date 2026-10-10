@@ -239,7 +239,7 @@ when trusted. `self.origin === "null"` tells a page it is sandboxed.
 | `/data/client` | `GET` | Any | Any application's | Whether the client is local (§6.2) |
 | `/data/directory/...` | `GET` | Local | A trusted application's | List the folders offered (§6.3) |
 | `/data/imports` | `GET`, `POST` | Local | A trusted application's | Import a file, and follow imports (§6.4) |
-| `/data/bundles` | `POST` | Local | A trusted application's | Make or change a bundle (§6.5) |
+| `/data/bundles` | `POST` | Local | A trusted application's | Make, change, or store a bundle (§6.5) |
 | `/data/store/{application}/...` | `GET` | Any | Its own application's | Read the application's store (§6.6) |
 | `/data/store/{application}/{key}` | `PUT`, `DELETE` | Local | Its own application's | Change the application's store (§6.6) |
 | `/data/applications` | `GET` | Any | Any application's | The applications the node serves (§6.7) |
@@ -467,6 +467,13 @@ A new bundle is answered `201 Created`, with `{"bundle": id}` and a
 named, without needing the parts of any file it moves, so changing a
 playlist of films takes no time. A body is limited to 4 MiB.
 
+A page that has written a bundle's JSON itself, such as an extension of the
+user directory (§6.12), has the node store it as it is with
+`{"bundle": {…}}`, given alone. The node checks that it is a bundle, stores
+it as one object, and answers `201 Created` with the id it is stored at. Use
+that id, since the node writes the JSON its own way first. A bundle that is
+not well-formed, or does not fit in an object, is `400`.
+
 ### 6.6 The Application's Store
 
 Content never changes, so what an application needs to keep as it changes,
@@ -683,6 +690,50 @@ list of what is blocked. So block only content your application made, and
 only once something holds all it did. An id that is not valid is `400`.
 Blocking is for a local client only, from a trusted application's page.
 
+### 6.12 The User Directory
+
+Every person with an identity is listed in the user directory, a directory
+bundle kept at the drop `user directory` (HTTP API §11.5). Each person is
+an entry whose path is their id, and whose only part is that id, their
+public key:
+
+```json
+{"contents": {"sha256/…": {"contents": ["sha256/…"]}}}
+```
+
+The node adds each person whose identity it makes (§6.10), and the shipped
+`directory` application, at `/directory/`, lists everyone and adds whoever
+is signed in. An application that reads the directory itself follows the
+same rules, so that copies made by different pages and nodes come together:
+
+- **Find every copy.** Search the drop (§6.1), and read each result with
+  `GET /data/{id}`. The node serves an object as it is stored, zlib
+  compressed or not (HTTP API §8): JSON begins with `{`, so anything else is
+  decompressed, with `DecompressionStream("deflate")`. A copy is a drop
+  whose content, up to its last null byte, is a directory bundle holding
+  nothing but people. Pass over anything else found there, since a search
+  lists whatever is nearest the target, directory or not. Read each copy's
+  `extensions` too, which are directories of people stored at their own
+  ids, not drops. Leave out a copy you could not read in full. The node
+  may answer a search from its cache, which can lack a copy stored since,
+  and fills it in as it is asked, so search a second time once the first
+  search's results are read.
+- **The newest lists the most people**, and of two that list as many, the
+  one whose id comes first.
+- **Everyone in any copy is in the directory.** When the newest lacks
+  anyone, or the person signed in, make a new copy holding everyone with
+  `POST /data/drop` (§6.9), its text the bundle's JSON with keys in order
+  and no spaces, naming the newest's extensions and listing everyone they
+  do not.
+- **Extend only when it no longer fits.** A copy is rewritten whole each
+  time. When the node answers the drop `413`, store the newest's own list,
+  over the extensions it names, with `POST /data/bundles` (§6.5), and make
+  the copy again holding only the people that extension does not list, and
+  naming only it.
+- **Block what is replaced** (§6.11). Once a new copy is stored, block every
+  copy it was made from; when none is needed, every copy but the newest.
+  Never block an extension: it is not at the drop, and later copies name it.
+
 ## 7. Patterns From the Movie Library
 
 The movie library, `src/libranet/applications/movie/index.html`, is one page
@@ -740,9 +791,9 @@ of HTML and script, and uses every endpoint above. What it does, and why:
 
 The applications a node ships with are directories under
 [`src/libranet/applications/`](../../src/libranet/applications/): `root`,
-served at `/`, `config`, served at `/config`, and `movie`, served at
-`/movie`. `SHIPPED_APPLICATIONS` in `packaged.py` names each, and a node
-trusts them from the start.
+served at `/`, `config`, served at `/config`, `movie`, served at
+`/movie`, and `directory`, served at `/directory`. `SHIPPED_APPLICATIONS`
+in `packaged.py` names each, and a node trusts them from the start.
 
 Run from the source, the node builds them in memory as it starts, so a
 changed page is served once the node restarts. `uv build` builds them into

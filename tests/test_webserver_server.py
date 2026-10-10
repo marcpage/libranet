@@ -2247,7 +2247,8 @@ def test_the_main_port_takes_its_turns_in_the_costly_work_it_is_given(
     )
 
     assert response.status == 201, response.body
-    assert (searches.asked, derivations.asked) == (1, 1)
+    # A search for the identity's drop, and one for the user directory's.
+    assert (searches.asked, derivations.asked) == (2, 1)
 
 
 def test_the_config_port_takes_its_turns_in_the_costly_work_it_is_given(
@@ -2274,7 +2275,8 @@ def test_the_config_port_takes_its_turns_in_the_costly_work_it_is_given(
     )
 
     assert response.status == 201, response.body
-    assert (searches.asked, derivations.asked) == (1, 1)
+    # A search for the identity's drop, and one for the user directory's.
+    assert (searches.asked, derivations.asked) == (2, 1)
 
 
 def test_bundles_are_made_only_by_a_node_that_knows_its_id(

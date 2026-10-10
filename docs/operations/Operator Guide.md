@@ -325,9 +325,10 @@ replaced. The new node also needs peers that hold the backup's content
 ## 6. Applications
 
 An application is a directory bundle served as a website at `/{name}/` on
-the node's port. A new node ships three: its front page at `/`, the
-`/config` page, and the movie library at `/movie/`. The
-[App Developer Guide](App%20Developer%20Guide.md) describes writing one.
+the node's port. A new node ships four: its front page at `/`, the
+`/config` page, the movie library at `/movie/`, and the user directory at
+`/directory/`. The [App Developer Guide](App%20Developer%20Guide.md)
+describes writing one.
 
 ### 6.1 Registering an Application
 

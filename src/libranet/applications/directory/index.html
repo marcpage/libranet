@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>User directory</title>
+<style>
+  :root {
+    --background: #f6f6f4;
+    --surface: #ffffff;
+    --text: #1d1d1b;
+    --muted: #5d5d58;
+    --border: #d8d8d2;
+    --accent: #2a5db0;
+    --good: #1f7a3d;
+    --bad: #b3261e;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --background: #161615;
+      --surface: #1f1f1d;
+      --text: #ececea;
+      --muted: #a8a8a2;
+      --border: #3a3a36;
+      --accent: #7ea9f0;
+      --good: #6cc98a;
+      --bad: #f2877e;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  main { max-width: 44rem; margin: 0 auto; padding: 2.5rem 1rem; }
+  h1 { font-size: 1.5rem; margin: 0; }
+  h2 { font-size: 1.15rem; margin: 0 0 0.75rem; }
+  a { color: var(--accent); }
+
+  section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin: 1.25rem 0;
+  }
+
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    word-break: break-all;
+  }
+
+  /* A person's id: one click selects all of it. */
+  .id { user-select: all; }
+
+  .you { color: var(--good); font-weight: 600; margin-left: 0.5rem; }
+  .note, footer { color: var(--muted); }
+  .error { color: var(--bad); }
+  ol { margin: 0; padding-left: 1.75rem; }
+  li + li { margin-top: 0.35rem; }
+  #status { margin: 0.25rem 0 0; padding: 0; list-style: none; }
+  #status li + li { margin-top: 0.15rem; }
+  footer { font-size: 0.9rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>User directory</h1>
+  <ul id="status"><li class="note">Reading the directory&hellip;</li></ul>
+  <noscript><p class="note">Reading the directory needs JavaScript.</p></noscript>
+
+  <section>
+    <h2 id="count">People</h2>
+    <div id="people"><span class="note">Asking the node&hellip;</span></div>
+  </section>
+
+  <footer>
+    Everyone with an identity is listed here by their id, the content id of
+    their public key. The list is kept at the drop <code>user directory</code>,
+    where every node that makes an identity adds the person. Opening this page
+    merges what each copy found there lists, and adds whoever is signed in.
+  </footer>
+</main>
+<script>
+"use strict";
+
+// The drop the directory is kept at (HttpApi 11.5), and the SHA-256 of that
+// string, which a search names. A page reached over the network is not a
+// secure context, which a browser hashes in, so it is written out here.
+const DIRECTORY_TARGET = "user directory";
+const DIRECTORY_TARGET_HASH = "11e7e42ccff85a95b10409f7a45e0c579f8b79110058a1262dc48cf2e1e2bb9c";
+
+// What each directory made asks the node to search for its nonce. No one
+// using the directory decides how hard the node searches.
+const DROP_SECONDS = 10;
+const DROP_MINIMUM_BITS = 16;
+
+// What a 503 waits when it does not say, and how many are waited out. A
+// search lists what the node has only heard of too, which is often no
+// directory, so it is not waited for long.
+const DEFAULT_RETRY_SECONDS = 5;
+const MAX_WAITS = 1;
+
+// The most extensions a directory is read through, as the node reads one.
+const MAX_EXTENSIONS = 1024;
+
+// A person's id, an entry's path, and an extension's id: the only hash the
+// node knows, in lower-case hex (HttpApi 5).
+const CONTENT_ID = /^sha256\/[0-9a-f]{64}$/;
+
+// JSON as written begins with "{", which no zlib stream does (HttpApi 8),
+// and a drop's content ends at its last null byte (HttpApi 9).
+const OPEN_BRACE = 0x7b;
+const NULL_BYTE = 0x00;
+
+function byId(id) {
+  return document.getElementById(id);
+}
+
+function make(tag, text, className) {
+  const element = document.createElement(tag);
+  element.textContent = text;
+
+  if (className) {
+    element.className = className;
+  }
+
+  return element;
+}
+
+// Each line saying what loading the directory did, the first replacing what
+// was there before.
+const status = {
+  started: false,
+
+  say(text, className) {
+    const list = byId("status");
+
+    if (!this.started) {
+      list.replaceChildren();
+      this.started = true;
+    }
+
+    list.append(make("li", text, className || "note"));
+  },
+};
+
+function sleep(seconds) {
+  return new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+}
+
+function retryAfter(headers) {
+  const seconds = Number.parseInt(headers.get("Retry-After") || "", 10);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : DEFAULT_RETRY_SECONDS;
+}
+
+function isObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function plural(count, one, many) {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+// The node could not be reached at all.
+class Unreachable extends Error {}
+
+// Content that cannot be read as a directory of people, saying why.
+class Unusable extends Error {}
+
+// One request to the node, its body sent as JSON. `value` is the answer read
+// as JSON, or null.
+async function call(method, path, body) {
+  const init = { method, cache: "no-store", headers: {} };
+
+  if (body !== undefined) {
+    init.headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(body);
+  }
+
+  let response;
+
+  try {
+    response = await fetch(path, init);
+  } catch (error) {
+    throw new Unreachable(`The node could not be reached: ${error.message}`);
+  }
+
+  const text = await response.text();
+  let value = null;
+
+  try {
+    value = text ? JSON.parse(text) : null;
+  } catch (error) {
+    value = null;
+  }
+
+  return { status: response.status, ok: response.ok, headers: response.headers, value };
+}
+
+// What the node said of a request it did not do.
+function refusal(result) {
+  const problem = isObject(result.value) ? result.value : {};
+  return problem.detail || problem.title || `The node answered ${result.status}.`;
+}
+
+async function inflated(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+// The bytes the node holds for `id`, as they were before any storage
+// compression (HttpApi 8), waiting out the 503s answered while the node
+// fetches them. Null if it still lacks them.
+async function held(id) {
+  for (let waits = 0; ; waits += 1) {
+    let response;
+
+    try {
+      // What an id names never changes, so the browser's cache may answer.
+      response = await fetch(`/data/${id}`);
+    } catch (error) {
+      throw new Unreachable(`The node could not be reached: ${error.message}`);
+    }
+
+    if (response.status === 503) {
+      if (waits >= MAX_WAITS) {
+        return null;
+      }
+
+      await sleep(retryAfter(response.headers));
+      continue;
+    }
+
+    if (!response.ok) {
+      throw new Unusable(`${id} could not be read (${response.status}).`);
+    }
+
+    const bytes = new Uint8Array(await response.arrayBuffer());
+
+    try {
+      return bytes[0] === OPEN_BRACE ? bytes : await inflated(bytes);
+    } catch (error) {
+      // Neither JSON nor compressed, so no directory: a key, say.
+      return bytes;
+    }
+  }
+}
+
+function jsonOf(bytes) {
+  try {
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch (error) {
+    return null;
+  }
+}
+
+// The people a directory bundle lists itself, by id, and the extensions it
+// names; null if it holds anything but people, each an entry whose path is
+// their id and whose only part is that id (HttpApi 11.5).
+function listingOf(bundle) {
+  if (!isObject(bundle) || !isObject(bundle.contents)) {
+    return null;
+  }
+
+  const people = new Set();
+
+  for (const [path, entry] of Object.entries(bundle.contents)) {
+    const isPerson =
+      CONTENT_ID.test(path) &&
+      isObject(entry) &&
+      Array.isArray(entry.contents) &&
+      entry.contents.length === 1 &&
+      entry.contents[0] === path;
+
+    if (!isPerson) {
+      return null;
+    }
+
+    people.add(path);
+  }
+
+  const extensions = bundle.extensions === undefined ? [] : bundle.extensions;
+
+  if (!Array.isArray(extensions) || !extensions.every((id) => CONTENT_ID.test(id))) {
+    return null;
+  }
+
+  return { people, extensions };
+}
+
+// Everyone the extensions `ids` list, read through their own extensions;
+// null if any of them is not held yet.
+async function extendedPeople(ids) {
+  const people = new Set();
+  const seen = new Set();
+  const pending = [...ids];
+  let missing = false;
+
+  while (pending.length > 0) {
+    const id = pending.pop();
+
+    if (seen.has(id)) {
+      continue;
+    }
+
+    seen.add(id);
+
+    if (seen.size > MAX_EXTENSIONS) {
+      throw new Unusable(`It reaches more than ${MAX_EXTENSIONS} extensions.`);
+    }
+
+    const bytes = await held(id);
+
+    if (bytes === null) {
+      missing = true;
+      continue;
+    }
+
+    const listed = listingOf(jsonOf(bytes));
+
+    if (listed === null) {
+      throw new Unusable(`Its extension ${id} lists more than people.`);
+    }
+
+    listed.people.forEach((person) => people.add(person));
+    pending.push(...listed.extensions);
+  }
+
+  return missing ? null : people;
+}
+
+// What was found at the drop as `id`: a directory, read in full with its
+// extensions, or why it is passed over.
+async function readDirectory(id) {
+  const bytes = await held(id);
+
+  if (bytes === null) {
+    return { missing: true };
+  }
+
+  // A drop's content ends at its last null byte; content with none is no drop.
+  const end = bytes.lastIndexOf(NULL_BYTE);
+  const listed = end < 0 ? null : listingOf(jsonOf(bytes.subarray(0, end)));
+
+  if (listed === null) {
+    return { passed: true };
+  }
+
+  const extended = await extendedPeople(listed.extensions);
+
+  if (extended === null) {
+    return { missing: true };
+  }
+
+  return { directory: { id, listed, extended, people: new Set([...listed.people, ...extended]) } };
+}
+
+function isSubset(people, of) {
+  for (const person of people) {
+    if (!of.has(person)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function without(people, less) {
+  return new Set([...people].filter((person) => !less.has(person)));
+}
+
+// The directories found, and the one to make so that one lists everyone,
+// written by the same rules the node keeps them by (HttpApi 11.5).
+class Merge {
+  constructor(directories) {
+    this.directories = directories;
+    // The directory listing the most people, the first by id of those listing as many.
+    this.newest = directories.reduce(
+      (best, found) =>
+        best === null ||
+        found.people.size > best.people.size ||
+        (found.people.size === best.people.size && found.id < best.id)
+          ? found
+          : best,
+      null,
+    );
+  }
+
+  everyone(added) {
+    const people = new Set(added);
+    this.directories.forEach((found) => found.people.forEach((person) => people.add(person)));
+    return people;
+  }
+
+  // The directory to make, extended as the newest is; null if the newest
+  // lists everyone, or there is no one to list.
+  rewritten(everyone) {
+    if (this.newest === null) {
+      return everyone.size > 0 ? { people: everyone, extensions: [] } : null;
+    }
+
+    if (isSubset(everyone, this.newest.people)) {
+      return null;
+    }
+
+    return {
+      people: without(everyone, this.newest.extended),
+      extensions: this.newest.listed.extensions,
+    };
+  }
+
+  // The extension to make when the directory rewritten does not fit in a
+  // drop: what the newest lists itself, over what it extends. Null if it
+  // lists no one itself, so that an extension would leave no more room.
+  extension() {
+    return this.newest !== null && this.newest.listed.people.size > 0 ? this.newest.listed : null;
+  }
+
+  // The directory listing `everyone` over the extension `id`, holding the newest's own list.
+  extended(everyone, id) {
+    return { people: without(everyone, this.newest.people), extensions: [id] };
+  }
+
+  // Each directory found but `kept` that lists no one `people` lacks.
+  replaced(people, kept) {
+    return this.directories
+      .filter((found) => found.id !== kept && isSubset(found.people, people))
+      .map((found) => found.id);
+  }
+}
+
+// A listing as directory bundle JSON, written as the node writes one: keys
+// sorted, and no space.
+function bundleOf(listing) {
+  const contents = {};
+
+  for (const person of [...listing.people].sort()) {
+    contents[person] = { contents: [person] };
+  }
+
+  return listing.extensions.length > 0
+    ? { contents, extensions: [...listing.extensions] }
+    : { contents };
+}
+
+// The listing made a directory at the drop (HttpApi 9.6): its id, or that
+// it does not fit in a drop, or why it was refused.
+async function madeDirectory(listing) {
+  const result = await call("POST", "/data/drop", {
+    target: DIRECTORY_TARGET,
+    text: JSON.stringify(bundleOf(listing)),
+    seconds: DROP_SECONDS,
+    minimum_bits: DROP_MINIMUM_BITS,
+  });
+
+  if (result.status === 201 && isObject(result.value)) {
+    return { id: result.value.id };
+  }
+
+  return result.status === 413 ? { tooLarge: true } : { error: refusal(result) };
+}
+
+// A directory listing `everyone`, made over a new extension holding the
+// newest's own list, stored at its own id (HttpApi 12.3), which serves only
+// local clients.
+async function extendedDirectory(merge, everyone, local) {
+  const extension = merge.extension();
+
+  if (extension === null) {
+    return { error: "The directory does not fit in a drop, and an extension would not help." };
+  }
+
+  if (!local) {
+    return { error: "The directory no longer fits in a drop. Only a browser on the node's own machine can extend it." };
+  }
+
+  const result = await call("POST", "/data/bundles", { bundle: bundleOf(extension) });
+
+  if (result.status !== 201 || !isObject(result.value)) {
+    return { error: `The directory could not be extended: ${refusal(result)}` };
+  }
+
+  status.say(`Extended the directory with ${result.value.bundle}.`);
+  return madeDirectory(merge.extended(everyone, result.value.bundle));
+}
+
+// Have the node block `ids`, directories replaced (HttpApi 5.5), which only
+// a local client may ask. How many were blocked.
+async function blocked(ids, local) {
+  if (!local) {
+    return 0;
+  }
+
+  let count = 0;
+
+  for (const id of ids) {
+    const result = await call("DELETE", `/data/${id}`);
+
+    if (result.status === 204) {
+      count += 1;
+    } else {
+      console.warn(`The replaced directory ${id} was not blocked: ${refusal(result)}`);
+    }
+  }
+
+  return count;
+}
+
+// Make a directory listing everyone, if the newest does not, and block
+// those it replaces.
+async function reconcile(merge, everyone, local) {
+  const newest = merge.newest;
+  const outlisted = newest === null ? [] : merge.replaced(newest.people, newest.id);
+  const listing = merge.rewritten(everyone);
+  let replaced = outlisted;
+
+  if (listing !== null) {
+    status.say(`Writing a directory of ${plural(everyone.size, "person", "people")}; this takes about ${DROP_SECONDS} seconds.`);
+    let made = await madeDirectory(listing);
+
+    if (made.tooLarge) {
+      made = await extendedDirectory(merge, everyone, local);
+    }
+
+    if (made.id) {
+      status.say(`Wrote the directory ${made.id}, listing everyone.`, "note");
+      replaced = merge.replaced(everyone, null);
+    } else {
+      status.say(`The directory could not be written: ${made.error}`, "error");
+    }
+  }
+
+  const count = await blocked(replaced, local);
+
+  if (count > 0) {
+    status.say(`Blocked ${plural(count, "directory", "directories")} that another lists everyone in.`);
+  }
+}
+
+// Whoever is signed in, by id; null if no one is, or this client cannot say.
+async function signedIn() {
+  const result = await call("GET", "/data/session");
+  return result.ok && isObject(result.value) && CONTENT_ID.test(result.value.id) ? result.value.id : null;
+}
+
+async function isLocal() {
+  const result = await call("GET", "/data/client");
+  return result.ok && isObject(result.value) && result.value.local === true;
+}
+
+function showPeople(everyone, you) {
+  byId("count").textContent = plural(everyone.size, "person", "people");
+
+  if (everyone.size === 0) {
+    byId("people").replaceChildren(make("span", "No one is listed yet.", "note"));
+    return;
+  }
+
+  const list = document.createElement("ol");
+
+  for (const person of [...everyone].sort()) {
+    const item = document.createElement("li");
+    item.append(make("code", person, "id"));
+
+    if (person === you) {
+      item.append(make("span", "you", "you"));
+    }
+
+    list.append(item);
+  }
+
+  byId("people").replaceChildren(list);
+}
+
+// What each id a search of the drop finds, and `read` lacks, was found to
+// be, added to `read`.
+async function searched(read) {
+  const search = await call("GET", `/data/search/${DIRECTORY_TARGET_HASH}`);
+
+  if (search.status === 401) {
+    throw new Error("This node answers searches only from other nodes.");
+  }
+
+  if (!search.ok || !isObject(search.value) || !Array.isArray(search.value.results)) {
+    throw new Error(`The directory could not be searched for: ${refusal(search)}`);
+  }
+
+  const fresh = search.value.results.filter((id) => !read.has(id));
+  const found = await Promise.all(
+    fresh.map((id) =>
+      readDirectory(id).catch((error) => {
+        if (error instanceof Unreachable) {
+          throw error;
+        }
+
+        console.warn(`Passing over the directory ${id}: ${error.message}`);
+        return { passed: true };
+      }),
+    ),
+  );
+  fresh.forEach((id, index) => read.set(id, found[index]));
+}
+
+function directoriesIn(read) {
+  return [...read.values()].filter((found) => found.directory).map((found) => found.directory);
+}
+
+async function load() {
+  const [you, local] = await Promise.all([signedIn(), isLocal()]);
+  const added = you === null ? [] : [you];
+  const read = new Map();
+  await searched(read);
+  showPeople(new Merge(directoriesIn(read)).everyone(added), you);
+  // The node may answer a search from its cache, which can lack a directory
+  // stored since, such as this page's last. Each search has the node add
+  // what it has heard of to the cache, so the second finds it.
+  await searched(read);
+  const merge = new Merge(directoriesIn(read));
+  showPeople(merge.everyone(added), you);
+
+  const missing = [...read.values()].filter((found) => found.missing).length;
+  status.say(`Read ${plural(merge.directories.length, "directory", "directories")} at the drop.`);
+
+  if (missing > 0) {
+    status.say(`${plural(missing, "more", "more")} found there ${missing === 1 ? "is" : "are"} not held here yet. The node asked its peers for ${missing === 1 ? "it" : "them"}, and any directory among them is merged when this page is opened again.`);
+  }
+
+  await reconcile(merge, merge.everyone(added), local);
+}
+
+load().catch((error) => status.say(error.message, "error"));
+</script>
+</body>
+</html>

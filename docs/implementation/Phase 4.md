@@ -1046,69 +1046,150 @@ Ruled before building:
   newest directory easier to find, and no node needs a directory that
   another holds all of. As each node blocks the directories it has seen
   replaced, they leave the network.
+- **The newest is the directory listing the most people.** The others are
+  still read for anyone the newest lacks, and when any is found, a newer
+  directory is made holding them too. No `created` date is written, and
+  no clock is trusted.
+- **An id is checked by its shape alone.** An entry counts only if its
+  path is a content id and its only part is that id. A bundle with any
+  other entry is passed over whole, neither merged nor blocked. No key is
+  fetched, so a made-up id can be carried forward.
+- **Extensions are built now, and are never at the drop.** Only the
+  top-level directory is a drop, so that only it is ever blocked. The first
+  time a directory would not fit in a drop, an extension is made from
+  scratch, stored at its own id, and the top-level directory names it.
+  Directories after it name the same extension without making it again.
+  When the next is needed, it is made the same way, and extends the one
+  before. The people an extension lists change little, and it can stay
+  for good.
+- **A page stores an extension with `POST /data/bundles`**, which gains a
+  form `{"bundle": {…}}` storing a bundle a page wrote itself, whole. Like
+  the rest of that endpoint, it serves only local clients, from a trusted
+  application's page.
 
-Work this implies:
+The specification change is written: HttpApi §11.5, new, says what the
+user directory is, how it is extended, how a client loads and merges it,
+and what is blocked. §11.3 says making an identity adds the person, §12.3
+gives the whole-bundle form of `POST /data/bundles`, and §25 names it.
 
-- A shipped application, as the movie application is (Phase 3 Step 67):
-  `SHIPPED_APPLICATIONS` (`applications/packaged.py`) gains
-  `"directory": "directory"`, and its page is
-  `applications/directory/index.html`.
-- The page makes each bundle a drop with `POST /data/drop` (Step 89),
-  the bundle's JSON as its text, since `POST /data/bundles` stores a
-  bundle at its own address and not at a drop. Each file entry names the
-  public key already stored as the person's id (Step 79), so the bundle
-  holds no key's bytes: about 45 bytes a person once compressed, so some
-  23,000 people before an extension is needed.
-- The page asks the node to block a bundle, at Step 30's endpoint.
-- **The node keeps the directory as the page does.** Making an identity
-  finds the newest bundle at the drop, takes in the ids the others hold,
-  blocks those that add no one, and makes a bundle holding every id and
-  the new person's. The rule is written twice, in Python and in the
-  page's script.
-- A drop is its content, a null byte, and a nonce (HttpApi §9).
-  BundleSpecification §6.4 says a protected bundle is read up to the null
-  byte. Whether the node's bundle reader, and reading into a bundle
-  (HttpApi §12.1), do the same for a bundle that is not protected is to be
-  checked.
+Built in one change set: 610 added lines of non-test Python, 18 of them
+in place of removed ones and many of them docstrings, 643 of the page, and
+676 of tests.
+
+- **`identity/directory.py`** (new): `DIRECTORY_TARGET`; `PeopleListing`,
+  the people one bundle lists itself and the extensions it names, and its
+  JSON; `FoundDirectory.read`, which takes a drop's bytes for a directory
+  only if it is a drop and holds nothing but people, and reads its
+  extensions; and `DirectoryMerge`, with `newest`, `everyone`, `rewritten`,
+  `extension`, `extended`, and `replaced`.
+- **`UserDirectory`** (`webserver/user_directory.py`, new), which
+  `Identities` makes from its own uploads, search, drops, and `publish`,
+  and calls once an identity is stored. It searches the drop with
+  `SearchHandler.fresh_results`, asks for what is not held
+  (`data.not_found`), makes the directory with `DropHandler.placed`,
+  extends on a `413`, and blocks what is replaced (`data.blocked`).
+- **`WholeBundleRequest`** (`protocol/bundle_requests.py`) and
+  `BundleEditHandler`'s branch storing it, re-encoded, with
+  `store_object`.
+- **`applications/directory/index.html`** (new), and
+  `SHIPPED_APPLICATIONS` gains `"directory": "directory"`.
+- HttpApi §11.3, §11.5, §12.3, and §25; the App Developer Guide §5.2,
+  §6.5, §6.12 (new), and §9; the Operator Guide §6; File Layout; and the
+  README.
 
 My calls, not yet reviewed:
 
-- **A file's path is the id itself**, `sha256/{hash}`, which a directory
-  bundle reads as a file named by the hash in a folder `sha256`. An entry
-  whose path is not the content id it names is passed over, so a bundle
-  cannot list one id under another's key.
-- **Only bundles read in full are judged.** One the node cannot get is
-  neither merged nor blocked.
-- **The page asks for 10 seconds and 16 bits** for each bundle it makes,
-  as Step 91's page does, since no one using the directory decides how
-  hard the node searches.
-- **The node adds a person in the request that makes them**, after the
-  identity is stored, in the same turn (Step 91's `CostlyWork`), and
-  searches for the bundle's nonce as the request asks for the
-  identity's. A person it fails to add, because a bundle cannot be had
-  in time, say, is logged, and the identity is still made: the
-  application adds them when they sign in.
+- **A directory is a drop.** Content found at the drop is judged only if
+  it holds a null byte, so an extension, or an application's bundle, that
+  a search lists as the nearest held is never merged or blocked. That a
+  drop was aimed at `user directory`, and not at another target near it,
+  is not checked.
+- **An entry's path is written as the id always is**, lower-case. A bundle
+  naming a person any other way is passed over. An entry's metadata is
+  ignored, and a `null` entry, in the directory or an extension, makes it
+  no directory.
+- **Only directories read in full are judged**, each with every extension
+  it reaches. One not held, or with an extension not held, is asked for,
+  and is neither merged nor blocked.
+- **Once a new directory is stored, every directory it was made from is
+  blocked**, since each lists no one it does not, the old newest among
+  them. When no new one is needed, every directory but the newest is.
+  When none can be stored, only those listing no one the newest lacks are.
+- **What a new extension holds** is the newest's own entries, over the
+  extensions the newest names. They fitted in a drop, so they fit in an
+  object. The directory made then lists the people the newest did not.
+  No extension is made of a newest that lists no one itself, since it
+  would leave no more room.
+- **A `413` is what says a directory does not fit.** The node's is an
+  object's size, compressed, about 23,000 people at 1 MiB. A page also
+  meets the 4 MiB limit on a request body (HttpApi §21), as a directory's
+  JSON, escaped as a string, is about 190 bytes a person, so a page
+  extends at about 22,000.
+- **The node searches for a directory's nonce as the request asks for the
+  identity's**, in the same turns, so making an identity takes about twice
+  its `seconds`. A person who cannot be added is logged as a warning, and
+  keeps their identity.
+- **Only a hash algorithm this node lacks is warned of**, once for each
+  directory, naming each algorithm and how many entries use it. Content
+  found at the drop that is no directory is passed over at debug, since a
+  search lists whatever is nearest, and an extension that is not a
+  directory of people is warned of. Content larger than 16 MiB once
+  decompressed is not read.
+- **The page reads each object with `GET /data/{id}`**, and undoes storage
+  compression itself, rather than reading into the bundle (HttpApi §12.1),
+  which does not strip a drop's nonce and is left as it was. It takes
+  bytes beginning with `{` as JSON, and decompresses anything else with
+  `DecompressionStream`, since a page reached over the network is not a
+  secure context, and cannot hash what it reads. For the same reason it
+  holds the target's hash, which a test checks.
+- **The page searches the drop twice.** The node may answer a search from
+  its cache for five minutes, and the stats module adds what is stored
+  since only as a search asks for it, so the first search after a
+  directory is stored lacks it. Without the second, a page reloaded after
+  writing a directory found only the ones it had blocked, and wrote
+  another.
+- **The page asks for 10 seconds and 16 bits** for each directory it
+  makes, as Step 91's page does, since no one using the directory decides
+  how hard the node searches. A test checks they are within the node's
+  default ceilings.
+- **The page waits out one `503` for each object**, since a search lists
+  content the node has only heard of too, which is seldom a directory.
+  What is still not held is counted, and merged when the page is opened
+  again.
+- **A page elsewhere** reads, merges, and makes a directory, but blocks
+  nothing, as it asks `/data/client` first, and cannot extend: it says
+  that only a browser on the node's machine can.
+- **The whole-bundle form** re-encodes the bundle as the node writes any,
+  with sorted keys and lower-case hashes, reads nothing it names, takes
+  any well-formed bundle, and is `201` even when the bundle was held.
 
-**Open questions:**
+A live run of one node from the scratchpad, with objects of 16 KiB so
+that a few hundred people outgrow a drop, and headless Chrome 154 driven
+over CDP:
 
-- **How the newest bundle is found**, with no `versions`: by the
-  `created` time in its metadata (BundleSpecification §3), which whoever
-  makes a bundle writes. A bundle dated in the future would stay newest,
-  and, if it lacked anyone, have every load make a new bundle, unless such
-  a date is refused.
-- **Whether an id is checked before it is carried forward.** Any client
-  can make a drop (Step 89), so a bundle at `user directory` can list an
-  id that is not a person's: a made-up hash, or the id of content that
-  is not a public key. A load that takes it in writes it into every
-  bundle after. Checking that an id names a public key means fetching the
-  key, once for each id taken in from a bundle other than the newest.
-- Which ids go in an extension once the directory is over 1 MiB, and
-  whether a person added then rewrites only the bundle that extends the
-  rest. Only the top-level bundle is blocked when replaced, since a newer
-  one may extend the same bundles.
-- Who may block was ruled in Step 30: a local client, from a trusted
-  application's page. A page served elsewhere still merges, and makes a
-  bundle holding every id, but does not block.
+- Making Alice's and then Bob's identity with `curl` left one directory
+  listing both, and the first was blocked. Two drops made to disagree, one
+  listing a made-up id and one only Alice, were merged when Erin's
+  identity was made: the new directory listed all four, and the three it
+  replaced were blocked.
+- With that directory blocked by hand and one dropped lacking Erin, the
+  page, signed in as Erin, wrote a directory of four, marked Erin "you",
+  and blocked the one replaced. Loaded again, its first search, answered
+  from the cache, lacked the new directory, and the second found it, so
+  nothing was written; that run led to the second search on every load.
+- With two drops of 250 made-up people each, the page's drop of 504 was
+  `413`. It stored the newest's 250 as an extension with
+  `POST /data/bundles`, dropped a directory of 254 naming it, and blocked
+  the three replaced.
+- With a drop of 150 more, making Frank's identity had the node move that
+  directory's 254 into a second extension, extending the first, and drop
+  a directory of 151 naming it. The page then read 655 people from it and
+  wrote nothing.
+- No warning or error was logged. The page took 7 to 17 seconds, 10 of
+  them the nonce search when it wrote, and up to 5 waiting out a `503` for
+  ids the node had only heard of.
+
+A page served to a client elsewhere was not run.
 
 **Testable in isolation:** identity tests over a temp CAS asserting that
 making an identity adds it to the newest directory, takes in the ids
@@ -1162,7 +1243,9 @@ ones that cut across more than one step:
 - **Finding the newest version of anything** (Steps 80, 82, and 92, and
   Phase 5 Step 56). Metadata, the address book, the user directory, and
   Karma's blocks each change, and a search finds what is nearest a
-  target, not what is newest.
+  target, not what is newest. For the user directory, ruled in Step 92:
+  the newest lists the most people, since every directory made lists
+  everyone its maker knows.
 - **Who may block** (Steps 30 and 92) — ruled in Step 30: only a local
   client, from a page of a trusted application, since a node's block list
   is its own, not a person's.

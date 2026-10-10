@@ -20,6 +20,12 @@ path is an entry path (BundleSpecification §3.1), and none is both added and
 removed. A bundle is named by its id, or by the id per-entry encryption gives
 it, which carries its key (BundleSpecification §7). Whether the new bundle is
 encrypted defaults to whether its base is.
+
+A page that has made a bundle itself, such as an extension of the user
+directory (HttpApi §11.5), gives it whole instead, to be stored as it is
+(:class:`WholeBundleRequest`, Phase 4 Step 92)::
+
+    {"bundle": {"contents": {"sha256/…": {"contents": ["sha256/…"]}}}}
 """
 
 from __future__ import annotations
@@ -27,8 +33,9 @@ from base64 import b64decode
 from dataclasses import dataclass, field
 from typing import Final, Mapping, TypeAlias
 
+from libranet.bundle.parsing import parse_bundle
 from libranet.bundle.parts import PartPath
-from libranet.bundle.shapes import is_entry_path, is_utf8
+from libranet.bundle.shapes import Bundle, is_entry_path, is_utf8
 from libranet.protocol.errors import InvalidConfigRequestError
 
 # The keys of each source's JSON object (HttpApi §12.3).
@@ -36,6 +43,9 @@ _FILE_KEYS: Final = frozenset({"file"})
 _COPY_KEYS: Final = frozenset({"from", "path"})
 _TEXT_KEYS: Final = frozenset({"text"})
 _BASE64_KEYS: Final = frozenset({"base64"})
+
+# The member of a request giving a bundle whole.
+_WHOLE_KEY: Final = "bundle"
 
 
 @dataclass(frozen=True)
@@ -185,6 +195,35 @@ class BundleEditRequest:
             return self.encrypted
 
         return self.base is not None and self.base.encrypted
+
+
+@dataclass(frozen=True)
+class WholeBundleRequest:
+    """A ``bundle`` a page made itself, to be stored as it is."""
+
+    bundle: Bundle
+
+    @staticmethod
+    def asked_for(value: object) -> bool:
+        """Whether a request's JSON ``value`` gives a bundle whole, rather than an edit."""
+        return isinstance(value, dict) and _WHOLE_KEY in value
+
+    @classmethod
+    def from_value(cls, value: object) -> WholeBundleRequest:
+        """The bundle a ``{"bundle": {…}}`` object gives.
+
+        Raises:
+            InvalidConfigRequestError: it is not such an object, alone.
+            MalformedBundleError: the bundle is not well-formed.
+            UnsupportedBundleError: the bundle is one this node cannot read.
+        """
+        if not isinstance(value, dict) or value.keys() != {_WHOLE_KEY}:
+            raise InvalidConfigRequestError(f'"{_WHOLE_KEY}" must be given alone')
+
+        if not isinstance(value[_WHOLE_KEY], dict):
+            raise InvalidConfigRequestError(f'"{_WHOLE_KEY}" must be an object')
+
+        return cls(parse_bundle(value[_WHOLE_KEY]))
 
 
 def _source(value: object, path: str) -> EntrySource:
