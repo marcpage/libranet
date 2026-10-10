@@ -61,6 +61,7 @@ DATA_ENDPOINT_NAMES: Final = (
     "bundles",
     "store",
     "applications",
+    "signed",
 )
 
 DATA_PATTERN: Final = (

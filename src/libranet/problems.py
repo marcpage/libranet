@@ -28,6 +28,8 @@ CREDENTIAL_REQUIRED: Final = PROBLEM_TYPE_BASE + "credential-required"
 INVALID_CONFIG_REQUEST: Final = PROBLEM_TYPE_BASE + "invalid-config-request"
 UNUSABLE_BUNDLE: Final = PROBLEM_TYPE_BASE + "unusable-bundle"
 NO_IDENTITY: Final = PROBLEM_TYPE_BASE + "no-identity"
+SESSION_REQUIRED: Final = PROBLEM_TYPE_BASE + "session-required"
+INVALID_BUNDLE_SIGNATURE: Final = PROBLEM_TYPE_BASE + "invalid-bundle-signature"
 _STANDARD_MEMBERS: Final = frozenset({"type", "title", "status", "detail", "instance"})
 
 # The title of each problem type, whatever the occurrence (RFC 9457 §3.1.3).
@@ -43,6 +45,8 @@ _TITLES: Final[Mapping[str, str]] = {
     INVALID_CONFIG_REQUEST: "Invalid configuration request",
     UNUSABLE_BUNDLE: "Unusable bundle",
     NO_IDENTITY: "No identity",
+    SESSION_REQUIRED: "Session required",
+    INVALID_BUNDLE_SIGNATURE: "Invalid bundle signature",
 }
 
 

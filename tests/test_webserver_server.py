@@ -1987,8 +1987,51 @@ def test_a_local_client_makes_an_identity_and_is_signed_in_by_a_cookie(
     assert loads(after_body) == {"id": None, "username": None, "created": None}
 
 
+def test_a_signed_in_local_client_signs_a_drop_that_any_client_checks(
+    local_connection: HTTPConnection, local_server: LibranetHTTPServer
+) -> None:
+    page = _from_page(local_connection, "/movie/")
+    local_connection.request(
+        "POST",
+        "/data/users",
+        body=b'{"username": "alice", "password": "correct horse", "key_bits": 2048, "seconds": 0}',
+        headers={"Content-Type": JSON_CONTENT_TYPE, **page},
+    )
+    made = local_connection.getresponse()
+    person_id = loads(made.read())["id"]
+    cookie = {"Cookie": (made.getheader("Set-Cookie") or "").partition(";")[0]}
+    text = dumps({"handle": "alice"})
+    local_connection.request(
+        "POST",
+        "/data/signed",
+        body=dumps({"target": f"user:{person_id}", "text": text, "seconds": 0}).encode(),
+        headers={"Content-Type": JSON_CONTENT_TYPE, **page, **cookie},
+    )
+    signed = local_connection.getresponse()
+    answer = loads(signed.read())
+    checked, checked_body = _get(local_connection, f"/data/signed/{answer['id']}")
+    # The live server only ever sees loopback clients, so the remote request
+    # is put to the router directly.
+    remote = local_server.router.dispatch(
+        Request("GET", f"/data/signed/{answer['id']}", client_address="203.0.113.42")
+    )
+
+    assert signed.status == 201
+    assert answer["signer"] == person_id
+    assert checked.status == 200
+    assert loads(checked_body) == {"id": answer["id"], "signer": person_id, "contents": text}
+    assert remote.status == 200
+    assert remote.body == checked_body
+
+
 @mark.parametrize(
-    "path, method", [("/data/users", "POST"), ("/data/session", "POST"), ("/data/session", "GET")]
+    "path, method",
+    [
+        ("/data/users", "POST"),
+        ("/data/session", "POST"),
+        ("/data/session", "GET"),
+        ("/data/signed", "POST"),
+    ],
 )
 def test_another_client_is_refused_identities_and_sessions(
     local_server: LibranetHTTPServer, queues: ModuleQueues, path: str, method: str
