@@ -150,7 +150,7 @@ Ruled before building:
 The specification change is written: HighLevelDesign §4.11, new, says what
 a node does with blocked content, and §4.5 and §6 name it. HttpApi §5.5,
 new, gives how a node answers for blocked content and
-`PUT /data/blocked/{hash-algorithm}/{hash}`, and §2.1, §2.4, §2.5, §5, §6,
+`DELETE /data/{hash-algorithm}/{hash}`, and §2.1, §2.4, §2.5, §4, §6,
 §7.1, and §25 name them.
 
 Built in one change set: 482 added lines of non-test Python, 46 of them in
@@ -168,7 +168,7 @@ place of removed ones and many of them docstrings, and 523 of tests.
 - **`data.blocked`** `{"algorithm", "hash"}`, from the web server to stats,
   which records it and stops seeking the content, and to eviction, which
   deletes any copy held.
-- **`PUT /data/blocked/{algorithm}/{hash}`** (`webserver/block_handler.py`,
+- **`DELETE /data/{algorithm}/{hash}`** (`webserver/block_handler.py`,
   new), behind `LocalOnly` and `OwnPageOnly(trusted=True)`.
 - **`DataReadHandler`** answers blocked content `404`, **`DataWriteHandler`**
   accepts it `202` unwritten, and **`SearchHandler`** leaves it out of
@@ -183,11 +183,6 @@ My calls, not yet reviewed:
 - **Any content id may be blocked**, not only one a page can show is
   superseded, since the node cannot tell what replaces what. That only a
   trusted application's page on a local client may block is the guard.
-- **The endpoint is `PUT /data/blocked/{algorithm}/{hash}`**, with no body,
-  the id in the path as everywhere else beneath `/data`, and answered `204`
-  whether or not the content was held or blocked before, since the web
-  server cannot say. `blocked` joins the names that are never hash
-  algorithms (HttpApi §5). A `GET` of it is `405`: nothing reads the list.
 - **A `GET` of blocked content is `404`**, as content the node will not
   try to retrieve (HttpApi §5.3), even one a content archive holds. It is
   still counted as a request. A `404` differs from the `503` the node
@@ -226,15 +221,39 @@ My calls, not yet reviewed:
   cached before it. A cached entry that is not a content id is now dropped,
   with a warning, which one test had relied on.
 
-A live run of one node from the scratchpad: a drop of `superseded` was
-`201`, served, and the first result of a search for its target. Blocking
-it with no `Referer` was `403`, and from the movie application's page
-`204`. Within 3 milliseconds eviction had deleted it and stats had
-recorded it, a `GET` was `404`, the search left it out, and reading the
-list was `405`. The same drop made again was `201`, and the validator
-discarded the upload, so a `GET` was still `404`. With the node stopped
-and `lists/blocked.json` deleted, the restarted node wrote it again from
-the database, and the content was still `404`. No warning was logged.
+Ruled after building:
+
+- **Blocking is `DELETE /data/{algorithm}/{hash}`**, HTTP's own method for
+  removing what a URI names, in place of the
+  `PUT /data/blocked/{algorithm}/{hash}` first built. Afterwards a `GET` of
+  the same URI is `404`, as a `DELETE` leads a client to expect, and no name
+  beneath `/data` is reserved for it. HttpApi §4 now lists content among
+  what `DELETE` removes.
+
+My calls on it, not yet reviewed:
+
+- **A `DELETE` always blocks.** There is no `DELETE` that only frees the
+  disk, since content deleted and not blocked would be fetched again by the
+  next request for it, or pushed back by the next peer.
+- **It deletes from this node alone**, and tells no peer, as HttpApi §5.5
+  says, since the method alone does not.
+- **It has no body, and is `204`** whether or not the content was held or
+  blocked before, since the web server cannot say.
+- **A path into a bundle is not deleted**: a `DELETE` of
+  `/data/{algorithm}/{hash}/{path}` is `405`, as any method that route does
+  not take is.
+
+A live run of one node from the scratchpad, after the ruling: a drop of
+`superseded` was `201`, served, and the first result of a search for its
+target. A `DELETE` of it with no `Referer` was `403`, one of a path into it
+`405`, and one from the movie application's page `204`. Within 3
+milliseconds eviction had deleted it and stats had recorded it, a `GET` was
+`404`, and the search left it out. The same drop made again was `201`, and
+the validator discarded the upload, so a `GET` was still `404`. With the
+node stopped and `lists/blocked.json` deleted, the restarted node wrote it
+again from the database, and the content was still `404`. No warning was
+logged. The run before the ruling, with `PUT /data/blocked/...`, went the
+same way.
 
 The full test suite failed one test once, in the first of three runs, and
 passed in the other two. Its name was not kept. The new tests use fake

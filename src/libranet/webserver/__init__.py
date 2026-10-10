@@ -75,7 +75,7 @@ from libranet.webserver.backup_state import (
     BackupReport,
     BackupState,
 )
-from libranet.webserver.block_handler import BLOCKED_PATTERN, BlockHandler
+from libranet.webserver.block_handler import BlockHandler
 from libranet.webserver.bundle_edits import (
     BUNDLES_PATH,
     MAX_EDIT_BODY_BYTES,
@@ -245,7 +245,6 @@ __all__ = [
     "BACKUP_JOB_TEMPLATE",
     "BACKUP_RUN_PATTERN",
     "BACKUP_RUN_TEMPLATE",
-    "BLOCKED_PATTERN",
     "BLOCK_SIZE",
     "BUILDS_FIELD",
     "BUILDS_PATH",

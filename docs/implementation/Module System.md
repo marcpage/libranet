@@ -279,9 +279,10 @@ validator, as an upload does. It keeps each application's store in `store/`
 itself (Phase 3 Step 70), and hands a file a local client asks to import to
 the backup module, once it has found it in a folder offered (Step 69). It
 also keeps count of the peers connected to it, whose keys the eviction
-module keeps. A page that blocks content (`PUT /data/blocked/...`, Phase 4
-Step 30) has it publish `data.blocked`, and it answers for blocked content,
-as `lists/blocked.json` names it, as for content it does not hold.
+module keeps. A page that deletes content
+(`DELETE /data/{algorithm}/{hash}`, Phase 4 Step 30) has it publish
+`data.blocked`, and it answers for blocked content, as `lists/blocked.json`
+names it, as for content it does not hold.
 It subscribes to only three events, `app.path_resolved`, `backup.state`,
 and `peers.connected_requested`, and publishes eighteen.
 

@@ -485,7 +485,7 @@ def test_unsupported_method_is_405_and_closes_when_a_body_was_sent(
     body = response.read()
 
     assert response.status == 405
-    assert response.getheader("Allow") == "GET, PUT"
+    assert response.getheader("Allow") == "DELETE, GET, PUT"
     assert response.getheader("Connection") == "close"
     assert loads(body)["status"] == 405
 
@@ -2044,13 +2044,13 @@ def test_a_person_key_is_made_only_at_the_sizes_the_router_is_given(
 # -- Blocked content (Phase 4 Step 30) -----------------------------------------
 
 
-def test_a_local_client_blocks_content_from_a_trusted_page(
+def test_a_local_client_deletes_and_blocks_content_from_a_trusted_page(
     local_connection: HTTPConnection, queues: ModuleQueues
 ) -> None:
     page = _from_page(local_connection, "/movie/")
 
-    response, body = _get(local_connection, f"/data/blocked/{MISSING_ID}", "PUT", headers=page)
-    again, _ = _get(local_connection, f"/data/blocked/{MISSING_ID}", "PUT", headers=page)
+    response, body = _get(local_connection, f"/data/{MISSING_ID}", "DELETE", headers=page)
+    again, _ = _get(local_connection, f"/data/{MISSING_ID}", "DELETE", headers=page)
 
     assert response.status == 204
     assert body == b""
@@ -2083,31 +2083,33 @@ def test_content_is_blocked_only_for_a_local_client_on_a_trusted_page(
     )
 
     response = local_server.router.dispatch(
-        Request("PUT", f"/data/blocked/{CONTENT_ID}", headers=headers, client_address=client)
+        Request("DELETE", f"/data/{CONTENT_ID}", headers=headers, client_address=client)
     )
 
     assert response.status == 403
     assert _published(queues) == []
 
 
-@mark.parametrize("path", [f"/data/blocked/sha256/{'x' * 64}", f"/data/blocked/md5/{'0' * 32}"])
-def test_blocking_what_is_no_content_id_is_refused(
+@mark.parametrize("path", [f"/data/sha256/{'x' * 64}", f"/data/md5/{'0' * 32}"])
+def test_deleting_what_is_no_content_id_is_refused(
     local_connection: HTTPConnection, queues: ModuleQueues, path: str
 ) -> None:
-    response, body = _get(local_connection, path, "PUT", _from_page(local_connection, "/movie/"))
+    response, body = _get(local_connection, path, "DELETE", _from_page(local_connection, "/movie/"))
 
     assert response.status == 400
     assert loads(body)["type"] == INVALID_CONTENT_ADDRESS
     assert _published(queues) == []
 
 
-def test_the_blocked_list_is_not_read(local_connection: HTTPConnection) -> None:
+def test_a_path_into_a_bundle_is_not_deleted(
+    local_connection: HTTPConnection, queues: ModuleQueues
+) -> None:
     page = _from_page(local_connection, "/movie/")
 
-    response, _ = _get(local_connection, f"/data/blocked/{CONTENT_ID}", headers=page)
+    response, _ = _get(local_connection, f"/data/{CONTENT_ID}/index.html", "DELETE", headers=page)
 
-    # Not taken for reading into a bundle, whose pattern it would otherwise fit.
     assert response.status == 405
+    assert _published(queues) == []
 
 
 def test_blocked_content_is_not_found_and_not_asked_for(

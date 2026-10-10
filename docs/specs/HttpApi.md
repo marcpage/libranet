@@ -436,14 +436,14 @@ Libranet uses standard HTTP methods where their semantics are appropriate.
 
 The primary methods are:
 
-| Method    | General purpose                                     |
-| --------- | --------------------------------------------------- |
-| `GET`     | Retrieve information or content                     |
-| `HEAD`    | Retrieve metadata without the response body         |
-| `POST`    | Publish a list, or create a resource                |
-| `PUT`     | Create or replace content or a stored value         |
-| `PATCH`   | Change part of a `/config` resource                 |
-| `DELETE`  | Remove a `/config` resource or a stored value       |
+| Method   | General purpose                                                        |
+| -------- | ---------------------------------------------------------------------- |
+| `GET`    | Retrieve information or content                                        |
+| `HEAD`   | Retrieve metadata without the response body                            |
+| `POST`   | Publish a list, or create a resource                                   |
+| `PUT`    | Create or replace content or a stored value                            |
+| `PATCH`  | Change part of a `/config` resource                                    |
+| `DELETE` | Remove a `/config` resource, a stored value, or content from this node |
 
 The exact method associated with each endpoint is defined below.
 Unsupported methods MUST return `405 Method Not Allowed`.
@@ -477,7 +477,7 @@ This allows multiple hash algorithms to coexist.
 
 The names of the other endpoints beneath `/data` are never hash algorithms:
 `search`, `nodes`, `seek`, `client`, `directory`, `imports`, `bundles`,
-`store`, `applications`, and `blocked`.
+`store`, and `applications`.
 
 A path that goes on past `{hash}` does not retrieve an object. It reads into
 the bundle the identifier names (§12.1). That includes an identifier written
@@ -614,16 +614,20 @@ blocked content as it would for content it does not hold:
 
 A block outlives the content it names, and is never lifted.
 
-A page of a trusted application asks the node to block content with:
+A page of a trusted application asks the node to delete content, and block
+it, with:
 
 ```http
-PUT /data/blocked/{hash-algorithm}/{hash}
+DELETE /data/{hash-algorithm}/{hash}
 ```
 
-The request has no body. It is answered `204 No Content`, whether or not
-the content was blocked before, and whether or not the node holds it. An
-identifier that is not valid is `400 Bad Request` (§5.4). No endpoint lifts
-a block, and none reads the list.
+The request has no body. The node deletes any copy it holds, without
+pushing it to a peer first, and blocks the content, so that the identifier
+names nothing the node will serve or keep again. It asks only this node: no
+other node is told. It is answered `204 No Content`, whether or not the node
+held the content, and whether or not it was blocked before. An identifier
+that is not valid is `400 Bad Request` (§5.4). No endpoint lifts a block,
+and none reads the list.
 
 Only a local client may block content (§2.4), from a page of a trusted
 application (§2.5). The list is the node's, and not a person's: what one
@@ -2548,30 +2552,30 @@ HTTP mechanisms.
 
 The following table summarizes the currently proposed HTTP API.
 
-| Endpoint                           | Method       | Purpose                                                    | Status  |
-| ---------------------------------- | ------------ | ---------------------------------------------------------- | ------- |
-| `/data/{algorithm}/{hash}`         | `GET`        | Retrieve CAS content                                       | Defined |
-| `/data/{algorithm}/{hash}`         | `PUT`        | Upload CAS content                                         | Defined |
-| `/data/{algorithm}/{hash}`         | `HEAD`       | Retrieve CAS metadata                                      | TBD     |
-| `/data/search/{hash}`              | `GET`        | Search for matching hashes                                 | Defined |
-| `/data/nodes`                      | `GET`/`POST` | Retrieve/publish peer information                          | Defined |
-| `/data/seek`                       | `GET`/`POST` | Retrieve/publish outstanding requests                      | Defined |
-| `/data/{algorithm}/{hash}/{path}`  | `GET`/`HEAD` | Read into a bundle (§12.1)                                 | Defined |
-| `/data/client`                     | `GET`        | Whether the client is local (§2.4)                         | Defined |
-| `/data/blocked/{algorithm}/{hash}` | `PUT`        | Block content, locally (§5.5)                              | Defined |
-| `/data/drop`                       | `POST`       | Make a drop, from a page of the node (§9.6)                | Defined |
-| `/data/users`                      | `POST`       | Make a person's identity, locally (§11.3)                  | Defined |
-| `/data/session`                    | Various      | Sign in, say who is signed in, sign out, locally (§11.4)   | Defined |
-| `/data/directory/...`              | `GET`        | List the folders offered to local clients (§12.2)          | Defined |
-| `/data/imports`                    | `GET`/`POST` | Import a local file, and follow imports (§12.2)            | Defined |
-| `/data/bundles`                    | `POST`       | Make or change a directory bundle, locally (§12.3)         | Defined |
-| `/data/store/{application}/...`    | Various      | An application's store on this node (§13.3)                | Defined |
-| `/data/applications`               | `GET`        | The applications this node serves (§13.4)                  | Defined |
-| `/data/...`                        | Various      | Additional programmatic APIs                               | TBD     |
-| `/`                                | `GET`/`HEAD` | Root web application                                       | Defined |
-| `/{application}/...`               | `GET`/`HEAD` | Directory-bundle application                               | Defined |
-| `/config/api/...`                  | Various      | Local-only administration endpoints, on `/config`'s port   | Defined |
-| `/config/...`                      | `GET`/`HEAD` | Local-only administration application, on `/config`'s port | Defined |
+| Endpoint                          | Method       | Purpose                                                    | Status  |
+| --------------------------------- | ------------ | ---------------------------------------------------------- | ------- |
+| `/data/{algorithm}/{hash}`        | `GET`        | Retrieve CAS content                                       | Defined |
+| `/data/{algorithm}/{hash}`        | `PUT`        | Upload CAS content                                         | Defined |
+| `/data/{algorithm}/{hash}`        | `HEAD`       | Retrieve CAS metadata                                      | TBD     |
+| `/data/{algorithm}/{hash}`        | `DELETE`     | Delete and block content, locally (§5.5)                   | Defined |
+| `/data/search/{hash}`             | `GET`        | Search for matching hashes                                 | Defined |
+| `/data/nodes`                     | `GET`/`POST` | Retrieve/publish peer information                          | Defined |
+| `/data/seek`                      | `GET`/`POST` | Retrieve/publish outstanding requests                      | Defined |
+| `/data/{algorithm}/{hash}/{path}` | `GET`/`HEAD` | Read into a bundle (§12.1)                                 | Defined |
+| `/data/client`                    | `GET`        | Whether the client is local (§2.4)                         | Defined |
+| `/data/drop`                      | `POST`       | Make a drop, from a page of the node (§9.6)                | Defined |
+| `/data/users`                     | `POST`       | Make a person's identity, locally (§11.3)                  | Defined |
+| `/data/session`                   | Various      | Sign in, say who is signed in, sign out, locally (§11.4)   | Defined |
+| `/data/directory/...`             | `GET`        | List the folders offered to local clients (§12.2)          | Defined |
+| `/data/imports`                   | `GET`/`POST` | Import a local file, and follow imports (§12.2)            | Defined |
+| `/data/bundles`                   | `POST`       | Make or change a directory bundle, locally (§12.3)         | Defined |
+| `/data/store/{application}/...`   | Various      | An application's store on this node (§13.3)                | Defined |
+| `/data/applications`              | `GET`        | The applications this node serves (§13.4)                  | Defined |
+| `/data/...`                       | Various      | Additional programmatic APIs                               | TBD     |
+| `/`                               | `GET`/`HEAD` | Root web application                                       | Defined |
+| `/{application}/...`              | `GET`/`HEAD` | Directory-bundle application                               | Defined |
+| `/config/api/...`                 | Various      | Local-only administration endpoints, on `/config`'s port   | Defined |
+| `/config/...`                     | `GET`/`HEAD` | Local-only administration application, on `/config`'s port | Defined |
 
 ---
 

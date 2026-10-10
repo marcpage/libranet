@@ -246,7 +246,7 @@ when trusted. `self.origin === "null"` tells a page it is sandboxed.
 | `/data/drop` | `POST` | Any | Any application's | Place content at a drop (§6.9) |
 | `/data/users` | `POST` | Local | A trusted application's | Make a person's identity (§6.10) |
 | `/data/session` | `GET`, `POST`, `DELETE` | Local | A trusted application's | Who is signed in; sign in and out (§6.10) |
-| `/data/blocked/{id}` | `PUT` | Local | A trusted application's | Block content the node will no longer hold (§6.11) |
+| `/data/{id}` | `DELETE` | Local | A trusted application's | Delete and block content the node will no longer hold (§6.11) |
 | `/data/nodes`, `/data/seek` | `GET` | Any | Any, or none | The peers the node knows, and what it seeks (§6.8) |
 
 ### 5.3 Waiting for Content
@@ -663,17 +663,19 @@ network as it was typed.
 
 When a page replaces content entirely, as a newer version of a list that
 holds everything the older one did, the older one need not be kept. Ask the
-node to stop holding it with:
+node to delete it, and stop holding it, with:
 
 ```js
-await fetch(`/data/blocked/${id}`, { method: "PUT" });
+await fetch(`/data/${id}`, { method: "DELETE" });
 ```
 
 The node answers `204`, whether or not it held the content or had blocked it
 before. It deletes its copy at once, and from then on answers a `GET` of it
 with `404`, leaves it out of searches, never asks a peer for it, and
-discards it when a peer pushes it (HTTP API §5.5). As each node that learns
-the content is replaced blocks it, the content leaves the network.
+discards it when a peer pushes it (HTTP API §5.5). Only this node deletes
+it: other nodes keep their copies until they each delete it too. As each
+node that learns the content is replaced blocks it, the content leaves the
+network.
 
 A block is the node's, not the person's: once one page blocks content, no
 application on the node can have it again. There is no unblocking, and no

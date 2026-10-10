@@ -87,7 +87,7 @@ from libranet.webserver.app_store import (
 )
 from libranet.webserver.app_use import ApplicationUse
 from libranet.webserver.backup_state import BackupState
-from libranet.webserver.block_handler import BLOCKED_PATTERN, BlockHandler
+from libranet.webserver.block_handler import BlockHandler
 from libranet.webserver.bundle_edits import BUNDLES_PATH, BundleEditHandler, OwnUploads
 from libranet.webserver.bundle_paths import BundlePaths
 from libranet.webserver.bundle_reads import BUNDLE_METHODS, BUNDLE_PATTERN, BundleReadHandler
@@ -204,10 +204,11 @@ def build_router(  # pylint: disable=too-many-locals
     alone, each session ending once unused for ``session_idle_seconds``
     (Phase 4 Step 79). Drops are searched for, and keys derived, one at a
     time, in the turns of ``costly_work``, which ``/config``'s port shares;
-    in turns of their own if none is given. ``/data/blocked`` blocks content
-    for local clients alone, which ``/data`` then neither serves, stores,
-    nor finds in a search, as the blocked list in ``storage``'s cache
-    directory names it (Phase 4 Step 30).
+    in turns of their own if none is given. A ``DELETE`` of
+    ``/data/{algorithm}/{hash}`` deletes and blocks content for local
+    clients alone, which ``/data`` then neither serves, stores, nor finds in
+    a search, as the blocked list in ``storage``'s cache directory names it
+    (Phase 4 Step 30).
 
     Each of those but reading into a bundle is served only to this node's
     own pages, as a request's ``Referer`` names them: an application's store
@@ -269,11 +270,6 @@ def build_router(  # pylint: disable=too-many-locals
     router.add(
         "DELETE", STORE_KEY_PATTERN, LocalOnly(StoreRemovalHandler(app_store, pages), checks)
     )
-    router.add(
-        "PUT",
-        BLOCKED_PATTERN,
-        LocalOnly(OwnPageOnly(BlockHandler(publish), pages, trusted=True), checks),
-    )
 
     if node_id is not None:
         work = CostlyWork() if costly_work is None else costly_work
@@ -329,6 +325,11 @@ def build_router(  # pylint: disable=too-many-locals
         "PUT",
         DATA_PATTERN,
         DataWriteHandler(storage, store, authenticator, publish, blocked=blocked),
+    )
+    router.add(
+        "DELETE",
+        DATA_PATTERN,
+        LocalOnly(OwnPageOnly(BlockHandler(publish), pages, trusted=True), checks),
     )
     # A posted list is held to the same cap as every other request body as
     # sent, and to its own once decompressed.

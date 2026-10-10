@@ -61,7 +61,6 @@ DATA_ENDPOINT_NAMES: Final = (
     "bundles",
     "store",
     "applications",
-    "blocked",
 )
 
 DATA_PATTERN: Final = (
