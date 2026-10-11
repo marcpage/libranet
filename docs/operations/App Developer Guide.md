@@ -249,6 +249,7 @@ when trusted. `self.origin === "null"` tells a page it is sandboxed.
 | `/data/session` | `GET`, `POST`, `DELETE` | Local | A trusted application's | Who is signed in; sign in and out (§6.10) |
 | `/data/signed` | `POST` | Local | A trusted application's | Place JSON at a drop, signed as whoever is signed in (§6.13) |
 | `/data/signed/{id}` | `GET` | Any | Any, or none | Check signed content, and read what it signs (§6.13) |
+| `/data/encrypted/{id}` | `GET`, `POST` | Local | A trusted application's | Open a drop encrypted for whoever is signed in, or by a password (§6.15) |
 | `/data/{id}` | `DELETE` | Local | A trusted application's | Delete and block content the node will no longer hold (§6.11) |
 | `/data/nodes`, `/data/seek` | `GET` | Any | Any, or none | The peers the node knows, and what it seeks (§6.8) |
 
@@ -589,6 +590,8 @@ const { id, target, matching_bits } = await response.json();
 - **`minimum_bits`**, 0 if left out, is how many leading bits the drop's id
   must share with the target hash. The search goes on past `seconds` until
   it does. Each bit more doubles the search, on average.
+- **`encrypt`**, if given, has the content encrypted first, for a person or
+  by a username and password (§6.15).
 
 The drop is answered `201 Created`, with its `id`, the `target` hash, and
 how many bits they share, and a `Location` naming it. Find it later by the
@@ -777,8 +780,10 @@ const response = await fetch("/data/signed", {
 const { id: drop, target, matching_bits, signer } = await response.json();
 ```
 
-`target`, `seconds`, and `minimum_bits` are as for making a drop (§6.9),
-and `text` is signed exactly as it is given. It is answered `201 Created`,
+`target`, `seconds`, `minimum_bits`, and `encrypt` are as for making a drop
+(§6.9), and `text` is signed exactly as it is given. Given `encrypt`, what
+is signed is then encrypted, so that only whoever opens it learns who signed
+it (§6.15). It is answered `201 Created`,
 as a drop is, and `signer` is the person's id. With no one signed in it is
 `401`, with the problem type `session-required`, and `text` that is not an
 object's JSON is `400`. Only a local client, from a trusted application's
@@ -850,6 +855,62 @@ To read what someone says, and follow the same rules as other pages do:
   while a version found there is not held yet, since it may be newer than
   the newest read. Never block a version (§6.11): a later step reads the
   history back to the first.
+
+### 6.15 Encrypting a Block
+
+A drop can be kept from everyone but one person, or everyone who lacks a
+username and password. Add `encrypt` to what `POST /data/drop` (§6.9) or
+`POST /data/signed` (§6.13) is given:
+
+```js
+const forBob = { target: `mail:${bob}`, text, seconds: 10, minimum_bits: 16,
+                 encrypt: { for: bob } };
+const byPassword = { target: "my notes", text, seconds: 10, minimum_bits: 16,
+                     encrypt: { username: "alice", password } };
+```
+
+- **`{for: id}`** encrypts it for the person whose id that is, with their
+  public key, so that only they open it (Bundle Specification §8). The node
+  answers `503` while it fetches a key it does not hold, so wait as §5.3
+  shows. An id that names no person's key is `400`. Any client may encrypt
+  for a person.
+- **`{username, password}`** encrypts it by the key the two derive, as an
+  identity's private key is kept (§6.10). The password is at least 8
+  characters. Only a local client may, from a trusted application's page,
+  since the password would otherwise cross the network as it was typed.
+
+Signed and encrypted, a drop is signed first, then encrypted, so that only
+whoever opens it learns who signed it. The node opens a drop for the person
+signed in, with:
+
+```js
+const response = await fetch(`/data/encrypted/${drop}`);
+const opened = await response.json();
+```
+
+and one encrypted by a password with:
+
+```js
+const response = await fetch(`/data/encrypted/${drop}`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ username: "alice", password }),
+});
+```
+
+`opened` is `{id, text}`, or `{id, base64}` for what is not text. What was
+signed comes back checked, as `GET /data/signed` answers (§6.13), as
+`{id, signer, contents}`, so check `signer` as that section says. A drop
+the key does not open is `403`, with the problem type `wrong-key`; with no
+one signed in, `GET` is `401` `session-required`; and a drop not encrypted
+the way the request opens it is `400` `unusable-bundle`. No answer is cached.
+Opening is for a local client only, from a trusted application's page, and
+each password costs the node a fifth of a second or so, as signing in does.
+
+**Say whom it is for.** A drop names no one it is encrypted for, and whoever
+opens a signed one can encrypt it again for someone else, who would take it
+to be meant for them. A page whose reader must know a message was meant for
+them, such as mail, names the reader in what it signs.
 
 ## 7. Patterns From the Movie Library
 

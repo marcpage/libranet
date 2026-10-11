@@ -305,7 +305,7 @@ currently find each other only through peers you configure yourself.
 | [Phase 1 Plan](docs/implementation/Phase%201.md) | Implementation steps 1–15, 17–20, and 33–40, all built |
 | [Phase 2 Plan](docs/implementation/Phase%202.md) | Implementation steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–63, all built |
 | [Phase 3 Plan](docs/implementation/Phase%203.md) | Video playback: steps 64–77, all built |
-| [Phase 4 Plan](docs/implementation/Phase%204.md) | User accounts: steps 30, 78–82, and 89–92; 30, 79, 80, and 89–92 built |
+| [Phase 4 Plan](docs/implementation/Phase%204.md) | User accounts: steps 30, 78–82, and 89–92; 30, 78–80, and 89–92 built |
 | [Phase 5 Plan](docs/implementation/Phase%205.md) | Karma: step 56 so far, planned |
 | [Phase 6 Plan](docs/implementation/Phase%206.md) | Enhancements: steps 16, 50, and 57, planned |
 | [Phase 7 Plan](docs/implementation/Phase%207.md) | A seed node: step 84, planned |

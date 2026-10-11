@@ -29,6 +29,13 @@ Making a person's identity makes a drop too (HttpApi §11.3, Phase 4 Step 79),
 under the same ceilings, and takes its turn with the rest
 (:meth:`DropHandler.placed`), on ``/config``'s port as well (Phase 4 Step
 91), which shares the turns (:class:`CostlyWork`).
+
+A drop's content is encrypted first, if its request asks
+(:class:`DropEncryption`, HttpApi §11.6, Phase 4 Step 78): for a person, by
+the public key their id names, which any client may ask for, or by a username
+and password, which only a local client may, from a trusted application's
+page, as it may sign in. The key a username and password derive takes its
+turn with those of signing in. A signed drop is signed, then encrypted.
 """
 
 from __future__ import annotations
@@ -36,20 +43,36 @@ from contextlib import contextmanager
 from dataclasses import KW_ONLY, dataclass, field, replace
 from http import HTTPStatus
 from logging import getLogger
+from secrets import token_bytes
 from threading import Condition
 from typing import Final, Iterator
 from zlib import compress
 
-from libranet.bundle.errors import BundleTooLargeError
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
+
+from libranet.bundle.content import ContentSource, content_chunks
+from libranet.bundle.encryption import BLOCK_BYTES
+from libranet.bundle.errors import BundleTooLargeError, BundleVerificationError, MissingContentError
+from libranet.bundle.person_encryption import EncryptedForPerson
+from libranet.bundle.signing import person_public_key
 from libranet.bundle.storing import ContentSink, store_object
+from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DROP_SEPARATOR, TARGET_BITS, DropTarget
 from libranet.config.models import MIB
-from libranet.protocol.drop_requests import DropRequest
+from libranet.messaging.events import EventType
+from libranet.messaging.publishing import Publish
+from libranet.protocol.client_origin import is_local_client
+from libranet.protocol.drop_requests import DropRequest, PasswordEncryption, PersonEncryption
 from libranet.protocol.errors import InvalidConfigRequestError
 from libranet.webserver.config_handlers import invalid_request_response, json_or_refusal
-from libranet.webserver.http_types import Request, Response, json_response
-from libranet.webserver.request_refusals import content_too_large_response
+from libranet.webserver.http_types import Request, Response, json_response, status_response
+from libranet.webserver.own_pages import OwnPages
+from libranet.webserver.request_refusals import (
+    content_too_large_response,
+    content_unavailable_response,
+)
+from libranet.webserver.site_checks import SiteChecks
 
 _LOGGER = getLogger(__name__)
 
@@ -123,12 +146,153 @@ class StoredDrop:
 
 
 @dataclass(frozen=True)
+class DropEncryption:
+    """Encrypts the content of drops as their requests ask: for a person, or by a password.
+
+    A person's public key is read from ``content``, but none ``blocked``
+    names, and one not held is asked for with ``publish``, a client told to
+    ask again after ``retry_after_seconds``. A key is derived from a username
+    and password one at a time, in ``derivations``, and only for a local
+    client, at a host ``checks`` serves as, from a page of an application
+    ``pages`` says the operator trusts (HttpApi §11.6).
+    """
+
+    content: ContentSource
+    publish: Publish
+    pages: OwnPages
+    checks: SiteChecks
+    _: KW_ONLY
+    retry_after_seconds: int
+    derivations: Turns = field(default_factory=Turns)
+    blocked: BlockedContent | None = None
+
+    def encrypted(
+        self, request: Request, asked: DropRequest, *, max_object_bytes: int
+    ) -> DropRequest | Response:
+        """The drop ``asked``, which asks for encryption, of its content encrypted; or a refusal.
+
+        Raises:
+            BundleTooLargeError: what the content encrypts to is larger than
+                ``max_object_bytes``.
+        """
+        # Widened, so that a kind not checked for below is logged, not assumed.
+        encryption: object = asked.encryption
+
+        if isinstance(encryption, PersonEncryption):
+            public_key = self._public_key(request, encryption.person_id)
+
+            if isinstance(public_key, Response):
+                return public_key
+
+            encrypted = EncryptedForPerson.encrypted(asked.data, public_key).encoded()
+
+            if len(encrypted) > max_object_bytes:
+                raise BundleTooLargeError(
+                    f"Encrypted for a person, it is {len(encrypted)} bytes, over {max_object_bytes}"
+                )
+
+            return asked.encrypted(encrypted)
+
+        if isinstance(encryption, PasswordEncryption):
+            refused = self._password_refused(request)
+
+            if refused is not None:
+                return refused
+
+            with self.derivations.turn():
+                key = encryption.username.password_key(encryption.password)
+
+            # A drop is never the same twice, whatever its IV, so a random one
+            # loses nothing, and keeps two drops under one key from showing
+            # where they begin alike (BundleSpecification §6.3).
+            iv = token_bytes(BLOCK_BYTES)
+            return asked.encrypted(
+                key.protect(asked.data, max_object_bytes=max_object_bytes, iv=iv)
+            )
+
+        _LOGGER.error(
+            "Not encrypting %s %s: it asks for %r, which is no encryption known",
+            request.method,
+            request.path,
+            encryption,
+        )
+        return status_response(
+            request, HTTPStatus.INTERNAL_SERVER_ERROR, "The drop could not be encrypted."
+        )
+
+    def _public_key(self, request: Request, person_id: ContentId) -> RSAPublicKey | Response:
+        """The public key of the person ``person_id`` names; or the response refusing ``request``.
+
+        A key not held is asked for.
+        """
+        if self.blocked is not None and self.blocked.blocks(person_id):
+            _LOGGER.debug("Not encrypting for %s, whose key is blocked", person_id)
+            return status_response(
+                request,
+                HTTPStatus.NOT_FOUND,
+                "The person's key is not stored here, and will not be retrieved.",
+            )
+
+        try:
+            held = b"".join(content_chunks(self.content, person_id))
+
+        except MissingContentError:
+            _LOGGER.debug("Not encrypting for %s yet: their key is not held", person_id)
+            self.publish(EventType.DATA_NOT_FOUND, person_id.fields())
+            return content_unavailable_response(
+                request,
+                "The person's key is not stored here yet; retrieval was requested.",
+                self.retry_after_seconds,
+            )
+
+        except BundleVerificationError as error:
+            _LOGGER.warning("What is held for %s is not it: %s", person_id, error)
+            return status_response(
+                request,
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                "What is held here for the person's key is not it.",
+            )
+
+        try:
+            return person_public_key(held, f'"for", {person_id},')
+
+        except ValueError as error:
+            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
+            return invalid_request_response(request, error)
+
+    def _password_refused(self, request: Request) -> Response | None:
+        """The ``403`` refusing to encrypt by a password for ``request``; ``None`` if it may.
+
+        Only a local client may, at a host this node serves as, from a page
+        of a trusted application, since a password sent from elsewhere would
+        cross the network as it was typed.
+        """
+        if not is_local_client(request.client_address):
+            _LOGGER.debug("Refusing %s %s: not a local client", request.method, request.path)
+            return status_response(
+                request,
+                HTTPStatus.FORBIDDEN,
+                "Encrypting by a password is served only to clients on this machine.",
+            )
+
+        refusal = self.checks.host_refusal(request)
+
+        if refusal is not None:
+            _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, refusal)
+            return status_response(request, HTTPStatus.FORBIDDEN, refusal)
+
+        return self.pages.refused(request, trusted=True)
+
+
+@dataclass(frozen=True)
 class DropHandler:
     """``POST /data/drop``: make the drop a request asks for, and answer with what names it.
 
     The drop is stored in ``uploads``, in an object no larger than
     ``max_object_bytes``. A request may ask for no more than ``max_seconds``
-    of search, and no more than ``max_minimum_bits``.
+    of search, and no more than ``max_minimum_bits``. Its content is
+    encrypted as it asks by ``encryption``; without one, a request asking
+    for encryption is refused.
 
     Raises:
         ValueError: ``max_seconds`` is negative, or ``max_minimum_bits`` is
@@ -141,6 +305,7 @@ class DropHandler:
     max_minimum_bits: int
     _: KW_ONLY
     turns: Turns = field(default_factory=Turns)
+    encryption: DropEncryption | None = None
 
     def __post_init__(self) -> None:
         if self.max_seconds < 0:
@@ -177,7 +342,8 @@ class DropHandler:
         """The drop ``request`` asks for, as ``asked``, stored; or the response refusing it.
 
         Asking for more search than this node allows is ``400``, and content
-        that does not fit in an object ``413``. The search waits its turn.
+        that does not fit in an object ``413``, as it is or once encrypted.
+        The search waits its turn.
         """
         try:
             self.within_ceilings(asked.seconds, asked.minimum_bits)
@@ -190,8 +356,13 @@ class DropHandler:
             _LOGGER.debug("Refusing %s %s: its content is too large", request.method, request.path)
             return self._too_large_response(request, len(asked.data + DROP_SEPARATOR))
 
+        encrypted = self._encrypted(request, asked)
+
+        if isinstance(encrypted, Response):
+            return encrypted
+
         with self.turns.turn():
-            drop = asked.target.placed(asked.data, asked.seconds, asked.minimum_bits)
+            drop = asked.target.placed(encrypted.data, asked.seconds, asked.minimum_bits)
 
         try:
             content_id = store_object(drop.data, self.uploads, self.max_object_bytes)
@@ -219,6 +390,24 @@ class DropHandler:
             raise InvalidConfigRequestError(
                 f'"minimum_bits" may be at most {self.max_minimum_bits} here, got {minimum_bits}'
             )
+
+    def _encrypted(self, request: Request, asked: DropRequest) -> DropRequest | Response:
+        """``asked``, its content encrypted if it asks to be; or the response refusing it."""
+        if asked.encryption is None:
+            return asked
+
+        if self.encryption is None:
+            _LOGGER.debug("Refusing %s %s: no drop is encrypted here", request.method, request.path)
+            return invalid_request_response(
+                request, InvalidConfigRequestError('"encrypt" is not served here')
+            )
+
+        try:
+            return self.encryption.encrypted(request, asked, max_object_bytes=self.max_object_bytes)
+
+        except BundleTooLargeError as error:
+            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
+            return self._too_large_response(request, len(asked.data + DROP_SEPARATOR))
 
     def _fits(self, content: bytes) -> bool:
         """Whether ``content`` as a drop with no nonce yet fits in an object, compressed or not.

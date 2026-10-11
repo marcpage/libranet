@@ -9,7 +9,7 @@ Step 31). Encrypting a file's parts, and reading them back (Phase 2 Step 59).
 Storing a directory bundle, and each of its chunks, encrypted as a part is
 (Phase 3 Step 72). Saving what is resolved from a bundle to a local file
 (Phase 3 Step 65). Signing JSON as a person, and checking it (Phase 4 Step
-80).
+80). Encrypting a block for a person, and opening it (Phase 4 Step 78).
 Operates purely on bundle JSON, local files, and CAS reads and writes.
 """
 
@@ -39,6 +39,7 @@ from libranet.bundle.errors import (
     BundleSignatureError,
     BundleTooLargeError,
     BundleVerificationError,
+    IncorrectKeyError,
     IncorrectPasswordError,
     MalformedBundleError,
     MissingContentError,
@@ -50,6 +51,7 @@ from libranet.bundle.layering import Layering, StoredVersion, Superseded
 from libranet.bundle.loading import DEFAULT_MAX_BUNDLE_BYTES, load_bundle
 from libranet.bundle.parsing import decode_bundle, parse_bundle
 from libranet.bundle.parts import CIPHER, PartPath, PartWriter
+from libranet.bundle.person_encryption import EncryptedForPerson
 from libranet.bundle.protection import (
     DESCRIPTOR_SEPARATOR,
     PasswordKey,
@@ -78,7 +80,7 @@ from libranet.bundle.shapes import (
     is_entry_path,
     is_utf8,
 )
-from libranet.bundle.signing import SIGNED_HASH_ALGORITHM, SignedBundle
+from libranet.bundle.signing import SIGNED_HASH_ALGORITHM, SignedBundle, person_public_key
 from libranet.bundle.splitting import split_entries
 from libranet.bundle.storing import (
     HASH_ALGORITHM,
@@ -125,10 +127,12 @@ __all__ = [
     "DirectoryBuild",
     "DirectoryBundle",
     "DirectoryMarker",
+    "EncryptedForPerson",
     "Entry",
     "ExtendedAttributes",
     "FileBundle",
     "IgnoredPaths",
+    "IncorrectKeyError",
     "IncorrectPasswordError",
     "Layering",
     "MalformedBundleError",
@@ -166,6 +170,7 @@ __all__ = [
     "parse_bundle",
     "parse_cas_path",
     "path_reached",
+    "person_public_key",
     "protect",
     "resolve_directory",
     "save_bundle",

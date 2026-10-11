@@ -15,26 +15,91 @@ takes.
 ``POST /data/signed`` takes the same body, but its content is ``text`` alone,
 the JSON text of an object, which the node signs as a person before it places
 it (:class:`SignedDropRequest`, HttpApi §11.5, Phase 4 Step 80).
+
+Either may ask for its content to be encrypted before it is placed, for a
+person, by their id (:class:`PersonEncryption`), or by a username and
+password (:class:`PasswordEncryption`), as ``encrypt`` says (HttpApi §11.6,
+Phase 4 Step 78)::
+
+    {"target": "mail:…", "text": "…", "seconds": 5, "encrypt": {"for": "sha256/…"}}
+    {"target": "notes", "text": "…", "seconds": 5,
+     "encrypt": {"username": "alice", "password": "…"}}
+
+No password is in a request's ``repr``, or in any error.
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from json import loads
+from logging import getLogger
 from math import isfinite
-from typing import Final
+from typing import Final, TypeAlias
+from unicodedata import normalize
 
 from libranet.bundle.shapes import is_utf8
+from libranet.cas.content_id import ContentId
 from libranet.cas.drops import TARGET_BITS, DropTarget
+from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
+from libranet.identity.people import Username
 from libranet.protocol.bundle_requests import BytesSource
 from libranet.protocol.errors import InvalidConfigRequestError
+from libranet.protocol.identity_requests import MIN_PASSWORD_CHARACTERS, SignInRequest
+
+_LOGGER = getLogger(__name__)
 
 # What the content of a drop is called in an error, after "text" or "base64".
 _GIVEN: Final = "of a drop"
+
+# The members of "encrypt" asking for each kind of encryption (HttpApi §11.6).
+_PERSON_KEYS: Final = frozenset({"for"})
+_PASSWORD_KEYS: Final = frozenset({"username", "password"})
+
+# A password's characters are counted as it derives a key: in NFC (§6.2.1).
+_NORMAL_FORM: Final = "NFC"
+
+
+@dataclass(frozen=True)
+class PersonEncryption:
+    """Content to encrypt for the person ``person_id`` names, by their public key.
+
+    As BundleSpecification §8 encrypts it.
+    """
+
+    person_id: ContentId
+
+
+@dataclass(frozen=True)
+class PasswordEncryption:
+    """Content to encrypt by the key ``username`` and ``password`` derive (§6.2.1).
+
+    The password is at least as long as a new identity's, since it protects
+    something new (HttpApi §11.3).
+
+    Raises:
+        ValueError: ``password`` is shorter than
+            :data:`~libranet.protocol.identity_requests.MIN_PASSWORD_CHARACTERS`,
+            or not UTF-8.
+    """
+
+    username: Username
+    password: str = field(repr=False)
+
+    def __post_init__(self) -> None:
+        if not is_utf8(self.password):
+            raise ValueError('"password" is not UTF-8')
+
+        if len(normalize(_NORMAL_FORM, self.password)) < MIN_PASSWORD_CHARACTERS:
+            raise ValueError(f'"password" must be at least {MIN_PASSWORD_CHARACTERS} characters')
+
+
+Encryption: TypeAlias = PersonEncryption | PasswordEncryption
 
 
 @dataclass(frozen=True)
 class DropRequest:
     """``data`` to place at ``target``, searching ``seconds`` and until ``minimum_bits`` match.
+
+    ``data`` is encrypted first, if ``encryption`` asks for it.
 
     Raises:
         ValueError: ``seconds`` is negative or not finite, or
@@ -45,6 +110,7 @@ class DropRequest:
     data: bytes
     seconds: float
     minimum_bits: int = 0
+    encryption: Encryption | None = None
 
     def __post_init__(self) -> None:
         if not isfinite(self.seconds) or self.seconds < 0:
@@ -59,7 +125,7 @@ class DropRequest:
     def from_value(cls, value: object) -> DropRequest:
         """The drop a ``{"target", "text" or "base64", "seconds", "minimum_bits"}`` object asks for.
 
-        ``minimum_bits`` is optional.
+        ``minimum_bits`` is optional, and so is ``encrypt``.
 
         Raises:
             InvalidConfigRequestError: it is not such an object, or what it
@@ -71,6 +137,7 @@ class DropRequest:
         target = value.get("target")
         seconds = value.get("seconds")
         minimum_bits = value.get("minimum_bits", 0)
+        encrypt = value.get("encrypt")
 
         if not isinstance(target, str) or not target:
             raise InvalidConfigRequestError('"target" must be a string, not empty')
@@ -85,10 +152,20 @@ class DropRequest:
             raise InvalidConfigRequestError('"minimum_bits" must be an integer')
 
         try:
-            return cls(DropTarget.of(target), _content(value), float(seconds), minimum_bits)
+            return cls(
+                DropTarget.of(target),
+                _content(value),
+                float(seconds),
+                minimum_bits,
+                None if encrypt is None else _encryption(encrypt),
+            )
 
         except ValueError as error:
             raise InvalidConfigRequestError(str(error)) from None
+
+    def encrypted(self, data: bytes) -> DropRequest:
+        """The drop of ``data``, what :attr:`data` encrypts to as asked, placed as asked."""
+        return replace(self, data=data, encryption=None)
 
 
 @dataclass(frozen=True)
@@ -115,7 +192,8 @@ class SignedDropRequest:
     def from_value(cls, value: object) -> SignedDropRequest:
         """What a ``{"target", "text", "seconds", "minimum_bits"}`` object asks to sign and place.
 
-        ``minimum_bits`` is optional, and there is no ``base64``.
+        ``minimum_bits`` is optional, and so is ``encrypt``, which encrypts
+        what is signed. There is no ``base64``.
 
         Raises:
             InvalidConfigRequestError: it is not such an object, or what it
@@ -136,7 +214,10 @@ class SignedDropRequest:
         return self.unsigned.data.decode("utf-8")
 
     def signed(self, data: bytes) -> DropRequest:
-        """The drop of ``data``, the signed bundle of :attr:`text`, placed as asked."""
+        """The drop of ``data``, the signed bundle of :attr:`text`, encrypted and placed as asked.
+
+        Encrypting it is left to whoever places it (:meth:`DropRequest.encrypted`).
+        """
         return replace(self.unsigned, data=data)
 
 
@@ -157,3 +238,37 @@ def _content(value: dict[str, object]) -> bytes:
         return BytesSource.of_base64(encoded, _GIVEN).data
 
     raise ValueError('A drop\'s content must be given as "text" or as "base64", a string')
+
+
+def _encryption(value: object) -> Encryption:
+    """The encryption a drop request's ``"encrypt"`` asks for.
+
+    An id naming a hash algorithm this node lacks is logged as a warning,
+    since the node may need a newer release.
+
+    Raises:
+        ValueError: it is neither a ``{"for"}`` nor a ``{"username",
+            "password"}`` object, or what it gives is not usable.
+    """
+    if isinstance(value, dict) and value.keys() == _PERSON_KEYS:
+        person = value["for"]
+
+        if not isinstance(person, str):
+            raise ValueError('"for" must be a string')
+
+        try:
+            return PersonEncryption(ContentId.parse(person))
+
+        except UnknownAlgorithmError as error:
+            _LOGGER.warning("Refusing to encrypt a drop for %r: %s", person, error)
+            raise ValueError(f'"for" names no person: {error}') from None
+
+        except InvalidContentIdError as error:
+            raise ValueError(f'"for" names no person: {error}') from None
+
+    if isinstance(value, dict) and value.keys() == _PASSWORD_KEYS:
+        # Read as signing in reads them, and held to a new password's length.
+        credentials = SignInRequest.from_value(value)
+        return PasswordEncryption(credentials.username, credentials.password)
+
+    raise ValueError('"encrypt" must be {"for": id} or {"username": …, "password": …}')

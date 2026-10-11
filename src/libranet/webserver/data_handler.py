@@ -63,6 +63,7 @@ DATA_ENDPOINT_NAMES: Final = (
     "applications",
     "signed",
     "drop",
+    "encrypted",
 )
 
 DATA_PATTERN: Final = (

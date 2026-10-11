@@ -75,9 +75,10 @@ These endpoints are intended for nodes and software clients.
 Some are meant only for the browser applications a node serves (§13), and
 never for another node: whether the client is local (§2.4), blocking
 content (§5.5), making a drop (§9.6), making an identity and signing in
-(§11.3, §11.4), signing as a person (§11.5), reading into a
-bundle (§12.1), the folders and imports (§12.2), making bundles (§12.3), an
-application's store (§13.3), and the list of applications (§13.4). Each
+(§11.3, §11.4), signing as a person (§11.5), opening an encrypted block
+(§11.6), reading into a bundle (§12.1), the folders and imports (§12.2),
+making bundles (§12.3), an application's store (§13.3), and the list of
+applications (§13.4). Each
 but reading into a bundle requires a `Referer` naming a page of the node
 (§2.5). A few serve only clients on the node's own machine (§2.4).
 
@@ -302,12 +303,15 @@ for itself.
 
 These endpoints serve only local clients: blocking content (§5.5), making
 an identity and the session (§11.3, §11.4), making a signed drop (§11.5),
-listing the folders a node offers and importing a file from one (§12.2),
-making and changing bundles (§12.3), and changing an application's store
-(§13.3). A request to one of them from any other client MUST be refused with
-`403 Forbidden`. Blocking, the identities, session, signed drops, folders,
-imports, and bundles are served only from a page of a trusted application,
-and an application's store is changed only from a page of its own (§2.5).
+opening an encrypted block (§11.6), listing the folders a node offers and
+importing a file from one (§12.2), making and changing bundles (§12.3), and
+changing an application's store (§13.3). So does making a drop encrypted by
+a username and password (§11.6).
+A request to one of them from any other client MUST be refused with
+`403 Forbidden`. Blocking, the identities, session, signed drops, encrypted
+blocks, folders, imports, and bundles are served only from a page of a
+trusted application, and an application's store is changed only from a page
+of its own (§2.5).
 
 A loopback source does not show that the person at the machine made the
 request. Any site's page that a browser on the machine has open can send
@@ -345,9 +349,9 @@ another node:
 
 - on the main port: whether the client is local (§2.4), blocking content
   (§5.5), making a drop (§9.6), making an identity and the session (§11.3,
-  §11.4), making a signed drop (§11.5), the folders and imports (§12.2),
-  making bundles (§12.3), an application's store (§13.3), and the list of
-  applications (§13.4);
+  §11.4), making a signed drop (§11.5), opening an encrypted block (§11.6),
+  the folders and imports (§12.2), making bundles (§12.3), an application's
+  store (§13.3), and the list of applications (§13.4);
 - on `/config`'s port: every endpoint beneath `/config/api` (§2.3).
 
 Reading into a bundle (§12.1) is meant for those pages too, but is not
@@ -373,8 +377,9 @@ Some endpoints ask more of the page:
 - **An application's store** is read and changed only from a page of the
   application whose store it is (§13.3).
 - **Blocking content, making an identity, the session, making a signed
-  drop, the folders, imports, and making bundles** are served only from a
-  page of a trusted application (§13.5).
+  drop, opening an encrypted block, making a drop encrypted by a password,
+  the folders, imports, and making bundles** are served only from a page of
+  a trusted application (§13.5).
 
 A browser sends a page's full address as the `Referer` of each request the
 page makes of its own origin, unless the page asks it not to, as with
@@ -478,7 +483,7 @@ This allows multiple hash algorithms to coexist.
 
 The names of the other endpoints beneath `/data` are never hash algorithms:
 `search`, `nodes`, `seek`, `client`, `directory`, `imports`, `bundles`,
-`store`, `applications`, `signed`, and `drop`.
+`store`, `applications`, `signed`, `drop`, and `encrypted`.
 
 A path that goes on past `{hash}` does not retrieve an object. It reads into
 the bundle the identifier names (§12.1). That includes an identifier written
@@ -914,6 +919,8 @@ Content-Type: application/json
 - **`minimum_bits`**, 0 if absent, is how many leading bits the drop's hash
   must share with the target hash. A search that has not reached it when its
   time is up goes on until it has.
+- **`encrypt`**, if present, has the content encrypted, for a person or by
+  a username and password, before the drop is made of it (§11.6).
 
 The drop is the content, a null byte, and the nonce (§9). The request is
 answered `201 Created`, with a `Location` naming the drop (§5.1):
@@ -1578,11 +1585,12 @@ Content-Type: application/json
 
 `text` is the JSON text of an object, which the node signs as it is, with
 the person's key, as a signed bundle's `contents`. `target`, `seconds`, and
-`minimum_bits` are as for making a drop (§9.6). The node makes the signed
-bundle a drop as §9.6 makes one, under the same limits, and in the same
-turns, and stores the person's public key again, should it no longer hold
-it, so that a reader can check the signature. It answers `201 Created`, with
-a `Location` naming the drop:
+`minimum_bits` are as for making a drop (§9.6), and so is `encrypt`, which
+has the signed bundle encrypted, for someone else, say (§11.6). The node makes
+the signed bundle a drop as §9.6 makes one, under the same limits, and in the
+same turns, and stores the person's public key again, should it no longer
+hold it, so that a reader can check the signature. It answers `201 Created`,
+with a `Location` naming the drop:
 
 ```json
 {"id": "sha256/…", "target": "<target hash>", "matching_bits": 21, "signer": "sha256/…"}
@@ -1625,6 +1633,95 @@ A signature says only that whoever holds the signer's key signed the
 contents. Anyone may sign content with a key of their own and place it at
 any drop, so a page checks that `signer` is whoever it expects, such as the
 person whose id the drop's target string names.
+
+### 11.6 Encrypting a Block
+
+A page has the node encrypt what it places at a drop (§9.6), or what it signs
+(§11.5), with an `encrypt` member in the request's body:
+
+```json
+{"target": "mail:sha256/…", "text": "…", "seconds": 10, "minimum_bits": 16,
+ "encrypt": {"for": "sha256/…"}}
+```
+
+- **`{"for": id}`** encrypts it for the person whose id is `id`, with their
+  public key
+  ([Bundle Specification §8](BundleSpecification.md#8-encryption-for-a-person)).
+  The node reads the key as it reads any content (§5.1). A key it does not
+  hold is asked for, as for any miss, and the request is
+  `503 Service Unavailable` with `Retry-After` (§5.2); one it has blocked is
+  `404 Not Found` (§5.5). An `id` that names no RSA public key of at least
+  2048 bits is `400 Bad Request`.
+- **`{"username": u, "password": p}`** encrypts it by the key the username
+  and password derive, as an identity block is protected
+  ([Bundle Specification §6.2.1](BundleSpecification.md#621-argon2id)), but
+  with a random IV, named in its descriptor (Bundle Specification §6.3). The
+  username is normalized as §11.3 says, and the password is at least 8
+  characters, as a new identity's is.
+
+The node encrypts the content, then makes a drop of what it encrypted, with
+the nonce after it (§9). A signed drop is signed first, then encrypted, so
+that only whoever opens it learns who signed it. The request is answered as
+it would be without `encrypt`, and content that does not fit in an object
+once encrypted is `413 Content Too Large`. An `encrypt` that is neither of
+these is `400 Bad Request`.
+
+Any client may have a drop encrypted for a person, as any may make a drop.
+Encrypting by a username and password serves only local clients, from a page
+of a trusted application (§2.4, §2.5), as signing in does, since a password
+sent from elsewhere would cross the network as it was typed.
+
+A page has the node open a block encrypted for whoever is signed in with:
+
+```http
+GET /data/encrypted/{hash-algorithm}/{hash}
+```
+
+and one encrypted by a username and password with:
+
+```http
+POST /data/encrypted/{hash-algorithm}/{hash}
+Content-Type: application/json
+
+{"username": "alice", "password": "…"}
+```
+
+The node reads the object the identifier names, as §5.1 serves it, and takes
+what it holds before its last null byte as a drop's content (§9), since every
+block a node encrypts is made a drop. It opens that with the private key the
+session holds (§11.4), or with the key the username and password derive, and
+answers `200 OK`:
+
+```json
+{"id": "sha256/…", "text": "…"}
+```
+
+`text` is what was encrypted, if it is UTF-8, and `base64` gives it in place
+of `text` if it is not. What was encrypted may be a signed bundle
+([Bundle Specification §5](BundleSpecification.md#5-signed-bundle)). The node
+then checks it as §11.5 checks one, and answers as §11.5 does, with `signer`
+and `contents` in place of `text`, or refuses it as §11.5 does, so that
+a page never takes what is signed on trust.
+
+An object, or a signer's public key, that the node does not hold is asked
+for, and is `503 Service Unavailable` with `Retry-After` (§5.2), and either
+one blocked is `404 Not Found` (§5.5). A `GET` from a browser no one is
+signed in on is `401 Unauthorized`, with the problem type `session-required`.
+A block the session's key, or the username and password, does not open is
+`403 Forbidden`, with the problem type `wrong-key` (§17.2). A block that is
+not encrypted as the request opens one, for a person or by a password, is
+`400 Bad Request` with `unusable-bundle`. Every answer carries
+`Cache-Control: no-store`.
+
+Opening a block serves only local clients, from a page of a trusted
+application (§2.4, §2.5), as the session does. Each username and password
+derives a key in turn with signing in, one at a time (§11.4), whether it
+encrypts or opens.
+
+What is signed says nothing of whom it was encrypted for, so whoever opens a
+signed block can encrypt it again for someone else, who would take it to be
+meant for them. A page whose reader must know that a block was meant for
+them names the reader in what it signs.
 
 ---
 
@@ -1968,7 +2065,7 @@ returned. Directory bundles may specify a specific `404` page file.
 
 A bundle has no field yet for its default file, for being discoverable, for a
 file's content type, or for a `404` page
-([Bundle Specification §8](BundleSpecification.md#8-open-items--not-yet-specified)).
+([Bundle Specification §9](BundleSpecification.md#9-open-items--not-yet-specified)).
 Until it does, the default file is `index.html`, no index is generated, a
 file's content type is found from its name, and a path the bundle does not
 hold is a plain `404`.
@@ -2307,12 +2404,13 @@ These are defined so far, each named by its last segment beneath
 | `invalid-signature` | `401` | A signature that fails verification; the connection is closed (HandshakeProtocol §5.3) |
 | `invalid-list` | `400` | A node list or seek list that is not well-formed (§10.6, §10.7.1) |
 | `credential-required` | `401` | A `/config` request without the credential the node holds (§2.3.1) |
-| `invalid-config-request` | `400` | A JSON body an endpoint cannot act on: one beneath `/config/api` (§2.3), or of making an identity, signing in, or making a signed drop (§11.3–§11.5), the folders and imports (§12.2), making bundles (§12.3), or an application's store (§13.3) |
-| `unusable-bundle` | `400` or `500` | Content that is not a bundle, or a bundle the node cannot read: `400` when a request named it (§12.1, §12.3), and `500` when it is an application's (§13) |
+| `invalid-config-request` | `400` | A JSON body an endpoint cannot act on: one beneath `/config/api` (§2.3), or of making a drop (§9.6), making an identity, signing in, making a signed drop, or opening an encrypted block (§11.3–§11.6), the folders and imports (§12.2), making bundles (§12.3), or an application's store (§13.3) |
+| `unusable-bundle` | `400` or `500` | Content that is not a bundle, or a bundle the node cannot read: `400` when a request named it (§11.5, §11.6, §12.1, §12.3), and `500` when it is an application's (§13) |
 | `bundle-authentication-required` | `401` | A password-protected application, asking for its password (§13.1) |
 | `no-identity` | `403` | A username and password that open none of the blocks the node holds at their drop (§11.4) |
-| `session-required` | `401` | A request to sign as a person, from a browser no one is signed in on (§11.5) |
-| `invalid-bundle-signature` | `400` | Signed content whose hash or signature does not check, or whose signer names no key that can sign it (§11.5) |
+| `session-required` | `401` | A request to sign as a person, or to open what is encrypted for one, from a browser no one is signed in on (§11.5, §11.6) |
+| `invalid-bundle-signature` | `400` | Signed content whose hash or signature does not check, or whose signer names no key that can sign it (§11.5, §11.6) |
+| `wrong-key` | `403` | A block that the key of whoever is signed in, or the username and password given, does not open (§11.6) |
 
 An error its status code describes fully uses `about:blank`, whose `title` is
 the status code's reason phrase (RFC 9457 §4.2.1).
@@ -2539,6 +2637,9 @@ A `503` for content not held yet (§5.2) SHOULD carry
 `Cache-Control: no-store`, since a retry is meant to find the content. A
 value from an application's store (§13.3) may change at any time, and SHOULD
 carry `Cache-Control: no-cache`, so that a cache asks again before using it.
+An encrypted block opened (§11.6) MUST carry `Cache-Control: no-store`, since
+it is opened for one session, or one username and password, and holds what
+was encrypted to keep it from everyone else.
 
 **TBD:**
 
@@ -2570,9 +2671,10 @@ Potential limits include:
 - maximum concurrent key derivations.
 
 A node limits the drop-search work a page asks of it by how long a search
-may take and how many bits it must match, signed or not (§9.6, §11.5). It
-derives one key from a username and password at a time, whichever of its
-ports is asked (§11.4).
+may take and how many bits it must match, signed, encrypted, or neither (§9.6,
+§11.5, §11.6). It derives one key from a username and password at a time,
+whichever of its ports is asked, and whether to sign in, encrypt, or open a
+block (§11.4, §11.6).
 
 A request whose body is larger than the node takes is refused with
 `413 Content Too Large` (§17.2, `content-too-large`), unread if its
@@ -2678,33 +2780,34 @@ HTTP mechanisms.
 
 The following table summarizes the currently proposed HTTP API.
 
-| Endpoint                          | Method       | Purpose                                                    | Status  |
-| --------------------------------- | ------------ | ---------------------------------------------------------- | ------- |
-| `/data/{algorithm}/{hash}`        | `GET`        | Retrieve CAS content                                       | Defined |
-| `/data/{algorithm}/{hash}`        | `PUT`        | Upload CAS content                                         | Defined |
-| `/data/{algorithm}/{hash}`        | `HEAD`       | Retrieve CAS metadata                                      | TBD     |
-| `/data/{algorithm}/{hash}`        | `DELETE`     | Delete and block content, locally (§5.5)                   | Defined |
-| `/data/search/{hash}`             | `GET`        | Search for matching hashes                                 | Defined |
-| `/data/nodes`                     | `GET`/`POST` | Retrieve/publish peer information                          | Defined |
-| `/data/seek`                      | `GET`/`POST` | Retrieve/publish outstanding requests                      | Defined |
-| `/data/{algorithm}/{hash}/{path}` | `GET`/`HEAD` | Read into a bundle (§12.1)                                 | Defined |
-| `/data/client`                    | `GET`        | Whether the client is local (§2.4)                         | Defined |
-| `/data/drop`                      | `POST`       | Make a drop, from a page of the node (§9.6)                | Defined |
-| `/data/drop/{target}`             | `GET`        | Search a drop by its target string (§9.7)                  | Defined |
-| `/data/users`                     | `POST`       | Make a person's identity, locally (§11.3)                  | Defined |
-| `/data/session`                   | Various      | Sign in, say who is signed in, sign out, locally (§11.4)   | Defined |
-| `/data/signed`                    | `POST`       | Make a drop signed as a person, locally (§11.5)            | Defined |
-| `/data/signed/{algorithm}/{hash}` | `GET`        | Check signed content, and read what it signs (§11.5)       | Defined |
-| `/data/directory/...`             | `GET`        | List the folders offered to local clients (§12.2)          | Defined |
-| `/data/imports`                   | `GET`/`POST` | Import a local file, and follow imports (§12.2)            | Defined |
-| `/data/bundles`                   | `POST`       | Make, change, or store a bundle, locally (§12.3)           | Defined |
-| `/data/store/{application}/...`   | Various      | An application's store on this node (§13.3)                | Defined |
-| `/data/applications`              | `GET`        | The applications this node serves (§13.4)                  | Defined |
-| `/data/...`                       | Various      | Additional programmatic APIs                               | TBD     |
-| `/`                               | `GET`/`HEAD` | Root web application                                       | Defined |
-| `/{application}/...`              | `GET`/`HEAD` | Directory-bundle application                               | Defined |
-| `/config/api/...`                 | Various      | Local-only administration endpoints, on `/config`'s port   | Defined |
-| `/config/...`                     | `GET`/`HEAD` | Local-only administration application, on `/config`'s port | Defined |
+| Endpoint                             | Method       | Purpose                                                    | Status  |
+| ------------------------------------ | ------------ | ---------------------------------------------------------- | ------- |
+| `/data/{algorithm}/{hash}`           | `GET`        | Retrieve CAS content                                       | Defined |
+| `/data/{algorithm}/{hash}`           | `PUT`        | Upload CAS content                                         | Defined |
+| `/data/{algorithm}/{hash}`           | `HEAD`       | Retrieve CAS metadata                                      | TBD     |
+| `/data/{algorithm}/{hash}`           | `DELETE`     | Delete and block content, locally (§5.5)                   | Defined |
+| `/data/search/{hash}`                | `GET`        | Search for matching hashes                                 | Defined |
+| `/data/nodes`                        | `GET`/`POST` | Retrieve/publish peer information                          | Defined |
+| `/data/seek`                         | `GET`/`POST` | Retrieve/publish outstanding requests                      | Defined |
+| `/data/{algorithm}/{hash}/{path}`    | `GET`/`HEAD` | Read into a bundle (§12.1)                                 | Defined |
+| `/data/client`                       | `GET`        | Whether the client is local (§2.4)                         | Defined |
+| `/data/drop`                         | `POST`       | Make a drop, from a page of the node (§9.6)                | Defined |
+| `/data/drop/{target}`                | `GET`        | Search a drop by its target string (§9.7)                  | Defined |
+| `/data/users`                        | `POST`       | Make a person's identity, locally (§11.3)                  | Defined |
+| `/data/session`                      | Various      | Sign in, say who is signed in, sign out, locally (§11.4)   | Defined |
+| `/data/signed`                       | `POST`       | Make a drop signed as a person, locally (§11.5)            | Defined |
+| `/data/signed/{algorithm}/{hash}`    | `GET`        | Check signed content, and read what it signs (§11.5)       | Defined |
+| `/data/encrypted/{algorithm}/{hash}` | `GET`/`POST` | Open an encrypted block, locally (§11.6)                   | Defined |
+| `/data/directory/...`                | `GET`        | List the folders offered to local clients (§12.2)          | Defined |
+| `/data/imports`                      | `GET`/`POST` | Import a local file, and follow imports (§12.2)            | Defined |
+| `/data/bundles`                      | `POST`       | Make, change, or store a bundle, locally (§12.3)           | Defined |
+| `/data/store/{application}/...`      | Various      | An application's store on this node (§13.3)                | Defined |
+| `/data/applications`                 | `GET`        | The applications this node serves (§13.4)                  | Defined |
+| `/data/...`                          | Various      | Additional programmatic APIs                               | TBD     |
+| `/`                                  | `GET`/`HEAD` | Root web application                                       | Defined |
+| `/{application}/...`                 | `GET`/`HEAD` | Directory-bundle application                               | Defined |
+| `/config/api/...`                    | Various      | Local-only administration endpoints, on `/config`'s port   | Defined |
+| `/config/...`                        | `GET`/`HEAD` | Local-only administration application, on `/config`'s port | Defined |
 
 ---
 

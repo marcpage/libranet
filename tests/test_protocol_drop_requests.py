@@ -4,11 +4,22 @@ from __future__ import annotations
 from base64 import b64encode
 from json import dumps
 
-from pytest import mark, raises
+from logging import WARNING
 
+from pytest import LogCaptureFixture, mark, raises
+
+from libranet.cas.content_id import ContentId
 from libranet.cas.drops import TARGET_BITS, DropTarget
-from libranet.protocol.drop_requests import DropRequest, SignedDropRequest
+from libranet.identity.people import Username
+from libranet.protocol.drop_requests import (
+    DropRequest,
+    PasswordEncryption,
+    PersonEncryption,
+    SignedDropRequest,
+)
 from libranet.protocol.errors import InvalidConfigRequestError
+
+PERSON_ID = ContentId.for_data(b"a person's public key", "sha256")
 
 
 def test_a_drop_of_text_names_its_target_string_and_the_search_asked_for() -> None:
@@ -96,3 +107,108 @@ def test_a_body_that_is_no_usable_signed_drop_is_refused(value: object, complain
 def test_a_signed_drop_made_directly_must_hold_an_objects_json_text() -> None:
     with raises(ValueError, match="the JSON text of an object"):
         SignedDropRequest(DropRequest(DropTarget.of("t"), b'"text"', 0.0))
+
+
+def test_a_drop_asks_for_no_encryption_unless_it_says_so() -> None:
+    assert DropRequest.from_value({"target": "t", "text": "x", "seconds": 0}).encryption is None
+    assert (
+        DropRequest.from_value(
+            {"target": "t", "text": "x", "seconds": 0, "encrypt": None}
+        ).encryption
+        is None
+    )
+
+
+def test_a_drop_encrypted_for_a_person_names_them_by_their_id() -> None:
+    asked = DropRequest.from_value(
+        {"target": "t", "text": "x", "seconds": 0, "encrypt": {"for": str(PERSON_ID)}}
+    )
+
+    assert asked.encryption == PersonEncryption(PERSON_ID)
+
+
+def test_a_drop_encrypted_by_a_password_normalizes_the_username() -> None:
+    asked = DropRequest.from_value(
+        {
+            "target": "t",
+            "text": "x",
+            "seconds": 0,
+            "encrypt": {"username": " Alice ", "password": "correct horse"},
+        }
+    )
+
+    assert asked.encryption == PasswordEncryption(Username.create("alice"), "correct horse")
+
+
+def test_no_password_is_in_a_drops_repr() -> None:
+    asked = DropRequest.from_value(
+        {
+            "target": "t",
+            "text": "x",
+            "seconds": 0,
+            "encrypt": {"username": "alice", "password": "correct horse"},
+        }
+    )
+
+    assert "correct horse" not in repr(asked)
+
+
+@mark.parametrize(
+    "encrypt, complaint",
+    [
+        ("sha256/x", '"encrypt" must be'),
+        ({}, '"encrypt" must be'),
+        ({"for": str(PERSON_ID), "username": "alice"}, '"encrypt" must be'),
+        ({"username": "alice"}, '"encrypt" must be'),
+        ({"username": "alice", "password": "correct horse", "other": 1}, '"encrypt" must be'),
+        ({"for": 7}, '"for" must be a string'),
+        ({"for": "not an id"}, '"for" names no person'),
+        ({"for": f"{PERSON_ID}/AES256-CBC/{'0' * 64}"}, '"for" names no person'),
+        ({"username": 7, "password": "correct horse"}, '"username" must be a string'),
+        ({"username": "", "password": "correct horse"}, "from 1 to 64 characters"),
+        ({"username": "alice", "password": ""}, '"password" must not be empty'),
+        ({"username": "alice", "password": "short"}, '"password" must be at least 8'),
+        ({"username": "alice", "password": "\ud800" * 8}, '"password" is not UTF-8'),
+    ],
+)
+def test_an_encryption_that_is_none_this_node_makes_is_refused(
+    encrypt: object, complaint: str
+) -> None:
+    with raises(InvalidConfigRequestError, match=complaint):
+        DropRequest.from_value({"target": "t", "text": "x", "seconds": 0, "encrypt": encrypt})
+
+
+def test_a_person_named_under_a_hash_algorithm_this_node_lacks_is_a_warning(
+    caplog: LogCaptureFixture,
+) -> None:
+    with caplog.at_level(WARNING), raises(InvalidConfigRequestError, match="names no person"):
+        DropRequest.from_value(
+            {"target": "t", "text": "x", "seconds": 0, "encrypt": {"for": "sha999/abcd"}}
+        )
+
+    assert "Refusing to encrypt a drop for 'sha999/abcd'" in caplog.text
+
+
+def test_a_password_is_held_to_a_new_ones_length_once_in_nfc() -> None:
+    # Eight characters as given, but seven once composed.
+    with raises(ValueError, match="at least 8 characters"):
+        PasswordEncryption(Username.create("alice"), "e\u0301" + "x" * 6)
+
+
+def test_encrypting_a_drop_leaves_it_asking_for_nothing_more() -> None:
+    asked = DropRequest(DropTarget.of("t"), b"x", 0, 4, PersonEncryption(PERSON_ID))
+
+    assert asked.encrypted(b"ciphertext") == DropRequest(DropTarget.of("t"), b"ciphertext", 0, 4)
+
+
+def test_a_signed_drop_keeps_the_encryption_asked_for() -> None:
+    asked = SignedDropRequest.from_value(
+        {"target": "t", "text": "{}", "seconds": 0, "encrypt": {"for": str(PERSON_ID)}}
+    )
+
+    assert asked.signed(b"signed").encryption == PersonEncryption(PERSON_ID)
+
+
+def test_a_password_that_is_not_utf8_is_refused() -> None:
+    with raises(ValueError, match='"password" is not UTF-8'):
+        PasswordEncryption(Username.create("alice"), "\ud800" * 8)

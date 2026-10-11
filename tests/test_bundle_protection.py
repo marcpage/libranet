@@ -416,3 +416,26 @@ def test_bundle_protected_by_a_user_key_is_told_by_its_descriptor(
     user_key: PasswordKey,
 ) -> None:
     assert is_protected(user_key.protect(PLAINTEXT) + b"\0placement")
+
+
+def test_an_iv_given_is_encrypted_with_and_named_in_the_descriptor() -> None:
+    protected = PasswordKey.of_password(PASSWORD).protect(PLAINTEXT, iv=IV)
+
+    ciphertext, _, descriptor = protected.rpartition(b"\0")
+    assert descriptor == DESCRIPTOR + b"-IV:" + IV.hex().encode()
+    assert ciphertext == encrypt(compress(PLAINTEXT, 9), iv=IV)
+    assert unprotect(protected, PASSWORD, MAX_BYTES) == PLAINTEXT
+
+
+def test_the_same_content_under_two_ivs_gives_two_blocks(user_key: PasswordKey) -> None:
+    first = user_key.protect(PLAINTEXT, iv=IV)
+    second = user_key.protect(PLAINTEXT, iv=bytes(reversed(IV)))
+
+    assert first != second
+    assert user_key.unprotect(first, MAX_BYTES) == user_key.unprotect(second, MAX_BYTES)
+
+
+@mark.parametrize("length", [0, 15, 17])
+def test_an_iv_not_one_block_long_is_refused(length: int) -> None:
+    with raises(ValueError, match=f"is 16 bytes, got {length}"):
+        PasswordKey.of_password(PASSWORD).protect(PLAINTEXT, iv=bytes(length))

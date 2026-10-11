@@ -149,25 +149,55 @@ class SignedDrops:
         if isinstance(content_id, Response):
             return content_id
 
+        held = self.held(request, content_id)
+
+        if isinstance(held, Response):
+            return held
+
+        signed = self.checked(request, content_id, strip_targeting(held))
+
+        if isinstance(signed, Response):
+            return signed
+
+        response = json_response(signed_value(content_id, signed))
+        return replace(
+            response, headers={**response.headers, "Cache-Control": IMMUTABLE_CACHE_CONTROL}
+        )
+
+    def held(self, request: Request, content_id: ContentId) -> bytes | Response:
+        """What is held for ``content_id``, announced as read; or the response refusing ``request``.
+
+        Content not held is asked for (HttpApi §5.2).
+        """
         self.publish(
             EventType.DATA_REQUESTED,
             {**content_id.fields(), "external": not is_local_client(request.client_address)},
         )
 
         try:
-            signed = SignedBundle.decoded(strip_targeting(self._held(content_id)))
+            return self._held(content_id)
+
+        except (_Blocked, BundleError) as error:
+            # Not logged: _refused logs it, as it says how it is refused.
+            return self._refused(request, content_id, error)
+
+    def checked(
+        self, request: Request, content_id: ContentId, data: bytes
+    ) -> SignedBundle | Response:
+        """The signed bundle ``data`` is, read for ``content_id``, checked; or a refusal.
+
+        It is checked under the key its signer names (HttpApi §11.5), which
+        is asked for if it is not held.
+        """
+        try:
+            signed = SignedBundle.decoded(data)
             signed.verified(self._held(signed.signer))
 
         except (_Blocked, BundleError) as error:
             # Not logged: _refused logs it, as it says how it is refused.
             return self._refused(request, content_id, error)
 
-        response = json_response(
-            {"id": str(content_id), "signer": str(signed.signer), "contents": signed.contents}
-        )
-        return replace(
-            response, headers={**response.headers, "Cache-Control": IMMUTABLE_CACHE_CONTROL}
-        )
+        return signed
 
     def _refused(
         self, request: Request, content_id: ContentId, error: _Blocked | BundleError
@@ -243,6 +273,11 @@ class SignedDrops:
 
 class _Blocked(Exception):
     """Content this node has blocked, which it neither reads nor asks for."""
+
+
+def signed_value(content_id: ContentId, signed: SignedBundle) -> dict[str, str]:
+    """What answers a read of ``signed``, checked, from ``content_id`` (HttpApi §11.5)."""
+    return {"id": str(content_id), "signer": str(signed.signer), "contents": signed.contents}
 
 
 def _problem(request: Request, problem_type: str, error: Exception) -> Response:
