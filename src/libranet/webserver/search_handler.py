@@ -13,6 +13,15 @@ Signing in searches a drop as a page would, but scans the store every time
 (:meth:`SearchHandler.fresh_results`), so that a block stored since the last
 search is found at once rather than once the cached answer expires (Phase 4
 Step 79).
+
+``GET /data/drop/{target}`` searches a drop by its target string, which the
+path's last segment percent-encodes, so that a page need not hash it
+(:meth:`SearchHandler.at_drop`, HttpApi §9.7, Phase 4 Step 80). It scans the
+store every time, as signing in does, since what is at a drop is what
+changes, and is answered as the search of the target hash is, with that
+hash::
+
+    {"target": "<hex>", "results": ["sha256/…", …]}
 """
 
 from __future__ import annotations
@@ -23,6 +32,7 @@ from typing import Final, Iterable
 
 from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
+from libranet.cas.drops import DropTarget
 from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.prefix import nearest
 from libranet.messaging.events import EventType
@@ -30,11 +40,22 @@ from libranet.messaging.publishing import Publish
 from libranet.problems import INVALID_SEARCH_PREFIX, Problem
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.protocol.search import LocalSearch, SearchCache, normalize_prefix
-from libranet.webserver.http_types import Request, Response, bytes_response, problem_response
+from libranet.webserver.http_types import (
+    Request,
+    Response,
+    bytes_response,
+    json_response,
+    percent_decoded,
+    problem_response,
+    status_response,
+)
 
 _LOGGER = getLogger(__name__)
 
 SEARCH_PATTERN: Final = r"/data/search/(?P<prefix>[^/]+)"
+
+#: Where any client searches a drop by its target string, percent-encoded.
+DROP_SEARCH_PATTERN: Final = r"/data/drop/(?P<target>[^/]+)"
 
 
 @dataclass(frozen=True)
@@ -72,6 +93,26 @@ class SearchHandler:
 
         self.publish(EventType.SEARCH_REQUESTED, {"prefix": prefix})
         return bytes_response(SearchCache.body(self._unblocked(found)), JSON_CONTENT_TYPE)
+
+    def at_drop(self, request: Request) -> Response:
+        """``GET /data/drop/{target}``: what a search of the drop ``target`` names finds.
+
+        The target string is hashed here, as making a drop hashes it, so that
+        a page need not, and the store scanned (:meth:`fresh_results`), so
+        that a drop stored since a search of it was cached is found at once
+        (HttpApi §9.7).
+        """
+        target = percent_decoded(request.params["target"])
+
+        if target is None:
+            _LOGGER.debug("Refusing %s %s: no UTF-8 target", request.method, request.path)
+            return status_response(
+                request, HTTPStatus.BAD_REQUEST, "The target string is not percent-encoded UTF-8."
+            )
+
+        drop = DropTarget.of(target)
+        found = self.fresh_results(drop.hex)
+        return json_response({"target": drop.hex, "results": [str(found_id) for found_id in found]})
 
     def fresh_results(self, prefix: str) -> list[ContentId]:
         """What is held nearest a normalized ``prefix``, with what was heard of, best first.

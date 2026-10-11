@@ -222,7 +222,7 @@ from libranet.webserver.request_refusals import (
     unsupported_media_type_response,
 )
 from libranet.webserver.router import Guard, Handler, Route, Router
-from libranet.webserver.search_handler import SEARCH_PATTERN, SearchHandler
+from libranet.webserver.search_handler import DROP_SEARCH_PATTERN, SEARCH_PATTERN, SearchHandler
 from libranet.webserver.server import (
     LibranetHTTPServer,
     RequestHandler,
@@ -272,6 +272,7 @@ __all__ = [
     "DEFAULT_REPORT_INTERVAL_SECONDS",
     "DIRECTORY_PATTERN",
     "DROP_PATH",
+    "DROP_SEARCH_PATTERN",
     "ENDPOINTS",
     "EXPORTS_FIELD",
     "EXPORTS_PATH",

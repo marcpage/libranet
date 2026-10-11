@@ -20,6 +20,7 @@ from socket import SHUT_WR, create_connection, socket
 from threading import Thread
 from time import monotonic, sleep
 from typing import Callable, Iterator
+from urllib.parse import quote
 from zlib import compress
 
 from pytest import LogCaptureFixture, fixture, mark, raises
@@ -30,6 +31,7 @@ from libranet.bundle.shapes import FileBundle, Metadata
 from libranet.cas.blocked import BlockedContent
 from libranet.cas.archive import ArchiveSink, ArchiveSource
 from libranet.cas.content_id import ContentId
+from libranet.cas.drops import DropTarget
 from libranet.cas.layered import LayeredSource
 from libranet.cas.resolved_files import ResolvedFiles
 from libranet.cas.store import CasStore
@@ -463,6 +465,49 @@ def test_search_answers_with_what_is_held_nearest_even_sharing_no_bit(
 
 def test_invalid_search_prefix_is_400(connection: HTTPConnection, queues: ModuleQueues) -> None:
     response, body = _get(connection, "/data/search/nothex")
+
+    assert response.status == 400
+    assert loads(body)["status"] == 400
+    assert _published(queues) == []
+
+
+def test_a_drop_is_searched_by_its_target_string(
+    connection: HTTPConnection, queues: ModuleQueues
+) -> None:
+    target = DropTarget.of("user:sha256/é and more")
+
+    response, body = _get(connection, f"/data/drop/{quote('user:sha256/é and more', safe='')}")
+    searched, searched_body = _get(connection, f"/data/search/{target.hex}")
+
+    assert response.status == 200
+    assert loads(body) == {"target": target.hex, "results": loads(searched_body)["results"]}
+    assert searched.status == 200
+    assert [message["prefix"] for message in _published(queues)] == [target.hex, target.hex]
+
+
+def test_a_drop_stored_since_its_search_was_cached_is_found_at_once(
+    connection: HTTPConnection, storage: StorageConfig
+) -> None:
+    # A cached answer for the target, listing only what the node heard of.
+    target = DropTarget.of("user directory")
+    heard_of = f"sha256/{target.hex[:8]}{'0' * 56}"
+    cache_file = storage.search_cache_dir / target.hex[:4] / f"{target.hex}.json"
+    cache_file.parent.mkdir(parents=True)
+    cache_file.write_bytes(dumps({"results": [heard_of]}).encode())
+
+    cached, cached_body = _get(connection, f"/data/search/{target.hex}")
+    response, body = _get(connection, f"/data/drop/{quote('user directory', safe='')}")
+
+    assert cached.status == 200
+    assert loads(cached_body)["results"] == [heard_of]
+    assert response.status == 200
+    assert set(loads(body)["results"]) == {heard_of, str(CONTENT_ID)}
+
+
+def test_a_drop_target_that_is_not_utf_8_is_400(
+    connection: HTTPConnection, queues: ModuleQueues
+) -> None:
+    response, body = _get(connection, "/data/drop/%ff")
 
     assert response.status == 400
     assert loads(body)["status"] == 400

@@ -244,6 +244,7 @@ when trusted. `self.origin === "null"` tells a page it is sandboxed.
 | `/data/store/{application}/{key}` | `PUT`, `DELETE` | Local | Its own application's | Change the application's store (§6.6) |
 | `/data/applications` | `GET` | Any | Any application's | The applications the node serves (§6.7) |
 | `/data/drop` | `POST` | Any | Any application's | Place content at a drop (§6.9) |
+| `/data/drop/{target}` | `GET` | Any | Any, or none | Search a drop by its target string (§6.9) |
 | `/data/users` | `POST` | Local | A trusted application's | Make a person's identity (§6.10) |
 | `/data/session` | `GET`, `POST`, `DELETE` | Local | A trusted application's | Who is signed in; sign in and out (§6.10) |
 | `/data/signed` | `POST` | Local | A trusted application's | Place JSON at a drop, signed as whoever is signed in (§6.13) |
@@ -590,10 +591,20 @@ const { id, target, matching_bits } = await response.json();
   it does. Each bit more doubles the search, on average.
 
 The drop is answered `201 Created`, with its `id`, the `target` hash, and
-how many bits they share, and a `Location` naming it. Find it later with
-`GET /data/search/{target}` (§6.1), which lists what lies nearest the
-target hash first: the more bits a drop matches, the nearer the top it is,
-however much else is placed there.
+how many bits they share, and a `Location` naming it. Find it later by the
+target string, one path segment, with `encodeURIComponent`:
+
+```js
+const response = await fetch(`/data/drop/${encodeURIComponent("user:alice")}`);
+const { target, results } = await response.json();
+```
+
+The node hashes the string, and answers with the `target` hash and the
+`results` a search of it gives (§6.1), what lies nearest the target hash
+first: the more bits a drop matches, the nearer the top it is, however much
+else is placed there. A page need not hash anything. Unlike
+`/data/search`, it looks at what the node holds every time, so a drop just
+made is found at once.
 
 The node searches for one drop at a time, and a request that comes during
 another's search waits for it. A node limits both `seconds` and
@@ -713,7 +724,7 @@ whose only part is that id, their public key:
 An application that reads or adds to the directory follows the same
 rules, so that copies made by different pages and nodes come together:
 
-- **Find every copy.** Search the drop (§6.1), and read each result with
+- **Find every copy.** Search the drop (§6.9), and read each result with
   `GET /data/{id}`. The node serves an object as it is stored, zlib
   compressed or not (HTTP API §8): JSON begins with `{`, so anything else is
   decompressed, with `DecompressionStream("deflate")`. A copy is a drop
@@ -721,10 +732,7 @@ rules, so that copies made by different pages and nodes come together:
   nothing but people. Pass over anything else found there, since a search
   lists whatever is nearest the target, directory or not. Read each copy's
   `extensions` too, which are directories of people stored at their own
-  ids, not drops. Leave out a copy you could not read in full. The node
-  may answer a search from its cache, which can lack a copy stored since,
-  and fills it in as it is asked, so search a second time once the first
-  search's results are read.
+  ids, not drops. Leave out a copy you could not read in full.
 - **The newest lists the most people**, and of two that list as many, the
   one whose id comes first.
 - **Everyone in any copy is in the directory.** When the newest lacks
@@ -827,12 +835,10 @@ in person's. Each version's `contents` is:
 
 To read what someone says, and follow the same rules as other pages do:
 
-- **Search the drop.** Hash `user:{id}` with SHA-256, as the node hashes a
-  target, and search for it (§6.1). Read each result that shares at least
-  16 leading bits with that hash through `GET /data/signed/{id}`, and pass
-  over the rest, which are nearest the target but placed for something
-  else. The node may answer a search from a cache that lacks a version
-  stored since, so search the signed-in person's own drop twice.
+- **Search the drop** `user:{id}` (§6.9). Read each result that shares at
+  least 16 leading bits with the `target` hash through
+  `GET /data/signed/{id}`, and pass over the rest, which are nearest the
+  target but placed for something else.
 - **Pass over what is not theirs.** Count only content that checks, whose
   `signer` is the person, and whose `contents` is shaped as above.
 - **The newest is numbered highest**, and of two numbered as high, the one

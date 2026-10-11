@@ -124,7 +124,7 @@ from libranet.webserver.local_imports import IMPORTS_PATH, ImportHandler, Import
 from libranet.webserver.local_only import CLIENT_PATH, LocalOnly, OwnSiteOnly, client_handler
 from libranet.webserver.own_pages import OwnPageOnly, OwnPages
 from libranet.webserver.router import Router
-from libranet.webserver.search_handler import SEARCH_PATTERN, SearchHandler
+from libranet.webserver.search_handler import DROP_SEARCH_PATTERN, SEARCH_PATTERN, SearchHandler
 from libranet.webserver.sessions import Sessions
 from libranet.webserver.signature_guard import SignatureGuard
 from libranet.webserver.signed_handlers import SIGNED_PATH, SIGNED_PATTERN, SignedDrops
@@ -199,9 +199,11 @@ def build_router(  # pylint: disable=too-many-locals
     ``/data/drop`` makes drops for any client, stored as those are, searching
     for each no more than ``max_drop_seconds`` and asked to match no more
     than ``max_drop_minimum_bits``; neither, by default (Phase 4 Step 89).
-    With it, ``/data/users`` makes people's identities, each with a key of
-    one of the sizes ``person_key_bits`` names, kept at a drop made as those
-    are, and ``/data/session`` signs them in and out, for local clients
+    ``/data/drop/{target}`` searches a drop by its target string, for any
+    client, as ``/data/search`` does (Phase 4 Step 80). With ``/data/drop``,
+    ``/data/users`` makes people's identities, each with a key of one of the
+    sizes ``person_key_bits`` names, kept at a drop made as those are, and
+    ``/data/session`` signs them in and out, for local clients
     alone, each session ending once unused for ``session_idle_seconds``
     (Phase 4 Step 79). ``/data/signed`` makes a drop signed by whoever is
     signed in, for local clients alone, and checks a signed drop for any
@@ -328,6 +330,7 @@ def build_router(  # pylint: disable=too-many-locals
         router.add("GET", SIGNED_PATTERN, signed.read)
 
     router.add("GET", SEARCH_PATTERN, search)
+    router.add("GET", DROP_SEARCH_PATTERN, search.at_drop)
     reads = BundleReadHandler(paths)
 
     for method in BUNDLE_METHODS:

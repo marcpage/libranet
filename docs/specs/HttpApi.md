@@ -478,7 +478,7 @@ This allows multiple hash algorithms to coexist.
 
 The names of the other endpoints beneath `/data` are never hash algorithms:
 `search`, `nodes`, `seek`, `client`, `directory`, `imports`, `bundles`,
-`store`, `applications`, and `signed`.
+`store`, `applications`, `signed`, and `drop`.
 
 A path that goes on past `{hash}` does not retrieve an object. It reads into
 the bundle the identifier names (§12.1). That includes an identifier written
@@ -876,7 +876,8 @@ The more prefix bits that the target hash has in common with the content hash,
 the more likely `/data/search/{target-hash}` will return the expected message.
 Since `/data/search/{target-hash}` returns the best matches (longest prefix bit
 matches), the more prefix bits match the target hash the more likely the drop
-will be found when requested.
+will be found when requested. A page searches by the target string itself
+(§9.7).
 
 The client that creates the drop content determines the tradeoff between compute
 time and target match. The client MAY have a time limit in which to compute the
@@ -943,6 +944,32 @@ its `Content-Type` is `application/json`, with or without parameters, and
 any other is answered `415 Unsupported Media Type`. No response carries
 `Access-Control-Allow-Origin`, or any other header granting a cross-origin
 request.
+
+### 9.7 Searching a Drop by Its Target
+
+A page searches for a drop by its target string, rather than hashing it,
+with:
+
+```http
+GET /data/drop/{target}
+```
+
+`{target}` is the target string, as one path segment, with its UTF-8 bytes
+percent-encoded where a segment needs them to be, `/` among them, such as
+`/data/drop/user%3Asha256%2F0a1b…`. The node hashes the decoded string as
+§9.3 does, and answers as a search of that hash does (§6.1), with the hash
+too. It scans what it holds every time, keeping what a cached answer adds
+of what it has heard of, so that a drop stored since a search was cached is
+found at once:
+
+```json
+{"target": "<target hash>", "results": ["sha256/…", "sha256/…"]}
+```
+
+`target` is the target hash, in lower-case hex, by which a page tells how
+many leading bits each result shares with it. A segment that does not decode
+to UTF-8 is `400 Bad Request`. Any client may search a drop, as any may
+search (§6).
 
 ---
 
@@ -2663,6 +2690,7 @@ The following table summarizes the currently proposed HTTP API.
 | `/data/{algorithm}/{hash}/{path}` | `GET`/`HEAD` | Read into a bundle (§12.1)                                 | Defined |
 | `/data/client`                    | `GET`        | Whether the client is local (§2.4)                         | Defined |
 | `/data/drop`                      | `POST`       | Make a drop, from a page of the node (§9.6)                | Defined |
+| `/data/drop/{target}`             | `GET`        | Search a drop by its target string (§9.7)                  | Defined |
 | `/data/users`                     | `POST`       | Make a person's identity, locally (§11.3)                  | Defined |
 | `/data/session`                   | Various      | Sign in, say who is signed in, sign out, locally (§11.4)   | Defined |
 | `/data/signed`                    | `POST`       | Make a drop signed as a person, locally (§11.5)            | Defined |

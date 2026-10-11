@@ -15,6 +15,7 @@ from queue import Queue
 from re import findall, fullmatch
 from shutil import copytree
 from typing import Iterator
+from urllib.parse import quote
 
 from pytest import fixture, mark, raises
 
@@ -31,7 +32,6 @@ from libranet.bundle.loading import load_bundle
 from libranet.bundle.reassembly import write_file
 from libranet.bundle.shapes import DirectoryBundle, DirectoryMarker, FileBundle, Metadata, Symlink
 from libranet.cas.content_id import ContentId
-from libranet.cas.drops import DropTarget
 from libranet.cas.errors import ArchiveError
 from libranet.cas.layered import LayeredSource
 from libranet.cas.store import CasStore
@@ -55,7 +55,7 @@ from libranet.webserver.local_folders import DIRECTORY_PATTERN
 from libranet.webserver.local_imports import IMPORTS_PATH
 from libranet.webserver.local_only import CLIENT_PATH
 from libranet.webserver.router import Router
-from libranet.webserver.search_handler import SEARCH_PATTERN
+from libranet.webserver.search_handler import DROP_SEARCH_PATTERN
 from libranet.webserver.server import build_config_router, build_router
 from libranet.webserver.signed_handlers import SIGNED_PATH, SIGNED_PATTERN
 
@@ -69,8 +69,6 @@ ROOT_PAGE_SOURCE = PACKAGED_APPLICATIONS / "root" / "index.html"
 CONFIG_PAGE_SOURCE = PACKAGED_APPLICATIONS / "config" / "index.html"
 MOVIE_PAGE_SOURCE = PACKAGED_APPLICATIONS / "movie" / "index.html"
 DIRECTORY_PAGE_SOURCE = PACKAGED_APPLICATIONS / "directory" / "index.html"
-# Where the directory application keeps the user directory (Phase 4 Step 92).
-DIRECTORY_TARGET = DropTarget.of("user directory")
 # The details a person may give of themselves, as #259 names them, and those
 # an entry's first row shows, in order (Phase 4 Step 80).
 STANDARD_FIELDS = (
@@ -452,12 +450,14 @@ def test_the_directory_page_calls_only_endpoints_the_node_serves(directory_page:
         DROP_PATH,
         BUNDLES_PATH,
         SIGNED_PATH,
-        "/data/search/",
+        "/data/drop/",
         "/data/signed/",
         "/data/",
     }
-    assert fullmatch(SEARCH_PATTERN, f"/data/search/{DIRECTORY_TARGET.hex}")
+    # The page names a drop by its target string, one segment, and hashes nothing.
+    assert fullmatch(DROP_SEARCH_PATTERN, f"/data/drop/{quote('user:sha256/0a', safe='')}")
     assert fullmatch(SIGNED_PATTERN, f"/data/signed/{some_id}")
+    assert "encodeURIComponent(target)" in directory_page
 
 
 def test_the_directory_page_keeps_the_directory_where_the_node_does(directory_page: str) -> None:
@@ -466,7 +466,6 @@ def test_the_directory_page_keeps_the_directory_where_the_node_does(directory_pa
     [minimum_bits] = findall(r"const DROP_MINIMUM_BITS = (\d+);", directory_page)
 
     assert 'const DIRECTORY_TARGET = "user directory";' in directory_page
-    assert f'const DIRECTORY_TARGET_HASH = "{DIRECTORY_TARGET.hex}";' in directory_page
     # Within the ceilings a node sets unless its operator lowers them.
     assert int(seconds) <= network.drop_max_seconds
     assert int(minimum_bits) <= network.drop_max_minimum_bits

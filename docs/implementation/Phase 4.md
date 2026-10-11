@@ -559,15 +559,37 @@ Ruled before building (2026-10-10), each the option recommended:
   into every version. Identities made before are made again (Phase 3 §3);
   a block without `created` opens to no identity.
 
+Ruled after building:
+
+- **The node hashes a drop's target, not the page.** The page was first
+  built hashing `user:{id}` with SHA-256 written in its script. In its place,
+  `GET /data/drop/{target}` searches a drop by its target string, and
+  answers with the target hash and what a search of it finds. The directory
+  page no longer hashes anything, nor holds the hash of `user directory`
+  (Step 92).
+
+My calls on it, not yet reviewed:
+
+- **The target is one path segment, percent-encoded**, as an application's
+  store names a key, since the web server keeps no query string. `drop`
+  joins the names beneath `/data` that are no hash algorithm.
+- **It is answered as a search is, with the target hash**, so that a page
+  tells how many bits each result shares with it without hashing. It
+  serves any client, is announced, and leaves out what is blocked, as a
+  search does.
+- **It scans what the node holds every time**, as signing in does
+  (`fresh_results`), keeping what the cached answer adds of what the node
+  has heard of. In the live run, a page that saved a version and was
+  reloaded showed the version before it: both of its searches of the drop,
+  sent one after the other, were answered from the cache, before the stats
+  module had added the new drop. So the page searches each drop once, the
+  directory's too, in place of the second search Step 92 made.
+
 My calls before building, not yet reviewed:
 
 - **The drop stays `user:{id}`.** An id is 71 characters, `sha256/` and 64
   hex digits, and a username is at most 64 (Step 79), so `user:{id}` is
   never a username's drop.
-- **The page hashes `user:{id}` itself**, with SHA-256 written in its
-  script, rather than the node offering a search by target string, since a
-  page can do it with the endpoints there are. The page checks its hash of
-  `user directory` against the one written out before it searches anything.
 
 The specification change is written: BundleSpecification §5 gives the
 signature, RSASSA-PSS with SHA-256, MGF1, and a 32-byte salt, base64, over
@@ -576,11 +598,12 @@ need not be a bundle, with §8 naming the keys not yet used. HttpApi §11.3
 gives the identity block's `created`, §11.4 the session's, and §11.5, new,
 signing as a person, with `session-required` and `invalid-bundle-signature`
 in §17.2, `signed` among the names that are no hash algorithm in §5, and
-§2.1, §2.4, §2.5, §20, §21, and §25 naming them. The metadata itself is the
-application's, written up in the App Developer Guide §6.14.
+§2.1, §2.4, §2.5, §20, §21, and §25 naming them. HttpApi §9.7, new, gives
+searching a drop by its target, and §5, §9.4, and §25 name it. The metadata
+itself is the application's, written up in the App Developer Guide §6.14.
 
-Built in one change set: 646 added lines of non-test Python, 35 of them in
-place of removed ones, 751 of the directory page, and 950 of tests.
+Built in one change set: 698 added lines of non-test Python, 41 of them in
+place of removed ones, 691 of the directory page, and 1,000 of tests.
 
 - **`SignedBundle`** (`bundle/signing.py`, new), signed, written, read, and
   checked, and **`BundleSignatureError`**. **`PersonKey.created`** and
@@ -591,11 +614,15 @@ place of removed ones, 751 of the directory page, and 950 of tests.
   endpoints, sharing the sessions of `Identities`. The `session-required`
   and `invalid-bundle-signature` problem types, and `signed` reserved
   beneath `/data`.
+- **`SearchHandler.at_drop`** (`webserver/search_handler.py`), searching a
+  drop by its target string with a scan of the store, and `drop` reserved
+  beneath `/data`.
 - **The directory page** shows each person's first row and the rest of what
   they say in rows after it, searches every word typed across all of it,
   and lets whoever is signed in change their own details. It offers a local
   client signing in and out.
-- The App Developer Guide §5.2, §6.10, §6.12, §6.13 (new), and §6.14 (new);
+- The App Developer Guide §5.2, §6.9, §6.10, §6.12, §6.13 (new), and §6.14
+  (new);
   the Operator Guide §6.5; and the README.
 
 My calls while building, not yet reviewed:
@@ -625,9 +652,8 @@ My calls while building, not yet reviewed:
   username is not shown or searched, since only the session knows it.
 - **People who say something come first**, by their first row, then the
   rest by id. The count says how many of everyone a search shows.
-- **The page searches the signed-in person's drop twice**, as it does the
-  directory's (Step 92), and everyone else's once, reading eight people at
-  a time. It waits out one `503` for each version, as for each directory.
+- **The page reads eight people at a time**, and waits out one `503` for
+  each version, as for each directory.
 - **Saving is held off while a version at the person's drop is not held
   yet**, since it may be newer than the newest read, and a save over the
   older would be numbered under it. An unchanged form writes nothing.
@@ -657,6 +683,9 @@ over CDP:
   everyone's details, and offered neither signing in nor the form.
 - No warning or error was logged. Saving took about 10 seconds, nearly all
   of it the nonce search.
+- Run again with `GET /data/drop/{target}` in place of the page's hashing,
+  version 3 of Alice's, saved before the node restarted, and then version
+  4, saved moments before a reload, each showed at once.
 - A wrong password was answered `503`, not `403`, since the stats module
   still listed objects of the directory page rebuilt from source while the
   node ran, which it no longer held (Step 79's call). The page waits out
