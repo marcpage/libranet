@@ -4,7 +4,8 @@
 
 A **bundle** is a JSON container used to describe a file or directory,
 optionally signed and/or password-protected, and designed to work natively with
-content-addressed storage (CAS).
+content-addressed storage (CAS). A block of any kind may also be encrypted for
+one person (§8).
 
 Bundles are **self-describing by structure**. There is no explicit `flavor` or
 `type` tag anywhere in the format — a reader determines what it is looking at
@@ -12,7 +13,7 @@ purely from the shape of the data:
 
 | Shape | Meaning |
 | --- | --- |
-| Top-level bytes are not valid JSON | Password-protected (encrypted) bundle |
+| Top-level bytes are not valid JSON | Password-protected (encrypted) bundle (§6), or a block encrypted for a person (§8) |
 | Object with a `signature` key | Signed bundle |
 | Object with a `contents` array | File bundle |
 | Object with a `contents` object | Directory bundle |
@@ -349,7 +350,8 @@ password-protected bundle is recognized because its raw bytes are **not
 valid JSON** (in fact generally not valid UTF-8 text at all).
 
 A person's identity block (HTTP API §11.3) is protected the same way,
-though the JSON it protects is not a bundle.
+though the JSON it protects is not a bundle, and so is a block a page has a
+node encrypt by a username and password (HTTP API §11.6), whatever it holds.
 
 Protection hides what a bundle records, but not the content its parts name:
 each part is an object in CAS, which anyone who learns its address can fetch.
@@ -482,7 +484,10 @@ This is intentional: it allows two independently encrypted copies of the
 same (content, password) pair to resolve to the same CAS address, enabling
 natural deduplication consistent with the rest of the format's CAS-native
 design. An explicit IV may be specified (`-IV:{hex}`) when non-deterministic
-output is desired instead.
+output is desired instead. A block a page has a node encrypt names a random one
+(HTTP API §11.6): it is made a drop, whose nonce makes it unique whatever its
+IV, so the default IV would let it dedup with nothing, and would show where two
+blocks under one password begin alike.
 
 ### 6.4 CAS address targeting ("drops")
 
@@ -634,7 +639,101 @@ path needs to decrypt it.
 
 ---
 
-## 8. Open Items / Not Yet Specified
+## 8. Encryption for a Person
+
+A block can be encrypted for one person, so that only whoever holds their
+private key reads it. A person's key is RSA (HTTP API §11.3), which encrypts
+only something as small as a key, not a block as large as an object. So the
+block is encrypted with an AES-256 key of its own, chosen at random, and that
+key is encrypted with the person's public key.
+
+What is encrypted need not be a bundle: it may be a bundle's JSON, a signed
+bundle (§5), or any other bytes. A block signed by one person and encrypted
+for another is a signed bundle encrypted, so that only whoever decrypts it
+learns who signed it. A reader tells what it decrypted by its shape (§1), and
+checks a signed bundle as §5 says.
+
+### 8.1 Encoding (write path)
+
+```Python
+plaintext   = the block's bytes
+compressed  = zlib_compress(plaintext, level = a fixed level, see §6.3)
+padded      = pkcs7_pad(compressed, cipher block size)   # 16 bytes for AES
+key         = 32 random bytes                          # this block's alone
+ciphertext  = cipher_encrypt(padded, key, iv = all-zero bytes)   # AES-256-CBC
+wrapped     = RSAES_OAEP_encrypt(public_key, key)       # see §8.2
+
+payload = ciphertext
+        + 0x00
+        + "PK-{key transport}-{cipher}-{mode}-KEY:{hex-encoded wrapped}"
+        [+ 0x00 + CAS address-targeting bytes]     # optional, see §6.4
+```
+
+The one descriptor registered is `PK-RSAOAEP256-AES256-CBC-KEY:{hex}`. It
+follows the ciphertext as a password-protected bundle's does (§6.1), and its
+first field, `PK` for a public key rather than `PW` for a password, tells the
+two apart. The second names how the key is carried (§8.2), the third and
+fourth the cipher and mode, which pad with PKCS#7 as §6.1 does, and the last
+carries the key, encrypted, in lower-case hex.
+
+- **The key is used once.** So the all-zero IV is safe, and no IV is named.
+- **Nothing dedups.** The same block encrypted twice, for one person or for
+  two, is two blocks under two keys. A key derived from the plaintext, as
+  §7.2 derives one, would let anyone who guessed a block confirm that a
+  person had been sent it.
+- **The block does not name the person.** Only the drop it is placed at may
+  (HTTP API §9.3). A reader tries its own private key, and RSAES-OAEP refuses
+  any other (§8.2).
+- **An encoder always compresses** before it encrypts, at the fixed level
+  of §6.3. The object limit (HighLevelDesign §4.3) applies to the payload
+  as stored.
+
+### 8.2 Carrying the key
+
+| Token | How the key is carried |
+| --- | --- |
+| `RSAOAEP256` | RSAES-OAEP ([RFC 8017 §7.1](https://www.rfc-editor.org/rfc/rfc8017.html#section-7.1)) under the person's public key, with SHA-256, the mask generation function MGF1 with SHA-256, and an empty label |
+
+The token fixes every parameter, as `ARGON2ID` fixes its cost (§6.2.1), so
+the descriptor carries nothing more. The name is the one JSON Web Algorithms
+give the same scheme (RFC 7518 §4.3), without its hyphens. The key encrypted
+is as long as the person's RSA modulus: 256 bytes for a key of 2048 bits, and
+512 for one of 4096. RSAES-OAEP checks what it decrypts, so a private key
+other than the person's fails, rather than giving a wrong key.
+
+### 8.3 Decoding (read path)
+
+```Python
+input = raw bytes at this address, without CAS placement data (§6.5)
+
+idx = last_index_of(input, 0x00)
+if idx not found:
+    fail("not encrypted for a person")
+
+ciphertext = input[:idx]
+descriptor = input[idx+1:]         # "PK-RSAOAEP256-AES256-CBC-KEY:…"
+parse descriptor -> key transport, cipher, mode, wrapped
+
+key = RSAES_OAEP_decrypt(private_key, wrapped)   # §8.2
+if decryption fails:
+    fail("not for this person")
+
+padded = cipher_decrypt(ciphertext, key, iv = all-zero bytes)
+
+if not is_valid_pkcs7(padded):
+    fail("not the expected blob")
+
+plaintext = zlib_decompress(pkcs7_unpad(padded))
+```
+
+A signature says nothing of whom a block was encrypted for, so whoever
+decrypts a signed bundle can encrypt it again for someone else, who would
+take it to have been sent to them. A writer whose reader must know that a
+block was meant for them names the reader in what it signs.
+
+---
+
+## 9. Open Items / Not Yet Specified
 
 The following were identified during design discussion but not yet resolved:
 
@@ -643,7 +742,11 @@ The following were identified during design discussion but not yet resolved:
   The reference node knows `sha256` alone as a hash algorithm, and
   `AES256-CBC` alone as a cipher (§7.1), and `PW-SHA256-AES256-CBC` and
   `PW-ARGON2ID-AES256-CBC` alone as password descriptors (§6.1), each with
-  or without an `-IV:` suffix.
+  or without an `-IV:` suffix, and `PK-RSAOAEP256-AES256-CBC` alone for a
+  person (§8.1).
+- Encrypting one block for several people, with its key carried for each
+  (§8), rather than a block for each. A block names no one it is for, so
+  carrying its key for several would show how many there are.
 - The zlib level an encoder compresses at before it encrypts (§6.3, §7.3),
   which identical ciphertext depends on. The reference node uses level 9.
 - How many extensions a reader must follow from one bundle (§4.1). Content

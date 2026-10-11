@@ -106,7 +106,8 @@ from libranet.webserver.config_handlers import (
 )
 from libranet.webserver.data_handler import DATA_PATTERN, DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
-from libranet.webserver.drop_handler import DROP_PATH, CostlyWork, DropHandler
+from libranet.webserver.drop_handler import DROP_PATH, CostlyWork, DropEncryption, DropHandler
+from libranet.webserver.encrypted_handlers import ENCRYPTED_PATTERN, EncryptedDrops
 from libranet.webserver.errors import IncompleteBodyError, ResponseCutShortError
 from libranet.webserver.file_stream import PartReader
 from libranet.webserver.http_types import (
@@ -207,7 +208,11 @@ def build_router(  # pylint: disable=too-many-locals
     alone, each session ending once unused for ``session_idle_seconds``
     (Phase 4 Step 79). ``/data/signed`` makes a drop signed by whoever is
     signed in, for local clients alone, and checks a signed drop for any
-    client (Phase 4 Step 80). Drops are searched for, and keys derived, one
+    client (Phase 4 Step 80). Each of those two encrypts what it places as
+    asked, for a person, or by a username and password, the last for local
+    clients alone, and ``/data/encrypted`` opens what is encrypted, for
+    whoever is signed in or by a username and password, for local clients
+    alone (Phase 4 Step 78). Drops are searched for, and keys derived, one
     at a time, in the turns of ``costly_work``, which ``/config``'s port
     shares; in turns of their own if none is given. A ``DELETE`` of
     ``/data/{algorithm}/{hash}`` deletes and blocks content for local
@@ -218,8 +223,9 @@ def build_router(  # pylint: disable=too-many-locals
     Each of those but reading into a bundle and checking signed content is
     served only to this node's own pages, as a request's ``Referer`` names
     them: an application's store to its own, and the folders, imports,
-    bundles, identities, session, signing, and blocking to those of
-    applications the operator trusts. An application the operator has not
+    bundles, identities, session, signing, opening what is encrypted,
+    encrypting by a password, and blocking to those of applications the
+    operator trusts. An application the operator has not
     trusted is served in a sandbox (Phase 3 Step 74).
     """
     store = CasStore.source_of_truth(storage)
@@ -295,6 +301,15 @@ def build_router(  # pylint: disable=too-many-locals
             max_drop_seconds,
             max_drop_minimum_bits,
             turns=work.searches,
+            encryption=DropEncryption(
+                uploads,
+                publish,
+                pages,
+                checks,
+                retry_after_seconds=retry_after_seconds,
+                derivations=work.derivations,
+                blocked=blocked,
+            ),
         )
         router.add("POST", DROP_PATH, OwnSiteOnly(OwnPageOnly(drops, pages), checks))
         sessions = Sessions(session_idle_seconds)
@@ -316,13 +331,17 @@ def build_router(  # pylint: disable=too-many-locals
             retry_after_seconds=retry_after_seconds,
             blocked=blocked,
         )
+        encrypted = EncryptedDrops(signed, derivations=work.derivations)
 
+        # The encrypted routes before the bundle route, whose pattern they also fit.
         for method, path, handler in (
             ("POST", USERS_PATH, identities.make),
             ("POST", SESSION_PATH, identities.sign_in),
             ("GET", SESSION_PATH, identities.signed_in),
             ("DELETE", SESSION_PATH, identities.sign_out),
             ("POST", SIGNED_PATH, signed.make),
+            ("GET", ENCRYPTED_PATTERN, encrypted.read),
+            ("POST", ENCRYPTED_PATTERN, encrypted.read_by_password),
         ):
             router.add(method, path, LocalOnly(OwnPageOnly(handler, pages, trusted=True), checks))
 

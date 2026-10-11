@@ -30,6 +30,7 @@ UNUSABLE_BUNDLE: Final = PROBLEM_TYPE_BASE + "unusable-bundle"
 NO_IDENTITY: Final = PROBLEM_TYPE_BASE + "no-identity"
 SESSION_REQUIRED: Final = PROBLEM_TYPE_BASE + "session-required"
 INVALID_BUNDLE_SIGNATURE: Final = PROBLEM_TYPE_BASE + "invalid-bundle-signature"
+WRONG_KEY: Final = PROBLEM_TYPE_BASE + "wrong-key"
 _STANDARD_MEMBERS: Final = frozenset({"type", "title", "status", "detail", "instance"})
 
 # The title of each problem type, whatever the occurrence (RFC 9457 §3.1.3).
@@ -47,6 +48,7 @@ _TITLES: Final[Mapping[str, str]] = {
     NO_IDENTITY: "No identity",
     SESSION_REQUIRED: "Session required",
     INVALID_BUNDLE_SIGNATURE: "Invalid bundle signature",
+    WRONG_KEY: "Wrong key",
 }
 
 

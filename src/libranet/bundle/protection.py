@@ -218,19 +218,34 @@ class PasswordKey:
         )
         return cls(_ARGON2ID, derivation.derive(password_bytes))
 
-    def protect(self, plaintext: bytes, *, max_object_bytes: int = MIB) -> bytes:
-        """``plaintext``, a bundle's JSON, protected by this key with the default IV (§6.1).
+    def protect(
+        self, plaintext: bytes, *, max_object_bytes: int = MIB, iv: bytes | None = None
+    ) -> bytes:
+        """``plaintext``, a bundle's JSON, protected by this key with ``iv`` (§6.1).
 
-        The same plaintext and key always give the same bytes (§6.3).
+        With no ``iv``, the default IV is used, and the same plaintext and key
+        always give the same bytes (§6.3). An ``iv`` given is named in the
+        descriptor.
 
         Raises:
+            ValueError: ``iv`` is not as long as the scheme's IV.
             BundleTooLargeError: the protected bundle is larger than
                 ``max_object_bytes``, so it could not be stored.
         """
         scheme = _WRITTEN_SCHEMES[self.derivation]
+        descriptor = scheme.descriptor
+
+        if iv is not None:
+            if len(iv) != scheme.iv_bytes:
+                raise ValueError(f"An IV of {descriptor} is {scheme.iv_bytes} bytes, got {len(iv)}")
+
+            descriptor = _DESCRIPTOR_FIELD_SEPARATOR.join((descriptor, _IV_PREFIX + iv.hex()))
+
         compressed = compress(plaintext, _COMPRESSION_LEVEL)
-        ciphertext = scheme.encrypt(compressed, self.key, bytes(scheme.iv_bytes))
-        protected = ciphertext + DESCRIPTOR_SEPARATOR + scheme.descriptor.encode("ascii")
+        ciphertext = scheme.encrypt(
+            compressed, self.key, bytes(scheme.iv_bytes) if iv is None else iv
+        )
+        protected = ciphertext + DESCRIPTOR_SEPARATOR + descriptor.encode("ascii")
 
         if len(protected) > max_object_bytes:
             raise BundleTooLargeError(

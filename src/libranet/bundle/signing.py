@@ -91,6 +91,23 @@ class SignedBundle:
 
         return cls(signer, contents, private_key.sign(_hash(contents), _PADDING, _PREHASHED))
 
+    @staticmethod
+    def is_signed(data: bytes) -> bool:
+        """Whether ``data`` is shaped as a signed bundle: a JSON object with a ``"signature"``.
+
+        As a reader tells one (BundleSpecification §1). Whether it is a
+        well-formed one, and checks, is for :meth:`decoded` and
+        :meth:`verified` to say.
+        """
+        try:
+            value = loads(data.decode("utf-8"))
+
+        except (ValueError, RecursionError):
+            # Not logged: not being JSON is the answer.
+            return False
+
+        return isinstance(value, dict) and "signature" in value
+
     @classmethod
     def decoded(cls, data: bytes) -> SignedBundle:
         """The signed bundle ``data`` holds, its hash checked, and its signature not yet.
@@ -178,21 +195,38 @@ class SignedBundle:
             raise BundleSignatureError(f"The key given is not the signer {self.signer}'s")
 
         try:
-            key = load_pem_public_key(public_key)
+            key = person_public_key(public_key, f"The signer {self.signer}")
 
-        except (ValueError, TypeError, UnsupportedAlgorithm):
-            raise BundleSignatureError(f"The signer {self.signer} names no public key") from None
-
-        if not isinstance(key, RSAPublicKey) or key.key_size < MIN_PERSON_KEY_BITS:
-            raise BundleSignatureError(
-                f"The signer {self.signer} names no RSA key of at least {MIN_PERSON_KEY_BITS} bits"
-            )
+        except ValueError as error:
+            raise BundleSignatureError(str(error)) from None
 
         try:
             key.verify(self.signature, _hash(self.contents), _PADDING, _PREHASHED)
 
         except InvalidSignature:
             raise BundleSignatureError(f"The signature of {self.signer} does not verify") from None
+
+
+def person_public_key(public_key: bytes, named: str) -> RSAPublicKey:
+    """The person's key ``public_key`` is: an RSA key of at least ``MIN_PERSON_KEY_BITS``.
+
+    ``public_key`` is PEM SubjectPublicKeyInfo, as a person's id names it
+    (HttpApi §11.3). ``named`` says in an error what names the key, as
+    ``The signer sha256/…``.
+
+    Raises:
+        ValueError: it is no public key, or no RSA key that large.
+    """
+    try:
+        key = load_pem_public_key(public_key)
+
+    except (ValueError, TypeError, UnsupportedAlgorithm):
+        raise ValueError(f"{named} names no public key") from None
+
+    if not isinstance(key, RSAPublicKey) or key.key_size < MIN_PERSON_KEY_BITS:
+        raise ValueError(f"{named} names no RSA key of at least {MIN_PERSON_KEY_BITS} bits")
+
+    return key
 
 
 def _hash(contents: str) -> bytes:

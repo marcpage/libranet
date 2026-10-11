@@ -41,6 +41,7 @@ from libranet.identity.content_digest import CONTENT_DIGEST_HEADER
 from libranet.identity.errors import InvalidSignatureError, UnknownKeyError
 from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity
+from libranet.identity.people import PersonKey
 from libranet.identity.signatures import MessageSigner, MessageVerifier
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
@@ -1859,6 +1860,8 @@ def test_a_local_client_imports_a_file_from_a_folder_offered(
         ("/data/session", "POST"),
         ("/data/session", "GET"),
         ("/data/session", "DELETE"),
+        (f"/data/encrypted/{CONTENT_ID}", "GET"),
+        (f"/data/encrypted/{CONTENT_ID}", "POST"),
     ],
 )
 def test_an_untrusted_applications_page_is_refused_what_only_trusted_ones_may_ask(
@@ -2076,6 +2079,8 @@ def test_a_signed_in_local_client_signs_a_drop_that_any_client_checks(
         ("/data/session", "POST"),
         ("/data/session", "GET"),
         ("/data/signed", "POST"),
+        (f"/data/encrypted/{CONTENT_ID}", "GET"),
+        (f"/data/encrypted/{CONTENT_ID}", "POST"),
     ],
 )
 def test_another_client_is_refused_identities_and_sessions(
@@ -2099,6 +2104,103 @@ def test_another_client_is_refused_identities_and_sessions(
 
     assert response.status == 403
     assert _published(queues) == []
+
+
+def test_a_signed_in_local_client_opens_a_drop_encrypted_for_them(
+    local_connection: HTTPConnection,
+) -> None:
+    page = _from_page(local_connection, "/movie/")
+    local_connection.request(
+        "POST",
+        "/data/users",
+        body=b'{"username": "alice", "password": "correct horse", "key_bits": 2048, "seconds": 0}',
+        headers={"Content-Type": JSON_CONTENT_TYPE, **page},
+    )
+    made = local_connection.getresponse()
+    person_id = loads(made.read())["id"]
+    cookie = {"Cookie": (made.getheader("Set-Cookie") or "").partition(";")[0]}
+    drop = {"target": f"mail:{person_id}", "text": "hello", "seconds": 0}
+    local_connection.request(
+        "POST",
+        "/data/drop",
+        body=dumps({**drop, "encrypt": {"for": person_id}}).encode(),
+        headers={"Content-Type": JSON_CONTENT_TYPE, **page},
+    )
+    placed = local_connection.getresponse()
+    drop_id = loads(placed.read())["id"]
+    # Not taken for /data/{algorithm}/{hash}, whose pattern it also fits.
+    opened, opened_body = _get(
+        local_connection, f"/data/encrypted/{drop_id}", headers={**page, **cookie}
+    )
+    unopened, _ = _get(local_connection, f"/data/encrypted/{drop_id}", headers=page)
+
+    assert placed.status == 201
+    assert opened.status == 200
+    assert opened.getheader("Cache-Control") == "no-store"
+    assert loads(opened_body) == {"id": drop_id, "text": "hello"}
+    assert unopened.status == 401
+
+
+def test_a_local_client_opens_a_drop_encrypted_by_a_password(
+    local_connection: HTTPConnection,
+) -> None:
+    page = _from_page(local_connection, "/movie/")
+    password = {"username": "alice", "password": "correct horse"}
+    drop = {"target": "notes", "text": "hello", "seconds": 0, "encrypt": password}
+    local_connection.request(
+        "POST",
+        "/data/drop",
+        body=dumps(drop).encode(),
+        headers={"Content-Type": JSON_CONTENT_TYPE, **page},
+    )
+    placed = local_connection.getresponse()
+    drop_id = loads(placed.read())["id"]
+    local_connection.request(
+        "POST",
+        f"/data/encrypted/{drop_id}",
+        body=dumps(password).encode(),
+        headers={"Content-Type": JSON_CONTENT_TYPE, **page},
+    )
+    opened = local_connection.getresponse()
+
+    assert placed.status == 201
+    assert opened.status == 200
+    assert loads(opened.read()) == {"id": drop_id, "text": "hello"}
+
+
+def test_another_client_may_encrypt_a_drop_for_a_person_but_not_by_a_password(
+    local_server: LibranetHTTPServer, storage: StorageConfig
+) -> None:
+    person = PersonKey.generate(2048)
+    CasStore.source_of_truth(storage).write(person.person_id, person.public_key)
+    # A client elsewhere names this node as it knows it, which /config's hosts do not.
+    headers = {
+        "Host": "node.lan:8080",
+        "Referer": "http://node.lan:8080/movie/",
+        "Content-Type": JSON_CONTENT_TYPE,
+    }
+    answers = []
+
+    for encrypt in (
+        {"for": str(person.person_id)},
+        {"username": "alice", "password": "correct horse"},
+    ):
+        body = {"target": "mail:someone", "text": "hello", "seconds": 0, "encrypt": encrypt}
+        answers.append(
+            local_server.router.dispatch(
+                Request(
+                    "POST",
+                    "/data/drop",
+                    headers=headers,
+                    client_address="203.0.113.42",
+                    body=RequestBody.of(dumps(body).encode()),
+                )
+            )
+        )
+
+    for_person, by_password = answers
+    assert for_person.status == 201
+    assert by_password.status == 403
 
 
 def test_a_person_key_is_made_only_at_the_sizes_the_router_is_given(

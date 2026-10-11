@@ -35,6 +35,14 @@ class IncorrectPasswordError(PasswordProtectedBundleError):
     """
 
 
+class IncorrectKeyError(BundleError):
+    """The private key given does not open a block encrypted for a person (§8).
+
+    The block is someone else's: RSAES-OAEP refuses every key but the one it
+    was encrypted for, rather than give a wrong one.
+    """
+
+
 class BundleTooLargeError(BundleError):
     """A bundle cannot be stored within the object limit (HighLevelDesign §4.3).
 

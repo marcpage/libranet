@@ -17,7 +17,7 @@ from libranet.bundle.errors import (
     MalformedBundleError,
     UnsupportedBundleError,
 )
-from libranet.bundle.signing import SIGNED_HASH_ALGORITHM, SignedBundle
+from libranet.bundle.signing import SIGNED_HASH_ALGORITHM, SignedBundle, person_public_key
 from libranet.cas.content_id import ContentId
 
 CONTENTS = '{"handle":"alice","version":1}'
@@ -270,3 +270,39 @@ def test_a_signature_that_is_not_base64_is_refused(bundle: SignedBundle) -> None
 def test_a_hash_that_is_not_the_hash_of_the_contents_is_refused(bundle: SignedBundle) -> None:
     with raises(BundleSignatureError, match="is not its hash"):
         SignedBundle.decoded(reencoded(bundle, hash="0" * 64))
+
+
+@mark.parametrize(
+    "data, signed",
+    [
+        (b'{"signature": "anything"}', True),
+        (b'{"contents": "{}"}', False),
+        (b'["signature"]', False),
+        (b"not json", False),
+        (b"\xff\xfe", False),
+    ],
+)
+def test_a_signed_bundle_is_told_by_its_shape(data: bytes, signed: bool) -> None:
+    assert SignedBundle.is_signed(data) is signed
+
+
+def test_a_signed_bundle_is_shaped_as_one(bundle: SignedBundle) -> None:
+    assert SignedBundle.is_signed(bundle.encoded())
+
+
+def test_a_persons_public_key_is_an_rsa_key_of_at_least_2048_bits(public_key: bytes) -> None:
+    assert person_public_key(public_key, "It").key_size == 2048
+
+
+@mark.parametrize(
+    "public_key, complaint",
+    [
+        (b"not a key", "Bob's id names no public key"),
+        (public_pem(generate_private_key(65537, 1024)), "Bob's id names no RSA key of at least"),
+    ],
+)
+def test_what_is_no_persons_public_key_is_refused_naming_what_named_it(
+    public_key: bytes, complaint: str
+) -> None:
+    with raises(ValueError, match=complaint):
+        person_public_key(public_key, "Bob's id")

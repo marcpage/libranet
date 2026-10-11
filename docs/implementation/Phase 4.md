@@ -280,40 +280,152 @@ the rest.
 
 ## Step 78 — Encrypting a Data Block
 
-**Issue:** #257, in part. **Depends on:** Steps 79, 89, and 90.
+**Issues:** #257, in part, and #282. **Depends on:** Steps 79, 80, 89, and
+90.
 
-Step 89 lets a page store a block of its own at a drop. The issue also asks
-that the block can be encrypted, which is left to this step, since
-encrypting for a person needs the person's public key (Step 79).
+Step 89 lets a page store a block of its own at a drop. Issue #257 also asked
+that the block can be encrypted, which was left to this step, since
+encrypting for a person needs the person's public key (Step 79). PR #270
+closed #257 with the drop alone, so #282 asks for the encryption again.
 
-Settled in the issue:
+Settled in the issues:
 
-- A block stored from the browser can be encrypted for a specific person,
-  or by a username and password.
+- A block stored from the browser can be encrypted **for a specific
+  person**, by their id, or **by a username and password**.
+- **It is asked for in the body of `POST /data/drop`** (HttpApi §9.6),
+  rather than at an endpoint of its own.
+- **Encrypting for a person.** A person's key is RSA, which encrypts only
+  something as small as a key, so the block is encrypted with a random
+  AES-256 key, and that key with the person's public key, by RSA-OAEP. How
+  this is written down is a new section of the Bundle Specification, beside
+  §6 and §7.
+- **Encrypting by a username and password** uses the costly derivation
+  `PW-ARGON2ID-AES256-CBC` (Step 90), as identity blocks do.
+- **Reading a block encrypted for a person.** The node opens it with the
+  key of whoever is signed in, for a local client alone, from a trusted
+  application's page.
+- **Reading a block encrypted by a password.** The page gives the username
+  and password, and the node opens it.
+- **It works with signing** (`POST /data/signed`, Step 80), so that a block
+  can be signed by one person and encrypted for another, as mail (Step 82)
+  needs for messages and the address book.
 
-Work this implies:
+The specification change is written: BundleSpecification §8, new, gives a
+block encrypted for a person, its descriptor
+`PK-RSAOAEP256-AES256-CBC-KEY:{hex}`, how the key is carried, and how it is
+read, with §1 and §6 naming it, §6.3 a random IV for what a page has
+encrypted by a password, and the open items moved to §9. HttpApi §11.6, new,
+gives `encrypt` and `GET` and `POST /data/encrypted/{id}`, with `wrong-key` in
+§17.2, `encrypted` among the names beneath `/data` in §5, and §2.1, §2.4,
+§2.5, §9.6, §11.5, §20, §21, and §25 naming them.
 
-- Encrypting for a person needs their public key (Step 79), fetched by
-  their id as a node's is. Encrypting by a username and password needs the
-  key Step 90 derives from both.
+Built in one change set: 900 added lines of non-test Python, 44 of them in
+place of removed ones, and 1,229 of tests.
+
+- **`EncryptedForPerson`** (`bundle/person_encryption.py`, new), encrypted,
+  written, read, and opened, and **`IncorrectKeyError`**.
+- **`person_public_key`** (`bundle/signing.py`), what a person's public key
+  is, which checking a signature and encrypting now share, and
+  **`SignedBundle.is_signed`**. **`PasswordKey.protect`** takes an `iv`.
+- **`PersonEncryption`** and **`PasswordEncryption`**, and
+  **`DropRequest.encryption`** and **`encrypted`**
+  (`protocol/drop_requests.py`).
+- **`DropEncryption`** (`webserver/drop_handler.py`), which
+  `DropHandler.placed` uses, so that `/data/drop` and `/data/signed` both
+  encrypt.
+- **`EncryptedDrops`** (`webserver/encrypted_handlers.py`, new), the two
+  endpoints opening a block, on **`SignedDrops.held`** and **`checked`**,
+  split out of `SignedDrops.read`. The `wrong-key` problem type, and
+  `encrypted` reserved beneath `/data`.
+- The App Developer Guide §5.2, §6.9, §6.13, and §6.15 (new).
 
 My calls, not yet reviewed:
 
-- The encryption is asked for in the body of `POST /data/drop` (HttpApi
-  §9.6), as making bundles asks for its own (HttpApi §12.3), rather than at
-  an endpoint of its own.
+- **The block is written as §6 writes one, with `PK` for `PW`**: the
+  ciphertext, `0x00`, and a descriptor carrying the key encrypted, in hex,
+  not a JSON envelope, which would carry the ciphertext in base64, a third
+  larger. The token `RSAOAEP256` is the name JSON Web Algorithms give RSA-OAEP
+  with SHA-256 and MGF1 over it (RFC 7518), without its hyphens, and fixes
+  every parameter, as `ARGON2ID` fixes its cost.
+- **The block names no one.** A reader tries its own key, and RSA-OAEP
+  refuses any other. Naming the person would tell anyone who sees the block
+  whom it is for, which the drop's target string need not.
+- **One person to a block.** A page encrypts a block for each person. One
+  block carrying its key for several would show how many there are; it is
+  left among the Bundle Specification's open items (§9).
+- **The block is compressed, then encrypted**, at the fixed level, as §6
+  does, and nothing dedups, since each block's key is random. A key from
+  the plaintext, as §7 derives one, would let anyone who guessed a message
+  confirm it was sent.
+- **A drop encrypted by a password names a random IV** (BundleSpecification
+  §6.3), since its nonce makes each drop unique whatever its IV, so the
+  default IV would dedup nothing, and would show where two drops under one
+  password begin alike. An identity block keeps the default IV (Step 79).
+- **A password encrypts only if it is at least 8 characters**, as a new
+  identity's must be, and opens with any that is not empty, as signing in
+  does.
+- **Any client may encrypt a drop for a person**, as any may make a drop,
+  since only the person's public key is used. **Only a local client may
+  encrypt by a password, from a trusted application's page**, as it may sign
+  in. `/data/drop` serves any client, so this is checked once its body says
+  which, after the checks it makes of every request.
+- **Opening is `/data/encrypted/{id}`**, `GET` with the session's key and
+  `POST` with a username and password, beside `/data/signed/{id}`. A
+  password goes in a body, never a path. Both serve only local clients, from
+  a trusted application's page: the issue said so of the first, and the
+  second carries a password.
+- **What was signed comes back checked.** A block that opens to something
+  shaped as a signed bundle is checked as `/data/signed` checks one, and
+  answered as it answers, with `signer` and `contents`. One that does not
+  check is refused, never given as text. Anything else is `text` if it is
+  UTF-8, and `base64` otherwise.
+- **Sign, then encrypt**, so that only whoever opens a block learns who
+  signed it. Whoever opens a signed block can encrypt it again for someone
+  else, so the specifications say that a page whose reader must know a
+  block was meant for them names the reader in what it signs, as mail will.
+- **A key that does not open a block is `403`, with `wrong-key`**, a new
+  problem type, for a person's key and a password alike. A block not
+  encrypted as the request opens one is `400` `unusable-bundle`, and no one
+  signed in is `401` `session-required`. A person's key not held is asked for
+  and `503`, one blocked `404`, and an id naming no person's key `400`.
+- **No answer of opening is kept by a cache**, `Cache-Control: no-store`,
+  refusals too.
+- **A block opens to at most 4 MiB** (`MAX_OPENED_BYTES`), the largest body
+  `/data/drop` takes, so the most a drop's content can be given in.
+- **Each opening is announced as a read of the drop** (`data.requested`),
+  as each check of a signed drop is (Step 80).
+- **Each key a password derives takes its turn** with signing in's, whether
+  it encrypts or opens.
+- **Only a drop is opened.** What is held is read up to its last null byte,
+  as every block a node encrypts is made a drop.
+- **The rule for a person's public key has one home**, `person_public_key`,
+  which `SignedBundle.verified` now uses too, its messages unchanged.
 
-**Open questions:**
+A live run of one node from the scratchpad, driven with `curl` from the
+movie application's page:
 
-- What encrypting for a person is. Node keys are Ed25519, which signs
-  and cannot encrypt. Step 79's RSA keys can encrypt a key, but not a
-  block of 1 MiB, so a block is encrypted by a key of its own and that
-  key by theirs. How that is written down belongs in the Bundle
-  Specification, beside §6 and §7.
+- Alice and Bob were made at 2048 bits. Signed in as Alice, a message naming
+  Bob in what it said was signed and encrypted for him at `mail:{Bob's id}`,
+  matching 21 bits. Bob opened it, `signer` Alice and `contents` as written,
+  with `Cache-Control: no-store`. Alice was `403` `wrong-key`, no session
+  `401`, and `/data/signed` `400`, since only whoever opens it sees a
+  signature.
+- The object was stored compressed, the key's hex being most of it. Once
+  decompressed, it was 544 bytes of ciphertext, the descriptor with 512 hex
+  digits, and a 6-byte nonce, holding nothing of the message.
+- Bytes given as `base64`, encrypted by `Alice` and her password, opened by
+  `ALICE` and it in 0.29 seconds, back as `base64`. A wrong password was
+  `403`, opening it as a person's `400`, a password of 5 characters `400`,
+  a request with no `Referer` `403`, a person's key not held `503` with
+  `Retry-After`, and an id naming no key `400`.
+- No warning or error was logged, but for the request sent with no
+  `Referer`.
 
-**Testable in isolation:** web server tests over a temp CAS asserting a
-block is stored encrypted as asked, and is opened by the right password,
-or the right private key, and by nothing else.
+**Testable in isolation:** library tests encrypting a block for a person
+and by a password, and opening it with the right key alone; web server tests
+over a temp CAS asserting a block is stored encrypted as asked, and is opened
+by the right private key, or the right username and password, and by nothing
+else; and router tests asserting who may encrypt and open.
 
 ---
 
@@ -594,9 +706,9 @@ My calls before building, not yet reviewed:
 The specification change is written: BundleSpecification §5 gives the
 signature, RSASSA-PSS with SHA-256, MGF1, and a 32-byte salt, base64, over
 `contents` through its hash, what a reader checks, and that what is signed
-need not be a bundle, with §8 naming the keys not yet used. HttpApi §11.3
-gives the identity block's `created`, §11.4 the session's, and §11.5, new,
-signing as a person, with `session-required` and `invalid-bundle-signature`
+need not be a bundle, with §8, now §9, naming the keys not yet used. HttpApi
+§11.3 gives the identity block's `created`, §11.4 the session's, and §11.5,
+new, signing as a person, with `session-required` and `invalid-bundle-signature`
 in §17.2, `signed` among the names that are no hash algorithm in §5, and
 §2.1, §2.4, §2.5, §20, §21, and §25 naming them. HttpApi §9.7, new, gives
 searching a drop by its target, and §5, §9.4, and §25 name it. The metadata
@@ -1361,6 +1473,7 @@ where it went.
 | #71 | Blocked data list | 30, moved from Phase 5 |
 | #256 | Creating user ids | 79, 90 |
 | #257 | Adding a data block directly | 78, 89, 90 |
+| #282 | Encrypting a data block for a person, or by a username and password | 78 |
 | #258 | A messaging application | 82 |
 | #259 | User metadata | 80 |
 | #260 | A fallback identity | 81 |
@@ -1381,7 +1494,7 @@ Issue #261, movie playlists per user, left the milestone unbuilt for
 | 4 | 91 (#274) | Needs 79's identities. Until a page the node ships makes one, no one has an identity to sign in with. |
 | 5 | 30 (#71) | Needed by 92 to block the bundles a newer one replaces. Independent of the identity steps; Phase 2 Step 28, which it reaches into, is built. |
 | 6 | 92 (#276) | Needs 30, 89's drops, and 79's ids. The directory is the application's, built on the node's endpoints. |
-| 7 | 78 (#257) | Needs 79's public keys to encrypt for a person, and 90 to encrypt by a password. Its encryption questions are settled first, in the Bundle Specification. |
+| 7 | 78 (#257, #282) | Needs 79's public keys to encrypt for a person, and 90 to encrypt by a password. Its encryption questions are settled first, in the Bundle Specification. |
 | 8 | 80 (#259) | Needs 79's identity to sign it, and 92's directory to show it. |
 | 9 | 81 (#260) | Needs 80's metadata. A fallback is named only when an account is made, and an identity with none reads as compromised, so it changes 79's and 91's endpoints to name one, and identities made before it are made again. |
 | 10 | 82 (#258) | An application of the steps before it. |
@@ -1405,9 +1518,10 @@ ones that cut across more than one step:
   46) — ruled in Step 30: it accepts the content and discards it, as it
   does any push of it, so with a single hand-off copy one node's block can
   take the last copy off the network (HighLevelDesign §4.11).
-- **Encrypting for a person** (Steps 78, 79, and 82). Node keys cannot
-  encrypt; RSA can encrypt only a key. How a block encrypted for a person
-  is written down is a new section of the Bundle Specification.
+- **Encrypting for a person** (Steps 78, 79, and 82) — built in Step 78: a
+  block is encrypted by a random key, and that key by the person's public
+  key, written down in BundleSpecification §8. Encrypting one block for
+  several people is not built.
 - **Signed bundles** (Steps 80 and 81) — built in Step 80 for JSON a
   person signs, which a node signs and checks for a page. Reading into a
   signed bundle as a bundle is not built.

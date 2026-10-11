@@ -20,7 +20,8 @@ node's own pages there, such as the listing of the folders it offers them
 (Phase 3 Step 68), importing a file from one (Phase 3 Step 69), and making a
 bundle, or a new version of one, from the bundles a request names, stored as
 uploads from this node (Phase 3 Step 72), making a person's identity,
-and signing them in and out (Phase 4 Step 79), and blocking content (Phase 4
+and signing them in and out (Phase 4 Step 79), opening what is encrypted for
+them or by a password (Phase 4 Step 78), and blocking content (Phase 4
 Step 30). Any client may read into a
 bundle, by its id, as an application's files are served (Phase 3 Step 71).
 
@@ -163,9 +164,16 @@ from libranet.webserver.drop_handler import (
     DROP_PATH,
     MAX_DROP_BODY_BYTES,
     CostlyWork,
+    DropEncryption,
     DropHandler,
     StoredDrop,
     Turns,
+)
+from libranet.webserver.encrypted_handlers import (
+    ENCRYPTED_PATH,
+    ENCRYPTED_PATTERN,
+    MAX_OPENED_BYTES,
+    EncryptedDrops,
 )
 from libranet.webserver.errors import (
     BundleEditError,
@@ -231,7 +239,12 @@ from libranet.webserver.server import (
 )
 from libranet.webserver.sessions import SESSION_COOKIE, Session, Sessions
 from libranet.webserver.signature_guard import API_PREFIX, SignatureGuard
-from libranet.webserver.signed_handlers import SIGNED_PATH, SIGNED_PATTERN, SignedDrops
+from libranet.webserver.signed_handlers import (
+    SIGNED_PATH,
+    SIGNED_PATTERN,
+    SignedDrops,
+    signed_value,
+)
 from libranet.webserver.site_checks import HOST_HEADER, SITE_HEADER, SiteChecks, host_name
 
 __all__ = [
@@ -273,6 +286,8 @@ __all__ = [
     "DIRECTORY_PATTERN",
     "DROP_PATH",
     "DROP_SEARCH_PATTERN",
+    "ENCRYPTED_PATH",
+    "ENCRYPTED_PATTERN",
     "ENDPOINTS",
     "EXPORTS_FIELD",
     "EXPORTS_PATH",
@@ -289,6 +304,7 @@ __all__ = [
     "MAX_COST",
     "MAX_DROP_BODY_BYTES",
     "MAX_EDIT_BODY_BYTES",
+    "MAX_OPENED_BYTES",
     "MAX_STORE_BYTES",
     "MAX_VALUE_BYTES",
     "NODE_PATH",
@@ -343,7 +359,9 @@ __all__ = [
     "DataReadHandler",
     "DataWriteHandler",
     "DirectoryHandler",
+    "DropEncryption",
     "DropHandler",
+    "EncryptedDrops",
     "FileStream",
     "Guard",
     "Handler",
@@ -427,6 +445,7 @@ __all__ = [
     "problem_response",
     "redirect_response",
     "signature_required_response",
+    "signed_value",
     "status_response",
     "unreadable_body_response",
     "unreadable_registry_response",
