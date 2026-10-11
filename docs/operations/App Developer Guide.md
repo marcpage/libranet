@@ -246,6 +246,8 @@ when trusted. `self.origin === "null"` tells a page it is sandboxed.
 | `/data/drop` | `POST` | Any | Any application's | Place content at a drop (§6.9) |
 | `/data/users` | `POST` | Local | A trusted application's | Make a person's identity (§6.10) |
 | `/data/session` | `GET`, `POST`, `DELETE` | Local | A trusted application's | Who is signed in; sign in and out (§6.10) |
+| `/data/signed` | `POST` | Local | A trusted application's | Place JSON at a drop, signed as whoever is signed in (§6.13) |
+| `/data/signed/{id}` | `GET` | Any | Any, or none | Check signed content, and read what it signs (§6.13) |
 | `/data/{id}` | `DELETE` | Local | A trusted application's | Delete and block content the node will no longer hold (§6.11) |
 | `/data/nodes`, `/data/seek` | `GET` | Any | Any, or none | The peers the node knows, and what it seeks (§6.8) |
 
@@ -619,7 +621,7 @@ const response = await fetch("/data/users", {
     minimum_bits: 16,
   }),
 });
-const { id, username, drop, target, matching_bits } = await response.json();
+const { id, username, created, drop, target, matching_bits } = await response.json();
 ```
 
 - **`username`** is case-folded, with spaces around it dropped, so `Alice`
@@ -633,8 +635,10 @@ const { id, username, drop, target, matching_bits } = await response.json();
   limited alike. Anyone can place blocks at `user:alice`, and the more bits
   the identity's drop matches, the nearer the top of a search it is.
 
-It is answered `201 Created`, and the person is signed in. A username and
-password that already open an identity on this node are `409`. An operator
+It is answered `201 Created`, and the person is signed in. `created` is
+when the identity was made, as a UTC time to the second, such as
+`2026-10-10T14:03:22Z`. A username and password that already open an
+identity on this node are `409`. An operator
 can also create one on the `/config` page, which signs no one in
 ([Operator Guide](Operator%20Guide.md) §6.5).
 
@@ -646,17 +650,17 @@ await fetch("/data/session", {
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ username: "alice", password }),
 });
-const { id, username } = await (await fetch("/data/session")).json();
+const { id, username, created } = await (await fetch("/data/session")).json();
 await fetch("/data/session", { method: "DELETE" });
 ```
 
-Signing in answers with the person's `id` and `username`, and asking who is
-signed in answers the same, or both `null` when no one is. A wrong password
-is `403`, with the problem type `no-identity`. A node that has found nothing
-at the drop yet, or has found blocks it does not hold, answers `503` while
-it asks its peers for them, so wait as §5.3 shows. Each sign-in costs the
-node a fifth of a second or so, by design, and it signs in one person at a
-time.
+Signing in answers with the person's `id`, `username`, and `created`, and
+asking who is signed in answers the same, or each `null` when no one is. A
+wrong password is `403`, with the problem type `no-identity`. A node that
+has found nothing at the drop yet, or has found blocks it does not hold,
+answers `503` while it asks its peers for them, so wait as §5.3 shows. Each
+sign-in costs the node a fifth of a second or so, by design, and it signs in
+one person at a time.
 
 The session is named by a cookie the browser keeps, which no page's script
 can read. The node holds the person's private key while they are signed in,
@@ -695,7 +699,10 @@ Blocking is for a local client only, from a trusted application's page.
 The user directory lists the people who have opened it, by their ids. It
 is kept by applications, not by the node, which knows nothing of it: the
 shipped `directory` application, at `/directory/`, lists everyone, and
-adds whoever is signed in (§6.10). It is a directory bundle made a drop at
+adds whoever is signed in (§6.10). It shows what each person says of
+themselves, searches all of it, and lets whoever is signed in change their
+own (§6.14). A local client can sign in and out there. It is a directory
+bundle made a drop at
 `user directory`. Each person is an entry whose path is their id, and
 whose only part is that id, their public key:
 
@@ -739,6 +746,104 @@ To have someone added who is not signed in, link to
 The directory application checks that the id names a public key the node
 holds, and adds them only when the person at the browser clicks **Add to
 the directory**, since a link from anywhere can name anyone.
+
+### 6.13 Signing as a Person
+
+A page never reads a person's private key, so it cannot sign as them. Nor
+can it check a signature: a page reached over the network has none of the
+browser's cryptography. The node does both, with signed bundles (Bundle
+Specification §5). Place the JSON text of an object at a drop, signed by
+whoever is signed in, with:
+
+```js
+const response = await fetch("/data/signed", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    target: `user:${id}`,
+    text: JSON.stringify({ version: 1 }),
+    seconds: 10,
+    minimum_bits: 16,
+  }),
+});
+const { id: drop, target, matching_bits, signer } = await response.json();
+```
+
+`target`, `seconds`, and `minimum_bits` are as for making a drop (§6.9),
+and `text` is signed exactly as it is given. It is answered `201 Created`,
+as a drop is, and `signer` is the person's id. With no one signed in it is
+`401`, with the problem type `session-required`, and `text` that is not an
+object's JSON is `400`. Only a local client, from a trusted application's
+page, signs.
+
+Any client checks signed content, and reads what it signs, with:
+
+```js
+const response = await fetch(`/data/signed/${drop}`);
+const { signer, contents } = await response.json();
+const value = JSON.parse(contents);
+```
+
+A drop's content is read up to its last null byte, as a drop is written.
+`200` means the signature checks under the public key of `signer`, and
+`contents` is the text signed. Content that is not signed is `400`
+`unusable-bundle`, and a signature that does not check is `400`
+`invalid-bundle-signature`. The node answers `503` while it fetches the
+content, or the signer's key, so wait as §5.3 shows. A check that passes
+never changes, and the browser may cache it.
+
+**Check the signer.** A signature says only who signed. Anyone signed in
+can sign any text and place it at any drop, so a page reading a drop named
+for a person, such as `user:{id}`, passes over whatever `signer` is not
+that person.
+
+### 6.14 What People Say of Themselves
+
+What a person says of themselves is kept in versions, each signed by them
+(§6.13) and placed at the drop `user:{id}`, their id after `user:`. It is
+public: anyone who opens the directory can read it, so a page offering to
+change it says so. The shipped directory application shows, searches, and
+changes it (§6.12), and any application may read it, or change the signed
+in person's. Each version's `contents` is:
+
+```json
+{"created": "2026-10-10T14:03:22Z",
+ "fields": {"first name": "Alice", "handle": "alice", "favourite colour": "blue"},
+ "version": 2,
+ "versions": ["sha256/…"]}
+```
+
+- **`created`** is when the person's id was made, as the session gives it
+  (§6.10). Every version carries it.
+- **`fields`** maps each detail's name to its value, both strings. These
+  are the standard ones, each optional: `handle`, `first name`,
+  `last name`, `country`, `state`, `province`, `county`, `city`,
+  `postal code`, `gender`, `latitude`, and `longitude`, the last two in
+  decimal degrees. A person may give any other they name.
+- **`version`** is 1 for the first version, and one more than the version
+  it replaces for each after.
+- **`versions`** names the drop of the version it replaces, and is left out
+  of the first, so that the history can be walked back to it.
+
+To read what someone says, and follow the same rules as other pages do:
+
+- **Search the drop.** Hash `user:{id}` with SHA-256, as the node hashes a
+  target, and search for it (§6.1). Read each result that shares at least
+  16 leading bits with that hash through `GET /data/signed/{id}`, and pass
+  over the rest, which are nearest the target but placed for something
+  else. The node may answer a search from a cache that lacks a version
+  stored since, so search the signed-in person's own drop twice.
+- **Pass over what is not theirs.** Count only content that checks, whose
+  `signer` is the person, and whose `contents` is shaped as above.
+- **The newest is numbered highest**, and of two numbered as high, the one
+  whose drop's id comes first. Only the person signs a version, so no one
+  else can make one newer.
+- **Write a new version over the newest.** Place it with
+  `POST /data/signed`, at the person's drop, matching at least 16 bits,
+  numbered one more than the newest and naming it in `versions`. Hold off
+  while a version found there is not held yet, since it may be newer than
+  the newest read. Never block a version (§6.11): a later step reads the
+  history back to the first.
 
 ## 7. Patterns From the Movie Library
 

@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 from base64 import b64encode
+from dataclasses import dataclass, replace
 from json import dumps, loads
+from logging import ERROR, WARNING
 from os import urandom
 from typing import Any, Mapping
 
-from pytest import fixture, mark
+from pytest import LogCaptureFixture, fixture, mark
 
 from libranet.atomic_file import write_atomically
+from libranet.bundle.errors import BundleTooLargeError
 from libranet.bundle.content import content_chunks
 from libranet.bundle.protection import strip_targeting
 from libranet.bundle.signing import SignedBundle
@@ -91,8 +94,8 @@ def signed(
         DropHandler(uploads, MAX_BYTES, MAX_SECONDS, MAX_MINIMUM_BITS),
         sessions,
         recorder,
-        RETRY_AFTER_SECONDS,
-        BlockedContent.of(storage),
+        retry_after_seconds=RETRY_AFTER_SECONDS,
+        blocked=BlockedContent.of(storage),
     )
 
 
@@ -128,10 +131,14 @@ def signing(
     )
 
 
-def reading(content_id: ContentId) -> Request:
-    """``GET /data/signed/{algorithm}/{hash}`` for ``content_id``."""
+def reading(content_id: ContentId, client_address: str = "127.0.0.1") -> Request:
+    """``GET /data/signed/{algorithm}/{hash}`` for ``content_id``, from ``client_address``."""
     return Request(
-        "GET", f"{SIGNED_PATH}/{content_id}", params=content_id.fields(), body=RequestBody.of(b"")
+        "GET",
+        f"{SIGNED_PATH}/{content_id}",
+        params=content_id.fields(),
+        body=RequestBody.of(b""),
+        client_address=client_address,
     )
 
 
@@ -223,6 +230,22 @@ def test_a_body_asking_for_no_signed_drop_is_400(
     assert not recorder.payloads(EventType.PUT_COMPLETED)
 
 
+def test_a_body_that_does_not_say_it_is_json_is_415(
+    signed: SignedDrops, person: PersonKey, cookie: Mapping[str, str]
+) -> None:
+    request = signing(person, cookie)
+    request = Request(
+        "POST",
+        SIGNED_PATH,
+        headers={**request.headers, "Content-Type": "text/plain"},
+        body=RequestBody.of(request.body.read()),
+    )
+
+    response = signed.make(request)
+
+    assert response.status == 415
+
+
 def test_a_signed_drop_too_large_for_an_object_is_413(
     signed: SignedDrops, person: PersonKey, cookie: Mapping[str, str]
 ) -> None:
@@ -232,6 +255,26 @@ def test_a_signed_drop_too_large_for_an_object_is_413(
 
     assert response.status == 413
     assert problem_type(response) == CONTENT_TOO_LARGE
+
+
+@mark.parametrize("client_address, external", [("127.0.0.1", False), ("203.0.113.42", True)])
+def test_each_check_is_announced_as_a_read_of_the_drop(
+    signed: SignedDrops,
+    person: PersonKey,
+    uploads: OwnUploads,
+    recorder: Recorder,
+    client_address: str,
+    external: bool,
+) -> None:
+    held(uploads, person.public_key)
+    content_id = held(uploads, dropped(person.signed(TEXT)))
+
+    response = signed.read(reading(content_id, client_address))
+
+    assert response.status == 200, response.body
+    assert recorder.payloads(EventType.DATA_REQUESTED) == [
+        {**content_id.fields(), "external": external}
+    ]
 
 
 def test_a_signed_bundle_held_without_drop_bytes_is_read_too(
@@ -286,8 +329,8 @@ def test_a_blocked_drop_or_signers_key_is_404_and_not_asked_for(
         DropHandler(uploads, MAX_BYTES, MAX_SECONDS, MAX_MINIMUM_BITS),
         sessions,
         recorder,
-        RETRY_AFTER_SECONDS,
-        BlockedContent.of(storage),
+        retry_after_seconds=RETRY_AFTER_SECONDS,
+        blocked=BlockedContent.of(storage),
     )
 
     response = signed.read(reading(content_id))
@@ -306,16 +349,28 @@ def test_content_that_is_no_signed_bundle_is_unusable(
     assert problem_type(response) == UNUSABLE_BUNDLE
 
 
-def test_a_signed_bundle_hashed_with_another_algorithm_is_unusable(
-    signed: SignedDrops, person: PersonKey, uploads: OwnUploads
+def test_a_signed_bundle_hashed_with_another_algorithm_is_unusable_and_a_warning(
+    signed: SignedDrops, person: PersonKey, uploads: OwnUploads, caplog: LogCaptureFixture
 ) -> None:
     value = loads(person.signed(TEXT).encoded())
     value["algorithm"] = "sha512"
 
-    response = signed.read(reading(held(uploads, dumps(value).encode("utf-8"))))
+    with caplog.at_level(WARNING):
+        response = signed.read(reading(held(uploads, dumps(value).encode("utf-8"))))
 
     assert response.status == 400
     assert problem_type(response) == UNUSABLE_BUNDLE
+    assert "'sha512' cannot be checked here" in caplog.text
+
+
+def test_content_that_is_not_signed_is_no_warning(
+    signed: SignedDrops, uploads: OwnUploads, caplog: LogCaptureFixture
+) -> None:
+    with caplog.at_level(WARNING):
+        response = signed.read(reading(held(uploads, b"just some content\x00nonce")))
+
+    assert response.status == 400
+    assert not caplog.records
 
 
 def test_a_hash_that_is_not_the_contents_hash_does_not_check(
@@ -330,17 +385,19 @@ def test_a_hash_that_is_not_the_contents_hash_does_not_check(
     assert problem_type(response) == INVALID_BUNDLE_SIGNATURE
 
 
-def test_a_signature_by_another_key_does_not_check(
-    signed: SignedDrops, person: PersonKey, uploads: OwnUploads
+def test_a_signature_by_another_key_does_not_check_and_is_a_warning(
+    signed: SignedDrops, person: PersonKey, uploads: OwnUploads, caplog: LogCaptureFixture
 ) -> None:
     other = PersonKey.generate(2048)
     forged = SignedBundle.signed(TEXT, other.private_key, person.person_id)
     held(uploads, person.public_key)
 
-    response = signed.read(reading(held(uploads, dropped(forged))))
+    with caplog.at_level(WARNING):
+        response = signed.read(reading(held(uploads, dropped(forged))))
 
     assert response.status == 400
     assert problem_type(response) == INVALID_BUNDLE_SIGNATURE
+    assert "signature does not check" in caplog.text
 
 
 def test_a_signer_naming_no_public_key_does_not_check(
@@ -353,6 +410,44 @@ def test_a_signer_naming_no_public_key_does_not_check(
 
     assert response.status == 400
     assert problem_type(response) == INVALID_BUNDLE_SIGNATURE
+
+
+def test_what_is_held_that_is_not_what_its_id_names_is_500_and_a_warning(
+    storage: StorageConfig, signed: SignedDrops, caplog: LogCaptureFixture
+) -> None:
+    content_id = ContentId.for_data(b"what it should be", "sha256")
+    CasStore.source_of_truth(storage).write(content_id, b"damaged on disk")
+
+    with caplog.at_level(WARNING):
+        response = signed.read(reading(content_id))
+
+    assert response.status == 500
+    assert f"What is held for {content_id} is not it" in caplog.text
+
+
+@dataclass(frozen=True)
+class Unreadable:
+    """Holds ``held``, which no read can give, for a reason no check expects."""
+
+    held: ContentId
+
+    def exists(self, content_id: ContentId) -> bool:
+        return content_id == self.held
+
+    def read(self, content_id: ContentId) -> bytes:
+        raise BundleTooLargeError(f"{content_id} is too large")
+
+
+def test_an_error_no_check_expects_is_500_and_an_error(
+    signed: SignedDrops, caplog: LogCaptureFixture
+) -> None:
+    content_id = ContentId.for_data(b"anything", "sha256")
+
+    with caplog.at_level(ERROR):
+        response = replace(signed, content=Unreadable(content_id)).read(reading(content_id))
+
+    assert response.status == 500
+    assert f"Checking {content_id} failed unexpectedly" in caplog.text
 
 
 def test_a_path_naming_no_content_is_400(signed: SignedDrops) -> None:

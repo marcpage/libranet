@@ -1517,11 +1517,11 @@ it. A browser keeps cookies by host and not by port, so the cookie is sent to
 every port of the node's host, `/config`'s too, which ignores it.
 
 `GET /data/session` says who is signed in, as signing in answers, or
-`{"id": null, "username": null, "created": null}` when no one is. `DELETE /data/session`
-signs out, and is answered `204 No Content`, removing the cookie. A session
-also ends when it goes unused for a time the node sets, and when the node
-restarts. Every response that names a session carries
-`Cache-Control: no-store`.
+`{"id": null, "username": null, "created": null}` when no one is.
+`DELETE /data/session` signs out, and is answered `204 No Content`, removing
+the cookie. A session also ends when it goes unused for a time the node
+sets, and when the node restarts. Every response that names a session
+carries `Cache-Control: no-store`.
 
 Making an identity, signing in, and the session serve only local clients,
 from a page of a trusted application (§2.4, §2.5), or, for making an
@@ -1553,7 +1553,9 @@ Content-Type: application/json
 the person's key, as a signed bundle's `contents`. `target`, `seconds`, and
 `minimum_bits` are as for making a drop (§9.6). The node makes the signed
 bundle a drop as §9.6 makes one, under the same limits, and in the same
-turns, and answers `201 Created`, with a `Location` naming the drop:
+turns, and stores the person's public key again, should it no longer hold
+it, so that a reader can check the signature. It answers `201 Created`, with
+a `Location` naming the drop:
 
 ```json
 {"id": "sha256/…", "target": "<target hash>", "matching_bits": 21, "signer": "sha256/…"}
@@ -1584,11 +1586,11 @@ under the public key its `signer` names, it answers `200 OK`:
 
 `contents` is the text signed, exactly as it was signed. An object, or a
 signer's public key, that the node does not hold is asked for, as for any
-miss, and is `503 Service Unavailable` with `Retry-After` (§5.2). Content the
-node has blocked is `404 Not Found` (§5.5). Content that is not a signed
-bundle is `400 Bad Request` with the problem type `unusable-bundle`, and one
-whose `hash` or `signature` does not check, or whose `signer` names no RSA
-public key of at least 2048 bits, is `400 Bad Request` with
+miss, and is `503 Service Unavailable` with `Retry-After` (§5.2). Either one
+that the node has blocked is `404 Not Found` (§5.5). Content that is not a
+signed bundle is `400 Bad Request` with the problem type `unusable-bundle`,
+and one whose `hash` or `signature` does not check, or whose `signer` names
+no RSA public key of at least 2048 bits, is `400 Bad Request` with
 `invalid-bundle-signature`. An answer never changes for an identifier, and is
 cached as content is (§20).
 

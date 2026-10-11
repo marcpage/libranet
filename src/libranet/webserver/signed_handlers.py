@@ -28,14 +28,15 @@ A drop, or a signer's key, not held is asked for, and is ``503``. Either one
 blocked is ``404``. What is not a signed bundle is ``400``
 ``unusable-bundle``, and one that does not check is ``400``
 ``invalid-bundle-signature``. A check that passes never changes for an
-identifier, and is cached as content is.
+identifier, and is cached as content is. Each check is announced as a read
+of the drop is (:mod:`libranet.webserver.data_handler`), so that what pages
+read is counted as wanted.
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, replace
+from dataclasses import KW_ONLY, dataclass, replace
 from http import HTTPStatus
-from json import loads
-from logging import getLogger
+from logging import DEBUG, WARNING, getLogger
 from typing import Final
 
 from libranet.bundle.content import ContentSource, content_chunks
@@ -43,7 +44,9 @@ from libranet.bundle.errors import (
     BundleError,
     BundleSignatureError,
     BundleVerificationError,
+    MalformedBundleError,
     MissingContentError,
+    UnsupportedBundleError,
 )
 from libranet.bundle.protection import strip_targeting
 from libranet.bundle.signing import SignedBundle
@@ -53,7 +56,8 @@ from libranet.cas.content_id import ContentId
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.problems import INVALID_BUNDLE_SIGNATURE, SESSION_REQUIRED, UNUSABLE_BUNDLE, Problem
-from libranet.protocol.drop_requests import DropRequest
+from libranet.protocol.client_origin import is_local_client
+from libranet.protocol.drop_requests import SignedDropRequest
 from libranet.protocol.errors import InvalidConfigRequestError
 from libranet.webserver.config_handlers import invalid_request_response, json_or_refusal
 from libranet.webserver.data_handler import IMMUTABLE_CACHE_CONTROL, content_id_or_refusal
@@ -83,15 +87,16 @@ class SignedDrops:
 
     ``drops`` makes the drops, as ``/data/drop`` does, and the signer's
     public key is stored in ``drops.uploads``. What is checked is read from
-    ``content``, but none of what ``blocked`` names. What is not held is
-    asked for with ``publish``, and a client told to ask again after
-    ``retry_after_seconds``.
+    ``content``, but none of what ``blocked`` names. Each check is announced
+    with ``publish``, and what is not held asked for, a client told to ask
+    again after ``retry_after_seconds``.
     """
 
     content: ContentSource
     drops: DropHandler
     sessions: Sessions
     publish: Publish
+    _: KW_ONLY
     retry_after_seconds: int
     blocked: BlockedContent | None = None
 
@@ -116,15 +121,14 @@ class SignedDrops:
             return value
 
         try:
-            asked = _signed_request(value)
+            asked = SignedDropRequest.from_value(value)
 
         except InvalidConfigRequestError as error:
             _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
             return invalid_request_response(request, error)
 
         person = session.key
-        signed = person.signed(asked.data.decode("utf-8"))
-        stored = self.drops.placed(request, replace(asked, data=signed.encoded()))
+        stored = self.drops.placed(request, asked.signed(person.signed(asked.text).encoded()))
 
         if isinstance(stored, Response):
             return stored
@@ -144,6 +148,11 @@ class SignedDrops:
 
         if isinstance(content_id, Response):
             return content_id
+
+        self.publish(
+            EventType.DATA_REQUESTED,
+            {**content_id.fields(), "external": not is_local_client(request.client_address)},
+        )
 
         try:
             signed = SignedBundle.decoded(strip_targeting(self._held(content_id)))
@@ -189,7 +198,12 @@ class SignedDrops:
             )
 
         if isinstance(error, BundleSignatureError):
-            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
+            _LOGGER.warning(
+                "Refusing %s %s, as its signature does not check: %s",
+                request.method,
+                request.path,
+                error,
+            )
             return _problem(request, INVALID_BUNDLE_SIGNATURE, error)
 
         if isinstance(error, BundleVerificationError):
@@ -200,8 +214,18 @@ class SignedDrops:
                 "What is held here for the content, or its signer's key, is not it.",
             )
 
-        _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-        return _problem(request, UNUSABLE_BUNDLE, error)
+        if isinstance(error, (UnsupportedBundleError, MalformedBundleError)):
+            # An algorithm this node lacks is a warning, since it may mean
+            # the node needs a newer release. What is not signed is common,
+            # as a search lists whatever is nearest.
+            level = WARNING if isinstance(error, UnsupportedBundleError) else DEBUG
+            _LOGGER.log(level, "Refusing %s %s: %s", request.method, request.path, error)
+            return _problem(request, UNUSABLE_BUNDLE, error)
+
+        _LOGGER.error("Checking %s failed unexpectedly: %r", content_id, error)
+        return status_response(
+            request, HTTPStatus.INTERNAL_SERVER_ERROR, "The content could not be checked."
+        )
 
     def _held(self, content_id: ContentId) -> bytes:
         """What is held for ``content_id``, decompressed and checked against it.
@@ -219,29 +243,6 @@ class SignedDrops:
 
 class _Blocked(Exception):
     """Content this node has blocked, which it neither reads nor asks for."""
-
-
-def _signed_request(value: object) -> DropRequest:
-    """The drop a ``POST /data/signed`` body asks for, its ``text`` the JSON of an object.
-
-    Raises:
-        InvalidConfigRequestError: it is not such a body.
-    """
-    if isinstance(value, dict) and "base64" in value:
-        raise InvalidConfigRequestError('What is signed must be given as "text", not "base64"')
-
-    asked = DropRequest.from_value(value)
-
-    try:
-        signed = loads(asked.data.decode("utf-8"))
-
-    except (ValueError, RecursionError):
-        raise InvalidConfigRequestError('"text" must be JSON text') from None
-
-    if not isinstance(signed, dict):
-        raise InvalidConfigRequestError('"text" must be the JSON text of an object')
-
-    return asked
 
 
 def _problem(request: Request, problem_type: str, error: Exception) -> Response:

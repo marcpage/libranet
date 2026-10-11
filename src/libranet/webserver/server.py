@@ -306,7 +306,14 @@ def build_router(  # pylint: disable=too-many-locals
             key_bits=person_key_bits,
             derivations=work.derivations,
         )
-        signed = SignedDrops(uploads, drops, sessions, publish, retry_after_seconds, blocked)
+        signed = SignedDrops(
+            uploads,
+            drops,
+            sessions,
+            publish,
+            retry_after_seconds=retry_after_seconds,
+            blocked=blocked,
+        )
 
         for method, path, handler in (
             ("POST", USERS_PATH, identities.make),

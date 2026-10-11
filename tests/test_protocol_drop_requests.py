@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 from base64 import b64encode
+from json import dumps
 
 from pytest import mark, raises
 
 from libranet.cas.drops import TARGET_BITS, DropTarget
-from libranet.protocol.drop_requests import DropRequest
+from libranet.protocol.drop_requests import DropRequest, SignedDropRequest
 from libranet.protocol.errors import InvalidConfigRequestError
 
 
@@ -63,3 +64,35 @@ def test_a_drop_of_base64_and_no_minimum_matches_none() -> None:
 def test_a_body_that_is_no_usable_drop_is_refused(value: object, complaint: str) -> None:
     with raises(InvalidConfigRequestError, match=complaint.replace("(", r"\(")):
         DropRequest.from_value(value)
+
+
+def test_a_signed_drop_is_of_the_text_of_an_object_and_placed_as_a_drop_is() -> None:
+    text = dumps({"handle": "alice", "version": 1})
+
+    asked = SignedDropRequest.from_value(
+        {"target": "user:alice", "text": text, "seconds": 5, "minimum_bits": 16}
+    )
+
+    assert asked.text == text
+    assert asked.signed(b"signed") == DropRequest(DropTarget.of("user:alice"), b"signed", 5.0, 16)
+
+
+@mark.parametrize(
+    "value, complaint",
+    [
+        ({"target": "t", "text": "not json", "seconds": 1}, '"text" must be JSON text'),
+        ({"target": "t", "text": "[1, 2]", "seconds": 1}, "the JSON text of an object"),
+        ({"target": "t", "base64": "e30=", "seconds": 1}, 'as "text", not "base64"'),
+        ({"target": "t", "text": "{}", "seconds": -1}, "not negative"),
+        ({"target": "t", "seconds": 1}, 'given as "text" or as "base64"'),
+        ([], "must be a JSON object"),
+    ],
+)
+def test_a_body_that_is_no_usable_signed_drop_is_refused(value: object, complaint: str) -> None:
+    with raises(InvalidConfigRequestError, match=complaint):
+        SignedDropRequest.from_value(value)
+
+
+def test_a_signed_drop_made_directly_must_hold_an_objects_json_text() -> None:
+    with raises(ValueError, match="the JSON text of an object"):
+        SignedDropRequest(DropRequest(DropTarget.of("t"), b'"text"', 0.0))

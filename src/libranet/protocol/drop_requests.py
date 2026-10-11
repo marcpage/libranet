@@ -11,10 +11,15 @@ as ``text`` or as ``base64``, as making bundles gives a file's bytes
 long to search for a nonce, and ``minimum_bits``, 0 if absent, how many
 leading bits the drop's hash must share with the target's however long that
 takes.
+
+``POST /data/signed`` takes the same body, but its content is ``text`` alone,
+the JSON text of an object, which the node signs as a person before it places
+it (:class:`SignedDropRequest`, HttpApi §11.5, Phase 4 Step 80).
 """
 
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from json import loads
 from math import isfinite
 from typing import Final
 
@@ -84,6 +89,55 @@ class DropRequest:
 
         except ValueError as error:
             raise InvalidConfigRequestError(str(error)) from None
+
+
+@dataclass(frozen=True)
+class SignedDropRequest:
+    """``unsigned``, a drop whose content is the JSON text of an object, to sign before placing.
+
+    Raises:
+        ValueError: what ``unsigned`` holds is not the JSON text of an object.
+    """
+
+    unsigned: DropRequest
+
+    def __post_init__(self) -> None:
+        try:
+            signed = loads(self.unsigned.data.decode("utf-8"))
+
+        except (ValueError, RecursionError):
+            raise ValueError('"text" must be JSON text') from None
+
+        if not isinstance(signed, dict):
+            raise ValueError('"text" must be the JSON text of an object')
+
+    @classmethod
+    def from_value(cls, value: object) -> SignedDropRequest:
+        """What a ``{"target", "text", "seconds", "minimum_bits"}`` object asks to sign and place.
+
+        ``minimum_bits`` is optional, and there is no ``base64``.
+
+        Raises:
+            InvalidConfigRequestError: it is not such an object, or what it
+                asks for is not a usable drop, or its text not an object's.
+        """
+        if isinstance(value, dict) and "base64" in value:
+            raise InvalidConfigRequestError('What is signed must be given as "text", not "base64"')
+
+        try:
+            return cls(DropRequest.from_value(value))
+
+        except ValueError as error:
+            raise InvalidConfigRequestError(str(error)) from None
+
+    @property
+    def text(self) -> str:
+        """The JSON text to sign."""
+        return self.unsigned.data.decode("utf-8")
+
+    def signed(self, data: bytes) -> DropRequest:
+        """The drop of ``data``, the signed bundle of :attr:`text`, placed as asked."""
+        return replace(self.unsigned, data=data)
 
 
 def _content(value: dict[str, object]) -> bytes:

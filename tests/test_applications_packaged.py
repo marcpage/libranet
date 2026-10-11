@@ -57,6 +57,7 @@ from libranet.webserver.local_only import CLIENT_PATH
 from libranet.webserver.router import Router
 from libranet.webserver.search_handler import SEARCH_PATTERN
 from libranet.webserver.server import build_config_router, build_router
+from libranet.webserver.signed_handlers import SIGNED_PATH, SIGNED_PATTERN
 
 from tests.stubs import StubModule
 
@@ -70,6 +71,33 @@ MOVIE_PAGE_SOURCE = PACKAGED_APPLICATIONS / "movie" / "index.html"
 DIRECTORY_PAGE_SOURCE = PACKAGED_APPLICATIONS / "directory" / "index.html"
 # Where the directory application keeps the user directory (Phase 4 Step 92).
 DIRECTORY_TARGET = DropTarget.of("user directory")
+# The details a person may give of themselves, as #259 names them, and those
+# an entry's first row shows, in order (Phase 4 Step 80).
+STANDARD_FIELDS = (
+    "handle",
+    "first name",
+    "last name",
+    "country",
+    "state",
+    "province",
+    "county",
+    "city",
+    "postal code",
+    "gender",
+    "latitude",
+    "longitude",
+)
+FIRST_ROW = (
+    "first name",
+    "last name",
+    "handle",
+    "country",
+    "postal code",
+    "state",
+    "province",
+    "county",
+    "city",
+)
 CONFIG_CREDENTIALS = {"Authorization": "Basic " + b64encode(b"admin:secret").decode("ascii")}
 
 
@@ -416,9 +444,20 @@ def test_the_directory_page_is_one_self_contained_document(directory_page: str) 
 
 def test_the_directory_page_calls_only_endpoints_the_node_serves(directory_page: str) -> None:
     called = set(findall(r'["`](/data/[^"`$]*)', directory_page))
+    some_id = ContentId.for_data(b"a signed drop", "sha256")
 
-    assert called == {CLIENT_PATH, SESSION_PATH, DROP_PATH, BUNDLES_PATH, "/data/search/", "/data/"}
+    assert called == {
+        CLIENT_PATH,
+        SESSION_PATH,
+        DROP_PATH,
+        BUNDLES_PATH,
+        SIGNED_PATH,
+        "/data/search/",
+        "/data/signed/",
+        "/data/",
+    }
     assert fullmatch(SEARCH_PATTERN, f"/data/search/{DIRECTORY_TARGET.hex}")
+    assert fullmatch(SIGNED_PATTERN, f"/data/signed/{some_id}")
 
 
 def test_the_directory_page_keeps_the_directory_where_the_node_does(directory_page: str) -> None:
@@ -431,6 +470,17 @@ def test_the_directory_page_keeps_the_directory_where_the_node_does(directory_pa
     # Within the ceilings a node sets unless its operator lowers them.
     assert int(seconds) <= network.drop_max_seconds
     assert int(minimum_bits) <= network.drop_max_minimum_bits
+
+
+def test_the_directory_page_keeps_each_persons_details_as_the_issue_names_them(
+    directory_page: str,
+) -> None:
+    [standard] = findall(r"const STANDARD_FIELDS = \[([^\]]*)\];", directory_page)
+    [first_row] = findall(r"const FIRST_ROW = \[([^\]]*)\];", directory_page)
+
+    assert 'const DETAILS_PREFIX = "user:";' in directory_page
+    assert tuple(findall(r'"([^"]+)"', standard)) == STANDARD_FIELDS
+    assert tuple(findall(r'"([^"]+)"', first_row)) == FIRST_ROW
 
 
 @mark.parametrize(
