@@ -534,39 +534,171 @@ Work this implies:
   signs it with the key the session holds.
 - Loading the directory searches each person's drop, one search per id.
 
-My calls, not yet reviewed:
+Ruled before building (2026-10-10), each the option recommended:
 
-- The metadata is a small JSON document, kept in a signed bundle
-  (BundleSpecification §5), whose fields are the issue's, beside the
-  fallback identity (Step 81).
-- Each version names the one it replaces, so that its history can be
-  walked back to the first, which Step 81 needs.
-- **Step 92 is built first**, showing ids alone, as #276 says, and this
-  step adds the metadata to its page.
-- **The page says, beside the form, that anyone can read what is in
-  it**, since a location and a postal code are among the fields.
+- **The node signs and checks, and the page holds every rule of the
+  metadata.** Two generic endpoints: `POST /data/signed` makes a drop
+  signed by whoever is signed in, for a local client on a trusted
+  application's page, as the session is, and `GET /data/signed/{id}`
+  checks signed content under the key its signer names, for any client,
+  and answers with what it signs. A page never reads the private key, and
+  a page reached over the network has no cryptography of the browser's to
+  check a signature with. Neither endpoint knows what it signs. The node
+  knowing the metadata, at an endpoint of its own, was turned down, as
+  was the page checking signatures in its own script.
+- **What is signed is JSON of its own, not a bundle**, as an identity
+  block is protected JSON that is not a bundle (BundleSpecification §6):
+  `{"created", "fields", "version", "versions"}`, one read a person, and no
+  field can clash with a bundle's own.
+- **The newest is numbered highest.** Each version is numbered one more
+  than the version it replaces, and of two numbered as high, the one whose
+  drop's id comes first is the newest. Only the person signs a version, so
+  no one else can make a newer one, and no clock is trusted.
+- **The identity block says when the id was made.** It gains `created`,
+  signing in reads it, `/data/session` answers it, and the page writes it
+  into every version. Identities made before are made again (Phase 3 §3);
+  a block without `created` opens to no identity.
 
-**Open questions:**
+Ruled after building:
 
-- The drop `user:{user id}` beside `user:{username}` (Step 79): both
-  begin `user:`. Whether the two are kept apart by the form of what
-  follows, or by different prefixes.
-- How the newest version is found. A search returns the blocks nearest
-  the target, not the newest (Step 92, and Phase 5 Step 56, ask the same
-  of the directory and of Karma's blocks).
-- Where the creation date is kept, and who vouches for it. A bundle keeps
-  a creation time for each file (Phase 2 Step 47), of the metadata's own
-  file or of the id's entry in the directory, but whoever writes either
-  can write any date.
-- How a directory of many people loads, with a search of each person's
-  drop and a fetch of what it finds before the directory can be
-  searched.
-- Signed bundles are specified (BundleSpecification §5) and not built
-  (Phase 1 §4).
+- **The node hashes a drop's target, not the page.** The page was first
+  built hashing `user:{id}` with SHA-256 written in its script. In its place,
+  `GET /data/drop/{target}` searches a drop by its target string, and
+  answers with the target hash and what a search of it finds. The directory
+  page no longer hashes anything, nor holds the hash of `user directory`
+  (Step 92).
 
-**Testable in isolation:** tests asserting metadata whose signature
-fails is refused, and that a chain of versions is walked back to its
-first.
+My calls on it, not yet reviewed:
+
+- **The target is one path segment, percent-encoded**, as an application's
+  store names a key, since the web server keeps no query string. `drop`
+  joins the names beneath `/data` that are no hash algorithm.
+- **It is answered as a search is, with the target hash**, so that a page
+  tells how many bits each result shares with it without hashing. It
+  serves any client, is announced, and leaves out what is blocked, as a
+  search does.
+- **It scans what the node holds every time**, as signing in does
+  (`fresh_results`), keeping what the cached answer adds of what the node
+  has heard of. In the live run, a page that saved a version and was
+  reloaded showed the version before it: both of its searches of the drop,
+  sent one after the other, were answered from the cache, before the stats
+  module had added the new drop. So the page searches each drop once, the
+  directory's too, in place of the second search Step 92 made.
+
+My calls before building, not yet reviewed:
+
+- **The drop stays `user:{id}`.** An id is 71 characters, `sha256/` and 64
+  hex digits, and a username is at most 64 (Step 79), so `user:{id}` is
+  never a username's drop.
+
+The specification change is written: BundleSpecification §5 gives the
+signature, RSASSA-PSS with SHA-256, MGF1, and a 32-byte salt, base64, over
+`contents` through its hash, what a reader checks, and that what is signed
+need not be a bundle, with §8 naming the keys not yet used. HttpApi §11.3
+gives the identity block's `created`, §11.4 the session's, and §11.5, new,
+signing as a person, with `session-required` and `invalid-bundle-signature`
+in §17.2, `signed` among the names that are no hash algorithm in §5, and
+§2.1, §2.4, §2.5, §20, §21, and §25 naming them. HttpApi §9.7, new, gives
+searching a drop by its target, and §5, §9.4, and §25 name it. The metadata
+itself is the application's, written up in the App Developer Guide §6.14.
+
+Built in one change set: 698 added lines of non-test Python, 41 of them in
+place of removed ones, 691 of the directory page, and 1,000 of tests.
+
+- **`SignedBundle`** (`bundle/signing.py`, new), signed, written, read, and
+  checked, and **`BundleSignatureError`**. **`PersonKey.created`** and
+  **`PersonKey.signed`** (`identity/people.py`), and `Session.value`
+  answering `created`.
+- **`SignedDropRequest`** (`protocol/drop_requests.py`), and
+  **`SignedDrops`** (`webserver/signed_handlers.py`, new), the two
+  endpoints, sharing the sessions of `Identities`. The `session-required`
+  and `invalid-bundle-signature` problem types, and `signed` reserved
+  beneath `/data`.
+- **`SearchHandler.at_drop`** (`webserver/search_handler.py`), searching a
+  drop by its target string with a scan of the store, and `drop` reserved
+  beneath `/data`.
+- **The directory page** shows each person's first row and the rest of what
+  they say in rows after it, searches every word typed across all of it,
+  and lets whoever is signed in change their own details. It offers a local
+  client signing in and out.
+- The App Developer Guide §5.2, §6.9, §6.10, §6.12, §6.13 (new), and §6.14
+  (new);
+  the Operator Guide §6.5; and the README.
+
+My calls while building, not yet reviewed:
+
+- **The page offers signing in and out**, to a local client, since no page
+  the node ships signs anyone in, and a person could not otherwise change
+  what they say from a browser. Either reloads the page.
+- **Making a signed drop stores the person's public key again**, as signing
+  in does, so that a reader can check the signature.
+- **A check is announced as a read of the drop is** (`data.requested`), so
+  that metadata pages read is counted as wanted, as `GET /data/{id}`
+  counts it. A blocked drop or signer's key is `404`, as blocked content
+  is.
+- **A signature that does not check, or a signer under a hash algorithm the
+  node lacks, is logged as a warning**; content that is not signed, at
+  debug, since a search lists whatever is nearest.
+- **Only what shares at least 16 bits with the target is read**, the bits
+  the page asks for of each version it makes, so that the nearest content
+  placed for something else costs no request. A version another page made
+  with fewer is not found.
+- **Every value is a string**, and the page writes the details' names in
+  order, leaves out empty ones, and refuses a name given twice, or a
+  latitude or longitude that is not a number of degrees within ±90 or
+  ±180. A detail's name is case-sensitive, so `Handle` is not `handle`.
+- **The search is of the details' values**, the first row, `created`, and
+  the id, every word typed matching some part, whatever its case. A
+  username is not shown or searched, since only the session knows it.
+- **People who say something come first**, by their first row, then the
+  rest by id. The count says how many of everyone a search shows.
+- **The page reads eight people at a time**, and waits out one `503` for
+  each version, as for each directory.
+- **Saving is held off while a version at the person's drop is not held
+  yet**, since it may be newer than the newest read, and a save over the
+  older would be numbered under it. An unchanged form writes nothing.
+- **The form is below the list**, so that browsing the directory comes
+  first, and says that anyone can read what is in it.
+- **Reading into a signed bundle as a bundle** (HttpApi §12.1) is not
+  built: `GET /data/signed/{id}` reads what is signed, whatever it is.
+
+A live run of one node from the scratchpad, driving headless Chrome 154
+over CDP:
+
+- Alice signed in on the directory page, was listed, and saved her details,
+  one of them her own; reloaded, the page read the version back through
+  `GET /data/signed` and showed `Alice Liddell (alice) UK OX1 Oxford`, with
+  the rest in rows after it. A second save made version 2, naming version
+  1; a latitude of 100 was refused in the page, and an unchanged form wrote
+  nothing.
+- Bob signed in, saved his own, then, from the page's script, signed a
+  "version 99" with his key and placed it at Alice's drop, and placed an
+  unsigned drop there too. The page passed over both, the first as signed
+  by someone else and the second as `400` from the node, and Alice's
+  version 2 stayed shown. Searching `wonder` showed Alice alone, and
+  `builder ca` Bob alone.
+- Carol, made with `curl`, was added from `/directory/?add=…`, and her
+  drop read, finding nothing.
+- At the machine's network address, as a client elsewhere, the page showed
+  everyone's details, and offered neither signing in nor the form.
+- No warning or error was logged. Saving took about 10 seconds, nearly all
+  of it the nonce search.
+- Run again with `GET /data/drop/{target}` in place of the page's hashing,
+  version 3 of Alice's, saved before the node restarted, and then version
+  4, saved moments before a reload, each showed at once.
+- A wrong password was answered `503`, not `403`, since the stats module
+  still listed objects of the directory page rebuilt from source while the
+  node ran, which it no longer held (Step 79's call). The page waits out
+  three before it gives the node's answer.
+
+**Testable in isolation:** library tests signing JSON and checking it; web
+server tests asserting a drop is signed by whoever is signed in and reads
+back as it was signed, and that content whose hash or signature does not
+check, whose signer names no key that can sign, or that is not signed, is
+refused; packaging tests asserting the page calls only endpoints the node
+serves, and keeps the issue's fields at `user:{id}`. The rules of the
+metadata are checked by hand, as the directory's are. Walking a chain of
+versions back to its first is Step 81's.
 
 ---
 
@@ -1264,7 +1396,8 @@ ones that cut across more than one step:
   Karma's blocks each change, and a search finds what is nearest a
   target, not what is newest. For the user directory, ruled in Step 92:
   the newest lists the most people, since every directory made lists
-  everyone its maker knows.
+  everyone its maker knows. For what a person says of themselves, ruled in
+  Step 80: the version numbered highest, which only the person signs.
 - **Who may block** (Steps 30 and 92) — ruled in Step 30: only a local
   client, from a page of a trusted application, since a node's block list
   is its own, not a person's.
@@ -1275,6 +1408,8 @@ ones that cut across more than one step:
 - **Encrypting for a person** (Steps 78, 79, and 82). Node keys cannot
   encrypt; RSA can encrypt only a key. How a block encrypted for a person
   is written down is a new section of the Bundle Specification.
-- **Signed bundles** (Steps 80 and 81) are specified and not built.
+- **Signed bundles** (Steps 80 and 81) — built in Step 80 for JSON a
+  person signs, which a node signs and checks for a page. Reading into a
+  signed bundle as a bundle is not built.
 - **Karma for people** (Phase 5 Step 56). Whether Karma is held by a
   person's identity as well as a node's.

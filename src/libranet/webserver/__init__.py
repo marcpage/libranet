@@ -222,7 +222,7 @@ from libranet.webserver.request_refusals import (
     unsupported_media_type_response,
 )
 from libranet.webserver.router import Guard, Handler, Route, Router
-from libranet.webserver.search_handler import SEARCH_PATTERN, SearchHandler
+from libranet.webserver.search_handler import DROP_SEARCH_PATTERN, SEARCH_PATTERN, SearchHandler
 from libranet.webserver.server import (
     LibranetHTTPServer,
     RequestHandler,
@@ -231,6 +231,7 @@ from libranet.webserver.server import (
 )
 from libranet.webserver.sessions import SESSION_COOKIE, Session, Sessions
 from libranet.webserver.signature_guard import API_PREFIX, SignatureGuard
+from libranet.webserver.signed_handlers import SIGNED_PATH, SIGNED_PATTERN, SignedDrops
 from libranet.webserver.site_checks import HOST_HEADER, SITE_HEADER, SiteChecks, host_name
 
 __all__ = [
@@ -271,6 +272,7 @@ __all__ = [
     "DEFAULT_REPORT_INTERVAL_SECONDS",
     "DIRECTORY_PATTERN",
     "DROP_PATH",
+    "DROP_SEARCH_PATTERN",
     "ENDPOINTS",
     "EXPORTS_FIELD",
     "EXPORTS_PATH",
@@ -301,6 +303,8 @@ __all__ = [
     "SEARCH_PATTERN",
     "SESSION_COOKIE",
     "SESSION_PATH",
+    "SIGNED_PATH",
+    "SIGNED_PATTERN",
     "SITE_HEADER",
     "STORE_KEY_PATTERN",
     "STORE_PATH",
@@ -380,6 +384,7 @@ __all__ = [
     "Session",
     "Sessions",
     "SignatureGuard",
+    "SignedDrops",
     "SiteChecks",
     "StoreFileError",
     "StoreHandler",

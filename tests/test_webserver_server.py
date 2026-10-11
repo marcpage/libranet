@@ -20,6 +20,7 @@ from socket import SHUT_WR, create_connection, socket
 from threading import Thread
 from time import monotonic, sleep
 from typing import Callable, Iterator
+from urllib.parse import quote
 from zlib import compress
 
 from pytest import LogCaptureFixture, fixture, mark, raises
@@ -30,6 +31,7 @@ from libranet.bundle.shapes import FileBundle, Metadata
 from libranet.cas.blocked import BlockedContent
 from libranet.cas.archive import ArchiveSink, ArchiveSource
 from libranet.cas.content_id import ContentId
+from libranet.cas.drops import DropTarget
 from libranet.cas.layered import LayeredSource
 from libranet.cas.resolved_files import ResolvedFiles
 from libranet.cas.store import CasStore
@@ -463,6 +465,49 @@ def test_search_answers_with_what_is_held_nearest_even_sharing_no_bit(
 
 def test_invalid_search_prefix_is_400(connection: HTTPConnection, queues: ModuleQueues) -> None:
     response, body = _get(connection, "/data/search/nothex")
+
+    assert response.status == 400
+    assert loads(body)["status"] == 400
+    assert _published(queues) == []
+
+
+def test_a_drop_is_searched_by_its_target_string(
+    connection: HTTPConnection, queues: ModuleQueues
+) -> None:
+    target = DropTarget.of("user:sha256/é and more")
+
+    response, body = _get(connection, f"/data/drop/{quote('user:sha256/é and more', safe='')}")
+    searched, searched_body = _get(connection, f"/data/search/{target.hex}")
+
+    assert response.status == 200
+    assert loads(body) == {"target": target.hex, "results": loads(searched_body)["results"]}
+    assert searched.status == 200
+    assert [message["prefix"] for message in _published(queues)] == [target.hex, target.hex]
+
+
+def test_a_drop_stored_since_its_search_was_cached_is_found_at_once(
+    connection: HTTPConnection, storage: StorageConfig
+) -> None:
+    # A cached answer for the target, listing only what the node heard of.
+    target = DropTarget.of("user directory")
+    heard_of = f"sha256/{target.hex[:8]}{'0' * 56}"
+    cache_file = storage.search_cache_dir / target.hex[:4] / f"{target.hex}.json"
+    cache_file.parent.mkdir(parents=True)
+    cache_file.write_bytes(dumps({"results": [heard_of]}).encode())
+
+    cached, cached_body = _get(connection, f"/data/search/{target.hex}")
+    response, body = _get(connection, f"/data/drop/{quote('user directory', safe='')}")
+
+    assert cached.status == 200
+    assert loads(cached_body)["results"] == [heard_of]
+    assert response.status == 200
+    assert set(loads(body)["results"]) == {heard_of, str(CONTENT_ID)}
+
+
+def test_a_drop_target_that_is_not_utf_8_is_400(
+    connection: HTTPConnection, queues: ModuleQueues
+) -> None:
+    response, body = _get(connection, "/data/drop/%ff")
 
     assert response.status == 400
     assert loads(body)["status"] == 400
@@ -1977,14 +2022,61 @@ def test_a_local_client_makes_an_identity_and_is_signed_in_by_a_cookie(
         ContentId.parse(answer["drop"])
     )
     assert who.status == 200
-    assert loads(who_body) == {"id": answer["id"], "username": "alice"}
+    assert loads(who_body) == {
+        "id": answer["id"],
+        "username": "alice",
+        "created": answer["created"],
+    }
     assert out.status == 204
     assert after.status == 200
-    assert loads(after_body) == {"id": None, "username": None}
+    assert loads(after_body) == {"id": None, "username": None, "created": None}
+
+
+def test_a_signed_in_local_client_signs_a_drop_that_any_client_checks(
+    local_connection: HTTPConnection, local_server: LibranetHTTPServer
+) -> None:
+    page = _from_page(local_connection, "/movie/")
+    local_connection.request(
+        "POST",
+        "/data/users",
+        body=b'{"username": "alice", "password": "correct horse", "key_bits": 2048, "seconds": 0}',
+        headers={"Content-Type": JSON_CONTENT_TYPE, **page},
+    )
+    made = local_connection.getresponse()
+    person_id = loads(made.read())["id"]
+    cookie = {"Cookie": (made.getheader("Set-Cookie") or "").partition(";")[0]}
+    text = dumps({"handle": "alice"})
+    local_connection.request(
+        "POST",
+        "/data/signed",
+        body=dumps({"target": f"user:{person_id}", "text": text, "seconds": 0}).encode(),
+        headers={"Content-Type": JSON_CONTENT_TYPE, **page, **cookie},
+    )
+    signed = local_connection.getresponse()
+    answer = loads(signed.read())
+    checked, checked_body = _get(local_connection, f"/data/signed/{answer['id']}")
+    # The live server only ever sees loopback clients, so the remote request
+    # is put to the router directly.
+    remote = local_server.router.dispatch(
+        Request("GET", f"/data/signed/{answer['id']}", client_address="203.0.113.42")
+    )
+
+    assert signed.status == 201
+    assert answer["signer"] == person_id
+    assert checked.status == 200
+    assert loads(checked_body) == {"id": answer["id"], "signer": person_id, "contents": text}
+    assert remote.status == 200
+    assert remote.body == checked_body
 
 
 @mark.parametrize(
-    "path, method", [("/data/users", "POST"), ("/data/session", "POST"), ("/data/session", "GET")]
+    "path, method",
+    [
+        ("/data/users", "POST"),
+        ("/data/session", "POST"),
+        ("/data/session", "GET"),
+        ("/data/signed", "POST"),
+    ],
 )
 def test_another_client_is_refused_identities_and_sessions(
     local_server: LibranetHTTPServer, queues: ModuleQueues, path: str, method: str
@@ -2215,7 +2307,11 @@ def test_an_identity_made_on_the_config_page_signs_in_at_an_application(
     assert made.getheader("Set-Cookie") is None
     assert made.getheader("Location") is None
     assert signed_in.status == 200
-    assert loads(signed_in.read()) == {"id": answer["id"], "username": "alice"}
+    assert loads(signed_in.read()) == {
+        "id": answer["id"],
+        "username": "alice",
+        "created": answer["created"],
+    }
 
 
 def test_the_main_port_takes_its_turns_in_the_costly_work_it_is_given(

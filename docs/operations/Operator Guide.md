@@ -452,7 +452,9 @@ The node does not list the person in the user directory, which the
 `directory` application keeps, at `/directory/`. Once the user is created,
 the page offers a link, **Add them to the user directory**, which opens the
 directory, and its **Add to the directory** button lists them. Otherwise
-they are listed the first time they open the directory signed in.
+they are listed the first time they sign in on the directory, from a
+browser on the node's machine, where they can also say what they will of
+themselves, for anyone to read.
 
 From a script, `seconds` and `minimum_bits` also say how long the node
 searches for where to keep the identity, and how many bits it must match

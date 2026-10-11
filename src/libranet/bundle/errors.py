@@ -59,3 +59,10 @@ class MissingContentError(BundleError):
 
 class BundleVerificationError(BundleError):
     """Content does not match the identifier, hash, or size the bundle gives it."""
+
+
+class BundleSignatureError(BundleVerificationError):
+    """A signed bundle's hash or signature does not check, or its signer names no usable key.
+
+    What it signs is not to be trusted (BundleSpecification §5).
+    """

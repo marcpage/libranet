@@ -124,9 +124,10 @@ from libranet.webserver.local_imports import IMPORTS_PATH, ImportHandler, Import
 from libranet.webserver.local_only import CLIENT_PATH, LocalOnly, OwnSiteOnly, client_handler
 from libranet.webserver.own_pages import OwnPageOnly, OwnPages
 from libranet.webserver.router import Router
-from libranet.webserver.search_handler import SEARCH_PATTERN, SearchHandler
+from libranet.webserver.search_handler import DROP_SEARCH_PATTERN, SEARCH_PATTERN, SearchHandler
 from libranet.webserver.sessions import Sessions
 from libranet.webserver.signature_guard import SignatureGuard
+from libranet.webserver.signed_handlers import SIGNED_PATH, SIGNED_PATTERN, SignedDrops
 from libranet.webserver.site_checks import SiteChecks
 
 # Why a port is passed over for the next one to listen on: it is in use, or
@@ -198,23 +199,28 @@ def build_router(  # pylint: disable=too-many-locals
     ``/data/drop`` makes drops for any client, stored as those are, searching
     for each no more than ``max_drop_seconds`` and asked to match no more
     than ``max_drop_minimum_bits``; neither, by default (Phase 4 Step 89).
-    With it, ``/data/users`` makes people's identities, each with a key of
-    one of the sizes ``person_key_bits`` names, kept at a drop made as those
-    are, and ``/data/session`` signs them in and out, for local clients
+    ``/data/drop/{target}`` searches a drop by its target string, for any
+    client, as ``/data/search`` does (Phase 4 Step 80). With ``/data/drop``,
+    ``/data/users`` makes people's identities, each with a key of one of the
+    sizes ``person_key_bits`` names, kept at a drop made as those are, and
+    ``/data/session`` signs them in and out, for local clients
     alone, each session ending once unused for ``session_idle_seconds``
-    (Phase 4 Step 79). Drops are searched for, and keys derived, one at a
-    time, in the turns of ``costly_work``, which ``/config``'s port shares;
-    in turns of their own if none is given. A ``DELETE`` of
+    (Phase 4 Step 79). ``/data/signed`` makes a drop signed by whoever is
+    signed in, for local clients alone, and checks a signed drop for any
+    client (Phase 4 Step 80). Drops are searched for, and keys derived, one
+    at a time, in the turns of ``costly_work``, which ``/config``'s port
+    shares; in turns of their own if none is given. A ``DELETE`` of
     ``/data/{algorithm}/{hash}`` deletes and blocks content for local
     clients alone, which ``/data`` then neither serves, stores, nor finds in
     a search, as the blocked list in ``storage``'s cache directory names it
     (Phase 4 Step 30).
 
-    Each of those but reading into a bundle is served only to this node's
-    own pages, as a request's ``Referer`` names them: an application's store
-    to its own, and the folders, imports, bundles, identities, session, and
-    blocking to those of applications the operator trusts. An application the operator
-    has not trusted is served in a sandbox (Phase 3 Step 74).
+    Each of those but reading into a bundle and checking signed content is
+    served only to this node's own pages, as a request's ``Referer`` names
+    them: an application's store to its own, and the folders, imports,
+    bundles, identities, session, signing, and blocking to those of
+    applications the operator trusts. An application the operator has not
+    trusted is served in a sandbox (Phase 3 Step 74).
     """
     store = CasStore.source_of_truth(storage)
     content = LayeredSource(store) if content is None else content
@@ -291,15 +297,24 @@ def build_router(  # pylint: disable=too-many-locals
             turns=work.searches,
         )
         router.add("POST", DROP_PATH, OwnSiteOnly(OwnPageOnly(drops, pages), checks))
+        sessions = Sessions(session_idle_seconds)
         identities = Identities(
             uploads,
             search,
             drops,
-            Sessions(session_idle_seconds),
+            sessions,
             publish,
             retry_after_seconds=retry_after_seconds,
             key_bits=person_key_bits,
             derivations=work.derivations,
+        )
+        signed = SignedDrops(
+            uploads,
+            drops,
+            sessions,
+            publish,
+            retry_after_seconds=retry_after_seconds,
+            blocked=blocked,
         )
 
         for method, path, handler in (
@@ -307,10 +322,15 @@ def build_router(  # pylint: disable=too-many-locals
             ("POST", SESSION_PATH, identities.sign_in),
             ("GET", SESSION_PATH, identities.signed_in),
             ("DELETE", SESSION_PATH, identities.sign_out),
+            ("POST", SIGNED_PATH, signed.make),
         ):
             router.add(method, path, LocalOnly(OwnPageOnly(handler, pages, trusted=True), checks))
 
+        # Before the bundle route, whose pattern it also fits.
+        router.add("GET", SIGNED_PATTERN, signed.read)
+
     router.add("GET", SEARCH_PATTERN, search)
+    router.add("GET", DROP_SEARCH_PATTERN, search.at_drop)
     reads = BundleReadHandler(paths)
 
     for method in BUNDLE_METHODS:

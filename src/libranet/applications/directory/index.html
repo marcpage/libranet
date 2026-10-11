@@ -67,9 +67,32 @@
   button { font: inherit; padding: 0.35rem 0.9rem; }
   ol { margin: 0; padding-left: 1.75rem; }
   li + li { margin-top: 0.35rem; }
+  #people > ol > li + li { margin-top: 0.75rem; }
   #status { margin: 0.25rem 0 0; padding: 0; list-style: none; }
   #status li + li { margin-top: 0.15rem; }
   footer { font-size: 0.9rem; }
+  h3 { font-size: 1rem; margin: 1rem 0 0.5rem; }
+
+  input {
+    font: inherit;
+    min-width: 0;
+    padding: 0.3rem 0.45rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--background);
+    color: var(--text);
+  }
+
+  #search { width: 100%; margin: 0 0 0.75rem; }
+
+  /* An entry's first row names the person; the rows after give the rest. */
+  .first { font-weight: 600; }
+  .rows { margin: 0.15rem 0 0; padding: 0; list-style: none; color: var(--muted); font-size: 0.93rem; }
+  .rows li + li { margin-top: 0.1rem; }
+
+  .fields { display: grid; grid-template-columns: max-content 1fr; gap: 0.4rem 0.75rem; align-items: center; }
+  .extra { display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.4rem; margin-bottom: 0.4rem; }
+  .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
 </style>
 </head>
 <body>
@@ -77,6 +100,24 @@
   <h1>User directory</h1>
   <ul id="status"><li class="note">Reading the directory&hellip;</li></ul>
   <noscript><p class="note">Reading the directory needs JavaScript.</p></noscript>
+
+  <section id="account" hidden>
+    <h2 id="account-title">Sign in</h2>
+    <form id="sign-in" hidden>
+      <div class="fields">
+        <label for="username">Username</label>
+        <input id="username" autocomplete="username" required>
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" required>
+      </div>
+      <div class="actions"><button type="submit">Sign in</button></div>
+    </form>
+    <div id="signed-in" hidden>
+      <span id="signed-in-text"></span>
+      <div class="actions"><button id="sign-out" type="button">Sign out</button></div>
+    </div>
+    <p id="account-text" class="note"></p>
+  </section>
 
   <section id="asked" hidden>
     <h2>Add a person</h2>
@@ -86,7 +127,27 @@
 
   <section>
     <h2 id="count">People</h2>
+    <input id="search" type="search" placeholder="Search every detail" aria-label="Search the directory">
     <div id="people"><span class="note">Asking the node&hellip;</span></div>
+  </section>
+
+  <section id="mine" hidden>
+    <h2>What you say of yourself</h2>
+    <p class="note">
+      Anyone who opens the directory, on this node or any other, can read
+      everything you put here, so leave out what you would not make public.
+      Every detail is optional.
+    </p>
+    <form id="mine-form">
+      <div id="mine-fields" class="fields"></div>
+      <h3>Anything else</h3>
+      <div id="mine-extra"></div>
+      <div class="actions">
+        <button id="extra-add" type="button">Add a detail</button>
+        <button id="mine-save" type="submit">Save</button>
+      </div>
+    </form>
+    <p id="mine-text"></p>
   </section>
 
   <footer>
@@ -94,17 +155,41 @@
     once they open this page signed in, or are added from a link, such as the
     one the administration page gives for a user it creates. The list is kept
     at the drop <code>user directory</code>, and opening this page merges what
-    each copy found there lists.
+    each copy found there lists. What each person says of themselves is kept
+    at a drop of their own, <code>user:</code> and their id, signed by them.
   </footer>
 </main>
 <script>
 "use strict";
 
-// The drop the directory is kept at (HttpApi 9.3), and the SHA-256 of that
-// string, which a search names. A page reached over the network is not a
-// secure context, which a browser hashes in, so it is written out here.
+// The drop the directory is kept at (HttpApi 9.3), which the node searches
+// by this target string (HttpApi 9.7), hashing it as it does a drop's.
 const DIRECTORY_TARGET = "user directory";
-const DIRECTORY_TARGET_HASH = "11e7e42ccff85a95b10409f7a45e0c579f8b79110058a1262dc48cf2e1e2bb9c";
+
+// What a person says of themselves is kept at the drop "user:{id}", each
+// version signed by them (HttpApi 11.5) and numbered one more than the version
+// it replaces, which it names (App Developer Guide 6.14).
+const DETAILS_PREFIX = "user:";
+
+// The details every person may give, each optional (#259), and those the
+// first row of an entry shows, in order; the handle in parentheses.
+const STANDARD_FIELDS = [
+  "handle", "first name", "last name", "country", "state", "province",
+  "county", "city", "postal code", "gender", "latitude", "longitude",
+];
+const FIRST_ROW = [
+  "first name", "last name", "handle", "country", "postal code", "state",
+  "province", "county", "city",
+];
+const HANDLE = "handle";
+const COORDINATES = { latitude: 90, longitude: 180 };
+
+// How many people's details are read at once.
+const DETAILS_AT_ONCE = 8;
+
+// How many times a sign-in waits while the node fetches what is at the
+// username's drop.
+const MAX_SIGN_IN_WAITS = 3;
 
 // What each directory made asks the node to search for its nonce. No one
 // using the directory decides how hard the node searches.
@@ -133,6 +218,9 @@ const PUBLIC_KEY_PEM = "-----BEGIN PUBLIC KEY-----";
 // and a drop's content ends at its last null byte (HttpApi 9).
 const OPEN_BRACE = 0x7b;
 const NULL_BYTE = 0x00;
+
+// Where the hex of a hash begins in a content id, after "sha256/".
+const HASH_START = "sha256/".length;
 
 function byId(id) {
   return document.getElementById(id);
@@ -166,6 +254,12 @@ const status = {
   },
 };
 
+// Where the node searches the drop `target` names (HttpApi 9.7): the target
+// string, as one path segment.
+function dropPath(target) {
+  return `/data/drop/${encodeURIComponent(target)}`;
+}
+
 function sleep(seconds) {
   return new Promise((resolve) => setTimeout(resolve, seconds * 1000));
 }
@@ -181,6 +275,34 @@ function isObject(value) {
 
 function plural(count, one, many) {
   return `${count} ${count === 1 ? one : many}`;
+}
+
+// How many leading bits two hashes in hex share.
+function matchingBits(hex, other) {
+  let bits = 0;
+
+  for (let i = 0; i < hex.length && i < other.length; i += 1) {
+    const differ = Number.parseInt(hex[i], 16) ^ Number.parseInt(other[i], 16);
+
+    if (differ !== 0) {
+      return bits + Math.clz32(differ) - 28;
+    }
+
+    bits += 4;
+  }
+
+  return bits;
+}
+
+// Run `work` over `items`, no more than `limit` at once.
+async function eachAtMost(items, limit, work) {
+  const pending = [...items];
+  const workers = Array.from({ length: Math.min(limit, pending.length) }, async () => {
+    while (pending.length > 0) {
+      await work(pending.shift());
+    }
+  });
+  await Promise.all(workers);
 }
 
 // The node could not be reached at all.
@@ -562,10 +684,11 @@ async function reconcile(merge, everyone, local) {
   return listed;
 }
 
-// Whoever is signed in, by id; null if no one is, or this client cannot say.
+// Who is signed in, as the node says (HttpApi 11.4); null if no one is, or
+// this client cannot say.
 async function signedIn() {
   const result = await call("GET", "/data/session");
-  return result.ok && isObject(result.value) && CONTENT_ID.test(result.value.id) ? result.value.id : null;
+  return result.ok && isObject(result.value) && CONTENT_ID.test(result.value.id) ? result.value : null;
 }
 
 async function isLocal() {
@@ -573,34 +696,146 @@ async function isLocal() {
   return result.ok && isObject(result.value) && result.value.local === true;
 }
 
-function showPeople(everyone, you) {
-  byId("count").textContent = plural(everyone.size, "person", "people");
+// What the list shows: everyone the directory lists, who is signed in, what
+// each person says of themselves as far as it has been read, and what is
+// searched for.
+const view = { everyone: new Set(), you: null, details: new Map(), query: "" };
+let renderQueued = false;
 
-  if (everyone.size === 0) {
+function showPeople(everyone, you) {
+  view.everyone = everyone;
+  view.you = you;
+  render();
+}
+
+function fieldOf(fields, name) {
+  return Object.hasOwn(fields, name) ? fields[name] : "";
+}
+
+// An entry's first row: "{first name} {last name} ({handle}) {country}
+// {postal code} {state} {province} {county} {city}", without what is not
+// given (#259).
+function firstRowOf(fields) {
+  return FIRST_ROW.map((name) => {
+    const value = fieldOf(fields, name);
+    return name === HANDLE && value ? `(${value})` : value;
+  })
+    .filter((value) => value)
+    .join(" ");
+}
+
+// The person `id` names as the list shows them: their first row, and the
+// rest of what they say, in rows after it.
+function entryOf(id) {
+  const details = view.details.get(id);
+  const newest = details ? details.newest : null;
+  const fields = newest ? newest.fields : {};
+  const rest = [
+    ...STANDARD_FIELDS.filter((name) => !FIRST_ROW.includes(name)),
+    ...Object.keys(fields).filter((name) => !STANDARD_FIELDS.includes(name)).sort(),
+  ]
+    .filter((name) => fieldOf(fields, name))
+    .map((name) => [name, fields[name]]);
+
+  if (newest) {
+    rest.push(["created", newest.created]);
+  }
+
+  const first = firstRowOf(fields);
+  const searched = [id, first, ...rest.map(([, value]) => value)];
+  return { id, first, rest, missing: details ? details.missing : 0, text: searched.join("\n").toLocaleLowerCase() };
+}
+
+// Those who say who they are first, by their first row, then by id.
+function compareEntries(one, other) {
+  if (Boolean(one.first) !== Boolean(other.first)) {
+    return one.first ? -1 : 1;
+  }
+
+  const byName = one.first.localeCompare(other.first, undefined, { sensitivity: "base" });
+  return byName || (one.id < other.id ? -1 : one.id > other.id ? 1 : 0);
+}
+
+function itemOf(entry) {
+  const item = document.createElement("li");
+  const first = make("div", entry.first, "first");
+
+  if (!entry.first) {
+    first.append(make("code", entry.id, "id"));
+  }
+
+  if (entry.id === view.you) {
+    first.append(make("span", "you", "you"));
+  }
+
+  const rows = document.createElement("ul");
+  rows.className = "rows";
+  entry.rest.forEach(([name, value]) => rows.append(make("li", `${name}: ${value}`)));
+
+  if (entry.first) {
+    const id = make("li", "id: ");
+    id.append(make("code", entry.id, "id"));
+    rows.append(id);
+  }
+
+  if (entry.missing > 0) {
+    rows.append(make("li", "Some of what they say is not held here yet.", "note"));
+  }
+
+  item.append(first);
+
+  if (rows.childElementCount > 0) {
+    item.append(rows);
+  }
+
+  return item;
+}
+
+// Show everyone listed whose details hold every word searched for.
+function render() {
+  const everyone = plural(view.everyone.size, "person", "people");
+  byId("count").textContent = everyone;
+
+  if (view.everyone.size === 0) {
     byId("people").replaceChildren(make("span", "No one is listed yet.", "note"));
     return;
   }
 
-  const list = document.createElement("ol");
+  const terms = view.query.toLocaleLowerCase().split(/\s+/).filter((term) => term);
+  const entries = [...view.everyone]
+    .map(entryOf)
+    .filter((entry) => terms.every((term) => entry.text.includes(term)))
+    .sort(compareEntries);
 
-  for (const person of [...everyone].sort()) {
-    const item = document.createElement("li");
-    item.append(make("code", person, "id"));
-
-    if (person === you) {
-      item.append(make("span", "you", "you"));
-    }
-
-    list.append(item);
+  if (terms.length > 0) {
+    byId("count").textContent = `${entries.length} of ${everyone}`;
   }
 
+  if (entries.length === 0) {
+    byId("people").replaceChildren(make("span", "No one listed matches the search.", "note"));
+    return;
+  }
+
+  const list = document.createElement("ol");
+  entries.forEach((entry) => list.append(itemOf(entry)));
   byId("people").replaceChildren(list);
+}
+
+// Render once the browser next paints, however many ask before then.
+function renderSoon() {
+  if (!renderQueued) {
+    renderQueued = true;
+    requestAnimationFrame(() => {
+      renderQueued = false;
+      render();
+    });
+  }
 }
 
 // What each id a search of the drop finds, and `read` lacks, was found to
 // be, added to `read`.
 async function searched(read) {
-  const search = await call("GET", `/data/search/${DIRECTORY_TARGET_HASH}`);
+  const search = await call("GET", dropPath(DIRECTORY_TARGET));
 
   if (search.status === 401) {
     throw new Error("This node answers searches only from other nodes.");
@@ -636,11 +871,8 @@ function directoriesIn(read) {
 async function load(you, local, extra) {
   const added = [...(you === null ? [] : [you]), ...extra];
   const read = new Map();
-  await searched(read);
-  showPeople(new Merge(directoriesIn(read)).everyone(added), you);
-  // The node may answer a search from its cache, which can lack a directory
-  // stored since, such as this page's last. Each search has the node add
-  // what it has heard of to the cache, so the second finds it.
+  // The node scans what it holds at the drop for each search, so a directory
+  // stored since, such as this page's last, is found at once.
   await searched(read);
   const merge = new Merge(directoriesIn(read));
   const everyone = merge.everyone(added);
@@ -733,6 +965,7 @@ async function offer(asked, everyone, you, local) {
       add.hidden = true;
       // A reload asks nothing again.
       history.replaceState(null, "", location.pathname);
+      await loadDetails([asked]);
     } catch (error) {
       status.say(error.message, "error");
       add.disabled = false;
@@ -740,14 +973,447 @@ async function offer(asked, everyone, you, local) {
   });
 }
 
+// What the node made of the signed content `id` names (HttpApi 11.5),
+// waiting out the 503s answered while it fetches it: what it signs and who
+// signed it, or that it is not held yet, or that it is no signed content that
+// checks.
+async function checked(id) {
+  for (let waits = 0; ; waits += 1) {
+    let response;
+
+    try {
+      // A check that passes never changes, so the browser's cache may answer.
+      response = await fetch(`/data/signed/${id}`);
+    } catch (error) {
+      throw new Unreachable(`The node could not be reached: ${error.message}`);
+    }
+
+    if (response.status === 503) {
+      if (waits >= MAX_WAITS) {
+        return { missing: true };
+      }
+
+      await sleep(retryAfter(response.headers));
+      continue;
+    }
+
+    const value = response.ok ? await response.json().catch(() => null) : null;
+    return isObject(value) ? { signed: value } : { passed: true };
+  }
+}
+
+// The version of what `person` says of themselves that `signed`, checked at
+// `id`, holds; null if it holds none: signed by someone else, or not shaped
+// as a version is.
+function versionOf(id, person, signed) {
+  if (signed.signer !== person || typeof signed.contents !== "string") {
+    return null;
+  }
+
+  let value;
+
+  try {
+    value = JSON.parse(signed.contents);
+  } catch (error) {
+    return null;
+  }
+
+  const versions = isObject(value) && value.versions !== undefined ? value.versions : [];
+  const isVersion =
+    isObject(value) &&
+    typeof value.created === "string" &&
+    isObject(value.fields) &&
+    Object.values(value.fields).every((field) => typeof field === "string") &&
+    Number.isSafeInteger(value.version) &&
+    value.version >= 1 &&
+    Array.isArray(versions) &&
+    versions.every((replaced) => CONTENT_ID.test(replaced));
+
+  return isVersion
+    ? { id, created: value.created, fields: value.fields, version: value.version, versions }
+    : null;
+}
+
+// The newest of `versions`: the one numbered highest, and the first by id of
+// those numbered as high. Only the person signs a version, so no one else
+// can make one newer.
+function newestOf(versions) {
+  return versions.reduce(
+    (best, found) =>
+      best === null ||
+      found.version > best.version ||
+      (found.version === best.version && found.id < best.id)
+        ? found
+        : best,
+    null,
+  );
+}
+
+// What `person` says of themselves: the newest version at their drop, and
+// how many found there are not held yet.
+async function readDetails(person) {
+  const search = await call("GET", dropPath(DETAILS_PREFIX + person));
+  const answered =
+    search.ok &&
+    isObject(search.value) &&
+    typeof search.value.target === "string" &&
+    Array.isArray(search.value.results);
+
+  if (!answered) {
+    throw new Error(`What ${person} says could not be searched for: ${refusal(search)}`);
+  }
+
+  // Each version is a drop sharing at least DROP_MINIMUM_BITS with the target
+  // hash. Whatever else is nearest is something else, and is not read.
+  const target = search.value.target;
+  const ids = search.value.results.filter(
+    (id) => CONTENT_ID.test(id) && matchingBits(id.slice(HASH_START), target) >= DROP_MINIMUM_BITS,
+  );
+  const read = await Promise.all(ids.map(checked));
+  const versions = [];
+  let missing = 0;
+
+  ids.forEach((id, index) => {
+    const result = read[index];
+
+    if (result.missing) {
+      missing += 1;
+    } else if (!result.signed) {
+      console.warn(`Passing over ${id} at ${person}'s drop: it is no signed content that checks.`);
+    } else {
+      const version = versionOf(id, person, result.signed);
+
+      if (version === null) {
+        console.warn(`Passing over ${id} at ${person}'s drop: it is no version of what they say.`);
+      } else {
+        versions.push(version);
+      }
+    }
+  });
+
+  return { newest: newestOf(versions), missing };
+}
+
+// Read what each of `people` says of themselves, showing it as it comes.
+async function loadDetails(people) {
+  if (people.length === 0) {
+    return;
+  }
+
+  status.say(`Reading what ${plural(people.length, "person says", "people say")} of themselves…`);
+  let failed = 0;
+
+  await eachAtMost(people, DETAILS_AT_ONCE, async (person) => {
+    try {
+      view.details.set(person, await readDetails(person));
+    } catch (error) {
+      if (error instanceof Unreachable) {
+        throw error;
+      }
+
+      failed += 1;
+      console.warn(error.message);
+    }
+
+    renderSoon();
+  });
+
+  render();
+  const said = people.filter((person) => view.details.get(person)?.newest).length;
+  const missing = people.filter((person) => view.details.get(person)?.missing > 0).length;
+  status.say(`${plural(said, "person says", "people say")} something of themselves.`);
+
+  if (missing > 0) {
+    status.say(`Some of what ${plural(missing, "person", "people")} said is not held here yet. The node asked its peers for it, and it is shown when this page is opened again.`);
+  }
+
+  if (failed > 0) {
+    status.say(`What ${plural(failed, "person says", "people say")} could not be read.`, "error");
+  }
+}
+
+function sayAccount(text, className) {
+  const said = byId("account-text");
+  said.textContent = text;
+  said.className = className || "note";
+}
+
+// Sign in, waiting while the node fetches what it found at the username's
+// drop (HttpApi 11.4).
+async function signIn(username, password) {
+  for (let waits = 0; ; waits += 1) {
+    const result = await call("POST", "/data/session", { username, password });
+
+    if (result.status !== 503 || waits >= MAX_SIGN_IN_WAITS) {
+      return result;
+    }
+
+    sayAccount("Looking for your identity, which the node is asking its peers for…");
+    await sleep(retryAfter(result.headers));
+  }
+}
+
+// Offer a local client signing in, or out. Either reloads the page, which
+// then reads the directory as whoever is signed in.
+function offerAccount(session) {
+  byId("account").hidden = false;
+
+  if (session !== null) {
+    byId("account-title").textContent = "Signed in";
+    byId("signed-in").hidden = false;
+    byId("signed-in-text").textContent = `Signed in as ${session.username}.`;
+    byId("sign-out").addEventListener("click", async () => {
+      byId("sign-out").disabled = true;
+      await call("DELETE", "/data/session").catch(() => null);
+      location.reload();
+    });
+    return;
+  }
+
+  const form = byId("sign-in");
+  const button = form.querySelector("button");
+  form.hidden = false;
+  sayAccount("Sign in to be listed, and to say what you will of yourself.");
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    button.disabled = true;
+    sayAccount("Signing in…");
+
+    try {
+      const result = await signIn(byId("username").value, byId("password").value);
+
+      if (result.ok) {
+        location.reload();
+        return;
+      }
+
+      sayAccount(
+        result.status === 403
+          ? "That username and password open no identity this node holds."
+          : `Not signed in: ${refusal(result)}`,
+        "error",
+      );
+    } catch (error) {
+      sayAccount(error.message, "error");
+    }
+
+    button.disabled = false;
+  });
+}
+
+function sayMine(text, className) {
+  const said = byId("mine-text");
+  said.textContent = text;
+  said.className = className || "note";
+}
+
+// A row for a detail the person names themselves.
+function addExtra(name, value) {
+  const row = document.createElement("div");
+  row.className = "extra";
+  const named = document.createElement("input");
+  named.className = "extra-name";
+  named.placeholder = "Detail";
+  named.setAttribute("aria-label", "Detail");
+  named.value = name;
+  const valued = document.createElement("input");
+  valued.className = "extra-value";
+  valued.placeholder = "Value";
+  valued.setAttribute("aria-label", "Value");
+  valued.value = value;
+  const remove = make("button", "Remove");
+  remove.type = "button";
+  remove.addEventListener("click", () => row.remove());
+  row.append(named, valued, remove);
+  byId("mine-extra").append(row);
+}
+
+// The form, holding `fields`: one input for each standard detail, and a row
+// for each other.
+function showMine(fields) {
+  const grid = byId("mine-fields");
+  grid.replaceChildren();
+
+  STANDARD_FIELDS.forEach((name, index) => {
+    const input = document.createElement("input");
+    input.id = `field-${index}`;
+    input.dataset.field = name;
+    input.value = fieldOf(fields, name);
+
+    if (Object.hasOwn(COORDINATES, name)) {
+      input.inputMode = "decimal";
+    }
+
+    const label = make("label", name[0].toUpperCase() + name.slice(1));
+    label.htmlFor = input.id;
+    grid.append(label, input);
+  });
+
+  byId("mine-extra").replaceChildren();
+  Object.keys(fields)
+    .filter((name) => !STANDARD_FIELDS.includes(name))
+    .sort()
+    .forEach((name) => addExtra(name, fields[name]));
+}
+
+// The details the form gives, names in order, and none empty. Throws an
+// Error saying what is wrong with them.
+function formFields() {
+  const given = [];
+
+  for (const input of byId("mine-fields").querySelectorAll("input")) {
+    const value = input.value.trim();
+
+    if (value) {
+      given.push([input.dataset.field, value]);
+    }
+  }
+
+  for (const row of byId("mine-extra").children) {
+    const name = row.querySelector(".extra-name").value.trim();
+    const value = row.querySelector(".extra-value").value.trim();
+
+    if (!name && !value) {
+      continue;
+    }
+
+    if (!name) {
+      throw new Error(`Name the detail whose value is “${value}”.`);
+    }
+
+    if (!value) {
+      throw new Error(`Give “${name}” a value, or remove it.`);
+    }
+
+    given.push([name, value]);
+  }
+
+  const names = new Set();
+
+  for (const [name, value] of given) {
+    if (names.has(name)) {
+      throw new Error(`“${name}” is given twice.`);
+    }
+
+    names.add(name);
+
+    if (Object.hasOwn(COORDINATES, name)) {
+      const degrees = Number(value);
+      const most = COORDINATES[name];
+
+      if (!Number.isFinite(degrees) || Math.abs(degrees) > most) {
+        throw new Error(`The ${name} is a number of degrees from -${most} to ${most}.`);
+      }
+    }
+  }
+
+  given.sort(([one], [other]) => (one < other ? -1 : one > other ? 1 : 0));
+  return Object.fromEntries(given);
+}
+
+function sameFields(one, other) {
+  const sorted = (fields) => JSON.stringify(Object.entries(fields).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+  return sorted(one) === sorted(other);
+}
+
+// Let whoever is signed in say what they will of themselves: a new version,
+// numbered one more than the newest and naming it, signed by them at their
+// drop (HttpApi 11.5).
+function offerEditing(session) {
+  const mine = view.details.get(session.id) || { newest: null, missing: 0 };
+  const save = byId("mine-save");
+  byId("mine").hidden = false;
+  showMine(mine.newest ? mine.newest.fields : {});
+  byId("extra-add").addEventListener("click", () => addExtra("", ""));
+
+  if (mine.missing > 0 || typeof session.created !== "string") {
+    save.disabled = true;
+    sayMine(
+      mine.missing > 0
+        ? "Some of what you said before is not held here yet. Open this page again shortly to change it, so that nothing newer is lost."
+        : "The node does not say when your id was made, so nothing can be saved.",
+      "error",
+    );
+    return;
+  }
+
+  byId("mine-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    let fields;
+
+    try {
+      fields = formFields();
+    } catch (error) {
+      sayMine(error.message, "error");
+      return;
+    }
+
+    const newest = mine.newest;
+
+    if (newest !== null && newest.created === session.created && sameFields(newest.fields, fields)) {
+      sayMine("Nothing has changed.");
+      return;
+    }
+
+    const version = { created: session.created, fields, version: newest === null ? 1 : newest.version + 1 };
+
+    if (newest !== null) {
+      version.versions = [newest.id];
+    }
+
+    save.disabled = true;
+    sayMine(`Saving; this takes about ${DROP_SECONDS} seconds.`);
+
+    try {
+      const result = await call("POST", "/data/signed", {
+        target: DETAILS_PREFIX + session.id,
+        text: JSON.stringify(version),
+        seconds: DROP_SECONDS,
+        minimum_bits: DROP_MINIMUM_BITS,
+      });
+
+      if (result.status === 201 && isObject(result.value)) {
+        mine.newest = { id: result.value.id, versions: [], ...version };
+        view.details.set(session.id, mine);
+        render();
+        sayMine("Saved. Anyone who opens the directory can read it.");
+      } else {
+        sayMine(`Not saved: ${refusal(result)}`, "error");
+      }
+    } catch (error) {
+      sayMine(error.message, "error");
+    }
+
+    save.disabled = false;
+  });
+}
+
 async function start() {
-  const [you, local] = await Promise.all([signedIn(), isLocal()]);
+  byId("search").addEventListener("input", (event) => {
+    view.query = event.target.value;
+    render();
+  });
+  const [session, local] = await Promise.all([signedIn(), isLocal()]);
+  const you = session === null ? null : session.id;
+
+  if (local) {
+    offerAccount(session);
+  }
+
   const { everyone } = await load(you, local, []);
   const asked = new URLSearchParams(location.search).get("add");
 
   if (asked !== null) {
     await offer(asked, everyone, you, local);
   }
+
+  if (session !== null) {
+    view.details.set(you, await readDetails(you));
+    render();
+    offerEditing(session);
+  }
+
+  await loadDetails([...view.everyone].filter((person) => person !== you));
 }
 
 start().catch((error) => status.say(error.message, "error"));

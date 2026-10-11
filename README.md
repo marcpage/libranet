@@ -281,7 +281,8 @@ Deliberately deferred, and specified but not yet built:
 - mDNS/DNS-SD discovery on the local network
 - Searching peers for a hash prefix (High-Level Design §4.7): a node answers
   a search from what it holds and has heard of
-- Signed bundles, and password-protected applications (HTTP API §13.1)
+- Reading into a signed bundle as a bundle (Bundle Specification §5), and
+  password-protected applications (HTTP API §13.1)
 
 There is no bootstrap network: a node ships with an empty seed list, so nodes
 currently find each other only through peers you configure yourself.
@@ -304,7 +305,7 @@ currently find each other only through peers you configure yourself.
 | [Phase 1 Plan](docs/implementation/Phase%201.md) | Implementation steps 1–15, 17–20, and 33–40, all built |
 | [Phase 2 Plan](docs/implementation/Phase%202.md) | Implementation steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–63, all built |
 | [Phase 3 Plan](docs/implementation/Phase%203.md) | Video playback: steps 64–77, all built |
-| [Phase 4 Plan](docs/implementation/Phase%204.md) | User accounts: steps 30, 78–82, and 89–92; 79 and 89–91 built |
+| [Phase 4 Plan](docs/implementation/Phase%204.md) | User accounts: steps 30, 78–82, and 89–92; 30, 79, 80, and 89–92 built |
 | [Phase 5 Plan](docs/implementation/Phase%205.md) | Karma: step 56 so far, planned |
 | [Phase 6 Plan](docs/implementation/Phase%206.md) | Enhancements: steps 16, 50, and 57, planned |
 | [Phase 7 Plan](docs/implementation/Phase%207.md) | A seed node: step 84, planned |

@@ -1,6 +1,7 @@
 """Tests for a person's identity: usernames, and key pairs kept in identity blocks."""
 
 from __future__ import annotations
+from datetime import UTC, datetime, timedelta, timezone
 from json import loads
 
 from cryptography.hazmat.primitives.asymmetric.ec import SECP256R1
@@ -24,6 +25,9 @@ from libranet.identity.people import MAX_USERNAME_CHARACTERS, PersonKey, Usernam
 from libranet.json_format import compact_json
 
 PASSWORD = "correct horse battery staple"
+
+# When an identity in a block made by hand was made, as a block writes it.
+CREATED = "2026-10-10T14:03:22Z"
 
 
 @fixture(scope="module")
@@ -127,6 +131,7 @@ def test_a_sealed_identity_opens_with_its_password_as_a_drop(
 
     assert opened.person_id == person.person_id
     assert opened.public_key == person.public_key
+    assert opened.created == person.created
 
 
 def test_a_sealed_identity_does_not_open_with_another_password(
@@ -152,8 +157,21 @@ def test_an_identity_block_holds_the_private_key_as_pkcs8(
 ) -> None:
     block = loads(alices_key.unprotect(person.sealed(alices_key), 64 * 1024))
 
-    assert list(block) == ["private_key"]
+    assert sorted(block) == ["created", "private_key"]
     assert block["private_key"].startswith("-----BEGIN PRIVATE KEY-----")
+    assert block["created"] == person.created_text
+
+
+def test_a_new_identity_is_made_now_to_the_second(person: PersonKey) -> None:
+    assert person.created.tzinfo == UTC
+    assert person.created.microsecond == 0
+    assert datetime.now(UTC) - person.created < timedelta(minutes=10)
+
+
+def test_when_an_identity_was_made_is_written_as_rfc_3339_in_utc(person: PersonKey) -> None:
+    made = PersonKey.of(person.private_key, datetime(2026, 10, 10, 14, 3, 22, tzinfo=UTC))
+
+    assert made.created_text == CREATED
 
 
 def test_a_block_that_is_not_protected_does_not_open(alices_key: PasswordKey) -> None:
@@ -164,9 +182,13 @@ def test_a_block_that_is_not_protected_does_not_open(alices_key: PasswordKey) ->
 @mark.parametrize(
     "value, complaint",
     [
-        ([], "is an object"),
-        ({"private_key": 7}, "is an object"),
-        ({"private_key": "not a key"}, "no usable key"),
+        ([], "is a JSON object"),
+        ({"private_key": 7, "created": CREATED}, 'with a "private_key"'),
+        ({"private_key": "not a key", "created": CREATED}, "no usable key"),
+        ({"private_key": "not a key"}, 'with a "created"'),
+        ({"private_key": "not a key", "created": 7}, 'with a "created"'),
+        ({"private_key": "not a key", "created": "2026-10-10"}, "is no time"),
+        ({"private_key": "not a key", "created": "2026-10-10T14:03:22+00:00"}, "is no time"),
     ],
 )
 def test_a_block_opening_to_no_identity_block_is_refused(
@@ -188,7 +210,9 @@ def test_a_block_holding_another_kind_of_key_is_refused(alices_key: PasswordKey)
 
     with raises(KeyFileError, match="holds a ECPrivateKey"):
         PersonKey.opened(
-            sealed_json({"private_key": other.decode("ascii")}, alices_key) + b"\x00", alices_key
+            sealed_json({"private_key": other.decode("ascii"), "created": CREATED}, alices_key)
+            + b"\x00",
+            alices_key,
         )
 
 
@@ -199,7 +223,9 @@ def test_a_block_holding_a_key_too_small_is_refused(alices_key: PasswordKey) -> 
 
     with raises(KeyFileError, match="1024 bits"):
         PersonKey.opened(
-            sealed_json({"private_key": small.decode("ascii")}, alices_key) + b"\x00", alices_key
+            sealed_json({"private_key": small.decode("ascii"), "created": CREATED}, alices_key)
+            + b"\x00",
+            alices_key,
         )
 
 
@@ -207,7 +233,22 @@ def test_a_key_pair_whose_parts_do_not_belong_together_is_refused(person: Person
     other = PersonKey.generate(2048)
 
     with raises(ValueError, match="private key's own"):
-        PersonKey(person.private_key, other.public_key, other.person_id)
+        PersonKey(person.private_key, other.public_key, other.person_id, person.created)
 
     with raises(ValueError, match="must name the public key"):
-        PersonKey(person.private_key, person.public_key, other.person_id)
+        PersonKey(person.private_key, person.public_key, other.person_id, person.created)
+
+
+@mark.parametrize(
+    "created",
+    [
+        datetime(2026, 10, 10, 14, 3, 22),
+        datetime(2026, 10, 10, 14, 3, 22, tzinfo=timezone(timedelta(hours=1))),
+        datetime(2026, 10, 10, 14, 3, 22, 500, tzinfo=UTC),
+    ],
+)
+def test_an_identity_made_at_anything_but_a_utc_time_to_the_second_is_refused(
+    person: PersonKey, created: datetime
+) -> None:
+    with raises(ValueError, match="UTC time to the second"):
+        PersonKey.of(person.private_key, created)
