@@ -246,6 +246,7 @@ when trusted. `self.origin === "null"` tells a page it is sandboxed.
 | `/data/drop` | `POST` | Any | Any application's | Place content at a drop (§6.9) |
 | `/data/drop/{target}` | `GET` | Any | Any, or none | Search a drop by its target string (§6.9) |
 | `/data/users` | `POST` | Local | A trusted application's | Make a person's identity (§6.10) |
+| `/data/fallback` | `POST` | Local | A trusted application's | Have a fallback take over, with a fallback of its own (§6.10) |
 | `/data/session` | `GET`, `POST`, `DELETE` | Local | A trusted application's | Who is signed in; sign in and out (§6.10) |
 | `/data/signed` | `POST` | Local | A trusted application's | Place JSON at a drop, signed as whoever is signed in (§6.13) |
 | `/data/signed/{id}` | `GET` | Any | Any, or none | Check signed content, and read what it signs (§6.13) |
@@ -689,8 +690,8 @@ Signing in answers with the person's `id`, `username`, `created`, and
 `fallback`, with `fallback_for` `null`, and asking who is signed in answers
 the same, or each `null` when no one is. Signed in with the fallback
 password, the person is signed in as the fallback: `id` is the fallback's,
-`fallback_for` is the identity it takes over from, and `fallback` is `null`.
-When
+`fallback_for` is the identity it takes over from, and `fallback` is `null`
+until it has taken over, below. When
 nothing the node finds at the username's drop opens, it asks its peers, waits
 a few seconds, and looks again before it answers. If nothing opens then
 either, it answers `503`, a wrong password too, since the node cannot tell one
@@ -698,6 +699,36 @@ from an identity that has not reached it yet. Say so, and let the person try
 again: by then the node knows what its peers answered, so a second try is
 likelier to find them. Don't retry on your own. Each sign-in costs the node a
 fifth of a second or so, by design, and it signs in one person at a time.
+
+A fallback **takes over** when its identity is compromised, and is given a
+fallback of its own as it does, opened by a new fallback password, so that
+the person always has a way back:
+
+```js
+const response = await fetch("/data/fallback", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    username: "alice",
+    password: fallback_password,
+    fallback_password: new_fallback_password,
+    seconds: 10,
+    minimum_bits: 16,
+  }),
+});
+const { id, fallback, fallback_for } = await response.json();
+```
+
+`password` is the fallback password the fallback opens with, and
+`fallback_password` the new one, at least 8 characters and not the other.
+The node signs the person in as the fallback, answering as making an
+identity does, with `fallback` its new fallback, and from then on the old
+fallback password signs in as the person, and the new one as their
+fallback. It places three drops, sharing `seconds`, as making an identity
+does, the fallback's first version among them (§6.14). A password that
+opens an identity with a fallback already, or a new fallback password that
+opens one, is `409`; a fallback not found yet is `503`, as signing in is.
+Until it has taken over, a fallback signs nothing (§6.13).
 
 The session is named by a cookie the browser keeps, which no page's script
 can read. The node holds the person's private key while they are signed in,
@@ -809,7 +840,8 @@ const { id: drop, target, matching_bits, signer } = await response.json();
 is signed is then encrypted, so that only whoever opens it learns who signed
 it (§6.15). It is answered `201 Created`,
 as a drop is, and `signer` is the person's id. With no one signed in it is
-`401`, with the problem type `session-required`, and `text` that is not an
+`401`, with the problem type `session-required`; signed in as a fallback
+that has not taken over (§6.10), it is `403`; and `text` that is not an
 object's JSON is `400`. Only a local client, from a trusted application's
 page, signs.
 
@@ -857,8 +889,8 @@ in person's. The node places the first version as it makes the identity
   (§6.10). Every version carries it.
 - **`fallback`** is the id of the person's fallback, as the session gives
   it. Every version carries it, and it never changes.
-- **`compromised`**, `true`, is in a version saying the identity is
-  compromised, below, and left out of every other.
+- **`compromised`**, `true`, is in a version the person's fallback signs
+  saying the identity is compromised, below, and left out of every other.
 - **`fields`** maps each detail's name to its value, both strings. These
   are the standard ones, each optional: `handle`, `first name`,
   `last name`, `country`, `state`, `province`, `county`, `city`,
@@ -878,6 +910,7 @@ To read what someone says, and follow the same rules as other pages do:
 - **Pass over what is not theirs.** Count only content that checks, whose
   `signer` is the person, and whose `contents` is shaped as above, but for
   a version their fallback signed saying they are compromised.
+  `compromised` in a version of their own says nothing.
 - **Read the history back.** Read each version each of theirs names in
   `versions`, and the versions those name, back to the first, as far as the
   node holds them. Read back only the person's own: anyone can place a
@@ -889,8 +922,9 @@ To read what someone says, and follow the same rules as other pages do:
   fallback can be trusted. A fallback is checked as far back as the history
   is read: say so when it is not read back to the first.
 - **The identity is compromised** when its versions name another fallback,
-  or none, or when a version of theirs, or one their fallback signed, says
-  `compromised`. Use their fallback in its place: mail them there, say.
+  or none, or when a version their fallback signed says `compromised`. Use
+  their fallback in its place: mail them there, say. Its own versions, at
+  `user:{id}` of its id, name its own fallback.
 - **The newest is numbered highest**, and of two numbered as high, the one
   whose drop's id comes first. Only the person signs a version, and their
   fallback one saying they are compromised, so no one else can make one
@@ -902,17 +936,22 @@ To read what someone says, and follow the same rules as other pages do:
   not held yet, since it may be newer than the newest read, and once the
   identity is compromised. Never block a version (§6.11): every reader
   reads the history back to the first.
-- **Say an identity is compromised** with a version over the newest that
-  says `"compromised": true`, keeping its fields and fallback, signed by the
-  person or by their fallback. Signed in with the fallback password, the
-  session's `fallback_for` is the identity to say it of, and its `id` the
-  fallback that versions must name. Either may say so, since the person may
-  have lost their password, and whoever stole it gains nothing by saying
-  so: readers then trust only the fallback, which the thief cannot sign as.
-  It cannot be undone.
+- **Say an identity is compromised** from its fallback, once it has taken
+  over (§6.10): ask for the fallback password and a new one, twice, have the
+  fallback take over, and then, signed in as it, place a version over the
+  identity's newest that says `"compromised": true`, keeping its fields and
+  fallback. The session's `fallback_for` is the identity to say it of, and
+  its `id` the fallback that versions name. A person signed in as the
+  identity says so the same way, giving their fallback password: the
+  fallback takes over, and the browser is signed in as it. A fallback cannot
+  sign until it has taken over, so whenever one says its identity is
+  compromised, it has a fallback of its own. It cannot be undone.
 
-Saying so is the person's to do, and only once they know. Whoever holds
-their key and keeps the fallback the same is read as the person until then.
+Saying so is the person's to do, and only once they know, with their
+fallback password. Whoever holds their key and keeps the fallback the same
+is read as the person until then. When the versions are what say an
+identity is compromised, its fallback has no fallback of its own until the
+person takes over.
 
 ### 6.15 Encrypting a Block
 

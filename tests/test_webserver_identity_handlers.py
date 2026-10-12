@@ -28,7 +28,12 @@ from libranet.protocol.search import LocalSearch, SearchCache
 from libranet.webserver.bundle_edits import OwnUploads
 from libranet.webserver.drop_handler import DropHandler, StoredDrop
 from libranet.webserver.http_types import Request, RequestBody, Response
-from libranet.webserver.identity_handlers import SESSION_PATH, USERS_PATH, Identities
+from libranet.webserver.identity_handlers import (
+    FALLBACK_PATH,
+    SESSION_PATH,
+    USERS_PATH,
+    Identities,
+)
 from libranet.webserver.search_handler import SearchHandler
 from libranet.webserver.sessions import Sessions
 
@@ -41,6 +46,7 @@ MAX_MINIMUM_BITS = 12
 RETRY_AFTER_SECONDS = 3
 PASSWORD = "correct horse"
 FALLBACK_PASSWORD = "battery staple"
+NEW_FALLBACK_PASSWORD = "stapled battery"
 TARGET = DropTarget.of("user:alice")
 NO_ONE = {"id": None, "username": None, "created": None, "fallback": None, "fallback_for": None}
 
@@ -123,6 +129,22 @@ def making(
         "seconds": 0,
     }
     return asked("POST", USERS_PATH, {**value, **(changes or {})})
+
+
+def taking_over(
+    password: str = FALLBACK_PASSWORD, fallback_password: str = NEW_FALLBACK_PASSWORD
+) -> Request:
+    """``POST /data/fallback`` asking Alice's fallback to take over, quickly."""
+    return asked(
+        "POST",
+        FALLBACK_PATH,
+        {
+            "username": "alice",
+            "password": password,
+            "fallback_password": fallback_password,
+            "seconds": 0,
+        },
+    )
 
 
 def signing_in(username: str = "alice", password: str = PASSWORD) -> Request:
@@ -309,6 +331,149 @@ def test_an_identity_made_without_signing_in_starts_no_session(
         "fallback": answer["fallback"],
         "fallback_for": None,
     }
+
+
+def test_a_fallback_takes_over_with_a_fallback_of_its_own(
+    identities: Identities, storage: StorageConfig, recorder: Recorder
+) -> None:
+    answer = made(storage, identities, making())
+    put_before = len(recorder.payloads(EventType.PUT_COMPLETED))
+
+    response = identities.take_over(taking_over())
+
+    assert response.status == 200, response.body
+    taken = loads(response.body)
+    fallback_id = ContentId.parse(taken["fallback"])
+    assert taken["id"] == answer["fallback"]
+    assert taken["fallback_for"] == answer["id"]
+    assert taken["created"] == answer["created"]
+    assert taken["target"] == TARGET.hex
+    assert response.headers["Cache-Control"] == "no-store"
+    # The fallback's public key is held already, so storing it uploads nothing.
+    own_drop, first_drop, block_drop, fallback_key = (
+        ContentId.from_fields(payload)
+        for payload in recorder.payloads(EventType.PUT_COMPLETED)[put_before:]
+    )
+    assert block_drop == ContentId.parse(taken["drop"])
+    assert fallback_key == fallback_id
+    own = PersonKey.opened(
+        uploaded(storage, own_drop),
+        Username.create("alice").password_key(NEW_FALLBACK_PASSWORD),
+    )
+    assert own.person_id == fallback_id
+    assert own.fallback_for == ContentId.parse(taken["id"])
+    first = SignedBundle.decoded(uploaded(storage, first_drop).rpartition(b"\x00")[0])
+    assert first.signer == ContentId.parse(taken["id"])
+    assert loads(first.contents) == {
+        "created": answer["created"],
+        "fallback": str(fallback_id),
+        "fields": {},
+        "version": 1,
+    }
+    who = identities.signed_in(asked("GET", SESSION_PATH, headers=cookie_of(response)))
+    assert loads(who.body)["fallback"] == str(fallback_id)
+
+
+def test_once_taken_over_the_fallback_password_signs_in_with_its_own_fallback(
+    identities: Identities, storage: StorageConfig
+) -> None:
+    made(storage, identities, making())
+    taken = loads(identities.take_over(taking_over()).body)
+    validated_all(storage)
+    key = Username.create("alice").password_key(FALLBACK_PASSWORD)
+    # A block as it was before it took over, placed to be found before the
+    # one sealed as it took over.
+    more_bits = 1 + max(
+        matching_bits(stored.content_id.hash, TARGET.hex)
+        for stored in CasStore.source_of_truth(storage).held_objects()
+    )
+    current = PersonKey.opened(uploaded(storage, ContentId.parse(taken["drop"])), key)
+    placed(storage, replace(current, fallback=None).sealed(key), more_bits)
+
+    response = identities.sign_in(signing_in(password=FALLBACK_PASSWORD))
+
+    assert response.status == 200, response.body
+    assert loads(response.body)["fallback"] == taken["fallback"]
+    signed_in = identities.sign_in(signing_in(password=NEW_FALLBACK_PASSWORD))
+    assert loads(signed_in.body)["fallback_for"] == taken["id"]
+
+
+def test_only_a_fallback_without_one_of_its_own_takes_over(
+    identities: Identities, storage: StorageConfig, recorder: Recorder
+) -> None:
+    made(storage, identities, making())
+    identities.take_over(taking_over())
+    validated_all(storage)
+    put_before = len(recorder.payloads(EventType.PUT_COMPLETED))
+
+    the_identity = identities.take_over(taking_over(password=PASSWORD))
+    again = identities.take_over(taking_over(fallback_password="another staple"))
+
+    assert the_identity.status == again.status == 409
+    assert "only a fallback that has none takes over" in loads(again.body)["detail"]
+    assert len(recorder.payloads(EventType.PUT_COMPLETED)) == put_before
+
+
+def test_a_takeover_whose_drop_is_too_large_for_an_object_is_413(
+    identities: Identities, storage: StorageConfig, recorder: Recorder
+) -> None:
+    made(storage, identities, making())
+    put_before = len(recorder.payloads(EventType.PUT_COMPLETED))
+    drops = replace(identities.drops, max_object_bytes=1024)
+
+    response = replace(identities, drops=drops).take_over(taking_over())
+
+    assert response.status == 413
+    assert len(recorder.payloads(EventType.PUT_COMPLETED)) == put_before
+
+
+def test_a_new_fallback_password_that_opens_an_identity_here_is_refused(
+    identities: Identities, storage: StorageConfig
+) -> None:
+    made(storage, identities, making())
+
+    response = identities.take_over(taking_over(fallback_password=PASSWORD))
+
+    assert response.status == 409
+    assert "fallback password already open" in loads(response.body)["detail"]
+
+
+def test_a_fallback_not_found_is_503_after_a_pass(
+    identities: Identities, waited: list[float]
+) -> None:
+    response = identities.take_over(taking_over())
+
+    assert response.status == 503
+    assert problem_type(response) == CONTENT_UNAVAILABLE
+    assert waited == [RETRY_AFTER_SECONDS]
+
+
+@mark.parametrize(
+    "request_value, complaint",
+    [
+        (
+            {"username": "alice", "password": FALLBACK_PASSWORD, "seconds": 0},
+            '"fallback_password" must be a string',
+        ),
+        (
+            {
+                "username": "alice",
+                "password": FALLBACK_PASSWORD,
+                "fallback_password": NEW_FALLBACK_PASSWORD,
+                "seconds": MAX_SECONDS + 1,
+            },
+            '"seconds" may be at most 1.0 here',
+        ),
+    ],
+)
+def test_a_takeover_that_cannot_be_made_is_400_before_any_work(
+    identities: Identities, recorder: Recorder, request_value: object, complaint: str
+) -> None:
+    response = identities.take_over(asked("POST", FALLBACK_PATH, request_value))
+
+    assert response.status == 400
+    assert complaint in loads(response.body)["detail"]
+    assert recorder.messages == []
 
 
 def test_making_without_signing_in_is_refused_as_making_is(
@@ -585,10 +750,14 @@ def test_a_sign_in_that_is_not_one_is_400(identities: Identities, recorder: Reco
     assert recorder.messages == []
 
 
-@mark.parametrize("path", [USERS_PATH, SESSION_PATH])
+@mark.parametrize("path", [USERS_PATH, FALLBACK_PATH, SESSION_PATH])
 def test_a_body_that_does_not_say_it_is_json_is_415(identities: Identities, path: str) -> None:
     request = asked("POST", path, {"username": "alice"}, headers={"Content-Type": "text/plain"})
-    handler = identities.make if path == USERS_PATH else identities.sign_in
+    handler = {
+        USERS_PATH: identities.make,
+        FALLBACK_PATH: identities.take_over,
+        SESSION_PATH: identities.sign_in,
+    }[path]
 
     assert handler(request).status == 415
 

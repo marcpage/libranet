@@ -13,8 +13,9 @@ key the session holds, as a signed bundle's ``contents``
 (:class:`~libranet.bundle.signing.SignedBundle`). The signed bundle is made a
 drop as ``POST /data/drop`` makes one (:meth:`DropHandler.placed`), and the
 person's public key is stored again, should it have been evicted, so that a
-reader can check it. It is answered ``201``, with a ``Location`` naming the
-drop::
+reader can check it. A fallback that has not taken over, and so has no
+fallback of its own, signs nothing (Phase 4 Step 81). It is answered ``201``,
+with a ``Location`` naming the drop::
 
     {"id": "sha256/…", "target": "<hex>", "matching_bits": 21, "signer": "sha256/…"}
 
@@ -113,6 +114,19 @@ class SignedDrops:
                     detail="Sign in to sign as a person.",
                     instance=request.path,
                 )
+            )
+
+        if session.key.fallback is None:
+            _LOGGER.debug(
+                "Refusing %s %s: %s has no fallback of its own yet",
+                request.method,
+                request.path,
+                session.key.person_id,
+            )
+            return status_response(
+                request,
+                HTTPStatus.FORBIDDEN,
+                "A fallback signs nothing until it takes over, with a fallback of its own.",
             )
 
         value = json_or_refusal(request, max_bytes=MAX_DROP_BODY_BYTES)

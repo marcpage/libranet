@@ -50,7 +50,7 @@ from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import CONFIG_API_PATH, ENDPOINTS, NodeDescription
 from libranet.webserver.drop_handler import DROP_PATH
 from libranet.webserver.http_types import Request
-from libranet.webserver.identity_handlers import SESSION_PATH
+from libranet.webserver.identity_handlers import FALLBACK_PATH, SESSION_PATH
 from libranet.webserver.local_folders import DIRECTORY_PATTERN
 from libranet.webserver.local_imports import IMPORTS_PATH
 from libranet.webserver.local_only import CLIENT_PATH
@@ -447,6 +447,7 @@ def test_the_directory_page_calls_only_endpoints_the_node_serves(directory_page:
     assert called == {
         CLIENT_PATH,
         SESSION_PATH,
+        FALLBACK_PATH,
         DROP_PATH,
         BUNDLES_PATH,
         SIGNED_PATH,
@@ -487,9 +488,11 @@ def test_each_version_the_directory_page_writes_names_the_sessions_fallback(
 ) -> None:
     # The fallback the identity block names, which never changes (HttpApi 11.3).
     assert "fallback: session.fallback," in directory_page
-    # A fallback writes only a version saying its identity is compromised.
+    # A fallback says its identity is compromised once it has taken over, with
+    # a fallback of its own.
     assert "compromised: true," in directory_page
     assert "session.fallback_for" in directory_page
+    assert "fallback_password: fallbackPassword," in directory_page
 
 
 def test_the_config_page_makes_a_user_with_a_fallback_password(config_page: str) -> None:

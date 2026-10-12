@@ -21,7 +21,7 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
 from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
-from libranet.identity.people import PersonKey, Username
+from libranet.identity.people import NewIdentity, PersonKey, Username
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.problems import (
@@ -67,7 +67,7 @@ class Recorder:
 
 @fixture(scope="module")
 def person() -> PersonKey:
-    return PersonKey.generate(2048)
+    return NewIdentity.generate(2048).key
 
 
 @fixture
@@ -383,6 +383,20 @@ def test_a_hash_that_is_not_the_contents_hash_does_not_check(
 
     assert response.status == 400
     assert problem_type(response) == INVALID_BUNDLE_SIGNATURE
+
+
+def test_a_fallback_that_has_not_taken_over_signs_nothing(
+    signed: SignedDrops, sessions: Sessions, recorder: Recorder
+) -> None:
+    fallback = NewIdentity.generate(2048).fallback
+    started = sessions.start(Session(Username.create("alice"), fallback))
+    cookie = {"Cookie": started.partition(";")[0]}
+
+    response = signed.make(signing(fallback, cookie))
+
+    assert response.status == 403
+    assert "until it takes over" in loads(response.body)["detail"]
+    assert recorder.messages == []
 
 
 def test_a_signature_by_another_key_does_not_check_and_is_a_warning(

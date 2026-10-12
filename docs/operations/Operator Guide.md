@@ -443,8 +443,11 @@ fallback, made with the first, which takes over should the first be
 compromised: its password learned by someone else, or forgotten. Signing in
 with the username and the fallback password signs in as the fallback, from
 which the person says their identity is compromised, in the user directory.
-Whoever learns both passwords can take the identity over for good, so the
-person keeps the fallback password apart from the other, written down, say.
+The fallback then takes over, and is given a fallback of its own, opened by
+a new fallback password the person chooses then: the old fallback password
+signs in as them from then on. Whoever learns both passwords can take the
+identity over for good, so the person keeps the fallback password apart
+from the other, written down, say.
 
 On the `/config` page, under **Users**, give the username, the password
 twice, the fallback password twice, and the size of the person's keys, one

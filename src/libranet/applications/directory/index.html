@@ -154,6 +154,17 @@
   <section id="compromise" hidden>
     <h2 id="compromise-title">If your identity is compromised</h2>
     <p id="compromise-text"></p>
+    <form id="takeover" hidden>
+      <div class="fields">
+        <label id="takeover-password-label" for="takeover-password">Your fallback password</label>
+        <input id="takeover-password" type="password" autocomplete="off" required>
+        <label for="takeover-new">New fallback password</label>
+        <input id="takeover-new" type="password" autocomplete="new-password" required minlength="8">
+        <label for="takeover-again">New fallback password again</label>
+        <input id="takeover-again" type="password" autocomplete="new-password" required minlength="8">
+      </div>
+      <div class="actions"><button id="takeover-submit" type="submit">Say it is compromised</button></div>
+    </form>
     <button id="compromise-say" type="button" hidden>Say it is compromised</button>
   </section>
 
@@ -167,7 +178,9 @@
     Each version names their fallback, an identity made with theirs that takes
     over should theirs be compromised, and the version it replaces. The page
     reads each person's versions back to the first, and an identity whose
-    versions name another fallback, or none, or say so, is compromised.
+    versions name another fallback, or none, or whose fallback says so, is
+    compromised. A fallback that says so takes over, with a fallback of its
+    own.
   </footer>
 </main>
 <script>
@@ -1120,8 +1133,9 @@ function newestOf(versions) {
 // the one their first version names, or, with no first read, the one every
 // version read names; null when they name different ones, or none. Whether
 // the identity is compromised: versions name another fallback, or none, or
-// one of theirs, or one their fallback signed, says so. And the newest
-// version, theirs or their fallback's saying so.
+// one their fallback signed says so, which it signs only once it has a
+// fallback of its own. And the newest version, theirs or their fallback's
+// saying so.
 function judged(person, versions) {
   const own = versions.filter((version) => version.signer === person);
 
@@ -1137,7 +1151,7 @@ function judged(person, versions) {
   );
   const compromised =
     fallback === null ||
-    own.some((version) => version.fallback !== fallback || version.compromised) ||
+    own.some((version) => version.fallback !== fallback) ||
     notices.length > 0;
   return { newest: newestOf([...own, ...notices]), fallback, compromised, first: firsts.length > 0 };
 }
@@ -1259,9 +1273,10 @@ function offerAccount(session) {
   if (session !== null) {
     byId("account-title").textContent = "Signed in";
     byId("signed-in").hidden = false;
-    byId("signed-in-text").textContent = session.fallback_for
-      ? `Signed in as ${session.username}, with the fallback password.`
-      : `Signed in as ${session.username}.`;
+    byId("signed-in-text").textContent =
+      session.fallback_for && !session.fallback
+        ? `Signed in as ${session.username}, with the fallback password.`
+        : `Signed in as ${session.username}.`;
     byId("sign-out").addEventListener("click", async () => {
       byId("sign-out").disabled = true;
       await call("DELETE", "/data/session").catch(() => null);
@@ -1536,108 +1551,234 @@ function sayCompromise(text, className) {
   said.className = className || "note";
 }
 
-// Why the identity `person`, whose fallback is `fallback`, cannot be said to
-// be compromised by whoever is signed in, `own` if it is theirs; null if it
-// can.
-function uncompromisable(person, fallback, details, own) {
-  const whose = own ? "Your identity" : person;
+// Have the fallback `username` and `password` open take over, with a fallback
+// of its own that `fallbackPassword` opens (HttpApi 11.3). The browser is
+// signed in as it then. What it answers, or why it was refused.
+async function tookOver(username, password, fallbackPassword) {
+  const result = await call("POST", "/data/fallback", {
+    username,
+    password,
+    fallback_password: fallbackPassword,
+    seconds: DROP_SECONDS,
+    minimum_bits: DROP_MINIMUM_BITS,
+  });
 
-  if (details.compromised) {
-    return details.fallback === null
-      ? `${whose} is marked compromised already, and its versions name no one fallback.`
-      : `${whose} is marked compromised already, and falls back to ${details.fallback}.`;
+  if (result.ok && isObject(result.value)) {
+    return { taken: result.value };
   }
 
+  return {
+    error:
+      result.status === 503
+        ? "No fallback that password opens was found yet. The node has asked its peers, so try again in a moment."
+        : refusal(result),
+  };
+}
+
+// The version saying the identity `details` are of is compromised, over its
+// newest, naming `fallback`, made at `created` if no version says when.
+function compromisedVersion(details, created, fallback) {
+  const newest = details.newest;
+  const version = {
+    compromised: true,
+    created: newest === null ? created : newest.created,
+    fallback,
+    fields: newest === null ? {} : newest.fields,
+    version: newest === null ? 1 : newest.version + 1,
+  };
+
+  if (newest !== null) {
+    version.versions = [newest.id];
+  }
+
+  return version;
+}
+
+// Why the identity `person`, whose details are `details`, cannot be said to
+// be compromised by its fallback `fallback`; null if it can.
+function unsayable(person, fallback, details) {
   if (details.missing > 0) {
-    return `Some of what ${own ? "you said" : `${person} said`} is not held here yet. Open this page again shortly.`;
+    return `Some of what ${person} said is not held here yet. Open this page again shortly.`;
   }
 
-  if (!own && details.newest === null) {
+  if (details.newest === null) {
     return `Nothing ${person} says is held here yet, so whether you are its fallback cannot be checked. Open this page again shortly.`;
   }
 
-  if (!own && details.fallback !== fallback) {
+  if (details.fallback !== fallback) {
     return `The versions of ${person} held here name ${details.fallback || "no one"} as its fallback, not you, so saying so here would not count.`;
   }
 
   return null;
 }
 
-// Let whoever is signed in say an identity is compromised: their own, or,
-// signed in as a fallback, the identity it takes over from. A version saying
-// so, signed by either, has readers use the fallback in its place (App
-// Developer Guide 6.14).
-function offerCompromise(session) {
-  const own = !session.fallback_for;
-  const person = own ? session.id : session.fallback_for;
-  const fallback = own ? session.fallback : session.id;
-  const details = view.details.get(person) || { newest: null, missing: 0, fallback: null, compromised: false };
-  byId("compromise").hidden = false;
+// Offer the form taking over as a fallback: the password it opens with, and a
+// new fallback password, twice. `passwordLabel` names the first, `button`
+// what it does, and `afterwards` what follows once the fallback has taken
+// over, given what that answered.
+function offerTakeover(session, passwordLabel, button, afterwards) {
+  const form = byId("takeover");
+  form.hidden = false;
+  byId("takeover-password-label").textContent = passwordLabel;
+  byId("takeover-submit").textContent = button;
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const password = byId("takeover-password").value;
+    const fallbackPassword = byId("takeover-new").value;
 
-  if (!own) {
-    byId("compromise-title").textContent = "Signed in as a fallback";
-  }
-
-  if (!CONTENT_ID.test(fallback)) {
-    sayCompromise("The node does not say what your fallback is, so nothing can be said.", "error");
-    return;
-  }
-
-  const refused = uncompromisable(person, fallback, details, own);
-
-  if (refused !== null) {
-    sayCompromise(refused, own ? "note" : "error");
-    return;
-  }
-
-  const other =
-    own && details.fallback !== null && details.fallback !== fallback
-      ? ` The versions of yours held here name ${details.fallback} as your fallback, not the one your identity was made with: someone else has your key.`
-      : "";
-  sayCompromise(
-    own
-      ? `If someone else has learned your password, or might have, say so here. Everyone who reads the directory is then told to use your fallback, ${fallback}, in place of this identity. You sign in as your fallback with your username and your fallback password. This cannot be undone.${other}`
-      : `You signed in with your fallback password, as the fallback of ${person}. If ${person} is compromised, or its password is lost, say so here, and everyone who reads the directory is told to use this identity in its place. This cannot be undone.`,
-    other ? "error" : "note",
-  );
-  const button = byId("compromise-say");
-  button.hidden = false;
-  button.addEventListener("click", async () => {
-    if (!confirm(`Say that ${person} is compromised, for good?`)) {
+    if (fallbackPassword !== byId("takeover-again").value) {
+      sayCompromise("The two new fallback passwords differ.", "error");
       return;
     }
 
-    button.disabled = true;
-    sayCompromise(`Saying so; this takes about ${DROP_SECONDS} seconds.`);
-    const newest = details.newest;
-    // A fallback is made at the moment its identity is.
-    const version = {
-      compromised: true,
-      created: newest === null ? session.created : newest.created,
-      fallback,
-      fields: newest === null ? {} : newest.fields,
-      version: newest === null ? 1 : newest.version + 1,
-    };
-
-    if (newest !== null) {
-      version.versions = [newest.id];
+    // The node compares them composed alike (HttpApi 11.3), and so does this.
+    if (fallbackPassword.normalize("NFC") === password.normalize("NFC")) {
+      sayCompromise("The new fallback password must differ from the other.", "error");
+      return;
     }
 
-    try {
-      const placed = await placedVersion(person, version);
+    if (!confirm(`${button}, for good?`)) {
+      return;
+    }
 
-      if (placed.id) {
+    byId("takeover-submit").disabled = true;
+    sayCompromise(`Taking over; this takes about ${2 * DROP_SECONDS} seconds.`);
+
+    try {
+      const took = await tookOver(session.username, password, fallbackPassword);
+      const done = took.error ? took : await afterwards(took.taken);
+
+      if (!done.error) {
         location.reload();
         return;
       }
 
-      sayCompromise(`Not said: ${placed.error}`, "error");
+      sayCompromise(done.error, "error");
     } catch (error) {
       sayCompromise(error.message, "error");
     }
 
-    button.disabled = false;
+    byId("takeover-submit").disabled = false;
   });
+}
+
+// Have the fallback `fallback`, signed in, say the identity `person` it takes
+// over from, of `details`, is compromised (App Developer Guide 6.14).
+async function saidCompromised(person, details, created, fallback) {
+  const placed = await placedVersion(person, compromisedVersion(details, created, fallback));
+  return placed.id ? {} : { error: `It took over, but saying so was refused: ${placed.error}` };
+}
+
+// Let a fallback signed in take over from the identity it is the fallback of,
+// `person`: say that is compromised, unless it is already, and be given a
+// fallback of its own first, unless it has one.
+function offerTakingOver(session, person, details, own) {
+  byId("compromise-title").textContent = "Signed in as a fallback";
+
+  if (details.compromised && details.fallback !== session.id) {
+    sayCompromise(`${person} is marked compromised, and falls back to ${details.fallback || "no one it can trust"}, not you.`, "error");
+    return;
+  }
+
+  const refused = details.compromised ? null : unsayable(person, session.id, details);
+
+  if (refused !== null) {
+    sayCompromise(refused, "error");
+    return;
+  }
+
+  if (own) {
+    // It took over before, but saying so was not done.
+    sayCompromise(`You signed in as the fallback of ${person}, which has a fallback of its own. Say that ${person} is compromised here, and everyone who reads the directory is told to use this identity in its place. This cannot be undone.`);
+    const button = byId("compromise-say");
+    button.hidden = false;
+    button.addEventListener("click", async () => {
+      if (!confirm(`Say that ${person} is compromised, for good?`)) {
+        return;
+      }
+
+      button.disabled = true;
+      sayCompromise(`Saying so; this takes about ${DROP_SECONDS} seconds.`);
+      const done = await saidCompromised(person, details, session.created, session.id).catch((error) => ({ error: error.message }));
+
+      if (!done.error) {
+        location.reload();
+        return;
+      }
+
+      sayCompromise(done.error, "error");
+      button.disabled = false;
+    });
+    return;
+  }
+
+  sayCompromise(
+    details.compromised
+      ? `${person} is marked compromised, and falls back to you. Take over here: this identity is given a fallback of its own, opened by a new fallback password, and can then sign as the person. Keep the new fallback password apart from the other.`
+      : `You signed in with your fallback password, as the fallback of ${person}. If ${person} is compromised, or its password is lost, say so here. This identity is given a fallback of its own, opened by a new fallback password, and everyone who reads the directory is told to use it in place of ${person}. This cannot be undone.`,
+  );
+  offerTakeover(
+    session,
+    "The password you signed in with",
+    details.compromised ? "Take over" : "Say it is compromised",
+    (taken) =>
+      details.compromised ? {} : saidCompromised(person, details, session.created, taken.id),
+  );
+}
+
+// Let whoever is signed in, with a fallback, say their identity is
+// compromised: their fallback takes over, with a fallback of its own, and
+// says so (App Developer Guide 6.14).
+function offerSayingCompromised(session) {
+  const details = view.details.get(session.id) || { newest: null, missing: 0, fallback: null, compromised: false };
+
+  if (details.compromised) {
+    sayCompromise(
+      details.fallback === null
+        ? "Your identity is marked compromised already, and its versions name no one fallback."
+        : `Your identity is marked compromised already, and falls back to ${details.fallback}. Sign in with your fallback password to take over.`,
+    );
+    return;
+  }
+
+  if (details.missing > 0) {
+    sayCompromise("Some of what you said is not held here yet. Open this page again shortly.");
+    return;
+  }
+
+  const other =
+    details.fallback !== null && details.fallback !== session.fallback
+      ? ` The versions of yours held here name ${details.fallback} as your fallback, not the one your identity was made with: someone else has your key.`
+      : "";
+  sayCompromise(
+    `If someone else has learned your password, or might have, say so here. Your fallback, ${session.fallback}, then takes over: it is given a fallback of its own, opened by the new fallback password you choose here, and everyone who reads the directory is told to use it in place of this identity. From then on, sign in with your username and your fallback password. This cannot be undone.${other}`,
+    other ? "error" : "note",
+  );
+  offerTakeover(session, "Your fallback password", "Say it is compromised", (taken) => {
+    if (taken.fallback_for !== session.id) {
+      return { error: `That password opens the fallback of ${taken.fallback_for}, which took over; your identity is not marked compromised.` };
+    }
+
+    return saidCompromised(session.id, details, session.created, taken.id);
+  });
+}
+
+// Offer whoever is signed in what they can do should an identity be
+// compromised: as a fallback, take over from its identity; as an identity with
+// a fallback, have the fallback take over.
+function offerCompromise(session) {
+  const own = CONTENT_ID.test(session.fallback);
+  const replaced = CONTENT_ID.test(session.fallback_for) ? session.fallback_for : null;
+  const details = replaced === null ? null : view.details.get(replaced) || { newest: null, missing: 0, fallback: null, compromised: false };
+  byId("compromise").hidden = false;
+
+  if (replaced !== null && (!own || !details.compromised)) {
+    offerTakingOver(session, replaced, details, own);
+  } else if (own) {
+    offerSayingCompromised(session);
+  } else {
+    sayCompromise("The node does not say what your fallback is, so nothing can be said.", "error");
+  }
 }
 
 async function start() {
@@ -1646,9 +1787,9 @@ async function start() {
     render();
   });
   const [session, local] = await Promise.all([signedIn(), isLocal()]);
-  // A fallback is not listed: it takes over only from an identity said to be
-  // compromised, and readers find it through that identity.
-  const you = session === null || session.fallback_for ? null : session.id;
+  // A fallback is listed once it has taken over, with a fallback of its own.
+  // Until then, readers find it through the identity it is the fallback of.
+  const you = session !== null && CONTENT_ID.test(session.fallback) ? session.id : null;
 
   if (local) {
     offerAccount(session);
@@ -1662,11 +1803,13 @@ async function start() {
   }
 
   if (session !== null) {
-    const person = session.fallback_for || session.id;
-    view.details.set(person, await readDetails(person));
+    for (const person of [session.id, session.fallback_for].filter((id) => CONTENT_ID.test(id))) {
+      view.details.set(person, await readDetails(person));
+    }
+
     render();
 
-    if (!session.fallback_for) {
+    if (you !== null) {
       offerEditing(session);
     }
 

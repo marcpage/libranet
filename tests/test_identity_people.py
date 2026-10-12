@@ -189,28 +189,17 @@ def test_a_key_pair_naming_no_fallback_is_not_sealed(
         replace(person, fallback=None).sealed(alices_key)
 
 
-def test_a_key_pair_naming_a_fallback_and_what_it_takes_over_from_is_refused(
-    person: PersonKey,
-) -> None:
-    with raises(ValueError, match="names a fallback, or the identity it takes over from"):
-        replace(person, fallback_for=person.person_id)
-
-
 @mark.parametrize(
     "named, complaint",
     [
-        ({}, 'either a "fallback" or a "fallback_for"'),
-        ({"fallback": None}, 'either a "fallback" or a "fallback_for"'),
-        (
-            {"fallback": "sha256/" + "a" * 64, "fallback_for": "sha256/" + "b" * 64},
-            'either a "fallback" or a "fallback_for"',
-        ),
+        ({}, 'a "fallback", a "fallback_for", or both'),
+        ({"fallback": None}, 'a "fallback", a "fallback_for", or both'),
         ({"fallback": 7}, '"fallback" is an id'),
         ({"fallback_for": "sha256/ABC"}, '"fallback_for" is no id'),
         ({"fallback": "md5/" + "a" * 32}, '"fallback" is no id'),
     ],
 )
-def test_a_block_naming_neither_both_or_no_id_opens_to_no_identity(
+def test_a_block_naming_neither_or_no_id_opens_to_no_identity(
     person: PersonKey, alices_key: PasswordKey, named: dict[str, object], complaint: str
 ) -> None:
     encoded = person.private_key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption())
@@ -243,14 +232,34 @@ def test_an_identity_and_a_fallback_that_do_not_name_each_other_are_refused(
     with raises(ValueError, match="must take over from"):
         NewIdentity(replace(made.key, fallback=other.fallback.person_id), other.fallback)
 
-    with raises(ValueError, match="made at once"):
-        NewIdentity(
-            made.key, replace(made.fallback, created=made.key.created + timedelta(seconds=1))
-        )
+
+def test_a_fallback_takes_over_with_a_new_fallback_of_its_own(
+    made: NewIdentity, alices_key: PasswordKey
+) -> None:
+    taken = NewIdentity.taken_over(made.fallback)
+
+    assert taken.key.person_id == made.fallback.person_id
+    assert taken.key.fallback == taken.fallback.person_id
+    assert taken.key.fallback_for == made.key.person_id
+    assert taken.key.created == made.fallback.created
+    assert taken.fallback.fallback_for == made.fallback.person_id
+    assert taken.fallback.fallback is None
+    assert taken.fallback.person_id not in (made.key.person_id, made.fallback.person_id)
+    assert taken.fallback.private_key.key_size == 2048
+    opened = PersonKey.opened(taken.key.sealed(alices_key) + b"\x00", alices_key)
+    assert (opened.fallback, opened.fallback_for) == (taken.key.fallback, taken.key.fallback_for)
+
+
+def test_only_a_fallback_with_no_fallback_of_its_own_takes_over(made: NewIdentity) -> None:
+    with raises(ValueError, match="is no fallback"):
+        NewIdentity.taken_over(made.key)
+
+    with raises(ValueError, match="has a fallback already"):
+        NewIdentity.taken_over(NewIdentity.taken_over(made.fallback).key)
 
 
 def test_the_first_version_names_the_fallback_signed_by_the_identity(made: NewIdentity) -> None:
-    signed = SignedBundle.decoded(made.first_version().encoded())
+    signed = SignedBundle.decoded(made.key.first_version().encoded())
 
     signed.verified(made.key.public_key)
     assert signed.signer == made.key.person_id
@@ -258,6 +267,11 @@ def test_the_first_version_names_the_fallback_signed_by_the_identity(made: NewId
         f'{{"created":"{made.key.created_text}","fallback":"{made.fallback.person_id}",'
         '"fields":{},"version":1}'
     )
+
+
+def test_no_first_version_is_made_naming_no_fallback(made: NewIdentity) -> None:
+    with raises(ValueError, match="names no fallback"):
+        made.fallback.first_version()
 
 
 def test_what_a_person_says_is_kept_at_the_drop_their_id_names(person: PersonKey) -> None:

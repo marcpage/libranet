@@ -20,7 +20,7 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
 from libranet.cas.store import CasStore
 from libranet.config.models import DEFAULT_CONFIG_HOSTS, StorageConfig
-from libranet.identity.people import PersonKey, Username
+from libranet.identity.people import NewIdentity, PersonKey, Username
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.problems import (
@@ -74,12 +74,12 @@ class Recorder:
 
 @fixture(scope="module")
 def alice() -> PersonKey:
-    return PersonKey.generate(2048)
+    return NewIdentity.generate(2048).key
 
 
 @fixture(scope="module")
 def bob() -> PersonKey:
-    return PersonKey.generate(2048)
+    return NewIdentity.generate(2048).key
 
 
 @fixture(scope="module")

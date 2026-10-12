@@ -20,7 +20,9 @@ kept at the same drop, by a second password, and names, as ``fallback_for``,
 the identity it takes over from, where the identity's names its
 ``fallback``. The identity names its fallback in the first version of what
 the person says of themselves, too, signed by them, at ``user:{id}``
-(:meth:`NewIdentity.first_version`, HttpApi §11.3).
+(:meth:`PersonKey.first_version`, HttpApi §11.3). A fallback that takes
+over is given a fallback of its own (:meth:`NewIdentity.taken_over`), and
+its block, sealed again, names both.
 
 A person signs JSON with their key as a signed bundle's contents
 (:meth:`PersonKey.signed`, BundleSpecification §5).
@@ -155,15 +157,15 @@ class PersonKey:
     """A person's key pair: ``private_key``, and ``public_key``, whose content id is ``person_id``.
 
     The identity was made at ``created``. It names its ``fallback``, the
-    identity that takes over should it be compromised, or, as a fallback,
-    ``fallback_for``, the identity it takes over from (HttpApi §11.3). A key
+    identity that takes over should it be compromised, and, as a fallback,
+    ``fallback_for``, the identity it takes over from (HttpApi §11.3). A
+    fallback names a fallback of its own only once it has taken over. A key
     pair not yet sealed may name neither. Neither key is in its ``repr``, so
     that no key reaches a log.
 
     Raises:
         ValueError: ``public_key`` is not ``private_key``'s, ``person_id``
-            does not name it, ``created`` is not a UTC time to the second, or
-            it names both a fallback and the identity it takes over from.
+            does not name it, or ``created`` is not a UTC time to the second.
     """
 
     private_key: RSAPrivateKey = field(repr=False)
@@ -183,9 +185,6 @@ class PersonKey:
 
         if self.created.utcoffset() != timedelta(0) or self.created.microsecond:
             raise ValueError(f"created must be a UTC time to the second, got {self.created!r}")
-
-        if self.fallback is not None and self.fallback_for is not None:
-            raise ValueError("A key pair names a fallback, or the identity it takes over from")
 
     @classmethod
     def generate(cls, key_bits: int) -> PersonKey:
@@ -225,8 +224,8 @@ class PersonKey:
             MalformedBundleError: it is not a protected block.
             KeyFileError: it opens, but to no identity block holding an RSA
                 key of at least ``MIN_PERSON_KEY_BITS``, whatever sizes this
-                node makes, when the identity was made, and either its
-                fallback or the identity it takes over from.
+                node makes, when the identity was made, and its fallback, or
+                the identity it takes over from, or both.
         """
         opened = key.unprotect(strip_targeting(drop), MAX_IDENTITY_BYTES)
 
@@ -274,10 +273,10 @@ class PersonKey:
         fallback = _named(value, _FALLBACK_FIELD)
         fallback_for = _named(value, _FALLBACK_FOR_FIELD)
 
-        if (fallback is None) == (fallback_for is None):
+        if fallback is None and fallback_for is None:
             raise KeyFileError(
-                f'An identity block names either a "{_FALLBACK_FIELD}" or '
-                f'a "{_FALLBACK_FOR_FIELD}"'
+                f'An identity block names a "{_FALLBACK_FIELD}", '
+                f'a "{_FALLBACK_FOR_FIELD}", or both'
             )
 
         return replace(cls.of(private_key, made), fallback=fallback, fallback_for=fallback_for)
@@ -303,13 +302,16 @@ class PersonKey:
             ValueError: it names neither a fallback nor the identity it takes
                 over from, so that the block would open to no identity.
         """
-        if self.fallback is not None:
-            named = {_FALLBACK_FIELD: str(self.fallback)}
+        named = {
+            name: str(content_id)
+            for name, content_id in (
+                (_FALLBACK_FIELD, self.fallback),
+                (_FALLBACK_FOR_FIELD, self.fallback_for),
+            )
+            if content_id is not None
+        }
 
-        elif self.fallback_for is not None:
-            named = {_FALLBACK_FOR_FIELD: str(self.fallback_for)}
-
-        else:
+        if not named:
             raise ValueError(f"{self.person_id} names no fallback, nor what it takes over from")
 
         encoded = self.private_key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption())
@@ -331,17 +333,37 @@ class PersonKey:
         """
         return SignedBundle.signed(contents, self.private_key, self.person_id)
 
+    def first_version(self) -> SignedBundle:
+        """The first version of what this person says of themselves, naming their fallback.
+
+        It is signed by them, and made a drop at :attr:`details_target`
+        (HttpApi §11.3). It says nothing of them yet.
+
+        Raises:
+            ValueError: they name no fallback.
+        """
+        if self.fallback is None:
+            raise ValueError(f"{self.person_id} names no fallback for a first version to name")
+
+        contents = {
+            _CREATED_FIELD: self.created_text,
+            _FALLBACK_FIELD: str(self.fallback),
+            _FIELDS_FIELD: {},
+            _VERSION_FIELD: _FIRST_VERSION,
+        }
+        return self.signed(compact_json(contents, sort_keys=True).decode("utf-8"))
+
 
 @dataclass(frozen=True)
 class NewIdentity:
-    """A person's identity, ``key``, just made, and ``fallback``, which takes over from it.
+    """A person's identity, ``key``, just made or taken over, and ``fallback``, which takes over.
 
-    The two were made at once, and each names the other (HttpApi §11.3).
+    Each names the other (HttpApi §11.3).
 
     Raises:
-        ValueError: ``key`` does not name ``fallback`` as its fallback,
+        ValueError: ``key`` does not name ``fallback`` as its fallback, or
             ``fallback`` does not name ``key`` as the identity it takes over
-            from, or they were not made at once.
+            from.
     """
 
     key: PersonKey
@@ -353,9 +375,6 @@ class NewIdentity:
 
         if self.fallback.fallback_for != self.key.person_id:
             raise ValueError(f"{self.fallback.person_id} must take over from {self.key.person_id}")
-
-        if self.key.created != self.fallback.created:
-            raise ValueError("An identity and its fallback are made at once")
 
     @classmethod
     def generate(cls, key_bits: int) -> NewIdentity:
@@ -370,20 +389,27 @@ class NewIdentity:
         )
         return cls(replace(key, fallback=fallback.person_id), fallback)
 
-    def first_version(self) -> SignedBundle:
-        """The first version of what the person says of themselves, naming the fallback.
+    @classmethod
+    def taken_over(cls, fallback: PersonKey) -> NewIdentity:
+        """``fallback`` taking over from its identity, with a new fallback of its own.
 
-        It is signed by the identity, and made a drop at
-        :attr:`PersonKey.details_target` (HttpApi §11.3). It says nothing of
-        them yet.
+        Its identity is compromised, so ``fallback`` is the person's identity
+        now, and is never left without a way back (HttpApi §11.3). The new
+        fallback is a key pair as large as ``fallback``'s, made now.
+
+        Raises:
+            ValueError: ``fallback`` is no fallback, or has a fallback already.
         """
-        contents = {
-            _CREATED_FIELD: self.key.created_text,
-            _FALLBACK_FIELD: str(self.fallback.person_id),
-            _FIELDS_FIELD: {},
-            _VERSION_FIELD: _FIRST_VERSION,
-        }
-        return self.key.signed(compact_json(contents, sort_keys=True).decode("utf-8"))
+        if fallback.fallback_for is None:
+            raise ValueError(f"{fallback.person_id} is no fallback, so takes over from no one")
+
+        if fallback.fallback is not None:
+            raise ValueError(f"{fallback.person_id} has a fallback already")
+
+        own = replace(
+            PersonKey.generate(fallback.private_key.key_size), fallback_for=fallback.person_id
+        )
+        return cls(replace(fallback, fallback=own.person_id), own)
 
 
 def _named(value: dict[str, object], name: str) -> ContentId | None:

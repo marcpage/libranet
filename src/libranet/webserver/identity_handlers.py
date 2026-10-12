@@ -23,10 +23,25 @@ drops share the search's ``seconds``. It answers ``201``, signed in::
 application, so that the operator can make one for a person (Phase 4 Step
 91). It is answered the same, but signs no one in, and has no ``Location``.
 
+``POST /data/fallback`` has a fallback take over from its identity, once that
+is compromised, and gives it a fallback of its own, so that no one is left
+without a way back (Phase 4 Step 81)::
+
+    {"username": "alice", "password": "…", "fallback_password": "…",
+     "seconds": 10, "minimum_bits": 16}
+
+The fallback is opened by the username and its password, as signing in opens
+an identity, and must have no fallback yet. The node makes its new fallback,
+kept by the new fallback password, places the fallback's first version naming
+it, and seals the fallback again by the same password, naming both. The three
+drops share ``seconds``, as making an identity's do. It answers ``200``,
+signed in as the fallback, as making an identity answers.
+
 ``POST /data/session`` signs in with a username and password, ``GET`` says who
 is signed in, as ``{"id": …, "username": …, "created": …, "fallback": …,
 "fallback_for": …}`` or each ``null``, and ``DELETE`` signs out. A fallback
-password signs in as the fallback. Signing in tries each block a search of the drop finds,
+password signs in as the fallback, as the block naming its own fallback once
+it has taken over. Signing in tries each block a search of the drop finds,
 held here or uploaded and not yet stored, with the key the username and
 password derive, and the first that opens is the person's. Blocks found and
 not held are asked for. The search starts a search of the node's peers, as
@@ -68,7 +83,11 @@ from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.protocol.drop_requests import DropRequest
 from libranet.protocol.errors import InvalidConfigRequestError
-from libranet.protocol.identity_requests import IdentityRequest, SignInRequest
+from libranet.protocol.identity_requests import (
+    FallbackRequest,
+    IdentityRequest,
+    SignInRequest,
+)
 from libranet.webserver.bundle_edits import OwnUploads
 from libranet.webserver.config_handlers import invalid_request_response, json_or_refusal
 from libranet.webserver.drop_handler import DropHandler, StoredDrop, Turns
@@ -81,6 +100,9 @@ _LOGGER = getLogger(__name__)
 
 #: Where a page makes a person's identity.
 USERS_PATH: Final = "/data/users"
+
+#: Where a page has a fallback take over, with a fallback of its own.
+FALLBACK_PATH: Final = "/data/fallback"
 
 #: Where a page signs in, asks who is signed in, and signs out.
 SESSION_PATH: Final = "/data/session"
@@ -131,7 +153,7 @@ class _Made:
 
 @dataclass(frozen=True)
 class Identities:  # pylint: disable=too-many-instance-attributes
-    """The endpoints making people's identities, and signing them in and out.
+    """The endpoints making people's identities, having fallbacks take over, and signing in and out.
 
     The drops holding them are read from ``uploads``, and found by
     ``search``. ``drops`` makes them, as ``/data/drop`` does, and ``uploads``
@@ -210,20 +232,131 @@ class Identities:  # pylint: disable=too-many-instance-attributes
                 "This username and password already open an identity here; sign in with them.",
             )
 
-        if self._found(asked.username, fallback_key, ask_for_missing=False).key is not None:
-            _LOGGER.debug("Refusing %s %s: the fallback is held", request.method, request.path)
-            return status_response(
-                request,
-                HTTPStatus.CONFLICT,
-                "This username and fallback password already open an identity here; "
-                "choose another fallback password.",
-            )
+        refused = self._fallback_refused(request, asked.username, fallback_key)
+
+        if refused is not None:
+            return refused
 
         made = NewIdentity.generate(asked.key_bits)
+        stored = self._placed(request, asked, made, (key, fallback_key))
+
+        if isinstance(stored, Response):
+            return stored
+
+        _LOGGER.info(
+            "Made the identity %s, kept at %s, with the fallback %s",
+            made.key.person_id,
+            stored.content_id,
+            made.fallback.person_id,
+        )
+        return _Made(Session(asked.username, made.key), stored)
+
+    def take_over(self, request: Request) -> Response:
+        """``POST /data/fallback``: have the fallback ``request`` names take over, and sign it in.
+
+        It is given a fallback of its own (HttpApi §11.3).
+        """
+        value = json_or_refusal(request)
+
+        if isinstance(value, Response):
+            return value
+
+        try:
+            asked = FallbackRequest.from_value(value)
+            self.drops.within_ceilings(asked.seconds, asked.minimum_bits)
+
+        except InvalidConfigRequestError as error:
+            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
+            return invalid_request_response(request, error)
+
+        key = self._password_key(asked.username, asked.password)
+        fallback_key = self._password_key(asked.username, asked.fallback_password)
+        found = self._opened(asked.username, key)
+
+        if found.key is None:
+            return self._not_found(request, found)
+
+        refused = self._takeover_refused(request, found.key, asked.username, fallback_key)
+
+        if refused is not None:
+            return refused
+
+        made = NewIdentity.taken_over(found.key)
+        stored = self._placed(request, asked, made, (key, fallback_key))
+
+        if isinstance(stored, Response):
+            return stored
+
+        _LOGGER.info(
+            "%s took over from %s, with the fallback %s",
+            made.key.person_id,
+            made.key.fallback_for,
+            made.fallback.person_id,
+        )
+        session = Session(asked.username, made.key)
+        return _with_headers(
+            json_response(_Made(session, stored).value()),
+            {"Set-Cookie": self.sessions.start(session)},
+        )
+
+    def _takeover_refused(
+        self, request: Request, opened: PersonKey, username: Username, fallback_key: PasswordKey
+    ) -> Response | None:
+        """The ``409`` refusing ``opened`` taking over, with ``fallback_key``; ``None`` if it may.
+
+        Only a fallback with no fallback of its own takes over, and only to a
+        new fallback that ``fallback_key`` opens alone.
+        """
+        if opened.fallback is None:
+            return self._fallback_refused(request, username, fallback_key)
+
+        _LOGGER.debug(
+            "Refusing %s %s: %s has a fallback", request.method, request.path, opened.person_id
+        )
+        return status_response(
+            request,
+            HTTPStatus.CONFLICT,
+            "This username and password open an identity with a fallback already; only "
+            "a fallback that has none takes over.",
+        )
+
+    def _fallback_refused(
+        self, request: Request, username: Username, fallback_key: PasswordKey
+    ) -> Response | None:
+        """The ``409`` refusing a new fallback ``fallback_key`` would open; ``None`` if it may.
+
+        A fallback password that opens an identity at the drop already would
+        sign in to either.
+        """
+        if self._found(username, fallback_key, ask_for_missing=False).key is None:
+            return None
+
+        _LOGGER.debug("Refusing %s %s: the fallback is held", request.method, request.path)
+        return status_response(
+            request,
+            HTTPStatus.CONFLICT,
+            "This username and fallback password already open an identity here; "
+            "choose another fallback password.",
+        )
+
+    def _placed(
+        self,
+        request: Request,
+        asked: IdentityRequest | FallbackRequest,
+        made: NewIdentity,
+        keys: tuple[PasswordKey, PasswordKey],
+    ) -> StoredDrop | Response:
+        """The drops keeping ``made``, as ``request`` asks, placed; or the response refusing them.
+
+        The fallback's block, sealed by the second of ``keys``, the first
+        version naming it, and the identity's own block, sealed by the first,
+        are placed in that order, so that the identity opens with its fallback
+        only once the fallback is named. Both public keys are stored. What is
+        answered is the identity's own block.
+        """
+        key, fallback_key = keys
         # A share each, so that making the three takes as long as was asked.
         seconds = asked.seconds / _DROPS_MADE
-        # The identity's own block is last, so that it opens only once its
-        # fallback is named.
         drops = (
             DropRequest(
                 asked.username.drop_target,
@@ -233,7 +366,7 @@ class Identities:  # pylint: disable=too-many-instance-attributes
             ),
             DropRequest(
                 made.key.details_target,
-                made.first_version().encoded(),
+                made.key.first_version().encoded(),
                 seconds,
                 asked.minimum_bits,
             ),
@@ -254,13 +387,7 @@ class Identities:  # pylint: disable=too-many-instance-attributes
         for public_key in (made.key.public_key, made.fallback.public_key):
             store_object(public_key, self.uploads, self.drops.max_object_bytes)
 
-        _LOGGER.info(
-            "Made the identity %s, kept at %s, with the fallback %s",
-            made.key.person_id,
-            stored[-1].content_id,
-            made.fallback.person_id,
-        )
-        return _Made(Session(asked.username, made.key), stored[-1])
+        return stored[-1]
 
     def sign_in(self, request: Request) -> Response:
         """``POST /data/session``: sign in the person ``request`` names, if it is them."""
@@ -277,32 +404,17 @@ class Identities:  # pylint: disable=too-many-instance-attributes
             return invalid_request_response(request, error)
 
         key = self._password_key(asked.username, asked.password)
-        found = self._found(asked.username, key)
+        found = self._opened(asked.username, key)
 
         if found.key is None:
-            # One pass of the search of the peers the first search started.
-            self.wait(self.retry_after_seconds)
-            found = self._found(asked.username, key)
+            return self._not_found(request, found)
 
-        if found.key is not None:
-            # Held again, should it have been evicted since it was made.
-            store_object(found.key.public_key, self.uploads, self.drops.max_object_bytes)
-            session = Session(asked.username, found.key)
-            _LOGGER.info("Signed in as %s", found.key.person_id)
-            return _with_headers(
-                json_response(session.value()), {"Set-Cookie": self.sessions.start(session)}
-            )
-
-        _LOGGER.debug(
-            "Not signing in: none of the %s blocks found opens, and %s are not held",
-            found.found,
-            found.missing,
-        )
-        return content_unavailable_response(
-            request,
-            "No identity this username and password open was found here yet; this node "
-            "asked its peers, and what they found at its drop was asked for.",
-            self.retry_after_seconds,
+        # Held again, should it have been evicted since it was made.
+        store_object(found.key.public_key, self.uploads, self.drops.max_object_bytes)
+        session = Session(asked.username, found.key)
+        _LOGGER.info("Signed in as %s", found.key.person_id)
+        return _with_headers(
+            json_response(session.value()), {"Set-Cookie": self.sessions.start(session)}
         )
 
     def signed_in(self, request: Request) -> Response:
@@ -332,15 +444,47 @@ class Identities:  # pylint: disable=too-many-instance-attributes
         with self.derivations.turn():
             return username.password_key(password)
 
+    def _opened(self, username: Username, key: PasswordKey) -> _Found:
+        """The key pair ``key`` opens at ``username``'s drop, tried twice, a pass apart.
+
+        Between the two, the node's search of its peers that the first try
+        started has had a pass (HttpApi §11.4).
+        """
+        found = self._found(username, key)
+
+        if found.key is None:
+            self.wait(self.retry_after_seconds)
+            found = self._found(username, key)
+
+        return found
+
+    def _not_found(self, request: Request, found: _Found) -> Response:
+        """The ``503`` saying nothing ``request``'s password opens was ``found`` yet."""
+        _LOGGER.debug(
+            "Not signing in: none of the %s blocks found opens, and %s are not held",
+            found.found,
+            found.missing,
+        )
+        return content_unavailable_response(
+            request,
+            "No identity this username and password open was found here yet; this node "
+            "asked its peers, and what they found at its drop was asked for.",
+            self.retry_after_seconds,
+        )
+
     def _found(
         self, username: Username, key: PasswordKey, *, ask_for_missing: bool = True
     ) -> _Found:
-        """The first key pair ``key`` opens among the blocks found at ``username``'s drop.
+        """The key pair ``key`` opens among the blocks found at ``username``'s drop.
 
-        Each found and not held is asked for, if ``ask_for_missing``.
+        That is the first that opens, unless it is a fallback's naming no
+        fallback of its own, and another block of the same key names one: the
+        block it was sealed in again as it took over. Each found and not held
+        is asked for, if ``ask_for_missing``.
         """
         found = self.search.fresh_results(username.drop_target.hex)
         missing = 0
+        opened: PersonKey | None = None
 
         for content_id in found:
             try:
@@ -359,10 +503,11 @@ class Identities:  # pylint: disable=too-many-instance-attributes
                 continue
 
             try:
-                return _Found(PersonKey.opened(drop, key), missing, len(found))
+                person = PersonKey.opened(drop, key)
 
             except (UnsupportedBundleError, MalformedBundleError) as error:
                 _LOGGER.debug("%s at %s does not open: %s", content_id, username.text, error)
+                continue
 
             except KeyFileError as error:
                 _LOGGER.warning(
@@ -371,8 +516,15 @@ class Identities:  # pylint: disable=too-many-instance-attributes
                     username.text,
                     error,
                 )
+                continue
 
-        return _Found(None, missing, len(found))
+            if opened is None:
+                opened = person
+
+            if person.person_id == opened.person_id and person.fallback is not None:
+                return _Found(person, missing, len(found))
+
+        return _Found(opened, missing, len(found))
 
     def _drop(self, content_id: ContentId) -> bytes | None:
         """What ``content_id`` holds, checked against it; ``None`` if it can be no identity block.

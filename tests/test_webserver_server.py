@@ -2021,6 +2021,25 @@ def test_a_drop_is_made_only_from_a_page_of_this_node(
     assert _published(queues) == []
 
 
+@mark.parametrize("client_address, status", [("127.0.0.1", 400), ("203.0.113.42", 403)])
+def test_a_fallback_takes_over_only_for_a_local_client(
+    local_server: LibranetHTTPServer, queues: ModuleQueues, client_address: str, status: int
+) -> None:
+    response = local_server.router.dispatch(
+        Request(
+            "POST",
+            "/data/fallback",
+            headers={**MOVIE_PAGE, "Content-Type": JSON_CONTENT_TYPE},
+            client_address=client_address,
+            body=RequestBody.of(b'{"username": "alice", "password": "battery staple"}'),
+        )
+    )
+
+    # Reached locally, it is refused only as no takeover, before any work.
+    assert response.status == status
+    assert _published(queues) == []
+
+
 def test_a_local_client_makes_an_identity_and_is_signed_in_by_a_cookie(
     local_connection: HTTPConnection, storage: StorageConfig
 ) -> None:

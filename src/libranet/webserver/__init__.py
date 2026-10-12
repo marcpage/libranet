@@ -207,7 +207,12 @@ from libranet.webserver.http_types import (
     redirect_response,
     status_response,
 )
-from libranet.webserver.identity_handlers import SESSION_PATH, USERS_PATH, Identities
+from libranet.webserver.identity_handlers import (
+    FALLBACK_PATH,
+    SESSION_PATH,
+    USERS_PATH,
+    Identities,
+)
 from libranet.webserver.inbound_peers import InboundConnection, InboundPeers
 from libranet.webserver.list_handlers import ListFileHandler, NodeListHandler, SeekListHandler
 from libranet.webserver.local_folders import DIRECTORY_PATTERN, DirectoryHandler, LocalFolders
@@ -291,6 +296,7 @@ __all__ = [
     "ENDPOINTS",
     "EXPORTS_FIELD",
     "EXPORTS_PATH",
+    "FALLBACK_PATH",
     "HOST_HEADER",
     "IMMUTABLE_CACHE_CONTROL",
     "IMPORTS_FIELD",
