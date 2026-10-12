@@ -153,7 +153,12 @@ def config(tmp_path: Path) -> LibranetConfig:
         LibranetConfig(
             storage=StorageConfig(data_dir=root / "data", cache_dir=root / "cache"),
             identity=IdentityConfig(key_dir=root / "keys"),
-            peers=PeerConfig(connect_timeout_seconds=TIMEOUT, request_timeout_seconds=TIMEOUT),
+            peers=PeerConfig(
+                connect_timeout_seconds=TIMEOUT,
+                request_timeout_seconds=TIMEOUT,
+                # What answering a search entry is tested against, whatever the default.
+                search_push_min_bits=16,
+            ),
         )
     )
 
@@ -878,6 +883,35 @@ def test_first_contact_pushes_what_closely_matches_a_search_the_peer_seeks(
     (pushed,) = peer.published(EventType.PUT_COMPLETED)
     assert (pushed["hash"], pushed["node_id"]) == (drop_id.hash, str(identity.node_id))
     assert session.pushed == {drop_id}
+
+
+def test_fewer_bits_set_push_content_matching_a_search_less_closely(
+    identity: NodeIdentity,
+    config: LibranetConfig,
+    peer: FixturePeer,
+    queues: ModuleQueues,
+) -> None:
+    peers = config.peers.model_copy(update={"search_push_min_bits": 0})
+    exchange = PeerExchange(
+        identity,
+        config.model_copy(update={"peers": peers}),
+        StubModule(ModuleName.CONNECTIONS, queues).publish,
+        LOGGER,
+    )
+    drop_id = held_drop(config, b"what the peer is looking for")
+    CasStore.source_of_truth(config.storage).write(HELD_ID, HELD)
+    peer.write_lists({}, [], [TARGET.hex])
+    session = exchange.open(peer.endpoint)
+
+    try:
+        exchange.first_contact(session)
+
+    finally:
+        session.close()
+
+    sent = [message["hash"] for message in published(queues, EventType.DATA_SENT)]
+    assert sent[0] == drop_id.hash
+    assert HELD_ID.hash in sent
 
 
 def test_a_search_prefix_shorter_than_the_bits_needed_is_matched_whole(

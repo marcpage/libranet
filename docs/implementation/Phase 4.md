@@ -1469,7 +1469,7 @@ the directory does not list.
 
 ## Step 93 — Searching the Peers
 
-**Issue:** none yet. **Depends on:** Steps 79 and 80; Phase 2 Steps 27 and
+**Issue:** #284. **Depends on:** Steps 79 and 80; Phase 2 Steps 27 and
 55.
 
 A search on a node lists only what that node holds or has heard of, and
@@ -1481,7 +1481,7 @@ through, and a node they had never used answered `403` at once, as for a
 wrong password (Step 79's live-run call). Metadata (Step 80) and the user
 directory (Step 92) were found the same way.
 
-Asked for (2026-10-12), with no issue yet:
+Asked for (2026-10-12), and filed afterwards as #284:
 
 - **A search on a node is broadcast to every peer it has an outgoing
   connection to.**
@@ -1511,8 +1511,15 @@ Ruled before building, each my recommended option unless said:
   sign-in included. That time is a setting of its own,
   `peers.broadcast_hold_seconds`.
 
+Ruled after building:
+
+- **The bits a pushed item must share are a setting**,
+  `peers.search_push_min_bits`, 16 by default and from 0 to 256, not a
+  constant. HttpApi §10.7.2 says the number is configurable, and SHOULD be
+  16 by default.
+
 Built in one change set: 438 added lines of non-test Python, 79 of them
-replacing removed ones, and 613 of tests. The specifications came first: HttpApi §6, §10.7.2 (now
+replacing removed ones, and 657 of tests. The specifications came first: HttpApi §6, §10.7.2 (now
 "Fulfilling Seek List Entries"), §11.4, §17.2 (`no-identity` removed),
 and §26; HighLevelDesign §4.7 and §4.8; HandshakeProtocol §3 step 6, its
 open item gone. The App Developer Guide §6.1, §6.9, and §6.10, the Module
@@ -1535,8 +1542,8 @@ System doc, and the example configuration follow.
   `StatsDatabase.is_sought`), rather than at the next derivation.
 - **A client answering a seek list** (`PeerExchange._sought_by`) adds,
   for each `search` entry not answered yet (`PeerSession.answering`), what
-  its own search of the prefix finds sharing `SEARCH_PUSH_MIN_BITS` (16)
-  bits or the whole prefix, and pushes each item once.
+  its own search of the prefix finds sharing `peers.search_push_min_bits`
+  (16) bits or the whole prefix, and pushes each item once.
   `parse_search_results` reads a peer's answer as lists are read.
 - **Sign-in** (`Identities.sign_in`) waits `retry_after_seconds` with
   `wait` and searches again before it answers `503`; `no-identity` is
@@ -1565,8 +1572,6 @@ My calls, not yet reviewed:
 - **Only a search new to the seek list writes it at once**; one already
   listed waits for the next derivation, so a busy node does not rewrite it
   on every search.
-- **16 bits is a constant**, `SEARCH_PUSH_MIN_BITS`, written into HttpApi
-  §10.7.2, since a page's drops are made to match at least that.
 - **A sign-in asks for the blocks it found and does not hold on each try**,
   so twice; the fetcher asks the peers once for both.
 - **The directory page no longer retries a sign-in on its own**, as the
@@ -1620,7 +1625,7 @@ where it went.
 | #260 | A fallback identity | 81 |
 | #274 | Creating a user from `/config` | 91 |
 | #276 | A user directory application | 92 |
-| — | Searching the peers, so a person can sign in on any node (no issue yet) | 93 |
+| #284 | Signing in on a node other than the one that made the identity | 93 |
 
 Issue #261, movie playlists per user, left the milestone unbuilt for
 **Improve Movie Web App**, and Step 83 went with it to

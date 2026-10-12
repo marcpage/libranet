@@ -67,7 +67,6 @@ from libranet.protocol.localhost_resolution import LOCALHOST, NodeListSender, re
 from libranet.protocol.search import (
     RESULTS_FIELD,
     SEARCH_PATH,
-    SEARCH_PUSH_MIN_BITS,
     LocalSearch,
     PrefixSource,
     SearchCache,
@@ -85,7 +84,6 @@ __all__ = [
     "REQUEST_PATH_HEADER",
     "RESULTS_FIELD",
     "SEARCH_PATH",
-    "SEARCH_PUSH_MIN_BITS",
     "SEEK_PATH",
     "TOKEN",
     "BackupJobRequest",

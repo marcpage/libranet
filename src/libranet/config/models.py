@@ -223,6 +223,13 @@ class PeerConfig(_Section):
     # Provisional default.
     broadcast_hold_seconds: float = Field(default=60.0, gt=0)
 
+    # How many leading bits content must share with a prefix a peer's seek
+    # list searches for, at least, for this node to push it there, or as many
+    # as the prefix has if it has fewer (HttpApi §10.7.2, Phase 4 Step 93). A
+    # drop this node's pages make matches its target by at least 16, and other
+    # content seldom matches as many by chance. Provisional default.
+    search_push_min_bits: int = Field(default=16, ge=0, le=256)
+
     # Path to a JSON seed list overriding the one shipped with the package.
     # Used only while the node knows no peers at all.
     seed_file: Path | None = None

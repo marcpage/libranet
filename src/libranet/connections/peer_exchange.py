@@ -60,9 +60,9 @@ endpoint is resolved to the peer's IP address, as this node's socket saw it
 are kept as addresses to try, and ``sources`` says which were observed and
 which advertised (Phase 2 Step 23). For each ``search`` entry of the peer's
 seek list, this node pushes the content it holds whose hash shares at least
-:data:`~libranet.protocol.search.SEARCH_PUSH_MIN_BITS` leading bits with the
-prefix, or the whole prefix if it is shorter, among what a search of its own
-for the prefix finds. It answers each entry once while the list names it
+``peers.search_push_min_bits`` leading bits with the prefix, or the whole
+prefix if it is shorter, among what a search of its own for the prefix
+finds. It answers each entry once while the list names it
 (HttpApi §10.7.2, Phase 4 Step 93).
 """
 
@@ -104,7 +104,7 @@ from libranet.protocol.lists import (
     parse_seek_list,
 )
 from libranet.protocol.localhost_resolution import NodeListSender
-from libranet.protocol.search import SEARCH_PATH, SEARCH_PUSH_MIN_BITS, LocalSearch
+from libranet.protocol.search import SEARCH_PATH, LocalSearch
 
 # Most requests pipelined at once when pushing or asking for many items:
 # enough to keep a connection busy without holding many bodies in memory.
@@ -422,7 +422,7 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
 
     def _matching(self, prefix: str) -> list[ContentId]:
         """What this node holds matching ``prefix`` closely enough to push for it, best first."""
-        enough_bits = min(SEARCH_PUSH_MIN_BITS, len(prefix) * BITS_PER_HEX_DIGIT)
+        enough_bits = min(self._peers.search_push_min_bits, len(prefix) * BITS_PER_HEX_DIGIT)
         return [
             content_id
             for content_id in self._search.search(prefix)

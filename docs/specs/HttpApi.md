@@ -1312,12 +1312,13 @@ fulfilled directly via `PUT /data/{algorithm}/{hash}` (§7).
 
 A `search` entry names a hash prefix, and is fulfilled the same way, with
 content. A node that reads one pushes, via `PUT /data/{algorithm}/{hash}`, the
-content it holds whose hash shares at least 16 leading bits with the prefix, or
-the whole prefix when it is shorter than 16 bits, best match first, and no more
-of it than it returns for a search (§6). A drop that a node's own pages make
-matches its target by at least 16 bits (§9.6), and other content seldom matches
-as many by chance, so what is pushed is mostly the drops at that target. A node
-answers each `search` entry once while the entry stays listed.
+content it holds whose hash shares at least a configurable number of leading
+bits with the prefix, or the whole prefix when it has fewer bits, best match
+first, and no more of it than it returns for a search (§6). The number SHOULD
+be 16 by default: a drop that a node's own pages make matches its target by at
+least 16 bits (§9.6), and other content seldom matches as many by chance, so
+what is pushed is mostly the drops at that target. A node answers each `search`
+entry once while the entry stays listed.
 
 ---
 
