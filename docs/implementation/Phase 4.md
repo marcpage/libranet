@@ -1111,8 +1111,8 @@ hand, as the metadata's are.
 
 ## Step 82 — The Mail Application
 
-**Issue:** #258. **Depends on:** Steps 78, 79, 80; Phase 3 Steps 67,
-72, 74.
+**Issue:** #258. **Depends on:** Steps 78, 79, 80, 81, 92, and 93; Phase 3
+Steps 67, 72, and 74.
 
 Settled in the issue:
 
@@ -1136,25 +1136,137 @@ Work this implies:
   `"mail": "mail"`, and the page is `applications/mail/index.html`, as
   the movie application's is (Phase 3 Step 67).
 - A message is stored as a drop (Step 89), targeted at each recipient's
-  drop for the day, and encrypted for that recipient (Step 78).
+  drop for the hour, signed by its sender, and encrypted for that
+  recipient (Steps 78 and 80).
+- The directory application's page (Step 92) gains a **Send mail** link
+  for each person.
+- The App Developer Guide gains a section on mail, giving the targets and
+  formats below, so that other pages read and send mail alike, as §6.12
+  and §6.14 do for the directory and for metadata.
 
-**Open questions:**
+Ruled before building (2026-10-12), each my recommended option unless
+said:
 
-- How BCC is kept from the other recipients. A message encrypted once
-  for every recipient names them all; one copy for each recipient, with
-  the BCC line only in each BCC recipient's own, does not.
-- Whether a message is signed by its sender (Step 79), so that From can
-  be trusted.
-- Which drop holds the address book, and how its newest version is found
-  (Step 80 asks the same).
-- What the date in the drop is: the sender's day, in what time zone, and
-  how far either side a reader searches.
-- How a person learns another's id to begin with: from the user
-  directory (Step 92), say, into the address book.
+- **Each recipient gets a copy of their own**, signed by the sender and
+  encrypted for them, since Step 78 encrypts a block for one person. A
+  copy for To or CC has no BCC line. A BCC recipient's copy shows To and
+  CC, and a BCC line naming only them. The sender's own copy keeps every
+  BCC.
+- **Only signed mail is shown.** Every copy is signed (`POST /data/signed`
+  with `encrypt`) and names its reader in what it signs (App Developer
+  Guide §6.15). The inbox shows only copies that open, check, and name
+  whoever is signed in. Anything else at the target is passed over, and
+  the page says how many. Sending needs a signed-in local client, as
+  reading does.
+- **Mail goes to the sender's hour, not day** (the user, departing from
+  the issue): `mail:{id}:{year}/{month}/{day}/{hour}`, by the sender's
+  clock in UTC. A search answers at most `search_max_results`, 32 by
+  default, so a day's target would show a person no more than that.
+- **The inbox reads the last 24 hours** as it opens: 25 searches, the
+  coming hour among them, for a sender whose clock runs ahead. **Older**
+  reads one day more at a time, and **Refresh** reads the current hour
+  again.
+- **The sender keeps a copy**, signed and encrypted for themselves, at
+  `mail sent:{id}:{year}/{month}/{day}/{hour}`, naming every recipient. A
+  **Sent** view reads it as the inbox reads its own. It is kept apart so
+  that it does not count against the inbox's results.
+- **The address book's forks are merged** (the user). Each version is
+  signed by its owner, encrypted for them, numbered, and names in
+  `versions` the versions it replaces. A version no other names is a head,
+  and when there is more than one, the page merges them into a new version
+  naming them all. Once a version is stored, the page blocks every version
+  it replaces (§6.11), as the directory does (Step 92), so that old
+  versions do not push the newest out of a search.
+- **In a merge, each name's latest change wins.** An entry records when it
+  last changed, and a removal stays as a dated tombstone, so that a
+  removal on one side is not undone by the other. The times are the
+  editors' clocks.
+- **Read and hidden marks are kept in the network**, as the address book
+  is (the user), so that they follow the person to any node: signed,
+  encrypted for the owner, merged by latest change, and blocked once
+  replaced. **They are kept by month**, at `mail state:{id}:{year}/{month}`,
+  the month of the message's target, so that each stays small, and the
+  inbox reads only the months it shows.
+- **Hiding is a mark, never a block**, since a block is the node's, not
+  the person's (App Developer Guide §6.11).
+- **A body bundle is an id pasted in** (the user). Nothing is imported.
+  It is shown in an `iframe` of its `index.html`, whose scripts never run,
+  since every read into a bundle is served with
+  `Content-Security-Policy: sandbox`.
+- **People are found four ways besides the address book's names** (the
+  user chose all): by searching the user directory, and what each person
+  says of themselves, from compose, which adds whoever is picked to the
+  address book; by the directory's **Send mail** link, to
+  `/mail/?to={id}`; by **Add to address book** on a message from someone
+  not in it; and by pasting an id, checked to name a public key.
+- **The directory's reading rules are copied into the mail page** (the
+  user, rather than loaded from a script the directory serves), so that
+  each application stands alone.
+- **A compromised recipient is mailed at their fallback** (App Developer
+  Guide §6.14), and at its fallback in turn while that is compromised too.
+  Compose says so before sending, and changes the address book's entry to
+  the fallback. Mail from a compromised sender is shown with a warning.
+- **Reply, Reply all, Forward, threads, hiding, and marking unread** are
+  built in this step (the user chose all).
 
-**Testable in isolation:** the page's logic is checked by hand, as the
-movie application's is; tests of the endpoints it uses are those of
-Steps 78, 79, and 89.
+My calls, not yet reviewed:
+
+- **A copy's `contents`** are `{"for", "to", "cc", "bcc", "subject",
+  "text" or "bundle", "sent", "message", "reply_to"}`. `for` is the
+  reader's id, and `to`, `cc`, and `bcc` lists of ids, `bcc` left out of a
+  copy for To or CC. `sent` is a UTC time to the second, as `created` is.
+  `message` is 32 random hex digits every copy of one message shares, so
+  that threads and duplicates are found across copies, and `reply_to` the
+  `message` replied to, left out otherwise. There is no `from`: the signer
+  is From.
+- **A target names the id whole**, `sha256/…`, as `user:{id}` does, and
+  pads month, day, and hour to two digits:
+  `mail:sha256/…:2026/10/12/09`.
+- **The address book is at `mail address book:{id}`.** A version's
+  `contents` are `{"entries", "version", "versions"}`. `entries` maps each
+  name to `{"id", "changed"}`, or to `{"removed": true, "changed"}`.
+  Names are compared case-folded, as usernames are. Of two changes made in
+  the same second, the one in the version whose drop's id comes first wins.
+  `version` is one more than the highest head's.
+- **A month's state** is `{"marks", "version", "versions"}`, `marks`
+  mapping the drop id of each copy to `{"read", "hidden", "changed"}`. A
+  copy's drop id is the reader's own, unlike `message`.
+- **Marks are written a few seconds after the last change**, so that
+  reading several messages writes one version, not one each.
+- **A page holds off writing a version while one found at its drop is not
+  held yet**, since it may be a head, as metadata holds off (App Developer
+  Guide §6.14).
+- **Every drop matches at least 16 bits, searching for 1 second**, and a
+  reader passes over results matching fewer, as metadata's readers do.
+  Sending to N people places N + 1 drops, one after another.
+- **Text too large for a drop is refused**, with a note to send it as a
+  bundle.
+- **A pasted bundle is checked to read before sending**, and sent as
+  given. Compose says that only an encrypted id, which carries its key,
+  keeps the bundle from anyone but the recipients.
+- **A hidden message is shown again** from a **Hidden** view.
+- **A thread reaches back only as far as the messages read.** A reply
+  whose original is not loaded stands alone.
+- **The page signs in and out** as the directory does. A fallback that
+  has not taken over reads, but cannot send, since it signs nothing.
+- **A person added from the directory is named by their handle**, or
+  else their first and last names, or else their id shortened, and can be
+  renamed. One named by a `?to=` link is added once the message is sent.
+
+Still open:
+
+- **Flooding.** Anyone can place drops nearer an hour's target than real
+  mail, and push it out of the search's results. Signing does not help,
+  since a reader cannot tell which to open without opening them.
+- **Clocks.** `sent` and `changed` are browsers' clocks. One far off
+  files a message outside the hours searched, or reorders changes to the
+  address book.
+- **The cost of reading back.** Each day **Older** reads is 24 searches,
+  each started on the peers too.
+
+**Testable in isolation:** the page's logic is checked by hand, and in a
+live run of linked local nodes, as the movie application's is; tests of
+the endpoints it uses are those of Steps 78, 79, 80, and 89.
 
 ---
 
@@ -1882,6 +1994,9 @@ ones that cut across more than one step:
   the newest lists the most people, since every directory made lists
   everyone its maker knows. For what a person says of themselves, ruled in
   Step 80: the version numbered highest, which only the person signs.
+  For the address book and the read and hidden marks, ruled in Step 82:
+  every head is merged, each name's latest change winning, and what a
+  merge replaces is blocked.
 - **Who may block** (Steps 30 and 92) — ruled in Step 30: only a local
   client, from a page of a trusted application, since a node's block list
   is its own, not a person's.
@@ -1892,7 +2007,8 @@ ones that cut across more than one step:
 - **Encrypting for a person** (Steps 78, 79, and 82) — built in Step 78: a
   block is encrypted by a random key, and that key by the person's public
   key, written down in BundleSpecification §8. Encrypting one block for
-  several people is not built.
+  several people is not built: mail sends each recipient a copy of their
+  own (Step 82).
 - **Signed bundles** (Steps 80 and 81) — built in Step 80 for JSON a
   person signs, which a node signs and checks for a page. Reading into a
   signed bundle as a bundle is not built.
