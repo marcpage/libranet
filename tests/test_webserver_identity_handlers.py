@@ -20,7 +20,7 @@ from libranet.config.models import StorageConfig
 from libranet.identity.people import PersonKey, Username
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
-from libranet.problems import CONTENT_UNAVAILABLE, INVALID_CONFIG_REQUEST, NO_IDENTITY
+from libranet.problems import CONTENT_UNAVAILABLE, INVALID_CONFIG_REQUEST
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.protocol.search import LocalSearch, SearchCache
 from libranet.webserver.bundle_edits import OwnUploads
@@ -61,7 +61,13 @@ def recorder() -> Recorder:
 
 
 @fixture
-def identities(storage: StorageConfig, recorder: Recorder) -> Identities:
+def waited() -> list[float]:
+    """How long each sign-in waited before trying again, in turn."""
+    return []
+
+
+@fixture
+def identities(storage: StorageConfig, recorder: Recorder, waited: list[float]) -> Identities:
     truth = CasStore.source_of_truth(storage)
     uploads = OwnUploads.of(storage, truth, NODE_ID, recorder)
     return Identities(
@@ -73,6 +79,7 @@ def identities(storage: StorageConfig, recorder: Recorder) -> Identities:
         Sessions(60.0),
         recorder,
         retry_after_seconds=RETRY_AFTER_SECONDS,
+        wait=waited.append,
     )
 
 
@@ -205,7 +212,7 @@ def test_making_without_signing_in_is_refused_as_making_is(
 
 
 def test_signing_in_opens_the_identity_at_the_usernames_drop(
-    identities: Identities, storage: StorageConfig
+    identities: Identities, storage: StorageConfig, waited: list[float]
 ) -> None:
     answer = made(storage, identities, making())
     person_id = answer["id"]
@@ -222,16 +229,47 @@ def test_signing_in_opens_the_identity_at_the_usernames_drop(
     assert response.headers["Set-Cookie"].endswith("; Path=/; HttpOnly; SameSite=Strict")
     who = identities.signed_in(asked("GET", SESSION_PATH, headers=cookie_of(response)))
     assert loads(who.body)["id"] == person_id
+    assert waited == []
 
 
-def test_a_wrong_password_opens_no_identity(identities: Identities, storage: StorageConfig) -> None:
+def test_a_wrong_password_is_tried_again_after_a_pass_then_503(
+    identities: Identities, storage: StorageConfig, recorder: Recorder, waited: list[float]
+) -> None:
     made(storage, identities, making())
+    searched = len(recorder.payloads(EventType.SEARCH_REQUESTED))
 
     response = identities.sign_in(signing_in(password="wrong horse"))
 
-    assert response.status == 403
-    assert problem_type(response) == NO_IDENTITY
+    assert response.status == 503
+    assert problem_type(response) == CONTENT_UNAVAILABLE
+    assert response.headers["Retry-After"] == str(RETRY_AFTER_SECONDS)
     assert "Set-Cookie" not in response.headers
+    assert waited == [RETRY_AFTER_SECONDS]
+    assert len(recorder.payloads(EventType.SEARCH_REQUESTED)) == searched + 2
+
+
+def test_an_identity_arriving_while_a_sign_in_waits_signs_it_in(
+    identities: Identities, storage: StorageConfig
+) -> None:
+    # Made, then taken away, to arrive as a peer's answer would during the wait.
+    answer = loads(identities.make(making()).body)
+    incoming = CasStore.for_node(storage, NODE_ID)
+    held = {
+        content_id: incoming.read(content_id)
+        for content_id in (ContentId.parse(answer["id"]), ContentId.parse(answer["drop"]))
+    }
+
+    for content_id in held:
+        incoming.delete(content_id)
+
+    def arriving(_seconds: float) -> None:
+        for content_id, data in held.items():
+            CasStore.source_of_truth(storage).write(content_id, data)
+
+    response = replace(identities, wait=arriving).sign_in(signing_in())
+
+    assert response.status == 200, response.body
+    assert loads(response.body)["id"] == answer["id"]
 
 
 def test_signing_in_passes_over_blocks_at_the_drop_that_are_not_the_persons(
@@ -270,7 +308,7 @@ def test_a_block_held_that_is_not_what_its_id_names_is_passed_over(
     with caplog.at_level(WARNING):
         response = identities.sign_in(signing_in())
 
-    assert response.status == 403
+    assert response.status == 503
     assert f"Passing over {drop_id}" in caplog.text
 
 
@@ -285,15 +323,16 @@ def test_an_identity_whose_drop_is_too_large_for_an_object_is_413_and_leaves_not
     assert recorder.payloads(EventType.PUT_COMPLETED) == []
 
 
-def test_finding_nothing_at_the_drop_is_503_and_searched_for(
-    identities: Identities, recorder: Recorder
+def test_finding_nothing_at_the_drop_is_503_and_searched_for_twice(
+    identities: Identities, recorder: Recorder, waited: list[float]
 ) -> None:
     response = identities.sign_in(signing_in())
 
     assert response.status == 503
     assert problem_type(response) == CONTENT_UNAVAILABLE
     assert response.headers["Retry-After"] == str(RETRY_AFTER_SECONDS)
-    assert recorder.payloads(EventType.SEARCH_REQUESTED) == [{"prefix": TARGET.hex}]
+    assert recorder.payloads(EventType.SEARCH_REQUESTED) == [{"prefix": TARGET.hex}] * 2
+    assert waited == [RETRY_AFTER_SECONDS]
 
 
 def test_a_block_found_and_not_held_is_asked_for_and_503(
@@ -306,7 +345,8 @@ def test_a_block_found_and_not_held_is_asked_for_and_503(
     response = identities.sign_in(signing_in())
 
     assert response.status == 503
-    assert recorder.payloads(EventType.DATA_NOT_FOUND) == [elsewhere.fields()]
+    # Once by each try.
+    assert recorder.payloads(EventType.DATA_NOT_FOUND) == [elsewhere.fields()] * 2
 
 
 def test_an_identity_stored_since_a_search_was_cached_is_found_at_once(

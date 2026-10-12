@@ -109,17 +109,11 @@ is the convention:
 5. **`GET` node list** — the client fetches the server's known node
    addresses from `/data/nodes`.
 6. **`PUT` fulfillable items** — for any hashes from step 4 that the
-   client already holds, the client pushes the corresponding content to
-   the server via `PUT /data/{algo}/{hash}`.
+   client already holds, and for any content it holds that matches a
+   hash prefix from step 4 closely (HTTP API §10.7.2), the client pushes
+   the corresponding content to the server via `PUT /data/{algo}/{hash}`.
 7. **`GET` requested items** — the client requests the content it is
    itself seeking, checking whether the server can fulfill any of it.
-
-> **Open item:** step 6 as described above only covers `data` entries in
-> the server's outstanding requests (exact content identifiers, pushed
-> via `PUT /data/{algo}/{hash}`). There is not yet a defined mechanism
-> for pushing results that satisfy a `search` entry (a hash prefix) —
-> see HTTP API §10.7.2. Once that mechanism is specified, this step
-> should be updated to include it.
 
 ### 3.1 Rationale for the Ordering
 

@@ -28,6 +28,9 @@ _LOGGER = getLogger(__name__)
 # The member of a search response that lists what was found (HttpApi §6.1).
 RESULTS_FIELD: Final = "results"
 
+#: Where a search is asked for, followed by ``/{prefix}`` (HttpApi §6).
+SEARCH_PATH: Final = "/data/search"
+
 _CACHE_SUFFIX: Final = ".json"
 
 

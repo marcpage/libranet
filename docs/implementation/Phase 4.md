@@ -34,7 +34,7 @@ content, and so is everything kept for them.
 
 ## 2. What Phase 4 Adds
 
-So far, ten steps, in the order they are built (§5):
+So far, eleven steps, in the order they are built (§5):
 
 - **Making a drop.** A page can have the node store a block of data of
   its own, at most 1 MiB compressed, targeted at a drop (HttpApi §9.6).
@@ -62,6 +62,9 @@ So far, ten steps, in the order they are built (§5):
 - **What a person says of themselves.** Metadata, signed, kept in a drop
   named by the person's id, which the directory shows and searches, and
   where each person edits their own. Step 80.
+- **Searching the peers.** A search on a node asks its peers too, and
+  peers connected to it push what matches, so that a person signs in, and
+  is found, on any node. Step 93.
 - **A way back from a lost key.** A fallback identity, named once in
   the metadata when the account is made, which takes over if the first
   is compromised. Step 81.
@@ -84,7 +87,8 @@ The conventions of [Phase 2](Phase%202.md) §3 and
   that moves keeps its number too: Step 30, planned in Phase 2, came
   here from Phase 5 with #71, and Step 83 moved on to
   [Improve Movie Web App](Improve%20Movie%20Web%20App.md) with #261.
-  Step 92 was added after Step 91, with #276.
+  Step 92 was added after Step 91, with #276, and Step 93 after Step 80,
+  when signing in was found to work only where an identity was made.
 - **A step of an earlier phase is named with its phase**, as Phase 2
   names Phase 1's. A step number alone is a step of this document.
 - **What an issue says, and what this plan adds.** What an issue
@@ -1463,6 +1467,148 @@ the directory does not list.
 
 ---
 
+## Step 93 — Searching the Peers
+
+**Issue:** #284. **Depends on:** Steps 79 and 80; Phase 2 Steps 27 and
+55.
+
+A search on a node lists only what that node holds or has heard of, and
+asks no peer (HttpApi §10.7.2 was an open item). New content is pushed one
+hop at a time toward the node whose id best matches it (Phase 2 #119), but
+signing in on another node searches that node alone. So a person could
+sign in only on the node that made their identity, or one their drop passed
+through, and a node they had never used answered `403` at once, as for a
+wrong password (Step 79's live-run call). Metadata (Step 80) and the user
+directory (Step 92) were found the same way.
+
+Asked for (2026-10-12), and filed afterwards as #284:
+
+- **A search on a node is broadcast to every peer it has an outgoing
+  connection to.**
+- **What client nodes fetch, the seek list, carries the search**, so that
+  they can help.
+
+Ruled before building, each my recommended option unless said:
+
+- **A search a peer asks for is broadcast on too**, with a hold, so a
+  search goes on from node to node.
+- **A client answers a `search` entry with content**: what it holds that
+  shares at least 16 leading bits with the prefix, or the whole prefix if
+  it is shorter, best first, no more than it answers a search with, each
+  entry once while it is listed (HttpApi §10.7.2). No new endpoint.
+- **A broadcast asks every peer in `peers.search_passes` passes**,
+  `network.retry_after_seconds` apart, as a fetch does.
+- **Sign-in tries twice, a pass apart, then answers `503`** (the user's
+  own design, not one of the options offered): a search answers at once
+  with what the node knows and starts the multipass search behind it; a
+  sign-in whose first try fails waits one pass and tries again; if that
+  fails it is `503`, never `403`, and the person tries again, by which
+  time the node knows what its peers answered.
+- **No search waits, a peer's included** (the user): every search answers
+  at once and only starts the multipass search.
+- **No search starts another broadcast while one of its prefix is under
+  way, or within a set time after it ends** (the user), whoever asks, a
+  sign-in included. That time is a setting of its own,
+  `peers.broadcast_hold_seconds`.
+
+Ruled after building:
+
+- **The bits a pushed item must share are a setting**,
+  `peers.search_push_min_bits`, 16 by default and from 0 to 256, not a
+  constant. HttpApi §10.7.2 says the number is configurable, and SHOULD be
+  16 by default.
+
+Built in one change set: 438 added lines of non-test Python, 79 of them
+replacing removed ones, and 657 of tests. The specifications came first: HttpApi §6, §10.7.2 (now
+"Fulfilling Seek List Entries"), §11.4, §17.2 (`no-identity` removed),
+and §26; HighLevelDesign §4.7 and §4.8; HandshakeProtocol §3 step 6, its
+open item gone. The App Developer Guide §6.1, §6.9, and §6.10, the Module
+System doc, and the example configuration follow.
+
+- **`data.search_requested`** names the peer that asked, as `node_id`,
+  when a peer signed the request (`SearchHandler`), and the connection
+  manager now takes it in.
+- **The connection manager** (`_Broadcast`, `BROADCAST_WORKERS`) asks
+  every connected peer but the asker, best match to the prefix first, in
+  passes, and holds the prefix for `peers.broadcast_hold_seconds` (60 s)
+  once the search ends. `PeerExchange.search` sends
+  `GET /data/search/{prefix}` and publishes `data.search_answered`
+  `{prefix, node_id, results}`, cut to this node's own
+  `search_max_results`.
+- **The stats module** knows what a peer answered
+  (`StatsDatabase.record_heard_of`) and enriches the cached answer with it,
+  so the next search lists it, and writes the seek list at once when a
+  search is new to it (`ListDeriver.write_seek_list`,
+  `StatsDatabase.is_sought`), rather than at the next derivation.
+- **A client answering a seek list** (`PeerExchange._sought_by`) adds,
+  for each `search` entry not answered yet (`PeerSession.answering`), what
+  its own search of the prefix finds sharing `peers.search_push_min_bits`
+  (16) bits or the whole prefix, and pushes each item once.
+  `parse_search_results` reads a peer's answer as lists are read.
+- **Sign-in** (`Identities.sign_in`) waits `retry_after_seconds` with
+  `wait` and searches again before it answers `503`; `no-identity` is
+  gone. The directory page signs in once a click, and says to try again on
+  a `503`.
+
+My calls, not yet reviewed:
+
+- **The hold's default is 60 seconds**, not the fetch hold's 300. A
+  broadcast's first pass reaches every node within moments, since each node
+  asks its peers as soon as it is asked, so every broadcast a search sets
+  off ends within about its passes' 10 seconds; 60 leaves room for slow
+  peers. The node refuses to start with a hold no longer than its passes,
+  as for the fetch hold.
+- **Peers are asked one at a time within a pass**, as a fetch asks them,
+  so a peer that is slow to answer delays the rest of that pass.
+- **The asker is not asked back**, since it is searching already.
+- **What a peer answers is cut to this node's own `search_max_results`**,
+  best first, and its hashes are known from then on as hashes heard of,
+  which any later search near them may list.
+- **A search a peer asks for is still listed in this node's seek list**,
+  as before, so this node's clients push what matches it here. A broadcast
+  thus lists its prefix in the seek list of every node it reaches, for
+  `stats.seek_entry_ttl_seconds`, and every client holding a matching drop
+  pushes it to each of them.
+- **Only a search new to the seek list writes it at once**; one already
+  listed waits for the next derivation, so a busy node does not rewrite it
+  on every search.
+- **A sign-in asks for the blocks it found and does not hold on each try**,
+  so twice; the fetcher asks the peers once for both.
+- **The directory page no longer retries a sign-in on its own**, as the
+  App Developer Guide now says a page should not.
+
+A live run from the scratchpad: the local network script's six nodes, each
+connected to every other, and a seventh started afterwards with one of them
+as its only seed:
+
+- Making Alice's identity on node 0 searched her drop first, as making one
+  does to refuse a second, and that search reached every node, each of
+  which listed the target in its seek list at once. The drop went to node
+  1 as new content, and node 1, reading the others' seek lists as it
+  refreshed, pushed it to the other four within 4 seconds.
+- On the seventh node, which held nothing of hers, the first sign-in
+  searched its six peers and waited 5 seconds. The second try found the
+  drop among what they answered, asked for it, and was `503`; the drop was
+  fetched 10 ms later, and the person's second sign-in opened it at once.
+  The search of the peers made its three passes and ended 11 seconds after
+  it began.
+- A wrong password was `503` after the same 5 seconds, and started no
+  search of the peers, the last having ended within the hold.
+- No node logged a warning or error.
+
+**Testable in isolation:** connection manager tests against fixture peers,
+asserting each pass asks every peer but the asker, best match first, and
+waits this node's `Retry-After` between passes, that a search under way or
+held starts no other until the hold has passed, and that a peer that
+cannot be asked is passed over; peer exchange tests asserting what a peer
+answers is published and cut to this node's limit, and that a `search`
+entry is answered with what matches closely, once while it is listed;
+stats tests asserting a peer's answer is known and added to the cached
+answer, and that a new search is listed at once; identity tests asserting
+a sign-in tries again after one pass and is `503` when neither try opens.
+
+---
+
 ## 4. Issues in the Milestone
 
 Every issue in the **Phase 4 - User Accounts** milestone, by number, and
@@ -1479,6 +1625,7 @@ where it went.
 | #260 | A fallback identity | 81 |
 | #274 | Creating a user from `/config` | 91 |
 | #276 | A user directory application | 92 |
+| #284 | Signing in on a node other than the one that made the identity | 93 |
 
 Issue #261, movie playlists per user, left the milestone unbuilt for
 **Improve Movie Web App**, and Step 83 went with it to
@@ -1496,8 +1643,9 @@ Issue #261, movie playlists per user, left the milestone unbuilt for
 | 6 | 92 (#276) | Needs 30, 89's drops, and 79's ids. The directory is the application's, built on the node's endpoints. |
 | 7 | 78 (#257, #282) | Needs 79's public keys to encrypt for a person, and 90 to encrypt by a password. Its encryption questions are settled first, in the Bundle Specification. |
 | 8 | 80 (#259) | Needs 79's identity to sign it, and 92's directory to show it. |
-| 9 | 81 (#260) | Needs 80's metadata. A fallback is named only when an account is made, and an identity with none reads as compromised, so it changes 79's and 91's endpoints to name one, and identities made before it are made again. |
-| 10 | 82 (#258) | An application of the steps before it. |
+| 9 | 93 | Needed by every step that finds a person's drops, so that they are found on any node, not only the one that made them. |
+| 10 | 81 (#260) | Needs 80's metadata. A fallback is named only when an account is made, and an identity with none reads as compromised, so it changes 79's and 91's endpoints to name one, and identities made before it are made again. |
+| 11 | 82 (#258) | An application of the steps before it. |
 
 ## 6. Open Items Not Yet Decided
 

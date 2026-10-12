@@ -60,11 +60,13 @@ from libranet.protocol.lists import (
     decode_list,
     node_list_body,
     parse_node_list,
+    parse_search_results,
     parse_seek_list,
 )
 from libranet.protocol.localhost_resolution import LOCALHOST, NodeListSender, resolve_endpoint
 from libranet.protocol.search import (
     RESULTS_FIELD,
+    SEARCH_PATH,
     LocalSearch,
     PrefixSource,
     SearchCache,
@@ -81,6 +83,7 @@ __all__ = [
     "OCTET_STREAM",
     "REQUEST_PATH_HEADER",
     "RESULTS_FIELD",
+    "SEARCH_PATH",
     "SEEK_PATH",
     "TOKEN",
     "BackupJobRequest",
@@ -118,6 +121,7 @@ __all__ = [
     "normalize_prefix",
     "normalized_directory",
     "parse_node_list",
+    "parse_search_results",
     "parse_seek_list",
     "resolve_endpoint",
 ]

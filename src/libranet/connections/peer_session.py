@@ -30,7 +30,7 @@ class PeerRequest:
     headers: Mapping[str, str] = field(default_factory=dict)
 
 
-class PeerSession:
+class PeerSession:  # pylint: disable=too-many-instance-attributes
     """A connection to the node ``node_id``, reached at ``endpoint``.
 
     Takes ownership of ``connection``. ``verifier`` checks every response
@@ -54,6 +54,9 @@ class PeerSession:
         # Pushes, hand-offs, and refreshes note it from threads of their own.
         self._pushed: set[ContentId] = set()
         self._pushed_lock = Lock()
+        # The search prefixes the peer's seek list named when last read, each
+        # answered once while it is named (HttpApi §10.7.2, Phase 4 Step 93).
+        self._answered: frozenset[str] = frozenset()
 
     @property
     def endpoint(self) -> str:
@@ -108,6 +111,17 @@ class PeerSession:
         """Note that ``content_id`` was pushed to the peer on this connection."""
         with self._pushed_lock:
             self._pushed.add(content_id)
+
+    def answering(self, prefixes: Sequence[str]) -> list[str]:
+        """Those of ``prefixes``, the searches the peer's seek list names, not yet answered.
+
+        They are the ones answered from now on, so one the list stops naming
+        and names again is answered again. Only one conversation with the
+        peer at a time reads its seek list, so this needs no lock.
+        """
+        unanswered = [prefix for prefix in prefixes if prefix not in self._answered]
+        self._answered = frozenset(prefixes)
+        return unanswered
 
     def close(self) -> None:
         """Close the connection because this node chose to."""

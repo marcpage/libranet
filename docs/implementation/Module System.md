@@ -306,7 +306,11 @@ or a connection opens, fails, or closes. It searches connected peers for
 content the fetcher asks for (`fetch.requested`), pushes new content to the
 best-matching peer (`data.stored`), in pipelined batches when it arrives
 faster than it can be sent, and offers content the eviction module wants to
-delete to peers until enough accept it (`eviction.notice`).
+delete to peers until enough accept it (`eviction.notice`). Each search the
+web server answers (`data.search_requested`) starts a search of the
+connected peers for the same prefix, in passes, unless one is under way or
+just ended, and what each peer answers goes to stats
+(`data.search_answered`).
 Content it fetches goes into the peer's store in `incoming/` and is
 announced with `data.put_completed`, so it passes through the validator
 just as an upload does. It is the most threaded module (§5.4). It reports
@@ -614,7 +618,7 @@ What each module does in them:
 | Stats | Read the node id; open the database; derive the lists | Derive the lists once the interval has passed | Close the database |
 | Web server | Name no peers connected; read the key and credential; bind; start the HTTP thread | — | Stop the HTTP server; close the socket |
 | Validator | — | — | — |
-| Connection manager | Read the key; name no peers connected; start the workers; load candidates; dial | Dial rested candidates; refresh peers due; resume searches due a next pass | Stop the workers; close every connection |
+| Connection manager | Read the key; name no peers connected; start the workers; load candidates; dial | Dial rested candidates; refresh peers due; resume searches, and searches of the peers, due a next pass | Stop the workers; close every connection |
 | Fetcher | — | — | — |
 | Unbundler | — | — | — |
 | Eviction | Read the node id; count storage; ask which peers are connected; say whether storage is full; evict if over | Say whether storage is full, if that changed; time out hand-offs and questions; resume after a pause | — |
@@ -718,7 +722,7 @@ Six of the eight modules are single-threaded. The other two are not:
 | Module | Threads besides the main one | Their shared state is guarded by |
 | --- | --- | --- |
 | Web server | The HTTP server's thread; one thread per request | A lock in each shared object (§9.3) |
-| Connection manager | 8 fetch workers; 8 push workers; a reverse-DNS worker; a thread per dial, refresh, and hand-off | One lock for the whole module |
+| Connection manager | 8 fetch workers; 8 push workers; 8 broadcast workers, for searches of the peers; a reverse-DNS worker; a thread per dial, refresh, and hand-off | One lock for the whole module |
 
 Any thread may publish: `publish()` only puts the message on the outbox,
 and `multiprocessing.Queue.put` is thread-safe. Only the main thread
@@ -837,7 +841,8 @@ to end its loop.
 | *Reading* | | | | | | | | |
 | `data.requested` | P | | | S | | | | |
 | `data.not_found` | P | | | S | S | P | | P |
-| `data.search_requested` | P | | | S | | | | |
+| `data.search_requested` | P | S | | S | | | | |
+| `data.search_answered` | | P | | S | | | | |
 | *Writing and validation* | | | | | | | | |
 | `data.put_completed` | P | P | S | | | | | |
 | `data.stored` | P | P S | P | S | | S | S | P S |
@@ -905,7 +910,8 @@ A content id is an `algorithm` and a lower-case hex `hash`, or, in
 | --- | --- | --- |
 | `data.requested` | `algorithm`, `hash`, `external` | `GET /data` asked for this content, held or not, or a file served from its parts asked for this part; `external` is false for a request from this machine, and for a part |
 | `data.not_found` | `algorithm`, `hash` | Content was needed that this node does not hold |
-| `data.search_requested` | `prefix` | A search was answered, and its result cached in `search/` |
+| `data.search_requested` | `prefix`, and `node_id` if a peer asked | A search was answered, and its result cached in `search/`; search the connected peers for it too |
+| `data.search_answered` | `prefix`, `node_id`, `results` | What the peer `node_id` answered a search of the prefix with |
 | `data.put_completed` | `algorithm`, `hash`, `node_id` | Unchecked bytes wait in `node_id`'s store in `incoming/` |
 | `data.stored` | `algorithm`, `hash`, `node_id`, `size` | New content is in `cas/data`; `node_id` is where it came from, this node for its own |
 | `data.rejected` | `algorithm`, `hash`, `node_id` | An upload did not match its content id |
@@ -976,6 +982,7 @@ flowchart TB
     web <-->|"app.path_not_found<br/>app.path_resolved"| unb
     web <-->|"backup requests<br/>backup.state"| backup
     web -->|"data.put_completed"| val
+    web -->|"data.search_requested"| conn
     conn -->|"data.put_completed"| val
     val --> stored
     backup --> stored
@@ -1284,7 +1291,9 @@ Several modules also limit how often they repeat themselves: the fetcher
 asks for the same content at most once per `network.retry_after_seconds`,
 the web server reports a bundle's use at most hourly, and the connection
 manager drops a fetch for content it is already searching for, or found
-nothing for within `peers.failed_search_hold_seconds`.
+nothing for within `peers.failed_search_hold_seconds`, and starts no search
+of its peers for a prefix it is already searching them for, or searched them
+for within `peers.broadcast_hold_seconds`.
 
 ### 10.2 Surviving a Restart
 
@@ -1297,7 +1306,7 @@ side recovers:
 | Stats | An answer it owed the eviction module | The database is kept, and the lists are derived again at start; eviction times out and asks again |
 | Web server | Remembered outcomes; the last `backup.state`; requests in progress; its connections | Paths are asked of the unbundler again. The `/config/api` backup endpoints, and `GET /data/imports`, answer `503` until the backup module next reports, which it does only when something changes. It names no peers connected as it starts, and peers that dial again are named anew |
 | Validator | The upload it was checking, if it died mid-message | The upload stays in `incoming/` until the same content arrives from the same node again |
-| Connection manager | Connections, searches, hand-offs, content not yet pushed | It dials from the candidate list again, naming no peers connected until one is; eviction times out a hand-off after 1,200 s; a fetch is asked for again at the next miss after the fetcher's interval |
+| Connection manager | Connections, searches, searches of the peers and their holds, hand-offs, content not yet pushed | It dials from the candidate list again, naming no peers connected until one is; eviction times out a hand-off after 1,200 s; a fetch is asked for again at the next miss after the fetcher's interval; the next search of a prefix searches the peers again |
 | Fetcher | Which content it asked for lately | The next miss is asked for at once |
 | Unbundler | Directories held in memory; paths waiting on content; a reclaim in progress | Directories are read back from each bundle's saved `directory.jzon`; a request waiting on a path forgotten is answered `503`, and its retry asks again; eviction times out the reclaim |
 | Eviction | Hand-offs under way; its list of candidates; which peers are connected | It counts storage again at start, says whether storage is full, asks which peers are connected, and asks stats again |

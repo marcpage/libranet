@@ -6,6 +6,8 @@ publishes; what the peer learns shows in what the peer's web server
 publishes. Peers that misbehave are raw sockets answering with canned bytes.
 """
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 from json import dumps
 from logging import DEBUG, WARNING, LogRecord, getLogger
@@ -20,6 +22,8 @@ from pytest import LogCaptureFixture, fixture, raises
 
 from libranet.cas.archive import ArchiveSink
 from libranet.cas.content_id import ContentId
+from libranet.cas.drops import DropTarget
+from libranet.cas.prefix import matching_bits
 from libranet.cas.store import CasStore
 from libranet.config.models import (
     IdentityConfig,
@@ -100,9 +104,12 @@ class FixturePeer:
         return f"http://127.0.0.1:{self.server.server_address[1]}"
 
     def write_lists(
-        self, nodes: Mapping[str, str] | None = None, sought: Sequence[ContentId] = ()
+        self,
+        nodes: Mapping[str, str] | None = None,
+        sought: Sequence[ContentId] = (),
+        searches: Sequence[str] = (),
     ) -> None:
-        write_lists(self.storage, nodes, sought)
+        write_lists(self.storage, nodes, sought, searches)
 
     def published(self, event: EventType) -> list[Message]:
         return [message for message in drain(self.queues, self._seen) if message["event"] == event]
@@ -114,7 +121,10 @@ class FixturePeer:
 
 
 def write_lists(
-    storage: StorageConfig, nodes: Mapping[str, str] | None, sought: Sequence[ContentId]
+    storage: StorageConfig,
+    nodes: Mapping[str, str] | None,
+    sought: Sequence[ContentId],
+    searches: Sequence[str] = (),
 ) -> None:
     """Derived node and seek lists, as the stats module would write them."""
     storage.derived_dir.mkdir(parents=True, exist_ok=True)
@@ -122,7 +132,9 @@ def write_lists(
     if nodes is not None:
         storage.node_list_path.write_text(dumps({"nodes": nodes}))
 
-    storage.seek_list_path.write_text(dumps({"data": [str(c) for c in sought], "search": []}))
+    storage.seek_list_path.write_text(
+        dumps({"data": [str(c) for c in sought], "search": list(searches)})
+    )
 
 
 @fixture
@@ -141,7 +153,12 @@ def config(tmp_path: Path) -> LibranetConfig:
         LibranetConfig(
             storage=StorageConfig(data_dir=root / "data", cache_dir=root / "cache"),
             identity=IdentityConfig(key_dir=root / "keys"),
-            peers=PeerConfig(connect_timeout_seconds=TIMEOUT, request_timeout_seconds=TIMEOUT),
+            peers=PeerConfig(
+                connect_timeout_seconds=TIMEOUT,
+                request_timeout_seconds=TIMEOUT,
+                # What answering a search entry is tested against, whatever the default.
+                search_push_min_bits=16,
+            ),
         )
     )
 
@@ -754,6 +771,202 @@ def test_refresh_pushes_newly_sought_content_once(
     (sent,) = published(queues, EventType.DATA_SENT)
     assert sent["hash"] == HELD_ID.hash
     assert len(peer.published(EventType.PUT_COMPLETED)) == 1
+
+
+# -- Searches: asking a peer, and answering a peer's (Phase 4 Step 93) ------
+
+TARGET = DropTarget.of("a drop a peer searches for")
+
+
+def held_drop(config: LibranetConfig, content: bytes) -> ContentId:
+    """``content`` held here as a drop at :data:`TARGET`, matching it by 16 bits or more."""
+    drop = TARGET.placed(content, 0, 16)
+    content_id = ContentId.for_data(drop.data, "sha256")
+    CasStore.source_of_truth(config.storage).write(content_id, drop.data)
+    return content_id
+
+
+def test_search_asks_the_peer_and_publishes_what_it_answers(
+    exchange: PeerExchange,
+    session: PeerSession,
+    peer: FixturePeer,
+    identity: NodeIdentity,
+    queues: ModuleQueues,
+) -> None:
+    peer.store.write(OFFERED_ID, OFFERED)
+
+    found = exchange.search(session, OFFERED_ID.hash)
+
+    # It holds its own key, and this node's, sent as the session opened.
+    assert found[0] == OFFERED_ID
+    assert set(found) == {OFFERED_ID, peer.identity.node_id, identity.node_id}
+    (answered,) = published(queues, EventType.SEARCH_ANSWERED)
+    assert payload(answered) == {
+        "event": EventType.SEARCH_ANSWERED,
+        "prefix": OFFERED_ID.hash,
+        "node_id": str(peer.identity.node_id),
+        "results": [str(content_id) for content_id in found],
+    }
+    (asked,) = peer.published(EventType.SEARCH_REQUESTED)
+    assert (asked["prefix"], asked["node_id"]) == (OFFERED_ID.hash, str(identity.node_id))
+
+
+def test_a_search_answer_is_cut_to_what_this_node_answers_a_search_with(
+    identity: NodeIdentity,
+    config: LibranetConfig,
+    peer: FixturePeer,
+    queues: ModuleQueues,
+) -> None:
+    storage = config.storage.model_copy(update={"search_max_results": 1})
+    exchange = PeerExchange(
+        identity,
+        config.model_copy(update={"storage": storage}),
+        StubModule(ModuleName.CONNECTIONS, queues).publish,
+        LOGGER,
+    )
+    peer.store.write(OFFERED_ID, OFFERED)
+    session = exchange.open(peer.endpoint)
+
+    try:
+        found = exchange.search(session, OFFERED_ID.hash)
+
+    finally:
+        session.close()
+
+    assert found == [OFFERED_ID]
+    (answered,) = published(queues, EventType.SEARCH_ANSWERED)
+    assert answered["results"] == [str(OFFERED_ID)]
+
+
+def test_a_peer_that_answers_a_search_unusably_teaches_nothing(
+    exchange: PeerExchange, queues: ModuleQueues
+) -> None:
+    answering = new_identity()
+    peer = RawPeer(
+        [
+            signed(answering, 201),  # this node's key
+            signed(answering, 200, answering.public_key),  # its key
+            signed(answering, 200, b'{"results": "not an array"}'),
+        ]
+    )
+    session = exchange.open(peer.endpoint)
+    drain(queues, [])
+
+    try:
+        found = exchange.search(session, NOWHERE_ID.hash)
+
+    finally:
+        session.close()
+        peer.join()
+
+    assert found == []
+    assert published(queues, EventType.SEARCH_ANSWERED) == []
+
+
+def test_first_contact_pushes_what_closely_matches_a_search_the_peer_seeks(
+    exchange: PeerExchange,
+    session: PeerSession,
+    peer: FixturePeer,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    queues: ModuleQueues,
+) -> None:
+    drop_id = held_drop(config, b"what the peer is looking for")
+    CasStore.source_of_truth(config.storage).write(HELD_ID, HELD)
+    assert matching_bits(TARGET.hex, HELD_ID.hash) < 16
+    peer.write_lists({}, [], [TARGET.hex])
+
+    exchange.first_contact(session)
+
+    (sent,) = published(queues, EventType.DATA_SENT)
+    assert sent["hash"] == drop_id.hash
+    (pushed,) = peer.published(EventType.PUT_COMPLETED)
+    assert (pushed["hash"], pushed["node_id"]) == (drop_id.hash, str(identity.node_id))
+    assert session.pushed == {drop_id}
+
+
+def test_fewer_bits_set_push_content_matching_a_search_less_closely(
+    identity: NodeIdentity,
+    config: LibranetConfig,
+    peer: FixturePeer,
+    queues: ModuleQueues,
+) -> None:
+    peers = config.peers.model_copy(update={"search_push_min_bits": 0})
+    exchange = PeerExchange(
+        identity,
+        config.model_copy(update={"peers": peers}),
+        StubModule(ModuleName.CONNECTIONS, queues).publish,
+        LOGGER,
+    )
+    drop_id = held_drop(config, b"what the peer is looking for")
+    CasStore.source_of_truth(config.storage).write(HELD_ID, HELD)
+    peer.write_lists({}, [], [TARGET.hex])
+    session = exchange.open(peer.endpoint)
+
+    try:
+        exchange.first_contact(session)
+
+    finally:
+        session.close()
+
+    sent = [message["hash"] for message in published(queues, EventType.DATA_SENT)]
+    assert sent[0] == drop_id.hash
+    assert HELD_ID.hash in sent
+
+
+def test_a_search_prefix_shorter_than_the_bits_needed_is_matched_whole(
+    exchange: PeerExchange,
+    session: PeerSession,
+    peer: FixturePeer,
+    config: LibranetConfig,
+    queues: ModuleQueues,
+) -> None:
+    CasStore.source_of_truth(config.storage).write(HELD_ID, HELD)
+    # Eight bits, all of which it shares.
+    peer.write_lists({}, [], [HELD_ID.hash[:2]])
+
+    exchange.first_contact(session)
+
+    (sent,) = published(queues, EventType.DATA_SENT)
+    assert sent["hash"] == HELD_ID.hash
+
+
+def test_content_both_sought_and_matching_a_search_is_pushed_once(
+    exchange: PeerExchange,
+    session: PeerSession,
+    peer: FixturePeer,
+    config: LibranetConfig,
+    queues: ModuleQueues,
+) -> None:
+    drop_id = held_drop(config, b"sought twice over")
+    peer.write_lists({}, [drop_id], [TARGET.hex])
+
+    exchange.first_contact(session)
+
+    assert [sent["hash"] for sent in published(queues, EventType.DATA_SENT)] == [drop_id.hash]
+
+
+def test_a_search_is_answered_once_while_the_peer_lists_it(
+    exchange: PeerExchange,
+    session: PeerSession,
+    peer: FixturePeer,
+    config: LibranetConfig,
+    queues: ModuleQueues,
+) -> None:
+    first = held_drop(config, b"held when first asked")
+    peer.write_lists({}, [], [TARGET.hex])
+    exchange.first_contact(session)
+    later = held_drop(config, b"held only later")
+
+    exchange.refresh(session)
+    sent_while_listed = [sent["hash"] for sent in published(queues, EventType.DATA_SENT)]
+    peer.write_lists({}, [], [])
+    exchange.refresh(session)
+    peer.write_lists({}, [], [TARGET.hex])
+    exchange.refresh(session)
+
+    assert sent_while_listed == [first.hash]
+    assert [sent["hash"] for sent in published(queues, EventType.DATA_SENT)] == [later.hash]
 
 
 def test_retrieve_hands_what_the_peer_sends_to_the_validator(

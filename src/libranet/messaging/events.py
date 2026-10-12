@@ -22,7 +22,8 @@ class EventType(StrEnum):
     # Web server read path (Step 5).
     DATA_REQUESTED = "data.requested"  # webserver → stats
     DATA_NOT_FOUND = "data.not_found"  # webserver, unbundler, backup → fetcher, stats
-    SEARCH_REQUESTED = "data.search_requested"  # webserver → stats
+    SEARCH_REQUESTED = "data.search_requested"  # webserver → stats, connections
+    SEARCH_ANSWERED = "data.search_answered"  # connections → stats (Phase 4 Step 93)
 
     # Web server write path and validation (Step 7).
     PUT_COMPLETED = "data.put_completed"  # webserver, connections → validator

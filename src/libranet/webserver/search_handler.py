@@ -4,7 +4,12 @@ A fresh cached response is served; otherwise the local store is scanned and
 the result cached. Every request publishes
 :attr:`EventType.SEARCH_REQUESTED` naming the prefix, so the stats module
 (Step 8) can enrich the cached file with hashes known beyond this node's own
-store.
+store, and the connection manager asks this node's peers for it, which the
+answer never waits for (Phase 4 Step 93). ``node_id`` names the peer that
+asked, when one signed the request, and is absent for a search made on this
+node, as by a page::
+
+    data.search_requested  {"prefix": "<hex>", "node_id": "sha256/<hex>"}
 
 Content this node has blocked is left out of every answer (HttpApi §5.5,
 Phase 4 Step 30), even one cached before it was blocked.
@@ -91,7 +96,7 @@ class SearchHandler:
             found = self.search.search(prefix)
             self.cache.save_results(prefix, found)
 
-        self.publish(EventType.SEARCH_REQUESTED, {"prefix": prefix})
+        self._announce(prefix, _asker(request))
         return bytes_response(SearchCache.body(self._unblocked(found)), JSON_CONTENT_TYPE)
 
     def at_drop(self, request: Request) -> Response:
@@ -111,16 +116,16 @@ class SearchHandler:
             )
 
         drop = DropTarget.of(target)
-        found = self.fresh_results(drop.hex)
+        found = self.fresh_results(drop.hex, _asker(request))
         return json_response({"target": drop.hex, "results": [str(found_id) for found_id in found]})
 
-    def fresh_results(self, prefix: str) -> list[ContentId]:
+    def fresh_results(self, prefix: str, asker: ContentId | None = None) -> list[ContentId]:
         """What is held nearest a normalized ``prefix``, with what was heard of, best first.
 
         The store is scanned whether or not an answer is cached, and what the
         cached answer lists is kept among the matches, since the stats module
         adds what this node has heard of but does not hold. The result is
-        cached, and announced as any search is.
+        cached, and announced as any search is, as ``asker``'s if a peer asked.
         """
         cached = self.cache.load_results(prefix) or []
         found = nearest(
@@ -129,8 +134,17 @@ class SearchHandler:
             self.search.max_results,
         )
         self.cache.save_results(prefix, found)
-        self.publish(EventType.SEARCH_REQUESTED, {"prefix": prefix})
+        self._announce(prefix, asker)
         return found
+
+    def _announce(self, prefix: str, asker: ContentId | None) -> None:
+        """Say that ``prefix`` was searched for, by ``asker`` if a peer asked."""
+        payload = {"prefix": prefix}
+
+        if asker is not None:
+            payload["node_id"] = str(asker)
+
+        self.publish(EventType.SEARCH_REQUESTED, payload)
 
     def _unblocked(self, content_ids: Iterable[ContentId]) -> list[ContentId]:
         """``content_ids``, in their order, less those this node has blocked."""
@@ -138,3 +152,8 @@ class SearchHandler:
             return list(content_ids)
 
         return self.blocked.unblocked(content_ids)
+
+
+def _asker(request: Request) -> ContentId | None:
+    """The peer that signed ``request``, if one did."""
+    return None if request.authentication is None else request.authentication.node_id

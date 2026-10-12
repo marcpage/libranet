@@ -1,5 +1,7 @@
 """Tests for the stats module, fed broadcasts directly."""
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 from json import dumps, loads
 from logging import INFO
@@ -232,6 +234,44 @@ def test_a_search_becomes_an_outstanding_request(
     module.derive()
 
     assert seek_list(config)["search"] == ["0123abcd"]
+
+
+def test_a_new_search_is_listed_at_once_and_a_repeated_one_waits(
+    module: StatsModule, config: LibranetConfig
+) -> None:
+    module.handle(broadcast(EventType.SEARCH_REQUESTED, {"prefix": "abc"}, ModuleName.WEBSERVER))
+    listed = seek_list(config)["search"]
+    module.handle(broadcast(EventType.SEARCH_REQUESTED, {"prefix": "def"}, ModuleName.WEBSERVER))
+    written_at = config.storage.seek_list_path.stat().st_mtime_ns
+
+    # Asked again, it would move to the front, but is not new to the list.
+    module.handle(broadcast(EventType.SEARCH_REQUESTED, {"prefix": "abc"}, ModuleName.WEBSERVER))
+
+    assert listed == ["abc"]
+    assert seek_list(config)["search"] == ["def", "abc"]
+    assert config.storage.seek_list_path.stat().st_mtime_ns == written_at
+
+
+def test_what_a_peer_answers_a_search_with_is_known_and_added_to_its_answer(
+    module: StatsModule, config: LibranetConfig
+) -> None:
+    prefix = "8" + "0" * 63
+    nearer = ContentId("sha256", "8" + "0" * 62 + "1")
+    farther = ContentId("sha256", "f" * 64)
+    cache_path = config.storage.search_cache_dir / prefix[:4] / f"{prefix}.json"
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_bytes(dumps({"results": [str(farther)]}).encode("utf-8"))
+
+    module.handle(
+        broadcast(
+            EventType.SEARCH_ANSWERED,
+            {"prefix": prefix, "node_id": str(PEER_ID), "results": [str(nearer)]},
+            ModuleName.CONNECTIONS,
+        )
+    )
+
+    assert loads(cache_path.read_bytes())["results"] == [str(nearer), str(farther)]
+    assert module.database.content_ids_near(prefix, 1) == [nearer]
 
 
 def test_a_search_request_enriches_its_cached_response(
@@ -969,6 +1009,7 @@ def test_the_module_subscribes_to_what_it_records() -> None:
     assert EventType.APP_ACCESSED in StatsModule.subscriptions
     assert EventType.RESOLVED_RECLAIM_REQUESTED in StatsModule.subscriptions
     assert EventType.DATA_BLOCKED in StatsModule.subscriptions
+    assert EventType.SEARCH_ANSWERED in StatsModule.subscriptions
     assert EventType.PUT_COMPLETED not in StatsModule.subscriptions
     assert EventType.NODE_LIST_UPDATED not in StatsModule.subscriptions
 

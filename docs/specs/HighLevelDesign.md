@@ -318,8 +318,8 @@ directional search strategy described below.
 
 ### 4.7 Request Routing Algorithm
 
-When a node receives a request for data, or a search, that it does not hold
-locally, it queries its peers in order of binary-prefix match length, the best
+When a node receives a request for data that it does not hold locally, or a
+search, it queries its peers in order of binary-prefix match length, the best
 match first.
 
 For an exact data request, it queries the peers it has an outgoing connection
@@ -349,18 +349,28 @@ so that their last passes are over before it ends. Each pass after the first
 may wait for a `Retry-After`, so the pause is longer than any `Retry-After` the
 node's peers send, times the passes after the first that they make.
 
-For a search request, it follows a progressive depth-first search:
+A search request is answered at once, with the hashes the node knows (§4.2),
+and never waits on the node's peers. Each one also starts a search of them in
+the background, so that a later search lists more:
 
-1. Sort known peers by the length of the common binary prefix with the requested
-   hash, with the best match first.
-2. Query the best-match peer.
-3. Query the second-best peer.
-4. Return to the first peer, as it may have fetched the data in the meantime,
-   then the second, then the third, and so on.
-5. Each successive pass examines one additional peer deeper in the ordered list.
+1. Sort the peers the node has an outgoing connection to by the length of the
+   common binary prefix with the requested prefix, with the best match first,
+   leaving out the peer that asked, if a peer did.
+2. Ask each in turn for the same prefix.
+3. Once every peer has been asked, wait the node's own `Retry-After`, and start
+   the next pass: ask each again, as each may have asked its own peers in the
+   meantime. Make as many passes as for an exact data request.
+4. Know the hashes the peers answer from then on, as hashes the node may return
+   without holding them (HTTP API §6).
 
-The process continues until every known peer has been contacted at least once,
-after which the aggregated results are returned ordered by match quality.
+A search a peer asks for starts one too, so a search goes on from peer to peer.
+A search of a prefix, whoever asks it, starts none while the node's search of
+that prefix is under way, nor for a while after it ends, though it is still
+answered at once. Peers still searching would otherwise start it again, and be
+started again by it in turn, and a search would never end. The pause outlasts
+the time it takes a search to reach every node and their passes to end. The
+node lists the prefix in its seek list too (§4.8), so that the peers connected
+to it push what they hold that matches.
 
 If a node cannot yet serve a requested object, it replies with a temporary "not
 available" status and immediately begins the routing algorithm above so that a
@@ -380,7 +390,8 @@ During the connection handshake, a node requests the remote node’s list of dat
 hashes that it is currently seeking.
 
 If the local node holds any of those hashes, it pushes the corresponding data to
-the remote node.
+the remote node. For a hash prefix the remote node is searching for, it pushes
+the content it holds that matches the prefix closely (HTTP API §10.7.2).
 
 A node periodically fetches the remote node request list and pushes data the
 remote node has requested.

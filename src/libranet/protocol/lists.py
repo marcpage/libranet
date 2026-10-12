@@ -2,7 +2,8 @@
 
 The web server serves this node's lists and reads those peers ``POST`` to
 it; the connection manager posts this node's list and reads those it fetches
-from peers. Either list may arrive zlib-compressed, so a body that is not
+from peers, and the answers peers give its searches (HttpApi §6.1, Phase 4
+Step 93), which are read as lists are. Either list may arrive zlib-compressed, so a body that is not
 JSON is decompressed and read again. The 1 MiB list limit applies to the
 body as sent, so a compressed list may expand past it, and the protocol sets
 no limit on how far. Decompression still stops at a separate, local cap, so
@@ -33,7 +34,7 @@ from libranet.cas.errors import (
 )
 from libranet.json_format import compact_json
 from libranet.protocol.errors import InvalidListError
-from libranet.protocol.search import normalize_prefix
+from libranet.protocol.search import RESULTS_FIELD, normalize_prefix
 
 _LOGGER = getLogger(__name__)
 
@@ -141,19 +142,46 @@ def parse_seek_list(value: object) -> tuple[list[str], list[str]]:
     if not isinstance(data, list) or not isinstance(search, list):
         raise InvalidListError('A seek list\'s "data" and "search" must be arrays')
 
-    return _normalized(data, lambda text: str(ContentId.parse(text))), _normalized(
-        search, normalize_prefix
+    return _normalized(data, _content_id_text, "A seek list"), _normalized(
+        search, normalize_prefix, "A seek list"
     )
 
 
-def _normalized(values: list[object], normalize: Callable[[str], str]) -> list[str]:
-    """``values`` passed through ``normalize``, minus non-strings and any it rejects."""
+def parse_search_results(value: object) -> list[ContentId]:
+    """The content ids a ``{"results": [...]}`` search answer names, best first (HttpApi §6.1).
+
+    Any entry that is not a valid content id is dropped.
+
+    Raises:
+        InvalidListError: ``value`` is not an object holding a ``results``
+            array.
+    """
+    results = value.get(RESULTS_FIELD) if isinstance(value, dict) else None
+
+    if not isinstance(results, list):
+        raise InvalidListError('A search answer must be an object holding a "results" array')
+
+    return [
+        ContentId.parse(text) for text in _normalized(results, _content_id_text, "A search answer")
+    ]
+
+
+def _content_id_text(text: str) -> str:
+    """The content id ``text`` names, as this node writes it."""
+    return str(ContentId.parse(text))
+
+
+def _normalized(values: list[object], normalize: Callable[[str], str], what: str) -> list[str]:
+    """``values`` passed through ``normalize``, minus non-strings and any it rejects.
+
+    ``what`` names the list they came from, for the log.
+    """
     kept: list[str] = []
     unsupported = UnsupportedAlgorithms()
 
     for value in values:
         if not isinstance(value, str):
-            _LOGGER.debug("Dropping %r from a seek list: not a string", value)
+            _LOGGER.debug("Dropping %r from %s: not a string", value, what.lower())
             continue
 
         try:
@@ -164,8 +192,8 @@ def _normalized(values: list[object], normalize: Callable[[str], str]) -> list[s
             unsupported.add(value)
 
         except InvalidContentIdError as error:
-            _LOGGER.debug("Dropping %r from a seek list: %s", value, error)
+            _LOGGER.debug("Dropping %r from %s: %s", value, what.lower(), error)
             continue
 
-    unsupported.log(_LOGGER, "A seek list")
+    unsupported.log(_LOGGER, what)
     return kept

@@ -58,6 +58,21 @@ outcome is published for the fetcher::
 ``fetch.succeeded`` means the content went to the validator from ``node_id``;
 ``fetch.failed`` means the search ended without it.
 
+A search made of this node (``data.search_requested`` ``{"prefix",
+"node_id"}``), whether a peer asked it, as ``node_id`` names, or one of this
+node's pages, starts a search of the connected peers for the prefix
+(HighLevelDesign §4.7, Phase 4 Step 93). The search was answered at once, and
+never waits on this one, whose answers make later searches better. Each pass
+asks every connected peer but the one that asked, those whose node ids best
+match the prefix first, and there are ``peers.search_passes`` of them,
+``network.retry_after_seconds`` apart, since each peer is searching its own
+peers meanwhile. What each peer answers is published for the stats module, as
+:meth:`~libranet.connections.peer_exchange.PeerExchange.search` says. A search
+of a prefix starts none while one is under way, nor within
+``peers.broadcast_hold_seconds`` of one ending, whoever asks: a search a peer
+asks for starts one too, so peers still searching would otherwise start it
+again, and it them, for ever.
+
 A hand-off (``eviction.notice`` ``{"algorithm", "hash", "copies"}``) pushes
 content the eviction module means to delete to the connected peers, best
 match first, until ``copies`` of them accept it (HighLevelDesign §4.5). Only
@@ -140,11 +155,16 @@ from libranet.messaging.events import AddressSource, ConnectionDirection, EventT
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
+from libranet.protocol.search import normalize_prefix
 
 # Searches carried on at once. Each asks one peer at a time, so this also
 # bounds the requests searching adds to all connections together. A search
 # waiting for its next pass takes none.
 FETCH_WORKERS: Final = 8
+
+# Searches of the peers for a prefix making a pass at once. Each asks one peer
+# at a time, and one waiting for its next pass takes none.
+BROADCAST_WORKERS: Final = 8
 
 # Pushes of new content under way at once. Each takes up to PIPELINE_DEPTH
 # items at a time and holds their bodies until they are sent, so this also
@@ -248,6 +268,22 @@ class _Search:
 
 
 @dataclass
+class _Broadcast:
+    """A search of the connected peers for a prefix, and how far it has gone (Phase 4 Step 93).
+
+    Each pass asks every connected peer but ``asker``, the peer whose search
+    started it, if one did, until ``passes`` have been made. ``pass_number``
+    is the pass under way, counted from one. One broadcast worker at a time
+    carries it on, so it needs no lock of its own.
+    """
+
+    prefix: str
+    asker: ContentId | None
+    passes: int
+    pass_number: int = 1
+
+
+@dataclass
 class _Peer:
     """A connected peer, and when its seek list is next due to be fetched again.
 
@@ -268,6 +304,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             EventType.NODE_LIST_UPDATED,
             EventType.NODES_RECEIVED,
             EventType.FETCH_REQUESTED,
+            EventType.SEARCH_REQUESTED,
             EventType.EVICTION_NOTICE,
             EventType.DATA_STORED,
             EventType.PEERS_CONNECTED_REQUESTED,
@@ -318,6 +355,15 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         # Content a search found nothing for, with when a new request may start
         # another, in the order the searches ended.
         self._held: OrderedDict[ContentId, float] = OrderedDict()
+        # Searches of the peers for a prefix under way, by the prefix.
+        self._broadcasts: dict[str, _Broadcast] = {}
+        # Those ready for a broadcast worker to make their next pass.
+        self._passes: SimpleQueue[_Broadcast | None] = SimpleQueue()
+        # Those waiting for their next pass, as (when, order, broadcast), soonest first.
+        self._next_passes: list[tuple[float, int, _Broadcast]] = []
+        # Prefixes whose search of the peers has ended, with when a new search
+        # of one may start another, in the order they ended.
+        self._broadcast_held: OrderedDict[str, float] = OrderedDict()
         self._handing_off: set[ContentId] = set()
         self._pushes: SimpleQueue[_NewContent | None] = SimpleQueue()
         # New content no peer was connected to take, by content id, with the
@@ -328,6 +374,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
                 EventType.NODE_LIST_UPDATED: self._on_node_list_updated,
                 EventType.NODES_RECEIVED: self._on_nodes_received,
                 EventType.FETCH_REQUESTED: self._on_fetch_requested,
+                EventType.SEARCH_REQUESTED: self._on_search_requested,
                 EventType.EVICTION_NOTICE: self._on_eviction_notice,
                 EventType.DATA_STORED: self._on_data_stored,
                 EventType.PEERS_CONNECTED_REQUESTED: self._on_peers_connected_requested,
@@ -371,6 +418,11 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         for index in range(PUSH_WORKERS):
             Thread(target=self._push_loop, name=f"{self.name}-push-{index}", daemon=True).start()
 
+        for index in range(BROADCAST_WORKERS):
+            Thread(
+                target=self._broadcast_loop, name=f"{self.name}-broadcast-{index}", daemon=True
+            ).start()
+
         if self._config.peers.reverse_dns:
             self._lookup = ReverseLookup(
                 self.publish,
@@ -387,7 +439,8 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
     def on_idle(self) -> None:
         """Refresh peers whose seek list is due, and dial again once candidates have rested.
 
-        Searches whose next pass is due are carried on too.
+        Searches whose next pass is due are carried on too, as are searches
+        of the peers for a prefix.
         """
         now = self._clock()
 
@@ -409,11 +462,19 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             while self._waiting and self._waiting[0][0] <= now:
                 resumed.append(heappop(self._waiting)[2])
 
+            passes: list[_Broadcast] = []
+
+            while self._next_passes and self._next_passes[0][0] <= now:
+                passes.append(heappop(self._next_passes)[2])
+
         for peer in due:
             self._start("refresh", partial(self._talk, peer, self.exchange.refresh))
 
         for search in resumed:
             self._fetches.put(search)
+
+        for broadcast in passes:
+            self._passes.put(broadcast)
 
         if rested:
             self._maintain()
@@ -435,6 +496,9 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
 
             for _ in range(PUSH_WORKERS):
                 self._pushes.put(None)
+
+            for _ in range(BROADCAST_WORKERS):
+                self._passes.put(None)
 
             if self._lookup is not None:
                 self._lookup.stop()
@@ -505,6 +569,34 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
                 content_id,
                 held_until - now,
             )
+
+    def _on_search_requested(self, message: Message) -> None:
+        """Start a search of the peers for the prefix, unless one is under way or still held."""
+        prefix = normalize_prefix(message["prefix"])
+        asked_by = message.get("node_id")
+        asker = None if asked_by is None else ContentId.parse(asked_by)
+        now = self._clock()
+        broadcast: _Broadcast | None = None
+
+        with self._lock:
+            # Every hold is as long, so they end in the order they began.
+            while self._broadcast_held and next(iter(self._broadcast_held.values())) <= now:
+                self._broadcast_held.popitem(last=False)
+
+            under_way = prefix in self._broadcasts
+            held = prefix in self._broadcast_held
+
+            if not under_way and not held:
+                broadcast = self._broadcasts[prefix] = _Broadcast(
+                    prefix, asker, self._config.peers.search_passes
+                )
+
+        if broadcast is not None:
+            self.logger.debug("Searching the peers for %s", prefix)
+            self._passes.put(broadcast)
+
+        elif held:
+            self.logger.debug("Not searching the peers for %s: the last search just ended", prefix)
 
     def _on_eviction_notice(self, message: Message) -> None:
         """Hand the content off on a thread of its own.
@@ -916,6 +1008,73 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
 
         self.publish(EventType.FETCH_FAILED, content_id.fields())
 
+    def _broadcast_loop(self) -> None:
+        """Broadcast-worker thread: make searches' passes of the peers until told to stop."""
+        while (broadcast := self._passes.get()) is not None:
+            try:
+                self._make_pass(broadcast)
+
+            except Exception:  # pylint: disable=broad-exception-caught
+                self.logger.exception("Searching the peers for %s failed", broadcast.prefix)
+                self._end_broadcast(broadcast)
+
+    def _make_pass(self, broadcast: _Broadcast) -> None:
+        """Ask every connected peer but the asker for ``broadcast``'s prefix, best match first.
+
+        Then the next pass waits its turn, or, after the last, the search
+        ends. A peer that cannot be asked is passed over for this pass, and
+        the pass stops short when the module is stopping.
+        """
+        for session in self._by_prefix(broadcast.prefix):
+            with self._lock:
+                if not self._running:
+                    return
+
+            if session.node_id == broadcast.asker:
+                continue
+
+            try:
+                self.exchange.search(session, broadcast.prefix)
+
+            except OSError as error:
+                self.logger.debug(
+                    "Could not ask %s to search for %s: %s",
+                    session.endpoint,
+                    broadcast.prefix,
+                    error,
+                )
+
+        if broadcast.pass_number >= broadcast.passes:
+            self._end_broadcast(broadcast)
+            return
+
+        broadcast.pass_number += 1
+        pause_seconds = self._config.network.retry_after_seconds
+
+        with self._lock:
+            heappush(
+                self._next_passes, (self._clock() + pause_seconds, next(self._order), broadcast)
+            )
+
+        self.logger.debug(
+            "The search of the peers for %s asks again in %d seconds",
+            broadcast.prefix,
+            pause_seconds,
+        )
+
+    def _end_broadcast(self, broadcast: _Broadcast) -> None:
+        """End ``broadcast``, holding off another search of its prefix for a while."""
+        with self._lock:
+            if self._broadcasts.get(broadcast.prefix) is not broadcast:
+                return
+
+            del self._broadcasts[broadcast.prefix]
+            self._broadcast_held[broadcast.prefix] = (
+                self._clock() + self._config.peers.broadcast_hold_seconds
+            )
+
+        self.logger.debug("Searched the peers for %s", broadcast.prefix)
+
     def _hand_off(self, content_id: ContentId, copies: int) -> None:
         """Hand-off thread: push ``content_id`` to peers until ``copies`` accept it, and say which.
 
@@ -1118,13 +1277,17 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
 
     def _by_match(self, content_id: ContentId) -> list[PeerSession]:
         """The connected peers, those whose id best matches ``content_id``'s hash first."""
+        return self._by_prefix(content_id.hash)
+
+    def _by_prefix(self, prefix: str) -> list[PeerSession]:
+        """The connected peers, those whose id best matches the hex ``prefix`` first."""
         with self._lock:
             sessions = {node_id: peer.session for node_id, peer in self._peers.items()}
 
         if not sessions:
             return []
 
-        return [sessions[node_id] for node_id in nearest(content_id.hash, sessions, len(sessions))]
+        return [sessions[node_id] for node_id in nearest(prefix, sessions, len(sessions))]
 
 
 def _dialable(endpoint: str) -> bool:

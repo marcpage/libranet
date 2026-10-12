@@ -11,7 +11,8 @@ The payloads it consumes, by event:
 
 ``data.requested``     ``{"algorithm", "hash", "external"}`` (Step 5)
 ``data.not_found``     ``{"algorithm", "hash"}`` (Step 5)
-``data.search_requested`` ``{"prefix"}`` (Step 5)
+``data.search_requested`` ``{"prefix", "node_id"}`` (Step 5; ``node_id`` Phase 4 Step 93)
+``data.search_answered`` ``{"prefix", "node_id", "results": [...]}`` (Phase 4 Step 93)
 ``data.stored``        ``{"algorithm", "hash", "node_id", "size"}`` (Step 7)
 ``data.rejected``      ``{"algorithm", "hash", "node_id"}`` (Step 7)
 ``nodes.received``     ``{"nodes": {endpoint: node id}, "sources": {endpoint: source}}``
@@ -35,7 +36,15 @@ are both requests this node could not answer, so each becomes an entry in
 its own seek list until the content arrives or the entry ages out. Storing
 content clears its entry. A miss for content the source of truth holds by
 the time it is handled, as when its ``data.stored`` was broadcast first,
-makes none.
+makes none. A search the seek list does not name yet has it written again at
+once, rather than at the next derivation, so that the peers connected read it
+on their next refresh and push what they hold that matches (HttpApi §10.7.2,
+Phase 4 Step 93).
+
+The hashes a peer answered a search with, as the connection manager asked
+it (``data.search_answered``), are known from then on, held or not, and
+added to the cached answer to that search, so that the next search lists
+them (HttpApi §6).
 
 ``data.blocked`` names content this node will not hold, for good (Phase 4
 Step 30). It is recorded, and no longer sought, and the blocked list
@@ -131,6 +140,7 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             EventType.DATA_REQUESTED,
             EventType.DATA_NOT_FOUND,
             EventType.SEARCH_REQUESTED,
+            EventType.SEARCH_ANSWERED,
             EventType.DATA_STORED,
             EventType.DATA_REJECTED,
             EventType.NODES_RECEIVED,
@@ -180,6 +190,7 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
                 EventType.DATA_REQUESTED: self._on_data_requested,
                 EventType.DATA_NOT_FOUND: self._on_data_not_found,
                 EventType.SEARCH_REQUESTED: self._on_search_requested,
+                EventType.SEARCH_ANSWERED: self._on_search_answered,
                 EventType.DATA_STORED: self._on_data_stored,
                 EventType.DATA_REJECTED: self._on_data_rejected,
                 EventType.NODES_RECEIVED: self._on_nodes_received,
@@ -287,9 +298,23 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self.database.record_seek(SeekKind.DATA, [str(content_id)])
 
     def _on_search_requested(self, message: Message) -> None:
+        """Seek ``prefix``, listing it at once if it is new, and add what is known to its answer."""
         prefix = normalize_prefix(message["prefix"])
+        new = not self.database.is_sought(SeekKind.SEARCH, prefix)
         self.database.record_seek(SeekKind.SEARCH, [prefix])
 
+        if new and self.deriver.write_seek_list():
+            self.logger.debug("Seek list rewritten for the search for %s", prefix)
+
+        self._enrich(prefix)
+
+    def _on_search_answered(self, message: Message) -> None:
+        """Know what a peer answered a search with, and add it to the cached answer."""
+        prefix = normalize_prefix(message["prefix"])
+        self.database.record_heard_of(ContentId.parse(text) for text in message["results"])
+        self._enrich(prefix)
+
+    def _enrich(self, prefix: str) -> None:
         if self.enricher.enrich(prefix):
             self.logger.debug("Enriched the cached search for %s", prefix)
 

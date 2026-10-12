@@ -12,6 +12,7 @@ from libranet.connections.errors import (
     PeerAuthenticationError,
 )
 from libranet.connections.module import (
+    BROADCAST_WORKERS,
     FETCH_WORKERS,
     PUSH_WORKERS,
     ConnectionsModule,
@@ -31,6 +32,7 @@ from libranet.connections.response_parser import (
 from libranet.connections.reverse_dns import ResolveNames, ReverseLookup, host_names
 
 __all__ = [
+    "BROADCAST_WORKERS",
     "FETCH_WORKERS",
     "MAX_HEAD_BYTES",
     "PIPELINE_DEPTH",

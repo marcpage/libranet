@@ -90,7 +90,7 @@ class ListDeriver:
             self._stats.max_addresses_per_node, self._stats.max_address_failures
         )
         _write_if_changed(self._storage.node_list_path, self._node_list_body())
-        _write_if_changed(self._storage.seek_list_path, self._seek_list_body())
+        self.write_seek_list()
         candidate_list_changed = _write_if_changed(
             self._storage.candidate_list_path, render_candidate_list(self._candidates())
         )
@@ -102,6 +102,14 @@ class ListDeriver:
             blocked_list=self._storage.blocked_list_path,
             candidate_list_changed=candidate_list_changed,
         )
+
+    def write_seek_list(self) -> bool:
+        """Rewrite the seek list, unless it lists what the database does already.
+
+        Returns:
+            Whether it was rewritten.
+        """
+        return _write_if_changed(self._storage.seek_list_path, self._seek_list_body())
 
     def write_blocked_list(self) -> bool:
         """Rewrite the blocked list, unless it names what the database does already.
