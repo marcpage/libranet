@@ -51,6 +51,7 @@ from libranet.protocol.http_syntax import (
 )
 from libranet.protocol.identity_requests import (
     MIN_PASSWORD_CHARACTERS,
+    FallbackRequest,
     IdentityRequest,
     SignInRequest,
 )
@@ -96,6 +97,7 @@ __all__ = [
     "EntrySource",
     "ExportRequest",
     "FileSource",
+    "FallbackRequest",
     "IdentityRequest",
     "ImportRequest",
     "InvalidConfigRequestError",

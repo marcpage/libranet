@@ -1,7 +1,8 @@
 """Tests for remembering what the unbundler found at application paths, and waiting on it."""
 
 from __future__ import annotations
-from threading import Thread, Timer
+from concurrent.futures import ThreadPoolExecutor
+from threading import Timer
 from time import monotonic
 
 from pytest import mark, raises
@@ -57,15 +58,17 @@ def test_threads_can_remember_and_recall_at_once() -> None:
             outcomes.remember(BUNDLE, f"{worker}/{index}", NOT_FOUND)
             outcomes.recall(BUNDLE, f"{worker}/{index // 2}")
 
-    threads = [Thread(target=churn, args=(worker,)) for worker in range(4)]
+    # Each worker's result is waited on, so that one that raised fails the test.
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for churned in [pool.submit(churn, worker) for worker in range(4)]:
+            churned.result()
 
-    for thread in threads:
-        thread.start()
-
-    for thread in threads:
-        thread.join()
-
-    assert outcomes.recall(BUNDLE, "3/499") == NOT_FOUND
+    # Which worker finished last, and so whose outcomes are kept, is the
+    # scheduler's to say. That the limit is held, each kept as remembered, is not.
+    kept = [
+        outcomes.recall(BUNDLE, f"{worker}/{index}") for worker in range(4) for index in range(500)
+    ]
+    assert [outcome for outcome in kept if outcome is not None] == [NOT_FOUND] * 64
 
 
 def test_the_limit_must_be_positive() -> None:

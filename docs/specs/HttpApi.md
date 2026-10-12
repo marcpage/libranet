@@ -302,16 +302,17 @@ protection, since every endpoint that serves only local clients checks
 for itself.
 
 These endpoints serve only local clients: blocking content (§5.5), making
-an identity and the session (§11.3, §11.4), making a signed drop (§11.5),
+an identity, a fallback taking over, and the session (§11.3, §11.4), making
+a signed drop (§11.5),
 opening an encrypted block (§11.6), listing the folders a node offers and
 importing a file from one (§12.2), making and changing bundles (§12.3), and
 changing an application's store (§13.3). So does making a drop encrypted by
 a username and password (§11.6).
 A request to one of them from any other client MUST be refused with
-`403 Forbidden`. Blocking, the identities, session, signed drops, encrypted
-blocks, folders, imports, and bundles are served only from a page of a
-trusted application, and an application's store is changed only from a page
-of its own (§2.5).
+`403 Forbidden`. Blocking, the identities, fallbacks, session, signed drops,
+encrypted blocks, folders, imports, and bundles are served only from a page
+of a trusted application, and an application's store is changed only from a
+page of its own (§2.5).
 
 A loopback source does not show that the person at the machine made the
 request. Any site's page that a browser on the machine has open can send
@@ -348,8 +349,9 @@ Some endpoints are meant only for the pages a node serves, and never for
 another node:
 
 - on the main port: whether the client is local (§2.4), blocking content
-  (§5.5), making a drop (§9.6), making an identity and the session (§11.3,
-  §11.4), making a signed drop (§11.5), opening an encrypted block (§11.6),
+  (§5.5), making a drop (§9.6), making an identity, a fallback taking over,
+  and the session (§11.3, §11.4), making a signed drop (§11.5), opening an
+  encrypted block (§11.6),
   the folders and imports (§12.2), making bundles (§12.3), an application's
   store (§13.3), and the list of applications (§13.4);
 - on `/config`'s port: every endpoint beneath `/config/api` (§2.3).
@@ -376,8 +378,9 @@ Some endpoints ask more of the page:
 
 - **An application's store** is read and changed only from a page of the
   application whose store it is (§13.3).
-- **Blocking content, making an identity, the session, making a signed
-  drop, opening an encrypted block, making a drop encrypted by a password,
+- **Blocking content, making an identity, a fallback taking over, the
+  session, making a signed drop, opening an encrypted block, making a drop
+  encrypted by a password,
   the folders, imports, and making bundles** are served only from a page of
   a trusted application (§13.5).
 
@@ -1434,7 +1437,8 @@ neither makes nor opens a smaller one, whatever sizes it makes. Its **identity
 block** is the JSON object
 
 ```json
-{"private_key": "-----BEGIN PRIVATE KEY-----\n…", "created": "2026-10-10T14:03:22Z"}
+{"private_key": "-----BEGIN PRIVATE KEY-----\n…", "created": "2026-10-10T14:03:22Z",
+ "fallback": "sha256/…"}
 ```
 
 whose `private_key` is the key PEM-encoded as unencrypted PKCS #8, the
@@ -1442,7 +1446,11 @@ whose `private_key` is the key PEM-encoded as unencrypted PKCS #8, the
 [RFC 7468 §10](https://www.rfc-editor.org/rfc/rfc7468.html#section-10),
 and whose `created` is when the identity was made: a UTC time to the second,
 as [RFC 3339 §5.6](https://www.rfc-editor.org/rfc/rfc3339.html#section-5.6)
-writes one, ending `Z`. A block without either opens to no identity.
+writes one, ending `Z`. A block without either opens to no identity. It
+names the identity's fallback, below, as `fallback`, its id; a fallback's
+own block names, as `fallback_for`, the id of the identity it takes over
+from, and, once the fallback has taken over, its own fallback as
+`fallback` too. A block naming neither opens to no identity.
 The block is protected as a bundle's JSON is (BundleSpecification §6.1), by
 the costly derivation `ARGON2ID` from the person's username and password
 (BundleSpecification §6.2.1), with the default IV, and is made a drop (§9)
@@ -1461,40 +1469,74 @@ the top of a search for it it is, however many other blocks are placed there
 (§9.4, §9.5), so a person says how long to search for its nonce when the
 identity is made.
 
+Every identity has a **fallback**: a second identity, made with it, which
+takes over should the first be compromised, its private key stolen or lost.
+The fallback's private key is kept as the first's is, in an identity block
+at the same drop, but protected by a second password, the **fallback
+password**, which the person keeps apart from the first, so that whoever
+learns one does not learn the other. Signing in with the username and the
+fallback password signs in as the fallback (§11.4).
+
+The identity names its fallback in the first version of what the person says
+of themselves: a signed bundle (§11.5), signed by the identity, made a drop
+at the target string `user:{id}`, the person's id after `user:`, whose
+`contents` is
+
+```json
+{"created": "2026-10-10T14:03:22Z", "fallback": "sha256/…", "fields": {}, "version": 1}
+```
+
+`created` is when the identity was made, `fallback` the fallback's id,
+`fields` what the person says of themselves, nothing at first, and
+`version` 1. Each version after it names the same fallback, and names the
+version it replaces, so that a reader can walk the history back to the
+first. The
+fallback never changes: versions naming another fallback, or none, mean the
+identity is compromised. How applications read the versions, and say an
+identity is compromised, is theirs. The node makes the first version, and
+signs and checks the rest for a page (§11.5), but judges none.
+
 A page of the node makes an identity with:
 
 ```http
 POST /data/users
 Content-Type: application/json
 
-{"username": "alice", "password": "…", "key_bits": 3072, "seconds": 10, "minimum_bits": 16}
+{"username": "alice", "password": "…", "fallback_password": "…",
+ "key_bits": 3072, "seconds": 10, "minimum_bits": 16}
 ```
 
-- **`username`** and **`password`** are strings. A password is at least 8
-  characters.
-- **`key_bits`** is the size of the RSA key, one of the sizes the node
+- **`username`**, **`password`**, and **`fallback_password`** are strings.
+  Each password is at least 8 characters, and the two differ.
+- **`key_bits`** is the size of the RSA keys, one of the sizes the node
   makes, which it sets. 2048, 3072, and 4096 are RECOMMENDED. A larger key
   takes longer to make, and to guess. A size the node does not make is
   `400 Bad Request`.
 - **`seconds`** and **`minimum_bits`** are as for making a drop (§9.6), and
   limited alike. `minimum_bits` is 0 if absent.
 
-The node makes the key pair, stores the public key, and makes the identity
-block a drop, as §9.6 makes one. It answers `201 Created`, with a
-`Location` naming the public key, and signs the person in (§11.4):
+The node makes two key pairs, the identity's and its fallback's, and makes
+three drops as §9.6 makes one: the fallback's identity block, the first
+version naming it, and the identity's own block, in that order, so that the
+identity opens only once its fallback is named. The three share `seconds`,
+a third each, and each matches at least `minimum_bits`. The node stores both
+public keys. It answers `201 Created`, with a `Location` naming the
+identity's public key, and signs the person in (§11.4):
 
 ```json
 {"id": "sha256/…", "username": "alice", "created": "2026-10-10T14:03:22Z",
+ "fallback": "sha256/…", "fallback_for": null,
  "drop": "sha256/…", "target": "<target hash>", "matching_bits": 21}
 ```
 
-`id` is the person's id, `username` the normalized username, and `created`
-when the identity was made, as its block records it. `drop`,
-`target`, and `matching_bits` are the identity block's id, the target hash,
-and how many leading bits the two share, as §9.6 gives them. A request is
-`409 Conflict` if the username and password already open an identity at
-the drop, among the blocks the node holds, since signing in would then find
-either one.
+`id` is the person's id, `username` the normalized username, `created`
+when the identity was made, as its block records it, and `fallback` and
+`fallback_for` as signing in gives them. `drop`, `target`, and
+`matching_bits` are the identity block's id, the target hash, and how many
+leading bits the two share, as §9.6 gives them. A request is `409 Conflict`
+if the username and either password already open an identity at the drop,
+among the blocks the node holds, since signing in would then find either
+one.
 
 The `/config` application (§2.3) makes an identity too, so that a node's
 operator can make one for a person:
@@ -1503,7 +1545,8 @@ operator can make one for a person:
 POST /config/api/users
 Content-Type: application/json
 
-{"username": "alice", "password": "…", "key_bits": 3072, "seconds": 10, "minimum_bits": 16}
+{"username": "alice", "password": "…", "fallback_password": "…",
+ "key_bits": 3072, "seconds": 10, "minimum_bits": 16}
 ```
 
 It takes the same body as `POST /data/users`, makes the identity the same
@@ -1513,6 +1556,43 @@ keeps cookies by host and not by port (§11.4), so a session started on
 `/config`'s port would be the browser's on the main port too. Nor does a
 `Location` name the public key, since `/config`'s port serves nothing
 beneath `/data`.
+
+A fallback **takes over** when its identity is compromised. It is the
+person's identity from then on, and is given a fallback of its own as it
+takes over, so that the person is never left without a way back. A page of
+the node has it take over with:
+
+```http
+POST /data/fallback
+Content-Type: application/json
+
+{"username": "alice", "password": "…", "fallback_password": "…",
+ "seconds": 10, "minimum_bits": 16}
+```
+
+`password` is the fallback password that opens the fallback, and
+`fallback_password` a new one, for its own fallback, at least 8 characters,
+and not the other. `seconds` and `minimum_bits` are as for making an
+identity. The node opens the fallback as signing in opens an identity
+(§11.4), and makes its new fallback a key pair as large as the fallback's,
+whose identity block names the fallback as `fallback_for`. It makes three
+drops, as making an identity does, sharing `seconds`: the new fallback's
+identity block, opened by the new fallback password, the first version of
+what the fallback says of itself, at `user:{id}` of the fallback's id,
+naming its new fallback, and the fallback's identity block again, opened by
+the same password as before, naming both its new fallback and the identity
+it takes over from. It stores the new fallback's public key, and answers
+`200 OK`, signing the person in as the fallback (§11.4), as making an
+identity answers, with `fallback` naming the new fallback.
+
+What the password opens must be a fallback with no fallback of its own:
+anything else is `409 Conflict`, as is a new fallback password that already
+opens an identity at the drop. When nothing the password opens is found, it
+is answered as signing in is, `503 Service Unavailable`.
+
+A fallback with no fallback of its own signs nothing (§11.5). So a fallback
+that says its identity is compromised has taken over, and has a fallback of
+its own, whenever it says so.
 
 ### 11.4 Signing In
 
@@ -1527,19 +1607,29 @@ Content-Type: application/json
 
 The node searches the drop `user:{username}` (§9.4), and tries each block
 found with the key the username and password derive. The first that opens
-to an identity block is the person's. The node answers `200 OK` with the
-person's id and username, and a cookie naming a new session:
+to an identity block is the person's, unless it is a fallback's naming no
+fallback of its own, and another block of the same key names one: a
+fallback that took over has both (§11.3), and the later is the one used.
+The node answers `200 OK` with the person's id and username, and a cookie
+naming a new session:
 
 ```http
 Set-Cookie: libranet-session=…; Path=/; HttpOnly; SameSite=Strict
 ```
 
 ```json
-{"id": "sha256/…", "username": "alice", "created": "2026-10-10T14:03:22Z"}
+{"id": "sha256/…", "username": "alice", "created": "2026-10-10T14:03:22Z",
+ "fallback": "sha256/…", "fallback_for": null}
 ```
 
 `created` is when the identity was made, as its block records it (§11.3), so
 that what a person says of themselves can say when their id was made.
+`fallback` is the id of the identity's fallback, and `fallback_for` is
+`null`. Signed in with the fallback password, as the fallback, `fallback_for`
+is the id of the identity the fallback takes over from, and `fallback` is
+`null` until the fallback has taken over, and then the id of its own
+fallback. A page writes `fallback` into what it has the person sign (§11.5),
+as the block records it.
 
 Each search of the drop starts a search of the node's peers, as any search does
 (§6), unless one is under way or has only just ended. Blocks found and not held
@@ -1562,7 +1652,8 @@ it. A browser keeps cookies by host and not by port, so the cookie is sent to
 every port of the node's host, `/config`'s too, which ignores it.
 
 `GET /data/session` says who is signed in, as signing in answers, or
-`{"id": null, "username": null, "created": null}` when no one is.
+`{"id": null, "username": null, "created": null, "fallback": null,
+"fallback_for": null}` when no one is.
 `DELETE /data/session` signs out, and is answered `204 No Content`, removing
 the cookie. A session also ends when it goes unused for a time the node
 sets, and when the node restarts. Every response that names a session
@@ -1608,7 +1699,9 @@ with a `Location` naming the drop:
 ```
 
 `signer` is the person's id. A request from a browser no one is signed in
-on is `401 Unauthorized`, with the problem type `session-required` (§17.2).
+on is `401 Unauthorized`, with the problem type `session-required` (§17.2),
+and one from a browser signed in as a fallback that has not taken over, and
+so names no fallback of its own (§11.3), is `403 Forbidden`.
 `text` that is not the JSON text of an object, or content given as `base64`,
 is `400 Bad Request`, and a signed bundle that does not fit in an object even
 compressed is `413 Content Too Large`. Making a signed drop serves only local
@@ -2683,8 +2776,8 @@ Potential limits include:
 A node limits the drop-search work a page asks of it by how long a search
 may take and how many bits it must match, signed, encrypted, or neither (§9.6,
 §11.5, §11.6). It derives one key from a username and password at a time,
-whichever of its ports is asked, and whether to sign in, encrypt, or open a
-block (§11.4, §11.6).
+whichever of its ports is asked, and whether to make an identity, take over,
+sign in, encrypt, or open a block (§11.3, §11.4, §11.6).
 
 A request whose body is larger than the node takes is refused with
 `413 Content Too Large` (§17.2, `content-too-large`), unread if its
@@ -2804,6 +2897,7 @@ The following table summarizes the currently proposed HTTP API.
 | `/data/drop`                         | `POST`       | Make a drop, from a page of the node (§9.6)                | Defined |
 | `/data/drop/{target}`                | `GET`        | Search a drop by its target string (§9.7)                  | Defined |
 | `/data/users`                        | `POST`       | Make a person's identity, locally (§11.3)                  | Defined |
+| `/data/fallback`                     | `POST`       | Have a fallback take over, locally (§11.3)                 | Defined |
 | `/data/session`                      | Various      | Sign in, say who is signed in, sign out, locally (§11.4)   | Defined |
 | `/data/signed`                       | `POST`       | Make a drop signed as a person, locally (§11.5)            | Defined |
 | `/data/signed/{algorithm}/{hash}`    | `GET`        | Check signed content, and read what it signs (§11.5)       | Defined |

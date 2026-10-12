@@ -1,6 +1,7 @@
 """Tests for a person's identity: usernames, and key pairs kept in identity blocks."""
 
 from __future__ import annotations
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta, timezone
 from json import loads
 
@@ -18,10 +19,11 @@ from pytest import fixture, mark, raises
 
 from libranet.bundle.errors import IncorrectPasswordError, MalformedBundleError
 from libranet.bundle.protection import PasswordKey
+from libranet.bundle.signing import SignedBundle
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
 from libranet.identity.errors import KeyFileError
-from libranet.identity.people import MAX_USERNAME_CHARACTERS, PersonKey, Username
+from libranet.identity.people import MAX_USERNAME_CHARACTERS, NewIdentity, PersonKey, Username
 from libranet.json_format import compact_json
 
 PASSWORD = "correct horse battery staple"
@@ -31,8 +33,13 @@ CREATED = "2026-10-10T14:03:22Z"
 
 
 @fixture(scope="module")
-def person() -> PersonKey:
-    return PersonKey.generate(2048)
+def made() -> NewIdentity:
+    return NewIdentity.generate(2048)
+
+
+@fixture(scope="module")
+def person(made: NewIdentity) -> PersonKey:
+    return made.key
 
 
 @fixture(scope="module")
@@ -132,6 +139,18 @@ def test_a_sealed_identity_opens_with_its_password_as_a_drop(
     assert opened.person_id == person.person_id
     assert opened.public_key == person.public_key
     assert opened.created == person.created
+    assert opened.fallback == person.fallback
+    assert opened.fallback_for is None
+
+
+def test_a_sealed_fallback_opens_to_the_identity_it_takes_over_from(
+    made: NewIdentity, alices_key: PasswordKey
+) -> None:
+    opened = PersonKey.opened(made.fallback.sealed(alices_key) + b"\x00", alices_key)
+
+    assert opened.person_id == made.fallback.person_id
+    assert opened.fallback is None
+    assert opened.fallback_for == made.key.person_id
 
 
 def test_a_sealed_identity_does_not_open_with_another_password(
@@ -157,9 +176,106 @@ def test_an_identity_block_holds_the_private_key_as_pkcs8(
 ) -> None:
     block = loads(alices_key.unprotect(person.sealed(alices_key), 64 * 1024))
 
-    assert sorted(block) == ["created", "private_key"]
+    assert sorted(block) == ["created", "fallback", "private_key"]
     assert block["private_key"].startswith("-----BEGIN PRIVATE KEY-----")
     assert block["created"] == person.created_text
+    assert block["fallback"] == str(person.fallback)
+
+
+def test_a_key_pair_naming_no_fallback_is_not_sealed(
+    person: PersonKey, alices_key: PasswordKey
+) -> None:
+    with raises(ValueError, match="names no fallback"):
+        replace(person, fallback=None).sealed(alices_key)
+
+
+@mark.parametrize(
+    "named, complaint",
+    [
+        ({}, 'a "fallback", a "fallback_for", or both'),
+        ({"fallback": None}, 'a "fallback", a "fallback_for", or both'),
+        ({"fallback": 7}, '"fallback" is an id'),
+        ({"fallback_for": "sha256/ABC"}, '"fallback_for" is no id'),
+        ({"fallback": "md5/" + "a" * 32}, '"fallback" is no id'),
+    ],
+)
+def test_a_block_naming_neither_or_no_id_opens_to_no_identity(
+    person: PersonKey, alices_key: PasswordKey, named: dict[str, object], complaint: str
+) -> None:
+    encoded = person.private_key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption())
+    value = {"private_key": encoded.decode("ascii"), "created": CREATED, **named}
+
+    with raises(KeyFileError, match=complaint):
+        PersonKey.opened(sealed_json(value, alices_key) + b"\x00", alices_key)
+
+
+def test_a_new_identity_and_its_fallback_name_each_other_and_were_made_at_once(
+    made: NewIdentity,
+) -> None:
+    assert made.key.fallback == made.fallback.person_id
+    assert made.key.fallback_for is None
+    assert made.fallback.fallback_for == made.key.person_id
+    assert made.fallback.fallback is None
+    assert made.fallback.created == made.key.created
+    assert made.fallback.person_id != made.key.person_id
+    assert made.fallback.private_key.key_size == made.key.private_key.key_size == 2048
+
+
+def test_an_identity_and_a_fallback_that_do_not_name_each_other_are_refused(
+    made: NewIdentity,
+) -> None:
+    other = NewIdentity.generate(2048)
+
+    with raises(ValueError, match="must name"):
+        NewIdentity(made.key, other.fallback)
+
+    with raises(ValueError, match="must take over from"):
+        NewIdentity(replace(made.key, fallback=other.fallback.person_id), other.fallback)
+
+
+def test_a_fallback_takes_over_with_a_new_fallback_of_its_own(
+    made: NewIdentity, alices_key: PasswordKey
+) -> None:
+    taken = NewIdentity.taken_over(made.fallback)
+
+    assert taken.key.person_id == made.fallback.person_id
+    assert taken.key.fallback == taken.fallback.person_id
+    assert taken.key.fallback_for == made.key.person_id
+    assert taken.key.created == made.fallback.created
+    assert taken.fallback.fallback_for == made.fallback.person_id
+    assert taken.fallback.fallback is None
+    assert taken.fallback.person_id not in (made.key.person_id, made.fallback.person_id)
+    assert taken.fallback.private_key.key_size == 2048
+    opened = PersonKey.opened(taken.key.sealed(alices_key) + b"\x00", alices_key)
+    assert (opened.fallback, opened.fallback_for) == (taken.key.fallback, taken.key.fallback_for)
+
+
+def test_only_a_fallback_with_no_fallback_of_its_own_takes_over(made: NewIdentity) -> None:
+    with raises(ValueError, match="is no fallback"):
+        NewIdentity.taken_over(made.key)
+
+    with raises(ValueError, match="has a fallback already"):
+        NewIdentity.taken_over(NewIdentity.taken_over(made.fallback).key)
+
+
+def test_the_first_version_names_the_fallback_signed_by_the_identity(made: NewIdentity) -> None:
+    signed = SignedBundle.decoded(made.key.first_version().encoded())
+
+    signed.verified(made.key.public_key)
+    assert signed.signer == made.key.person_id
+    assert signed.contents == (
+        f'{{"created":"{made.key.created_text}","fallback":"{made.fallback.person_id}",'
+        '"fields":{},"version":1}'
+    )
+
+
+def test_no_first_version_is_made_naming_no_fallback(made: NewIdentity) -> None:
+    with raises(ValueError, match="names no fallback"):
+        made.fallback.first_version()
+
+
+def test_what_a_person_says_is_kept_at_the_drop_their_id_names(person: PersonKey) -> None:
+    assert person.details_target == DropTarget.of(f"user:{person.person_id}")
 
 
 def test_a_new_identity_is_made_now_to_the_second(person: PersonKey) -> None:
@@ -229,8 +345,10 @@ def test_a_block_holding_a_key_too_small_is_refused(alices_key: PasswordKey) -> 
         )
 
 
-def test_a_key_pair_whose_parts_do_not_belong_together_is_refused(person: PersonKey) -> None:
-    other = PersonKey.generate(2048)
+def test_a_key_pair_whose_parts_do_not_belong_together_is_refused(
+    person: PersonKey, made: NewIdentity
+) -> None:
+    other = made.fallback
 
     with raises(ValueError, match="private key's own"):
         PersonKey(person.private_key, other.public_key, other.person_id, person.created)

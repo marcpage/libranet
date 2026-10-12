@@ -24,6 +24,7 @@ from threading import Lock
 from time import monotonic
 from typing import Callable, Final
 
+from libranet.cas.content_id import ContentId
 from libranet.identity.people import PersonKey, Username
 from libranet.webserver.http_types import Request
 
@@ -53,15 +54,19 @@ class Session:
     username: Username
     key: PersonKey
 
-    def value(self) -> dict[str, str]:
-        """What says who is signed in: the person's id, username, and when the id was made.
+    def value(self) -> dict[str, str | None]:
+        """What says who is signed in: the person's id, username, when the id was made, and more.
 
-        As HttpApi §11.4 gives it.
+        The more is the identity's fallback, or, signed in as a fallback, the
+        identity it takes over from, each ``None`` when not named, as HttpApi
+        §11.4 gives them.
         """
         return {
             "id": str(self.key.person_id),
             "username": self.username.text,
             "created": self.key.created_text,
+            "fallback": _text(self.key.fallback),
+            "fallback_for": _text(self.key.fallback_for),
         }
 
 
@@ -143,6 +148,11 @@ class Sessions:
     def _is_idle(self, kept: _Held, now: float) -> bool:
         """Whether ``kept`` has gone unused for this node's idle time, at ``now``."""
         return now - kept.last_used >= self._idle_seconds
+
+
+def _text(content_id: ContentId | None) -> str | None:
+    """``content_id`` as a page is given it; ``None`` for none."""
+    return None if content_id is None else str(content_id)
 
 
 def _tokens(request: Request) -> tuple[str, ...]:

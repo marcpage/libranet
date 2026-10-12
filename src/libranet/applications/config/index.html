@@ -212,8 +212,9 @@
     <p class="hint">A person signs in to this node's applications with a username and password.
     Their identity is kept in the network, encrypted by both, so they can sign in with them on
     any node that holds it. This node keeps no list of the people who have one, and a forgotten
-    password cannot be reset. Once you create one, you are offered a link that adds them to the
-    user directory.</p>
+    password cannot be reset. Each person also has a fallback password, which signs in as a
+    second identity made with the first, their fallback, should the first be compromised. Once
+    you create one, you are offered a link that adds them to the user directory.</p>
     <form id="user-form">
       <h3>Create a user</h3>
       <div class="fields">
@@ -229,6 +230,14 @@
           <input id="user-password-again" type="password" required minlength="8"
                  autocomplete="new-password">
         </label>
+        <label>Fallback password
+          <input id="user-fallback-password" type="password" required minlength="8"
+                 autocomplete="new-password">
+        </label>
+        <label>Fallback password again
+          <input id="user-fallback-password-again" type="password" required minlength="8"
+                 autocomplete="new-password">
+        </label>
         <label>Key
           <select id="user-key-bits">
             <option value="2048">2048 bits, quickest</option>
@@ -239,8 +248,10 @@
         <button type="submit">Create</button>
       </div>
       <p class="hint">A username is the same however it is cased, and a password is at least 8
-      characters. A larger key takes longer to make, and to guess. Creating a user takes about
-      ten seconds, and does not sign you in.</p>
+      characters. The fallback password is another, which the person keeps apart from the first,
+      written down, say, since whoever learns both can take over the identity for good. A larger
+      key takes longer to make, and to guess. Creating a user takes about ten seconds, and does
+      not sign you in.</p>
       <p class="result" role="status" hidden></p>
     </form>
   </section>
@@ -924,14 +935,25 @@ function offerUserChoices(node) {
 
 onSubmit(byId("user-form"), async () => {
   const password = byId("user-password").value;
+  const fallbackPassword = byId("user-fallback-password").value;
 
   if (password !== byId("user-password-again").value) {
     return ["The two passwords differ.", true];
   }
 
+  if (fallbackPassword !== byId("user-fallback-password-again").value) {
+    return ["The two fallback passwords differ.", true];
+  }
+
+  // The node compares them composed alike (HttpApi 11.3), and so does this.
+  if (fallbackPassword.normalize("NFC") === password.normalize("NFC")) {
+    return ["The fallback password must differ from the password.", true];
+  }
+
   const request = {
     username: byId("user-name").value,
     password,
+    fallback_password: fallbackPassword,
     key_bits: Number(byId("user-key-bits").value),
     seconds: userSeconds,
     minimum_bits: userMinimumBits,
@@ -947,8 +969,12 @@ onSubmit(byId("user-form"), async () => {
   }
 
   byId("user-form").reset();
-  const { id, username } = result.value;
-  show(message, `The user ${username} was created, as ${id}, and can sign in now. `);
+  const { id, username, fallback } = result.value;
+  show(
+    message,
+    `The user ${username} was created, as ${id}, and can sign in now. Their fallback ` +
+      `password signs in as their fallback, ${fallback}. `,
+  );
   message.append(directoryLink(id));
   return null;
 });

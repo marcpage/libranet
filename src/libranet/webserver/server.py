@@ -117,7 +117,12 @@ from libranet.webserver.http_types import (
     StreamedBody,
     problem_response,
 )
-from libranet.webserver.identity_handlers import SESSION_PATH, USERS_PATH, Identities
+from libranet.webserver.identity_handlers import (
+    FALLBACK_PATH,
+    SESSION_PATH,
+    USERS_PATH,
+    Identities,
+)
 from libranet.webserver.inbound_peers import InboundConnection, InboundPeers
 from libranet.webserver.list_handlers import ListFileHandler, NodeListHandler, SeekListHandler
 from libranet.webserver.local_folders import DIRECTORY_PATTERN, DirectoryHandler, LocalFolders
@@ -336,6 +341,7 @@ def build_router(  # pylint: disable=too-many-locals
         # The encrypted routes before the bundle route, whose pattern they also fit.
         for method, path, handler in (
             ("POST", USERS_PATH, identities.make),
+            ("POST", FALLBACK_PATH, identities.take_over),
             ("POST", SESSION_PATH, identities.sign_in),
             ("GET", SESSION_PATH, identities.signed_in),
             ("DELETE", SESSION_PATH, identities.sign_out),
