@@ -215,6 +215,14 @@ class PeerConfig(_Section):
     # (Phase 2 Steps 27 and 55). Provisional default.
     failed_search_hold_seconds: float = Field(default=300.0, gt=0)
 
+    # Once a search of the connected peers for a prefix has ended, how long
+    # before another search of that prefix, whoever asks it, starts another
+    # (HighLevelDesign §4.7, Phase 4 Step 93). A search a peer asks for starts
+    # one too, so peers still searching would otherwise start it again, and it
+    # them, for ever. Longer than a search takes to reach every node and end.
+    # Provisional default.
+    broadcast_hold_seconds: float = Field(default=60.0, gt=0)
+
     # Path to a JSON seed list overriding the one shipped with the package.
     # Used only while the node knows no peers at all.
     seed_file: Path | None = None
@@ -595,19 +603,24 @@ class LibranetConfig(_Section):
 
     @model_validator(mode="after")
     def _hold_outlasts_searches(self) -> LibranetConfig:
-        # The hold has to outlast the searches of this node's peers
+        # Each hold has to outlast the searches of this node's peers
         # (HighLevelDesign §4.7). Its own passes and Retry-After stand in for
         # theirs, as they do on a network whose nodes are all set alike.
         peers = self.peers
         longest_search = (peers.search_passes - 1) * self.network.retry_after_seconds
+        holds = {
+            "failed_search_hold_seconds": peers.failed_search_hold_seconds,
+            "broadcast_hold_seconds": peers.broadcast_hold_seconds,
+        }
 
-        if peers.failed_search_hold_seconds <= longest_search:
-            raise ValueError(
-                f"peers.failed_search_hold_seconds ({peers.failed_search_hold_seconds}) "
-                f"must be longer than the {longest_search} seconds a search may last: "
-                f"peers.search_passes ({peers.search_passes}) less one, times "
-                f"network.retry_after_seconds ({self.network.retry_after_seconds})"
-            )
+        for name, hold_seconds in holds.items():
+            if hold_seconds <= longest_search:
+                raise ValueError(
+                    f"peers.{name} ({hold_seconds}) "
+                    f"must be longer than the {longest_search} seconds a search may last: "
+                    f"peers.search_passes ({peers.search_passes}) less one, times "
+                    f"network.retry_after_seconds ({self.network.retry_after_seconds})"
+                )
 
         return self
 

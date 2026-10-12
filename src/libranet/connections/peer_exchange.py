@@ -9,14 +9,17 @@ any:
 3. ``POST`` this node's node list.
 4. ``GET`` the peer's seek list.
 5. ``GET`` the peer's node list.
-6. ``PUT`` whatever the peer seeks that this node holds.
+6. ``PUT`` whatever the peer seeks that this node holds, and what it holds
+   that matches a prefix the peer searches for (HttpApi §10.7.2).
 7. ``GET`` whatever this node seeks, in case the peer holds it.
 
 :meth:`PeerExchange.open` connects and takes the first two steps, which
 establish who the peer is; :meth:`PeerExchange.first_contact` takes the
 rest. While the connection lasts, :meth:`PeerExchange.refresh` repeats steps
 4 and 6 (§3.3), and :meth:`PeerExchange.retrieve` is step 7 for a single
-content id, for searching for it on demand (HighLevelDesign §4.7).
+content id, for searching for it on demand (HighLevelDesign §4.7), and
+:meth:`PeerExchange.search` asks the peer to search for a prefix, for a
+search of the peers (Phase 4 Step 93).
 :meth:`PeerExchange.hand_off` pushes one content id the peer did not ask
 for, for it to keep: content this node is letting go (HighLevelDesign §4.5).
 :meth:`PeerExchange.hand_off_many` pushes several such, pipelined: new
@@ -41,20 +44,26 @@ What the exchange learns is published::
     fetch.attempted     {"algorithm", "hash", "node_id", "found"}
     data.put_completed  {"algorithm", "hash", "node_id"}
     data.stored         {"algorithm", "hash", "node_id", "size"}
+    data.search_answered {"prefix": "<hex>", "node_id", "results": ["sha256/<hex>", ...]}
 
 ``data.sent`` is content the peer accepted; ``fetch.attempted`` is each
 content request the peer answered, and whether it sent the content;
 ``data.put_completed`` is content it did send, for the validator.
 ``data.stored`` is the peer's public key, stored, as the validator announces
-content it stores (Phase 2 Step 28).
+content it stores (Phase 2 Step 28). ``data.search_answered`` is what the
+peer answered a search with, no more of it than this node answers a search
+with, for the stats module to know.
 
 A received node list loses its entries naming this node. A ``localhost``
 endpoint is resolved to the peer's IP address, as this node's socket saw it
 (HttpApi §10.2), and dropped if that is not known. The peer's own entries
 are kept as addresses to try, and ``sources`` says which were observed and
-which advertised (Phase 2 Step 23). Only the ``data`` entries of the peer's
-seek list are acted on: no way to push what a ``search`` entry seeks is
-defined yet (HttpApi §10.7.2).
+which advertised (Phase 2 Step 23). For each ``search`` entry of the peer's
+seek list, this node pushes the content it holds whose hash shares at least
+:data:`~libranet.protocol.search.SEARCH_PUSH_MIN_BITS` leading bits with the
+prefix, or the whole prefix if it is shorter, among what a search of its own
+for the prefix finds. It answers each entry once while the list names it
+(HttpApi §10.7.2, Phase 4 Step 93).
 """
 
 from __future__ import annotations
@@ -68,6 +77,7 @@ from typing import Callable, Final, Iterator, Mapping, Sequence, TypeVar
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError
 from libranet.cas.layered import LayeredSource
+from libranet.cas.prefix import BITS_PER_HEX_DIGIT, matching_bits
 from libranet.cas.store import CasStore
 from libranet.cas.verification import content_matches
 from libranet.config.models import LibranetConfig
@@ -90,9 +100,11 @@ from libranet.protocol.lists import (
     decode_list,
     node_list_body,
     parse_node_list,
+    parse_search_results,
     parse_seek_list,
 )
 from libranet.protocol.localhost_resolution import NodeListSender
+from libranet.protocol.search import SEARCH_PATH, SEARCH_PUSH_MIN_BITS, LocalSearch
 
 # Most requests pipelined at once when pushing or asking for many items:
 # enough to keep a connection busy without holding many bodies in memory.
@@ -141,6 +153,7 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
         self._signer = MessageSigner(identity, clock)
         self._source_of_truth = CasStore.source_of_truth(config.storage)
         self._content = LayeredSource.open(config.storage)
+        self._search = LocalSearch(self._content, config.storage.search_max_results)
         self._verifier = MessageVerifier.of(config, clock)
 
     @property
@@ -225,6 +238,33 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
             return Retrieval(found=True)
 
         return Retrieval(found=False, retry_after_seconds=response.retry_after_seconds)
+
+    def search(self, session: PeerSession, prefix: str) -> list[ContentId]:
+        """Ask the peer what it knows nearest a normalized ``prefix``, and publish its answer.
+
+        Returns:
+            What it answered, best first, no more of it than this node
+            answers a search with; nothing if it sent no usable answer.
+
+        Raises:
+            OSError: as :meth:`first_contact`.
+        """
+        (response,) = session.exchange([PeerRequest("GET", f"{SEARCH_PATH}/{prefix}")])
+        found = self._read_list(session, response, parse_search_results)
+
+        if not found:
+            return []
+
+        found = found[: self._search.max_results]
+        self._publish(
+            EventType.SEARCH_ANSWERED,
+            {
+                "prefix": prefix,
+                "node_id": str(session.node_id),
+                "results": [str(content_id) for content_id in found],
+            },
+        )
+        return found
 
     def hand_off(self, session: PeerSession, content_id: ContentId, body: bytes) -> bool:
         """Push ``content_id``, stored as ``body``, for the peer to keep; whether it accepted it.
@@ -362,14 +402,32 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
             self._publish(EventType.NODES_RECEIVED, received)
 
     def _sought_by(self, session: PeerSession, response: PeerResponse) -> list[ContentId]:
-        """The content ids the peer's seek list names."""
+        """The content ids the peer's seek list names, then what matches the searches it names.
+
+        Only the searches not answered yet on this connection are matched.
+        """
         sought = self._read_list(session, response, parse_seek_list)
 
         if sought is None:
             return []
 
-        data, _ = sought
-        return [ContentId.parse(text) for text in data]
+        data, searches = sought
+        matching = [
+            content_id
+            for prefix in session.answering(searches)
+            for content_id in self._matching(prefix)
+        ]
+        # Each once, though a search may match what the list names too.
+        return list(dict.fromkeys([ContentId.parse(text) for text in data] + matching))
+
+    def _matching(self, prefix: str) -> list[ContentId]:
+        """What this node holds matching ``prefix`` closely enough to push for it, best first."""
+        enough_bits = min(SEARCH_PUSH_MIN_BITS, len(prefix) * BITS_PER_HEX_DIGIT)
+        return [
+            content_id
+            for content_id in self._search.search(prefix)
+            if matching_bits(prefix, content_id.hash) >= enough_bits
+        ]
 
     def _read_list(
         self,

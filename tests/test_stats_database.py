@@ -578,6 +578,33 @@ def test_a_nearby_scan_needs_room_for_at_least_one_result(database: StatsDatabas
         database.content_ids_near("5", 0)
 
 
+def test_content_heard_of_is_found_nearby_and_what_was_known_is_kept(
+    database: StatsDatabase,
+) -> None:
+    requested = ContentId("sha256", "8" + "0" * 63)
+    heard_of = ContentId("sha256", "8" + "0" * 62 + "1")
+    database.record_request(requested, external=True)
+
+    database.record_heard_of([requested, heard_of])
+
+    assert database.content_ids_near("8" + "0" * 63, 2) == [requested, heard_of]
+    stats = database.data_stats(requested)
+    assert stats is not None
+    assert stats.external_requests == 1
+
+
+def test_whether_a_request_is_outstanding_is_told_per_node_and_kind(
+    database: StatsDatabase,
+) -> None:
+    database.record_seek(SeekKind.SEARCH, ["abc"])
+    database.record_seek(SeekKind.DATA, ["def"], NODE_ID)
+
+    assert database.is_sought(SeekKind.SEARCH, "abc")
+    assert not database.is_sought(SeekKind.DATA, "abc")
+    assert not database.is_sought(SeekKind.DATA, "def")
+    assert database.is_sought(SeekKind.DATA, "def", NODE_ID)
+
+
 def test_a_nearby_scan_leaves_blocked_content_out(database: StatsDatabase) -> None:
     store_hashes(database, *(f"{index}" + "0" * 63 for index in range(10)))
     database.record_blocked(ContentId("sha256", "5" + "0" * 63))

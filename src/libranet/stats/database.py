@@ -141,6 +141,21 @@ class StatsDatabase:  # pylint: disable=too-many-public-methods
         """Count one upload of ``content_id`` to this node, valid or not."""
         self._add_to_data(content_id, _PUSHES, 1)
 
+    def record_heard_of(self, content_ids: Iterable[ContentId]) -> None:
+        """Know of each of ``content_ids``, as a peer's search answered them, held or not.
+
+        A search may list them from then on (HttpApi §6, Phase 4 Step 93).
+        What is known of one already is left as it is.
+        """
+        self._connection.executemany(
+            "INSERT INTO data_stats (algorithm, hash) VALUES (:algorithm, :hash) "
+            "ON CONFLICT (algorithm, hash) DO NOTHING",
+            [
+                {"algorithm": content_id.algorithm, "hash": content_id.hash}
+                for content_id in content_ids
+            ],
+        )
+
     def record_acquired(self, content_id: ContentId, size_bytes: int) -> None:
         """Note that ``content_id`` was just added to the source of truth, ``size_bytes`` long."""
         self._execute(
@@ -553,6 +568,19 @@ class StatsDatabase:  # pylint: disable=too-many-public-methods
                 "value": value,
             },
         )
+
+    def is_sought(self, kind: SeekKind, value: str, node_id: ContentId | None = None) -> bool:
+        """Whether ``value`` is an outstanding request of ``kind``, this node's or ``node_id``'s."""
+        row = self._query_one(
+            "SELECT 1 FROM seek_entries "
+            "WHERE node_id = :node_id AND kind = :kind AND value = :value",
+            {
+                "node_id": OWN_NODE if node_id is None else str(node_id),
+                "kind": kind.value,
+                "value": value,
+            },
+        )
+        return row is not None
 
     def seek_values(self, kind: SeekKind, node_id: ContentId | None = None) -> list[str]:
         """Outstanding requests of one kind, most recently asked for first."""

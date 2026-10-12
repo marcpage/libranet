@@ -669,6 +669,14 @@ search. The list MUST contain the hashes that match the most number of leading
 bits in the hash known to the node. The node MAY return hashes it is aware of
 but may not actually have locally. It leaves out content it has blocked (§5.5).
 
+A node answers a search at once, with what it knows then, and never waits on
+its peers. Each search, whoever asks it, SHOULD also start a search of the
+node's peers in the background (HighLevelDesign §4.7): the node asks the peers
+it has outgoing connections to for the same prefix, in passes, and knows the
+hashes they answer from then on, so that a later search lists them. The node
+lists the prefix in its seek list (§10.7) too, so that the peers connected to it
+push what they hold that matches (§10.7.2).
+
 ### 6.1 Search Response
 
 The response SHOULD be machine-readable JSON.
@@ -1297,23 +1305,19 @@ generating it). The seek list MUST be less than 1 MiB in size as transferred;
 when it is compressed, this is the compressed size. There is no protocol limit
 on the size of the seek list once decompressed.
 
-#### 10.7.2 Open Item: Pushing Search Results
+#### 10.7.2 Fulfilling Seek List Entries
 
 A `data` entry in the seek list names an exact content identifier, so it can be
 fulfilled directly via `PUT /data/{algorithm}/{hash}` (§7).
 
-A `search` entry names only a hash prefix. This specification currently defines
-how a client requests search results (§6), but does not yet define a mechanism
-for a node to push search-derived content, or the resulting matching hash(es),
-to a server that listed that prefix in its `search` entries.
-
-**TBD:**
-
-- Endpoint and method for pushing search-derived results.
-- Whether the pushed payload is the matching content itself (as with `data`
-  entries), a list of matching hashes, or both.
-- Whether §7 (Content Upload) already covers this case as-is, or whether a
-  distinct mechanism is required.
+A `search` entry names a hash prefix, and is fulfilled the same way, with
+content. A node that reads one pushes, via `PUT /data/{algorithm}/{hash}`, the
+content it holds whose hash shares at least 16 leading bits with the prefix, or
+the whole prefix when it is shorter than 16 bits, best match first, and no more
+of it than it returns for a search (§6). A drop that a node's own pages make
+matches its target by at least 16 bits (§9.6), and other content seldom matches
+as many by chance, so what is pushed is mostly the drops at that target. A node
+answers each `search` entry once while the entry stays listed.
 
 ---
 
@@ -1534,13 +1538,19 @@ Set-Cookie: libranet-session=…; Path=/; HttpOnly; SameSite=Strict
 ```
 
 `created` is when the identity was made, as its block records it (§11.3), so
-that what a person says of themselves can say when their id was made. When no
-block opens, a node that has found nothing at the drop, or has
-found blocks it does not hold, asks its peers for them and answers
-`503 Service Unavailable` with `Retry-After`, as for missing content
-(§5.2). One that holds every block it found, and none opens, answers
-`403 Forbidden` with the problem type `no-identity` (§17.2). A node stores
-the person's public key again if it no longer holds it.
+that what a person says of themselves can say when their id was made.
+
+Each search of the drop starts a search of the node's peers, as any search does
+(§6), unless one is under way or has only just ended. Blocks found and not held
+are asked for, as missing content is (§5.2). When no block opens, the node
+waits as long as one pass of its search of its peers, its own `Retry-After`,
+and tries again with what a second search of the drop finds. When none opens
+then either, it answers `503 Service Unavailable` with `Retry-After` (§5.2),
+whatever it found: a node cannot tell a wrong password from an identity that
+has not reached it yet. A person who tries again is likelier to be found, as
+the node knows what its peers answered by then, and may have started another
+search of them. A node stores the person's public key again if it no longer
+holds it.
 
 A session is between a browser and its node, and is no part of the protocol
 between nodes (HandshakeProtocol §6). The node holds the person's private key
@@ -2407,7 +2417,6 @@ These are defined so far, each named by its last segment beneath
 | `invalid-config-request` | `400` | A JSON body an endpoint cannot act on: one beneath `/config/api` (§2.3), or of making a drop (§9.6), making an identity, signing in, making a signed drop, or opening an encrypted block (§11.3–§11.6), the folders and imports (§12.2), making bundles (§12.3), or an application's store (§13.3) |
 | `unusable-bundle` | `400` or `500` | Content that is not a bundle, or a bundle the node cannot read: `400` when a request named it (§11.5, §11.6, §12.1, §12.3), and `500` when it is an application's (§13) |
 | `bundle-authentication-required` | `401` | A password-protected application, asking for its password (§13.1) |
-| `no-identity` | `403` | A username and password that open none of the blocks the node holds at their drop (§11.4) |
 | `session-required` | `401` | A request to sign as a person, or to open what is encrypted for one, from a browser no one is signed in on (§11.5, §11.6) |
 | `invalid-bundle-signature` | `400` | Signed content whose hash or signature does not check, or whose signer names no key that can sign it (§11.5, §11.6) |
 | `wrong-key` | `403` | A block that the key of whoever is signed in, or the username and password given, does not open (§11.6) |
@@ -2843,8 +2852,6 @@ above, and the **TBD** notes in each section say what remains open:
 25. API compatibility and deprecation policy.
 26. Security requirements.
 27. HTTP-specific registrations.
-28. Mechanism for pushing search-derived results to satisfy `/data/seek`
-    `search` entries.
 
 ---
 

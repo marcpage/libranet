@@ -403,6 +403,25 @@ def test_search_scans_caches_and_publishes(
     (message,) = _published(queues)
     assert message["event"] == EventType.SEARCH_REQUESTED
     assert message["prefix"] == prefix.lower()
+    # Made of this node, not asked by a peer.
+    assert "node_id" not in message
+
+
+def test_a_search_a_peer_signs_is_published_as_that_peers(
+    connection: HTTPConnection, queues: ModuleQueues, store: CasStore
+) -> None:
+    peer = _new_identity()
+    peer.publish_public_key(store)
+    target = DropTarget.of("user:alice")
+
+    searched, _ = _signed_get(connection, f"/data/search/{CONTENT_ID.hash[:6]}", peer)
+    dropped, _ = _signed_get(connection, f"/data/drop/{quote('user:alice', safe='')}", peer)
+
+    assert (searched.status, dropped.status) == (200, 200)
+    assert [(message["prefix"], message["node_id"]) for message in _published(queues)] == [
+        (CONTENT_ID.hash[:6], str(peer.node_id)),
+        (target.hex, str(peer.node_id)),
+    ]
 
 
 def test_data_and_search_read_content_archives(

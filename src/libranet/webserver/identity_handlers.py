@@ -22,9 +22,12 @@ is signed in, as ``{"id": …, "username": …, "created": …}`` or each ``null
 ``DELETE`` signs out. Signing in tries each block a search of the drop finds,
 held here or uploaded and not yet stored, with the key the username and
 password derive, and the first that opens is the person's. Blocks found and
-not held are asked for, and the answer is ``503`` while any is, or while
-nothing is found. When every block found is held and none opens, it is
-``403``.
+not held are asked for. The search starts a search of the node's peers, as
+any does, unless one is under way or just ended (Phase 4 Step 93). When none
+opens, the sign-in waits one pass of that, ``retry_after_seconds``, and
+tries again with what a second search finds; when none opens then either, it
+is ``503``, whatever was found, since a wrong password cannot be told from an
+identity that has not reached this node yet (HttpApi §11.4).
 
 Each identity made, and each sign-in, derives its key in turn
 (:class:`~libranet.webserver.drop_handler.Turns`), one at a time, as each
@@ -38,7 +41,8 @@ from __future__ import annotations
 from dataclasses import KW_ONLY, dataclass, field, replace
 from http import HTTPStatus
 from logging import getLogger
-from typing import Final, Mapping
+from time import sleep
+from typing import Callable, Final, Mapping
 
 from libranet.bundle.errors import (
     BundleVerificationError,
@@ -55,20 +59,13 @@ from libranet.identity.errors import KeyFileError
 from libranet.identity.people import MAX_IDENTITY_BYTES, PersonKey, Username
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
-from libranet.problems import NO_IDENTITY, Problem
 from libranet.protocol.drop_requests import DropRequest
 from libranet.protocol.errors import InvalidConfigRequestError
 from libranet.protocol.identity_requests import IdentityRequest, SignInRequest
 from libranet.webserver.bundle_edits import OwnUploads
 from libranet.webserver.config_handlers import invalid_request_response, json_or_refusal
 from libranet.webserver.drop_handler import DropHandler, StoredDrop, Turns
-from libranet.webserver.http_types import (
-    Request,
-    Response,
-    json_response,
-    problem_response,
-    status_response,
-)
+from libranet.webserver.http_types import Request, Response, json_response, status_response
 from libranet.webserver.request_refusals import content_unavailable_response
 from libranet.webserver.search_handler import SearchHandler
 from libranet.webserver.sessions import Session, Sessions
@@ -123,7 +120,8 @@ class Identities:  # pylint: disable=too-many-instance-attributes
     stores the public keys, each in an object no larger than ``drops``
     stores one in. ``sessions`` holds who is signed in, and ``publish`` asks
     for blocks found and not held, which a client is told to ask again for
-    after ``retry_after_seconds``. A key is made at one of the sizes
+    after ``retry_after_seconds``, as long as a sign-in that finds none
+    opening waits, with ``wait``, before it tries again. A key is made at one of the sizes
     ``key_bits`` names, and one key is derived at a time, in ``derivations``.
     """
 
@@ -136,6 +134,7 @@ class Identities:  # pylint: disable=too-many-instance-attributes
     retry_after_seconds: int
     key_bits: tuple[int, ...] = DEFAULT_PERSON_KEY_BITS
     derivations: Turns = field(default_factory=Turns)
+    wait: Callable[[float], None] = sleep
 
     def make(self, request: Request) -> Response:
         """``POST /data/users``: make the identity ``request`` asks for, and sign it in."""
@@ -219,7 +218,13 @@ class Identities:  # pylint: disable=too-many-instance-attributes
             _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
             return invalid_request_response(request, error)
 
-        found = self._found(asked.username, self._password_key(asked.username, asked.password))
+        key = self._password_key(asked.username, asked.password)
+        found = self._found(asked.username, key)
+
+        if found.key is None:
+            # One pass of the search of the peers the first search started.
+            self.wait(self.retry_after_seconds)
+            found = self._found(asked.username, key)
 
         if found.key is not None:
             # Held again, should it have been evicted since it was made.
@@ -230,33 +235,16 @@ class Identities:  # pylint: disable=too-many-instance-attributes
                 json_response(session.value()), {"Set-Cookie": self.sessions.start(session)}
             )
 
-        if found.missing or not found.found:
-            _LOGGER.debug(
-                "Not signing in yet: %s of the %s blocks found are not held",
-                found.missing,
-                found.found,
-            )
-            return content_unavailable_response(
-                request,
-                "No identity this username and password open is held here yet; "
-                "what was found at its drop was asked for.",
-                self.retry_after_seconds,
-            )
-
         _LOGGER.debug(
-            "Refusing %s %s: none of the %s blocks found opens",
-            request.method,
-            request.path,
+            "Not signing in: none of the %s blocks found opens, and %s are not held",
             found.found,
+            found.missing,
         )
-        return problem_response(
-            Problem.of_type(
-                NO_IDENTITY,
-                HTTPStatus.FORBIDDEN,
-                detail="The username and password open none of the blocks held at its drop.",
-                instance=request.path,
-            ),
-            _NOT_STORED,
+        return content_unavailable_response(
+            request,
+            "No identity this username and password open was found here yet; this node "
+            "asked its peers, and what they found at its drop was asked for.",
+            self.retry_after_seconds,
         )
 
     def signed_in(self, request: Request) -> Response:

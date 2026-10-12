@@ -306,20 +306,42 @@ class TestPeerPolicy:
         # Two passes after the first, each waiting up to 150 seconds: 300 in all.
         with raises(ValidationError, match="failed_search_hold_seconds"):
             LibranetConfig.model_validate(
-                {"network": {"retry_after_seconds": 150}, "peers": {"search_passes": 3}}
+                {
+                    "network": {"retry_after_seconds": 150},
+                    "peers": {"search_passes": 3, "broadcast_hold_seconds": 301},
+                }
             )
 
         config = LibranetConfig.model_validate(
-            {"network": {"retry_after_seconds": 149}, "peers": {"search_passes": 3}}
+            {
+                "network": {"retry_after_seconds": 149},
+                "peers": {"search_passes": 3, "broadcast_hold_seconds": 301},
+            }
         )
         assert config.peers.failed_search_hold_seconds == 300.0
+
+    def test_the_broadcast_hold_must_outlast_a_search(self) -> None:
+        # Two passes after the first, each waiting up to 30 seconds: 60 in all.
+        with raises(ValidationError, match="broadcast_hold_seconds"):
+            LibranetConfig.model_validate(
+                {"network": {"retry_after_seconds": 30}, "peers": {"search_passes": 3}}
+            )
+
+        config = LibranetConfig.model_validate(
+            {"network": {"retry_after_seconds": 29}, "peers": {"search_passes": 3}}
+        )
+        assert config.peers.broadcast_hold_seconds == 60.0
 
     def test_more_passes_need_a_longer_hold(self) -> None:
         def four_passes_held(hold: float) -> LibranetConfig:
             return LibranetConfig.model_validate(
                 {
                     "network": {"retry_after_seconds": 60},
-                    "peers": {"search_passes": 4, "failed_search_hold_seconds": hold},
+                    "peers": {
+                        "search_passes": 4,
+                        "failed_search_hold_seconds": hold,
+                        "broadcast_hold_seconds": hold,
+                    },
                 }
             )
 

@@ -28,6 +28,14 @@ _LOGGER = getLogger(__name__)
 # The member of a search response that lists what was found (HttpApi §6.1).
 RESULTS_FIELD: Final = "results"
 
+#: Where a search is asked for, followed by ``/{prefix}`` (HttpApi §6).
+SEARCH_PATH: Final = "/data/search"
+
+#: How many leading bits content must share with a prefix a peer's seek list
+#: searches for, at least, for this node to push it there, or as many as the
+#: prefix has if it has fewer (HttpApi §10.7.2, Phase 4 Step 93).
+SEARCH_PUSH_MIN_BITS: Final = 16
+
 _CACHE_SUFFIX: Final = ".json"
 
 

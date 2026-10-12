@@ -1318,6 +1318,240 @@ def test_content_stored_during_a_search_ends_it(
 # -- Handing off -----------------------------------------------------------
 
 
+# -- Searching the peers for a prefix (Phase 4 Step 93) ---------------------
+
+
+def search_requested(prefix: str, asker: ContentId | None = None) -> Message:
+    """A search of ``prefix`` made of this node, by ``asker`` if a peer asked."""
+    payload = {"prefix": prefix}
+
+    if asker is not None:
+        payload["node_id"] = str(asker)
+
+    return make_message(EventType.SEARCH_REQUESTED, ModuleName.WEBSERVER, payload)
+
+
+def wait_for_next_broadcast_pass(caplog: LogCaptureFixture, prefix: str, times: int = 1) -> None:
+    """Wait until searches of the peers for ``prefix`` have waited ``times`` times for a pass."""
+    wait_until(
+        lambda: caplog.text.count(f"The search of the peers for {prefix} asks again in") >= times,
+        "the search of the peers to wait for its next pass",
+    )
+
+
+def wait_for_broadcast_end(caplog: LogCaptureFixture, prefix: str, times: int = 1) -> None:
+    wait_until(
+        lambda: caplog.text.count(f"Searched the peers for {prefix}") >= times,
+        "the search of the peers to end",
+    )
+
+
+def answered_by(bus: Bus) -> list[str]:
+    """The peers whose answers to searches were published, in turn."""
+    return [message["node_id"] for message in bus.events(EventType.SEARCH_ANSWERED)]
+
+
+def test_a_search_asks_every_connected_peer_and_publishes_what_each_answers(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+) -> None:
+    peers[1].store.write(OFFERED_ID, OFFERED)
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+
+    module.handle(search_requested(OFFERED_ID.hash))
+
+    answers = bus.wait_for(EventType.SEARCH_ANSWERED, count=2)
+    assert answered_by(bus) == by_match(OFFERED_ID, peers)
+    assert {message["prefix"] for message in answers} == {OFFERED_ID.hash}
+    results = {message["node_id"]: message["results"] for message in answers}
+    assert results[str(peers[1].node_id)][0] == str(OFFERED_ID)
+    assert str(OFFERED_ID) not in results[str(peers[0].node_id)]
+    # Each peer was asked as this node, so searches its own peers but this one.
+    peers[1].bus.wait_for(
+        EventType.SEARCH_REQUESTED, prefix=OFFERED_ID.hash, node_id=str(identity.node_id)
+    )
+
+
+def test_each_pass_of_a_search_of_the_peers_waits_this_nodes_retry_after(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    now: list[float],
+    caplog: LogCaptureFixture,
+) -> None:
+    caplog.set_level(DEBUG, logger="libranet")
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(with_peers(config, search_passes=3))
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+    pause = config.network.retry_after_seconds
+    prefix = NOWHERE_ID.hash
+
+    module.handle(search_requested(prefix))
+
+    for made in (1, 2):
+        wait_for_next_broadcast_pass(caplog, prefix, times=made)
+        assert len(answered_by(bus)) == 2 * made
+
+        now[0] += pause - 1
+        module.on_idle()
+        sleep(0.2)
+        assert len(answered_by(bus)) == 2 * made
+
+        now[0] += 1
+        module.on_idle()
+
+    wait_for_broadcast_end(caplog, prefix)
+    assert answered_by(bus) == by_match(NOWHERE_ID, peers) * 3
+
+
+def test_a_search_of_the_peers_under_way_or_just_ended_starts_no_other(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    now: list[float],
+    caplog: LogCaptureFixture,
+) -> None:
+    caplog.set_level(DEBUG, logger="libranet")
+    hold = 30
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(with_peers(config, broadcast_hold_seconds=hold))
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+    prefix = NOWHERE_ID.hash
+    module.handle(search_requested(prefix))
+    wait_for_next_broadcast_pass(caplog, prefix)
+
+    # The search under way answers this one, whoever asks.
+    module.handle(search_requested(prefix, peers[0].node_id))
+    now[0] += config.network.retry_after_seconds
+    module.on_idle()
+    wait_for_broadcast_end(caplog, prefix)
+    assert len(answered_by(bus)) == 4
+
+    now[0] += hold - 1
+    module.handle(search_requested(prefix))
+    assert f"Not searching the peers for {prefix}: the last search just ended" in caplog.text
+
+    now[0] += 1
+    module.handle(search_requested(prefix))
+    wait_for_next_broadcast_pass(caplog, prefix, times=2)
+    assert len(answered_by(bus)) == 6
+
+
+def test_a_search_a_peer_asked_for_does_not_ask_that_peer_back(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    caplog: LogCaptureFixture,
+) -> None:
+    caplog.set_level(DEBUG, logger="libranet")
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+
+    module.handle(search_requested(NOWHERE_ID.hash, peers[0].node_id))
+
+    wait_for_next_broadcast_pass(caplog, NOWHERE_ID.hash)
+    assert answered_by(bus) == [str(peers[1].node_id)]
+
+
+def test_a_peer_that_cannot_be_asked_to_search_is_passed_over(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    caplog: LogCaptureFixture,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    caplog.set_level(DEBUG, logger="libranet")
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+    best = by_match(NOWHERE_ID, peers)
+    search = module.exchange.search
+
+    def failing_for_best(session: PeerSession, prefix: str) -> list[ContentId]:
+        if str(session.node_id) == best[0]:
+            raise ConnectionResetError("gone")
+
+        return search(session, prefix)
+
+    monkeypatch.setattr(module.exchange, "search", failing_for_best)
+
+    module.handle(search_requested(NOWHERE_ID.hash))
+
+    wait_for_next_broadcast_pass(caplog, NOWHERE_ID.hash)
+    assert answered_by(bus) == best[1:]
+    (gone,) = (peer for peer in peers if str(peer.node_id) == best[0])
+    assert f"Could not ask {gone.endpoint} to search for {NOWHERE_ID.hash}" in caplog.text
+
+
+def test_a_search_of_the_peers_that_goes_wrong_ends_and_is_held(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    caplog: LogCaptureFixture,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    caplog.set_level(DEBUG, logger="libranet")
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+
+    def broken(session: PeerSession, prefix: str) -> list[ContentId]:
+        raise RuntimeError("broken")
+
+    monkeypatch.setattr(module.exchange, "search", broken)
+
+    module.handle(search_requested(NOWHERE_ID.hash))
+
+    wait_for_broadcast_end(caplog, NOWHERE_ID.hash)
+    assert f"Searching the peers for {NOWHERE_ID.hash} failed" in caplog.text
+    module.handle(search_requested(NOWHERE_ID.hash))
+    assert "the last search just ended" in caplog.text
+
+
+def test_a_search_of_the_peers_stops_short_when_the_module_stops(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+    search = module.exchange.search
+    asked_peers: list[ContentId] = []
+
+    def stopping(session: PeerSession, prefix: str) -> list[ContentId]:
+        asked_peers.append(session.node_id)
+        module.on_stop()
+        return search(session, prefix)
+
+    monkeypatch.setattr(module.exchange, "search", stopping)
+
+    module.handle(search_requested(NOWHERE_ID.hash))
+
+    wait_until(lambda: bool(asked_peers), "the first peer to be asked")
+    sleep(0.2)
+    assert len(asked_peers) == 1
+
+
 def test_a_hand_off_goes_to_the_best_matching_peers(
     modules: Modules,
     config: LibranetConfig,
@@ -2031,11 +2265,12 @@ def test_stopping_a_module_that_never_started_is_harmless(
         module.exchange  # pylint: disable=pointless-statement
 
 
-def test_the_module_subscribes_to_node_lists_fetches_hand_offs_and_new_content() -> None:
+def test_the_module_subscribes_to_node_lists_fetches_searches_hand_offs_and_new_content() -> None:
     assert ConnectionsModule.subscriptions == {
         EventType.NODE_LIST_UPDATED,
         EventType.NODES_RECEIVED,
         EventType.FETCH_REQUESTED,
+        EventType.SEARCH_REQUESTED,
         EventType.EVICTION_NOTICE,
         EventType.DATA_STORED,
         EventType.PEERS_CONNECTED_REQUESTED,

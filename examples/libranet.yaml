@@ -108,6 +108,14 @@ peers:
   # hold no longer than its own search_passes less one, times its
   # network.retry_after_seconds.
   failed_search_hold_seconds: 300.0
+  # Provisional: once a search of the connected peers for a prefix has ended,
+  # how long before another search of it, whoever asks, starts another. Every
+  # search is still answered at once with what this node knows. A search a
+  # peer asks for starts one too, so keep it longer than a search takes to
+  # reach every node and end, or searches restart each other for ever. A node
+  # refuses to start with one no longer than its own search_passes less one,
+  # times its network.retry_after_seconds (High-Level Design §4.7).
+  broadcast_hold_seconds: 60.0
   # JSON file of initial peers, used only when this node knows no peers at
   # all. Defaults to the (currently empty) list shipped with the package.
   seed_file: null

@@ -187,10 +187,6 @@ const COORDINATES = { latitude: 90, longitude: 180 };
 // How many people's details are read at once.
 const DETAILS_AT_ONCE = 8;
 
-// How many times a sign-in waits while the node fetches what is at the
-// username's drop.
-const MAX_SIGN_IN_WAITS = 3;
-
 // What each directory made asks the node to search for its nonce. No one
 // using the directory decides how hard the node searches.
 const DROP_SECONDS = 10;
@@ -1138,21 +1134,6 @@ function sayAccount(text, className) {
   said.className = className || "note";
 }
 
-// Sign in, waiting while the node fetches what it found at the username's
-// drop (HttpApi 11.4).
-async function signIn(username, password) {
-  for (let waits = 0; ; waits += 1) {
-    const result = await call("POST", "/data/session", { username, password });
-
-    if (result.status !== 503 || waits >= MAX_SIGN_IN_WAITS) {
-      return result;
-    }
-
-    sayAccount("Looking for your identity, which the node is asking its peers for…");
-    await sleep(retryAfter(result.headers));
-  }
-}
-
 // Offer a local client signing in, or out. Either reloads the page, which
 // then reads the directory as whoever is signed in.
 function offerAccount(session) {
@@ -1180,7 +1161,12 @@ function offerAccount(session) {
     sayAccount("Signing in…");
 
     try {
-      const result = await signIn(byId("username").value, byId("password").value);
+      // Once: the node looks twice, asking its peers between, and a person
+      // who tries again finds what they answered (HttpApi 11.4).
+      const result = await call("POST", "/data/session", {
+        username: byId("username").value,
+        password: byId("password").value,
+      });
 
       if (result.ok) {
         location.reload();
@@ -1188,8 +1174,9 @@ function offerAccount(session) {
       }
 
       sayAccount(
-        result.status === 403
-          ? "That username and password open no identity this node holds."
+        result.status === 503
+          ? "No identity that username and password open was found yet. The node " +
+              "has asked its peers, so try again in a moment."
           : `Not signed in: ${refusal(result)}`,
         "error",
       );

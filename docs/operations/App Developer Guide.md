@@ -360,7 +360,9 @@ a bundle gives a file whole.
 
 `GET /data/search/{prefix}` gives the content ids the node holds or has
 heard of whose hashes match the most leading bits of a hex prefix, best
-first, as `{"results": ["sha256/…"]}`. It does not ask the node's peers.
+first, as `{"results": ["sha256/…"]}`. It answers at once, and starts the
+node asking its peers for the same prefix, so a search made a few seconds later
+may list more.
 
 ### 6.2 Whether the Client Is Local
 
@@ -607,7 +609,9 @@ The node hashes the string, and answers with the `target` hash and the
 first: the more bits a drop matches, the nearer the top it is, however much
 else is placed there. A page need not hash anything. Unlike
 `/data/search`, it looks at what the node holds every time, so a drop just
-made is found at once.
+made is found at once. Like it, it starts the node asking its peers, so a
+drop made on another node may show up when you search again a few seconds
+later.
 
 The node searches for one drop at a time, and a request that comes during
 another's search waits for it. A node limits both `seconds` and
@@ -669,12 +673,14 @@ await fetch("/data/session", { method: "DELETE" });
 ```
 
 Signing in answers with the person's `id`, `username`, and `created`, and
-asking who is signed in answers the same, or each `null` when no one is. A
-wrong password is `403`, with the problem type `no-identity`. A node that
-has found nothing at the drop yet, or has found blocks it does not hold,
-answers `503` while it asks its peers for them, so wait as §5.3 shows. Each
-sign-in costs the node a fifth of a second or so, by design, and it signs in
-one person at a time.
+asking who is signed in answers the same, or each `null` when no one is. When
+nothing the node finds at the username's drop opens, it asks its peers, waits
+a few seconds, and looks again before it answers. If nothing opens then
+either, it answers `503`, a wrong password too, since the node cannot tell one
+from an identity that has not reached it yet. Say so, and let the person try
+again: by then the node knows what its peers answered, so a second try is
+likelier to find them. Don't retry on your own. Each sign-in costs the node a
+fifth of a second or so, by design, and it signs in one person at a time.
 
 The session is named by a cookie the browser keeps, which no page's script
 can read. The node holds the person's private key while they are signed in,
