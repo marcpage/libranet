@@ -2,15 +2,21 @@
 
 ``POST /data/users`` makes an identity (Phase 4 Step 79)::
 
-    {"username": "alice", "password": "…", "key_bits": 3072, "seconds": 10, "minimum_bits": 16}
+    {"username": "alice", "password": "…", "fallback_password": "…",
+     "key_bits": 3072, "seconds": 10, "minimum_bits": 16}
 
 The node makes an RSA key pair, of one of the sizes it makes
 (``identity.person_key_bits``), stores its public key, and keeps the private
 key in an identity block (:class:`~libranet.identity.people.PersonKey`), made
 a drop at ``user:{username}`` as ``POST /data/drop`` makes one, under the same
-ceilings and taking its turn with the rest. It answers ``201``, signed in::
+ceilings and taking its turn with the rest. It makes the identity's fallback
+the same way, kept by the fallback password, and the first version of what
+the person says of themselves, naming the fallback, at ``user:{id}``
+(:class:`~libranet.identity.people.NewIdentity`, Phase 4 Step 81). The three
+drops share the search's ``seconds``. It answers ``201``, signed in::
 
     {"id": "sha256/…", "username": "alice", "created": "2026-10-10T14:03:22Z",
+     "fallback": "sha256/…", "fallback_for": null,
      "drop": "sha256/…", "target": "<hex>", "matching_bits": 21}
 
 ``POST /config/api/users`` makes one the same way, for the ``/config``
@@ -18,8 +24,9 @@ application, so that the operator can make one for a person (Phase 4 Step
 91). It is answered the same, but signs no one in, and has no ``Location``.
 
 ``POST /data/session`` signs in with a username and password, ``GET`` says who
-is signed in, as ``{"id": …, "username": …, "created": …}`` or each ``null``, and
-``DELETE`` signs out. Signing in tries each block a search of the drop finds,
+is signed in, as ``{"id": …, "username": …, "created": …, "fallback": …,
+"fallback_for": …}`` or each ``null``, and ``DELETE`` signs out. A fallback
+password signs in as the fallback. Signing in tries each block a search of the drop finds,
 held here or uploaded and not yet stored, with the key the username and
 password derive, and the first that opens is the person's. Blocks found and
 not held are asked for. The search starts a search of the node's peers, as
@@ -56,7 +63,7 @@ from libranet.bundle.storing import store_object
 from libranet.cas.content_id import ContentId
 from libranet.config.models import DEFAULT_PERSON_KEY_BITS
 from libranet.identity.errors import KeyFileError
-from libranet.identity.people import MAX_IDENTITY_BYTES, PersonKey, Username
+from libranet.identity.people import MAX_IDENTITY_BYTES, NewIdentity, PersonKey, Username
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.protocol.drop_requests import DropRequest
@@ -79,10 +86,21 @@ USERS_PATH: Final = "/data/users"
 SESSION_PATH: Final = "/data/session"
 
 # What says that no one is signed in (HttpApi §11.4).
-_NO_ONE: Final = {"id": None, "username": None, "created": None}
+_NO_ONE: Final = {
+    "id": None,
+    "username": None,
+    "created": None,
+    "fallback": None,
+    "fallback_for": None,
+}
 
 # Kept by no cache, since each names a session.
 _NOT_STORED: Final = {"Cache-Control": "no-store"}
+
+# How many drops making an identity places, which share the search asked for:
+# the fallback's identity block, the first version naming it, and the
+# identity's own block.
+_DROPS_MADE: Final = 3
 
 
 @dataclass(frozen=True)
@@ -182,6 +200,7 @@ class Identities:  # pylint: disable=too-many-instance-attributes
             return invalid_request_response(request, error)
 
         key = self._password_key(asked.username, asked.password)
+        fallback_key = self._password_key(asked.username, asked.fallback_password)
 
         if self._found(asked.username, key, ask_for_missing=False).key is not None:
             _LOGGER.debug("Refusing %s %s: the identity is held", request.method, request.path)
@@ -191,18 +210,57 @@ class Identities:  # pylint: disable=too-many-instance-attributes
                 "This username and password already open an identity here; sign in with them.",
             )
 
-        person = PersonKey.generate(asked.key_bits)
-        drop = DropRequest(
-            asked.username.drop_target, person.sealed(key), asked.seconds, asked.minimum_bits
+        if self._found(asked.username, fallback_key, ask_for_missing=False).key is not None:
+            _LOGGER.debug("Refusing %s %s: the fallback is held", request.method, request.path)
+            return status_response(
+                request,
+                HTTPStatus.CONFLICT,
+                "This username and fallback password already open an identity here; "
+                "choose another fallback password.",
+            )
+
+        made = NewIdentity.generate(asked.key_bits)
+        # A share each, so that making the three takes as long as was asked.
+        seconds = asked.seconds / _DROPS_MADE
+        # The identity's own block is last, so that it opens only once its
+        # fallback is named.
+        drops = (
+            DropRequest(
+                asked.username.drop_target,
+                made.fallback.sealed(fallback_key),
+                seconds,
+                asked.minimum_bits,
+            ),
+            DropRequest(
+                made.key.details_target,
+                made.first_version().encoded(),
+                seconds,
+                asked.minimum_bits,
+            ),
+            DropRequest(
+                asked.username.drop_target, made.key.sealed(key), seconds, asked.minimum_bits
+            ),
         )
-        stored = self.drops.placed(request, drop)
+        stored: list[StoredDrop] = []
 
-        if isinstance(stored, Response):
-            return stored
+        for drop in drops:
+            placed = self.drops.placed(request, drop)
 
-        store_object(person.public_key, self.uploads, self.drops.max_object_bytes)
-        _LOGGER.info("Made the identity %s, kept at %s", person.person_id, stored.content_id)
-        return _Made(Session(asked.username, person), stored)
+            if isinstance(placed, Response):
+                return placed
+
+            stored.append(placed)
+
+        for public_key in (made.key.public_key, made.fallback.public_key):
+            store_object(public_key, self.uploads, self.drops.max_object_bytes)
+
+        _LOGGER.info(
+            "Made the identity %s, kept at %s, with the fallback %s",
+            made.key.person_id,
+            stored[-1].content_id,
+            made.fallback.person_id,
+        )
+        return _Made(Session(asked.username, made.key), stored[-1])
 
     def sign_in(self, request: Request) -> Response:
         """``POST /data/session``: sign in the person ``request`` names, if it is them."""

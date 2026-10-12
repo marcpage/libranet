@@ -625,7 +625,9 @@ A person has an identity of their own, apart from any node's: an RSA key
 pair, whose public key's id is the person's id (HTTP API §11.3). The private
 key is kept in the network too, encrypted by the person's username and
 password, at the drop `user:{username}`, so they can sign in on any node that
-holds it. Make one with:
+holds it. Each identity is made with a **fallback**, a second identity that
+takes over should the first be compromised (§6.14), kept the same way but
+encrypted by a second password. Make one with:
 
 ```js
 const response = await fetch("/data/users", {
@@ -634,17 +636,24 @@ const response = await fetch("/data/users", {
   body: JSON.stringify({
     username: "alice",
     password,
+    fallback_password,
     key_bits: 3072,
     seconds: 10,
     minimum_bits: 16,
   }),
 });
-const { id, username, created, drop, target, matching_bits } = await response.json();
+const { id, username, created, fallback, drop, target, matching_bits } =
+  await response.json();
 ```
 
 - **`username`** is case-folded, with spaces around it dropped, so `Alice`
   and `alice` are one. It is from 1 to 64 characters.
 - **`password`** is at least 8 characters.
+- **`fallback_password`** is at least 8 characters too, and not the
+  password. With the username, it signs in as the fallback. Ask for it
+  twice, since it can never be reset, and tell the person to keep it apart
+  from their password, written down, say: whoever learns both can take the
+  identity over for good.
 - **`key_bits`** is one of the sizes the node makes, its
   `identity.person_key_bits`: 2048, 3072, and 4096 by default. A larger key
   takes longer to make: offer them as quick, stronger, and strongest. A size
@@ -655,10 +664,13 @@ const { id, username, created, drop, target, matching_bits } = await response.js
 
 It is answered `201 Created`, and the person is signed in. `created` is
 when the identity was made, as a UTC time to the second, such as
-`2026-10-10T14:03:22Z`. A username and password that already open an
-identity on this node are `409`. An operator
-can also create one on the `/config` page, which signs no one in
-([Operator Guide](Operator%20Guide.md) §6.5).
+`2026-10-10T14:03:22Z`, and `fallback` is the fallback's id. The node also
+places the first version of what the person says of themselves, naming the
+fallback (§6.14). It places three drops in all, the identity's, the
+fallback's, and that version, which share the `seconds` asked for. A
+username and either password that already open an identity on this node
+are `409`. An operator can also create one on the `/config` page, which
+signs no one in ([Operator Guide](Operator%20Guide.md) §6.5).
 
 Sign in, ask who is signed in, and sign out at `/data/session`:
 
@@ -668,12 +680,17 @@ await fetch("/data/session", {
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ username: "alice", password }),
 });
-const { id, username, created } = await (await fetch("/data/session")).json();
+const { id, username, created, fallback, fallback_for } =
+  await (await fetch("/data/session")).json();
 await fetch("/data/session", { method: "DELETE" });
 ```
 
-Signing in answers with the person's `id`, `username`, and `created`, and
-asking who is signed in answers the same, or each `null` when no one is. When
+Signing in answers with the person's `id`, `username`, `created`, and
+`fallback`, with `fallback_for` `null`, and asking who is signed in answers
+the same, or each `null` when no one is. Signed in with the fallback
+password, the person is signed in as the fallback: `id` is the fallback's,
+`fallback_for` is the identity it takes over from, and `fallback` is `null`.
+When
 nothing the node finds at the username's drop opens, it asks its peers, waits
 a few seconds, and looks again before it answers. If nothing opens then
 either, it answers `503`, a wrong password too, since the node cannot tell one
@@ -719,12 +736,13 @@ Blocking is for a local client only, from a trusted application's page.
 The user directory lists the people who have opened it, by their ids. It
 is kept by applications, not by the node, which knows nothing of it: the
 shipped `directory` application, at `/directory/`, lists everyone, and
-adds whoever is signed in (§6.10). It shows what each person says of
-themselves, searches all of it, and lets whoever is signed in change their
-own (§6.14). A local client can sign in and out there. It is a directory
-bundle made a drop at
-`user directory`. Each person is an entry whose path is their id, and
-whose only part is that id, their public key:
+adds whoever is signed in (§6.10), unless they signed in as a fallback,
+which readers find through the identity it takes over from. It shows what
+each person says of themselves, and whether they are compromised, searches
+all of it, and lets whoever is signed in change their own, or say they are
+compromised (§6.14). A local client can sign in and out there. It is a
+directory bundle made a drop at `user directory`. Each person is an entry
+whose path is their id, and whose only part is that id, their public key:
 
 ```json
 {"contents": {"sha256/…": {"contents": ["sha256/…"]}}}
@@ -823,10 +841,13 @@ What a person says of themselves is kept in versions, each signed by them
 public: anyone who opens the directory can read it, so a page offering to
 change it says so. The shipped directory application shows, searches, and
 changes it (§6.12), and any application may read it, or change the signed
-in person's. Each version's `contents` is:
+in person's. The node places the first version as it makes the identity
+(§6.10), saying nothing of them but naming their fallback. Each version's
+`contents` is:
 
 ```json
 {"created": "2026-10-10T14:03:22Z",
+ "fallback": "sha256/…",
  "fields": {"first name": "Alice", "handle": "alice", "favourite colour": "blue"},
  "version": 2,
  "versions": ["sha256/…"]}
@@ -834,6 +855,10 @@ in person's. Each version's `contents` is:
 
 - **`created`** is when the person's id was made, as the session gives it
   (§6.10). Every version carries it.
+- **`fallback`** is the id of the person's fallback, as the session gives
+  it. Every version carries it, and it never changes.
+- **`compromised`**, `true`, is in a version saying the identity is
+  compromised, below, and left out of every other.
 - **`fields`** maps each detail's name to its value, both strings. These
   are the standard ones, each optional: `handle`, `first name`,
   `last name`, `country`, `state`, `province`, `county`, `city`,
@@ -851,16 +876,43 @@ To read what someone says, and follow the same rules as other pages do:
   `GET /data/signed/{id}`, and pass over the rest, which are nearest the
   target but placed for something else.
 - **Pass over what is not theirs.** Count only content that checks, whose
-  `signer` is the person, and whose `contents` is shaped as above.
+  `signer` is the person, and whose `contents` is shaped as above, but for
+  a version their fallback signed saying they are compromised.
+- **Read the history back.** Read each version each of theirs names in
+  `versions`, and the versions those name, back to the first, as far as the
+  node holds them. Read back only the person's own: anyone can place a
+  version of their own at the drop, naming whatever it likes.
+- **Their fallback is the one their first version names**, or, with no
+  first version read, the one every version read names. Versions that name
+  different fallbacks, or none, are compromised, and when the first
+  versions read disagree, or there is no first and the rest do, no
+  fallback can be trusted. A fallback is checked as far back as the history
+  is read: say so when it is not read back to the first.
+- **The identity is compromised** when its versions name another fallback,
+  or none, or when a version of theirs, or one their fallback signed, says
+  `compromised`. Use their fallback in its place: mail them there, say.
 - **The newest is numbered highest**, and of two numbered as high, the one
-  whose drop's id comes first. Only the person signs a version, so no one
-  else can make one newer.
+  whose drop's id comes first. Only the person signs a version, and their
+  fallback one saying they are compromised, so no one else can make one
+  newer.
 - **Write a new version over the newest.** Place it with
   `POST /data/signed`, at the person's drop, matching at least 16 bits,
-  numbered one more than the newest and naming it in `versions`. Hold off
-  while a version found there is not held yet, since it may be newer than
-  the newest read. Never block a version (§6.11): a later step reads the
-  history back to the first.
+  numbered one more than the newest and naming it in `versions`, and naming
+  the fallback the session gives. Hold off while a version found there is
+  not held yet, since it may be newer than the newest read, and once the
+  identity is compromised. Never block a version (§6.11): every reader
+  reads the history back to the first.
+- **Say an identity is compromised** with a version over the newest that
+  says `"compromised": true`, keeping its fields and fallback, signed by the
+  person or by their fallback. Signed in with the fallback password, the
+  session's `fallback_for` is the identity to say it of, and its `id` the
+  fallback that versions must name. Either may say so, since the person may
+  have lost their password, and whoever stole it gains nothing by saying
+  so: readers then trust only the fallback, which the thief cannot sign as.
+  It cannot be undone.
+
+Saying so is the person's to do, and only once they know. Whoever holds
+their key and keeps the fallback the same is read as the person until then.
 
 ### 6.15 Encrypting a Block
 

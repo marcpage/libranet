@@ -2,7 +2,7 @@
 
 Node key generation and storage, signing outgoing requests, and verifying
 incoming ones. A person's identity too, kept at a drop their username names
-(Phase 4 Step 79).
+(Phase 4 Step 79), with the fallback made with it (Phase 4 Step 81).
 """
 
 from libranet.identity.authentication import (
@@ -40,6 +40,7 @@ from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.people import (
     MAX_IDENTITY_BYTES,
     MAX_USERNAME_CHARACTERS,
+    NewIdentity,
     PersonKey,
     Username,
 )
@@ -77,6 +78,7 @@ __all__ = [
     "MessageSigner",
     "MessageVerifier",
     "MissingSignatureError",
+    "NewIdentity",
     "NodeIdentity",
     "PersonKey",
     "RequestAuthenticator",

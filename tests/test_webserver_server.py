@@ -2028,7 +2028,8 @@ def test_a_local_client_makes_an_identity_and_is_signed_in_by_a_cookie(
     local_connection.request(
         "POST",
         "/data/users",
-        body=b'{"username": "Alice", "password": "correct horse", "key_bits": 2048, "seconds": 0}',
+        body=b'{"username": "Alice", "password": "correct horse", '
+        b'"fallback_password": "battery staple", "key_bits": 2048, "seconds": 0}',
         headers={"Content-Type": JSON_CONTENT_TYPE, **page},
     )
     response = local_connection.getresponse()
@@ -2048,10 +2049,18 @@ def test_a_local_client_makes_an_identity_and_is_signed_in_by_a_cookie(
         "id": answer["id"],
         "username": "alice",
         "created": answer["created"],
+        "fallback": answer["fallback"],
+        "fallback_for": None,
     }
     assert out.status == 204
     assert after.status == 200
-    assert loads(after_body) == {"id": None, "username": None, "created": None}
+    assert loads(after_body) == {
+        "id": None,
+        "username": None,
+        "created": None,
+        "fallback": None,
+        "fallback_for": None,
+    }
 
 
 def test_a_signed_in_local_client_signs_a_drop_that_any_client_checks(
@@ -2061,7 +2070,8 @@ def test_a_signed_in_local_client_signs_a_drop_that_any_client_checks(
     local_connection.request(
         "POST",
         "/data/users",
-        body=b'{"username": "alice", "password": "correct horse", "key_bits": 2048, "seconds": 0}',
+        body=b'{"username": "alice", "password": "correct horse", '
+        b'"fallback_password": "battery staple", "key_bits": 2048, "seconds": 0}',
         headers={"Content-Type": JSON_CONTENT_TYPE, **page},
     )
     made = local_connection.getresponse()
@@ -2132,7 +2142,8 @@ def test_a_signed_in_local_client_opens_a_drop_encrypted_for_them(
     local_connection.request(
         "POST",
         "/data/users",
-        body=b'{"username": "alice", "password": "correct horse", "key_bits": 2048, "seconds": 0}',
+        body=b'{"username": "alice", "password": "correct horse", '
+        b'"fallback_password": "battery staple", "key_bits": 2048, "seconds": 0}',
         headers={"Content-Type": JSON_CONTENT_TYPE, **page},
     )
     made = local_connection.getresponse()
@@ -2238,7 +2249,10 @@ def test_a_person_key_is_made_only_at_the_sizes_the_router_is_given(
         node_id=SERVER_IDENTITY.node_id,
         person_key_bits=(4096,),
     )
-    body = b'{"username": "alice", "password": "correct horse", "key_bits": 2048, "seconds": 0}'
+    body = (
+        b'{"username": "alice", "password": "correct horse", '
+        b'"fallback_password": "battery staple", "key_bits": 2048, "seconds": 0}'
+    )
 
     response = router.dispatch(
         Request(
@@ -2379,7 +2393,10 @@ def test_a_search_leaves_blocked_content_out_even_when_cached(
 
 
 # Making Alice's identity at the smallest key size, with no search.
-MAKING_ALICE = b'{"username": "Alice", "password": "correct horse", "key_bits": 2048, "seconds": 0}'
+MAKING_ALICE = (
+    b'{"username": "Alice", "password": "correct horse", '
+    b'"fallback_password": "battery staple", "key_bits": 2048, "seconds": 0}'
+)
 
 # Where a request put to a router directly says it is from: the /config page.
 CONFIG_PAGE = {"Host": "localhost:8180", "Referer": "http://localhost:8180/config/"}
@@ -2432,6 +2449,8 @@ def test_an_identity_made_on_the_config_page_signs_in_at_an_application(
         "id": answer["id"],
         "username": "alice",
         "created": answer["created"],
+        "fallback": answer["fallback"],
+        "fallback_for": None,
     }
 
 
@@ -2464,7 +2483,9 @@ def test_the_main_port_takes_its_turns_in_the_costly_work_it_is_given(
     )
 
     assert response.status == 201, response.body
-    assert (searches.asked, derivations.asked) == (1, 1)
+    # A drop's search each for the identity, its fallback, and the first
+    # version naming it, and a key derived by each password.
+    assert (searches.asked, derivations.asked) == (3, 2)
 
 
 def test_the_config_port_takes_its_turns_in_the_costly_work_it_is_given(
@@ -2491,7 +2512,9 @@ def test_the_config_port_takes_its_turns_in_the_costly_work_it_is_given(
     )
 
     assert response.status == 201, response.body
-    assert (searches.asked, derivations.asked) == (1, 1)
+    # A drop's search each for the identity, its fallback, and the first
+    # version naming it, and a key derived by each password.
+    assert (searches.asked, derivations.asked) == (3, 2)
 
 
 def test_bundles_are_made_only_by_a_node_that_knows_its_id(

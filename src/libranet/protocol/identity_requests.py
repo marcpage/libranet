@@ -1,10 +1,12 @@
 """What ``POST /data/users`` and ``POST /data/session`` accept (HttpApi §11.3, §11.4).
 
-Making a person's identity asks for a username, a password, the size of the
-key to make, and how long to search for the nonce of the drop that keeps it
-(Phase 4 Step 79), as making a drop asks (HttpApi §9.6)::
+Making a person's identity asks for a username, a password, a fallback
+password, the size of the keys to make, and how long to search for the nonces
+of the drops that keep them (Phase 4 Steps 79 and 81), as making a drop asks
+(HttpApi §9.6)::
 
-    {"username": "alice", "password": "…", "key_bits": 3072, "seconds": 10, "minimum_bits": 16}
+    {"username": "alice", "password": "…", "fallback_password": "…",
+     "key_bits": 3072, "seconds": 10, "minimum_bits": 16}
 
 Signing in asks for the username and password alone::
 
@@ -69,29 +71,43 @@ class SignInRequest:
 class IdentityRequest:
     """An identity to make for ``username`` and ``password`` (HttpApi §11.3).
 
-    Its key is ``key_bits`` long, and the drop keeping it is searched for
-    ``seconds``, and until ``minimum_bits`` match, as making a drop is.
-    Whether this node makes a key that size is checked where the request is
-    answered, as the ceilings of a drop's search are.
+    Its fallback is opened by ``username`` and ``fallback_password``. Each
+    key is ``key_bits`` long, and the drops keeping them are searched for
+    ``seconds`` in all, and until ``minimum_bits`` match, as making a drop
+    is. Whether this node makes a key that size is checked where the request
+    is answered, as the ceilings of a drop's search are.
 
     Raises:
-        ValueError: ``password`` is shorter than
-            :data:`MIN_PASSWORD_CHARACTERS` or not UTF-8, ``key_bits`` is
-            under ``MIN_PERSON_KEY_BITS``, ``seconds`` is negative or not
-            finite, or ``minimum_bits`` is negative or more than a hash has.
+        ValueError: either password is shorter than
+            :data:`MIN_PASSWORD_CHARACTERS` or not UTF-8, the two are one
+            password, ``key_bits`` is under ``MIN_PERSON_KEY_BITS``,
+            ``seconds`` is negative or not finite, or ``minimum_bits`` is
+            negative or more than a hash has.
     """
 
     username: Username
     password: str = field(repr=False)
+    fallback_password: str = field(repr=False)
     key_bits: int
     seconds: float
     minimum_bits: int = 0
 
     def __post_init__(self) -> None:
-        _check_password(self.password)
+        for name, password in (
+            ("password", self.password),
+            ("fallback_password", self.fallback_password),
+        ):
+            _check_password(password, name)
 
-        if len(normalize(_NORMAL_FORM, self.password)) < MIN_PASSWORD_CHARACTERS:
-            raise ValueError(f'"password" must be at least {MIN_PASSWORD_CHARACTERS} characters')
+            if len(normalize(_NORMAL_FORM, password)) < MIN_PASSWORD_CHARACTERS:
+                raise ValueError(f'"{name}" must be at least {MIN_PASSWORD_CHARACTERS} characters')
+
+        # Each derives its key in NFC, so two that differ only in how their
+        # characters are composed are one password.
+        if normalize(_NORMAL_FORM, self.password) == normalize(
+            _NORMAL_FORM, self.fallback_password
+        ):
+            raise ValueError('"fallback_password" must not be the password')
 
         if self.key_bits < MIN_PERSON_KEY_BITS:
             raise ValueError(
@@ -132,9 +148,16 @@ class IdentityRequest:
         if isinstance(minimum_bits, bool) or not isinstance(minimum_bits, int):
             raise InvalidConfigRequestError('"minimum_bits" must be an integer')
 
+        fallback_password = value.get("fallback_password")
+
+        if not isinstance(fallback_password, str):
+            raise InvalidConfigRequestError('"fallback_password" must be a string')
+
         try:
             username, password = _credentials(value)
-            return cls(username, password, key_bits, float(seconds), minimum_bits)
+            return cls(
+                username, password, fallback_password, key_bits, float(seconds), minimum_bits
+            )
 
         except ValueError as error:
             raise InvalidConfigRequestError(str(error)) from None
@@ -158,14 +181,14 @@ def _credentials(value: dict[str, object]) -> tuple[Username, str]:
     return Username.create(username), password
 
 
-def _check_password(password: str) -> None:
-    """Raise unless ``password`` is one a key can be derived from.
+def _check_password(password: str, name: str = "password") -> None:
+    """Raise unless ``password``, given as ``name``, is one a key can be derived from.
 
     Raises:
         ValueError: it is empty, or not UTF-8.
     """
     if not password:
-        raise ValueError('"password" must not be empty')
+        raise ValueError(f'"{name}" must not be empty')
 
     if not is_utf8(password):
-        raise ValueError('"password" is not UTF-8')
+        raise ValueError(f'"{name}" is not UTF-8')

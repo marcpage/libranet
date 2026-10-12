@@ -9,10 +9,12 @@ from libranet.protocol.errors import InvalidConfigRequestError
 from libranet.protocol.identity_requests import IdentityRequest, SignInRequest
 
 PASSWORD = "correct horse"
+FALLBACK_PASSWORD = "battery staple"
 
 ASKED: dict[str, object] = {
     "username": " Alice ",
     "password": PASSWORD,
+    "fallback_password": FALLBACK_PASSWORD,
     "key_bits": 3072,
     "seconds": 5,
     "minimum_bits": 16,
@@ -22,7 +24,9 @@ ASKED: dict[str, object] = {
 def test_an_identity_request_is_read_with_its_username_normalized() -> None:
     asked = IdentityRequest.from_value(ASKED)
 
-    assert asked == IdentityRequest(Username.create("alice"), PASSWORD, 3072, 5.0, 16)
+    assert asked == IdentityRequest(
+        Username.create("alice"), PASSWORD, FALLBACK_PASSWORD, 3072, 5.0, 16
+    )
 
 
 def test_any_key_size_from_the_smallest_up_is_read_whatever_this_node_makes() -> None:
@@ -39,6 +43,7 @@ def test_no_password_is_in_a_requests_repr() -> None:
     shown = repr(IdentityRequest.from_value(ASKED)) + repr(SignInRequest.from_value(ASKED))
 
     assert PASSWORD not in shown
+    assert FALLBACK_PASSWORD not in shown
     assert "alice" in shown
 
 
@@ -51,6 +56,11 @@ def test_no_password_is_in_a_requests_repr() -> None:
         ({"password": ""}, '"password" must not be empty'),
         ({"password": "seven77"}, '"password" must be at least 8 characters'),
         ({"password": "pass\ud800word"}, '"password" is not UTF-8'),
+        ({"fallback_password": None}, '"fallback_password" must be a string'),
+        ({"fallback_password": ""}, '"fallback_password" must not be empty'),
+        ({"fallback_password": "seven77"}, '"fallback_password" must be at least 8 characters'),
+        ({"fallback_password": "pass\ud800word"}, '"fallback_password" is not UTF-8'),
+        ({"fallback_password": PASSWORD}, '"fallback_password" must not be the password'),
         ({"key_bits": "3072"}, '"key_bits" must be an integer'),
         ({"key_bits": True}, '"key_bits" must be an integer'),
         ({"key_bits": 1024}, '"key_bits" must be at least 2048, got 1024'),
@@ -76,6 +86,14 @@ def test_a_password_is_counted_in_composed_characters() -> None:
 
     with raises(InvalidConfigRequestError, match="at least 8"):
         IdentityRequest.from_value({**ASKED, "password": short})
+
+
+def test_a_fallback_password_composed_another_way_is_the_password() -> None:
+    composed = "passwo" + "\u00e9" + "d"
+    decomposed = "passwo" + "e\u0301" + "d"
+
+    with raises(InvalidConfigRequestError, match="must not be the password"):
+        IdentityRequest.from_value({**ASKED, "password": composed, "fallback_password": decomposed})
 
 
 def test_a_sign_in_is_read_with_its_username_normalized() -> None:

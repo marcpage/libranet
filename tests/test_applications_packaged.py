@@ -482,6 +482,22 @@ def test_the_directory_page_keeps_each_persons_details_as_the_issue_names_them(
     assert tuple(findall(r'"([^"]+)"', first_row)) == FIRST_ROW
 
 
+def test_each_version_the_directory_page_writes_names_the_sessions_fallback(
+    directory_page: str,
+) -> None:
+    # The fallback the identity block names, which never changes (HttpApi 11.3).
+    assert "fallback: session.fallback," in directory_page
+    # A fallback writes only a version saying its identity is compromised.
+    assert "compromised: true," in directory_page
+    assert "session.fallback_for" in directory_page
+
+
+def test_the_config_page_makes_a_user_with_a_fallback_password(config_page: str) -> None:
+    assert 'id="user-fallback-password"' in config_page
+    assert 'id="user-fallback-password-again"' in config_page
+    assert "fallback_password: fallbackPassword," in config_page
+
+
 @mark.parametrize(
     "application, path, source, client_address, headers, policy",
     [

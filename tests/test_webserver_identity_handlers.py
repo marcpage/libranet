@@ -1,7 +1,7 @@
 """Tests for making people's identities, and signing them in and out."""
 
 from __future__ import annotations
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from json import dumps, loads
 from logging import WARNING
 from threading import Thread
@@ -11,20 +11,22 @@ from zlib import decompress
 from pytest import LogCaptureFixture, fixture, mark
 
 from libranet.atomic_file import write_atomically
+from libranet.bundle.signing import SignedBundle
 from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
 from libranet.cas.prefix import matching_bits
 from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
-from libranet.identity.people import PersonKey, Username
+from libranet.identity.people import NewIdentity, PersonKey, Username
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.problems import CONTENT_UNAVAILABLE, INVALID_CONFIG_REQUEST
+from libranet.protocol.drop_requests import DropRequest
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.protocol.search import LocalSearch, SearchCache
 from libranet.webserver.bundle_edits import OwnUploads
-from libranet.webserver.drop_handler import DropHandler
+from libranet.webserver.drop_handler import DropHandler, StoredDrop
 from libranet.webserver.http_types import Request, RequestBody, Response
 from libranet.webserver.identity_handlers import SESSION_PATH, USERS_PATH, Identities
 from libranet.webserver.search_handler import SearchHandler
@@ -38,7 +40,9 @@ MAX_SECONDS = 1.0
 MAX_MINIMUM_BITS = 12
 RETRY_AFTER_SECONDS = 3
 PASSWORD = "correct horse"
+FALLBACK_PASSWORD = "battery staple"
 TARGET = DropTarget.of("user:alice")
+NO_ONE = {"id": None, "username": None, "created": None, "fallback": None, "fallback_for": None}
 
 
 class Recorder:
@@ -53,6 +57,17 @@ class Recorder:
 
     def payloads(self, event: EventType) -> list[dict[str, Any]]:
         return [payload for published, payload in self.messages if published == event]
+
+
+@dataclass(frozen=True)
+class RecordingDrops(DropHandler):
+    """A drop handler keeping every drop it is asked to place, in turn."""
+
+    asked: list[DropRequest] = field(default_factory=list)
+
+    def placed(self, request: Request, asked: DropRequest) -> StoredDrop | Response:
+        self.asked.append(asked)
+        return super().placed(request, asked)
 
 
 @fixture
@@ -96,10 +111,17 @@ def making(
     username: str = "alice",
     password: str = PASSWORD,
     *,
+    fallback_password: str = FALLBACK_PASSWORD,
     changes: Mapping[str, object] | None = None,
 ) -> Request:
     """``POST /data/users`` asking for an identity at the smallest key size, quickly."""
-    value = {"username": username, "password": password, "key_bits": 2048, "seconds": 0}
+    value = {
+        "username": username,
+        "password": password,
+        "fallback_password": fallback_password,
+        "key_bits": 2048,
+        "seconds": 0,
+    }
     return asked("POST", USERS_PATH, {**value, **(changes or {})})
 
 
@@ -120,6 +142,12 @@ def validated(storage: StorageConfig, *content_ids: ContentId) -> None:
         CasStore.source_of_truth(storage).write(content_id, incoming.read(content_id))
 
 
+def validated_all(storage: StorageConfig) -> None:
+    """Store every upload of this node as truth, as the validator does."""
+    held = CasStore.for_node(storage, NODE_ID).held_objects()
+    validated(storage, *(stored.content_id for stored in held))
+
+
 def uploaded(storage: StorageConfig, content_id: ContentId) -> bytes:
     """What this node uploaded as ``content_id``, decompressed if need be."""
     stored = CasStore.for_node(storage, NODE_ID).read(content_id)
@@ -131,7 +159,7 @@ def made(storage: StorageConfig, identities: Identities, request: Request) -> di
     response = identities.make(request)
     assert response.status == 201, response.body
     answer: dict[str, Any] = loads(response.body)
-    validated(storage, ContentId.parse(answer["id"]), ContentId.parse(answer["drop"]))
+    validated_all(storage)
     return answer
 
 
@@ -163,16 +191,99 @@ def test_making_an_identity_keeps_its_keys_and_signs_it_in(
     )
     assert key.person_id == person_id
     assert answer["created"] == key.created_text
-    assert recorder.payloads(EventType.PUT_COMPLETED) == [
-        {**drop_id.fields(), "node_id": str(NODE_ID)},
-        {**person_id.fields(), "node_id": str(NODE_ID)},
-    ]
+    assert answer["fallback"] == str(key.fallback)
+    assert answer["fallback_for"] is None
+    put = [ContentId.from_fields(payload) for payload in recorder.payloads(EventType.PUT_COMPLETED)]
+    assert len(put) == 5
+    assert put[2:] == [drop_id, person_id, key.fallback]
     who = identities.signed_in(asked("GET", SESSION_PATH, headers=cookie_of(response)))
     assert loads(who.body) == {
         "id": str(person_id),
         "username": "alice",
         "created": answer["created"],
+        "fallback": answer["fallback"],
+        "fallback_for": None,
     }
+
+
+def test_making_an_identity_makes_its_fallback_and_names_it_first(
+    identities: Identities, storage: StorageConfig, recorder: Recorder
+) -> None:
+    answer = made(storage, identities, making(changes={"minimum_bits": 4}))
+    person_id = ContentId.parse(answer["id"])
+    fallback_id = ContentId.parse(answer["fallback"])
+    fallback_drop, first_drop, _, _, fallback_key = (
+        ContentId.from_fields(payload) for payload in recorder.payloads(EventType.PUT_COMPLETED)
+    )
+
+    fallback = PersonKey.opened(
+        uploaded(storage, fallback_drop),
+        Username.create("alice").password_key(FALLBACK_PASSWORD),
+    )
+    assert fallback.person_id == fallback_id == fallback_key
+    assert fallback.fallback_for == person_id
+    assert fallback.created_text == answer["created"]
+    assert matching_bits(fallback_drop.hash, TARGET.hex) >= 4
+    details = DropTarget.of(f"user:{person_id}")
+    assert matching_bits(first_drop.hash, details.hex) >= 4
+    drop = uploaded(storage, first_drop)
+    first = SignedBundle.decoded(drop[: drop.rindex(b"\x00")])
+    first.verified(uploaded(storage, person_id))
+    assert first.signer == person_id
+    assert loads(first.contents) == {
+        "created": answer["created"],
+        "fallback": str(fallback_id),
+        "fields": {},
+        "version": 1,
+    }
+
+
+def test_the_three_drops_share_the_search_asked_for(
+    identities: Identities, storage: StorageConfig
+) -> None:
+    drops = RecordingDrops(
+        identities.uploads, MAX_BYTES, MAX_SECONDS, MAX_MINIMUM_BITS, turns=identities.drops.turns
+    )
+
+    answer = made(storage, replace(identities, drops=drops), making(changes={"seconds": 0.03}))
+
+    assert [placed.target for placed in drops.asked] == [
+        TARGET,
+        DropTarget.of(f"user:{answer['id']}"),
+        TARGET,
+    ]
+    assert [placed.seconds for placed in drops.asked] == [0.01] * 3
+    assert [placed.minimum_bits for placed in drops.asked] == [0] * 3
+
+
+def test_the_fallback_password_signs_in_as_the_fallback(
+    identities: Identities, storage: StorageConfig
+) -> None:
+    answer = made(storage, identities, making())
+
+    response = identities.sign_in(signing_in(password=FALLBACK_PASSWORD))
+
+    assert response.status == 200, response.body
+    assert loads(response.body) == {
+        "id": answer["fallback"],
+        "username": "alice",
+        "created": answer["created"],
+        "fallback": None,
+        "fallback_for": answer["id"],
+    }
+
+
+def test_a_fallback_password_that_opens_an_identity_here_makes_none(
+    identities: Identities, storage: StorageConfig, recorder: Recorder
+) -> None:
+    made(storage, identities, making())
+    uploads_before = len(recorder.payloads(EventType.PUT_COMPLETED))
+
+    reused = identities.make(making(password="another horse", fallback_password=PASSWORD))
+
+    assert reused.status == 409
+    assert "fallback password" in loads(reused.body)["detail"]
+    assert len(recorder.payloads(EventType.PUT_COMPLETED)) == uploads_before
 
 
 def test_an_identity_made_without_signing_in_starts_no_session(
@@ -187,14 +298,16 @@ def test_an_identity_made_without_signing_in_starts_no_session(
     assert answer["matching_bits"] >= 4
     assert "Set-Cookie" not in response.headers
     assert "Location" not in response.headers
-    assert len(recorder.payloads(EventType.PUT_COMPLETED)) == 2
-    validated(storage, ContentId.parse(answer["id"]), ContentId.parse(answer["drop"]))
+    assert len(recorder.payloads(EventType.PUT_COMPLETED)) == 5
+    validated_all(storage)
     signed_in = identities.sign_in(signing_in())
     assert signed_in.status == 200, signed_in.body
     assert loads(signed_in.body) == {
         "id": answer["id"],
         "username": "alice",
         "created": answer["created"],
+        "fallback": answer["fallback"],
+        "fallback_for": None,
     }
 
 
@@ -224,6 +337,8 @@ def test_signing_in_opens_the_identity_at_the_usernames_drop(
         "id": person_id,
         "username": "alice",
         "created": answer["created"],
+        "fallback": answer["fallback"],
+        "fallback_for": None,
     }
     assert response.headers["Cache-Control"] == "no-store"
     assert response.headers["Set-Cookie"].endswith("; Path=/; HttpOnly; SameSite=Strict")
@@ -278,14 +393,15 @@ def test_signing_in_passes_over_blocks_at_the_drop_that_are_not_the_persons(
     answer = made(storage, identities, making())
     alices = Username.create("alice").password_key(PASSWORD)
     anothers = Username.create("alice").password_key("another person's")
-    # Each matches more bits than the identity and its public key do, so is
-    # found, and tried, first.
+    # Each matches more bits than anything making the identity stored does,
+    # so is found, and tried, first.
     more_bits = 1 + max(
-        matching_bits(ContentId.parse(answer[name]).hash, TARGET.hex) for name in ("id", "drop")
+        matching_bits(stored.content_id.hash, TARGET.hex)
+        for stored in CasStore.source_of_truth(storage).held_objects()
     )
     decoys = {
         placed(storage, b"not even protected", more_bits),
-        placed(storage, PersonKey.generate(2048).sealed(anothers), more_bits),
+        placed(storage, NewIdentity.generate(2048).key.sealed(anothers), more_bits),
         placed(storage, alices.protect(b'{"not": "an identity"}'), more_bits),
         placed(storage, b"x" * (70 * 1024), more_bits),
     }
@@ -394,7 +510,11 @@ def test_people_may_share_a_username_with_passwords_of_their_own(
     identities: Identities, storage: StorageConfig
 ) -> None:
     first = made(storage, identities, making())["id"]
-    second = made(storage, identities, making(password="another horse"))["id"]
+    second = made(
+        storage,
+        identities,
+        making(password="another horse", fallback_password="another staple"),
+    )["id"]
 
     signed_in_first = identities.sign_in(signing_in())
     signed_in_second = identities.sign_in(signing_in(password="another horse"))
@@ -430,6 +550,8 @@ def test_signing_in_stores_the_public_key_again_if_it_is_gone(
         ({"key_bits": 1024}, '"key_bits" must be at least 2048, got 1024'),
         ({"key_bits": 8192}, '"key_bits" must be one of 2048, 3072, 4096 here, got 8192'),
         ({"password": "short"}, "at least 8 characters"),
+        ({"fallback_password": "short"}, '"fallback_password" must be at least 8'),
+        ({"fallback_password": PASSWORD}, '"fallback_password" must not be the password'),
     ],
 )
 def test_an_identity_that_cannot_be_made_is_400_before_any_work(
@@ -475,7 +597,7 @@ def test_no_one_is_signed_in_without_a_session(identities: Identities) -> None:
     response = identities.signed_in(asked("GET", SESSION_PATH))
 
     assert response.status == 200
-    assert loads(response.body) == {"id": None, "username": None, "created": None}
+    assert loads(response.body) == NO_ONE
     assert response.headers["Cache-Control"] == "no-store"
 
 
@@ -490,7 +612,7 @@ def test_signing_out_ends_the_session_and_removes_its_cookie(
     assert response.status == 204
     assert response.headers["Set-Cookie"].endswith("Max-Age=0")
     who = identities.signed_in(asked("GET", SESSION_PATH, headers=cookie))
-    assert loads(who.body) == {"id": None, "username": None, "created": None}
+    assert loads(who.body) == NO_ONE
 
 
 def test_a_sign_in_waits_while_another_key_is_derived(identities: Identities) -> None:

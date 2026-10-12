@@ -1434,7 +1434,8 @@ neither makes nor opens a smaller one, whatever sizes it makes. Its **identity
 block** is the JSON object
 
 ```json
-{"private_key": "-----BEGIN PRIVATE KEY-----\n…", "created": "2026-10-10T14:03:22Z"}
+{"private_key": "-----BEGIN PRIVATE KEY-----\n…", "created": "2026-10-10T14:03:22Z",
+ "fallback": "sha256/…"}
 ```
 
 whose `private_key` is the key PEM-encoded as unencrypted PKCS #8, the
@@ -1442,7 +1443,10 @@ whose `private_key` is the key PEM-encoded as unencrypted PKCS #8, the
 [RFC 7468 §10](https://www.rfc-editor.org/rfc/rfc7468.html#section-10),
 and whose `created` is when the identity was made: a UTC time to the second,
 as [RFC 3339 §5.6](https://www.rfc-editor.org/rfc/rfc3339.html#section-5.6)
-writes one, ending `Z`. A block without either opens to no identity.
+writes one, ending `Z`. A block without either opens to no identity. It
+names the identity's fallback, below, as `fallback`, its id; a fallback's
+own block names, as `fallback_for`, the id of the identity it takes over
+from. A block naming neither, or both, opens to no identity.
 The block is protected as a bundle's JSON is (BundleSpecification §6.1), by
 the costly derivation `ARGON2ID` from the person's username and password
 (BundleSpecification §6.2.1), with the default IV, and is made a drop (§9)
@@ -1461,40 +1465,74 @@ the top of a search for it it is, however many other blocks are placed there
 (§9.4, §9.5), so a person says how long to search for its nonce when the
 identity is made.
 
+Every identity has a **fallback**: a second identity, made with it, which
+takes over should the first be compromised, its private key stolen or lost.
+The fallback's private key is kept as the first's is, in an identity block
+at the same drop, but protected by a second password, the **fallback
+password**, which the person keeps apart from the first, so that whoever
+learns one does not learn the other. Signing in with the username and the
+fallback password signs in as the fallback (§11.4).
+
+The identity names its fallback in the first version of what the person says
+of themselves: a signed bundle (§11.5), signed by the identity, made a drop
+at the target string `user:{id}`, the person's id after `user:`, whose
+`contents` is
+
+```json
+{"created": "2026-10-10T14:03:22Z", "fallback": "sha256/…", "fields": {}, "version": 1}
+```
+
+`created` is when the identity was made, `fallback` the fallback's id,
+`fields` what the person says of themselves, nothing at first, and
+`version` 1. Each version after it names the same fallback, and names the
+version it replaces, so that a reader can walk the history back to the
+first. The
+fallback never changes: versions naming another fallback, or none, mean the
+identity is compromised. How applications read the versions, and say an
+identity is compromised, is theirs. The node makes the first version, and
+signs and checks the rest for a page (§11.5), but judges none.
+
 A page of the node makes an identity with:
 
 ```http
 POST /data/users
 Content-Type: application/json
 
-{"username": "alice", "password": "…", "key_bits": 3072, "seconds": 10, "minimum_bits": 16}
+{"username": "alice", "password": "…", "fallback_password": "…",
+ "key_bits": 3072, "seconds": 10, "minimum_bits": 16}
 ```
 
-- **`username`** and **`password`** are strings. A password is at least 8
-  characters.
-- **`key_bits`** is the size of the RSA key, one of the sizes the node
+- **`username`**, **`password`**, and **`fallback_password`** are strings.
+  Each password is at least 8 characters, and the two differ.
+- **`key_bits`** is the size of the RSA keys, one of the sizes the node
   makes, which it sets. 2048, 3072, and 4096 are RECOMMENDED. A larger key
   takes longer to make, and to guess. A size the node does not make is
   `400 Bad Request`.
 - **`seconds`** and **`minimum_bits`** are as for making a drop (§9.6), and
   limited alike. `minimum_bits` is 0 if absent.
 
-The node makes the key pair, stores the public key, and makes the identity
-block a drop, as §9.6 makes one. It answers `201 Created`, with a
-`Location` naming the public key, and signs the person in (§11.4):
+The node makes two key pairs, the identity's and its fallback's, and makes
+three drops as §9.6 makes one: the fallback's identity block, the first
+version naming it, and the identity's own block, in that order, so that the
+identity opens only once its fallback is named. The three share `seconds`,
+a third each, and each matches at least `minimum_bits`. The node stores both
+public keys. It answers `201 Created`, with a `Location` naming the
+identity's public key, and signs the person in (§11.4):
 
 ```json
 {"id": "sha256/…", "username": "alice", "created": "2026-10-10T14:03:22Z",
+ "fallback": "sha256/…", "fallback_for": null,
  "drop": "sha256/…", "target": "<target hash>", "matching_bits": 21}
 ```
 
-`id` is the person's id, `username` the normalized username, and `created`
-when the identity was made, as its block records it. `drop`,
-`target`, and `matching_bits` are the identity block's id, the target hash,
-and how many leading bits the two share, as §9.6 gives them. A request is
-`409 Conflict` if the username and password already open an identity at
-the drop, among the blocks the node holds, since signing in would then find
-either one.
+`id` is the person's id, `username` the normalized username, `created`
+when the identity was made, as its block records it, and `fallback` and
+`fallback_for` as signing in gives them. `drop`, `target`, and
+`matching_bits` are the identity block's id, the target hash, and how many
+leading bits the two share, as §9.6 gives them. A request is `409 Conflict`
+if the username and either password already open an identity at the drop,
+among the blocks the node holds, since signing in would then find either
+one.
 
 The `/config` application (§2.3) makes an identity too, so that a node's
 operator can make one for a person:
@@ -1503,7 +1541,8 @@ operator can make one for a person:
 POST /config/api/users
 Content-Type: application/json
 
-{"username": "alice", "password": "…", "key_bits": 3072, "seconds": 10, "minimum_bits": 16}
+{"username": "alice", "password": "…", "fallback_password": "…",
+ "key_bits": 3072, "seconds": 10, "minimum_bits": 16}
 ```
 
 It takes the same body as `POST /data/users`, makes the identity the same
@@ -1535,11 +1574,17 @@ Set-Cookie: libranet-session=…; Path=/; HttpOnly; SameSite=Strict
 ```
 
 ```json
-{"id": "sha256/…", "username": "alice", "created": "2026-10-10T14:03:22Z"}
+{"id": "sha256/…", "username": "alice", "created": "2026-10-10T14:03:22Z",
+ "fallback": "sha256/…", "fallback_for": null}
 ```
 
 `created` is when the identity was made, as its block records it (§11.3), so
 that what a person says of themselves can say when their id was made.
+`fallback` is the id of the identity's fallback, and `fallback_for` is
+`null`. Signed in with the fallback password, as the fallback, it is the
+other way around: `fallback_for` is the id of the identity the fallback
+takes over from, and `fallback` is `null`. A page writes either into what it
+has the person sign (§11.5), as the block records it.
 
 Each search of the drop starts a search of the node's peers, as any search does
 (§6), unless one is under way or has only just ended. Blocks found and not held
@@ -1562,7 +1607,8 @@ it. A browser keeps cookies by host and not by port, so the cookie is sent to
 every port of the node's host, `/config`'s too, which ignores it.
 
 `GET /data/session` says who is signed in, as signing in answers, or
-`{"id": null, "username": null, "created": null}` when no one is.
+`{"id": null, "username": null, "created": null, "fallback": null,
+"fallback_for": null}` when no one is.
 `DELETE /data/session` signs out, and is answered `204 No Content`, removing
 the cookie. A session also ends when it goes unused for a time the node
 sets, and when the node restarts. Every response that names a session

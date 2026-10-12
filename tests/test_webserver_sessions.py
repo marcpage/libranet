@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pytest import fixture, mark, raises
 
-from libranet.identity.people import PersonKey, Username
+from libranet.identity.people import NewIdentity, Username
 from libranet.webserver.http_types import Request
 from libranet.webserver.sessions import SESSION_COOKIE, Session, Sessions
 
@@ -23,7 +23,7 @@ class Clock:
 
 @fixture(scope="module")
 def session() -> Session:
-    return Session(Username.create("alice"), PersonKey.generate(2048))
+    return Session(Username.create("alice"), NewIdentity.generate(2048).key)
 
 
 @fixture
@@ -68,6 +68,20 @@ def test_the_session_says_who_is_signed_in(session: Session) -> None:
         "id": str(session.key.person_id),
         "username": "alice",
         "created": session.key.created_text,
+        "fallback": str(session.key.fallback),
+        "fallback_for": None,
+    }
+
+
+def test_a_fallbacks_session_names_the_identity_it_takes_over_from() -> None:
+    made = NewIdentity.generate(2048)
+
+    assert Session(Username.create("alice"), made.fallback).value() == {
+        "id": str(made.fallback.person_id),
+        "username": "alice",
+        "created": made.fallback.created_text,
+        "fallback": None,
+        "fallback_for": str(made.key.person_id),
     }
 
 

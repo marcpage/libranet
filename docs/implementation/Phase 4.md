@@ -65,9 +65,9 @@ So far, eleven steps, in the order they are built (§5):
 - **Searching the peers.** A search on a node asks its peers too, and
   peers connected to it push what matches, so that a person signs in, and
   is found, on any node. Step 93.
-- **A way back from a lost key.** A fallback identity, named once in
-  the metadata when the account is made, which takes over if the first
-  is compromised. Step 81.
+- **A way back from a lost key.** A fallback identity, made with every
+  identity from a second password, and named once in the metadata when the
+  account is made, which takes over if the first is compromised. Step 81.
 - **Mail.** A shipped application that sends and receives messages
   between people, with an address book kept encrypted for its owner.
   Step 82.
@@ -820,7 +820,7 @@ versions back to its first is Step 81's.
 
 ## Step 81 — A Fallback Identity
 
-**Issue:** #260. **Depends on:** Step 80.
+**Issue:** #260. **Depends on:** Steps 80 and 93.
 
 Settled in the issue:
 
@@ -850,39 +850,182 @@ Work this implies:
 - **A person's metadata is never blocked** (Step 30), though each version
   is replaced by the next, since every load reads the versions before
   it. Only the directory's bundles are blocked once replaced (Step 92).
+  Nothing is built for it: the directory page blocks only directories,
+  and the App Developer Guide §6.14 says never to block a version.
 
-My calls, not yet reviewed:
+My calls before building, not yet reviewed, each answering an open
+question the plan listed (no one was asked first):
 
-- **The node walks the history**, and answers a person's metadata with
-  whether the fallback held, so that each application does not walk it
-  its own way.
+- **The identity itself, or its fallback, says it is compromised**, with a
+  version over the newest saying `"compromised": true`, at the identity's
+  drop. A person who has lost their password says so from the fallback.
+  Whoever stole the key gains nothing by saying so, since readers then
+  trust only the fallback, which they cannot sign as. Whoever holds the key
+  and keeps the fallback the same is still read as the person until the
+  person says otherwise: nothing here finds them out.
+- **"Missing" is a version naming no fallback**, or something that is not
+  an id, and the identity is then compromised. Metadata not found at all,
+  and a history with a version not held, are not known yet, not
+  compromised: the directory says how far back a fallback was checked.
+- **Making an identity asks for a second password**, `fallback_password`,
+  from which the node makes the fallback, rather than the id of one the
+  person already has, which would need a fallback of its own, and so on.
+  The two passwords differ.
+- **The first version is the one numbered 1, and the node makes it in the
+  request that makes the identity**, before the identity's own block, so
+  that no identity opens before its fallback is named. Whoever holds the
+  key can make another version 1 naming a fallback of their own. A reader
+  that finds both reads the identity as compromised, with no fallback it
+  can trust, since nothing tells the real first from the other. A thief can
+  so keep the person from falling back, but cannot take the fallback over.
+  Fixing the fallback in what the id hashes would close this, and is left
+  open below.
+- **The fallback's private key is kept as the first one is**, an identity
+  block at the same drop, `user:{username}`, opened by the username and the
+  fallback password, so a compromised password does not open it. Keeping it
+  off the network is left to the later version Step 79 names.
+- **What follows a compromise is the readers'**: they use the fallback in
+  the identity's place. What the identity signed before is not judged,
+  since no clock says when it was signed.
+- **The page walks the history, not the node.** The plan's call was the
+  node, so that each application would not walk it its own way. Since then
+  the node has been ruled to be building blocks (Step 92), and a page walks
+  the history with the endpoints there are, `GET /data/drop/{target}` and
+  `GET /data/signed/{id}`. The rules are written once, in the App Developer
+  Guide §6.14, as the directory's and the metadata's are. The node only
+  makes the first version, since a page on `/config`'s port cannot sign on
+  the main port (Step 91), and every identity must name its fallback from
+  the start.
+
+The specification change is written: HttpApi §11.3 gives the fallback, the
+fallback password, the identity block's `fallback` and `fallback_for`, the
+first version and its JSON, `fallback_password` in both `POST`s, the three
+drops sharing `seconds`, `409` for either password, and the answer's
+`fallback`; §11.4 gives the session's `fallback` and `fallback_for`.
+
+Built in one change set: 286 added lines of non-test Python, 51 of them in
+place of removed ones, 333 of the directory page, 32 of the `/config` page,
+and 332 of tests.
+
+- **`NewIdentity`** (`identity/people.py`, new), an identity and its
+  fallback made at once, each naming the other, and its
+  **`first_version`**. **`PersonKey.fallback`** and **`fallback_for`**,
+  sealed into and opened from the identity block, and
+  **`PersonKey.details_target`**, the drop `user:{id}`.
+- **`IdentityRequest.fallback_password`**
+  (`protocol/identity_requests.py`).
+- **`Identities`** (`webserver/identity_handlers.py`) derives both keys,
+  refuses either password that opens an identity already, places the
+  fallback's block, the first version, and the identity's block, and stores
+  both public keys. **`Session.value`** answers `fallback` and
+  `fallback_for`.
+- **The directory page** reads each person's versions back to the first,
+  shows their fallback, or that they are compromised and whom to use in
+  their place, writes the session's fallback into each version, and offers
+  whoever is signed in, as themselves or as their fallback, saying their
+  identity is compromised. **The `/config` page** asks for the fallback
+  password twice.
+- The App Developer Guide §6.10, §6.12, and §6.14; the Operator Guide §6.5;
+  and the README.
+
+My calls while building, not yet reviewed:
+
+- **The three drops share `seconds`, a third each**, so that making an
+  identity takes as long as was asked, and each matches `minimum_bits`.
+  Each matches about a bit and a half fewer than one given all of it. In
+  the live run, 10 seconds asked took 11.0, and the identity's block matched
+  21 bits.
+- **An identity block names exactly one of `fallback` and
+  `fallback_for`**, and one with neither, or both, opens to no identity, as
+  one without `created` does (Step 80). The session answers both, so that a
+  page writes `fallback` from the session as it writes `created`, and a page
+  signed in as a fallback knows the identity it takes over from.
+- **Either password that already opens an identity at the drop is `409`**,
+  among the blocks held, so that each signs in to one identity. A fallback
+  password the same as the password, once composed alike, is `400`.
+- **The identity's own block is placed last**, after the fallback's block
+  and the first version, and the public keys after all three. A refusal
+  after the first drop leaves what was placed; only an object too large
+  can refuse one then, and each is a few KiB.
+- **A fallback only says its identity is compromised.** It has no details
+  of its own in the directory, is not listed there, and is offered nothing
+  else, since its own fallback is left open below.
+- **`compromised` is `true` or left out**; any other value is read as left
+  out.
+- **The page reads back only the person's own versions**, at most 1,024
+  (`MAX_HISTORY`, as many as a directory's extensions), since anyone may
+  place a version of their own at the drop naming whatever it likes. A
+  version the fallback signs is found at the drop, and not read back.
+- **The fallback is the one the first versions read name**, or, with none
+  read, the one every version read names. When they differ, no fallback is
+  trusted.
+- **Saying an identity is compromised asks to be confirmed**, in the
+  browser's dialog, and reloads the page. It is held off, as saving is,
+  while a version found is not held. From the fallback, it is held off
+  while none of the identity's versions is held, and refused when they name
+  another fallback, since its word would not count.
+- **A compromised identity's details are still shown**, from its newest
+  version, flagged, and searching `compromised` finds it. Saving is held
+  off for it.
+- **The page still offers saying so when versions held name another
+  fallback than the session's**, and says someone else has the key: what
+  it writes names the session's fallback, which marks the identity
+  compromised wherever both are read.
+- **Only versions with details count as saying something**, in the
+  directory's count, since every identity's first version says nothing.
 
 **Open questions:**
 
-- Who may say the identity is compromised. Whoever holds a stolen key can
-  sign anything the person can. Metadata that changes or leaves out the
-  fallback now marks the identity compromised, but metadata that keeps it
-  says nothing, and the thief goes on signing as the person.
-- What "missing" is. A version that leaves the fallback out plainly is.
-  Metadata the node cannot find at all, or a history with a version
-  missing from it, perhaps evicted, is not plainly anything: whether
-  either reads as compromised, or as not yet known.
-- What making an identity asks for: the id of a fallback the person
-  already has, or a second password, from which the node makes one.
-- What makes the first version the first. Whoever holds the key can make
-  another first version naming a fallback of their own, and walking back
-  reaches whichever one they started from. Something that cannot be made
-  later has to fix it: the fallback's id in the identity itself, say, or
-  the first version's id kept by whoever is told of the person.
-- Whether the fallback's private key is kept as the first one is (Step
-  79), and so opened by the same password, which a compromise may have
-  taken too, or kept by the person off the network.
-- What follows a compromise: whether what the old identity signed after
-  some point is no longer trusted, and how a reader learns that point.
+- Fixing the fallback in what a person's id hashes, so that a second
+  first version cannot leave an identity with no fallback to trust.
+- A fallback's own fallback, once it takes over, and what it says of
+  itself, without which a compromised fallback has no way back.
+- Whether what a compromised identity signed after some point is no longer
+  trusted, and how a reader learns that point.
+- Whoever holds a stolen key and keeps the fallback the same is read as the
+  person until the person says otherwise.
 
-**Testable in isolation:** tests over a chain of metadata versions
-asserting a fallback that changes, or goes missing, marks the identity
-compromised, and a compromised identity resolves to its fallback.
+A live run of one node from the scratchpad, driving headless Chrome 154
+over CDP:
+
+- Alice, made on `/config`'s port, and Bob and Carol, with `curl`, each
+  answered with their fallback's id. Alice's first version was the nearest
+  content at `user:{id}`, sharing 22 bits, signed by her, naming her
+  fallback, with no details. Signing in as `ALICE` with her password was
+  her, with her fallback password her fallback, `fallback_for` naming her,
+  and with a wrong password `503`. Her password with another fallback
+  password was `409`, another password with her fallback password `409`,
+  and one the same as the other `400`.
+- Signed in on the directory page, Alice was listed, with her fallback, and
+  no note, the history read back to the first. She saved her details, and
+  version 2, reloaded, read back to version 1.
+- Bob, from the page's script, placed a version 99 saying Alice is
+  compromised, signed by himself, at her drop, and a version 2 of his own
+  naming Carol as his fallback. Alice was unchanged. Bob read as
+  compromised, to be replaced by the fallback his first version named, not
+  Carol, and the page held off his saving.
+- Signed in with Carol's fallback password, the page said so, offered no
+  details form, listed no one new, and offered saying Carol is compromised.
+  Once said, Carol read as compromised, falling back to it.
+- Dave, given a second version 1 naming Alice as his fallback, read as
+  compromised with no fallback to trust. Eve, given a version 3 naming a
+  version no node holds, showed her fallback with a note that it was
+  checked only as far back as her history is held.
+- Searching `compromised` showed three of the five. Nothing was logged at
+  warning or above, but for the run's own requests made with no `Referer`.
+
+The rules were also run with Node over twelve chains of versions, outside
+the suite, since the repository runs no JavaScript.
+
+**Testable in isolation:** library tests asserting a new identity and its
+fallback name each other, seal and open as such, and that the first
+version is signed by the identity and names the fallback; request tests
+of the fallback password; endpoint tests asserting making an identity
+places the fallback and the first version, sharing the search, that the
+fallback password signs in as the fallback, and that either password
+opening an identity already is `409`; and packaging tests asserting the
+pages send and write the fallback. The rules of the history are checked by
+hand, as the metadata's are.
 
 ---
 

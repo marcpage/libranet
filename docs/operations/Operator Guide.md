@@ -438,14 +438,23 @@ and password together, so they can sign in with them on any node that holds
 it. A node keeps no list of the people who have one, and a forgotten
 password cannot be reset.
 
-On the `/config` page, under **Users**, give the username, the password
-twice, and the size of the person's key, one of `identity.person_key_bits`,
-which are 2048, 3072, and 4096 bits by default. A larger key takes longer to
-make, and to guess.
+Each person also has a fallback password. It opens a second identity, their
+fallback, made with the first, which takes over should the first be
+compromised: its password learned by someone else, or forgotten. Signing in
+with the username and the fallback password signs in as the fallback, from
+which the person says their identity is compromised, in the user directory.
+Whoever learns both passwords can take the identity over for good, so the
+person keeps the fallback password apart from the other, written down, say.
 
-A username is the same however it is cased, and a password is at least 8
-characters. People may share a username, each with a password of their
-own, but the same username and password twice is refused. Creating a user
+On the `/config` page, under **Users**, give the username, the password
+twice, the fallback password twice, and the size of the person's keys, one
+of `identity.person_key_bits`, which are 2048, 3072, and 4096 bits by
+default. A larger key takes longer to make, and to guess.
+
+A username is the same however it is cased, and each password is at least
+8 characters, the fallback password not the same as the other. People may
+share a username, each with passwords of their own, but a username and
+either password that already open an identity are refused. Creating a user
 takes about ten seconds, and does not sign you in.
 
 The node does not list the person in the user directory, which the
@@ -454,7 +463,7 @@ the page offers a link, **Add them to the user directory**, which opens the
 directory, and its **Add to the directory** button lists them. Otherwise
 they are listed the first time they sign in on the directory, from a
 browser on the node's machine, where they can also say what they will of
-themselves, for anyone to read.
+themselves, for anyone to read, or say their identity is compromised.
 
 From a script, `seconds` and `minimum_bits` also say how long the node
 searches for where to keep the identity, and how many bits it must match
@@ -466,10 +475,14 @@ curl -u admin:secret -e http://127.0.0.1:8180/config/ \
   -X POST http://127.0.0.1:8180/config/api/users \
   -H 'Content-Type: application/json' \
   -d '{"username": "alice", "password": "<8 characters or more>",
+       "fallback_password": "<8 characters or more, another>",
        "key_bits": 3072, "seconds": 10, "minimum_bits": 16}'
 ```
 
-It is answered `201`, with the person's id, once the search is done.
+It is answered `201`, with the person's id and their fallback's, once the
+search is done. The `seconds` are shared by the three drops it makes: the
+identity's, the fallback's, and the first version of what the person says
+of themselves, which names the fallback.
 
 ## 7. Watching a Running Node
 
