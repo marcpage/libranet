@@ -65,6 +65,9 @@ DATA_ENDPOINT_NAMES: Final = (
     "signed",
     "drop",
     "encrypted",
+    "users",
+    "fallback",
+    "session",
 )
 
 DATA_PATTERN: Final = (
