@@ -262,7 +262,7 @@ applications, and running test networks and super nodes.
 | Phase 1 — reference node, steps 1–15, 17–20, and 33–40 | Implemented |
 | Phase 2 — steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–63 | Implemented |
 | Phase 3 — video playback, steps 64–77 | Implemented |
-| Phase 4 — user accounts, steps 30, 78–82, and 89–93 | Implemented; cleanup in progress |
+| Phase 4 — user accounts, steps 30, 78–82, and 89–93 | Implemented |
 | Phase 5 — Karma, step 56 | Planned |
 | Phase 6 — enhancements, steps 16, 50, and 57 | Planned |
 | Phase 7 — a seed node, step 84 | Planned |
