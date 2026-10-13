@@ -95,6 +95,6 @@ def _run_logged(logger: Logger, name: ModuleName, body: Callable[[], None]) -> N
     try:
         body()
 
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception:
         logger.exception("Module %s crashed", name)
         raise SystemExit(EXIT_CRASHED) from None

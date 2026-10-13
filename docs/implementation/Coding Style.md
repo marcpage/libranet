@@ -506,8 +506,10 @@ Catch the narrowest exception that can happen, and name it `error`.
 `except Exception` is only for a boundary that must survive whatever it runs:
 a module's receive loop, a worker thread, a request handler. Each is marked
 `# pylint: disable=broad-exception-caught`, so that a new one is a decision
-and not an accident. `except BaseException` is only for cleaning up and
-raising again.
+and not an accident. One that ends by raising, as a module process does to
+exit once it has logged its crash, has no mark: `pylint` does not report it,
+and refuses a mark that turns nothing off (§2.1). `except BaseException` is
+only for cleaning up and raising again.
 
 Every handler does one of three things, and
 `tests/test_exception_logging.py` fails on one that does none:
