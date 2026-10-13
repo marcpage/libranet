@@ -851,6 +851,12 @@ function itemOf(entry) {
     rows.append(make("li", "Some of what they say is not held here yet.", "note"));
   }
 
+  // The mail application mails whoever is compromised at their fallback.
+  const mail = make("a", "Send mail");
+  mail.href = `/mail/?to=${encodeURIComponent(entry.id)}`;
+  const send = document.createElement("li");
+  send.append(mail);
+  rows.append(send);
   item.append(first);
 
   if (rows.childElementCount > 0) {

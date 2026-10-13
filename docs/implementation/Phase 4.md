@@ -1263,6 +1263,107 @@ Still open:
   address book.
 - **The cost of reading back.** Each day **Older** reads is 24 searches,
   each started on the peers too.
+- **Removals are kept for good.** An address book grows with every name
+  ever removed, and a month's marks with every message marked.
+- **Reading the directory from compose** reads what everyone in it says of
+  themselves, eight at a time, which a large directory makes slow.
+
+Built in one change set, with no change to the node: 10 lines of
+non-test Python, 3 of them in place of removed ones, registering the
+application; the page, `applications/mail/index.html`, 2,797 lines of HTML
+and script; a **Send mail** link in the directory's page; and 83 added
+lines of tests.
+
+- **`SHIPPED_APPLICATIONS`** gains `"mail": "mail"`, trusted from the start
+  as every shipped application but `/config` is.
+- **The page** keeps what a person keeps in a `Kept` record, the address
+  book and each month's marks alike, and copies the directory's reading
+  rules (`listingOf`, `readDetails`, `judged`, and the rest), as ruled.
+- **Tests** (`tests/test_applications_packaged.py`): the node ships mail; its
+  page is built from its directory, loads nothing from elsewhere, calls only
+  endpoints the node serves, keeps mail at the targets above within the
+  node's drop limits, and signs each copy and encrypts it for its reader;
+  the directory links each person to mail; and a new node serves the page.
+- **Documents:** the App Developer Guide §6.16 (new) gives the targets and
+  formats, so that other pages read and send mail alike, §9 names mail, and
+  §6.15's example no longer uses a `mail:` target; the Operator Guide §6 and
+  the README name it among the shipped applications.
+
+My calls while building, not yet reviewed:
+
+- **An id pasted in is added to the address book once the message is
+  sent**, as one a link names is. Whoever is picked from the directory is
+  added as they are picked, as ruled.
+- **Sending reads each recipient's details again**, so that a compromise
+  said since the page opened is found. When any recipient is replaced by
+  their fallback, nothing is sent: the person sees who replaced whom, and
+  sends again.
+- **Some recipients failing does not stop the rest.** The message goes to
+  everyone it can, the sender's copy is kept, and the page says who it did
+  not reach. A message that does not fit in a drop stops at the first copy.
+- **A conversation is grouped over everything read**, inbox and sent, and
+  listed wherever it has a message not hidden, so your replies join an
+  inbox conversation once **Sent** has been read. **Sent** is read only when
+  first shown, so that opening the page is 25 searches, not 50.
+- **Opening a conversation marks every message in it read.** **Hide** and
+  **Mark unread** act on one message, and **Mark unread** closes the
+  conversation, so that it is not marked read again at once.
+- **Refresh searches from the hour before the last read to the coming
+  one**, and opens again what was found but not held before.
+- **A change made before its record has loaded is kept**, and written once
+  it has. A month whose marks cannot be read leaves its mail readable, with
+  its marks unsaved, and says so. Leaving the page while a change waits to
+  be written asks first.
+- **The directory is read when a To, CC, or BCC field is first used**, not
+  as the page opens.
+- **A bundle body is shown in an `iframe` with a `sandbox` attribute** as
+  well as the node's sandbox, with its top-level files listed to open, or a
+  link to its one file if it is a file bundle.
+- **A name in the address book** is at most 64 characters, holds no `<`,
+  `>`, or comma, which separate the people a message is for, and is not an
+  id.
+- **A message needs a reader**, and, as text, a subject or some text.
+- **The page offers nothing to a remote client**, since only a local one
+  signs in, and a fallback that has not taken over only reads.
+- **The directory's Send mail link is on every entry**, your own too.
+
+A live run of three linked nodes (`libranet-local-network --count 3`),
+driven in headless Chrome over CDP, with Alice, Bob, and Carol made at 2048
+bits on different nodes, each in a browser context of their own:
+
+- Alice sent To Bob and BCC Carol, each by a pasted id, in 3.3 seconds.
+  Bob's node found it after one **Refresh**. Bob's copy had no BCC line,
+  and Carol's named only her. Both were added to Alice's address book in one
+  version once it was sent. Bob opening it wrote one version at
+  `mail state:{Bob}:2026/10`.
+- Bob's **Reply all** went to Alice alone, `Re:`, quoted, naming the
+  `message` replied to. Once **Sent** was read, Alice saw the two as one
+  conversation of two.
+- **Hide**, **Hidden**, **Show again**, and **Mark unread** each wrote a
+  version, and the month's drop held only the newest.
+- Two address book versions placed over the same one, one adding Dave and
+  one removing Carol, were merged as the page opened into a version 3
+  naming both, holding Dave and Carol's removal, and the drop held only it.
+- Bob's fallback took over and said Bob was compromised. Alice mailing Bob
+  by name was stopped once, told his fallback took his place, and her
+  address book changed to it; sent again, it reached the fallback, which
+  Bob signed in as with his old fallback password. Bob's earlier reply
+  showed Alice a warning.
+- An encrypted bundle sent to Carol showed its `index.html` with its script
+  not run, and listed its two files. **Forward** carried the same id, as a
+  bundle, `Fwd:`.
+- With handles saved in the directory, Carol followed its **Send mail**
+  link to Alice, who was added as `alice` once sent, and the link left the
+  address. Bob's fallback, in the directory as `bob`, was offered in
+  compose as `Bob Builder (bob) <…>`, and picking him added `bob` at once.
+- An unsigned drop at Carol's hour, and one signed but for Alice, were both
+  passed over and counted.
+- The address book refused a name with a comma, a short id, and a name
+  taken by another; renaming and removing each left one version at the
+  drop. **Older** read 24 more hours in a quarter of a second.
+- Signed in with her fallback password before it took over, Carol read
+  mail, with nothing offered to send, add, or mark.
+- No warning or error was logged by any node.
 
 **Testable in isolation:** the page's logic is checked by hand, and in a
 live run of linked local nodes, as the movie application's is; tests of

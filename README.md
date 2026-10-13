@@ -219,8 +219,9 @@ uv run libranet
 Then open `http://127.0.0.1:8080/` in a browser. That is your node's front
 page, which says who the node is and links to its applications: the movie
 library at `http://127.0.0.1:8080/movie/`, the user directory at
-`http://127.0.0.1:8080/directory/`, and the administration page, where you
-back up folders and register applications. The administration page is at
+`http://127.0.0.1:8080/directory/`, mail at `http://127.0.0.1:8080/mail/`,
+and the administration page, where you back up folders and register
+applications. The administration page is at
 `http://127.0.0.1:8180/config/`, unless that port was taken, and the node
 prints the address it took as it starts. It opens only in a browser on the
 same computer, and the first time, you type its address. The first username
@@ -305,7 +306,7 @@ currently find each other only through peers you configure yourself.
 | [Phase 1 Plan](docs/implementation/Phase%201.md) | Implementation steps 1–15, 17–20, and 33–40, all built |
 | [Phase 2 Plan](docs/implementation/Phase%202.md) | Implementation steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–63, all built |
 | [Phase 3 Plan](docs/implementation/Phase%203.md) | Video playback: steps 64–77, all built |
-| [Phase 4 Plan](docs/implementation/Phase%204.md) | User accounts: steps 30, 78–82, and 89–93; 30, 78–81, and 89–93 built |
+| [Phase 4 Plan](docs/implementation/Phase%204.md) | User accounts: steps 30, 78–82, and 89–93, all built |
 | [Phase 5 Plan](docs/implementation/Phase%205.md) | Karma: step 56 so far, planned |
 | [Phase 6 Plan](docs/implementation/Phase%206.md) | Enhancements: steps 16, 50, and 57, planned |
 | [Phase 7 Plan](docs/implementation/Phase%207.md) | A seed node: step 84, planned |

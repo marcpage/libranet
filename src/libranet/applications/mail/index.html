@@ -1,0 +1,2797 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Mail</title>
+<style>
+  :root {
+    --background: #f6f6f4;
+    --surface: #ffffff;
+    --text: #1d1d1b;
+    --muted: #5d5d58;
+    --border: #d8d8d2;
+    --accent: #2a5db0;
+    --good: #1f7a3d;
+    --bad: #b3261e;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --background: #161615;
+      --surface: #1f1f1d;
+      --text: #ececea;
+      --muted: #a8a8a2;
+      --border: #3a3a36;
+      --accent: #7ea9f0;
+      --good: #6cc98a;
+      --bad: #f2877e;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  main { max-width: 52rem; margin: 0 auto; padding: 2.5rem 1rem; }
+  h1 { font-size: 1.5rem; margin: 0; }
+  h2 { font-size: 1.15rem; margin: 0 0 0.75rem; }
+  a { color: var(--accent); }
+
+  section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin: 1.25rem 0;
+  }
+
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    word-break: break-all;
+  }
+
+  /* A person's id: one click selects all of it. */
+  .id { user-select: all; }
+
+  .flag { color: var(--bad); font-weight: 600; margin-left: 0.5rem; }
+  .note, footer { color: var(--muted); }
+  .error { color: var(--bad); }
+  button { font: inherit; padding: 0.35rem 0.9rem; }
+  #status { margin: 0.25rem 0 0; padding: 0; list-style: none; }
+  #status li + li { margin-top: 0.15rem; }
+  footer { font-size: 0.9rem; }
+
+  input, textarea {
+    font: inherit;
+    min-width: 0;
+    padding: 0.3rem 0.45rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--background);
+    color: var(--text);
+  }
+
+  textarea { width: 100%; min-height: 12rem; margin-top: 0.75rem; resize: vertical; }
+
+  .fields { display: grid; grid-template-columns: max-content 1fr; gap: 0.4rem 0.75rem; align-items: center; }
+  .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
+
+  nav { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1.25rem 0 0; }
+  nav button[aria-pressed="true"] { font-weight: 600; }
+
+  /* A list of conversations, or of hidden messages: one row each. */
+  .mail { margin: 0; padding: 0; list-style: none; }
+  .mail > li + li { border-top: 1px solid var(--border); }
+
+  .mail .open {
+    display: grid;
+    grid-template-columns: minmax(0, 11rem) minmax(0, 1fr) max-content;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.45rem 0.25rem;
+    border: 0;
+    background: none;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .mail .open > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mail .unread .open { font-weight: 600; }
+  .mail .shown { display: flex; align-items: center; gap: 0.5rem; }
+  .mail .shown .open { flex: 1; }
+  .when, .count { color: var(--muted); font-weight: normal; }
+
+  /* The people a message is for, each a chip, and what is typed after them. */
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    align-items: center;
+    padding: 0.2rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--background);
+  }
+
+  .chips input { flex: 1; min-width: 12rem; border: 0; background: transparent; }
+  .chip { padding: 0 0.1rem 0 0.6rem; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); }
+  .chip button { padding: 0 0.35rem; border: 0; background: none; color: var(--muted); cursor: pointer; }
+
+  .message + .message { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+  .headers { display: grid; grid-template-columns: max-content 1fr; gap: 0.1rem 0.75rem; color: var(--muted); }
+  .headers dt { font-weight: 600; }
+  .headers dd { margin: 0; }
+  .body { margin: 0.75rem 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+
+  iframe.bundle {
+    width: 100%;
+    height: 28rem;
+    margin: 0.75rem 0 0.25rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: #ffffff;
+  }
+
+  .entries { margin: 0.25rem 0 0; padding-left: 1.5rem; }
+  .book { margin: 0; padding: 0; list-style: none; }
+  .book > li + li { margin-top: 0.6rem; padding-top: 0.6rem; border-top: 1px solid var(--border); }
+  .book .actions { margin-top: 0.25rem; }
+  .book button { padding: 0.15rem 0.6rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Mail</h1>
+  <ul id="status"><li class="note">Asking the node&hellip;</li></ul>
+  <noscript><p class="note">Mail needs JavaScript.</p></noscript>
+
+  <section id="account" hidden>
+    <h2 id="account-title">Sign in</h2>
+    <form id="sign-in" hidden>
+      <div class="fields">
+        <label for="username">Username</label>
+        <input id="username" autocomplete="username" required>
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" required>
+      </div>
+      <div class="actions"><button type="submit">Sign in</button></div>
+    </form>
+    <div id="signed-in" hidden>
+      <span id="signed-in-text"></span>
+      <div class="actions"><button id="sign-out" type="button">Sign out</button></div>
+    </div>
+    <p id="account-text" class="note"></p>
+  </section>
+
+  <nav id="views" hidden>
+    <button type="button" data-view="inbox">Inbox</button>
+    <button type="button" data-view="sent">Sent</button>
+    <button type="button" data-view="hidden">Hidden</button>
+    <button type="button" data-view="book">Address book</button>
+    <button type="button" id="new-message">New message</button>
+  </nav>
+
+  <section id="compose" hidden>
+    <h2 id="compose-title">New message</h2>
+    <form id="compose-form" autocomplete="off">
+      <div class="fields">
+        <label for="to-input">To</label>
+        <div class="chips"><span id="to-chips"></span><input id="to-input" list="people"></div>
+        <label for="cc-input">CC</label>
+        <div class="chips"><span id="cc-chips"></span><input id="cc-input" list="people"></div>
+        <label for="bcc-input">BCC</label>
+        <div class="chips"><span id="bcc-chips"></span><input id="bcc-input" list="people"></div>
+        <label for="subject">Subject</label>
+        <input id="subject">
+        <span>Body</span>
+        <div>
+          <label><input type="radio" name="body" value="text" checked> Text</label>
+          <label><input type="radio" name="body" value="bundle"> A bundle</label>
+        </div>
+      </div>
+      <textarea id="text" aria-label="The message"></textarea>
+      <div id="bundle-field" hidden>
+        <div class="fields">
+          <label for="bundle">Bundle id</label>
+          <input id="bundle" placeholder="sha256/&hellip;">
+        </div>
+        <p class="note">
+          Its <code>index.html</code> is shown to whoever reads the message, and
+          its files are listed. Only an encrypted id, which carries its key, keeps
+          the bundle from anyone but the people you send it to.
+        </p>
+      </div>
+      <datalist id="people"></datalist>
+      <div class="actions">
+        <button id="send" type="submit">Send</button>
+        <button id="discard" type="button">Discard</button>
+      </div>
+    </form>
+    <p id="compose-text" class="note"></p>
+  </section>
+
+  <section id="list-section" hidden>
+    <h2 id="list-title">Inbox</h2>
+    <p id="period" class="note"></p>
+    <div id="list"></div>
+    <div id="list-actions" class="actions">
+      <button id="refresh" type="button">Refresh</button>
+      <button id="older" type="button">Older</button>
+    </div>
+  </section>
+
+  <section id="reading" hidden>
+    <h2 id="reading-title"></h2>
+    <div id="thread"></div>
+  </section>
+
+  <section id="book-section" hidden>
+    <h2>Address book</h2>
+    <p class="note">
+      Your address book is kept in the network, encrypted for you alone, so
+      it is the same on any node you sign in on.
+    </p>
+    <div id="book"></div>
+    <h2>Add someone</h2>
+    <form id="book-add" autocomplete="off">
+      <div class="fields">
+        <label for="book-name">Name</label>
+        <input id="book-name" required>
+        <label for="book-id">Id</label>
+        <input id="book-id" placeholder="sha256/&hellip;" required>
+      </div>
+      <div class="actions"><button type="submit">Add</button></div>
+    </form>
+    <p id="book-text" class="note"></p>
+  </section>
+
+  <footer>
+    Each message is a copy for each person it is sent to, signed by its
+    sender and encrypted for that person alone, at the drop
+    <code>mail:</code> and their id, followed by the hour it was sent in UTC,
+    such as <code>2026/10/12/09</code>. A person reads a period by searching
+    each hour of it. The sender keeps a copy of their own at
+    <code>mail sent:</code>, their id, and the hour. Your address book, and
+    what you have read and hidden, are kept the same way, encrypted for you, at
+    <code>mail address book:</code> and your id, and at <code>mail state:</code>,
+    your id, and each month of mail. Mail is read and sent only in a browser on
+    the node's own machine, signed in.
+  </footer>
+</main>
+<script>
+"use strict";
+
+// Where mail for a person is kept: a copy of each message, at the drop
+// "mail:{id}:{year}/{month}/{day}/{hour}" of the hour it was sent in UTC, so
+// that a person reads a period by searching its hours (Phase 4 Step 82). The
+// sender keeps a copy of their own at "mail sent:{id}:…" alike.
+const MAIL_PREFIX = "mail:";
+const SENT_PREFIX = "mail sent:";
+
+// What a person keeps for themselves, each in versions they sign: their
+// address book, and what they have read and hidden, by the month of the
+// target the mail it marks was found at, "mail state:{id}:{year}/{month}".
+const ADDRESS_BOOK_PREFIX = "mail address book:";
+const STATE_PREFIX = "mail state:";
+
+// The user directory, and what each person says of themselves, read as the
+// directory application reads them (App Developer Guide 6.12 and 6.14).
+const DIRECTORY_TARGET = "user directory";
+const DETAILS_PREFIX = "user:";
+
+// What an entry of the directory names a person by, in order; the handle in
+// parentheses.
+const FIRST_ROW = [
+  "first name", "last name", "handle", "country", "postal code", "state",
+  "province", "county", "city",
+];
+const HANDLE = "handle";
+
+// What each drop placed asks the node to search for its nonce. Sending to
+// many people places a copy for each, one after another, so it is kept short.
+// No one sending mail decides how hard the node searches.
+const DROP_SECONDS = 1;
+const DROP_MINIMUM_BITS = 16;
+
+// What a 503 waits when it does not say, and how many are waited out reading
+// and while the node fetches the key of whoever a copy is for.
+const DEFAULT_RETRY_SECONDS = 5;
+const MAX_WAITS = 1;
+const MAX_KEY_WAITS = 5;
+
+// The most extensions a directory is read through, the most versions of what
+// a person says read back through its history, and the most fallbacks
+// followed to find who to mail in place of someone compromised.
+const MAX_EXTENSIONS = 1024;
+const MAX_HISTORY = 1024;
+const MAX_FALLBACKS = 16;
+
+// The hours read as the page opens, besides the coming hour, for a sender
+// whose clock runs ahead, and how many more each "Older" reads.
+const HOURS_FIRST_READ = 24;
+const HOURS_OLDER = 24;
+const HOUR_MS = 60 * 60 * 1000;
+
+// How many searches, openings, and people's details are asked at once.
+const SEARCHES_AT_ONCE = 4;
+const OPENS_AT_ONCE = 4;
+const DETAILS_AT_ONCE = 8;
+
+// How long after the last change what a person keeps is written, so that
+// reading several messages writes one version, not one each.
+const WRITE_DELAY_SECONDS = 3;
+
+// The longest name in an address book.
+const MAX_NAME_LENGTH = 64;
+
+// A person's id: the only hash the node knows, in lower-case hex (HttpApi 5).
+const CONTENT_ID = /^sha256\/[0-9a-f]{64}$/;
+
+// A bundle's id, or one carrying its key, as an encrypted bundle's does
+// (HttpApi 12.1), with its IV if it names one.
+const BUNDLE_ID = /^sha256\/[0-9a-f]{64}(\/AES256-CBC(-IV:[0-9a-f]{32})?\/[0-9a-f]{64})?$/;
+
+// What every copy of one message shares, and what a reply names, and a time
+// in UTC to the second, as an identity's creation is given (HttpApi 11.3).
+const MESSAGE_ID = /^[0-9a-f]{32}$/;
+const MESSAGE_ID_BYTES = 16;
+const TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+
+// What a person's public key begins with: PEM-encoded SubjectPublicKeyInfo
+// (HttpApi 11.3).
+const PUBLIC_KEY_PEM = "-----BEGIN PUBLIC KEY-----";
+
+// JSON as written begins with "{", which no zlib stream does (HttpApi 8),
+// and a drop's content ends at its last null byte (HttpApi 9).
+const OPEN_BRACE = 0x7b;
+const NULL_BYTE = 0x00;
+
+// Where the hex of a hash begins in a content id, after "sha256/", and how
+// much of it a person's id is shortened to.
+const HASH_START = "sha256/".length;
+const SHORT_HASH = 12;
+
+// The two places mail is read from.
+const INBOX = "inbox";
+const SENT = "sent";
+
+function byId(id) {
+  return document.getElementById(id);
+}
+
+function make(tag, text, className) {
+  const element = document.createElement(tag);
+  element.textContent = text;
+
+  if (className) {
+    element.className = className;
+  }
+
+  return element;
+}
+
+function button(text, action) {
+  const made = make("button", text);
+  made.type = "button";
+  made.addEventListener("click", action);
+  return made;
+}
+
+// Each line saying what the page did, the first replacing what was there
+// before.
+const status = {
+  started: false,
+
+  say(text, className) {
+    const list = byId("status");
+
+    if (!this.started) {
+      list.replaceChildren();
+      this.started = true;
+    }
+
+    list.append(make("li", text, className || "note"));
+  },
+};
+
+// Where the node searches the drop `target` names (HttpApi 9.7): the target
+// string, as one path segment.
+function dropPath(target) {
+  return `/data/drop/${encodeURIComponent(target)}`;
+}
+
+function sleep(seconds) {
+  return new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+}
+
+function retryAfter(headers) {
+  const seconds = Number.parseInt(headers.get("Retry-After") || "", 10);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : DEFAULT_RETRY_SECONDS;
+}
+
+function isObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function plural(count, one, many) {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+function byText(one, other) {
+  return one.localeCompare(other, undefined, { sensitivity: "base" });
+}
+
+// How many leading bits two hashes in hex share.
+function matchingBits(hex, other) {
+  let bits = 0;
+
+  for (let i = 0; i < hex.length && i < other.length; i += 1) {
+    const differ = Number.parseInt(hex[i], 16) ^ Number.parseInt(other[i], 16);
+
+    if (differ !== 0) {
+      return bits + Math.clz32(differ) - 28;
+    }
+
+    bits += 4;
+  }
+
+  return bits;
+}
+
+// Run `work` over `items`, no more than `limit` at once.
+async function eachAtMost(items, limit, work) {
+  const pending = [...items];
+  const workers = Array.from({ length: Math.min(limit, pending.length) }, async () => {
+    while (pending.length > 0) {
+      await work(pending.shift());
+    }
+  });
+  await Promise.all(workers);
+}
+
+// Work run no more than `limit` at once, however many ask.
+class Limiter {
+  constructor(limit) {
+    this.limit = limit;
+    this.running = 0;
+    this.waiting = [];
+  }
+
+  async run(work) {
+    while (this.running >= this.limit) {
+      await new Promise((resolve) => this.waiting.push(resolve));
+    }
+
+    this.running += 1;
+
+    try {
+      return await work();
+    } finally {
+      this.running -= 1;
+      this.waiting.shift()?.();
+    }
+  }
+}
+
+// The node could not be reached at all.
+class Unreachable extends Error {}
+
+// Content that cannot be read as a directory of people, saying why.
+class Unusable extends Error {}
+
+// The session ended while the page was open (HttpApi 11.4).
+class SessionEnded extends Error {
+  constructor() {
+    super("Your session has ended. Reload the page, and sign in again.");
+  }
+}
+
+// One request to the node, its body sent as JSON. `value` is the answer read
+// as JSON, or null.
+async function call(method, path, body) {
+  const init = { method, cache: "no-store", headers: {} };
+
+  if (body !== undefined) {
+    init.headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(body);
+  }
+
+  let response;
+
+  try {
+    response = await fetch(path, init);
+  } catch (error) {
+    throw new Unreachable(`The node could not be reached: ${error.message}`);
+  }
+
+  const text = await response.text();
+  let value = null;
+
+  try {
+    value = text ? JSON.parse(text) : null;
+  } catch (error) {
+    value = null;
+  }
+
+  return { status: response.status, ok: response.ok, headers: response.headers, value };
+}
+
+// What the node said of a request it did not do.
+function refusal(result) {
+  const problem = isObject(result.value) ? result.value : {};
+  return problem.detail || problem.title || `The node answered ${result.status}.`;
+}
+
+// Asks for `path`, asking again while the node fetches what it lacks (App
+// Developer Guide 5.3).
+async function patiently(path, init = {}, tries = 6) {
+  for (let attempt = 1; ; attempt += 1) {
+    let response;
+
+    try {
+      response = await fetch(path, init);
+    } catch (error) {
+      throw new Unreachable(`The node could not be reached: ${error.message}`);
+    }
+
+    if (response.status !== 503 || attempt >= tries) {
+      return response;
+    }
+
+    await sleep(retryAfter(response.headers));
+  }
+}
+
+async function inflated(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+// The bytes the node holds for `id`, as they were before any storage
+// compression (HttpApi 8), waiting out the 503s answered while the node
+// fetches them. Null if it still lacks them.
+async function held(id) {
+  for (let waits = 0; ; waits += 1) {
+    let response;
+
+    try {
+      // What an id names never changes, so the browser's cache may answer.
+      response = await fetch(`/data/${id}`);
+    } catch (error) {
+      throw new Unreachable(`The node could not be reached: ${error.message}`);
+    }
+
+    if (response.status === 503) {
+      if (waits >= MAX_WAITS) {
+        return null;
+      }
+
+      await sleep(retryAfter(response.headers));
+      continue;
+    }
+
+    if (!response.ok) {
+      throw new Unusable(`${id} could not be read (${response.status}).`);
+    }
+
+    const bytes = new Uint8Array(await response.arrayBuffer());
+
+    try {
+      return bytes[0] === OPEN_BRACE ? bytes : await inflated(bytes);
+    } catch (error) {
+      // Neither JSON nor compressed, so no directory: a key, say.
+      return bytes;
+    }
+  }
+}
+
+function jsonOf(bytes) {
+  try {
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch (error) {
+    return null;
+  }
+}
+
+// `value` with the keys of every object in it in order, so that what is
+// signed reads the same however it was built.
+function canonical(value) {
+  if (Array.isArray(value)) {
+    return value.map(canonical);
+  }
+
+  if (!isObject(value)) {
+    return value;
+  }
+
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonical(value[key])]));
+}
+
+// `date` in UTC to the second, as "2026-10-12T14:03:22Z".
+function utcSecond(date) {
+  return `${date.toISOString().slice(0, 19)}Z`;
+}
+
+function twoDigits(number) {
+  return String(number).padStart(2, "0");
+}
+
+// The start of the hour `ms` falls in.
+function hourOf(ms) {
+  return Math.floor(ms / HOUR_MS) * HOUR_MS;
+}
+
+// Each hour from the one starting at `from` to the one starting at `to`.
+function hoursBetween(from, to) {
+  const hours = [];
+
+  for (let hour = from; hour <= to; hour += HOUR_MS) {
+    hours.push(hour);
+  }
+
+  return hours;
+}
+
+// The drop of the hour starting at `hour` that `prefix` and `person` name,
+// such as "mail:sha256/…:2026/10/12/09".
+function hourTarget(prefix, person, hour) {
+  const date = new Date(hour);
+  const day = `${date.getUTCFullYear()}/${twoDigits(date.getUTCMonth() + 1)}/${twoDigits(date.getUTCDate())}`;
+  return `${prefix}${person}:${day}/${twoDigits(date.getUTCHours())}`;
+}
+
+// The month the hour starting at `hour` falls in, as "2026/10".
+function monthOf(hour) {
+  const date = new Date(hour);
+  return `${date.getUTCFullYear()}/${twoDigits(date.getUTCMonth() + 1)}`;
+}
+
+// What every copy of a new message shares.
+function newMessageId() {
+  const bytes = crypto.getRandomValues(new Uint8Array(MESSAGE_ID_BYTES));
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function shortId(id) {
+  return `${id.slice(0, HASH_START + SHORT_HASH)}…`;
+}
+
+// Who is signed in, as the node says (HttpApi 11.4); null if no one is, or
+// this client cannot say.
+async function signedIn() {
+  const result = await call("GET", "/data/session");
+  return result.ok && isObject(result.value) && CONTENT_ID.test(result.value.id) ? result.value : null;
+}
+
+async function isLocal() {
+  const result = await call("GET", "/data/client");
+  return result.ok && isObject(result.value) && result.value.local === true;
+}
+
+// The ids a search of the drop `target` finds sharing at least
+// DROP_MINIMUM_BITS with its hash. Whatever else is nearest is something
+// else, and is not read.
+async function foundAt(target) {
+  const search = await call("GET", dropPath(target));
+  const answered =
+    search.ok &&
+    isObject(search.value) &&
+    typeof search.value.target === "string" &&
+    Array.isArray(search.value.results);
+
+  if (search.status === 401) {
+    throw new Error("This node answers searches only from other nodes.");
+  }
+
+  if (!answered) {
+    throw new Error(`${target} could not be searched for: ${refusal(search)}`);
+  }
+
+  const hash = search.value.target;
+  return search.value.results.filter(
+    (id) => CONTENT_ID.test(id) && matchingBits(id.slice(HASH_START), hash) >= DROP_MINIMUM_BITS,
+  );
+}
+
+// What the node made of the drop `id` names, opened with the key of whoever
+// is signed in (HttpApi 11.6), waiting out the 503s answered while it fetches
+// it: what it signs and who signed it, or that it is not held yet, or that it
+// is nothing signed that opens for them.
+async function opened(id) {
+  for (let waits = 0; ; waits += 1) {
+    const result = await call("GET", `/data/encrypted/${id}`);
+
+    if (result.status === 503) {
+      if (waits >= MAX_WAITS) {
+        return { missing: true };
+      }
+
+      await sleep(retryAfter(result.headers));
+      continue;
+    }
+
+    if (result.status === 401) {
+      throw new SessionEnded();
+    }
+
+    const value = result.value;
+    const signed = result.ok && isObject(value) && typeof value.signer === "string" && typeof value.contents === "string";
+    return signed ? { signed: value } : { passed: true };
+  }
+}
+
+// Have the node place `contents` at the drop `target`, signed by whoever is
+// signed in and encrypted for `reader` (HttpApi 11.5 and 11.6), waiting while
+// it fetches the reader's key: its id, or that it does not fit in a drop, or
+// why it was refused.
+async function placed(target, contents, reader) {
+  for (let waits = 0; ; waits += 1) {
+    const result = await call("POST", "/data/signed", {
+      target,
+      text: JSON.stringify(canonical(contents)),
+      seconds: DROP_SECONDS,
+      minimum_bits: DROP_MINIMUM_BITS,
+      encrypt: { for: reader },
+    });
+
+    if (result.status === 201 && isObject(result.value)) {
+      return { id: result.value.id };
+    }
+
+    if (result.status === 503 && waits < MAX_KEY_WAITS) {
+      await sleep(retryAfter(result.headers));
+      continue;
+    }
+
+    if (result.status === 401) {
+      throw new SessionEnded();
+    }
+
+    return result.status === 413 ? { tooLarge: true } : { error: refusal(result) };
+  }
+}
+
+// Have the node block `ids`, versions replaced (HttpApi 5.5), which only a
+// local client may ask. How many were blocked.
+async function blocked(ids) {
+  let count = 0;
+
+  for (const id of ids) {
+    const result = await call("DELETE", `/data/${id}`);
+
+    if (result.status === 204) {
+      count += 1;
+    } else {
+      console.warn(`The replaced version ${id} was not blocked: ${refusal(result)}`);
+    }
+  }
+
+  return count;
+}
+
+// Whether `id` names a person's public key the node holds; null if the node
+// does not hold it yet.
+async function isPublicKey(id) {
+  let bytes;
+
+  try {
+    bytes = await held(id);
+  } catch (error) {
+    if (error instanceof Unreachable) {
+      throw error;
+    }
+
+    return false;
+  }
+
+  if (bytes === null) {
+    return null;
+  }
+
+  return new TextDecoder().decode(bytes.subarray(0, PUBLIC_KEY_PEM.length)) === PUBLIC_KEY_PEM;
+}
+
+// Who is signed in, what they may do, and the mail read so far.
+const mail = {
+  you: null,
+  session: null,
+  // A fallback that has not taken over signs nothing (HttpApi 11.3).
+  canSign: false,
+  // Each copy read, by the id of its drop.
+  messages: new Map(),
+  // The ids of what was found at a drop of yours but is no mail for you.
+  passed: new Set(),
+  // What was found but is not held yet, by id: where, and in which hour.
+  unheld: new Map(),
+  // How many passed over were last said.
+  passedSaid: 0,
+  // The hours read of each place: from, to, and the hour it was last read up to.
+  periods: new Map(),
+};
+
+// A record a person keeps for themselves (Phase 4 Step 82): items by key, kept
+// in versions at the drop `target`, each signed by them and encrypted for
+// them, numbered, and naming in `versions` the versions it replaces. Versions
+// made apart, on two nodes say, are merged: of the changes to a key, the
+// latest wins, and of two made in the same second, the one in the version
+// whose drop's id comes first. A removal is a change too, so that the other
+// side does not undo it.
+class Kept {
+  constructor(target, field, isItem, fold, what) {
+    this.target = target;
+    this.field = field;
+    this.isItem = isItem;
+    this.fold = fold;
+    this.what = what;
+    // Each item, by its key folded: the key as written, the item, and the
+    // version it came from, "" for a change made here.
+    this.items = new Map();
+    // Each version read, by the id of its drop: its number and what it replaces.
+    this.versions = new Map();
+    this.missing = 0;
+    this.loaded = false;
+    this.dirty = false;
+    this.writing = false;
+    this.timer = null;
+    this.warned = false;
+  }
+
+  // The version opened as `signed`; null if it is not the person's own, or is
+  // not shaped as a version is.
+  versionOf(signed) {
+    if (signed.signer !== mail.you) {
+      return null;
+    }
+
+    let value;
+
+    try {
+      value = JSON.parse(signed.contents);
+    } catch (error) {
+      return null;
+    }
+
+    const versions = isObject(value) && value.versions !== undefined ? value.versions : [];
+    const isVersion =
+      isObject(value) &&
+      isObject(value[this.field]) &&
+      Object.values(value[this.field]).every((item) => this.isItem(item)) &&
+      Number.isSafeInteger(value.version) &&
+      value.version >= 1 &&
+      Array.isArray(versions) &&
+      versions.every((replaced) => CONTENT_ID.test(replaced));
+    return isVersion ? { items: value[this.field], version: value.version, versions } : null;
+  }
+
+  // Read every version found at the drop, merge them, and, with more than one
+  // that none replaces, write one naming them all. Versions another replaces
+  // are blocked, so that they do not push the newest out of a search.
+  async load() {
+    const ids = await foundAt(this.target);
+    const results = new Map();
+    await eachAtMost(ids, OPENS_AT_ONCE, async (id) => results.set(id, await opened(id)));
+
+    for (const [id, result] of results) {
+      const version = result.signed ? this.versionOf(result.signed) : null;
+
+      if (result.missing) {
+        this.missing += 1;
+      } else if (version === null) {
+        console.warn(`Passing over ${id} at ${this.target}: it is no version of yours.`);
+      } else {
+        this.read(id, version);
+      }
+    }
+
+    this.loaded = true;
+
+    if (!this.writable) {
+      if (this.dirty) {
+        this.schedule();
+      }
+
+      return;
+    }
+
+    if (this.heads().length > 1) {
+      await this.write();
+      return;
+    }
+
+    const count = await blocked(this.replaced());
+
+    if (count > 0) {
+      console.info(`Blocked ${plural(count, "version", "versions")} at ${this.target} that another replaces.`);
+    }
+
+    // Changed while it was read, so written now it has been.
+    if (this.dirty) {
+      this.schedule();
+    }
+  }
+
+  read(id, version) {
+    this.versions.set(id, { version: version.version, versions: version.versions });
+
+    for (const [key, item] of Object.entries(version.items)) {
+      this.merge(key, item, id);
+    }
+  }
+
+  merge(key, item, from) {
+    const folded = this.fold(key);
+    const kept = this.items.get(folded);
+    const later =
+      kept === undefined ||
+      item.changed > kept.item.changed ||
+      (item.changed === kept.item.changed && from < kept.from);
+
+    if (later) {
+      this.items.set(folded, { key, item, from });
+    }
+  }
+
+  // The ids of the versions read that no other read replaces.
+  heads() {
+    const named = new Set([...this.versions.values()].flatMap((version) => version.versions));
+    return [...this.versions.keys()].filter((id) => !named.has(id)).sort();
+  }
+
+  // The ids of the versions read that another read replaces.
+  replaced() {
+    const named = new Set([...this.versions.values()].flatMap((version) => version.versions));
+    return [...this.versions.keys()].filter((id) => named.has(id));
+  }
+
+  // Whether a change is written: only once every version found is held, as
+  // one not held yet may be newer, and only by someone who signs.
+  get writable() {
+    return mail.canSign && this.loaded && this.missing === 0;
+  }
+
+  get(key) {
+    const kept = this.items.get(this.fold(key));
+    return kept === undefined ? null : kept.item;
+  }
+
+  entries() {
+    return [...this.items.values()];
+  }
+
+  // Change the item at `key` to `item`, written a few seconds later.
+  set(key, item) {
+    this.items.set(this.fold(key), { key, item: { ...item, changed: utcSecond(new Date()) }, from: "" });
+    this.dirty = true;
+    this.schedule();
+  }
+
+  schedule() {
+    // Loading writes what was changed meanwhile, once it is done.
+    if (!this.loaded) {
+      return;
+    }
+
+    if (!this.writable) {
+      if (!this.warned) {
+        this.warned = true;
+        status.say(
+          mail.canSign
+            ? `Changes to ${this.what} are not saved: some of it is not held here yet. Open this page again shortly.`
+            : `Changes to ${this.what} are not saved, since your fallback has not taken over.`,
+          "error",
+        );
+      }
+
+      return;
+    }
+
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      this.write().catch((error) => status.say(error.message, "error"));
+    }, WRITE_DELAY_SECONDS * 1000);
+  }
+
+  // Whether a change is waiting to be written.
+  get pending() {
+    return this.timer !== null || this.writing;
+  }
+
+  // The version to write over every version read, holding every item.
+  contents() {
+    const items = {};
+
+    for (const { key, item } of this.entries().sort((one, other) => (one.key < other.key ? -1 : 1))) {
+      items[key] = item;
+    }
+
+    const version = Math.max(0, ...[...this.versions.values()].map((read) => read.version)) + 1;
+    const heads = this.heads();
+    return heads.length > 0 ? { [this.field]: items, version, versions: heads } : { [this.field]: items, version };
+  }
+
+  // Write a version over every version read, and block those it replaces.
+  async write() {
+    if (this.writing) {
+      return;
+    }
+
+    this.writing = true;
+    this.dirty = false;
+    const contents = this.contents();
+    let written = false;
+
+    try {
+      const made = await placed(this.target, contents, mail.you);
+
+      if (made.id) {
+        written = true;
+        const replaced = [...this.versions.keys()];
+        this.versions = new Map([[made.id, { version: contents.version, versions: contents.versions || [] }]]);
+        await blocked(replaced);
+      } else {
+        this.dirty = true;
+        status.say(`${this.what} could not be saved: ${made.tooLarge ? "it no longer fits in a drop." : made.error}`, "error");
+      }
+    } finally {
+      this.writing = false;
+
+      // Changed while it was written, so written again.
+      if (written && this.dirty) {
+        this.schedule();
+      }
+    }
+  }
+}
+
+// Names compared as usernames are, without case or the spaces around them.
+function foldName(name) {
+  return name.trim().normalize("NFC").toLowerCase();
+}
+
+function isBookEntry(item) {
+  return isObject(item) && TIME.test(item.changed) && (item.removed === true || CONTENT_ID.test(item.id));
+}
+
+function isMark(item) {
+  return isObject(item) && TIME.test(item.changed) && typeof item.read === "boolean" && typeof item.hidden === "boolean";
+}
+
+// The address book, and the marks of each month read, with each one's load.
+let book = null;
+const months = new Map();
+const monthLoads = new Map();
+
+// Each name in the address book and the id it names, by name.
+function bookPeople() {
+  return book
+    .entries()
+    .filter(({ item }) => !item.removed)
+    .map(({ key, item }) => ({ name: key, id: item.id }))
+    .sort((one, other) => byText(one.name, other.name));
+}
+
+function bookIdOf(name) {
+  const item = book.get(name);
+  return item === null || item.removed ? null : item.id;
+}
+
+function bookNamesOf(id) {
+  return bookPeople().filter((person) => person.id === id).map((person) => person.name);
+}
+
+// Why `name` cannot name someone in the address book; null if it can.
+function nameProblem(name) {
+  if (!name) {
+    return "Give a name.";
+  }
+
+  if (name.length > MAX_NAME_LENGTH) {
+    return `A name is at most ${MAX_NAME_LENGTH} characters.`;
+  }
+
+  if (/[<>,]/.test(name)) {
+    return "A name cannot hold <, >, or a comma, which separate the people a message is for.";
+  }
+
+  return CONTENT_ID.test(name) ? "A name cannot be an id." : null;
+}
+
+// `base`, or `base` numbered, whichever names no one but `id` yet.
+function freeName(base, id) {
+  for (let count = 1; ; count += 1) {
+    const name = count === 1 ? base : `${base} ${count}`;
+    const named = bookIdOf(name);
+
+    if (named === null || named === id) {
+      return name;
+    }
+  }
+}
+
+// Load the marks of each of `wanted`, months as "2026/10", not loaded yet.
+async function loadMonths(wanted) {
+  const asked = [...new Set(wanted)];
+
+  for (const month of asked.filter((month) => !months.has(month))) {
+    const kept = new Kept(`${STATE_PREFIX}${mail.you}:${month}`, "marks", isMark, (key) => key, `what you read and hid in ${month}`);
+    months.set(month, kept);
+    // Mail is read whether or not its marks are; they are only not saved.
+    const loaded = kept.load().catch((error) => status.say(`What you read and hid in ${month} could not be read: ${error.message}`, "error"));
+    monthLoads.set(month, loaded.finally(renderSoon));
+  }
+
+  await Promise.all(asked.map((month) => monthLoads.get(month)));
+}
+
+function markOf(message) {
+  const kept = months.get(message.month);
+  const mark = kept ? kept.get(message.drop) : null;
+  return mark || { read: false, hidden: false };
+}
+
+function setMark(message, change) {
+  const kept = months.get(message.month);
+
+  if (kept) {
+    const mark = markOf(message);
+    kept.set(message.drop, { read: mark.read, hidden: mark.hidden, ...change });
+  }
+}
+
+function isRead(message) {
+  return message.kind === SENT || markOf(message).read;
+}
+
+// The people a directory bundle lists itself, by id, and the extensions it
+// names; null if it holds anything but people, each an entry whose path is
+// their id and whose only part is that id.
+function listingOf(bundle) {
+  if (!isObject(bundle) || !isObject(bundle.contents)) {
+    return null;
+  }
+
+  const people = new Set();
+
+  for (const [path, entry] of Object.entries(bundle.contents)) {
+    const isPerson =
+      CONTENT_ID.test(path) &&
+      isObject(entry) &&
+      Array.isArray(entry.contents) &&
+      entry.contents.length === 1 &&
+      entry.contents[0] === path;
+
+    if (!isPerson) {
+      return null;
+    }
+
+    people.add(path);
+  }
+
+  const extensions = bundle.extensions === undefined ? [] : bundle.extensions;
+
+  if (!Array.isArray(extensions) || !extensions.every((id) => CONTENT_ID.test(id))) {
+    return null;
+  }
+
+  return { people, extensions };
+}
+
+// Everyone the extensions `ids` list, read through their own extensions;
+// null if any of them is not held yet.
+async function extendedPeople(ids) {
+  const people = new Set();
+  const seen = new Set();
+  const pending = [...ids];
+  let missing = false;
+
+  while (pending.length > 0) {
+    const id = pending.pop();
+
+    if (seen.has(id)) {
+      continue;
+    }
+
+    seen.add(id);
+
+    if (seen.size > MAX_EXTENSIONS) {
+      throw new Unusable(`It reaches more than ${MAX_EXTENSIONS} extensions.`);
+    }
+
+    const bytes = await held(id);
+
+    if (bytes === null) {
+      missing = true;
+      continue;
+    }
+
+    const listed = listingOf(jsonOf(bytes));
+
+    if (listed === null) {
+      throw new Unusable(`Its extension ${id} lists more than people.`);
+    }
+
+    listed.people.forEach((person) => people.add(person));
+    pending.push(...listed.extensions);
+  }
+
+  return missing ? null : people;
+}
+
+// Everyone the copy of the directory found at the drop as `id` lists, read
+// with its extensions; empty if it is no directory, or not held in full.
+async function directoryAt(id) {
+  const bytes = await held(id);
+
+  if (bytes === null) {
+    return new Set();
+  }
+
+  // A drop's content ends at its last null byte; content with none is no drop.
+  const end = bytes.lastIndexOf(NULL_BYTE);
+  const listed = end < 0 ? null : listingOf(jsonOf(bytes.subarray(0, end)));
+
+  if (listed === null) {
+    return new Set();
+  }
+
+  const extended = await extendedPeople(listed.extensions);
+  return extended === null ? new Set() : new Set([...listed.people, ...extended]);
+}
+
+// Everyone in any copy of the directory found at its drop. Writing the
+// directory is the directory application's; this only reads it.
+async function directoryPeople() {
+  const search = await call("GET", dropPath(DIRECTORY_TARGET));
+
+  if (!search.ok || !isObject(search.value) || !Array.isArray(search.value.results)) {
+    throw new Error(`The directory could not be searched for: ${refusal(search)}`);
+  }
+
+  const everyone = new Set();
+  const found = await Promise.all(
+    search.value.results.map((id) =>
+      directoryAt(id).catch((error) => {
+        if (error instanceof Unreachable) {
+          throw error;
+        }
+
+        console.warn(`Passing over the directory ${id}: ${error.message}`);
+        return new Set();
+      }),
+    ),
+  );
+  found.forEach((people) => people.forEach((person) => everyone.add(person)));
+  return everyone;
+}
+
+// What the node made of the signed content `id` names (HttpApi 11.5),
+// waiting out the 503s answered while it fetches it: what it signs and who
+// signed it, or that it is not held yet, or that it is no signed content that
+// checks.
+async function checked(id) {
+  for (let waits = 0; ; waits += 1) {
+    let response;
+
+    try {
+      // A check that passes never changes, so the browser's cache may answer.
+      response = await fetch(`/data/signed/${id}`);
+    } catch (error) {
+      throw new Unreachable(`The node could not be reached: ${error.message}`);
+    }
+
+    if (response.status === 503) {
+      if (waits >= MAX_WAITS) {
+        return { missing: true };
+      }
+
+      await sleep(retryAfter(response.headers));
+      continue;
+    }
+
+    const value = response.ok ? await response.json().catch(() => null) : null;
+    return isObject(value) ? { signed: value } : { passed: true };
+  }
+}
+
+// The version of what someone says of themselves that `signed`, checked at
+// `id`, holds, and who signed it; null if it is not shaped as a version is.
+// A fallback that is not an id is none.
+function versionOf(id, signed) {
+  if (!CONTENT_ID.test(signed.signer) || typeof signed.contents !== "string") {
+    return null;
+  }
+
+  let value;
+
+  try {
+    value = JSON.parse(signed.contents);
+  } catch (error) {
+    return null;
+  }
+
+  const versions = isObject(value) && value.versions !== undefined ? value.versions : [];
+  const isVersion =
+    isObject(value) &&
+    typeof value.created === "string" &&
+    isObject(value.fields) &&
+    Object.values(value.fields).every((field) => typeof field === "string") &&
+    Number.isSafeInteger(value.version) &&
+    value.version >= 1 &&
+    Array.isArray(versions) &&
+    versions.every((replaced) => CONTENT_ID.test(replaced));
+
+  if (!isVersion) {
+    return null;
+  }
+
+  return {
+    id,
+    signer: signed.signer,
+    created: value.created,
+    fallback: CONTENT_ID.test(value.fallback) ? value.fallback : null,
+    compromised: value.compromised === true,
+    fields: value.fields,
+    version: value.version,
+    versions,
+  };
+}
+
+// The newest of `versions`: the one numbered highest, and the first by id of
+// those numbered as high. Only the person signs a version, so no one else
+// can make one newer.
+function newestOf(versions) {
+  return versions.reduce(
+    (best, found) =>
+      best === null ||
+      found.version > best.version ||
+      (found.version === best.version && found.id < best.id)
+        ? found
+        : best,
+    null,
+  );
+}
+
+// What `person`'s versions say of their fallback (App Developer Guide 6.14):
+// the one their first version names, or, with no first read, the one every
+// version read names; null when they name different ones, or none. Whether
+// the identity is compromised: versions name another fallback, or none, or
+// one their fallback signed says so, which it signs only once it has a
+// fallback of its own. And the newest version, theirs or their fallback's
+// saying so.
+function judged(person, versions) {
+  const own = versions.filter((version) => version.signer === person);
+
+  if (own.length === 0) {
+    return { newest: null, fallback: null, compromised: false, first: false };
+  }
+
+  const firsts = own.filter((version) => version.version === 1);
+  const named = new Set((firsts.length > 0 ? firsts : own).map((version) => version.fallback));
+  const fallback = named.size === 1 ? [...named][0] : null;
+  const notices = versions.filter(
+    (version) => fallback !== null && version.signer === fallback && version.compromised,
+  );
+  const compromised =
+    fallback === null ||
+    own.some((version) => version.fallback !== fallback) ||
+    notices.length > 0;
+  return { newest: newestOf([...own, ...notices]), fallback, compromised, first: firsts.length > 0 };
+}
+
+// What `person` says of themselves, read back through each version's history
+// as far as this node holds it: the newest version, their fallback, whether
+// they are compromised, and how many found at their drop are not held yet.
+async function readDetails(person) {
+  const ids = await foundAt(DETAILS_PREFIX + person);
+  const found = new Set(ids);
+  // Each id read: its version, or null if it is not held or is none.
+  const read = new Map();
+  let pending = ids;
+  let missing = 0;
+
+  while (pending.length > 0 && read.size < MAX_HISTORY) {
+    const fresh = [...new Set(pending)].filter((id) => !read.has(id));
+    const batch = fresh.slice(0, MAX_HISTORY - read.size);
+    const results = await Promise.all(batch.map(checked));
+    pending = [];
+
+    batch.forEach((id, index) => {
+      const result = results[index];
+      const version = result.signed ? versionOf(id, result.signed) : null;
+      read.set(id, version);
+
+      if (result.missing) {
+        missing += found.has(id) ? 1 : 0;
+      } else if (version === null) {
+        console.warn(`Passing over ${id} for ${person}: it is no signed version that checks.`);
+      } else if (version.signer === person) {
+        // Only their own are read back: anyone may place a version of their
+        // own at the drop, naming whatever it likes.
+        pending.push(...version.versions);
+      }
+    });
+  }
+
+  const versions = [...read.values()].filter((version) => version !== null);
+  const { newest, fallback, compromised } = judged(person, versions);
+  return { newest, fallback, compromised, missing };
+}
+
+// What each person says of themselves, read once each, no more than
+// DETAILS_AT_ONCE at a time: by id, the promise, and what it gave once it has.
+const details = new Map();
+const detailsLimiter = new Limiter(DETAILS_AT_ONCE);
+
+function detailsOf(person) {
+  if (!details.has(person)) {
+    const entry = { value: null };
+    entry.promise = detailsLimiter
+      .run(() => readDetails(person))
+      .then((value) => {
+        entry.value = value;
+        renderSoon();
+        return value;
+      })
+      .catch((error) => {
+        console.warn(`What ${person} says could not be read: ${error.message}`);
+        return { newest: null, fallback: null, compromised: false, missing: 0 };
+      });
+    details.set(person, entry);
+  }
+
+  return details.get(person).promise;
+}
+
+// What `person` says of themselves now, read again whatever was read before,
+// since they may have been said to be compromised since.
+function freshDetailsOf(person) {
+  details.delete(person);
+  return detailsOf(person);
+}
+
+// What is known of `person` so far, asking for it if no one has.
+function knownOf(person) {
+  detailsOf(person);
+  return details.get(person).value;
+}
+
+function fieldsOf(person) {
+  const known = knownOf(person);
+  return known && known.newest ? known.newest.fields : {};
+}
+
+// "{first name} {last name} ({handle}) {country} …", without what is not given
+// (#259), as the directory shows each person.
+function firstRowOf(fields) {
+  return FIRST_ROW.map((name) => {
+    const value = Object.hasOwn(fields, name) ? fields[name] : "";
+    return name === HANDLE && value ? `(${value})` : value;
+  })
+    .filter((value) => value)
+    .join(" ");
+}
+
+// The name `person` is shown by: theirs in the address book, or their
+// handle, or their names, or their id shortened.
+function nameOf(person) {
+  if (person === mail.you) {
+    return "you";
+  }
+
+  const [named] = bookNamesOf(person);
+
+  if (named !== undefined) {
+    return named;
+  }
+
+  const fields = fieldsOf(person);
+  const names = [fields["first name"], fields["last name"]].filter((name) => name).join(" ");
+  return fields[HANDLE] || names || shortId(person);
+}
+
+// What `person` is named in the address book when added: their handle, or
+// their names, or their id shortened, as a name may be written.
+async function suggestedName(person) {
+  const known = await detailsOf(person);
+  const fields = known.newest ? known.newest.fields : {};
+  const names = [fields["first name"], fields["last name"]].filter((name) => name).join(" ");
+  const name = (fields[HANDLE] || names).replace(/[<>,]/g, " ").trim().slice(0, MAX_NAME_LENGTH);
+  return name && !CONTENT_ID.test(name) ? name : shortId(person);
+}
+
+// Add `person` to the address book, unless a name there names them.
+async function addToBook(person) {
+  if (person === mail.you || bookNamesOf(person).length > 0) {
+    return;
+  }
+
+  book.set(freeName(await suggestedName(person), person), { id: person });
+  renderSoon();
+}
+
+// Who to mail in place of `person`: their fallback while they are compromised,
+// and its fallback while it is too (App Developer Guide 6.14); or why no one
+// can be.
+async function current(person) {
+  const seen = new Set([person]);
+  let id = person;
+
+  for (;;) {
+    const known = await freshDetailsOf(id);
+
+    if (!known.compromised) {
+      return { id };
+    }
+
+    if (known.fallback === null) {
+      return { error: `${nameOf(person)} is compromised, and no fallback of theirs can be trusted.` };
+    }
+
+    if (seen.has(known.fallback) || seen.size > MAX_FALLBACKS) {
+      return { error: `${nameOf(person)} is compromised, and their fallbacks never end.` };
+    }
+
+    seen.add(known.fallback);
+    id = known.fallback;
+  }
+}
+
+// The message a copy opened as `signed`, at the drop `drop` of the hour
+// starting at `hour` where `kind` is read; null if it is not one for whoever is
+// signed in, or, sent, not one of theirs.
+function messageOf(drop, signed, kind, hour) {
+  let value;
+
+  try {
+    value = JSON.parse(signed.contents);
+  } catch (error) {
+    return null;
+  }
+
+  const ids = (list) => Array.isArray(list) && list.every((id) => CONTENT_ID.test(id));
+  const body = isObject(value) && (typeof value.text === "string"
+    ? value.bundle === undefined
+    : typeof value.bundle === "string" && BUNDLE_ID.test(value.bundle));
+  const isMessage =
+    body &&
+    CONTENT_ID.test(signed.signer) &&
+    value.for === mail.you &&
+    ids(value.to) &&
+    ids(value.cc) &&
+    (value.bcc === undefined || ids(value.bcc)) &&
+    typeof value.subject === "string" &&
+    TIME.test(value.sent) &&
+    MESSAGE_ID.test(value.message) &&
+    (value.reply_to === undefined || MESSAGE_ID.test(value.reply_to));
+
+  if (!isMessage || (kind === SENT && signed.signer !== mail.you)) {
+    return null;
+  }
+
+  return {
+    drop,
+    kind,
+    month: monthOf(hour),
+    signer: signed.signer,
+    to: value.to,
+    cc: value.cc,
+    bcc: value.bcc || [],
+    subject: value.subject,
+    text: typeof value.text === "string" ? value.text : null,
+    bundle: typeof value.bundle === "string" ? value.bundle : null,
+    sent: value.sent,
+    message: value.message,
+    replyTo: value.reply_to || null,
+  };
+}
+
+// Open the copy found at `drop`, in the hour starting at `hour` where `kind` is
+// read.
+async function readCopy(drop, kind, hour) {
+  const result = await opened(drop);
+
+  if (result.missing) {
+    mail.unheld.set(drop, { kind, hour });
+    return;
+  }
+
+  mail.unheld.delete(drop);
+  const message = result.signed ? messageOf(drop, result.signed, kind, hour) : null;
+
+  if (message === null) {
+    mail.passed.add(drop);
+    return;
+  }
+
+  mail.messages.set(drop, message);
+  renderSoon();
+}
+
+// Read each of `hours` where `kind` is read, opening what is new, and the
+// marks of their months.
+async function readHours(kind, hours) {
+  const prefix = kind === INBOX ? MAIL_PREFIX : SENT_PREFIX;
+  const marks = loadMonths(hours.map(monthOf));
+  await eachAtMost(hours, SEARCHES_AT_ONCE, async (hour) => {
+    const ids = await foundAt(hourTarget(prefix, mail.you, hour));
+    const fresh = ids.filter((id) => !mail.messages.has(id) && !mail.passed.has(id));
+    await eachAtMost(fresh, OPENS_AT_ONCE, (id) => readCopy(id, kind, hour));
+  });
+  await marks;
+}
+
+// Say what reading found, of `kind`.
+function sayRead(kind) {
+  const where = kind === INBOX ? "your mail" : "what you sent";
+  const read = [...mail.messages.values()].filter((message) => message.kind === kind).length;
+  status.say(`${kind === INBOX ? "Received" : "Sent"}: ${plural(read, "message", "messages")} in the hours read.`);
+  const unheld = [...mail.unheld.values()].filter((found) => found.kind === kind).length;
+
+  if (unheld > 0) {
+    status.say(`${plural(unheld, "copy", "copies")} found among ${where} ${unheld === 1 ? "is" : "are"} not held here yet. The node asked its peers; Refresh opens what has come.`);
+  }
+
+  if (mail.passed.size > mail.passedSaid) {
+    mail.passedSaid = mail.passed.size;
+    status.say(`Passed over ${plural(mail.passed.size, "drop", "drops")} found at your mail drops: each is not signed, not meant for you, or not mail.`);
+  }
+}
+
+// Read the last HOURS_FIRST_READ hours where `kind` is read, and the coming one.
+async function openPeriod(kind) {
+  const now = hourOf(Date.now());
+  const period = { from: now - (HOURS_FIRST_READ - 1) * HOUR_MS, to: now + HOUR_MS, now, read: false };
+  mail.periods.set(kind, period);
+  status.say(kind === INBOX ? "Reading your mail of the last day…" : "Reading what you sent in the last day…");
+  await readHours(kind, hoursBetween(period.from, period.to));
+  period.read = true;
+  sayRead(kind);
+  render();
+}
+
+// Read HOURS_OLDER hours more, before the oldest read.
+async function readOlder(kind) {
+  const period = mail.periods.get(kind);
+  const from = period.from - HOURS_OLDER * HOUR_MS;
+  const hours = hoursBetween(from, period.from - HOUR_MS);
+  period.from = from;
+  render();
+  await readHours(kind, hours);
+  sayRead(kind);
+  render();
+}
+
+// Read again from the hour before the last read up to the coming one, and
+// open what was found but not held before.
+async function refresh(kind) {
+  const period = mail.periods.get(kind);
+  const now = hourOf(Date.now());
+  const hours = hoursBetween(Math.min(period.now, now) - HOUR_MS, now + HOUR_MS);
+  period.now = now;
+  period.to = Math.max(period.to, now + HOUR_MS);
+  const unheld = [...mail.unheld].filter(([, found]) => found.kind === kind);
+  await eachAtMost(unheld, OPENS_AT_ONCE, ([drop, found]) => readCopy(drop, found.kind, found.hour));
+  await readHours(kind, hours);
+  sayRead(kind);
+  render();
+}
+
+// Every conversation among the mail read: each message with those it replies
+// to, back as far as they were read, by the `message` of the first.
+function threads() {
+  const byMessage = new Map();
+
+  for (const message of mail.messages.values()) {
+    byMessage.set(message.message, [...(byMessage.get(message.message) || []), message]);
+  }
+
+  const rootOf = (message) => {
+    const seen = new Set([message.message]);
+    let root = message;
+
+    while (root.replyTo !== null && byMessage.has(root.replyTo) && !seen.has(root.replyTo)) {
+      seen.add(root.replyTo);
+      root = byMessage.get(root.replyTo)[0];
+    }
+
+    return root.message;
+  };
+  const grouped = new Map();
+
+  for (const message of mail.messages.values()) {
+    const root = rootOf(message);
+    grouped.set(root, [...(grouped.get(root) || []), message]);
+  }
+
+  return [...grouped].map(([key, messages]) => ({ key, messages: oneEach(messages) }));
+}
+
+// `messages` oldest first, with one copy of each: a message sent to yourself is
+// read both as sent and received.
+function oneEach(messages) {
+  const kept = new Map();
+
+  for (const message of messages) {
+    const key = `${message.signer} ${message.message}`;
+    const other = kept.get(key);
+
+    if (other === undefined || (other.kind === SENT && message.kind === INBOX)) {
+      kept.set(key, message);
+    }
+  }
+
+  return [...kept.values()].sort((one, other) => (one.sent < other.sent ? -1 : one.sent > other.sent ? 1 : 0));
+}
+
+// What the page shows: which list, and which conversation or message is open.
+const ui = { view: INBOX, thread: null, single: null };
+let renderQueued = false;
+
+function when(sent) {
+  return new Date(sent).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+function namesOf(people) {
+  return people.map(nameOf).join(", ");
+}
+
+// The rows of the list `kind` shows: each conversation with a message read
+// there that is not hidden, newest first.
+function conversations(kind) {
+  return threads()
+    .map((thread) => ({ ...thread, shown: thread.messages.filter((message) => !markOf(message).hidden) }))
+    .filter((thread) => thread.shown.some((message) => message.kind === kind))
+    .sort((one, other) => (one.shown.at(-1).sent > other.shown.at(-1).sent ? -1 : 1));
+}
+
+function rowOf(thread, kind) {
+  const newest = thread.shown.at(-1);
+  const first = thread.shown[0];
+  const unread = thread.shown.some((message) => !isRead(message));
+  const people =
+    kind === INBOX
+      ? [...new Set(thread.shown.map((message) => message.signer))]
+      : [...new Set(thread.shown.filter((message) => message.kind === SENT).flatMap((message) => [...message.to, ...message.cc, ...message.bcc]))];
+  const item = document.createElement("li");
+  item.className = unread ? "unread" : "";
+  const open = button("", () => openThread(thread.key));
+  open.className = "open";
+  const who = make("span", (kind === SENT ? "To " : "") + namesOf(people));
+  const subject = make("span", first.subject || "(no subject)");
+
+  if (thread.shown.length > 1) {
+    subject.append(make("span", ` (${thread.shown.length})`, "count"));
+  }
+
+  open.append(who, subject, make("span", when(newest.sent), "when"));
+  item.append(open);
+  return item;
+}
+
+function hiddenRowOf(message) {
+  const item = document.createElement("li");
+  const shown = document.createElement("div");
+  shown.className = "shown";
+  const open = button("", () => openSingle(message.drop));
+  open.className = "open";
+  const who = message.kind === SENT ? `To ${namesOf([...message.to, ...message.cc, ...message.bcc])}` : namesOf([message.signer]);
+  open.append(make("span", who), make("span", message.subject || "(no subject)"), make("span", when(message.sent), "when"));
+  shown.append(open);
+
+  if (mail.canSign) {
+    shown.append(button("Show again", () => {
+      setMark(message, { hidden: false });
+      render();
+    }));
+  }
+
+  item.append(shown);
+  return item;
+}
+
+function renderList() {
+  const list = byId("list");
+
+  if (ui.view === "hidden") {
+    const hidden = [...mail.messages.values()]
+      .filter((message) => markOf(message).hidden)
+      .sort((one, other) => (one.sent > other.sent ? -1 : 1));
+    byId("list-title").textContent = "Hidden";
+    byId("period").textContent = "Messages you hid, among the mail read so far.";
+
+    if (hidden.length === 0) {
+      list.replaceChildren(make("p", "Nothing read so far is hidden.", "note"));
+      return;
+    }
+
+    const rows = document.createElement("ul");
+    rows.className = "mail";
+    hidden.forEach((message) => rows.append(hiddenRowOf(message)));
+    list.replaceChildren(rows);
+    return;
+  }
+
+  const period = mail.periods.get(ui.view);
+  byId("list-title").textContent = ui.view === INBOX ? "Inbox" : "Sent";
+  byId("period").textContent = period
+    ? `Mail sent since ${new Date(period.from).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}.`
+    : "";
+  const rows = conversations(ui.view);
+
+  if (rows.length === 0) {
+    list.replaceChildren(make("p", period && period.read ? "No mail in this period." : "Reading…", "note"));
+    return;
+  }
+
+  const shown = document.createElement("ul");
+  shown.className = "mail";
+  rows.forEach((thread) => shown.append(rowOf(thread, ui.view)));
+  list.replaceChildren(shown);
+}
+
+function renderBook() {
+  const people = bookPeople();
+
+  if (people.length === 0) {
+    byId("book").replaceChildren(make("p", "No one yet. Add someone below, or from a message they sent you.", "note"));
+  } else {
+    const list = document.createElement("ul");
+    list.className = "book";
+    people.forEach((person) => list.append(bookRowOf(person)));
+    byId("book").replaceChildren(list);
+  }
+
+  renderPeople();
+}
+
+function bookRowOf(person) {
+  const item = document.createElement("li");
+  const name = make("strong", person.name);
+  const known = knownOf(person.id);
+
+  if (known && known.compromised) {
+    name.append(make("span", "compromised", "flag"));
+  }
+
+  const id = make("div", "");
+  id.append(make("code", person.id, "id"));
+  const actions = document.createElement("div");
+  actions.className = "actions";
+
+  if (mail.canSign) {
+    actions.append(
+      button("Send mail", () => openCompose({ to: [person.id] })),
+      button("Rename", () => renameInBook(person)),
+      button("Remove", () => {
+        if (confirm(`Remove ${person.name} from your address book?`)) {
+          book.set(person.name, { removed: true });
+          renderBook();
+        }
+      }),
+    );
+  }
+
+  item.append(name, id, actions);
+  return item;
+}
+
+function sayBook(text, className) {
+  const said = byId("book-text");
+  said.textContent = text;
+  said.className = className || "note";
+}
+
+function renameInBook(person) {
+  const answer = prompt(`Rename ${person.name} to:`, person.name);
+
+  if (answer === null) {
+    return;
+  }
+
+  const name = answer.trim();
+  const problem = nameProblem(name);
+  const named = problem === null ? bookIdOf(name) : null;
+
+  if (problem !== null || (named !== null && named !== person.id)) {
+    sayBook(problem || `${name} names someone else already.`, "error");
+    return;
+  }
+
+  if (foldName(name) !== foldName(person.name)) {
+    book.set(person.name, { removed: true });
+  }
+
+  book.set(name, { id: person.id });
+  sayBook(`Renamed ${person.name} to ${name}.`);
+  renderBook();
+}
+
+async function addByHand(event) {
+  event.preventDefault();
+  const name = byId("book-name").value.trim();
+  const id = byId("book-id").value.trim();
+  const problem = nameProblem(name);
+
+  if (problem !== null) {
+    sayBook(problem, "error");
+    return;
+  }
+
+  if (!CONTENT_ID.test(id)) {
+    sayBook("An id is sha256/ and 64 hex digits, as the user directory shows one.", "error");
+    return;
+  }
+
+  const named = bookIdOf(name);
+
+  if (named !== null && named !== id) {
+    sayBook(`${name} names someone else already.`, "error");
+    return;
+  }
+
+  sayBook("Checking the id…");
+  const key = await isPublicKey(id);
+
+  if (key === false) {
+    sayBook(`${id} names no person's public key.`, "error");
+    return;
+  }
+
+  book.set(name, { id });
+  byId("book-add").reset();
+  sayBook(key === null ? `Added ${name}. This node does not hold their key yet, and asked its peers for it.` : `Added ${name}.`);
+  renderBook();
+}
+
+// What the To, CC, and BCC fields offer: the address book's names, and each
+// person in the directory not in it, by what they say of themselves and their
+// id, which picking one takes.
+let peopleQueued = false;
+const directory = { asked: false, people: new Set() };
+
+function renderPeople() {
+  const options = bookPeople().map((person) => {
+    const option = document.createElement("option");
+    option.value = person.name;
+    return option;
+  });
+  const named = new Set(bookPeople().map((person) => person.id));
+
+  for (const person of directory.people) {
+    if (named.has(person) || person === mail.you) {
+      continue;
+    }
+
+    const said = firstRowOf(fieldsOf(person)).replace(/[<>,]/g, " ").trim();
+    const option = document.createElement("option");
+    option.value = `${said || shortId(person)} <${person}>`;
+    options.push(option);
+  }
+
+  byId("people").replaceChildren(...options);
+}
+
+function renderPeopleSoon() {
+  if (!peopleQueued) {
+    peopleQueued = true;
+    setTimeout(() => {
+      peopleQueued = false;
+      renderPeople();
+    }, 250);
+  }
+}
+
+// Read the directory once, when someone is first addressed.
+async function loadDirectory() {
+  if (directory.asked) {
+    return;
+  }
+
+  directory.asked = true;
+
+  try {
+    directory.people = await directoryPeople();
+    renderPeople();
+    await Promise.all([...directory.people].map((person) => detailsOf(person).then(renderPeopleSoon)));
+  } catch (error) {
+    console.warn(`The directory could not be read: ${error.message}`);
+  }
+}
+
+// The person `text` names in a To, CC, or BCC field, and how: a name in the
+// address book, a person picked from the directory, or an id pasted. Throws an
+// Error saying why it names no one.
+function recipientOf(text) {
+  const picked = /<(sha256\/[0-9a-f]{64})>\s*$/.exec(text);
+
+  if (picked) {
+    return { id: picked[1], how: bookNamesOf(picked[1]).length > 0 ? "book" : "directory" };
+  }
+
+  if (CONTENT_ID.test(text)) {
+    return { id: text, how: bookNamesOf(text).length > 0 ? "book" : "pasted" };
+  }
+
+  const id = bookIdOf(text);
+
+  if (id === null) {
+    throw new Error(`No one named “${text}” is in your address book. Pick someone from the list, or paste their id.`);
+  }
+
+  return { id, how: "book" };
+}
+
+// The people one of To, CC, and BCC holds, each a chip, and how each was named.
+class Recipients {
+  constructor(name) {
+    this.chips = byId(`${name}-chips`);
+    this.input = byId(`${name}-input`);
+    this.people = [];
+    this.input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === ",") {
+        event.preventDefault();
+        this.take();
+      } else if (event.key === "Backspace" && this.input.value === "" && this.people.length > 0) {
+        this.people.pop();
+        this.render();
+      }
+    });
+    // A pick from the directory ends in its id, and is taken at once.
+    this.input.addEventListener("input", () => {
+      if (/<sha256\/[0-9a-f]{64}>\s*$/.test(this.input.value)) {
+        this.take();
+      }
+    });
+    this.input.addEventListener("blur", () => this.take());
+    this.input.addEventListener("focus", () => loadDirectory());
+  }
+
+  // Take what is typed as the people it names. Whether it named them all.
+  take() {
+    const text = this.input.value.trim();
+
+    if (!text) {
+      return true;
+    }
+
+    const tokens = /<sha256\/[0-9a-f]{64}>$/.test(text) ? [text] : text.split(",");
+
+    try {
+      const found = tokens.map((token) => token.trim()).filter((token) => token).map(recipientOf);
+      found.forEach(({ id, how }) => this.add(id, how));
+      this.input.value = "";
+      return true;
+    } catch (error) {
+      sayCompose(error.message, "error");
+      return false;
+    }
+  }
+
+  add(id, how) {
+    if (!this.people.some((person) => person.id === id)) {
+      this.people.push({ id, how });
+    }
+
+    // Someone picked from the directory is added to the address book at once.
+    if (how === "directory") {
+      addToBook(id).catch((error) => console.warn(error.message));
+    }
+
+    this.render();
+  }
+
+  set(ids, how) {
+    this.people = [];
+    ids.forEach((id) => this.add(id, how));
+  }
+
+  ids() {
+    return this.people.map((person) => person.id);
+  }
+
+  replace(id, by) {
+    const named = this.people.map((person) => (person.id === id ? { ...person, id: by } : person));
+    this.people = named.filter((person, index) => named.findIndex((other) => other.id === person.id) === index);
+    this.render();
+  }
+
+  render() {
+    this.chips.replaceChildren(
+      ...this.people.map((person) => {
+        const chip = make("span", nameOf(person.id), "chip");
+        chip.title = person.id;
+        const remove = button("×", () => {
+          this.people = this.people.filter((other) => other.id !== person.id);
+          this.render();
+        });
+        remove.setAttribute("aria-label", `Remove ${nameOf(person.id)}`);
+        chip.append(remove);
+        return chip;
+      }),
+    );
+  }
+}
+
+const compose = { to: null, cc: null, bcc: null, replyTo: null };
+
+function sayCompose(text, className) {
+  const said = byId("compose-text");
+  said.textContent = text;
+  said.className = className || "note";
+}
+
+function bodyKind() {
+  return document.querySelector('input[name="body"]:checked').value;
+}
+
+function showBodyKind() {
+  const bundle = bodyKind() === "bundle";
+  byId("text").hidden = bundle;
+  byId("bundle-field").hidden = !bundle;
+}
+
+// Open a new message, holding what is given.
+function openCompose({ to = [], cc = [], subject = "", text = "", bundle = null, replyTo = null, how = "book" } = {}) {
+  compose.to.set(to, how);
+  compose.cc.set(cc, how);
+  compose.bcc.set([], how);
+  compose.replyTo = replyTo;
+  byId("subject").value = subject;
+  byId("text").value = text;
+  byId("bundle").value = bundle || "";
+  document.querySelector(`input[name="body"][value="${bundle === null ? "text" : "bundle"}"]`).checked = true;
+  showBodyKind();
+  byId("compose-title").textContent = replyTo === null ? "New message" : "Reply";
+  renderPeople();
+  sayCompose("");
+  byId("compose").hidden = false;
+  byId("compose").scrollIntoView({ behavior: "smooth", block: "start" });
+  (to.length === 0 ? byId("to-input") : byId("subject")).focus();
+}
+
+function closeCompose() {
+  byId("compose").hidden = true;
+  sayCompose("");
+  byId("compose-form").reset();
+  [compose.to, compose.cc, compose.bcc].forEach((field) => field.set([], "book"));
+  compose.replyTo = null;
+  showBodyKind();
+}
+
+function prefixed(prefix, subject) {
+  return subject.toLowerCase().startsWith(prefix.toLowerCase()) ? subject : `${prefix} ${subject}`;
+}
+
+function quoted(message) {
+  const said = message.text === null ? "[The message was a bundle.]" : message.text;
+  const lines = said.split("\n").map((line) => `> ${line}`).join("\n");
+  return `\n\nOn ${when(message.sent)}, ${nameOf(message.signer)} wrote:\n${lines}`;
+}
+
+function reply(message, all) {
+  const others = (people) => people.filter((person) => person !== mail.you);
+  const own = message.signer === mail.you;
+  const to = own ? message.to : [message.signer, ...(all ? others(message.to) : [])];
+  const cc = all ? others(message.cc).filter((person) => !to.includes(person)) : [];
+  openCompose({
+    to: [...new Set(to)],
+    cc,
+    subject: prefixed("Re:", message.subject),
+    text: quoted(message),
+    replyTo: message.message,
+  });
+}
+
+function forward(message) {
+  const header = [
+    "---------- Forwarded message ----------",
+    `From: ${nameOf(message.signer)} <${message.signer}>`,
+    `Date: ${when(message.sent)}`,
+    `Subject: ${message.subject}`,
+    `To: ${namesOf(message.to)}`,
+  ];
+
+  if (message.cc.length > 0) {
+    header.push(`CC: ${namesOf(message.cc)}`);
+  }
+
+  openCompose({
+    subject: prefixed("Fwd:", message.subject),
+    text: message.text === null ? "" : `\n\n${header.join("\n")}\n\n${message.text}`,
+    bundle: message.bundle,
+  });
+}
+
+// Why the bundle `id` cannot be sent; null if it reads.
+async function bundleProblem(id) {
+  const response = await patiently(`/data/${id}/`, { method: "HEAD" });
+
+  if (response.ok) {
+    return null;
+  }
+
+  return response.status === 503
+    ? "This node does not hold that bundle yet, and asked its peers for it. Try again in a moment."
+    : `That bundle could not be read (${response.status}).`;
+}
+
+// Resolve every recipient to who is mailed in their place, if they are
+// compromised, changing the address book to match. Whether each could be.
+async function resolved() {
+  const fields = [compose.to, compose.cc, compose.bcc];
+  const everyone = [...new Set(fields.flatMap((field) => field.ids()))];
+  const problems = [];
+  const changed = [];
+
+  await eachAtMost(everyone, DETAILS_AT_ONCE, async (person) => {
+    const key = await isPublicKey(person);
+
+    if (key === false) {
+      problems.push(`${nameOf(person)} (${person}) names no person's public key.`);
+      return;
+    }
+
+    const now = await current(person);
+
+    if (now.error) {
+      problems.push(now.error);
+    } else if (now.id !== person) {
+      changed.push([person, now.id]);
+    }
+  });
+
+  for (const [person, fallback] of changed) {
+    const names = bookNamesOf(person);
+    names.forEach((name) => book.set(name, { id: fallback }));
+    fields.forEach((field) => field.replace(person, fallback));
+  }
+
+  if (problems.length > 0) {
+    sayCompose(problems.join(" "), "error");
+    return false;
+  }
+
+  if (changed.length > 0) {
+    const said = changed.map(([person, fallback]) => `${person} is compromised, so their fallback, ${fallback}, takes their place.`);
+    sayCompose(`${said.join(" ")} Your address book now names the fallback. Check who the message is for, and send again.`, "error");
+    return false;
+  }
+
+  return true;
+}
+
+// The copy of a message for `reader`: who it is for, and the BCC line only
+// for them, or for the sender, in full.
+function copyFor(reader, message, sender) {
+  const copy = { ...message, for: reader };
+
+  if (reader === sender) {
+    copy.bcc = message.bcc;
+  } else if (message.bcc.includes(reader)) {
+    copy.bcc = [reader];
+  } else {
+    copy.bcc = [];
+  }
+
+  if (copy.bcc.length === 0) {
+    delete copy.bcc;
+  }
+
+  return copy;
+}
+
+async function send(event) {
+  event.preventDefault();
+  const fields = [compose.to, compose.cc, compose.bcc];
+
+  if (!fields.every((field) => field.take())) {
+    return;
+  }
+
+  // Each person once: in To before CC, and in either before BCC.
+  const to = compose.to.ids();
+  const cc = compose.cc.ids().filter((person) => !to.includes(person));
+  const bcc = compose.bcc.ids().filter((person) => !to.includes(person) && !cc.includes(person));
+  const readers = [...to, ...cc, ...bcc];
+  const subject = byId("subject").value.trim();
+  const isBundle = bodyKind() === "bundle";
+  const text = byId("text").value;
+  const bundle = byId("bundle").value.trim();
+
+  if (readers.length === 0) {
+    sayCompose("Say who the message is for.", "error");
+    return;
+  }
+
+  if (isBundle ? !BUNDLE_ID.test(bundle) : !subject && !text.trim()) {
+    sayCompose(isBundle ? "A bundle's id is sha256/ and 64 hex digits, perhaps followed by its key." : "Write something to send.", "error");
+    return;
+  }
+
+  byId("send").disabled = true;
+  sayCompose("Checking who the message is for…");
+
+  try {
+    if (!(await resolved())) {
+      return;
+    }
+
+    if (isBundle) {
+      const problem = await bundleProblem(bundle);
+
+      if (problem !== null) {
+        sayCompose(problem, "error");
+        return;
+      }
+    }
+
+    await delivered({ to, cc, bcc, subject, text, bundle, isBundle });
+  } catch (error) {
+    sayCompose(error.message, "error");
+  } finally {
+    byId("send").disabled = false;
+  }
+}
+
+// Place a copy of the message for each reader, at the drop of the hour it is
+// sent, and one for the sender, then add anyone mailed from a link or by an
+// id to the address book.
+async function delivered({ to, cc, bcc, subject, text, bundle, isBundle }) {
+  const now = new Date();
+  const hour = hourOf(now.getTime());
+  const message = { to, cc, bcc, subject, sent: utcSecond(now), message: newMessageId() };
+  message[isBundle ? "bundle" : "text"] = isBundle ? bundle : text;
+
+  if (compose.replyTo !== null) {
+    message.reply_to = compose.replyTo;
+  }
+
+  const readers = [...to, ...cc, ...bcc];
+  const failed = [];
+
+  for (const [index, reader] of readers.entries()) {
+    sayCompose(`Sending to ${nameOf(reader)}, ${index + 1} of ${readers.length}…`);
+    const made = await placed(hourTarget(MAIL_PREFIX, reader, hour), copyFor(reader, message, mail.you), reader);
+
+    if (made.tooLarge) {
+      sayCompose("The message does not fit in a drop. Send it as a bundle instead.", "error");
+      return;
+    }
+
+    if (made.error) {
+      failed.push(`${nameOf(reader)}: ${made.error}`);
+    }
+  }
+
+  if (failed.length === readers.length) {
+    sayCompose(`Not sent. ${failed.join(" ")}`, "error");
+    return;
+  }
+
+  const kept = await placed(hourTarget(SENT_PREFIX, mail.you, hour), copyFor(mail.you, message, mail.you), mail.you);
+  const added = [compose.to, compose.cc, compose.bcc].flatMap((field) => field.people).filter((person) => person.how !== "book");
+  await Promise.all(added.map((person) => addToBook(person.id)));
+  closeCompose();
+  // A link asked for this message; a reload asks nothing again.
+  history.replaceState(null, "", location.pathname);
+  const sent = failed.length === 0 ? `Sent to ${plural(readers.length, "person", "people")}.` : `Sent, but not to ${failed.join("; ")}.`;
+  status.say(kept.id ? sent : `${sent} Your own copy was not kept: ${kept.error || "it does not fit in a drop."}`, failed.length === 0 && kept.id ? "note" : "error");
+
+  if (mail.periods.has(SENT)) {
+    await readHours(SENT, [hour]);
+    render();
+  }
+}
+
+// One person, by name, with their id to hover over.
+function personOf(person) {
+  const said = make("span", nameOf(person));
+  said.title = person;
+  said.dataset.person = person;
+  return said;
+}
+
+function peopleOf(people) {
+  const said = document.createElement("span");
+  people.forEach((person, index) => {
+    said.append(...(index > 0 ? [", "] : []), personOf(person));
+  });
+  return said;
+}
+
+// A body that is a bundle: its index.html, whose scripts never run, since the
+// node serves every read into a bundle in a sandbox (HttpApi 12.1), and its
+// files, to open.
+async function showBundle(into, bundle) {
+  const root = `/data/${bundle}/`;
+  into.append(make("p", "Reading the bundle…", "note"));
+  const page = await patiently(`${root}index.html`, { method: "HEAD" });
+  const listing = await patiently(root, { method: "HEAD" });
+  into.replaceChildren();
+
+  if (page.ok) {
+    const frame = document.createElement("iframe");
+    frame.className = "bundle";
+    frame.setAttribute("sandbox", "");
+    frame.title = "The message";
+    frame.src = `${root}index.html`;
+    into.append(frame);
+  }
+
+  if (!listing.ok) {
+    into.append(make("p", listing.status === 503 ? "This node does not hold the bundle yet, and asked its peers for it. Open the message again shortly." : `The bundle could not be read (${listing.status}).`, "error"));
+    return;
+  }
+
+  const isListing = (listing.headers.get("Content-Type") || "").startsWith("application/json");
+  const entries = isListing ? await (await fetch(root)).json().catch(() => null) : null;
+
+  if (!isObject(entries) || !isObject(entries.entries)) {
+    const open = make("a", "Open the file it holds");
+    open.href = root;
+    open.target = "_blank";
+    open.rel = "noopener";
+    into.append(open);
+    return;
+  }
+
+  const files = document.createElement("ul");
+  files.className = "entries";
+
+  for (const [name, entry] of Object.entries(entries.entries).sort(([one], [other]) => byText(one, other))) {
+    const item = document.createElement("li");
+    const link = make("a", entry.type === "directory" ? `${name}/` : name);
+    link.href = `${root}${encodeURIComponent(name)}${entry.type === "directory" ? "/" : ""}`;
+    link.target = "_blank";
+    link.rel = "noopener";
+    item.append(link);
+    files.append(item);
+  }
+
+  into.append(make("p", "Its files:", "note"), files);
+}
+
+function articleOf(message) {
+  const article = document.createElement("article");
+  article.className = "message";
+  const headers = document.createElement("dl");
+  headers.className = "headers";
+  const row = (name, value) => {
+    headers.append(make("dt", name));
+    const said = document.createElement("dd");
+    said.append(value);
+    headers.append(said);
+  };
+  row("From", personOf(message.signer));
+  row("To", peopleOf(message.to));
+
+  if (message.cc.length > 0) {
+    row("CC", peopleOf(message.cc));
+  }
+
+  if (message.bcc.length > 0) {
+    row("BCC", peopleOf(message.bcc));
+  }
+
+  row("Date", when(message.sent));
+  article.append(headers);
+  const warning = make("p", "", "error");
+  warning.hidden = true;
+  article.append(warning);
+
+  if (message.signer !== mail.you) {
+    detailsOf(message.signer).then((known) => {
+      if (known.compromised) {
+        warning.hidden = false;
+        warning.textContent = known.fallback === null
+          ? `${nameOf(message.signer)} is marked compromised, so this may not be from them, and no fallback of theirs can be trusted.`
+          : `${nameOf(message.signer)} is marked compromised, so this may not be from them. Their fallback, ${known.fallback}, takes their place.`;
+      }
+    });
+  }
+
+  if (message.text !== null) {
+    article.append(make("div", message.text, "body"));
+  } else {
+    const body = document.createElement("div");
+    article.append(body);
+    showBundle(body, message.bundle).catch((error) => body.replaceChildren(make("p", error.message, "error")));
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "actions";
+
+  if (mail.canSign) {
+    actions.append(button("Reply", () => reply(message, false)), button("Reply all", () => reply(message, true)), button("Forward", () => forward(message)));
+
+    if (markOf(message).hidden) {
+      actions.append(button("Show again", () => {
+        setMark(message, { hidden: false });
+        closeReading();
+        render();
+      }));
+    } else {
+      actions.append(button("Hide", () => {
+        setMark(message, { hidden: true });
+        article.remove();
+
+        if (byId("thread").childElementCount === 0) {
+          closeReading();
+        }
+
+        render();
+      }));
+    }
+
+    if (message.kind === INBOX) {
+      actions.append(button("Mark unread", () => {
+        setMark(message, { read: false });
+        closeReading();
+        render();
+      }));
+    }
+
+    if (message.signer !== mail.you && bookNamesOf(message.signer).length === 0) {
+      const add = button("Add to address book", async () => {
+        add.disabled = true;
+        await addToBook(message.signer);
+        add.remove();
+        document.querySelectorAll("[data-person]").forEach((said) => {
+          said.textContent = nameOf(said.dataset.person);
+        });
+      });
+      actions.append(add);
+    }
+  }
+
+  article.append(actions);
+  return article;
+}
+
+// Show `messages` under `subject`, marking what is opened read.
+function showReading(subject, messages) {
+  byId("reading-title").textContent = subject || "(no subject)";
+  byId("thread").replaceChildren(...messages.map(articleOf));
+  byId("reading").hidden = false;
+  byId("reading").scrollIntoView({ behavior: "smooth", block: "start" });
+
+  if (mail.canSign) {
+    messages.filter((message) => !isRead(message)).forEach((message) => setMark(message, { read: true }));
+  }
+
+  render();
+}
+
+function openThread(key) {
+  const thread = threads().find((found) => found.key === key);
+
+  if (thread) {
+    ui.thread = key;
+    const shown = thread.messages.filter((message) => !markOf(message).hidden);
+    showReading(shown[0]?.subject, shown);
+  }
+}
+
+function openSingle(drop) {
+  const message = mail.messages.get(drop);
+
+  if (message) {
+    ui.thread = null;
+    showReading(message.subject, [message]);
+  }
+}
+
+function closeReading() {
+  ui.thread = null;
+  byId("reading").hidden = true;
+  byId("thread").replaceChildren();
+}
+
+function render() {
+  if (mail.you === null) {
+    return;
+  }
+
+  if (ui.view === "book") {
+    renderBook();
+  } else {
+    renderList();
+  }
+
+  document.querySelectorAll("[data-person]").forEach((said) => {
+    said.textContent = nameOf(said.dataset.person);
+  });
+  [compose.to, compose.cc, compose.bcc].forEach((field) => field.render());
+
+  if (!byId("compose").hidden) {
+    renderPeopleSoon();
+  }
+}
+
+// Render once the browser next paints, however many ask before then.
+function renderSoon() {
+  if (!renderQueued) {
+    renderQueued = true;
+    requestAnimationFrame(() => {
+      renderQueued = false;
+      render();
+    });
+  }
+}
+
+async function showView(view) {
+  ui.view = view;
+  closeReading();
+  document.querySelectorAll("nav [data-view]").forEach((choice) => {
+    choice.setAttribute("aria-pressed", String(choice.dataset.view === view));
+  });
+  byId("list-section").hidden = view === "book";
+  byId("book-section").hidden = view !== "book";
+  byId("list-actions").hidden = view === "hidden";
+  render();
+
+  if ((view === INBOX || view === SENT) && !mail.periods.has(view)) {
+    await openPeriod(view);
+  }
+}
+
+// Run `work` from a button, which waits until it is done.
+function busy(control, work) {
+  return async () => {
+    control.disabled = true;
+
+    try {
+      await work();
+    } catch (error) {
+      status.say(error.message, "error");
+    } finally {
+      control.disabled = false;
+    }
+  };
+}
+
+function sayAccount(text, className) {
+  const said = byId("account-text");
+  said.textContent = text;
+  said.className = className || "note";
+}
+
+// Offer a local client signing in, or out. Either reloads the page, which
+// then reads the mail of whoever is signed in.
+function offerAccount(session) {
+  byId("account").hidden = false;
+
+  if (session !== null) {
+    byId("account-title").textContent = "Signed in";
+    byId("signed-in").hidden = false;
+    byId("signed-in-text").textContent =
+      session.fallback_for && !session.fallback
+        ? `Signed in as ${session.username}, with the fallback password.`
+        : `Signed in as ${session.username}.`;
+    byId("sign-out").addEventListener("click", async () => {
+      byId("sign-out").disabled = true;
+      await call("DELETE", "/data/session").catch(() => null);
+      location.reload();
+    });
+    return;
+  }
+
+  const form = byId("sign-in");
+  const submit = form.querySelector("button");
+  form.hidden = false;
+  sayAccount("Sign in to read and send mail.");
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    submit.disabled = true;
+    sayAccount("Signing in…");
+
+    try {
+      // Once: the node looks twice, asking its peers between, and a person
+      // who tries again finds what they answered (HttpApi 11.4).
+      const result = await call("POST", "/data/session", {
+        username: byId("username").value,
+        password: byId("password").value,
+      });
+
+      if (result.ok) {
+        location.reload();
+        return;
+      }
+
+      sayAccount(
+        result.status === 503
+          ? "No identity that username and password open was found yet. The node " +
+              "has asked its peers, so try again in a moment."
+          : `Not signed in: ${refusal(result)}`,
+        "error",
+      );
+    } catch (error) {
+      sayAccount(error.message, "error");
+    }
+
+    submit.disabled = false;
+  });
+}
+
+// Open a message to the person a link names, as `?to={id}`, as the user
+// directory links here. They are added to the address book once it is sent.
+function offerLinked(asked) {
+  if (!CONTENT_ID.test(asked)) {
+    status.say(`The link asks to mail ${asked}, which is not a person's id.`, "error");
+    return;
+  }
+
+  openCompose({ to: [asked], how: bookNamesOf(asked).length > 0 ? "book" : "link" });
+}
+
+async function start() {
+  const [session, local] = await Promise.all([signedIn(), isLocal()]);
+
+  if (!local) {
+    status.say("Mail is read and sent only in a browser on the node's own machine, where a person signs in.", "error");
+    return;
+  }
+
+  offerAccount(session);
+
+  if (session === null) {
+    status.say("Sign in to read and send mail.");
+    return;
+  }
+
+  mail.you = session.id;
+  mail.session = session;
+  mail.canSign = CONTENT_ID.test(session.fallback);
+  compose.to = new Recipients("to");
+  compose.cc = new Recipients("cc");
+  compose.bcc = new Recipients("bcc");
+
+  if (!mail.canSign) {
+    status.say("You signed in with your fallback password. Until your fallback takes over, in the user directory, it reads mail but sends none, and nothing you mark is saved.");
+    byId("new-message").hidden = true;
+    byId("book-add").hidden = true;
+  }
+
+  document.querySelectorAll("nav [data-view]").forEach((choice) => {
+    choice.addEventListener("click", () => showView(choice.dataset.view).catch((error) => status.say(error.message, "error")));
+  });
+  byId("new-message").addEventListener("click", () => openCompose());
+  byId("discard").addEventListener("click", closeCompose);
+  byId("compose-form").addEventListener("submit", send);
+  document.querySelectorAll('input[name="body"]').forEach((choice) => choice.addEventListener("change", showBodyKind));
+  byId("book-add").addEventListener("submit", (event) => addByHand(event).catch((error) => sayBook(error.message, "error")));
+  byId("refresh").addEventListener("click", busy(byId("refresh"), () => refresh(ui.view)));
+  byId("older").addEventListener("click", busy(byId("older"), () => readOlder(ui.view)));
+  window.addEventListener("beforeunload", (event) => {
+    if ([book, ...months.values()].some((kept) => kept !== null && kept.pending)) {
+      event.preventDefault();
+    }
+  });
+  byId("views").hidden = false;
+
+  status.say("Reading your address book…");
+  book = new Kept(ADDRESS_BOOK_PREFIX + mail.you, "entries", isBookEntry, foldName, "your address book");
+  await book.load();
+  const asked = new URLSearchParams(location.search).get("to");
+
+  if (asked !== null) {
+    offerLinked(asked);
+  }
+
+  await showView(INBOX);
+}
+
+start().catch((error) => status.say(error.message, "error"));
+</script>
+</body>
+</html>
