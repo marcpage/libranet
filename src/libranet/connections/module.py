@@ -44,8 +44,8 @@ content meanwhile. A peer that connects during the search takes its place in
 the order. Each pass after the first asks a peer again only once the
 ``Retry-After`` it gave has passed, or this node's own
 ``network.retry_after_seconds`` if it gave none, and waits for that no longer
-than this node's own. A search waiting for its next pass holds no fetch
-worker. A request for content being searched
+than this node's own. Up to ``peers.search_workers`` searches ask peers
+at once, and one waiting for its next pass takes no place. A request for content being searched
 for is dropped, since the search under way answers it, and so is one made
 within ``peers.failed_search_hold_seconds`` of a search that asked peers and
 found nothing: peers still searching would otherwise start it over, and it
@@ -66,7 +66,8 @@ never waits on this one, whose answers make later searches better. Each pass
 asks every connected peer but the one that asked, those whose node ids best
 match the prefix first, and there are ``peers.search_passes`` of them,
 ``network.retry_after_seconds`` apart, since each peer is searching its own
-peers meanwhile. What each peer answers is published for the stats module, as
+peers meanwhile. Up to ``peers.broadcast_workers`` passes are made at once.
+What each peer answers is published for the stats module, as
 :meth:`~libranet.connections.peer_exchange.PeerExchange.search` says. A search
 of a prefix starts none while one is under way, nor within
 ``peers.broadcast_hold_seconds`` of one ending, whoever asks: a search a peer
@@ -90,11 +91,11 @@ may be connected to a better match still, but not when that peer is where it
 came from. A peer that cannot be reached is passed over for the next best;
 one that refuses the content is not. Content that finds no peer to go to
 waits, in memory, until a connection opens. It goes in batches (Phase 2 Step
-45): a push worker takes the new content already waiting, up to
-``PIPELINE_DEPTH`` items, and what of it is bound for the same peer goes
-there in one pipelined exchange. ``data.stored`` announces only
-content this node did not hold before, so what it held already is never
-pushed on.
+45): each of ``peers.push_workers`` push workers takes the new content
+already waiting, up to ``peers.pipeline_depth`` items, and what of it is
+bound for the same peer goes there in one pipelined exchange.
+``data.stored`` announces only content this node did not hold before, so
+what it held already is never pushed on.
 
 For the stats module it publishes::
 
@@ -134,7 +135,7 @@ from logging import Logger
 from queue import Empty, SimpleQueue
 from threading import Lock, Thread
 from time import time
-from typing import Any, Callable, ClassVar, Final, Mapping, Sequence
+from typing import Any, Callable, ClassVar, Mapping, Sequence
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError
@@ -145,7 +146,7 @@ from libranet.config.models import LibranetConfig
 from libranet.config.seeds import load_seed_peers
 from libranet.connections.candidates import Candidate, candidate_list, seed_candidates
 from libranet.connections.endpoints import PeerAddress
-from libranet.connections.peer_exchange import PIPELINE_DEPTH, PeerExchange
+from libranet.connections.peer_exchange import PeerExchange
 from libranet.connections.peer_mix import PeerMix
 from libranet.connections.peer_session import PeerSession
 from libranet.connections.reverse_dns import ResolveNames, ReverseLookup, host_names
@@ -156,20 +157,6 @@ from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.protocol.search import normalize_prefix
-
-# Searches carried on at once. Each asks one peer at a time, so this also
-# bounds the requests searching adds to all connections together. A search
-# waiting for its next pass takes none.
-FETCH_WORKERS: Final = 8
-
-# Searches of the peers for a prefix making a pass at once. Each asks one peer
-# at a time, and one waiting for its next pass takes none.
-BROADCAST_WORKERS: Final = 8
-
-# Pushes of new content under way at once. Each takes up to PIPELINE_DEPTH
-# items at a time and holds their bodies until they are sent, so this also
-# bounds the bodies pushing holds in memory.
-PUSH_WORKERS: Final = 8
 
 
 @dataclass(frozen=True)
@@ -412,13 +399,15 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             # None yet: any named before a restart are gone.
             self._publish_connected()
 
-        for index in range(FETCH_WORKERS):
+        settings = self._config.peers
+
+        for index in range(settings.search_workers):
             Thread(target=self._fetch_loop, name=f"{self.name}-fetch-{index}", daemon=True).start()
 
-        for index in range(PUSH_WORKERS):
+        for index in range(settings.push_workers):
             Thread(target=self._push_loop, name=f"{self.name}-push-{index}", daemon=True).start()
 
-        for index in range(BROADCAST_WORKERS):
+        for index in range(settings.broadcast_workers):
             Thread(
                 target=self._broadcast_loop, name=f"{self.name}-broadcast-{index}", daemon=True
             ).start()
@@ -491,13 +480,15 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             peers = list(self._peers.values())
 
         if running:  # tell worker threads to stop
-            for _ in range(FETCH_WORKERS):
+            settings = self._config.peers
+
+            for _ in range(settings.search_workers):
                 self._fetches.put(None)
 
-            for _ in range(PUSH_WORKERS):
+            for _ in range(settings.push_workers):
                 self._pushes.put(None)
 
-            for _ in range(BROADCAST_WORKERS):
+            for _ in range(settings.broadcast_workers):
                 self._passes.put(None)
 
             if self._lookup is not None:
@@ -1142,7 +1133,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
                 )
 
     def _batch_from(self, first: _NewContent) -> list[_NewContent]:
-        """``first`` and the new content already waiting behind it, ``PIPELINE_DEPTH`` at most.
+        """``first`` and the new content waiting behind it, ``peers.pipeline_depth`` at most.
 
         Nothing is waited for, so there is a batch only when there is a
         backlog. Being told to stop is put back, for this worker or another
@@ -1150,7 +1141,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         """
         batch = [first]
 
-        while len(batch) < PIPELINE_DEPTH:
+        while len(batch) < self._config.peers.pipeline_depth:
             try:
                 new = self._pushes.get_nowait()
 

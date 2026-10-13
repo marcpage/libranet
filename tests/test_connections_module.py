@@ -17,6 +17,7 @@ from pathlib import Path
 from queue import Empty, Queue
 from socket import SHUT_RDWR, create_server, socket
 from threading import Event, Thread, current_thread
+from threading import enumerate as running_threads
 from time import monotonic, sleep, time
 from typing import Any, Callable, Iterator, Mapping, Sequence
 
@@ -33,7 +34,7 @@ from libranet.config.models import (
     StorageConfig,
 )
 from libranet.connections.module import ConnectionsModule, connections_module_factory
-from libranet.connections.peer_exchange import PIPELINE_DEPTH, Retrieval
+from libranet.connections.peer_exchange import Retrieval
 from libranet.connections.peer_session import PeerSession
 from libranet.connections.reverse_dns import ResolveNames
 from libranet.identity.authentication import RequestAuthenticator
@@ -1991,10 +1992,13 @@ def test_a_push_that_goes_wrong_is_logged(
 # -- Pushing new content in batches ----------------------------------------
 
 
-@fixture
-def one_push_worker(monkeypatch: MonkeyPatch) -> None:
-    """A single push worker, so what queues up behind it is taken in a known order."""
-    monkeypatch.setattr("libranet.connections.module.PUSH_WORKERS", 1)
+# Items in each pipelined push, set apart from the default so the setting shows.
+PUSH_DEPTH = 3
+
+
+def one_push_worker(config: LibranetConfig, **settings: Any) -> LibranetConfig:
+    """``config`` with one push worker, so what queues up behind it is taken in a known order."""
+    return with_peers(config, push_workers=1, **settings)
 
 
 class HeldPushes:
@@ -2039,7 +2043,6 @@ class HeldPushes:
         return self._hand_off_many(session, held)
 
 
-@mark.usefixtures("one_push_worker")
 def test_new_content_waiting_is_pushed_in_pipelined_batches_each_to_its_best_peer(
     modules: Modules,
     config: LibranetConfig,
@@ -2052,13 +2055,13 @@ def test_new_content_waiting_is_pushed_in_pipelined_batches_each_to_its_best_pee
     store = CasStore.source_of_truth(config.storage)
     content_ids: list[ContentId] = []
 
-    for index in range(1 + 2 * PIPELINE_DEPTH):
+    for index in range(1 + 2 * PUSH_DEPTH):
         data = f"new content {index}".encode()
         content_ids.append(ContentId.for_data(data, "sha256"))
         store.write(content_ids[-1], data)
 
     write_lists(config.storage, node_list(identity, *peers))
-    module = modules.start(config)
+    module = modules.start(one_push_worker(config, pipeline_depth=PUSH_DEPTH))
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)
     pushes = HeldPushes(module, monkeypatch)
     first, *waiting = content_ids
@@ -2076,8 +2079,8 @@ def test_new_content_waiting_is_pushed_in_pipelined_batches_each_to_its_best_pee
     expected = [(best[first], [first])]
 
     # Each batch the worker took, one pipelined push to each peer it is bound for.
-    for start in range(0, len(waiting), PIPELINE_DEPTH):
-        batch = waiting[start : start + PIPELINE_DEPTH]
+    for start in range(0, len(waiting), PUSH_DEPTH):
+        batch = waiting[start : start + PUSH_DEPTH]
 
         for node_id in dict.fromkeys(best[content_id] for content_id in batch):
             expected.append((node_id, [item for item in batch if best[item] == node_id]))
@@ -2086,7 +2089,6 @@ def test_new_content_waiting_is_pushed_in_pipelined_batches_each_to_its_best_pee
     assert len(pushes.pushes) < len(content_ids)
 
 
-@mark.usefixtures("one_push_worker")
 def test_what_could_not_reach_its_best_peer_goes_on_together_to_the_next_best(
     modules: Modules,
     config: LibranetConfig,
@@ -2104,7 +2106,7 @@ def test_what_could_not_reach_its_best_peer_goes_on_together_to_the_next_best(
         store.write(content_id, data)
 
     write_lists(config.storage, node_list(identity, *peers))
-    module = modules.start(config)
+    module = modules.start(one_push_worker(config))
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)
     pushes = HeldPushes(module, monkeypatch, unreachable=best.node_id)
     first, *waiting = [content_id for content_id, _ in contents]
@@ -2127,7 +2129,6 @@ def test_what_could_not_reach_its_best_peer_goes_on_together_to_the_next_best(
     assert {message["node_id"] for message in sent} == {str(other.node_id)}
 
 
-@mark.usefixtures("one_push_worker")
 def test_a_push_worker_told_to_stop_while_taking_a_batch_still_stops(
     modules: Modules,
     config: LibranetConfig,
@@ -2140,7 +2141,7 @@ def test_a_push_worker_told_to_stop_while_taking_a_batch_still_stops(
     store.write(HELD_ID, HELD)
     store.write(OFFERED_ID, OFFERED)
     write_lists(config.storage, node_list(identity, *peers))
-    module = modules.start(config)
+    module = modules.start(one_push_worker(config))
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)
     pushes = HeldPushes(module, monkeypatch)
 
@@ -2154,6 +2155,35 @@ def test_a_push_worker_told_to_stop_while_taking_a_batch_still_stops(
     assert pushes.worker is not None
     pushes.worker.join(TIMEOUT)
     assert not pushes.worker.is_alive()
+
+
+def test_as_many_workers_start_and_stop_as_the_peer_settings_say(
+    modules: Modules, config: LibranetConfig
+) -> None:
+    before = set(running_threads())
+    settings = {"search_workers": 2, "push_workers": 3, "broadcast_workers": 1}
+    module = modules.start(with_peers(config, **settings))
+    workers = {
+        kind: [
+            thread
+            for thread in running_threads()
+            if thread not in before and thread.name.startswith(f"{module.name}-{kind}-")
+        ]
+        for kind in ("fetch", "push", "broadcast")
+    }
+
+    assert {kind: len(threads) for kind, threads in workers.items()} == {
+        "fetch": 2,
+        "push": 3,
+        "broadcast": 1,
+    }
+
+    module.on_stop()
+
+    wait_until(
+        lambda: not any(thread.is_alive() for threads in workers.values() for thread in threads),
+        "the workers to stop",
+    )
 
 
 # -- Reverse DNS -----------------------------------------------------------

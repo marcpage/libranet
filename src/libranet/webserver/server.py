@@ -57,6 +57,7 @@ from libranet.cas.store import CasStore
 from libranet.config.models import (
     DEFAULT_CONFIG_HOSTS,
     DEFAULT_PERSON_KEY_BITS,
+    DEFAULT_READ_AHEAD_PARTS,
     DEFAULT_SESSION_IDLE_SECONDS,
     IDLE_TIMEOUT_SECONDS,
     StorageConfig,
@@ -161,6 +162,7 @@ def build_router(  # pylint: disable=too-many-locals
     app_outcomes: ApplicationOutcomes | None = None,
     content: LayeredSource | None = None,
     app_wait_seconds: float = 0.0,
+    read_ahead_parts: int = DEFAULT_READ_AHEAD_PARTS,
     config_hosts: tuple[str, ...] = DEFAULT_CONFIG_HOSTS,
     local_folders: LocalFolders | None = None,
     backup_state: BackupState | None = None,
@@ -178,6 +180,8 @@ def build_router(  # pylint: disable=too-many-locals
     for lists not derived yet, tell clients to wait before retrying.
     ``app_wait_seconds`` is how long a request for an application file waits
     for what it lacks before it is answered ``503``; none, by default.
+    ``read_ahead_parts`` is how many of its parts past the one being sent it
+    asks for, when not held.
     ``authenticator`` checks the signature of every signed request; unsigned
     reads of the ``/data`` API are served only if ``allow_unsigned_api_reads``
     is set. Applications are served as the registry in ``storage``'s data
@@ -255,7 +259,13 @@ def build_router(  # pylint: disable=too-many-locals
     app_store = ApplicationStore(storage.application_stores_dir)
     paths = _bundle_paths(
         storage,
-        PartReader(content, publish, app_wait_seconds, retry_after_seconds),
+        PartReader(
+            content,
+            publish,
+            app_wait_seconds,
+            retry_after_seconds,
+            read_ahead_parts=read_ahead_parts,
+        ),
         retry_after_seconds,
         app_outcomes,
     )
@@ -415,6 +425,7 @@ def build_config_router(  # pylint: disable=too-many-locals
     backup_state: BackupState | None = None,
     content: LayeredSource | None = None,
     app_wait_seconds: float = 0.0,
+    read_ahead_parts: int = DEFAULT_READ_AHEAD_PARTS,
     costly_work: CostlyWork | None = None,
 ) -> Router:
     """``/config``'s port's routes: its endpoints and its application, and nothing else.
@@ -431,8 +442,8 @@ def build_config_router(  # pylint: disable=too-many-locals
     storing them as uploads from ``node``, but signs no one in (Phase 4 Step
     91). Its drops are searched for, and its keys derived, in the turns of
     ``costly_work``, shared with the main port; in turns of their own if none
-    is given. ``retry_after_seconds``, ``app_outcomes``, and
-    ``app_wait_seconds`` are as for :func:`build_router`.
+    is given. ``retry_after_seconds``, ``app_outcomes``, ``app_wait_seconds``,
+    and ``read_ahead_parts`` are as for :func:`build_router`.
     """
     content = LayeredSource(CasStore.source_of_truth(storage)) if content is None else content
     registry = _registry(storage, content)
@@ -468,7 +479,13 @@ def build_config_router(  # pylint: disable=too-many-locals
         registry,
         _bundle_paths(
             storage,
-            PartReader(content, publish, app_wait_seconds, retry_after_seconds),
+            PartReader(
+                content,
+                publish,
+                app_wait_seconds,
+                retry_after_seconds,
+                read_ahead_parts=read_ahead_parts,
+            ),
             retry_after_seconds,
             app_outcomes,
         ),

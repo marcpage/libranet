@@ -37,6 +37,13 @@ network:
   # short. 0 answers at once.
   app_wait_seconds: 10.0
 
+  # Provisional: how many parts of an application's file past the one being
+  # sent are asked for, when this node lacks them, so that they arrive before
+  # they are needed, as a video plays. Parts that take longer to come, as from
+  # peers farther off, need more. 0 asks for each part only once it is
+  # reached.
+  read_ahead_parts: 8
+
   # The most a page may ask this node to spend making a drop (HTTP API
   # §9.6): seconds searching for its nonce, and how many leading bits the
   # drop's hash must share with its target's however long that takes. Each
@@ -123,6 +130,20 @@ peers:
   # other content seldom does by chance. 0 pushes the nearest content,
   # however far, as many items as a search here answers with. 0 to 256.
   search_push_min_bits: 16
+  # Provisional: how many searches of the connected peers for content run at
+  # once, and how many searches of them for a prefix make a pass at once
+  # (High-Level Design §4.7). Each asks one peer at a time, so these also
+  # bound the requests searching adds to every connection. A node that many
+  # others search through, as on a large network, may need more. At least 1.
+  search_workers: 8
+  broadcast_workers: 8
+  # Provisional: how many pushes of new content to peers run at once, and the
+  # most requests sent on one connection before their answers come back, when
+  # pushing or asking for many items. Pushing holds up to push_workers times
+  # pipeline_depth objects in memory, 64 MiB at these values. A deeper
+  # pipeline keeps a connection to a distant peer busier. At least 1.
+  push_workers: 8
+  pipeline_depth: 8
   # JSON file of initial peers, used only when this node knows no peers at
   # all. Defaults to the (currently empty) list shipped with the package.
   seed_file: null
@@ -164,6 +185,15 @@ storage:
   # application files are not counted.
   min_free_bytes: 1073741824
   max_storage_bytes: null
+  # Provisional: how many objects are handed off at once, each to one peer.
+  # More sheds content faster. The node also stops this many objects as
+  # large as max_object_bytes short of each limit above, so that a backup
+  # waiting for room is not held to one hand-off at a time. A hand-off no
+  # peer answers is given up on once every peer of the mix (both sets of
+  # connections under peers) could have taken its whole
+  # request_timeout_seconds, and a quarter as long again: 1,200 seconds at
+  # the defaults. At least 1.
+  max_hand_offs: 8
   # Before any content is handed off for want of free space, the resolved
   # files of every application not used for this long (30 days) are deleted.
   # They are resolved from the application's bundle again when next asked

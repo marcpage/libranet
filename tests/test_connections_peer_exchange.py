@@ -34,7 +34,7 @@ from libranet.config.models import (
 )
 from libranet.connections.errors import ConnectionClosedError, PeerAuthenticationError
 from libranet.connections.peer_connection import PeerConnection
-from libranet.connections.peer_exchange import PIPELINE_DEPTH, PeerExchange, Retrieval
+from libranet.connections.peer_exchange import PeerExchange, Retrieval
 from libranet.connections.peer_session import PeerRequest, PeerSession
 from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.keys import generate_private_key
@@ -743,7 +743,8 @@ def test_many_sought_items_are_asked_for_in_pipelined_runs(
     config: LibranetConfig,
     queues: ModuleQueues,
 ) -> None:
-    sought = [ContentId.for_data(str(n).encode(), "sha256") for n in range(PIPELINE_DEPTH * 2 + 1)]
+    depth = config.peers.pipeline_depth
+    sought = [ContentId.for_data(str(n).encode(), "sha256") for n in range(depth * 2 + 1)]
     write_lists(config.storage, None, sought)
 
     exchange.first_contact(session)

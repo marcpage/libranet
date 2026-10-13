@@ -55,6 +55,10 @@ MIN_PERSON_KEY_BITS: Final = 2048
 # as quick, stronger, and strongest (HttpApi §11.3, Phase 4 Step 79).
 DEFAULT_PERSON_KEY_BITS: Final = (2048, 3072, 4096)
 
+# How many parts of an application file past the one being sent are asked
+# for, when not held, by default (HttpApi §13.2, Phase 3 Step 65).
+DEFAULT_READ_AHEAD_PARTS: Final = 8
+
 # How many bits a target hash has, and so the most a drop can match it by
 # (HttpApi §9). It is defined here, where the settings are checked against
 # it, rather than with drops.
@@ -101,6 +105,13 @@ class NetworkConfig(_Section):
     # has begun, cut short (HttpApi §13.2, Phase 3 Step 65). A `<video>`
     # does not retry a `503`. Provisional.
     app_wait_seconds: float = Field(default=10.0, ge=0)
+
+    # How many parts of an application file past the one being sent are asked
+    # for, when not held, so that they arrive before they are needed (HttpApi
+    # §13.2, Phase 3 Step 65). The longer a part takes to come, as from peers
+    # farther off on a larger network, the more it takes to hide that. 0 asks
+    # for each part only once it is reached. Provisional.
+    read_ahead_parts: int = Field(default=DEFAULT_READ_AHEAD_PARTS, ge=0)
 
     # The most a page may ask this node to spend searching for a drop's
     # nonce, and the most leading bits it may ask that the drop share with
@@ -235,6 +246,25 @@ class PeerConfig(_Section):
     # content seldom matches as many by chance. Provisional default.
     search_push_min_bits: int = Field(default=16, ge=0, le=TARGET_BITS)
 
+    # How many searches of the connected peers for content are carried on at
+    # once, and how many searches of them for a prefix make a pass at once
+    # (HighLevelDesign §4.7). Each asks one peer at a time, so these also bound
+    # the requests searching adds to every connection together. A search
+    # waiting for its next pass takes no place. More suits a node many others
+    # search through, as on a larger network. Provisional defaults.
+    search_workers: int = Field(default=8, ge=1)
+    broadcast_workers: int = Field(default=8, ge=1)
+
+    # How many pushes of new content are under way at once (HttpApi §7.4), and
+    # the most requests pipelined on one connection when pushing or asking for
+    # many items (Phase 2 Step 45). Each push holds the bodies of up to
+    # pipeline_depth items until they are sent, so pushing holds up to
+    # push_workers times pipeline_depth objects in memory, 64 MiB by default.
+    # A deeper pipeline keeps a connection to a peer far off busier.
+    # Provisional defaults.
+    push_workers: int = Field(default=8, ge=1)
+    pipeline_depth: int = Field(default=8, ge=1)
+
     # Path to a JSON seed list overriding the one shipped with the package.
     # Used only while the node knows no peers at all.
     seed_file: Path | None = None
@@ -270,6 +300,19 @@ class PeerConfig(_Section):
 
         return self
 
+    @property
+    def mix_size(self) -> int:
+        """How many peers the mix aims to be connected to: both sets together."""
+        return self.min_outgoing_connections + self.min_neighborhood_connections
+
+    def longest_hand_off_seconds(self) -> float:
+        """How long handing content off may take (HighLevelDesign §4.5).
+
+        That is offering it to every peer of the mix in turn, each taking its
+        whole request timeout to answer.
+        """
+        return self.mix_size * self.request_timeout_seconds
+
 
 class StorageConfig(_Section):
     """Filesystem CAS layout and capacity limits (HighLevelDesign §4.5)."""
@@ -303,6 +346,13 @@ class StorageConfig(_Section):
     # not counted.
     min_free_bytes: int = Field(default=1024 * MIB, ge=0)
     max_storage_bytes: int | None = Field(default=None, ge=0)
+
+    # How many hand-offs eviction keeps under way at once, each of one object
+    # (HighLevelDesign §4.5). More sheds content faster, as a node taking in a
+    # lot needs. Eviction aims as many objects as large as max_object_bytes
+    # short of each limit, so that what waits for room does not slow to one
+    # hand-off at a time (Phase 2 Step 63). Provisional default.
+    max_hand_offs: int = Field(default=8, ge=1)
 
     # When free space falls below min_free_bytes, the unbundler first deletes
     # the resolved files of every application not used for this long, to be

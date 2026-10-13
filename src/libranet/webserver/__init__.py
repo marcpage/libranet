@@ -189,7 +189,6 @@ from libranet.webserver.errors import (
 )
 from libranet.webserver.file_stream import (
     DEFAULT_PART_POLL_INTERVAL_SECONDS,
-    DEFAULT_READ_AHEAD_PARTS,
     ContentWait,
     FileStream,
     PartReader,
@@ -287,7 +286,6 @@ __all__ = [
     "DEFAULT_FILE",
     "DEFAULT_MAX_OUTCOMES",
     "DEFAULT_PART_POLL_INTERVAL_SECONDS",
-    "DEFAULT_READ_AHEAD_PARTS",
     "DEFAULT_REPORT_INTERVAL_SECONDS",
     "DIRECTORY_PATTERN",
     "DROP_PATH",
