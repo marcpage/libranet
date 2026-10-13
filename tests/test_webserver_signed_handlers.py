@@ -28,16 +28,15 @@ from libranet.problems import (
     CONTENT_TOO_LARGE,
     CONTENT_UNAVAILABLE,
     INVALID_BUNDLE_SIGNATURE,
-    INVALID_CONFIG_REQUEST,
+    INVALID_REQUEST,
     INVALID_CONTENT_ADDRESS,
     SESSION_REQUIRED,
     UNUSABLE_BUNDLE,
 )
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.webserver.bundle_edits import OwnUploads
-from libranet.webserver.data_handler import IMMUTABLE_CACHE_CONTROL
 from libranet.webserver.drop_handler import DropHandler
-from libranet.webserver.http_types import Request, RequestBody
+from libranet.webserver.http_types import IMMUTABLE_CACHE_CONTROL, Request, RequestBody
 from libranet.webserver.sessions import Session, Sessions
 from libranet.webserver.signed_handlers import SIGNED_PATH, SignedDrops
 
@@ -226,7 +225,7 @@ def test_a_body_asking_for_no_signed_drop_is_400(
     response = signed.make(signing(person, cookie, changes))
 
     assert response.status == 400, response.body
-    assert problem_type(response) == INVALID_CONFIG_REQUEST
+    assert problem_type(response) == INVALID_REQUEST
     assert not recorder.payloads(EventType.PUT_COMPLETED)
 
 

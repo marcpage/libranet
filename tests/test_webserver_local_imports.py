@@ -13,8 +13,8 @@ from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
-from libranet.problems import INVALID_CONFIG_REQUEST, PROBLEM_CONTENT_TYPE
-from libranet.protocol.config_requests import ImportRequest
+from libranet.problems import INVALID_REQUEST, PROBLEM_CONTENT_TYPE
+from libranet.protocol.backup_requests import ImportRequest
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.webserver.backup_state import BackupReport, BackupState
 from libranet.webserver.http_types import Request, RequestBody, Response
@@ -119,7 +119,7 @@ def test_a_file_in_a_folder_offered_is_asked_for_by_its_path_and_where_it_lies(
 def test_a_path_naming_a_directory_is_400(router: Router, queues: ModuleQueues, path: str) -> None:
     found = problem(router.dispatch(import_request({"path": path})), 400)
 
-    assert found["type"] == INVALID_CONFIG_REQUEST
+    assert found["type"] == INVALID_REQUEST
     assert "is a directory" in str(found["detail"])
     assert asked_for(queues) == []
 
@@ -154,7 +154,7 @@ def test_a_body_naming_no_usable_path_is_400(
 ) -> None:
     found = problem(router.dispatch(import_request(value)), 400)
 
-    assert found["type"] == INVALID_CONFIG_REQUEST
+    assert found["type"] == INVALID_REQUEST
     assert asked_for(queues) == []
 
 

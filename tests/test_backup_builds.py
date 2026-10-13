@@ -35,7 +35,7 @@ from libranet.bundle.xattrs import INLINE_LIMIT_BYTES, ExtendedAttributes
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import MIB
-from libranet.protocol.config_requests import BuildRequest, Password
+from libranet.protocol.backup_requests import BuildRequest, Password
 
 from tests.helpers import encrypted_part, without_part_sizes
 

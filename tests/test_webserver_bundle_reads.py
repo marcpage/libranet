@@ -35,9 +35,8 @@ from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 from libranet.webserver.app_use import ApplicationUse
 from libranet.webserver.bundle_paths import BundlePaths
 from libranet.webserver.bundle_reads import BUNDLE_METHODS, BUNDLE_PATTERN, BundleReadHandler
-from libranet.webserver.data_handler import IMMUTABLE_CACHE_CONTROL
 from libranet.webserver.file_stream import PartReader
-from libranet.webserver.http_types import Request, Response
+from libranet.webserver.http_types import IMMUTABLE_CACHE_CONTROL, Request, Response
 from libranet.webserver.router import Router
 from tests.helpers import blocked_list
 

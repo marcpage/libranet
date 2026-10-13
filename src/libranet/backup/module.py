@@ -192,7 +192,7 @@ from libranet.messaging.events import ConflictBehavior, EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
-from libranet.protocol.config_requests import (
+from libranet.protocol.backup_requests import (
     BackupJobRequest,
     BuildRequest,
     ExportRequest,

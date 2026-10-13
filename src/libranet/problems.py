@@ -25,7 +25,7 @@ SIGNATURE_REQUIRED: Final = PROBLEM_TYPE_BASE + "signature-required"
 INVALID_SIGNATURE: Final = PROBLEM_TYPE_BASE + "invalid-signature"
 INVALID_LIST: Final = PROBLEM_TYPE_BASE + "invalid-list"
 CREDENTIAL_REQUIRED: Final = PROBLEM_TYPE_BASE + "credential-required"
-INVALID_CONFIG_REQUEST: Final = PROBLEM_TYPE_BASE + "invalid-config-request"
+INVALID_REQUEST: Final = PROBLEM_TYPE_BASE + "invalid-request"
 UNUSABLE_BUNDLE: Final = PROBLEM_TYPE_BASE + "unusable-bundle"
 SESSION_REQUIRED: Final = PROBLEM_TYPE_BASE + "session-required"
 INVALID_BUNDLE_SIGNATURE: Final = PROBLEM_TYPE_BASE + "invalid-bundle-signature"
@@ -42,7 +42,7 @@ _TITLES: Final[Mapping[str, str]] = {
     INVALID_SIGNATURE: "Invalid signature",
     INVALID_LIST: "Invalid list",
     CREDENTIAL_REQUIRED: "Credential required",
-    INVALID_CONFIG_REQUEST: "Invalid configuration request",
+    INVALID_REQUEST: "Invalid request",
     UNUSABLE_BUNDLE: "Unusable bundle",
     SESSION_REQUIRED: "Session required",
     INVALID_BUNDLE_SIGNATURE: "Invalid bundle signature",

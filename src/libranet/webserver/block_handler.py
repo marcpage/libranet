@@ -26,8 +26,8 @@ from logging import getLogger
 
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
-from libranet.webserver.data_handler import content_id_or_refusal
 from libranet.webserver.http_types import Request, Response
+from libranet.webserver.request_refusals import content_id_or_refusal
 
 _LOGGER = getLogger(__name__)
 

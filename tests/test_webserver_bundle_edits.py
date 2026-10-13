@@ -36,7 +36,7 @@ from libranet.messaging.events import EventType
 from libranet.problems import (
     CONTENT_TOO_LARGE,
     CONTENT_UNAVAILABLE,
-    INVALID_CONFIG_REQUEST,
+    INVALID_REQUEST,
     UNUSABLE_BUNDLE,
 )
 from libranet.protocol.bundle_requests import BundleEditRequest, CopySource
@@ -746,7 +746,7 @@ def test_an_unusable_request_is_refused(router: Router) -> None:
     response = router.dispatch(edit_request({"add": {"../escape": {"text": ""}}}))
 
     assert response.status == 400
-    assert problem_type(response) == INVALID_CONFIG_REQUEST
+    assert problem_type(response) == INVALID_REQUEST
 
 
 def test_a_bundle_whose_entry_cannot_fit_in_an_object_is_refused(
@@ -885,7 +885,7 @@ def test_a_bundle_given_with_more_or_not_as_an_object_is_refused(
     response = router.dispatch(edit_request(value))
 
     assert response.status == 400
-    assert problem_type(response) == INVALID_CONFIG_REQUEST
+    assert problem_type(response) == INVALID_REQUEST
     assert list(uploaded(storage)) == []
 
 

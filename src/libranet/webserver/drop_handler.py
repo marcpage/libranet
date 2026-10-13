@@ -14,11 +14,11 @@ the drop::
 
 The nonce is searched for in the request's thread
 (:meth:`~libranet.cas.drops.DropTarget.placed`), and one search runs at a
-time: a request that comes during one waits its turn (:class:`Turns`), and
-its ``seconds`` count only once its turn has come. A request asking for more
-``seconds`` or ``minimum_bits`` than the node's ceilings is ``400``, and one
-whose content does not fit in an object even compressed is ``413``, each
-before any search.
+time: a request that comes during one waits its turn
+(:class:`~libranet.webserver.costly_work.Turns`), and its ``seconds`` count
+only once its turn has come. A request asking for more ``seconds`` or
+``minimum_bits`` than the node's ceilings is ``400``, and one whose content
+does not fit in an object even compressed is ``413``, each before any search.
 
 The drop is stored as an upload from this node
 (:class:`~libranet.webserver.bundle_edits.OwnUploads`), compressed if that is
@@ -28,7 +28,8 @@ and announces it, and it is pushed as any new content is.
 Making a person's identity makes a drop too (HttpApi §11.3, Phase 4 Step 79),
 under the same ceilings, and takes its turn with the rest
 (:meth:`DropHandler.placed`), on ``/config``'s port as well (Phase 4 Step
-91), which shares the turns (:class:`CostlyWork`).
+91), which shares the turns
+(:class:`~libranet.webserver.costly_work.CostlyWork`).
 
 A drop's content is encrypted first, if its request asks
 (:class:`DropEncryption`, HttpApi §11.6, Phase 4 Step 78): for a person, by
@@ -39,13 +40,11 @@ turn with those of signing in. A signed drop is signed, then encrypted.
 """
 
 from __future__ import annotations
-from contextlib import contextmanager
 from dataclasses import KW_ONLY, dataclass, field, replace
 from http import HTTPStatus
 from logging import getLogger
 from secrets import token_bytes
-from threading import Condition
-from typing import Final, Iterator
+from typing import Final
 from zlib import compress
 
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
@@ -64,14 +63,16 @@ from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.protocol.client_origin import is_local_client
 from libranet.protocol.drop_requests import DropRequest, PasswordEncryption, PersonEncryption
-from libranet.protocol.errors import InvalidConfigRequestError
+from libranet.protocol.errors import InvalidRequestError
 from libranet.protocol.http_syntax import API_PREFIX
-from libranet.webserver.config_handlers import invalid_request_response, parsed_or_refusal
+from libranet.webserver.costly_work import Turns
 from libranet.webserver.http_types import Request, Response, json_response, status_response
 from libranet.webserver.own_pages import OwnPages
 from libranet.webserver.request_refusals import (
     content_too_large_response,
     content_unavailable_response,
+    invalid_request_response,
+    parsed_or_refusal,
 )
 from libranet.webserver.site_checks import SiteChecks
 
@@ -83,46 +84,6 @@ DROP_PATH: Final = API_PREFIX + "/drop"
 #: Provisional: the largest request body, room for an object's worth of
 #: content, compressed when stored, given as base64.
 MAX_DROP_BODY_BYTES: Final = 4 * MIB
-
-
-class Turns:
-    """Lets one caller at a time take its turn, in the order they asked for one."""
-
-    def __init__(self) -> None:
-        self._condition = Condition()
-        self._next_ticket = 0
-        self._serving = 0
-
-    @contextmanager
-    def turn(self) -> Iterator[None]:
-        """Wait for every caller that asked before this one, and hold the turn until done."""
-        with self._condition:
-            ticket = self._next_ticket
-            self._next_ticket += 1
-
-            while self._serving < ticket:
-                self._condition.wait()
-
-        try:
-            yield
-
-        finally:
-            with self._condition:
-                self._serving += 1
-                self._condition.notify_all()
-
-
-@dataclass(frozen=True)
-class CostlyWork:
-    """Where costly work waits its turn, whichever of the node's ports asks for it.
-
-    One drop is searched for at a time, in ``searches``, and one key is
-    derived from a username and password at a time, in ``derivations``
-    (HttpApi §9.6, §11.4). The main port and ``/config``'s share them.
-    """
-
-    searches: Turns = field(default_factory=Turns)
-    derivations: Turns = field(default_factory=Turns)
 
 
 @dataclass(frozen=True)
@@ -338,7 +299,7 @@ class DropHandler:
         try:
             self.within_ceilings(asked.seconds, asked.minimum_bits)
 
-        except InvalidConfigRequestError as error:
+        except InvalidRequestError as error:
             _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
             return invalid_request_response(request, error)
 
@@ -368,16 +329,16 @@ class DropHandler:
         """Raise if ``seconds`` and ``minimum_bits`` ask for more search than this node allows.
 
         Raises:
-            InvalidConfigRequestError: ``seconds`` or ``minimum_bits`` is
+            InvalidRequestError: ``seconds`` or ``minimum_bits`` is
                 more than its ceiling.
         """
         if seconds > self.max_seconds:
-            raise InvalidConfigRequestError(
+            raise InvalidRequestError(
                 f'"seconds" may be at most {self.max_seconds} here, got {seconds}'
             )
 
         if minimum_bits > self.max_minimum_bits:
-            raise InvalidConfigRequestError(
+            raise InvalidRequestError(
                 f'"minimum_bits" may be at most {self.max_minimum_bits} here, got {minimum_bits}'
             )
 
@@ -389,7 +350,7 @@ class DropHandler:
         if self.encryption is None:
             _LOGGER.debug("Refusing %s %s: no drop is encrypted here", request.method, request.path)
             return invalid_request_response(
-                request, InvalidConfigRequestError('"encrypt" is not served here')
+                request, InvalidRequestError('"encrypt" is not served here')
             )
 
         try:

@@ -1,4 +1,4 @@
-"""What the backup, build, and import endpoints accept, and what identifies it.
+"""What the backup module is asked to do: what its endpoints accept, and what identifies it.
 
 BackupSpecification §7 leaves the request shapes unspecified; these are this
 node's. A backup job names a local directory to back up
@@ -42,7 +42,7 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
 from libranet.json_fields import is_number
 from libranet.messaging.events import ConflictBehavior
-from libranet.protocol.errors import InvalidConfigRequestError
+from libranet.protocol.errors import InvalidRequestError
 
 _LOGGER = getLogger(__name__)
 
@@ -87,21 +87,21 @@ class BackupJobRequest:
         """The backup job a ``{"directory", "interval_seconds"}`` object asks for.
 
         Raises:
-            InvalidConfigRequestError: it is not such an object, or what it asks
+            InvalidRequestError: it is not such an object, or what it asks
                 for is not a usable job.
         """
         if not isinstance(value, dict):
-            raise InvalidConfigRequestError("A backup job must be a JSON object")
+            raise InvalidRequestError("A backup job must be a JSON object")
 
         directory = value.get("directory")
 
         if not isinstance(directory, str):
-            raise InvalidConfigRequestError('A backup job\'s "directory" must be a string')
+            raise InvalidRequestError('A backup job\'s "directory" must be a string')
 
         interval_seconds = value.get("interval_seconds")
 
         if interval_seconds is not None and not is_number(interval_seconds):
-            raise InvalidConfigRequestError('A backup job\'s "interval_seconds" must be a number')
+            raise InvalidRequestError('A backup job\'s "interval_seconds" must be a number')
 
         try:
             return cls.create(
@@ -109,7 +109,7 @@ class BackupJobRequest:
             )
 
         except ValueError as error:
-            raise InvalidConfigRequestError(str(error)) from None
+            raise InvalidRequestError(str(error)) from None
 
     @property
     def job_id(self) -> str:
@@ -152,17 +152,17 @@ class RestoreRequest:
         """The restore a ``{"bundle", "directory", "on_conflict"}`` object asks for.
 
         Raises:
-            InvalidConfigRequestError: it is not such an object, or what it asks
+            InvalidRequestError: it is not such an object, or what it asks
                 for is not a usable restore.
         """
         if not isinstance(value, dict):
-            raise InvalidConfigRequestError("A restore must be a JSON object")
+            raise InvalidRequestError("A restore must be a JSON object")
 
         bundle = value.get("bundle")
         directory = value.get("directory")
 
         if not isinstance(bundle, str) or not isinstance(directory, str):
-            raise InvalidConfigRequestError('A restore\'s "bundle" and "directory" must be strings')
+            raise InvalidRequestError('A restore\'s "bundle" and "directory" must be strings')
 
         on_conflict = _on_conflict(value, "A restore")
 
@@ -171,10 +171,10 @@ class RestoreRequest:
 
         except UnknownAlgorithmError as error:
             _LOGGER.warning("Refusing to restore %r: %s", bundle, error)
-            raise InvalidConfigRequestError(str(error)) from None
+            raise InvalidRequestError(str(error)) from None
 
         except (InvalidContentIdError, ValueError) as error:
-            raise InvalidConfigRequestError(str(error)) from None
+            raise InvalidRequestError(str(error)) from None
 
     @property
     def restore_id(self) -> str:
@@ -259,22 +259,22 @@ class BuildRequest:
         """The build a ``{"directory", "password"}`` object asks for.
 
         Raises:
-            InvalidConfigRequestError: it is not such an object, or what it asks
+            InvalidRequestError: it is not such an object, or what it asks
                 for is not a usable build.
         """
         if not isinstance(value, dict):
-            raise InvalidConfigRequestError("A build must be a JSON object")
+            raise InvalidRequestError("A build must be a JSON object")
 
         directory = value.get("directory")
 
         if not isinstance(directory, str):
-            raise InvalidConfigRequestError('A build\'s "directory" must be a string')
+            raise InvalidRequestError('A build\'s "directory" must be a string')
 
         try:
             return cls.create(directory, _password(value, "A build"))
 
         except ValueError as error:
-            raise InvalidConfigRequestError(str(error)) from None
+            raise InvalidRequestError(str(error)) from None
 
     @property
     def build_id(self) -> str:
@@ -328,17 +328,17 @@ class ExportRequest:
         """The export a ``{"bundle", "archive", "on_conflict", "password"}`` object asks for.
 
         Raises:
-            InvalidConfigRequestError: it is not such an object, or what it asks
+            InvalidRequestError: it is not such an object, or what it asks
                 for is not a usable export.
         """
         if not isinstance(value, dict):
-            raise InvalidConfigRequestError("An export must be a JSON object")
+            raise InvalidRequestError("An export must be a JSON object")
 
         bundle = value.get("bundle")
         archive = value.get("archive")
 
         if not isinstance(bundle, str) or not isinstance(archive, str):
-            raise InvalidConfigRequestError('An export\'s "bundle" and "archive" must be strings')
+            raise InvalidRequestError('An export\'s "bundle" and "archive" must be strings')
 
         on_conflict = _on_conflict(value, "An export")
 
@@ -349,10 +349,10 @@ class ExportRequest:
 
         except UnknownAlgorithmError as error:
             _LOGGER.warning("Refusing to export %r: %s", bundle, error)
-            raise InvalidConfigRequestError(str(error)) from None
+            raise InvalidRequestError(str(error)) from None
 
         except (InvalidContentIdError, ValueError) as error:
-            raise InvalidConfigRequestError(str(error)) from None
+            raise InvalidRequestError(str(error)) from None
 
     @property
     def export_id(self) -> str:
@@ -395,22 +395,22 @@ class ImportRequest:
         """The import a ``{"path"}`` object asks for.
 
         Raises:
-            InvalidConfigRequestError: it is not such an object, or what it asks
+            InvalidRequestError: it is not such an object, or what it asks
                 for is not a usable import.
         """
         if not isinstance(value, dict):
-            raise InvalidConfigRequestError("An import must be a JSON object")
+            raise InvalidRequestError("An import must be a JSON object")
 
         path = value.get("path")
 
         if not isinstance(path, str):
-            raise InvalidConfigRequestError('An import\'s "path" must be a string')
+            raise InvalidRequestError('An import\'s "path" must be a string')
 
         try:
             return cls(path)
 
         except ValueError as error:
-            raise InvalidConfigRequestError(str(error)) from None
+            raise InvalidRequestError(str(error)) from None
 
     @property
     def import_id(self) -> str:
@@ -478,12 +478,12 @@ def _password(value: dict[str, Any], what: str) -> str | None:
     """The ``"password"`` ``value`` gives, or ``None`` if it gives none; ``what`` names the request.
 
     Raises:
-        InvalidConfigRequestError: it gives one that is not a string.
+        InvalidRequestError: it gives one that is not a string.
     """
     password = value.get("password")
 
     if password is not None and not isinstance(password, str):
-        raise InvalidConfigRequestError(f'{what}\'s "password" must be a string')
+        raise InvalidRequestError(f'{what}\'s "password" must be a string')
 
     return password
 
@@ -494,12 +494,12 @@ def _on_conflict(value: dict[str, Any], what: str) -> ConflictBehavior:
     ``what`` names the request.
 
     Raises:
-        InvalidConfigRequestError: it gives one that is not a behavior.
+        InvalidRequestError: it gives one that is not a behavior.
     """
     on_conflict = value.get("on_conflict", ConflictBehavior.REFUSE.value)
 
     if on_conflict not in tuple(ConflictBehavior):
         behaviors = ", ".join(behavior.value for behavior in ConflictBehavior)
-        raise InvalidConfigRequestError(f'{what}\'s "on_conflict" must be one of: {behaviors}')
+        raise InvalidRequestError(f'{what}\'s "on_conflict" must be one of: {behaviors}')
 
     return ConflictBehavior(on_conflict)

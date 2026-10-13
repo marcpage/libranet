@@ -78,7 +78,7 @@ it asks::
 
 So that what waits does not slow to one hand-off at a time, eviction aims
 ``headroom_bytes`` short of each limit: by default as much as
-``max_hand_offs`` hand-offs of objects that large move at once. Storage
+``storage.max_hand_offs`` hand-offs of objects that large move at once. Storage
 within the headroom of a limit, with nothing left to let go of, is only
 logged at debug, since no limit is passed.
 
@@ -201,7 +201,6 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         clock: Callable[[], float] = time,
         poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
         free_bytes: FreeBytes | None = None,
-        max_hand_offs: int | None = None,
         hand_off_timeout_seconds: float | None = None,
         candidates_timeout_seconds: float = DEFAULT_CANDIDATES_TIMEOUT_SECONDS,
         reclaim_timeout_seconds: float = DEFAULT_RECLAIM_TIMEOUT_SECONDS,
@@ -209,14 +208,8 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         headroom_bytes: int | None = None,
         stored_grace_seconds: float = DEFAULT_STORED_GRACE_SECONDS,
     ) -> None:
-        if max_hand_offs is None:
-            max_hand_offs = config.storage.max_hand_offs
-
         if hand_off_timeout_seconds is None:
             hand_off_timeout_seconds = config.peers.longest_hand_off_seconds() * _HAND_OFF_SPARE
-
-        if max_hand_offs < 1:
-            raise ValueError(f"max_hand_offs must be at least 1, got {max_hand_offs}")
 
         if hand_off_timeout_seconds <= 0:
             raise ValueError(
@@ -254,13 +247,13 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         # be reached does, giving the peer mix the same time to change.
         self._retry_delay_seconds = config.peers.retry_delay_seconds
         self._free_bytes = free_bytes
-        self._max_hand_offs = max_hand_offs
+        self._max_hand_offs = config.storage.max_hand_offs
         self._hand_off_timeout_seconds = hand_off_timeout_seconds
         self._candidates_timeout_seconds = candidates_timeout_seconds
         self._reclaim_timeout_seconds = reclaim_timeout_seconds
         self._reclaim_interval_seconds = reclaim_interval_seconds
         self._headroom_bytes = (
-            max_hand_offs * config.storage.max_object_bytes
+            self._max_hand_offs * config.storage.max_object_bytes
             if headroom_bytes is None
             else headroom_bytes
         )

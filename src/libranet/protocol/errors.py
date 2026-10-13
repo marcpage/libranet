@@ -5,5 +5,5 @@ class InvalidListError(ValueError):
     """A posted body is not a usable node list or seek list."""
 
 
-class InvalidConfigRequestError(ValueError):
-    """A ``/config`` request body is not what its endpoint accepts."""
+class InvalidRequestError(ValueError):
+    """A request body is not what its endpoint accepts."""

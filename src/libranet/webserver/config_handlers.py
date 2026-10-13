@@ -65,12 +65,12 @@ by hand is the way back.
 A browser has the ``/config`` application instead, served like any other
 (see :mod:`libranet.webserver.app_handler`).
 
-Bodies here are small JSON objects, so they are held to their own limit
-rather than the object limit peers' uploads use. One is read as JSON only if
-its ``Content-Type`` says it is, and is ``415`` otherwise, since a page on
-another site can send a form's types without asking this node first
-(HttpApi §2.3.3). A body an endpoint has no use for is still read, so the
-connection stays usable, whatever type it says it is.
+Bodies here are small JSON objects, so they are held to the limit such
+bodies share rather than the object limit peers' uploads use, and read as
+every endpoint reads its JSON body
+(:mod:`libranet.webserver.request_refusals`). A body an endpoint has no use
+for is still read, so the connection stays usable, whatever type it says it
+is.
 """
 
 from __future__ import annotations
@@ -78,14 +78,13 @@ from dataclasses import KW_ONLY, dataclass
 from http import HTTPStatus
 from logging import getLogger
 from re import escape
-from typing import Any, Callable, Final, Protocol, TypeVar
+from typing import Any, Callable, Final, Protocol
 
 from libranet.cas.content_id import ContentId
 from libranet.config.models import DEFAULT_PERSON_KEY_BITS, NetworkConfig
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
-from libranet.problems import INVALID_CONFIG_REQUEST
-from libranet.protocol.config_requests import (
+from libranet.protocol.backup_requests import (
     IDENTIFIER_LENGTH,
     BackupJobRequest,
     BuildRequest,
@@ -101,25 +100,25 @@ from libranet.webserver.backup_state import (
     RESTORES_FIELD,
     BackupState,
 )
-from libranet.webserver.errors import RegistryFileError, UnsupportedMediaTypeError
+from libranet.webserver.errors import RegistryFileError
 from libranet.webserver.http_types import (
     Request,
     Response,
     json_response,
     percent_decoded,
     status_response,
-    typed_response,
 )
 from libranet.webserver.request_refusals import (
-    unreadable_body_response,
+    body_or_refusal,
+    invalid_request_response,
+    json_or_refusal,
+    parsed_or_refusal,
     unreadable_registry_response,
-    unsupported_media_type_response,
+    unreported_response,
 )
 from libranet.webserver.router import Handler
 
 _LOGGER = getLogger(__name__)
-
-_Parsed = TypeVar("_Parsed")
 
 CONFIG_API_PATH: Final = f"/{CONFIG_APPLICATION}/api"
 NODE_PATH: Final = CONFIG_API_PATH + "/node"
@@ -148,10 +147,6 @@ APPLICATION_TEMPLATE: Final = APPLICATIONS_PATH + "/{name}"
 
 # Whether an application is trusted, in a request changing it (HttpApi §13.5).
 _TRUSTED_FIELD: Final = "trusted"
-
-# A job, restore, build, export, or application request is a small object of a few
-# strings. Anything larger is a mistake, and is refused before it is read.
-MAX_CONFIG_BODY_BYTES: Final = 64 * 1024
 
 #: What ``GET /config/api`` answers: every endpoint this node serves under it.
 ENDPOINTS: Final = (
@@ -282,7 +277,7 @@ class BackupJobEventHandler:
     event: EventType
 
     def __call__(self, request: Request) -> Response:
-        body = _body_or_refusal(request)
+        body = body_or_refusal(request)
 
         if isinstance(body, Response):
             return body
@@ -399,7 +394,7 @@ class ApplicationRemovalHandler:
     registry: ApplicationRegistry
 
     def __call__(self, request: Request) -> Response:
-        body = _body_or_refusal(request)
+        body = body_or_refusal(request)
 
         if isinstance(body, Response):
             return body
@@ -419,21 +414,6 @@ class ApplicationRemovalHandler:
         return Response(HTTPStatus.NO_CONTENT)
 
 
-def unreported_response(request: Request, retry_after_seconds: int) -> Response:
-    """The ``503`` for what the backup module has not reported yet."""
-    return status_response(
-        request,
-        HTTPStatus.SERVICE_UNAVAILABLE,
-        "The backup module has not reported its state yet.",
-        headers={"Retry-After": str(retry_after_seconds)},
-    )
-
-
-def invalid_request_response(request: Request, error: ValueError) -> Response:
-    """The ``400`` for a body an endpoint cannot act on."""
-    return typed_response(request, INVALID_CONFIG_REQUEST, HTTPStatus.BAD_REQUEST, str(error))
-
-
 def _not_registered_response(request: Request) -> Response:
     """The ``404`` for a path naming no registered application."""
     return status_response(
@@ -444,64 +424,6 @@ def _not_registered_response(request: Request) -> Response:
 def _unreadable_registry_response(request: Request, error: RegistryFileError) -> Response:
     """The ``500`` for a registry file that must be fixed by hand before it can be changed."""
     return status_response(request, HTTPStatus.INTERNAL_SERVER_ERROR, str(error))
-
-
-def _body_or_refusal(
-    request: Request, *, max_bytes: int = MAX_CONFIG_BODY_BYTES
-) -> bytes | Response:
-    """``request``'s body, or the response refusing it unread, as over ``max_bytes`` is."""
-    refusal = unreadable_body_response(request, max_bytes)
-    return refusal if refusal is not None else request.body.read()
-
-
-def json_or_refusal(
-    request: Request, *, max_bytes: int = MAX_CONFIG_BODY_BYTES
-) -> object | Response:
-    """The JSON value ``request``'s body carries, or the response refusing the body.
-
-    A body larger than ``max_bytes``, ``/config/api``'s limit unless it is
-    given, is ``413``. One that does not say it is JSON is ``415``, and one
-    that says so and is not is ``400``.
-    """
-    body = _body_or_refusal(request, max_bytes=max_bytes)
-
-    if isinstance(body, Response):
-        return body
-
-    try:
-        return request.json()
-
-    except UnsupportedMediaTypeError as error:
-        _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-        return unsupported_media_type_response(request, error)
-
-    except ValueError as error:
-        _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-        return invalid_request_response(request, error)
-
-
-def parsed_or_refusal(
-    request: Request,
-    parse: Callable[[object], _Parsed],
-    *,
-    max_bytes: int = MAX_CONFIG_BODY_BYTES,
-) -> _Parsed | Response:
-    """What ``parse`` makes of the JSON value ``request``'s body carries, or the refusal.
-
-    The body is refused as :func:`json_or_refusal` refuses it, and a value
-    ``parse`` refuses with a ``ValueError`` is ``400``.
-    """
-    value = json_or_refusal(request, max_bytes=max_bytes)
-
-    if isinstance(value, Response):
-        return value
-
-    try:
-        return parse(value)
-
-    except ValueError as error:
-        _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-        return invalid_request_response(request, error)
 
 
 def config_routes(

@@ -132,7 +132,6 @@ from libranet.webserver.config_handlers import (
     DATA_APPLICATIONS_PATH,
     ENDPOINTS,
     EXPORTS_PATH,
-    MAX_CONFIG_BODY_BYTES,
     NODE_PATH,
     RESTORES_PATH,
     ApplicationListHandler,
@@ -147,28 +146,20 @@ from libranet.webserver.config_handlers import (
     NodeHandler,
     config_index,
     config_routes,
-    invalid_request_response,
-    json_or_refusal,
-    parsed_or_refusal,
-    unreported_response,
 )
+from libranet.webserver.costly_work import CostlyWork, Turns
 from libranet.webserver.data_handler import (
     DATA_ENDPOINT_NAMES,
     DATA_PATTERN,
-    IMMUTABLE_CACHE_CONTROL,
     DataReadHandler,
-    content_id_or_refusal,
-    invalid_address_response,
 )
 from libranet.webserver.data_write_handler import DataWriteHandler
 from libranet.webserver.drop_handler import (
     DROP_PATH,
     MAX_DROP_BODY_BYTES,
-    CostlyWork,
     DropEncryption,
     DropHandler,
     StoredDrop,
-    Turns,
 )
 from libranet.webserver.encrypted_handlers import (
     ENCRYPTED_PATH,
@@ -195,6 +186,7 @@ from libranet.webserver.file_stream import (
     PartReader,
 )
 from libranet.webserver.http_types import (
+    IMMUTABLE_CACHE_CONTROL,
     NOT_STORED,
     READ_METHODS,
     Request,
@@ -229,12 +221,20 @@ from libranet.webserver.own_pages import (
     RefererPage,
 )
 from libranet.webserver.request_refusals import (
+    MAX_JSON_BODY_BYTES,
+    body_or_refusal,
+    content_id_or_refusal,
     content_too_large_response,
     content_unavailable_response,
+    invalid_address_response,
+    invalid_request_response,
     invalid_signature_response,
+    json_or_refusal,
+    parsed_or_refusal,
     signature_required_response,
     unreadable_body_response,
     unreadable_registry_response,
+    unreported_response,
     unsupported_media_type_response,
     unusable_bundle_response,
 )
@@ -308,10 +308,10 @@ __all__ = [
     "LISTED_DIRECTORY",
     "LISTED_FILE",
     "LISTED_SYMLINK",
-    "MAX_CONFIG_BODY_BYTES",
     "MAX_COST",
     "MAX_DROP_BODY_BYTES",
     "MAX_EDIT_BODY_BYTES",
+    "MAX_JSON_BODY_BYTES",
     "MAX_OPENED_BYTES",
     "MAX_STORE_BYTES",
     "MAX_VALUE_BYTES",
@@ -430,6 +430,7 @@ __all__ = [
     "ValueChangedError",
     "WebServerModule",
     "basic_credentials",
+    "body_or_refusal",
     "build_config_router",
     "build_router",
     "bytes_response",

@@ -52,7 +52,7 @@ is ``503``, whatever was found, since a wrong password cannot be told from an
 identity that has not reached this node yet (HttpApi §11.4).
 
 Each identity made, and each sign-in, derives its key in turn
-(:class:`~libranet.webserver.drop_handler.Turns`), one at a time, as each
+(:class:`~libranet.webserver.costly_work.Turns`), one at a time, as each
 derivation holds 64 MiB for a fifth of a second by design (BundleSpecification
 §6.2.1). The session holds the key pair (:mod:`libranet.webserver.sessions`).
 
@@ -82,7 +82,7 @@ from libranet.identity.people import MAX_IDENTITY_BYTES, NewIdentity, PersonKey,
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.protocol.drop_requests import DropRequest
-from libranet.protocol.errors import InvalidConfigRequestError
+from libranet.protocol.errors import InvalidRequestError
 from libranet.protocol.http_syntax import API_PREFIX
 from libranet.protocol.identity_requests import (
     FallbackRequest,
@@ -90,8 +90,8 @@ from libranet.protocol.identity_requests import (
     SignInRequest,
 )
 from libranet.webserver.bundle_edits import OwnUploads
-from libranet.webserver.config_handlers import invalid_request_response, parsed_or_refusal
-from libranet.webserver.drop_handler import DropHandler, StoredDrop, Turns
+from libranet.webserver.costly_work import Turns
+from libranet.webserver.drop_handler import DropHandler, StoredDrop
 from libranet.webserver.http_types import (
     NOT_STORED,
     Request,
@@ -99,7 +99,11 @@ from libranet.webserver.http_types import (
     json_response,
     status_response,
 )
-from libranet.webserver.request_refusals import content_unavailable_response
+from libranet.webserver.request_refusals import (
+    content_unavailable_response,
+    invalid_request_response,
+    parsed_or_refusal,
+)
 from libranet.webserver.search_handler import SearchHandler
 from libranet.webserver.sessions import Session, Sessions
 
@@ -220,7 +224,7 @@ class Identities:  # pylint: disable=too-many-instance-attributes
             self._check_made(asked.key_bits)
             self.drops.within_ceilings(asked.seconds, asked.minimum_bits)
 
-        except InvalidConfigRequestError as error:
+        except InvalidRequestError as error:
             _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
             return invalid_request_response(request, error)
 
@@ -267,7 +271,7 @@ class Identities:  # pylint: disable=too-many-instance-attributes
         try:
             self.drops.within_ceilings(asked.seconds, asked.minimum_bits)
 
-        except InvalidConfigRequestError as error:
+        except InvalidRequestError as error:
             _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
             return invalid_request_response(request, error)
 
@@ -426,13 +430,11 @@ class Identities:  # pylint: disable=too-many-instance-attributes
         """Raise unless this node makes a key of ``key_bits``.
 
         Raises:
-            InvalidConfigRequestError: it makes none that size.
+            InvalidRequestError: it makes none that size.
         """
         if key_bits not in self.key_bits:
             sizes = ", ".join(str(size) for size in self.key_bits)
-            raise InvalidConfigRequestError(
-                f'"key_bits" must be one of {sizes} here, got {key_bits}'
-            )
+            raise InvalidRequestError(f'"key_bits" must be one of {sizes} here, got {key_bits}')
 
     def _password_key(self, username: Username, password: str) -> PasswordKey:
         """The key ``password`` derives with ``username``, derived in its turn."""

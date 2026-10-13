@@ -74,7 +74,7 @@ from libranet.bundle.loading import load_bundle
 from libranet.bundle.shapes import DirectoryBundle
 from libranet.cas.content_id import ContentId
 from libranet.json_format import pretty_json
-from libranet.protocol.config_requests import BuildRequest
+from libranet.protocol.backup_requests import BuildRequest
 
 _LOGGER = getLogger(__name__)
 

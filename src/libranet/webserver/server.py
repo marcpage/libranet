@@ -50,15 +50,12 @@ from urllib.parse import urlsplit
 from libranet import __version__
 from libranet.bundle.parts import PartPath
 from libranet.cas.blocked import BlockedContent
-from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
 from libranet.cas.resolved_files import ResolvedFiles
 from libranet.cas.store import CasStore
 from libranet.config.models import (
     DEFAULT_CONFIG_HOSTS,
-    DEFAULT_PERSON_KEY_BITS,
     DEFAULT_READ_AHEAD_PARTS,
-    DEFAULT_SESSION_IDLE_SECONDS,
     IDLE_TIMEOUT_SECONDS,
     StorageConfig,
 )
@@ -105,9 +102,10 @@ from libranet.webserver.config_handlers import (
     NodeDescription,
     config_routes,
 )
+from libranet.webserver.costly_work import CostlyWork
 from libranet.webserver.data_handler import DATA_PATTERN, DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
-from libranet.webserver.drop_handler import DROP_PATH, CostlyWork, DropEncryption, DropHandler
+from libranet.webserver.drop_handler import DROP_PATH, DropEncryption, DropHandler
 from libranet.webserver.encrypted_handlers import ENCRYPTED_PATTERN, EncryptedDrops
 from libranet.webserver.errors import IncompleteBodyError, ResponseCutShortError
 from libranet.webserver.file_stream import PartReader
@@ -166,12 +164,8 @@ def build_router(  # pylint: disable=too-many-locals
     config_hosts: tuple[str, ...] = DEFAULT_CONFIG_HOSTS,
     local_folders: LocalFolders | None = None,
     backup_state: BackupState | None = None,
-    node_id: ContentId | None = None,
+    node: NodeDescription | None = None,
     max_update_layers: int = 0,
-    max_drop_seconds: float = 0.0,
-    max_drop_minimum_bits: int = 0,
-    session_idle_seconds: float = DEFAULT_SESSION_IDLE_SECONDS,
-    person_key_bits: tuple[int, ...] = DEFAULT_PERSON_KEY_BITS,
     costly_work: CostlyWork | None = None,
 ) -> Router:
     """The main port's routes, serving the configured source of truth, derived lists, and apps.
@@ -202,20 +196,21 @@ def build_router(  # pylint: disable=too-many-locals
     in ``storage``'s data directory, read by any client and changed by local
     clients alone (Phase 3 Step 70). Any client may read into a bundle
     ``content`` holds, as an application's files are served (Phase 3 Step
-    71). Given ``node_id``, ``/data/bundles`` makes bundles for local clients
+    71). Given ``node``, ``/data/bundles`` makes bundles for local clients
     alone, from what ``content`` holds, storing what it makes as uploads
-    from ``node_id``, each no more than ``max_update_layers`` update layers
+    from ``node``, each no more than ``max_update_layers`` update layers
     above the last bundle stored whole; none, by default (Phase 3 Step 72).
     ``/data/drop`` makes drops for any client, stored as those are, searching
-    for each no more than ``max_drop_seconds`` and asked to match no more
-    than ``max_drop_minimum_bits``; neither, by default (Phase 4 Step 89).
-    ``/data/drop/{target}`` searches a drop by its target string, for any
-    client, as ``/data/search`` does (Phase 4 Step 80). With ``/data/drop``,
+    for each no longer, and asked to match no more bits, than ``node``'s
+    network settings allow (Phase 4 Step 89). ``/data/drop/{target}``
+    searches a drop by its target string, for any client, as
+    ``/data/search`` does (Phase 4 Step 80). With ``/data/drop``,
     ``/data/users`` makes people's identities, each with a key of one of the
-    sizes ``person_key_bits`` names, kept at a drop made as those are, and
-    ``/data/session`` signs them in and out, for local clients
-    alone, each session ending once unused for ``session_idle_seconds``
-    (Phase 4 Step 79). ``/data/signed`` makes a drop signed by whoever is
+    sizes ``node`` makes, kept at a drop made as those are, and
+    ``/data/session`` signs them in and out, for local clients alone, each
+    session ending once unused for as long as ``node``'s network settings
+    say, as ``/config/api/users`` makes them on ``/config``'s port (Phase 4
+    Steps 79 and 91). ``/data/signed`` makes a drop signed by whoever is
     signed in, for local clients alone, and checks a signed drop for any
     client (Phase 4 Step 80). Each of those two encrypts what it places as
     asked, for a person, or by a username and password, the last for local
@@ -299,9 +294,9 @@ def build_router(  # pylint: disable=too-many-locals
         "DELETE", STORE_KEY_PATTERN, LocalOnly(StoreRemovalHandler(app_store, pages), checks)
     )
 
-    if node_id is not None:
+    if node is not None:
         work = CostlyWork() if costly_work is None else costly_work
-        uploads = OwnUploads.of(storage, content, node_id, publish)
+        uploads = OwnUploads.of(storage, content, node.node_id, publish)
         edits = BundleEditHandler(
             uploads,
             publish,
@@ -314,8 +309,8 @@ def build_router(  # pylint: disable=too-many-locals
         drops = DropHandler(
             uploads,
             storage.max_object_bytes,
-            max_drop_seconds,
-            max_drop_minimum_bits,
+            node.network.drop_max_seconds,
+            node.network.drop_max_minimum_bits,
             turns=work.searches,
             encryption=DropEncryption(
                 uploads,
@@ -328,7 +323,7 @@ def build_router(  # pylint: disable=too-many-locals
             ),
         )
         router.add("POST", DROP_PATH, OwnSiteOnly(OwnPageOnly(drops, pages), checks))
-        sessions = Sessions(session_idle_seconds)
+        sessions = Sessions(node.network.session_idle_seconds)
         identities = Identities(
             uploads,
             search,
@@ -336,7 +331,7 @@ def build_router(  # pylint: disable=too-many-locals
             sessions,
             publish,
             retry_after_seconds=retry_after_seconds,
-            key_bits=person_key_bits,
+            key_bits=node.person_key_bits,
             derivations=work.derivations,
         )
         signed = SignedDrops(

@@ -13,7 +13,7 @@ from pytest import LogCaptureFixture, fixture, mark, raises
 from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
 from libranet.config.models import DEFAULT_CONFIG_HOSTS, StorageConfig
-from libranet.problems import CONTENT_TOO_LARGE, INVALID_CONFIG_REQUEST, PROBLEM_CONTENT_TYPE
+from libranet.problems import CONTENT_TOO_LARGE, INVALID_REQUEST, PROBLEM_CONTENT_TYPE
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.webserver.app_registry import ApplicationRegistry, RegisteredApplications
 from libranet.webserver.app_store import (
@@ -528,7 +528,7 @@ def test_a_body_carrying_no_json_value_is_400(
 ) -> None:
     found = problem(router.dispatch(request("PUT", "/data/store/movie/last", body=body)), 400)
 
-    assert found["type"] == INVALID_CONFIG_REQUEST
+    assert found["type"] == INVALID_REQUEST
     assert store.values("movie") == StoredValues("movie")
 
 

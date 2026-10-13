@@ -46,7 +46,7 @@ from libranet.messaging.envelope import Message, make_message
 from libranet.messaging.events import ConflictBehavior, EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
-from libranet.protocol.config_requests import (
+from libranet.protocol.backup_requests import (
     BackupJobRequest,
     BuildRequest,
     ExportRequest,

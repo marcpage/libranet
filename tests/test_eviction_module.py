@@ -125,6 +125,12 @@ def capped(
     return config.model_copy(update={"storage": storage})
 
 
+def handing_off(config: LibranetConfig, count: int) -> LibranetConfig:
+    """``config`` handing off no more than ``count`` objects at once."""
+    storage = config.storage.model_copy(update={"max_hand_offs": count})
+    return config.model_copy(update={"storage": storage})
+
+
 def short_of_space(config: LibranetConfig, free: list[int]) -> LibranetConfig:
     """``config`` needing 100 bytes left free, with 95 left."""
     free[0] = 95
@@ -528,7 +534,7 @@ def test_no_more_than_the_most_hand_offs_run_at_once_the_rest_of_the_list_waitin
     queues: ModuleQueues,
 ) -> None:
     hold(store, *CONTENT)
-    module = modules.start(capped(config, store, node_id, 0), max_hand_offs=2)
+    module = modules.start(capped(handing_off(config, 2), store, node_id, 0))
     requested(queues)
     module.handle(candidates(*CONTENT))
     assert handed_off(queues) == CONTENT[:2]
@@ -690,9 +696,9 @@ def test_the_headroom_is_what_the_most_hand_offs_move_at_once_by_default(
     queues: ModuleQueues,
 ) -> None:
     hold(store, *CONTENT[:3])
-    limited = objects_of(capped(config, store, node_id, 5 * SIZE - 5), SIZE)
+    limited = objects_of(capped(handing_off(config, 2), store, node_id, 5 * SIZE - 5), SIZE)
 
-    modules.start(limited, max_hand_offs=2, headroom_bytes=None)
+    modules.start(limited, headroom_bytes=None)
 
     assert requested(queues) == (5, [])
 
@@ -752,7 +758,7 @@ def test_deleting_carries_on_while_storage_is_still_over(
 ) -> None:
     first, second, third = CONTENT[:3]
     hold(store, first, second, third)
-    module = modules.start(capped(config, store, node_id, 15), max_hand_offs=1)
+    module = modules.start(capped(handing_off(config, 1), store, node_id, 15))
     requested(queues)
     module.handle(candidates(first, second, third))
     assert handed_off(queues) == [first]
@@ -1233,7 +1239,7 @@ def test_blocked_content_stats_listed_is_passed_over(
 ) -> None:
     first, listed, last = CONTENT[:3]
     hold(store, first, listed, last)
-    module = modules.start(capped(config, store, node_id, 0), max_hand_offs=1)
+    module = modules.start(capped(handing_off(config, 1), store, node_id, 0))
     requested(queues)
     module.handle(candidates(first, listed, last))
     assert handed_off(queues) == [first]
@@ -1410,9 +1416,6 @@ def test_before_starting_nothing_is_known(config: LibranetConfig, queues: Module
 
 
 def test_unusable_settings_are_refused(config: LibranetConfig, queues: ModuleQueues) -> None:
-    with raises(ValueError, match="max_hand_offs"):
-        EvictionModule(ModuleName.EVICTION, queues, config, max_hand_offs=0)
-
     with raises(ValueError, match="hand_off_timeout_seconds"):
         EvictionModule(ModuleName.EVICTION, queues, config, hand_off_timeout_seconds=0)
 

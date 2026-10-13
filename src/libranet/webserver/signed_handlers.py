@@ -61,10 +61,9 @@ from libranet.problems import INVALID_BUNDLE_SIGNATURE
 from libranet.protocol.client_origin import is_local_client
 from libranet.protocol.drop_requests import SignedDropRequest
 from libranet.protocol.http_syntax import API_PREFIX
-from libranet.webserver.config_handlers import parsed_or_refusal
-from libranet.webserver.data_handler import IMMUTABLE_CACHE_CONTROL, content_id_or_refusal
 from libranet.webserver.drop_handler import MAX_DROP_BODY_BYTES, DropHandler
 from libranet.webserver.http_types import (
+    IMMUTABLE_CACHE_CONTROL,
     Request,
     Response,
     json_response,
@@ -72,7 +71,9 @@ from libranet.webserver.http_types import (
     typed_response,
 )
 from libranet.webserver.request_refusals import (
+    content_id_or_refusal,
     content_unavailable_response,
+    parsed_or_refusal,
     unusable_bundle_response,
 )
 from libranet.webserver.sessions import Sessions

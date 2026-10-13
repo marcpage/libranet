@@ -561,7 +561,7 @@ from `json_fields.py`, which also refuse `bool`, since Python counts it as an
 
 ```Python
 skipped = integer_field(value, "skipped")
-seconds = number_field(value, "seconds", error=InvalidConfigRequestError)
+seconds = number_field(value, "seconds", error=InvalidRequestError)
 ```
 
 ### 10.2 Every Kind Is Checked
@@ -663,7 +663,7 @@ Paths are relative to `src/libranet/`, except those that start with `tests/`.
 | `tests/test_config_models.py` | Three `Test…` classes (§11) |
 | `logging_setup.get_logger` | A `get_` name (§4) |
 | `applications/packaged.py` `_Objects`; `backup/builds.py` `_Earlier` | A private class at the bottom, after the public code that uses it (§3.1) |
-| `backup/module.py` `_waiting`; `bundle/building.py` every private function from `_identity` to `_metadata`, eleven, before `modified_time`; `connections/module.py` `_dialable`; `identity/keys.py` `_decompressed`; `stats/database.py` `_source_rank`; `stats/lists.py` `_cost`; `stats/module.py` `_started`; `webserver/config_guard.py` `_is_followed_link`, `_api_page_refusal`; `webserver/config_handlers.py` `_not_registered_response`, `_unreadable_registry_response`, `_body_or_refusal`; `webserver/module.py` `_address`; `webserver/server.py` `_registry`, `_bundle_paths` | A private function before public code (§3.1) |
+| `backup/module.py` `_waiting`; `bundle/building.py` every private function from `_identity` to `_metadata`, eleven, before `modified_time`; `connections/module.py` `_dialable`; `identity/keys.py` `_decompressed`; `stats/database.py` `_source_rank`; `stats/lists.py` `_cost`; `stats/module.py` `_started`; `webserver/config_guard.py` `_is_followed_link`, `_api_page_refusal`; `webserver/config_handlers.py` `_not_registered_response`, `_unreadable_registry_response`; `webserver/module.py` `_address`; `webserver/server.py` `_registry`, `_bundle_paths` | A private function before public code (§3.1) |
 | `webserver/data_handler.py` `DataReadHandler`; `webserver/data_write_handler.py` `DataWriteHandler` | A handler that keeps its collaborators in private attributes set by `__init__`, where every other handler and guard class is a frozen dataclass of them (§6.2) |
 | `problems.py` `Problem` | Its JSON form is `to_dict()`, and its body `to_json()`, rather than `value()` (§6.3) |
 | `webserver/config_credential.py` `StoredCredential` | `from_json()` and `to_json()` read and write the file's bytes, rather than `from_value()` and `value()` (§6.3) |
@@ -712,7 +712,7 @@ the signature of the one it overrides or stands in for is not counted
 | `messaging/module.py` | `ModuleBase.publish(payload)`, `ModuleBase.receive(timeout_seconds)`, `ModuleBase.run(stop)` |
 | `messaging/queues.py` | `create_module_queues(start_method, subscriptions)` |
 | `problems.py` | `Problem.for_status(detail, instance)` |
-| `protocol/config_requests.py` | `BackupJobRequest.create(interval_seconds)`, `BuildRequest.create(password)`, `ExportRequest.create(password)` |
+| `protocol/backup_requests.py` | `BackupJobRequest.create(interval_seconds)`, `BuildRequest.create(password)`, `ExportRequest.create(password)` |
 | `protocol/search.py` | `normalize_prefix(registry)`, `LocalSearch(registry)` |
 | `stats/database.py` | `StatsDatabase.eviction_order(exclude)`, `StatsDatabase.record_connection_opened(endpoint)`, `StatsDatabase.last_good_endpoints(exclude)`, `StatsDatabase.candidate_endpoints(exclude)`, `StatsDatabase.record_seek(node_id)`, `StatsDatabase.clear_seek(node_id)`, `StatsDatabase.seek_values(node_id)` |
 | `supervisor.py` | `main(argv)` |

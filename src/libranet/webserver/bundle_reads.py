@@ -76,11 +76,9 @@ from libranet.webserver.bundle_paths import (
 )
 from libranet.webserver.data_handler import (
     DATA_PATTERN,
-    IMMUTABLE_CACHE_CONTROL,
-    content_id_or_refusal,
-    invalid_address_response,
 )
 from libranet.webserver.http_types import (
+    IMMUTABLE_CACHE_CONTROL,
     READ_METHODS,
     Request,
     Response,
@@ -90,6 +88,7 @@ from libranet.webserver.http_types import (
     status_response,
     typed_response,
 )
+from libranet.webserver.request_refusals import content_id_or_refusal, invalid_address_response
 
 _LOGGER = getLogger(__name__)
 
