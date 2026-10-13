@@ -77,10 +77,10 @@ from time import time
 from typing import Callable, Final, Iterator, Mapping, Sequence, TypeVar
 
 from libranet.cas.blocked import BlockedContent
-from libranet.cas.content_id import ContentId
+from libranet.cas.content_id import BITS_PER_HEX_DIGIT, ContentId
 from libranet.cas.errors import ContentNotFoundError
 from libranet.cas.layered import LayeredSource
-from libranet.cas.prefix import BITS_PER_HEX_DIGIT, matching_bits
+from libranet.cas.prefix import matching_bits
 from libranet.cas.store import CasStore
 from libranet.cas.verification import content_matches
 from libranet.config.models import LibranetConfig

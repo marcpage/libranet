@@ -62,7 +62,6 @@ from libranet.identity.keys import (
 )
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import MessageSigner
-from libranet.logging_setup import log_file_path
 from libranet.modules import ModuleName
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.protocol.lists import NODES_PATH, node_list_body
@@ -195,7 +194,7 @@ class NodePlace:
     @property
     def connections_log_path(self) -> Path:
         """The log the node's connections module writes."""
-        return log_file_path(self.config.logging, ModuleName.CONNECTIONS)
+        return self.config.logging.log_file_path(ModuleName.CONNECTIONS)
 
     def held_key(self) -> Ed25519PrivateKey | None:
         """The key an earlier run left for this node, if any."""

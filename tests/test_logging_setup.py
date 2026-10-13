@@ -9,7 +9,6 @@ from libranet.logging_setup import (
     LOGGER_ROOT,
     configure_logging,
     get_logger,
-    log_file_path,
 )
 from libranet.modules import ModuleName
 
@@ -25,13 +24,13 @@ def test_logger_names_are_namespaced() -> None:
 def test_log_file_is_named_after_the_module(tmp_path: Path) -> None:
     config = make_config(tmp_path)
 
-    assert log_file_path(config, ModuleName.FETCHER) == tmp_path / "libranet-fetcher.log"
+    assert config.log_file_path(ModuleName.FETCHER) == tmp_path / "libranet-fetcher.log"
 
 
 def test_each_module_writes_its_own_file(tmp_path: Path) -> None:
     config = make_config(tmp_path)
 
-    assert log_file_path(config, ModuleName.FETCHER) != log_file_path(config, ModuleName.EVICTION)
+    assert config.log_file_path(ModuleName.FETCHER) != config.log_file_path(ModuleName.EVICTION)
 
 
 def test_records_reach_the_file(tmp_path: Path) -> None:
@@ -40,7 +39,7 @@ def test_records_reach_the_file(tmp_path: Path) -> None:
     logger = configure_logging(config, ModuleName.WEBSERVER)
     logger.info("listening on %s", 8080)
 
-    contents = log_file_path(config, ModuleName.WEBSERVER).read_text(encoding="utf-8")
+    contents = config.log_file_path(ModuleName.WEBSERVER).read_text(encoding="utf-8")
     assert "listening on 8080" in contents
     assert "libranet.webserver" in contents
 
@@ -52,7 +51,7 @@ def test_level_filters_records(tmp_path: Path) -> None:
     logger.debug("chatter")
     logger.warning("trouble")
 
-    contents = log_file_path(config, ModuleName.STATS).read_text(encoding="utf-8")
+    contents = config.log_file_path(ModuleName.STATS).read_text(encoding="utf-8")
     assert "chatter" not in contents
     assert "trouble" in contents
 
@@ -64,7 +63,7 @@ def test_reconfiguring_does_not_duplicate_handlers(tmp_path: Path) -> None:
     logger = configure_logging(config, ModuleName.STATS)
     logger.warning("once")
 
-    contents = log_file_path(config, ModuleName.STATS).read_text(encoding="utf-8")
+    contents = config.log_file_path(ModuleName.STATS).read_text(encoding="utf-8")
     assert contents.count("once") == 1
 
 

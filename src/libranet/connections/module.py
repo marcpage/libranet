@@ -144,7 +144,7 @@ from libranet.cas.store import CasStore
 from libranet.config.errors import SeedError
 from libranet.config.models import LibranetConfig
 from libranet.config.seeds import load_seed_peers
-from libranet.connections.candidates import Candidate, candidate_list, seed_candidates
+from libranet.connections.candidates import Candidate
 from libranet.connections.endpoints import PeerAddress
 from libranet.connections.peer_exchange import PeerExchange
 from libranet.connections.peer_mix import PeerMix
@@ -638,7 +638,9 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
 
     def _load_seeds(self) -> list[Candidate]:
         try:
-            return seed_candidates(load_seed_peers(self._config.peers.seed_file))
+            return [
+                Candidate.from_seed(seed) for seed in load_seed_peers(self._config.peers.seed_file)
+            ]
 
         except SeedError as error:
             self.logger.warning("Seed list unavailable: %s", error)
@@ -650,7 +652,9 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         Endpoints this node cannot dial are left out, and so is a candidate
         left with none.
         """
-        candidates = candidate_list(self._config.storage.candidate_list_path, self.exchange.node_id)
+        candidates = Candidate.read_list(
+            self._config.storage.candidate_list_path, self.exchange.node_id
+        )
         dialable = [
             usable
             for candidate in candidates or self._seeds

@@ -252,7 +252,6 @@ from libranet.webserver.signed_handlers import (
     SIGNED_PATH,
     SIGNED_PATTERN,
     SignedDrops,
-    signed_value,
 )
 from libranet.webserver.site_checks import HOST_HEADER, SITE_HEADER, SiteChecks, host_name
 
@@ -457,7 +456,6 @@ __all__ = [
     "problem_response",
     "redirect_response",
     "signature_required_response",
-    "signed_value",
     "status_response",
     "typed_response",
     "unreadable_body_response",
