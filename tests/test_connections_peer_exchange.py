@@ -923,12 +923,16 @@ def test_a_search_prefix_shorter_than_the_bits_needed_is_matched_whole(
 ) -> None:
     CasStore.source_of_truth(config.storage).write(HELD_ID, HELD)
     # Eight bits, all of which it shares.
-    peer.write_lists({}, [], [HELD_ID.hash[:2]])
+    prefix = HELD_ID.hash[:2]
+    peer.write_lists({}, [], [prefix])
 
     exchange.first_contact(session)
 
-    (sent,) = published(queues, EventType.DATA_SENT)
-    assert sent["hash"] == HELD_ID.hash
+    sent = [message["hash"] for message in published(queues, EventType.DATA_SENT)]
+    assert sent.count(HELD_ID.hash) == 1
+    # Both nodes' keys, made afresh each run, are held too, and either is
+    # pushed as well when it shares the eight bits, about one run in 128.
+    assert all(pushed.startswith(prefix) for pushed in sent)
 
 
 def test_content_both_sought_and_matching_a_search_is_pushed_once(
