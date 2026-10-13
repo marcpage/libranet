@@ -38,6 +38,10 @@ for it:
 - **A path the bundle does not hold** is ``404``. Content that is not a
   bundle, or a bundle this node cannot read, is ``400``, and a
   password-protected bundle (BundleSpecification §6) is ``403``.
+- **A bundle this node has blocked** is ``404``, as reading it is, and is
+  neither read into nor asked for (HttpApi §5.5, Phase 4 Step 30), whatever
+  was resolved from it before. A file with a part blocked cannot be served
+  from its parts, and is ``400``.
 
 Every response carries ``Content-Security-Policy: sandbox`` and
 ``X-Content-Type-Options: nosniff``: a bundle anyone may name could hold a
@@ -119,7 +123,7 @@ class BundleReadHandler:
         }
         return replace(response, headers=headers)
 
-    def _response(self, request: Request) -> Response:
+    def _response(self, request: Request) -> Response:  # pylint: disable=too-many-return-statements
         """The response to ``request``, before the headers every one carries."""
         named = _named(request)
 
@@ -127,6 +131,17 @@ class BundleReadHandler:
             return named
 
         bundle, rest = named
+
+        if self.paths.parts.blocks(bundle.content_id):
+            _LOGGER.debug(
+                "%s is blocked, so it is neither read into nor asked for", bundle.content_id
+            )
+            return status_response(
+                request,
+                HTTPStatus.NOT_FOUND,
+                "The requested content is not stored here, and will not be retrieved.",
+            )
+
         self.paths.use.used(bundle.content_id)
         entry_path = rest.removesuffix("/")
 

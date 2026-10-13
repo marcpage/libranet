@@ -633,13 +633,16 @@ A node MAY keep a private list of content it will not hold
 blocked content as it would for content it does not hold:
 
 - A `GET` of blocked content is answered `404 Not Found` (§5.3), and the
-  node does not try to retrieve it.
+  node does not try to retrieve it. So is reading into a blocked bundle
+  (§12.1), or an application whose bundle is blocked (§13). A file whose
+  part is blocked, or a bundle with a blocked extension, cannot be served.
 - A `PUT` of blocked content is answered `202 Accepted`, as an upload
   validated later is (§7.2), and the content is discarded unstored. A
   request that is refused for any other reason, such as a signature, is
   refused as any upload is.
 - A search (§6) leaves blocked content out of its results, and the node's
-  outstanding requests (§10.7) never name it.
+  outstanding requests (§10.7) never name it. The node never pushes it to
+  a peer that seeks it (§10.7.2).
 
 A block outlives the content it names, and is never lifted.
 

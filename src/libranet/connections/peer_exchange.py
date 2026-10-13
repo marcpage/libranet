@@ -28,7 +28,9 @@ responses. Steps 3 to 5 are sent together, pipelined, and so are the
 requests of step 6 and of step 7.
 
 What this node holds, which step 6 pushes and step 7 does not ask for, is
-what it holds in the source of truth or its content archives (Step 34).
+what it holds in the source of truth or its content archives (Step 34). Step
+6 pushes nothing this node has blocked, even from an archive (HttpApi §5.5,
+Phase 4 Step 30).
 
 The peer's public key goes straight into the source of truth, as sent, once
 it is known to be the peer's key, rather than through the validator, since
@@ -74,6 +76,7 @@ from logging import Logger
 from time import time
 from typing import Callable, Final, Iterator, Mapping, Sequence, TypeVar
 
+from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError
 from libranet.cas.layered import LayeredSource
@@ -148,6 +151,7 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
         self._signer = MessageSigner(identity, clock)
         self._source_of_truth = CasStore.source_of_truth(config.storage)
         self._content = LayeredSource.open(config.storage)
+        self._blocked = BlockedContent.of(config.storage)
         self._search = LocalSearch(self._content, config.storage.search_max_results)
         self._verifier = MessageVerifier.of(config, clock)
 
@@ -472,10 +476,14 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
         return accepted
 
     def _held(self, content_ids: Sequence[ContentId]) -> list[tuple[ContentId, bytes]]:
-        """Those of ``content_ids`` this node holds, with their stored bytes."""
+        """Those of ``content_ids`` this node holds, with their stored bytes, but none blocked."""
         held: list[tuple[ContentId, bytes]] = []
 
         for content_id in content_ids:
+            if self._blocked.blocks(content_id):
+                self._logger.debug("Not pushing %s, which this node has blocked", content_id)
+                continue
+
             try:
                 held.append((content_id, self._content.read(content_id)))
 

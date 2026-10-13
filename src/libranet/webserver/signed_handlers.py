@@ -42,6 +42,7 @@ from typing import Final
 
 from libranet.bundle.content import ContentSource, content_chunks
 from libranet.bundle.errors import (
+    BlockedContentError,
     BundleError,
     BundleSignatureError,
     BundleVerificationError,
@@ -181,7 +182,7 @@ class SignedDrops:
         try:
             return self._held(content_id)
 
-        except (_Blocked, BundleError) as error:
+        except BundleError as error:
             # Not logged: _refused logs it, as it says how it is refused.
             return self._refused(request, content_id, error)
 
@@ -197,21 +198,19 @@ class SignedDrops:
             signed = SignedBundle.decoded(data)
             signed.verified(self._held(signed.signer))
 
-        except (_Blocked, BundleError) as error:
+        except BundleError as error:
             # Not logged: _refused logs it, as it says how it is refused.
             return self._refused(request, content_id, error)
 
         return signed
 
-    def _refused(
-        self, request: Request, content_id: ContentId, error: _Blocked | BundleError
-    ) -> Response:
+    def _refused(self, request: Request, content_id: ContentId, error: BundleError) -> Response:
         """The response refusing to check ``content_id``, as ``request`` asks, for ``error``.
 
         Content not held, its own or its signer's key, is asked for.
         """
-        if isinstance(error, _Blocked):
-            _LOGGER.debug("%s is blocked, so it is neither checked nor asked for", error)
+        if isinstance(error, BlockedContentError):
+            _LOGGER.debug("Not checking %s: %s, so it is not asked for", content_id, error)
             return status_response(
                 request,
                 HTTPStatus.NOT_FOUND,
@@ -264,18 +263,14 @@ class SignedDrops:
         """What is held for ``content_id``, decompressed and checked against it.
 
         Raises:
-            _Blocked: this node has blocked it.
+            BlockedContentError: this node has blocked it.
             MissingContentError: it is not held.
             BundleVerificationError: what is held is not it.
         """
         if self.blocked is not None and self.blocked.blocks(content_id):
-            raise _Blocked(content_id)
+            raise BlockedContentError(content_id)
 
         return b"".join(content_chunks(self.content, content_id))
-
-
-class _Blocked(Exception):
-    """Content this node has blocked, which it neither reads nor asks for."""
 
 
 def signed_value(content_id: ContentId, signed: SignedBundle) -> dict[str, str]:

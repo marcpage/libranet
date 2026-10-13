@@ -225,9 +225,9 @@ def build_router(  # pylint: disable=too-many-locals
     at a time, in the turns of ``costly_work``, which ``/config``'s port
     shares; in turns of their own if none is given. A ``DELETE`` of
     ``/data/{algorithm}/{hash}`` deletes and blocks content for local
-    clients alone, which ``/data`` then neither serves, stores, nor finds in
-    a search, as the blocked list in ``storage``'s cache directory names it
-    (Phase 4 Step 30).
+    clients alone, which ``/data`` then neither serves, reads into, stores,
+    nor finds in a search, and no application is served from, as the blocked
+    list in ``storage``'s cache directory names it (Phase 4 Step 30).
 
     Each of those but reading into a bundle and checking signed content is
     served only to this node's own pages, as a request's ``Referer`` names
@@ -257,6 +257,7 @@ def build_router(  # pylint: disable=too-many-locals
     pages = OwnPages(registry)
     state = BackupState() if backup_state is None else backup_state
     app_store = ApplicationStore(storage.application_stores_dir)
+    blocked = BlockedContent.of(storage)
     paths = _bundle_paths(
         storage,
         PartReader(
@@ -265,11 +266,11 @@ def build_router(  # pylint: disable=too-many-locals
             app_wait_seconds,
             retry_after_seconds,
             read_ahead_parts=read_ahead_parts,
+            blocked=blocked,
         ),
         retry_after_seconds,
         app_outcomes,
     )
-    blocked = BlockedContent.of(storage)
     search = SearchHandler(
         search=LocalSearch(content, storage.search_max_results),
         cache=SearchCache.of(storage),
@@ -485,6 +486,7 @@ def build_config_router(  # pylint: disable=too-many-locals
                 app_wait_seconds,
                 retry_after_seconds,
                 read_ahead_parts=read_ahead_parts,
+                blocked=BlockedContent.of(storage),
             ),
             retry_after_seconds,
             app_outcomes,
