@@ -174,6 +174,8 @@ network holds.
 | Keep anything in the browser: `localStorage`, IndexedDB, cookies | No | Yes, shared with every trusted application |
 | Read and change its own store (§6.6) | No | Yes; changes from a local client |
 | List and import from the folders offered, and make bundles (§6.3–§6.5) | No | From a local client |
+| Make a drop, encrypted for a person or not (§6.9, §6.15) | No | Yes |
+| Make identities, sign people in and out, sign as them, and open what is encrypted for them or by a password (§6.10, §6.13, §6.15) | No | From a local client |
 | Block content the node will no longer hold (§6.11) | No | From a local client |
 
 An untrusted application is served with:
@@ -1144,13 +1146,8 @@ of HTML and script, and uses every endpoint above. What it does, and why:
   port's, and with it all they may do (§4).
 - **Store content at an id they choose.** `PUT /data/{hash-algorithm}/{hash}`
   takes content only from a node, signed with its key. A page stores
-  content by importing a file or making a bundle. So a page cannot yet
-  leave a drop (HTTP API §9): content whose hash, found by trying nonces
-  appended after a null byte, shares a long prefix with the hash of a name
-  such as `"Messages for Alice"`, so that a search for that name's hash
-  finds it.
-- **Search the network.** A search answers from what this node holds and
-  has heard of, and asks no peer (High-Level Design §4.7).
+  content by importing a file (§6.4), making a bundle (§6.5), or making a
+  drop (§6.9).
 - **Change the node.** Backups, builds, and registering applications are
   `/config`'s, on a port of its own, which no application can reach.
 - **Say more about their files.** A bundle has no field yet for a default

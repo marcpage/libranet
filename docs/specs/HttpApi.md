@@ -2399,9 +2399,12 @@ opens is sandboxed as it is.
 
 A trusted application is served without these headers, on the main
 port's origin. A page of one, open in a local client, may list and import
-from the folders offered (§12.2), make bundles (§12.3), and change its own
-application's store (§13.3). Trusted applications share that origin, so
-each can do whatever another can (§2.4).
+from the folders offered (§12.2), make bundles (§12.3), change its own
+application's store (§13.3), block content (§5.5), make identities and sign
+people in (§11.3, §11.4), make signed drops (§11.5), and open encrypted
+blocks and encrypt by a username and password (§11.6). Open in any client,
+it may make a drop (§9.6). Trusted applications share that origin, so each
+can do whatever another can (§2.4).
 
 The `/config` application is neither trusted nor untrusted. It is served
 only on its own port (§2.3), where trust gives nothing, and never in a

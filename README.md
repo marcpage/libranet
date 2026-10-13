@@ -25,12 +25,16 @@ collection of files can be served as an ordinary website. There are no
 central servers, and a node is a plain web server, so a browser is all it
 takes to use one.
 
-Two applications ship with every node, and show what the network is for:
+The applications that ship with every node show what the network is for:
 
 - **Backups.** Keep folders on your computer backed up into the network,
   encrypted so that only your node can read them.
 - **Movies.** Keep a movie library, play films from the network in a
   browser, and share playlists with your friends.
+- **People.** Make an identity that signs you in on any node that holds it,
+  and find other people in a user directory.
+- **Mail.** Send messages to other people, encrypted so that only they can
+  read them.
 
 This repository holds the protocol specifications and the reference node,
 written in Python. The node runs today on macOS and Linux. There is no
@@ -77,8 +81,7 @@ see [Project Status](#project-status).
 - **Self-organizing storage.** Each node keeps the content closest to its
   own identity, and hands on the rest when it runs short of space.
 - **Drops.** Data can be left at a place named by a string, such as
-  "Messages for Alice", for whoever searches there (specified; nothing in
-  the node makes one yet).
+  "Messages for Alice", for whoever searches there.
 - **Signed requests.** Nodes sign what they send each other, so each knows
   which node it is talking to.
 - **Fairness.** Priority for nodes that
@@ -164,7 +167,9 @@ what you registered never changes under you.
 An application you have not trusted runs in a sandbox: its pages can show
 what the network holds, and nothing more. A trusted one can also import
 files from the folders your node offers, make bundles, and keep data on your
-node, as the movie library does. The
+node, as the movie library does. It can sign people in and act for them, as
+the user directory and mail do, and have your node delete content and never
+hold it again. The
 [App Developer Guide](docs/operations/App%20Developer%20Guide.md) describes
 what an application can do, and how to write one.
 
@@ -257,22 +262,24 @@ applications, and running test networks and super nodes.
 | Phase 1 — reference node, steps 1–15, 17–20, and 33–40 | Implemented |
 | Phase 2 — steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–63 | Implemented |
 | Phase 3 — video playback, steps 64–77 | Implemented |
-| Phase 4 — user accounts, steps 30, 78–82, and 89–93 | In progress |
+| Phase 4 — user accounts, steps 30, 78–82, and 89–93 | Implemented |
 | Phase 5 — Karma, step 56 | Planned |
 | Phase 6 — enhancements, steps 16, 50, and 57 | Planned |
 | Phase 7 — a seed node, step 84 | Planned |
 | Improving the movie application, steps 83 and 85–88 | Planned |
 | Public network | Not yet running |
 
-Working today: content-addressed storage with prefix search, node identity and
-RFC 9421 request signing, the peer handshake and peer-mix maintenance, fetching
-missing content from peers, bundles (building, splitting, reassembly, password
-protection, per-file encryption), directory bundles served as applications,
-files served from their parts with range requests, eviction under space
-pressure, the local `/config` surface, encrypted backup and restore, the
-endpoints applications use (reading into bundles, making bundles, importing
-local files, a store for each application), trusted and sandboxed
-applications, and the movie library.
+Working today: content-addressed storage with prefix search, of the node and
+of its peers, node identity and RFC 9421 request signing, the peer handshake
+and peer-mix maintenance, fetching missing content from peers, bundles
+(building, splitting, reassembly, password protection, per-file encryption),
+directory bundles served as applications, files served from their parts with
+range requests, eviction under space pressure, the local `/config` surface,
+encrypted backup and restore, the endpoints applications use (reading into
+bundles, making bundles and drops, importing local files, a store for each
+application, blocking content), people's identities (signing in on any node,
+a fallback identity, signing and encrypting for a person), trusted and
+sandboxed applications, and the movie library, user directory, and mail.
 
 Deliberately deferred, and specified but not yet built:
 
@@ -280,8 +287,6 @@ Deliberately deferred, and specified but not yet built:
 - The [Karma/Kismet](docs/specs/Karma.md) incentive layer; node-list ordering
   uses a simpler proxy for now
 - mDNS/DNS-SD discovery on the local network
-- Searching peers for a hash prefix (High-Level Design §4.7): a node answers
-  a search from what it holds and has heard of
 - Reading into a signed bundle as a bundle (Bundle Specification §5), and
   password-protected applications (HTTP API §13.1)
 

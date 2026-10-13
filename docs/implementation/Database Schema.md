@@ -1,6 +1,6 @@
 # Libranet Database Schema
 
-Version 0.1 • September 2026
+Version 0.2 • October 2026
 
 ---
 
@@ -11,7 +11,7 @@ tables, columns, and indexes, what each value means, which event writes it,
 what reads it, and how long a row lives. It is written for someone about to
 read or change `src/libranet/stats/`, or to look inside a node's database,
 and describes the implementation as of version 0.2 and Phase 3, up to Step
-77, and Phase 4's Step 30. Phase 3 changed no table.
+77, and Phase 4's Steps 30, 78–82, and 89–93. Phase 3 changed no table.
 
 A node has one database, `libranet.sqlite3`, with one schema, defined in
 `src/libranet/stats/schema.py`. Everything else a node keeps is a plain
@@ -60,8 +60,9 @@ Two things follow:
 
 - **An event is not atomic.** `data.stored` runs four statements (§6). A
   crash between them leaves the first ones recorded and the rest not.
-- **A batch is not atomic either.** A received node list or seek list is
-  written with `executemany`, one transaction for each entry.
+- **A batch is not atomic either.** A received node list, seek list, or
+  search answer is written with `executemany`, one transaction for each
+  entry.
 
 ### 2.3 How the Schema Is Applied
 
@@ -100,8 +101,9 @@ These hold for every table:
 - **An enumeration is `TEXT`**, holding the value of a Python `StrEnum`:
   `node_addresses.source` and `seek_entries.kind`.
 - **Rows are made by upsert.** Every statement that records something is
-  `INSERT … ON CONFLICT … DO UPDATE`, so a row exists from the first thing
-  recorded about its key, with defaults in every other column.
+  `INSERT … ON CONFLICT … DO UPDATE`, or `DO NOTHING` where only the row's
+  being there is recorded, so a row exists from the first thing recorded
+  about its key, with defaults in every other column.
 - **Every primary key column is declared `NOT NULL`.** SQLite otherwise
   allows a null in a primary key column of a rowid table. A test checks
   every table for it.
@@ -188,7 +190,8 @@ content archive may have no `data_stats` row. No statement joins two tables.
 
 What the node knows about one content id, whether or not it holds the
 content. A row is made the first time the id is requested, pushed, stored,
-deleted, or blocked, and is never deleted.
+deleted, or blocked, or a peer answers a search with it, and is never
+deleted.
 
 | Column | Type | Null | Default | Meaning |
 | --- | --- | --- | --- | --- |
@@ -211,6 +214,10 @@ deleted, or blocked, and is never deleted.
 - **A request is counted whether or not it is answered.** A `GET` of
   content the node lacks makes a row, so the table holds ids the node has
   never held.
+- **A peer's search answer makes a row** for each id it lists that has
+  none, with every column at its default, so that the node's own searches
+  list it from then on (Phase 4 Step 93). A row that exists is left as it
+  is.
 - **A part of a file being served counts as this node's own request**, once
   for each response, when the response first asks for it, held or not (Phase
   3 Steps 65 and 75). With no reassembled copy of the file, its parts are
@@ -404,6 +411,7 @@ event happened.
 | `data.requested` | Web server | `data_stats`: `external_requests` or `internal_requests` + 1; `last_requested` = now |
 | `data.not_found` | Web server, unbundler, backup | `seek_entries`: this node's `data` entry added or refreshed, unless the content is blocked |
 | `data.search_requested` | Web server | `seek_entries`: this node's `search` entry added or refreshed |
+| `data.search_answered` | Connection manager | `data_stats`: a row for each id in `results` that has none |
 | `data.stored` | Validator, backup, web server, connection manager | `data_stats`: `pushes` + 1, then `last_acquired` = now and `size` set. `seek_entries`: this node's `data` entry for it deleted. `node_stats`: `bytes_received` + size, for the node it came from |
 | `data.rejected` | Validator | `data_stats`: `pushes` + 1 |
 | `data.deleted` | Eviction | `data_stats`: `deletes` + 1; `stored_seconds` + (now − `last_acquired`); `size` = `NULL` |
@@ -431,11 +439,12 @@ stats first deletes the seek entries and addresses that are past keeping
 | Query (`StatsDatabase`) | Run when | Reads | How |
 | --- | --- | --- | --- |
 | `eviction_order` | `eviction.candidates_requested` | `data_stats` | Two scans of the whole table, and two seeks in `data_stats_held` |
-| `content_ids_near` | `data.search_requested` | `data_stats` | Two range scans of `data_stats_by_hash`, up to `storage.search_max_results` rows each that are not blocked |
+| `content_ids_near` | `data.search_requested`, `data.search_answered` | `data_stats` | Two range scans of `data_stats_by_hash`, up to `storage.search_max_results` rows each that are not blocked |
+| `is_sought` | `data.search_requested`, to tell a new search | `seek_entries` | Primary key |
 | `last_good_endpoints` | Each derivation | `node_addresses` | Whole table, with a window function |
 | `candidate_endpoints` | Each derivation | `node_addresses` | Whole table, with two window functions |
 | `given_up_nodes` | Each derivation | `node_stats` | Whole table |
-| `seek_values` | Each derivation, once for each kind | `seek_entries` | Primary key prefix, then sorted |
+| `seek_values` | Each derivation, and each new search, once for each kind | `seek_entries` | Primary key prefix, then sorted |
 | `apps_accessed_since` | `resolved.reclaim_requested` | `app_bundles` | Whole table |
 | `node_stats` | `node.unreached`, to read the new count | `node_stats` | Primary key |
 | `is_blocked` | `data.not_found` | `data_stats` | Primary key |
@@ -476,7 +485,9 @@ list leaves out this node's own id.
 The lists are derived when stats starts, then once
 `stats.derive_interval_seconds` (60) has passed and the module is idle, and
 at once when a node is given up on. `blocked.json` is also written at once
-when content is first blocked.
+when content is first blocked, and `seek.json` when a search names a prefix
+this node's seek list does not, so that the peers connected to it read the
+prefix on their next refresh and push what matches (Phase 4 Step 93).
 
 Stats also answers two events from what it reads: `eviction.candidates`,
 with the objects to let go of first, and `resolved.reclaim`, with the
@@ -488,7 +499,7 @@ to a cached search response (`src/libranet/stats/enrichment.py`).
 
 | Table | A row is deleted | So it grows with |
 | --- | --- | --- |
-| `data_stats` | Never | Every content id ever requested, pushed, or stored |
+| `data_stats` | Never | Every content id ever requested, pushed, or stored, or named in a peer's search answer |
 | `node_stats` | Never | Every node ever dialed, or content exchanged with |
 | `node_addresses` | At each derivation, by the two rules below | The nodes known, up to `stats.max_addresses_per_node` each |
 | `app_bundles` | Never | Every bundle ever served |
@@ -659,7 +670,8 @@ What the schema does not do yet:
 - **Peers' seek entries are written and never read.**
 - **Three tables never lose a row** (§8). `data_stats` grows with requests,
   not with content held: each `GET` of a well-formed id the node has not
-  heard of adds a row.
+  heard of adds a row, and so does each such id a peer answers a search
+  with.
 - **Pruning waits for a derivation, and a derivation for the module to be
   idle.** Under steady traffic both wait (Module System §5.1).
 - **Eviction's ranking scans all of `data_stats`**, and stats records

@@ -1,6 +1,6 @@
 # Libranet Module System
 
-Version 0.1 • September 2026
+Version 0.2 • October 2026
 
 ---
 
@@ -12,7 +12,7 @@ responsible for, how the supervisor starts, restarts, and stops them, and the
 message bus, shared files, and signals they communicate through. It is
 written for someone about to read or change the code, and describes the
 implementation as of version 0.2 and Phase 3, up to Step 77, and Phase 4's
-Step 30.
+Steps 30, 78–82, and 89–93.
 
 The architecture was chosen in [Phase 1](Phase%201.md) §2 and Steps 3 and 4,
 and [Phase 2](Phase%202.md) and [Phase 3](Phase%203.md) leave it unchanged.
@@ -209,7 +209,7 @@ The modules communicate in three ways:
 | `src/libranet/messaging/module.py` | `ModuleBase`: publishing, filtering, and the receive loop |
 | `src/libranet/messaging/dispatcher.py` | `Dispatcher`: the hub that delivers each message to its subscribers |
 | `src/libranet/messaging/publishing.py` | `Publish`, the signature of `publish` that code outside a module class is handed |
-| `src/libranet/protocol/` | What nodes say to one another over HTTP, shared by the modules that do: HTTP syntax, node and seek lists, search, `localhost` resolution, and `/config` requests |
+| `src/libranet/protocol/` | What is said over HTTP, shared by the modules that say or act on it: HTTP syntax, node and seek lists, search, `localhost` resolution, whether a client is local, and the request bodies of `/config`, of making bundles and drops, and of identities and signing in |
 | `src/libranet/{module}/module.py` | Each module's class and factory |
 
 ## 3. The Modules
@@ -251,7 +251,8 @@ blocked lists into `lists/`, which the web server, connection manager,
 validator, and fetcher read as plain files, and publishes `nodes.updated`
 when the candidate list changed. It keeps the content the node has blocked
 (`data.blocked`, Phase 4 Step 30), and writes the blocked list at once when
-that grows.
+that grows, and the seek list when a search names a prefix it does not list
+(Phase 4 Step 93).
 It answers two questions from the eviction module: which content to let go
 of first (`eviction.candidates`), and which bundles' resolved files to keep
 (`resolved.reclaim`). It also adds identifiers it knows of to cached search
@@ -722,7 +723,7 @@ Six of the eight modules are single-threaded. The other two are not:
 
 | Module | Threads besides the main one | Their shared state is guarded by |
 | --- | --- | --- |
-| Web server | The HTTP server's thread; one thread per request | A lock in each shared object (§9.3) |
+| Web server | A thread for each HTTP server, the main port's and `/config`'s; one thread per request | A lock in each shared object (§9.3) |
 | Connection manager | `peers.search_workers` fetch workers; `peers.push_workers` push workers; `peers.broadcast_workers` broadcast workers, for searches of the peers, 8 of each by default; a reverse-DNS worker; a thread per dial, refresh, and hand-off | One lock for the whole module |
 
 Any thread may publish: `publish()` only puts the message on the outbox,
