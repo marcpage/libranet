@@ -393,7 +393,8 @@ class UnbundlerModule(ModuleBase):
             return _Unusable(str(error))
 
         except BundleError as error:
-            # Only what is stored is named, since the key is what keeps it unread.
+            # Only what is stored is named, since the key is what keeps it
+            # unread.
             self.logger.warning("Bundle %s cannot be served: %s", bundle.content_id, error)
             protected = isinstance(error, PasswordProtectedBundleError)
             return _Unusable(

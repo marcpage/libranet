@@ -96,6 +96,9 @@ class SignedDrops:
     ``content``, but none of what ``blocked`` names. Each check is announced
     with ``publish``, and what is not held asked for, a client told to ask
     again after ``retry_after_seconds``.
+
+    Raises:
+        ValueError: ``retry_after_seconds`` is negative.
     """
 
     content: ContentSource
@@ -105,6 +108,12 @@ class SignedDrops:
     _: KW_ONLY
     retry_after_seconds: int
     blocked: BlockedContent | None = None
+
+    def __post_init__(self) -> None:
+        if self.retry_after_seconds < 0:
+            raise ValueError(
+                f"retry_after_seconds must not be negative, got {self.retry_after_seconds}"
+            )
 
     def make(self, request: Request) -> Response:
         """``POST /data/signed``: make the drop ``request`` asks for, signed by who is signed in."""

@@ -12,7 +12,8 @@ being empty for the folder itself::
                  "Holidays": {"type": "directory"}}}
 
 ``modified`` is written as a bundle writes it, and ``content_type`` is what
-the file would be served as (:func:`~libranet.webserver.bundle_paths.content_type_for`).
+the file would be served as
+(:func:`~libranet.webserver.bundle_paths.content_type_for`).
 
 The path is percent-decoded first, ``%2F`` becoming a ``/`` like any other,
 as an application's path is. No segment of it may be empty, ``.``, ``..``,
@@ -240,7 +241,8 @@ class LocalFolders:
             status = folder.stat()
 
         except (FileNotFoundError, NotADirectoryError):
-            # Not logged: a machine may lack a folder, and the rest are offered.
+            # Not logged: a machine may lack a folder, and the rest are
+            # offered.
             return False
 
         except OSError as error:

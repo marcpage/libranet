@@ -162,7 +162,8 @@ class CasStore:
 
         for prefix_dir in prefix_dirs:
             for entry in sorted(prefix_dir.iterdir()):
-                # Whatever its case, so that an upper-case copy of a hash is caught.
+                # Whatever its case, so that an upper-case copy of a hash is
+                # caught.
                 if not entry.name.lower().startswith(hash_prefix):
                     continue
 

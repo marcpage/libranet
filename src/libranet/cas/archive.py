@@ -247,8 +247,7 @@ class ArchiveSink:
         return content_id in self._written
 
     def write(self, content_id: ContentId, data: bytes) -> None:
-        """Add ``data``, the content of ``content_id`` as is or zlib-compressed,
-        unless it is held."""
+        """Add ``data``, the content of ``content_id`` as is or zlib-compressed, unless held."""
         if content_id in self._written:
             return
 

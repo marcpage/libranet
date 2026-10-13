@@ -52,7 +52,8 @@ class ContentId:
 
         Raises:
             UnknownAlgorithmError: ``algorithm`` is not registered.
-            InvalidContentIdError: ``hash_value`` is not hex of the right length.
+            InvalidContentIdError: ``hash_value`` is not hex of the right
+                length.
         """
         spec = registry.get(algorithm.lower())
         normalized = hash_value.lower()

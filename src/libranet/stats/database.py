@@ -209,41 +209,6 @@ class StatsDatabase:  # pylint: disable=too-many-public-methods
         ranked = (HeldObject(ContentId(row["algorithm"], row["hash"]), row["size"]) for row in rows)
         return [held for held in ranked if held.content_id not in excluded][:limit]
 
-    def _eviction_scorer(self, node_id: ContentId) -> EvictionScorer:
-        """What an object held is scored against: the extremes of all held now.
-
-        The held hash matching the most leading bits of the node id's is one
-        of the two either side of it in order of hash, so only those two are
-        compared, rather than every hash held.
-        """
-        own = {"algorithm": node_id.algorithm, "hash": node_id.hash}
-        now = self._clock()
-        extremes = self._query_one(
-            f"SELECT MIN({_LAST_USED}) AS least_recent, MAX({_REQUESTS}) AS most_requests "
-            f"FROM {_HELD_ROWS}",
-            own,
-        )
-        neighbors = self._query(
-            "SELECT hash FROM data_stats WHERE size IS NOT NULL AND hash > :hash "
-            "ORDER BY hash ASC LIMIT 1",
-            own,
-        ) + self._query(
-            "SELECT hash FROM data_stats WHERE size IS NOT NULL AND hash < :hash "
-            "ORDER BY hash DESC LIMIT 1",
-            own,
-        )
-        least_recent = None if extremes is None else extremes["least_recent"]
-        most_requests = None if extremes is None else extremes["most_requests"]
-        return EvictionScorer(
-            node_hash=node_id.hash,
-            now=now,
-            longest_unused_seconds=0.0 if least_recent is None else now - least_recent,
-            most_requests=most_requests or 0,
-            most_matching_bits=max(
-                (matching_bits(node_id.hash, row["hash"]) for row in neighbors), default=0
-            ),
-        )
-
     def data_stats(self, content_id: ContentId) -> DataStats | None:
         """What is known about ``content_id``, or ``None`` if nothing is."""
         row = self._query_one(
@@ -569,7 +534,7 @@ class StatsDatabase:  # pylint: disable=too-many-public-methods
             },
         )
 
-    def is_sought(self, kind: SeekKind, value: str, node_id: ContentId | None = None) -> bool:
+    def is_sought(self, kind: SeekKind, value: str, *, node_id: ContentId | None = None) -> bool:
         """Whether ``value`` is an outstanding request of ``kind``, this node's or ``node_id``'s."""
         row = self._query_one(
             "SELECT 1 FROM seek_entries "
@@ -634,6 +599,41 @@ class StatsDatabase:  # pylint: disable=too-many-public-methods
         return [ContentId(row["algorithm"], row["hash"]) for row in rows]
 
     # -- Statement plumbing ----------------------------------------------
+
+    def _eviction_scorer(self, node_id: ContentId) -> EvictionScorer:
+        """What an object held is scored against: the extremes of all held now.
+
+        The held hash matching the most leading bits of the node id's is one
+        of the two either side of it in order of hash, so only those two are
+        compared, rather than every hash held.
+        """
+        own = {"algorithm": node_id.algorithm, "hash": node_id.hash}
+        now = self._clock()
+        extremes = self._query_one(
+            f"SELECT MIN({_LAST_USED}) AS least_recent, MAX({_REQUESTS}) AS most_requests "
+            f"FROM {_HELD_ROWS}",
+            own,
+        )
+        neighbors = self._query(
+            "SELECT hash FROM data_stats WHERE size IS NOT NULL AND hash > :hash "
+            "ORDER BY hash ASC LIMIT 1",
+            own,
+        ) + self._query(
+            "SELECT hash FROM data_stats WHERE size IS NOT NULL AND hash < :hash "
+            "ORDER BY hash DESC LIMIT 1",
+            own,
+        )
+        least_recent = None if extremes is None else extremes["least_recent"]
+        most_requests = None if extremes is None else extremes["most_requests"]
+        return EvictionScorer(
+            node_hash=node_id.hash,
+            now=now,
+            longest_unused_seconds=0.0 if least_recent is None else now - least_recent,
+            most_requests=most_requests or 0,
+            most_matching_bits=max(
+                (matching_bits(node_id.hash, row["hash"]) for row in neighbors), default=0
+            ),
+        )
 
     def _add_to_data(self, content_id: ContentId, column: str, amount: int) -> None:
         self._execute(

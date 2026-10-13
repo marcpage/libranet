@@ -92,7 +92,7 @@ def test_the_whole_time_is_spent_even_once_the_minimum_is_matched() -> None:
         read += 1
         return next(readings)
 
-    TARGET.placed(CONTENT, 1, 0, clock=clock)
+    TARGET.placed(CONTENT, 1, minimum_bits=0, clock=clock)
 
     # Read at 0 for the deadline, then at 0.25, 0.5, and 0.75, each before a
     # round of tries, and at 1.0, when it stops.
@@ -100,7 +100,7 @@ def test_the_whole_time_is_spent_even_once_the_minimum_is_matched() -> None:
 
 
 def test_a_search_goes_on_past_its_time_until_the_minimum_is_matched() -> None:
-    drop = TARGET.placed(CONTENT, 0, 14, clock=ticking(5.0))
+    drop = TARGET.placed(CONTENT, 0, minimum_bits=14, clock=ticking(5.0))
 
     assert drop.matching_bits >= 14
     assert drop.matching_bits == matching_bits(sha256(drop.data).hexdigest(), TARGET.hex)
@@ -108,7 +108,7 @@ def test_a_search_goes_on_past_its_time_until_the_minimum_is_matched() -> None:
 
 @mark.parametrize("content", [b"", b"\x00\x00", b"held\x00with nulls\x00"])
 def test_a_nonce_holds_no_null_so_a_reader_strips_it_whatever_the_content(content: bytes) -> None:
-    drop = TARGET.placed(content, 0, 8, clock=ticking(0.0))
+    drop = TARGET.placed(content, 0, minimum_bits=8, clock=ticking(0.0))
 
     nonce = drop.data[len(content) + 1 :]
     assert drop.data[: len(content) + 1] == content + DROP_SEPARATOR
@@ -119,7 +119,7 @@ def test_a_nonce_holds_no_null_so_a_reader_strips_it_whatever_the_content(conten
 @mark.parametrize("seconds, minimum_bits", [(-0.1, 0), (0, -1), (0, TARGET_BITS + 1)])
 def test_a_search_asking_the_impossible_is_refused(seconds: float, minimum_bits: int) -> None:
     with raises(ValueError):
-        TARGET.placed(CONTENT, seconds, minimum_bits)
+        TARGET.placed(CONTENT, seconds, minimum_bits=minimum_bits)
 
 
 @mark.parametrize("bits", [-1, TARGET_BITS + 1])

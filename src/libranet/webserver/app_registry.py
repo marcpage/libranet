@@ -396,7 +396,8 @@ class ApplicationRegistry:
             return self._file.current()
 
         except FileNotFoundError:
-            # Not logged: with no registry file, the applications are those shipped.
+            # Not logged: with no registry file, the applications are those
+            # shipped.
             return self._initial
 
         except OSError as error:

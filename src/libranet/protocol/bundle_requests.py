@@ -86,7 +86,8 @@ class BytesSource:
     def of_text(cls, text: str, given: str) -> BytesSource:
         """The UTF-8 bytes of ``text``, a request's ``"text"``.
 
-        ``given`` says in an error what the text was given for, as ``for 'a.txt'``.
+        ``given`` says in an error what the text was given for, as
+        ``for 'a.txt'``.
 
         Raises:
             ValueError: ``text`` is not UTF-8, as it holds a lone surrogate.
@@ -100,7 +101,8 @@ class BytesSource:
     def of_base64(cls, text: str, given: str) -> BytesSource:
         """The bytes ``text``, a request's ``"base64"``, encodes.
 
-        ``given`` says in an error what the text was given for, as ``for 'a.txt'``.
+        ``given`` says in an error what the text was given for, as
+        ``for 'a.txt'``.
 
         Raises:
             ValueError: ``text`` is not base64.
@@ -186,7 +188,8 @@ class BundleEditRequest:
             )
 
         except ValueError as error:
-            # A MalformedBundleError, from an id, is one; parsing leaves keys out of it.
+            # A MalformedBundleError, from an id, is one; parsing leaves keys
+            # out of it.
             raise InvalidRequestError(str(error)) from None
 
     @property

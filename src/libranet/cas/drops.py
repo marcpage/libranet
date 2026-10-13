@@ -85,8 +85,8 @@ class DropTarget:
         self,
         content: bytes,
         seconds: float,
-        minimum_bits: int = 0,
         *,
+        minimum_bits: int = 0,
         clock: Callable[[], float] = monotonic,
     ) -> Drop:
         """``content`` as a drop, with the nonce, of those tried, that puts it nearest this target.

@@ -124,7 +124,8 @@ class ResponseParser:
         """The response to ``request``, or ``None`` until all of it has arrived.
 
         Raises:
-            MalformedResponseError: the bytes received are not a usable response.
+            MalformedResponseError: the bytes received are not a usable
+                response.
         """
         head = self._final_head(request.method)
 
@@ -156,7 +157,8 @@ class ResponseParser:
         connection closed.
 
         Raises:
-            MalformedResponseError: the connection closed partway through a response.
+            MalformedResponseError: the connection closed partway through a
+                response.
         """
         if not self._buffer:
             return None
@@ -329,7 +331,8 @@ class ResponseParser:
         """The chunked-framing line at ``position``, and where the next line starts.
 
         ``start`` is where the chunked body starts and ``size_bytes`` how many
-        data bytes it has held so far, which together bound the framing allowed.
+        data bytes it has held so far, which together bound the framing
+        allowed.
         """
         allowed = start + size_bytes + MAX_HEAD_BYTES
         end = self._buffer.find(_LINE_END, position, allowed)

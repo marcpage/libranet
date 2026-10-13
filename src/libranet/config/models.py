@@ -496,17 +496,17 @@ class IdentityConfig(_Section):
 
     @property
     def private_key_path_name(self) -> str:
-        """Name of the key file"""
+        """The name of the file the node's private key is kept in."""
         return "node_private_key.pem"
 
     @property
     def backup_secret_path_name(self) -> str:
-        """Secret backup file name"""
+        """The name of the file the secret protecting the node's backups is kept in."""
         return "backup_secret"
 
     @property
     def config_credential_path_name(self) -> str:
-        """Name of the file holding the salted hash of the `/config` credential (Step 18)"""
+        """The name of the file the ``/config`` credential's salted hash is kept in (Step 18)."""
         return "config_credential"
 
 
@@ -712,10 +712,6 @@ class LibranetConfig(_Section):
         """Where the salted hash of the ``/config`` credential is kept (Step 18)."""
         return self._key_dir / self.identity.config_credential_path_name
 
-    @property
-    def _key_dir(self) -> Path:
-        return self.identity.resolved_key_dir(self.storage)
-
     def directories(self) -> tuple[Path, ...]:
         """Every directory the node needs to exist before it starts."""
         return (
@@ -731,3 +727,7 @@ class LibranetConfig(_Section):
         """Create any missing directory from :meth:`directories`."""
         for directory in self.directories():
             directory.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def _key_dir(self) -> Path:
+        return self.identity.resolved_key_dir(self.storage)

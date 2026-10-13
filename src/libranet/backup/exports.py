@@ -156,7 +156,8 @@ class Export(Task):
 
         top = load_bundle(bundle, source, password=password)
         # Each looked at as whatever it is, so that a kind of entry this does
-        # not know is logged and fails the export, rather than taken for another.
+        # not know is logged and fails the export, rather than taken for
+        # another.
         found: list[object] = [top]
 
         if isinstance(top, DirectoryBundle):

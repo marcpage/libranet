@@ -1,4 +1,4 @@
-"""Round trips of a local tree through building, protecting, storing, and reading back."""
+"""Tests for round trips of a local tree through building, protecting, storing, and reading."""
 
 from __future__ import annotations
 from functools import partial

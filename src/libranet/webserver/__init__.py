@@ -212,7 +212,13 @@ from libranet.webserver.inbound_peers import InboundConnection, InboundPeers
 from libranet.webserver.list_handlers import ListFileHandler, NodeListHandler, SeekListHandler
 from libranet.webserver.local_folders import DIRECTORY_PATTERN, DirectoryHandler, LocalFolders
 from libranet.webserver.local_imports import IMPORTS_PATH, ImportHandler, ImportListHandler
-from libranet.webserver.local_only import CLIENT_PATH, LocalOnly, OwnSiteOnly, client_handler
+from libranet.webserver.local_only import (
+    CLIENT_PATH,
+    LocalOnly,
+    OwnSiteOnly,
+    client_handler,
+    local_refusal,
+)
 from libranet.webserver.module import WebServerModule, webserver_module_factory
 from libranet.webserver.own_pages import (
     REFERER_HEADER,
@@ -449,6 +455,7 @@ __all__ = [
     "json_or_refusal",
     "json_response",
     "local_config_guard",
+    "local_refusal",
     "names_config",
     "names_config_api",
     "parsed_or_refusal",

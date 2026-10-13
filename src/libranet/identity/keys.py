@@ -120,7 +120,8 @@ def _decompressed(data: bytes, max_bytes: int) -> bytes | None:
         return decompressed(data, max_bytes)
 
     except (NotZlibStreamError, StreamTooLargeError):
-        # Not logged: the caller raises KeyFileError for data that is not a key.
+        # Not logged: the caller raises KeyFileError for data that is not a
+        # key.
         return None
 
 
@@ -217,7 +218,8 @@ def write_private_file(path: Path, data: bytes) -> bool:
             link(temp_path, path)
 
         except FileExistsError:
-            # Not logged: another process made it first, and the caller loads it.
+            # Not logged: another process made it first, and the caller loads
+            # it.
             return False
 
         return True

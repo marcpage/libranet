@@ -1,4 +1,4 @@
-"""Tests of what this node says to a peer, against live fixture peers.
+"""Tests for what this node says to a peer, against live fixture peers.
 
 Most fixture peers are this node's own web server (Steps 5, 7, 9) over a temp
 CAS, with an identity of their own. What the client learns shows in what it
@@ -838,7 +838,7 @@ TARGET = DropTarget.of("a drop a peer searches for")
 
 def held_drop(config: LibranetConfig, content: bytes) -> ContentId:
     """``content`` held here as a drop at :data:`TARGET`, matching it by 16 bits or more."""
-    drop = TARGET.placed(content, 0, 16)
+    drop = TARGET.placed(content, 0, minimum_bits=16)
     content_id = ContentId.for_data(drop.data, "sha256")
     CasStore.source_of_truth(config.storage).write(content_id, drop.data)
     return content_id

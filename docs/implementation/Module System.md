@@ -720,7 +720,7 @@ Six of the eight modules are single-threaded. The other two are not:
 | Module | Threads besides the main one | Their shared state is guarded by |
 | --- | --- | --- |
 | Web server | A thread for each HTTP server, the main port's and `/config`'s; one thread per request | A lock in each shared object (§9.3) |
-| Connection manager | `peers.search_workers` fetch workers; `peers.push_workers` push workers; `peers.broadcast_workers` broadcast workers, for searches of the peers, 8 of each by default; a reverse-DNS worker; a thread per dial, refresh, and hand-off | One lock for the whole module |
+| Connection manager | `peers.search_workers` search workers; `peers.push_workers` push workers; `peers.broadcast_workers` broadcast workers, for searches of the peers, 8 of each by default; a reverse-DNS worker; a thread per dial, refresh, and hand-off | One lock for the whole module |
 
 Any thread may publish: `publish()` only puts the message on the outbox,
 and `multiprocessing.Queue.put` is thread-safe. Only the main thread

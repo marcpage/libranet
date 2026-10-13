@@ -51,7 +51,8 @@ from libranet.webserver.request_refusals import (
 
 _LOGGER = getLogger(__name__)
 
-#: The names of the endpoints beneath ``/data`` that are not content (HttpApi §5).
+#: The names of the endpoints beneath ``/data`` that are not content
+#: (HttpApi §5).
 DATA_ENDPOINT_NAMES: Final = (
     "search",
     "nodes",

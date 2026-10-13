@@ -94,10 +94,20 @@ class ImportHandler:
 
 @dataclass(frozen=True)
 class ImportListHandler:
-    """``GET /data/imports``: how each import is doing, by id, as the backup module last said."""
+    """``GET /data/imports``: how each import is doing, by id, as the backup module last said.
+
+    Raises:
+        ValueError: ``retry_after_seconds`` is negative.
+    """
 
     state: BackupState
     retry_after_seconds: int
+
+    def __post_init__(self) -> None:
+        if self.retry_after_seconds < 0:
+            raise ValueError(
+                f"retry_after_seconds must not be negative, got {self.retry_after_seconds}"
+            )
 
     def __call__(self, request: Request) -> Response:
         report = self.state.latest

@@ -1,4 +1,4 @@
-"""Every caught exception is logged, raised on, or says why it is not (Phase 2 Step 43).
+"""Tests for every caught exception being logged, raised on, or saying why not (Phase 2 Step 43).
 
 A handler passes when it calls a logging method, when its last statement
 raises, or when a comment in it starts with ``# Not logged:`` and gives the

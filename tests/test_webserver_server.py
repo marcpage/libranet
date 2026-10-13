@@ -1,4 +1,4 @@
-"""End-to-end tests of the read, write, and list paths against a live server and a temp CAS.
+"""Tests for the read, write, and list paths end to end, against a live server and a temp CAS.
 
 Published messages land on a plain in-process queue, so no dispatcher runs.
 Every response is expected to be signed by the server's node key.
@@ -2584,7 +2584,7 @@ def test_a_local_client_keeps_a_value_in_an_applications_store(
     # Not taken for /data/{algorithm}/{hash}, whose pattern the store's fits.
     assert put.status == 201
     assert read.status == 200
-    assert read.getheader("ETag") == StoredValue.of({"name": "Family"}).tag()
+    assert read.getheader("ETag") == StoredValue.from_value({"name": "Family"}).tag()
     assert loads(body) == {"name": "Family"}
     assert listed.status == 200
     assert loads(listing) == {"values": {"last": {"name": "Family"}}}

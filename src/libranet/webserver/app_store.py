@@ -110,7 +110,7 @@ class StoredValue:
     text: bytes
 
     @classmethod
-    def of(cls, value: object) -> StoredValue:
+    def from_value(cls, value: object) -> StoredValue:
         """``value`` as it is kept: compact JSON, its keys sorted.
 
         Raises:
@@ -161,7 +161,7 @@ class StoredValues:
         if not isinstance(values, dict):
             raise ValueError('"values" must be an object')
 
-        return cls(application, {key: StoredValue.of(held) for key, held in values.items()})
+        return cls(application, {key: StoredValue.from_value(held) for key, held in values.items()})
 
     def value(self) -> dict[str, Any]:
         """The JSON object this store is saved as."""
@@ -475,7 +475,7 @@ class StoreWriteHandler:
         if isinstance(names, Response):
             return names
 
-        value = parsed_or_refusal(request, StoredValue.of, max_bytes=MAX_VALUE_BYTES)
+        value = parsed_or_refusal(request, StoredValue.from_value, max_bytes=MAX_VALUE_BYTES)
 
         if isinstance(value, Response):
             return value

@@ -89,7 +89,8 @@ def parse_cas_path(path: str) -> ContentId:
         raise MalformedBundleError(str(error)) from None
 
     if len(segments) == ENCRYPTED_PATH_SEGMENTS:
-        # The path is not shown, since its key is what keeps the content unread.
+        # The path is not shown, since its key is what keeps the content
+        # unread.
         raise UnsupportedBundleError(
             f"Per-entry encryption (§7) is read with its key, not as plain {content_id}"
         )

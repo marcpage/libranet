@@ -1,4 +1,4 @@
-"""No module package imports from another (Module System §2).
+"""Tests for no module package importing from another (Module System §2).
 
 Modules never call each other, and none holds another's code: what two of
 them share is in :mod:`libranet.protocol`, :mod:`libranet.messaging`, or a

@@ -22,7 +22,8 @@ from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.modules import ModuleName
 
-#: The start method the supervisor uses; queues must come from the same context.
+#: The start method the supervisor uses; queues must come from the same
+#: context.
 START_METHOD: Final = "spawn"
 
 

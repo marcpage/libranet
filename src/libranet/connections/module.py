@@ -45,12 +45,12 @@ the order. Each pass after the first asks a peer again only once the
 ``Retry-After`` it gave has passed, or this node's own
 ``network.retry_after_seconds`` if it gave none, and waits for that no longer
 than this node's own. Up to ``peers.search_workers`` searches ask peers
-at once, and one waiting for its next pass takes no place. A request for content being searched
-for is dropped, since the search under way answers it, and so is one made
-within ``peers.failed_search_hold_seconds`` of a search that asked peers and
-found nothing: peers still searching would otherwise start it over, and it
-them, for ever. Content stored meanwhile, by any route, ends its search. The
-outcome is published for the fetcher::
+at once, and one waiting for its next pass takes no place. A request for
+content being searched for is dropped, since the search under way answers it,
+and so is one made within ``peers.failed_search_hold_seconds`` of a search that
+asked peers and found nothing: peers still searching would otherwise start it
+over, and it them, for ever. Content stored meanwhile, by any route, ends its
+search. The outcome is published for the fetcher::
 
     fetch.succeeded  {"algorithm", "hash", "node_id"}
     fetch.failed     {"algorithm", "hash"}
@@ -201,8 +201,8 @@ class _Search:
     counted from one. ``asked`` holds the peers this pass has asked or passed
     over, ``due`` when each peer that did not send the content may be asked
     again, and ``asks`` how many asks were made in all. ``pause_seconds`` is
-    this node's own ``Retry-After``: how long a peer that gave none is left, and
-    the longest a pass after the first waits. One fetch worker at a time
+    this node's own ``Retry-After``: how long a peer that gave none is left,
+    and the longest a pass after the first waits. One search worker at a time
     carries a search on, so it needs no lock of its own.
     """
 
@@ -387,7 +387,8 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         self._resolve_names = resolve_names
         self._lookup: ReverseLookup | None = None
         self._seeds: list[Candidate] = []
-        # Everything below is shared with the background threads, under the lock.
+        # Everything below is shared with the background threads, under the
+        # lock.
         self._lock = Lock()
         self._running = False
         self._candidates: list[Candidate] = []
@@ -402,7 +403,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         # that node: not dialed again while that connection lasts.
         self._duplicates: dict[str, ContentId] = {}
         # Searches for content, by the content each seeks, carried on by the
-        # fetch workers. Content a search found nothing for is held.
+        # search workers. Content a search found nothing for is held.
         self._searches: _Searches[ContentId, _Search] = _Searches()
         # Searches of the peers for a prefix, by the prefix, carried on by the
         # broadcast workers.
@@ -458,7 +459,9 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         settings = self._config.peers
 
         for index in range(settings.search_workers):
-            Thread(target=self._fetch_loop, name=f"{self.name}-fetch-{index}", daemon=True).start()
+            Thread(
+                target=self._search_loop, name=f"{self.name}-search-{index}", daemon=True
+            ).start()
 
         for index in range(settings.push_workers):
             Thread(target=self._push_loop, name=f"{self.name}-push-{index}", daemon=True).start()
@@ -557,7 +560,8 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
     ) -> Message:
         """Publish what talking to a peer taught, looking up names for the addresses observed.
 
-        It is :class:`PeerExchange`'s :data:`~libranet.messaging.publishing.Publish`.
+        It is :class:`PeerExchange`'s
+        :data:`~libranet.messaging.publishing.Publish`.
         """
         message = self.publish(event, payload)
 
@@ -944,8 +948,8 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
                 peer.busy = False
                 peer.refresh_at = self._clock() + self._config.peers.seek_refresh_seconds
 
-    def _fetch_loop(self) -> None:
-        """Fetch-worker thread: carry searches on until told to stop."""
+    def _search_loop(self) -> None:
+        """Search-worker thread: carry searches on until told to stop."""
         while (search := self._searches.ready.get()) is not None:
             try:
                 self._search(search)

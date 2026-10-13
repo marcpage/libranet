@@ -10,7 +10,7 @@ from logging import DEBUG
 from pathlib import Path
 from zlib import compress
 
-from pytest import LogCaptureFixture, fixture, mark
+from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.identity.authentication import AuthenticationResult, AuthenticationStatus
@@ -315,3 +315,8 @@ def test_a_refused_list_is_logged_at_debug(
     (record,) = caplog.records
     assert record.levelno == DEBUG
     assert record.getMessage().startswith(f"Refusing POST {path}: ")
+
+
+def test_a_list_file_handler_refuses_a_negative_retry_after(node_list_path: Path) -> None:
+    with raises(ValueError, match="retry_after_seconds"):
+        ListFileHandler(node_list_path, -1)

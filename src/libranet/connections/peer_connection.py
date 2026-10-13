@@ -173,9 +173,10 @@ class PeerConnection:  # pylint: disable=too-many-instance-attributes
         """Sign and queue a request; the future completes with its response.
 
         ``target`` is the path, optionally followed by a query string. The
-        future fails with :class:`TimeoutError`, :class:`MalformedResponseError`,
-        or :class:`ConnectionClosedError` if the connection fails first. It
-        cannot be cancelled, since its response must still be read in turn.
+        future fails with :class:`TimeoutError`,
+        :class:`MalformedResponseError`, or :class:`ConnectionClosedError` if
+        the connection fails first. It cannot be cancelled, since its response
+        must still be read in turn.
 
         Raises:
             ValueError: the request cannot be sent as given.
@@ -192,7 +193,8 @@ class PeerConnection:  # pylint: disable=too-many-instance-attributes
             if not self._waiting:
                 self._last_progress = monotonic()
 
-            # Queued under the lock, so requests are sent in the order they wait.
+            # Queued under the lock, so requests are sent in the order they
+            # wait.
             self._waiting.append(_Waiting(RequestLine(method, target), future))
             self._outgoing.put(data)
 
@@ -311,7 +313,8 @@ class PeerConnection:  # pylint: disable=too-many-instance-attributes
         """Complete the future of every waiting request whose response has arrived.
 
         Raises:
-            MalformedResponseError: a response is malformed, or arrived unasked.
+            MalformedResponseError: a response is malformed, or arrived
+                unasked.
         """
         while not self._closed and (waiting := self._oldest()) is not None:
             response = self._parser.next_response(waiting.request)

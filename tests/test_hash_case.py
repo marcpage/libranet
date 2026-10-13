@@ -1,4 +1,4 @@
-"""A hash in any case, on every input path, comes out lower-case (Step 21).
+"""Tests for a hash in any case, on every input path, coming out lower-case (Step 21).
 
 HttpApi §5.4 accepts a hash in upper, lower, or mixed case and stores the
 lower-case form. Each test here feeds one entry point the same identifier

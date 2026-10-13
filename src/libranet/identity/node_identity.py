@@ -53,7 +53,8 @@ class NodeIdentity:
         Raises:
             FileNotFoundError: the node has no key yet.
             KeyFileError: the stored private key cannot be loaded.
-            UnknownAlgorithmError: the configured hash algorithm is unsupported.
+            UnknownAlgorithmError: the configured hash algorithm is
+                unsupported.
             OSError: the key file cannot be read.
         """
         return cls.from_private_key(
@@ -68,7 +69,8 @@ class NodeIdentity:
 
         Raises:
             KeyFileError: the stored private key cannot be loaded.
-            UnknownAlgorithmError: the configured hash algorithm is unsupported.
+            UnknownAlgorithmError: the configured hash algorithm is
+                unsupported.
             OSError: the key or public key file cannot be read or written.
         """
         node = cls.from_private_key(

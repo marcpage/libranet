@@ -57,9 +57,9 @@ sandboxed, and can be neither trusted nor untrusted.
 A name in a path is percent-encoded as one segment, so the root application,
 ``/``, is ``/config/api/applications/%2F``. What the main port's registry
 holds is also answered to any client there, at ``GET /data/applications``
-(HttpApi §13.4), so that the root application can link to each one. A registry file that cannot be
-read is ``500``, saying why, and is never saved over: fixing or removing it
-by hand is the way back.
+(HttpApi §13.4), so that the root application can link to each one. A registry
+file that cannot be read is ``500``, saying why, and is never saved over:
+fixing or removing it by hand is the way back.
 
 ``GET /config/api`` names the endpoints, so a client has somewhere to start.
 A browser has the ``/config`` application instead, served like any other
@@ -132,7 +132,8 @@ BACKUP_JOB_PATTERN: Final = BACKUPS_PATH + rf"/(?P<job_id>[0-9a-fA-F]{{{IDENTIFI
 BACKUP_RUN_PATTERN: Final = BACKUP_JOB_PATTERN + "/run"
 APPLICATION_PATTERN: Final = APPLICATIONS_PATH + "/(?P<name>[^/]+)"
 
-#: Where any client asks the main port which applications it serves (HttpApi §13.4).
+#: Where any client asks the main port which applications it serves
+#: (HttpApi §13.4).
 DATA_APPLICATIONS_PATH: Final = API_PREFIX + "/applications"
 
 # What each route's pattern begins with in place of /config: the name in any
@@ -216,11 +217,21 @@ class NodeHandler:
 
 @dataclass(frozen=True)
 class BackupReportHandler:
-    """Serves one list of the backup module's latest report."""
+    """Serves one list of the backup module's latest report.
+
+    Raises:
+        ValueError: ``retry_after_seconds`` is negative.
+    """
 
     state: BackupState
     field: str
     retry_after_seconds: int
+
+    def __post_init__(self) -> None:
+        if self.retry_after_seconds < 0:
+            raise ValueError(
+                f"retry_after_seconds must not be negative, got {self.retry_after_seconds}"
+            )
 
     def __call__(self, request: Request) -> Response:
         report = self.state.latest

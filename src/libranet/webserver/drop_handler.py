@@ -61,12 +61,12 @@ from libranet.cas.drops import DROP_SEPARATOR, DropTarget
 from libranet.config.models import MIB, TARGET_BITS
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
-from libranet.protocol.client_origin import is_local_client
 from libranet.protocol.drop_requests import DropRequest, PasswordEncryption, PersonEncryption
 from libranet.protocol.errors import InvalidRequestError
 from libranet.protocol.http_syntax import API_PREFIX
 from libranet.webserver.costly_work import Turns
 from libranet.webserver.http_types import Request, Response, json_response, status_response
+from libranet.webserver.local_only import local_refusal
 from libranet.webserver.own_pages import OwnPages
 from libranet.webserver.request_refusals import (
     content_too_large_response,
@@ -113,6 +113,9 @@ class DropEncryption:
     and password one at a time, in ``derivations``, and only for a local
     client, at a host ``checks`` serves as, from a page of an application
     ``pages`` says the operator trusts (HttpApi §11.6).
+
+    Raises:
+        ValueError: ``retry_after_seconds`` is negative.
     """
 
     content: ContentSource
@@ -123,6 +126,12 @@ class DropEncryption:
     retry_after_seconds: int
     derivations: Turns = field(default_factory=Turns)
     blocked: BlockedContent | None = None
+
+    def __post_init__(self) -> None:
+        if self.retry_after_seconds < 0:
+            raise ValueError(
+                f"retry_after_seconds must not be negative, got {self.retry_after_seconds}"
+            )
 
     def encrypted(
         self, request: Request, asked: DropRequest, *, max_object_bytes: int
@@ -225,21 +234,8 @@ class DropEncryption:
         of a trusted application, since a password sent from elsewhere would
         cross the network as it was typed.
         """
-        if not is_local_client(request.client_address):
-            _LOGGER.debug("Refusing %s %s: not a local client", request.method, request.path)
-            return status_response(
-                request,
-                HTTPStatus.FORBIDDEN,
-                "Encrypting by a password is served only to clients on this machine.",
-            )
-
-        refusal = self.checks.host_refusal(request)
-
-        if refusal is not None:
-            _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, refusal)
-            return status_response(request, HTTPStatus.FORBIDDEN, refusal)
-
-        return self.pages.refused(request, trusted=True)
+        refused = local_refusal(request, self.checks)
+        return refused if refused is not None else self.pages.refused(request, trusted=True)
 
 
 @dataclass(frozen=True)
@@ -313,7 +309,9 @@ class DropHandler:
             return encrypted
 
         with self.turns.turn():
-            drop = asked.target.placed(encrypted.data, asked.seconds, asked.minimum_bits)
+            drop = asked.target.placed(
+                encrypted.data, asked.seconds, minimum_bits=asked.minimum_bits
+            )
 
         try:
             content_id = store_object(drop.data, self.uploads, self.max_object_bytes)

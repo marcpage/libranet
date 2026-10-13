@@ -90,7 +90,7 @@ def test_a_block_held_as_a_drop_opens_once_its_placement_is_taken_off(
     private_key: RSAPrivateKey,
 ) -> None:
     encoded = EncryptedForPerson.encrypted(PLAINTEXT, private_key.public_key()).encoded()
-    drop = DropTarget.of("mail:someone").placed(encoded, 0, 4).data
+    drop = DropTarget.of("mail:someone").placed(encoded, 0, minimum_bits=4).data
 
     opened = EncryptedForPerson.decoded(strip_targeting(drop)).decrypted(private_key, MAX_BYTES)
 

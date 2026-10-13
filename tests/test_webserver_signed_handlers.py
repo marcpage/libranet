@@ -8,7 +8,7 @@ from logging import ERROR, WARNING
 from os import urandom
 from typing import Any, Mapping
 
-from pytest import LogCaptureFixture, fixture, mark
+from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.atomic_file import write_atomically
 from libranet.bundle.errors import BundleTooLargeError
@@ -148,7 +148,7 @@ def held(uploads: OwnUploads, data: bytes) -> ContentId:
 
 def dropped(bundle: SignedBundle) -> bytes:
     """``bundle`` as a drop's content, with the bytes that place it."""
-    return DropTarget.of("user:anyone").placed(bundle.encoded(), 0, 0).data
+    return DropTarget.of("user:anyone").placed(bundle.encoded(), 0).data
 
 
 def test_no_one_signed_in_is_401_and_signs_nothing(
@@ -475,3 +475,8 @@ def test_a_path_naming_no_content_is_400(signed: SignedDrops) -> None:
 
     assert response.status == 400
     assert problem_type(response) == INVALID_CONTENT_ADDRESS
+
+
+def test_a_negative_retry_after_is_refused(signed: SignedDrops) -> None:
+    with raises(ValueError, match="retry_after_seconds"):
+        replace(signed, retry_after_seconds=-1)
