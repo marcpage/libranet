@@ -518,6 +518,29 @@ def test_first_contact_swaps_node_lists(
     assert told["sources"] == {"http://127.0.0.1:8080": "observed"}
 
 
+def test_a_node_list_that_cannot_be_read_names_only_this_node_and_is_logged(
+    exchange: PeerExchange,
+    session: PeerSession,
+    peer: FixturePeer,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    caplog: LogCaptureFixture,
+) -> None:
+    # A directory in its place makes reading it fail with something other than its absence.
+    config.storage.node_list_path.mkdir(parents=True)
+
+    exchange.first_contact(session)
+
+    (told,) = peer.published(EventType.NODES_RECEIVED)
+    assert set(told["nodes"].values()) == {str(identity.node_id)}
+    (record,) = [
+        record
+        for record in caplog.records
+        if record.getMessage().startswith("Cannot read the node list")
+    ]
+    assert record.levelno == WARNING
+
+
 def test_a_peers_advertised_entries_are_kept_as_its_own(
     exchange: PeerExchange,
     session: PeerSession,

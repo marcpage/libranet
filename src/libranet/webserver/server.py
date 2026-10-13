@@ -42,8 +42,9 @@ from errno import EACCES, EADDRINUSE
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from logging import Logger
-from socket import AF_INET, AF_INET6, create_connection
+from socket import AF_INET, AF_INET6, create_connection, socket
 from socketserver import TCPServer
+from sys import exc_info
 from typing import Any, Final, Iterable
 from urllib.parse import urlsplit
 
@@ -645,6 +646,19 @@ class LibranetHTTPServer(ThreadingHTTPServer):
         host, port = self.server_address[:2]
         self.server_name = str(host)
         self.server_port = int(port)
+
+    def handle_error(self, request: socket | tuple[bytes, socket], client_address: Any) -> None:
+        """Log what failed a request outside its route, rather than print it to stderr.
+
+        A client that went away is ordinary; anything else keeps its traceback.
+        """
+        error = exc_info()[1]
+
+        if isinstance(error, OSError):
+            self.logger.debug("%s went away: %s", client_address, error)
+
+        else:
+            self.logger.exception("Handling a request from %s failed", client_address)
 
 
 class RequestHandler(BaseHTTPRequestHandler):

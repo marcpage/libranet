@@ -871,6 +871,42 @@ def test_a_connection_the_peer_closes_is_reported_and_rests(
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)
 
 
+def test_a_dial_that_fails_unexpectedly_is_logged_and_rests(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    now: list[float],
+    caplog: LogCaptureFixture,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    admit = ConnectionsModule._admit  # pylint: disable=protected-access
+    failures: list[PeerSession] = []
+
+    def failing_once(module: ConnectionsModule, session: PeerSession) -> object:
+        if not failures:
+            failures.append(session)
+            session.close()
+            raise RuntimeError("broken")
+
+        return admit(module, session)
+
+    monkeypatch.setattr(ConnectionsModule, "_admit", failing_once)
+    write_lists(config.storage, node_list(identity, peers[0]))
+
+    module = modules.start(config)
+
+    wait_until(
+        lambda: f"Connecting to {peers[0].node_id} failed" in caplog.text, "the dial to fail"
+    )
+    # The candidate rests rather than being left half-dialed, so it is dialed again.
+    now[0] += RETRY_DELAY
+    module.on_idle()
+
+    bus.wait_for(EventType.CONNECTION_OPENED)
+
+
 def test_the_peers_connected_are_named_at_start_as_they_come_and_go_and_when_asked(
     modules: Modules,
     config: LibranetConfig,

@@ -23,6 +23,7 @@ that refuse it (Phase 4 Step 30), in the shape
 
 from __future__ import annotations
 from dataclasses import dataclass
+from logging import getLogger
 from pathlib import Path
 from typing import Sequence
 
@@ -33,6 +34,8 @@ from libranet.config.models import StatsConfig, StorageConfig
 from libranet.stats.database import StatsDatabase
 from libranet.stats.lists import render_candidate_list, render_node_list, render_seek_list
 from libranet.stats.schema import SeekKind
+
+_LOGGER = getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -156,9 +159,12 @@ def _write_if_changed(path: Path, body: bytes) -> bool:
         if path.read_bytes() == body:
             return False
 
-    except OSError:
-        # Not logged: a file that cannot be read is written afresh.
+    except FileNotFoundError:
+        # Not logged: there is none before the first derivation.
         pass
+
+    except OSError as error:
+        _LOGGER.warning("Cannot read %s, so it is written afresh: %s", path, error)
 
     write_atomically(path, body)
     return True
