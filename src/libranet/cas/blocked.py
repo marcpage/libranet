@@ -9,7 +9,7 @@ derives the lists. The modules that refuse blocked content read the file::
     {"blocked": ["sha256/<hex>", ...]}
 
 A reader keeps what the file held, and reads it again only once it has been
-replaced (:class:`~libranet.atomic_file.FileVersion`). Until the file is
+replaced (:class:`~libranet.atomic_file.KeptRead`). Until the file is
 first written, nothing is blocked.
 """
 
@@ -20,7 +20,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Final, Iterable
 
-from libranet.atomic_file import FileVersion
+from libranet.atomic_file import KeptRead
 from libranet.cas.algorithms import UnsupportedAlgorithms
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
@@ -42,7 +42,8 @@ class BlockedContent:
     def __init__(self, path: Path) -> None:
         self._path = path
         self._lock = Lock()
-        self._version: FileVersion | None = None
+        self._file = KeptRead(path, self._read)
+        # What was last read, kept when the file cannot be read again.
         self._blocked: frozenset[ContentId] = frozenset()
 
     @classmethod
@@ -70,36 +71,27 @@ class BlockedContent:
     def _current(self) -> frozenset[ContentId]:
         """What the file holds now, read again only if it was replaced.
 
-        The file is looked at before it is read, so what was read is never
-        older than the version it is remembered as. A file that cannot be
-        read leaves what was read before.
+        A file that cannot be read leaves what was read before.
         """
         try:
-            version = FileVersion.of(self._path)
+            self._blocked = self._file.current()
 
         except FileNotFoundError:
             # Not logged: the stats module has not derived the list yet.
-            self._version = None
             self._blocked = frozenset()
-            return self._blocked
 
         except OSError as error:
             _LOGGER.warning("Cannot look at the blocked list at %s: %s", self._path, error)
-            return self._blocked
-
-        if version != self._version:
-            self._version = version
-            self._blocked = self._read()
 
         return self._blocked
 
-    def _read(self) -> frozenset[ContentId]:
-        """The content ids the file names; those read before, if it cannot be read.
+    def _read(self, path: Path) -> frozenset[ContentId]:
+        """The content ids the file at ``path`` names; those read before, if it cannot be read.
 
         An entry that is not a content id is left out, and logged.
         """
         try:
-            listed = loads(self._path.read_bytes())[_BLOCKED_FIELD]
+            listed = loads(path.read_bytes())[_BLOCKED_FIELD]
 
         except (OSError, ValueError, KeyError, TypeError) as error:
             _LOGGER.warning("Cannot read the blocked list at %s: %s", self._path, error)

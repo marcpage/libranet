@@ -8,6 +8,7 @@ from json import loads
 from pytest import mark, raises
 
 from libranet.cas.content_id import ContentId
+from libranet.problems import CONTENT_UNAVAILABLE
 from libranet.webserver.errors import IncompleteBodyError, UnsupportedMediaTypeError
 from libranet.webserver.http_types import (
     Request,
@@ -18,6 +19,7 @@ from libranet.webserver.http_types import (
     percent_decoded,
     redirect_response,
     status_response,
+    typed_response,
 )
 
 
@@ -205,6 +207,28 @@ def test_a_status_response_is_a_problem_titled_with_the_status_phrase() -> None:
         "status": 404,
         "detail": "Nothing here.",
         "instance": "/x",
+    }
+
+
+def test_a_typed_response_is_a_problem_titled_as_its_type_always_is() -> None:
+    response = typed_response(
+        Request("GET", "/x"),
+        CONTENT_UNAVAILABLE,
+        HTTPStatus.SERVICE_UNAVAILABLE,
+        "Asked for.",
+        extensions={"retry_after": 5},
+        headers={"Retry-After": "5"},
+    )
+
+    assert response.status == HTTPStatus.SERVICE_UNAVAILABLE
+    assert response.headers["Retry-After"] == "5"
+    assert loads(response.body) == {
+        "type": CONTENT_UNAVAILABLE,
+        "title": "Content temporarily unavailable",
+        "status": 503,
+        "detail": "Asked for.",
+        "instance": "/x",
+        "retry_after": 5,
     }
 
 

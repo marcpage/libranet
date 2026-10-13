@@ -6,7 +6,7 @@ from typing import cast
 
 from pytest import raises
 
-from libranet.atomic_file import FileVersion, atomic_writer, write_atomically
+from libranet.atomic_file import FileVersion, KeptRead, atomic_writer, write_atomically
 
 
 def test_missing_parent_directories_are_created(tmp_path: Path) -> None:
@@ -74,3 +74,71 @@ def test_a_file_replaced_whole_is_another_version(tmp_path: Path) -> None:
 def test_a_file_not_there_has_no_version(tmp_path: Path) -> None:
     with raises(FileNotFoundError):
         FileVersion.of(tmp_path / "missing.json")
+
+
+class CountedRead:
+    """A read of a file that counts how often it is made, and fails when told to."""
+
+    def __init__(self) -> None:
+        self.reads = 0
+        self.failing = False
+
+    def __call__(self, path: Path) -> bytes:
+        self.reads += 1
+
+        if self.failing:
+            raise ValueError("unreadable")
+
+        return path.read_bytes()
+
+
+def test_what_is_read_is_kept_until_the_file_is_replaced(tmp_path: Path) -> None:
+    path = write_atomically(tmp_path / "file.json", b"first")
+    read = CountedRead()
+    kept = KeptRead(path, read)
+
+    assert (kept.current(), kept.current(), read.reads) == (b"first", b"first", 1)
+
+    write_atomically(path, b"other")
+
+    assert (kept.current(), read.reads) == (b"other", 2)
+
+
+def test_a_kept_read_of_a_file_not_there_raises_and_keeps_nothing(tmp_path: Path) -> None:
+    path = write_atomically(tmp_path / "file.json", b"first")
+    read = CountedRead()
+    kept = KeptRead(path, read)
+    kept.current()
+    path.unlink()
+
+    with raises(FileNotFoundError):
+        kept.current()
+
+    write_atomically(path, b"again")
+
+    assert (kept.current(), read.reads) == (b"again", 2)
+
+
+def test_a_read_that_fails_is_made_again_on_the_next_use(tmp_path: Path) -> None:
+    path = write_atomically(tmp_path / "file.json", b"first")
+    read = CountedRead()
+    kept = KeptRead(path, read)
+    read.failing = True
+
+    with raises(ValueError, match="unreadable"):
+        kept.current()
+
+    read.failing = False
+
+    assert (kept.current(), read.reads) == (b"first", 2)
+
+
+def test_a_forgotten_read_is_made_again_whatever_the_version(tmp_path: Path) -> None:
+    path = write_atomically(tmp_path / "file.json", b"first")
+    read = CountedRead()
+    kept = KeptRead(path, read)
+    kept.current()
+
+    kept.forget()
+
+    assert (kept.current(), read.reads) == (b"first", 2)

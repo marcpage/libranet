@@ -33,6 +33,7 @@ from libranet.bundle.protection import NORMAL_FORM
 from libranet.bundle.shapes import is_utf8
 from libranet.config.models import MIN_PERSON_KEY_BITS, TARGET_BITS
 from libranet.identity.people import Username
+from libranet.json_fields import integer_field, number_field, string_field
 from libranet.protocol.errors import InvalidConfigRequestError
 
 #: The fewest characters a new identity's password has, once in NFC (HttpApi §11.3).
@@ -120,11 +121,7 @@ class IdentityRequest:
         if not isinstance(value, dict):
             raise InvalidConfigRequestError("An identity to make must be a JSON object")
 
-        key_bits = value.get("key_bits")
-
-        if isinstance(key_bits, bool) or not isinstance(key_bits, int):
-            raise InvalidConfigRequestError('"key_bits" must be an integer')
-
+        key_bits = integer_field(value, "key_bits", error=InvalidConfigRequestError)
         fallback_password, seconds, minimum_bits = _fallback_and_search(value)
 
         try:
@@ -196,20 +193,10 @@ def _fallback_and_search(value: dict[str, object]) -> tuple[str, float, int]:
     Raises:
         InvalidConfigRequestError: one is not of its type.
     """
-    fallback_password = value.get("fallback_password")
-    seconds = value.get("seconds")
-    minimum_bits = value.get("minimum_bits", 0)
-
-    if isinstance(seconds, bool) or not isinstance(seconds, (int, float)):
-        raise InvalidConfigRequestError('"seconds" must be a number')
-
-    if isinstance(minimum_bits, bool) or not isinstance(minimum_bits, int):
-        raise InvalidConfigRequestError('"minimum_bits" must be an integer')
-
-    if not isinstance(fallback_password, str):
-        raise InvalidConfigRequestError('"fallback_password" must be a string')
-
-    return fallback_password, float(seconds), minimum_bits
+    seconds = number_field(value, "seconds", error=InvalidConfigRequestError)
+    minimum_bits = integer_field(value, "minimum_bits", error=InvalidConfigRequestError, default=0)
+    fallback_password = string_field(value, "fallback_password", error=InvalidConfigRequestError)
+    return fallback_password, seconds, minimum_bits
 
 
 def _credentials(value: dict[str, object]) -> tuple[Username, str]:
@@ -218,15 +205,8 @@ def _credentials(value: dict[str, object]) -> tuple[Username, str]:
     Raises:
         ValueError: either is not a string, or the username is not one.
     """
-    username = value.get("username")
-    password = value.get("password")
-
-    if not isinstance(username, str):
-        raise ValueError('"username" must be a string')
-
-    if not isinstance(password, str):
-        raise ValueError('"password" must be a string')
-
+    username = string_field(value, "username")
+    password = string_field(value, "password")
     return Username.create(username), password
 
 

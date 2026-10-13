@@ -56,6 +56,7 @@ from libranet.identity.errors import (
 )
 from libranet.identity.keys import published_public_key
 from libranet.identity.node_identity import NodeIdentity
+from libranet.json_fields import is_integer
 
 _LOGGER = getLogger(__name__)
 
@@ -356,7 +357,7 @@ def _integer_parameter(sig_input: Any, name: str) -> int | None:
     if value is None:
         return None
 
-    if not isinstance(value, int) or isinstance(value, bool):
+    if not is_integer(value):
         raise InvalidSignature(f'Malformed signature "{name}" parameter')
 
     return value

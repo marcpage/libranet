@@ -26,10 +26,10 @@ from http import HTTPStatus
 from logging import getLogger
 from typing import Final, Mapping
 
-from libranet.problems import CREDENTIAL_REQUIRED, Problem
+from libranet.problems import CREDENTIAL_REQUIRED
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_guard import names_config
-from libranet.webserver.http_types import Request, Response, problem_response
+from libranet.webserver.http_types import Request, Response, typed_response
 
 _LOGGER = getLogger(__name__)
 
@@ -89,12 +89,10 @@ def basic_credentials(headers: Mapping[str, str]) -> str | None:
 
 def credential_required_response(request: Request) -> Response:
     """The ``401`` challenging a ``/config`` request for its credentials."""
-    return problem_response(
-        Problem.of_type(
-            CREDENTIAL_REQUIRED,
-            HTTPStatus.UNAUTHORIZED,
-            detail="/config requires the username and password this node captured.",
-            instance=request.path,
-        ),
-        {"WWW-Authenticate": f'Basic realm="{CONFIG_REALM}", charset="UTF-8"'},
+    return typed_response(
+        request,
+        CREDENTIAL_REQUIRED,
+        HTTPStatus.UNAUTHORIZED,
+        "/config requires the username and password this node captured.",
+        headers={"WWW-Authenticate": f'Basic realm="{CONFIG_REALM}", charset="UTF-8"'},
     )

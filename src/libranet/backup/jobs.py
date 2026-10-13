@@ -29,7 +29,7 @@ Step 49).
 
 from __future__ import annotations
 from dataclasses import dataclass
-from json import dumps, loads
+from json import loads
 from logging import getLogger
 from math import isfinite
 from pathlib import Path
@@ -41,7 +41,8 @@ from libranet.bundle.errors import BundleError
 from libranet.bundle.layering import Layering, Superseded
 from libranet.bundle.protection import protect, unprotect
 from libranet.cas.content_id import ContentId
-from libranet.json_format import compact_json
+from libranet.json_fields import integer_field, number_field, string_field
+from libranet.json_format import compact_json, pretty_json
 from libranet.protocol.config_requests import BackupJobRequest
 
 _LOGGER = getLogger(__name__)
@@ -94,17 +95,13 @@ class LatestBackup:
         if not isinstance(value, dict):
             raise ValueError('A backup job\'s "latest" must be an object')
 
-        skipped = value.get("skipped")
-
-        if not isinstance(skipped, int) or isinstance(skipped, bool):
-            raise ValueError('"skipped" must be an integer')
-
+        skipped = integer_field(value, "skipped")
         layering = value.get("layering")
 
         return cls(
-            ContentId.parse(_string(value, "bundle")),
-            _number(value, "made_at"),
-            _string(value, "entries_digest"),
+            ContentId.parse(string_field(value, "bundle")),
+            number_field(value, "made_at"),
+            string_field(value, "entries_digest"),
             skipped,
             None if layering is None else Layering.from_value(layering),
         )
@@ -152,8 +149,8 @@ class BackupJob:
 
         return cls(
             BackupJobRequest(
-                _string(value, "directory"),
-                None if interval_seconds is None else _number(value, "interval_seconds"),
+                string_field(value, "directory"),
+                None if interval_seconds is None else number_field(value, "interval_seconds"),
             ),
             None if latest is None else LatestBackup.from_value(latest),
         )
@@ -295,32 +292,4 @@ def save_jobs(path: Path, jobs: Iterable[BackupJob]) -> None:
         OSError: the file could not be written.
     """
     value = {"jobs": [job.value() for job in sorted(jobs, key=lambda job: job.directory)]}
-    write_atomically(path, dumps(value, indent=2).encode("utf-8"))
-
-
-def _string(value: dict[str, Any], key: str) -> str:
-    """The string ``value`` holds at ``key``.
-
-    Raises:
-        ValueError: it holds something else there, or nothing.
-    """
-    field = value.get(key)
-
-    if not isinstance(field, str):
-        raise ValueError(f'"{key}" must be a string')
-
-    return field
-
-
-def _number(value: dict[str, Any], key: str) -> float:
-    """The number ``value`` holds at ``key``.
-
-    Raises:
-        ValueError: it holds something else there, or nothing.
-    """
-    field = value.get(key)
-
-    if not isinstance(field, (int, float)) or isinstance(field, bool):
-        raise ValueError(f'"{key}" must be a number')
-
-    return float(field)
+    write_atomically(path, pretty_json(value))

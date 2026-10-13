@@ -46,13 +46,14 @@ applications, since saving over it would lose every registration it holds.
 
 from __future__ import annotations
 from dataclasses import dataclass, field, replace
-from json import dumps, loads
+from json import loads
 from pathlib import Path
 from threading import Lock
 from typing import Any, Final, Mapping
 
-from libranet.atomic_file import FileVersion, write_atomically
+from libranet.atomic_file import KeptRead, write_atomically
 from libranet.cas.content_id import ContentId
+from libranet.json_format import pretty_json
 from libranet.webserver.errors import RegistryFileError
 
 # The application served at `/` (HttpApi §13).
@@ -304,8 +305,7 @@ class ApplicationRegistry:
         self._path = path
         self._initial = RegisteredApplications() if initial is None else initial
         self._lock = Lock()
-        self._version: FileVersion | None = None
-        self._applications = self._initial
+        self._file = KeptRead(path, self._read)
 
     @property
     def path(self) -> Path:
@@ -376,43 +376,32 @@ class ApplicationRegistry:
             return True
 
     def _current(self) -> RegisteredApplications:
-        """What the file holds, read again only if it has changed since it was last read.
-
-        The file is looked at before it is read, so what was read is never
-        older than the version it is remembered as.
-        """
+        """What the file holds, read again only if it has changed since it was last read."""
         try:
-            version = FileVersion.of(self._path)
-
-            if version != self._version:
-                self._applications = self._read()
-                self._version = version
+            return self._file.current()
 
         except FileNotFoundError:
             # Not logged: with no registry file, the applications are those shipped.
-            self._version = None
-            self._applications = self._initial
+            return self._initial
 
         except OSError as error:
             raise RegistryFileError(
                 f"Cannot read the application registry at {self._path}: {error}"
             ) from None
 
-        return self._applications
-
-    def _read(self) -> RegisteredApplications:
-        """What the file holds.
+    def _read(self, path: Path) -> RegisteredApplications:
+        """What the registry file at ``path`` holds.
 
         Raises:
             RegistryFileError: it does not hold a registry.
             OSError: it cannot be read.
         """
         try:
-            return RegisteredApplications.from_value(loads(self._path.read_bytes()))
+            return RegisteredApplications.from_value(loads(path.read_bytes()))
 
         except ValueError as error:
             raise RegistryFileError(
-                f"{self._path} does not hold a usable application registry: {error}"
+                f"{path} does not hold a usable application registry: {error}"
             ) from None
 
     def _save(self, applications: RegisteredApplications) -> None:
@@ -421,8 +410,8 @@ class ApplicationRegistry:
         What was saved is read back on the next read, rather than
         remembered, in case the file changes again first.
         """
-        write_atomically(self._path, dumps(applications.value(), indent=2).encode("utf-8"))
-        self._version = None
+        write_atomically(self._path, pretty_json(applications.value()))
+        self._file.forget()
 
 
 def _check_trustable(name: str) -> None:

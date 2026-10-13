@@ -14,16 +14,9 @@ enriched answer is newer than the one it replaces.
 """
 
 from __future__ import annotations
-from json import JSONDecodeError, loads
-from logging import getLogger
-
-from libranet.cas.content_id import ContentId
-from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.prefix import nearest
-from libranet.protocol.search import RESULTS_FIELD, SearchCache
+from libranet.protocol.search import SearchCache
 from libranet.stats.database import StatsDatabase
-
-_LOGGER = getLogger(__name__)
 
 
 class SearchEnricher:
@@ -43,12 +36,12 @@ class SearchEnricher:
         Returns:
             Whether the cache file was rewritten.
         """
-        body = self._cache.load(prefix)
+        found = self._cache.load_results(prefix)
 
-        if body is None:
+        if found is None:
             return False
 
-        cached = _parse_results(body)
+        cached = set(found)
         known = set(self._database.content_ids_near(prefix, self._max_results))
         merged = nearest(prefix, cached | known, self._max_results)
 
@@ -57,29 +50,3 @@ class SearchEnricher:
 
         self._cache.save_results(prefix, merged)
         return True
-
-
-def _parse_results(body: bytes) -> set[ContentId]:
-    """The identifiers in a cached response; an unreadable one holds none."""
-    try:
-        results = loads(body)[RESULTS_FIELD]
-
-    except (JSONDecodeError, KeyError, TypeError, UnicodeDecodeError) as error:
-        _LOGGER.warning("Ignoring an unreadable cached search response: %s", error)
-        return set()
-
-    if not isinstance(results, list):
-        _LOGGER.warning("Ignoring a cached search response whose results are not an array")
-        return set()
-
-    parsed = set()
-
-    for text in results:
-        try:
-            parsed.add(ContentId.parse(text))
-
-        except (InvalidContentIdError, AttributeError):
-            _LOGGER.warning("A cached search response holds %r, not a content id", text)
-            continue
-
-    return parsed

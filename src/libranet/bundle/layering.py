@@ -67,6 +67,7 @@ from libranet.bundle.shapes import (
 )
 from libranet.bundle.storing import ContentSink, ObjectWriter, StoredDirectory
 from libranet.cas.content_id import ContentId
+from libranet.json_fields import integer_field
 
 _LOGGER = getLogger(__name__)
 
@@ -112,7 +113,7 @@ class Layering:
         if not isinstance(value, dict):
             raise ValueError('"layering" must be an object')
 
-        return cls(_count(value, "layers"), _count(value, "extensions"))
+        return cls(integer_field(value, "layers"), integer_field(value, "extensions"))
 
     def value(self) -> dict[str, Any]:
         """The JSON object this is saved as."""
@@ -520,20 +521,6 @@ def _writer(sink: ContentSink, max_object_bytes: int, encrypted: bool) -> Object
     ``None`` stores it as it is.
     """
     return PartWriter(sink, max_object_bytes, encrypted=True).store if encrypted else None
-
-
-def _count(value: dict[str, Any], key: str) -> int:
-    """The whole number ``value`` holds at ``key``.
-
-    Raises:
-        ValueError: it holds something else there, or nothing.
-    """
-    count = value.get(key)
-
-    if not isinstance(count, int) or isinstance(count, bool):
-        raise ValueError(f'"{key}" must be a whole number')
-
-    return count
 
 
 def _directory_entries(value: object, name: str) -> dict[str, Entry | None]:

@@ -37,7 +37,7 @@ read is counted as wanted.
 from __future__ import annotations
 from dataclasses import KW_ONLY, dataclass, replace
 from http import HTTPStatus
-from logging import DEBUG, WARNING, getLogger
+from logging import getLogger
 from typing import Final
 
 from libranet.bundle.content import ContentSource, content_chunks
@@ -56,22 +56,24 @@ from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
-from libranet.problems import INVALID_BUNDLE_SIGNATURE, SESSION_REQUIRED, UNUSABLE_BUNDLE, Problem
+from libranet.problems import INVALID_BUNDLE_SIGNATURE
 from libranet.protocol.client_origin import is_local_client
 from libranet.protocol.drop_requests import SignedDropRequest
-from libranet.protocol.errors import InvalidConfigRequestError
 from libranet.protocol.http_syntax import API_PREFIX
-from libranet.webserver.config_handlers import invalid_request_response, json_or_refusal
+from libranet.webserver.config_handlers import parsed_or_refusal
 from libranet.webserver.data_handler import IMMUTABLE_CACHE_CONTROL, content_id_or_refusal
 from libranet.webserver.drop_handler import MAX_DROP_BODY_BYTES, DropHandler
 from libranet.webserver.http_types import (
     Request,
     Response,
     json_response,
-    problem_response,
     status_response,
+    typed_response,
 )
-from libranet.webserver.request_refusals import content_unavailable_response
+from libranet.webserver.request_refusals import (
+    content_unavailable_response,
+    unusable_bundle_response,
+)
 from libranet.webserver.sessions import Sessions
 
 _LOGGER = getLogger(__name__)
@@ -104,18 +106,10 @@ class SignedDrops:
 
     def make(self, request: Request) -> Response:
         """``POST /data/signed``: make the drop ``request`` asks for, signed by who is signed in."""
-        session = self.sessions.session(request)
+        session = self.sessions.session_or_refusal(request, "Sign in to sign as a person.")
 
-        if session is None:
-            _LOGGER.debug("Refusing %s %s: no one is signed in", request.method, request.path)
-            return problem_response(
-                Problem.of_type(
-                    SESSION_REQUIRED,
-                    HTTPStatus.UNAUTHORIZED,
-                    detail="Sign in to sign as a person.",
-                    instance=request.path,
-                )
-            )
+        if isinstance(session, Response):
+            return session
 
         if session.key.fallback is None:
             _LOGGER.debug(
@@ -130,17 +124,12 @@ class SignedDrops:
                 "A fallback signs nothing until it takes over, with a fallback of its own.",
             )
 
-        value = json_or_refusal(request, max_bytes=MAX_DROP_BODY_BYTES)
+        asked = parsed_or_refusal(
+            request, SignedDropRequest.from_value, max_bytes=MAX_DROP_BODY_BYTES
+        )
 
-        if isinstance(value, Response):
-            return value
-
-        try:
-            asked = SignedDropRequest.from_value(value)
-
-        except InvalidConfigRequestError as error:
-            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            return invalid_request_response(request, error)
+        if isinstance(asked, Response):
+            return asked
 
         person = session.key
         stored = self.drops.placed(request, asked.signed(person.signed(asked.text).encoded()))
@@ -249,7 +238,9 @@ class SignedDrops:
                 request.path,
                 error,
             )
-            return _problem(request, INVALID_BUNDLE_SIGNATURE, error)
+            return typed_response(
+                request, INVALID_BUNDLE_SIGNATURE, HTTPStatus.BAD_REQUEST, str(error)
+            )
 
         if isinstance(error, BundleVerificationError):
             _LOGGER.warning("What is held for %s is not it: %s", content_id, error)
@@ -260,12 +251,9 @@ class SignedDrops:
             )
 
         if isinstance(error, (UnsupportedBundleError, MalformedBundleError)):
-            # An algorithm this node lacks is a warning, since it may mean
-            # the node needs a newer release. What is not signed is common,
-            # as a search lists whatever is nearest.
-            level = WARNING if isinstance(error, UnsupportedBundleError) else DEBUG
-            _LOGGER.log(level, "Refusing %s %s: %s", request.method, request.path, error)
-            return _problem(request, UNUSABLE_BUNDLE, error)
+            # What is not signed is common, as a search lists whatever is
+            # nearest.
+            return unusable_bundle_response(request, error, _LOGGER)
 
         _LOGGER.error("Checking %s failed unexpectedly: %r", content_id, error)
         return status_response(
@@ -293,12 +281,3 @@ class _Blocked(Exception):
 def signed_value(content_id: ContentId, signed: SignedBundle) -> dict[str, str]:
     """What answers a read of ``signed``, checked, from ``content_id`` (HttpApi §11.5)."""
     return {"id": str(content_id), "signer": str(signed.signer), "contents": signed.contents}
-
-
-def _problem(request: Request, problem_type: str, error: Exception) -> Response:
-    """The ``400`` of ``problem_type`` for the signed content ``request`` names."""
-    return problem_response(
-        Problem.of_type(
-            problem_type, HTTPStatus.BAD_REQUEST, detail=str(error), instance=request.path
-        )
-    )

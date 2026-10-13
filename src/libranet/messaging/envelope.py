@@ -15,6 +15,7 @@ from math import isfinite
 from time import time
 from typing import Any, Callable, Final, Mapping
 
+from libranet.json_fields import is_number
 from libranet.messaging.errors import InvalidMessageError
 from libranet.messaging.events import EventType
 from libranet.modules import ModuleName
@@ -87,11 +88,7 @@ def validate_message(message: object) -> Message:
 
     timestamp = message[TIMESTAMP_FIELD]
 
-    if (
-        isinstance(timestamp, bool)
-        or not isinstance(timestamp, (int, float))
-        or not isfinite(timestamp)
-    ):
+    if not is_number(timestamp) or not isfinite(timestamp):
         raise InvalidMessageError(f"Invalid timestamp: {timestamp!r}")
 
     return message

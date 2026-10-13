@@ -60,7 +60,7 @@ from libranet.bundle.errors import BundleError
 from libranet.bundle.parts import PartPath
 from libranet.bundle.shapes import DirectoryMarker, FileBundle, Symlink, is_entry_path
 from libranet.messaging.events import PathOutcome
-from libranet.problems import UNUSABLE_BUNDLE, Problem
+from libranet.problems import UNUSABLE_BUNDLE
 from libranet.protocol.http_syntax import API_PREFIX
 from libranet.webserver.app_outcomes import KnownOutcome
 from libranet.webserver.bundle_paths import (
@@ -82,9 +82,9 @@ from libranet.webserver.http_types import (
     Response,
     json_response,
     percent_decoded,
-    problem_response,
     redirect_response,
     status_response,
+    typed_response,
 )
 
 _LOGGER = getLogger(__name__)
@@ -269,11 +269,7 @@ def _described(entry: object, entry_path: str) -> dict[str, Any] | None:
 
 def _unreadable_response(detail: str, request: Request) -> Response:
     """The ``400`` for content this node cannot read as a bundle, as ``detail`` says."""
-    return problem_response(
-        Problem.of_type(
-            UNUSABLE_BUNDLE, HTTPStatus.BAD_REQUEST, detail=detail, instance=request.path
-        )
-    )
+    return typed_response(request, UNUSABLE_BUNDLE, HTTPStatus.BAD_REQUEST, detail)
 
 
 def _not_found(request: Request) -> Response:

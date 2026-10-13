@@ -55,7 +55,7 @@ from libranet.bundle.parts import PartPath
 from libranet.bundle.shapes import FileBundle, is_entry_path
 from libranet.cas.content_id import ContentId
 from libranet.messaging.events import PathOutcome
-from libranet.problems import UNUSABLE_BUNDLE, Problem
+from libranet.problems import UNUSABLE_BUNDLE
 from libranet.webserver.app_outcomes import KnownOutcome
 from libranet.webserver.app_registry import (
     CONFIG_API_SEGMENT,
@@ -72,9 +72,9 @@ from libranet.webserver.http_types import (
     Request,
     Response,
     percent_decoded,
-    problem_response,
     redirect_response,
     status_response,
+    typed_response,
 )
 
 _LOGGER = getLogger(__name__)
@@ -247,14 +247,7 @@ def _known_response(known: KnownOutcome, prefix: str, request: Request) -> Respo
 
 def _unusable_response(detail: str, request: Request) -> Response:
     """The ``500`` for a bundle or file that cannot be served, saying why in ``detail``."""
-    return problem_response(
-        Problem.of_type(
-            UNUSABLE_BUNDLE,
-            HTTPStatus.INTERNAL_SERVER_ERROR,
-            detail=detail,
-            instance=request.path,
-        )
-    )
+    return typed_response(request, UNUSABLE_BUNDLE, HTTPStatus.INTERNAL_SERVER_ERROR, detail)
 
 
 def _not_found(request: Request) -> Response:

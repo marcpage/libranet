@@ -63,7 +63,6 @@ from libranet.protocol.lists import (
     decode_list,
     node_list_body,
     parse_node_list,
-    parse_search_results,
     parse_seek_list,
 )
 from libranet.protocol.localhost_resolution import LOCALHOST, NodeListSender, resolve_endpoint
@@ -73,7 +72,10 @@ from libranet.protocol.search import (
     LocalSearch,
     PrefixSource,
     SearchCache,
+    content_id_text,
     normalize_prefix,
+    normalized_entries,
+    parse_search_results,
 )
 
 __all__ = [
@@ -120,12 +122,14 @@ __all__ = [
     "check_directory",
     "check_named",
     "check_path",
+    "content_id_text",
     "decode_list",
     "identifier",
     "is_local_client",
     "node_list_body",
     "normalize_prefix",
     "normalized_directory",
+    "normalized_entries",
     "parse_node_list",
     "parse_search_results",
     "parse_seek_list",

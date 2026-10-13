@@ -42,6 +42,7 @@ from libranet.bundle.shapes import (
     Symlink,
     XattrValue,
 )
+from libranet.json_fields import is_integer
 
 _ABSENT: Final = object()
 
@@ -212,8 +213,7 @@ def _optional_size(metadata: dict[str, object]) -> int | None:
 
     size_bytes = metadata["size"]
 
-    # Note: bool is a subclass of int, so need to make sure it is not a bool
-    if not isinstance(size_bytes, int) or isinstance(size_bytes, bool) or size_bytes < 0:
+    if not is_integer(size_bytes) or size_bytes < 0:
         raise MalformedBundleError('"size" must be a non-negative integer')
 
     return size_bytes
@@ -249,10 +249,7 @@ def _part_sizes(fields: dict[str, object]) -> tuple[int, ...] | None:
 
     sizes = fields["sizes"]
 
-    # Note: bool is a subclass of int, so need to make sure none is a bool
-    if not isinstance(sizes, list) or not all(
-        isinstance(size_bytes, int) and not isinstance(size_bytes, bool) for size_bytes in sizes
-    ):
+    if not isinstance(sizes, list) or not all(is_integer(size_bytes) for size_bytes in sizes):
         raise MalformedBundleError('"sizes" must be an array of integers')
 
     return tuple(sizes)

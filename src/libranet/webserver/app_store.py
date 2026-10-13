@@ -44,6 +44,7 @@ hash of that, so one value has one tag however a client wrote it.
 
 from __future__ import annotations
 from dataclasses import dataclass, field, replace
+from functools import partial
 from hashlib import sha256
 from http import HTTPStatus
 from json import loads
@@ -53,13 +54,14 @@ from threading import Lock
 from typing import Any, Final, Mapping
 from urllib.parse import unquote
 
-from libranet.atomic_file import FileVersion, write_atomically
+from libranet.atomic_file import KeptRead, write_atomically
 from libranet.cas.content_id import ContentId
 from libranet.config.models import MIB
+from libranet.json_fields import string_field
 from libranet.json_format import compact_json
 from libranet.protocol.http_syntax import API_PREFIX, JSON_CONTENT_TYPE
 from libranet.webserver.app_registry import Application
-from libranet.webserver.config_handlers import invalid_request_response, json_or_refusal
+from libranet.webserver.config_handlers import parsed_or_refusal
 from libranet.webserver.errors import StoreFileError, StoreLimitError, ValueChangedError
 from libranet.webserver.http_types import (
     Request,
@@ -153,11 +155,8 @@ class StoredValues:
         if not isinstance(value, dict):
             raise ValueError("An application's store must be a JSON object")
 
-        application = value.get("application")
+        application = string_field(value, "application")
         values = value.get("values")
-
-        if not isinstance(application, str):
-            raise ValueError('"application" must be a string')
 
         if not isinstance(values, dict):
             raise ValueError('"values" must be an object')
@@ -231,8 +230,8 @@ class ApplicationStore:
         self._directory = directory
         self._lock = Lock()
         # What each store's file held when last read, by application, for
-        # those whose files were there.
-        self._read: dict[str, tuple[FileVersion, StoredValues]] = {}
+        # those whose files were there when last looked at.
+        self._files: dict[str, KeptRead[StoredValues]] = {}
 
     @property
     def directory(self) -> Path:
@@ -326,26 +325,23 @@ class ApplicationStore:
         older than the version it is remembered as.
         """
         path = self.path(application)
+        file = self._files.get(application)
+
+        if file is None:
+            file = self._files[application] = KeptRead(path, partial(self._parsed, application))
 
         try:
-            version = FileVersion.of(path)
-            known = self._read.get(application)
-
-            if known is None or known[0] != version:
-                known = (version, self._parsed(application, path))
-                self._read[application] = known
+            return file.current()
 
         except FileNotFoundError:
             # Not logged: an application that keeps nothing has no file.
-            self._read.pop(application, None)
+            del self._files[application]
             return StoredValues(application)
 
         except OSError as error:
             raise StoreFileError(
                 f"Cannot read the store of {application!r} at {path}: {error}"
             ) from None
-
-        return known[1]
 
     def _parsed(self, application: str, path: Path) -> StoredValues:
         """The store of ``application`` the file at ``path`` holds.
@@ -395,7 +391,7 @@ class ApplicationStore:
         else:
             path.unlink(missing_ok=True)
 
-        self._read.pop(stored.application, None)
+        self._files.pop(stored.application, None)
 
 
 @dataclass(frozen=True)
@@ -479,7 +475,7 @@ class StoreWriteHandler:
         if isinstance(names, Response):
             return names
 
-        value = _value_or_refusal(request)
+        value = parsed_or_refusal(request, StoredValue.of, max_bytes=MAX_VALUE_BYTES)
 
         if isinstance(value, Response):
             return value
@@ -599,21 +595,6 @@ def _names(request: Request, pages: OwnPages) -> tuple[str, str] | Response:
 
     key = percent_decoded(request.params["key"])
     return _not_held_response(request) if key is None else (application, key)
-
-
-def _value_or_refusal(request: Request) -> StoredValue | Response:
-    """The value ``request``'s body carries, as it is kept, or the response refusing the body."""
-    body = json_or_refusal(request, max_bytes=MAX_VALUE_BYTES)
-
-    if isinstance(body, Response):
-        return body
-
-    try:
-        return StoredValue.of(body)
-
-    except ValueError as error:
-        _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-        return invalid_request_response(request, error)
 
 
 def _not_held_response(request: Request) -> Response:

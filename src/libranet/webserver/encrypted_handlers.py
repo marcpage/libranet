@@ -35,7 +35,7 @@ from __future__ import annotations
 from base64 import b64encode
 from dataclasses import KW_ONLY, dataclass, field, replace
 from http import HTTPStatus
-from logging import DEBUG, WARNING, getLogger
+from logging import getLogger
 from typing import Final
 
 from libranet.bundle.errors import (
@@ -49,11 +49,10 @@ from libranet.bundle.person_encryption import EncryptedForPerson
 from libranet.bundle.protection import strip_targeting
 from libranet.bundle.signing import SignedBundle
 from libranet.cas.content_id import ContentId
-from libranet.problems import SESSION_REQUIRED, UNUSABLE_BUNDLE, WRONG_KEY, Problem
-from libranet.protocol.errors import InvalidConfigRequestError
+from libranet.problems import WRONG_KEY
 from libranet.protocol.http_syntax import API_PREFIX
 from libranet.protocol.identity_requests import SignInRequest
-from libranet.webserver.config_handlers import invalid_request_response, json_or_refusal
+from libranet.webserver.config_handlers import parsed_or_refusal
 from libranet.webserver.data_handler import content_id_or_refusal
 from libranet.webserver.drop_handler import MAX_DROP_BODY_BYTES, Turns
 from libranet.webserver.http_types import (
@@ -61,9 +60,10 @@ from libranet.webserver.http_types import (
     Request,
     Response,
     json_response,
-    problem_response,
     status_response,
+    typed_response,
 )
+from libranet.webserver.request_refusals import unusable_bundle_response
 from libranet.webserver.signed_handlers import SignedDrops, signed_value
 
 _LOGGER = getLogger(__name__)
@@ -101,18 +101,12 @@ class EncryptedDrops:
 
     def _read(self, request: Request) -> Response:
         """What :meth:`read` answers, before it is kept from caches."""
-        session = self.signed.sessions.session(request)
+        session = self.signed.sessions.session_or_refusal(
+            request, "Sign in to open what is encrypted for you."
+        )
 
-        if session is None:
-            _LOGGER.debug("Refusing %s %s: no one is signed in", request.method, request.path)
-            return problem_response(
-                Problem.of_type(
-                    SESSION_REQUIRED,
-                    HTTPStatus.UNAUTHORIZED,
-                    detail="Sign in to open what is encrypted for you.",
-                    instance=request.path,
-                )
-            )
+        if isinstance(session, Response):
+            return session
 
         content_id = content_id_or_refusal(request, _LOGGER)
 
@@ -142,18 +136,11 @@ class EncryptedDrops:
         if isinstance(content_id, Response):
             return content_id
 
-        value = json_or_refusal(request)
+        # The username and password, read as signing in reads them.
+        asked = parsed_or_refusal(request, SignInRequest.from_value)
 
-        if isinstance(value, Response):
-            return value
-
-        try:
-            # The username and password, read as signing in reads them.
-            asked = SignInRequest.from_value(value)
-
-        except InvalidConfigRequestError as error:
-            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            return invalid_request_response(request, error)
+        if isinstance(asked, Response):
+            return asked
 
         held = self.signed.held(request, content_id)
 
@@ -199,26 +186,15 @@ def _refused(request: Request, content_id: ContentId, error: BundleError) -> Res
     """The response refusing to open ``content_id``, as ``request`` asks, for ``error``."""
     if isinstance(error, (IncorrectKeyError, IncorrectPasswordError)):
         _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-        return _problem(request, WRONG_KEY, HTTPStatus.FORBIDDEN, error)
+        return typed_response(request, WRONG_KEY, HTTPStatus.FORBIDDEN, str(error))
 
     if isinstance(error, (UnsupportedBundleError, MalformedBundleError)):
-        # A scheme this node lacks is a warning, since it may mean the node
-        # needs a newer release. A block not encrypted as asked is a page's
-        # mistake.
-        level = WARNING if isinstance(error, UnsupportedBundleError) else DEBUG
-        _LOGGER.log(level, "Refusing %s %s: %s", request.method, request.path, error)
-        return _problem(request, UNUSABLE_BUNDLE, HTTPStatus.BAD_REQUEST, error)
+        # A block not encrypted as asked is a page's mistake.
+        return unusable_bundle_response(request, error, _LOGGER)
 
     _LOGGER.error("Opening %s failed unexpectedly: %r", content_id, error)
     return status_response(
         request, HTTPStatus.INTERNAL_SERVER_ERROR, "The content could not be opened."
-    )
-
-
-def _problem(request: Request, problem_type: str, status: HTTPStatus, error: Exception) -> Response:
-    """The response of ``problem_type`` and ``status`` for the block ``request`` names."""
-    return problem_response(
-        Problem.of_type(problem_type, status, detail=str(error), instance=request.path)
     )
 
 

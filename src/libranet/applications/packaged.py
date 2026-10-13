@@ -20,7 +20,6 @@ of the same source build the same content ids, as does every process.
 from __future__ import annotations
 from dataclasses import dataclass
 from io import BytesIO
-from json import dumps
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Final, Mapping
@@ -31,6 +30,7 @@ from libranet.bundle.shapes import DirectoryBundle, DirectoryMarker, Entry, File
 from libranet.bundle.storing import store_bundle
 from libranet.cas.archive import ArchiveSink
 from libranet.cas.content_id import ContentId
+from libranet.json_format import pretty_json
 
 #: Where the applications shipped with the node are, as written.
 PACKAGED_APPLICATIONS: Final = Path(__file__).resolve().parent
@@ -121,9 +121,7 @@ class PackagedApplications:
 
         return (
             write_atomically(directory / BUILT_ARCHIVE, self.archive),
-            write_atomically(
-                directory / BUILT_BUNDLES, (dumps(self.value(), indent=2) + "\n").encode("utf-8")
-            ),
+            write_atomically(directory / BUILT_BUNDLES, pretty_json(self.value())),
         )
 
 

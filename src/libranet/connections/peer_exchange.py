@@ -100,11 +100,10 @@ from libranet.protocol.lists import (
     decode_list,
     node_list_body,
     parse_node_list,
-    parse_search_results,
     parse_seek_list,
 )
 from libranet.protocol.localhost_resolution import NodeListSender
-from libranet.protocol.search import SEARCH_PATH, LocalSearch
+from libranet.protocol.search import SEARCH_PATH, LocalSearch, parse_search_results
 
 _OCTET_STREAM_HEADERS: Final[Mapping[str, str]] = {"Content-Type": OCTET_STREAM}
 _JSON_HEADERS: Final[Mapping[str, str]] = {"Content-Type": JSON_CONTENT_TYPE}

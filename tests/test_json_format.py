@@ -1,11 +1,11 @@
-"""Tests for compact JSON."""
+"""Tests for compact JSON, and JSON indented for people."""
 
 from __future__ import annotations
 from json import loads
 
 from pytest import raises
 
-from libranet.json_format import compact_json
+from libranet.json_format import compact_json, pretty_json
 
 
 def test_compact_json_has_no_space_after_a_comma_or_a_colon() -> None:
@@ -30,3 +30,7 @@ def test_compact_json_refuses_what_is_not_json_when_asked() -> None:
 
     with raises(ValueError):
         compact_json([float("inf")], allow_nan=False)
+
+
+def test_pretty_json_is_indented_and_ends_in_a_newline() -> None:
+    assert pretty_json({"jobs": [1]}) == b'{\n  "jobs": [\n    1\n  ]\n}\n'
