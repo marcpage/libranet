@@ -2612,6 +2612,9 @@ def test_a_local_client_keeps_a_value_in_an_applications_store(
         ("GET", "/data/bundles/x", None),
         ("GET", "/data/bundles", "POST"),
         ("PUT", "/data/applications/x", None),
+        ("PUT", "/data/users/x", None),
+        ("PUT", "/data/fallback/x", None),
+        ("GET", "/data/session/x", None),
     ],
 )
 def test_a_path_beneath_another_data_endpoint_is_never_taken_for_content(
