@@ -960,7 +960,7 @@ username and password. Add `encrypt` to what `POST /data/drop` (§6.9) or
 `POST /data/signed` (§6.13) is given:
 
 ```js
-const forBob = { target: `mail:${bob}`, text, seconds: 10, minimum_bits: 16,
+const forBob = { target: `notes:${bob}`, text, seconds: 10, minimum_bits: 16,
                  encrypt: { for: bob } };
 const byPassword = { target: "my notes", text, seconds: 10, minimum_bits: 16,
                      encrypt: { username: "alice", password } };
@@ -1008,6 +1008,101 @@ each password costs the node a fifth of a second or so, as signing in does.
 opens a signed one can encrypt it again for someone else, who would take it
 to be meant for them. A page whose reader must know a message was meant for
 them, such as mail, names the reader in what it signs.
+
+### 6.16 Mail
+
+The shipped `mail` application, at `/mail/`, sends and reads messages
+between people. Like the directory, it is kept by applications, not by the
+node: each message, address book, and mark is a drop that one person signs
+(§6.13) and that is encrypted for one person (§6.15). A page that reads or
+sends mail follows the same rules, so that each reads what the others
+write. All of it needs someone signed in, so only a local client reads or
+sends mail.
+
+Each target names a person's id whole, and a time in UTC, two digits for
+each part but the year, such as `mail:sha256/…:2026/10/12/09`:
+
+| Drop | What is placed there |
+| --- | --- |
+| `mail:{id}:{year}/{month}/{day}/{hour}` | A copy of each message sent to the person in that hour |
+| `mail sent:{id}:{year}/{month}/{day}/{hour}` | The sender's own copy of each message they sent in it |
+| `mail address book:{id}` | The versions of the person's address book |
+| `mail state:{id}:{year}/{month}` | The versions of what they read and hid of the mail found in that month's hours |
+
+A search answers no more than so many results, 32 unless the operator says
+otherwise, so mail is kept by the hour, not the day. Each copy's `contents`
+is:
+
+```json
+{"bcc": ["sha256/…"],
+ "cc": [],
+ "for": "sha256/…",
+ "message": "9f2c40d1e8a7b6c5d4e3f2a1b0c9d8e7",
+ "reply_to": "41ab0c9d8e7f6a5b4c3d2e1f0a9b8c7d",
+ "sent": "2026-10-12T09:41:07Z",
+ "subject": "Lunch",
+ "text": "Noon?",
+ "to": ["sha256/…"]}
+```
+
+- **`for`** is the reader's id. Whoever opens a copy could encrypt it again
+  for someone else, so pass over a copy that does not name you.
+- **`to`** and **`cc`** list ids. **`bcc`** is in a BCC reader's copy,
+  naming only them, and in the sender's own, naming everyone, and left out
+  of the rest.
+- **`text`** is the body, or else **`bundle`**, a bundle's id, which may
+  carry its key, whose `index.html` is shown, and whose files are listed.
+  The node serves a read into a bundle in a sandbox, so its scripts never
+  run (§6.1). Only an id that carries its key keeps the bundle from
+  everyone but the readers.
+- **`sent`** is the sender's clock in UTC to the second. **`message`** is
+  32 hex digits that every copy of one message shares, and **`reply_to`**,
+  left out of a message that replies to none, the `message` it replies to,
+  so that a conversation can be shown together.
+- There is no `from`: whoever signed a copy sent it.
+
+**Send** a copy for each reader with `POST /data/signed`, given `encrypt:
+{for: reader}`, at their drop for the hour it is sent, matching at least 16
+bits, and one for yourself at `mail sent:`. Mail a compromised reader at
+their fallback instead, and at its fallback while that is compromised too
+(§6.14), and say so before sending.
+
+**Read** a period by searching each of its hours (§6.9). Open each result
+that shares at least 16 bits with the `target` hash with
+`GET /data/encrypted/{id}`, and pass over anything that does not open, is
+not signed, or is not shaped as above with `for` naming whoever is signed
+in. A copy at `mail sent:` counts only if you signed it. Ask again later for
+what is not held yet. Show a message from someone compromised with a
+warning, since whoever holds their key may have sent it.
+
+**What a person keeps**, their address book and each month's marks, is
+kept alike, in versions they sign and encrypt for themselves:
+
+```json
+{"entries": {"Alice": {"changed": "2026-10-12T09:40:55Z", "id": "sha256/…"},
+             "Bob": {"changed": "2026-10-12T09:41:30Z", "removed": true}},
+ "version": 3,
+ "versions": ["sha256/…"]}
+```
+
+A month's marks have `marks` in place of `entries`, mapping the drop id of
+each copy found in that month's hours to `{"changed", "hidden", "read"}`.
+
+- **Read every version** at the drop that the person signed, and merge
+  them: of the changes to one key, the latest `changed` wins, and of two in
+  the same second, the one in the version whose drop's id comes first.
+  Names are compared without case, or the spaces around them. A removal is
+  a change, `"removed": true`, so that a merge does not undo it.
+- **A version that no other names in `versions` is a head.** Write a new
+  version when something changes, and when more than one head is found,
+  numbered one more than the highest read and naming every head. Hold off
+  while a version found there is not held yet.
+- **Block what is replaced** (§6.11): every version a new one replaces,
+  and every version that another replaces, so that old versions do not
+  crowd the newest out of a search.
+
+To have someone mailed, link to `/mail/?to={id}`, as the directory does for
+each person.
 
 ## 7. Patterns From the Movie Library
 
@@ -1067,8 +1162,9 @@ of HTML and script, and uses every endpoint above. What it does, and why:
 The applications a node ships with are directories under
 [`src/libranet/applications/`](../../src/libranet/applications/): `root`,
 served at `/`, `config`, served at `/config`, `movie`, served at
-`/movie`, and `directory`, served at `/directory`. `SHIPPED_APPLICATIONS`
-in `packaged.py` names each, and a node trusts them from the start.
+`/movie`, `directory`, served at `/directory`, and `mail`, served at
+`/mail`. `SHIPPED_APPLICATIONS` in `packaged.py` names each, and a node
+trusts them from the start.
 
 Run from the source, the node builds them in memory as it starts, so a
 changed page is served once the node restarts. `uv build` builds them into

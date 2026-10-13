@@ -1,5 +1,5 @@
-"""Tests for the applications shipped with the node, and the root, ``/config``, movie, and
-directory pages.
+"""Tests for the applications shipped with the node, and the root, ``/config``, movie,
+directory, and mail pages.
 
 Which way they were shipped, built into a wheel or run from source, is known
 only to the layered source, and is tested through it.
@@ -49,6 +49,7 @@ from libranet.webserver.bundle_reads import BUNDLE_PATTERN
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import CONFIG_API_PATH, ENDPOINTS, NodeDescription
 from libranet.webserver.drop_handler import DROP_PATH
+from libranet.webserver.encrypted_handlers import ENCRYPTED_PATH, ENCRYPTED_PATTERN
 from libranet.webserver.http_types import Request
 from libranet.webserver.identity_handlers import FALLBACK_PATH, SESSION_PATH
 from libranet.webserver.local_folders import DIRECTORY_PATTERN
@@ -65,10 +66,12 @@ from tests.helpers import published
 
 MOVIE_APPLICATION = "movie"
 DIRECTORY_APPLICATION = "directory"
+MAIL_APPLICATION = "mail"
 ROOT_PAGE_SOURCE = PACKAGED_APPLICATIONS / "root" / "index.html"
 CONFIG_PAGE_SOURCE = PACKAGED_APPLICATIONS / "config" / "index.html"
 MOVIE_PAGE_SOURCE = PACKAGED_APPLICATIONS / "movie" / "index.html"
 DIRECTORY_PAGE_SOURCE = PACKAGED_APPLICATIONS / "directory" / "index.html"
+MAIL_PAGE_SOURCE = PACKAGED_APPLICATIONS / "mail" / "index.html"
 # The details a person may give of themselves, as #259 names them, and those
 # an entry's first row shows, in order (Phase 4 Step 80).
 STANDARD_FIELDS = (
@@ -136,6 +139,11 @@ def directory_page(content: LayeredSource, built: PackagedApplications) -> str:
     return index_page(built.bundles[DIRECTORY_APPLICATION], content).decode("utf-8")
 
 
+@fixture
+def mail_page(content: LayeredSource, built: PackagedApplications) -> str:
+    return index_page(built.bundles[MAIL_APPLICATION], content).decode("utf-8")
+
+
 def index_page(bundle_id: ContentId, content: LayeredSource) -> bytes:
     """The ``index.html`` of the application ``bundle_id``, read through ``content``."""
     bundle = load_bundle(bundle_id, content)
@@ -189,13 +197,19 @@ def router_for(
     )
 
 
-def test_the_node_ships_the_root_config_movie_and_directory_applications(
+def test_the_node_ships_the_root_config_movie_directory_and_mail_applications(
     built: PackagedApplications,
 ) -> None:
     assert (
         set(SHIPPED_APPLICATIONS)
         == set(built.bundles)
-        == {ROOT_APPLICATION, CONFIG_APPLICATION, MOVIE_APPLICATION, DIRECTORY_APPLICATION}
+        == {
+            ROOT_APPLICATION,
+            CONFIG_APPLICATION,
+            MOVIE_APPLICATION,
+            DIRECTORY_APPLICATION,
+            MAIL_APPLICATION,
+        }
     )
 
 
@@ -495,6 +509,70 @@ def test_each_version_the_directory_page_writes_names_the_sessions_fallback(
     assert "fallback_password: fallbackPassword," in directory_page
 
 
+def test_the_directory_page_links_each_person_to_mail(directory_page: str) -> None:
+    assert "/mail/?to=${encodeURIComponent(entry.id)}" in directory_page
+
+
+def test_the_mail_application_is_built_from_its_directory(mail_page: str) -> None:
+    assert mail_page == MAIL_PAGE_SOURCE.read_text(encoding="utf-8")
+
+
+def test_the_mail_page_is_one_self_contained_document(mail_page: str) -> None:
+    assert mail_page.startswith("<!doctype html>")
+    # Nothing is loaded from a file of its own, or from anywhere else.
+    assert "<link" not in mail_page
+    assert findall(r"<script[^>]*\bsrc", mail_page) == []
+    assert "url(" not in mail_page.split("<style>", 1)[1].split("</style>", 1)[0]
+    assert "http:" not in mail_page
+    assert "https:" not in mail_page
+
+
+def test_the_mail_page_calls_only_endpoints_the_node_serves(mail_page: str) -> None:
+    called = set(findall(r'["`](/data/[^"`$]*)', mail_page))
+    some_id = ContentId.for_data(b"a signed drop", "sha256")
+
+    assert called == {
+        CLIENT_PATH,
+        SESSION_PATH,
+        SIGNED_PATH,
+        "/data/drop/",
+        "/data/signed/",
+        f"{ENCRYPTED_PATH}/",
+        "/data/",
+    }
+    # Mail is found by the target string of an hour, one segment.
+    target = f"mail:{some_id}:2026/10/12/09"
+    assert fullmatch(DROP_SEARCH_PATTERN, f"/data/drop/{quote(target, safe='')}")
+    assert fullmatch(ENCRYPTED_PATTERN, f"{ENCRYPTED_PATH}/{some_id}")
+    assert "encodeURIComponent(target)" in mail_page
+
+
+def test_the_mail_page_keeps_mail_where_the_plan_names_it(mail_page: str) -> None:
+    network = NetworkConfig()
+    [seconds] = findall(r"const DROP_SECONDS = (\d+);", mail_page)
+    [minimum_bits] = findall(r"const DROP_MINIMUM_BITS = (\d+);", mail_page)
+
+    assert 'const MAIL_PREFIX = "mail:";' in mail_page
+    assert 'const SENT_PREFIX = "mail sent:";' in mail_page
+    assert 'const ADDRESS_BOOK_PREFIX = "mail address book:";' in mail_page
+    assert 'const STATE_PREFIX = "mail state:";' in mail_page
+    assert 'const DIRECTORY_TARGET = "user directory";' in mail_page
+    assert 'const DETAILS_PREFIX = "user:";' in mail_page
+    # Within the ceilings a node sets unless its operator lowers them.
+    assert int(seconds) <= network.drop_max_seconds
+    assert int(minimum_bits) <= network.drop_max_minimum_bits
+
+
+def test_the_mail_page_signs_each_copy_and_encrypts_it_for_its_reader(mail_page: str) -> None:
+    # Every copy, and every version of what a person keeps, is placed signed.
+    assert 'call("POST", "/data/signed", {' in mail_page
+    assert 'call("POST", "/data/drop"' not in mail_page
+    assert "encrypt: { for: reader }," in mail_page
+    # Each names its reader, and only a BCC reader's own names them in BCC.
+    assert "const copy = { ...message, for: reader };" in mail_page
+    assert "copy.bcc = [reader];" in mail_page
+
+
 def test_the_config_page_makes_a_user_with_a_fallback_password(config_page: str) -> None:
     assert 'id="user-fallback-password"' in config_page
     assert 'id="user-fallback-password-again"' in config_page
@@ -508,6 +586,7 @@ def test_the_config_page_makes_a_user_with_a_fallback_password(config_page: str)
         # Trusted, so served without a sandbox, and to a remote client, which only plays.
         (MOVIE_APPLICATION, "/movie/", MOVIE_PAGE_SOURCE, "203.0.113.42", {}, None),
         (DIRECTORY_APPLICATION, "/directory/", DIRECTORY_PAGE_SOURCE, "203.0.113.42", {}, None),
+        (MAIL_APPLICATION, "/mail/", MAIL_PAGE_SOURCE, "203.0.113.42", {}, None),
         (
             CONFIG_APPLICATION,
             "/config/",
