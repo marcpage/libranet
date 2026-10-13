@@ -15,7 +15,7 @@ from libranet.protocol.bundle_requests import (
     CopySource,
     FileSource,
 )
-from libranet.protocol.errors import InvalidConfigRequestError
+from libranet.protocol.errors import InvalidRequestError
 
 PLAIN = ContentId.for_data(b"a bundle", "sha256")
 KEY = sha256(b"a playlist").digest()
@@ -109,7 +109,7 @@ def test_a_source_names_a_path_in_a_bundle_by_its_encrypted_id() -> None:
     ],
 )
 def test_an_unusable_edit_is_refused(value: object) -> None:
-    with raises(InvalidConfigRequestError):
+    with raises(InvalidRequestError):
         BundleEditRequest.from_value(value)
 
 
@@ -127,7 +127,7 @@ def test_an_id_this_node_cannot_read_is_refused_as_unsupported(value: object) ->
 
 
 def test_a_refusal_names_no_key() -> None:
-    with raises(InvalidConfigRequestError) as refused:
+    with raises(InvalidRequestError) as refused:
         BundleEditRequest.from_value({"base": f"{PLAIN}/{CIPHER}/{KEY.hex()}00"})
 
     assert KEY.hex() not in str(refused.value)

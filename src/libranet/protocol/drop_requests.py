@@ -45,7 +45,7 @@ from libranet.config.models import TARGET_BITS
 from libranet.identity.people import Username
 from libranet.json_fields import integer_field, number_field
 from libranet.protocol.bundle_requests import BytesSource
-from libranet.protocol.errors import InvalidConfigRequestError
+from libranet.protocol.errors import InvalidRequestError
 from libranet.protocol.identity_requests import MIN_PASSWORD_CHARACTERS, SignInRequest
 
 _LOGGER = getLogger(__name__)
@@ -128,25 +128,23 @@ class DropRequest:
         ``minimum_bits`` is optional, and so is ``encrypt``.
 
         Raises:
-            InvalidConfigRequestError: it is not such an object, or what it
+            InvalidRequestError: it is not such an object, or what it
                 asks for is not a usable drop.
         """
         if not isinstance(value, dict):
-            raise InvalidConfigRequestError("A drop to make must be a JSON object")
+            raise InvalidRequestError("A drop to make must be a JSON object")
 
         target = value.get("target")
         encrypt = value.get("encrypt")
 
         if not isinstance(target, str) or not target:
-            raise InvalidConfigRequestError('"target" must be a string, not empty')
+            raise InvalidRequestError('"target" must be a string, not empty')
 
         if not is_utf8(target):
-            raise InvalidConfigRequestError('"target" is not UTF-8')
+            raise InvalidRequestError('"target" is not UTF-8')
 
-        seconds = number_field(value, "seconds", error=InvalidConfigRequestError)
-        minimum_bits = integer_field(
-            value, "minimum_bits", error=InvalidConfigRequestError, default=0
-        )
+        seconds = number_field(value, "seconds", error=InvalidRequestError)
+        minimum_bits = integer_field(value, "minimum_bits", error=InvalidRequestError, default=0)
 
         try:
             return cls(
@@ -158,7 +156,7 @@ class DropRequest:
             )
 
         except ValueError as error:
-            raise InvalidConfigRequestError(str(error)) from None
+            raise InvalidRequestError(str(error)) from None
 
     def encrypted(self, data: bytes) -> DropRequest:
         """The drop of ``data``, what :attr:`data` encrypts to as asked, placed as asked."""
@@ -193,17 +191,17 @@ class SignedDropRequest:
         what is signed. There is no ``base64``.
 
         Raises:
-            InvalidConfigRequestError: it is not such an object, or what it
+            InvalidRequestError: it is not such an object, or what it
                 asks for is not a usable drop, or its text not an object's.
         """
         if isinstance(value, dict) and "base64" in value:
-            raise InvalidConfigRequestError('What is signed must be given as "text", not "base64"')
+            raise InvalidRequestError('What is signed must be given as "text", not "base64"')
 
         try:
             return cls(DropRequest.from_value(value))
 
         except ValueError as error:
-            raise InvalidConfigRequestError(str(error)) from None
+            raise InvalidRequestError(str(error)) from None
 
     @property
     def text(self) -> str:

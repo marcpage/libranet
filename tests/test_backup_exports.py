@@ -36,7 +36,7 @@ from libranet.cas.layered import LayeredSource
 from libranet.cas.store import CasStore
 from libranet.config.models import MIB
 from libranet.messaging.events import ConflictBehavior
-from libranet.protocol.config_requests import BuildRequest, ExportRequest, Password
+from libranet.protocol.backup_requests import BuildRequest, ExportRequest, Password
 
 REQUESTED_AT = 1_789_000_000.0
 FINISHED_AT = REQUESTED_AT + 5

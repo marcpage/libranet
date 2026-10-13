@@ -2,21 +2,38 @@
 
 Those refusing a body or a signature are shared by everything that reads
 request bodies or checks signatures. The ``503`` is for content that is on
-its way, whether from peers or out of a bundle. The ``500`` for a registry
-that cannot be read does not say why, which would name its file, since any
-client may ask. The ``400`` for content that is not a usable bundle is for
-everything that opens or checks one a request names.
+its way, whether from peers or out of a bundle, or for what the backup module
+has not reported yet. The ``500`` for a registry that cannot be read does not
+say why, which would name its file, since any client may ask. The ``400`` for
+content that is not a usable bundle is for everything that opens or checks
+one a request names.
+
+What more than one handler reads from a request is read here too, giving what
+was asked for or the response refusing it: the JSON value a body carries,
+which every endpoint taking one reads, ``/config/api``'s and ``/data``'s
+alike, and the content id a ``/data/{algorithm}/{hash}`` path names, which
+every endpoint beneath one reads.
+
+A JSON body is read only if its ``Content-Type`` says it is JSON, and is
+``415`` otherwise, since a page on another site can send a form's types
+without asking this node first (HttpApi §2.3.3).
 """
 
 from __future__ import annotations
 from dataclasses import replace
 from http import HTTPStatus
-from logging import DEBUG, WARNING, Logger
+from logging import DEBUG, WARNING, Logger, getLogger
+from typing import Callable, Final, TypeVar
 
 from libranet.bundle.errors import BundleError, UnsupportedBundleError
+from libranet.bundle.parts import PartPath
+from libranet.cas.content_id import ContentId
+from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
 from libranet.problems import (
     CONTENT_TOO_LARGE,
     CONTENT_UNAVAILABLE,
+    INVALID_CONTENT_ADDRESS,
+    INVALID_REQUEST,
     INVALID_SIGNATURE,
     SIGNATURE_REQUIRED,
     UNUSABLE_BUNDLE,
@@ -29,6 +46,15 @@ from libranet.webserver.http_types import (
     status_response,
     typed_response,
 )
+
+_LOGGER = getLogger(__name__)
+
+_Parsed = TypeVar("_Parsed")
+
+# A JSON body an endpoint reads, unless it sets a limit of its own, is a small
+# object of a few fields: a backup job, a restore, an application, a sign-in.
+# Anything larger is a mistake, and is refused before it is read.
+MAX_JSON_BODY_BYTES: Final = 64 * 1024
 
 
 def unreadable_body_response(request: Request, max_bytes: int) -> Response | None:
@@ -129,3 +155,104 @@ def unusable_bundle_response(request: Request, error: BundleError, logger: Logge
     level = WARNING if isinstance(error, UnsupportedBundleError) else DEBUG
     logger.log(level, "Refusing %s %s: %s", request.method, request.path, error)
     return typed_response(request, UNUSABLE_BUNDLE, HTTPStatus.BAD_REQUEST, str(error))
+
+
+def unreported_response(request: Request, retry_after_seconds: int) -> Response:
+    """The ``503`` for what the backup module has not reported yet."""
+    return status_response(
+        request,
+        HTTPStatus.SERVICE_UNAVAILABLE,
+        "The backup module has not reported its state yet.",
+        headers={"Retry-After": str(retry_after_seconds)},
+    )
+
+
+def invalid_request_response(request: Request, error: ValueError) -> Response:
+    """The ``400`` for a body an endpoint cannot act on."""
+    return typed_response(request, INVALID_REQUEST, HTTPStatus.BAD_REQUEST, str(error))
+
+
+def body_or_refusal(request: Request, *, max_bytes: int = MAX_JSON_BODY_BYTES) -> bytes | Response:
+    """``request``'s body, or the response refusing it unread, as over ``max_bytes`` is."""
+    refusal = unreadable_body_response(request, max_bytes)
+    return refusal if refusal is not None else request.body.read()
+
+
+def json_or_refusal(request: Request, *, max_bytes: int = MAX_JSON_BODY_BYTES) -> object | Response:
+    """The JSON value ``request``'s body carries, or the response refusing the body.
+
+    A body larger than ``max_bytes``, :data:`MAX_JSON_BODY_BYTES` unless it
+    is given, is ``413``. One that does not say it is JSON is ``415``, and
+    one that says so and is not is ``400``.
+    """
+    body = body_or_refusal(request, max_bytes=max_bytes)
+
+    if isinstance(body, Response):
+        return body
+
+    try:
+        return request.json()
+
+    except UnsupportedMediaTypeError as error:
+        _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
+        return unsupported_media_type_response(request, error)
+
+    except ValueError as error:
+        _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
+        return invalid_request_response(request, error)
+
+
+def parsed_or_refusal(
+    request: Request,
+    parse: Callable[[object], _Parsed],
+    *,
+    max_bytes: int = MAX_JSON_BODY_BYTES,
+) -> _Parsed | Response:
+    """What ``parse`` makes of the JSON value ``request``'s body carries, or the refusal.
+
+    The body is refused as :func:`json_or_refusal` refuses it, and a value
+    ``parse`` refuses with a ``ValueError`` is ``400``.
+    """
+    value = json_or_refusal(request, max_bytes=max_bytes)
+
+    if isinstance(value, Response):
+        return value
+
+    try:
+        return parse(value)
+
+    except ValueError as error:
+        _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
+        return invalid_request_response(request, error)
+
+
+def invalid_address_response(
+    error: InvalidContentIdError | BundleError, request: Request
+) -> Response:
+    """The ``400`` for a ``/data/{algorithm}/{hash}`` path naming no valid id (HttpApi §5.4).
+
+    That includes an encrypted id whose key cannot be read (§12.1).
+    """
+    return typed_response(request, INVALID_CONTENT_ADDRESS, HTTPStatus.BAD_REQUEST, str(error))
+
+
+def content_id_or_refusal(request: Request, logger: Logger) -> ContentId | Response:
+    """The content a ``/data/{algorithm}/{hash}`` path names, or the response refusing it.
+
+    ``logger`` is the handler's own, which the refusal is logged with, but for
+    any key the path carries (§12.1).
+    """
+    try:
+        return ContentId.from_fields(request.params)
+
+    except UnknownAlgorithmError as error:
+        logger.warning(
+            "Refusing %s %s: %s", request.method, PartPath.without_keys(request.path), error
+        )
+        return invalid_address_response(error, request)
+
+    except InvalidContentIdError as error:
+        logger.debug(
+            "Refusing %s %s: %s", request.method, PartPath.without_keys(request.path), error
+        )
+        return invalid_address_response(error, request)

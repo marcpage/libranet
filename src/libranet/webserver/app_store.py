@@ -61,7 +61,6 @@ from libranet.json_fields import string_field
 from libranet.json_format import compact_json
 from libranet.protocol.http_syntax import API_PREFIX, JSON_CONTENT_TYPE
 from libranet.webserver.app_registry import Application
-from libranet.webserver.config_handlers import parsed_or_refusal
 from libranet.webserver.errors import StoreFileError, StoreLimitError, ValueChangedError
 from libranet.webserver.http_types import (
     Request,
@@ -73,6 +72,7 @@ from libranet.webserver.http_types import (
 from libranet.webserver.own_pages import OwnPages
 from libranet.webserver.request_refusals import (
     content_too_large_response,
+    parsed_or_refusal,
     unreadable_body_response,
 )
 

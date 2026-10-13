@@ -37,7 +37,7 @@ from typing import Final, Mapping, TypeAlias
 from libranet.bundle.parsing import parse_bundle
 from libranet.bundle.parts import PartPath
 from libranet.bundle.shapes import Bundle, is_entry_path, is_utf8
-from libranet.protocol.errors import InvalidConfigRequestError
+from libranet.protocol.errors import InvalidRequestError
 
 # The keys of each source's JSON object (HttpApi §12.3).
 _FILE_KEYS: Final = frozenset({"file"})
@@ -152,13 +152,13 @@ class BundleEditRequest:
         Each is optional.
 
         Raises:
-            InvalidConfigRequestError: it is not such an object, or what it
+            InvalidRequestError: it is not such an object, or what it
                 asks for is not a usable edit.
             UnsupportedBundleError: an id names a hash algorithm or a cipher
                 this node lacks.
         """
         if not isinstance(value, dict):
-            raise InvalidConfigRequestError("A bundle to make must be a JSON object")
+            raise InvalidRequestError("A bundle to make must be a JSON object")
 
         base = value.get("base")
         encrypted = value.get("encrypted")
@@ -166,16 +166,16 @@ class BundleEditRequest:
         remove = value.get("remove", [])
 
         if base is not None and not isinstance(base, str):
-            raise InvalidConfigRequestError('"base" must be a string or null')
+            raise InvalidRequestError('"base" must be a string or null')
 
         if encrypted is not None and not isinstance(encrypted, bool):
-            raise InvalidConfigRequestError('"encrypted" must be true, false, or null')
+            raise InvalidRequestError('"encrypted" must be true, false, or null')
 
         if not isinstance(add, dict):
-            raise InvalidConfigRequestError('"add" must be an object')
+            raise InvalidRequestError('"add" must be an object')
 
         if not isinstance(remove, list) or not all(isinstance(path, str) for path in remove):
-            raise InvalidConfigRequestError('"remove" must be an array of strings')
+            raise InvalidRequestError('"remove" must be an array of strings')
 
         try:
             return cls(
@@ -187,7 +187,7 @@ class BundleEditRequest:
 
         except ValueError as error:
             # A MalformedBundleError, from an id, is one; parsing leaves keys out of it.
-            raise InvalidConfigRequestError(str(error)) from None
+            raise InvalidRequestError(str(error)) from None
 
     @property
     def encrypts(self) -> bool:
@@ -214,15 +214,15 @@ class WholeBundleRequest:
         """The bundle a ``{"bundle": {…}}`` object gives.
 
         Raises:
-            InvalidConfigRequestError: it is not such an object, alone.
+            InvalidRequestError: it is not such an object, alone.
             MalformedBundleError: the bundle is not well-formed.
             UnsupportedBundleError: the bundle is one this node cannot read.
         """
         if not isinstance(value, dict) or value.keys() != {_WHOLE_KEY}:
-            raise InvalidConfigRequestError(f'"{_WHOLE_KEY}" must be given alone')
+            raise InvalidRequestError(f'"{_WHOLE_KEY}" must be given alone')
 
         if not isinstance(value[_WHOLE_KEY], dict):
-            raise InvalidConfigRequestError(f'"{_WHOLE_KEY}" must be an object')
+            raise InvalidRequestError(f'"{_WHOLE_KEY}" must be an object')
 
         return cls(parse_bundle(value[_WHOLE_KEY]))
 

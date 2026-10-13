@@ -65,7 +65,7 @@ from libranet.webserver.app_store import StoredValue
 from libranet.webserver.config_auth import CONFIG_REALM
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import NodeDescription
-from libranet.webserver.drop_handler import CostlyWork, Turns
+from libranet.webserver.costly_work import CostlyWork, Turns
 from libranet.webserver.errors import ResponseCutShortError
 from libranet.webserver.http_types import Request, RequestBody, Response, StreamedBody
 from libranet.webserver.local_folders import LocalFolders
@@ -1788,9 +1788,10 @@ def local_server(
                 allow_unsigned_api_reads=True,
                 config_port=8180,
                 local_folders=LocalFolders({"Movies": tmp_path / "Movies"}),
-                node_id=SERVER_IDENTITY.node_id,
-                max_drop_seconds=1.0,
-                max_drop_minimum_bits=8,
+                node=NodeDescription(
+                    SERVER_IDENTITY.node_id,
+                    NetworkConfig(drop_max_seconds=1.0, drop_max_minimum_bits=8),
+                ),
             ),
             getLogger("test.webserver"),
             MessageSigner(SERVER_IDENTITY),
@@ -2265,8 +2266,7 @@ def test_a_person_key_is_made_only_at_the_sizes_the_router_is_given(
         RequestAuthenticator.of(LibranetConfig(storage=storage)),
         allow_unsigned_api_reads=True,
         config_port=8180,
-        node_id=SERVER_IDENTITY.node_id,
-        person_key_bits=(4096,),
+        node=NodeDescription(SERVER_IDENTITY.node_id, NetworkConfig(), person_key_bits=(4096,)),
     )
     body = (
         b'{"username": "alice", "password": "correct horse", '
@@ -2487,7 +2487,7 @@ def test_the_main_port_takes_its_turns_in_the_costly_work_it_is_given(
         RequestAuthenticator.of(LibranetConfig(storage=storage)),
         allow_unsigned_api_reads=True,
         config_port=8180,
-        node_id=SERVER_IDENTITY.node_id,
+        node=SERVER_NODE,
         costly_work=CostlyWork(searches, derivations),
     )
 

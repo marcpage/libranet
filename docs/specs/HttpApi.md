@@ -2571,7 +2571,7 @@ These are defined so far, each named by its last segment beneath
 | `invalid-signature` | `401` | A signature that fails verification; the connection is closed (HandshakeProtocol §5.3) |
 | `invalid-list` | `400` | A node list or seek list that is not well-formed (§10.6, §10.7.1) |
 | `credential-required` | `401` | A `/config` request without the credential the node holds (§2.3.1) |
-| `invalid-config-request` | `400` | A JSON body an endpoint cannot act on: one beneath `/config/api` (§2.3), or of making a drop (§9.6), making an identity, signing in, making a signed drop, or opening an encrypted block (§11.3–§11.6), the folders and imports (§12.2), making bundles (§12.3), or an application's store (§13.3) |
+| `invalid-request` | `400` | A JSON body an endpoint cannot act on: one beneath `/config/api` (§2.3), or of making a drop (§9.6), making an identity, signing in, making a signed drop, or opening an encrypted block (§11.3–§11.6), the folders and imports (§12.2), making bundles (§12.3), or an application's store (§13.3) |
 | `unusable-bundle` | `400` or `500` | Content that is not a bundle, or a bundle the node cannot read: `400` when a request named it (§11.5, §11.6, §12.1, §12.3), and `500` when it is an application's (§13) |
 | `bundle-authentication-required` | `401` | A password-protected application, asking for its password (§13.1) |
 | `session-required` | `401` | A request to sign as a person, or to open what is encrypted for one, from a browser no one is signed in on (§11.5, §11.6) |

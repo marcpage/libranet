@@ -18,7 +18,7 @@ from libranet.protocol.drop_requests import (
     PersonEncryption,
     SignedDropRequest,
 )
-from libranet.protocol.errors import InvalidConfigRequestError
+from libranet.protocol.errors import InvalidRequestError
 
 PERSON_ID = ContentId.for_data(b"a person's public key", "sha256")
 
@@ -74,7 +74,7 @@ def test_a_drop_of_base64_and_no_minimum_matches_none() -> None:
     ],
 )
 def test_a_body_that_is_no_usable_drop_is_refused(value: object, complaint: str) -> None:
-    with raises(InvalidConfigRequestError, match=complaint.replace("(", r"\(")):
+    with raises(InvalidRequestError, match=complaint.replace("(", r"\(")):
         DropRequest.from_value(value)
 
 
@@ -101,7 +101,7 @@ def test_a_signed_drop_is_of_the_text_of_an_object_and_placed_as_a_drop_is() -> 
     ],
 )
 def test_a_body_that_is_no_usable_signed_drop_is_refused(value: object, complaint: str) -> None:
-    with raises(InvalidConfigRequestError, match=complaint):
+    with raises(InvalidRequestError, match=complaint):
         SignedDropRequest.from_value(value)
 
 
@@ -175,14 +175,14 @@ def test_no_password_is_in_a_drops_repr() -> None:
 def test_an_encryption_that_is_none_this_node_makes_is_refused(
     encrypt: object, complaint: str
 ) -> None:
-    with raises(InvalidConfigRequestError, match=complaint):
+    with raises(InvalidRequestError, match=complaint):
         DropRequest.from_value({"target": "t", "text": "x", "seconds": 0, "encrypt": encrypt})
 
 
 def test_a_person_named_under_a_hash_algorithm_this_node_lacks_is_a_warning(
     caplog: LogCaptureFixture,
 ) -> None:
-    with caplog.at_level(WARNING), raises(InvalidConfigRequestError, match="names no person"):
+    with caplog.at_level(WARNING), raises(InvalidRequestError, match="names no person"):
         DropRequest.from_value(
             {"target": "t", "text": "x", "seconds": 0, "encrypt": {"for": "sha999/abcd"}}
         )

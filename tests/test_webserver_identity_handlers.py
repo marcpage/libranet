@@ -21,7 +21,7 @@ from libranet.config.models import StorageConfig
 from libranet.identity.people import NewIdentity, PersonKey, Username
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
-from libranet.problems import CONTENT_UNAVAILABLE, INVALID_CONFIG_REQUEST
+from libranet.problems import CONTENT_UNAVAILABLE, INVALID_REQUEST
 from libranet.protocol.drop_requests import DropRequest
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.protocol.search import LocalSearch, SearchCache
@@ -486,7 +486,7 @@ def test_making_without_signing_in_is_refused_as_making_is(
 
     assert again.status == 409
     assert short.status == 400
-    assert problem_type(short) == INVALID_CONFIG_REQUEST
+    assert problem_type(short) == INVALID_REQUEST
 
 
 def test_signing_in_opens_the_identity_at_the_usernames_drop(
@@ -725,7 +725,7 @@ def test_an_identity_that_cannot_be_made_is_400_before_any_work(
     response = identities.make(making(changes=changes))
 
     assert response.status == 400
-    assert problem_type(response) == INVALID_CONFIG_REQUEST
+    assert problem_type(response) == INVALID_REQUEST
     assert complaint in loads(response.body)["detail"]
     assert recorder.messages == []
 
@@ -746,7 +746,7 @@ def test_a_sign_in_that_is_not_one_is_400(identities: Identities, recorder: Reco
     response = identities.sign_in(asked("POST", SESSION_PATH, {"username": "alice"}))
 
     assert response.status == 400
-    assert problem_type(response) == INVALID_CONFIG_REQUEST
+    assert problem_type(response) == INVALID_REQUEST
     assert recorder.messages == []
 
 

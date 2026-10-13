@@ -26,8 +26,8 @@ from libranet.messaging.events import EventType
 from libranet.problems import (
     CONTENT_UNAVAILABLE,
     INVALID_BUNDLE_SIGNATURE,
-    INVALID_CONFIG_REQUEST,
     INVALID_CONTENT_ADDRESS,
+    INVALID_REQUEST,
     SESSION_REQUIRED,
     UNUSABLE_BUNDLE,
     WRONG_KEY,
@@ -455,7 +455,7 @@ def test_a_body_that_is_no_username_and_password_is_400(
     response = encrypted.read_by_password(opening_by_password(content_id, value))
 
     assert response.status == 400
-    assert problem_type(response) == INVALID_CONFIG_REQUEST
+    assert problem_type(response) == INVALID_REQUEST
 
 
 def test_a_body_that_does_not_say_it_is_json_is_415(

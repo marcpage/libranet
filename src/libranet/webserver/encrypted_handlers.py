@@ -52,9 +52,8 @@ from libranet.cas.content_id import ContentId
 from libranet.problems import WRONG_KEY
 from libranet.protocol.http_syntax import API_PREFIX
 from libranet.protocol.identity_requests import SignInRequest
-from libranet.webserver.config_handlers import parsed_or_refusal
-from libranet.webserver.data_handler import content_id_or_refusal
-from libranet.webserver.drop_handler import MAX_DROP_BODY_BYTES, Turns
+from libranet.webserver.costly_work import Turns
+from libranet.webserver.drop_handler import MAX_DROP_BODY_BYTES
 from libranet.webserver.http_types import (
     NOT_STORED,
     Request,
@@ -63,7 +62,11 @@ from libranet.webserver.http_types import (
     status_response,
     typed_response,
 )
-from libranet.webserver.request_refusals import unusable_bundle_response
+from libranet.webserver.request_refusals import (
+    content_id_or_refusal,
+    parsed_or_refusal,
+    unusable_bundle_response,
+)
 from libranet.webserver.signed_handlers import SignedDrops, signed_value
 
 _LOGGER = getLogger(__name__)

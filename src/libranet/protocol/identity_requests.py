@@ -34,7 +34,7 @@ from libranet.bundle.shapes import is_utf8
 from libranet.config.models import MIN_PERSON_KEY_BITS, TARGET_BITS
 from libranet.identity.people import Username
 from libranet.json_fields import integer_field, number_field, string_field
-from libranet.protocol.errors import InvalidConfigRequestError
+from libranet.protocol.errors import InvalidRequestError
 
 #: The fewest characters a new identity's password has, once in NFC (HttpApi §11.3).
 MIN_PASSWORD_CHARACTERS: Final = 8
@@ -59,17 +59,17 @@ class SignInRequest:
         """The sign-in a ``{"username", "password"}`` object asks for.
 
         Raises:
-            InvalidConfigRequestError: it is not such an object, or its
+            InvalidRequestError: it is not such an object, or its
                 username or password is not one.
         """
         if not isinstance(value, dict):
-            raise InvalidConfigRequestError("A sign-in must be a JSON object")
+            raise InvalidRequestError("A sign-in must be a JSON object")
 
         try:
             return cls(*_credentials(value))
 
         except ValueError as error:
-            raise InvalidConfigRequestError(str(error)) from None
+            raise InvalidRequestError(str(error)) from None
 
 
 @dataclass(frozen=True)
@@ -115,13 +115,13 @@ class IdentityRequest:
         ``minimum_bits`` is optional.
 
         Raises:
-            InvalidConfigRequestError: it is not such an object, or what it
+            InvalidRequestError: it is not such an object, or what it
                 asks for is not an identity this node makes.
         """
         if not isinstance(value, dict):
-            raise InvalidConfigRequestError("An identity to make must be a JSON object")
+            raise InvalidRequestError("An identity to make must be a JSON object")
 
-        key_bits = integer_field(value, "key_bits", error=InvalidConfigRequestError)
+        key_bits = integer_field(value, "key_bits", error=InvalidRequestError)
         fallback_password, seconds, minimum_bits = _fallback_and_search(value)
 
         try:
@@ -129,7 +129,7 @@ class IdentityRequest:
             return cls(username, password, fallback_password, key_bits, seconds, minimum_bits)
 
         except ValueError as error:
-            raise InvalidConfigRequestError(str(error)) from None
+            raise InvalidRequestError(str(error)) from None
 
 
 @dataclass(frozen=True)
@@ -169,11 +169,11 @@ class FallbackRequest:
         ``minimum_bits`` is optional.
 
         Raises:
-            InvalidConfigRequestError: it is not such an object, or what it
+            InvalidRequestError: it is not such an object, or what it
                 asks for is not a fallback taking over.
         """
         if not isinstance(value, dict):
-            raise InvalidConfigRequestError("A fallback to take over must be a JSON object")
+            raise InvalidRequestError("A fallback to take over must be a JSON object")
 
         fallback_password, seconds, minimum_bits = _fallback_and_search(value)
 
@@ -182,7 +182,7 @@ class FallbackRequest:
             return cls(username, password, fallback_password, seconds, minimum_bits)
 
         except ValueError as error:
-            raise InvalidConfigRequestError(str(error)) from None
+            raise InvalidRequestError(str(error)) from None
 
 
 def _fallback_and_search(value: dict[str, object]) -> tuple[str, float, int]:
@@ -191,11 +191,11 @@ def _fallback_and_search(value: dict[str, object]) -> tuple[str, float, int]:
     ``minimum_bits`` is 0 if absent.
 
     Raises:
-        InvalidConfigRequestError: one is not of its type.
+        InvalidRequestError: one is not of its type.
     """
-    seconds = number_field(value, "seconds", error=InvalidConfigRequestError)
-    minimum_bits = integer_field(value, "minimum_bits", error=InvalidConfigRequestError, default=0)
-    fallback_password = string_field(value, "fallback_password", error=InvalidConfigRequestError)
+    seconds = number_field(value, "seconds", error=InvalidRequestError)
+    minimum_bits = integer_field(value, "minimum_bits", error=InvalidRequestError, default=0)
+    fallback_password = string_field(value, "fallback_password", error=InvalidRequestError)
     return fallback_password, seconds, minimum_bits
 
 

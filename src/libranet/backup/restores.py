@@ -90,7 +90,7 @@ from libranet.bundle.symlinks import PathEnd, path_reached
 from libranet.bundle.xattrs import ExtendedAttributes
 from libranet.cas.content_id import ContentId
 from libranet.messaging.events import ConflictBehavior
-from libranet.protocol.config_requests import RestoreRequest
+from libranet.protocol.backup_requests import RestoreRequest
 
 _LOGGER = getLogger(__name__)
 

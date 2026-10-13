@@ -48,9 +48,9 @@ from libranet.identity.errors import KeyFileError
 from libranet.identity.keys import published_public_key
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
-from libranet.webserver.data_handler import content_id_or_refusal
 from libranet.webserver.http_types import Request, Response
 from libranet.webserver.request_refusals import (
+    content_id_or_refusal,
     invalid_signature_response,
     signature_required_response,
     unreadable_body_response,

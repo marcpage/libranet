@@ -9,7 +9,7 @@ from pytest import LogCaptureFixture, mark, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.messaging.events import ConflictBehavior
-from libranet.protocol.config_requests import (
+from libranet.protocol.backup_requests import (
     IDENTIFIER_LENGTH,
     BackupJobRequest,
     BuildRequest,
@@ -18,7 +18,7 @@ from libranet.protocol.config_requests import (
     Password,
     RestoreRequest,
 )
-from libranet.protocol.errors import InvalidConfigRequestError
+from libranet.protocol.errors import InvalidRequestError
 
 DIRECTORY = "/home/me/documents"
 BUNDLE = ContentId.for_data(b"a backup bundle", "sha256")
@@ -82,7 +82,7 @@ def test_one_directory_has_one_spelling_and_so_one_job(spelled: str) -> None:
     ],
 )
 def test_a_job_this_node_cannot_act_on_is_refused(value: object) -> None:
-    with raises(InvalidConfigRequestError):
+    with raises(InvalidRequestError):
         BackupJobRequest.from_value(value)
 
 
@@ -135,7 +135,7 @@ def test_a_restore_is_named_by_its_bundle_and_its_target() -> None:
     ],
 )
 def test_a_restore_this_node_cannot_act_on_is_refused(value: object) -> None:
-    with raises(InvalidConfigRequestError):
+    with raises(InvalidRequestError):
         RestoreRequest.from_value(value)
 
 
@@ -199,7 +199,7 @@ def test_a_build_is_named_by_its_directory_alone(spelled: str) -> None:
     ],
 )
 def test_a_build_this_node_cannot_act_on_is_refused(value: object) -> None:
-    with raises(InvalidConfigRequestError):
+    with raises(InvalidRequestError):
         BuildRequest.from_value(value)
 
 
@@ -257,7 +257,7 @@ def test_an_export_is_named_by_its_bundle_and_its_archive_alone() -> None:
     ],
 )
 def test_an_export_this_node_cannot_act_on_is_refused(value: object) -> None:
-    with raises(InvalidConfigRequestError):
+    with raises(InvalidRequestError):
         ExportRequest.from_value(value)
 
 
@@ -271,7 +271,7 @@ def test_an_export_this_node_cannot_act_on_is_refused(value: object) -> None:
 def test_a_bundle_under_a_hash_algorithm_this_node_lacks_is_a_warning(
     caplog: LogCaptureFixture, parse: Callable[[object], object], value: object, asked: str
 ) -> None:
-    with caplog.at_level(WARNING), raises(InvalidConfigRequestError, match="'sha999'"):
+    with caplog.at_level(WARNING), raises(InvalidRequestError, match="'sha999'"):
         parse(value)
 
     (record,) = caplog.records
@@ -315,7 +315,7 @@ def test_an_import_is_named_by_the_path_asked_for_alone() -> None:
     ],
 )
 def test_an_import_this_node_cannot_act_on_is_refused(value: object) -> None:
-    with raises(InvalidConfigRequestError):
+    with raises(InvalidRequestError):
         ImportRequest.from_value(value)
 
 

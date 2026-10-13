@@ -26,28 +26,28 @@ that endpoint's own routes do not take is ``405`` there, not an upload.
 
 from __future__ import annotations
 from http import HTTPStatus
-from logging import Logger, getLogger
+from logging import getLogger
 from typing import Final
 
 from libranet.bundle.content import ContentSource
-from libranet.bundle.errors import BundleError
-from libranet.bundle.parts import PartPath
 from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
-from libranet.cas.errors import ContentNotFoundError, InvalidContentIdError, UnknownAlgorithmError
+from libranet.cas.errors import ContentNotFoundError
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
-from libranet.problems import INVALID_CONTENT_ADDRESS
 from libranet.protocol.client_origin import is_local_client
 from libranet.protocol.http_syntax import API_PREFIX
 from libranet.webserver.http_types import (
+    IMMUTABLE_CACHE_CONTROL,
     Request,
     Response,
     bytes_response,
     status_response,
-    typed_response,
 )
-from libranet.webserver.request_refusals import content_unavailable_response
+from libranet.webserver.request_refusals import (
+    content_id_or_refusal,
+    content_unavailable_response,
+)
 
 _LOGGER = getLogger(__name__)
 
@@ -73,41 +73,6 @@ DATA_ENDPOINT_NAMES: Final = (
 DATA_PATTERN: Final = (
     rf"{API_PREFIX}/(?P<algorithm>(?!(?:{'|'.join(DATA_ENDPOINT_NAMES)})/)[^/]+)/(?P<hash>[^/]+)"
 )
-
-# CAS content never changes under its identifier (HttpApi §20).
-IMMUTABLE_CACHE_CONTROL: Final = "public, max-age=31536000, immutable"
-
-
-def invalid_address_response(
-    error: InvalidContentIdError | BundleError, request: Request
-) -> Response:
-    """The ``400`` for a ``/data/{algorithm}/{hash}`` path naming no valid id (HttpApi §5.4).
-
-    That includes an encrypted id whose key cannot be read (§12.1).
-    """
-    return typed_response(request, INVALID_CONTENT_ADDRESS, HTTPStatus.BAD_REQUEST, str(error))
-
-
-def content_id_or_refusal(request: Request, logger: Logger) -> ContentId | Response:
-    """The content a ``/data/{algorithm}/{hash}`` path names, or the response refusing it.
-
-    ``logger`` is the handler's own, which the refusal is logged with, but for
-    any key the path carries (§12.1).
-    """
-    try:
-        return ContentId.from_fields(request.params)
-
-    except UnknownAlgorithmError as error:
-        logger.warning(
-            "Refusing %s %s: %s", request.method, PartPath.without_keys(request.path), error
-        )
-        return invalid_address_response(error, request)
-
-    except InvalidContentIdError as error:
-        logger.debug(
-            "Refusing %s %s: %s", request.method, PartPath.without_keys(request.path), error
-        )
-        return invalid_address_response(error, request)
 
 
 class DataReadHandler:

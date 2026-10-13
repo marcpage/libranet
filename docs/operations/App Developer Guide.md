@@ -308,7 +308,7 @@ library does. The types an application meets most:
 | --- | --- | --- |
 | `content-unavailable` | `503` | Content the node does not hold yet, and has asked its peers for (§5.3) |
 | `invalid-content-address` | `400` | A path that names no valid content id |
-| `invalid-config-request` | `400` | A JSON body the endpoint cannot act on; `detail` says why |
+| `invalid-request` | `400` | A JSON body the endpoint cannot act on; `detail` says why |
 | `unusable-bundle` | `400` | Content that is not a bundle, or a bundle the node cannot read |
 | `content-too-large` | `413` | A body, or what it would store, larger than the node takes; `max_bytes` gives the limit |
 | `about:blank` | Any | An error its status describes fully, such as `403`, `404`, or `412` |

@@ -43,7 +43,7 @@ from libranet.bundle.protection import protect, unprotect
 from libranet.cas.content_id import ContentId
 from libranet.json_fields import integer_field, number_field, string_field
 from libranet.json_format import compact_json, pretty_json
-from libranet.protocol.config_requests import BackupJobRequest
+from libranet.protocol.backup_requests import BackupJobRequest
 
 _LOGGER = getLogger(__name__)
 

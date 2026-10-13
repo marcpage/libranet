@@ -38,16 +38,16 @@ from typing import Final
 
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
-from libranet.protocol.config_requests import ImportRequest
+from libranet.protocol.backup_requests import ImportRequest
 from libranet.protocol.http_syntax import API_PREFIX
 from libranet.webserver.backup_state import BackupState
-from libranet.webserver.config_handlers import (
+from libranet.webserver.http_types import Request, Response, json_response, status_response
+from libranet.webserver.local_folders import LocalFolders
+from libranet.webserver.request_refusals import (
     invalid_request_response,
     parsed_or_refusal,
     unreported_response,
 )
-from libranet.webserver.http_types import Request, Response, json_response, status_response
-from libranet.webserver.local_folders import LocalFolders
 
 _LOGGER = getLogger(__name__)
 

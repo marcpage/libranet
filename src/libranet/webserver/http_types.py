@@ -33,6 +33,10 @@ _LOGGER = getLogger(__name__)
 # What has no cache keep a response (RFC 9111 §5.2.2.5).
 NOT_STORED: Final[Mapping[str, str]] = {"Cache-Control": "no-store"}
 
+# What lets any cache keep a response for good: CAS content never changes
+# under its identifier (HttpApi §20).
+IMMUTABLE_CACHE_CONTROL: Final = "public, max-age=31536000, immutable"
+
 # The methods that only read. A HEAD is answered as a GET would be, with
 # the body left out (RFC 9110 §9.3.2).
 READ_METHODS: Final = ("GET", "HEAD")

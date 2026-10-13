@@ -96,9 +96,8 @@ from libranet.protocol.bundle_requests import (
     FileSource,
     WholeBundleRequest,
 )
-from libranet.protocol.errors import InvalidConfigRequestError
+from libranet.protocol.errors import InvalidRequestError
 from libranet.protocol.http_syntax import API_PREFIX
-from libranet.webserver.config_handlers import invalid_request_response, json_or_refusal
 from libranet.webserver.errors import BundleEditError
 from libranet.webserver.file_stream import DEFAULT_PART_POLL_INTERVAL_SECONDS, ContentWait
 from libranet.webserver.http_types import (
@@ -108,7 +107,11 @@ from libranet.webserver.http_types import (
     status_response,
     typed_response,
 )
-from libranet.webserver.request_refusals import content_unavailable_response
+from libranet.webserver.request_refusals import (
+    content_unavailable_response,
+    invalid_request_response,
+    json_or_refusal,
+)
 
 _LOGGER = getLogger(__name__)
 
@@ -527,7 +530,7 @@ class BundleEditHandler:
 
                 made = edit.store(self.uploads, self.max_object_bytes, self.max_layers)
 
-        except InvalidConfigRequestError as error:
+        except InvalidRequestError as error:
             _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
             return invalid_request_response(request, error)
 

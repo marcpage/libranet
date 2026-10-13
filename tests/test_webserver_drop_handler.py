@@ -26,7 +26,7 @@ from libranet.config.models import DEFAULT_CONFIG_HOSTS, StorageConfig
 from libranet.identity.people import PersonKey
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
-from libranet.problems import CONTENT_TOO_LARGE, CONTENT_UNAVAILABLE, INVALID_CONFIG_REQUEST
+from libranet.problems import CONTENT_TOO_LARGE, CONTENT_UNAVAILABLE, INVALID_REQUEST
 from libranet.protocol.drop_requests import DropRequest, Encryption
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.webserver.app_registry import (
@@ -225,7 +225,7 @@ def test_a_search_past_a_ceiling_is_400_before_it_starts(
     response = handler(drop_request(asking(b"content", seconds, minimum_bits)))
 
     assert response.status == 400
-    assert problem_type(response) == INVALID_CONFIG_REQUEST
+    assert problem_type(response) == INVALID_REQUEST
     assert loads(response.body)["detail"] == complaint
     assert recorder.messages == []
 
@@ -234,7 +234,7 @@ def test_a_body_that_is_no_drop_is_400(handler: DropHandler) -> None:
     response = handler(drop_request({"target": TARGET, "seconds": 0}))
 
     assert response.status == 400
-    assert problem_type(response) == INVALID_CONFIG_REQUEST
+    assert problem_type(response) == INVALID_REQUEST
 
 
 def test_a_body_that_does_not_say_it_is_json_is_415(handler: DropHandler) -> None:
@@ -342,7 +342,7 @@ def test_an_id_naming_no_persons_key_is_400(
     response = encrypting(drop_request(encrypted(b"x", {"for": str(not_a_key)})))
 
     assert response.status == 400
-    assert problem_type(response) == INVALID_CONFIG_REQUEST
+    assert problem_type(response) == INVALID_REQUEST
     assert loads(response.body)["detail"] == f'"for", {not_a_key}, names no public key'
     assert recorder.messages == []
 

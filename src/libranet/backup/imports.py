@@ -24,7 +24,7 @@ from libranet.backup.tasks import Task
 from libranet.bundle.building import IgnoredPaths, build_file
 from libranet.bundle.storing import store_bundle
 from libranet.cas.content_id import ContentId
-from libranet.protocol.config_requests import ImportRequest
+from libranet.protocol.backup_requests import ImportRequest
 
 
 class Import(Task):

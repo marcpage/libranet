@@ -3,7 +3,7 @@
 The web server answers requests and the connection manager makes them, so
 the syntax both speak, the lists both read, how ``localhost`` in a node list
 is resolved, search prefixes and the cached search responses, the
-``/config`` request bodies the backup module acts on, the bundles local
+request bodies the backup module acts on, the bundles local
 clients ask the web server to make, the drops pages ask it to make, signed,
 encrypted, or neither, and the identities and sign-ins local clients ask for are each
 defined once, here. No module package imports another; what two modules
@@ -11,16 +11,7 @@ share is here, in :mod:`libranet.messaging`, or in a library package below
 them both.
 """
 
-from libranet.protocol.bundle_requests import (
-    BundleEditRequest,
-    BytesSource,
-    CopySource,
-    EntrySource,
-    FileSource,
-    WholeBundleRequest,
-)
-from libranet.protocol.client_origin import is_local_client
-from libranet.protocol.config_requests import (
+from libranet.protocol.backup_requests import (
     IDENTIFIER_LENGTH,
     BackupJobRequest,
     BuildRequest,
@@ -34,6 +25,15 @@ from libranet.protocol.config_requests import (
     identifier,
     normalized_directory,
 )
+from libranet.protocol.bundle_requests import (
+    BundleEditRequest,
+    BytesSource,
+    CopySource,
+    EntrySource,
+    FileSource,
+    WholeBundleRequest,
+)
+from libranet.protocol.client_origin import is_local_client
 from libranet.protocol.drop_requests import (
     DropRequest,
     Encryption,
@@ -41,7 +41,7 @@ from libranet.protocol.drop_requests import (
     PersonEncryption,
     SignedDropRequest,
 )
-from libranet.protocol.errors import InvalidConfigRequestError, InvalidListError
+from libranet.protocol.errors import InvalidListError, InvalidRequestError
 from libranet.protocol.http_syntax import (
     API_PREFIX,
     BODILESS_STATUSES,
@@ -106,8 +106,8 @@ __all__ = [
     "FallbackRequest",
     "IdentityRequest",
     "ImportRequest",
-    "InvalidConfigRequestError",
     "InvalidListError",
+    "InvalidRequestError",
     "LocalSearch",
     "NodeListSender",
     "Password",

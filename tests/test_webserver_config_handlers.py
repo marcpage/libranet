@@ -19,8 +19,8 @@ from libranet.config.models import NetworkConfig
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
-from libranet.problems import CONTENT_TOO_LARGE, INVALID_CONFIG_REQUEST
-from libranet.protocol.config_requests import (
+from libranet.problems import CONTENT_TOO_LARGE, INVALID_REQUEST
+from libranet.protocol.backup_requests import (
     BackupJobRequest,
     BuildRequest,
     ExportRequest,
@@ -42,13 +42,13 @@ from libranet.webserver.config_handlers import (
     CONFIG_API_PATH,
     CONFIG_USERS_PATH,
     EXPORTS_PATH,
-    MAX_CONFIG_BODY_BYTES,
     NODE_PATH,
     RESTORES_PATH,
     NodeDescription,
     config_routes,
 )
 from libranet.webserver.http_types import Request, RequestBody, Response
+from libranet.webserver.request_refusals import MAX_JSON_BODY_BYTES
 from libranet.webserver.router import Router
 
 from tests.stubs import StubModule
@@ -344,7 +344,7 @@ def test_a_request_this_node_cannot_act_on_publishes_nothing(
     response = router.dispatch(request("POST", path, value))
 
     assert response.status == 400
-    assert problem_type(response) == INVALID_CONFIG_REQUEST
+    assert problem_type(response) == INVALID_REQUEST
     assert published(queues) == []
 
 
@@ -355,7 +355,7 @@ def test_a_body_that_is_not_json_publishes_nothing(
     response = router.dispatch(request("POST", path, body=b"{not json"))
 
     assert response.status == 400
-    assert problem_type(response) == INVALID_CONFIG_REQUEST
+    assert problem_type(response) == INVALID_REQUEST
     assert published(queues) == []
 
 
@@ -376,7 +376,7 @@ def test_an_oversized_body_is_refused_unread(
     router: Router, queues: ModuleQueues, path: str
 ) -> None:
     method = "DELETE" if path in (JOB_PATH, WIKI_PATH) else "POST"
-    body = RequestBody(MAX_CONFIG_BODY_BYTES + 1, Unreadable())
+    body = RequestBody(MAX_JSON_BODY_BYTES + 1, Unreadable())
     response = router.dispatch(Request(method, path, client_address=LOCAL, body=body))
 
     assert response.status == 413
@@ -532,7 +532,7 @@ def test_an_application_this_node_cannot_serve_is_refused_where_it_is_set(
     response = router.dispatch(request("POST", APPLICATIONS_PATH, value))
 
     assert response.status == 400
-    assert problem_type(response) == INVALID_CONFIG_REQUEST
+    assert problem_type(response) == INVALID_REQUEST
     assert not registry.path.exists()
 
 
@@ -542,7 +542,7 @@ def test_an_application_request_that_is_not_json_is_refused(
     response = router.dispatch(request("POST", APPLICATIONS_PATH, body=b"{not json"))
 
     assert response.status == 400
-    assert problem_type(response) == INVALID_CONFIG_REQUEST
+    assert problem_type(response) == INVALID_REQUEST
     assert not registry.path.exists()
 
 
@@ -624,7 +624,7 @@ def test_the_config_application_can_be_neither_trusted_nor_untrusted(
     )
 
     assert response.status == 400
-    assert problem_type(response) == INVALID_CONFIG_REQUEST
+    assert problem_type(response) == INVALID_REQUEST
     assert "own port" in loads(response.body)["detail"]
 
 
@@ -638,7 +638,7 @@ def test_a_trust_request_that_is_not_trusted_true_or_false_is_refused(
     response = router.dispatch(request("PATCH", WIKI_PATH, body=body))
 
     assert response.status == 400
-    assert problem_type(response) == INVALID_CONFIG_REQUEST
+    assert problem_type(response) == INVALID_REQUEST
     assert registry.applications().trusted == frozenset()
 
 
@@ -754,7 +754,8 @@ def test_a_refused_request_is_logged_at_debug(
 
     router.dispatch(request(method, path, body=body))
 
-    (record,) = handler_records(caplog)
+    # Every endpoint's JSON body is read, and refused, alike.
+    (record,) = [r for r in caplog.records if r.name == "libranet.webserver.request_refusals"]
     assert record.levelno == DEBUG
     assert record.getMessage().startswith(f"Refusing {method} {path}: ")
 

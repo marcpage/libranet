@@ -55,7 +55,7 @@ from libranet.cas.archive import ArchiveSink
 from libranet.cas.content_id import ContentId
 from libranet.cas.verification import content_matches
 from libranet.messaging.events import ConflictBehavior
-from libranet.protocol.config_requests import ExportRequest
+from libranet.protocol.backup_requests import ExportRequest
 
 _LOGGER = getLogger(__name__)
 

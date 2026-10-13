@@ -5,7 +5,7 @@ from __future__ import annotations
 from pytest import mark, raises
 
 from libranet.identity.people import Username
-from libranet.protocol.errors import InvalidConfigRequestError
+from libranet.protocol.errors import InvalidRequestError
 from libranet.protocol.identity_requests import FallbackRequest, IdentityRequest, SignInRequest
 
 PASSWORD = "correct horse"
@@ -73,7 +73,7 @@ def test_no_password_is_in_a_requests_repr() -> None:
 def test_an_identity_request_that_cannot_be_made_is_refused(
     changes: dict[str, object], complaint: str
 ) -> None:
-    with raises(InvalidConfigRequestError, match=complaint):
+    with raises(InvalidRequestError, match=complaint):
         IdentityRequest.from_value({**ASKED, **changes})
 
 
@@ -84,7 +84,7 @@ def test_a_password_is_counted_in_composed_characters() -> None:
 
     assert IdentityRequest.from_value({**ASKED, "password": typed}).password == typed
 
-    with raises(InvalidConfigRequestError, match="at least 8"):
+    with raises(InvalidRequestError, match="at least 8"):
         IdentityRequest.from_value({**ASKED, "password": short})
 
 
@@ -92,7 +92,7 @@ def test_a_fallback_password_composed_another_way_is_the_password() -> None:
     composed = "passwo" + "\u00e9" + "d"
     decomposed = "passwo" + "e\u0301" + "d"
 
-    with raises(InvalidConfigRequestError, match="must not be the password"):
+    with raises(InvalidRequestError, match="must not be the password"):
         IdentityRequest.from_value({**ASKED, "password": composed, "fallback_password": decomposed})
 
 
@@ -112,12 +112,12 @@ def test_a_sign_in_is_read_with_its_username_normalized() -> None:
     ],
 )
 def test_a_sign_in_that_is_not_one_is_refused(value: object, complaint: str) -> None:
-    with raises(InvalidConfigRequestError, match=complaint):
+    with raises(InvalidRequestError, match=complaint):
         SignInRequest.from_value(value)
 
 
 def test_an_identity_request_must_be_an_object() -> None:
-    with raises(InvalidConfigRequestError, match="must be a JSON object"):
+    with raises(InvalidRequestError, match="must be a JSON object"):
         IdentityRequest.from_value(["alice"])
 
 
@@ -161,10 +161,10 @@ def test_a_fallback_taking_over_asks_for_no_key_size_and_minimum_bits_is_optiona
 def test_a_fallback_that_cannot_take_over_as_asked_is_refused(
     changes: dict[str, object], complaint: str
 ) -> None:
-    with raises(InvalidConfigRequestError, match=complaint):
+    with raises(InvalidRequestError, match=complaint):
         FallbackRequest.from_value({**TAKING_OVER, **changes})
 
 
 def test_a_fallback_taking_over_must_be_an_object() -> None:
-    with raises(InvalidConfigRequestError, match="must be a JSON object"):
+    with raises(InvalidRequestError, match="must be a JSON object"):
         FallbackRequest.from_value(None)

@@ -37,7 +37,7 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import MIB
 from libranet.messaging.events import ConflictBehavior
-from libranet.protocol.config_requests import BuildRequest, RestoreRequest
+from libranet.protocol.backup_requests import BuildRequest, RestoreRequest
 
 SECRET = b"s" * 32
 NOW = 1_789_000_000.0

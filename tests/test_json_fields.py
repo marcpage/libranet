@@ -11,7 +11,7 @@ from libranet.json_fields import (
     number_field,
     string_field,
 )
-from libranet.protocol.errors import InvalidConfigRequestError
+from libranet.protocol.errors import InvalidRequestError
 
 
 @mark.parametrize(("value", "integer"), [(3, True), (-1, True), (True, False), (2.0, False)])
@@ -62,11 +62,11 @@ def test_a_number_field_of_another_type_is_refused(value: dict[str, object]) -> 
 
 
 def test_a_field_is_refused_with_the_error_its_reader_is_given() -> None:
-    with raises(InvalidConfigRequestError):
-        string_field({}, "field", error=InvalidConfigRequestError)
+    with raises(InvalidRequestError):
+        string_field({}, "field", error=InvalidRequestError)
 
-    with raises(InvalidConfigRequestError):
-        integer_field({}, "field", error=InvalidConfigRequestError)
+    with raises(InvalidRequestError):
+        integer_field({}, "field", error=InvalidRequestError)
 
-    with raises(InvalidConfigRequestError):
-        number_field({}, "field", error=InvalidConfigRequestError)
+    with raises(InvalidRequestError):
+        number_field({}, "field", error=InvalidRequestError)

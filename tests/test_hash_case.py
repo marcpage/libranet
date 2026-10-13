@@ -39,7 +39,7 @@ from libranet.messaging.envelope import Message, make_message
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
-from libranet.protocol.config_requests import BackupJobRequest, ExportRequest, RestoreRequest
+from libranet.protocol.backup_requests import BackupJobRequest, ExportRequest, RestoreRequest
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.protocol.lists import NODES_PATH, SEEK_PATH
 from libranet.protocol.search import LocalSearch, SearchCache
