@@ -63,6 +63,35 @@ class _Child:
     restart_at: float | None = None
 
 
+@dataclass(frozen=True)
+class _Backoff:
+    """How long a module that keeps failing waits before it is restarted.
+
+    The delay doubles with each consecutive failure, from ``delay_seconds``
+    up to ``max_delay_seconds``. A module that stayed up for
+    ``stable_after_seconds`` is counted as failing for the first time.
+
+    Raises:
+        ValueError: ``delay_seconds`` is negative or above ``max_delay_seconds``.
+    """
+
+    delay_seconds: float
+    max_delay_seconds: float
+    stable_after_seconds: float
+
+    def __post_init__(self) -> None:
+        if self.delay_seconds < 0 or self.max_delay_seconds < self.delay_seconds:
+            raise ValueError("Need 0 <= restart_delay_seconds <= max_restart_delay_seconds")
+
+    def failures(self, previous: int, uptime_seconds: float) -> int:
+        """Consecutive failures once a module that ran ``uptime_seconds`` exits."""
+        return 1 if uptime_seconds >= self.stable_after_seconds else previous + 1
+
+    def delay(self, failures: int) -> float:
+        """Delay before restarting a module that has failed ``failures`` times in a row."""
+        return float(min(self.delay_seconds * 2 ** (failures - 1), self.max_delay_seconds))
+
+
 class ProcessSupervisor:  # pylint: disable=too-many-instance-attributes
     """Runs the dispatcher and a fixed set of modules, restarting any that exit.
 
@@ -98,17 +127,14 @@ class ProcessSupervisor:  # pylint: disable=too-many-instance-attributes
                 "must be positive"
             )
 
-        if restart_delay_seconds < 0 or max_restart_delay_seconds < restart_delay_seconds:
-            raise ValueError("Need 0 <= restart_delay_seconds <= max_restart_delay_seconds")
+        backoff = _Backoff(restart_delay_seconds, max_restart_delay_seconds, stable_after_seconds)
 
         self._config = config
         self._specs = {spec.name: spec for spec in modules}
         self._dispatcher_entry = dispatcher_entry
         self._logger = logger or get_logger(ModuleName.SUPERVISOR)
         self._poll_interval_seconds = poll_interval_seconds
-        self._restart_delay_seconds = restart_delay_seconds
-        self._max_restart_delay_seconds = max_restart_delay_seconds
-        self._stable_after_seconds = stable_after_seconds
+        self._backoff = backoff
         self._ready_timeout_seconds = ready_timeout_seconds
         self._stop_timeout_seconds = stop_timeout_seconds
 
@@ -281,7 +307,7 @@ class ProcessSupervisor:  # pylint: disable=too-many-instance-attributes
                 return
 
             self._reap(child, now)
-            delay_seconds = self._backoff(child.failures)
+            delay_seconds = self._backoff.delay(child.failures)
             child.restart_at = now + delay_seconds
             self._logger.info("Restarting module %s in %.1fs", child.name, delay_seconds)
 
@@ -327,7 +353,7 @@ class ProcessSupervisor:  # pylint: disable=too-many-instance-attributes
 
         process.join(self._stop_timeout_seconds)
         uptime_seconds = now - child.started_at
-        child.failures = 1 if uptime_seconds >= self._stable_after_seconds else child.failures + 1
+        child.failures = self._backoff.failures(child.failures, uptime_seconds)
         self._logger.warning(
             "Module %s exited with status %s after %.1fs (consecutive failures: %d)",
             child.name,
@@ -352,9 +378,3 @@ class ProcessSupervisor:  # pylint: disable=too-many-instance-attributes
             process.close()
 
         child.process = None
-
-    def _backoff(self, failures: int) -> float:
-        """Delay before restarting a module that has failed ``failures`` times in a row."""
-        return float(
-            min(self._restart_delay_seconds * 2 ** (failures - 1), self._max_restart_delay_seconds)
-        )
