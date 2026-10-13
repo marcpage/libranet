@@ -41,6 +41,7 @@ from libranet.bundle.encryption import (
     Aes256Cbc,
 )
 from libranet.bundle.errors import (
+    BlockedContentError,
     BundleError,
     BundleSignatureError,
     BundleTooLargeError,
@@ -129,6 +130,7 @@ __all__ = [
     "SIGNED_HASH_ALGORITHM",
     "STORAGE_COMPRESSION_LEVEL",
     "Aes256Cbc",
+    "BlockedContentError",
     "Bundle",
     "BundleError",
     "BundleSignatureError",

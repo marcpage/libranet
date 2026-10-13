@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 from json import dumps, loads
+from logging import WARNING
 from os import utime
 from pathlib import Path
 from threading import Thread
 
-from pytest import fixture, mark, raises
+from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
@@ -131,6 +132,17 @@ def test_registered_applications_hold_only_names_an_application_may_have() -> No
 def test_an_application_request_is_checked_where_it_is_made(value: object, message: str) -> None:
     with raises(ValueError, match=message):
         Application.from_value(value)
+
+
+def test_an_application_bundle_under_a_hash_algorithm_this_node_lacks_is_a_warning(
+    caplog: LogCaptureFixture,
+) -> None:
+    with caplog.at_level(WARNING), raises(ValueError, match="'sha999'"):
+        Application.from_value({"name": "Wiki", "bundle": "sha999/abcd"})
+
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith("Refusing to register 'sha999/abcd' as 'Wiki': ")
 
 
 def test_an_application_request_reads_as_it_is_answered() -> None:

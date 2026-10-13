@@ -46,7 +46,7 @@ from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.webserver.server import LibranetHTTPServer, build_router
 
-from tests.helpers import new_identity, with_node_key
+from tests.helpers import blocked_list, new_identity, with_node_key
 from tests.stubs import StubModule
 
 LOGGER = getLogger("test.connections")
@@ -735,6 +735,40 @@ def test_archive_content_is_pushed_and_never_asked_for(
         {"event": EventType.DATA_SENT, **content_fields(HELD_ID, peer_id), "size": len(HELD)},
         {"event": EventType.FETCH_ATTEMPTED, **content_fields(NOWHERE_ID, peer_id), "found": False},
     ]
+
+
+def test_content_this_node_has_blocked_is_not_pushed_even_from_an_archive(
+    peer: FixturePeer,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    queues: ModuleQueues,
+    tmp_path: Path,
+) -> None:
+    archive = tmp_path / "held.zip"
+
+    with ArchiveSink.create(archive) as sink:
+        sink.write(HELD_ID, HELD)
+
+    storage = config.storage.model_copy(update={"archives": (archive,)})
+    blocked_list(storage.blocked_list_path, HELD_ID)
+    exchange = PeerExchange(
+        identity,
+        config.model_copy(update={"storage": storage}),
+        StubModule(ModuleName.CONNECTIONS, queues).publish,
+        LOGGER,
+    )
+    peer.write_lists({}, [HELD_ID])
+    session = exchange.open(peer.endpoint)
+
+    try:
+        exchange.first_contact(session)
+
+    finally:
+        session.close()
+
+    assert published(queues, EventType.DATA_SENT) == []
+    assert peer.published(EventType.PUT_COMPLETED) == []
+    assert session.pushed == set()
 
 
 def test_many_sought_items_are_asked_for_in_pipelined_runs(

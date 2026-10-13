@@ -23,6 +23,7 @@ from libranet.bundle.shapes import (
     Metadata,
     Symlink,
 )
+from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.resolved_files import ResolvedFiles
 from libranet.cas.store import CasStore
@@ -38,6 +39,7 @@ from libranet.webserver.data_handler import IMMUTABLE_CACHE_CONTROL
 from libranet.webserver.file_stream import PartReader
 from libranet.webserver.http_types import Request, Response
 from libranet.webserver.router import Router
+from tests.helpers import blocked_list
 
 BUNDLE = PartPath(ContentId.for_data(b"a bundle read into", "sha256"))
 KEY = sha256(b"what the encrypted bundle decrypts to").digest()
@@ -98,6 +100,7 @@ def router_for(
     asked: Recorder,
     uses: Recorder | None = None,
     wait_seconds: float = 0.0,
+    blocked: BlockedContent | None = None,
 ) -> Router:
     """Routes reading into bundles, which wait ``wait_seconds`` for what they lack."""
     handler = BundleReadHandler(
@@ -108,7 +111,12 @@ def router_for(
             RETRY_AFTER_SECONDS,
             ApplicationUse(uses or Recorder()),
             PartReader(
-                store, Recorder(), wait_seconds, RETRY_AFTER_SECONDS, poll_interval_seconds=0.01
+                store,
+                Recorder(),
+                wait_seconds,
+                RETRY_AFTER_SECONDS,
+                poll_interval_seconds=0.01,
+                blocked=blocked,
             ),
         )
     )
@@ -397,6 +405,53 @@ def test_a_file_whose_parts_cannot_be_read_is_400(
     assert loads(response.body)["type"] == UNUSABLE_BUNDLE
     assert "blake3" in caplog.text
     assert KEY.hex() not in caplog.text
+
+
+@mark.parametrize("bundle", [BUNDLE, ENCRYPTED])
+@mark.parametrize("path", ["film.mp4", "", "not/resolved/"])
+def test_a_blocked_bundle_is_404_whatever_was_resolved_from_it_and_neither_asked_for_nor_used(
+    files: ResolvedFiles,
+    store: CasStore,
+    outcomes: ApplicationOutcomes,
+    asked: Recorder,
+    uses: Recorder,
+    tmp_path: Path,
+    bundle: PartPath,
+    path: str,
+) -> None:
+    resolve(files, store, bundle, "film.mp4", *FILM_PARTS)
+    save_directory(files, bundle, library())
+    blocked = blocked_list(tmp_path / "blocked.json", bundle.content_id)
+    router = router_for(files, store, outcomes, asked, uses, blocked=blocked)
+
+    response = read(router, f"/data/{bundle}/{path}")
+
+    assert response.status == 404
+    assert "will not be retrieved" in loads(response.body)["detail"]
+    assert SANDBOX.items() <= response.headers.items()
+    assert "Cache-Control" not in response.headers
+    assert asked.messages == []
+    assert uses.messages == []
+
+
+def test_a_file_with_a_part_blocked_is_400(
+    files: ResolvedFiles,
+    store: CasStore,
+    outcomes: ApplicationOutcomes,
+    asked: Recorder,
+    tmp_path: Path,
+) -> None:
+    resolve(files, store, BUNDLE, "film.mp4", *FILM_PARTS)
+    part = ContentId.for_data(FILM_PARTS[1], "sha256")
+    router = router_for(
+        files, store, outcomes, asked, blocked=blocked_list(tmp_path / "blocked.json", part)
+    )
+
+    response = read(router, f"/data/{BUNDLE}/film.mp4", headers={"Range": "bytes=12-20"})
+
+    assert response.status == 400
+    assert loads(response.body)["type"] == UNUSABLE_BUNDLE
+    assert loads(response.body)["detail"] == f"{part} is blocked here"
 
 
 @mark.parametrize("path", ["a/../b", "a//b", "./a", "%FF.mp4", "a%00b"])

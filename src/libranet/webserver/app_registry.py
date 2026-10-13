@@ -34,7 +34,8 @@ Names ignore case, and are kept case-folded. Each is one path segment, or
 ``/``, and never a name HttpApi §2 reserves, except ``config``: that one is
 reserved for the ``/config`` application, so it may name only that. Each
 bundle is parsed as a content id, so a bad one is refused when it is
-registered.
+registered, and one under a hash algorithm this node lacks is logged as a
+warning, since the node may need a newer release.
 
 Only the web server writes the file, and only through
 :class:`ApplicationRegistry`, which replaces it whole, so a crash leaves it as
@@ -47,14 +48,18 @@ applications, since saving over it would lose every registration it holds.
 from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from json import loads
+from logging import getLogger
 from pathlib import Path
 from threading import Lock
 from typing import Any, Final, Mapping
 
 from libranet.atomic_file import KeptRead, write_atomically
 from libranet.cas.content_id import ContentId
+from libranet.cas.errors import UnknownAlgorithmError
 from libranet.json_format import pretty_json
 from libranet.webserver.errors import RegistryFileError
+
+_LOGGER = getLogger(__name__)
 
 # The application served at `/` (HttpApi §13).
 ROOT_APPLICATION: Final = "/"
@@ -115,6 +120,9 @@ class Application:
     def from_value(cls, value: object) -> Application:
         """The application a ``{"name", "bundle"}`` JSON object names.
 
+        A bundle under a hash algorithm this node lacks is logged as a
+        warning.
+
         Raises:
             ValueError: it is not such an object, or names an unusable
                 application.
@@ -128,7 +136,14 @@ class Application:
         if not isinstance(name, str) or not isinstance(bundle, str):
             raise ValueError('An application\'s "name" and "bundle" must be strings')
 
-        return cls.create(name, ContentId.parse(bundle))
+        try:
+            content_id = ContentId.parse(bundle)
+
+        except UnknownAlgorithmError as error:
+            _LOGGER.warning("Refusing to register %r as %r: %s", bundle, name, error)
+            raise
+
+        return cls.create(name, content_id)
 
     def value(self) -> dict[str, Any]:
         """The JSON object naming this application."""

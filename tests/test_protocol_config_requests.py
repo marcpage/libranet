@@ -1,9 +1,11 @@
 """Tests for what the ``/config`` backup and build endpoints, and ``/data/imports``, accept."""
 
 from __future__ import annotations
+from logging import WARNING
 from pathlib import Path
+from typing import Callable
 
-from pytest import mark, raises
+from pytest import LogCaptureFixture, mark, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.messaging.events import ConflictBehavior
@@ -257,6 +259,24 @@ def test_an_export_is_named_by_its_bundle_and_its_archive_alone() -> None:
 def test_an_export_this_node_cannot_act_on_is_refused(value: object) -> None:
     with raises(InvalidConfigRequestError):
         ExportRequest.from_value(value)
+
+
+@mark.parametrize(
+    "parse, value, asked",
+    [
+        (RestoreRequest.from_value, {"bundle": "sha999/abcd", "directory": DIRECTORY}, "restore"),
+        (ExportRequest.from_value, {"bundle": "sha999/abcd", "archive": ARCHIVE}, "export"),
+    ],
+)
+def test_a_bundle_under_a_hash_algorithm_this_node_lacks_is_a_warning(
+    caplog: LogCaptureFixture, parse: Callable[[object], object], value: object, asked: str
+) -> None:
+    with caplog.at_level(WARNING), raises(InvalidConfigRequestError, match="'sha999'"):
+        parse(value)
+
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith(f"Refusing to {asked} 'sha999/abcd': ")
 
 
 def test_an_import_names_a_file_as_asked_and_carries_where_it_was_found() -> None:

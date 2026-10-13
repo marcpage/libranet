@@ -8,12 +8,15 @@ from __future__ import annotations
 from dataclasses import replace
 from hashlib import sha256
 from json import loads
+from pathlib import Path
 from queue import Empty
 from zlib import compress
 
+from libranet.atomic_file import write_atomically
 from libranet.bundle.encryption import Aes256Cbc
 from libranet.bundle.parts import PartPath
 from libranet.bundle.shapes import Entry, FileBundle
+from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.config.models import LibranetConfig
 from libranet.identity.keys import generate_private_key
@@ -66,6 +69,12 @@ def without_part_sizes(entries: dict[str, Entry]) -> dict[str, Entry]:
         path: replace(entry, part_sizes_bytes=None) if isinstance(entry, FileBundle) else entry
         for path, entry in entries.items()
     }
+
+
+def blocked_list(path: Path, *content_ids: ContentId) -> BlockedContent:
+    """The blocked list at ``path``, naming ``content_ids``, as the stats module writes it."""
+    write_atomically(path, BlockedContent.body(content_ids))
+    return BlockedContent(path)
 
 
 def problem_type(response: Response) -> str:

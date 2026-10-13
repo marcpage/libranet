@@ -24,21 +24,27 @@ has one spelling and therefore one identifier. Whether it exists, or can be
 read, is for the backup module to report: the web server does not touch the
 filesystem on a request's behalf, but to find a file to import within the
 folders it offers.
+
+A bundle named under a hash algorithm this node lacks is logged as a
+warning, since the node may need a newer release.
 """
 
 from __future__ import annotations
 from dataclasses import dataclass, field
 from hashlib import sha256
+from logging import getLogger
 from math import isfinite
 from pathlib import Path, PurePath
 from typing import Any, Final
 
 from libranet.bundle.shapes import is_entry_path
 from libranet.cas.content_id import ContentId
-from libranet.cas.errors import InvalidContentIdError
+from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
 from libranet.json_fields import is_number
 from libranet.messaging.events import ConflictBehavior
 from libranet.protocol.errors import InvalidConfigRequestError
+
+_LOGGER = getLogger(__name__)
 
 #: Hex characters of the hash a job or restore is named by.
 IDENTIFIER_LENGTH: Final = 16
@@ -162,6 +168,10 @@ class RestoreRequest:
 
         try:
             return cls.create(ContentId.parse(bundle), directory, on_conflict)
+
+        except UnknownAlgorithmError as error:
+            _LOGGER.warning("Refusing to restore %r: %s", bundle, error)
+            raise InvalidConfigRequestError(str(error)) from None
 
         except (InvalidContentIdError, ValueError) as error:
             raise InvalidConfigRequestError(str(error)) from None
@@ -336,6 +346,10 @@ class ExportRequest:
             return cls.create(
                 ContentId.parse(bundle), archive, on_conflict, _password(value, "An export")
             )
+
+        except UnknownAlgorithmError as error:
+            _LOGGER.warning("Refusing to export %r: %s", bundle, error)
+            raise InvalidConfigRequestError(str(error)) from None
 
         except (InvalidContentIdError, ValueError) as error:
             raise InvalidConfigRequestError(str(error)) from None

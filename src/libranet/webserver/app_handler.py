@@ -39,7 +39,11 @@ served, a password-protected one among them.
 
 Every request that reaches an application is reported as a use of its
 bundle (see :mod:`libranet.webserver.app_use`), so the entries resolved from
-it are kept while it is in use (Phase 2 Step 29).
+it are kept while it is in use (Phase 2 Step 29). An application whose bundle
+this node has blocked is ``404``, as reading the bundle is, whatever was
+resolved from it before, and its bundle is neither used nor asked for
+(HttpApi §5.5, Phase 4 Step 30). A file with a part blocked cannot be
+served from its parts, and is ``500``.
 """
 
 from __future__ import annotations
@@ -148,6 +152,16 @@ class AppHandler:
 
         ``bundle`` is the application's bundle.
         """
+        if self.paths.parts.blocks(bundle):
+            _LOGGER.debug(
+                "Not serving %s: its application's bundle %s is blocked", request.path, bundle
+            )
+            return status_response(
+                request,
+                HTTPStatus.NOT_FOUND,
+                "This application's bundle is not stored here, and will not be retrieved.",
+            )
+
         self.paths.use.used(bundle)
 
         if rest is None:
