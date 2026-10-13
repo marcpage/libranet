@@ -534,7 +534,7 @@ class StatsDatabase:  # pylint: disable=too-many-public-methods
             },
         )
 
-    def is_sought(self, kind: SeekKind, value: str, node_id: ContentId | None = None) -> bool:
+    def is_sought(self, kind: SeekKind, value: str, *, node_id: ContentId | None = None) -> bool:
         """Whether ``value`` is an outstanding request of ``kind``, this node's or ``node_id``'s."""
         row = self._query_one(
             "SELECT 1 FROM seek_entries "

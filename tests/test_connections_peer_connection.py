@@ -1,4 +1,4 @@
-"""Tests of the pipelining peer client.
+"""Tests for the pipelining peer client.
 
 Most tests drive the client against a fake peer on the other end of a
 socket pair, which reads requests and writes raw response bytes exactly

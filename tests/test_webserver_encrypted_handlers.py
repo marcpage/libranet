@@ -172,7 +172,7 @@ def opening_by_password(
 
 def held_drop(uploads: OwnUploads, content: bytes) -> ContentId:
     """``content`` made a drop and stored among this node's uploads."""
-    return store_object(DropTarget.of("mail:anyone").placed(content, 0, 0).data, uploads, MAX_BYTES)
+    return store_object(DropTarget.of("mail:anyone").placed(content, 0).data, uploads, MAX_BYTES)
 
 
 def for_person(person: PersonKey, plaintext: bytes) -> bytes:

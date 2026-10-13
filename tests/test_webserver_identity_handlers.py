@@ -187,7 +187,7 @@ def made(storage: StorageConfig, identities: Identities, request: Request) -> di
 
 def placed(storage: StorageConfig, content: bytes, minimum_bits: int) -> ContentId:
     """``content`` stored in the source of truth as a drop at Alice's, matching ``minimum_bits``."""
-    drop = TARGET.placed(content, 0, minimum_bits)
+    drop = TARGET.placed(content, 0, minimum_bits=minimum_bits)
     content_id = ContentId.for_data(drop.data, "sha256")
     CasStore.source_of_truth(storage).write(content_id, drop.data)
     return content_id
@@ -651,7 +651,9 @@ def test_a_search_of_a_drop_leaves_out_what_this_node_has_blocked(
     truth.write(blocked, b"blocked")
     write_atomically(storage.blocked_list_path, BlockedContent.body([blocked]))
     cache = SearchCache.of(storage)
-    search = SearchHandler(LocalSearch(truth, 8), cache, recorder, BlockedContent.of(storage))
+    search = SearchHandler(
+        LocalSearch(truth, 8), cache, recorder, blocked=BlockedContent.of(storage)
+    )
 
     found = search.fresh_results(blocked.hash)
 

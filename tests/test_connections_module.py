@@ -1,4 +1,4 @@
-"""Tests of the connection manager module, against live fixture peers.
+"""Tests for the connection manager module, against live fixture peers.
 
 Each fixture peer is this node's own web server over a temp CAS, with an
 identity of its own. The module connects and talks to peers on background
@@ -2205,11 +2205,11 @@ def test_as_many_workers_start_and_stop_as_the_peer_settings_say(
             for thread in running_threads()
             if thread not in before and thread.name.startswith(f"{module.name}-{kind}-")
         ]
-        for kind in ("fetch", "push", "broadcast")
+        for kind in ("search", "push", "broadcast")
     }
 
     assert {kind: len(threads) for kind, threads in workers.items()} == {
-        "fetch": 2,
+        "search": 2,
         "push": 3,
         "broadcast": 1,
     }

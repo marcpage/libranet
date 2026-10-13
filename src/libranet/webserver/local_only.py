@@ -70,20 +70,8 @@ class LocalOnly:
     checks: SiteChecks
 
     def __call__(self, request: Request) -> Response:
-        if not is_local_client(request.client_address):
-            return status_response(
-                request,
-                HTTPStatus.FORBIDDEN,
-                "This endpoint is served only to clients on this machine.",
-            )
-
-        refusal = self.checks.host_refusal(request)
-
-        if refusal is not None:
-            _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, refusal)
-            return status_response(request, HTTPStatus.FORBIDDEN, refusal)
-
-        return OwnSiteOnly(self.handler, self.checks)(request)
+        refused = local_refusal(request, self.checks)
+        return OwnSiteOnly(self.handler, self.checks)(request) if refused is None else refused
 
 
 @dataclass(frozen=True)
@@ -114,3 +102,26 @@ class OwnSiteOnly:
             return unsupported_media_type_response(request, error)
 
         return self.handler(request)
+
+
+def local_refusal(request: Request, checks: SiteChecks) -> Response | None:
+    """The ``403`` refusing ``request`` unless a local client sent it, at a host ``checks`` names.
+
+    ``None`` if one did. A ``Host`` refused is logged as a warning, as another
+    site may have pointed a name of its own at this machine.
+    """
+    if not is_local_client(request.client_address):
+        _LOGGER.debug("Refusing %s %s: not a local client", request.method, request.path)
+        return status_response(
+            request,
+            HTTPStatus.FORBIDDEN,
+            f"{checks.served} is served only to clients on this machine.",
+        )
+
+    refusal = checks.host_refusal(request)
+
+    if refusal is None:
+        return None
+
+    _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, refusal)
+    return status_response(request, HTTPStatus.FORBIDDEN, refusal)

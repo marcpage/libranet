@@ -30,7 +30,7 @@ hash::
 """
 
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import KW_ONLY, dataclass
 from http import HTTPStatus
 from logging import getLogger
 from typing import Final, Iterable
@@ -74,6 +74,7 @@ class SearchHandler:
     search: LocalSearch
     cache: SearchCache
     publish: Publish
+    _: KW_ONLY
     blocked: BlockedContent | None = None
 
     def __call__(self, request: Request) -> Response:
@@ -112,10 +113,10 @@ class SearchHandler:
             )
 
         drop = DropTarget.of(target)
-        found = self.fresh_results(drop.hex, _asker(request))
+        found = self.fresh_results(drop.hex, asker=_asker(request))
         return json_response({"target": drop.hex, "results": [str(found_id) for found_id in found]})
 
-    def fresh_results(self, prefix: str, asker: ContentId | None = None) -> list[ContentId]:
+    def fresh_results(self, prefix: str, *, asker: ContentId | None = None) -> list[ContentId]:
         """What is held nearest a normalized ``prefix``, with what was heard of, best first.
 
         The store is scanned whether or not an answer is cached, and what the

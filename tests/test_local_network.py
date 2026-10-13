@@ -1,4 +1,4 @@
-"""The local network script: key choice, node configs, node lists, log following, and stopping."""
+"""Tests for the local network script: keys, node configs and lists, following logs, stopping."""
 
 from __future__ import annotations
 from json import loads

@@ -112,7 +112,8 @@ A module reads top to bottom in this order:
 7. Private helper functions, named with a leading underscore, at the bottom.
 
 Within a class, `__init__` comes first, then the public methods, then the
-private ones.
+private ones. A settings model's validators are the exception: each follows
+the fields it checks, before the model's other methods.
 
 ### 3.2 Imports
 
@@ -654,7 +655,7 @@ New code comes with tests, and coverage is gated at 90%.
 
 ## 12. Where the Code Departs
 
-These are in the code as of Phase 3 Step 77. New code follows the rules
+These are in the code as of Phase 4 Step 93. New code follows the rules
 above. None of these is fixed in passing: a change set keeps to its task.
 Paths are relative to `src/libranet/`, except those that start with `tests/`.
 
@@ -668,7 +669,7 @@ Paths are relative to `src/libranet/`, except those that start with `tests/`.
 | `problems.py` `Problem` | Its JSON form is `to_dict()`, and its body `to_json()`, rather than `value()` (§6.3) |
 | `webserver/config_credential.py` `StoredCredential` | `from_json()` and `to_json()` read and write the file's bytes, rather than `from_value()` and `value()` (§6.3) |
 | 82 public callables in 42 files, listed in §12.1 | An optional parameter a call may pass by position (§6.4) |
-| `backup/imports.py`, `backup/tasks.py`, `connections/peer_session.py`, `messaging/queues.py`, `stats/records.py`, `stats/schema.py`, `webserver/data_handler.py`, `webserver/search_handler.py`, `webserver/site_checks.py` | No test file of its own: each is tested through the code that uses it (§11) |
+| `backup/imports.py`, `backup/tasks.py`, `connections/peer_session.py`, `messaging/queues.py`, `stats/records.py`, `stats/schema.py`, `webserver/block_handler.py`, `webserver/data_handler.py`, `webserver/search_handler.py`, `webserver/site_checks.py` | No test file of its own: each is tested through the code that uses it (§11) |
 
 ### 12.1 Optional Parameters Taken Positionally
 

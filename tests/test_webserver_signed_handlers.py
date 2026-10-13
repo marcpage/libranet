@@ -148,7 +148,7 @@ def held(uploads: OwnUploads, data: bytes) -> ContentId:
 
 def dropped(bundle: SignedBundle) -> bytes:
     """``bundle`` as a drop's content, with the bytes that place it."""
-    return DropTarget.of("user:anyone").placed(bundle.encoded(), 0, 0).data
+    return DropTarget.of("user:anyone").placed(bundle.encoded(), 0).data
 
 
 def test_no_one_signed_in_is_401_and_signs_nothing(

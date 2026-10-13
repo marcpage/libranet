@@ -71,7 +71,7 @@ def router(store: ApplicationStore, tmp_path: Path) -> Router:
 
 
 def kept(value: object) -> StoredValue:
-    return StoredValue.of(value)
+    return StoredValue.from_value(value)
 
 
 def saved(path: Path, value: object) -> None:
@@ -312,7 +312,7 @@ def test_a_change_is_made_when_its_tag_matches_the_value_held(store: Application
     assert removed
 
 
-@mark.parametrize("header", ['"sha256-other"', f"W/{StoredValue.of(1).tag()}", ""])
+@mark.parametrize("header", ['"sha256-other"', f"W/{StoredValue.from_value(1).tag()}", ""])
 def test_a_change_whose_tag_does_not_match_is_refused(store: ApplicationStore, header: str) -> None:
     store.put("movie", "last", kept(1))
 
@@ -341,20 +341,20 @@ def test_any_tag_matches_any_value_held_and_none_not_held(store: ApplicationStor
 
 
 def test_one_value_has_one_form_and_one_tag_however_it_was_written() -> None:
-    first = StoredValue.of(loads('{"b": [1, 2], "a": {"y": null, "x": "é"}}'))
-    second = StoredValue.of(loads('{"a":{"x":"\\u00e9","y":null},"b":[1,2]}'))
+    first = StoredValue.from_value(loads('{"b": [1, 2], "a": {"y": null, "x": "é"}}'))
+    second = StoredValue.from_value(loads('{"a":{"x":"\\u00e9","y":null},"b":[1,2]}'))
 
     assert first == second
     assert first.text == b'{"a":{"x":"\\u00e9","y":null},"b":[1,2]}'
     assert first.tag() == f'"sha256-{sha256(first.text).hexdigest()}"'
     assert first.value() == {"a": {"x": "é", "y": None}, "b": [1, 2]}
-    assert StoredValue.of(1).tag() != StoredValue.of("1").tag()
+    assert StoredValue.from_value(1).tag() != StoredValue.from_value("1").tag()
 
 
 @mark.parametrize("value", [float("nan"), [float("inf")], {"x": -float("inf")}])
 def test_a_value_json_has_no_form_for_is_refused(value: object) -> None:
     with raises(ValueError):
-        StoredValue.of(value)
+        StoredValue.from_value(value)
 
 
 def test_values_put_at_once_are_all_kept(store: ApplicationStore) -> None:

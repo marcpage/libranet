@@ -317,7 +317,7 @@ def build_router(  # pylint: disable=too-many-locals
                 uploads,
                 publish,
                 pages,
-                checks,
+                SiteChecks(config_hosts, "Encrypting by a password"),
                 retry_after_seconds=retry_after_seconds,
                 derivations=work.derivations,
                 blocked=blocked,
@@ -524,7 +524,7 @@ def _config_identities(
             LocalSearch(content, storage.search_max_results),
             SearchCache.of(storage),
             publish,
-            BlockedContent.of(storage),
+            blocked=BlockedContent.of(storage),
         ),
         DropHandler(
             uploads,

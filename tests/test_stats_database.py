@@ -602,7 +602,7 @@ def test_whether_a_request_is_outstanding_is_told_per_node_and_kind(
     assert database.is_sought(SeekKind.SEARCH, "abc")
     assert not database.is_sought(SeekKind.DATA, "abc")
     assert not database.is_sought(SeekKind.DATA, "def")
-    assert database.is_sought(SeekKind.DATA, "def", NODE_ID)
+    assert database.is_sought(SeekKind.DATA, "def", node_id=NODE_ID)
 
 
 def test_a_nearby_scan_leaves_blocked_content_out(database: StatsDatabase) -> None:

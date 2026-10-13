@@ -3,7 +3,7 @@
 from __future__ import annotations
 from io import BytesIO
 from json import loads
-from logging import WARNING
+from logging import DEBUG, WARNING
 
 from pytest import LogCaptureFixture, mark
 
@@ -11,7 +11,7 @@ from libranet.config.models import DEFAULT_CONFIG_HOSTS
 from libranet.problems import PROBLEM_CONTENT_TYPE
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.webserver.http_types import Request, RequestBody, Response
-from libranet.webserver.local_only import LocalOnly, OwnSiteOnly, client_handler
+from libranet.webserver.local_only import LocalOnly, OwnSiteOnly, client_handler, local_refusal
 from libranet.webserver.site_checks import SiteChecks
 
 PATH = "/data/directory/Movies"
@@ -241,3 +241,27 @@ def test_any_other_client_is_told_it_is_not(address: str) -> None:
 
     assert response.status == 200
     assert loads(response.body) == {"local": False}
+
+
+@mark.parametrize("client", REMOTE)
+def test_a_remote_client_is_refused_as_what_the_checks_guard_is_named_and_logged_at_debug(
+    caplog: LogCaptureFixture, client: str
+) -> None:
+    checks = SiteChecks(DEFAULT_CONFIG_HOSTS, "Encrypting by a password")
+    caplog.set_level(DEBUG)
+
+    refused = local_refusal(Request("POST", PATH, client_address=client), checks)
+
+    assert refused is not None
+    assert refused.status == 403
+    assert loads(refused.body)["detail"] == (
+        "Encrypting by a password is served only to clients on this machine."
+    )
+    assert [record.levelno for record in caplog.records] == [DEBUG]
+
+
+@mark.parametrize("client", LOCAL)
+def test_a_local_client_at_a_host_served_as_is_not_refused(client: str) -> None:
+    request = Request("POST", PATH, headers={"Host": HOST}, client_address=client)
+
+    assert local_refusal(request, CHECKS) is None

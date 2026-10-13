@@ -293,7 +293,8 @@ class ProcessSupervisor:  # pylint: disable=too-many-instance-attributes
 
             if monotonic() >= deadline:
                 self._logger.error(
-                    "Dispatcher not ready after %.1fs; terminating it", self._ready_timeout_seconds
+                    "Dispatcher not ready after %.1f seconds; terminating it",
+                    self._ready_timeout_seconds,
                 )
                 process.terminate()
                 return False
@@ -309,7 +310,7 @@ class ProcessSupervisor:  # pylint: disable=too-many-instance-attributes
             self._reap(child, now)
             delay_seconds = self._backoff.delay(child.failures)
             child.restart_at = now + delay_seconds
-            self._logger.info("Restarting module %s in %.1fs", child.name, delay_seconds)
+            self._logger.info("Restarting module %s in %.1f seconds", child.name, delay_seconds)
 
         if child.restart_at is None or now >= child.restart_at:
             spec = self._specs[child.name]
@@ -355,7 +356,7 @@ class ProcessSupervisor:  # pylint: disable=too-many-instance-attributes
         uptime_seconds = now - child.started_at
         child.failures = self._backoff.failures(child.failures, uptime_seconds)
         self._logger.warning(
-            "Module %s exited with status %s after %.1fs (consecutive failures: %d)",
+            "Module %s exited with status %s after %.1f seconds (consecutive failures: %d)",
             child.name,
             process.exitcode,
             uptime_seconds,

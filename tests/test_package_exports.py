@@ -1,4 +1,4 @@
-"""Every package re-exports the public names its modules define (Coding Style §3.2).
+"""Tests for every package re-exporting the public names its modules define (Coding Style §3.2).
 
 So a user of the library finds each one in the package, as its ``__all__``
 lists it. :mod:`libranet.cas.layered` is the one module left out, as the

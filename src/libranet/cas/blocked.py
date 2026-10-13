@@ -105,6 +105,12 @@ class BlockedContent:
         unsupported = UnsupportedAlgorithms()
 
         for text in listed:
+            if not isinstance(text, str):
+                _LOGGER.warning(
+                    "The blocked list at %s holds %r, not a content id", self._path, text
+                )
+                continue
+
             try:
                 blocked.add(ContentId.parse(text))
 
@@ -112,7 +118,7 @@ class BlockedContent:
                 # Not logged: counted, and logged once for the list below.
                 unsupported.add(text)
 
-            except (InvalidContentIdError, AttributeError):
+            except InvalidContentIdError:
                 _LOGGER.warning(
                     "The blocked list at %s holds %r, not a content id", self._path, text
                 )
