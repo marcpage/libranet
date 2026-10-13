@@ -52,7 +52,7 @@ So far, eleven steps, in the order they are built (§5):
 - **Letting go of what is superseded.** A private list of content a
   node will not hold, so that a block a newer one replaces can leave the
   node, and, as nodes each decide alike, the network. Step 30, moved here
-  from Phase 5.
+  from the Karma plan, now Phase 6.
 - **A directory of people.** A shipped application listing every
   person's id, from a directory bundle kept at a drop and rewritten whole
   as people are added. The bundles a newer one replaces are blocked (Step
@@ -83,10 +83,11 @@ The conventions of [Phase 2](Phase%202.md) §3 and
   90 were split out of Steps 78 and 79 later, so they took the next free
   numbers, and are built before both (§5). The Karma and
   enhancement plans were Phases 4 and 5 until this phase took the place
-  of the first; they are now [Phase 5](Phase%205.md) and
-  [Phase 6](Phase%206.md), and their steps kept their numbers. A step
-  that moves keeps its number too: Step 30, planned in Phase 2, came
-  here from Phase 5 with #71, and Step 83 moved on to
+  of the first, and Phases 5 and 6 until the trust network,
+  [Phase 5](Phase%205.md), took the place after it; they are now
+  [Phase 6](Phase%206.md) and [Phase 7](Phase%207.md), and their steps
+  kept their numbers. A step that moves keeps its number too: Step 30,
+  planned in Phase 2, came here from the Karma plan with #71, and Step 83 moved on to
   [Improve Movie Web App](Improve%20Movie%20Web%20App.md) with #261.
   Step 92 was added after Step 91, with #276, and Step 93 after Step 80,
   when signing in was found to work only where an identity was made.
@@ -108,12 +109,12 @@ The conventions of [Phase 2](Phase%202.md) §3 and
 **Issue:** #71. **Depends on:** Phase 1 Steps 5, 7, 8, 15; Phase 2 Step
 28.
 
-Planned in Phase 2, and moved unbuilt to Phase 5, with #71, since the
-use the issue names is Karma's. It came here with #71, unbuilt again,
-since the user directory (Step 92) needs it first: the directory's page
-blocks each directory bundle that adds no one to the newest, so that the
-drop holds fewer stale copies.
-Karma's merges (Phase 5 Step 56) come later, and use it the same way.
+Planned in Phase 2, and moved unbuilt to the Karma plan, now Phase 6,
+with #71, since the use the issue names is Karma's. It came here with
+#71, unbuilt again, since the user directory (Step 92) needs it first:
+the directory's page blocks each directory bundle that adds no one to the
+newest, so that the drop holds fewer stale copies.
+Karma's merges (Phase 6 Step 56) come later, and use it the same way.
 
 Settled in the issue:
 
@@ -146,8 +147,9 @@ Ruled before building:
   the network, which HighLevelDesign §4.11 and §6 now say.
 - **A block is permanent.** It never expires, nothing lifts it, and there
   is no `/config` endpoint for it. Deleting the database is the only reset,
-  as for everything stats keeps. Karma's merges (Phase 5 Step 56) will send
-  stats the message the endpoint sends.
+  as for everything stats keeps. Karma's merges (Phase 6 Step 56) will send
+  stats the message the endpoint sends. Letting a block no one sees any
+  more age out (#279) is planned as [Phase 7](Phase%207.md) Step 95.
 - **Held content that becomes blocked is deleted at once**, whether or not
   storage is short, and handed off to no peer.
 
@@ -2052,7 +2054,7 @@ where it went.
 
 | Issue | Asks for | Step |
 | --- | --- | --- |
-| #71 | Blocked data list | 30, moved from Phase 5 |
+| #71 | Blocked data list | 30, moved from the Karma plan, now Phase 6 |
 | #256 | Creating user ids | 79, 90 |
 | #257 | Adding a data block directly | 78, 89, 90 |
 | #282 | Encrypting a data block for a person, or by a username and password | 78 |
@@ -2089,7 +2091,7 @@ The per-step **Open questions** above are the substance of this list; the
 ones that cut across more than one step:
 
 - **Finding the newest version of anything** (Steps 80, 82, and 92, and
-  Phase 5 Step 56). Metadata, the address book, the user directory, and
+  Phase 6 Step 56). Metadata, the address book, the user directory, and
   Karma's blocks each change, and a search finds what is nearest a
   target, not what is newest. For the user directory, ruled in Step 92:
   the newest lists the most people, since every directory made lists
@@ -2113,5 +2115,5 @@ ones that cut across more than one step:
 - **Signed bundles** (Steps 80 and 81) — built in Step 80 for JSON a
   person signs, which a node signs and checks for a page. Reading into a
   signed bundle as a bundle is not built.
-- **Karma for people** (Phase 5 Step 56). Whether Karma is held by a
+- **Karma for people** (Phase 6 Step 56). Whether Karma is held by a
   person's identity as well as a node's.

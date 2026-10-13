@@ -1,149 +1,344 @@
 # Libranet Python Implementation Plan — Phase 7
 
-Version 0.1 • October 2026
+Version 0.4 • October 2026
 
 ---
 
 ## 1. Purpose
 
-This document plans a public seed node. A node consults its seed list
-only when it knows no peers at all (`config/seeds.py`), and the list it
-ships with is empty, since there is no public network yet. So nodes find
-each other only through peers their operators configure. A seed node is
-a node that is always up, at an address that does not change, that
-every new node can be shipped knowing.
+This document plans what goes beyond a basic Libranet node: what a node
+can do without and still be a good citizen of the network, but which
+makes it easier to run where it runs. So far that is finding peers on the
+local network without being told of them, backing up from what the
+filesystem reports rather than by looking, reaching peers over IPv6, and
+letting go of blocks no one asks for any more.
 
-A seed node is dialed by every node that starts with nothing, so it has
-more peers dialing it than any other. Today a node takes every incoming
-connection it is offered, as many as its web server has threads for.
+Every step below comes from an issue in the GitHub
+**Phase 7 - Enhancements** milestone, and each step names its issues.
+Every issue in the milestone is either a step or accounted for in §4. As
+in the phases before it, this is an implementation plan, not a protocol
+specification — see [High-Level Design](../specs/HighLevelDesign.md),
+[HTTP API](../specs/HttpApi.md), and
+[Backup Specification](../specs/BackupSpecification.md) for the
+normative behavior this code implements.
 
-Every step below comes from an issue in the GitHub **Phase 7 - Create
-seed node** milestone, and each step names its issues. Every issue in
-the milestone is either a step or accounted for in §4. As in the phases
-before it, this is an implementation plan, not a protocol specification
-— see [High-Level Design](../specs/HighLevelDesign.md) and
-[Handshake Protocol](../specs/HandshakeProtocol.md) for the normative
-behavior this code implements.
-
-The milestone depends on keeping content in AWS S3, #149, which is
-planned with the enhancements in [Phase 6](Phase%206.md) and not yet
-written as a step there.
-
-Nothing here is expected to change the architecture of Phase 1 §2: the
-same supervisor, the same dispatcher, the same module processes, the same
-filesystem CAS, and the same invariant that only the stats module opens
-SQLite.
+Nothing here changes the architecture of Phase 1 §2: the same supervisor,
+the same dispatcher, the same module processes, the same filesystem CAS,
+and the same invariant that only the stats module opens SQLite.
 
 ## 2. What Phase 7 Adds
 
-So far, one step:
+So far, four steps, each independent of the others:
 
-- **A limit on incoming connections.** A node can be set to take at most
-  so many peers dialing it at once, and set to make room for a new one
-  or to keep the ones it has. Either way a new peer gets through the
-  handshake first, so that it learns of other nodes. Step 84.
-
-Running the seed node itself, and shipping its address in
-`config/seed_peers.json`, has no issue yet (§4).
+- **Finding peers on the local network.** A node advertises itself over
+  mDNS/DNS-SD and browses for others, and dials what it finds as it would
+  any address it learns. Step 16, optional, and on by default.
+- **Backing up on notification.** Backup learns that a directory may have
+  changed from the filesystem, rather than by polling and walking it.
+  Step 50.
+- **IPv6.** A node listens, dials, and advertises over IPv6 as well as
+  IPv4. Step 57.
+- **Blocks that age out.** A blocked content id that has not been seen
+  for a while leaves the blocked list, so that the list does not grow
+  without end. Step 95.
 
 ## 3. How to Read the Steps Below
 
 The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
 
-- **Step numbers stay stable**, and new steps take the next free number.
-  Step 84 was the next free number when this plan was written, so this
-  phase starts there.
+- **Step numbers stay stable.** Steps 16 and 50 were planned in Phase 2
+  and moved here unbuilt, with their issues, keeping their numbers. Step
+  16 had moved to Phase 2 from Phase 1 the same way. This plan was
+  Phase 4 until video playback became Phase 3 and Karma moved to Phase
+  4, Phase 5 until user accounts became Phase 4 and Karma moved to
+  Phase 5, and Phase 6 until the trust network became Phase 5 and Karma
+  moved to Phase 6. Each time it moved with its milestone, its steps
+  keeping their numbers too. New steps take the next free number: Step
+  57 was the first, and Step 95, added after the trust network's Step 94
+  ([Phase 5](Phase%205.md)), the next.
 - **A step of an earlier phase is named with its phase**, as Phase 2
   names Phase 1's. A step number alone is a step of this document.
 
 ---
 
-## Step 84 — Limiting Incoming Connections
+## Step 16 (Optional) — mDNS/DNS-SD Local Discovery
 
-**Issue:** #204. **Depends on:** Phase 1 Steps 5, 9, 11; Phase 2 Step
-53.
+**Issue:** #20. **Depends on:** Phase 1 Step 11; Phase 2 Step 23.
 
-Settled in the issue:
+Moved from Phase 1 unbuilt, and on from Phase 2 the same way, with #20.
+The protocol leaves local discovery optional and outside conformance
+(HighLevelDesign §4.9.1), but a node that has it does it by default. It
+is built after Phase 2 Step 23, which gives it somewhere to put what it
+finds: an address for a node id.
 
-- A setting bounds how many incoming connections a node holds at once.
-  `null` means no limit, and is the default.
-- A second setting says which are kept when the limit is reached: new
-  connections, by closing the oldest, or the oldest, by closing new ones
-  shortly after they connect.
-- **A connection gets through the handshake first**, however the limit
-  falls, so that the peer can learn of other nodes (HandshakeProtocol
-  §3, HttpApi §10.5).
-- **A connection is not closed while it is pushing content this node
-  seeks** (HttpApi §10.7). It is closed once it no longer is.
+Settled:
 
-Work this implies:
-
-- The web server already knows which peers are connected, and how many
-  connections each has open (`webserver/inbound_peers.py`, Phase 2 Step
-  53). It also needs to know when each peer connected, and when it last
-  pushed content this node seeks.
-- Closing a working connection by choice is new: today the server closes
-  one only when it cannot go on with it, after a signature fails
-  (HandshakeProtocol §5.3) or a request or response is cut short.
-- HandshakeProtocol §5.2 already lets a host close a guest that is not
-  adding value; this step is a host doing so by number. Once Karma is
-  built ([Phase 5](Phase%205.md)), §5.2 has Karma choose whom to keep,
-  and this step's rule is the one used until then.
+- **`zeroconf` is a required dependency.** It is LGPL-2.1-or-later, the
+  first copyleft dependency of a public-domain project. It is required
+  rather than an optional extra, so discovery never has to handle a
+  missing library.
+- **Advertising and browsing are separate settings, both on by
+  default**, in a `local_discovery` config section (`advertise`,
+  `browse`) documented in `examples/libranet.yaml`. A node can find LAN
+  peers without announcing itself. A node whose `listen_address` is
+  loopback never advertises, since nothing off the host could reach it.
+- **The service follows HighLevelDesign §4.9.1**: type
+  `_libranet._tcp.local.`, TXT keys `txtvers=1` and `id=<node id>`, and
+  the SRV port is `listen_port`. It is not `external_port`, which is for
+  peers beyond the gateway.
+- **A discovered peer gives untested addresses for a node id**: its
+  host's `.local` name from the SRV record, and its addresses from the A
+  records. Stats records each one with a new source, learned locally,
+  alongside Phase 2 Step 23's five. The connection manager publishes
+  them in `nodes.received`, marked with that source, and stops there.
+  Each is dialed in its turn.
+- **The `.local` name is kept alongside the addresses**, because it
+  outlasts a change of address on the LAN. A node whose resolver cannot
+  look it up gets failures for it. Phase 2 Step 23 then tries it after
+  the addresses that work, and eventually drops it.
+- **Published by Phase 2 Step 23's rule, with no special case.** Once
+  dialed successfully, a discovered address or `.local` name is
+  verified, and it is published in `/data/nodes`, so LAN peers learn it
+  too. Until then it is untested and is not published.
+- **No special place in the peer mix** (HighLevelDesign §4.6). While
+  buckets are uncovered, the mix already dials peers in covered ones, so
+  a node with few peers connects to every LAN peer it finds. Once the
+  mix is full, LAN peers compete by bucket like any other.
 
 My calls, not yet reviewed:
 
-- The limit counts peers, not sockets: a peer with several connections
-  open is one (Phase 2 Step 53), and closing it closes them all.
-- The settings are in `network`, as `max_incoming_peers` and
-  `incoming_priority` (`newest` or `oldest`), documented in
-  `examples/libranet.yaml`.
+- It runs inside the connections module, not in a process of its own
+  (§1). That module already holds the node's identity and publishes
+  `nodes.received`. A `LocalDiscovery` object owns the `Zeroconf`
+  instance, starting in `on_start` and closing in `on_stop`. `zeroconf`
+  runs its own threads, and the browse callback only publishes.
+- The instance name is `libranet-` and the first 12 hex digits of the
+  node id, and `zeroconf` renames it on a conflict. The whole id, 71
+  characters, does not fit a 63-byte instance label.
+- IP addresses come from A records only. That is IPv4, which matches
+  the IPv4 listener. A node listening on `0.0.0.0` advertises every
+  non-loopback IPv4 interface; one listening on a specific address
+  advertises that address alone.
+- The SRV record this node advertises names the host's own `.local`
+  name, the one the operating system's mDNS responder already answers
+  for.
+- The `id` is parsed as any node id is, so its case does not matter
+  (Phase 2 Step 21). A service whose `id` is missing, unusable, or this
+  node's own is ignored. A service that goes away changes nothing:
+  stats' failure counts and aging retire its addresses.
+- No rate limit beyond Phase 2 Step 23's per-node bound. Anyone on the
+  LAN can already POST a node list, and the handshake rejects a false
+  identity.
+- On macOS, `zeroconf` shares UDP port 5353 with the system's
+  mDNSResponder, which also answers for the host's `.local` name. The
+  first build checks that browsing and advertising both work there, and
+  that the two answering for one name do not conflict.
+
+**Testable in isolation:** can be developed and tested independently of
+the wide-area discovery path, and switched off without affecting
+anything else. The `zeroconf` interface is injected, so tests never touch
+a real multicast socket.
+
+---
+
+## Step 50 — Filesystem Notifications for Backup
+
+**Issue:** #85. **Depends on:** Phase 1 Step 19; Phase 2 Steps 48, 49.
+
+Moved from Phase 2 unbuilt, with #85.
+
+- Settled in the issue: backup learns that a directory may have changed
+  from filesystem notifications, instead of polling and walking it.
+  BackupSpecification §3.3 already prefers this, with polling as the
+  fallback, and its §7 leaves the mechanism open.
+- A notification names paths, so a run can look at those paths alone —
+  provided it has the rest of the entries to carry forward, which Phase
+  2 Step 48's record holds. Without that, a notification only says when
+  to walk, which saves the idle polls but not the walk.
+- Phase 2 Step 49 removed the change detector with the fingerprint: each
+  look is one walk, on the job's interval. What a notification says, "look
+  now" or "look at these paths", is this step's to add.
+- Notifications from ignored paths, the node's own directories among
+  them, are dropped as the walk drops them. Otherwise backing up a
+  directory that holds the node's storage would set itself off.
+- Python's standard library has no notification interface. Each platform
+  has its own: FSEvents on macOS, inotify on Linux, and
+  `ReadDirectoryChangesW` on Windows. The `watchdog` library wraps all
+  three, and falls back to polling. It would be a new runtime dependency.
 
 **Open questions:**
 
-- What "through the handshake" is, as a count of requests.
-  HandshakeProtocol §5.2 says a dozen or so; HandshakeProtocol §3 names
-  the requests themselves.
-- How long a new connection is held, under `oldest`, before it is
-  closed, and whether it is told why, by a `503` with `Retry-After`,
-  rather than simply closed.
-- What a peer that is pushing what this node seeks is, as a rule: the
-  last such push within some time, or a share of what it sends.
-- Whether peers this node also dials out to (Phase 1 Step 11) count
-  against the limit.
-- Whether local clients are exempt. They are not peers, and the limit is
-  on peers, but they share the web server's threads.
+- `watchdog`, or each platform's interface directly. The dependency is
+  the smaller cost and keeps one code path. It also brings its own
+  threads into the backup module's process.
+- What a lost notification costs. inotify drops events past its queue
+  limit and needs a watch per directory, up to a per-user limit; FSEvents
+  coalesces. An overflow has to fall back to a full walk, so the polling
+  path stays, run less often.
+- Whether a job's `interval_seconds` becomes the full-walk interval, the
+  quiet period after a notification before a run (so a burst of writes is
+  one backup), or both.
 
-**Testable in isolation:** web server tests with fake peers and a fake
-clock, asserting the oldest or newest is closed as set, that a new peer's
-handshake requests are answered first, and that a peer pushing sought
-content is kept until it stops.
+**Testable in isolation:** the notifier is injected, so tests deliver
+synthetic events and assert which paths the next run looks at, that a
+burst is one run, and that an overflow means a full walk. One test
+against the real library in a temp directory checks the wiring.
+
+---
+
+## Step 57 — IPv6
+
+**Issue:** #133, which names the goal and no more. **Depends on:** Phase
+1 Steps 5, 9, 10, 11; Phase 2 Step 23.
+
+Much of the node already copes with IPv6 when it meets it:
+
+- The web server listens on IPv6 when `network.listen_address` is an
+  IPv6 address (`webserver/server.py`). A client's IPv4-mapped address is
+  unwrapped before it is checked for loopback
+  (`webserver/client_origin.py`) or written into a resolved `localhost`
+  entry (`webserver/localhost_resolution.py`), which brackets an IPv6
+  host as RFC 3986 requires.
+- A bracketed endpoint parses (`PeerAddress.of`), and dialing it, or a
+  name with only IPv6 addresses, works: `PeerConnection.open` uses
+  `create_connection`, which tries every address a name resolves to.
+- A peer's IP is read from an IPv6 socket as from an IPv4 one, and
+  reverse DNS looks it up the same way.
+- A node with no `external_address` advertises `localhost`, and the
+  receiver fills in the address the connection came from, IPv6 or not,
+  so a node need not know its own global address.
+
+What is missing:
+
+- **Listening on both.** `listen_address` defaults to `0.0.0.0`, which is
+  IPv4 alone. Listening on `::` takes IPv4 as well only on a dual-stack
+  socket, which the node does not ask for, so it is left to the
+  platform's default: dual-stack on Linux and macOS, IPv6 alone on
+  Windows.
+- **Advertising an IPv6 address.** `advertised_endpoint()` writes
+  `external_address` into the endpoint as it is, so an IPv6 address comes
+  out unbracketed, and no peer can parse it.
+- **The specification.** HttpApi §10.1 and §10.6 give endpoints as
+  `scheme://host:port` and say nothing of IPv6 literals, nor what a
+  receiver resolving `localhost` writes for an IPv6 source address.
+- **A way to try it.** The local network script runs every node on
+  `127.0.0.1`.
+
+**Open questions:**
+
+- Whether the default listens on both: `::`, with the socket made
+  dual-stack explicitly, falling back to `0.0.0.0` on a host with no
+  IPv6 rather than failing to start.
+- What a node list names for a node reachable both ways. HttpApi §10.6,
+  as Phase 2 Step 23 ruled, names each node at its last known good
+  address. If that is an IPv6 address, a peer with no IPv6 is given
+  nothing it can use for that node. The last good address of each family
+  would fix that, and changes §10.6.
+- Whether a node with no IPv6 route leaves IPv6 addresses out of what it
+  dials, rather than dialing each until Phase 2 Step 23's failure count
+  drops it.
+- Whether local discovery (Step 16) advertises and reads AAAA records,
+  which it leaves out to match an IPv4 listener.
+
+**Testable in isolation:** tests on `::1`, skipped where the host has no
+IPv6 loopback: a node list POSTed from `::1` resolves `localhost` to a
+bracketed endpoint, a fixture peer at a bracketed endpoint is dialed and
+completes the handshake, and an IPv6 `external_address` is advertised
+bracketed. Config tests cover the listen default and its fallback.
+
+---
+
+## Step 95 — Aging Out Blocked Data
+
+**Issue:** #279. **Depends on:** Phase 4 Step 30.
+
+Phase 4 Step 30 ruled that **a block is permanent**: it never expires,
+nothing lifts it, and only deleting the database resets it. Every block
+is a `data_stats` row with `blocked_at` set, and every one is written to
+`lists/blocked.json`, uncapped, which the web server, the validator, and
+the fetcher each read. A node that blocks each directory bundle a newer
+one replaces (Phase 4 Step 92), and later each block Karma's merges
+supersede ([Phase 6](Phase%206.md) Step 56), adds to it for as long as it
+runs.
+
+Settled in the issue, tentatively ("maybe"):
+
+- A blocked id that has not been seen for a period of time can be removed
+  from the list.
+
+Work this implies:
+
+- **It reverses a ruling.** Step 30's "a block is permanent" becomes "a
+  block lasts while its content is still seen", and HighLevelDesign §4.11
+  and HttpApi §5.5, which say what a node does with blocked content, say
+  so too.
+- **Stats needs to know when a blocked id was last seen.** `data_stats`
+  has `last_requested` and `blocked_at`, but no time a blocked id was
+  last pushed or named in a peer's search answer: the validator discards
+  a blocked push unannounced, and the fetcher never asks for one.
+- **The derivation drops what has aged out** of `lists/blocked.json`, as
+  it already derives the list each minute, and the readers pick the
+  change up as they do any rewrite of the file.
+
+**Open questions:**
+
+- What "seen" is: a request for the id, a push of it, a peer's search
+  answer naming it, or each of these.
+- Whether an aged-out id is unblocked, its `blocked_at` cleared, or kept
+  in the database and left out of the list file only, so that a node
+  that meets it again can block it again without being told.
+- How long the period is, whether it is a setting, and whether it counts
+  from the block or from the last time the id was seen.
+- What a node does with an aged-out id that comes back. Unblocked, it is
+  fetched, kept, and served again, and the content a merge superseded
+  returns to the network, unless whatever blocked it blocks it again.
+
+**Testable in isolation:** stats tests over a temp database with a fake
+clock, asserting a blocked id seen within the period stays in the list,
+and one not seen ages out of it at the next derivation.
 
 ---
 
 ## 4. Issues in the Milestone
 
-Every issue in the **Phase 7 - Create seed node** milestone, by number,
-and where it went.
+Every issue in the **Phase 7 - Enhancements** milestone, by number, and
+where it went.
 
 | Issue | Asks for | Step |
 | --- | --- | --- |
-| #204 | Limiting incoming connections | 84 |
+| #20 | mDNS/DNS-SD local discovery | 16, moved from Phase 2 |
+| #85 | Filesystem notifications for backup | 50, moved from Phase 2 |
+| #133 | IPv6 | 57 |
+| #149 | AWS S3 as another CAS store | None yet: not planned |
+| #159 | Windows support | None yet: not planned |
+| #160 | Releasing on PyPI | None yet: not planned |
+| #181 | HTTPS | None yet: not planned |
+| #279 | Aging out blocked data | 95 |
 
-The milestone's own description asks for the seed node itself: running
-one in public, keeping content in AWS S3 (#149, [Phase 6](Phase%206.md)),
-and shipping its address in `config/seed_peers.json`. None of that has
-an issue yet, so none of it is a step.
+[Phase 8](Phase%208.md), the seed node, depends on #149: its milestone
+asks for content to be kept in AWS S3.
 
 ## 5. Suggested Build Order
 
-| Order | Steps | Why here |
+The four steps are independent of each other; what orders them is what
+each waits on.
+
+| Tier | Steps | Why here |
 | --- | --- | --- |
-| 1 | 84 (#204) | Independent of every other phase. A seed node needs it before it is public. |
+| A | 16 (#20), 57 (#133) | 16 is ready: Phase 2 Step 23 is built, and its specification change is made. It is optional throughout. 57 needs its node-list question ruled first, since the answer changes HttpApi §10.6. Whichever lands second handles the other's address family (§6). |
+| A | 95 (#279) | Phase 4 Step 30 is built. It needs what "seen" is ruled first, and the change to HighLevelDesign §4.11 and HttpApi §5.5 written. |
+| B | 50 (#85) | Waits on Phase 2 Steps 48 and 49: 48's record lets a run look at only the paths a notification names, and 49 turns the change detector into "look now" or "look at these paths". |
 
 ## 6. Open Items Not Yet Decided
 
-- **Running the seed node** — where it runs, who operates it, and what
-  address is shipped for it. Not yet an issue.
-- **Karma and the limit** (Step 84, HandshakeProtocol §5.2) — once Karma
-  is built, whether it replaces the age of a connection as what decides
-  which peers a full node keeps.
+The per-step **Open questions** above are the substance of this list; the
+ones that cut across more than one step:
+
+- **Local discovery and IPv6** (Steps 16 and 57) — Step 16 takes addresses
+  from A records alone, to match an IPv4 listener. If Step 57 comes
+  first, discovery can advertise and read AAAA records from the start;
+  if second, Step 57 adds them.
+- **New dependencies** (Steps 16 and 50) — Step 16 makes `zeroconf` a
+  required dependency, LGPL-2.1-or-later and the project's first copyleft
+  one, and Step 50 would most likely add `watchdog`. Each brings threads
+  of its own into a module's process.
