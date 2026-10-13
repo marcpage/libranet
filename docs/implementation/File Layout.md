@@ -1,6 +1,6 @@
 # Libranet File Layout
 
-Version 0.1 • September 2026
+Version 0.2 • October 2026
 
 ---
 
@@ -10,8 +10,8 @@ This document describes every file a Libranet node reads or writes: where
 it lives, what it holds, which module writes it, and which settings and
 command-line switches move it or change what goes into it. It describes the
 implementation as of version 0.2 and Phase 3, up to Step 77, and Phase 4's
-Step 30. The protocol does
-not prescribe any of this layout; for normative behavior see [High-Level
+Steps 30, 78–82, and 89–93. The protocol does not prescribe any of this
+layout; for normative behavior see [High-Level
 Design](../specs/HighLevelDesign.md), [HTTP API](../specs/HttpApi.md), and
 [Backup Specification](../specs/BackupSpecification.md).
 
@@ -428,7 +428,9 @@ since none of them may open SQLite.
 
 `blocked.json` is also written at once when content is first blocked
 (Phase 4 Step 30), and each reader reads it again only once it is replaced.
-Until it is derived, nothing is blocked.
+Until it is derived, nothing is blocked. `seek.json` is also written at once
+when a search names a prefix it does not list, so that peers read the prefix
+on their next refresh (Phase 4 Step 93).
 
 Until a list has been derived, the web server answers requests for it with
 `503` and a `Retry-After` of `network.retry_after_seconds`.
@@ -636,6 +638,10 @@ optional; `examples/libranet.yaml` shows them all with their defaults.
 | `stats.derive_interval_seconds` | `60.0` | — | How often `lists/` is rewritten |
 | `stats.max_list_bytes` | `1048576` | — | Largest `nodes.json` and `seek.json` |
 | `stats.seek_entry_ttl_seconds` | `3600.0` | — | How long an unmet request stays in `seek.json` |
+| `stats.max_addresses_per_node` | `16` | — | Most addresses of one peer kept, and so in `candidates.json` |
+| `stats.max_address_failures` | `5` | — | Failed attempts in a row after which an address that has never worked is dropped from the lists |
+| `stats.max_node_failures` | `5` | — | Failed attempts in a row to reach a peer at every address after which it is left out of `candidates.json` |
+| `stats.node_cool_off_seconds` | `86400.0` | — | How long a peer given up on is left out of `candidates.json` |
 | `backup.interval_seconds` | `3600.0` | — | How often a job's directory is checked |
 | `backup.max_update_layers` | `32` | — | Update layers a backup or build stores over its last whole bundle before storing a whole one again |
 | `backup.restore_stall_seconds` | `86400.0` | — | How long a restore waits with none of the content it lacks arriving before it gives up |
@@ -677,7 +683,7 @@ opened.
 ## 11. The Local Network Script
 
 `libranet-local-network`, or `python -m libranet.local_network`, runs a
-network of nodes on `127.0.0.1` for manual testing
+network of nodes on `127.0.0.1`, or the `--host` given, for manual testing
 (`src/libranet/local_network.py`), each with its own directories:
 
 ```text
@@ -705,9 +711,12 @@ network of nodes on `127.0.0.1` for manual testing
 
 The script writes each node's key before starting it, so that the ids of
 `node-00` to `node-0f` begin with the hex digits `0` to `f`. Its config sets
-`stats.derive_interval_seconds` to 5 so new peers are noticed quickly, and
+`stats.derive_interval_seconds` to 5 so new peers are noticed quickly,
 `logging.level` to `INFO`, or `DEBUG` with `--debug`, since the progress
-display reads the connections log's `INFO` lines. With
+display reads the connections log's `INFO` lines, and `network.config_port`
+to the node's port plus the first multiple of 100 no less than `--count`,
+100 for up to 100 nodes, so that no node's `/config` takes another node's
+port. With
 `--dir`, the directory is kept and a later run reuses the keys it finds.
 Without it, the temporary directory is deleted after a clean stop and kept,
 with its location printed, after a failure.
