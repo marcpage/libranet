@@ -67,7 +67,8 @@ from libranet.modules import ModuleName
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.protocol.lists import NODES_PATH, node_list_body
 
-#: Where the nodes listen, and are told about each other, unless ``--host`` says otherwise.
+#: Where the nodes listen, and are told about each other, unless ``--host``
+#: says otherwise.
 HOST: Final = "127.0.0.1"
 
 #: How many nodes get distinct first hex digits: one per hex digit.
@@ -393,7 +394,8 @@ class NodeProcess:
         pid, holding its modules too; killing the supervisor alone would
         orphan them.
         """
-        # Once the supervisor is reaped, its pid, and so the group id, may be reused.
+        # Once the supervisor is reaped, its pid, and so the group id, may be
+        # reused.
         if self.process.returncode is None:
             try:
                 killpg(self.process.pid, SIGKILL)
@@ -413,7 +415,8 @@ class NodeProcess:
                 return True
 
         except (URLError, OSError):
-            # Not logged: a node not serving yet refuses, which is what this asks.
+            # Not logged: a node not serving yet refuses, which is what this
+            # asks.
             return False
 
 
@@ -703,7 +706,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         pass
 
     except RuntimeError as error:
-        # Not logged: the command has no log of its own, so it prints the error.
+        # Not logged: the command has no log of its own, so it prints the
+        # error.
         print(f"\n{error}", flush=True)
         status = 1
 

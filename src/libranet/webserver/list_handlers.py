@@ -56,10 +56,20 @@ _LOGGER = getLogger(__name__)
 
 @dataclass(frozen=True)
 class ListFileHandler:
-    """Serves one derived list file as JSON."""
+    """Serves one derived list file as JSON.
+
+    Raises:
+        ValueError: ``retry_after_seconds`` is negative.
+    """
 
     path: Path
     retry_after_seconds: int
+
+    def __post_init__(self) -> None:
+        if self.retry_after_seconds < 0:
+            raise ValueError(
+                f"retry_after_seconds must not be negative, got {self.retry_after_seconds}"
+            )
 
     def __call__(self, request: Request) -> Response:
         try:

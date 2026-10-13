@@ -8,7 +8,7 @@ from threading import Thread
 from typing import Any, Mapping
 from zlib import decompress
 
-from pytest import LogCaptureFixture, fixture, mark
+from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.atomic_file import write_atomically
 from libranet.bundle.signing import SignedBundle
@@ -798,3 +798,8 @@ def test_a_sign_in_waits_while_another_key_is_derived(identities: Identities) ->
     waiting.join(timeout=10)
     assert not waiting.is_alive()
     assert answers[0].status == 503
+
+
+def test_a_negative_retry_after_is_refused(identities: Identities) -> None:
+    with raises(ValueError, match="retry_after_seconds"):
+        replace(identities, retry_after_seconds=-1)

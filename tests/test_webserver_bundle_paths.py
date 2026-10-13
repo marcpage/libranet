@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 from logging import WARNING
+from dataclasses import replace
 from pathlib import Path
 from time import monotonic
 from typing import Any, Mapping
 from zlib import compress
 
-from pytest import LogCaptureFixture, fixture, mark
+from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.atomic_file import write_atomically
 from libranet.bundle.parts import PartPath
@@ -129,3 +130,8 @@ def test_a_saved_directory_that_cannot_be_read_is_discarded_and_asked_for_again(
     assert asked.messages == [
         (EventType.APP_PATH_NOT_FOUND, {"bundle": str(BUNDLE), "path": "docs"})
     ]
+
+
+def test_a_negative_retry_after_is_refused(paths: BundlePaths) -> None:
+    with raises(ValueError, match="retry_after_seconds"):
+        replace(paths, retry_after_seconds=-1)

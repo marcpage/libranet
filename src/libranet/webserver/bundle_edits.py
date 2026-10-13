@@ -445,7 +445,8 @@ class BundleEdit:
         elif entries == base.entries and encrypted == named.encrypted:
             return named
 
-        # A bundle that is not encrypted does not name one that is, with its key.
+        # A bundle that is not encrypted does not name one that is, with its
+        # key.
         elif named.encrypted and not encrypted:
             versions = ()
 
@@ -547,7 +548,8 @@ class BundleEditHandler:
         """Store the bundle ``asked`` gives, as one object, and return what names it.
 
         Raises:
-            BundleTooLargeError: it does not fit in one object, even compressed.
+            BundleTooLargeError: it does not fit in one object, even
+                compressed.
         """
         return PartPath(
             store_object(encode_bundle(asked.bundle), self.uploads, self.max_object_bytes)

@@ -73,7 +73,8 @@ class EventType(StrEnum):
     EVICTION_CANDIDATES_REQUESTED = "eviction.candidates_requested"  # eviction → stats
     EVICTION_CANDIDATES = "eviction.candidates"  # stats → eviction
 
-    # Deleting the resolved files of applications not used lately (Phase 2 Step 29).
+    # Deleting the resolved files of applications not used lately (Phase 2
+    # Step 29).
     APP_ACCESSED = "app.accessed"  # webserver → stats
     RESOLVED_RECLAIM_REQUESTED = "resolved.reclaim_requested"  # eviction → stats
     RESOLVED_RECLAIM = "resolved.reclaim"  # stats → unbundler
@@ -82,11 +83,13 @@ class EventType(StrEnum):
     # Content this node will not hold (Phase 4 Step 30).
     DATA_BLOCKED = "data.blocked"  # webserver → stats, eviction
 
-    # The peers connected, whose public keys are never evicted (Phase 2 Step 53).
+    # The peers connected, whose public keys are never evicted (Phase 2
+    # Step 53).
     PEERS_CONNECTED_REQUESTED = "peers.connected_requested"  # eviction → connections, webserver
     PEERS_CONNECTED = "peers.connected"  # connections, webserver → eviction
 
-    # Whether storage is full, so content this node creates waits (Phase 2 Step 63).
+    # Whether storage is full, so content this node creates waits (Phase 2
+    # Step 63).
     STORAGE_FULL_REQUESTED = "storage.full_requested"  # backup → eviction
     STORAGE_FULL = "storage.full"  # eviction → backup
 

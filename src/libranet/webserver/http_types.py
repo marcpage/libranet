@@ -53,9 +53,9 @@ class _Readable(Protocol):
 class RequestBody:
     """A request body, read from the connection only when a handler asks.
 
-    ``length_bytes`` is the declared ``Content-Length``, or ``None`` when the body
-    is sent with a ``Transfer-Encoding`` and its size is not known up front;
-    such a body cannot be read. A body left unread means the connection
+    ``length_bytes`` is the declared ``Content-Length``, or ``None`` when the
+    body is sent with a ``Transfer-Encoding`` and its size is not known up
+    front; such a body cannot be read. A body left unread means the connection
     cannot be reused, since its bytes would be parsed as the next request.
     """
 

@@ -27,7 +27,8 @@ class ReadySignal(Protocol):
 #: Builds a module inside its own process from the node config and its queues.
 ModuleFactory = Callable[[ModuleName, LibranetConfig, ModuleQueues], ModuleBase]
 
-#: Runs the dispatcher inside its own process; must call ``ready.set()`` once up.
+#: Runs the dispatcher inside its own process; must call ``ready.set()`` once
+#: up.
 DispatcherEntry = Callable[
     [LibranetConfig, Mapping[ModuleName, ModuleQueues], StopSignal, ReadySignal], None
 ]

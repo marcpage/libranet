@@ -245,7 +245,8 @@ class SearchCache:
             return path.read_bytes()
 
         except FileNotFoundError:
-            # Not logged: a prefix not searched for lately has no cached response.
+            # Not logged: a prefix not searched for lately has no cached
+            # response.
             return None
 
     def load_results(self, prefix: str) -> list[ContentId] | None:

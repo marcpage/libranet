@@ -1,10 +1,11 @@
 """Restoring a backup bundle into a local directory (BackupSpecification §5).
 
-The bundle is read with the backup secret (§4.2), as a drop (BundleSpecification
-§6.4) if it cannot be read as it is, and its extensions overlaid (§4). Its files
-are then reassembled, each checked against its whole-file hash before it is put
-in place, and its symlinks and empty directories made, with the times,
-permissions, and extended attributes recorded (:mod:`libranet.backup.writing`).
+The bundle is read with the backup secret (§4.2), as a drop
+(BundleSpecification §6.4) if it cannot be read as it is, and its extensions
+overlaid (§4). Its files are then reassembled, each checked against its
+whole-file hash before it is put in place, and its symlinks and empty
+directories made, with the times, permissions, and extended attributes recorded
+(:mod:`libranet.backup.writing`).
 
 Content this node does not hold is normal rather than a failure: a bundle may
 name content this node has handed off, or never held. A restore restores what
@@ -145,11 +146,14 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
         self._arrived_at = requested_at
         self._gave_up = False
         self._missing: set[ContentId] = set()
-        # What each entry waiting on content lacked, by path, as of the last pass.
+        # What each entry waiting on content lacked, by path, as of the last
+        # pass.
         self._lacking: dict[str, tuple[ContentId, ...]] = {}
-        # The entries not yet restored or left out; None until the bundle is read.
+        # The entries not yet restored or left out; None until the bundle is
+        # read.
         self._pending: dict[str, Entry] | None = None
-        # The bundle, to be recorded beside the directory; None unless it is read and plain.
+        # The bundle, to be recorded beside the directory; None unless it is
+        # read and plain.
         self._expanded: Superseded | None = None
         self._started = False
         self._restored = 0
@@ -257,7 +261,8 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
             record = self._record_path()
 
             if not self._started and record is not None:
-                # Read only to raise if what is there is not a record, before anything is written.
+                # Read only to raise if what is there is not a record, before
+                # anything is written.
                 BuildRecord.load(record)
 
             with DirectoryWriter.open(directory, overwrite, ignored, xattrs) as writer:
@@ -268,7 +273,8 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
             missing = list(dict.fromkeys(chain.from_iterable(self._lacking.values())))
 
         except MissingContentError as error:
-            # Not logged: what is missing is asked for, and the backup module logs it.
+            # Not logged: what is missing is asked for, and the backup module
+            # logs it.
             missing = list(error.content_ids)
 
         self._skipped += len(skipped)
@@ -353,7 +359,8 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
         if self._expanded is None or path is None:
             return
 
-        # Read only to raise if what is there now is not a record, which is kept.
+        # Read only to raise if what is there now is not a record, which is
+        # kept.
         BuildRecord.load(path)
         BuildRecord.of(self._expanded, False).save(path)
 
@@ -423,7 +430,8 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
         """Restore the entry at ``path``, unless content it needs is not held.
 
         Returns:
-            The content it needs that is not held; none if it was restored or left out.
+            The content it needs that is not held; none if it was restored or
+            left out.
 
         Raises:
             OSError: writing failed in a way that would fail every entry.
@@ -455,7 +463,8 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
                 raise UnsupportedBundleError(f"Not a file, a symlink, or a directory: {kind}")
 
         except MissingContentError as error:
-            # Not logged: what is missing is asked for, and the backup module logs it.
+            # Not logged: what is missing is asked for, and the backup module
+            # logs it.
             return tuple(error.content_ids)
 
         except (OSError, BundleError) as error:
@@ -484,7 +493,8 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
         self._missing = set(missing)
 
         if waited - self._missing:
-            # Held now, though its arrival was not noted, as content stored during the pass is.
+            # Held now, though its arrival was not noted, as content stored
+            # during the pass is.
             self._arrived_at = now
 
         if not missing:

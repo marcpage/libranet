@@ -83,11 +83,13 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig
 
-#: Told of each object an :class:`AnnouncingStore` writes, and its size as stored.
+#: Told of each object an :class:`AnnouncingStore` writes, and its size as
+#: stored.
 Announce = Callable[[ContentId, int], None]
 
 #: Called before an :class:`AnnouncingStore` writes an object, to return once
-#: there is room for it, or raise :class:`~libranet.backup.errors.StorageFullError`.
+#: there is room for it, or raise
+#: :class:`~libranet.backup.errors.StorageFullError`.
 MakeRoom = Callable[[], None]
 
 

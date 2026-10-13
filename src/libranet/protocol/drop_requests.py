@@ -76,8 +76,7 @@ class PasswordEncryption:
     something new (HttpApi §11.3).
 
     Raises:
-        ValueError: ``password`` is shorter than
-            :data:`~libranet.protocol.identity_requests.MIN_PASSWORD_CHARACTERS`,
+        ValueError: ``password`` is shorter than ``MIN_PASSWORD_CHARACTERS``,
             or not UTF-8.
     """
 
@@ -211,7 +210,8 @@ class SignedDropRequest:
     def signed(self, data: bytes) -> DropRequest:
         """The drop of ``data``, the signed bundle of :attr:`text`, encrypted and placed as asked.
 
-        Encrypting it is left to whoever places it (:meth:`DropRequest.encrypted`).
+        Encrypting it is left to whoever places it
+        (:meth:`DropRequest.encrypted`).
         """
         return replace(self.unsigned, data=data)
 

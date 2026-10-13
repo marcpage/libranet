@@ -6,7 +6,7 @@ from os import chmod, geteuid, mkfifo
 from os.path import realpath
 from pathlib import Path
 
-from pytest import fixture, mark
+from pytest import fixture, mark, raises
 
 from libranet.config.models import DEFAULT_CONFIG_HOSTS
 from libranet.messaging.envelope import Message
@@ -250,3 +250,8 @@ def test_no_imports_reported_are_none_read_back(router: Router, state: BackupSta
     response = router.dispatch(Request("GET", IMPORTS_PATH, client_address="127.0.0.1"))
 
     assert loads(response.body) == {"imports": {}}
+
+
+def test_an_import_list_refuses_a_negative_retry_after(state: BackupState) -> None:
+    with raises(ValueError, match="retry_after_seconds"):
+        ImportListHandler(state, -1)

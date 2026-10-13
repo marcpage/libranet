@@ -344,7 +344,8 @@ def build_router(  # pylint: disable=too-many-locals
         )
         encrypted = EncryptedDrops(signed, derivations=work.derivations)
 
-        # The encrypted routes before the bundle route, whose pattern they also fit.
+        # The encrypted routes before the bundle route, whose pattern they also
+        # fit.
         for method, path, handler in (
             ("POST", USERS_PATH, identities.make),
             ("POST", FALLBACK_PATH, identities.take_over),
@@ -601,8 +602,8 @@ class LibranetHTTPServer(ThreadingHTTPServer):
         listen on it. The server counts no peers.
 
         Raises:
-            OSError: no port of ``ports`` can be listened on, or ``host`` cannot
-                be listened at.
+            OSError: no port of ``ports`` can be listened on, or ``host``
+                cannot be listened at.
         """
         tried = 0
 
@@ -701,7 +702,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             response = self.server.router.dispatch(request)
 
         except IncompleteBodyError as error:
-            # The client stopped mid-body, so the connection is unusable (RFC 9112 §8).
+            # The client stopped mid-body, so the connection is unusable
+            # (RFC 9112 §8).
             self.log_error("%s", error)
             self.close_connection = True
             return

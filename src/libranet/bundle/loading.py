@@ -64,7 +64,8 @@ def load_bundle(
         size_bytes += len(chunk)
 
         if size_bytes > max_bytes:
-            # Only what is stored is named, since the key is what keeps it unread.
+            # Only what is stored is named, since the key is what keeps it
+            # unread.
             raise UnsupportedBundleError(
                 f"Bundle {path.content_id} is larger than {max_bytes} bytes"
             )

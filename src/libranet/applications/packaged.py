@@ -113,7 +113,8 @@ class PackagedApplications:
         """Write these applications, built, as a wheel carries them, and return the two files.
 
         Raises:
-            ValueError: they were not built in memory, so there is nothing to write.
+            ValueError: they were not built in memory, so there is nothing to
+                write.
             OSError: a file could not be written.
         """
         if self.archive is None:

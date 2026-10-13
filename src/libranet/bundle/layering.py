@@ -259,7 +259,8 @@ class Superseded:
         beneath = top.extensions[first:]
 
         if len(set(beneath)) < len(beneath):
-            # Only what is stored is named, since the key is what keeps it unread.
+            # Only what is stored is named, since the key is what keeps it
+            # unread.
             _LOGGER.warning(
                 "%s lists a layer beneath it twice, so the version after it is stored whole",
                 path.content_id,
@@ -389,7 +390,8 @@ class Superseded:
         if self.key is not None and not encrypted:
             return None
 
-        # This bundle and every extension it reaches, the layers beneath it among them.
+        # This bundle and every extension it reaches, the layers beneath it
+        # among them.
         reached = 1 + layering.extensions
 
         if reached > max_extensions:
@@ -414,7 +416,8 @@ class Superseded:
             )
 
         except BundleTooLargeError:
-            # Not logged: a layer that would pass a limit is stored whole instead.
+            # Not logged: a layer that would pass a limit is stored whole
+            # instead.
             return None
 
         return StoredVersion(

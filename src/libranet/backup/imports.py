@@ -2,13 +2,14 @@
 
 A local client names a file in a folder the node offers it (HttpApi §12.2),
 and the web server finds where that file lies. The file is read once, cut
-into parts as a build cuts a file (:func:`~libranet.bundle.building.build_file`),
-and each part is stored, plain, as it is read; only what is not held already
-is written. Its file bundle records the size of each part (BundleSpecification
-§2.1; Step 64), and otherwise only what the file's bytes decide: its size and
-whole-file hash, but none of its times or permissions, nor its name. So one
-file imported on any machine has one content id, as a shipped application's
-files do (:mod:`libranet.applications.packaged`).
+into parts as a build cuts a file
+(:func:`~libranet.bundle.building.build_file`), and each part is stored, plain,
+as it is read; only what is not held already is written. Its file bundle
+records the size of each part (BundleSpecification §2.1; Step 64), and
+otherwise only what the file's bytes decide: its size and whole-file hash, but
+none of its times or permissions, nor its name. So one file imported on any
+machine has one content id, as a shipped application's files do
+(:mod:`libranet.applications.packaged`).
 
 A file whose size or modification time changes while it is read fails to
 import, rather than record bytes the file never held all at once. Importing

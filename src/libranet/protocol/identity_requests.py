@@ -19,8 +19,9 @@ Signing in asks for the username and password alone::
 
     {"username": "alice", "password": "…"}
 
-The username is normalized as it is read (:class:`~libranet.identity.people.Username`).
-No password is in a request's ``repr``, or in any error.
+The username is normalized as it is read
+(:class:`~libranet.identity.people.Username`). No password is in a request's
+``repr``, or in any error.
 """
 
 from __future__ import annotations
@@ -36,7 +37,8 @@ from libranet.identity.people import Username
 from libranet.json_fields import integer_field, number_field, string_field
 from libranet.protocol.errors import InvalidRequestError
 
-#: The fewest characters a new identity's password has, once in NFC (HttpApi §11.3).
+#: The fewest characters a new identity's password has, once in NFC
+#: (HttpApi §11.3).
 MIN_PASSWORD_CHARACTERS: Final = 8
 
 

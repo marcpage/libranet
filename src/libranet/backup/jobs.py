@@ -201,7 +201,8 @@ class ExpandedBackups:
             data = path.read_bytes()
 
         except FileNotFoundError:
-            # Not logged: a job backed up before bundles were kept expanded has none yet.
+            # Not logged: a job backed up before bundles were kept expanded has
+            # none yet.
             return None
 
         except OSError as error:

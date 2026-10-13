@@ -5,6 +5,7 @@ from base64 import b64encode
 from hashlib import sha256
 from json import dumps, loads
 from logging import ERROR, WARNING
+from dataclasses import replace
 from pathlib import Path
 from threading import Thread
 from typing import Any, Mapping, cast
@@ -459,3 +460,8 @@ def test_a_key_is_derived_in_its_turn(encrypting: DropHandler, encryption: DropE
     waiting.join(timeout=10)
     assert not waiting.is_alive()
     made(answers[0])
+
+
+def test_an_encryption_refuses_a_negative_retry_after(encryption: DropEncryption) -> None:
+    with raises(ValueError, match="retry_after_seconds"):
+        replace(encryption, retry_after_seconds=-1)

@@ -169,8 +169,12 @@ class Identities:  # pylint: disable=too-many-instance-attributes
     stores one in. ``sessions`` holds who is signed in, and ``publish`` asks
     for blocks found and not held, which a client is told to ask again for
     after ``retry_after_seconds``, as long as a sign-in that finds none
-    opening waits, with ``wait``, before it tries again. A key is made at one of the sizes
-    ``key_bits`` names, and one key is derived at a time, in ``derivations``.
+    opening waits, with ``wait``, before it tries again. A key is made at one
+    of the sizes ``key_bits`` names, and one key is derived at a time, in
+    ``derivations``.
+
+    Raises:
+        ValueError: ``retry_after_seconds`` is negative.
     """
 
     uploads: OwnUploads
@@ -183,6 +187,12 @@ class Identities:  # pylint: disable=too-many-instance-attributes
     key_bits: tuple[int, ...] = DEFAULT_PERSON_KEY_BITS
     derivations: Turns = field(default_factory=Turns)
     wait: Callable[[float], None] = sleep
+
+    def __post_init__(self) -> None:
+        if self.retry_after_seconds < 0:
+            raise ValueError(
+                f"retry_after_seconds must not be negative, got {self.retry_after_seconds}"
+            )
 
     def make(self, request: Request) -> Response:
         """``POST /data/users``: make the identity ``request`` asks for, and sign it in."""
@@ -212,51 +222,6 @@ class Identities:  # pylint: disable=too-many-instance-attributes
             return made
 
         return json_response(made.value(), HTTPStatus.CREATED)
-
-    def _made(self, request: Request) -> _Made | Response:
-        """The identity ``request`` asks for, made and stored; or the response refusing it."""
-        asked = parsed_or_refusal(request, IdentityRequest.from_value)
-
-        if isinstance(asked, Response):
-            return asked
-
-        try:
-            self._check_made(asked.key_bits)
-            self.drops.within_ceilings(asked.seconds, asked.minimum_bits)
-
-        except InvalidRequestError as error:
-            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            return invalid_request_response(request, error)
-
-        key = self._password_key(asked.username, asked.password)
-        fallback_key = self._password_key(asked.username, asked.fallback_password)
-
-        if self._found(asked.username, key, ask_for_missing=False).key is not None:
-            _LOGGER.debug("Refusing %s %s: the identity is held", request.method, request.path)
-            return status_response(
-                request,
-                HTTPStatus.CONFLICT,
-                "This username and password already open an identity here; sign in with them.",
-            )
-
-        refused = self._fallback_refused(request, asked.username, fallback_key)
-
-        if refused is not None:
-            return refused
-
-        made = NewIdentity.generate(asked.key_bits)
-        stored = self._placed(request, asked, made, (key, fallback_key))
-
-        if isinstance(stored, Response):
-            return stored
-
-        _LOGGER.info(
-            "Made the identity %s, kept at %s, with the fallback %s",
-            made.key.person_id,
-            stored.content_id,
-            made.fallback.person_id,
-        )
-        return _Made(Session(asked.username, made.key), stored)
 
     def take_over(self, request: Request) -> Response:
         """``POST /data/fallback``: have the fallback ``request`` names take over, and sign it in.
@@ -304,6 +269,82 @@ class Identities:  # pylint: disable=too-many-instance-attributes
             json_response(_Made(session, stored).value()),
             {"Set-Cookie": self.sessions.start(session)},
         )
+
+    def sign_in(self, request: Request) -> Response:
+        """``POST /data/session``: sign in the person ``request`` names, if it is them."""
+        asked = parsed_or_refusal(request, SignInRequest.from_value)
+
+        if isinstance(asked, Response):
+            return asked
+
+        key = self._password_key(asked.username, asked.password)
+        found = self._opened(asked.username, key)
+
+        if found.key is None:
+            return self._not_found(request, found)
+
+        # Held again, should it have been evicted since it was made.
+        store_object(found.key.public_key, self.uploads, self.drops.max_object_bytes)
+        session = Session(asked.username, found.key)
+        _LOGGER.info("Signed in as %s", found.key.person_id)
+        return _with_headers(
+            json_response(session.value()), {"Set-Cookie": self.sessions.start(session)}
+        )
+
+    def signed_in(self, request: Request) -> Response:
+        """``GET /data/session``: who the session ``request`` names is signed in as, if anyone."""
+        session = self.sessions.session(request)
+        return _with_headers(json_response(_NO_ONE if session is None else session.value()), {})
+
+    def sign_out(self, request: Request) -> Response:
+        """``DELETE /data/session``: end the session ``request`` names, and remove its cookie."""
+        cookie = self.sessions.end(request)
+        return Response(HTTPStatus.NO_CONTENT, headers={**NOT_STORED, "Set-Cookie": cookie})
+
+    def _made(self, request: Request) -> _Made | Response:
+        """The identity ``request`` asks for, made and stored; or the response refusing it."""
+        asked = parsed_or_refusal(request, IdentityRequest.from_value)
+
+        if isinstance(asked, Response):
+            return asked
+
+        try:
+            self._check_made(asked.key_bits)
+            self.drops.within_ceilings(asked.seconds, asked.minimum_bits)
+
+        except InvalidRequestError as error:
+            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
+            return invalid_request_response(request, error)
+
+        key = self._password_key(asked.username, asked.password)
+        fallback_key = self._password_key(asked.username, asked.fallback_password)
+
+        if self._found(asked.username, key, ask_for_missing=False).key is not None:
+            _LOGGER.debug("Refusing %s %s: the identity is held", request.method, request.path)
+            return status_response(
+                request,
+                HTTPStatus.CONFLICT,
+                "This username and password already open an identity here; sign in with them.",
+            )
+
+        refused = self._fallback_refused(request, asked.username, fallback_key)
+
+        if refused is not None:
+            return refused
+
+        made = NewIdentity.generate(asked.key_bits)
+        stored = self._placed(request, asked, made, (key, fallback_key))
+
+        if isinstance(stored, Response):
+            return stored
+
+        _LOGGER.info(
+            "Made the identity %s, kept at %s, with the fallback %s",
+            made.key.person_id,
+            stored.content_id,
+            made.fallback.person_id,
+        )
+        return _Made(Session(asked.username, made.key), stored)
 
     def _takeover_refused(
         self, request: Request, opened: PersonKey, username: Username, fallback_key: PasswordKey
@@ -394,37 +435,6 @@ class Identities:  # pylint: disable=too-many-instance-attributes
             store_object(public_key, self.uploads, self.drops.max_object_bytes)
 
         return stored[-1]
-
-    def sign_in(self, request: Request) -> Response:
-        """``POST /data/session``: sign in the person ``request`` names, if it is them."""
-        asked = parsed_or_refusal(request, SignInRequest.from_value)
-
-        if isinstance(asked, Response):
-            return asked
-
-        key = self._password_key(asked.username, asked.password)
-        found = self._opened(asked.username, key)
-
-        if found.key is None:
-            return self._not_found(request, found)
-
-        # Held again, should it have been evicted since it was made.
-        store_object(found.key.public_key, self.uploads, self.drops.max_object_bytes)
-        session = Session(asked.username, found.key)
-        _LOGGER.info("Signed in as %s", found.key.person_id)
-        return _with_headers(
-            json_response(session.value()), {"Set-Cookie": self.sessions.start(session)}
-        )
-
-    def signed_in(self, request: Request) -> Response:
-        """``GET /data/session``: who the session ``request`` names is signed in as, if anyone."""
-        session = self.sessions.session(request)
-        return _with_headers(json_response(_NO_ONE if session is None else session.value()), {})
-
-    def sign_out(self, request: Request) -> Response:
-        """``DELETE /data/session``: end the session ``request`` names, and remove its cookie."""
-        cookie = self.sessions.end(request)
-        return Response(HTTPStatus.NO_CONTENT, headers={**NOT_STORED, "Set-Cookie": cookie})
 
     def _check_made(self, key_bits: int) -> None:
         """Raise unless this node makes a key of ``key_bits``.

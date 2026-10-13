@@ -83,7 +83,8 @@ class ValidatorModule(ModuleBase):
 
         elif content_matches(content_id, data):
             # The verified bytes are written rather than the upload file moved:
-            # a new upload from the same node may replace that file at any time.
+            # a new upload from the same node may replace that file at any
+            # time.
             self._source_of_truth.write(content_id, data)
             self.publish(EventType.DATA_STORED, {**payload, "size": len(data)})
             self.logger.info("Stored %s from %s", content_id, node_id)

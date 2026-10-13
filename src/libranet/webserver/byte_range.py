@@ -71,7 +71,8 @@ class ByteRange:
             return None
 
         unit, equals, ranges = header.partition("=")
-        # A list may hold empty elements, which are not ranges (RFC 9110 §5.6.1).
+        # A list may hold empty elements, which are not ranges
+        # (RFC 9110 §5.6.1).
         specs = [spec.strip() for spec in ranges.split(",") if spec.strip()]
 
         # Another unit is not this node's to send, and more than one range is

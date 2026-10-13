@@ -27,8 +27,8 @@ class PeerAddress:
         """Where to dial ``endpoint``, or ``None`` if this node cannot dial it.
 
         A missing port is port 80 (HttpApi §10.6). Any path is ignored. IPv6
-        hosts lose their brackets, as :meth:`~libranet.connections.PeerConnection.open`
-        expects.
+        hosts lose their brackets, as
+        :meth:`~libranet.connections.PeerConnection.open` expects.
         """
         try:
             parts = urlsplit(endpoint)

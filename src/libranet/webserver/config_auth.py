@@ -77,8 +77,9 @@ def basic_credentials(headers: Mapping[str, str]) -> str | None:
             decoded = b64decode(encoded.strip(), validate=True).decode("utf-8")
 
         except (Base64Error, ValueError) as error:
-            # A UnicodeDecodeError, for bytes that are not UTF-8, is a ValueError.
-            # The error alone, since what it failed on may be a password.
+            # A UnicodeDecodeError, for bytes that are not UTF-8, is a
+            # ValueError. The error alone, since what it failed on may be a
+            # password.
             _LOGGER.debug("Ignoring Basic credentials that do not decode: %s", type(error).__name__)
             return None
 

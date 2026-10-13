@@ -48,7 +48,8 @@ from libranet.config.models import StorageConfig
 #: Where the archives shipped with the package are kept.
 PACKAGED_ARCHIVES: Final = files("libranet") / "archives"
 
-# How the shipped applications are named, as an archive, when built from their source.
+# How the shipped applications are named, as an archive, when built from their
+# source.
 _BUILT_APPLICATIONS: Final = "the applications shipped with the node, built from their source"
 
 

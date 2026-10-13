@@ -113,9 +113,9 @@ class ProcessSupervisor:  # pylint: disable=too-many-instance-attributes
         self._stop_timeout_seconds = stop_timeout_seconds
 
         self._context = get_context(START_METHOD)
-        # Children watch ``_stop``, which only :meth:`shutdown` sets. The node's
-        # signal handler sets the signal :meth:`run` is given instead, so a
-        # child never sees a signal meant for the supervisor. Until then,
+        # Children watch ``_stop``, which only :meth:`shutdown` sets. The
+        # node's signal handler sets the signal :meth:`run` is given instead,
+        # so a child never sees a signal meant for the supervisor. Until then,
         # ``_stop`` stands in for it; :meth:`_stopping` checks both.
         self._stop = self._context.Event()
         # The dispatcher has its own, set once every module has exited.

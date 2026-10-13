@@ -5,7 +5,8 @@ trusted to stay within the directory. Every path is walked a directory at a
 time from the directory itself, and no symlink is followed on the way, neither
 one the restore made nor one already there. So nothing is ever written outside
 the directory, whatever its symlinks point to. Whether a symlink restored
-points outside it is for the restore to check (:mod:`libranet.backup.restores`).
+points outside it is for the restore to check
+(:mod:`libranet.backup.restores`).
 
 A file is written beside where it goes, under a temporary name, checked
 against its hash and size as it is written
@@ -455,14 +456,15 @@ def _under_temporary_name(make: Callable[[str], _Made]) -> tuple[str, _Made]:
 
 
 def _temporary_name() -> str:
-    """A random name for a file or symlink until it is complete,
-    unlike any an entry is likely to have."""
+    """A random name for a file or symlink until it is complete.
+
+    It is unlike any an entry is likely to have.
+    """
     return f"{_TEMPORARY_PREFIX}{token_hex(_TEMPORARY_TOKEN_BYTES)}{TEMP_SUFFIX}"
 
 
 def _set_metadata(descriptor: int, metadata: Metadata) -> None:
-    """Give the open file or directory the permissions and
-    modification time ``metadata`` records."""
+    """Give the open file or directory the permissions and modification time in ``metadata``."""
     status = fstat(descriptor)
     fchmod(descriptor, _permissions(S_IMODE(status.st_mode), metadata))
     modified = _nanoseconds(metadata.modified)

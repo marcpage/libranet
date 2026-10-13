@@ -12,7 +12,7 @@ from json import dumps, loads
 from logging import DEBUG, WARNING, LogRecord
 from pathlib import Path
 
-from pytest import LogCaptureFixture, fixture, mark
+from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.config.models import NetworkConfig
@@ -34,7 +34,7 @@ from libranet.webserver.app_registry import (
     ApplicationRegistry,
     RegisteredApplications,
 )
-from libranet.webserver.backup_state import BackupReport, BackupState
+from libranet.webserver.backup_state import JOBS_FIELD, BackupReport, BackupState
 from libranet.webserver.config_handlers import (
     APPLICATIONS_PATH,
     BACKUPS_PATH,
@@ -44,6 +44,7 @@ from libranet.webserver.config_handlers import (
     EXPORTS_PATH,
     NODE_PATH,
     RESTORES_PATH,
+    BackupReportHandler,
     NodeDescription,
     config_routes,
 )
@@ -796,3 +797,8 @@ def test_a_registry_that_cannot_be_read_is_logged_as_a_warning(
     assert record.levelno == WARNING
     assert record.getMessage().startswith(f"Refusing {method} {path}: ")
     assert str(registry.path) in record.getMessage()
+
+
+def test_a_report_handler_refuses_a_negative_retry_after(state: BackupState) -> None:
+    with raises(ValueError, match="retry_after_seconds"):
+        BackupReportHandler(state, JOBS_FIELD, -1)

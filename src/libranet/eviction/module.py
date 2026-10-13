@@ -268,7 +268,8 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         self._asked_at: float | None = None
         # No new hand-off starts before this time.
         self._paused_until = 0.0
-        # When resolved files were asked to be deleted, while that is unanswered.
+        # When resolved files were asked to be deleted, while that is
+        # unanswered.
         self._reclaiming_since: float | None = None
         # They are not asked to be deleted again before this time.
         self._next_reclaim_at = 0.0

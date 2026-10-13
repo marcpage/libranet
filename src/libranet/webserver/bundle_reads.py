@@ -11,10 +11,10 @@ which carries the key it is decrypted with::
     GET /data/{algorithm}/{hash}/{cipher}/{key}/{path}
 
 A path is read as the second when its two segments after ``{hash}`` are a
-cipher this node reads and a key, which is not empty, as written: only ``{path}`` is
-percent-decoded. A bundle entry whose path begins so cannot be read into by
-the first. The key travels in the message asking the unbundler, and is left
-out of every log line, the server's access log among them.
+cipher this node reads and a key, which is not empty, as written: only
+``{path}`` is percent-decoded. A bundle entry whose path begins so cannot be
+read into by the first. The key travels in the message asking the unbundler,
+and is left out of every log line, the server's access log among them.
 
 ``{path}`` names an entry, the root being empty, and a trailing ``/`` adds
 nothing to it. What it names is served as an application's file is (see

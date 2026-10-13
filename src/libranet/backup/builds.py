@@ -18,8 +18,9 @@ Step 48)::
     {"bundle": "sha256/<hex>", "layering": {"layers": 1, "extensions": 1},
      "protected": false, "beneath": ["sha256/<hex>"], "contents": {...}}
 
-A restore of a plain bundle writes the same record (:mod:`libranet.backup.restores`),
-so that a directory expanded to be edited is built as that bundle's update.
+A restore of a plain bundle writes the same record
+(:mod:`libranet.backup.restores`), so that a directory expanded to be edited is
+built as that bundle's update.
 
 Building a directory that has a record updates it: the new bundle records the
 one the record names in its ``versions``, and takes its place in the record.
@@ -255,7 +256,8 @@ class Build(Task):
         if record is not None and earlier is not None and earlier.matches(build.bundle):
             bundle = record.bundle
 
-            # Kept expanded from now on, if the record was written before bundles were.
+            # Kept expanded from now on, if the record was written before
+            # bundles were.
             if record.expanded is None:
                 BuildRecord.of(earlier.superseded, password is not None).save(record_path)
 

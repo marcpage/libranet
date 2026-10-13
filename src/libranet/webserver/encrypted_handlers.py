@@ -11,9 +11,10 @@ key a username and password give. The node opens either for it (Phase 4 Step
 The first opens the drop the identifier names with the private key of
 whoever is signed in, and the second with the key the username and password
 derive, which takes its turn with those of signing in. Each reads the drop as
-``GET /data/signed`` does (:class:`~libranet.webserver.signed_handlers.SignedDrops`),
-announcing the read and asking for what is not held, takes its content before
-its last null byte, and answers with what was encrypted::
+``GET /data/signed`` does
+(:class:`~libranet.webserver.signed_handlers.SignedDrops`), announcing the read
+and asking for what is not held, takes its content before its last null byte,
+and answers with what was encrypted::
 
     {"id": "sha256/…", "text": "…"}
 

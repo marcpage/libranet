@@ -112,6 +112,9 @@ class BundlePaths:
     them, and ``use`` reports each bundle used. ``parts`` reads the files'
     parts, and says how long a request waits for what it lacks. A ``503``
     tells the client to retry after ``retry_after_seconds``.
+
+    Raises:
+        ValueError: ``retry_after_seconds`` is negative.
     """
 
     files: ResolvedFiles
@@ -120,6 +123,12 @@ class BundlePaths:
     retry_after_seconds: int
     use: ApplicationUse
     parts: PartReader
+
+    def __post_init__(self) -> None:
+        if self.retry_after_seconds < 0:
+            raise ValueError(
+                f"retry_after_seconds must not be negative, got {self.retry_after_seconds}"
+            )
 
     def deadline(self) -> float:
         """When a request begun now stops waiting for what it lacks, as :func:`monotonic` tells."""

@@ -113,6 +113,9 @@ class DropEncryption:
     and password one at a time, in ``derivations``, and only for a local
     client, at a host ``checks`` serves as, from a page of an application
     ``pages`` says the operator trusts (HttpApi §11.6).
+
+    Raises:
+        ValueError: ``retry_after_seconds`` is negative.
     """
 
     content: ContentSource
@@ -123,6 +126,12 @@ class DropEncryption:
     retry_after_seconds: int
     derivations: Turns = field(default_factory=Turns)
     blocked: BlockedContent | None = None
+
+    def __post_init__(self) -> None:
+        if self.retry_after_seconds < 0:
+            raise ValueError(
+                f"retry_after_seconds must not be negative, got {self.retry_after_seconds}"
+            )
 
     def encrypted(
         self, request: Request, asked: DropRequest, *, max_object_bytes: int

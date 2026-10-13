@@ -19,19 +19,19 @@ import's ``path`` is the one the client asked for, a folder's name and a path
 beneath it, and ``local_path`` where the web server found that file.
 
 A job's directory is looked at once it is configured, again when the module
-starts, and ``interval_seconds`` after each look, or ``backup.interval_seconds``
-for a job that gives none, and whenever a backup is asked for. Each look is a
-backup, walking the directory once (Phase 2 Step 49). It reads only the files
-whose metadata changed, stores only those whose bytes did, and makes a new
-bundle only if content changed. A change to metadata alone is held back, and
-logged, until content next changes, unless a backup was asked for
-(:mod:`libranet.backup.runs`). Configuring a job's directory again sets its
+starts, and ``interval_seconds`` after each look, or
+``backup.interval_seconds`` for a job that gives none, and whenever a backup is
+asked for. Each look is a backup, walking the directory once (Phase 2 Step 49).
+It reads only the files whose metadata changed, stores only those whose bytes
+did, and makes a new bundle only if content changed. A change to metadata alone
+is held back, and logged, until content next changes, unless a backup was asked
+for (:mod:`libranet.backup.runs`). Configuring a job's directory again sets its
 interval anew and keeps its backups. Backups run one at a time, each between
 two messages, so a long one holds up the rest, and shutdown waits for it.
 
 Every object a backup, a build, or an import stores is announced as the
-validator announces one it stores, so eviction and stats treat that content like any
-other, and the connection manager pushes it to a peer (HttpApi §7.4)::
+validator announces one it stores, so eviction and stats treat that content
+like any other, and the connection manager pushes it to a peer (HttpApi §7.4)::
 
     data.stored  {"algorithm", "hash", "node_id", "size"}
 
@@ -39,9 +39,9 @@ other, and the connection manager pushes it to a peer (HttpApi §7.4)::
 from.
 
 A backup, a build, or an import stores no more while storage is full,
-rather than take the node over its limits (HighLevelDesign §4.5, Phase 2 Step 63). The
-eviction module says whether it is when that changes, when eviction starts,
-and when asked, as this module asks when it starts::
+rather than take the node over its limits (HighLevelDesign §4.5, Phase 2
+Step 63). The eviction module says whether it is when that changes, when
+eviction starts, and when asked, as this module asks when it starts::
 
     storage.full_requested  {}
     storage.full            {"full": true}
@@ -102,9 +102,10 @@ Jobs, and the bundle each was last backed up to, are kept in a file
 (:mod:`libranet.backup.jobs`), and each job's bundle is kept expanded in a
 file of its own, encrypted with the backup secret, for the next backup to be
 built from. Removing a job forgets its bundle, and deletes it as kept
-expanded, but leaves the content in CAS. What every job and restore is doing is reported whenever
-it changes, for the web server to serve at ``GET /config/api/backups``,
-``restores``, ``builds``, and ``exports``, and at ``GET /data/imports``::
+expanded, but leaves the content in CAS. What every job and restore is doing is
+reported whenever it changes, for the web server to serve at
+``GET /config/api/backups``, ``restores``, ``builds``, and ``exports``, and at
+``GET /data/imports``::
 
     backup.state  {"jobs": [...], "restores": [...], "builds": [...], "exports": [...],
                    "imports": [...]}
@@ -274,9 +275,11 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._imports: dict[str, Import] = {}
         # Whether eviction last said storage is full.
         self._storage_full = False
-        # Messages received while a backup, build, or import stored content, handled after it.
+        # Messages received while a backup, build, or import stored content,
+        # handled after it.
         self._set_aside: deque[Message] = deque()
-        # How long the backup, build, or import under way has waited for room so far.
+        # How long the backup, build, or import under way has waited for room
+        # so far.
         self._waited_seconds = 0.0
         self._route(
             {
@@ -482,8 +485,11 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._storage_full = bool(message["full"])
 
     def _work_next(self) -> None:
-        """Carry on with the restore longest due, if any, or else run the build,
-        export, or import asked for first, or else look at the next job due."""
+        """Carry on with the work most due, a restore before anything else.
+
+        That is the restore longest due, if any, or else the build, export, or
+        import asked for first, or else the next job due.
+        """
         now = self._clock()
         due = [
             (restore.due_at, restore_id)
@@ -717,7 +723,8 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
                 publish_metadata=requested,
             )
 
-            # Kept first, so that failing to keep it leaves the job with the bundle it keeps.
+            # Kept first, so that failing to keep it leaves the job with the
+            # bundle it keeps.
             if backup.expanded is not None:
                 self._expanded.save(job.job_id, backup.expanded, secret)
 
@@ -778,7 +785,8 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         """Return once eviction says storage is not full, taking what it said meanwhile first.
 
         Raises:
-            StorageFullError: storage stayed full for ``backup.storage_stall_seconds``.
+            StorageFullError: storage stayed full for
+                ``backup.storage_stall_seconds``.
         """
         self._take_messages(0.0)
 
