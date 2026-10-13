@@ -83,6 +83,7 @@ from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.protocol.drop_requests import DropRequest
 from libranet.protocol.errors import InvalidConfigRequestError
+from libranet.protocol.http_syntax import API_PREFIX
 from libranet.protocol.identity_requests import (
     FallbackRequest,
     IdentityRequest,
@@ -91,7 +92,13 @@ from libranet.protocol.identity_requests import (
 from libranet.webserver.bundle_edits import OwnUploads
 from libranet.webserver.config_handlers import invalid_request_response, json_or_refusal
 from libranet.webserver.drop_handler import DropHandler, StoredDrop, Turns
-from libranet.webserver.http_types import Request, Response, json_response, status_response
+from libranet.webserver.http_types import (
+    NOT_STORED,
+    Request,
+    Response,
+    json_response,
+    status_response,
+)
 from libranet.webserver.request_refusals import content_unavailable_response
 from libranet.webserver.search_handler import SearchHandler
 from libranet.webserver.sessions import Session, Sessions
@@ -99,13 +106,13 @@ from libranet.webserver.sessions import Session, Sessions
 _LOGGER = getLogger(__name__)
 
 #: Where a page makes a person's identity.
-USERS_PATH: Final = "/data/users"
+USERS_PATH: Final = API_PREFIX + "/users"
 
 #: Where a page has a fallback take over, with a fallback of its own.
-FALLBACK_PATH: Final = "/data/fallback"
+FALLBACK_PATH: Final = API_PREFIX + "/fallback"
 
 #: Where a page signs in, asks who is signed in, and signs out.
-SESSION_PATH: Final = "/data/session"
+SESSION_PATH: Final = API_PREFIX + "/session"
 
 # What says that no one is signed in (HttpApi §11.4).
 _NO_ONE: Final = {
@@ -115,9 +122,6 @@ _NO_ONE: Final = {
     "fallback": None,
     "fallback_for": None,
 }
-
-# Kept by no cache, since each names a session.
-_NOT_STORED: Final = {"Cache-Control": "no-store"}
 
 # How many drops making an identity places, which share the search asked for:
 # the fallback's identity block, the first version naming it, and the
@@ -186,7 +190,7 @@ class Identities:  # pylint: disable=too-many-instance-attributes
         return _with_headers(
             json_response(made.value(), HTTPStatus.CREATED),
             {
-                "Location": f"/data/{made.session.key.person_id}",
+                "Location": f"{API_PREFIX}/{made.session.key.person_id}",
                 "Set-Cookie": self.sessions.start(made.session),
             },
         )
@@ -425,7 +429,7 @@ class Identities:  # pylint: disable=too-many-instance-attributes
     def sign_out(self, request: Request) -> Response:
         """``DELETE /data/session``: end the session ``request`` names, and remove its cookie."""
         cookie = self.sessions.end(request)
-        return Response(HTTPStatus.NO_CONTENT, headers={**_NOT_STORED, "Set-Cookie": cookie})
+        return Response(HTTPStatus.NO_CONTENT, headers={**NOT_STORED, "Set-Cookie": cookie})
 
     def _check_made(self, key_bits: int) -> None:
         """Raise unless this node makes a key of ``key_bits``.
@@ -558,5 +562,5 @@ class Identities:  # pylint: disable=too-many-instance-attributes
 
 
 def _with_headers(response: Response, headers: Mapping[str, str]) -> Response:
-    """``response`` with ``headers`` as well, and kept by no cache."""
-    return replace(response, headers={**response.headers, **_NOT_STORED, **headers})
+    """``response`` with ``headers`` as well, and kept by no cache, since each names a session."""
+    return replace(response, headers={**response.headers, **NOT_STORED, **headers})

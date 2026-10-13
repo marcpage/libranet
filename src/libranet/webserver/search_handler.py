@@ -44,7 +44,8 @@ from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.problems import INVALID_SEARCH_PREFIX, Problem
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
-from libranet.protocol.search import LocalSearch, SearchCache, normalize_prefix
+from libranet.protocol.search import SEARCH_PATH, LocalSearch, SearchCache, normalize_prefix
+from libranet.webserver.drop_handler import DROP_PATH
 from libranet.webserver.http_types import (
     Request,
     Response,
@@ -57,10 +58,10 @@ from libranet.webserver.http_types import (
 
 _LOGGER = getLogger(__name__)
 
-SEARCH_PATTERN: Final = r"/data/search/(?P<prefix>[^/]+)"
+SEARCH_PATTERN: Final = rf"{SEARCH_PATH}/(?P<prefix>[^/]+)"
 
 #: Where any client searches a drop by its target string, percent-encoded.
-DROP_SEARCH_PATTERN: Final = r"/data/drop/(?P<target>[^/]+)"
+DROP_SEARCH_PATTERN: Final = rf"{DROP_PATH}/(?P<target>[^/]+)"
 
 
 @dataclass(frozen=True)

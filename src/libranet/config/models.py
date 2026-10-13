@@ -55,6 +55,11 @@ MIN_PERSON_KEY_BITS: Final = 2048
 # as quick, stronger, and strongest (HttpApi §11.3, Phase 4 Step 79).
 DEFAULT_PERSON_KEY_BITS: Final = (2048, 3072, 4096)
 
+# How many bits a target hash has, and so the most a drop can match it by
+# (HttpApi §9). It is defined here, where the settings are checked against
+# it, rather than with drops.
+TARGET_BITS: Final = 256
+
 # What a folder's last segment cannot be, if it is to be offered under it.
 _UNNAMED_FOLDERS: Final = frozenset({"", ".."})
 
@@ -77,14 +82,14 @@ class NetworkConfig(_Section):
     """Listening sockets and the endpoint this node advertises to peers."""
 
     listen_address: str = "0.0.0.0"
-    listen_port: int = Field(default=8080, ge=1, le=65535)
+    listen_port: int = Field(default=8080, ge=1, le=HIGHEST_PORT)
 
     # Self-description in `/data/nodes` (HttpApi §10.1). With neither field
     # set the node advertises `http://localhost:{listen_port}`, meaning "the
     # address you reached me from".
     external_scheme: Scheme = "http"
     external_address: str | None = None
-    external_port: int | None = Field(default=None, ge=1, le=65535)
+    external_port: int | None = Field(default=None, ge=1, le=HIGHEST_PORT)
 
     # `Retry-After` sent with a `503` for content still being retrieved
     # (HttpApi §5.2). The fetcher asks peers for the same content at most
@@ -103,7 +108,7 @@ class NetworkConfig(_Section):
     # Phase 4 Step 89). A request asking for more is refused. One search
     # runs at a time, holding a web server thread and a core.
     drop_max_seconds: float = Field(default=60.0, ge=0)
-    drop_max_minimum_bits: int = Field(default=26, ge=0, le=256)
+    drop_max_minimum_bits: int = Field(default=26, ge=0, le=TARGET_BITS)
 
     # How long a person's session goes unused before it ends, the private
     # key it holds in the web server's memory with it (HttpApi §11.4, Phase
@@ -228,7 +233,7 @@ class PeerConfig(_Section):
     # as the prefix has if it has fewer (HttpApi §10.7.2, Phase 4 Step 93). A
     # drop this node's pages make matches its target by at least 16, and other
     # content seldom matches as many by chance. Provisional default.
-    search_push_min_bits: int = Field(default=16, ge=0, le=256)
+    search_push_min_bits: int = Field(default=16, ge=0, le=TARGET_BITS)
 
     # Path to a JSON seed list overriding the one shipped with the package.
     # Used only while the node knows no peers at all.

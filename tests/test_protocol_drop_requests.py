@@ -9,7 +9,8 @@ from logging import WARNING
 from pytest import LogCaptureFixture, mark, raises
 
 from libranet.cas.content_id import ContentId
-from libranet.cas.drops import TARGET_BITS, DropTarget
+from libranet.cas.drops import DropTarget
+from libranet.config.models import TARGET_BITS
 from libranet.identity.people import Username
 from libranet.protocol.drop_requests import (
     DropRequest,

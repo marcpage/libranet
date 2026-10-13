@@ -97,6 +97,7 @@ from libranet.protocol.bundle_requests import (
     WholeBundleRequest,
 )
 from libranet.protocol.errors import InvalidConfigRequestError
+from libranet.protocol.http_syntax import API_PREFIX
 from libranet.webserver.config_handlers import invalid_request_response, json_or_refusal
 from libranet.webserver.errors import BundleEditError
 from libranet.webserver.file_stream import DEFAULT_PART_POLL_INTERVAL_SECONDS, ContentWait
@@ -112,7 +113,7 @@ from libranet.webserver.request_refusals import content_unavailable_response
 _LOGGER = getLogger(__name__)
 
 #: Where a local client makes a bundle, or a new version of one.
-BUNDLES_PATH: Final = "/data/bundles"
+BUNDLES_PATH: Final = API_PREFIX + "/bundles"
 
 #: Provisional: the largest request body, room for a poster as base64 beside
 #: the rest of an edit (Phase 3 Step 72).
@@ -537,7 +538,7 @@ class BundleEditHandler:
         status = HTTPStatus.OK if made == base else HTTPStatus.CREATED
         response = json_response({"bundle": str(made)}, status)
         # It reads into the bundle (HttpApi §12.1).
-        return replace(response, headers={**response.headers, "Location": f"/data/{made}/"})
+        return replace(response, headers={**response.headers, "Location": f"{API_PREFIX}/{made}/"})
 
     def _stored_whole(self, asked: WholeBundleRequest) -> PartPath:
         """Store the bundle ``asked`` gives, as one object, and return what names it.

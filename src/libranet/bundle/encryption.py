@@ -28,6 +28,12 @@ KEY_BYTES: Final = 32
 # The IV used unless one is named, so that encryption is deterministic (§6.3).
 DEFAULT_IV: Final = bytes(BLOCK_BYTES)
 
+# The zlib level a plaintext is compressed at before it is encrypted. Never
+# changed once anything is written with it, or identical content encrypted
+# before and after would no longer dedup (§6.3, §7.3). A block for a person
+# is compressed at it too (§8).
+ENCRYPTION_COMPRESSION_LEVEL: Final = 9
+
 
 class Aes256Cbc:
     """AES-256-CBC under one key and IV, over plaintext padded with PKCS#7.

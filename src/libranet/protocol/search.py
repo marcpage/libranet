@@ -22,6 +22,7 @@ from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.prefix import BITS_PER_HEX_DIGIT, nearest
 from libranet.config.models import StorageConfig
 from libranet.json_format import compact_json
+from libranet.protocol.http_syntax import API_PREFIX
 
 _LOGGER = getLogger(__name__)
 
@@ -29,7 +30,7 @@ _LOGGER = getLogger(__name__)
 RESULTS_FIELD: Final = "results"
 
 #: Where a search is asked for, followed by ``/{prefix}`` (HttpApi §6).
-SEARCH_PATH: Final = "/data/search"
+SEARCH_PATH: Final = API_PREFIX + "/search"
 
 _CACHE_SUFFIX: Final = ".json"
 

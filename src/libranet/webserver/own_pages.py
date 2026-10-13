@@ -44,6 +44,7 @@ from typing import Final
 from urllib.parse import unquote, urlsplit
 
 from libranet.bundle.parts import PartPath
+from libranet.protocol.http_syntax import DEFAULT_PORTS
 from libranet.webserver.app_registry import CONFIG_APPLICATION, ApplicationRegistry
 from libranet.webserver.errors import RegistryFileError
 from libranet.webserver.http_types import Request, Response, status_response
@@ -54,10 +55,6 @@ from libranet.webserver.site_checks import HOST_HEADER
 _LOGGER = getLogger(__name__)
 
 REFERER_HEADER: Final = "Referer"
-
-# The port a page's address names when it names none, by its scheme. A page
-# of any other scheme is none of this node's.
-_DEFAULT_PORTS: Final = {"http": 80, "https": 443}
 
 
 @dataclass(frozen=True)
@@ -93,7 +90,7 @@ class RefererPage:
         except ValueError as error:
             raise ValueError(f"the Referer, or Host, is not an address: {error}") from None
 
-        default = _DEFAULT_PORTS.get(page.scheme.lower())
+        default = DEFAULT_PORTS.get(page.scheme.lower())
 
         if default is None or not page.hostname:
             raise ValueError("the Referer is not an address of a page served over HTTP")

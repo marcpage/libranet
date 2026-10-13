@@ -29,17 +29,14 @@ from math import isfinite
 from typing import Final
 from unicodedata import normalize
 
+from libranet.bundle.protection import NORMAL_FORM
 from libranet.bundle.shapes import is_utf8
-from libranet.cas.drops import TARGET_BITS
-from libranet.config.models import MIN_PERSON_KEY_BITS
+from libranet.config.models import MIN_PERSON_KEY_BITS, TARGET_BITS
 from libranet.identity.people import Username
 from libranet.protocol.errors import InvalidConfigRequestError
 
 #: The fewest characters a new identity's password has, once in NFC (HttpApi §11.3).
 MIN_PASSWORD_CHARACTERS: Final = 8
-
-# A password's characters are counted as it derives a key: in NFC (§6.2.1).
-_NORMAL_FORM: Final = "NFC"
 
 
 @dataclass(frozen=True)
@@ -242,7 +239,7 @@ def _check_new_password(password: str, name: str) -> None:
     """
     _check_password(password, name)
 
-    if len(normalize(_NORMAL_FORM, password)) < MIN_PASSWORD_CHARACTERS:
+    if len(normalize(NORMAL_FORM, password)) < MIN_PASSWORD_CHARACTERS:
         raise ValueError(f'"{name}" must be at least {MIN_PASSWORD_CHARACTERS} characters')
 
 
@@ -257,7 +254,7 @@ def _check_fallback_password(password: str, fallback_password: str) -> None:
 
     # Each derives its key in NFC, so two that differ only in how their
     # characters are composed are one password.
-    if normalize(_NORMAL_FORM, password) == normalize(_NORMAL_FORM, fallback_password):
+    if normalize(NORMAL_FORM, password) == normalize(NORMAL_FORM, fallback_password):
         raise ValueError('"fallback_password" must not be the password')
 
 

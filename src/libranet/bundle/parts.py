@@ -50,7 +50,13 @@ from libranet.bundle.content import (
     content_chunks,
     parse_cas_path,
 )
-from libranet.bundle.encryption import BLOCK_BYTES, DEFAULT_IV, KEY_BYTES, Aes256Cbc
+from libranet.bundle.encryption import (
+    BLOCK_BYTES,
+    DEFAULT_IV,
+    ENCRYPTION_COMPRESSION_LEVEL,
+    KEY_BYTES,
+    Aes256Cbc,
+)
 from libranet.bundle.errors import (
     BundleError,
     BundleTooLargeError,
@@ -79,10 +85,6 @@ _KEY_IN_TEXT: Final = compile_pattern(
 
 # What a key is shown as in text it is left out of.
 _KEY_LEFT_OUT: Final = "<key>"
-
-# Never changed once parts are written with it, or identical parts encrypted
-# before and after would no longer dedup (§7.3).
-_COMPRESSION_LEVEL: Final = 9
 
 # No node could have stored ciphertext larger than the object limit, since it
 # does not compress.
@@ -301,7 +303,7 @@ class PartWriter:
             return PartPath(store_object(part, self.sink, self.max_object_bytes))
 
         key = sha256(part).digest()
-        compressed = compress(part, _COMPRESSION_LEVEL)
+        compressed = compress(part, ENCRYPTION_COMPRESSION_LEVEL)
         ciphertext = Aes256Cbc(key).encrypt(compressed if len(compressed) < len(part) else part)
         content_id = ContentId.for_data(ciphertext, HASH_ALGORITHM)
 

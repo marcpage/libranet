@@ -25,10 +25,11 @@ from libranet.bundle.parts import PartPath
 from libranet.bundle.protection import strip_targeting, unprotect
 from libranet.bundle.shapes import Bundle
 from libranet.cas.content_id import ContentId
+from libranet.config.models import MIB
 
 # Provisional default. Bundle JSON is mostly paths and hex hashes, which
 # compress about 2-4 times, so 1 MiB as stored is well within it.
-DEFAULT_MAX_BUNDLE_BYTES: Final = 16 * 1024 * 1024
+DEFAULT_MAX_BUNDLE_BYTES: Final = 16 * MIB
 
 
 def load_bundle(

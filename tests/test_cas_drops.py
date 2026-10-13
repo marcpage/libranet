@@ -10,12 +10,12 @@ from pytest import mark, raises
 from libranet.bundle.protection import strip_targeting
 from libranet.cas.drops import (
     DROP_SEPARATOR,
-    TARGET_BITS,
     TRIES_PER_CLOCK_READ,
     Drop,
     DropTarget,
 )
 from libranet.cas.prefix import matching_bits
+from libranet.config.models import TARGET_BITS
 
 TARGET = DropTarget.of("user:alice")
 CONTENT = b"a private key, encrypted"

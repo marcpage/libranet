@@ -55,8 +55,9 @@ from urllib.parse import unquote
 
 from libranet.atomic_file import FileVersion, write_atomically
 from libranet.cas.content_id import ContentId
+from libranet.config.models import MIB
 from libranet.json_format import compact_json
-from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
+from libranet.protocol.http_syntax import API_PREFIX, JSON_CONTENT_TYPE
 from libranet.webserver.app_registry import Application
 from libranet.webserver.config_handlers import invalid_request_response, json_or_refusal
 from libranet.webserver.errors import StoreFileError, StoreLimitError, ValueChangedError
@@ -76,7 +77,7 @@ from libranet.webserver.request_refusals import (
 _LOGGER = getLogger(__name__)
 
 #: Where each application's store is read and changed (HttpApi §13.3).
-STORE_PATH: Final = "/data/store"
+STORE_PATH: Final = API_PREFIX + "/store"
 STORE_PATTERN: Final = STORE_PATH + "/(?P<application>[^/]+)"
 STORE_KEY_PATTERN: Final = STORE_PATTERN + "/(?P<key>[^/]+)"
 
@@ -84,7 +85,7 @@ STORE_KEY_PATTERN: Final = STORE_PATTERN + "/(?P<key>[^/]+)"
 # (HttpApi §13.3), so a value is about as small as a /config/api body, and a
 # store holds many of them. Each is counted as it is kept: compact JSON.
 MAX_VALUE_BYTES: Final = 64 * 1024
-MAX_STORE_BYTES: Final = 1024 * 1024
+MAX_STORE_BYTES: Final = MIB
 
 # The hash a value's ETag is drawn from, named in the tag as an application
 # file's is (Phase 3 Step 66).

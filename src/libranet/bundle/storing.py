@@ -36,7 +36,7 @@ from libranet.config.models import MIB
 HASH_ALGORITHM: Final = "sha256"
 
 # Storage compression changes no identifier, so its level is free to change.
-_COMPRESSION_LEVEL: Final = 9
+STORAGE_COMPRESSION_LEVEL: Final = 9
 
 # What storing a chunk may add to its entries' JSON: the object around them,
 # zlib's worst case for incompressible data (about 1/3,300 plus 13 bytes),
@@ -94,7 +94,7 @@ def store_object(data: bytes, sink: ContentSink, max_object_bytes: int = MIB) ->
     if sink.exists(content_id):
         return content_id
 
-    compressed = compress(data, _COMPRESSION_LEVEL)
+    compressed = compress(data, STORAGE_COMPRESSION_LEVEL)
     stored = compressed if len(compressed) < len(data) else data
 
     if len(stored) > max_object_bytes:

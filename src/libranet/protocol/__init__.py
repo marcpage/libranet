@@ -43,7 +43,9 @@ from libranet.protocol.drop_requests import (
 )
 from libranet.protocol.errors import InvalidConfigRequestError, InvalidListError
 from libranet.protocol.http_syntax import (
+    API_PREFIX,
     BODILESS_STATUSES,
+    DEFAULT_PORTS,
     JSON_CONTENT_TYPE,
     OCTET_STREAM,
     REQUEST_PATH_HEADER,
@@ -75,7 +77,9 @@ from libranet.protocol.search import (
 )
 
 __all__ = [
+    "API_PREFIX",
     "BODILESS_STATUSES",
+    "DEFAULT_PORTS",
     "IDENTIFIER_LENGTH",
     "JSON_CONTENT_TYPE",
     "LOCALHOST",

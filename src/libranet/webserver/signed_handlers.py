@@ -60,6 +60,7 @@ from libranet.problems import INVALID_BUNDLE_SIGNATURE, SESSION_REQUIRED, UNUSAB
 from libranet.protocol.client_origin import is_local_client
 from libranet.protocol.drop_requests import SignedDropRequest
 from libranet.protocol.errors import InvalidConfigRequestError
+from libranet.protocol.http_syntax import API_PREFIX
 from libranet.webserver.config_handlers import invalid_request_response, json_or_refusal
 from libranet.webserver.data_handler import IMMUTABLE_CACHE_CONTROL, content_id_or_refusal
 from libranet.webserver.drop_handler import MAX_DROP_BODY_BYTES, DropHandler
@@ -76,7 +77,7 @@ from libranet.webserver.sessions import Sessions
 _LOGGER = getLogger(__name__)
 
 #: Where a page has the node make a drop signed by whoever is signed in.
-SIGNED_PATH: Final = "/data/signed"
+SIGNED_PATH: Final = API_PREFIX + "/signed"
 
 #: Where any client has the node check signed content, and read what it signs.
 SIGNED_PATTERN: Final = rf"{SIGNED_PATH}/(?P<algorithm>[^/]+)/(?P<hash>[^/]+)"
@@ -153,7 +154,7 @@ class SignedDrops:
         response = json_response(
             {**stored.value(), "signer": str(person.person_id)}, HTTPStatus.CREATED
         )
-        location = f"/data/{stored.content_id}"
+        location = f"{API_PREFIX}/{stored.content_id}"
         return replace(response, headers={**response.headers, "Location": location})
 
     def read(self, request: Request) -> Response:

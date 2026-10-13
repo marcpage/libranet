@@ -39,6 +39,7 @@ from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.problems import INVALID_CONTENT_ADDRESS, Problem
 from libranet.protocol.client_origin import is_local_client
+from libranet.protocol.http_syntax import API_PREFIX
 from libranet.webserver.http_types import (
     Request,
     Response,
@@ -67,7 +68,7 @@ DATA_ENDPOINT_NAMES: Final = (
 )
 
 DATA_PATTERN: Final = (
-    rf"/data/(?P<algorithm>(?!(?:{'|'.join(DATA_ENDPOINT_NAMES)})/)[^/]+)/(?P<hash>[^/]+)"
+    rf"{API_PREFIX}/(?P<algorithm>(?!(?:{'|'.join(DATA_ENDPOINT_NAMES)})/)[^/]+)/(?P<hash>[^/]+)"
 )
 
 # CAS content never changes under its identifier (HttpApi §20).

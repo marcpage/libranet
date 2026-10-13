@@ -22,11 +22,10 @@ from hashlib import sha256
 from time import monotonic
 from typing import Callable, Final
 
+from libranet.config.models import TARGET_BITS
+
 #: The byte that ends a drop's content, before its nonce (HttpApi §9).
 DROP_SEPARATOR: Final = b"\x00"
-
-#: How many bits a target hash has, and so the most a drop can match.
-TARGET_BITS: Final = 256
 
 #: How many nonces are tried between readings of the clock, so that reading
 #: it costs little beside the hashing.

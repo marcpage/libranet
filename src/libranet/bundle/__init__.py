@@ -33,7 +33,13 @@ from libranet.bundle.content import (
     normalize_cas_path,
     parse_cas_path,
 )
-from libranet.bundle.encryption import BLOCK_BYTES, DEFAULT_IV, KEY_BYTES, Aes256Cbc
+from libranet.bundle.encryption import (
+    BLOCK_BYTES,
+    DEFAULT_IV,
+    ENCRYPTION_COMPRESSION_LEVEL,
+    KEY_BYTES,
+    Aes256Cbc,
+)
 from libranet.bundle.errors import (
     BundleError,
     BundleSignatureError,
@@ -53,7 +59,9 @@ from libranet.bundle.parsing import decode_bundle, parse_bundle
 from libranet.bundle.parts import CIPHER, PartPath, PartWriter
 from libranet.bundle.person_encryption import EncryptedForPerson
 from libranet.bundle.protection import (
+    DESCRIPTOR_FIELD_SEPARATOR,
     DESCRIPTOR_SEPARATOR,
+    NORMAL_FORM,
     PasswordKey,
     is_protected,
     protect,
@@ -84,6 +92,7 @@ from libranet.bundle.signing import SIGNED_HASH_ALGORITHM, SignedBundle, person_
 from libranet.bundle.splitting import split_entries
 from libranet.bundle.storing import (
     HASH_ALGORITHM,
+    STORAGE_COMPRESSION_LEVEL,
     ContentSink,
     ObjectWriter,
     StoredDirectory,
@@ -101,8 +110,10 @@ __all__ = [
     "DEFAULT_IV",
     "DEFAULT_MAX_BUNDLE_BYTES",
     "DEFAULT_MAX_EXTENSIONS",
+    "DESCRIPTOR_FIELD_SEPARATOR",
     "DESCRIPTOR_SEPARATOR",
     "ENCRYPTED_PATH_SEGMENTS",
+    "ENCRYPTION_COMPRESSION_LEVEL",
     "EPOCH",
     "HASH_ALGORITHM",
     "INLINE_LIMIT_BYTES",
@@ -110,11 +121,13 @@ __all__ = [
     "MAX_SYMLINK_HOPS",
     "MICROSECOND",
     "NANOSECONDS_PER_MICROSECOND",
+    "NORMAL_FORM",
     "NO_STEP_SEGMENTS",
     "PARENT_SEGMENT",
     "PATH_SEPARATOR",
     "PLAIN_PATH_SEGMENTS",
     "SIGNED_HASH_ALGORITHM",
+    "STORAGE_COMPRESSION_LEVEL",
     "Aes256Cbc",
     "Bundle",
     "BundleError",
