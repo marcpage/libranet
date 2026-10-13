@@ -17,6 +17,7 @@ from typing import Final, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from libranet.config import paths
+from libranet.modules import ModuleName
 
 MIB: Final = 1024 * 1024
 
@@ -645,6 +646,16 @@ class LoggingConfig(_Section):
     backup_count: int = Field(default=5, ge=0)
     console: bool = True
     format: str = "%(asctime)s %(levelname)-8s %(name)-24s %(message)s"
+
+    def log_file_path(self, module: ModuleName | str) -> Path:
+        """Path of the log file ``module``'s process writes to.
+
+        The configured ``file_name`` supplies the stem and suffix; the module
+        name is inserted between them, so ``libranet.log`` becomes
+        ``libranet-validator.log``.
+        """
+        base = Path(self.file_name)
+        return self.directory / f"{base.stem}-{module}{base.suffix}"
 
 
 class LibranetConfig(_Section):

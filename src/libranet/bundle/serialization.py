@@ -12,7 +12,7 @@ from __future__ import annotations
 from json import dumps
 from typing import Any
 
-from libranet.bundle.shapes import Bundle, DirectoryBundle, FileBundle, Metadata, Symlink
+from libranet.bundle.shapes import Bundle, DirectoryBundle, FileBundle, Symlink
 
 
 def encode_bundle(bundle: Bundle) -> bytes:
@@ -26,7 +26,7 @@ def bundle_value(bundle: Bundle) -> dict[str, Any]:
         return {"contents": bundle.target}
 
     value: dict[str, Any] = {}
-    metadata = _metadata_value(bundle.metadata)
+    metadata = bundle.metadata.value()
 
     if metadata:
         value["metadata"] = metadata
@@ -51,34 +51,5 @@ def bundle_value(bundle: Bundle) -> dict[str, Any]:
 
         if bundle.extensions:
             value["extensions"] = list(bundle.extensions)
-
-    return value
-
-
-def _metadata_value(metadata: Metadata) -> dict[str, Any]:
-    """The ``metadata`` object for ``metadata``, holding only what is not a default."""
-    value: dict[str, Any] = {
-        key: field
-        for key, field in (
-            ("created", metadata.created),
-            ("modified", metadata.modified),
-            ("size", metadata.size_bytes),
-            ("algorithm", metadata.algorithm),
-            ("hash", metadata.hash),
-        )
-        if field is not None
-    }
-
-    if metadata.writable:
-        value["writable"] = True
-
-    if metadata.executable:
-        value["executable"] = True
-
-    if metadata.xattrs:
-        value["xattrs"] = {
-            name: xattr if isinstance(xattr, str) else list(xattr)
-            for name, xattr in metadata.xattrs.items()
-        }
 
     return value

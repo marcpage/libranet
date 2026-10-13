@@ -44,47 +44,44 @@ class Candidate:
         endpoints = tuple(endpoint for endpoint in self.endpoints if usable(endpoint))
         return replace(self, endpoints=endpoints) if endpoints else None
 
+    @classmethod
+    def read_list(cls, path: Path, own_id: ContentId) -> list[Candidate]:
+        """The peers in the candidate list file at ``path``, in its order, without this node.
 
-def candidate_list(path: Path, own_id: ContentId) -> list[Candidate]:
-    """The peers in the candidate list file at ``path``, in its order, without this node.
-
-    An entry whose node id is unusable, or that names no endpoint, is
-    dropped, as is the whole list if the file is missing or is not a
-    candidate list.
-    """
-    try:
-        nodes = loads(path.read_bytes())["nodes"]
-        entries = [(entry["node_id"], tuple(entry["endpoints"])) for entry in nodes]
-
-    except FileNotFoundError:
-        # Not logged: there is none until stats first derives it.
-        return []
-
-    except (OSError, ValueError, LookupError, TypeError) as error:
-        _LOGGER.warning("Ignoring the candidate list at %s: %s", path, error)
-        return []
-
-    candidates: list[Candidate] = []
-
-    for text, endpoints in entries:
+        An entry whose node id is unusable, or that names no endpoint, is
+        dropped, as is the whole list if the file is missing or is not a
+        candidate list.
+        """
         try:
-            node_id = ContentId.parse(text)
+            nodes = loads(path.read_bytes())["nodes"]
+            entries = [(entry["node_id"], tuple(entry["endpoints"])) for entry in nodes]
 
-        except InvalidContentIdError as error:
-            _LOGGER.warning("Dropping the candidate %r: %s", text, error)
-            continue
+        except FileNotFoundError:
+            # Not logged: there is none until stats first derives it.
+            return []
 
-        if node_id != own_id and endpoints:
-            candidates.append(Candidate(endpoints, node_id))
+        except (OSError, ValueError, LookupError, TypeError) as error:
+            _LOGGER.warning("Ignoring the candidate list at %s: %s", path, error)
+            return []
 
-    return candidates
+        candidates: list[Candidate] = []
 
+        for text, endpoints in entries:
+            try:
+                node_id = ContentId.parse(text)
 
-def seed_candidates(seeds: tuple[SeedPeer, ...]) -> list[Candidate]:
-    """The seed list's peers; a node id that is absent or unusable is left unknown."""
-    candidates: list[Candidate] = []
+            except InvalidContentIdError as error:
+                _LOGGER.warning("Dropping the candidate %r: %s", text, error)
+                continue
 
-    for seed in seeds:
+            if node_id != own_id and endpoints:
+                candidates.append(cls(endpoints, node_id))
+
+        return candidates
+
+    @classmethod
+    def from_seed(cls, seed: SeedPeer) -> Candidate:
+        """The seed list's peer ``seed``; a node id that is absent or unusable is left unknown."""
         try:
             node_id = None if seed.node_id is None else ContentId.parse(seed.node_id)
 
@@ -92,6 +89,4 @@ def seed_candidates(seeds: tuple[SeedPeer, ...]) -> list[Candidate]:
             _LOGGER.warning("Seed %s has an unusable node id: %s", seed.address, error)
             node_id = None
 
-        candidates.append(Candidate((seed.address,), node_id))
-
-    return candidates
+        return cls((seed.address,), node_id)

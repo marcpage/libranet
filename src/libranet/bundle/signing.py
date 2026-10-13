@@ -181,6 +181,10 @@ class SignedBundle:
         }
         return dumps(value, separators=(",", ":"), sort_keys=True).encode("ascii")
 
+    def read_value(self, content_id: ContentId) -> dict[str, str]:
+        """What answers a read of this, checked, from ``content_id`` (HttpApi §11.5)."""
+        return {"id": str(content_id), "signer": str(self.signer), "contents": self.contents}
+
     def verified(self, public_key: bytes) -> None:
         """Raise unless :attr:`signer` signed :attr:`contents`, with ``public_key``, as it says.
 

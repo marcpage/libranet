@@ -165,7 +165,7 @@ class SignedDrops:
         if isinstance(signed, Response):
             return signed
 
-        response = json_response(signed_value(content_id, signed))
+        response = json_response(signed.read_value(content_id))
         return replace(
             response, headers={**response.headers, "Cache-Control": IMMUTABLE_CACHE_CONTROL}
         )
@@ -272,8 +272,3 @@ class SignedDrops:
             raise BlockedContentError(content_id)
 
         return b"".join(content_chunks(self.content, content_id))
-
-
-def signed_value(content_id: ContentId, signed: SignedBundle) -> dict[str, str]:
-    """What answers a read of ``signed``, checked, from ``content_id`` (HttpApi §11.5)."""
-    return {"id": str(content_id), "signer": str(signed.signer), "contents": signed.contents}

@@ -7,7 +7,7 @@ from pytest import mark
 from libranet.cas.content_id import ContentId
 from libranet.config.models import PeerConfig
 from libranet.connections.candidates import Candidate
-from libranet.connections.peer_mix import PeerMix, bucket_of
+from libranet.connections.peer_mix import PeerMix
 
 HEX_DIGITS = "0123456789abcdef"
 
@@ -63,7 +63,7 @@ def mix(
     ],
 )
 def test_a_bucket_is_the_value_of_the_leading_bits(leading: str, bits: int, bucket: int) -> None:
-    assert bucket_of(node(leading), bits) == bucket
+    assert node(leading).bucket(bits) == bucket
 
 
 # -- The first set: one peer per bucket ----------------------------------
