@@ -46,7 +46,11 @@ seconds. The exact value MUST be configurable per node rather than
 hard-coded. Implementations MUST allow for reasonable clock skew between
 peers — strict clock synchronization (e.g., NTP-disciplined clocks) is
 not required, so nodes SHOULD apply a tolerance around the nominal window
-rather than rejecting a signature for marginal skew.
+rather than rejecting a signature for marginal skew. The reference node
+accepts a signature whose `created` time is no more than 35 seconds before
+its own clock, and no more than 30 seconds after it: a window of 5 seconds,
+widened by 30 seconds' tolerance for skew. It honors an `expires` time with
+the same tolerance.
 
 Because the node identifier is the hash of the node's public key, and the
 public key itself is CAS-addressed content (§4.1 of the High-Level

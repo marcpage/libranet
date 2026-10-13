@@ -170,6 +170,14 @@ CAS, in two layers:
 - A restore reproduces metadata as the bundle records it, which may be as
   of the directory's last content change rather than its most recent
   backup run (§3.3).
+- Content the bundle names that the node does not hold, as when it has
+  handed the content off, is asked for, as any missing content is (HTTP API
+  §5.2). Content deleted everywhere never arrives, so a node MAY give up a
+  restore once it has waited a while with none of what it lacks arriving.
+  The reference node restores everything else it can while it waits, gives
+  up after a day with nothing arriving, by default, naming each entry it
+  did not restore, and carries a restore that gave up on where it left off
+  when asked for it again.
 - If the target directory is non-empty, the exact conflict-resolution
   behavior (overwrite, merge, fail) is implementation-defined and SHOULD
   be surfaced as a choice through `/config`.

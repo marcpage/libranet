@@ -19,8 +19,11 @@ only where it constrains protocol behavior.
 ## Status of This Document
 
 This is a working draft. Sections marked `TBD` are placeholders pending further
-design decisions. Numeric parameters, wire formats, and byte-level encodings are
-not yet fixed and are marked as such.
+design decisions. Wire formats and byte-level encodings are given in the
+companion documents: requests, node and seek lists, and signatures in the
+[HTTP API](HttpApi.md), and bundles in the
+[Bundle Specification](BundleSpecification.md). What those leave open, they
+mark as such.
 
 ## Table of Contents
 
@@ -89,8 +92,10 @@ recommended hash function. HTTP API §11.2 gives the details.
 
 ### 3.2 Identity Proof
 
-- A node MUST be able to prove ownership of its Node ID upon request, e.g., via
-  a signature challenge.
+- A node MUST be able to prove ownership of its Node ID. It does so by signing
+  each request it sends, and each response, with the private key whose public
+  key its Node ID names (HTTP API §11), so that no separate challenge is
+  needed.
 - Nodes SHOULD rotate transport-layer credentials independently of their Node ID
   where the architecture permits.
 

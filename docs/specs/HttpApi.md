@@ -276,6 +276,21 @@ open `/config` in a window and drive it, as a page of the same origin
 could, since a browser lets a page script only the windows of its own
 origin.
 
+No page of the `/config` application should be shown in a frame, where the
+operator could be led to click on it unseen. The checks above refuse a
+request for one that another site's page frames, and every file the
+application serves SHOULD also carry a `Content-Security-Policy` naming
+`frame-ancestors 'none'`, so that no browser frames it at all. The
+reference node sends:
+
+```http
+Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+```
+
+which also has the application's pages load what they use only from
+`/config`'s own origin, inline scripts and styles aside, and send their
+forms only to it.
+
 ### 2.4 Local Clients
 
 A local client is one whose connecting (source) address is a loopback
@@ -437,6 +452,10 @@ Node ID.
 - Required cipher suites.
 - Certificate discovery and rotation behavior.
 
+The reference node does not use HTTPS yet. It serves plain HTTP alone, and
+dials only the `http` endpoints a node list names (§10.6), passing over any
+`https` one.
+
 ---
 
 ## 4. HTTP Methods
@@ -486,7 +505,8 @@ This allows multiple hash algorithms to coexist.
 
 The names of the other endpoints beneath `/data` are never hash algorithms:
 `search`, `nodes`, `seek`, `client`, `directory`, `imports`, `bundles`,
-`store`, `applications`, `signed`, `drop`, and `encrypted`.
+`store`, `applications`, `signed`, `drop`, `encrypted`, `users`, `fallback`,
+and `session`.
 
 A path that goes on past `{hash}` does not retrieve an object. It reads into
 the bundle the identifier names (§12.1). That includes an identifier written
@@ -1070,6 +1090,15 @@ http://itsme.duckdns.org:4300
 
 The receiving node uses this endpoint without replacing the hostname.
 
+#### More than one endpoint
+
+A node MAY list more than one endpoint of its own. One that advertises an
+external port or address, which a gateway forwards to it, MAY also list the
+port it listens on, as `http://localhost:{port}`, so that a peer on its own
+network reaches it directly rather than through the gateway. The reference
+node lists that endpoint second, whenever it differs from the one it
+advertises.
+
 ### 10.2 Resolving `localhost`
 
 When a node receives a node list, it MUST resolve every `localhost` hostname in
@@ -1218,6 +1247,11 @@ POST /data/nodes HTTP/1.1
 With the body being the JSON list of nodes.
 The body MAY contain one or more `localhost` entries as mentioned previously.
 
+The request is signed (HandshakeProtocol §2.1). A node answers a list it
+takes `202 Accepted`, without waiting to record its entries, and one that is
+not well-formed `400 Bad Request`, with the problem type `invalid-list`
+(§17.2).
+
 #### Request Peer List
 
 To request the peer list, the client sends:
@@ -1228,6 +1262,9 @@ GET /data/nodes HTTP/1.1
 
 The response body being the JSON list of nodes.
 The body MAY contain one or more `localhost` entries as mentioned previously.
+
+A node that has not written its own list yet, as one just started may not
+have, answers `503 Service Unavailable` with `Retry-After`.
 
 ### 10.6 Peer List JSON Schema
 
@@ -1266,6 +1303,10 @@ limited to):
 Prioritization SHOULD be used to determine what to include if the list will
 exceed the 1 MiB limit.
 
+The reference node lists its own endpoints first (§10.1), then each other
+node's last known good endpoint, the most recently reached first, leaving
+out one that has failed since.
+
 ### 10.7 Outstanding Requests List (`/data/seek`)
 
 A node advertises the content it does not yet hold, so that connecting peers can
@@ -1277,6 +1318,8 @@ The outstanding requests list can be read or published through:
 ```http
 GET/POST /data/seek
 ```
+
+Both are answered as for the node list (§10.5).
 
 #### 10.7.1 Outstanding Requests JSON Schema
 
@@ -2219,9 +2262,17 @@ key.
 
 **TBD:**
 
-- Exact configuration format.
-- Default root application.
-- Which characters an application name may hold.
+- Exact configuration format. The reference node keeps the bundle each name
+  serves, and which applications are trusted (§13.5), in a file of its own
+  in its data directory, apart from its configuration file. The operator
+  changes it through `/config` while the node runs (HighLevelDesign §5.2).
+- Default root application. The reference node ships a root application of
+  its own, the `/config` application (§2.3), and a few others, and serves
+  each until the operator registers another bundle under its name, or
+  removes it. It trusts each one it ships but `config` (§13.5).
+- Which characters an application name may hold. The reference node takes
+  any name §13 allows that holds no null character, and keeps it
+  case-folded.
 - Whether applications can reference other applications.
 
 ### 13.2. Serving Application Files
@@ -2428,6 +2479,7 @@ The following status codes are expected to have defined Libranet semantics.
 | `403 Forbidden`              | Request understood but not permitted      |
 | `404 Not Found`              | Requested resource is unavailable         |
 | `405 Method Not Allowed`     | HTTP method is not supported              |
+| `409 Conflict`               | Conflicts with what the node holds        |
 | `411 Length Required`        | A body was sent without a length (§21)    |
 | `412 Precondition Failed`    | A stored value changed since it was read  |
 | `413 Content Too Large`      | Request exceeds permitted size            |
@@ -2437,6 +2489,11 @@ The following status codes are expected to have defined Libranet semantics.
 | `500 Internal Server Error`  | Unexpected node error                     |
 | `503 Service Unavailable`    | Resource temporarily unavailable          |
 | `504 Gateway Timeout`        | Upstream peer did not respond in time     |
+
+A node answers `409 Conflict` when making an identity, or a fallback taking
+over, conflicts with the identities it holds (§11.3). The reference node
+sends neither `429` nor `504`: it limits no client's rate yet, and answers
+`503` while it asks its peers for what it lacks (§5.2).
 
 ---
 
@@ -2606,6 +2663,7 @@ Content-Type
 Content-Length
 Content-Encoding
 Content-Digest
+Transfer-Encoding
 ETag
 Last-Modified
 Cache-Control
@@ -2623,7 +2681,15 @@ If-Range
 If-Match
 Allow
 WWW-Authenticate
+Host
+Origin
 Referer
+Sec-Fetch-Site
+Sec-Fetch-Mode
+Sec-Fetch-Dest
+Sec-Fetch-User
+Cookie
+Set-Cookie
 Content-Security-Policy
 X-Content-Type-Options
 ```
@@ -2691,7 +2757,8 @@ to seek within it.
   part sizes are not recorded is sent whole, with `Accept-Ranges: none`, since
   a range of it cannot be found without reading the parts before it.
 - Every response for a file with a whole-file hash carries a strong `ETag`
-  derived from that hash. A request with `If-Range` is answered with the range
+  derived from that hash, such as `"sha256-9f86d0…"`, naming its algorithm
+  and its hash. A request with `If-Range` is answered with the range
   only if `If-Range` matches that `ETag`, and otherwise with the whole file,
   `200 OK`.
 - Multipart ranges are not supported. A request naming more than one range is
@@ -2787,7 +2854,14 @@ that must know a body's size before it reads it.
 
 **TBD:**
 
-- Default limits.
+- Default limits. The reference node takes a body of at most 1 MiB with a
+  signed request, as it takes an object (HighLevelDesign §4.3), and a node
+  or seek list of at most 4 MiB once decompressed. A page's request to make
+  a drop, signed or not, or to make bundles takes at most 4 MiB, a value in
+  an application's store 64 KiB, and the store itself 1 MiB, and any other
+  JSON body 64 KiB. It reads a bundle of at most 16 MiB once decompressed or
+  decrypted. A drop's search takes at most 60 seconds, and matches at most
+  26 bits (§9.6), and a search answers with at most 32 results (§6).
 - Negotiation of limits.
 - Whether limits are protocol parameters or local policy.
 
@@ -2913,6 +2987,9 @@ The following table summarizes the currently proposed HTTP API.
 | `/config/api/...`                    | Various      | Local-only administration endpoints, on `/config`'s port   | Defined |
 | `/config/...`                        | `GET`/`HEAD` | Local-only administration application, on `/config`'s port | Defined |
 
+The reference node answers a `HEAD` for content `405 Method Not Allowed`
+(§4).
+
 ---
 
 ## 26. TBD Summary
@@ -2923,30 +3000,18 @@ above, and the **TBD** notes in each section say what remains open:
 1. TLS requirements.
 2. Complete HTTP method requirements.
 3. Hash algorithm registry.
-4. Hash encoding.
-5. CAS metadata representation.
-6. CAS upload semantics.
-7. CAS deletion semantics.
-8. Remote retrieval behavior.
-9. `404` versus `503` semantics.
-10. Content compression representation.
-11. Drop endpoint and wire format.
-12. Drop retrieval.
-13. Drop expiration.
-14. Peer discovery endpoint and schema.
-15. Node-list format.
-16. Authorization.
-17. Directory-bundle application configuration.
-18. Application path resolution.
-19. Content-type metadata.
-20. Error schema.
-21. HTTP caching semantics.
-22. ETag format.
-23. Request and response limits.
-24. Rate limiting.
-25. API compatibility and deprecation policy.
-26. Security requirements.
-27. HTTP-specific registrations.
+4. CAS metadata representation.
+5. Drop expiration.
+6. Authorization.
+7. Directory-bundle application configuration.
+8. Application path resolution.
+9. Content-type metadata.
+10. HTTP caching semantics.
+11. Request and response limits.
+12. Rate limiting.
+13. API compatibility and deprecation policy.
+14. Security requirements.
+15. HTTP-specific registrations.
 
 ---
 
