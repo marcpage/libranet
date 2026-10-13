@@ -83,10 +83,10 @@ The conventions of Phase 1 §3 carry over. In addition:
   Step 41. A step that moves to another phase keeps its number, so
   nothing that already refers to it comes to mean something else. Step
   16 moved here from Phase 1 unbuilt, and has moved on to [Phase
-  6](Phase%206.md) with Step 50; Step 30 has moved, by way of
-  [Phase 5](Phase%205.md), to [Phase 4](Phase%204.md). Each went with
-  its issue when the issue changed milestone, and a mention of one below
-  means the step there. Step 24 was dropped (§4), and its number is not
+  7](Phase%207.md) with Step 50; Step 30 has moved, by way of the Karma
+  plan, now [Phase 6](Phase%206.md), to [Phase 4](Phase%204.md). Each
+  went with its issue when the issue changed milestone, and a mention of
+  one below means the step there. Step 24 was dropped (§4), and its number is not
   reused.
 - **Each step names its issues.** The issue is the source of record for
   what was asked for; this document is the source of record for how it is
@@ -2021,7 +2021,7 @@ My calls, not yet reviewed:
 
 - **The change detector goes, rather than changing shape.** With one walk
   per look, polling says only "look now", which the module's interval
-  schedule already says. Phase 6's Step 50 adds what a notification says
+  schedule already says. Phase 7's Step 50 adds what a notification says
   when it is built.
 - **A file's bytes are known by its parts.** Parts are cut at fixed
   offsets and named by hash, so the same bytes give the same parts. A
@@ -2926,7 +2926,7 @@ My calls, not yet reviewed:
   it. A node already running on the same ports logs a warning for
   `/config`'s port before the main port's bind fails.
 - **Bound to `127.0.0.1`, with no setting for the address.** A
-  `config_address` can follow if someone needs `[::1]`; IPv6 is Phase 6's
+  `config_address` can follow if someone needs `[::1]`; IPv6 is Phase 7's
   Step 57.
 - **The main port redirects a `GET` of a page address**, so links and
   bookmarks from before keep working: a typed address keeps
@@ -3383,11 +3383,12 @@ reliably push to a connection a peer opened, so only the connections this
 node dials fill the mix. PR #134 dropped the step.
 
 Three issues left the milestone unbuilt, and their steps went with them,
-issue #71 (Step 30) to **Phase 5**, and #20 (Step 16) and #85 (Step 50)
-to **Phase 6**. Those were Phases 3 and 4 when the issues moved, until
-video playback became Phase 3, and Phases 4 and 5 until user accounts
-became Phase 4. Issue #71 has since moved on to **Phase 4**, whose user
-directory needs Step 30 first.
+issue #71 (Step 30) to **Phase 6 - Karma**, and #20 (Step 16) and #85
+(Step 50) to **Phase 7 - Enhancements**. Those were Phases 3 and 4 when
+the issues moved, until video playback became Phase 3, Phases 4 and 5
+until user accounts became Phase 4, and Phases 5 and 6 until the trust
+network became Phase 5. Issue #71 has since moved on to **Phase 4**,
+whose user directory needs Step 30 first.
 
 ---
 
@@ -3416,11 +3417,11 @@ changes them:
 
 - HTTP Range requests for `<video>` streaming from bundle applications,
   which are [Phase 3](Phase%203.md), with a video application.
-- Karma/Kismet incentive integration, which is [Phase 5](Phase%205.md).
+- Karma/Kismet incentive integration, which is [Phase 6](Phase%206.md).
   The blocked data list (Step 30) it needs to let go of superseded blocks
   is [Phase 4](Phase%204.md)'s.
 - Local discovery (Step 16), filesystem notifications for backup (Step
-  50), IPv6, and HTTPS/TLS, which are [Phase 6](Phase%206.md).
+  50), IPv6, and HTTPS/TLS, which are [Phase 7](Phase%207.md).
 - Signed bundles (BundleSpecification §5), and per-entry CAS encryption
   (§7) anywhere but the parts of a backup or a protected build (Steps 59
   and 60).
@@ -3471,12 +3472,12 @@ either step is built:
   §3.2, §3.3, §4, §5, §6, and §7 and BundleSpecification §7 for encrypting a
   backup's parts (Step 59), and BundleSpecification §6 and §7 for encrypting the
   parts of any bundle protected with a password (Step 60). Step 16's change to
-  HighLevelDesign §4.9.1 is made too, and went with it to Phase 6.
+  HighLevelDesign §4.9.1 is made too, and went with it to Phase 7.
 - **What a blocking node answers a hand-off** (Steps 30 and 46) — now
   Phase 4's to decide, with Step 30. Step 46 does not wait for it: until
   Step 30 is built, no node blocks anything.
 - **One local record of the last bundle** (Steps 48, 49, and 31, and
-  Phase 6's Step 50) — settled by Step 48: a job's is a file of its own
+  Phase 7's Step 50) — settled by Step 48: a job's is a file of its own
   in `backup_jobs/`, encrypted with the backup secret, and a build's or
   an expanded application's is `{name}.bundle` beside the directory, in
   the clear. Step 31 settled the count: `layers` and `extensions`, which

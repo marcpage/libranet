@@ -1363,10 +1363,10 @@ What the module system does not do yet:
   Each handler reads the fields it needs, and a malformed payload raises
   there and is logged.
 
-Planned steps that will change it, in Phase 6:
+Planned steps that will change it, in Phase 7:
 
-- **Step 16** (local discovery, Phase 6) runs inside the connection
+- **Step 16** (local discovery, Phase 7) runs inside the connection
   manager, with the `zeroconf` library's own threads, and publishes what
   it finds in `nodes.received`. It adds no process.
-- **Step 50** (#85, Phase 6) brings filesystem-notification threads into
+- **Step 50** (#85, Phase 7) brings filesystem-notification threads into
   the backup module's process.
