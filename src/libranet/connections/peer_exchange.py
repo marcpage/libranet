@@ -378,10 +378,15 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
         try:
             return self._storage.node_list_path.read_bytes()
 
-        except OSError:
+        except FileNotFoundError:
             # Not logged: there is none before the first derivation, as above.
-            own = {endpoint: str(self._identity.node_id) for endpoint in self._own_endpoints}
-            return node_list_body(own)
+            pass
+
+        except OSError as error:
+            self._logger.warning("Cannot read the node list, so only this node is named: %s", error)
+
+        own = {endpoint: str(self._identity.node_id) for endpoint in self._own_endpoints}
+        return node_list_body(own)
 
     def _receive_node_list(self, session: PeerSession, response: PeerResponse) -> None:
         """Publish the nodes the peer's node list names, for the stats module to keep."""

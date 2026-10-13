@@ -38,6 +38,7 @@ and the key it carries is left out of whatever logs that.
 from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
+from logging import getLogger
 from re import IGNORECASE, compile as compile_pattern, escape
 from typing import Callable, Final, Iterable, Iterator
 from zlib import compress
@@ -71,6 +72,8 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentMismatchError
 from libranet.cas.verification import matching_chunks
 from libranet.config.models import MIB
+
+_LOGGER = getLogger(__name__)
 
 # The one cipher read or written, and how a path names an IV after it (§7.1).
 CIPHER: Final = "AES256-CBC"
@@ -371,9 +374,12 @@ class PartWriter:
         try:
             return all(PartPath.parse(part).encrypted == self.encrypted for part in parts)
 
-        except BundleError:
-            # Not logged: a part this node cannot read is not kept, but
-            # stored again from the file, as this writer stores it.
+        except BundleError as error:
+            _LOGGER.warning(
+                "An earlier bundle names a part this node cannot read, "
+                "so the file is stored again: %s",
+                error,
+            )
             return False
 
 

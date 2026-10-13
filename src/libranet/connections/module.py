@@ -713,7 +713,13 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         The candidate rests if no peer was taken in, unless its node was
         connected meanwhile at another endpoint.
         """
-        peer = self._walk(candidate)
+        peer: _Peer | None = None
+
+        try:
+            peer = self._walk(candidate)
+
+        except Exception:  # pylint: disable=broad-exception-caught
+            self.logger.exception("Connecting to %s failed", candidate.key)
 
         with self._lock:
             self._pending.pop(candidate.key, None)
