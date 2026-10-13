@@ -12,14 +12,11 @@ from libranet.connections.errors import (
     PeerAuthenticationError,
 )
 from libranet.connections.module import (
-    BROADCAST_WORKERS,
-    FETCH_WORKERS,
-    PUSH_WORKERS,
     ConnectionsModule,
     connections_module_factory,
 )
 from libranet.connections.peer_connection import PeerConnection
-from libranet.connections.peer_exchange import PIPELINE_DEPTH, PeerExchange, Retrieval
+from libranet.connections.peer_exchange import PeerExchange, Retrieval
 from libranet.connections.peer_mix import PeerMix, bucket_of
 from libranet.connections.peer_session import PeerRequest, PeerSession
 from libranet.connections.request_encoding import encode_request
@@ -32,11 +29,7 @@ from libranet.connections.response_parser import (
 from libranet.connections.reverse_dns import ResolveNames, ReverseLookup, host_names
 
 __all__ = [
-    "BROADCAST_WORKERS",
-    "FETCH_WORKERS",
     "MAX_HEAD_BYTES",
-    "PIPELINE_DEPTH",
-    "PUSH_WORKERS",
     "Candidate",
     "ConnectionClosedError",
     "ConnectionsModule",

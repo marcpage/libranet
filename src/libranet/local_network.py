@@ -278,9 +278,7 @@ class LocalNetwork:
 
     def connection_target(self, node: LocalNode) -> int:
         """How many outgoing connections ``node`` aims for in this network."""
-        peers = node.place.config.peers
-        wanted = peers.min_outgoing_connections + peers.min_neighborhood_connections
-        return min(wanted, len(self.nodes) - 1)
+        return min(node.place.config.peers.mix_size, len(self.nodes) - 1)
 
 
 class ConnectionLog:

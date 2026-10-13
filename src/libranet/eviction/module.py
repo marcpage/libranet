@@ -49,10 +49,12 @@ object is kept, and is offered again when stats next lists it; a peer that
 took it already answers that it holds it. Finding nothing left to let go of
 waits as long.
 
-Hand-offs run a few at a time, and only as many as would bring storage back
-within its limits once they succeed. One the connection manager never
-answers, as when it restarts, is given up on after
-``hand_off_timeout_seconds``.
+Hand-offs run ``storage.max_hand_offs`` at a time at most, and only as many
+as would bring storage back within its limits once they succeed. One the
+connection manager never answers, as when it restarts, is given up on after
+``hand_off_timeout_seconds``: by default, as long as offering the content to
+every peer of the mix could take, each taking its whole
+``peers.request_timeout_seconds``, and a quarter as long again.
 
 Content stored within the last ``stored_grace_seconds`` is never let go of,
 whatever brought it (Phase 3 Step 75). Content fetched is most likely
@@ -141,14 +143,12 @@ from libranet.modules import ModuleName
 # that accepts it, alone (HighLevelDesign §4.5).
 HAND_OFF_COPIES: Final = 1
 
-# Provisional default: hand-offs under way at once.
-DEFAULT_MAX_HAND_OFFS: Final = 8
-
-# Provisional default: how long a hand-off may go unanswered. Long enough for
-# the connection manager to offer the content to all 32 peers of its mix
-# (Phase 2 Step 25) with each taking its full request timeout, 960 seconds by
-# default, and a quarter as long again to spare.
-DEFAULT_HAND_OFF_TIMEOUT_SECONDS: Final = 1200.0
+# By default, a hand-off is given up on once it has gone unanswered this many
+# times as long as handing content off may take: a quarter as long again, so
+# that a slow one is not given up on. With the 32 peers of the default mix
+# (Phase 2 Step 25), each taking its full request timeout, that is 1,200
+# seconds.
+_HAND_OFF_SPARE: Final = 1.25
 
 # Provisional default: how long the stats module may take to answer with
 # content to let go of. Ranking it reads every row of content held.
@@ -201,14 +201,20 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         clock: Callable[[], float] = time,
         poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
         free_bytes: FreeBytes | None = None,
-        max_hand_offs: int = DEFAULT_MAX_HAND_OFFS,
-        hand_off_timeout_seconds: float = DEFAULT_HAND_OFF_TIMEOUT_SECONDS,
+        max_hand_offs: int | None = None,
+        hand_off_timeout_seconds: float | None = None,
         candidates_timeout_seconds: float = DEFAULT_CANDIDATES_TIMEOUT_SECONDS,
         reclaim_timeout_seconds: float = DEFAULT_RECLAIM_TIMEOUT_SECONDS,
         reclaim_interval_seconds: float = DEFAULT_RECLAIM_INTERVAL_SECONDS,
         headroom_bytes: int | None = None,
         stored_grace_seconds: float = DEFAULT_STORED_GRACE_SECONDS,
     ) -> None:
+        if max_hand_offs is None:
+            max_hand_offs = config.storage.max_hand_offs
+
+        if hand_off_timeout_seconds is None:
+            hand_off_timeout_seconds = config.peers.longest_hand_off_seconds() * _HAND_OFF_SPARE
+
         if max_hand_offs < 1:
             raise ValueError(f"max_hand_offs must be at least 1, got {max_hand_offs}")
 

@@ -61,6 +61,14 @@ def test_an_application_request_waits_ten_seconds_by_default_and_never_a_negativ
         NetworkConfig(app_wait_seconds=-0.5)
 
 
+def test_eight_parts_are_read_ahead_by_default_and_never_a_negative_number() -> None:
+    assert NetworkConfig().read_ahead_parts == 8
+    assert NetworkConfig(read_ahead_parts=0).read_ahead_parts == 0
+
+    with raises(ValidationError):
+        NetworkConfig(read_ahead_parts=-1)
+
+
 def test_a_session_ends_after_a_day_unused_by_default_and_never_at_once() -> None:
     assert NetworkConfig().session_idle_seconds == 86_400.0
     assert NetworkConfig(session_idle_seconds=0.5).session_idle_seconds == 0.5
@@ -93,6 +101,14 @@ def test_a_peer_is_given_up_on_after_five_failures_for_a_day() -> None:
 
     with raises(ValidationError):
         StatsConfig(node_cool_off_seconds=0)
+
+
+def test_eight_hand_offs_run_at_once_by_default_and_never_none() -> None:
+    assert StorageConfig().max_hand_offs == 8
+    assert StorageConfig(max_hand_offs=1).max_hand_offs == 1
+
+    with raises(ValidationError):
+        StorageConfig(max_hand_offs=0)
 
 
 def test_resolved_files_are_kept_for_thirty_days_unused_by_default() -> None:
@@ -310,6 +326,28 @@ class TestPeerPolicy:
         for bits in (-1, 257):
             with raises(ValidationError, match="search_push_min_bits"):
                 PeerConfig(search_push_min_bits=bits)
+
+    def test_eight_searches_pushes_and_pipelined_requests_at_once_by_default(self) -> None:
+        settings = ("search_workers", "broadcast_workers", "push_workers", "pipeline_depth")
+
+        for name in settings:
+            assert getattr(PeerConfig(), name) == 8
+            assert getattr(PeerConfig.model_validate({name: 1}), name) == 1
+
+            with raises(ValidationError, match=name):
+                PeerConfig.model_validate({name: 0})
+
+    def test_the_mix_is_both_sets_of_connections_together(self) -> None:
+        assert PeerConfig().mix_size == 32
+        assert PeerConfig(min_neighborhood_connections=0).mix_size == 16
+
+    def test_a_hand_off_may_take_each_peer_of_the_mix_its_whole_request_timeout(self) -> None:
+        wider = PeerConfig(
+            min_outgoing_connections=32, bucket_prefix_bits=5, request_timeout_seconds=20.0
+        )
+
+        assert PeerConfig().longest_hand_off_seconds() == 32 * 30.0
+        assert wider.longest_hand_off_seconds() == 48 * 20.0
 
     def test_the_hold_must_outlast_a_search(self) -> None:
         # Two passes after the first, each waiting up to 150 seconds: 300 in all.

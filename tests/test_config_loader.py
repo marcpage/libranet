@@ -9,7 +9,13 @@ from yaml import safe_load
 
 from libranet.config.errors import ConfigError
 from libranet.config.loader import load_config
-from libranet.config.models import BackupConfig, IdentityConfig, NetworkConfig
+from libranet.config.models import (
+    BackupConfig,
+    IdentityConfig,
+    NetworkConfig,
+    PeerConfig,
+    StorageConfig,
+)
 from libranet.config.paths import APP_NAME, default_local_folders
 
 
@@ -166,6 +172,18 @@ def test_the_example_config_states_the_default_excluded_extended_attributes() ->
     example = Path(__file__).parent.parent / "examples" / "libranet.yaml"
 
     assert load_config(example).backup.excluded_xattrs == BackupConfig().excluded_xattrs
+
+
+def test_the_example_config_states_the_default_workers_hand_offs_and_read_ahead() -> None:
+    example = Path(__file__).parent.parent / "examples" / "libranet.yaml"
+    stated = safe_load(example.read_text(encoding="utf-8"))
+    peers = ("search_workers", "broadcast_workers", "push_workers", "pipeline_depth")
+
+    assert {name: stated["peers"][name] for name in peers} == {
+        name: getattr(PeerConfig(), name) for name in peers
+    }
+    assert stated["storage"]["max_hand_offs"] == StorageConfig().max_hand_offs
+    assert stated["network"]["read_ahead_parts"] == NetworkConfig().read_ahead_parts
 
 
 def test_the_example_config_states_the_default_folders_on_macos() -> None:

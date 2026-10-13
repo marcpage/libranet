@@ -85,11 +85,15 @@ class Modules:
             clock=lambda: self._now[0],
             poll_interval_seconds=0.01,
             free_bytes=lambda: self._free[0],
-            hand_off_timeout_seconds=TIMEOUT,
             candidates_timeout_seconds=CANDIDATES_TIMEOUT,
             reclaim_timeout_seconds=RECLAIM_TIMEOUT,
             reclaim_interval_seconds=RECLAIM_INTERVAL,
-            **{"headroom_bytes": 0, "stored_grace_seconds": 0, **options},
+            **{
+                "hand_off_timeout_seconds": TIMEOUT,
+                "headroom_bytes": 0,
+                "stored_grace_seconds": 0,
+                **options,
+            },
         )
         self.built.append(module)
         module.on_start()
@@ -766,6 +770,24 @@ def test_deleting_carries_on_while_storage_is_still_over(
     assert store.exists(third)
 
 
+def test_as_many_hand_offs_run_at_once_as_storage_settings_say(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+) -> None:
+    hold(store, *CONTENT[:3])
+    storage = config.storage.model_copy(update={"max_hand_offs": 2})
+    limited = capped(config.model_copy(update={"storage": storage}), store, node_id, 0)
+
+    module = modules.start(limited)
+    requested(queues)
+    module.handle(candidates(*CONTENT[:3]))
+
+    assert handed_off(queues) == CONTENT[:2]
+
+
 def test_a_hand_off_that_falls_short_keeps_the_content_and_waits(
     modules: Modules,
     config: LibranetConfig,
@@ -841,6 +863,43 @@ def test_an_unanswered_hand_off_is_given_up_and_stats_asked_again(
     assert published(queues) == []
 
     now[0] += 1
+    module.on_idle()
+
+    assert "went unanswered" in caplog.text
+    assert requested(queues) == (SIZE, [])
+
+
+def test_a_hand_off_goes_unanswered_once_every_peer_of_the_mix_could_have_timed_out(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+    now: list[float],
+    caplog: LogCaptureFixture,
+) -> None:
+    # Four peers, each taking up to 10 seconds, and a quarter as long again.
+    peers = config.peers.model_copy(
+        update={
+            "min_outgoing_connections": 3,
+            "min_neighborhood_connections": 1,
+            "request_timeout_seconds": 10.0,
+        }
+    )
+    hold(store, CONTENT[0])
+    module = modules.start(
+        capped(config.model_copy(update={"peers": peers}), store, node_id, 0),
+        hand_off_timeout_seconds=None,
+    )
+    requested(queues)
+    module.handle(candidates(CONTENT[0]))
+    assert handed_off(queues) == [CONTENT[0]]
+
+    now[0] += 49.0
+    module.on_idle()
+    assert published(queues) == []
+
+    now[0] += 1.0
     module.on_idle()
 
     assert "went unanswered" in caplog.text

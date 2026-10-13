@@ -106,10 +106,6 @@ from libranet.protocol.lists import (
 from libranet.protocol.localhost_resolution import NodeListSender
 from libranet.protocol.search import SEARCH_PATH, LocalSearch
 
-# Most requests pipelined at once when pushing or asking for many items:
-# enough to keep a connection busy without holding many bodies in memory.
-PIPELINE_DEPTH: Final = 8
-
 _OCTET_STREAM_HEADERS: Final[Mapping[str, str]] = {"Content-Type": OCTET_STREAM}
 _JSON_HEADERS: Final[Mapping[str, str]] = {"Content-Type": JSON_CONTENT_TYPE}
 
@@ -459,7 +455,7 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
         pushed = session.pushed
         wanted = [content_id for content_id in sought if content_id not in pushed]
 
-        for batch in _batches(wanted):
+        for batch in self._batches(wanted):
             self.hand_off_many(session, self._held(batch))
 
     def _pushed(
@@ -490,13 +486,20 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
 
         return held
 
+    def _batches(self, items: Sequence[_Item]) -> Iterator[Sequence[_Item]]:
+        """``items`` in runs of at most ``peers.pipeline_depth``."""
+        depth = self._peers.pipeline_depth
+
+        for start in range(0, len(items), depth):
+            yield items[start : start + depth]
+
     def _ask_for_sought(self, session: PeerSession) -> None:
         """Step 7: ask the peer for everything this node seeks and does not hold yet."""
         sought = [
             content_id for content_id in self._own_sought() if not self._content.exists(content_id)
         ]
 
-        for batch in _batches(sought):
+        for batch in self._batches(sought):
             responses = session.exchange(
                 [PeerRequest("GET", _data_path(content_id)) for content_id in batch]
             )
@@ -549,9 +552,3 @@ def _data_path(content_id: ContentId) -> str:
 def _content_fields(content_id: ContentId, session: PeerSession) -> dict[str, str]:
     """The payload fields naming ``content_id`` and the peer it went to or came from."""
     return {**content_id.fields(), "node_id": str(session.node_id)}
-
-
-def _batches(items: Sequence[_Item]) -> Iterator[Sequence[_Item]]:
-    """``items`` in runs of at most :data:`PIPELINE_DEPTH`."""
-    for start in range(0, len(items), PIPELINE_DEPTH):
-        yield items[start : start + PIPELINE_DEPTH]

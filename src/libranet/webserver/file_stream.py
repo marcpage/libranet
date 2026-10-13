@@ -56,15 +56,12 @@ from libranet.bundle.parts import PartPath
 from libranet.bundle.reassembly import WholeFileCheck
 from libranet.bundle.shapes import FileBundle
 from libranet.cas.content_id import ContentId
+from libranet.config.models import DEFAULT_READ_AHEAD_PARTS
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.webserver.errors import ResponseCutShortError
 
 _LOGGER = getLogger(__name__)
-
-# Provisional: how many parts past the one being read are asked for, when
-# not held, so that they arrive before they are needed.
-DEFAULT_READ_AHEAD_PARTS: Final = 8
 
 # Provisional: how often a part waited for is looked for.
 DEFAULT_PART_POLL_INTERVAL_SECONDS: Final = 0.25

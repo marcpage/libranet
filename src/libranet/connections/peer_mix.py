@@ -74,10 +74,8 @@ class PeerMix:
             self.peers.min_neighborhood_connections,
             taken,
         )
-        wanted = self.peers.min_outgoing_connections + self.peers.min_neighborhood_connections
-
         for candidate in candidates:
-            if len(connected) + len(chosen) >= wanted:
+            if len(connected) + len(chosen) >= self.peers.mix_size:
                 break
 
             if candidate in chosen or candidate.node_id in taken:
