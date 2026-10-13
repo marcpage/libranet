@@ -36,6 +36,7 @@ from typing import Any, Final
 from libranet.bundle.shapes import is_entry_path
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
+from libranet.json_fields import is_number
 from libranet.messaging.events import ConflictBehavior
 from libranet.protocol.errors import InvalidConfigRequestError
 
@@ -93,9 +94,7 @@ class BackupJobRequest:
 
         interval_seconds = value.get("interval_seconds")
 
-        if interval_seconds is not None and (
-            isinstance(interval_seconds, bool) or not isinstance(interval_seconds, (int, float))
-        ):
+        if interval_seconds is not None and not is_number(interval_seconds):
             raise InvalidConfigRequestError('A backup job\'s "interval_seconds" must be a number')
 
         try:

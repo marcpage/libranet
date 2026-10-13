@@ -13,7 +13,6 @@ from libranet.protocol.lists import (
     decode_list,
     node_list_body,
     parse_node_list,
-    parse_search_results,
     parse_seek_list,
 )
 
@@ -191,36 +190,6 @@ def test_a_seek_list_entry_that_is_not_a_string_is_logged_at_debug(
         (DEBUG, "Dropping 7 from a seek list: not a string"),
         (DEBUG, "Dropping None from a seek list: not a string"),
     ]
-
-
-def test_a_search_answer_names_its_content_ids_in_order() -> None:
-    other = ContentId.for_data(b"other", "sha256")
-    value = {"results": [f"SHA256/{CONTENT_ID.hash.upper()}", str(other)]}
-
-    assert parse_search_results(value) == [CONTENT_ID, other]
-
-
-def test_unusable_search_answer_entries_are_dropped_and_unknown_algorithms_warned_of(
-    caplog: LogCaptureFixture,
-) -> None:
-    caplog.set_level(DEBUG)
-    value = {"results": ["md5/" + "0" * 32, "sha256/short", 7, str(CONTENT_ID)]}
-
-    assert parse_search_results(value) == [CONTENT_ID]
-    assert [record.getMessage().split(":")[0] for record in caplog.records[:2]] == [
-        "Dropping 'sha256/short' from a search answer",
-        "Dropping 7 from a search answer",
-    ]
-    warning = caplog.records[2]
-    assert warning.levelno == WARNING
-    assert warning.getMessage().startswith("A search answer names ids hashed with algorithms ")
-    assert warning.getMessage().endswith(": 1 under md5")
-
-
-@mark.parametrize("value", [None, [], "results", {}, {"results": "x"}, {"results": {}}])
-def test_misshapen_search_answers_are_refused(value: object) -> None:
-    with raises(InvalidListError):
-        parse_search_results(value)
 
 
 def test_a_node_list_is_sent_compactly_and_read_back_as_written() -> None:

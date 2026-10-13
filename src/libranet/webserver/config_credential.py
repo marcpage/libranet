@@ -31,6 +31,7 @@ from typing import Any, Final
 
 from libranet.config.models import LibranetConfig
 from libranet.identity.keys import write_private_file
+from libranet.json_fields import is_integer
 from libranet.json_format import compact_json
 from libranet.webserver.errors import CredentialFileError
 
@@ -258,7 +259,7 @@ def _whole(record: dict[str, Any], name: str) -> int:
     """
     value = record.get(name)
 
-    if isinstance(value, bool) or not isinstance(value, int):
+    if not is_integer(value):
         raise CredentialFileError(f"A credential record's {name!r} must be an integer")
 
     return value

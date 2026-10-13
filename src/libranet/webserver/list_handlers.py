@@ -34,7 +34,7 @@ from pathlib import Path
 from libranet.cas.content_id import ContentId
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
-from libranet.problems import INVALID_LIST, Problem
+from libranet.problems import INVALID_LIST
 from libranet.protocol.errors import InvalidListError
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.protocol.lists import decode_list, parse_node_list, parse_seek_list
@@ -43,8 +43,8 @@ from libranet.webserver.http_types import (
     Request,
     Response,
     bytes_response,
-    problem_response,
     status_response,
+    typed_response,
 )
 from libranet.webserver.request_refusals import (
     signature_required_response,
@@ -160,8 +160,4 @@ def _signer_or_refusal(request: Request, max_bytes: int) -> ContentId | Response
 
 def _invalid_list_response(request: Request, error: InvalidListError) -> Response:
     """The ``400`` for a posted body that is not a list of the expected shape."""
-    return problem_response(
-        Problem.of_type(
-            INVALID_LIST, HTTPStatus.BAD_REQUEST, detail=str(error), instance=request.path
-        )
-    )
+    return typed_response(request, INVALID_LIST, HTTPStatus.BAD_REQUEST, str(error))

@@ -182,7 +182,7 @@ def test_an_unreadable_cache_file_is_logged_as_a_warning(
 
     (record,) = caplog.records
     assert record.levelno == WARNING
-    assert record.getMessage().startswith("Ignoring an unreadable cached search response: ")
+    assert record.getMessage().startswith(f"Ignoring the unreadable cached search for {PREFIX}: ")
 
 
 def test_an_unusable_entry_in_a_cache_file_is_logged_as_a_warning(
@@ -192,13 +192,9 @@ def test_an_unusable_entry_in_a_cache_file_is_logged_as_a_warning(
 
     enricher.enrich(PREFIX)
 
-    assert caplog.record_tuples == [
-        (
-            "libranet.stats.enrichment",
-            WARNING,
-            "A cached search response holds 'not an id', not a content id",
-        )
-    ]
+    ((name, level, message),) = caplog.record_tuples
+    assert (name, level) == ("libranet.protocol.search", WARNING)
+    assert message.startswith(f"Dropping 'not an id' from the cached search for {PREFIX}: ")
 
 
 def test_a_cache_file_whose_results_are_not_an_array_is_logged_as_a_warning(
@@ -210,8 +206,9 @@ def test_a_cache_file_whose_results_are_not_an_array_is_logged_as_a_warning(
 
     assert caplog.record_tuples == [
         (
-            "libranet.stats.enrichment",
+            "libranet.protocol.search",
             WARNING,
-            "Ignoring a cached search response whose results are not an array",
+            f"Ignoring the unreadable cached search for {PREFIX}: "
+            'A search answer must be an object holding a "results" array',
         )
     ]

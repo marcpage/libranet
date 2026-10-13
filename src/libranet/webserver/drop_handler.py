@@ -66,7 +66,7 @@ from libranet.protocol.client_origin import is_local_client
 from libranet.protocol.drop_requests import DropRequest, PasswordEncryption, PersonEncryption
 from libranet.protocol.errors import InvalidConfigRequestError
 from libranet.protocol.http_syntax import API_PREFIX
-from libranet.webserver.config_handlers import invalid_request_response, json_or_refusal
+from libranet.webserver.config_handlers import invalid_request_response, parsed_or_refusal
 from libranet.webserver.http_types import Request, Response, json_response, status_response
 from libranet.webserver.own_pages import OwnPages
 from libranet.webserver.request_refusals import (
@@ -314,17 +314,10 @@ class DropHandler:
             )
 
     def __call__(self, request: Request) -> Response:
-        value = json_or_refusal(request, max_bytes=MAX_DROP_BODY_BYTES)
+        asked = parsed_or_refusal(request, DropRequest.from_value, max_bytes=MAX_DROP_BODY_BYTES)
 
-        if isinstance(value, Response):
-            return value
-
-        try:
-            asked = DropRequest.from_value(value)
-
-        except InvalidConfigRequestError as error:
-            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            return invalid_request_response(request, error)
+        if isinstance(asked, Response):
+            return asked
 
         stored = self.placed(request, asked)
 

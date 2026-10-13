@@ -87,7 +87,7 @@ from libranet.cas.store import CasStore
 from libranet.config.models import MIB, StorageConfig
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
-from libranet.problems import UNUSABLE_BUNDLE, Problem
+from libranet.problems import UNUSABLE_BUNDLE
 from libranet.protocol.bundle_requests import (
     BundleEditRequest,
     BytesSource,
@@ -105,8 +105,8 @@ from libranet.webserver.http_types import (
     Request,
     Response,
     json_response,
-    problem_response,
     status_response,
+    typed_response,
 )
 from libranet.webserver.request_refusals import content_unavailable_response
 
@@ -612,8 +612,4 @@ def _refusal(error: BundleError | BundleEditError, request: Request) -> Response
             request, HTTPStatus.BAD_REQUEST, f"The bundle asked for cannot be stored: {error}"
         )
 
-    return problem_response(
-        Problem.of_type(
-            UNUSABLE_BUNDLE, HTTPStatus.BAD_REQUEST, detail=str(error), instance=request.path
-        )
-    )
+    return typed_response(request, UNUSABLE_BUNDLE, HTTPStatus.BAD_REQUEST, str(error))

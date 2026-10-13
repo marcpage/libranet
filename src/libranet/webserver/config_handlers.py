@@ -78,13 +78,13 @@ from dataclasses import KW_ONLY, dataclass
 from http import HTTPStatus
 from logging import getLogger
 from re import escape
-from typing import Any, Callable, Final, Protocol
+from typing import Any, Callable, Final, Protocol, TypeVar
 
 from libranet.cas.content_id import ContentId
 from libranet.config.models import DEFAULT_PERSON_KEY_BITS, NetworkConfig
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
-from libranet.problems import INVALID_CONFIG_REQUEST, Problem
+from libranet.problems import INVALID_CONFIG_REQUEST
 from libranet.protocol.config_requests import (
     IDENTIFIER_LENGTH,
     BackupJobRequest,
@@ -92,7 +92,6 @@ from libranet.protocol.config_requests import (
     ExportRequest,
     RestoreRequest,
 )
-from libranet.protocol.errors import InvalidConfigRequestError
 from libranet.protocol.http_syntax import API_PREFIX
 from libranet.webserver.app_registry import CONFIG_APPLICATION, Application, ApplicationRegistry
 from libranet.webserver.backup_state import (
@@ -108,8 +107,8 @@ from libranet.webserver.http_types import (
     Response,
     json_response,
     percent_decoded,
-    problem_response,
     status_response,
+    typed_response,
 )
 from libranet.webserver.request_refusals import (
     unreadable_body_response,
@@ -119,6 +118,8 @@ from libranet.webserver.request_refusals import (
 from libranet.webserver.router import Handler
 
 _LOGGER = getLogger(__name__)
+
+_Parsed = TypeVar("_Parsed")
 
 CONFIG_API_PATH: Final = f"/{CONFIG_APPLICATION}/api"
 NODE_PATH: Final = CONFIG_API_PATH + "/node"
@@ -258,17 +259,10 @@ class BackupRequestHandler:
     id_field: str
 
     def __call__(self, request: Request) -> Response:
-        value = json_or_refusal(request)
+        asked = parsed_or_refusal(request, self.parse)
 
-        if isinstance(value, Response):
-            return value
-
-        try:
-            asked = self.parse(value)
-
-        except InvalidConfigRequestError as error:
-            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            return invalid_request_response(request, error)
+        if isinstance(asked, Response):
+            return asked
 
         payload = asked.payload()
         self.publish(self.event, payload)
@@ -336,17 +330,10 @@ class ApplicationRegistrationHandler:
     registry: ApplicationRegistry
 
     def __call__(self, request: Request) -> Response:
-        value = json_or_refusal(request)
+        application = parsed_or_refusal(request, Application.from_value)
 
-        if isinstance(value, Response):
-            return value
-
-        try:
-            application = Application.from_value(value)
-
-        except ValueError as error:
-            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            return invalid_request_response(request, error)
+        if isinstance(application, Response):
+            return application
 
         try:
             self.registry.register(application)
@@ -444,14 +431,7 @@ def unreported_response(request: Request, retry_after_seconds: int) -> Response:
 
 def invalid_request_response(request: Request, error: ValueError) -> Response:
     """The ``400`` for a body an endpoint cannot act on."""
-    return problem_response(
-        Problem.of_type(
-            INVALID_CONFIG_REQUEST,
-            HTTPStatus.BAD_REQUEST,
-            detail=str(error),
-            instance=request.path,
-        )
-    )
+    return typed_response(request, INVALID_CONFIG_REQUEST, HTTPStatus.BAD_REQUEST, str(error))
 
 
 def _not_registered_response(request: Request) -> Response:
@@ -494,6 +474,30 @@ def json_or_refusal(
     except UnsupportedMediaTypeError as error:
         _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
         return unsupported_media_type_response(request, error)
+
+    except ValueError as error:
+        _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
+        return invalid_request_response(request, error)
+
+
+def parsed_or_refusal(
+    request: Request,
+    parse: Callable[[object], _Parsed],
+    *,
+    max_bytes: int = MAX_CONFIG_BODY_BYTES,
+) -> _Parsed | Response:
+    """What ``parse`` makes of the JSON value ``request``'s body carries, or the refusal.
+
+    The body is refused as :func:`json_or_refusal` refuses it, and a value
+    ``parse`` refuses with a ``ValueError`` is ``400``.
+    """
+    value = json_or_refusal(request, max_bytes=max_bytes)
+
+    if isinstance(value, Response):
+        return value
+
+    try:
+        return parse(value)
 
     except ValueError as error:
         _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)

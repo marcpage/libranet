@@ -90,7 +90,7 @@ from libranet.protocol.identity_requests import (
     SignInRequest,
 )
 from libranet.webserver.bundle_edits import OwnUploads
-from libranet.webserver.config_handlers import invalid_request_response, json_or_refusal
+from libranet.webserver.config_handlers import invalid_request_response, parsed_or_refusal
 from libranet.webserver.drop_handler import DropHandler, StoredDrop, Turns
 from libranet.webserver.http_types import (
     NOT_STORED,
@@ -211,13 +211,12 @@ class Identities:  # pylint: disable=too-many-instance-attributes
 
     def _made(self, request: Request) -> _Made | Response:
         """The identity ``request`` asks for, made and stored; or the response refusing it."""
-        value = json_or_refusal(request)
+        asked = parsed_or_refusal(request, IdentityRequest.from_value)
 
-        if isinstance(value, Response):
-            return value
+        if isinstance(asked, Response):
+            return asked
 
         try:
-            asked = IdentityRequest.from_value(value)
             self._check_made(asked.key_bits)
             self.drops.within_ceilings(asked.seconds, asked.minimum_bits)
 
@@ -260,13 +259,12 @@ class Identities:  # pylint: disable=too-many-instance-attributes
 
         It is given a fallback of its own (HttpApi §11.3).
         """
-        value = json_or_refusal(request)
+        asked = parsed_or_refusal(request, FallbackRequest.from_value)
 
-        if isinstance(value, Response):
-            return value
+        if isinstance(asked, Response):
+            return asked
 
         try:
-            asked = FallbackRequest.from_value(value)
             self.drops.within_ceilings(asked.seconds, asked.minimum_bits)
 
         except InvalidConfigRequestError as error:
@@ -395,17 +393,10 @@ class Identities:  # pylint: disable=too-many-instance-attributes
 
     def sign_in(self, request: Request) -> Response:
         """``POST /data/session``: sign in the person ``request`` names, if it is them."""
-        value = json_or_refusal(request)
+        asked = parsed_or_refusal(request, SignInRequest.from_value)
 
-        if isinstance(value, Response):
-            return value
-
-        try:
-            asked = SignInRequest.from_value(value)
-
-        except InvalidConfigRequestError as error:
-            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            return invalid_request_response(request, error)
+        if isinstance(asked, Response):
+            return asked
 
         key = self._password_key(asked.username, asked.password)
         found = self._opened(asked.username, key)

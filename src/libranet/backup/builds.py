@@ -57,7 +57,7 @@ backup too (Phase 2 Step 52), though serving a file carries none of them.
 
 from __future__ import annotations
 from dataclasses import dataclass
-from json import dumps, loads
+from json import loads
 from logging import getLogger
 from pathlib import Path
 from typing import Any, Callable, Final, Mapping
@@ -73,6 +73,7 @@ from libranet.bundle.layering import Layering, StoredVersion, Superseded
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.shapes import DirectoryBundle
 from libranet.cas.content_id import ContentId
+from libranet.json_format import pretty_json
 from libranet.protocol.config_requests import BuildRequest
 
 _LOGGER = getLogger(__name__)
@@ -184,7 +185,7 @@ class BuildRecord:
         Raises:
             OSError: it could not be written.
         """
-        write_atomically(path, (dumps(self.value(), indent=2) + "\n").encode("utf-8"))
+        write_atomically(path, pretty_json(self.value()))
 
 
 class Build(Task):

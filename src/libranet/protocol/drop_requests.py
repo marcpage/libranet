@@ -43,6 +43,7 @@ from libranet.cas.drops import DropTarget
 from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
 from libranet.config.models import TARGET_BITS
 from libranet.identity.people import Username
+from libranet.json_fields import integer_field, number_field
 from libranet.protocol.bundle_requests import BytesSource
 from libranet.protocol.errors import InvalidConfigRequestError
 from libranet.protocol.identity_requests import MIN_PASSWORD_CHARACTERS, SignInRequest
@@ -134,8 +135,6 @@ class DropRequest:
             raise InvalidConfigRequestError("A drop to make must be a JSON object")
 
         target = value.get("target")
-        seconds = value.get("seconds")
-        minimum_bits = value.get("minimum_bits", 0)
         encrypt = value.get("encrypt")
 
         if not isinstance(target, str) or not target:
@@ -144,17 +143,16 @@ class DropRequest:
         if not is_utf8(target):
             raise InvalidConfigRequestError('"target" is not UTF-8')
 
-        if isinstance(seconds, bool) or not isinstance(seconds, (int, float)):
-            raise InvalidConfigRequestError('"seconds" must be a number')
-
-        if isinstance(minimum_bits, bool) or not isinstance(minimum_bits, int):
-            raise InvalidConfigRequestError('"minimum_bits" must be an integer')
+        seconds = number_field(value, "seconds", error=InvalidConfigRequestError)
+        minimum_bits = integer_field(
+            value, "minimum_bits", error=InvalidConfigRequestError, default=0
+        )
 
         try:
             return cls(
                 DropTarget.of(target),
                 _content(value),
-                float(seconds),
+                seconds,
                 minimum_bits,
                 None if encrypt is None else _encryption(encrypt),
             )

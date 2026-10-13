@@ -39,12 +39,11 @@ from typing import Final
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.protocol.config_requests import ImportRequest
-from libranet.protocol.errors import InvalidConfigRequestError
 from libranet.protocol.http_syntax import API_PREFIX
 from libranet.webserver.backup_state import BackupState
 from libranet.webserver.config_handlers import (
     invalid_request_response,
-    json_or_refusal,
+    parsed_or_refusal,
     unreported_response,
 )
 from libranet.webserver.http_types import Request, Response, json_response, status_response
@@ -64,17 +63,10 @@ class ImportHandler:
     publish: Publish
 
     def __call__(self, request: Request) -> Response:
-        value = json_or_refusal(request)
+        asked = parsed_or_refusal(request, ImportRequest.from_value)
 
-        if isinstance(value, Response):
-            return value
-
-        try:
-            asked = ImportRequest.from_value(value)
-
-        except InvalidConfigRequestError as error:
-            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            return invalid_request_response(request, error)
+        if isinstance(asked, Response):
+            return asked
 
         try:
             found = self.folders.find_file(asked.path)

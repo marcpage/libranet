@@ -258,6 +258,28 @@ def status_response(
     return problem_response(Problem.for_status(status, detail, request.path), headers)
 
 
+def typed_response(
+    request: Request,
+    problem_type: str,
+    status: HTTPStatus,
+    detail: str | None,
+    *,
+    extensions: Mapping[str, Any] | None = None,
+    headers: Mapping[str, str] | None = None,
+) -> Response:
+    """The error response to ``request`` with a problem of ``problem_type``, ``detail`` saying why.
+
+    It is titled as that type always is, and sent with ``status``.
+
+    Raises:
+        KeyError: ``problem_type`` is not one of :mod:`libranet.problems`'.
+    """
+    problem = Problem.of_type(
+        problem_type, status, detail=detail, instance=request.path, extensions=extensions
+    )
+    return problem_response(problem, headers)
+
+
 def redirect_response(location: str) -> Response:
     """A ``302`` to ``location``."""
     return Response(HTTPStatus.FOUND, headers={"Location": location})

@@ -5,23 +5,26 @@ its content archives (Step 34), for the hashes sharing the most leading bits
 with a query. :class:`SearchCache` keeps each
 query's JSON response in a file that is reused until it is older than the
 configured TTL; the stats module (Step 8) may later rewrite those files with
-better results it knows about.
+better results it knows about. A search answer is read the same way whether
+it is cached here or sent by a peer (:func:`parse_search_results`), and a
+seek list's entries as its entries are (:func:`normalized_entries`).
 """
 
 from __future__ import annotations
 from json import loads
-from logging import getLogger
+from logging import DEBUG, WARNING, getLogger
 from pathlib import Path
 from time import time
 from typing import Callable, Final, Iterable, Iterator, Protocol
 
 from libranet.atomic_file import write_atomically
-from libranet.cas.algorithms import DEFAULT_REGISTRY, AlgorithmRegistry
+from libranet.cas.algorithms import DEFAULT_REGISTRY, AlgorithmRegistry, UnsupportedAlgorithms
 from libranet.cas.content_id import HEX_DIGITS, ContentId
-from libranet.cas.errors import InvalidContentIdError
+from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
 from libranet.cas.prefix import BITS_PER_HEX_DIGIT, nearest
 from libranet.config.models import StorageConfig
 from libranet.json_format import compact_json
+from libranet.protocol.errors import InvalidListError
 from libranet.protocol.http_syntax import API_PREFIX
 
 _LOGGER = getLogger(__name__)
@@ -50,6 +53,70 @@ def normalize_prefix(text: str, registry: AlgorithmRegistry = DEFAULT_REGISTRY) 
         )
 
     return text.lower()
+
+
+def parse_search_results(
+    value: object, *, what: str = "A search answer", level: int = DEBUG
+) -> list[ContentId]:
+    """The content ids a ``{"results": [...]}`` search answer names, best first (HttpApi §6.1).
+
+    Any entry that is not a valid content id is dropped, and logged at
+    ``level``, the answer named as ``what``.
+
+    Raises:
+        InvalidListError: ``value`` is not an object holding a ``results``
+            array.
+    """
+    results = value.get(RESULTS_FIELD) if isinstance(value, dict) else None
+
+    if not isinstance(results, list):
+        raise InvalidListError('A search answer must be an object holding a "results" array')
+
+    return [
+        ContentId.parse(text)
+        for text in normalized_entries(results, content_id_text, what, level=level)
+    ]
+
+
+def content_id_text(text: str) -> str:
+    """The content id ``text`` names, as this node writes it.
+
+    Raises:
+        InvalidContentIdError: it names none.
+    """
+    return str(ContentId.parse(text))
+
+
+def normalized_entries(
+    values: list[object], normalize: Callable[[str], str], what: str, *, level: int = DEBUG
+) -> list[str]:
+    """``values`` passed through ``normalize``, minus non-strings and any it rejects.
+
+    ``what`` names the list they came from, for the log. Each left out is
+    logged at ``level``, but those naming an algorithm this node lacks,
+    which are warned of once for the list.
+    """
+    kept: list[str] = []
+    unsupported = UnsupportedAlgorithms()
+
+    for value in values:
+        if not isinstance(value, str):
+            _LOGGER.log(level, "Dropping %r from %s: not a string", value, what.lower())
+            continue
+
+        try:
+            kept.append(normalize(value))
+
+        except UnknownAlgorithmError:
+            # Not logged: counted, and logged once for the list below.
+            unsupported.add(value)
+
+        except InvalidContentIdError as error:
+            _LOGGER.log(level, "Dropping %r from %s: %s", value, what.lower(), error)
+            continue
+
+    unsupported.log(_LOGGER, what)
+    return kept
 
 
 class PrefixSource(Protocol):
@@ -185,7 +252,7 @@ class SearchCache:
         """The ids the cached response for ``prefix`` lists, best first; ``None`` if none is fresh.
 
         A response that cannot be read lists none, and an entry that is not a
-        content id is left out, each logged.
+        content id is left out, each warned of, since this node wrote them.
         """
         body = self.load(prefix)
 
@@ -193,26 +260,13 @@ class SearchCache:
             return None
 
         try:
-            results = loads(body)[RESULTS_FIELD]
+            return parse_search_results(
+                loads(body), what=f"The cached search for {prefix}", level=WARNING
+            )
 
-        except (ValueError, KeyError, TypeError) as error:
+        except ValueError as error:
             _LOGGER.warning("Ignoring the unreadable cached search for %s: %s", prefix, error)
             return []
-
-        if not isinstance(results, list):
-            _LOGGER.warning("Ignoring the cached search for %s, whose results are no array", prefix)
-            return []
-
-        found = []
-
-        for text in results:
-            try:
-                found.append(ContentId.parse(text))
-
-            except (InvalidContentIdError, AttributeError):
-                _LOGGER.warning("The cached search for %s holds %r, not a content id", prefix, text)
-
-        return found
 
     def save(self, prefix: str, body: bytes) -> Path:
         """Atomically replace the cached body for ``prefix``.

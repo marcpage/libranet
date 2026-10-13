@@ -37,15 +37,15 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError, InvalidContentIdError, UnknownAlgorithmError
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
-from libranet.problems import INVALID_CONTENT_ADDRESS, Problem
+from libranet.problems import INVALID_CONTENT_ADDRESS
 from libranet.protocol.client_origin import is_local_client
 from libranet.protocol.http_syntax import API_PREFIX
 from libranet.webserver.http_types import (
     Request,
     Response,
     bytes_response,
-    problem_response,
     status_response,
+    typed_response,
 )
 from libranet.webserver.request_refusals import content_unavailable_response
 
@@ -82,14 +82,7 @@ def invalid_address_response(
 
     That includes an encrypted id whose key cannot be read (§12.1).
     """
-    return problem_response(
-        Problem.of_type(
-            INVALID_CONTENT_ADDRESS,
-            HTTPStatus.BAD_REQUEST,
-            detail=str(error),
-            instance=request.path,
-        )
-    )
+    return typed_response(request, INVALID_CONTENT_ADDRESS, HTTPStatus.BAD_REQUEST, str(error))
 
 
 def content_id_or_refusal(request: Request, logger: Logger) -> ContentId | Response:

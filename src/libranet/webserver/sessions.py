@@ -19,6 +19,8 @@ is between a browser and this node, and no part of the protocol between nodes
 
 from __future__ import annotations
 from dataclasses import dataclass
+from http import HTTPStatus
+from logging import getLogger
 from secrets import token_urlsafe
 from threading import Lock
 from time import monotonic
@@ -26,7 +28,10 @@ from typing import Callable, Final
 
 from libranet.cas.content_id import ContentId
 from libranet.identity.people import PersonKey, Username
-from libranet.webserver.http_types import Request
+from libranet.problems import SESSION_REQUIRED
+from libranet.webserver.http_types import Request, Response, typed_response
+
+_LOGGER = getLogger(__name__)
 
 #: The cookie naming a browser's session.
 SESSION_COOKIE: Final = "libranet-session"
@@ -133,6 +138,19 @@ class Sessions:
                 return kept.session
 
         return None
+
+    def session_or_refusal(self, request: Request, detail: str) -> Session | Response:
+        """The session ``request``'s cookie names, marked used; or the ``401`` refusing it.
+
+        ``detail`` says what signing in is needed for.
+        """
+        session = self.session(request)
+
+        if session is None:
+            _LOGGER.debug("Refusing %s %s: no one is signed in", request.method, request.path)
+            return typed_response(request, SESSION_REQUIRED, HTTPStatus.UNAUTHORIZED, detail)
+
+        return session
 
     def end(self, request: Request) -> str:
         """End any session ``request``'s cookie names, and return the ``Set-Cookie`` removing it."""

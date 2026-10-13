@@ -1,7 +1,8 @@
 """Tests for local prefix search and the search-result cache."""
 
 from __future__ import annotations
-from logging import WARNING
+from json import dumps
+from logging import DEBUG, WARNING
 from os import utime
 from pathlib import Path
 from typing import Iterator
@@ -13,8 +14,16 @@ from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.prefix import matching_bits
 from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
-from libranet.protocol.search import LocalSearch, SearchCache, normalize_prefix
+from libranet.protocol.errors import InvalidListError
+from libranet.protocol.search import (
+    LocalSearch,
+    SearchCache,
+    normalize_prefix,
+    parse_search_results,
+)
 from libranet.stats.database import StatsDatabase
+
+ANSWERED_ID = ContentId.for_data(b"sought", "sha256")
 
 
 def _hash(prefix: str) -> str:
@@ -229,8 +238,56 @@ def test_a_cached_result_that_is_no_content_id_is_left_out(
     with caplog.at_level(WARNING):
         assert cache.load_results("ab") == [kept]
 
-    assert "holds 7, not a content id" in caplog.text
-    assert "holds 'sha256/zz', not a content id" in caplog.text
+    assert "Dropping 7 from the cached search for ab: not a string" in caplog.text
+    assert "Dropping 'sha256/zz' from the cached search for ab: " in caplog.text
+
+
+def test_cached_results_under_an_unknown_algorithm_are_warned_of_once(
+    tmp_path: Path, caplog: LogCaptureFixture
+) -> None:
+    cache = SearchCache(tmp_path, ttl_seconds=10, prefix_length=2)
+    kept = ContentId.create("sha256", _hash("ab00"))
+    unknown = ["md5/" + "0" * 32, "md5/" + "1" * 32]
+    cache.save("ab", dumps({"results": [*unknown, str(kept)]}).encode("utf-8"))
+
+    with caplog.at_level(WARNING):
+        assert cache.load_results("ab") == [kept]
+
+    (warning,) = caplog.records
+    assert warning.getMessage().startswith(
+        "The cached search for ab names ids hashed with algorithms "
+    )
+    assert warning.getMessage().endswith(": 2 under md5")
+
+
+def test_a_search_answer_names_its_content_ids_in_order() -> None:
+    other = ContentId.for_data(b"other", "sha256")
+    value = {"results": [f"SHA256/{ANSWERED_ID.hash.upper()}", str(other)]}
+
+    assert parse_search_results(value) == [ANSWERED_ID, other]
+
+
+def test_unusable_search_answer_entries_are_dropped_and_unknown_algorithms_warned_of(
+    caplog: LogCaptureFixture,
+) -> None:
+    caplog.set_level(DEBUG)
+    value = {"results": ["md5/" + "0" * 32, "sha256/short", 7, str(ANSWERED_ID)]}
+
+    assert parse_search_results(value) == [ANSWERED_ID]
+    assert [record.getMessage().split(":")[0] for record in caplog.records[:2]] == [
+        "Dropping 'sha256/short' from a search answer",
+        "Dropping 7 from a search answer",
+    ]
+    warning = caplog.records[2]
+    assert warning.levelno == WARNING
+    assert warning.getMessage().startswith("A search answer names ids hashed with algorithms ")
+    assert warning.getMessage().endswith(": 1 under md5")
+
+
+@mark.parametrize("value", [None, [], "results", {}, {"results": "x"}, {"results": {}}])
+def test_misshapen_search_answers_are_refused(value: object) -> None:
+    with raises(InvalidListError):
+        parse_search_results(value)
 
 
 def test_a_node_caches_searches_where_and_for_as_long_as_it_is_configured_to(

@@ -711,9 +711,10 @@ A constant another module also needs is defined once, public, in the
 lowest module of the layer its meaning belongs to — bundle path syntax in
 `bundle/shapes.py`, HTTP syntax in `protocol/http_syntax.py` — and imported
 from there, even where the same value could be written inline. Compact
-JSON, which no layer owns, is in `json_format.py`. Constants that only share
-a value stay apart: a protected bundle's compression level may never
-change, and the level objects are stored at may.
+JSON, which no layer owns, is in `json_format.py`, and reading untrusted JSON
+values by type in `json_fields.py`. Constants that only share a value stay
+apart: a protected bundle's compression level may never change, and the
+level objects are stored at may.
 
 ### 5.4 Threads Inside a Module
 

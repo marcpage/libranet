@@ -42,7 +42,7 @@ from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.prefix import nearest
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
-from libranet.problems import INVALID_SEARCH_PREFIX, Problem
+from libranet.problems import INVALID_SEARCH_PREFIX
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.protocol.search import SEARCH_PATH, LocalSearch, SearchCache, normalize_prefix
 from libranet.webserver.drop_handler import DROP_PATH
@@ -52,8 +52,8 @@ from libranet.webserver.http_types import (
     bytes_response,
     json_response,
     percent_decoded,
-    problem_response,
     status_response,
+    typed_response,
 )
 
 _LOGGER = getLogger(__name__)
@@ -82,13 +82,8 @@ class SearchHandler:
 
         except InvalidContentIdError as error:
             _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            return problem_response(
-                Problem.of_type(
-                    INVALID_SEARCH_PREFIX,
-                    HTTPStatus.BAD_REQUEST,
-                    detail=str(error),
-                    instance=request.path,
-                )
+            return typed_response(
+                request, INVALID_SEARCH_PREFIX, HTTPStatus.BAD_REQUEST, str(error)
             )
 
         found = self.cache.load_results(prefix)

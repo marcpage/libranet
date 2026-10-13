@@ -1,11 +1,14 @@
 """Tests for the sessions a cookie names."""
 
 from __future__ import annotations
+from http import HTTPStatus
+from json import loads
 
 from pytest import fixture, mark, raises
 
 from libranet.identity.people import NewIdentity, Username
-from libranet.webserver.http_types import Request
+from libranet.problems import SESSION_REQUIRED
+from libranet.webserver.http_types import Request, Response
 from libranet.webserver.sessions import SESSION_COOKIE, Session, Sessions
 
 IDLE_SECONDS = 60.0
@@ -96,6 +99,26 @@ def test_no_session_is_found_without_a_cookie_naming_one(
     headers = {} if cookie is None else {"Cookie": cookie}
 
     assert sessions.session(Request("GET", "/data/session", headers=headers)) is None
+
+
+def test_a_session_is_found_or_its_absence_refused(sessions: Sessions, session: Session) -> None:
+    request = with_cookie(sessions.start(session))
+
+    assert sessions.session_or_refusal(request, "Sign in to do it.") == session
+
+
+def test_no_session_is_refused_as_a_session_required(sessions: Sessions) -> None:
+    refusal = sessions.session_or_refusal(Request("GET", "/data/signed"), "Sign in to do it.")
+
+    assert isinstance(refusal, Response)
+    assert refusal.status == HTTPStatus.UNAUTHORIZED
+    assert loads(refusal.body) == {
+        "type": SESSION_REQUIRED,
+        "title": "Session required",
+        "status": 401,
+        "detail": "Sign in to do it.",
+        "instance": "/data/signed",
+    }
 
 
 def test_the_session_cookie_is_found_among_others(sessions: Sessions, session: Session) -> None:

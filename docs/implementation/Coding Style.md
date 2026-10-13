@@ -554,12 +554,14 @@ entries rather than once each.
 ### 10.1 Untrusted Input
 
 Input from a peer, a client, or a file is checked type by type before it is
-used. A JSON integer check also refuses `bool`, which Python counts as an
-`int`:
+used. A JSON integer or number is checked with `is_integer` or `is_number`
+from `json_fields.py`, which also refuse `bool`, since Python counts it as an
+`int`. A field that must be there is read with `string_field`,
+`integer_field`, or `number_field`, which raise the error they are given:
 
 ```Python
-if not isinstance(skipped, int) or isinstance(skipped, bool):
-    raise ValueError('"skipped" must be an integer')
+skipped = integer_field(value, "skipped")
+seconds = number_field(value, "seconds", error=InvalidConfigRequestError)
 ```
 
 ### 10.2 Every Kind Is Checked
@@ -666,7 +668,7 @@ Paths are relative to `src/libranet/`, except those that start with `tests/`.
 | `problems.py` `Problem` | Its JSON form is `to_dict()`, and its body `to_json()`, rather than `value()` (§6.3) |
 | `webserver/config_credential.py` `StoredCredential` | `from_json()` and `to_json()` read and write the file's bytes, rather than `from_value()` and `value()` (§6.3) |
 | 82 public callables in 42 files, listed in §12.1 | An optional parameter a call may pass by position (§6.4) |
-| `backup/imports.py`, `backup/tasks.py`, `connections/peer_session.py`, `messaging/queues.py`, `stats/records.py`, `stats/schema.py`, `webserver/data_handler.py`, `webserver/request_refusals.py`, `webserver/search_handler.py`, `webserver/site_checks.py` | No test file of its own: each is tested through the code that uses it (§11) |
+| `backup/imports.py`, `backup/tasks.py`, `connections/peer_session.py`, `messaging/queues.py`, `stats/records.py`, `stats/schema.py`, `webserver/data_handler.py`, `webserver/search_handler.py`, `webserver/site_checks.py` | No test file of its own: each is tested through the code that uses it (§11) |
 
 ### 12.1 Optional Parameters Taken Positionally
 
