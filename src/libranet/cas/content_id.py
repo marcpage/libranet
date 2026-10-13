@@ -12,6 +12,7 @@ from libranet.cas.errors import InvalidContentIdError
 # (HttpApi §5.4).
 HEX_DIGITS: Final = frozenset(hexdigits)
 LOWER_HEX_DIGITS: Final = frozenset(hexdigits.lower())
+BITS_PER_HEX_DIGIT: Final = 4
 
 
 @dataclass(frozen=True, order=True)
@@ -127,6 +128,11 @@ class ContentId:
     def matches(self, data: bytes, registry: AlgorithmRegistry = DEFAULT_REGISTRY) -> bool:
         """Whether ``data`` hashes to this identifier."""
         return registry.get(self.algorithm).hexdigest(data) == self.hash
+
+    def bucket(self, bits: int) -> int:
+        """The bucket this identifier falls in: the value of its hash's first ``bits`` bits."""
+        digits = -(-bits // BITS_PER_HEX_DIGIT)
+        return int(self.hash[:digits], 16) >> (digits * BITS_PER_HEX_DIGIT - bits)
 
     def fields(self) -> dict[str, str]:
         """The ``algorithm`` and ``hash`` naming this identifier, as :meth:`from_fields` reads."""

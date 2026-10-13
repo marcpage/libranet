@@ -13,11 +13,9 @@ in the same order.
 """
 
 from __future__ import annotations
-from typing import Final, Iterable
+from typing import Iterable
 
-from libranet.cas.content_id import ContentId
-
-BITS_PER_HEX_DIGIT: Final = 4
+from libranet.cas.content_id import BITS_PER_HEX_DIGIT, ContentId
 
 
 def matching_bits(left: str, right: str) -> int:

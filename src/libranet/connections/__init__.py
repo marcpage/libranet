@@ -4,7 +4,7 @@ Owns the raw-socket client, the first-contact handshake, the peer mix, and
 fetching data on the fetcher module's behalf.
 """
 
-from libranet.connections.candidates import Candidate, candidate_list, seed_candidates
+from libranet.connections.candidates import Candidate
 from libranet.connections.endpoints import PeerAddress
 from libranet.connections.errors import (
     ConnectionClosedError,
@@ -17,7 +17,7 @@ from libranet.connections.module import (
 )
 from libranet.connections.peer_connection import PeerConnection
 from libranet.connections.peer_exchange import PeerExchange, Retrieval
-from libranet.connections.peer_mix import PeerMix, bucket_of
+from libranet.connections.peer_mix import PeerMix
 from libranet.connections.peer_session import PeerRequest, PeerSession
 from libranet.connections.request_encoding import encode_request
 from libranet.connections.response_parser import (
@@ -47,10 +47,7 @@ __all__ = [
     "ResponseParser",
     "Retrieval",
     "ReverseLookup",
-    "bucket_of",
-    "candidate_list",
     "connections_module_factory",
     "encode_request",
     "host_names",
-    "seed_candidates",
 ]

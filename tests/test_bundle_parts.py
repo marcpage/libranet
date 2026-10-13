@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 from hashlib import sha256
+from logging import WARNING
 from os import urandom
 from pathlib import Path
 from zlib import compress
 
-from pytest import fixture, mark, raises
+from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.bundle.encryption import BLOCK_BYTES, DEFAULT_IV, Aes256Cbc
 from libranet.bundle.errors import (
@@ -216,6 +217,18 @@ def test_a_writer_keeps_only_parts_stored_as_it_stores_them(
     store: RecordingStore, encrypted: bool, parts: list[str], kept: bool
 ) -> None:
     assert PartWriter(store, encrypted=encrypted).keeps(parts) is kept
+
+
+def test_a_part_this_node_cannot_read_is_logged_as_a_warning(
+    store: RecordingStore, caplog: LogCaptureFixture
+) -> None:
+    assert not PartWriter(store, encrypted=True).keeps([f"{CONTENT_ID}/AES256-CBC/{KEY_HEX}z"])
+
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith("An earlier bundle names a part this node cannot read")
+    # The key is what keeps the part unread, so it is never logged.
+    assert KEY_HEX not in record.getMessage()
 
 
 def test_an_iv_a_path_names_is_used_to_decrypt(store: RecordingStore) -> None:

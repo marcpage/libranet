@@ -20,7 +20,7 @@ unreadable rather than the whole directory.
 from __future__ import annotations
 from base64 import b64decode
 from dataclasses import dataclass, field
-from typing import Callable, Final, Iterable, Mapping, TypeAlias
+from typing import Any, Callable, Final, Iterable, Mapping, TypeAlias
 
 from libranet.bundle.errors import MalformedBundleError, UnsupportedBundleError
 from libranet.cas.content_id import ContentId
@@ -152,6 +152,34 @@ class Metadata:  # pylint: disable=too-many-instance-attributes
             if not isinstance(value, str) and (included is None or included(name))
             for part in value
         )
+
+    def value(self) -> dict[str, Any]:
+        """The ``metadata`` object for this metadata, holding only what is not a default."""
+        value: dict[str, Any] = {
+            key: item
+            for key, item in (
+                ("created", self.created),
+                ("modified", self.modified),
+                ("size", self.size_bytes),
+                ("algorithm", self.algorithm),
+                ("hash", self.hash),
+            )
+            if item is not None
+        }
+
+        if self.writable:
+            value["writable"] = True
+
+        if self.executable:
+            value["executable"] = True
+
+        if self.xattrs:
+            value["xattrs"] = {
+                name: xattr if isinstance(xattr, str) else list(xattr)
+                for name, xattr in self.xattrs.items()
+            }
+
+        return value
 
 
 @dataclass(frozen=True)

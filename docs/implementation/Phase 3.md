@@ -111,7 +111,8 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
   this phase starts at Step 64. The Karma and enhancement plans were
   Phases 3 and 4 until this phase took the place of the first; after
   [Phase 4](Phase%204.md), user accounts, took the place of the next,
-  they are now [Phase 5](Phase%205.md) and [Phase 6](Phase%206.md), and
+  and [Phase 5](Phase%205.md), the trust network, the place after that,
+  they are now [Phase 6](Phase%206.md) and [Phase 7](Phase%207.md), and
   their steps kept their numbers.
 - **A step of an earlier phase is named with its phase**, as Phase 2
   names Phase 1's. A step number alone is a step of this document.
@@ -578,7 +579,7 @@ Ruled before building:
   node's peers, so the parts go there first.
 - **Nothing keeps a movie on the node.** Eviction's priorities
   (HighLevelDesign §4.5) keep one watched often or lately, and one seldom
-  watched may lose parts to the network. Karma (Phase 5) is to answer
+  watched may lose parts to the network. Karma (Phase 6) is to answer
   that, by rewarding the nodes that show they still hold what was
   uploaded to them.
 

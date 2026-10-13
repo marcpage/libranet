@@ -26,15 +26,8 @@ from dataclasses import dataclass
 from typing import Callable, Sequence
 
 from libranet.cas.content_id import ContentId
-from libranet.cas.prefix import BITS_PER_HEX_DIGIT
 from libranet.config.models import PeerConfig
 from libranet.connections.candidates import Candidate
-
-
-def bucket_of(node_id: ContentId, bits: int) -> int:
-    """The bucket ``node_id`` falls in: the value of its first ``bits`` bits."""
-    digits = -(-bits // BITS_PER_HEX_DIGIT)
-    return int(node_id.hash[:digits], 16) >> (digits * BITS_PER_HEX_DIGIT - bits)
 
 
 @dataclass(frozen=True)
@@ -145,7 +138,7 @@ class PeerMix:
 
     def _bucket(self, node_id: ContentId) -> int:
         """The bucket of the first set that ``node_id`` falls in."""
-        return bucket_of(node_id, self.peers.bucket_prefix_bits)
+        return node_id.bucket(self.peers.bucket_prefix_bits)
 
     def _neighborhood_bucket(self, node_id: ContentId) -> int | None:
         """The bucket of the second set that ``node_id`` falls in, or ``None`` for no neighbor.
@@ -157,4 +150,4 @@ class PeerMix:
             return None
 
         bits = self.peers.neighborhood_prefix_bits
-        return bucket_of(node_id, self.peers.bucket_prefix_bits + bits) & ((1 << bits) - 1)
+        return node_id.bucket(self.peers.bucket_prefix_bits + bits) & ((1 << bits) - 1)

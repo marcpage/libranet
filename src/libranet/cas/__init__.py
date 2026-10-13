@@ -25,7 +25,12 @@ from libranet.cas.algorithms import (
 from libranet.cas.archive import ARCHIVE_SUFFIX, ArchiveSink, ArchiveSource
 from libranet.cas.blocked import BlockedContent
 from libranet.cas.compression import CHUNK_BYTES, decompressed, decompressed_chunks
-from libranet.cas.content_id import HEX_DIGITS, LOWER_HEX_DIGITS, ContentId
+from libranet.cas.content_id import (
+    BITS_PER_HEX_DIGIT,
+    HEX_DIGITS,
+    LOWER_HEX_DIGITS,
+    ContentId,
+)
 from libranet.cas.drops import DROP_SEPARATOR, TRIES_PER_CLOCK_READ, Drop, DropTarget
 from libranet.cas.errors import (
     ArchiveError,
@@ -37,7 +42,7 @@ from libranet.cas.errors import (
     StreamTooLargeError,
     UnknownAlgorithmError,
 )
-from libranet.cas.prefix import BITS_PER_HEX_DIGIT, matching_bits, nearest
+from libranet.cas.prefix import matching_bits, nearest
 from libranet.cas.resolved_files import DIRECTORY_FILE, ResolvedFiles
 from libranet.cas.store import (
     DATA_SEGMENT,

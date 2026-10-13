@@ -77,10 +77,10 @@ from time import time
 from typing import Callable, Final, Iterator, Mapping, Sequence, TypeVar
 
 from libranet.cas.blocked import BlockedContent
-from libranet.cas.content_id import ContentId
+from libranet.cas.content_id import BITS_PER_HEX_DIGIT, ContentId
 from libranet.cas.errors import ContentNotFoundError
 from libranet.cas.layered import LayeredSource
-from libranet.cas.prefix import BITS_PER_HEX_DIGIT, matching_bits
+from libranet.cas.prefix import matching_bits
 from libranet.cas.store import CasStore
 from libranet.cas.verification import content_matches
 from libranet.config.models import LibranetConfig
@@ -378,10 +378,15 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
         try:
             return self._storage.node_list_path.read_bytes()
 
-        except OSError:
+        except FileNotFoundError:
             # Not logged: there is none before the first derivation, as above.
-            own = {endpoint: str(self._identity.node_id) for endpoint in self._own_endpoints}
-            return node_list_body(own)
+            pass
+
+        except OSError as error:
+            self._logger.warning("Cannot read the node list, so only this node is named: %s", error)
+
+        own = {endpoint: str(self._identity.node_id) for endpoint in self._own_endpoints}
+        return node_list_body(own)
 
     def _receive_node_list(self, session: PeerSession, response: PeerResponse) -> None:
         """Publish the nodes the peer's node list names, for the stats module to keep."""

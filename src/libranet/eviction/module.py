@@ -176,6 +176,51 @@ class _HandOff:
     started_at: float
 
 
+@dataclass
+class _Request:
+    """A request to another module, given up on once unanswered for ``timeout_seconds``.
+
+    ``sent_at`` is when it was sent, while it has not been answered. It is
+    not :meth:`due` to be sent again until ``interval_seconds`` after it
+    last was.
+    """
+
+    timeout_seconds: float
+    interval_seconds: float = 0.0
+    sent_at: float | None = None
+    next_at: float = 0.0
+
+    @property
+    def pending(self) -> bool:
+        """Whether it was sent and has not been answered or given up on."""
+        return self.sent_at is not None
+
+    def due(self, now: float) -> bool:
+        """Whether it may be sent again at ``now``."""
+        return now >= self.next_at
+
+    def send(self, now: float) -> None:
+        """Note that it was sent at ``now``."""
+        self.sent_at = now
+        self.next_at = now + self.interval_seconds
+
+    def answered(self) -> None:
+        """Note that it was answered."""
+        self.sent_at = None
+
+    def give_up(self, now: float) -> bool:
+        """Give up on it if it is pending and has timed out by ``now``.
+
+        Returns:
+            Whether it was given up on.
+        """
+        if self.sent_at is None or now - self.sent_at < self.timeout_seconds:
+            return False
+
+        self.sent_at = None
+        return True
+
+
 class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
     """Hands off and deletes the content this node has least claim to, as storage runs short."""
 
@@ -249,9 +294,6 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         self._free_bytes = free_bytes
         self._max_hand_offs = config.storage.max_hand_offs
         self._hand_off_timeout_seconds = hand_off_timeout_seconds
-        self._candidates_timeout_seconds = candidates_timeout_seconds
-        self._reclaim_timeout_seconds = reclaim_timeout_seconds
-        self._reclaim_interval_seconds = reclaim_interval_seconds
         self._headroom_bytes = (
             self._max_hand_offs * config.storage.max_object_bytes
             if headroom_bytes is None
@@ -264,15 +306,12 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         self._handing_off: dict[ContentId, _HandOff] = {}
         # What stats last ranked first to let go of, not yet handed off.
         self._candidates: deque[HeldObject] = deque()
-        # When stats was asked for more, while it has not answered.
-        self._asked_at: float | None = None
+        # Asking stats for more.
+        self._asking = _Request(candidates_timeout_seconds)
         # No new hand-off starts before this time.
         self._paused_until = 0.0
-        # When resolved files were asked to be deleted, while that is
-        # unanswered.
-        self._reclaiming_since: float | None = None
-        # They are not asked to be deleted again before this time.
-        self._next_reclaim_at = 0.0
+        # Asking for resolved files to be deleted.
+        self._reclaiming = _Request(reclaim_timeout_seconds, reclaim_interval_seconds)
         # The peers last named connected, each way, whose keys are kept.
         self._connected: dict[ConnectionDirection, frozenset[ContentId]] = {}
         # Whether storage was last said to be full; None before it first is.
@@ -343,21 +382,14 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
             del self._handing_off[content_id]
             self.logger.warning("The hand-off of %s went unanswered", content_id)
 
-        unanswered = (
-            self._asked_at is not None and now - self._asked_at >= self._candidates_timeout_seconds
-        )
+        unanswered = self._asking.give_up(now)
 
         if unanswered:
-            self._asked_at = None
             self.logger.warning("The stats module never said what to let go of")
 
-        unreclaimed = (
-            self._reclaiming_since is not None
-            and now - self._reclaiming_since >= self._reclaim_timeout_seconds
-        )
+        unreclaimed = self._reclaiming.give_up(now)
 
         if unreclaimed:
-            self._reclaiming_since = None
             self.logger.warning("The unbundler never said which resolved files it deleted")
 
         resumed = 0 < self._paused_until <= now
@@ -418,7 +450,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         With nothing listed but hand-offs still under way, stats is asked
         again only once one of them is answered.
         """
-        self._asked_at = None
+        self._asking.answered()
         self._candidates = deque(
             HeldObject(ContentId.from_fields(entry), int(entry["size"]))
             for entry in message["objects"]
@@ -493,7 +525,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
 
     def _on_resolved_reclaimed(self, message: Message) -> None:
         """Carry on, now that the resolved files not used lately are deleted."""
-        self._reclaiming_since = None
+        self._reclaiming.answered()
         self.logger.debug(
             "Deleting the resolved files of %d bundles freed %d bytes",
             int(message["bundles"]),
@@ -514,7 +546,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         if self._clock() < self._paused_until or len(self._handing_off) >= self._max_hand_offs:
             return
 
-        if self._reclaiming_since is not None:
+        if self._reclaiming.pending:
             return
 
         excess = self.pressure.excess()
@@ -523,7 +555,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
             self._candidates.clear()
             return
 
-        if self._clock() >= self._next_reclaim_at and self.pressure.free_space_shortfall():
+        if self._reclaiming.due(self._clock()) and self.pressure.free_space_shortfall():
             self._reclaim()
             return
 
@@ -550,10 +582,10 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
 
     def _ask_for_candidates(self, needed_bytes: int) -> None:
         """Ask stats for enough content to free ``needed_bytes``, unless already asking."""
-        if self._asked_at is not None:
+        if self._asking.pending:
             return
 
-        self._asked_at = self._clock()
+        self._asking.send(self._clock())
         self.publish(
             EventType.EVICTION_CANDIDATES_REQUESTED,
             {
@@ -596,9 +628,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
 
     def _reclaim(self) -> None:
         """Ask for the resolved files of applications not used lately to be deleted."""
-        now = self._clock()
-        self._reclaiming_since = now
-        self._next_reclaim_at = now + self._reclaim_interval_seconds
+        self._reclaiming.send(self._clock())
         self.publish(EventType.RESOLVED_RECLAIM_REQUESTED, {})
         self.logger.debug("Asked for the resolved files not used lately to be deleted")
 

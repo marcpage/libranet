@@ -2896,6 +2896,31 @@ def test_an_address_that_cannot_be_listened_at_stops_the_search_at_once(
     assert caplog.records == []
 
 
+@mark.parametrize(
+    ("error", "level"), [(ConnectionResetError("reset"), DEBUG), (RuntimeError("broken"), ERROR)]
+)
+def test_a_request_failing_outside_its_route_is_logged(
+    error: Exception, level: int, caplog: LogCaptureFixture
+) -> None:
+    caplog.set_level(DEBUG)
+    server = LibranetHTTPServer(
+        ("127.0.0.1", 0), Router(), getLogger("test.webserver"), MessageSigner(SERVER_IDENTITY)
+    )
+    server.server_close()
+
+    with socket() as request:
+        try:
+            raise error
+
+        except Exception:  # pylint: disable=broad-exception-caught
+            server.handle_error(request, ("127.0.0.1", 4300))
+
+    (record,) = [record for record in caplog.records if record.name == "test.webserver"]
+    assert record.levelno == level
+    # A client going away needs no traceback; anything else keeps it.
+    assert (record.exc_info is not None) == (level == ERROR)
+
+
 def test_an_invalid_content_id_is_logged_at_debug(
     connection: HTTPConnection, caplog: LogCaptureFixture
 ) -> None:

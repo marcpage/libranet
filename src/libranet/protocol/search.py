@@ -19,9 +19,9 @@ from typing import Callable, Final, Iterable, Iterator, Protocol
 
 from libranet.atomic_file import write_atomically
 from libranet.cas.algorithms import DEFAULT_REGISTRY, AlgorithmRegistry, UnsupportedAlgorithms
-from libranet.cas.content_id import HEX_DIGITS, ContentId
+from libranet.cas.content_id import BITS_PER_HEX_DIGIT, HEX_DIGITS, ContentId
 from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
-from libranet.cas.prefix import BITS_PER_HEX_DIGIT, nearest
+from libranet.cas.prefix import nearest
 from libranet.config.models import StorageConfig
 from libranet.json_format import compact_json
 from libranet.protocol.errors import InvalidListError

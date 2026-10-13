@@ -10,7 +10,6 @@ all of them.
 from __future__ import annotations
 from logging import Formatter, Logger, StreamHandler, getLogger
 from logging.handlers import RotatingFileHandler
-from pathlib import Path
 from typing import Final
 
 from libranet.config.models import LoggingConfig
@@ -22,17 +21,6 @@ LOGGER_ROOT: Final = "libranet"
 def get_logger(module: ModuleName | str) -> Logger:
     """Return the named logger for a module, e.g. ``libranet.validator``."""
     return getLogger(f"{LOGGER_ROOT}.{module}")
-
-
-def log_file_path(config: LoggingConfig, module: ModuleName | str) -> Path:
-    """Path of the log file this module's process writes to.
-
-    The configured ``file_name`` supplies the stem and suffix; the module
-    name is inserted between them, so ``libranet.log`` becomes
-    ``libranet-validator.log``.
-    """
-    base = Path(config.file_name)
-    return config.directory / f"{base.stem}-{module}{base.suffix}"
 
 
 def configure_logging(
@@ -63,7 +51,7 @@ def configure_logging(
         config.directory.mkdir(parents=True, exist_ok=True)
 
     file_handler = RotatingFileHandler(
-        log_file_path(config, module),
+        config.log_file_path(module),
         maxBytes=config.max_bytes,
         backupCount=config.backup_count,
         encoding="utf-8",

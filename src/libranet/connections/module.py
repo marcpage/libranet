@@ -135,7 +135,7 @@ from logging import Logger
 from queue import Empty, SimpleQueue
 from threading import Lock, Thread
 from time import time
-from typing import Any, Callable, ClassVar, Mapping, Sequence
+from typing import Any, Callable, ClassVar, Generic, Hashable, Mapping, Sequence, TypeVar
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError
@@ -144,7 +144,7 @@ from libranet.cas.store import CasStore
 from libranet.config.errors import SeedError
 from libranet.config.models import LibranetConfig
 from libranet.config.seeds import load_seed_peers
-from libranet.connections.candidates import Candidate, candidate_list, seed_candidates
+from libranet.connections.candidates import Candidate
 from libranet.connections.endpoints import PeerAddress
 from libranet.connections.peer_exchange import PeerExchange
 from libranet.connections.peer_mix import PeerMix
@@ -270,6 +270,75 @@ class _Broadcast:
     pass_number: int = 1
 
 
+_Key = TypeVar("_Key", bound=Hashable)
+_Run = TypeVar("_Run")
+
+
+class _Searches(Generic[_Key, _Run]):
+    """Searches of one kind, by what each seeks, through every stage of their passes.
+
+    ``under_way`` holds those under way and ``ready`` those ready for a
+    worker to carry on, with ``None`` telling a worker to stop. Searches
+    waiting for their next pass are kept soonest first. Once one ends, what
+    it sought may be held for a while before a new one starts. Every hold is
+    as long, so they end in the order they began. Everything but ``ready``
+    is shared with the background threads, under the module's lock.
+    """
+
+    def __init__(self) -> None:
+        self.under_way: dict[_Key, _Run] = {}
+        self.ready: SimpleQueue[_Run | None] = SimpleQueue()
+        # As (when, order, search), soonest first.
+        self._waiting: list[tuple[float, int, _Run]] = []
+        self._order = count()
+        # When a new search for each may start, in the order they ended.
+        self._held: OrderedDict[_Key, float] = OrderedDict()
+
+    def end(self, key: _Key, search: _Run) -> bool:
+        """End ``search`` for ``key``, if it is still the one under way; whether it was."""
+        if self.under_way.get(key) is not search:
+            return False
+
+        del self.under_way[key]
+        return True
+
+    def wait(self, search: _Run, until: float) -> None:
+        """Keep ``search`` waiting for its next pass until ``until``."""
+        heappush(self._waiting, (until, next(self._order), search))
+
+    def resumed(self, now: float) -> list[_Run]:
+        """Those whose wait for their next pass is over by ``now``, no longer waiting."""
+        resumed: list[_Run] = []
+
+        while self._waiting and self._waiting[0][0] <= now:
+            resumed.append(heappop(self._waiting)[2])
+
+        return resumed
+
+    def hold(self, key: _Key, until: float) -> None:
+        """Hold off a new search for ``key`` until ``until``."""
+        self._held[key] = until
+
+    def release(self, key: _Key) -> None:
+        """Let a new search for ``key`` start, if one was held off."""
+        self._held.pop(key, None)
+
+    def held_until(self, key: _Key, now: float) -> float:
+        """When a new search for ``key`` may start: ``now`` if it is not held off.
+
+        Holds over by ``now`` are forgotten.
+        """
+        while self._held and next(iter(self._held.values())) <= now:
+            self._held.popitem(last=False)
+
+        return self._held.get(key, now)
+
+    def stop(self, workers: int) -> None:
+        """Tell each of ``workers`` workers to stop."""
+        for _ in range(workers):
+            self.ready.put(None)
+
+
 @dataclass
 class _Peer:
     """A connected peer, and when its seek list is next due to be fetched again.
@@ -333,27 +402,12 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         # Endpoints that reached a node connected at another endpoint, with
         # that node: not dialed again while that connection lasts.
         self._duplicates: dict[str, ContentId] = {}
-        # Searches under way, by the content each seeks.
-        self._searches: dict[ContentId, _Search] = {}
-        # Searches ready for a search worker to carry on.
-        self._ready_searches: SimpleQueue[_Search | None] = SimpleQueue()
-        # Searches waiting for their next pass, as (when, order, search),
-        # soonest first.
-        self._waiting: list[tuple[float, int, _Search]] = []
-        self._order = count()
-        # Content a search found nothing for, with when a new request may start
-        # another, in the order the searches ended.
-        self._held: OrderedDict[ContentId, float] = OrderedDict()
-        # Searches of the peers for a prefix under way, by the prefix.
-        self._broadcasts: dict[str, _Broadcast] = {}
-        # Those ready for a broadcast worker to make their next pass.
-        self._passes: SimpleQueue[_Broadcast | None] = SimpleQueue()
-        # Those waiting for their next pass, as (when, order, broadcast),
-        # soonest first.
-        self._next_passes: list[tuple[float, int, _Broadcast]] = []
-        # Prefixes whose search of the peers has ended, with when a new search
-        # of one may start another, in the order they ended.
-        self._broadcast_held: OrderedDict[str, float] = OrderedDict()
+        # Searches for content, by the content each seeks, carried on by the
+        # search workers. Content a search found nothing for is held.
+        self._searches: _Searches[ContentId, _Search] = _Searches()
+        # Searches of the peers for a prefix, by the prefix, carried on by the
+        # broadcast workers.
+        self._broadcasts: _Searches[str, _Broadcast] = _Searches()
         self._handing_off: set[ContentId] = set()
         self._pushes: SimpleQueue[_NewContent | None] = SimpleQueue()
         # New content no peer was connected to take, by content id, with the
@@ -451,24 +505,17 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             for peer in due:
                 peer.busy = True
 
-            resumed: list[_Search] = []
-
-            while self._waiting and self._waiting[0][0] <= now:
-                resumed.append(heappop(self._waiting)[2])
-
-            passes: list[_Broadcast] = []
-
-            while self._next_passes and self._next_passes[0][0] <= now:
-                passes.append(heappop(self._next_passes)[2])
+            resumed = self._searches.resumed(now)
+            passes = self._broadcasts.resumed(now)
 
         for peer in due:
             self._start("refresh", partial(self._talk, peer, self.exchange.refresh))
 
         for search in resumed:
-            self._ready_searches.put(search)
+            self._searches.ready.put(search)
 
         for broadcast in passes:
-            self._passes.put(broadcast)
+            self._broadcasts.ready.put(broadcast)
 
         if rested:
             self._maintain()
@@ -487,14 +534,12 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         if running:  # tell worker threads to stop
             settings = self._config.peers
 
-            for _ in range(settings.search_workers):
-                self._ready_searches.put(None)
+            self._searches.stop(settings.search_workers)
 
             for _ in range(settings.push_workers):
                 self._pushes.put(None)
 
-            for _ in range(settings.broadcast_workers):
-                self._passes.put(None)
+            self._broadcasts.stop(settings.broadcast_workers)
 
             if self._lookup is not None:
                 self._lookup.stop()
@@ -543,22 +588,18 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         search: _Search | None = None
 
         with self._lock:
-            # Every hold is as long, so they end in the order they began.
-            while self._held and next(iter(self._held.values())) <= now:
-                self._held.popitem(last=False)
+            held_until = self._searches.held_until(content_id, now)
 
-            held_until = self._held.get(content_id, now)
-
-            if content_id not in self._searches and held_until <= now:
-                self._held.pop(content_id, None)
-                search = self._searches[content_id] = _Search(
+            if content_id not in self._searches.under_way and held_until <= now:
+                self._searches.release(content_id)
+                search = self._searches.under_way[content_id] = _Search(
                     content_id,
                     self._config.network.retry_after_seconds,
                     self._config.peers.search_passes,
                 )
 
         if search is not None:
-            self._ready_searches.put(search)
+            self._searches.ready.put(search)
 
         elif held_until > now:
             self.logger.debug(
@@ -576,21 +617,17 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         broadcast: _Broadcast | None = None
 
         with self._lock:
-            # Every hold is as long, so they end in the order they began.
-            while self._broadcast_held and next(iter(self._broadcast_held.values())) <= now:
-                self._broadcast_held.popitem(last=False)
-
-            under_way = prefix in self._broadcasts
-            held = prefix in self._broadcast_held
+            under_way = prefix in self._broadcasts.under_way
+            held = self._broadcasts.held_until(prefix, now) > now
 
             if not under_way and not held:
-                broadcast = self._broadcasts[prefix] = _Broadcast(
+                broadcast = self._broadcasts.under_way[prefix] = _Broadcast(
                     prefix, asker, self._config.peers.search_passes
                 )
 
         if broadcast is not None:
             self.logger.debug("Searching the peers for %s", prefix)
-            self._passes.put(broadcast)
+            self._broadcasts.ready.put(broadcast)
 
         elif held:
             self.logger.debug("Not searching the peers for %s: the last search just ended", prefix)
@@ -616,8 +653,8 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         content_id = ContentId.from_fields(message)
 
         with self._lock:
-            searched = self._searches.pop(content_id, None) is not None
-            self._held.pop(content_id, None)
+            searched = self._searches.under_way.pop(content_id, None) is not None
+            self._searches.release(content_id)
 
         if searched:
             self.logger.debug("%s arrived while being searched for", content_id)
@@ -644,7 +681,9 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
 
     def _load_seeds(self) -> list[Candidate]:
         try:
-            return seed_candidates(load_seed_peers(self._config.peers.seed_file))
+            return [
+                Candidate.from_seed(seed) for seed in load_seed_peers(self._config.peers.seed_file)
+            ]
 
         except SeedError as error:
             self.logger.warning("Seed list unavailable: %s", error)
@@ -656,7 +695,9 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         Endpoints this node cannot dial are left out, and so is a candidate
         left with none.
         """
-        candidates = candidate_list(self._config.storage.candidate_list_path, self.exchange.node_id)
+        candidates = Candidate.read_list(
+            self._config.storage.candidate_list_path, self.exchange.node_id
+        )
         dialable = [
             usable
             for candidate in candidates or self._seeds
@@ -719,7 +760,13 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         The candidate rests if no peer was taken in, unless its node was
         connected meanwhile at another endpoint.
         """
-        peer = self._walk(candidate)
+        peer: _Peer | None = None
+
+        try:
+            peer = self._walk(candidate)
+
+        except Exception:  # pylint: disable=broad-exception-caught
+            self.logger.exception("Connecting to %s failed", candidate.key)
 
         with self._lock:
             self._pending.pop(candidate.key, None)
@@ -903,7 +950,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
 
     def _search_loop(self) -> None:
         """Search-worker thread: carry searches on until told to stop."""
-        while (search := self._ready_searches.get()) is not None:
+        while (search := self._searches.ready.get()) is not None:
             try:
                 self._search(search)
 
@@ -930,7 +977,10 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             now = self._clock()
 
             with self._lock:
-                if not self._running or self._searches.get(search.content_id) is not search:
+                if (
+                    not self._running
+                    or self._searches.under_way.get(search.content_id) is not search
+                ):
                     return None
 
                 session = search.next_peer(ranked, now)
@@ -944,7 +994,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
                 resume_at = search.start_next_pass(ranked, now)
 
                 if resume_at > now:
-                    heappush(self._waiting, (resume_at, next(self._order), search))
+                    self._searches.wait(search, resume_at)
                     waiting = True
 
         if waiting:
@@ -976,8 +1026,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             return False
 
         with self._lock:
-            if self._searches.get(content_id) is search:
-                del self._searches[content_id]
+            self._searches.end(content_id, search)
 
         self.publish(
             EventType.FETCH_SUCCEEDED,
@@ -995,19 +1044,17 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         now = self._clock()
 
         with self._lock:
-            if self._searches.get(content_id) is not search:
+            if not self._searches.end(content_id, search):
                 return
 
-            del self._searches[content_id]
-
             if search.asks:
-                self._held[content_id] = now + self._config.peers.failed_search_hold_seconds
+                self._searches.hold(content_id, now + self._config.peers.failed_search_hold_seconds)
 
         self.publish(EventType.FETCH_FAILED, content_id.fields())
 
     def _broadcast_loop(self) -> None:
         """Broadcast-worker thread: make searches' passes of the peers until told to stop."""
-        while (broadcast := self._passes.get()) is not None:
+        while (broadcast := self._broadcasts.ready.get()) is not None:
             try:
                 self._make_pass(broadcast)
 
@@ -1049,9 +1096,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         pause_seconds = self._config.network.retry_after_seconds
 
         with self._lock:
-            heappush(
-                self._next_passes, (self._clock() + pause_seconds, next(self._order), broadcast)
-            )
+            self._broadcasts.wait(broadcast, self._clock() + pause_seconds)
 
         self.logger.debug(
             "The search of the peers for %s asks again in %d seconds",
@@ -1062,12 +1107,11 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
     def _end_broadcast(self, broadcast: _Broadcast) -> None:
         """End ``broadcast``, holding off another search of its prefix for a while."""
         with self._lock:
-            if self._broadcasts.get(broadcast.prefix) is not broadcast:
+            if not self._broadcasts.end(broadcast.prefix, broadcast):
                 return
 
-            del self._broadcasts[broadcast.prefix]
-            self._broadcast_held[broadcast.prefix] = (
-                self._clock() + self._config.peers.broadcast_hold_seconds
+            self._broadcasts.hold(
+                broadcast.prefix, self._clock() + self._config.peers.broadcast_hold_seconds
             )
 
         self.logger.debug("Searched the peers for %s", broadcast.prefix)

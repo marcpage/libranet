@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 from json import loads
+from logging import WARNING
+from pathlib import Path
 from typing import Iterator
 
-from pytest import fixture
+from pytest import LogCaptureFixture, MonkeyPatch, fixture
 
 from libranet.cas.content_id import ContentId
 from libranet.config.models import StatsConfig, StorageConfig
@@ -148,6 +150,29 @@ def test_a_derivation_that_changes_nothing_rewrites_nothing(
     # An address never reached is not published, and the seek list is untouched.
     assert changed.node_list.stat().st_mtime_ns == written_at[0]
     assert changed.seek_list.stat().st_mtime_ns == written_at[1]
+
+
+def test_a_list_that_cannot_be_read_is_written_afresh_and_logged(
+    deriver: ListDeriver, caplog: LogCaptureFixture, monkeypatch: MonkeyPatch
+) -> None:
+    first = deriver.derive()
+    read_bytes = Path.read_bytes
+
+    def unreadable(path: Path) -> bytes:
+        if path == first.node_list:
+            raise PermissionError(f"Permission denied: {path}")
+
+        return read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", unreadable)
+    written_at = first.node_list.stat().st_mtime_ns
+
+    deriver.derive()
+
+    assert first.node_list.stat().st_mtime_ns != written_at
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith(f"Cannot read {first.node_list}")
 
 
 def test_stale_outstanding_requests_stop_being_advertised(storage: StorageConfig) -> None:

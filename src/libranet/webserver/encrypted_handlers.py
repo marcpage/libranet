@@ -68,7 +68,7 @@ from libranet.webserver.request_refusals import (
     parsed_or_refusal,
     unusable_bundle_response,
 )
-from libranet.webserver.signed_handlers import SignedDrops, signed_value
+from libranet.webserver.signed_handlers import SignedDrops
 
 _LOGGER = getLogger(__name__)
 
@@ -175,7 +175,7 @@ class EncryptedDrops:
             if isinstance(signed, Response):
                 return signed
 
-            return json_response(signed_value(content_id, signed))
+            return json_response(signed.read_value(content_id))
 
         try:
             return json_response({"id": str(content_id), "text": opened.decode("utf-8")})
