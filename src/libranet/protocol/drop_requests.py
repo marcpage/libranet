@@ -36,10 +36,12 @@ from math import isfinite
 from typing import Final, TypeAlias
 from unicodedata import normalize
 
+from libranet.bundle.protection import NORMAL_FORM
 from libranet.bundle.shapes import is_utf8
 from libranet.cas.content_id import ContentId
-from libranet.cas.drops import TARGET_BITS, DropTarget
+from libranet.cas.drops import DropTarget
 from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
+from libranet.config.models import TARGET_BITS
 from libranet.identity.people import Username
 from libranet.protocol.bundle_requests import BytesSource
 from libranet.protocol.errors import InvalidConfigRequestError
@@ -53,9 +55,6 @@ _GIVEN: Final = "of a drop"
 # The members of "encrypt" asking for each kind of encryption (HttpApi §11.6).
 _PERSON_KEYS: Final = frozenset({"for"})
 _PASSWORD_KEYS: Final = frozenset({"username", "password"})
-
-# A password's characters are counted as it derives a key: in NFC (§6.2.1).
-_NORMAL_FORM: Final = "NFC"
 
 
 @dataclass(frozen=True)
@@ -88,7 +87,7 @@ class PasswordEncryption:
         if not is_utf8(self.password):
             raise ValueError('"password" is not UTF-8')
 
-        if len(normalize(_NORMAL_FORM, self.password)) < MIN_PASSWORD_CHARACTERS:
+        if len(normalize(NORMAL_FORM, self.password)) < MIN_PASSWORD_CHARACTERS:
             raise ValueError(f'"password" must be at least {MIN_PASSWORD_CHARACTERS} characters')
 
 

@@ -6,11 +6,13 @@ from logging import getLogger
 from typing import Final
 from urllib.parse import urlsplit
 
+from libranet.protocol.http_syntax import DEFAULT_PORTS
+
 _LOGGER = getLogger(__name__)
 
 # HTTPS is deferred past v1, so only plain HTTP endpoints are dialed.
 _SCHEME: Final = "http"
-_DEFAULT_PORT: Final = 80
+_DEFAULT_PORT: Final = DEFAULT_PORTS[_SCHEME]
 
 
 @dataclass(frozen=True)

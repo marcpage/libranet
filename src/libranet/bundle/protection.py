@@ -39,7 +39,12 @@ from zlib import compress
 
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
 
-from libranet.bundle.encryption import BLOCK_BYTES, KEY_BYTES, Aes256Cbc
+from libranet.bundle.encryption import (
+    BLOCK_BYTES,
+    ENCRYPTION_COMPRESSION_LEVEL,
+    KEY_BYTES,
+    Aes256Cbc,
+)
 from libranet.bundle.errors import (
     BundleTooLargeError,
     IncorrectPasswordError,
@@ -58,16 +63,12 @@ DESCRIPTOR_SEPARATOR: Final = b"\0"
 # A descriptor names its scheme in four fields, "PW-{hash}-{cipher}-{mode}",
 # and may add a fifth, "IV:{hex}" (§6.1).
 _DESCRIPTOR_PREFIX: Final = "PW"
-_DESCRIPTOR_FIELD_SEPARATOR: Final = "-"
+DESCRIPTOR_FIELD_SEPARATOR: Final = "-"
 _SCHEME_FIELDS: Final = 4
 _IV_PREFIX: Final = "IV:"
 
 # How every descriptor starts, whatever scheme it names.
-_DESCRIPTOR_START: Final = f"{_DESCRIPTOR_PREFIX}{_DESCRIPTOR_FIELD_SEPARATOR}".encode("ascii")
-
-# Never changed once bundles are written with it, or identical bundles
-# written before and after would no longer dedup (§6.3).
-_COMPRESSION_LEVEL: Final = 9
+_DESCRIPTOR_START: Final = f"{_DESCRIPTOR_PREFIX}{DESCRIPTOR_FIELD_SEPARATOR}".encode("ascii")
 
 # How a key is derived from a password: a descriptor's hash algorithm (§6.2).
 _SHA256: Final = "SHA256"
@@ -88,7 +89,7 @@ _SALT_PREFIX: Final = "libranet-user:"
 # A username and password are normalized before they are encoded, so that
 # one typed with its characters composed another way derives the same key
 # (§6.2.1).
-_NORMAL_FORM: Final = "NFC"
+NORMAL_FORM: Final = "NFC"
 
 
 class _Scheme(Protocol):
@@ -132,7 +133,7 @@ class _Aes256CbcScheme:  # pylint: disable=missing-function-docstring
 
     @property
     def descriptor(self) -> str:
-        return _DESCRIPTOR_FIELD_SEPARATOR.join(
+        return DESCRIPTOR_FIELD_SEPARATOR.join(
             (_DESCRIPTOR_PREFIX, self.derivation, "AES256", "CBC")
         )
 
@@ -207,8 +208,8 @@ class PasswordKey:
             ValueError: ``username`` or ``password`` holds what UTF-8 cannot
                 encode.
         """
-        username_bytes = (_SALT_PREFIX + normalize(_NORMAL_FORM, username)).encode("utf-8")
-        password_bytes = normalize(_NORMAL_FORM, password).encode("utf-8")
+        username_bytes = (_SALT_PREFIX + normalize(NORMAL_FORM, username)).encode("utf-8")
+        password_bytes = normalize(NORMAL_FORM, password).encode("utf-8")
         derivation = Argon2id(
             salt=sha256(username_bytes).digest(),
             length=KEY_BYTES,
@@ -239,9 +240,9 @@ class PasswordKey:
             if len(iv) != scheme.iv_bytes:
                 raise ValueError(f"An IV of {descriptor} is {scheme.iv_bytes} bytes, got {len(iv)}")
 
-            descriptor = _DESCRIPTOR_FIELD_SEPARATOR.join((descriptor, _IV_PREFIX + iv.hex()))
+            descriptor = DESCRIPTOR_FIELD_SEPARATOR.join((descriptor, _IV_PREFIX + iv.hex()))
 
-        compressed = compress(plaintext, _COMPRESSION_LEVEL)
+        compressed = compress(plaintext, ENCRYPTION_COMPRESSION_LEVEL)
         ciphertext = scheme.encrypt(
             compressed, self.key, bytes(scheme.iv_bytes) if iv is None else iv
         )
@@ -356,7 +357,7 @@ def _scheme(descriptor: bytes) -> tuple[_Scheme, bytes]:
             names an IV the scheme cannot use.
     """
     try:
-        fields = descriptor.decode("ascii").split(_DESCRIPTOR_FIELD_SEPARATOR)
+        fields = descriptor.decode("ascii").split(DESCRIPTOR_FIELD_SEPARATOR)
 
     except UnicodeDecodeError:
         raise MalformedBundleError("Password descriptor is not ASCII") from None
@@ -366,7 +367,7 @@ def _scheme(descriptor: bytes) -> tuple[_Scheme, bytes]:
     if fields[0] != _DESCRIPTOR_PREFIX or len(naming) != _SCHEME_FIELDS or len(options) > 1:
         raise MalformedBundleError(f"Not a password descriptor: {descriptor!r}")
 
-    scheme = _SCHEMES.get(_DESCRIPTOR_FIELD_SEPARATOR.join(naming))
+    scheme = _SCHEMES.get(DESCRIPTOR_FIELD_SEPARATOR.join(naming))
 
     if scheme is None:
         raise UnsupportedBundleError(f"Unsupported password protection: {descriptor!r}")

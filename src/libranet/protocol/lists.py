@@ -34,12 +34,13 @@ from libranet.cas.errors import (
 )
 from libranet.json_format import compact_json
 from libranet.protocol.errors import InvalidListError
+from libranet.protocol.http_syntax import API_PREFIX
 from libranet.protocol.search import RESULTS_FIELD, normalize_prefix
 
 _LOGGER = getLogger(__name__)
 
-NODES_PATH: Final = "/data/nodes"
-SEEK_PATH: Final = "/data/seek"
+NODES_PATH: Final = API_PREFIX + "/nodes"
+SEEK_PATH: Final = API_PREFIX + "/seek"
 
 
 def decode_list(body: bytes, max_decompressed_bytes: int) -> object:

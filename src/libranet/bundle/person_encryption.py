@@ -28,9 +28,14 @@ from cryptography.hazmat.primitives.asymmetric.padding import MGF1, OAEP
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, RSAPublicKey
 from cryptography.hazmat.primitives.hashes import SHA256
 
-from libranet.bundle.encryption import BLOCK_BYTES, KEY_BYTES, Aes256Cbc
+from libranet.bundle.encryption import (
+    BLOCK_BYTES,
+    ENCRYPTION_COMPRESSION_LEVEL,
+    KEY_BYTES,
+    Aes256Cbc,
+)
 from libranet.bundle.errors import IncorrectKeyError, MalformedBundleError, UnsupportedBundleError
-from libranet.bundle.protection import DESCRIPTOR_SEPARATOR
+from libranet.bundle.protection import DESCRIPTOR_FIELD_SEPARATOR, DESCRIPTOR_SEPARATOR
 from libranet.cas.compression import decompressed
 from libranet.cas.errors import NotZlibStreamError, StreamTooLargeError
 from libranet.config.models import MIN_PERSON_KEY_BITS
@@ -39,8 +44,7 @@ from libranet.config.models import MIN_PERSON_KEY_BITS
 # cipher and mode, each a field of the descriptor (§8.1).
 _SCHEME: Final = "PK-RSAOAEP256-AES256-CBC"
 
-# Between a descriptor's fields, and what starts its last, the key.
-_FIELD_SEPARATOR: Final = "-"
+# What starts a descriptor's last field, the key.
 _KEY_PREFIX: Final = "KEY:"
 
 # How every descriptor for a person starts, whatever scheme it names, and how
@@ -50,9 +54,6 @@ _SCHEME_FIELDS: Final = 4
 
 # RSAES-OAEP with SHA-256, MGF1 with SHA-256, and no label (§8.2).
 _PADDING: Final = OAEP(mgf=MGF1(algorithm=SHA256()), algorithm=SHA256(), label=None)
-
-# Never changed, as every encoder compresses at one level (§6.3).
-_COMPRESSION_LEVEL: Final = 9
 
 
 @dataclass(frozen=True)
@@ -90,7 +91,7 @@ class EncryptedForPerson:
             )
 
         key = token_bytes(KEY_BYTES)
-        ciphertext = Aes256Cbc(key).encrypt(compress(plaintext, _COMPRESSION_LEVEL))
+        ciphertext = Aes256Cbc(key).encrypt(compress(plaintext, ENCRYPTION_COMPRESSION_LEVEL))
         return cls(ciphertext, public_key.encrypt(key, _PADDING))
 
     @classmethod
@@ -109,13 +110,13 @@ class EncryptedForPerson:
             raise MalformedBundleError("The block is not encrypted for a person")
 
         try:
-            fields = descriptor.decode("ascii").split(_FIELD_SEPARATOR)
+            fields = descriptor.decode("ascii").split(DESCRIPTOR_FIELD_SEPARATOR)
 
         except UnicodeDecodeError:
             raise MalformedBundleError("A person's descriptor is not ASCII") from None
 
         naming, rest = fields[:_SCHEME_FIELDS], fields[_SCHEME_FIELDS:]
-        scheme = _FIELD_SEPARATOR.join(naming)
+        scheme = DESCRIPTOR_FIELD_SEPARATOR.join(naming)
 
         if len(rest) != 1 or not rest[0].startswith(_KEY_PREFIX):
             raise MalformedBundleError(f"A person's descriptor carries no key: {scheme!r}")
@@ -131,7 +132,7 @@ class EncryptedForPerson:
 
     def encoded(self) -> bytes:
         """This block as it is stored: its ciphertext, ``0x00``, and the descriptor with its key."""
-        descriptor = f"{_SCHEME}{_FIELD_SEPARATOR}{_KEY_PREFIX}{self.wrapped_key.hex()}"
+        descriptor = f"{_SCHEME}{DESCRIPTOR_FIELD_SEPARATOR}{_KEY_PREFIX}{self.wrapped_key.hex()}"
         return self.ciphertext + DESCRIPTOR_SEPARATOR + descriptor.encode("ascii")
 
     def decrypted(self, private_key: RSAPrivateKey, max_bytes: int) -> bytes:

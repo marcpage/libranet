@@ -40,6 +40,7 @@ from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.protocol.config_requests import ImportRequest
 from libranet.protocol.errors import InvalidConfigRequestError
+from libranet.protocol.http_syntax import API_PREFIX
 from libranet.webserver.backup_state import BackupState
 from libranet.webserver.config_handlers import (
     invalid_request_response,
@@ -52,7 +53,7 @@ from libranet.webserver.local_folders import LocalFolders
 _LOGGER = getLogger(__name__)
 
 #: Where a local client imports a file, and asks how its imports are doing.
-IMPORTS_PATH: Final = "/data/imports"
+IMPORTS_PATH: Final = API_PREFIX + "/imports"
 
 
 @dataclass(frozen=True)

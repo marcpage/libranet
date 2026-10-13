@@ -93,6 +93,7 @@ from libranet.protocol.config_requests import (
     RestoreRequest,
 )
 from libranet.protocol.errors import InvalidConfigRequestError
+from libranet.protocol.http_syntax import API_PREFIX
 from libranet.webserver.app_registry import CONFIG_APPLICATION, Application, ApplicationRegistry
 from libranet.webserver.backup_state import (
     BUILDS_FIELD,
@@ -119,7 +120,7 @@ from libranet.webserver.router import Handler
 
 _LOGGER = getLogger(__name__)
 
-CONFIG_API_PATH: Final = "/config/api"
+CONFIG_API_PATH: Final = f"/{CONFIG_APPLICATION}/api"
 NODE_PATH: Final = CONFIG_API_PATH + "/node"
 BACKUPS_PATH: Final = CONFIG_API_PATH + "/backups"
 RESTORES_PATH: Final = CONFIG_API_PATH + "/restores"
@@ -132,7 +133,7 @@ BACKUP_RUN_PATTERN: Final = BACKUP_JOB_PATTERN + "/run"
 APPLICATION_PATTERN: Final = APPLICATIONS_PATH + "/(?P<name>[^/]+)"
 
 #: Where any client asks the main port which applications it serves (HttpApi §13.4).
-DATA_APPLICATIONS_PATH: Final = "/data/applications"
+DATA_APPLICATIONS_PATH: Final = API_PREFIX + "/applications"
 
 # What each route's pattern begins with in place of /config: the name in any
 # case, as an application's name matches (HttpApi §13). So /CONFIG/api is the

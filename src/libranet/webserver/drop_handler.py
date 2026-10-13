@@ -55,16 +55,17 @@ from libranet.bundle.encryption import BLOCK_BYTES
 from libranet.bundle.errors import BundleTooLargeError, BundleVerificationError, MissingContentError
 from libranet.bundle.person_encryption import EncryptedForPerson
 from libranet.bundle.signing import person_public_key
-from libranet.bundle.storing import ContentSink, store_object
+from libranet.bundle.storing import STORAGE_COMPRESSION_LEVEL, ContentSink, store_object
 from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
-from libranet.cas.drops import DROP_SEPARATOR, TARGET_BITS, DropTarget
-from libranet.config.models import MIB
+from libranet.cas.drops import DROP_SEPARATOR, DropTarget
+from libranet.config.models import MIB, TARGET_BITS
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.protocol.client_origin import is_local_client
 from libranet.protocol.drop_requests import DropRequest, PasswordEncryption, PersonEncryption
 from libranet.protocol.errors import InvalidConfigRequestError
+from libranet.protocol.http_syntax import API_PREFIX
 from libranet.webserver.config_handlers import invalid_request_response, json_or_refusal
 from libranet.webserver.http_types import Request, Response, json_response, status_response
 from libranet.webserver.own_pages import OwnPages
@@ -77,15 +78,11 @@ from libranet.webserver.site_checks import SiteChecks
 _LOGGER = getLogger(__name__)
 
 #: Where a page has the node make a drop.
-DROP_PATH: Final = "/data/drop"
+DROP_PATH: Final = API_PREFIX + "/drop"
 
 #: Provisional: the largest request body, room for an object's worth of
 #: content, compressed when stored, given as base64.
 MAX_DROP_BODY_BYTES: Final = 4 * MIB
-
-# The level content is compressed at to see whether it fits, as it is when
-# stored (bundle.storing).
-_COMPRESSION_LEVEL: Final = 9
 
 
 class Turns:
@@ -335,7 +332,7 @@ class DropHandler:
             return stored
 
         response = json_response(stored.value(), HTTPStatus.CREATED)
-        location = f"/data/{stored.content_id}"
+        location = f"{API_PREFIX}/{stored.content_id}"
         return replace(response, headers={**response.headers, "Location": location})
 
     def placed(self, request: Request, asked: DropRequest) -> StoredDrop | Response:
@@ -417,7 +414,7 @@ class DropHandler:
         dropped = content + DROP_SEPARATOR
         return (
             len(dropped) <= self.max_object_bytes
-            or len(compress(dropped, _COMPRESSION_LEVEL)) <= self.max_object_bytes
+            or len(compress(dropped, STORAGE_COMPRESSION_LEVEL)) <= self.max_object_bytes
         )
 
     def _too_large_response(self, request: Request, size_bytes: int) -> Response:

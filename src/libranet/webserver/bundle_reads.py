@@ -61,6 +61,7 @@ from libranet.bundle.parts import PartPath
 from libranet.bundle.shapes import DirectoryMarker, FileBundle, Symlink, is_entry_path
 from libranet.messaging.events import PathOutcome
 from libranet.problems import UNUSABLE_BUNDLE, Problem
+from libranet.protocol.http_syntax import API_PREFIX
 from libranet.webserver.app_outcomes import KnownOutcome
 from libranet.webserver.bundle_paths import (
     LISTED_DIRECTORY,
@@ -76,6 +77,7 @@ from libranet.webserver.data_handler import (
     invalid_address_response,
 )
 from libranet.webserver.http_types import (
+    READ_METHODS,
     Request,
     Response,
     json_response,
@@ -91,8 +93,8 @@ _LOGGER = getLogger(__name__)
 # has them, so no endpoint's name is taken for a hash algorithm.
 BUNDLE_PATTERN: Final = rf"{DATA_PATTERN}/(?P<path>.*)"
 
-# What a read into a bundle answers. A HEAD is answered as a GET would be.
-BUNDLE_METHODS: Final = ("GET", "HEAD")
+# What a read into a bundle answers.
+BUNDLE_METHODS: Final = READ_METHODS
 
 # Carried by every response to a read into a bundle (HttpApi §12.1).
 _SANDBOX_HEADERS: Final = {
@@ -170,7 +172,7 @@ class BundleReadHandler:
             if known.location == (f"{entry_path}/" if entry_path else ""):
                 return self._listing(bundle, entry_path, deadline, request)
 
-            return redirect_response(f"/data/{bundle}/{quote(known.location)}")
+            return redirect_response(f"{API_PREFIX}/{bundle}/{quote(known.location)}")
 
         if known.outcome == PathOutcome.UNUSABLE:
             return _unreadable_response(known.detail, request)

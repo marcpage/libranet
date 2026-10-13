@@ -54,6 +54,7 @@ from typing import Any, Final, Mapping
 from libranet.bundle.building import IgnoredPaths, modified_time
 from libranet.bundle.shapes import PATH_SEPARATOR, is_entry_path, is_utf8
 from libranet.config.models import LibranetConfig
+from libranet.protocol.http_syntax import API_PREFIX
 from libranet.webserver.bundle_paths import LISTED_DIRECTORY, LISTED_FILE, content_type_for
 from libranet.webserver.http_types import (
     Request,
@@ -66,7 +67,7 @@ from libranet.webserver.http_types import (
 _LOGGER = getLogger(__name__)
 
 #: ``/data/directory``, and every path beneath it, its rest as ``path``.
-DIRECTORY_PATTERN: Final = r"/data/directory(?:/(?P<path>.*))?"
+DIRECTORY_PATTERN: Final = rf"{API_PREFIX}/directory(?:/(?P<path>.*))?"
 
 # What a hidden entry's name begins with.
 _HIDDEN: Final = "."

@@ -68,6 +68,7 @@ from libranet.webserver.app_registry import (
 from libranet.webserver.bundle_paths import BundlePaths
 from libranet.webserver.config_guard import names_config
 from libranet.webserver.http_types import (
+    READ_METHODS,
     Request,
     Response,
     percent_decoded,
@@ -110,8 +111,8 @@ UNTRUSTED_APP_HEADERS: Final = {
 
 DEFAULT_FILE: Final = "index.html"
 
-# What an application's route answers. A HEAD is answered as a GET would be.
-APP_METHODS: Final = ("GET", "HEAD")
+# What an application's route answers.
+APP_METHODS: Final = READ_METHODS
 
 
 @dataclass(frozen=True)

@@ -51,11 +51,13 @@ from libranet.bundle.signing import SignedBundle
 from libranet.cas.content_id import ContentId
 from libranet.problems import SESSION_REQUIRED, UNUSABLE_BUNDLE, WRONG_KEY, Problem
 from libranet.protocol.errors import InvalidConfigRequestError
+from libranet.protocol.http_syntax import API_PREFIX
 from libranet.protocol.identity_requests import SignInRequest
 from libranet.webserver.config_handlers import invalid_request_response, json_or_refusal
 from libranet.webserver.data_handler import content_id_or_refusal
 from libranet.webserver.drop_handler import MAX_DROP_BODY_BYTES, Turns
 from libranet.webserver.http_types import (
+    NOT_STORED,
     Request,
     Response,
     json_response,
@@ -68,16 +70,12 @@ _LOGGER = getLogger(__name__)
 
 #: Where a page has the node open a block encrypted for whoever is signed in,
 #: or by a username and password.
-ENCRYPTED_PATH: Final = "/data/encrypted"
+ENCRYPTED_PATH: Final = API_PREFIX + "/encrypted"
 ENCRYPTED_PATTERN: Final = rf"{ENCRYPTED_PATH}/(?P<algorithm>[^/]+)/(?P<hash>[^/]+)"
 
 #: The most bytes a block opens to: as many as a drop's content can be given
 #: in, as base64 or not.
 MAX_OPENED_BYTES: Final = MAX_DROP_BODY_BYTES
-
-# Kept by no cache, since each answer is for one session or one password,
-# and holds what was encrypted to keep it from everyone else.
-_NOT_STORED: Final = {"Cache-Control": "no-store"}
 
 
 @dataclass(frozen=True)
@@ -225,5 +223,9 @@ def _problem(request: Request, problem_type: str, status: HTTPStatus, error: Exc
 
 
 def _not_stored(response: Response) -> Response:
-    """``response``, kept by no cache."""
-    return replace(response, headers={**response.headers, **_NOT_STORED})
+    """``response``, kept by no cache.
+
+    Each answer is for one session or one password, and holds what was
+    encrypted to keep it from everyone else.
+    """
+    return replace(response, headers={**response.headers, **NOT_STORED})

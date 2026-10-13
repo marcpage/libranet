@@ -17,7 +17,7 @@ from http import HTTPStatus
 from io import BytesIO
 from json import loads
 from logging import getLogger
-from typing import Any, Iterable, Mapping, Protocol
+from typing import Any, Final, Iterable, Mapping, Protocol
 from urllib.parse import unquote
 
 from libranet.cas.content_id import ContentId
@@ -29,6 +29,13 @@ from libranet.webserver.errors import IncompleteBodyError, UnsupportedMediaTypeE
 from libranet.webserver.inbound_peers import InboundConnection
 
 _LOGGER = getLogger(__name__)
+
+# What has no cache keep a response (RFC 9111 §5.2.2.5).
+NOT_STORED: Final[Mapping[str, str]] = {"Cache-Control": "no-store"}
+
+# The methods that only read. A HEAD is answered as a GET would be, with
+# the body left out (RFC 9110 §9.3.2).
+READ_METHODS: Final = ("GET", "HEAD")
 
 
 class _Readable(Protocol):

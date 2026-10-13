@@ -25,15 +25,14 @@ from typing import Final, Mapping
 
 from libranet.identity.authentication import AuthenticationStatus, RequestAuthenticator
 from libranet.identity.signatures import SIGNATURE_HEADER, SIGNATURE_INPUT_HEADER
-from libranet.webserver.http_types import Request, Response
+from libranet.protocol.http_syntax import API_PREFIX
+from libranet.webserver.http_types import READ_METHODS, Request, Response
 from libranet.webserver.request_refusals import (
     invalid_signature_response,
     signature_required_response,
     unreadable_body_response,
 )
 
-API_PREFIX: Final = "/data"
-_READ_METHODS: Final = frozenset({"GET", "HEAD"})
 _SIGNATURE_FIELDS: Final = frozenset({SIGNATURE_HEADER.lower(), SIGNATURE_INPUT_HEADER.lower()})
 
 
@@ -81,4 +80,4 @@ def _is_signed(headers: Mapping[str, str]) -> bool:
 def _is_api_read(request: Request) -> bool:
     """Whether a request reads from the programmatic API (HttpApi §2.1)."""
     in_api = request.path == API_PREFIX or request.path.startswith(f"{API_PREFIX}/")
-    return in_api and request.method in _READ_METHODS
+    return in_api and request.method in READ_METHODS

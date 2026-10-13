@@ -19,7 +19,13 @@ from libranet.problems import (
     Problem,
 )
 from libranet.webserver.errors import UnsupportedMediaTypeError
-from libranet.webserver.http_types import Request, Response, problem_response, status_response
+from libranet.webserver.http_types import (
+    NOT_STORED,
+    Request,
+    Response,
+    problem_response,
+    status_response,
+)
 
 
 def unreadable_body_response(request: Request, max_bytes: int) -> Response | None:
@@ -116,5 +122,5 @@ def content_unavailable_response(
             instance=request.path,
             extensions={"retry_after": retry_after_seconds},
         ),
-        {"Retry-After": str(retry_after_seconds), "Cache-Control": "no-store"},
+        {"Retry-After": str(retry_after_seconds), **NOT_STORED},
     )

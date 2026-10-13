@@ -41,6 +41,7 @@ from logging import getLogger
 from typing import Final
 
 from libranet.protocol.client_origin import is_local_client
+from libranet.protocol.http_syntax import API_PREFIX
 from libranet.webserver.errors import UnsupportedMediaTypeError
 from libranet.webserver.http_types import Request, Response, json_response, status_response
 from libranet.webserver.request_refusals import unsupported_media_type_response
@@ -50,7 +51,7 @@ from libranet.webserver.site_checks import SiteChecks
 _LOGGER = getLogger(__name__)
 
 #: Where any client asks whether it is a local one (HttpApi §2.4).
-CLIENT_PATH: Final = "/data/client"
+CLIENT_PATH: Final = API_PREFIX + "/client"
 
 
 def client_handler(request: Request) -> Response:
