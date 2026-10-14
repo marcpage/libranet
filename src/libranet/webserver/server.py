@@ -458,7 +458,7 @@ def build_config_router(  # pylint: disable=too-many-locals
     # carry the node's credential before any endpoint sees them.
     router = Router(
         local_config_guard,
-        ConfigSiteGuard(node.network.config_hosts, config_credential),
+        ConfigSiteGuard(node.network.config_hosts),
         ConfigAuthGuard(config_credential),
     )
 

@@ -192,9 +192,9 @@ page made: one whose `Sec-Fetch-Site` or `Origin` header says so, or whose
 node serves are on its own port, so their pages are other pages too. If you
 reach `/config` by another name, add it to `network.config_hosts`.
 
-Once a credential is set, a link you click on another page of this machine,
-such as the root page's, opens the `/config` page. Before then, type its
-address. A request body is read only if it is sent as
+A link you click on another page of this machine, such as the root page's,
+opens the `/config` page, and the first time asks for the username and
+password to set. A request body is read only if it is sent as
 `Content-Type: application/json`, and is `415` otherwise.
 
 ### 4.4 Scripting It

@@ -17,10 +17,10 @@ site's page did (HttpApi §2.3.3, §2.4):
 A request carrying none of them passes: every current browser sends them, so
 it comes from a script or a command-line client.
 
-``/config`` makes them, with an exception of its own for a link the
-operator follows (:mod:`libranet.webserver.config_guard`), and so does every
-endpoint serving only local clients (:mod:`libranet.webserver.local_only`,
-Phase 3 Step 68).
+``/config`` makes them, with an exception of its own for a page another
+page of this site opens (:mod:`libranet.webserver.config_guard`), and so
+does every endpoint serving only local clients
+(:mod:`libranet.webserver.local_only`, Phase 3 Step 68).
 """
 
 from __future__ import annotations

@@ -209,9 +209,9 @@ A browser that holds the `/config` credential sends it with every request
 to `/config`'s origin, whichever page made the request. Left at that, a
 page of any other origin, whether another site's or one of the node's own
 applications on its main port (§2.3), could change the node's
-configuration with the operator's credential. A link from such a page
-could make a node that has no credential yet capture one of that page's
-choosing (§2.3.1). A node therefore serves `/config` only to requests
+configuration with the operator's credential. A link from another site's
+page could make a node that has no credential yet capture one of that
+page's choosing (§2.3.1). A node therefore serves `/config` only to requests
 that a browser says `/config`'s own pages made or the person using it
 asked for, and to requests that no browser made.
 
@@ -234,20 +234,23 @@ credentials are looked at. A request that fails one MUST be refused with
   host is another origin, and the node's main port, where its
   applications are served, is one of them.
 
-  The exception is a link the operator follows to the `/config`
-  application from another page of the same site, such as the root
-  application's. Once a credential has been captured, this check does not
-  refuse a `GET` for a path outside `/config/api` that carries
-  `Sec-Fetch-Site: same-site`, `Sec-Fetch-Mode: navigate`,
-  `Sec-Fetch-Dest: document`, and `Sec-Fetch-User: ?1`. Together these
-  say that the person using the browser chose to open the page in a
-  window of its own. The credential is still checked. Before a credential
-  is captured, such a request is refused like any other `same-site` one,
-  since it would capture whatever credential the link carries. The page
-  it opens is of another origin than the page that linked to it, which
-  can neither read it nor drive it. Loading it must change nothing either,
-  so the `/config` application MUST NOT change anything when a page of it
-  loads, whatever the address's query or fragment.
+  The exception is a page of the `/config` application opened from
+  another page of the same site, as the root application's link to it
+  does. This check does not refuse a `GET` for a path outside
+  `/config/api` that carries `Sec-Fetch-Site: same-site`,
+  `Sec-Fetch-Mode: navigate`, and `Sec-Fetch-Dest: document`. Together
+  these say that the page is opened in a window of its own, not in a
+  frame and not by a script's request. The credential is still checked,
+  and a node that has none yet captures the first one given (§2.3.1).
+  `Sec-Fetch-User` is not asked for, since WebKit, Safari's engine, does
+  not send it. So a script of the same site can move a window to a
+  `/config` page too, and a link whose address carries a username and
+  password could choose the credential captured, in a browser that sends
+  them without asking. The page it opens is of another origin than the
+  page that opened it, which can neither read it nor drive it. Loading it
+  must change nothing either, so the `/config` application MUST NOT
+  change anything when a page of it loads, whatever the address's query
+  or fragment.
 - **`Origin`.** A request carrying `Origin` and no `Sec-Fetch-Site` MUST
   be refused unless the host and port `Origin` names are the ones its
   `Host` header names. `Origin: null` names neither, and is refused.
