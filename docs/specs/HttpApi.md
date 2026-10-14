@@ -76,7 +76,8 @@ Some are meant only for the browser applications a node serves (§13), and
 never for another node: whether the client is local (§2.4), blocking
 content (§5.5), making a drop (§9.6), making an identity and signing in
 (§11.3, §11.4), signing as a person (§11.5), opening an encrypted block
-(§11.6), reading into a bundle (§12.1), the folders and imports (§12.2),
+(§11.6), the trust of whoever is signed in (§11.7), reading into a bundle
+(§12.1), the folders and imports (§12.2),
 making bundles (§12.3), an application's store (§13.3), and the list of
 applications (§13.4). Each
 but reading into a bundle requires a `Referer` naming a page of the node
@@ -322,15 +323,16 @@ for itself.
 These endpoints serve only local clients: blocking content (§5.5), making
 an identity, a fallback taking over, and the session (§11.3, §11.4), making
 a signed drop (§11.5),
-opening an encrypted block (§11.6), listing the folders a node offers and
+opening an encrypted block (§11.6), reading trust scores and changing a trust
+list (§11.7), listing the folders a node offers and
 importing a file from one (§12.2), making and changing bundles (§12.3), and
 changing an application's store (§13.3). So does making a drop encrypted by
 a username and password (§11.6).
 A request to one of them from any other client MUST be refused with
 `403 Forbidden`. Blocking, the identities, fallbacks, session, signed drops,
-encrypted blocks, folders, imports, and bundles are served only from a page
-of a trusted application, and an application's store is changed only from a
-page of its own (§2.5).
+encrypted blocks, trust, folders, imports, and bundles are served only from a
+page of a trusted application, and an application's store is changed only
+from a page of its own (§2.5).
 
 A loopback source does not show that the person at the machine made the
 request. Any site's page that a browser on the machine has open can send
@@ -369,7 +371,7 @@ another node:
 - on the main port: whether the client is local (§2.4), blocking content
   (§5.5), making a drop (§9.6), making an identity, a fallback taking over,
   and the session (§11.3, §11.4), making a signed drop (§11.5), opening an
-  encrypted block (§11.6),
+  encrypted block (§11.6), trust (§11.7),
   the folders and imports (§12.2), making bundles (§12.3), an application's
   store (§13.3), and the list of applications (§13.4);
 - on `/config`'s port: every endpoint beneath `/config/api` (§2.3).
@@ -398,7 +400,7 @@ Some endpoints ask more of the page:
   application whose store it is (§13.3).
 - **Blocking content, making an identity, a fallback taking over, the
   session, making a signed drop, opening an encrypted block, making a drop
-  encrypted by a password,
+  encrypted by a password, trust,
   the folders, imports, and making bundles** are served only from a page of
   a trusted application (§13.5).
 
@@ -509,7 +511,7 @@ This allows multiple hash algorithms to coexist.
 The names of the other endpoints beneath `/data` are never hash algorithms:
 `search`, `nodes`, `seek`, `client`, `directory`, `imports`, `bundles`,
 `store`, `applications`, `signed`, `drop`, `encrypted`, `users`, `fallback`,
-and `session`.
+`session`, and `trust`.
 
 A path that goes on past `{hash}` does not retrieve an object. It reads into
 the bundle the identifier names (§12.1). That includes an identifier written
@@ -1876,6 +1878,98 @@ signed block can encrypt it again for someone else, who would take it to be
 meant for them. A page whose reader must know that a block was meant for
 them names the reader in what it signs.
 
+### 11.7 Trust
+
+Whoever is signed in has a trust list, of the identities they trust or
+distrust, and scores built from it and from the lists of those they trust,
+as the [Trust Network Specification](TrustNetwork.md) gives them. Signing
+in (§11.4) starts building the scores, and the node holds them, one build
+for each person signed in, shared by their sessions (Trust Network §4.3).
+
+A page reads the scores of whoever is signed in with:
+
+```http
+GET /data/trust
+```
+
+```json
+{"complete": false,
+ "scores": {"sha256/…": {"score": 1, "step": 1},
+            "sha256/…": {"score": 0.2, "step": 2}}}
+```
+
+`scores` maps each identity the build has reached to its score and its
+step (Trust Network §4.1). `complete` is `true` once the build has read
+every list it will, and `false` while it is reading, after a sign-in or a
+change, when the scores of the step under way may still change (Trust
+Network §4.3). An identity at step 1 is one the person names: a score of 1
+is one they trust, and −1 one they distrust.
+
+A page reads one identity's score with:
+
+```http
+GET /data/trust/{hash-algorithm}/{hash}
+```
+
+```json
+{"id": "sha256/…", "score": 0.2, "step": 2, "complete": true}
+```
+
+An identity the build has not reached, the person's own among them, has a
+`score` of 0 and a `step` of `null`.
+
+A page changes the list of whoever is signed in one entry at a time, with:
+
+```http
+PUT /data/trust/{hash-algorithm}/{hash}
+Content-Type: application/json
+
+{"trust": true}
+```
+
+which trusts the identity the path names, or distrusts it with `false`,
+and with:
+
+```http
+DELETE /data/trust/{hash-algorithm}/{hash}
+```
+
+which neither trusts nor distrusts it. The node reads the newest version of
+the person's list from what it holds (Trust Network §3.3), makes the next
+version with the change, and has it signed by the person and made a drop at
+`trust:{id}`, as making a signed drop does (§11.5), matching at least 16
+bits, with a nonce searched for as long as the node sets (§9.6). It answers
+`201 Created`, with a `Location` naming the drop:
+
+```json
+{"id": "sha256/…", "target": "<target hash>", "matching_bits": 21,
+ "signer": "sha256/…", "version": 3}
+```
+
+`version` is the new version's number. A change that changes nothing, such
+as trusting an identity already trusted, places nothing, and is answered
+`204 No Content`. The node then scores again, as Trust Network §4.4 says,
+and answers the change without waiting for the lists it newly reads. It
+makes the changes of one person one at a time, in the order they come, each
+over the version the one before it placed.
+
+An identifier that is not valid is answered as §5.4 says. A request from a
+browser no one is signed in on is `401 Unauthorized`, with the problem type
+`session-required` (§17.2). A change from a browser signed in as a fallback
+that has not taken over is `403 Forbidden`, since it signs nothing (§11.3).
+A body that is not an object whose `trust` is `true` or `false`, or a
+change naming the person's own id, is `400 Bad Request`, with
+`invalid-request`. While a version found at the person's drop is not held
+yet, a change is `503 Service Unavailable` with `Retry-After`, as for any
+miss (§5.2), since that version may be newer than the newest held (Trust
+Network §3.4). A list that would not fit in an object even compressed is
+`413 Content Too Large`.
+
+Reading the scores and changing the list serve only local clients, from a
+page of a trusted application (§2.4, §2.5), as the session does, since the
+scores say whom the person trusts. Every answer carries
+`Cache-Control: no-store`.
+
 ---
 
 ## 12. Directory Bundles
@@ -2407,8 +2501,10 @@ A trusted application is served without these headers, on the main
 port's origin. A page of one, open in a local client, may list and import
 from the folders offered (§12.2), make bundles (§12.3), change its own
 application's store (§13.3), block content (§5.5), make identities and sign
-people in (§11.3, §11.4), make signed drops (§11.5), and open encrypted
-blocks and encrypt by a username and password (§11.6). Open in any client,
+people in (§11.3, §11.4), make signed drops (§11.5), open encrypted
+blocks and encrypt by a username and password (§11.6), and read the trust
+scores of whoever is signed in and change their trust list (§11.7). Open in
+any client,
 it may make a drop (§9.6). Trusted applications share that origin, so each
 can do whatever another can (§2.4).
 
@@ -2574,10 +2670,10 @@ These are defined so far, each named by its last segment beneath
 | `invalid-signature` | `401` | A signature that fails verification; the connection is closed (HandshakeProtocol §5.3) |
 | `invalid-list` | `400` | A node list or seek list that is not well-formed (§10.6, §10.7.1) |
 | `credential-required` | `401` | A `/config` request without the credential the node holds (§2.3.1) |
-| `invalid-request` | `400` | A JSON body an endpoint cannot act on: one beneath `/config/api` (§2.3), or of making a drop (§9.6), making an identity, signing in, making a signed drop, or opening an encrypted block (§11.3–§11.6), the folders and imports (§12.2), making bundles (§12.3), or an application's store (§13.3) |
+| `invalid-request` | `400` | A JSON body an endpoint cannot act on: one beneath `/config/api` (§2.3), or of making a drop (§9.6), making an identity, signing in, making a signed drop, opening an encrypted block, or changing a trust list (§11.3–§11.7), the folders and imports (§12.2), making bundles (§12.3), or an application's store (§13.3) |
 | `unusable-bundle` | `400` or `500` | Content that is not a bundle, or a bundle the node cannot read: `400` when a request named it (§11.5, §11.6, §12.1, §12.3), and `500` when it is an application's (§13) |
 | `bundle-authentication-required` | `401` | A password-protected application, asking for its password (§13.1) |
-| `session-required` | `401` | A request to sign as a person, or to open what is encrypted for one, from a browser no one is signed in on (§11.5, §11.6) |
+| `session-required` | `401` | A request to sign as a person, to open what is encrypted for one, or to read or change their trust, from a browser no one is signed in on (§11.5–§11.7) |
 | `invalid-bundle-signature` | `400` | Signed content whose hash or signature does not check, or whose signer names no key that can sign it (§11.5, §11.6) |
 | `wrong-key` | `403` | A block that the key of whoever is signed in, or the username and password given, does not open (§11.6) |
 
@@ -2847,13 +2943,16 @@ Potential limits include:
 - maximum CAS retrieval duration;
 - maximum peer requests;
 - maximum drop-search work;
-- maximum concurrent key derivations.
+- maximum concurrent key derivations;
+- maximum trust lists a sign-in reads.
 
 A node limits the drop-search work a page asks of it by how long a search
 may take and how many bits it must match, signed, encrypted, or neither (§9.6,
 §11.5, §11.6). It derives one key from a username and password at a time,
 whichever of its ports is asked, and whether to make an identity, take over,
-sign in, encrypt, or open a block (§11.3, §11.4, §11.6).
+sign in, encrypt, or open a block (§11.3, §11.4, §11.6). It limits the
+trust lists a sign-in reads, by steps and by lists, and how long it looks
+for each (Trust Network §4.2, §4.3).
 
 A request whose body is larger than the node takes is refused with
 `413 Content Too Large` (§17.2, `content-too-large`), unread if its
@@ -2985,6 +3084,8 @@ The following table summarizes the currently proposed HTTP API.
 | `/data/signed`                       | `POST`       | Make a drop signed as a person, locally (§11.5)            | Defined |
 | `/data/signed/{algorithm}/{hash}`    | `GET`        | Check signed content, and read what it signs (§11.5)       | Defined |
 | `/data/encrypted/{algorithm}/{hash}` | `GET`/`POST` | Open an encrypted block, locally (§11.6)                   | Defined |
+| `/data/trust`                        | `GET`        | The trust scores of whoever is signed in, locally (§11.7)  | Defined |
+| `/data/trust/{algorithm}/{hash}`     | Various      | One identity's score, or change the list, locally (§11.7)  | Defined |
 | `/data/directory/...`                | `GET`        | List the folders offered to local clients (§12.2)          | Defined |
 | `/data/imports`                      | `GET`/`POST` | Import a local file, and follow imports (§12.2)            | Defined |
 | `/data/bundles`                      | `POST`       | Make, change, or store a bundle, locally (§12.3)           | Defined |
