@@ -116,7 +116,7 @@ def test_another_sites_page_is_refused_and_logged(
 
 
 def test_a_link_followed_from_another_page_of_this_site_is_refused() -> None:
-    # /config lets this through once a credential is captured; nothing here is a page.
+    # /config lets this through; nothing here is a page.
     request = asked(
         Host=HOST,
         Sec_Fetch_Site="same-site",

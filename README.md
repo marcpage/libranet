@@ -229,8 +229,8 @@ and the administration page, where you back up folders and register
 applications. The administration page is at
 `http://127.0.0.1:8180/config/`, unless that port was taken, and the node
 prints the address it took as it starts. It opens only in a browser on the
-same computer, and the first time, you type its address. The first username
-and password you give it become the ones it asks for from then on.
+same computer. The first username and password you give it become the ones
+it asks for from then on.
 
 `Ctrl-C` stops the node. It keeps its content and settings between runs, and
 needs no configuration to start.

@@ -92,18 +92,16 @@ def test_the_refusal_comes_before_any_later_guard_or_handler() -> None:
     assert not body.consumed
 
 
-# A credential never captured: nothing is ever written where it is kept.
-NOT_CAPTURED = ConfigCredential(Path("/nonexistent/keys/config_credential"))
-SITE_GUARD = ConfigSiteGuard(NetworkConfig().config_hosts, NOT_CAPTURED)
+SITE_GUARD = ConfigSiteGuard(NetworkConfig().config_hosts)
 HOST = "localhost:8080"
 METHODS = ["GET", "HEAD", "POST", "DELETE", "OPTIONS"]
-# What a browser sends with a page opened by clicking a link on another page.
+# What WebKit sends with a page opened by clicking a link on another page of
+# this site. Chrome and Firefox add Sec-Fetch-User: ?1.
 FOLLOWED_LINK = {
     "Host": HOST,
     "Sec-Fetch-Site": "same-site",
     "Sec-Fetch-Mode": "navigate",
     "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-User": "?1",
 }
 
 
@@ -121,13 +119,6 @@ def from_a_page(
         headers["Referer"] = f"http://{headers['Host'].strip()}/config/"
 
     return Request(method, path, headers=headers, client_address="127.0.0.1")
-
-
-def captured_guard(tmp_path: Path) -> ConfigSiteGuard:
-    """The default guard, for a node whose credential has been captured."""
-    credential = ConfigCredential(tmp_path / "keys" / "config_credential")
-    credential.authenticate("admin:secret")
-    return ConfigSiteGuard(NetworkConfig().config_hosts, credential)
 
 
 def assert_refused(response: Request | Response, path: str) -> None:
@@ -371,7 +362,7 @@ def test_a_request_for_a_host_config_is_not_served_as_is_refused(
 
 
 def test_other_hosts_are_served_as_the_patterns_configured_name_them() -> None:
-    guard = ConfigSiteGuard(("Node.Example.org", "*.lan", "2001:db8::1"), NOT_CAPTURED)
+    guard = ConfigSiteGuard(("Node.Example.org", "*.lan", "2001:db8::1"))
 
     assert guard.serves_as("node.example.org:443")
     assert guard.serves_as("NODE.example.ORG")
@@ -384,7 +375,7 @@ def test_other_hosts_are_served_as_the_patterns_configured_name_them() -> None:
 
 
 def test_with_no_hosts_configured_config_is_served_as_none() -> None:
-    assert not ConfigSiteGuard((), NOT_CAPTURED).serves_as("localhost")
+    assert not ConfigSiteGuard(()).serves_as("localhost")
 
 
 @mark.parametrize("path", ["/", "/data/nodes", "/configuration", "/app/config", "/wiki/"])
@@ -472,23 +463,35 @@ def test_another_sites_request_is_refused_before_its_credentials_are_looked_at(
 
 
 @mark.parametrize("path", ["/config", "/config/", "/Config/index.html", "/config/backups"])
-def test_once_a_credential_is_captured_a_link_from_this_site_opens_a_config_page(
-    tmp_path: Path, path: str
+@mark.parametrize("user", [{}, {"Sec-Fetch-User": "?1"}])
+def test_a_link_from_this_site_opens_a_config_page(path: str, user: dict[str, str]) -> None:
+    request = Request("GET", path, headers={**FOLLOWED_LINK, **user}, client_address="127.0.0.1")
+
+    assert SITE_GUARD(request) is request
+
+
+def test_a_link_from_this_site_to_a_node_with_no_credential_asks_for_one_and_captures_it(
+    tmp_path: Path,
 ) -> None:
-    request = Request("GET", path, headers=FOLLOWED_LINK, client_address="127.0.0.1")
+    credential = ConfigCredential(tmp_path / "keys" / "config_credential")
+    router = Router(local_config_guard, SITE_GUARD, ConfigAuthGuard(credential))
+    router.add("GET", r"/config/.*", lambda _request: Response(200))
+    asked = Request("GET", "/config/", headers=FOLLOWED_LINK, client_address="127.0.0.1")
+    answered = Request(
+        "GET",
+        "/config/",
+        headers={**FOLLOWED_LINK, "Authorization": "Basic YWRtaW46c2VjcmV0"},
+        client_address="127.0.0.1",
+    )
 
-    assert captured_guard(tmp_path)(request) is request
+    challenge = router.dispatch(asked)
 
-
-def test_before_a_credential_is_captured_a_link_from_this_site_is_refused() -> None:
-    request = Request("GET", "/config/", headers=FOLLOWED_LINK, client_address="127.0.0.1")
-
-    response = SITE_GUARD(request)
-
-    assert_refused(response, "/config/")
-    assert isinstance(response, Response)
-    assert "type its address" in loads(response.body)["detail"]
-    assert not NOT_CAPTURED.captured
+    assert challenge.status == 401
+    assert "WWW-Authenticate" in challenge.headers
+    assert not credential.captured
+    assert router.dispatch(answered).status == 200
+    assert not credential.authenticate("other:password")
+    assert credential.authenticate("admin:secret")
 
 
 @mark.parametrize(
@@ -501,27 +504,26 @@ def test_before_a_credential_is_captured_a_link_from_this_site_is_refused() -> N
         ("GET", "/%63onfig/api/node", {}),
         ("GET", "/config/", {"Sec-Fetch-Mode": "cors"}),
         ("GET", "/config/", {"Sec-Fetch-Dest": "iframe"}),
-        ("GET", "/config/", {"Sec-Fetch-User": "?0"}),
         ("GET", "/config/", {"Sec-Fetch-Mode": ""}),
         ("GET", "/config/", {"Sec-Fetch-Site": "cross-site"}),
     ],
 )
 def test_a_request_from_another_page_that_is_not_a_link_to_a_page_is_refused(
-    tmp_path: Path, method: str, path: str, changed: dict[str, str]
+    method: str, path: str, changed: dict[str, str]
 ) -> None:
     request = Request(
         method, path, headers={**FOLLOWED_LINK, **changed}, client_address="127.0.0.1"
     )
 
-    assert_refused(captured_guard(tmp_path)(request), path)
+    assert_refused(SITE_GUARD(request), path)
 
 
-@mark.parametrize("missing", ["Sec-Fetch-Mode", "Sec-Fetch-Dest", "Sec-Fetch-User"])
-def test_a_link_lacking_any_header_a_click_sends_is_refused(tmp_path: Path, missing: str) -> None:
+@mark.parametrize("missing", ["Sec-Fetch-Mode", "Sec-Fetch-Dest"])
+def test_a_link_lacking_any_header_a_click_sends_is_refused(missing: str) -> None:
     headers = {name: value for name, value in FOLLOWED_LINK.items() if name != missing}
     request = Request("GET", "/config/", headers=headers, client_address="127.0.0.1")
 
-    assert_refused(captured_guard(tmp_path)(request), "/config/")
+    assert_refused(SITE_GUARD(request), "/config/")
 
 
 @mark.parametrize(

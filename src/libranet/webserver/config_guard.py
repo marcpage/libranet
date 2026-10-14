@@ -23,12 +23,13 @@ whose headers say another site's page made it (HttpApi §2.3.3, Phase 2 Step
 
 A request carrying none of them passes: every current browser sends them, so
 it comes from a script or a command-line client, which holds the credential
-itself. The check covers every method, since following a link to ``/config``
-on a node with no credential yet would capture one the linking page chose.
-Once one is captured, a link the person using the browser follows from
-another page of this site, such as the root application's, opens a
-``/config`` page; it changes nothing, and the page that linked to it cannot
-read or drive it (Phase 2 Step 58).
+itself. The check covers every method, since following another site's link to
+``/config`` on a node with no credential yet would capture one the linking
+page chose. Another page of this site, such as the root application's, opens a
+``/config`` page in a window of its own, whether a credential is captured yet
+or not; it changes nothing, and the page that opened it cannot read or drive
+it (Phase 2 Step 58). ``Sec-Fetch-User`` is not asked for, since WebKit does
+not send it.
 
 A request to ``/config/api`` must also carry a ``Referer`` naming a page of
 the ``/config`` application, at the host and port its ``Host`` names, whether
@@ -38,8 +39,9 @@ stands in for, as ``curl -e`` does. It keeps out a request that no
 ``/config`` page made.
 
 The endpoints serving only local clients make the same checks
-(:class:`~libranet.webserver.site_checks.SiteChecks`), but for that link,
-which only ``/config`` lets through (Phase 3 Step 68).
+(:class:`~libranet.webserver.site_checks.SiteChecks`), but for that page
+another page of this site opens, which only ``/config`` lets through (Phase 3
+Step 68).
 
 This node's applications are kept out by the same checks: ``/config`` is
 served on a port of its own, so their pages are of this site but another
@@ -64,7 +66,6 @@ from urllib.parse import unquote
 from libranet.config.models import CONFIG_LISTEN_ADDRESS
 from libranet.protocol.client_origin import is_local_client
 from libranet.webserver.app_registry import CONFIG_API_SEGMENT, CONFIG_APPLICATION
-from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.http_types import (
     Request,
     Response,
@@ -80,21 +81,14 @@ _LOGGER = getLogger(__name__)
 # port's applications among them.
 _SAME_SITE: Final = "same-site"
 
-# What a browser sends with a page the person using it opened by clicking a
-# link to it, in a window of its own, rather than one a script asked for.
-_FOLLOWED_LINK: Final = {
+# What a browser sends with a page opened in a window of its own.
+# Sec-Fetch-User, which says the person using the browser asked for it, is
+# not among them: WebKit, Safari's engine, never sends it.
+_PAGE_NAVIGATION: Final = {
     # A page loaded, not a fetch() or a form's request made by a script.
     "Sec-Fetch-Mode": "navigate",
     # Into a window, not a frame, which another page could draw over.
     "Sec-Fetch-Dest": "document",
-    # "?1" is true, written as a structured header boolean (RFC 8941). A
-    # browser sends this header only when the person using it caused the
-    # navigation, with a click or a key, and never sends it false: a script
-    # that sets location or submits a form sends none. Without it, any page
-    # of this site, which is every application on the main port, could move
-    # the operator's window to /config whenever it chose; with it, only the
-    # operator's own click opens the page (Phase 2 Step 58).
-    "Sec-Fetch-User": "?1",
 }
 
 
@@ -114,13 +108,10 @@ class ConfigSiteGuard:
 
     ``hosts`` are the hosts ``/config`` is served as: shell-style patterns,
     matched whatever their case against a host without its port, an IPv6
-    address without its brackets. ``credential`` is the ``/config``
-    credential, which must have been captured before a link from another
-    page of this site opens a ``/config`` page.
+    address without its brackets.
     """
 
     hosts: tuple[str, ...]
-    credential: ConfigCredential
 
     def __call__(self, request: Request) -> Request | Response:
         if not names_config(request.path):
@@ -137,11 +128,10 @@ class ConfigSiteGuard:
     def refusal(self, request: Request) -> str | None:
         """Why ``request`` is taken to be another site's, or ``None`` if it is not.
 
-        A link the person using the browser followed from another page of
-        this site passes the checks the rest must, but for ``Host``'s, once
-        a credential is captured: before then, the link could choose the
-        credential. A request to ``/config/api`` must also be from a page of
-        the ``/config`` application, as its ``Referer`` names it.
+        A page another page of this site opens passes the checks the rest
+        must, but for ``Host``'s. A request to ``/config/api`` must also be
+        from a page of the ``/config`` application, as its ``Referer`` names
+        it.
         """
         checks = self.checks
         refusal = checks.host_refusal(request)
@@ -151,21 +141,15 @@ class ConfigSiteGuard:
 
         site = (request.header(SITE_HEADER) or "").strip().lower()
 
-        if site != _SAME_SITE or not _is_followed_link(request):
+        if site != _SAME_SITE or not _is_page_navigation(request):
             refusal = checks.page_refusal(request)
             return refusal if refusal is not None else _api_page_refusal(request)
 
-        if self.credential.captured:
-            return None
-
-        return (
-            "/config opens from a link only once a credential has been captured; "
-            "type its address to log in the first time."
-        )
+        return None
 
     @property
     def checks(self) -> SiteChecks:
-        """The checks every request but a link followed must pass."""
+        """The checks every request but a page another page of this site opens must pass."""
         return SiteChecks(self.hosts, f"/{CONFIG_APPLICATION}")
 
     def serves_as(self, authority: str) -> bool:
@@ -209,19 +193,18 @@ class MovedConfigGuard:
         return f"http://{host}:{self.config_port}{request.path}"
 
 
-def _is_followed_link(request: Request) -> bool:
-    """Whether ``request`` is a link to a ``/config`` page that the person using a browser followed.
+def _is_page_navigation(request: Request) -> bool:
+    """Whether ``request`` opens a ``/config`` page in a window of its own.
 
     That is a ``GET`` outside ``/config/api``, of a page to open in a window
-    of its own, which the person asked for with a click rather than a script
-    with a change of address.
+    rather than a frame, as a link does.
     """
     return (
         request.method == "GET"
         and not names_config_api(request.path)
         and all(
             (request.header(name) or "").strip().lower() == value
-            for name, value in _FOLLOWED_LINK.items()
+            for name, value in _PAGE_NAVIGATION.items()
         )
     )
 
