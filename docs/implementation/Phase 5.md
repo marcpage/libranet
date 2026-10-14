@@ -494,6 +494,19 @@ Open questions:
   that define them now linking to it, or stay where they are, with the
   catalog linking to them.
 
+My calls, not yet reviewed:
+
+- **The catalog only describes**, and asks nothing of a new application
+  but that the step adding a drop adds it (KnownDrops §2.3).
+- **Contents stay where they are defined**, and the catalog links to
+  them, so that no format is written down twice.
+- **`trust:{id}` is listed as specified**, with a status column telling
+  it from the drops placed today. `node:{id}` waits for Step 104, and
+  targets that appear only as examples (`John`, `notes:{id}`) are not
+  listed.
+- **Each section has its target first, then the same items**: placed
+  by, signed, encrypted, bits, reading, and links.
+
 **Testable in isolation:** checked by hand against the target strings the
 node and the shipped pages use.
 
