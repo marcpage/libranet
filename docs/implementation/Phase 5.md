@@ -261,7 +261,7 @@ names them among the endpoints meant only for the node's pages.
 
 ## Step 96 — The Trust List
 
-**Issue:** #286. **Depends on:** Step 94; Phase 4 Steps 80 and 93.
+**Issue:** #327. **Depends on:** Step 94; Phase 4 Steps 80 and 93.
 
 The library every step after it uses: a version of a list, and reading the
 newest one from what the node holds (Trust Network §3). No endpoint
@@ -297,7 +297,7 @@ but not held are named.
 
 ## Step 97 — Changing the Trust List
 
-**Issue:** #286. **Depends on:** Step 96; Phase 4 Steps 79 and 80.
+**Issue:** #328. **Depends on:** Step 96; Phase 4 Steps 79 and 80.
 
 Whoever is signed in trusts, distrusts, or clears an identity, one entry at
 a time, and the node signs the next version of their list (HttpApi §11.7).
@@ -328,7 +328,7 @@ are both kept; and each refusal.
 
 ## Step 98 — The Scoring Rule
 
-**Issue:** #286. **Depends on:** Steps 94 and 96.
+**Issue:** #329. **Depends on:** Steps 94 and 96.
 
 Scores from a set of lists, by Trust Network §4.1 and §4.2, with no
 reading, clock, or session: pure logic, so that the rule is reviewed
@@ -360,7 +360,7 @@ scoring again after a change asks only for lists newly reached.
 
 ## Step 99 — Building the Scores at Sign-In
 
-**Issue:** #286. **Depends on:** Steps 96 and 98; Phase 4 Steps 79 and
+**Issue:** #330. **Depends on:** Steps 96 and 98; Phase 4 Steps 79 and
 93.
 
 Signing in starts building the person's scores, behind the sign-in
@@ -393,7 +393,7 @@ with the last session.
 
 ## Step 100 — Reading the Scores
 
-**Issue:** #286. **Depends on:** Steps 97 and 99.
+**Issue:** #331. **Depends on:** Steps 97 and 99.
 
 Pages read the scores, and an edit changes them (HttpApi §11.7, Trust
 Network §4.4).
@@ -418,7 +418,7 @@ signed in each read is `401`.
 
 ## Step 101 — Trust in the Directory
 
-**Issues:** #286, and #322 in part. **Depends on:** Steps 97 and 100;
+**Issues:** #322 in part. **Depends on:** Steps 97 and 100;
 Phase 4 Step 92.
 
 The directory application edits the signed-in person's trust list, and
