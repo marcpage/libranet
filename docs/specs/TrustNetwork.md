@@ -58,10 +58,13 @@ A version of a trust list is the JSON object
   out of the first, so that the history can be walked back to it.
 
 A reader passes over an entry whose name is not a content identifier, or
-whose value is not `true` or `false`, and counts the rest of the list. It
-ignores any other member of the object, so that a later version of this
-document can add one. An entry naming the list's own owner never counts
-(§4.1).
+whose value is not `true` or `false`, and a name in `versions` that is not a
+content identifier, and counts the rest of the list. An identity named
+more than once, its identifier spelled in different cases (HTTP API §5.4),
+counts only if each entry says the same, so that a list reads alike in
+whatever order its members are read. A reader ignores any other member of the object, so that a
+later version of this document can add one. An entry naming the list's own
+owner never counts (§4.1).
 
 ### 3.2 Where a List Is Kept
 
