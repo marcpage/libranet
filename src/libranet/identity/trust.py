@@ -97,6 +97,9 @@ class TrustList:
         replaced = value.get(_VERSIONS_FIELD, [])
         unsupported = UnsupportedAlgorithms()
         said: dict[ContentId, bool] = {}
+        # The ids one entry trusts and another distrusts, each spelling the id
+        # in a different case. They are left out of the entries, since which
+        # entry counted would depend on the order they were read in (§3.1).
         both: set[ContentId] = set()
         passed_over = 0
 

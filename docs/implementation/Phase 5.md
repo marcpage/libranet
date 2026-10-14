@@ -293,7 +293,7 @@ counted only when its signer is the list's owner; tests over a temporary
 store asserting a list is read from what is held, and that versions found
 but not held are named.
 
-Built in one change set: 434 added lines of non-test Python, 1 of them
+Built in one change set: 437 added lines of non-test Python, 1 of them
 replacing a removed one, and 528 of tests. That is over §5's estimate of
 about 250: 224 of the lines are code, and the rest docstrings, comments,
 and blank lines. Trust Network §3.1 gains a sentence (an id spelled more
