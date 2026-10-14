@@ -250,6 +250,9 @@ prefix.
 This mechanism places data at a predictable logical location without requiring
 the exact full hash in advance.
 
+The drops that the node and the shipped applications place are cataloged in
+[Known Drops](KnownDrops.md).
+
 ### 4.5 Storage Priority and Eviction
 
 Each node prioritizes retention of data whose content hash shares the longest

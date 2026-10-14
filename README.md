@@ -309,6 +309,7 @@ currently find each other only through peers you configure yourself.
 | [Bundle Specification](docs/specs/BundleSpecification.md) | Bundle JSON format, splitting, and protection |
 | [Backup Specification](docs/specs/BackupSpecification.md) | Backing up and restoring local directories |
 | [Trust Network Specification](docs/specs/TrustNetwork.md) | Trust lists, and the scores a node builds from them |
+| [Known Drops](docs/specs/KnownDrops.md) | Every target string the node and the shipped applications place drops at |
 | [Karma and Kismet](docs/specs/Karma.md) | The reputation and contribution system |
 | [Phase 1 Plan](docs/implementation/Phase%201.md) | Implementation steps 1–15, 17–20, and 33–40, all built |
 | [Phase 2 Plan](docs/implementation/Phase%202.md) | Implementation steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–63, all built |
