@@ -293,6 +293,66 @@ counted only when its signer is the list's owner; tests over a temporary
 store asserting a list is read from what is held, and that versions found
 but not held are named.
 
+Built in one change set: 434 added lines of non-test Python, 1 of them
+replacing a removed one, and 528 of tests. That is over §5's estimate of
+about 250: 224 of the lines are code, and the rest docstrings, comments,
+and blank lines. Trust Network §3.1 gains a sentence (an id spelled more
+than one way, below).
+
+- **`TrustList`** (`identity/trust.py`) is a version: `entries`,
+  `version`, and `versions`, with `from_value`, `value()`, and
+  `drop_target(owner)`, the drop `trust:{id}`. `MIN_TRUST_LIST_BITS` (16)
+  is the bits a version is placed and read at.
+- **`HeldTrustList`** is an owner's list as read: the versions, each a
+  `TrustVersion` (its drop, signer, and list), and `missing`, what was
+  found or is needed and not held. `newest` and `entries` read it, and
+  `next_version(identity, trusted)` makes the version after the newest,
+  or the first.
+- **`TrustLists.read(owner)`** (`webserver/trust_lists.py`) reads an
+  owner's list from what the node holds, by `SearchHandler.fresh_results`.
+
+My calls, not yet reviewed:
+
+- **The reader is the web server's** (`webserver/trust_lists.py`), not in
+  `identity/trust.py` as the type is, since it searches with
+  `SearchHandler`, which a library package below the web server does not
+  import. Steps 97 and 99 use it from the web server.
+- **A version someone other than the owner signed is passed over before
+  its signature is checked**, so that the key of whoever placed it is
+  never read or asked for, and logged as a warning. `HeldTrustList`
+  refuses to hold one (`ValueError`), so `newest` counts only the owner's
+  without a filter of its own.
+- **The owner's key, when not held, is among `missing`**, as a version not
+  held is, since nothing at the drop can be checked without it. It is read
+  only once a version the owner signed is found.
+- **An id named more than once, spelled in different cases (HttpApi
+  §5.4), counts only if each entry says the same**, so that a list reads
+  alike in whatever order its members are read. Written into Trust
+  Network §3.1.
+- **A `versions` that is not an array, or a member of it that is no id, is
+  passed over**, counted with the entries passed over, and the version
+  still counts, since §3.3 counts a version by `entries` and `version`
+  alone.
+- **`version` must be a JSON integer** (`integer_field`), so `2.0` is
+  refused, as every number the node reads is, where the directory page's
+  reader of metadata would take it.
+- **The levels**: what is not a signed bundle at debug, as `SignedDrops`
+  logs one, since a search lists whatever is nearest; a signature that
+  does not check, a scheme or algorithm this node lacks, what is held not
+  being what its id names, a version another signed, and what the owner
+  signed that is no version, at warning. What a version passes over is a
+  warning once for the version, naming its drop, as the plan had it.
+- **`next_version` answers `None` for a change that changes nothing**
+  (Step 97's `204`) and refuses one naming the owner (`ValueError`, Step
+  97's `400`), so that each rule is in one place. It does not look at
+  `missing`, which the caller does (Step 97's `503`).
+- **What is not held is named, not asked for**: the reader publishes no
+  `data.not_found`, since Step 97 asks as it answers `503`, and Step 99
+  asks through `ContentWait`.
+- **The reader consults no blocked list**: the search already leaves out
+  versions the node has blocked, and a blocked key still held is only read
+  to check a signature, never served. `SignedDrops` refuses one.
+
 ---
 
 ## Step 97 — Changing the Trust List
