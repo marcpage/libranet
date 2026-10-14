@@ -1801,25 +1801,26 @@ async function start() {
     offerAccount(session);
   }
 
-  const { everyone } = await load(you, local, []);
-  const asked = new URLSearchParams(location.search).get("add");
-
-  if (asked !== null) {
-    await offer(asked, everyone, you, local);
-  }
-
+  // Whoever is signed in is offered what they can do before the directory
+  // is read, since listing them may mean writing a directory, which waits
+  // its turn for the node's search for a nonce.
   if (session !== null) {
     for (const person of [session.id, session.fallback_for].filter((id) => CONTENT_ID.test(id))) {
       view.details.set(person, await readDetails(person));
     }
-
-    render();
 
     if (you !== null) {
       offerEditing(session);
     }
 
     offerCompromise(session);
+  }
+
+  const { everyone } = await load(you, local, []);
+  const asked = new URLSearchParams(location.search).get("add");
+
+  if (asked !== null) {
+    await offer(asked, everyone, you, local);
   }
 
   await loadDetails([...view.everyone].filter((person) => !view.details.has(person)));
