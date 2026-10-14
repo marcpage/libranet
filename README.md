@@ -263,7 +263,7 @@ applications, and running test networks and super nodes.
 | Phase 2 — steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–63 | Implemented |
 | Phase 3 — video playback, steps 64–77 | Implemented |
 | Phase 4 — user accounts, steps 30, 78–82, and 89–93 | Implemented |
-| Phase 5 — the trust network, step 94 | Planned |
+| Phase 5 — the trust network, steps 94 and 96–108 | Planned |
 | Phase 6 — Karma, step 56 | Planned |
 | Phase 7 — enhancements, steps 16, 50, 57, and 95 | Planned |
 | Phase 8 — a seed node, step 84 | Planned |
@@ -308,12 +308,13 @@ currently find each other only through peers you configure yourself.
 | [Handshake Protocol](docs/specs/HandshakeProtocol.md) | First contact and request signing |
 | [Bundle Specification](docs/specs/BundleSpecification.md) | Bundle JSON format, splitting, and protection |
 | [Backup Specification](docs/specs/BackupSpecification.md) | Backing up and restoring local directories |
+| [Trust Network Specification](docs/specs/TrustNetwork.md) | Trust lists, and the scores a node builds from them |
 | [Karma and Kismet](docs/specs/Karma.md) | The reputation and contribution system |
 | [Phase 1 Plan](docs/implementation/Phase%201.md) | Implementation steps 1–15, 17–20, and 33–40, all built |
 | [Phase 2 Plan](docs/implementation/Phase%202.md) | Implementation steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–63, all built |
 | [Phase 3 Plan](docs/implementation/Phase%203.md) | Video playback: steps 64–77, all built |
 | [Phase 4 Plan](docs/implementation/Phase%204.md) | User accounts: steps 30, 78–82, and 89–93, all built |
-| [Phase 5 Plan](docs/implementation/Phase%205.md) | The trust network: step 94 so far, planned |
+| [Phase 5 Plan](docs/implementation/Phase%205.md) | The trust network: steps 94 and 96–108, planned |
 | [Phase 6 Plan](docs/implementation/Phase%206.md) | Karma: step 56 so far, planned |
 | [Phase 7 Plan](docs/implementation/Phase%207.md) | Enhancements: steps 16, 50, 57, and 95, planned |
 | [Phase 8 Plan](docs/implementation/Phase%208.md) | A seed node: step 84, planned |
