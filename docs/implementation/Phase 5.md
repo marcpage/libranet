@@ -459,7 +459,7 @@ Found while building it:
 
 ---
 
-## Step 98 — The Scoring Rule
+## Step 98 — The Scoring Rule ✅
 
 **Issue:** #329. **Depends on:** Steps 94 and 96.
 
@@ -488,6 +488,58 @@ exactly 0.3; that a farther entry, however many, never overturns a nearer
 one; that a distrusted identity's list is not asked for; that cycles end;
 that each limit stops the scores with what they reached; and that
 scoring again after a change asks only for lists newly reached.
+
+Built in one change set: 142 added lines of non-test Python, 2 of them
+replacing removed ones, and 241 of tests, against §5's estimate of about
+200. Of the 128 added to `identity/trust.py`, 58 are code, and the rest
+docstrings, comments, and blank lines; the other 14 export the new types.
+No specification changes.
+
+- **`TrustScores.from_lists(person, lists, limits)`** (`identity/trust.py`)
+  scores `person` from `lists`, the entries of each list read so far by its
+  owner's id, and says in `needed` which lists are to be read next, and in
+  `complete` whether none is.
+- **`TrustScore`** is an identity's `net_count` and `step`, and `score` the
+  one over a power of ten.
+- **`TrustLimits`** holds `max_steps` and `max_lists`, each at least 1.
+
+My calls, not yet reviewed:
+
+- **The scores are worked out afresh from every list given, each time**,
+  with nothing kept from the time before, so that an edit's scores are a
+  sign-in's from the same lists (Trust Network §4.4) by being the one rule.
+  Each call reads every entry of the lists the rule reads, so Step 99
+  scores once a step's lists are read, or when the scores are asked for,
+  rather than after each list.
+- **A list given up on is given as empty**, and so counts among the lists
+  read, as one looked for. The scores do not tell a list given up from an
+  empty one; Step 99 keeps which it gave up, so as not to look again.
+- **While a list of the step under way is not read, no step after it is
+  scored**, even from lists already held, since those steps are not final
+  until it is (Trust Network §4.3). A build at sign-in holds no list past
+  the step under way, so this matters only after an edit: an identity past
+  a list the edit newly reaches is left out of the scores until that list
+  is read or given up, up to the 30 seconds Step 99 waits.
+- **`needed` names every list of the step under way not yet read**, in the
+  order they are to be read, not only the next, so that a build may look
+  for them together. The limit on lists counts them already.
+- **Within a step, identities are ordered by their net count**, the same
+  order as their scores, so that no two floats are compared, and then by
+  the id written out, as `HeldTrustList.newest` sorts drops.
+- **A score is a float**, `net_count / 10 ** (step - 1)`: a division of two
+  whole numbers rounds once, to the float nearest the exact quotient, so
+  three entries at step 2 are the float written `0.3`.
+- **The limits have no defaults here**: 4 steps and 1,000 lists are Step
+  99's settings, as every default the node is configured with is in the
+  configuration's models.
+
+Found while building it:
+
+- **A score at step 1 is `1.0`**, which Python's JSON writes as `1.0` where
+  HttpApi §11.7 shows `1`. A page reads either as the number 1. Step 100
+  writes the answer, and may write a whole score as an integer.
+- **The rule builds neither of Trust Network §4.4's TBDs**, compromised
+  identities and a limit on entries, as neither is ruled (§6).
 
 ---
 
