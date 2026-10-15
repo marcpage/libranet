@@ -209,7 +209,12 @@ from libranet.webserver.identity_handlers import (
     Identities,
 )
 from libranet.webserver.inbound_peers import InboundConnection, InboundPeers
-from libranet.webserver.list_handlers import ListFileHandler, NodeListHandler, SeekListHandler
+from libranet.webserver.list_handlers import (
+    PEERS_PATH,
+    ListFileHandler,
+    NodeListHandler,
+    SeekListHandler,
+)
 from libranet.webserver.local_folders import DIRECTORY_PATTERN, DirectoryHandler, LocalFolders
 from libranet.webserver.local_imports import IMPORTS_PATH, ImportHandler, ImportListHandler
 from libranet.webserver.local_only import (
@@ -324,6 +329,7 @@ __all__ = [
     "NODE_PATH",
     "NOT_STORED",
     "PARALLELISM",
+    "PEERS_PATH",
     "READ_METHODS",
     "REFERER_HEADER",
     "RESERVED_APPLICATION_NAMES",

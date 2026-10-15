@@ -240,12 +240,15 @@ that subscriber's inbox.
 #### 3.2.1 Stats
 
 The node's memory, and the only process that opens `libranet.sqlite3`. It
-subscribes to 19 of the 44 events, nearly everything the other modules
+subscribes to 21 of the 44 events, nearly everything the other modules
 report, and records each in one small statement. Every
-`stats.derive_interval_seconds` it rewrites the node, seek, candidate, and
-blocked lists into `lists/`, which the web server, connection manager,
-validator, and fetcher read as plain files, and publishes `nodes.updated`
-when the candidate list changed. It keeps the content the node has blocked
+`stats.derive_interval_seconds` it rewrites the node, seek, candidate,
+blocked, and peer lists into `lists/`, which the web server, connection
+manager, validator, and fetcher read as plain files, and publishes
+`nodes.updated` when the candidate list changed. It keeps the peers
+connected each way in memory, as `peers.connected` names them, for the peer
+list (Phase 5 Step 107), and asks for them as it starts. It keeps the
+content the node has blocked
 (`data.blocked`, Phase 4 Step 30), and writes the blocked list at once when
 that grows, and the seek list when a search names a prefix it does not list
 (Phase 4 Step 93).
@@ -276,7 +279,7 @@ validator, as an upload does. It keeps each application's store in `store/`
 itself (Phase 3 Step 70), and hands a file a local client asks to import to
 the backup module, once it has found it in a folder offered (Step 69). It
 also keeps count of the peers connected to it, whose keys the eviction
-module keeps. A page that deletes content
+module keeps, and which the stats module lists. A page that deletes content
 (`DELETE /data/{algorithm}/{hash}`, Phase 4 Step 30) has it publish
 `data.blocked`, and it answers for blocked content, as `lists/blocked.json`
 names it, as for content it does not hold.
@@ -312,7 +315,7 @@ Content it fetches goes into the peer's store in `incoming/` and is
 announced with `data.put_completed`, so it passes through the validator
 just as an upload does. It is the most threaded module (§5.4). It reports
 every connection event to stats, and names the peers it is connected to
-for the eviction module whenever they change (`peers.connected`).
+for the eviction and stats modules whenever they change (`peers.connected`).
 
 #### 3.2.5 Fetcher
 
@@ -612,7 +615,7 @@ What each module does in them:
 
 | Module | `on_start` | `on_idle` | `on_stop` |
 | --- | --- | --- | --- |
-| Stats | Read the node id; open the database; derive the lists | Derive the lists once the interval has passed | Close the database |
+| Stats | Read the node id; open the database; derive the lists; ask which peers are connected | Derive the lists once the interval has passed | Close the database |
 | Web server | Name no peers connected; read the key and credential; bind; start the HTTP thread | — | Stop the HTTP server; close the socket |
 | Validator | — | — | — |
 | Connection manager | Read the key; name no peers connected; start the workers; load candidates; dial | Dial rested candidates; refresh peers due; resume searches, and searches of the peers, due a next pass | Stop the workers; close every connection |
@@ -884,8 +887,8 @@ to end its loop.
 | `resolved.reclaim` | | | | P | | S | | |
 | `resolved.reclaimed` | | | | | | P | S | |
 | *Connected peers* | | | | | | | | |
-| `peers.connected_requested` | S | S | | | | | P | |
-| `peers.connected` | P | P | | | | | S | |
+| `peers.connected_requested` | S | S | | P | | | P | |
+| `peers.connected` | P | P | | S | | | S | |
 | *Storage full* | | | | | | | | |
 | `storage.full_requested` | | | | | | | S | P |
 | `storage.full` | | | | | | | P | S |
@@ -893,7 +896,7 @@ to end its loop.
 | `data.blocked` | P | | | S | | | S | |
 | *Lifecycle* | | | | | | | | |
 | `shutdown` | S | S | S | S | S | S | S | S |
-| **Publishes / subscribes** | 18 / 3 | 14 / 6 | 2 / 1 | 3 / 19 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 |
+| **Publishes / subscribes** | 18 / 3 | 14 / 6 | 2 / 1 | 4 / 21 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 |
 
 The `shutdown` row and its subscriptions are implicit: every module
 receives it without listing it, and nothing publishes it (§6.4). The totals
@@ -1216,6 +1219,7 @@ data moves through files, and a message tells the reader where to look.
 | `lists/candidates.json` | Stats | Connection manager | `nodes.updated` |
 | `lists/nodes.json`, `lists/seek.json` | Stats | Web server; connection manager | Nothing; read when needed |
 | `lists/blocked.json` | Stats | Web server; validator; fetcher | Nothing; read again once replaced |
+| `lists/peers.json` | Stats | Web server | Nothing; read when needed |
 | `search/` | Web server; stats, adding identifiers | Web server | `data.search_requested`, which names the prefix |
 | `libranet.sqlite3` | Stats | Stats | — |
 | `applications.json` | Web server | Web server | — |

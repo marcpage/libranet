@@ -1,8 +1,9 @@
 """Node and data statistics, and the only owner of the SQLite file (Step 8).
 
 Owns node stats, data stats, where nodes may be reached, and this node's
-own `/data/seek` list, and derives the plain files the web server serves and
-the candidate list the connection manager dials from.
+own `/data/seek` list, and derives the plain files the web server serves,
+the peer list among them, and the candidate list the connection manager
+dials from.
 """
 
 from libranet.stats.database import StatsDatabase
@@ -10,6 +11,7 @@ from libranet.stats.derivation import DerivedLists, ListDeriver
 from libranet.stats.enrichment import SearchEnricher
 from libranet.stats.lists import render_candidate_list, render_node_list, render_seek_list
 from libranet.stats.module import DEFAULT_MAX_CANDIDATES, StatsModule, stats_module_factory
+from libranet.stats.peers import ConnectedPeers, KnownPeer, PeerList
 from libranet.stats.priority import FACTOR_FLOOR, EvictionScorer
 from libranet.stats.records import DataStats, NodeAddress, NodeStats
 from libranet.stats.schema import OWN_NODE, SCHEMA_STATEMENTS, SeekKind, apply_schema
@@ -19,12 +21,15 @@ __all__ = [
     "FACTOR_FLOOR",
     "OWN_NODE",
     "SCHEMA_STATEMENTS",
+    "ConnectedPeers",
     "DataStats",
     "DerivedLists",
     "EvictionScorer",
+    "KnownPeer",
     "ListDeriver",
     "NodeAddress",
     "NodeStats",
+    "PeerList",
     "SearchEnricher",
     "SeekKind",
     "StatsDatabase",

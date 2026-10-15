@@ -84,9 +84,10 @@ class EventType(StrEnum):
     DATA_BLOCKED = "data.blocked"  # webserver → stats, eviction
 
     # The peers connected, whose public keys are never evicted (Phase 2
-    # Step 53).
-    PEERS_CONNECTED_REQUESTED = "peers.connected_requested"  # eviction → connections, webserver
-    PEERS_CONNECTED = "peers.connected"  # connections, webserver → eviction
+    # Step 53), and which the peer list names (Phase 5 Step 107).
+    # eviction, stats → connections, webserver
+    PEERS_CONNECTED_REQUESTED = "peers.connected_requested"
+    PEERS_CONNECTED = "peers.connected"  # connections, webserver → eviction, stats
 
     # Whether storage is full, so content this node creates waits (Phase 2
     # Step 63).

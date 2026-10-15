@@ -816,26 +816,83 @@ Work this implies:
   the protocol's.
 - `peers` joins the names beneath `/data` that are no hash algorithm.
 
-Open questions:
+Ruled (2026-10-14), each my recommended option:
 
-- **Which stats**: all of `node_stats`, or some, such as bytes sent and
-  received, fetches found and not, when last connected and for how long,
-  and failures.
-- **Who may read it**: any client, as any node reads `GET /data/nodes`, or
-  only local clients, since it says how this node is used and whom it
-  talks to.
-- **How fresh**: derived every `stats.derive_interval_seconds` (60), or
-  at once when a connection opens or closes.
-- **How many**: a `node_stats` row is never deleted, so a node running a
-  long time knows many. Whether the answer is limited, or paged.
-- **Peers that dial in** are not counted in `node_stats`, whose
-  connections are the ones this node dials (Database Schema §4.2), though
-  the web server knows them (`InboundPeers`). Whether they count as
-  connected.
+- **Every stat, and the addresses.** Each peer has every column of
+  `node_stats` and each of its addresses, so that the page chooses what to
+  show without the endpoint changing. Some of the columns only, such as
+  bytes, fetches, and failures, was turned down, and so were the stats
+  without the addresses.
+- **Local clients alone, from a trusted application's page**, as the
+  session and the trust scores are served, since the list says whom the
+  node talks to and how much. A client elsewhere has no trust scores, and
+  cannot trust or distrust a node, so the nodes application (Step 108) can
+  tell it the list is shown only on the node's own machine. Serving it to
+  any client from a page of the node, as `GET /data/applications` is, and to
+  any client at all, as `GET /data/nodes` is, were turned down.
+- **Derived with the other lists**, every `stats.derive_interval_seconds`
+  (60), the file saying when. Writing it again at once whenever a
+  connection opens or closes was turned down, since each would read every
+  known node while stats records nothing else.
+- **Up to a setting**, `stats.max_peers_listed` (1000): those connected
+  first, then the most recently connected, then the most recently learned
+  of, with no paging. Listing every node, and paging, were turned down.
+- **A peer that dials in counts as connected, and the list says which
+  way.** Stats takes `peers.connected` from the connection manager and the
+  web server, as eviction does (Phase 2 Step 53), rather than pairing the
+  `connection.opened` and `connection.closed` the work above names, and
+  asks for both lists as it starts. Counting only the connections this node
+  dials was turned down.
 
 **Testable in isolation:** stats tests over a temporary database asserting
 the file holds each node's stats and whether it is connected; web server
 tests asserting the endpoint serves it, to the clients ruled.
+
+Built in one change set: 321 added lines of non-test Python, 27 removed, and
+356 of tests, under §5's estimate of about 400. HttpApi §10.8 gives the
+endpoint, and §2.1, §2.4, and §25 list it; Database Schema §4.2, §7, and
+§11, File Layout §4 and §9, Module System §3.2, §5.2, §7.1, and §9.1, and
+App Developer Guide §5.2 and §6.8 say what changed.
+
+- **`PeerList`** (`stats/peers.py`) reads the peers from the database and
+  from **`ConnectedPeers`**, which keeps the peers each `peers.connected`
+  names, each way, and writes the list. Each peer is a **`KnownPeer`**.
+- **`StatsDatabase.all_node_stats`** and **`all_node_addresses`** read both
+  tables whole, as `given_up_nodes` and `candidate_endpoints` do, at each
+  derivation.
+- **`NodeStats.value`** and **`NodeAddress.value`** are each row's JSON
+  form, on the type, as for other types with one.
+- **`ListDeriver`** writes `lists/peers.json` at each derivation, and the
+  web server serves it as `GET /data/peers`, behind `LocalOnly` and a trusted
+  page. `peers` joins `DATA_ENDPOINT_NAMES`.
+
+A live run of three nodes from the local network script had each list both
+others, connected `outbound` and `inbound`, with the address it dialed,
+within one derivation of connecting. A page of the movie application read
+it; a cross-site request, one with no `Referer`, and one naming the node by
+another host were each `403`.
+
+My calls, not yet reviewed:
+
+- **Every moment is RFC 3339 text, in UTC to the second**, as an identity
+  block's `created` is (HttpApi §11.3), the one moment the API wrote before.
+  Its format, `MOMENT_FORMAT`, moved from `identity/people.py` to
+  `json_format.py`, with `moment_text`, so that both use one.
+- **A peer is any node with statistics or an address, and any node
+  connected now**, but this node, whose own row holds what it makes
+  (Database Schema §4.2). A node known only from another's node list is
+  listed with every count 0, and one connected only as it dials in may
+  have no address either.
+- **Each entry is `{"node_id", "connected", "stats", "addresses"}`**, the
+  counts apart from the node, and `connected` a list of the ways, empty when
+  none, in the order `outbound`, `inbound`, rather than a flag for each.
+  Every column of `node_addresses` is given, not only the source, last
+  success, and failures asked about.
+- **The list is written at every derivation**, unlike the other lists,
+  since `derived` changes each time, and `connected_seconds` counts only
+  connections closed, as the column does.
+- **Stats asks who is connected after its first derivation**, so the list
+  it writes as it starts names no one connected, until the next.
 
 ---
 

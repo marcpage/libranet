@@ -418,6 +418,11 @@ class StorageConfig(_Section):
         return self.derived_dir / "blocked.json"
 
     @property
+    def peer_list_path(self) -> Path:
+        """The derived body of ``GET /data/peers`` (HttpApi §10.8, Phase 5 Step 107)."""
+        return self.derived_dir / "peers.json"
+
+    @property
     def resolved_files_dir(self) -> Path:
         """Entries the unbundler resolves from bundles, naming parts to serve (Phase 3 Step 65)."""
         return self.source_of_truth_dir / "resolved"
@@ -551,6 +556,12 @@ class StatsConfig(_Section):
     # How long a peer given up on is left out before it is tried again.
     # Provisional default.
     node_cool_off_seconds: float = Field(default=86400.0, gt=0)
+
+    # Most peers the peer list served to local clients names (Phase 5 Step
+    # 107). Statistics are never deleted, so a node running long knows more
+    # nodes than a page can show. Those connected now are kept first, then
+    # the most recently connected. Provisional default.
+    max_peers_listed: int = Field(default=1000, ge=1)
 
 
 class BackupConfig(_Section):

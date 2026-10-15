@@ -124,7 +124,12 @@ from libranet.webserver.identity_handlers import (
     Identities,
 )
 from libranet.webserver.inbound_peers import InboundConnection, InboundPeers
-from libranet.webserver.list_handlers import ListFileHandler, NodeListHandler, SeekListHandler
+from libranet.webserver.list_handlers import (
+    PEERS_PATH,
+    ListFileHandler,
+    NodeListHandler,
+    SeekListHandler,
+)
 from libranet.webserver.local_folders import DIRECTORY_PATTERN, DirectoryHandler, LocalFolders
 from libranet.webserver.local_imports import IMPORTS_PATH, ImportHandler, ImportListHandler
 from libranet.webserver.local_only import CLIENT_PATH, LocalOnly, OwnSiteOnly, client_handler
@@ -229,8 +234,8 @@ def build_router(  # pylint: disable=too-many-locals
     served only to this node's own pages, as a request's ``Referer`` names
     them: an application's store to its own, and the folders, imports,
     bundles, identities, session, signing, opening what is encrypted,
-    encrypting by a password, and blocking to those of applications the
-    operator trusts. An application the operator has not
+    encrypting by a password, blocking, and the peer list to those of
+    applications the operator trusts. An application the operator has not
     trusted is served in a sandbox (Phase 3 Step 74).
     """
     store = CasStore.source_of_truth(storage)
@@ -397,6 +402,16 @@ def build_router(  # pylint: disable=too-many-locals
         "POST",
         SEEK_PATH,
         SeekListHandler(storage.max_object_bytes, storage.max_decompressed_list_bytes, publish),
+    )
+    router.add(
+        "GET",
+        PEERS_PATH,
+        LocalOnly(
+            OwnPageOnly(
+                ListFileHandler(storage.peer_list_path, retry_after_seconds), pages, trusted=True
+            ),
+            checks,
+        ),
     )
     router.add(
         "GET",

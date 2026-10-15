@@ -58,7 +58,7 @@ from libranet.cas.drops import DropTarget
 from libranet.cas.errors import InvalidContentIdError
 from libranet.config.models import MIN_PERSON_KEY_BITS
 from libranet.identity.errors import KeyFileError
-from libranet.json_format import compact_json
+from libranet.json_format import MOMENT_FORMAT, compact_json
 
 #: The most characters a normalized username has (HttpApi §11.3).
 MAX_USERNAME_CHARACTERS: Final = 64
@@ -87,10 +87,6 @@ _FALLBACK_FOR_FIELD: Final = "fallback_for"
 _FIELDS_FIELD: Final = "fields"
 _VERSION_FIELD: Final = "version"
 _FIRST_VERSION: Final = 1
-
-# How a moment is written in an identity block: a UTC time to the second, as
-# RFC 3339 §5.6 writes one (HttpApi §11.3).
-_CREATED_FORMAT: Final = "%Y-%m-%dT%H:%M:%SZ"
 
 # The Unicode general category of a control character, which no username holds.
 _CONTROL_CATEGORY: Final = "Cc"
@@ -248,7 +244,7 @@ class PersonKey:
             raise KeyFileError(f'An identity block is an object with a "{_CREATED_FIELD}"')
 
         try:
-            made = datetime.strptime(created, _CREATED_FORMAT).replace(tzinfo=UTC)
+            made = datetime.strptime(created, MOMENT_FORMAT).replace(tzinfo=UTC)
 
         except ValueError:
             raise KeyFileError(
@@ -284,7 +280,7 @@ class PersonKey:
     @property
     def created_text(self) -> str:
         """When the identity was made, as an identity block writes it (HttpApi §11.3)."""
-        return self.created.strftime(_CREATED_FORMAT)
+        return self.created.strftime(MOMENT_FORMAT)
 
     @property
     def details_target(self) -> DropTarget:

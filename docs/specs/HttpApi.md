@@ -74,10 +74,11 @@ These endpoints are intended for nodes and software clients.
 
 Some are meant only for the browser applications a node serves (§13), and
 never for another node: whether the client is local (§2.4), blocking
-content (§5.5), making a drop (§9.6), making an identity and signing in
-(§11.3, §11.4), signing as a person (§11.5), opening an encrypted block
-(§11.6), the trust of whoever is signed in (§11.7), reading into a bundle
-(§12.1), the folders and imports (§12.2),
+content (§5.5), making a drop (§9.6), what the node knows of its peers
+(§10.8), making an identity and signing in (§11.3, §11.4), signing as a
+person (§11.5), opening an encrypted block (§11.6), the trust of whoever is
+signed in (§11.7), reading into a bundle (§12.1), the folders and imports
+(§12.2),
 making bundles (§12.3), an application's store (§13.3), and the list of
 applications (§13.4). Each
 but reading into a bundle requires a `Referer` naming a page of the node
@@ -320,19 +321,19 @@ edit it for a local one. The answer is a convenience and not a
 protection, since every endpoint that serves only local clients checks
 for itself.
 
-These endpoints serve only local clients: blocking content (§5.5), making
-an identity, a fallback taking over, and the session (§11.3, §11.4), making
-a signed drop (§11.5),
+These endpoints serve only local clients: blocking content (§5.5), what the
+node knows of its peers (§10.8), making an identity, a fallback taking over,
+and the session (§11.3, §11.4), making a signed drop (§11.5),
 opening an encrypted block (§11.6), reading trust scores and changing a trust
 list (§11.7), listing the folders a node offers and
 importing a file from one (§12.2), making and changing bundles (§12.3), and
 changing an application's store (§13.3). So does making a drop encrypted by
 a username and password (§11.6).
 A request to one of them from any other client MUST be refused with
-`403 Forbidden`. Blocking, the identities, fallbacks, session, signed drops,
-encrypted blocks, trust, folders, imports, and bundles are served only from a
-page of a trusted application, and an application's store is changed only
-from a page of its own (§2.5).
+`403 Forbidden`. Blocking, the peers, the identities, fallbacks, session,
+signed drops, encrypted blocks, trust, folders, imports, and bundles are
+served only from a page of a trusted application, and an application's
+store is changed only from a page of its own (§2.5).
 
 A loopback source does not show that the person at the machine made the
 request. Any site's page that a browser on the machine has open can send
@@ -1373,6 +1374,85 @@ be 16 by default: a drop that a node's own pages make matches its target by at
 least 16 bits (§9.6), and other content seldom matches as many by chance, so
 what is pushed is mostly the drops at that target. A node answers each `search`
 entry once while the entry stays listed.
+
+### 10.8 What a Node Knows of Its Peers
+
+A page of the node reads what the node knows of each other node, as it
+records it, with:
+
+```http
+GET /data/peers
+```
+
+```json
+{"derived": "2026-10-14T12:00:00Z",
+ "peers": [{"node_id": "sha256/…", "connected": ["outbound", "inbound"],
+            "stats": {"connection_attempts": 3, "successful_connections": 2,
+                      "remote_disconnects": 1,
+                      "last_connected": "2026-10-14T11:58:12Z",
+                      "connected_seconds": 3600.5,
+                      "bytes_received": 1048576, "bytes_sent": 65536,
+                      "data_found": 12, "data_not_found": 3,
+                      "consecutive_failures": 0, "last_failure": null},
+            "addresses": [{"endpoint": "http://203.0.113.9:4300",
+                           "source": "dialed",
+                           "last_learned": "2026-10-14T11:58:12Z",
+                           "first_success": "2026-10-13T09:00:00Z",
+                           "last_success": "2026-10-14T11:58:12Z",
+                           "attempts": 4, "successes": 4,
+                           "consecutive_failures": 0}]}]}
+```
+
+It is not part of the protocol between nodes, whose list of peers is the
+node list (§10.5), and no node reads another's.
+
+`derived` is when the node last worked the list out. It works it out from
+time to time, as it does its node list, so what the list says may be that
+old. `peers` has an entry for each node the node has statistics for, an
+address of, or a connection open to now, but itself. Those connected come
+first, then the most recently connected, then the most recently learned
+of, and a node MAY list no more than a number it sets; the reference node
+lists up to `stats.max_peers_listed` (1000). In each entry:
+
+- **`connected`** is the ways a connection to it is open now:
+  `outbound`, dialed by this node, and `inbound`, dialed by the other to
+  this node, which counts from the first request on it that the other
+  signs (HandshakeProtocol §2.1). It is empty when none is.
+- **`stats`** is what this node has counted of it, over all time, as the
+  table below gives it. A node connected only as it dials in has counted
+  little, perhaps nothing.
+- **`addresses`** is each place it may be reached, in the order this node
+  tries them.
+
+| `stats` member | What it counts |
+| --- | --- |
+| `connection_attempts` | Addresses dialed to reach it, whether or not they did |
+| `successful_connections` | Connections this node dialed to it that opened |
+| `remote_disconnects` | Of those, the ones it closed, rather than this node |
+| `last_connected` | When the last of them opened |
+| `connected_seconds` | How long they lasted, added up as each closes, so not one open now |
+| `bytes_received` | Bytes of content stored that came from it |
+| `bytes_sent` | Bytes of content pushed to it that it accepted |
+| `data_found`, `data_not_found` | Fetches from it that found the content, and that did not |
+| `consecutive_failures` | Attempts in a row that reached it at no address |
+| `last_failure` | When the last such attempt ended |
+
+| Address member | What it says |
+| --- | --- |
+| `endpoint` | Where it may be reached, as `{scheme}://{host}:{port}` |
+| `source` | The strongest way it was learned: `relayed`, in another node's node list; `reverse_dns`, a name found for an address seen; `advertised`, in its own node list; `observed`, its `localhost` entry resolved (§10.2); or `dialed`, reached there by this node |
+| `last_learned` | When a node list last named it, or when it was first reached if none has |
+| `first_success`, `last_success` | When a connection there first, and last, proved who it is |
+| `attempts`, `successes` | Times it was dialed, and times that reached it |
+| `consecutive_failures` | Failed attempts there since the last success |
+
+Each moment is RFC 3339 text, a UTC time to the second, as §11.3 writes
+one, or `null` for one that has not come.
+
+A node that has not worked the list out yet, as one just started may not
+have, answers `503 Service Unavailable` with `Retry-After`. The list serves
+only local clients, from a page of a trusted application (§2.4, §2.5),
+since it says whom the node talks to and how much.
 
 ---
 
@@ -3083,6 +3163,7 @@ The following table summarizes the currently proposed HTTP API.
 | `/data/search/{hash}`                | `GET`        | Search for matching hashes                                 | Defined |
 | `/data/nodes`                        | `GET`/`POST` | Retrieve/publish peer information                          | Defined |
 | `/data/seek`                         | `GET`/`POST` | Retrieve/publish outstanding requests                      | Defined |
+| `/data/peers`                        | `GET`        | What the node knows of its peers, locally (§10.8)          | Defined |
 | `/data/{algorithm}/{hash}/{path}`    | `GET`/`HEAD` | Read into a bundle (§12.1)                                 | Defined |
 | `/data/client`                       | `GET`        | Whether the client is local (§2.4)                         | Defined |
 | `/data/drop`                         | `POST`       | Make a drop, from a page of the node (§9.6)                | Defined |
