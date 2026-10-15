@@ -1,4 +1,4 @@
-"""Tests for trust lists: a version, the newest of those read, and the next (Trust Network §3)."""
+"""Tests for trust lists, the newest version and the next, and the scores (Trust Network §3, §4)."""
 
 from __future__ import annotations
 from logging import WARNING
@@ -7,15 +7,47 @@ from pytest import LogCaptureFixture, mark, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
-from libranet.identity.trust import HeldTrustList, TrustList, TrustVersion
+from libranet.identity.trust import (
+    HeldTrustList,
+    TrustLimits,
+    TrustList,
+    TrustScore,
+    TrustScores,
+    TrustVersion,
+)
 
 ALICE = ContentId.for_data(b"Alice's public key", "sha256")
 BOB = ContentId.for_data(b"Bob's public key", "sha256")
 CAROL = ContentId.for_data(b"Carol's public key", "sha256")
 DAVE = ContentId.for_data(b"Dave's public key", "sha256")
+ERIN = ContentId.for_data(b"Erin's public key", "sha256")
+FRANK = ContentId.for_data(b"Frank's public key", "sha256")
+GINA = ContentId.for_data(b"Gina's public key", "sha256")
+HANK = ContentId.for_data(b"Hank's public key", "sha256")
 FIRST_DROP = ContentId.for_data(b"Alice's first version, as a drop", "sha256")
 SECOND_DROP = ContentId.for_data(b"Alice's second version, as a drop", "sha256")
 THIRD_DROP = ContentId.for_data(b"Alice's third version, as a drop", "sha256")
+
+# The limits a node goes to by default (Trust Network §4.2).
+LIMITS = TrustLimits(max_steps=4, max_lists=1_000)
+
+# The lists of the example of Trust Network §4.1, by their owners. Frank's
+# names no one.
+EXAMPLE = {
+    ALICE: {BOB: True, CAROL: True, DAVE: False},
+    BOB: {DAVE: True, ERIN: True, GINA: False},
+    CAROL: {ERIN: True},
+    DAVE: {HANK: True},
+    ERIN: {FRANK: True},
+    FRANK: {},
+}
+
+# Lists in which Erin is trusted more than Frank and Gina, at step 2.
+WIDENING = {
+    ALICE: {BOB: True, CAROL: True},
+    BOB: {ERIN: True, FRANK: True},
+    CAROL: {ERIN: True, GINA: True},
+}
 
 
 def version(
@@ -265,3 +297,210 @@ def test_a_version_placed_and_not_yet_found_is_read_with_the_rest() -> None:
 def test_a_version_another_signed_is_not_read_with_the_rest() -> None:
     with raises(ValueError, match="is signed by them"):
         HeldTrustList(ALICE).with_version(version(TrustList({BOB: True}, 1), signer=BOB))
+
+
+def scored(scores: TrustScores) -> dict[ContentId, tuple[float, int]]:
+    """Each identity ``scores`` reaches, with its score and its step."""
+    return {identity: (score.score, score.step) for identity, score in scores.scores.items()}
+
+
+def test_the_specifications_example_scores_as_it_says() -> None:
+    scores = TrustScores.from_lists(ALICE, EXAMPLE, LIMITS)
+
+    assert scored(scores) == {
+        BOB: (1, 1),
+        CAROL: (1, 1),
+        DAVE: (-1, 1),
+        ERIN: (0.2, 2),
+        GINA: (-0.1, 2),
+        FRANK: (0.01, 3),
+    }
+    assert scores.needed == ()
+    assert scores.complete
+
+
+def test_three_entries_at_step_two_score_exactly_three_tenths() -> None:
+    lists = {
+        ALICE: {BOB: True, CAROL: True, DAVE: True},
+        BOB: {ERIN: True},
+        CAROL: {ERIN: True},
+        DAVE: {ERIN: True},
+        ERIN: {},
+    }
+
+    score = TrustScores.from_lists(ALICE, lists, LIMITS).scores[ERIN]
+
+    assert score == TrustScore(3, 2)
+    assert score.score == 0.3
+    assert str(score.score) == "0.3"
+
+
+@mark.parametrize(("net_count", "step", "score"), [(-2, 1, -2), (7, 3, 0.07), (-1, 4, -0.001)])
+def test_a_score_is_the_net_count_over_a_power_of_ten(
+    net_count: int, step: int, score: float
+) -> None:
+    assert TrustScore(net_count, step).score == score
+
+
+def test_a_score_is_at_a_step_from_one() -> None:
+    with raises(ValueError, match="step must be at least 1"):
+        TrustScore(1, 0)
+
+
+def test_a_farther_entry_however_many_never_overturns_a_nearer_one() -> None:
+    lists = {
+        ALICE: {BOB: True, CAROL: True, DAVE: False},
+        BOB: {DAVE: True, GINA: False},
+        CAROL: {DAVE: True, ERIN: True, FRANK: True},
+        ERIN: {DAVE: True, GINA: True},
+        FRANK: {DAVE: True, GINA: True},
+        GINA: {},
+    }
+
+    scores = TrustScores.from_lists(ALICE, lists, LIMITS)
+
+    assert scores.scores[DAVE] == TrustScore(-1, 1)
+    assert scores.scores[GINA] == TrustScore(-1, 2)
+
+
+def test_more_lists_trusting_an_identity_outweigh_fewer_distrusting_it() -> None:
+    lists = {
+        ALICE: {BOB: True, CAROL: True, DAVE: True},
+        BOB: {ERIN: True},
+        CAROL: {ERIN: True},
+        DAVE: {ERIN: False},
+        ERIN: {},
+    }
+
+    assert TrustScores.from_lists(ALICE, lists, LIMITS).scores[ERIN] == TrustScore(1, 2)
+
+
+def test_the_list_of_an_identity_not_trusted_is_not_asked_for() -> None:
+    lists = {
+        ALICE: {BOB: True, CAROL: True, DAVE: False},
+        BOB: {ERIN: True},
+        CAROL: {ERIN: False},
+    }
+
+    scores = TrustScores.from_lists(ALICE, lists, LIMITS)
+
+    assert scored(scores) == {BOB: (1, 1), CAROL: (1, 1), DAVE: (-1, 1), ERIN: (0, 2)}
+    assert scores.complete
+
+
+def test_a_cycle_ends_and_the_person_is_never_scored() -> None:
+    lists = {
+        ALICE: {BOB: True},
+        BOB: {ALICE: False, CAROL: True},
+        CAROL: {ALICE: True, BOB: False, CAROL: True},
+    }
+
+    scores = TrustScores.from_lists(ALICE, lists, TrustLimits(max_steps=100, max_lists=1_000))
+
+    assert scored(scores) == {BOB: (1, 1), CAROL: (0.1, 2)}
+    assert scores.complete
+
+
+def test_the_most_steps_scores_the_last_step_and_reads_none_of_its_lists() -> None:
+    lists = {owner: entries for owner, entries in EXAMPLE.items() if owner not in (ERIN, FRANK)}
+
+    scores = TrustScores.from_lists(ALICE, lists, TrustLimits(max_steps=2, max_lists=1_000))
+
+    assert scored(scores) == {
+        BOB: (1, 1),
+        CAROL: (1, 1),
+        DAVE: (-1, 1),
+        ERIN: (0.2, 2),
+        GINA: (-0.1, 2),
+    }
+    assert scores.complete
+
+
+def test_the_persons_own_list_is_one_of_the_most_lists() -> None:
+    scores = TrustScores.from_lists(ALICE, {ALICE: EXAMPLE[ALICE]}, TrustLimits(4, max_lists=1))
+
+    assert scored(scores) == {BOB: (1, 1), CAROL: (1, 1), DAVE: (-1, 1)}
+    assert scores.complete
+
+
+def test_the_most_lists_stops_the_scores_with_what_they_reached() -> None:
+    scores = TrustScores.from_lists(ALICE, EXAMPLE, TrustLimits(4, max_lists=3))
+
+    assert scored(scores) == {
+        BOB: (1, 1),
+        CAROL: (1, 1),
+        DAVE: (-1, 1),
+        ERIN: (0.2, 2),
+        GINA: (-0.1, 2),
+    }
+    assert scores.complete
+
+
+def test_the_lists_needed_are_the_most_trusted_first_then_by_id() -> None:
+    scores = TrustScores.from_lists(ALICE, WIDENING, LIMITS)
+
+    assert scores.needed == (ERIN, *sorted((FRANK, GINA), key=str))
+    assert not scores.complete
+
+
+def test_a_build_cut_short_by_the_most_lists_reads_those_most_trusted() -> None:
+    lists = {**WIDENING, ERIN: {HANK: True}}
+
+    scores = TrustScores.from_lists(ALICE, lists, TrustLimits(4, max_lists=4))
+
+    assert scores.scores[HANK] == TrustScore(1, 3)
+    assert scores.complete
+
+
+def test_of_identities_trusted_alike_the_list_whose_id_sorts_first_is_read() -> None:
+    first, second = sorted((BOB, CAROL), key=str)
+    lists = {ALICE: {BOB: True, CAROL: True}, first: {ERIN: True}, second: {GINA: True}}
+
+    scores = TrustScores.from_lists(ALICE, lists, TrustLimits(4, max_lists=2))
+
+    assert ERIN in scores.scores
+    assert GINA not in scores.scores
+    assert scores.complete
+
+
+def test_with_the_persons_own_list_not_read_it_is_all_that_is_needed() -> None:
+    scores = TrustScores.from_lists(ALICE, {BOB: {CAROL: True}}, LIMITS)
+
+    assert scores == TrustScores({}, (ALICE,))
+    assert not scores.complete
+
+
+def test_a_step_under_way_scores_what_it_has_read_and_no_step_after_it() -> None:
+    lists = {owner: entries for owner, entries in EXAMPLE.items() if owner != BOB}
+
+    scores = TrustScores.from_lists(ALICE, lists, LIMITS)
+
+    assert scored(scores) == {BOB: (1, 1), CAROL: (1, 1), DAVE: (-1, 1), ERIN: (0.1, 2)}
+    assert scores.needed == (BOB,)
+
+
+def test_scoring_again_after_a_change_needs_only_the_lists_newly_reached() -> None:
+    changed = {**EXAMPLE, ALICE: {BOB: True, CAROL: False, DAVE: False, HANK: True}}
+
+    scores = TrustScores.from_lists(ALICE, changed, LIMITS)
+
+    assert scored(scores) == {
+        BOB: (1, 1),
+        CAROL: (-1, 1),
+        DAVE: (-1, 1),
+        HANK: (1, 1),
+        ERIN: (0.1, 2),
+        GINA: (-0.1, 2),
+    }
+    assert scores.needed == (HANK,)
+
+    rescored = TrustScores.from_lists(ALICE, {**changed, HANK: {FRANK: True}}, LIMITS)
+
+    assert rescored.scores[FRANK] == TrustScore(1, 2)
+    assert rescored.complete
+
+
+@mark.parametrize(("max_steps", "max_lists"), [(0, 1), (1, 0), (-1, 1)])
+def test_the_limits_are_each_at_least_one(max_steps: int, max_lists: int) -> None:
+    with raises(ValueError, match="must be at least 1"):
+        TrustLimits(max_steps, max_lists)

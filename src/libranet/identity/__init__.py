@@ -3,7 +3,8 @@
 Node key generation and storage, signing outgoing requests, and verifying
 incoming ones. A person's identity too, kept at a drop their username names
 (Phase 4 Step 79), with the fallback made with it (Phase 4 Step 81), and the
-list of whom an identity trusts or distrusts (Phase 5 Step 96).
+list of whom an identity trusts or distrusts (Phase 5 Step 96), with the
+scores a person's list gives the identities it reaches (Phase 5 Step 98).
 """
 
 from libranet.identity.authentication import (
@@ -56,7 +57,15 @@ from libranet.identity.signatures import (
     MessageSigner,
     MessageVerifier,
 )
-from libranet.identity.trust import MIN_TRUST_LIST_BITS, HeldTrustList, TrustList, TrustVersion
+from libranet.identity.trust import (
+    MIN_TRUST_LIST_BITS,
+    HeldTrustList,
+    TrustLimits,
+    TrustList,
+    TrustScore,
+    TrustScores,
+    TrustVersion,
+)
 
 __all__ = [
     "BACKUP_SECRET_BYTES",
@@ -87,7 +96,10 @@ __all__ = [
     "PersonKey",
     "RequestAuthenticator",
     "SignatureError",
+    "TrustLimits",
     "TrustList",
+    "TrustScore",
+    "TrustScores",
     "TrustVersion",
     "UnknownKeyError",
     "Username",

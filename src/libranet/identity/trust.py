@@ -19,6 +19,10 @@ signed, the newest is the one numbered highest, ties going to the drop whose
 id sorts first, and the rest are blocked, so that they do not crowd it out of
 a search (§3.3). The next version is made over the newest (§3.4). The web
 server reads them from what the node holds (Phase 5 Step 96).
+
+A person's scores are built from their own list outward, in steps, from the
+lists read so far, and say which lists are to be read next (§4.1, §4.2).
+Nothing here reads a list, or keeps the time (Phase 5 Step 98).
 """
 
 from __future__ import annotations
@@ -261,6 +265,130 @@ class HeldTrustList:
             return TrustList(entries, _FIRST_VERSION)
 
         return TrustList(entries, newest.trust_list.version + 1, (newest.content_id,))
+
+
+@dataclass(frozen=True)
+class TrustLimits:
+    """How far a person's scores reach: ``max_steps`` steps, reading ``max_lists`` lists (§4.2).
+
+    Identities at the last step are scored, but their lists are not read.
+    The person's own list is one of the lists read.
+
+    Raises:
+        ValueError: either is under 1.
+    """
+
+    max_steps: int
+    max_lists: int
+
+    def __post_init__(self) -> None:
+        if self.max_steps < 1:
+            raise ValueError(f"max_steps must be at least 1, got {self.max_steps}")
+
+        if self.max_lists < 1:
+            raise ValueError(f"max_lists must be at least 1, got {self.max_lists}")
+
+
+@dataclass(frozen=True)
+class TrustScore:
+    """An identity's score: ``net_count`` lists at ``step`` net, trusting it less distrusting it.
+
+    Raises:
+        ValueError: ``step`` is under 1.
+    """
+
+    net_count: int
+    step: int
+
+    def __post_init__(self) -> None:
+        if self.step < 1:
+            raise ValueError(f"step must be at least 1, got {self.step}")
+
+    @property
+    def score(self) -> float:
+        """``net_count`` weighed at its step: 1 at step 1, 0.1 at step 2, and so on (§4.1).
+
+        It is that quotient, not weights added one at a time, so that three
+        lists at step 2 score exactly 0.3.
+        """
+        # A power is typed Any, as a negative one is no int; step is at least 1.
+        divisor: int = 10 ** (self.step - 1)
+        return self.net_count / divisor
+
+
+@dataclass(frozen=True)
+class TrustScores:
+    """A person's ``scores``, by identity, and the lists ``needed`` before they are complete.
+
+    ``needed`` names, in the order they are to be read, the owners of the
+    lists the step under way reads and that are not read yet (§4.3).
+    """
+
+    scores: Mapping[ContentId, TrustScore]
+    needed: tuple[ContentId, ...] = ()
+
+    @classmethod
+    def from_lists(
+        cls,
+        person: ContentId,
+        lists: Mapping[ContentId, Mapping[ContentId, bool]],
+        limits: TrustLimits,
+    ) -> TrustScores:
+        """``person``'s scores, from ``lists``, the entries of each list read so far by its owner.
+
+        Step 1 reads ``person``'s own list, and each step after it the lists
+        of the identities the step before it scored above 0, highest first,
+        then whose id sorts first. An identity is scored at the first step
+        reaching it, never ``person``, and each list is read at most once, so
+        a cycle ends. It stops at whichever of ``limits`` comes first (§4.1,
+        §4.2). A list given up on is read as empty (§4.3).
+
+        While a list the step under way reads is not among ``lists``, that
+        step's scores are those of its lists read so far, no step after it is
+        scored, and the lists not read are :attr:`needed`. Given the same
+        lists again, with ``person``'s changed, only the lists the change
+        newly reaches are needed (§4.4).
+        """
+        scores: dict[ContentId, TrustScore] = {}
+        owners = [person]
+        lists_read = 0
+
+        for step in range(1, limits.max_steps + 1):
+            owners = owners[: max(limits.max_lists - lists_read, 0)]
+            lists_read += len(owners)
+            net_counts: dict[ContentId, int] = {}
+
+            for owner in owners:
+                for identity, trusted in lists.get(owner, {}).items():
+                    if identity != person and identity not in scores:
+                        net_counts[identity] = net_counts.get(identity, 0) + (1 if trusted else -1)
+
+            scores.update((identity, TrustScore(net, step)) for identity, net in net_counts.items())
+            needed = tuple(owner for owner in owners if owner not in lists)
+
+            if needed:
+                return cls(scores, needed)
+
+            # Only the trusted are followed, the most trusted first, so that
+            # a build stopped by the most lists has read theirs.
+            owners = [
+                identity
+                for identity, net in sorted(net_counts.items(), key=_reading_order)
+                if net > 0
+            ]
+
+        return cls(scores)
+
+    @property
+    def complete(self) -> bool:
+        """Whether every list the scores read is read, or given up on (§4.3)."""
+        return not self.needed
+
+
+def _reading_order(scored: tuple[ContentId, int]) -> tuple[int, str]:
+    """Where an identity and its net count go among a step's: highest first, then by id (§4.2)."""
+    identity, net = scored
+    return -net, str(identity)
 
 
 def _content_id(name: object, unsupported: UnsupportedAlgorithms) -> ContentId | None:
