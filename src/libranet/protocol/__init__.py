@@ -5,10 +5,10 @@ the syntax both speak, the lists both read, how ``localhost`` in a node list
 is resolved, search prefixes and the cached search responses, the
 request bodies the backup module acts on, the bundles local
 clients ask the web server to make, the drops pages ask it to make, signed,
-encrypted, or neither, and the identities and sign-ins local clients ask for
-are each defined once, here. No module package imports another; what two
-modules share is here, in :mod:`libranet.messaging`, or in a library package
-below them both.
+encrypted, or neither, the identities and sign-ins local clients ask for,
+and the changes to a trust list they ask for are each defined once, here.
+No module package imports another; what two modules share is here, in
+:mod:`libranet.messaging`, or in a library package below them both.
 """
 
 from libranet.protocol.backup_requests import (
@@ -77,6 +77,7 @@ from libranet.protocol.search import (
     normalized_entries,
     parse_search_results,
 )
+from libranet.protocol.trust_requests import TrustRequest
 
 __all__ = [
     "API_PREFIX",
@@ -118,6 +119,7 @@ __all__ = [
     "SearchCache",
     "SignInRequest",
     "SignedDropRequest",
+    "TrustRequest",
     "WholeBundleRequest",
     "check_directory",
     "check_named",

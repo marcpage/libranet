@@ -253,6 +253,7 @@ when trusted. `self.origin === "null"` tells a page it is sandboxed.
 | `/data/signed` | `POST` | Local | A trusted application's | Place JSON at a drop, signed as whoever is signed in (§6.13) |
 | `/data/signed/{id}` | `GET` | Any | Any, or none | Check signed content, and read what it signs (§6.13) |
 | `/data/encrypted/{id}` | `GET`, `POST` | Local | A trusted application's | Open a drop encrypted for whoever is signed in, or by a password (§6.15) |
+| `/data/trust/{id}` | `PUT`, `DELETE` | Local | A trusted application's | Trust, distrust, or clear an identity on the trust list of whoever is signed in (§6.17) |
 | `/data/{id}` | `DELETE` | Local | A trusted application's | Delete and block content the node will no longer hold (§6.11) |
 | `/data/nodes`, `/data/seek` | `GET` | Any | Any, or none | The peers the node knows, and what it seeks (§6.8) |
 | `/data/peers` | `GET` | Local | A trusted application's | What the node knows of each peer, and whether it is connected (§6.8) |
@@ -1129,6 +1130,53 @@ each copy found in that month's hours to `{"changed", "hidden", "read"}`.
 
 To have someone mailed, link to `/mail/?to={id}`, as the directory does for
 each person.
+
+### 6.17 The Trust List
+
+Whoever is signed in has a trust list: the identities they trust, and those
+they distrust ([Trust Network Specification](../specs/TrustNetwork.md)).
+The node keeps it in versions, each signed by the person and placed at the
+drop `trust:{id}`, their id after `trust:`. It is public, distrust
+included, since others read it for their scores to reach through it, so a
+page offering to change it says so. Trust one identity with:
+
+```js
+const response = await fetch(`/data/trust/${id}`, {
+  method: "PUT",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ trust: true }),
+});
+const { id: drop, version } = await response.json();
+```
+
+`false` distrusts it, and
+
+```js
+await fetch(`/data/trust/${id}`, { method: "DELETE" });
+```
+
+neither trusts nor distrusts it. The node reads the newest version of the
+list, makes the next with the change, has the person sign it, and places
+it. It answers `201 Created`, as a signed drop is answered (§6.13), with the
+new version's number in `version`. There is no `seconds` or `minimum_bits`
+to give: the node places each version matching 16 bits, and blocks the
+versions it replaces (§6.11), so that they do not crowd the newest out of a
+search. A change that changes nothing, such as trusting someone already
+trusted, places nothing, and is `204`.
+Make one change per request. The node makes one person's changes one at a
+time, each over the one before, so two pages changing the list at once lose
+nothing.
+
+- With no one signed in it is `401` `session-required`, and signed in as a
+  fallback that has not taken over (§6.10), `403`.
+- A body that is not `{"trust": true}` or `false`, or a change naming the
+  person themselves, is `400`.
+- While a version found at the list's drop is not held yet, it is `503`, so
+  wait as §5.3 shows, and ask again.
+- A list too large for an object is `413`.
+
+Only a local client, from a trusted application's page, changes the list,
+and no answer is cached. The node builds no scores from the lists yet.
 
 ## 7. Patterns From the Movie Library
 

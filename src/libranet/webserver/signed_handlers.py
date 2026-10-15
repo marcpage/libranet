@@ -117,23 +117,10 @@ class SignedDrops:
 
     def make(self, request: Request) -> Response:
         """``POST /data/signed``: make the drop ``request`` asks for, signed by who is signed in."""
-        session = self.sessions.session_or_refusal(request, "Sign in to sign as a person.")
+        session = self.sessions.signer_or_refusal(request, "Sign in to sign as a person.")
 
         if isinstance(session, Response):
             return session
-
-        if session.key.fallback is None:
-            _LOGGER.debug(
-                "Refusing %s %s: %s has no fallback of its own yet",
-                request.method,
-                request.path,
-                session.key.person_id,
-            )
-            return status_response(
-                request,
-                HTTPStatus.FORBIDDEN,
-                "A fallback signs nothing until it takes over, with a fallback of its own.",
-            )
 
         asked = parsed_or_refusal(
             request, SignedDropRequest.from_value, max_bytes=MAX_DROP_BODY_BYTES

@@ -29,7 +29,7 @@ from typing import Callable, Final
 from libranet.cas.content_id import ContentId
 from libranet.identity.people import PersonKey, Username
 from libranet.problems import SESSION_REQUIRED
-from libranet.webserver.http_types import Request, Response, typed_response
+from libranet.webserver.http_types import Request, Response, status_response, typed_response
 
 _LOGGER = getLogger(__name__)
 
@@ -151,6 +151,31 @@ class Sessions:
             return typed_response(request, SESSION_REQUIRED, HTTPStatus.UNAUTHORIZED, detail)
 
         return session
+
+    def signer_or_refusal(self, request: Request, detail: str) -> Session | Response:
+        """The session ``request``'s cookie names, marked used, if it signs; or the refusal.
+
+        With no session it is the ``401`` of :meth:`session_or_refusal`,
+        ``detail`` saying what signing in is needed for. A fallback that has
+        not taken over, and so has no fallback of its own, signs nothing, and
+        is ``403`` (HttpApi §11.3).
+        """
+        session = self.session_or_refusal(request, detail)
+
+        if isinstance(session, Response) or session.key.fallback is not None:
+            return session
+
+        _LOGGER.debug(
+            "Refusing %s %s: %s has no fallback of its own yet",
+            request.method,
+            request.path,
+            session.key.person_id,
+        )
+        return status_response(
+            request,
+            HTTPStatus.FORBIDDEN,
+            "A fallback signs nothing until it takes over, with a fallback of its own.",
+        )
 
     def end(self, request: Request) -> str:
         """End any session ``request``'s cookie names, and return the ``Set-Cookie`` removing it."""

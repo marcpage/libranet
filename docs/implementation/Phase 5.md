@@ -384,6 +384,79 @@ next version naming the newest, signed by whoever is signed in; that an
 edit changing nothing is `204` and places nothing; that two edits in a row
 are both kept; and each refusal.
 
+Ruled by the user (2026-10-14):
+
+- **Older versions are blocked**, so that they do not crowd the newest out
+  of a search. Asked how long the node searches for each version's nonce,
+  the user first ruled that a version match one bit more while more than
+  10 found at the drop match as many, and that was built and committed.
+  Shown that the bits then grow with every edit, by about one for every
+  five or six, past the default 26-bit limit by about 60 edits, the user
+  ruled blocking older versions instead. Written into Trust Network §3.3
+  and §3.4, HttpApi §5.5 and §11.7, Known Drops, and the App Developer
+  Guide, replacing the bits rule, and the "no version is ever blocked" that
+  Step 94 wrote.
+
+Built in two change sets, together 388 added lines of non-test Python, 33
+of them replacing removed ones, and 617 of tests, against §5's estimate of
+about 300: the endpoints with the bits rule, committed, and blocking in
+place of it, which adds 70 lines and removes 103.
+
+- **`TrustEdits`** (`webserver/trust_handlers.py`, new) serves `PUT` and
+  `DELETE /data/trust/{algorithm}/{hash}`, and **`TrustRequest`**
+  (`protocol/trust_requests.py`, new) reads `{"trust": true|false}`.
+- **`HeldTrustList`** gains `replaced`, every version read but the newest,
+  and `with_version`. Each edit blocks what `replaced` names, and, once it
+  places a version, the newest it read, asking the stats module as
+  `DELETE /data/{id}` does (`data.blocked`).
+- **`Sessions.signer_or_refusal`** holds the `401` and the `403` for a
+  fallback that has not taken over, which `POST /data/signed` had inline
+  and now uses too.
+- `trust` joins `DATA_ENDPOINT_NAMES`. The App Developer Guide gains §6.17
+  and a row in §5.2, and Known Drops marks `trust:{id}` in use.
+
+My calls, not yet reviewed:
+
+- **Every node that reads a list blocks what the newest replaces**, not
+  only the node that places it, as mail's pages block every version
+  another replaces. Copies of older versions are pushed to peers, and a
+  reader elsewhere would be crowded by them otherwise. Written into Trust
+  Network §3.3, so Step 99's builds block too.
+- **An edit that changes nothing still blocks what the newest replaces**,
+  as any reading does, and an edit refused (`503`) blocks nothing.
+- **Each version matches 16 bits, with no search for a nonce past them**
+  (`seconds` of 0), since blocking keeps the drop clear, and a change is
+  answered at once.
+- **A node whose limit on a drop's bits is under 16 refuses every change**
+  with the drop's own `400`, as it refuses a page asking for more bits than
+  it allows. The `503` the bits rule had for it is gone.
+- **One edit at a time on the node, not one per person**, in the order
+  they come (`Turns`), since drop searches take turns across the node
+  already, and reading a list and signing it are quick beside a search.
+- **The last version placed is remembered until a search finds it.** What
+  the node uploads is found by a search only once the validator has stored
+  it, so without it a second edit made at once would be numbered as the
+  first. It is held only for a person whose last version has not been
+  found yet.
+- **The person's public key is stored again before the list is read**, not
+  after the drop is made as signing does, so that a key evicted since
+  sign-in is held for the reader rather than named missing (`503`).
+- **The order of the answers**: `401` and `403`, an identifier not valid,
+  a body not `{"trust": …}`, then, in the edit's turn, `400` for the
+  person's own id, `503` while a version is not held, `204`, and `413`. An
+  unchanged entry is not `204` while a version is missing, since that
+  version may say otherwise.
+- **A body's other members are ignored**, as Trust Network §3.1 ignores a
+  version's, and a `DELETE`'s body is not read.
+- **The test server's drop ceiling** (`tests/test_webserver_server.py`) is
+  raised from 8 bits to 16, as many as a version needs.
+
+Found while building it:
+
+- Known Drops §3.4 still says a node may keep a list "once Bundle
+  Specification §5 defines a signature by a node's key", which Step 103
+  did. Not changed here.
+
 ---
 
 ## Step 98 — The Scoring Rule
@@ -435,7 +508,9 @@ Work this implies:
 - **The build reads the lists the scoring rule asks for**, as Step 96
   reads one, asking the peers for what the node does not hold
   (`ContentWait`, as a file stream waits for parts), and gives up on a list
-  once it has looked for it as long as the node sets.
+  once it has looked for it as long as the node sets. It blocks every
+  version older than the newest it reads (Trust Network §3.3,
+  `HeldTrustList.replaced`), as Step 97's edits do.
 - **Settings for the limits and the wait**, so that an operator can widen
   or narrow them: `identity.trust_max_steps` (4),
   `identity.trust_max_lists` (1,000), and

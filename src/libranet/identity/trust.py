@@ -8,21 +8,21 @@ bundle's ``contents`` (BundleSpecification §5)::
 
 ``entries`` maps each identity named to ``true``, trusted, or ``false``,
 distrusted. ``version`` is one more than the version it replaces, and
-``versions`` names that version's drop, so that the history can be walked
-back; the first is numbered 1 and names none. Each version is made a drop at
-``trust:{id}``, its owner's id after ``trust:``, matching at least
-:data:`MIN_TRUST_LIST_BITS` (§3.2). Nothing here tells a person's list from a
-node's.
+``versions`` names that version's drop; the first is numbered 1 and names
+none. Each version is made a drop at ``trust:{id}``, its owner's id after
+``trust:``, matching at least :data:`MIN_TRUST_LIST_BITS` (§3.2). Nothing here
+tells a person's list from a node's.
 
 A reader passes over an entry that is not an id trusted or distrusted, and
 counts the rest of the list (§3.1). Of the versions read that the owner
 signed, the newest is the one numbered highest, ties going to the drop whose
-id sorts first (§3.3), and the next version is made over it (§3.4). The web
+id sorts first, and the rest are blocked, so that they do not crowd it out of
+a search (§3.3). The next version is made over the newest (§3.4). The web
 server reads them from what the node holds (Phase 5 Step 96).
 """
 
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from logging import getLogger
 from typing import Any, Final, Mapping
 
@@ -205,6 +205,30 @@ class HeldTrustList:
         """Whom the newest version trusts, ``True``, or distrusts; none if none was read (§3.3)."""
         newest = self.newest
         return {} if newest is None else newest.trust_list.entries
+
+    @property
+    def replaced(self) -> tuple[ContentId, ...]:
+        """The drops of every version read but the newest, which replaces them all (§3.3)."""
+        newest = self.newest
+        return tuple(
+            version.content_id
+            for version in self.versions
+            if newest is None or version.content_id != newest.content_id
+        )
+
+    def with_version(self, version: TrustVersion) -> HeldTrustList:
+        """This list, with ``version`` read too, should it not be already.
+
+        A version this node placed is held as an upload until the validator
+        stores it, and no search of the drop finds it until then.
+
+        Raises:
+            ValueError: ``version`` is signed by someone other than the owner.
+        """
+        if any(read.content_id == version.content_id for read in self.versions):
+            return self
+
+        return replace(self, versions=(*self.versions, version))
 
     def next_version(self, identity: ContentId, trusted: bool | None) -> TrustList | None:
         """The version after the newest, setting or clearing the entry for ``identity``.

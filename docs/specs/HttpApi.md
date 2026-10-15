@@ -650,7 +650,9 @@ blocked content as it would for content it does not hold:
   outstanding requests (§10.7) never name it. The node never pushes it to
   a peer that seeks it (§10.7.2).
 
-A block outlives the content it names, and is never lifted.
+A block outlives the content it names, and is never lifted. A node blocks
+some content of itself, too: each version of a trust list older than the
+newest it reads (Trust Network §3.3).
 
 A page of a trusted application asks the node to delete content, and block
 it, with:
@@ -2027,8 +2029,10 @@ which neither trusts nor distrusts it. The node reads the newest version of
 the person's list from what it holds (Trust Network §3.3), makes the next
 version with the change, and has it signed by the person and made a drop at
 `trust:{id}`, as making a signed drop does (§11.5), matching at least 16
-bits, with a nonce searched for as long as the node sets (§9.6). It answers
-`201 Created`, with a `Location` naming the drop:
+bits, with its nonce searched for no longer than that takes (§9.6). It then
+blocks every version of the list it read (§5.5), since the new one replaces
+them (Trust Network §3.4). It answers `201 Created`, with a `Location`
+naming the drop:
 
 ```json
 {"id": "sha256/…", "target": "<target hash>", "matching_bits": 21,

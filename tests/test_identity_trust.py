@@ -15,6 +15,7 @@ CAROL = ContentId.for_data(b"Carol's public key", "sha256")
 DAVE = ContentId.for_data(b"Dave's public key", "sha256")
 FIRST_DROP = ContentId.for_data(b"Alice's first version, as a drop", "sha256")
 SECOND_DROP = ContentId.for_data(b"Alice's second version, as a drop", "sha256")
+THIRD_DROP = ContentId.for_data(b"Alice's third version, as a drop", "sha256")
 
 
 def version(
@@ -239,3 +240,28 @@ def test_clearing_an_entry_of_an_empty_list_makes_no_version() -> None:
 def test_a_list_never_names_its_owner() -> None:
     with raises(ValueError, match="never names its owner"):
         HeldTrustList(ALICE).next_version(ALICE, True)
+
+
+def test_every_version_but_the_newest_is_replaced() -> None:
+    first = version(TrustList({BOB: True}, 1))
+    second = version(TrustList({DAVE: False}, 2, (FIRST_DROP,)), SECOND_DROP)
+    third = version(TrustList({CAROL: True}, 3, (SECOND_DROP,)), THIRD_DROP)
+
+    assert HeldTrustList(ALICE, (second, third, first)).replaced == (SECOND_DROP, FIRST_DROP)
+    assert HeldTrustList(ALICE, (first,)).replaced == ()
+    assert HeldTrustList(ALICE).replaced == ()
+
+
+def test_a_version_placed_and_not_yet_found_is_read_with_the_rest() -> None:
+    first = version(TrustList({BOB: True}, 1))
+    second = version(TrustList({BOB: True, DAVE: False}, 2, (FIRST_DROP,)), SECOND_DROP)
+    held = HeldTrustList(ALICE, (first,)).with_version(second)
+
+    assert held == HeldTrustList(ALICE, (first, second))
+    assert held.newest == second
+    assert held.with_version(second) is held
+
+
+def test_a_version_another_signed_is_not_read_with_the_rest() -> None:
+    with raises(ValueError, match="is signed by them"):
+        HeldTrustList(ALICE).with_version(version(TrustList({BOB: True}, 1), signer=BOB))

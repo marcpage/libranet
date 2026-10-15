@@ -55,7 +55,7 @@ A version of a trust list is the JSON object
 - **`version`** is 1 for the first version, and one more than the version
   it replaces for each after.
 - **`versions`** names the drop of the version it replaces, and is left
-  out of the first, so that the history can be walked back to it.
+  out of the first.
 
 A reader passes over an entry whose name is not a content identifier, or
 whose value is not `true` or `false`, and a name in `versions` that is not a
@@ -101,10 +101,14 @@ A reader finds the newest version of the list of an identity `X` this way:
   whose drop's identifier sorts first. Only `X` signs a version, so no one
   else can make one newer, and no clock is trusted.
 
-An identity none of whose versions is found has an empty list. No version
-is ever blocked
-([HTTP API §5.5](HttpApi.md#55-blocked-content)), since a reader may need
-any of them to walk the history back.
+An identity none of whose versions is found has an empty list.
+
+A node blocks every version it reads that is older than the newest
+([HTTP API §5.5](HttpApi.md#55-blocked-content)), since the newest replaces
+it. Every version is placed at the same drop, and a search lists at most 32
+results ([HTTP API §6](HttpApi.md#6-content-search)), so a list changed
+often would otherwise crowd its newest version out of a search with its
+own history.
 
 ### 3.4 Changing a List
 
@@ -113,6 +117,10 @@ numbered one more, and naming the newest in `versions`. A writer holds off
 while a version found at the drop is not held yet, since it may be newer
 than the newest read, and one placed over the older would be numbered
 under it.
+
+A writer places the new version matching at least 16 leading bits of the
+target hash (§3.2), and blocks every version it read, since the new one
+replaces them all (§3.3).
 
 ## 4. Scores
 
