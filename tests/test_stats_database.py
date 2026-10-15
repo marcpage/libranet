@@ -386,6 +386,36 @@ def test_addresses_that_worked_are_tried_first(database: StatsDatabase, clock: F
     assert database.candidate_endpoints() == [(str(NODE_ID), [SECOND, FIRST, THIRD])]
 
 
+def test_every_node_with_statistics_is_read_at_once(database: StatsDatabase) -> None:
+    database.record_connection_opened(NODE_ID)
+    database.record_transfer(OTHER_NODE_ID, sent_bytes=256)
+    # An address alone makes no statistics.
+    database.record_addresses(
+        {THIRD: ContentId.for_data(b"a third node's public key", "sha256")}, AddressSource.RELAYED
+    )
+
+    assert {stats.node_id: stats for stats in database.all_node_stats()} == {
+        NODE_ID: database.node_stats(NODE_ID),
+        OTHER_NODE_ID: database.node_stats(OTHER_NODE_ID),
+    }
+
+
+def test_every_address_of_every_node_is_read_at_once_in_the_order_tried(
+    database: StatsDatabase, clock: FakeClock
+) -> None:
+    database.record_addresses({FIRST: NODE_ID, THIRD: OTHER_NODE_ID}, AddressSource.RELAYED)
+    clock.advance(10)
+    database.record_address_worked(NODE_ID, SECOND)
+
+    addresses = database.all_node_addresses()
+
+    assert addresses == {
+        NODE_ID: database.node_addresses(NODE_ID),
+        OTHER_NODE_ID: database.node_addresses(OTHER_NODE_ID),
+    }
+    assert [address.endpoint for address in addresses[NODE_ID]] == [SECOND, FIRST]
+
+
 def test_candidates_put_nodes_reached_first_and_leave_this_node_out(
     database: StatsDatabase, clock: FakeClock
 ) -> None:

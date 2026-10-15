@@ -1083,6 +1083,7 @@ def test_unsigned_api_reads_can_be_refused(
         "/data/client",
         "/data/directory",
         "/data/imports",
+        "/data/peers",
         "/data/no/such/endpoint",
     ]
 
@@ -1882,6 +1883,7 @@ def test_a_local_client_imports_a_file_from_a_folder_offered(
         ("/data/session", "DELETE"),
         (f"/data/encrypted/{CONTENT_ID}", "GET"),
         (f"/data/encrypted/{CONTENT_ID}", "POST"),
+        ("/data/peers", "GET"),
     ],
 )
 def test_an_untrusted_applications_page_is_refused_what_only_trusted_ones_may_ask(
@@ -1929,6 +1931,44 @@ def test_another_client_or_sites_page_is_refused_imports(
 
     assert remote.status == 403
     assert cross_site.status == 403
+
+
+def test_a_local_client_reads_the_peer_list_once_derived(
+    local_connection: HTTPConnection, storage: StorageConfig
+) -> None:
+    page = _from_page(local_connection, "/movie/")
+    underived, _ = _get(local_connection, "/data/peers", headers=page)
+    storage.derived_dir.mkdir(parents=True)
+    storage.peer_list_path.write_bytes(b'{"derived":"2026-10-14T12:00:00Z","peers":[]}')
+
+    response, body = _get(local_connection, "/data/peers", headers=page)
+
+    assert underived.status == 503
+    assert underived.getheader("Retry-After") == str(RETRY_AFTER_SECONDS)
+    assert response.status == 200
+    assert response.getheader("Content-Type") == JSON_CONTENT_TYPE
+    assert body == storage.peer_list_path.read_bytes()
+
+
+@mark.parametrize(
+    "client, headers",
+    [
+        ("203.0.113.42", {"Host": "node.lan:8080", "Referer": "http://node.lan:8080/movie/"}),
+        ("127.0.0.1", {"Host": "localhost:8080"}),
+        ("127.0.0.1", {**MOVIE_PAGE, "Sec-Fetch-Site": "cross-site"}),
+    ],
+)
+def test_the_peer_list_is_read_only_by_a_local_client_on_a_trusted_page(
+    local_server: LibranetHTTPServer, storage: StorageConfig, client: str, headers: dict[str, str]
+) -> None:
+    storage.derived_dir.mkdir(parents=True)
+    storage.peer_list_path.write_bytes(b'{"derived":"2026-10-14T12:00:00Z","peers":[]}')
+
+    response = local_server.router.dispatch(
+        Request("GET", "/data/peers", headers=headers, client_address=client)
+    )
+
+    assert response.status == 403
 
 
 def test_a_local_client_makes_a_bundle_stored_as_an_upload_from_this_node(
@@ -2615,6 +2655,8 @@ def test_a_local_client_keeps_a_value_in_an_applications_store(
         ("PUT", "/data/users/x", None),
         ("PUT", "/data/fallback/x", None),
         ("GET", "/data/session/x", None),
+        ("GET", "/data/peers/x", None),
+        ("POST", "/data/peers", "GET"),
     ],
 )
 def test_a_path_beneath_another_data_endpoint_is_never_taken_for_content(

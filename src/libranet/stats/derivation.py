@@ -1,4 +1,4 @@
-"""Deriving the plain ``/data/nodes`` and ``/data/seek`` files, and the candidate and blocked lists.
+"""Deriving the plain ``/data/nodes`` and ``/data/seek`` files, and the other lists stats writes.
 
 The web server serves the first two as static files (Step 9), so the stats
 module rewrites them periodically rather than answering a request per read.
@@ -19,13 +19,18 @@ recently learned of first; each node's addresses follow the same rule::
 The blocked list names the content this node will not hold, for the modules
 that refuse it (Phase 4 Step 30), in the shape
 :class:`~libranet.cas.blocked.BlockedContent` reads.
+
+The peer list is what this node knows of each peer, for its local clients'
+pages (Phase 5 Step 107), in the shape :mod:`libranet.stats.peers` documents.
+It says when it was derived, so it is written afresh each time.
 """
 
 from __future__ import annotations
 from dataclasses import dataclass
 from logging import getLogger
 from pathlib import Path
-from typing import Sequence
+from time import time
+from typing import Callable, Sequence
 
 from libranet.atomic_file import write_atomically
 from libranet.cas.blocked import BlockedContent
@@ -33,6 +38,7 @@ from libranet.cas.content_id import ContentId
 from libranet.config.models import StatsConfig, StorageConfig
 from libranet.stats.database import StatsDatabase
 from libranet.stats.lists import render_candidate_list, render_node_list, render_seek_list
+from libranet.stats.peers import ConnectedPeers, PeerList
 from libranet.stats.schema import SeekKind
 
 _LOGGER = getLogger(__name__)
@@ -40,7 +46,7 @@ _LOGGER = getLogger(__name__)
 
 @dataclass(frozen=True)
 class DerivedLists:
-    """The four files a derivation maintains, and whether the candidate list changed.
+    """The five files a derivation maintains, and whether the candidate list changed.
 
     Only the candidate list carries a changed flag, because only it is
     announced: a new one is the connection manager's cue to reconsider its
@@ -54,6 +60,7 @@ class DerivedLists:
     seek_list: Path
     candidate_list: Path
     blocked_list: Path
+    peer_list: Path
     candidate_list_changed: bool
 
 
@@ -62,7 +69,8 @@ class ListDeriver:
 
     ``endpoints`` and ``node_id`` describe this node itself: a node list must
     always name its sender (HttpApi §10.1), and it heads the list because no
-    peer's address is better known to us than our own.
+    peer's address is better known to us than our own. ``connected`` names
+    the peers connected now, for the peer list; none, if not given.
     """
 
     def __init__(
@@ -72,12 +80,17 @@ class ListDeriver:
         stats: StatsConfig,
         endpoints: Sequence[str],
         node_id: ContentId,
+        *,
+        connected: ConnectedPeers | None = None,
+        clock: Callable[[], float] = time,
     ) -> None:
         self._database = database
         self._storage = storage
         self._stats = stats
         self._endpoints = tuple(endpoints)
         self._node_id = node_id
+        self._connected = ConnectedPeers() if connected is None else connected
+        self._clock = clock
 
     def derive(self) -> DerivedLists:
         """Rewrite whichever of the files the database no longer agrees with.
@@ -86,7 +99,7 @@ class ListDeriver:
         first, so neither list offers them.
 
         Returns:
-            The four files, and whether the candidate list was rewritten.
+            The five files, and whether the candidate list was rewritten.
         """
         self._database.prune_seek(self._stats.seek_entry_ttl_seconds)
         self._database.prune_addresses(
@@ -98,11 +111,13 @@ class ListDeriver:
             self._storage.candidate_list_path, render_candidate_list(self._candidates())
         )
         self.write_blocked_list()
+        write_atomically(self._storage.peer_list_path, self._peer_list().body())
         return DerivedLists(
             node_list=self._storage.node_list_path,
             seek_list=self._storage.seek_list_path,
             candidate_list=self._storage.candidate_list_path,
             blocked_list=self._storage.blocked_list_path,
+            peer_list=self._storage.peer_list_path,
             candidate_list_changed=candidate_list_changed,
         )
 
@@ -140,6 +155,15 @@ class ListDeriver:
             for node_id, endpoints in self._database.candidate_endpoints(exclude=self._node_id)
             if node_id not in given_up
         ]
+
+    def _peer_list(self) -> PeerList:
+        return PeerList.read(
+            self._database,
+            self._connected,
+            exclude=self._node_id,
+            max_peers=self._stats.max_peers_listed,
+            now=self._clock(),
+        )
 
     def _seek_list_body(self) -> bytes:
         return render_seek_list(

@@ -5,13 +5,20 @@ counters the implementation plan calls for. Instances are read-only
 snapshots: they are built from a query and never write anything back.
 Identifiers in a row were normalized on the way in
 (:mod:`libranet.stats.database`), so they are rebuilt as they are.
+
+What is known of a node, and of each of its addresses, has a JSON form, as
+the peer list gives it (HttpApi §10.8), in which each moment is RFC 3339
+text (:func:`~libranet.json_format.moment_text`), and one not yet come is
+``null``.
 """
 
 from __future__ import annotations
 from dataclasses import dataclass
 from sqlite3 import Row
+from typing import Any
 
 from libranet.cas.content_id import ContentId
+from libranet.json_format import moment_text
 from libranet.messaging.events import AddressSource
 
 
@@ -87,6 +94,22 @@ class NodeStats:  # pylint: disable=too-many-instance-attributes
             last_failure=row["last_failure"],
         )
 
+    def value(self) -> dict[str, Any]:
+        """The JSON object the peer list gives for these statistics, but the node id."""
+        return {
+            "connection_attempts": self.connection_attempts,
+            "successful_connections": self.successful_connections,
+            "remote_disconnects": self.remote_disconnects,
+            "last_connected": _moment(self.last_connected),
+            "connected_seconds": self.connected_seconds,
+            "bytes_received": self.bytes_received,
+            "bytes_sent": self.bytes_sent,
+            "data_found": self.data_found,
+            "data_not_found": self.data_not_found,
+            "consecutive_failures": self.consecutive_failures,
+            "last_failure": _moment(self.last_failure),
+        }
+
 
 @dataclass(frozen=True)
 class NodeAddress:  # pylint: disable=too-many-instance-attributes
@@ -116,3 +139,21 @@ class NodeAddress:  # pylint: disable=too-many-instance-attributes
             successes=row["successes"],
             consecutive_failures=row["consecutive_failures"],
         )
+
+    def value(self) -> dict[str, Any]:
+        """The JSON object the peer list gives for this address, but the node id."""
+        return {
+            "endpoint": self.endpoint,
+            "source": self.source.value,
+            "last_learned": moment_text(self.last_learned),
+            "first_success": _moment(self.first_success),
+            "last_success": _moment(self.last_success),
+            "attempts": self.attempts,
+            "successes": self.successes,
+            "consecutive_failures": self.consecutive_failures,
+        }
+
+
+def _moment(seconds: float | None) -> str | None:
+    """The moment ``seconds`` after the epoch as JSON writes it, or ``None`` for none."""
+    return None if seconds is None else moment_text(seconds)

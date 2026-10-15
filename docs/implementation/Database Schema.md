@@ -268,7 +268,9 @@ content exchanged with it, and is never deleted.
 - **The connections counted are the ones this node dials.** Every
   `connection.*` event comes from the connection manager. A peer that only
   ever dials in gets a row when content from it is stored, its public key
-  included, not when it connects.
+  included, not when it connects. Whether a peer is connected now, either
+  way, is not stored: stats keeps it in memory, as `peers.connected` names
+  it, for the peer list (§7.2).
 - **An attempt is counted for each address.** One try at a node with three
   addresses, none answering, adds 3 to `connection_attempts` and 1 to
   `consecutive_failures`.
@@ -444,6 +446,8 @@ stats first deletes the seek entries and addresses that are past keeping
 | `last_good_endpoints` | Each derivation | `node_addresses` | Whole table, with a window function |
 | `candidate_endpoints` | Each derivation | `node_addresses` | Whole table, with two window functions |
 | `given_up_nodes` | Each derivation | `node_stats` | Whole table |
+| `all_node_stats` | Each derivation | `node_stats` | Whole table |
+| `all_node_addresses` | Each derivation | `node_addresses` | Whole table, sorted |
 | `seek_values` | Each derivation, and each new search, once for each kind | `seek_entries` | Primary key prefix, then sorted |
 | `apps_accessed_since` | `resolved.reclaim_requested` | `app_bundles` | Whole table |
 | `node_stats` | `node.unreached`, to read the new count | `node_stats` | Primary key |
@@ -476,6 +480,7 @@ its contents change.
 | `candidates.json` | `candidate_endpoints`, less `given_up_nodes` | Nodes that have been reached first, most recently first, then the rest, most recently learned first |
 | `seek.json` | `seek_values` for this node, of each kind | Most recently asked for first |
 | `blocked.json` | `blocked_ids` | By hash |
+| `peers.json` | `all_node_stats` and `all_node_addresses`, with the peers connected now | Those connected first, then the most recently connected, then the most recently learned of; up to `stats.max_peers_listed` (1000) |
 
 A node is given up on while its `consecutive_failures` is at least
 `stats.max_node_failures` (5) and its `last_failure` is within the last
@@ -488,6 +493,12 @@ at once when a node is given up on. `blocked.json` is also written at once
 when content is first blocked, and `seek.json` when a search names a prefix
 this node's seek list does not, so that the peers connected to it read the
 prefix on their next refresh and push what matches (Phase 4 Step 93).
+`peers.json` says when it was derived, so it is written at every derivation,
+whether or not anything else in it changed (Phase 5 Step 107). It names
+every node with a row in either table, and every node connected now, but
+this node, with every column of both but the node id, and which way each is
+connected; a node connected only as it dials in may have no row (§4.2). The
+web server serves it to local clients as `GET /data/peers` (HttpApi §10.8).
 
 Stats also answers two events from what it reads: `eviction.candidates`,
 with the objects to let go of first, and `resolved.reclaim`, with the
@@ -661,12 +672,14 @@ FROM app_bundles ORDER BY last_accessed DESC;
 What the schema does not do yet:
 
 - **No version and no migration** (§9.1). `PRAGMA user_version` is unused.
-- **Most counters are written and never read.** The node itself reads only
+- **Most counters are written and never read by the node.** It reads only
   `size`, the two request counters, `last_requested`, and `last_acquired`
   from `data_stats`, and `consecutive_failures`, `last_failure`, and
-  `last_connected` from `node_stats`. `pushes`, `deletes`, `stored_seconds`,
-  and the other eight columns of `node_stats` are kept for a later use, as
-  are `first_success`, `attempts`, and `successes` in `node_addresses`.
+  `last_connected` from `node_stats`. `pushes`, `deletes`, and
+  `stored_seconds` are kept for a later use. The other eight columns of
+  `node_stats`, and `first_success`, `attempts`, and `successes` in
+  `node_addresses`, are only copied into the peer list, for pages to show
+  (§7.2).
 - **Peers' seek entries are written and never read.**
 - **Three tables never lose a row** (§8). `data_stats` grows with requests,
   not with content held: each `GET` of a well-formed id the node has not

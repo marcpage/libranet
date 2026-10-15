@@ -1,4 +1,4 @@
-"""Tests for deriving the plain node and seek list files, and the candidate list."""
+"""Tests for deriving the plain node and seek list files, and the candidate and peer lists."""
 
 from __future__ import annotations
 from json import loads
@@ -10,9 +10,10 @@ from pytest import LogCaptureFixture, MonkeyPatch, fixture
 
 from libranet.cas.content_id import ContentId
 from libranet.config.models import StatsConfig, StorageConfig
-from libranet.messaging.events import AddressSource
+from libranet.messaging.events import AddressSource, ConnectionDirection
 from libranet.stats.database import StatsDatabase
 from libranet.stats.derivation import DerivedLists, ListDeriver
+from libranet.stats.peers import ConnectedPeers
 from libranet.stats.schema import SeekKind
 
 SELF_ID = ContentId.for_data(b"this node's public key", "sha256")
@@ -264,3 +265,38 @@ def test_a_node_given_up_on_is_left_out_of_the_candidate_list_but_not_forgotten(
     assert [address.endpoint for address in database.node_addresses(PEER_ID)] == [
         "http://203.0.113.9:4300"
     ]
+
+
+def test_the_peer_list_names_the_peers_known_and_how_each_is_connected(
+    database: StatsDatabase, storage: StorageConfig
+) -> None:
+    connected = ConnectedPeers()
+    connected.named(ConnectionDirection.OUTBOUND, [PEER_ID])
+    now = [1_791_979_200.0]
+    deriver = ListDeriver(
+        database,
+        storage,
+        StatsConfig(max_peers_listed=1),
+        [SELF_ENDPOINT],
+        SELF_ID,
+        connected=connected,
+        clock=lambda: now[0],
+    )
+    database.record_address_worked(PEER_ID, "http://203.0.113.9:4300")
+    database.record_address_worked(OTHER_PEER_ID, "http://198.51.100.7:8080")
+
+    lists = deriver.derive()
+    first = loads(lists.peer_list.read_bytes())
+    now[0] += 60
+    connected.named(ConnectionDirection.OUTBOUND, [])
+    second = loads(deriver.derive().peer_list.read_bytes())
+
+    assert lists.peer_list == storage.peer_list_path
+    # The one connected, of the most listed.
+    assert first["derived"] == "2026-10-14T12:00:00Z"
+    assert [(peer["node_id"], peer["connected"]) for peer in first["peers"]] == [
+        (str(PEER_ID), ["outbound"])
+    ]
+    # Written afresh, though no peer's statistics changed.
+    assert second["derived"] == "2026-10-14T12:01:00Z"
+    assert second["peers"][0]["connected"] == []

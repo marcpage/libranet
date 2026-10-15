@@ -32,6 +32,7 @@ The payloads it consumes, by event:
 ``app.accessed``       ``{"bundle"}`` (Phase 2 Step 29)
 ``resolved.reclaim_requested`` ``{}`` (Phase 2 Step 29)
 ``data.blocked``       ``{"algorithm", "hash"}`` (Phase 4 Step 30)
+``peers.connected``    ``{"direction", "node_ids": [...]}`` (Phase 5 Step 107)
 
 A miss on ``GET /data/{algorithm}/{hash}`` and a ``GET /data/search/{prefix}``
 are both requests this node could not answer, so each becomes an entry in
@@ -101,6 +102,12 @@ It publishes ``nodes.updated``, with no payload, whenever the derived
 candidate list (``storage.candidate_list_path``) changes, which is the
 connection manager's cue to reconsider its peer mix (Step 11). The candidate
 list's shape is documented in :mod:`libranet.stats.derivation`.
+
+The peers connected each way, as the connection manager and the web server
+name them in ``peers.connected``, are kept for the peer list a derivation
+writes (:mod:`libranet.stats.peers`, Phase 5 Step 107). Stats asks for both
+lists as it starts, with ``peers.connected_requested``, as the eviction
+module does, since it may start again after they were last named.
 """
 
 from __future__ import annotations
@@ -114,7 +121,7 @@ from libranet.cas.store import CasStore, HeldObject
 from libranet.config.models import LibranetConfig
 from libranet.identity.node_identity import NodeIdentity
 from libranet.messaging.envelope import Message
-from libranet.messaging.events import AddressSource, EventType
+from libranet.messaging.events import AddressSource, ConnectionDirection, EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
@@ -122,6 +129,7 @@ from libranet.protocol.search import SearchCache, normalize_prefix
 from libranet.stats.database import StatsDatabase
 from libranet.stats.derivation import ListDeriver
 from libranet.stats.enrichment import SearchEnricher
+from libranet.stats.peers import ConnectedPeers
 from libranet.stats.schema import SeekKind
 
 _Component = TypeVar("_Component")
@@ -159,6 +167,7 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             EventType.APP_ACCESSED,
             EventType.RESOLVED_RECLAIM_REQUESTED,
             EventType.DATA_BLOCKED,
+            EventType.PEERS_CONNECTED,
         }
     )
 
@@ -186,6 +195,7 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._database: StatsDatabase | None = None
         self._deriver: ListDeriver | None = None
         self._enricher: SearchEnricher | None = None
+        self._connected = ConnectedPeers()
         self._derived_at = 0.0
         self._route(
             {
@@ -209,6 +219,7 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
                 EventType.APP_ACCESSED: self._on_app_accessed,
                 EventType.RESOLVED_RECLAIM_REQUESTED: self._on_reclaim_requested,
                 EventType.DATA_BLOCKED: self._on_data_blocked,
+                EventType.PEERS_CONNECTED: self._on_peers_connected,
             }
         )
 
@@ -228,7 +239,7 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         return _started(self._enricher)
 
     def on_start(self) -> None:
-        """Open the database and write the derived lists before anything asks for them.
+        """Open the database, write the lists before they are asked for, and ask who is connected.
 
         The node identity is read here rather than passed across the process
         boundary, for the same reason the web server reads it: the private
@@ -244,6 +255,8 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             self._config.stats,
             self._config.network.own_endpoints(),
             identity.node_id,
+            connected=self._connected,
+            clock=self._clock,
         )
         self._enricher = SearchEnricher(
             self._database,
@@ -252,6 +265,7 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         )
         self.logger.info("Stats database open at %s", storage.database_path)
         self.derive()
+        self.publish(EventType.PEERS_CONNECTED_REQUESTED)
 
     def on_idle(self) -> None:
         """Re-derive the lists once the configured interval has passed."""
@@ -446,6 +460,13 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self.database.clear_seek(SeekKind.DATA, str(content_id))
         self.deriver.write_blocked_list()
         self.logger.info("Blocked %s", content_id)
+
+    def _on_peers_connected(self, message: Message) -> None:
+        """Keep the peers now connected one way, in place of those named before."""
+        self._connected.named(
+            ConnectionDirection(message["direction"]),
+            (ContentId.parse(node_id) for node_id in message["node_ids"]),
+        )
 
     def _on_reclaim_requested(self, _message: Message) -> None:
         """Tell the unbundler whose resolved files to keep: those of applications used lately."""

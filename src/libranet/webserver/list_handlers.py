@@ -1,9 +1,11 @@
-"""``/data/nodes`` and ``/data/seek``: the node and seek lists (HttpApi §10.5, §10.7).
+"""``/data/nodes``, ``/data/seek``, and ``/data/peers``: the lists stats derives (HttpApi §10).
 
 A ``GET`` serves the file the stats module derives (Step 8) exactly as it is
 on disk, so reading a list costs the stats module nothing. Until the first
 derivation has written the file, the answer is ``503`` with a
-``Retry-After``.
+``Retry-After``. The peer list, what this node knows of each peer, is served
+to local clients alone, from a trusted application's page (HttpApi §10.8,
+Phase 5 Step 107), and is never posted.
 
 A ``POST`` is a peer publishing its own list. Like an upload, it needs a
 signature (HandshakeProtocol §2.1): a posted seek list is recorded against
@@ -30,13 +32,14 @@ from dataclasses import dataclass
 from http import HTTPStatus
 from logging import getLogger
 from pathlib import Path
+from typing import Final
 
 from libranet.cas.content_id import ContentId
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.problems import INVALID_LIST
 from libranet.protocol.errors import InvalidListError
-from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
+from libranet.protocol.http_syntax import API_PREFIX, JSON_CONTENT_TYPE
 from libranet.protocol.lists import decode_list, parse_node_list, parse_seek_list
 from libranet.protocol.localhost_resolution import NodeListSender
 from libranet.webserver.http_types import (
@@ -52,6 +55,9 @@ from libranet.webserver.request_refusals import (
 )
 
 _LOGGER = getLogger(__name__)
+
+#: Where a local client's page reads what this node knows of its peers (HttpApi §10.8).
+PEERS_PATH: Final = API_PREFIX + "/peers"
 
 
 @dataclass(frozen=True)

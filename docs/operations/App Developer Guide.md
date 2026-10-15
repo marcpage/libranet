@@ -255,6 +255,7 @@ when trusted. `self.origin === "null"` tells a page it is sandboxed.
 | `/data/encrypted/{id}` | `GET`, `POST` | Local | A trusted application's | Open a drop encrypted for whoever is signed in, or by a password (§6.15) |
 | `/data/{id}` | `DELETE` | Local | A trusted application's | Delete and block content the node will no longer hold (§6.11) |
 | `/data/nodes`, `/data/seek` | `GET` | Any | Any, or none | The peers the node knows, and what it seeks (§6.8) |
+| `/data/peers` | `GET` | Local | A trusted application's | What the node knows of each peer, and whether it is connected (§6.8) |
 
 ### 5.3 Waiting for Content
 
@@ -566,6 +567,27 @@ the node itself first, and `GET /data/seek` the content it is still looking
 for. Both answer `503` until the node has first worked them out. Every
 answer of the node is signed, in its `Signature` and `Signature-Input`
 headers (HTTP API §11).
+
+`GET /data/peers` gives a local client what the node knows of each peer: its
+node id, the ways a connection to it is open now (`outbound`, `inbound`, or
+none), what the node has counted of it, and each of its addresses (HTTP API
+§10.8):
+
+```json
+{"derived": "2026-10-14T12:00:00Z",
+ "peers": [{"node_id": "sha256/…", "connected": ["outbound"],
+            "stats": {"bytes_received": 1048576, "bytes_sent": 65536,
+                      "last_connected": "2026-10-14T11:58:12Z", …},
+            "addresses": [{"endpoint": "http://203.0.113.9:4300",
+                           "source": "dialed", …}]}]}
+```
+
+The node works it out every minute or so, and `derived` says when, so a
+connection may have opened or closed since. Those connected come first.
+Only a trusted application's page on the node's own machine may read it,
+since it says whom the node talks to and how much; elsewhere it is `403`,
+so ask `GET /data/client` (§6.2) before offering it. Like the others, it
+answers `503` until the node has first worked it out.
 
 ### 6.9 Making a Drop
 

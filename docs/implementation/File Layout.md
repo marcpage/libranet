@@ -63,7 +63,7 @@ A node on macOS with every default, after its first run, looks like this:
 │   ├── backup_jobs/                each job's last bundle, kept expanded
 │   └── store/                      each application's store
 ├── Caches/libranet/                storage.cache_dir
-│   ├── lists/                      derived node, seek, and candidate lists
+│   ├── lists/                      the lists stats derives (§4.1)
 │   └── search/                     cached search responses
 └── Logs/libranet/                  logging.directory
     └── libranet-{module}.log       one per process
@@ -402,7 +402,8 @@ forget what it kept here. What a store names is content, and stays in
 │   ├── nodes.json            body of GET /data/nodes
 │   ├── seek.json             body of GET /data/seek
 │   ├── candidates.json       every known address of every peer
-│   └── blocked.json          the content this node has blocked
+│   ├── blocked.json          the content this node has blocked
+│   └── peers.json            body of GET /data/peers
 └── search/
     └── {prefix[:4]}/         storage.hash_prefix_length characters
         └── {prefix}.json     body of GET /data/search/{prefix}
@@ -425,12 +426,14 @@ since none of them may open SQLite.
 | `seek.json` | Web server (`GET /data/seek`); connection manager | `stats.max_list_bytes`, `stats.seek_entry_ttl_seconds` |
 | `candidates.json` | Connection manager, choosing whom to dial | `stats.max_addresses_per_node` |
 | `blocked.json` | Web server, validator, and fetcher, refusing blocked content (`src/libranet/cas/blocked.py`) | Nothing: every block the database holds |
+| `peers.json` | Web server (`GET /data/peers`, for local clients' pages) | `stats.max_peers_listed` |
 
 `blocked.json` is also written at once when content is first blocked
 (Phase 4 Step 30), and each reader reads it again only once it is replaced.
 Until it is derived, nothing is blocked. `seek.json` is also written at once
 when a search names a prefix it does not list, so that peers read the prefix
-on their next refresh (Phase 4 Step 93).
+on their next refresh (Phase 4 Step 93). `peers.json` says when it was
+derived, so it is written at every derivation (Phase 5 Step 107).
 
 Until a list has been derived, the web server answers requests for it with
 `503` and a `Retry-After` of `network.retry_after_seconds`.
@@ -642,6 +645,7 @@ optional; `examples/libranet.yaml` shows them all with their defaults.
 | `stats.max_address_failures` | `5` | — | Failed attempts in a row after which an address that has never worked is dropped from the lists |
 | `stats.max_node_failures` | `5` | — | Failed attempts in a row to reach a peer at every address after which it is left out of `candidates.json` |
 | `stats.node_cool_off_seconds` | `86400.0` | — | How long a peer given up on is left out of `candidates.json` |
+| `stats.max_peers_listed` | `1000` | — | Most peers in `peers.json`, those connected first |
 | `backup.interval_seconds` | `3600.0` | — | How often a job's directory is checked |
 | `backup.max_update_layers` | `32` | — | Update layers a backup or build stores over its last whole bundle before storing a whole one again |
 | `backup.restore_stall_seconds` | `86400.0` | — | How long a restore waits with none of the content it lacks arriving before it gives up |

@@ -35,6 +35,7 @@ CONTENT_SIZE = len(CONTENT)
 CONTENT_ID = ContentId.for_data(CONTENT, "sha256")
 OTHER_ID = ContentId.for_data(b"other content", "sha256")
 PEER_ID = ContentId.for_data(b"a peer's public key", "sha256")
+OTHER_PEER_ID = ContentId.for_data(b"another peer's public key", "sha256")
 PEER_ENDPOINT = "http://203.0.113.9:4300"
 NOW = 1_000_000.0
 SELF_ENDPOINT = "http://localhost:9099"
@@ -148,8 +149,12 @@ def test_starting_opens_the_database_and_writes_every_list(
     assert seek_list(config) == {"data": [], "search": []}
     assert candidates(config) == {}
     assert loads(config.storage.blocked_list_path.read_bytes()) == {"blocked": []}
-    (message,) = published(queues)
-    assert message["event"] == EventType.NODE_LIST_UPDATED
+    assert loads(config.storage.peer_list_path.read_bytes())["peers"] == []
+    # It asks who is connected after deriving, so the answers wait for the next.
+    assert [message["event"] for message in published(queues)] == [
+        EventType.NODE_LIST_UPDATED,
+        EventType.PEERS_CONNECTED_REQUESTED,
+    ]
 
 
 def test_a_node_whose_ports_differ_publishes_both_for_itself(
@@ -904,6 +909,39 @@ def test_reaching_a_node_starts_its_count_again(
     assert candidates(config) == {str(PEER_ID): [PEER_ENDPOINT]}
 
 
+def connected(direction: str, *node_ids: ContentId) -> Message:
+    return broadcast(
+        EventType.PEERS_CONNECTED,
+        {"direction": direction, "node_ids": [str(node_id) for node_id in node_ids]},
+        ModuleName.WEBSERVER if direction == "inbound" else ModuleName.CONNECTIONS,
+    )
+
+
+def peers(config: LibranetConfig) -> dict[str, list[str]]:
+    return {
+        peer["node_id"]: peer["connected"]
+        for peer in loads(config.storage.peer_list_path.read_bytes())["peers"]
+    }
+
+
+def test_the_peers_connected_each_way_are_listed_at_the_next_derivation(
+    module: StatsModule, config: LibranetConfig
+) -> None:
+    module.handle(connected("outbound", PEER_ID))
+    module.handle(connected("inbound", PEER_ID, OTHER_PEER_ID))
+
+    assert peers(config) == {}
+
+    module.derive()
+
+    assert peers(config) == {str(PEER_ID): ["outbound", "inbound"], str(OTHER_PEER_ID): ["inbound"]}
+
+    module.handle(connected("inbound"))
+    module.derive()
+
+    assert peers(config) == {str(PEER_ID): ["outbound"]}
+
+
 def test_a_candidate_list_that_changed_is_announced_once(
     module: StatsModule, queues: ModuleQueues
 ) -> None:
@@ -1010,6 +1048,7 @@ def test_the_module_subscribes_to_what_it_records() -> None:
     assert EventType.RESOLVED_RECLAIM_REQUESTED in StatsModule.subscriptions
     assert EventType.DATA_BLOCKED in StatsModule.subscriptions
     assert EventType.SEARCH_ANSWERED in StatsModule.subscriptions
+    assert EventType.PEERS_CONNECTED in StatsModule.subscriptions
     assert EventType.PUT_COMPLETED not in StatsModule.subscriptions
     assert EventType.NODE_LIST_UPDATED not in StatsModule.subscriptions
 

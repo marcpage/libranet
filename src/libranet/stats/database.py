@@ -337,6 +337,10 @@ class StatsDatabase:  # pylint: disable=too-many-public-methods
         )
         return None if row is None else NodeStats.from_row(row)
 
+    def all_node_stats(self) -> list[NodeStats]:
+        """What is known about every node that has statistics, in no set order."""
+        return [NodeStats.from_row(row) for row in self._query("SELECT * FROM node_stats", {})]
+
     def given_up_nodes(self, max_failures: int, cool_off_seconds: float) -> set[str]:
         """The node ids not to dial for now, as text.
 
@@ -413,6 +417,16 @@ class StatsDatabase:  # pylint: disable=too-many-public-methods
             {"node_id": str(node_id)},
         )
         return [NodeAddress.from_row(row) for row in rows]
+
+    def all_node_addresses(self) -> dict[ContentId, list[NodeAddress]]:
+        """Every known address of every node, each node's in the order they are tried."""
+        addresses: dict[ContentId, list[NodeAddress]] = {}
+
+        for row in self._query(f"SELECT * FROM node_addresses ORDER BY node_id, {_TRY_ORDER}", {}):
+            address = NodeAddress.from_row(row)
+            addresses.setdefault(address.node_id, []).append(address)
+
+        return addresses
 
     def last_good_endpoints(self, exclude: ContentId | None = None) -> list[tuple[str, str]]:
         """Each node's last known good ``(endpoint, node id)``, best first, minus ``exclude``.
