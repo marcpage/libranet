@@ -650,7 +650,9 @@ blocked content as it would for content it does not hold:
   outstanding requests (§10.7) never name it. The node never pushes it to
   a peer that seeks it (§10.7.2).
 
-A block outlives the content it names, and is never lifted.
+A block outlives the content it names, and is never lifted. A node blocks
+some content of itself, too: each version of a trust list older than the
+newest it reads (Trust Network §3.3).
 
 A page of a trusted application asks the node to delete content, and block
 it, with:
@@ -2026,10 +2028,11 @@ DELETE /data/trust/{hash-algorithm}/{hash}
 which neither trusts nor distrusts it. The node reads the newest version of
 the person's list from what it holds (Trust Network §3.3), makes the next
 version with the change, and has it signed by the person and made a drop at
-`trust:{id}`, as making a signed drop does (§11.5). It matches as many bits
-as Trust Network §3.4 says, at least 16 and more where the drop is crowded,
-and its nonce is searched for no longer than that takes (§9.6). It answers
-`201 Created`, with a `Location` naming the drop:
+`trust:{id}`, as making a signed drop does (§11.5), matching at least 16
+bits, with its nonce searched for no longer than that takes (§9.6). It then
+blocks every version of the list it read (§5.5), since the new one replaces
+them (Trust Network §3.4). It answers `201 Created`, with a `Location`
+naming the drop:
 
 ```json
 {"id": "sha256/…", "target": "<target hash>", "matching_bits": 21,
@@ -2052,11 +2055,8 @@ change naming the person's own id, is `400 Bad Request`, with
 `invalid-request`. While a version found at the person's drop is not held
 yet, a change is `503 Service Unavailable` with `Retry-After`, as for any
 miss (§5.2), since that version may be newer than the newest held (Trust
-Network §3.4). A change whose version would have to match more bits than
-the node lets a drop's search ask for (§9.6, §21) is `503 Service
-Unavailable` without `Retry-After`, since asking again changes nothing until
-the node's limit does. A list that would not fit in an object even
-compressed is `413 Content Too Large`.
+Network §3.4). A list that would not fit in an object even compressed is
+`413 Content Too Large`.
 
 Reading the scores and changing the list serve only local clients, from a
 page of a trusted application (§2.4, §2.5), as the session does, since the

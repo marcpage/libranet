@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 from json import dumps, loads
-from logging import WARNING
 from threading import Thread
 from typing import Any, Mapping
 
-from pytest import LogCaptureFixture, fixture, mark, raises
+from pytest import fixture, mark, raises
 
 from libranet.bundle.content import content_chunks
 from libranet.bundle.protection import strip_targeting
@@ -15,7 +14,7 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
 from libranet.identity.people import NewIdentity, PersonKey, Username
-from libranet.identity.trust import MAX_AS_NEAR, MIN_TRUST_LIST_BITS, TrustList
+from libranet.identity.trust import MIN_TRUST_LIST_BITS, TrustList
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.problems import (
@@ -45,7 +44,6 @@ MAX_BYTES = 64 * 1024
 MAX_SECONDS = 1.0
 MAX_MINIMUM_BITS = 20
 RETRY_AFTER_SECONDS = 3
-HASH_BITS = 256
 
 
 class Recorder:
@@ -93,22 +91,16 @@ def trust_edits(
     uploads: OwnUploads,
     sessions: Sessions,
     recorder: Recorder,
-    **limits: int,
+    max_object_bytes: int = MAX_BYTES,
 ) -> TrustEdits:
-    """The trust endpoints over ``truth``, as the web server makes them, under ``limits``.
+    """The trust endpoints over ``truth``, as the web server makes them.
 
-    ``limits`` are ``max_object_bytes`` and ``max_minimum_bits``, each this
-    module's by default.
+    Each drop is stored in an object no larger than ``max_object_bytes``.
     """
     search = SearchHandler(
         LocalSearch(truth, storage.search_max_results), SearchCache.of(storage), recorder
     )
-    drops = DropHandler(
-        uploads,
-        limits.get("max_object_bytes", MAX_BYTES),
-        MAX_SECONDS,
-        limits.get("max_minimum_bits", MAX_MINIMUM_BITS),
-    )
+    drops = DropHandler(uploads, max_object_bytes, MAX_SECONDS, MAX_MINIMUM_BITS)
     return TrustEdits(
         TrustLists(search, uploads),
         drops,
@@ -179,16 +171,19 @@ def stored(truth: CasStore, uploads: OwnUploads, response: Response) -> ContentI
     return drop_id
 
 
-def crowded(truth: CasStore, person: PersonKey, matching: int, count: int) -> None:
-    """``count`` objects at ``person``'s drop, sharing exactly ``matching`` bits, none a version.
+def held_version(truth: CasStore, person: PersonKey, trust_list: TrustList) -> ContentId:
+    """``trust_list``, signed by ``person``, stored in ``truth`` as a drop at their list's."""
+    drop = TrustList.drop_target(person.person_id).placed(
+        person.signed(dumps(trust_list.value())).encoded(), 0, minimum_bits=MIN_TRUST_LIST_BITS
+    )
+    content_id = ContentId.for_data(drop.data, "sha256")
+    truth.write(content_id, drop.data)
+    return content_id
 
-    Each holds what is not it, so that a reader passes over it, held.
-    """
-    target = int(TrustList.drop_target(person.person_id).hex, 16)
-    near = target ^ (1 << (HASH_BITS - 1 - matching))
 
-    for index in range(count):
-        truth.write(ContentId("sha256", f"{near ^ index:064x}"), b"placed for something else")
+def blocked(recorder: Recorder) -> list[dict[str, Any]]:
+    """What this node was asked to block."""
+    return recorder.payloads(EventType.DATA_BLOCKED)
 
 
 def drops_placed(recorder: Recorder, person: PersonKey) -> list[dict[str, Any]]:
@@ -259,12 +254,7 @@ def test_a_change_places_the_next_version_over_the_newest_held(
     person: PersonKey,
     cookie: Mapping[str, str],
 ) -> None:
-    first = TrustList({BOB: True, CAROL: True}, 1)
-    drop = TrustList.drop_target(person.person_id).placed(
-        person.signed(dumps(first.value())).encoded(), 0, minimum_bits=MIN_TRUST_LIST_BITS
-    )
-    first_id = ContentId.for_data(drop.data, "sha256")
-    truth.write(first_id, drop.data)
+    first_id = held_version(truth, person, TrustList({BOB: True, CAROL: True}, 1))
 
     response = edits.trust(changing(DAVE, cookie, False))
 
@@ -421,42 +411,57 @@ def test_while_a_version_found_is_not_held_a_change_is_503_and_it_is_asked_for(
     assert response.headers["Cache-Control"] == "no-store"
     assert recorder.payloads(EventType.DATA_NOT_FOUND) == [elsewhere.fields()]
     assert not drops_placed(recorder, person)
+    assert not blocked(recorder)
 
 
-def test_a_version_matches_a_bit_more_while_more_than_ten_at_the_drop_match_as_many(
-    edits: TrustEdits, truth: CasStore, person: PersonKey, cookie: Mapping[str, str]
+def test_the_first_version_blocks_nothing(
+    edits: TrustEdits, cookie: Mapping[str, str], recorder: Recorder
 ) -> None:
-    crowded(truth, person, MIN_TRUST_LIST_BITS, MAX_AS_NEAR + 1)
+    edits.trust(changing(BOB, cookie))
 
-    response = edits.trust(changing(BOB, cookie))
-
-    assert response.status == 201, response.body
-    assert loads(response.body)["matching_bits"] >= MIN_TRUST_LIST_BITS + 1
+    assert not blocked(recorder)
 
 
-def test_a_version_needing_more_bits_than_this_node_searches_for_is_refused(
-    storage: StorageConfig,
+def test_a_version_placed_over_another_has_it_blocked(
+    edits: TrustEdits, cookie: Mapping[str, str], recorder: Recorder
+) -> None:
+    first = edits.trust(changing(BOB, cookie))
+
+    edits.trust(changing(DAVE, cookie, False))
+
+    assert blocked(recorder) == [ContentId.parse(loads(first.body)["id"]).fields()]
+
+
+def test_every_version_read_is_blocked_once_a_newer_is_placed(
+    edits: TrustEdits,
     truth: CasStore,
-    uploads: OwnUploads,
-    sessions: Sessions,
-    recorder: Recorder,
-    cookie: Mapping[str, str],
     person: PersonKey,
-    caplog: LogCaptureFixture,
+    cookie: Mapping[str, str],
+    recorder: Recorder,
 ) -> None:
-    edits = trust_edits(
-        storage, truth, uploads, sessions, recorder, max_minimum_bits=MIN_TRUST_LIST_BITS
-    )
-    crowded(truth, person, MIN_TRUST_LIST_BITS, MAX_AS_NEAR + 1)
+    first_id = held_version(truth, person, TrustList({BOB: True}, 1))
+    second_id = held_version(truth, person, TrustList({BOB: True, CAROL: True}, 2, (first_id,)))
 
-    with caplog.at_level(WARNING):
-        response = edits.trust(changing(BOB, cookie))
+    response = edits.trust(changing(DAVE, cookie, False))
 
-    assert response.status == 503
-    assert "Retry-After" not in response.headers
-    assert f"must match {MIN_TRUST_LIST_BITS + 1} bits" in loads(response.body)["detail"]
-    assert not drops_placed(recorder, person)
-    assert "more than the 16 a drop is searched for here" in caplog.text
+    assert loads(response.body)["version"] == 3
+    assert blocked(recorder) == [first_id.fields(), second_id.fields()]
+
+
+def test_a_change_that_changes_nothing_blocks_what_the_newest_replaces(
+    edits: TrustEdits,
+    truth: CasStore,
+    person: PersonKey,
+    cookie: Mapping[str, str],
+    recorder: Recorder,
+) -> None:
+    first_id = held_version(truth, person, TrustList({BOB: True}, 1))
+    held_version(truth, person, TrustList({BOB: True, CAROL: True}, 2, (first_id,)))
+
+    response = edits.trust(changing(CAROL, cookie))
+
+    assert response.status == 204
+    assert blocked(recorder) == [first_id.fields()]
 
 
 def test_a_list_that_does_not_fit_in_an_object_is_413(

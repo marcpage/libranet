@@ -7,13 +7,7 @@ from pytest import LogCaptureFixture, mark, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
-from libranet.identity.trust import (
-    MAX_AS_NEAR,
-    MIN_TRUST_LIST_BITS,
-    HeldTrustList,
-    TrustList,
-    TrustVersion,
-)
+from libranet.identity.trust import HeldTrustList, TrustList, TrustVersion
 
 ALICE = ContentId.for_data(b"Alice's public key", "sha256")
 BOB = ContentId.for_data(b"Bob's public key", "sha256")
@@ -21,7 +15,7 @@ CAROL = ContentId.for_data(b"Carol's public key", "sha256")
 DAVE = ContentId.for_data(b"Dave's public key", "sha256")
 FIRST_DROP = ContentId.for_data(b"Alice's first version, as a drop", "sha256")
 SECOND_DROP = ContentId.for_data(b"Alice's second version, as a drop", "sha256")
-HASH_BITS = 256
+THIRD_DROP = ContentId.for_data(b"Alice's third version, as a drop", "sha256")
 
 
 def version(
@@ -29,12 +23,6 @@ def version(
 ) -> TrustVersion:
     """``trust_list`` as read from ``content_id``, signed by ``signer``."""
     return TrustVersion(content_id, signer, trust_list)
-
-
-def at_drop(matching: int, count: int = 1) -> tuple[ContentId, ...]:
-    """``count`` ids sharing exactly ``matching`` leading bits with Alice's drop, each different."""
-    target = int(TrustList.drop_target(ALICE).hex, 16) ^ (1 << (HASH_BITS - 1 - matching))
-    return tuple(ContentId("sha256", f"{target ^ index:064x}") for index in range(count))
 
 
 def test_a_version_reads_back_as_written() -> None:
@@ -254,43 +242,24 @@ def test_a_list_never_names_its_owner() -> None:
         HeldTrustList(ALICE).next_version(ALICE, True)
 
 
-def test_a_version_matches_the_fewest_bits_while_little_is_at_the_drop() -> None:
-    held = HeldTrustList(ALICE, found=at_drop(MIN_TRUST_LIST_BITS + 3, MAX_AS_NEAR))
+def test_every_version_but_the_newest_is_replaced() -> None:
+    first = version(TrustList({BOB: True}, 1))
+    second = version(TrustList({DAVE: False}, 2, (FIRST_DROP,)), SECOND_DROP)
+    third = version(TrustList({CAROL: True}, 3, (SECOND_DROP,)), THIRD_DROP)
 
-    assert HeldTrustList(ALICE).placing_bits == MIN_TRUST_LIST_BITS
-    assert held.placing_bits == MIN_TRUST_LIST_BITS
-
-
-def test_a_version_matches_a_bit_more_while_more_than_ten_match_as_many() -> None:
-    crowded = HeldTrustList(ALICE, found=at_drop(MIN_TRUST_LIST_BITS, MAX_AS_NEAR + 1))
-    nearer = HeldTrustList(
-        ALICE,
-        found=(
-            *at_drop(MIN_TRUST_LIST_BITS, 1),
-            *at_drop(MIN_TRUST_LIST_BITS + 1, 5),
-            *at_drop(MIN_TRUST_LIST_BITS + 2, MAX_AS_NEAR - 5),
-        ),
-    )
-
-    assert crowded.placing_bits == MIN_TRUST_LIST_BITS + 1
-    # Eleven match 16 bits or more, and ten 17 or more.
-    assert nearer.placing_bits == MIN_TRUST_LIST_BITS + 1
-
-
-def test_a_version_matches_past_everything_nearer_than_its_bits() -> None:
-    held = HeldTrustList(ALICE, found=at_drop(MIN_TRUST_LIST_BITS + 5, MAX_AS_NEAR + 1))
-
-    assert held.placing_bits == MIN_TRUST_LIST_BITS + 6
+    assert HeldTrustList(ALICE, (second, third, first)).replaced == (SECOND_DROP, FIRST_DROP)
+    assert HeldTrustList(ALICE, (first,)).replaced == ()
+    assert HeldTrustList(ALICE).replaced == ()
 
 
 def test_a_version_placed_and_not_yet_found_is_read_with_the_rest() -> None:
     first = version(TrustList({BOB: True}, 1))
     second = version(TrustList({BOB: True, DAVE: False}, 2, (FIRST_DROP,)), SECOND_DROP)
-    held = HeldTrustList(ALICE, (first,), found=(FIRST_DROP,)).with_version(second)
+    held = HeldTrustList(ALICE, (first,)).with_version(second)
 
-    assert held == HeldTrustList(ALICE, (first, second), found=(FIRST_DROP, SECOND_DROP))
+    assert held == HeldTrustList(ALICE, (first, second))
     assert held.newest == second
-    assert held.with_version(second) == held
+    assert held.with_version(second) is held
 
 
 def test_a_version_another_signed_is_not_read_with_the_rest() -> None:

@@ -55,7 +55,7 @@ A version of a trust list is the JSON object
 - **`version`** is 1 for the first version, and one more than the version
   it replaces for each after.
 - **`versions`** names the drop of the version it replaces, and is left
-  out of the first, so that the history can be walked back to it.
+  out of the first.
 
 A reader passes over an entry whose name is not a content identifier, or
 whose value is not `true` or `false`, and a name in `versions` that is not a
@@ -71,8 +71,7 @@ owner never counts (§4.1).
 A trust list is a signed bundle whose `contents` is a version of the list,
 signed by its owner, and made a drop at the target string `trust:{id}`,
 the owner's id after `trust:`, such as `trust:sha256/0a1b…`. Each version
-is placed matching at least 16 leading bits of the target hash, and more
-where the drop is crowded (§3.4).
+is placed matching at least 16 leading bits of the target hash.
 
 A list is **public**, distrust included. It is read by others for their
 scores to reach through it (§4), so it is never encrypted, and anyone may
@@ -102,10 +101,14 @@ A reader finds the newest version of the list of an identity `X` this way:
   whose drop's identifier sorts first. Only `X` signs a version, so no one
   else can make one newer, and no clock is trusted.
 
-An identity none of whose versions is found has an empty list. No version
-is ever blocked
-([HTTP API §5.5](HttpApi.md#55-blocked-content)), since a reader may need
-any of them to walk the history back.
+An identity none of whose versions is found has an empty list.
+
+A node blocks every version it reads that is older than the newest
+([HTTP API §5.5](HttpApi.md#55-blocked-content)), since the newest replaces
+it. Every version is placed at the same drop, and a search lists at most 32
+results ([HTTP API §6](HttpApi.md#6-content-search)), so a list changed
+often would otherwise crowd its newest version out of a search with its
+own history.
 
 ### 3.4 Changing a List
 
@@ -115,30 +118,9 @@ while a version found at the drop is not held yet, since it may be newer
 than the newest read, and one placed over the older would be numbered
 under it.
 
-A writer places the new version matching enough leading bits of the target
-hash that a search of the drop lists it among the nearest: the fewest, from
-16 up, that no more than 10 of what a search of the drop finds match. That
-is everything found sharing at least 16 bits with the target hash, held or
-not, whoever placed it. So while more than 10 found match 16 bits or more,
-the version matches at least 17, while more than 10 match 17 or more, at
-least 18, and so on. A search lists at most 32 results
-([HTTP API §6](HttpApi.md#6-content-search)), nearest first, so a version
-placed this way is among them however much is placed at the drop after it,
-up to the 21 more a search has room for.
-
-**TBD:**
-
-- **A crowded drop.** Every version stays at the drop, so a list changed
-  often crowds it with its own history, and each change adds one more to
-  what the next must outnumber. The bits a version needs grow by about one
-  for every five or six changes, and each bit doubles the search for its
-  nonce. Past about 50 changes, a version matches some 24 bits, about 15
-  seconds of search on the reference node, and past about 60, more bits
-  than a node searches a drop for by default (HTTP API §21). Whether a
-  reader pages through a crowded drop, the versions move to a new drop as
-  they accumulate, or nodes block what a newer version replaces, as mail's
-  pages do (App Developer Guide §6.16) but §3.3 rules out for a trust list,
-  is open.
+A writer places the new version matching at least 16 leading bits of the
+target hash (§3.2), and blocks every version it read, since the new one
+replaces them all (§3.3).
 
 ## 4. Scores
 

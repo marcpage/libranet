@@ -12,20 +12,26 @@ the change (:meth:`~libranet.identity.trust.HeldTrustList.next_version`),
 signs it with the key the session holds, and makes it a drop at
 ``trust:{id}``, as ``POST /data/signed`` makes one (:meth:`DropHandler.placed`),
 storing the person's public key again. The nonce is searched for until the
-drop matches as many bits as the list's drop needs (Trust Network §3.4), and
-no longer. It answers ``201``, with a ``Location`` naming the drop::
+drop matches :data:`~libranet.identity.trust.MIN_TRUST_LIST_BITS`, and no
+longer. It answers ``201``, with a ``Location`` naming the drop::
 
-    {"id": "sha256/…", "target": "<hex>", "matching_bits": 17,
+    {"id": "sha256/…", "target": "<hex>", "matching_bits": 16,
      "signer": "sha256/…", "version": 3}
+
+Every version read but the newest is blocked, and the newest too once a
+version is placed over it, so that what is replaced does not crowd the newest
+out of a search of the drop (Trust Network §3.3, §3.4). The web server
+cannot block, so it asks the stats module, as
+``DELETE /data/{algorithm}/{hash}`` does::
+
+    data.blocked  {"algorithm": "sha256", "hash": "<hex>"}
 
 A change that changes nothing places nothing, and is ``204``. While a version
 found at the drop is not held, a change is ``503``, and what is not held is
-asked for, since it may be newer than the newest held. One whose version
-would have to match more bits than this node searches a drop for is ``503``
-too, with no ``Retry-After``, since asking again changes nothing. A change
-naming the person is ``400``, and so is a body that is not ``{"trust":
-true}`` or ``false``. No one signed in is ``401``, and a fallback that has
-not taken over ``403``, since it signs nothing.
+asked for, since it may be newer than the newest held. A change naming the
+person is ``400``, and so is a body that is not ``{"trust": true}`` or
+``false``. No one signed in is ``401``, and a fallback that has not taken
+over ``403``, since it signs nothing.
 
 Changes are made one at a time, in the order they come, each over the version
 the one before it placed. What this node uploads is found by a search only
@@ -38,12 +44,12 @@ from __future__ import annotations
 from dataclasses import replace
 from http import HTTPStatus
 from logging import getLogger
-from typing import Final
+from typing import Final, Iterable
 
 from libranet.bundle.storing import store_object
 from libranet.cas.content_id import ContentId
 from libranet.identity.people import PersonKey
-from libranet.identity.trust import HeldTrustList, TrustList, TrustVersion
+from libranet.identity.trust import MIN_TRUST_LIST_BITS, HeldTrustList, TrustList, TrustVersion
 from libranet.json_format import compact_json
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
@@ -52,13 +58,7 @@ from libranet.protocol.http_syntax import API_PREFIX
 from libranet.protocol.trust_requests import TrustRequest
 from libranet.webserver.costly_work import Turns
 from libranet.webserver.drop_handler import DropHandler
-from libranet.webserver.http_types import (
-    NOT_STORED,
-    Request,
-    Response,
-    json_response,
-    status_response,
-)
+from libranet.webserver.http_types import NOT_STORED, Request, Response, json_response
 from libranet.webserver.request_refusals import (
     content_id_or_refusal,
     content_unavailable_response,
@@ -88,8 +88,8 @@ class TrustEdits:
     ``drops``, as ``/data/drop`` makes one, the person's public key stored
     again in ``drops.uploads``. What was found at the list's drop and is not
     held is asked for with ``publish``, a client told to ask again after
-    ``retry_after_seconds``. Any number of request threads may use them at
-    once.
+    ``retry_after_seconds``, and what a newer version replaces is blocked
+    with it. Any number of request threads may use them at once.
 
     Raises:
         ValueError: ``retry_after_seconds`` is negative.
@@ -174,26 +174,12 @@ class TrustEdits:
         if held.missing:
             return self._missing_response(request, held)
 
+        # The newest replaces them, whether or not a version is placed over it.
+        self._block(held.replaced)
+
         if changed is None:
             _LOGGER.debug("%s's trust list already says that of %s", person.person_id, identity)
             return Response(HTTPStatus.NO_CONTENT)
-
-        bits = held.placing_bits
-
-        if bits > self._drops.max_minimum_bits:
-            _LOGGER.warning(
-                "Not changing %s's trust list: its next version must match %d bits, more "
-                "than the %d a drop is searched for here",
-                person.person_id,
-                bits,
-                self._drops.max_minimum_bits,
-            )
-            return status_response(
-                request,
-                HTTPStatus.SERVICE_UNAVAILABLE,
-                f"Your trust list's next version must match {bits} bits, more than this node "
-                "searches a drop for.",
-            )
 
         text = compact_json(changed.value()).decode("utf-8")
         stored = self._drops.placed(
@@ -202,12 +188,17 @@ class TrustEdits:
                 TrustList.drop_target(person.person_id),
                 person.signed(text).encoded(),
                 _SEARCH_SECONDS,
-                bits,
+                MIN_TRUST_LIST_BITS,
             ),
         )
 
         if isinstance(stored, Response):
             return stored
+
+        newest = held.newest
+
+        if newest is not None:
+            self._block((newest.content_id,))
 
         self._placed[person.person_id] = TrustVersion(stored.content_id, person.person_id, changed)
         _LOGGER.info(
@@ -231,11 +222,19 @@ class TrustEdits:
         if placed is None:
             return held
 
-        if placed.content_id in held.found:
-            del self._placed[owner]
-            return held
+        read = held.with_version(placed)
 
-        return held.with_version(placed)
+        if read is held:
+            # Stored, as the search found it, so it need not be remembered.
+            del self._placed[owner]
+
+        return read
+
+    def _block(self, replaced: Iterable[ContentId]) -> None:
+        """Have this node block each trust list version ``replaced`` names (Trust Network §3.3)."""
+        for content_id in replaced:
+            self._publish(EventType.DATA_BLOCKED, content_id.fields())
+            _LOGGER.debug("Asked for %s, a trust list version replaced, to be blocked", content_id)
 
     def _missing_response(self, request: Request, held: HeldTrustList) -> Response:
         """The ``503`` holding off a change while what ``held`` names as missing is asked for."""

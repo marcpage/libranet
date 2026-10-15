@@ -17,7 +17,7 @@ edit holds off for it (§3.4) and a build asks the peers for it (§4.3)
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from json import loads
 from logging import getLogger
 from typing import Sequence
@@ -48,23 +48,18 @@ class TrustLists:
     content: ContentSource
 
     def read(self, owner: ContentId) -> HeldTrustList:
-        """The list of the identity ``owner``: each version held at its drop, and what is not.
-
-        Everything found at the drop is named too, whoever placed it.
-        """
+        """The list of the identity ``owner``: each version held at its drop, and what is not."""
         target = TrustList.drop_target(owner).hex
         signed: list[tuple[ContentId, SignedBundle]] = []
         missing: list[ContentId] = []
-        found = [
-            content_id
-            for content_id in self.search.fresh_results(target)
-            if matching_bits(target, content_id.hash) >= MIN_TRUST_LIST_BITS
-        ]
 
-        for content_id in found:
+        for content_id in self.search.fresh_results(target):
+            if matching_bits(target, content_id.hash) < MIN_TRUST_LIST_BITS:
+                continue
+
             # A signature error is a verification error, so it is caught first.
             try:
-                bundle = SignedBundle.decoded(strip_targeting(self._held(content_id)))
+                found = SignedBundle.decoded(strip_targeting(self._held(content_id)))
 
             except MissingContentError:
                 # Not logged: it is named among what is missing.
@@ -86,18 +81,18 @@ class TrustLists:
                 _LOGGER.debug("Passing over %s at %s's trust list: %s", content_id, owner, error)
                 continue
 
-            if bundle.signer != owner:
+            if found.signer != owner:
                 _LOGGER.warning(
                     "Passing over %s at %s's trust list, as %s signed it",
                     content_id,
                     owner,
-                    bundle.signer,
+                    found.signer,
                 )
                 continue
 
-            signed.append((content_id, bundle))
+            signed.append((content_id, found))
 
-        return replace(self._checked(owner, signed, tuple(missing)), found=tuple(found))
+        return self._checked(owner, signed, tuple(missing))
 
     def _checked(
         self,

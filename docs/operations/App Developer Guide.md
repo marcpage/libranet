@@ -1159,9 +1159,10 @@ neither trusts nor distrusts it. The node reads the newest version of the
 list, makes the next with the change, has the person sign it, and places
 it. It answers `201 Created`, as a signed drop is answered (§6.13), with the
 new version's number in `version`. There is no `seconds` or `minimum_bits`
-to give: the node places each version matching as many bits as its drop
-needs for a search to find it, 16 or more. A change that changes nothing,
-such as trusting someone already trusted, places nothing, and is `204`.
+to give: the node places each version matching 16 bits, and blocks the
+versions it replaces (§6.11), so that they do not crowd the newest out of a
+search. A change that changes nothing, such as trusting someone already
+trusted, places nothing, and is `204`.
 Make one change per request. The node makes one person's changes one at a
 time, each over the one before, so two pages changing the list at once lose
 nothing.
@@ -1171,9 +1172,7 @@ nothing.
 - A body that is not `{"trust": true}` or `false`, or a change naming the
   person themselves, is `400`.
 - While a version found at the list's drop is not held yet, it is `503`, so
-  wait as §5.3 shows, and ask again. A change whose version would have to
-  match more bits than the node searches a drop for is `503` too, but with
-  no `Retry-After`, since asking again does not help.
+  wait as §5.3 shows, and ask again.
 - A list too large for an object is `413`.
 
 Only a local client, from a trusted application's page, changes the list,

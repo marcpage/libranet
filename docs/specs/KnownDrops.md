@@ -199,19 +199,21 @@ their scores to reach through it.
   keep a list of its own once Bundle Specification §5 defines a signature
   by a node's key.
 - **Signed** by the list's owner. **Not encrypted.**
-- **Bits:** placed matching the fewest bits, from 16 up, that no more than
-  10 of what is found at the drop match, with no search for a nonce past
+- **Bits:** placed matching at least 16, with no search for a nonce past
   that.
 - **Reading:** a reader passes over each result that shares fewer than 16
   bits with the target hash. It counts only the versions that the owner
   signed. The newest version is the one numbered highest. Of two numbered as
-  high, the newest is the one whose drop's id comes first. No version is
-  ever blocked.
+  high, the newest is the one whose drop's id comes first. A node blocks
+  every version it reads that is older than the newest, and every version
+  a version it places replaces.
 - **Defined in:**
   [Trust Network Specification §3](TrustNetwork.md#3-trust-lists), for what
   a version holds (§3.1), where it is kept (§3.2), reading it (§3.3), and
   changing it (§3.4);
   [HTTP API §11.7](HttpApi.md#117-trust) for the endpoints that change it.
+- **See also:**
+  [HTTP API §5.5](HttpApi.md#55-blocked-content) for blocking.
 
 ### 3.5 Mail Received
 
