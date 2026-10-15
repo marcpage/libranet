@@ -6,6 +6,7 @@ from http.client import HTTPConnection
 from json import loads
 from pathlib import Path
 from queue import Empty, Queue
+from random import randrange
 from socket import socket
 from threading import Event, Thread
 from time import monotonic, sleep
@@ -19,7 +20,6 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import (
     CONFIG_PORT_STEP,
-    HIGHEST_PORT,
     IdentityConfig,
     LibranetConfig,
     NetworkConfig,
@@ -70,13 +70,27 @@ def _is_free(port: int) -> bool:
             return False
 
 
-def _port_with_room(steps: int) -> int:
-    """A free port, with the ``steps`` ports :data:`CONFIG_PORT_STEP` apart above it free too."""
-    for _ in range(100):
-        port = _free_port()
-        above = [port + CONFIG_PORT_STEP * step for step in range(1, steps + 1)]
+# Ports below those the operating system hands out for connections by
+# default (ephemeral ports): from 32768 on Linux, and from 49152 on macOS and
+# Windows.
+NON_EPHEMERAL_PORTS = range(20_000, 32_768)
 
-        if above[-1] <= HIGHEST_PORT and all(_is_free(other) for other in above):
+
+def _port_with_room(steps: int) -> int:
+    """A free port, with the ``steps`` ports :data:`CONFIG_PORT_STEP` apart above it free too.
+
+    Each is below the ports the operating system hands out for connections,
+    which :func:`_free_port`'s are among. Any connection on this machine
+    could otherwise take one between finding it free and the module listening
+    on it, and the module's own check of a port could connect to itself,
+    either moving ``/config`` 100 further up.
+    """
+    for _ in range(100):
+        port = randrange(
+            NON_EPHEMERAL_PORTS.start, NON_EPHEMERAL_PORTS.stop - CONFIG_PORT_STEP * steps
+        )
+
+        if all(_is_free(port + CONFIG_PORT_STEP * step) for step in range(steps + 1)):
             return port
 
     raise AssertionError("no port has room above it")
