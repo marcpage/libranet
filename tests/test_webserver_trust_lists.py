@@ -233,7 +233,7 @@ def test_what_is_not_a_signed_bundle_is_passed_over_at_debug(
 ) -> None:
     content_id = placed(truth, alice, b"not signed at all")
 
-    with caplog.at_level(DEBUG, logger="libranet.webserver.trust_lists"):
+    with caplog.at_level(DEBUG, logger="libranet.webserver.signed_versions"):
         held = lists.read(alice.person_id)
 
     assert held == HeldTrustList(alice.person_id)

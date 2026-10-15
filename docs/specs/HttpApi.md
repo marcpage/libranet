@@ -1810,9 +1810,9 @@ does both for it, as a signed bundle
 `contents` is JSON a page wrote.
 
 A node signs with its own key too, its Ed25519 key (§11.2), but only what it
-places itself, such as what it says of itself. No endpoint has it sign as
-itself for a page, and a check reads what a node signed as it does what a
-person signed.
+places itself, such as what it says of itself (§11.8). No endpoint has it
+sign as itself for a page, and a check reads what a node signed as it does
+what a person signed.
 
 A page has the node make a drop signed by whoever is signed in with:
 
@@ -2062,6 +2062,98 @@ Reading the scores and changing the list serve only local clients, from a
 page of a trusted application (§2.4, §2.5), as the session does, since the
 scores say whom the person trusts. Every answer carries
 `Cache-Control: no-store`.
+
+### 11.8 What a Node Says of Itself
+
+A node says what it is called, where it is, and anything else its operator
+gives it, as a person says what they say of themselves
+([App Developer Guide §6.14](../operations/App%20Developer%20Guide.md#614-what-people-say-of-themselves)).
+It keeps this, its metadata, in versions, each signed with its own key
+(§11.5) and made a drop at `node:{id}`, its id after `node:`. It is public.
+Each version's `contents` is the JSON text of an object:
+
+```json
+{"fields": {"name": "Attic", "description": "The family's node", "city": "Springfield"},
+ "version": 2,
+ "versions": ["sha256/…"]}
+```
+
+- **`fields`** maps each detail's name to its value, both strings. Every
+  detail is optional, and a node may give any other: those it is offered
+  are `name`, `description`, `country`, `state`, `province`, `county`,
+  `city`, `latitude`, and `longitude`, the last two in decimal degrees.
+- **`version`** is 1 for the first version, and one more than the version
+  it replaces for each after.
+- **`versions`** names the drop of the version it replaces, and is left out
+  of the first.
+
+Unlike a person's, a node's metadata says nothing of when its id was made,
+and names no fallback, since a node has neither. Members a reader does not
+know are ignored.
+
+Each version is made a drop matching at least 16 bits. A reader passes over
+each result of a search of the drop (§9.7) that shares fewer bits than that
+with the target hash, and counts only a version that checks as signed by the
+node the drop names (§11.5) and is shaped as above. The newest is the one
+numbered highest, and of two numbered as high, the one whose drop's id
+comes first. Only the node signs a version, so no one else can make one
+newer, and no reader needs the versions it replaces: the node blocks them
+(§5.5), so that they do not crowd the newest out of a search.
+
+Only the node places a version, for its operator. The `/config` application
+(§2.3) can neither search a drop nor check what is signed, since its port
+serves nothing beneath `/data`, and no endpoint has a node sign for a page
+(§11.5), so the node reads its versions, and places the next, at endpoints
+of its own on `/config`'s port. It answers the newest with:
+
+```http
+GET /config/api/metadata
+```
+
+```json
+{"id": "sha256/…", "fields": {"name": "Attic"}, "version": 2, "versions": ["sha256/…"]}
+```
+
+`id` names the drop holding the newest version, and the rest is that
+version. While the node has placed none, `id` and `version` are `null`, and
+`fields` is empty. It places the next version with:
+
+```http
+PUT /config/api/metadata
+Content-Type: application/json
+
+{"fields": {"name": "Attic", "city": "Springfield"}}
+```
+
+`fields` is every detail the node is to say, as a version gives them. The
+node reads the newest version as a reader does, makes the next, saying
+`fields`, signs it with its own key, and makes it a drop at `node:{id}`, as
+making a signed drop does (§11.5), matching at least 16 bits, with its nonce
+searched for no longer than that takes (§9.6). It then blocks every version
+it read, since the new one replaces them. It answers `201 Created`, with no
+`Location`, since `/config`'s port serves nothing beneath `/data`:
+
+```json
+{"id": "sha256/…", "target": "<target hash>", "matching_bits": 16,
+ "signer": "sha256/…", "version": 3}
+```
+
+`signer` is the node's id, and `version` the new version's number. A change
+that changes nothing places nothing, and is answered `204 No Content`. A
+body that is not an object whose `fields` is an object of strings is
+`400 Bad Request`, with `invalid-request`, and a version that would not fit
+in an object even compressed is `413 Content Too Large`. While a version
+found at the node's drop is not held yet, a read and a change are each
+`503 Service Unavailable` with `Retry-After`, as for any miss (§5.2), since
+that version may be newer than the newest held. The node reads and changes
+its versions one at a time, each change over the version the one before it
+placed. Both endpoints are served as every endpoint beneath `/config/api`
+is (§2.3).
+
+A page that shows a node shows it by its `name`, and by its id when its
+newest version gives none, with the rest of what it says on hover, and on a
+tap
+([App Developer Guide §6.18](../operations/App%20Developer%20Guide.md#618-what-nodes-say-of-themselves)).
 
 ---
 
