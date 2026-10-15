@@ -20,8 +20,8 @@ with a ``Location`` naming the drop::
     {"id": "sha256/…", "target": "<hex>", "matching_bits": 21, "signer": "sha256/…"}
 
 ``GET /data/signed/{algorithm}/{hash}`` checks the signed bundle the drop the
-identifier names holds, under the public key its signer names, and answers
-with what it signs::
+identifier names holds, under the public key its signer names, a person's or
+a node's (Phase 5 Step 103), and answers with what it signs::
 
     {"id": "sha256/…", "signer": "sha256/…", "contents": "{\\"version\\":1}"}
 

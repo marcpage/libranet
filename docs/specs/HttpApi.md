@@ -1727,6 +1727,11 @@ does both for it, as a signed bundle
 ([Bundle Specification §5](BundleSpecification.md#5-signed-bundle)), whose
 `contents` is JSON a page wrote.
 
+A node signs with its own key too, its Ed25519 key (§11.2), but only what it
+places itself, such as what it says of itself. No endpoint has it sign as
+itself for a page, and a check reads what a node signed as it does what a
+person signed.
+
 A page has the node make a drop signed by whoever is signed in with:
 
 ```http
@@ -1768,21 +1773,25 @@ GET /data/signed/{hash-algorithm}/{hash}
 The node reads the object the identifier names, as §5.1 serves it, and takes
 what it holds before its last null byte as a drop's content, should it hold
 one (§9). If that is a signed bundle whose `hash` and `signature` check
-under the public key its `signer` names, it answers `200 OK`:
+under the public key its `signer` names, a person's or a node's, it answers
+`200 OK`:
 
 ```json
 {"id": "sha256/…", "signer": "sha256/…", "contents": "{\"version\":1}"}
 ```
 
-`contents` is the text signed, exactly as it was signed. An object, or a
-signer's public key, that the node does not hold is asked for, as for any
-miss, and is `503 Service Unavailable` with `Retry-After` (§5.2). Either one
-that the node has blocked is `404 Not Found` (§5.5). Content that is not a
-signed bundle is `400 Bad Request` with the problem type `unusable-bundle`,
-and one whose `hash` or `signature` does not check, or whose `signer` names
-no RSA public key of at least 2048 bits, is `400 Bad Request` with
-`invalid-bundle-signature`. An answer never changes for an identifier, and is
-cached as content is (§20).
+`contents` is the text signed, exactly as it was signed, and `signer` the id
+of the person or node that signed it. The answer does not say which, since a
+page knows from where it found the drop whose signer it expects. An object,
+or a signer's public key, that the node does not hold is asked for, as for
+any miss, and is `503 Service Unavailable` with `Retry-After` (§5.2). Either
+one that the node has blocked is `404 Not Found` (§5.5). Content that is not
+a signed bundle is `400 Bad Request` with the problem type
+`unusable-bundle`, and one whose `hash` or `signature` does not check, or
+whose `signer` names neither an RSA public key of at least 2048 bits nor an
+Ed25519 public key that is not of small order (§11.2), is `400 Bad Request`
+with `invalid-bundle-signature`. An answer never changes for an identifier,
+and is cached as content is (§20).
 
 A signature says only that whoever holds the signer's key signed the
 contents. Anyone may sign content with a key of their own and place it at

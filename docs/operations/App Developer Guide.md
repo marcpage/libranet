@@ -857,7 +857,9 @@ const value = JSON.parse(contents);
 
 A drop's content is read up to its last null byte, as a drop is written.
 `200` means the signature checks under the public key of `signer`, and
-`contents` is the text signed. Content that is not signed is `400`
+`contents` is the text signed. `signer` is a person's id, or a node's, since
+a node signs what it places itself; the answer does not say which, as the
+page knows whose drop it read. Content that is not signed is `400`
 `unusable-bundle`, and a signature that does not check is `400`
 `invalid-bundle-signature`. The node answers `503` while it fetches the
 content, or the signer's key, so wait as §5.3 shows. A check that passes
