@@ -70,6 +70,7 @@ DATA_ENDPOINT_NAMES: Final = (
     "fallback",
     "session",
     "peers",
+    "trust",
 )
 
 DATA_PATTERN: Final = (

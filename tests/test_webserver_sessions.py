@@ -121,6 +121,31 @@ def test_no_session_is_refused_as_a_session_required(sessions: Sessions) -> None
     }
 
 
+def test_a_session_that_signs_is_found_for_signing(sessions: Sessions, session: Session) -> None:
+    request = with_cookie(sessions.start(session))
+
+    assert sessions.signer_or_refusal(request, "Sign in to sign.") == session
+
+
+def test_no_session_is_refused_for_signing_as_a_session_required(sessions: Sessions) -> None:
+    refusal = sessions.signer_or_refusal(Request("PUT", "/data/trust"), "Sign in to sign.")
+
+    assert isinstance(refusal, Response)
+    assert refusal.status == HTTPStatus.UNAUTHORIZED
+    assert loads(refusal.body)["type"] == SESSION_REQUIRED
+
+
+def test_a_fallback_that_has_not_taken_over_is_refused_for_signing(sessions: Sessions) -> None:
+    fallback = Session(Username.create("alice"), NewIdentity.generate(2048).fallback)
+    request = with_cookie(sessions.start(fallback))
+
+    refusal = sessions.signer_or_refusal(request, "Sign in to sign.")
+
+    assert isinstance(refusal, Response)
+    assert refusal.status == HTTPStatus.FORBIDDEN
+    assert "takes over" in loads(refusal.body)["detail"]
+
+
 def test_the_session_cookie_is_found_among_others(sessions: Sessions, session: Session) -> None:
     token = sessions.start(session).partition(";")[0]
     cookie = f"theme=dark; {SESSION_COOKIE}=stale;{token} ; lang=en"

@@ -143,6 +143,25 @@ def test_versions_found_and_not_held_are_named(
     assert held.entries == {BOB: True}
 
 
+def test_everything_at_the_drop_is_found_whoever_placed_it(
+    storage: StorageConfig,
+    lists: TrustLists,
+    truth: CasStore,
+    alice: PersonKey,
+    mallory: PersonKey,
+) -> None:
+    own = placed(truth, alice, signed(alice, TrustList({BOB: True}, 1).value()))
+    forged = placed(truth, alice, signed(mallory, TrustList({BOB: False}, 9).value()))
+    unsigned = placed(truth, alice, b"not signed at all")
+    elsewhere = heard_of(storage, alice, MIN_TRUST_LIST_BITS)
+    heard_of(storage, alice, MIN_TRUST_LIST_BITS - 1)
+
+    held = lists.read(alice.person_id)
+
+    assert sorted(held.found, key=str) == sorted([own, forged, unsigned, elsewhere], key=str)
+    assert [version.content_id for version in held.versions] == [own]
+
+
 def test_a_result_sharing_too_few_bits_is_passed_over(
     storage: StorageConfig, lists: TrustLists, alice: PersonKey
 ) -> None:
@@ -154,12 +173,12 @@ def test_a_result_sharing_too_few_bits_is_passed_over(
 def test_without_its_owners_key_the_list_names_it_missing(
     lists: TrustLists, truth: CasStore, alice: PersonKey
 ) -> None:
-    placed(truth, alice, signed(alice, TrustList({BOB: True}, 1).value()))
+    content_id = placed(truth, alice, signed(alice, TrustList({BOB: True}, 1).value()))
     truth.delete(alice.person_id)
 
     held = lists.read(alice.person_id)
 
-    assert held == HeldTrustList(alice.person_id, missing=(alice.person_id,))
+    assert held == HeldTrustList(alice.person_id, missing=(alice.person_id,), found=(content_id,))
 
 
 def test_with_nothing_signed_at_the_drop_its_owners_key_is_not_needed(
@@ -195,24 +214,26 @@ def test_a_version_whose_signature_does_not_check_is_passed_over(
 ) -> None:
     contents = dumps(TrustList({BOB: False}, 9).value())
     honest = alice.signed(dumps(TrustList({DAVE: True}, 1).value()))
-    placed(truth, alice, SignedBundle(alice.person_id, contents, honest.signature).encoded())
+    content_id = placed(
+        truth, alice, SignedBundle(alice.person_id, contents, honest.signature).encoded()
+    )
 
     with caplog.at_level(WARNING):
         held = lists.read(alice.person_id)
 
-    assert held == HeldTrustList(alice.person_id)
+    assert held == HeldTrustList(alice.person_id, found=(content_id,))
     assert "its signature does not check" in caplog.text
 
 
 def test_what_its_owner_signed_that_is_no_version_is_passed_over(
     lists: TrustLists, truth: CasStore, alice: PersonKey, caplog: LogCaptureFixture
 ) -> None:
-    placed(truth, alice, signed(alice, {"fields": {}, "version": 1}))
+    content_id = placed(truth, alice, signed(alice, {"fields": {}, "version": 1}))
 
     with caplog.at_level(WARNING):
         held = lists.read(alice.person_id)
 
-    assert held == HeldTrustList(alice.person_id)
+    assert held == HeldTrustList(alice.person_id, found=(content_id,))
     assert "as it is no version of one" in caplog.text
 
 
@@ -236,7 +257,7 @@ def test_what_is_not_a_signed_bundle_is_passed_over_at_debug(
     with caplog.at_level(DEBUG, logger="libranet.webserver.trust_lists"):
         held = lists.read(alice.person_id)
 
-    assert held == HeldTrustList(alice.person_id)
+    assert held == HeldTrustList(alice.person_id, found=(content_id,))
     (record,) = caplog.records
     assert record.levelno == DEBUG
     assert record.getMessage().startswith(f"Passing over {content_id}")
@@ -252,12 +273,12 @@ def test_a_signed_bundle_hashed_another_way_is_passed_over_as_a_warning(
         "signature": "",
         "signer": str(alice.person_id),
     }
-    placed(truth, alice, dumps(value).encode("utf-8"))
+    content_id = placed(truth, alice, dumps(value).encode("utf-8"))
 
     with caplog.at_level(WARNING):
         held = lists.read(alice.person_id)
 
-    assert held == HeldTrustList(alice.person_id)
+    assert held == HeldTrustList(alice.person_id, found=(content_id,))
     assert "'sha512' cannot be checked here" in caplog.text
 
 
@@ -270,18 +291,18 @@ def test_what_is_held_and_is_not_what_its_id_names_is_passed_over(
     with caplog.at_level(WARNING):
         held = lists.read(alice.person_id)
 
-    assert held == HeldTrustList(alice.person_id)
+    assert held == HeldTrustList(alice.person_id, found=(content_id,))
     assert f"Passing over {content_id}, as what is held for it is not it" in caplog.text
 
 
 def test_a_damaged_key_reads_no_version(
     lists: TrustLists, truth: CasStore, alice: PersonKey, caplog: LogCaptureFixture
 ) -> None:
-    placed(truth, alice, signed(alice, TrustList({BOB: True}, 1).value()))
+    content_id = placed(truth, alice, signed(alice, TrustList({BOB: True}, 1).value()))
     truth.write(alice.person_id, b"damaged on disk")
 
     with caplog.at_level(WARNING):
         held = lists.read(alice.person_id)
 
-    assert held == HeldTrustList(alice.person_id)
+    assert held == HeldTrustList(alice.person_id, found=(content_id,))
     assert "what is held for their key is not it" in caplog.text

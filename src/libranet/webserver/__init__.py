@@ -21,8 +21,9 @@ node's own pages there, such as the listing of the folders it offers them
 bundle, or a new version of one, from the bundles a request names, stored as
 uploads from this node (Phase 3 Step 72), making a person's identity,
 and signing them in and out (Phase 4 Step 79), opening what is encrypted for
-them or by a password (Phase 4 Step 78), and blocking content (Phase 4
-Step 30). Any client may read into a
+them or by a password (Phase 4 Step 78), blocking content (Phase 4
+Step 30), and changing the trust list of whoever is signed in (Phase 5 Step
+97). Any client may read into a
 bundle, by its id, as an application's files are served (Phase 3 Step 71).
 
 Every endpoint meant only for browsers but reading into a bundle,
@@ -265,6 +266,7 @@ from libranet.webserver.signed_handlers import (
     SignedDrops,
 )
 from libranet.webserver.site_checks import HOST_HEADER, SITE_HEADER, SiteChecks, host_name
+from libranet.webserver.trust_handlers import TRUST_PATH, TRUST_PATTERN, TrustEdits
 from libranet.webserver.trust_lists import TrustLists
 
 __all__ = [
@@ -347,6 +349,8 @@ __all__ = [
     "STORE_KEY_PATTERN",
     "STORE_PATH",
     "STORE_PATTERN",
+    "TRUST_PATH",
+    "TRUST_PATTERN",
     "UNTRUSTED_APP_HEADERS",
     "USERS_PATH",
     "AppHandler",
@@ -437,6 +441,7 @@ __all__ = [
     "StoredValue",
     "StoredValues",
     "StreamedBody",
+    "TrustEdits",
     "TrustLists",
     "Turns",
     "UnsupportedMediaTypeError",

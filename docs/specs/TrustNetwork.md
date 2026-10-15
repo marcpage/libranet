@@ -71,7 +71,8 @@ owner never counts (§4.1).
 A trust list is a signed bundle whose `contents` is a version of the list,
 signed by its owner, and made a drop at the target string `trust:{id}`,
 the owner's id after `trust:`, such as `trust:sha256/0a1b…`. Each version
-is placed matching at least 16 leading bits of the target hash.
+is placed matching at least 16 leading bits of the target hash, and more
+where the drop is crowded (§3.4).
 
 A list is **public**, distrust included. It is read by others for their
 scores to reach through it (§4), so it is never encrypted, and anyone may
@@ -113,6 +114,31 @@ numbered one more, and naming the newest in `versions`. A writer holds off
 while a version found at the drop is not held yet, since it may be newer
 than the newest read, and one placed over the older would be numbered
 under it.
+
+A writer places the new version matching enough leading bits of the target
+hash that a search of the drop lists it among the nearest: the fewest, from
+16 up, that no more than 10 of what a search of the drop finds match. That
+is everything found sharing at least 16 bits with the target hash, held or
+not, whoever placed it. So while more than 10 found match 16 bits or more,
+the version matches at least 17, while more than 10 match 17 or more, at
+least 18, and so on. A search lists at most 32 results
+([HTTP API §6](HttpApi.md#6-content-search)), nearest first, so a version
+placed this way is among them however much is placed at the drop after it,
+up to the 21 more a search has room for.
+
+**TBD:**
+
+- **A crowded drop.** Every version stays at the drop, so a list changed
+  often crowds it with its own history, and each change adds one more to
+  what the next must outnumber. The bits a version needs grow by about one
+  for every five or six changes, and each bit doubles the search for its
+  nonce. Past about 50 changes, a version matches some 24 bits, about 15
+  seconds of search on the reference node, and past about 60, more bits
+  than a node searches a drop for by default (HTTP API §21). Whether a
+  reader pages through a crowded drop, the versions move to a new drop as
+  they accumulate, or nodes block what a newer version replaces, as mail's
+  pages do (App Developer Guide §6.16) but §3.3 rules out for a trust list,
+  is open.
 
 ## 4. Scores
 

@@ -56,12 +56,19 @@ from libranet.identity.signatures import (
     MessageSigner,
     MessageVerifier,
 )
-from libranet.identity.trust import MIN_TRUST_LIST_BITS, HeldTrustList, TrustList, TrustVersion
+from libranet.identity.trust import (
+    MAX_AS_NEAR,
+    MIN_TRUST_LIST_BITS,
+    HeldTrustList,
+    TrustList,
+    TrustVersion,
+)
 
 __all__ = [
     "BACKUP_SECRET_BYTES",
     "CONTENT_DIGEST_HEADER",
     "DIGEST_COMPONENT",
+    "MAX_AS_NEAR",
     "MAX_IDENTITY_BYTES",
     "MAX_PUBLIC_KEY_BYTES",
     "MAX_TRACKED_SIGNERS",

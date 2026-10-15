@@ -140,6 +140,8 @@ from libranet.webserver.sessions import Sessions
 from libranet.webserver.signature_guard import SignatureGuard
 from libranet.webserver.signed_handlers import SIGNED_PATH, SIGNED_PATTERN, SignedDrops
 from libranet.webserver.site_checks import SiteChecks
+from libranet.webserver.trust_handlers import TRUST_PATTERN, TrustEdits
+from libranet.webserver.trust_lists import TrustLists
 
 # Why a port is passed over for the next one to listen on: it is in use, or
 # this process may not listen on it, as one below 1024 may need privileges
@@ -155,7 +157,7 @@ _LOOPBACK_FOR_ANY: Final = {"": "127.0.0.1", "0.0.0.0": "127.0.0.1", "::": "::1"
 _PROBE_TIMEOUT_SECONDS: Final = 1.0
 
 
-def build_router(  # pylint: disable=too-many-locals
+def build_router(  # pylint: disable=too-many-locals,too-many-statements
     storage: StorageConfig,
     retry_after_seconds: int,
     publish: Publish,
@@ -222,9 +224,12 @@ def build_router(  # pylint: disable=too-many-locals
     asked, for a person, or by a username and password, the last for local
     clients alone, and ``/data/encrypted`` opens what is encrypted, for
     whoever is signed in or by a username and password, for local clients
-    alone (Phase 4 Step 78). Drops are searched for, and keys derived, one
-    at a time, in the turns of ``costly_work``, which ``/config``'s port
-    shares; in turns of their own if none is given. A ``DELETE`` of
+    alone (Phase 4 Step 78). ``/data/trust/{algorithm}/{hash}`` changes the
+    trust list of whoever is signed in, one entry at a time, signing each
+    version as ``/data/signed`` signs, for local clients alone (Phase 5 Step
+    97). Drops are searched for, and keys derived, one at a time, in the
+    turns of ``costly_work``, which ``/config``'s port shares; in turns of
+    their own if none is given. A ``DELETE`` of
     ``/data/{algorithm}/{hash}`` deletes and blocks content for local
     clients alone, which ``/data`` then neither serves, reads into, stores,
     nor finds in a search, and no application is served from, as the blocked
@@ -234,7 +239,7 @@ def build_router(  # pylint: disable=too-many-locals
     served only to this node's own pages, as a request's ``Referer`` names
     them: an application's store to its own, and the folders, imports,
     bundles, identities, session, signing, opening what is encrypted,
-    encrypting by a password, blocking, and the peer list to those of
+    encrypting by a password, trust, blocking, and the peer list to those of
     applications the operator trusts. An application the operator has not
     trusted is served in a sandbox (Phase 3 Step 74).
     """
@@ -349,6 +354,13 @@ def build_router(  # pylint: disable=too-many-locals
             blocked=blocked,
         )
         encrypted = EncryptedDrops(signed, derivations=work.derivations)
+        trust = TrustEdits(
+            TrustLists(search, uploads),
+            drops,
+            sessions,
+            publish,
+            retry_after_seconds=retry_after_seconds,
+        )
 
         # The encrypted routes before the bundle route, whose pattern they also
         # fit.
@@ -361,6 +373,8 @@ def build_router(  # pylint: disable=too-many-locals
             ("POST", SIGNED_PATH, signed.make),
             ("GET", ENCRYPTED_PATTERN, encrypted.read),
             ("POST", ENCRYPTED_PATTERN, encrypted.read_by_password),
+            ("PUT", TRUST_PATTERN, trust.trust),
+            ("DELETE", TRUST_PATTERN, trust.clear),
         ):
             router.add(method, path, LocalOnly(OwnPageOnly(handler, pages, trusted=True), checks))
 

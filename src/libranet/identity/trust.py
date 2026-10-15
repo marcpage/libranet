@@ -11,8 +11,9 @@ distrusted. ``version`` is one more than the version it replaces, and
 ``versions`` names that version's drop, so that the history can be walked
 back; the first is numbered 1 and names none. Each version is made a drop at
 ``trust:{id}``, its owner's id after ``trust:``, matching at least
-:data:`MIN_TRUST_LIST_BITS` (§3.2). Nothing here tells a person's list from a
-node's.
+:data:`MIN_TRUST_LIST_BITS` (§3.2), and one bit more for each that more than
+:data:`MAX_AS_NEAR` of what is at the drop already match, so that a search
+lists it (§3.4). Nothing here tells a person's list from a node's.
 
 A reader passes over an entry that is not an id trusted or distrusted, and
 counts the rest of the list (§3.1). Of the versions read that the owner
@@ -22,7 +23,7 @@ server reads them from what the node holds (Phase 5 Step 96).
 """
 
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from logging import getLogger
 from typing import Any, Final, Mapping
 
@@ -30,6 +31,7 @@ from libranet.cas.algorithms import UnsupportedAlgorithms
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
 from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
+from libranet.cas.prefix import matching_bits
 from libranet.json_fields import integer_field
 
 _LOGGER = getLogger(__name__)
@@ -39,6 +41,11 @@ _LOGGER = getLogger(__name__)
 #: shares fewer, as nearest the target but placed for something else (Trust
 #: Network §3.2, §3.3).
 MIN_TRUST_LIST_BITS: Final = 16
+
+#: The most of what is at a list's drop that may match as many bits as a new
+#: version, or more. Past that, the version matches one bit more, so that it
+#: is among the nearest a search lists (Trust Network §3.4).
+MAX_AS_NEAR: Final = 10
 
 # What a trust list's drop target string is, before its owner's id (§3.2).
 _DROP_PREFIX: Final = "trust:"
@@ -169,7 +176,8 @@ class HeldTrustList:
     what was found at the drop, or is needed to check what was, such as
     ``owner``'s key, and is not held yet. While anything is missing, a newer
     version may be among it, so an edit holds off (§3.4), and a build asks
-    for it (§4.3).
+    for it (§4.3). ``found`` is everything found at the drop, whoever placed
+    it, held or not, that matches at least :data:`MIN_TRUST_LIST_BITS`.
 
     Raises:
         ValueError: a version is signed by someone other than ``owner``.
@@ -178,6 +186,7 @@ class HeldTrustList:
     owner: ContentId
     versions: tuple[TrustVersion, ...] = ()
     missing: tuple[ContentId, ...] = ()
+    found: tuple[ContentId, ...] = ()
 
     def __post_init__(self) -> None:
         for version in self.versions:
@@ -205,6 +214,41 @@ class HeldTrustList:
         """Whom the newest version trusts, ``True``, or distrusts; none if none was read (§3.3)."""
         newest = self.newest
         return {} if newest is None else newest.trust_list.entries
+
+    @property
+    def placing_bits(self) -> int:
+        """The fewest leading bits the next version matches its drop's target in (§3.4).
+
+        That is :data:`MIN_TRUST_LIST_BITS`, and one more for each that more
+        than :data:`MAX_AS_NEAR` of what was :attr:`found` match, so that a
+        search lists the next version among the nearest.
+        """
+        target = TrustList.drop_target(self.owner).hex
+        matched = [matching_bits(target, content_id.hash) for content_id in self.found]
+        bits = MIN_TRUST_LIST_BITS
+
+        while sum(1 for found in matched if found >= bits) > MAX_AS_NEAR:
+            bits += 1
+
+        return bits
+
+    def with_version(self, version: TrustVersion) -> HeldTrustList:
+        """This list, with ``version`` found at its drop too, should it not be already.
+
+        A version this node placed is held as an upload until the validator
+        stores it, and no search of the drop finds it until then.
+
+        Raises:
+            ValueError: ``version`` is signed by someone other than the owner.
+        """
+        if version.content_id in self.found:
+            return self
+
+        return replace(
+            self,
+            versions=(*self.versions, version),
+            found=(*self.found, version.content_id),
+        )
 
     def next_version(self, identity: ContentId, trusted: bool | None) -> TrustList | None:
         """The version after the newest, setting or clearing the entry for ``identity``.

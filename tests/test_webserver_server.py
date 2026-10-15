@@ -43,6 +43,7 @@ from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.people import PersonKey
 from libranet.identity.signatures import MessageSigner, MessageVerifier
+from libranet.identity.trust import MIN_TRUST_LIST_BITS
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
@@ -1791,7 +1792,8 @@ def local_server(
                 local_folders=LocalFolders({"Movies": tmp_path / "Movies"}),
                 node=NodeDescription(
                     SERVER_IDENTITY.node_id,
-                    NetworkConfig(drop_max_seconds=1.0, drop_max_minimum_bits=8),
+                    # As many bits as a trust list's version matches, and no more.
+                    NetworkConfig(drop_max_seconds=1.0, drop_max_minimum_bits=MIN_TRUST_LIST_BITS),
                 ),
             ),
             getLogger("test.webserver"),
@@ -2161,6 +2163,39 @@ def test_a_signed_in_local_client_signs_a_drop_that_any_client_checks(
     assert remote.body == checked_body
 
 
+def test_a_signed_in_local_client_trusts_and_clears_an_identity(
+    local_connection: HTTPConnection,
+) -> None:
+    page = _from_page(local_connection, "/movie/")
+    local_connection.request(
+        "POST",
+        "/data/users",
+        body=b'{"username": "alice", "password": "correct horse", '
+        b'"fallback_password": "battery staple", "key_bits": 2048, "seconds": 0}',
+        headers={"Content-Type": JSON_CONTENT_TYPE, **page},
+    )
+    made = local_connection.getresponse()
+    person_id = loads(made.read())["id"]
+    cookie = {"Cookie": (made.getheader("Set-Cookie") or "").partition(";")[0]}
+    local_connection.request(
+        "PUT",
+        f"/data/trust/{CONTENT_ID}",
+        body=b'{"trust": true}',
+        headers={"Content-Type": JSON_CONTENT_TYPE, **page, **cookie},
+    )
+    trusted = local_connection.getresponse()
+    trusted_answer = loads(trusted.read())
+    local_connection.request("DELETE", f"/data/trust/{CONTENT_ID}", headers={**page, **cookie})
+    cleared = local_connection.getresponse()
+    cleared_answer = loads(cleared.read())
+
+    assert trusted.status == 201
+    assert trusted.getheader("Cache-Control") == "no-store"
+    assert (trusted_answer["signer"], trusted_answer["version"]) == (person_id, 1)
+    assert cleared.status == 201
+    assert (cleared_answer["signer"], cleared_answer["version"]) == (person_id, 2)
+
+
 @mark.parametrize(
     "path, method",
     [
@@ -2170,12 +2205,16 @@ def test_a_signed_in_local_client_signs_a_drop_that_any_client_checks(
         ("/data/signed", "POST"),
         (f"/data/encrypted/{CONTENT_ID}", "GET"),
         (f"/data/encrypted/{CONTENT_ID}", "POST"),
+        (f"/data/trust/{CONTENT_ID}", "PUT"),
+        (f"/data/trust/{CONTENT_ID}", "DELETE"),
     ],
 )
 def test_another_client_is_refused_identities_and_sessions(
     local_server: LibranetHTTPServer, queues: ModuleQueues, path: str, method: str
 ) -> None:
-    body = b'{"username": "alice", "password": "correct horse"}' if method == "POST" else b""
+    body = (
+        b'{"username": "alice", "password": "correct horse"}' if method in {"POST", "PUT"} else b""
+    )
     # A client elsewhere names this node as it knows it, which /config's hosts do not.
     sent = Request(
         method,

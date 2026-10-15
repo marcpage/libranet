@@ -19,7 +19,7 @@ is placed at its target, and links to the documents that define it.
 | [`user:{username}`](#31-identity-blocks) | A person's identity blocks, holding their private key and their fallback's | The node | No one | By the username and a password | In use |
 | [`user:{id}`](#32-what-a-person-says-of-themselves) | The versions of what a person says of themselves | The node, then the directory application | The person, or their fallback | No | In use |
 | [`user directory`](#33-the-user-directory) | Copies of the user directory | The directory application | No one | No | In use |
-| [`trust:{id}`](#34-trust-lists) | The versions of a trust list | The node | The list's owner | No | Specified |
+| [`trust:{id}`](#34-trust-lists) | The versions of a trust list | The node | The list's owner | No | In use |
 | [`mail:{id}:{year}/{month}/{day}/{hour}`](#35-mail-received) | A copy of each message sent to a person in that hour | The mail application | The sender | For the reader | In use |
 | [`mail sent:{id}:{year}/{month}/{day}/{hour}`](#36-mail-sent) | The sender's own copy of each message they sent in that hour | The mail application | The sender | For the sender | In use |
 | [`mail address book:{id}`](#37-address-books) | The versions of a person's address book | The mail application | The person | For the person | In use |
@@ -191,15 +191,17 @@ list is kept in versions. Each version is numbered and names the version it
 replaces. A list is public, including distrust, since others read it for
 their scores to reach through it.
 
-- **Status:** specified, but placed by nothing yet.
-  [Phase 5](../implementation/Phase%205.md) Steps 96 and 97 build it.
+- **Status:** in use, placed by the node when a page asks, since
+  [Phase 5](../implementation/Phase%205.md) Step 97. No shipped application
+  asks yet, and nothing scores the lists yet (Steps 99 to 101).
 - **Placed by** the node, when the person signed in trusts, distrusts, or
   clears an identity, with `PUT` or `DELETE /data/trust/{id}`. A node may
   keep a list of its own once Bundle Specification §5 defines a signature
   by a node's key.
 - **Signed** by the list's owner. **Not encrypted.**
-- **Bits:** placed matching at least 16, with a nonce searched for as long
-  as the node sets.
+- **Bits:** placed matching the fewest bits, from 16 up, that no more than
+  10 of what is found at the drop match, with no search for a nonce past
+  that.
 - **Reading:** a reader passes over each result that shares fewer than 16
   bits with the target hash. It counts only the versions that the owner
   signed. The newest version is the one numbered highest. Of two numbered as
