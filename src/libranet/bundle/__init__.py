@@ -9,7 +9,8 @@ Step 31). Encrypting a file's parts, and reading them back (Phase 2 Step 59).
 Storing a directory bundle, and each of its chunks, encrypted as a part is
 (Phase 3 Step 72). Saving what is resolved from a bundle to a local file
 (Phase 3 Step 65). Signing JSON as a person, and checking it (Phase 4 Step
-80). Encrypting a block for a person, and opening it (Phase 4 Step 78).
+80), or as a node (Phase 5 Step 103). Encrypting a block for a person, and
+opening it (Phase 4 Step 78).
 Operates purely on bundle JSON, local files, and CAS reads and writes.
 """
 
@@ -89,7 +90,12 @@ from libranet.bundle.shapes import (
     is_entry_path,
     is_utf8,
 )
-from libranet.bundle.signing import SIGNED_HASH_ALGORITHM, SignedBundle, person_public_key
+from libranet.bundle.signing import (
+    SIGNED_HASH_ALGORITHM,
+    SignedBundle,
+    has_small_order,
+    person_public_key,
+)
 from libranet.bundle.splitting import split_entries
 from libranet.bundle.storing import (
     HASH_ALGORITHM,
@@ -176,6 +182,7 @@ __all__ = [
     "content_chunks",
     "decode_bundle",
     "encode_bundle",
+    "has_small_order",
     "is_entry_path",
     "is_protected",
     "is_utf8",

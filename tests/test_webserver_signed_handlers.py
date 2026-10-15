@@ -1,4 +1,4 @@
-"""Tests for making drops signed as a person, and checking what is signed."""
+"""Tests for making drops signed as a person, and checking what a person or a node signed."""
 
 from __future__ import annotations
 from base64 import b64encode
@@ -8,6 +8,8 @@ from logging import ERROR, WARNING
 from os import urandom
 from typing import Any, Mapping
 
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.atomic_file import write_atomically
@@ -21,6 +23,7 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
 from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
+from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.people import NewIdentity, PersonKey, Username
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
@@ -40,7 +43,7 @@ from libranet.webserver.http_types import IMMUTABLE_CACHE_CONTROL, Request, Requ
 from libranet.webserver.sessions import Session, Sessions
 from libranet.webserver.signed_handlers import SIGNED_PATH, SignedDrops
 
-from tests.helpers import problem_type
+from tests.helpers import new_identity, problem_type
 
 NODE_ID = ContentId.for_data(b"this node's public key", "sha256")
 MAX_BYTES = 64 * 1024
@@ -67,6 +70,11 @@ class Recorder:
 @fixture(scope="module")
 def person() -> PersonKey:
     return NewIdentity.generate(2048).key
+
+
+@fixture(scope="module")
+def node() -> NodeIdentity:
+    return new_identity()
 
 
 @fixture
@@ -286,6 +294,51 @@ def test_a_signed_bundle_held_without_drop_bytes_is_read_too(
 
     assert response.status == 200, response.body
     assert loads(response.body)["contents"] == TEXT
+
+
+def test_what_a_node_signed_is_checked_and_read(
+    signed: SignedDrops, node: NodeIdentity, uploads: OwnUploads
+) -> None:
+    held(uploads, node.public_key)
+    drop_id = held(uploads, dropped(node.signed(TEXT)))
+
+    response = signed.read(reading(drop_id))
+
+    assert response.status == 200, response.body
+    assert loads(response.body) == {
+        "id": str(drop_id),
+        "signer": str(node.node_id),
+        "contents": TEXT,
+    }
+
+
+def test_a_signature_by_another_node_does_not_check(
+    signed: SignedDrops, node: NodeIdentity, uploads: OwnUploads
+) -> None:
+    forged = SignedBundle.signed(TEXT, Ed25519PrivateKey.generate(), node.node_id)
+    held(uploads, node.public_key)
+
+    response = signed.read(reading(held(uploads, dropped(forged))))
+
+    assert response.status == 400
+    assert problem_type(response) == INVALID_BUNDLE_SIGNATURE
+
+
+def test_a_signer_naming_a_key_of_small_order_does_not_check(
+    signed: SignedDrops, uploads: OwnUploads
+) -> None:
+    # The point of order 1, under which this signature verifies for anything.
+    identity_point = bytes([1]) + bytes(31)
+    small = Ed25519PublicKey.from_public_bytes(identity_point).public_bytes(
+        Encoding.PEM, PublicFormat.SubjectPublicKeyInfo
+    )
+    forged = SignedBundle(held(uploads, small), TEXT, identity_point + bytes(32))
+
+    response = signed.read(reading(held(uploads, dropped(forged))))
+
+    assert response.status == 400
+    assert problem_type(response) == INVALID_BUNDLE_SIGNATURE
+    assert "small order" in loads(response.body)["detail"]
 
 
 def test_a_drop_not_held_is_asked_for_and_503(signed: SignedDrops, recorder: Recorder) -> None:

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from pytest import raises
 
+from libranet.bundle.signing import SignedBundle
 from libranet.cas.errors import UnknownAlgorithmError
 from libranet.cas.store import CasStore
 from libranet.config.models import IdentityConfig, LibranetConfig, StorageConfig
@@ -39,6 +40,15 @@ def test_repr_does_not_include_key_material() -> None:
     assert "PUBLIC KEY" not in repr(identity)
     assert "private" not in repr(identity).lower()
     assert identity.node_id.hash in repr(identity)
+
+
+def test_the_node_signs_as_itself() -> None:
+    identity = NodeIdentity.from_private_key(generate_private_key(), "sha256")
+
+    signed = identity.signed('{"version":1}')
+
+    assert signed.signer == identity.node_id
+    SignedBundle.decoded(signed.encoded()).verified(identity.public_key)
 
 
 def test_publish_public_key_stores_it_under_the_node_id(tmp_path: Path) -> None:

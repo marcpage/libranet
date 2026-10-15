@@ -305,19 +305,25 @@ Resolution: resolve `B` → `{README.md: v1, LICENSE}`. Overlay `A` →
 }
 ```
 
-- **`signer`** — a relative CAS path pointing to the public key of the signer.
-  It is a person's public key (HTTP API §11.3): an RSA key of at least 2048
-  bits, PEM-encoded SubjectPublicKeyInfo, whose content identifier is the
-  person's id.
+- **`signer`** — a relative CAS path pointing to the public key of the signer,
+  PEM-encoded SubjectPublicKeyInfo, whose content identifier is the signer's
+  id. It is a person's public key (HTTP API §11.3), an RSA key of at least
+  2048 bits, or a node's (HTTP API §11.2), an Ed25519 key.
 - **`algorithm`** — hashing algorithm used to hash the bundle contents:
   `sha256`.
 - **`hash`** — the hash of `contents`, of its UTF-8 bytes, in lower-case hex.
-- **`signature`** — the signature over the hash, base64-encoded (RFC 4648
-  §4, with padding). It is RSASSA-PSS
-  ([RFC 8017 §8.1](https://www.rfc-editor.org/rfc/rfc8017.html#section-8.1))
-  with SHA-256, the mask generation function MGF1 with SHA-256, and a salt
-  of 32 bytes, the hash's length, so that it signs `contents` through its
-  hash.
+- **`signature`** — the signature, base64-encoded (RFC 4648 §4, with
+  padding), in the scheme the signer's key is for:
+  - **A person's RSA key** signs the hash with RSASSA-PSS
+    ([RFC 8017 §8.1](https://www.rfc-editor.org/rfc/rfc8017.html#section-8.1)),
+    with SHA-256, the mask generation function MGF1 with SHA-256, and a salt
+    of 32 bytes, the hash's length, so that it signs `contents` through its
+    hash.
+  - **A node's Ed25519 key** signs the UTF-8 bytes of `contents` themselves,
+    with Ed25519 as
+    [RFC 8032 §5.1](https://www.rfc-editor.org/rfc/rfc8032.html#section-5.1)
+    defines it (PureEdDSA), which hashes what it signs with SHA-512, so that
+    the signature holds even should SHA-256 collide. It is 64 bytes.
 - **`contents`** — the raw bundle (file or directory bundle), serialized as
   **JSON text with standard string escaping** (not base64 — base64 would
   take up more space than escaped JSON text).
@@ -326,19 +332,23 @@ A bundle is identified as a signed bundle by the presence of the `signature`
 key.
 
 A reader trusts nothing in `contents` until it has checked both: that `hash`
-is the hash of `contents`, and that `signature` verifies over it under the
-public key `signer` names. A signed bundle that fails either, or whose
-`signer` names anything but such a key, is refused whole. Neither check says
-who the signer is to the reader. Anyone can sign content with a key of their
-own and place it anywhere, so a reader also checks that `signer` is whoever
-it expects.
+is the hash of `contents`, and that `signature` verifies under the public key
+`signer` names. The kind of that key says which scheme the signature is in,
+and nothing in the bundle says so beside it. A signed bundle that fails
+either check, or whose `signer` names anything but such a key, or an Ed25519
+key that is one of the points of small order, which anyone can sign for (HTTP
+API §11.2), is refused whole. Neither check says who the signer is to the
+reader. Anyone can sign content with a key of their own and place it
+anywhere, so a reader also checks that `signer` is whoever it expects.
 
 A page has a node sign for a person, and check a signature for it, since a
 page never reads a person's private key, and a page reached over the network
-has no cryptography of the browser's to check one with (HTTP API §11.5). The
-JSON a node signs need not be a bundle: a person's metadata is signed the
-same way, though it is not a bundle, as an identity block is protected as a
-bundle is (§6). A reader tells what `contents` is by where it found it.
+has no cryptography of the browser's to check one with (HTTP API §11.5). A
+node signs with its own key only what it places itself, never for a page,
+and a check reads a node's signature as it does a person's. The JSON a node
+signs need not be a bundle: a person's metadata is signed the same way,
+though it is not a bundle, as an identity block is protected as a bundle is
+(§6). A reader tells what `contents` is by where it found it.
 
 ---
 
@@ -763,9 +773,6 @@ The following were identified during design discussion but not yet resolved:
   which ends a loop of them. The reference node follows up to 40, and takes
   a path needing more to name nothing, as it does one that climbs above the
   bundle's root.
-- Which other keys sign a bundle (§5), such as a node's Ed25519 key, and how
-  a reader tells which scheme a signature is in. The reference node signs and
-  checks with a person's RSA key alone.
 - Fields an application's directory bundle could carry for serving it (HTTP
   API §13): a default file in place of `index.html`, whether a directory's
   index is generated, a file's content type, and a page for a path not found.

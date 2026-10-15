@@ -593,17 +593,65 @@ Work this implies:
 - **The node signs with its own key** for the step that places its
   metadata (Step 104), with no session, since it is no person.
 
-Open questions:
+Ruled (2026-10-14), each my recommended option:
 
-- What an Ed25519 signature covers: the hash of `contents`, as RSASSA-PSS
-  does, or `contents` itself, since Ed25519 hashes what it signs.
-- Whether a node may sign for a page at all beyond its metadata, or only
-  through `/config` (Step 104).
+- **An Ed25519 signature covers `contents` itself**, its UTF-8 bytes, as
+  RFC 8032 defines Ed25519, which hashes what it signs with SHA-512. Signing
+  the hash, as RSASSA-PSS does, was turned down, since the signature would
+  then hold only as long as SHA-256 resists collisions, which Ed25519 alone
+  does not need.
+- **A node signs only what it places itself.** No endpoint has it sign as
+  itself for a page: `POST /data/signed` stays a person's, and Step 104
+  places the node's metadata with the library's signing, behind `/config`'s
+  credential. A page having the node sign, as it signs as a person, was
+  turned down, since any trusted application could then have the node say
+  anything under the key its peers know it by.
 
 **Testable in isolation:** library tests signing and checking with an
 Ed25519 key, refusing a forged signature and a key of small order, and
 telling the two kinds of signer apart; web server tests asserting
 `GET /data/signed/{id}` checks a node's signature.
+
+Built in one change set: 144 added lines of non-test Python, 44 removed, and
+187 of tests. That is under §5's estimate of about 200, and 19 of the lines
+are the small-order encodings, moved rather than new. BundleSpecification §5
+defines a node's signature, and its open item on other signers (§9) is gone;
+HttpApi §11.5, Trust Network §3.2, and App Developer Guide §6.13 say that a
+node signs.
+
+- **`SignedBundle.signed`** takes a person's RSA key or a node's Ed25519
+  key, and **`SignedBundle.verified`** checks under whichever the signer
+  names, the key's kind saying which scheme, and refuses an Ed25519 key of
+  small order.
+- **`NodeIdentity.signed(contents)`** signs as the node, as
+  `PersonKey.signed` signs as a person. Nothing calls it yet: Step 104 does.
+- **`has_small_order`** (`bundle/signing.py`) is the small-order rule,
+  moved from `identity/keys.py`, which calls it for a peer's key, so that the
+  rule is in one place.
+- **`GET /data/signed/{id}`** checks a node's signature with no change of
+  its own, since it checks with `SignedBundle.verified`. So do the trust
+  list reader (Step 96) and `GET /data/encrypted/{id}` (Phase 4 Step 78).
+
+My calls, not yet reviewed:
+
+- **The small-order rule moved down to `bundle/signing.py`**, beside the
+  rule of a person's key (`person_public_key`), since the bundle package is
+  below `identity` and does not import it. `identity/keys.py` keeps its own
+  messages, so that a peer's key is refused as before.
+- **The answer of `GET /data/signed/{id}` does not say whether its signer is
+  a person or a node**, since a page knows by context (§6), and HttpApi
+  §11.5 says so.
+- **A signed bundle's form does not change.** No member names the scheme,
+  and `algorithm` and `hash` stay, checked for a node's as for a person's,
+  so that a reader checks the hash first, whoever signed.
+- **A key of neither kind** named as a signer is `invalid-bundle-signature`,
+  as an EC key was. Signing with one is a `TypeError`, logged as an error,
+  since only the node's own code signs.
+- **The trust list reader reads a node's list** with no change, as the
+  Trust Network Specification allows (Step 94), though nothing places one.
+- **BundleSpecification §9's open item on other signers is removed**, since
+  the key's kind now tells the scheme, and a further kind would be added to
+  §5 the same way.
 
 ---
 
@@ -648,7 +696,8 @@ Open questions:
   for it, since `/config` cannot reach the endpoints a page uses, or
   `/config` gains generic ones, a signed drop and a drop's search, and the
   page holds the rules, as the directory's page does for people (Phase 4
-  Step 80).
+  Step 80). Step 103 ruled that no endpoint has the node sign for a page,
+  which rules out a signed drop on `/config`.
 - Whether a node's metadata says when its id was made, as a person's does.
 
 **Testable in isolation:** web server tests asserting the endpoint answers

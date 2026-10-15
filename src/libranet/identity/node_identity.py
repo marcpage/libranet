@@ -9,6 +9,10 @@ node starts (:meth:`NodeIdentity.load_or_create`). Every module that needs
 the identity loads the key as it is (:meth:`NodeIdentity.load`). If a module
 could create one, a key file lost while the node runs would give the next
 module to restart an identity the others do not share.
+
+The node signs with its own key what it places itself, as a signed bundle
+(:meth:`NodeIdentity.signed`, BundleSpecification §5), and never for a page,
+which has it sign only as whoever is signed in (Phase 5 Step 103).
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ from dataclasses import dataclass, field
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from libranet.bundle.signing import SignedBundle
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig
@@ -83,6 +88,14 @@ class NodeIdentity:
     def key_id(self) -> str:
         """The RFC 9421 ``keyid``: the node id in ``{algorithm}/{hash}`` form."""
         return str(self.node_id)
+
+    def signed(self, contents: str) -> SignedBundle:
+        """``contents`` signed by this node, as a signed bundle's (BundleSpecification §5).
+
+        Raises:
+            ValueError: ``contents`` is not UTF-8.
+        """
+        return SignedBundle.signed(contents, self.private_key, self.node_id)
 
     def publish_public_key(self, store: CasStore) -> None:
         """Make the public key retrievable from ``store`` under the node id."""

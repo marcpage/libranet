@@ -1,15 +1,18 @@
-"""Tests for signed bundles: JSON text signed with a person's key."""
+"""Tests for signed bundles: JSON text signed with a person's key or a node's."""
 
 from __future__ import annotations
 from base64 import b64decode
 from hashlib import sha256
 from json import dumps, loads
+from logging import ERROR
 
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ec import SECP256R1
 from cryptography.hazmat.primitives.asymmetric.ec import generate_private_key as generate_ec_key
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, generate_private_key
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-from pytest import fixture, mark, raises
+from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.bundle.errors import (
     BundleSignatureError,
@@ -17,13 +20,22 @@ from libranet.bundle.errors import (
     MalformedBundleError,
     UnsupportedBundleError,
 )
-from libranet.bundle.signing import SIGNED_HASH_ALGORITHM, SignedBundle, person_public_key
+from libranet.bundle.signing import (
+    SIGNED_HASH_ALGORITHM,
+    SignedBundle,
+    has_small_order,
+    person_public_key,
+)
 from libranet.cas.content_id import ContentId
 
 CONTENTS = '{"handle":"alice","version":1}'
 
+# The Ed25519 point of order 1, under which a signature of that point and a
+# zero scalar verifies for any message.
+IDENTITY_POINT = bytes([1]) + bytes(31)
 
-def public_pem(private_key: RSAPrivateKey) -> bytes:
+
+def public_pem(private_key: RSAPrivateKey | Ed25519PrivateKey) -> bytes:
     """``private_key``'s public key, as PEM SubjectPublicKeyInfo."""
     return private_key.public_key().public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo)
 
@@ -46,6 +58,21 @@ def public_key(private_key: RSAPrivateKey) -> bytes:
 @fixture(scope="module")
 def bundle(private_key: RSAPrivateKey, public_key: bytes) -> SignedBundle:
     return SignedBundle.signed(CONTENTS, private_key, id_of(public_key))
+
+
+@fixture(scope="module")
+def node_key() -> Ed25519PrivateKey:
+    return Ed25519PrivateKey.generate()
+
+
+@fixture(scope="module")
+def node_public_key(node_key: Ed25519PrivateKey) -> bytes:
+    return public_pem(node_key)
+
+
+@fixture(scope="module")
+def node_bundle(node_key: Ed25519PrivateKey, node_public_key: bytes) -> SignedBundle:
+    return SignedBundle.signed(CONTENTS, node_key, id_of(node_public_key))
 
 
 def reencoded(bundle: SignedBundle, **changes: object) -> bytes:
@@ -201,7 +228,7 @@ def test_a_signer_naming_another_kind_of_key_is_refused(bundle: SignedBundle) ->
     )
     named = SignedBundle(id_of(ec_key), bundle.contents, bundle.signature)
 
-    with raises(BundleSignatureError, match="no RSA key of at least 2048 bits"):
+    with raises(BundleSignatureError, match="neither an RSA key of at least 2048 bits nor an"):
         named.verified(ec_key)
 
 
@@ -306,3 +333,93 @@ def test_what_is_no_persons_public_key_is_refused_naming_what_named_it(
 ) -> None:
     with raises(ValueError, match=complaint):
         person_public_key(public_key, "Bob's id")
+
+
+def test_a_nodes_signed_bundle_verifies_under_its_key(
+    node_bundle: SignedBundle, node_public_key: bytes
+) -> None:
+    node_bundle.verified(node_public_key)
+
+    assert node_bundle.signer == id_of(node_public_key)
+    assert node_bundle.contents == CONTENTS
+
+
+def test_a_node_signs_the_contents_themselves_and_not_their_hash(
+    node_bundle: SignedBundle, node_key: Ed25519PrivateKey
+) -> None:
+    contents = CONTENTS.encode("utf-8")
+    key = node_key.public_key()
+
+    key.verify(node_bundle.signature, contents)
+
+    with raises(InvalidSignature):
+        key.verify(node_bundle.signature, sha256(contents).digest())
+
+
+def test_a_nodes_signed_bundle_is_written_and_read_back_as_a_persons_is(
+    node_bundle: SignedBundle, node_public_key: bytes
+) -> None:
+    value = loads(node_bundle.encoded())
+    decoded = SignedBundle.decoded(node_bundle.encoded())
+
+    assert list(value) == ["algorithm", "contents", "hash", "signature", "signer"]
+    assert value["hash"] == sha256(CONTENTS.encode("utf-8")).hexdigest()
+    assert decoded == node_bundle
+    decoded.verified(node_public_key)
+
+
+def test_contents_changed_after_a_node_signed_them_do_not_verify(
+    node_bundle: SignedBundle, node_public_key: bytes
+) -> None:
+    changed = SignedBundle(node_bundle.signer, CONTENTS.replace("1", "2"), node_bundle.signature)
+
+    with raises(BundleSignatureError, match="does not verify"):
+        changed.verified(node_public_key)
+
+
+def test_a_signature_by_another_node_does_not_verify_under_the_node_it_names(
+    node_bundle: SignedBundle, node_public_key: bytes
+) -> None:
+    forged = SignedBundle.signed(CONTENTS, Ed25519PrivateKey.generate(), node_bundle.signer)
+
+    with raises(BundleSignatureError, match="does not verify"):
+        forged.verified(node_public_key)
+
+
+def test_a_signer_naming_a_key_of_small_order_is_refused_though_its_forgery_holds() -> None:
+    small = Ed25519PublicKey.from_public_bytes(IDENTITY_POINT)
+    small_public = small.public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo)
+    forged = SignedBundle(id_of(small_public), CONTENTS, IDENTITY_POINT + bytes(32))
+    # Ed25519 alone takes the forgery.
+    small.verify(forged.signature, CONTENTS.encode("utf-8"))
+
+    with raises(BundleSignatureError, match="small order"):
+        forged.verified(small_public)
+
+
+def test_the_signers_key_says_which_scheme_checks_the_signature(
+    bundle: SignedBundle, node_bundle: SignedBundle, public_key: bytes, node_public_key: bytes
+) -> None:
+    persons_named_as_a_nodes = SignedBundle(node_bundle.signer, CONTENTS, bundle.signature)
+    nodes_named_as_a_persons = SignedBundle(bundle.signer, CONTENTS, node_bundle.signature)
+
+    with raises(BundleSignatureError, match="does not verify"):
+        persons_named_as_a_nodes.verified(node_public_key)
+
+    with raises(BundleSignatureError, match="does not verify"):
+        nodes_named_as_a_persons.verified(public_key)
+
+
+def test_a_key_of_neither_kind_signs_nothing_and_is_an_error(caplog: LogCaptureFixture) -> None:
+    ec_key = generate_ec_key(SECP256R1())
+    signer = id_of(b"an EC key")
+
+    with caplog.at_level(ERROR), raises(TypeError, match="RSA or Ed25519 key"):
+        SignedBundle.signed(CONTENTS, ec_key, signer)  # type: ignore[arg-type]
+
+    assert f"Cannot sign as {signer}" in caplog.text
+
+
+def test_only_a_point_of_small_order_has_small_order(node_key: Ed25519PrivateKey) -> None:
+    assert not has_small_order(node_key.public_key())
+    assert has_small_order(Ed25519PublicKey.from_public_bytes(IDENTITY_POINT))

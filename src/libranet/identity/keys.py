@@ -31,6 +31,7 @@ from cryptography.hazmat.primitives.serialization import (
 )
 
 from libranet.atomic_file import TEMP_SUFFIX
+from libranet.bundle.signing import has_small_order
 from libranet.cas.compression import decompressed
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import NotZlibStreamError, StreamTooLargeError
@@ -44,25 +45,6 @@ BACKUP_SECRET_BYTES: Final = 32
 # past this, so a small body cannot expand without bound.
 MAX_PUBLIC_KEY_BYTES: Final = 64 * 1024
 _PRIVATE_DIR_MODE: Final = 0o700
-
-# The y-coordinate encodings of the eight Ed25519 points of small order,
-# including the non-canonical encodings of y = 0 and y = 1 (as p and p + 1).
-# Anyone can forge signatures under such a key (OpenSSL accepts them), so a
-# node id derived from one could not be attributed to anybody. As in
-# libsodium, keys are compared with the x sign bit masked off.
-_SMALL_ORDER_Y_ENCODINGS: Final = frozenset(
-    bytes.fromhex(encoding)
-    for encoding in (
-        "0000000000000000000000000000000000000000000000000000000000000000",  # order 4
-        "0100000000000000000000000000000000000000000000000000000000000000",  # order 1
-        "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05",  # order 8
-        "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a",  # order 8
-        "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",  # order 2
-        "edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",  # order 4
-        "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",  # order 1
-    )
-)
-_SIGN_BIT_MASK: Final = 0x7F
 
 
 def generate_private_key() -> Ed25519PrivateKey:
@@ -91,9 +73,7 @@ def decode_public_key(data: bytes) -> Ed25519PublicKey:
     if not isinstance(key, Ed25519PublicKey):
         raise KeyFileError(f"Unsupported public key type: {type(key).__name__}")
 
-    raw = key.public_bytes(Encoding.Raw, PublicFormat.Raw)
-
-    if raw[:-1] + bytes([raw[-1] & _SIGN_BIT_MASK]) in _SMALL_ORDER_Y_ENCODINGS:
+    if has_small_order(key):
         raise KeyFileError("Public key has small order, so anyone can sign for it")
 
     return key
