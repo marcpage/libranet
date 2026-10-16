@@ -151,6 +151,7 @@ from libranet.connections.peer_mix import PeerMix
 from libranet.connections.peer_session import PeerSession
 from libranet.connections.reverse_dns import ResolveNames, ReverseLookup, host_names
 from libranet.identity.node_identity import NodeIdentity
+from libranet.messaging.connected_peers import ConnectedPeers
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import AddressSource, ConnectionDirection, EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
@@ -673,10 +674,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         """
         self.publish(
             EventType.PEERS_CONNECTED,
-            {
-                "direction": ConnectionDirection.OUTBOUND.value,
-                "node_ids": sorted(str(node_id) for node_id in self._peers),
-            },
+            ConnectedPeers.payload(ConnectionDirection.OUTBOUND, self._peers),
         )
 
     def _load_seeds(self) -> list[Candidate]:

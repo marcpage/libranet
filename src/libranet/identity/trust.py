@@ -26,14 +26,15 @@ Nothing here reads a list, or keeps the time (Phase 5 Step 98).
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from logging import getLogger
 from typing import Any, Final, Mapping
 
 from libranet.cas.algorithms import UnsupportedAlgorithms
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
-from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
+from libranet.cas.errors import InvalidContentIdError
+from libranet.identity.versions import VERSION_FIELD, VERSIONS_FIELD, HeldVersions, Numbered
 from libranet.json_fields import integer_field
 
 _LOGGER = getLogger(__name__)
@@ -47,15 +48,12 @@ MIN_TRUST_LIST_BITS: Final = 16
 # What a trust list's drop target string is, before its owner's id (§3.2).
 _DROP_PREFIX: Final = "trust:"
 
-# The members of a version, and the number of the first (§3.1).
+# The member of a version naming whom it trusts or distrusts (§3.1).
 _ENTRIES_FIELD: Final = "entries"
-_VERSION_FIELD: Final = "version"
-_VERSIONS_FIELD: Final = "versions"
-_FIRST_VERSION: Final = 1
 
 
 @dataclass(frozen=True)
-class TrustList:
+class TrustList(Numbered):
     """A version of a trust list: each identity it trusts, ``True``, or distrusts, ``False``.
 
     It is numbered ``version``, and ``versions`` names the drop of the
@@ -68,10 +66,6 @@ class TrustList:
     entries: Mapping[ContentId, bool]
     version: int
     versions: tuple[ContentId, ...] = ()
-
-    def __post_init__(self) -> None:
-        if self.version < _FIRST_VERSION:
-            raise ValueError(f"version must be at least {_FIRST_VERSION}, got {self.version}")
 
     @staticmethod
     def drop_target(owner: ContentId) -> DropTarget:
@@ -97,8 +91,8 @@ class TrustList:
         if not isinstance(value, dict) or not isinstance(value.get(_ENTRIES_FIELD), dict):
             raise ValueError(f'A trust list is an object with an "{_ENTRIES_FIELD}" object')
 
-        version = integer_field(value, _VERSION_FIELD)
-        replaced = value.get(_VERSIONS_FIELD, [])
+        version = integer_field(value, VERSION_FIELD)
+        replaced = value.get(VERSIONS_FIELD, [])
         unsupported = UnsupportedAlgorithms()
         said: dict[ContentId, bool] = {}
         # The ids one entry trusts and another distrusts, each spelling the id
@@ -141,15 +135,9 @@ class TrustList:
 
     def value(self) -> dict[str, Any]:
         """The JSON object this version is, as a signed bundle's ``contents`` holds it (§3.1)."""
-        value: dict[str, Any] = {
-            _ENTRIES_FIELD: {str(identity): trusted for identity, trusted in self.entries.items()},
-            _VERSION_FIELD: self.version,
-        }
-
-        if self.versions:
-            value[_VERSIONS_FIELD] = [str(content_id) for content_id in self.versions]
-
-        return value
+        return self.numbered(
+            {_ENTRIES_FIELD: {str(identity): trusted for identity, trusted in self.entries.items()}}
+        )
 
 
 @dataclass(frozen=True)
@@ -164,24 +152,27 @@ class TrustVersion:
     signer: ContentId
     trust_list: TrustList
 
+    @property
+    def number(self) -> int:
+        """What the version is numbered."""
+        return self.trust_list.version
+
 
 @dataclass(frozen=True)
-class HeldTrustList:
+class HeldTrustList(HeldVersions[TrustVersion]):
     """The trust list of ``owner``, as what a node holds says it (Trust Network §3.3).
 
     ``versions`` are those read, each signed by ``owner``. ``missing`` names
     what was found at the drop, or is needed to check what was, such as
     ``owner``'s key, and is not held yet. While anything is missing, a newer
     version may be among it, so an edit holds off (§3.4), and a build asks
-    for it (§4.3).
+    for it (§4.3). The newest is found, and the next numbered, as
+    :class:`~libranet.identity.versions.HeldVersions` finds and numbers them.
 
     Raises:
-        ValueError: a version is signed by someone other than ``owner``.
+        ValueError: a version is signed by someone other than ``owner``, as
+            one given :meth:`with_version` may be.
     """
-
-    owner: ContentId
-    versions: tuple[TrustVersion, ...] = ()
-    missing: tuple[ContentId, ...] = ()
 
     def __post_init__(self) -> None:
         for version in self.versions:
@@ -192,47 +183,10 @@ class HeldTrustList:
                 )
 
     @property
-    def newest(self) -> TrustVersion | None:
-        """The newest version read: the one numbered highest, then whose drop's id sorts first.
-
-        Only the owner signs a version, so no one else can make one newer,
-        and no clock is trusted (§3.3). ``None`` if none was read.
-        """
-        return min(
-            self.versions,
-            key=lambda version: (-version.trust_list.version, str(version.content_id)),
-            default=None,
-        )
-
-    @property
     def entries(self) -> Mapping[ContentId, bool]:
         """Whom the newest version trusts, ``True``, or distrusts; none if none was read (§3.3)."""
         newest = self.newest
         return {} if newest is None else newest.trust_list.entries
-
-    @property
-    def replaced(self) -> tuple[ContentId, ...]:
-        """The drops of every version read but the newest, which replaces them all (§3.3)."""
-        newest = self.newest
-        return tuple(
-            version.content_id
-            for version in self.versions
-            if newest is None or version.content_id != newest.content_id
-        )
-
-    def with_version(self, version: TrustVersion) -> HeldTrustList:
-        """This list, with ``version`` read too, should it not be already.
-
-        A version this node placed is held as an upload until the validator
-        stores it, and no search of the drop finds it until then.
-
-        Raises:
-            ValueError: ``version`` is signed by someone other than the owner.
-        """
-        if any(read.content_id == version.content_id for read in self.versions):
-            return self
-
-        return replace(self, versions=(*self.versions, version))
 
     def next_version(self, identity: ContentId, trusted: bool | None) -> TrustList | None:
         """The version after the newest, setting or clearing the entry for ``identity``.
@@ -259,12 +213,7 @@ class HeldTrustList:
         if trusted is not None:
             entries[identity] = trusted
 
-        newest = self.newest
-
-        if newest is None:
-            return TrustList(entries, _FIRST_VERSION)
-
-        return TrustList(entries, newest.trust_list.version + 1, (newest.content_id,))
+        return TrustList(entries, *self._next_numbering())
 
 
 @dataclass(frozen=True)
@@ -424,12 +373,7 @@ def _content_id(name: object, unsupported: UnsupportedAlgorithms) -> ContentId |
         return None
 
     try:
-        return ContentId.parse(name)
-
-    except UnknownAlgorithmError:
-        # Not logged: counted, and logged once for the list.
-        unsupported.add(name)
-        return None
+        return ContentId.parse_supported(name, unsupported)
 
     except InvalidContentIdError:
         # Not logged: counted, and logged once for the list.

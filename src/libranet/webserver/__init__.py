@@ -278,7 +278,8 @@ from libranet.webserver.trust_builds import (
     TrustListReader,
 )
 from libranet.webserver.trust_handlers import TRUST_PATH, TRUST_PATTERN, TrustEdits, TrustReads
-from libranet.webserver.trust_lists import TrustLists
+from libranet.webserver.trust_lists import TRUST_LIST_KIND, TrustLists
+from libranet.webserver.version_edits import ReplacedVersions, VersionEdits
 
 __all__ = [
     "APPLICATIONS_PATH",
@@ -362,6 +363,7 @@ __all__ = [
     "STORE_KEY_PATTERN",
     "STORE_PATH",
     "STORE_PATTERN",
+    "TRUST_LIST_KIND",
     "TRUST_PATH",
     "TRUST_PATTERN",
     "UNTRUSTED_APP_HEADERS",
@@ -431,6 +433,7 @@ __all__ = [
     "RefererPage",
     "RegisteredApplications",
     "RegistryFileError",
+    "ReplacedVersions",
     "Request",
     "RequestBody",
     "RequestHandler",
@@ -466,6 +469,7 @@ __all__ = [
     "Turns",
     "UnsupportedMediaTypeError",
     "ValueChangedError",
+    "VersionEdits",
     "VersionParser",
     "WebServerModule",
     "basic_credentials",

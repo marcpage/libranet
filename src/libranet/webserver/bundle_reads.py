@@ -54,7 +54,7 @@ what is resolved from it is kept while it is read (Phase 2 Step 29).
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from http import HTTPStatus
 from logging import getLogger
 from typing import Any, Final
@@ -115,12 +115,9 @@ class BundleReadHandler:
     def __call__(self, request: Request) -> Response:
         response = self._response(request)
         cached = response.status < HTTPStatus.BAD_REQUEST
-        headers = {
-            **response.headers,
-            **_SANDBOX_HEADERS,
-            **({"Cache-Control": IMMUTABLE_CACHE_CONTROL} if cached else {}),
-        }
-        return replace(response, headers=headers)
+        return response.with_headers(
+            {**_SANDBOX_HEADERS, **({"Cache-Control": IMMUTABLE_CACHE_CONTROL} if cached else {})}
+        )
 
     def _response(self, request: Request) -> Response:  # pylint: disable=too-many-return-statements
         """The response to ``request``, before the headers every one carries."""

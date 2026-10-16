@@ -8,9 +8,10 @@ from typing import Iterator
 from pytest import fixture
 
 from libranet.cas.content_id import ContentId
+from libranet.messaging.connected_peers import ConnectedPeers
 from libranet.messaging.events import AddressSource, ConnectionDirection
 from libranet.stats.database import StatsDatabase
-from libranet.stats.peers import ConnectedPeers, KnownPeer, PeerList
+from libranet.stats.peers import KnownPeer, PeerList
 from libranet.stats.records import NodeAddress, NodeStats
 
 SELF_ID = ContentId.for_data(b"this node's public key", "sha256")
@@ -45,25 +46,6 @@ def read(
         max_peers=max_peers,
         now=NOW,
     )
-
-
-def test_the_peers_connected_each_way_are_replaced_when_named_again() -> None:
-    connected = ConnectedPeers()
-
-    assert connected.directions(PEER_ID) == ()
-
-    connected.named(ConnectionDirection.INBOUND, [PEER_ID])
-    connected.named(ConnectionDirection.OUTBOUND, [PEER_ID, OTHER_PEER_ID])
-
-    assert connected.directions(PEER_ID) == (
-        ConnectionDirection.OUTBOUND,
-        ConnectionDirection.INBOUND,
-    )
-
-    connected.named(ConnectionDirection.OUTBOUND, [OTHER_PEER_ID])
-
-    assert connected.directions(PEER_ID) == (ConnectionDirection.INBOUND,)
-    assert connected.node_ids() == {PEER_ID, OTHER_PEER_ID}
 
 
 def test_a_peer_is_given_with_its_statistics_addresses_and_connections() -> None:

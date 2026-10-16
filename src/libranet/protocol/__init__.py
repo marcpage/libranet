@@ -50,6 +50,7 @@ from libranet.protocol.http_syntax import (
     OCTET_STREAM,
     REQUEST_PATH_HEADER,
     TOKEN,
+    data_path,
 )
 from libranet.protocol.identity_requests import (
     MIN_PASSWORD_CHARACTERS,
@@ -127,6 +128,7 @@ __all__ = [
     "check_named",
     "check_path",
     "content_id_text",
+    "data_path",
     "decode_list",
     "identifier",
     "is_local_client",

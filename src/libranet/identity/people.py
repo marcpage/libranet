@@ -58,6 +58,7 @@ from libranet.cas.drops import DropTarget
 from libranet.cas.errors import InvalidContentIdError
 from libranet.config.models import MIN_PERSON_KEY_BITS
 from libranet.identity.errors import KeyFileError
+from libranet.identity.versions import FIRST_VERSION, VERSION_FIELD
 from libranet.json_format import MOMENT_FORMAT, compact_json
 
 #: The most characters a normalized username has (HttpApi §11.3).
@@ -82,11 +83,9 @@ _CREATED_FIELD: Final = "created"
 _FALLBACK_FIELD: Final = "fallback"
 _FALLBACK_FOR_FIELD: Final = "fallback_for"
 
-# The members of a version of what a person says of themselves, and the
-# number of the first (HttpApi §11.3).
+# The member of a version of what a person says of themselves saying each
+# detail (HttpApi §11.3).
 _FIELDS_FIELD: Final = "fields"
-_VERSION_FIELD: Final = "version"
-_FIRST_VERSION: Final = 1
 
 # The Unicode general category of a control character, which no username holds.
 _CONTROL_CATEGORY: Final = "Cc"
@@ -345,7 +344,7 @@ class PersonKey:
             _CREATED_FIELD: self.created_text,
             _FALLBACK_FIELD: str(self.fallback),
             _FIELDS_FIELD: {},
-            _VERSION_FIELD: _FIRST_VERSION,
+            VERSION_FIELD: FIRST_VERSION,
         }
         return self.signed(compact_json(contents, sort_keys=True).decode("utf-8"))
 

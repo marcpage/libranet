@@ -47,7 +47,7 @@ served from its parts, and is ``500``.
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from http import HTTPStatus
 from logging import getLogger
 from re import escape
@@ -143,7 +143,7 @@ class AppHandler:
         if not sandboxed:
             return response
 
-        return replace(response, headers={**response.headers, **UNTRUSTED_APP_HEADERS})
+        return response.with_headers(UNTRUSTED_APP_HEADERS)
 
     def _response(
         self, request: Request, prefix: str, bundle: ContentId, rest: str | None

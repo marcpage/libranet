@@ -24,36 +24,14 @@ was.
 
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any
 
 from libranet.cas.content_id import ContentId
 from libranet.json_format import compact_json, moment_text
+from libranet.messaging.connected_peers import ConnectedPeers
 from libranet.messaging.events import ConnectionDirection
 from libranet.stats.database import StatsDatabase
 from libranet.stats.records import NodeAddress, NodeStats
-
-
-class ConnectedPeers:
-    """The peers connected to this node now, each way, as ``peers.connected`` last named them."""
-
-    def __init__(self) -> None:
-        self._node_ids: dict[ConnectionDirection, frozenset[ContentId]] = {}
-
-    def named(self, direction: ConnectionDirection, node_ids: Iterable[ContentId]) -> None:
-        """Take ``node_ids`` as the peers connected ``direction``, in place of those before."""
-        self._node_ids[direction] = frozenset(node_ids)
-
-    def directions(self, node_id: ContentId) -> tuple[ConnectionDirection, ...]:
-        """The ways ``node_id`` is connected now, none if it is not."""
-        return tuple(
-            direction
-            for direction in ConnectionDirection
-            if node_id in self._node_ids.get(direction, frozenset())
-        )
-
-    def node_ids(self) -> frozenset[ContentId]:
-        """Every peer connected now, either way."""
-        return frozenset().union(*self._node_ids.values())
 
 
 @dataclass(frozen=True)

@@ -71,9 +71,11 @@ class ImportHandler:
         try:
             found = self.folders.find_file(asked.path)
 
-        except IsADirectoryError as error:
-            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            return invalid_request_response(request, ValueError(f"{asked.path!r} is a directory"))
+        except IsADirectoryError:
+            # Not logged: the refusal is, naming the path asked for.
+            return invalid_request_response(
+                request, ValueError(f"{asked.path!r} is a directory"), _LOGGER
+            )
 
         except PermissionError as error:
             _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, error)

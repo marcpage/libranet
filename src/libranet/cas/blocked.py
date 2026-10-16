@@ -23,7 +23,7 @@ from typing import Final, Iterable
 from libranet.atomic_file import KeptRead
 from libranet.cas.algorithms import UnsupportedAlgorithms
 from libranet.cas.content_id import ContentId
-from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
+from libranet.cas.errors import InvalidContentIdError
 from libranet.config.models import StorageConfig
 from libranet.json_format import compact_json
 
@@ -112,16 +112,16 @@ class BlockedContent:
                 continue
 
             try:
-                blocked.add(ContentId.parse(text))
-
-            except UnknownAlgorithmError:
-                # Not logged: counted, and logged once for the list below.
-                unsupported.add(text)
+                content_id = ContentId.parse_supported(text, unsupported)
 
             except InvalidContentIdError:
                 _LOGGER.warning(
                     "The blocked list at %s holds %r, not a content id", self._path, text
                 )
+                continue
+
+            if content_id is not None:
+                blocked.add(content_id)
 
         unsupported.log(_LOGGER, f"The blocked list at {self._path}")
         return frozenset(blocked)

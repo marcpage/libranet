@@ -5,7 +5,8 @@ incoming ones. A person's identity too, kept at a drop their username names
 (Phase 4 Step 79), with the fallback made with it (Phase 4 Step 81), and the
 list of whom an identity trusts or distrusts (Phase 5 Step 96), with the
 scores a person's list gives the identities it reaches (Phase 5 Step 98).
-What a node says of itself, signed by it (Phase 5 Step 104).
+What a node says of itself, signed by it (Phase 5 Step 104), and what each
+document kept in signed versions shares.
 """
 
 from libranet.identity.authentication import (
@@ -73,11 +74,20 @@ from libranet.identity.trust import (
     TrustScores,
     TrustVersion,
 )
+from libranet.identity.versions import (
+    FIRST_VERSION,
+    VERSION_FIELD,
+    VERSIONS_FIELD,
+    HeldVersions,
+    Numbered,
+    ReadVersion,
+)
 
 __all__ = [
     "BACKUP_SECRET_BYTES",
     "CONTENT_DIGEST_HEADER",
     "DIGEST_COMPONENT",
+    "FIRST_VERSION",
     "MAX_IDENTITY_BYTES",
     "MAX_PUBLIC_KEY_BYTES",
     "MAX_TRACKED_SIGNERS",
@@ -89,11 +99,14 @@ __all__ = [
     "SIGNATURE_HEADER",
     "SIGNATURE_INPUT_HEADER",
     "SIGNATURE_LABEL",
+    "VERSION_FIELD",
+    "VERSIONS_FIELD",
     "AuthenticationResult",
     "AuthenticationStatus",
     "Clock",
     "HeldNodeMetadata",
     "HeldTrustList",
+    "HeldVersions",
     "IdentityError",
     "InvalidSignatureError",
     "KeyFileError",
@@ -104,7 +117,9 @@ __all__ = [
     "NewIdentity",
     "NodeIdentity",
     "NodeMetadata",
+    "Numbered",
     "PersonKey",
+    "ReadVersion",
     "RequestAuthenticator",
     "SignatureError",
     "TrustLimits",

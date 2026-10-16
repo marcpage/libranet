@@ -2,9 +2,11 @@
 
 The shared event-type enum, the message envelope, the module base class, and
 the dispatcher process that delivers each message to the modules that
-subscribe to it.
+subscribe to it. Which peers are connected, as the message more than one
+module reads says (Phase 2 Step 53).
 """
 
+from libranet.messaging.connected_peers import ConnectedPeers
 from libranet.messaging.dispatcher import DEFAULT_DISPATCH_POLL_INTERVAL_SECONDS, Dispatcher
 from libranet.messaging.envelope import (
     ENVELOPE_FIELDS,
@@ -40,6 +42,7 @@ __all__ = [
     "TIMESTAMP_FIELD",
     "AddressSource",
     "ConflictBehavior",
+    "ConnectedPeers",
     "ConnectionDirection",
     "Dispatcher",
     "EventType",

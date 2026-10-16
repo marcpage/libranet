@@ -120,8 +120,9 @@ from libranet.cas.errors import CasError
 from libranet.cas.store import CasStore, HeldObject
 from libranet.config.models import LibranetConfig
 from libranet.identity.node_identity import NodeIdentity
+from libranet.messaging.connected_peers import ConnectedPeers
 from libranet.messaging.envelope import Message
-from libranet.messaging.events import AddressSource, ConnectionDirection, EventType
+from libranet.messaging.events import AddressSource, EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
@@ -129,7 +130,6 @@ from libranet.protocol.search import SearchCache, normalize_prefix
 from libranet.stats.database import StatsDatabase
 from libranet.stats.derivation import ListDeriver
 from libranet.stats.enrichment import SearchEnricher
-from libranet.stats.peers import ConnectedPeers
 from libranet.stats.schema import SeekKind
 
 _Component = TypeVar("_Component")
@@ -463,10 +463,7 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
 
     def _on_peers_connected(self, message: Message) -> None:
         """Keep the peers now connected one way, in place of those named before."""
-        self._connected.named(
-            ConnectionDirection(message["direction"]),
-            (ContentId.parse(node_id) for node_id in message["node_ids"]),
-        )
+        self._connected.named_in(message)
 
     def _on_reclaim_requested(self, _message: Message) -> None:
         """Tell the unbundler whose resolved files to keep: those of applications used lately."""

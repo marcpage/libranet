@@ -12,7 +12,7 @@ than one reads from a request's path.
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from http import HTTPStatus
 from io import BytesIO
 from json import loads
@@ -227,6 +227,10 @@ class Response:
     def __post_init__(self) -> None:
         if self.stream is not None and self.body:
             raise ValueError("A response sends its body or a stream, not both")
+
+    def with_headers(self, headers: Mapping[str, str]) -> Response:
+        """This response, with ``headers`` added, each in place of any it has of the same name."""
+        return replace(self, headers={**self.headers, **headers})
 
 
 def bytes_response(

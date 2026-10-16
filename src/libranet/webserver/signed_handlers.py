@@ -35,7 +35,7 @@ read is counted as wanted.
 """
 
 from __future__ import annotations
-from dataclasses import KW_ONLY, dataclass, replace
+from dataclasses import KW_ONLY, dataclass
 from http import HTTPStatus
 from logging import getLogger
 from typing import Final
@@ -138,11 +138,7 @@ class SignedDrops:
         # Held again, should it have been evicted since it was made.
         store_object(person.public_key, self.drops.uploads, self.drops.max_object_bytes)
         _LOGGER.info("Signed %s as %s", stored.content_id, person.person_id)
-        response = json_response(
-            {**stored.value(), "signer": str(person.person_id)}, HTTPStatus.CREATED
-        )
-        location = f"{API_PREFIX}/{stored.content_id}"
-        return replace(response, headers={**response.headers, "Location": location})
+        return stored.created_response(signer=str(person.person_id))
 
     def read(self, request: Request) -> Response:
         """``GET /data/signed/{algorithm}/{hash}``: check the signed drop named, and read it."""
@@ -162,9 +158,7 @@ class SignedDrops:
             return signed
 
         response = json_response(signed.read_value(content_id))
-        return replace(
-            response, headers={**response.headers, "Cache-Control": IMMUTABLE_CACHE_CONTROL}
-        )
+        return response.with_headers({"Cache-Control": IMMUTABLE_CACHE_CONTROL})
 
     def held(self, request: Request, content_id: ContentId) -> bytes | Response:
         """What is held for ``content_id``, announced as read; or the response refusing ``request``.

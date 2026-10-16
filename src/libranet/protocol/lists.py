@@ -28,12 +28,7 @@ from typing import Final, Mapping
 from libranet.cas.algorithms import UnsupportedAlgorithms
 from libranet.cas.compression import decompressed
 from libranet.cas.content_id import ContentId
-from libranet.cas.errors import (
-    InvalidContentIdError,
-    NotZlibStreamError,
-    StreamTooLargeError,
-    UnknownAlgorithmError,
-)
+from libranet.cas.errors import InvalidContentIdError, NotZlibStreamError, StreamTooLargeError
 from libranet.json_format import compact_json
 from libranet.protocol.errors import InvalidListError
 from libranet.protocol.http_syntax import API_PREFIX
@@ -111,15 +106,14 @@ def parse_node_list(value: object) -> dict[str, ContentId]:
             continue
 
         try:
-            parsed[endpoint] = ContentId.parse(node_id)
-
-        except UnknownAlgorithmError:
-            # Not logged: counted, and logged once for the list below.
-            unsupported.add(node_id)
+            content_id = ContentId.parse_supported(node_id, unsupported)
 
         except InvalidContentIdError as error:
             _LOGGER.debug("Dropping the entry for %s from a node list: %s", endpoint, error)
             continue
+
+        if content_id is not None:
+            parsed[endpoint] = content_id
 
     unsupported.log(_LOGGER, "A node list")
     return parsed

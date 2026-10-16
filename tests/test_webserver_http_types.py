@@ -186,6 +186,19 @@ def test_a_response_sends_a_body_or_a_stream_not_both() -> None:
         Response(200, b"x", stream=stream)
 
 
+def test_headers_added_to_a_response_replace_any_of_the_same_name() -> None:
+    response = Response(201, b"{}", {"Content-Type": "application/json", "Location": "/old"})
+
+    added = response.with_headers({"Location": "/data/new", "Cache-Control": "no-store"})
+
+    assert added == Response(
+        201,
+        b"{}",
+        {"Content-Type": "application/json", "Location": "/data/new", "Cache-Control": "no-store"},
+    )
+    assert response.headers["Location"] == "/old"
+
+
 @mark.parametrize(
     "text, decoded",
     [("Film%20(2001)/a%2Fb", "Film (2001)/a/b"), ("caf%C3%A9", "café"), ("%FF", None)],

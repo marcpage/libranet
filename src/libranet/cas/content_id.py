@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from string import hexdigits
 from typing import Any, Final, Mapping
 
-from libranet.cas.algorithms import DEFAULT_REGISTRY, AlgorithmRegistry
-from libranet.cas.errors import InvalidContentIdError
+from libranet.cas.algorithms import DEFAULT_REGISTRY, AlgorithmRegistry, UnsupportedAlgorithms
+from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
 
 # The digits a hash may be written with, and the ones it is stored with
 # (HttpApi §5.4).
@@ -80,6 +80,31 @@ class ContentId:
             raise InvalidContentIdError(f"Content id must look like 'algorithm/hash', got {text!r}")
 
         return cls.create(algorithm, hash_value, registry)
+
+    @classmethod
+    def parse_supported(
+        cls,
+        text: str,
+        unsupported: UnsupportedAlgorithms,
+        *,
+        registry: AlgorithmRegistry = DEFAULT_REGISTRY,
+    ) -> ContentId | None:
+        """The id ``text`` names, as :meth:`parse` reads it; ``None`` if its algorithm is unknown.
+
+        An id under an algorithm ``registry`` lacks is counted in
+        ``unsupported``, which logs it once for the list or archive it is
+        among, rather than once for each.
+
+        Raises:
+            InvalidContentIdError: ``text`` names no id.
+        """
+        try:
+            return cls.parse(text, registry)
+
+        except UnknownAlgorithmError:
+            # Not logged: counted, and logged once for the list or archive.
+            unsupported.add(text)
+            return None
 
     @classmethod
     def from_fields(

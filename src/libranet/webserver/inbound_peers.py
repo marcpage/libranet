@@ -22,6 +22,7 @@ from collections import Counter
 from threading import Lock
 
 from libranet.cas.content_id import ContentId
+from libranet.messaging.connected_peers import ConnectedPeers
 from libranet.messaging.events import ConnectionDirection, EventType
 from libranet.messaging.publishing import Publish
 
@@ -63,10 +64,7 @@ class InboundPeers:
     def _publish_connected(self) -> None:
         self._publish(
             EventType.PEERS_CONNECTED,
-            {
-                "direction": ConnectionDirection.INBOUND.value,
-                "node_ids": sorted(str(node_id) for node_id in self._connections),
-            },
+            ConnectedPeers.payload(ConnectionDirection.INBOUND, self._connections),
         )
 
 

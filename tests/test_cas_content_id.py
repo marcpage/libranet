@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 from hashlib import sha256
+from logging import WARNING, getLogger
 
-from pytest import mark, raises
+from pytest import LogCaptureFixture, mark, raises
 
+from libranet.cas.algorithms import AlgorithmRegistry, UnsupportedAlgorithms
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
 
@@ -62,6 +64,43 @@ def test_unknown_algorithm_is_rejected() -> None:
 def test_malformed_identifiers_are_rejected(text: str) -> None:
     with raises(InvalidContentIdError):
         ContentId.parse(text)
+
+
+def test_a_supported_identifier_is_parsed_and_nothing_counted(
+    caplog: LogCaptureFixture,
+) -> None:
+    unsupported = UnsupportedAlgorithms()
+
+    content_id = ContentId.parse_supported(f"SHA256/{EMPTY_SHA256}", unsupported)
+
+    assert content_id == ContentId("sha256", EMPTY_SHA256)
+    unsupported.log(getLogger("test.content_id"), "A list")
+    assert caplog.record_tuples == []
+
+
+def test_an_identifier_under_an_unknown_algorithm_is_counted_not_parsed(
+    caplog: LogCaptureFixture,
+) -> None:
+    unsupported = UnsupportedAlgorithms()
+
+    assert ContentId.parse_supported(f"sha3/{EMPTY_SHA256}", unsupported) is None
+    assert (
+        ContentId.parse_supported(
+            f"sha256/{EMPTY_SHA256}", unsupported, registry=AlgorithmRegistry(())
+        )
+        is None
+    )
+
+    unsupported.log(getLogger("test.content_id"), "A list")
+    ((_, level, message),) = caplog.record_tuples
+    assert level == WARNING
+    assert message.endswith(": 1 under sha256, 1 under sha3")
+
+
+@mark.parametrize("text", ["", EMPTY_SHA256, f"sha256/{EMPTY_SHA256[:-1]}g"])
+def test_a_supported_identifier_must_still_be_one(text: str) -> None:
+    with raises(InvalidContentIdError):
+        ContentId.parse_supported(text, UnsupportedAlgorithms())
 
 
 def test_for_data_and_matches() -> None:
