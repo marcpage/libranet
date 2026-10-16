@@ -163,3 +163,14 @@ def test_the_first_guard_to_refuse_stops_the_rest() -> None:
 
     assert router.dispatch(Request("GET", "/items/apple")).status == 403
     assert seen == ["refuse"]
+
+
+def test_closing_the_router_ends_what_its_handlers_began_in_order() -> None:
+    router = _router()
+    closed: list[str] = []
+    router.when_closed(lambda: closed.append("first"))
+    router.when_closed(lambda: closed.append("second"))
+
+    router.close()
+
+    assert closed == ["first", "second"]

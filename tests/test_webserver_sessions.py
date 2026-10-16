@@ -6,6 +6,7 @@ from json import loads
 
 from pytest import fixture, mark, raises
 
+from libranet.cas.content_id import ContentId
 from libranet.identity.people import NewIdentity, Username
 from libranet.problems import SESSION_REQUIRED
 from libranet.webserver.http_types import Request, Response
@@ -24,9 +25,37 @@ class Clock:
         return self.now
 
 
+class Listener:
+    """Stands in for what is told of the sessions, keeping what it was told, in order."""
+
+    def __init__(self) -> None:
+        self.told: list[tuple[str, ContentId]] = []
+
+    def session_started(self, person: ContentId) -> None:
+        self.told.append(("started", person))
+
+    def last_session_ended(self, person: ContentId) -> None:
+        self.told.append(("ended", person))
+
+
 @fixture(scope="module")
 def session() -> Session:
     return Session(Username.create("alice"), NewIdentity.generate(2048).key)
+
+
+@fixture(scope="module")
+def other_session() -> Session:
+    return Session(Username.create("bob"), NewIdentity.generate(2048).key)
+
+
+@fixture
+def listener() -> Listener:
+    return Listener()
+
+
+@fixture
+def listened_to(clock: Clock, listener: Listener) -> Sessions:
+    return Sessions(IDLE_SECONDS, clock=clock, listener=listener)
 
 
 @fixture
@@ -206,3 +235,59 @@ def test_signing_out_with_no_session_still_removes_the_cookie(sessions: Sessions
 def test_an_idle_time_that_is_not_positive_is_refused(idle_seconds: float) -> None:
     with raises(ValueError, match="idle_seconds must be positive"):
         Sessions(idle_seconds)
+
+
+def test_the_listener_is_told_of_each_session_started(
+    listened_to: Sessions, listener: Listener, session: Session
+) -> None:
+    listened_to.start(session)
+    listened_to.start(session)
+
+    assert listener.told == [("started", session.key.person_id)] * 2
+
+
+def test_the_listener_is_told_once_a_persons_last_session_is_signed_out(
+    listened_to: Sessions, listener: Listener, session: Session
+) -> None:
+    first = with_cookie(listened_to.start(session))
+    second = with_cookie(listened_to.start(session))
+    listener.told.clear()
+
+    listened_to.end(first)
+    after_first = list(listener.told)
+    listened_to.end(second)
+    listened_to.end(second)
+
+    assert after_first == []
+    assert listener.told == [("ended", session.key.person_id)]
+
+
+def test_the_listener_is_told_once_a_persons_last_session_is_found_idle(
+    listened_to: Sessions, listener: Listener, session: Session, clock: Clock
+) -> None:
+    request = with_cookie(listened_to.start(session))
+    listener.told.clear()
+    clock.now += IDLE_SECONDS
+
+    listened_to.session(request)
+
+    assert listener.told == [("ended", session.key.person_id)]
+
+
+def test_the_listener_is_told_of_those_gone_idle_before_the_session_started(
+    listened_to: Sessions,
+    listener: Listener,
+    session: Session,
+    other_session: Session,
+    clock: Clock,
+) -> None:
+    listened_to.start(session)
+    listener.told.clear()
+    clock.now += IDLE_SECONDS
+
+    listened_to.start(other_session)
+
+    assert listener.told == [
+        ("ended", session.key.person_id),
+        ("started", other_session.key.person_id),
+    ]

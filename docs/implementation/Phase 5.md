@@ -543,7 +543,7 @@ Found while building it:
 
 ---
 
-## Step 99 — Building the Scores at Sign-In
+## Step 99 — Building the Scores at Sign-In ✅
 
 **Issue:** #330. **Depends on:** Steps 96 and 98; Phase 4 Steps 79 and
 93.
@@ -575,6 +575,77 @@ asserting the lists are read in the order the rule asks, that a list not
 found in time is left out and not looked for again, that two sessions of
 one person share a build, that a sign-in starts it again, and that it ends
 with the last session.
+
+Built in one change set: 439 added lines of non-test Python, 19 of them
+replacing removed ones, and 646 of tests, against §5's estimate of about
+400. Of the 285 lines of `webserver/trust_builds.py`, 147 are code, and the
+rest docstrings, comments, and blank lines. Trust Network §4.3 gains a
+sentence (a list none of which is found, below), and the Operator Guide
+§6.6.
+
+- **`TrustBuilds`** (`webserver/trust_builds.py`, new) holds a build for
+  each person signed in, started by `session_started`, ended by
+  `last_session_ended`, and every one by `close`. `scores(person)` gives the
+  scores from the lists read so far, and `None` for a person not signed in.
+  It reads with a **`TrustListReader`**, which `TrustLists` is.
+- **`Sessions`** tells a **`SessionListener`** as each session starts and as
+  each person's last session ends, signed out or found idle.
+- **`Router.when_closed`** names what to end as the server closes, and
+  `LibranetHTTPServer.server_close` ends it.
+- **`identity.trust_max_steps`**, **`trust_max_lists`**, and
+  **`trust_list_wait_seconds`** reach `build_router` through
+  `NodeDescription`, as `person_key_bits` does.
+
+My calls, not yet reviewed:
+
+- **A list none of whose versions is found is looked for until the wait is
+  up**, not read at once as empty, since the search of the peers that the
+  first look starts may yet find one, as the wait of 30 seconds was chosen
+  for. Written into Trust Network §4.3, which read as taking a list once
+  every version found was held, true of a list where none was found. So a
+  step naming a list no one has made takes the whole wait.
+- **A step's lists are looked for together**, the wait counted from the
+  step's start, each looked at again every second, in the order the rule
+  names them (`DEFAULT_TRUST_POLL_INTERVAL_SECONDS`, provisional). Each
+  look is a fresh search of the list's drop, scanning the store, writing
+  the search cache, and publishing `data.search_requested`, so a step of
+  1,000 lists none of which is found searches 1,000 times a second for 30
+  seconds. The connections module starts a search of the peers for each
+  drop only once in its hold.
+- **What is not held is asked for with `ContentWait.ask`**, and asked for
+  again only after `retry_after_seconds`, as a file stream asks for parts.
+  `ContentWait.pause` is not used, since it sleeps by a clock no test can
+  set, and cannot be cut short: a build waits on an event that ending it
+  sets, so that a sign-out stops it at once.
+- **A build is let go of when `Sessions` forgets the person's last
+  session**, as the session's private key is: signing out at once, but a
+  session gone idle only once a sign-in, or a request naming it, finds it
+  so. Nothing looks for idle sessions on a timer.
+- **The listener is told with the sessions locked**, so that it hears of
+  each sign-in and sign-out in the order they happen, and a sign-out cannot
+  end a build a sign-in just started.
+- **Builds end with the web server**, through the router, so that one never
+  outlives the server it was started by, as it otherwise would in tests,
+  searching and logging into later ones. None starts after.
+- **A sign-in while a build is under way replaces it**: the old one stops at
+  its next look, and the new one reads every list afresh.
+- **The scores are worked out afresh each time they are asked for**, from a
+  copy of the lists read so far, and once a step by the build, to find what
+  it needs next (Step 98).
+- **A build that fails is logged, with its traceback, and stays as far as it
+  read**, not complete, until the next sign-in.
+- **The levels**: a build starting, each list read or left out, and each
+  version blocked at debug; a build complete at info, with how many
+  identities it scored and lists it read.
+- **Blocking repeats the three lines `TrustEdits` and `OwnMetadata` use**,
+  rather than sharing them.
+- **`trust_list_wait_seconds` may be 0**, reading only what the node holds,
+  and asking the peers for nothing it waits for.
+
+Found while building it:
+
+- Steps 96 and 97 are on main (#332, #335), but their headings have no ✅.
+  Not changed here.
 
 ---
 

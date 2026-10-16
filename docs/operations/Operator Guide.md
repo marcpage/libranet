@@ -522,6 +522,30 @@ search is done. The `seconds` are shared by the three drops it makes: the
 identity's, the fallback's, and the first version of what the person says
 of themselves, which names the fallback.
 
+### 6.6 Trust Scores
+
+Each person keeps a public list of the identities they trust or distrust,
+which a trusted application changes for them
+([App Developer Guide](App%20Developer%20Guide.md) §6.17). When someone signs
+in, the node builds their trust scores from their own list and the lists of
+those they trust, each step out a tenth as strong, as the
+[Trust Network Specification](../specs/TrustNetwork.md) gives them. It builds
+them behind the sign-in, which it does not hold up, and keeps them until the
+person's last session ends.
+
+Three settings bound the work:
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `identity.trust_max_steps` | `4` | How many steps out from the person's own list the scores reach; the lists of those at the last step are not read |
+| `identity.trust_max_lists` | `1000` | The most lists read for one person, their own among them |
+| `identity.trust_list_wait_seconds` | `30.0` | How long the node looks for each list, asking its peers, before it scores from what it holds of it |
+
+Each step multiplies the lists read, and each list read is kept in memory
+for as long as the person is signed in, so raising either limit costs memory
+and searches. A list of which nothing is held when the wait is up is left
+out until the person signs in again.
+
 ## 7. Watching a Running Node
 
 ### 7.1 Its Processes

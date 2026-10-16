@@ -242,6 +242,25 @@ def test_no_person_key_size_under_2048_bits_is_configured(sizes: tuple[int, ...]
         IdentityConfig(person_key_bits=sizes)
 
 
+def test_trust_scores_reach_4_steps_and_1000_lists_waiting_30_seconds_for_each_by_default() -> None:
+    identity = IdentityConfig()
+
+    assert (identity.trust_max_steps, identity.trust_max_lists) == (4, 1000)
+    assert identity.trust_list_wait_seconds == 30.0
+    assert IdentityConfig(trust_list_wait_seconds=0).trust_list_wait_seconds == 0
+
+
+@mark.parametrize(
+    "setting, value",
+    [("trust_max_steps", 0), ("trust_max_lists", 0), ("trust_list_wait_seconds", -0.5)],
+)
+def test_trust_scores_reach_at_least_one_step_and_list_and_never_wait_less_than_none(
+    setting: str, value: float
+) -> None:
+    with raises(ValidationError, match=setting):
+        IdentityConfig.model_validate({setting: value})
+
+
 class TestAdvertisedEndpoint:
     """HttpApi §10.1 self-description rules."""
 

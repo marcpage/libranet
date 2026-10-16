@@ -142,6 +142,7 @@ from libranet.webserver.sessions import Sessions
 from libranet.webserver.signature_guard import SignatureGuard
 from libranet.webserver.signed_handlers import SIGNED_PATH, SIGNED_PATTERN, SignedDrops
 from libranet.webserver.site_checks import SiteChecks
+from libranet.webserver.trust_builds import TrustBuilds
 from libranet.webserver.trust_handlers import TRUST_PATTERN, TrustEdits
 from libranet.webserver.trust_lists import TrustLists
 
@@ -229,9 +230,12 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
     alone (Phase 4 Step 78). ``/data/trust/{algorithm}/{hash}`` changes the
     trust list of whoever is signed in, one entry at a time, signing each
     version as ``/data/signed`` signs, for local clients alone (Phase 5 Step
-    97). Drops are searched for, and keys derived, one at a time, in the
-    turns of ``costly_work``, which ``/config``'s port shares; in turns of
-    their own if none is given. A ``DELETE`` of
+    97). Signing in starts building the person's trust scores, as far as
+    ``node``'s trust limits reach, until their last session ends or the
+    server closes (Phase 5 Step 99). Drops are searched for, and keys
+    derived, one at a time, in the turns of ``costly_work``, which
+    ``/config``'s port shares; in turns of their own if none is given. A
+    ``DELETE`` of
     ``/data/{algorithm}/{hash}`` deletes and blocks content for local
     clients alone, which ``/data`` then neither serves, reads into, stores,
     nor finds in a search, and no application is served from, as the blocked
@@ -336,7 +340,16 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
             ),
         )
         router.add("POST", DROP_PATH, OwnSiteOnly(OwnPageOnly(drops, pages), checks))
-        sessions = Sessions(node.network.session_idle_seconds)
+        lists = TrustLists(search, uploads)
+        builds = TrustBuilds(
+            lists,
+            publish,
+            node.trust_limits,
+            wait_seconds=node.trust_list_wait_seconds,
+            ask_again_seconds=retry_after_seconds,
+        )
+        router.when_closed(builds.close)
+        sessions = Sessions(node.network.session_idle_seconds, listener=builds)
         identities = Identities(
             uploads,
             search,
@@ -357,7 +370,7 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
         )
         encrypted = EncryptedDrops(signed, derivations=work.derivations)
         trust = TrustEdits(
-            TrustLists(search, uploads),
+            lists,
             drops,
             sessions,
             publish,
@@ -694,6 +707,11 @@ class LibranetHTTPServer(ThreadingHTTPServer):
         host, port = self.server_address[:2]
         self.server_name = str(host)
         self.server_port = int(port)
+
+    def server_close(self) -> None:
+        """Stop listening, and end what the routes went on doing after they answered."""
+        super().server_close()
+        self.router.close()
 
     def handle_error(self, request: socket | tuple[bytes, socket], client_address: Any) -> None:
         """Log what failed a request outside its route, rather than print it to stderr.
