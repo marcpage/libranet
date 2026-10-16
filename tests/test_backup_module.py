@@ -19,8 +19,8 @@ from xattr import xattr
 from libranet.backup.builds import Build, BuildRecord
 from libranet.backup.errors import JobFileError
 from libranet.backup.exports import Export
-from libranet.backup.jobs import ExpandedBackups, load_jobs
-from libranet.backup.module import BackupModule, backup_module_factory
+from libranet.backup.jobs import BackupJob, ExpandedBackups
+from libranet.backup.module import BackupModule
 from libranet.backup.restores import Restore
 from libranet.bundle.building import build_directory, build_file
 from libranet.bundle.extensions import resolve_directory
@@ -508,7 +508,9 @@ def test_configuring_a_job_again_keeps_its_backup_and_sets_its_interval(
     job = reports(published(queues))[-1][0]
 
     assert (job["bundle"], job["interval_seconds"]) == (bundle, 5.0)
-    assert load_jobs(config.storage.backup_jobs_path)[job_id].request.interval_seconds == 5.0
+    assert (
+        BackupJob.load_all(config.storage.backup_jobs_path)[job_id].request.interval_seconds == 5.0
+    )
 
 
 def test_removing_a_job_forgets_it_but_leaves_its_content(
@@ -520,7 +522,7 @@ def test_removing_a_job_forgets_it_but_leaves_its_content(
     module.handle(asked(EventType.BACKUP_JOB_REMOVED, job_id=job_id))
 
     assert reports(published(queues)) == [[]]
-    assert load_jobs(config.storage.backup_jobs_path) == {}
+    assert BackupJob.load_all(config.storage.backup_jobs_path) == {}
     assert not ExpandedBackups(config.storage.expanded_backups_dir).path(job_id).exists()
     assert store.exists(bundle)
 
@@ -761,8 +763,8 @@ def test_the_supervisor_runs_the_backup_module(
 ) -> None:
     factories = {spec.name: spec.factory for spec in default_module_specs()}
 
-    assert factories[ModuleName.BACKUP] is backup_module_factory
-    assert isinstance(backup_module_factory(ModuleName.BACKUP, config, queues), BackupModule)
+    assert factories[ModuleName.BACKUP] == BackupModule.of
+    assert isinstance(BackupModule.of(ModuleName.BACKUP, config, queues), BackupModule)
 
 
 def test_a_restore_rebuilds_a_backed_up_directory_and_is_reported(

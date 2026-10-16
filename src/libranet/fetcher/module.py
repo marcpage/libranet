@@ -82,6 +82,11 @@ class FetcherModule(ModuleBase):
             }
         )
 
+    @classmethod
+    def of(cls, name: ModuleName, config: LibranetConfig, queues: ModuleQueues) -> FetcherModule:
+        """:data:`~libranet.supervision.specs.ModuleFactory` for this class."""
+        return cls(name, queues, config)
+
     def _on_data_not_found(self, message: Message) -> None:
         content_id = ContentId.from_fields(message)
 
@@ -124,10 +129,3 @@ class FetcherModule(ModuleBase):
         """
         while self._asked and next(iter(self._asked.values())) <= cutoff:
             self._asked.popitem(last=False)
-
-
-def fetcher_module_factory(
-    name: ModuleName, config: LibranetConfig, queues: ModuleQueues
-) -> ModuleBase:
-    """:data:`~libranet.supervision.specs.ModuleFactory` for :class:`FetcherModule`."""
-    return FetcherModule(name, queues, config)

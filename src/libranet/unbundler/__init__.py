@@ -9,7 +9,6 @@ from libranet.unbundler.lookup import FoundDirectory, FoundFile, ResolvedDirecto
 from libranet.unbundler.module import (
     DEFAULT_MAX_WAITING_PATHS,
     UnbundlerModule,
-    unbundler_module_factory,
 )
 
 __all__ = [
@@ -18,5 +17,4 @@ __all__ = [
     "FoundFile",
     "ResolvedDirectory",
     "UnbundlerModule",
-    "unbundler_module_factory",
 ]

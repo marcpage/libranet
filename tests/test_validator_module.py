@@ -15,7 +15,7 @@ from libranet.messaging.envelope import Message, make_message
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
-from libranet.validator.module import ValidatorModule, validator_module_factory
+from libranet.validator.module import ValidatorModule
 
 from tests.helpers import published
 
@@ -213,9 +213,7 @@ def test_validator_subscribes_only_to_completed_uploads() -> None:
 def test_factory_builds_a_validator_for_the_configured_storage(
     storage: StorageConfig, truth: CasStore, queues: ModuleQueues
 ) -> None:
-    validator = validator_module_factory(
-        ModuleName.VALIDATOR, LibranetConfig(storage=storage), queues
-    )
+    validator = ValidatorModule.of(ModuleName.VALIDATOR, LibranetConfig(storage=storage), queues)
 
     assert isinstance(validator, ValidatorModule)
     assert validator.name == ModuleName.VALIDATOR

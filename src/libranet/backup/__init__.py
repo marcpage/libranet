@@ -11,8 +11,8 @@ from libranet.backup.builds import RECORD_SUFFIX, Build, BuildRecord
 from libranet.backup.errors import BuildRecordError, JobFileError, StorageFullError
 from libranet.backup.exports import Export
 from libranet.backup.imports import Import
-from libranet.backup.jobs import BackupJob, ExpandedBackups, LatestBackup, load_jobs, save_jobs
-from libranet.backup.module import BackupModule, backup_module_factory
+from libranet.backup.jobs import BackupJob, ExpandedBackups, LatestBackup
+from libranet.backup.module import BackupModule
 from libranet.backup.restores import Restore, RestorePass
 from libranet.backup.runs import (
     Announce,
@@ -51,8 +51,5 @@ __all__ = [
     "Task",
     "TaskStatus",
     "back_up",
-    "backup_module_factory",
     "failure_reason",
-    "load_jobs",
-    "save_jobs",
 ]

@@ -42,7 +42,7 @@ from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.webserver.app_registry import CONFIG_APPLICATION, Application, ApplicationRegistry
 from libranet.webserver.config_credential import ConfigCredential
-from libranet.webserver.module import WebServerModule, webserver_module_factory
+from libranet.webserver.module import WebServerModule
 
 from tests.helpers import published, with_node_key
 
@@ -738,9 +738,7 @@ def test_config_has_a_port_of_its_own_that_the_main_port_sends_its_pages_to(
 
 
 def test_factory_builds_a_web_server_module(tmp_path: Path) -> None:
-    module = webserver_module_factory(
-        ModuleName.WEBSERVER, _config(tmp_path, _free_port()), _queues()
-    )
+    module = WebServerModule.of(ModuleName.WEBSERVER, _config(tmp_path, _free_port()), _queues())
 
     assert isinstance(module, WebServerModule)
     assert module.name == ModuleName.WEBSERVER

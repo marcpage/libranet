@@ -328,6 +328,11 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
             }
         )
 
+    @classmethod
+    def of(cls, name: ModuleName, config: LibranetConfig, queues: ModuleQueues) -> EvictionModule:
+        """:data:`~libranet.supervision.specs.ModuleFactory` for this class."""
+        return cls(name, queues, config)
+
     @property
     def node_id(self) -> ContentId:
         """This node's id; only available once the module has started."""
@@ -659,10 +664,3 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
             {**content_id.fields(), "size": size_bytes},
         )
         return True
-
-
-def eviction_module_factory(
-    name: ModuleName, config: LibranetConfig, queues: ModuleQueues
-) -> ModuleBase:
-    """:data:`~libranet.supervision.specs.ModuleFactory` for :class:`EvictionModule`."""
-    return EvictionModule(name, queues, config)

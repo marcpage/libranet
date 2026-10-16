@@ -6,29 +6,29 @@ Every module the supervisor spawns, but the dispatcher, has one here.
 from __future__ import annotations
 from typing import Final, Mapping
 
-from libranet.backup.module import BackupModule, backup_module_factory
-from libranet.connections.module import ConnectionsModule, connections_module_factory
-from libranet.eviction.module import EvictionModule, eviction_module_factory
-from libranet.fetcher.module import FetcherModule, fetcher_module_factory
+from libranet.backup.module import BackupModule
+from libranet.connections.module import ConnectionsModule
+from libranet.eviction.module import EvictionModule
+from libranet.fetcher.module import FetcherModule
 from libranet.messaging.module import ModuleBase
 from libranet.modules import SPAWNED_MODULES, ModuleName
-from libranet.stats.module import StatsModule, stats_module_factory
+from libranet.stats.module import StatsModule
 from libranet.supervision.specs import ModuleFactory, ModuleSpec
-from libranet.unbundler.module import UnbundlerModule, unbundler_module_factory
-from libranet.validator.module import ValidatorModule, validator_module_factory
-from libranet.webserver.module import WebServerModule, webserver_module_factory
+from libranet.unbundler.module import UnbundlerModule
+from libranet.validator.module import ValidatorModule
+from libranet.webserver.module import WebServerModule
 
 # Each module's factory, and the class it builds, whose subscriptions the
 # dispatcher delivers to it.
 _MODULES: Final[Mapping[ModuleName, tuple[ModuleFactory, type[ModuleBase]]]] = {
-    ModuleName.WEBSERVER: (webserver_module_factory, WebServerModule),
-    ModuleName.VALIDATOR: (validator_module_factory, ValidatorModule),
-    ModuleName.STATS: (stats_module_factory, StatsModule),
-    ModuleName.CONNECTIONS: (connections_module_factory, ConnectionsModule),
-    ModuleName.FETCHER: (fetcher_module_factory, FetcherModule),
-    ModuleName.UNBUNDLER: (unbundler_module_factory, UnbundlerModule),
-    ModuleName.EVICTION: (eviction_module_factory, EvictionModule),
-    ModuleName.BACKUP: (backup_module_factory, BackupModule),
+    ModuleName.WEBSERVER: (WebServerModule.of, WebServerModule),
+    ModuleName.VALIDATOR: (ValidatorModule.of, ValidatorModule),
+    ModuleName.STATS: (StatsModule.of, StatsModule),
+    ModuleName.CONNECTIONS: (ConnectionsModule.of, ConnectionsModule),
+    ModuleName.FETCHER: (FetcherModule.of, FetcherModule),
+    ModuleName.UNBUNDLER: (UnbundlerModule.of, UnbundlerModule),
+    ModuleName.EVICTION: (EvictionModule.of, EvictionModule),
+    ModuleName.BACKUP: (BackupModule.of, BackupModule),
 }
 
 

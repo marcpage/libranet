@@ -10,7 +10,7 @@ from libranet.stats.database import StatsDatabase
 from libranet.stats.derivation import DerivedLists, ListDeriver
 from libranet.stats.enrichment import SearchEnricher
 from libranet.stats.lists import render_candidate_list, render_node_list, render_seek_list
-from libranet.stats.module import DEFAULT_MAX_CANDIDATES, StatsModule, stats_module_factory
+from libranet.stats.module import DEFAULT_MAX_CANDIDATES, StatsModule
 from libranet.stats.peers import KnownPeer, PeerList
 from libranet.stats.priority import FACTOR_FLOOR, EvictionScorer
 from libranet.stats.records import DataStats, NodeAddress, NodeStats
@@ -37,5 +37,4 @@ __all__ = [
     "render_candidate_list",
     "render_node_list",
     "render_seek_list",
-    "stats_module_factory",
 ]

@@ -223,6 +223,11 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             }
         )
 
+    @classmethod
+    def of(cls, name: ModuleName, config: LibranetConfig, queues: ModuleQueues) -> StatsModule:
+        """:data:`~libranet.supervision.specs.ModuleFactory` for this class."""
+        return cls(name, queues, config)
+
     @property
     def database(self) -> StatsDatabase:
         """The open database; only available while the module is running."""
@@ -500,10 +505,3 @@ def _started(component: _Component | None) -> _Component:
         raise RuntimeError("The stats module is not running")
 
     return component
-
-
-def stats_module_factory(
-    name: ModuleName, config: LibranetConfig, queues: ModuleQueues
-) -> ModuleBase:
-    """:data:`~libranet.supervision.specs.ModuleFactory` for :class:`StatsModule`."""
-    return StatsModule(name, queues, config)

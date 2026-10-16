@@ -16,8 +16,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from pytest import MonkeyPatch, fixture, mark, raises
 from yaml import safe_load
 
-from libranet.config.loader import load_config
-from libranet.config.models import LoggingConfig
+from libranet.config.models import LibranetConfig, LoggingConfig
 from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity
 from libranet.local_network import (
@@ -176,7 +175,7 @@ def test_the_written_config_is_the_one_the_node_reads(tmp_path: Path) -> None:
 
     node.write_files()
 
-    assert load_config(node.place.config_path, required=True) == node.place.config
+    assert LibranetConfig.load(node.place.config_path, required=True) == node.place.config
 
 
 def test_the_debug_switch_is_off_unless_given() -> None:
@@ -195,7 +194,7 @@ def test_nodes_log_at_debug_only_with_the_switch(tmp_path: Path) -> None:
         # Written either way, so a change to the node's default cannot hide
         # the INFO lines the progress display reads.
         assert safe_load(node.place.config_path.read_text())["logging"]["level"] == level
-        assert load_config(node.place.config_path, required=True).logging.level == level
+        assert LibranetConfig.load(node.place.config_path, required=True).logging.level == level
 
 
 def test_nodes_listen_at_and_are_listed_at_the_host_given(tmp_path: Path) -> None:
@@ -205,7 +204,7 @@ def test_nodes_listen_at_and_are_listed_at_the_host_given(tmp_path: Path) -> Non
     node.write_files()
 
     assert node.place.endpoint == "http://192.168.1.10:18400"
-    assert load_config(node.place.config_path, required=True).network.listen_address == (
+    assert LibranetConfig.load(node.place.config_path, required=True).network.listen_address == (
         "192.168.1.10"
     )
     assert list(loads(network.seed_list(node))["nodes"]) == [
@@ -240,9 +239,9 @@ def test_storage_is_limited_only_with_the_switch(tmp_path: Path) -> None:
 
         written = safe_load(node.place.config_path.read_text())["storage"]
         assert written.get("max_storage_bytes") == limit
-        assert load_config(node.place.config_path, required=True).storage.max_storage_bytes == (
-            limit
-        )
+        assert LibranetConfig.load(
+            node.place.config_path, required=True
+        ).storage.max_storage_bytes == (limit)
 
 
 def test_the_storage_limit_must_not_be_negative() -> None:

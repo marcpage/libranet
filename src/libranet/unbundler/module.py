@@ -253,6 +253,11 @@ class UnbundlerModule(ModuleBase):
             }
         )
 
+    @classmethod
+    def of(cls, name: ModuleName, config: LibranetConfig, queues: ModuleQueues) -> UnbundlerModule:
+        """:data:`~libranet.supervision.specs.ModuleFactory` for this class."""
+        return cls(name, queues, config)
+
     def _on_app_path_not_found(self, message: Message) -> None:
         """Resolve one requested path."""
         self._resolve_path(PartPath.parse(message["bundle"]), message["path"])
@@ -496,10 +501,3 @@ class UnbundlerModule(ModuleBase):
             {"bundle": str(bundle), "path": path, "outcome": outcome.value, **details},
         )
         self.logger.debug("%s in %s: %s %s", path, bundle.content_id, outcome, details or "")
-
-
-def unbundler_module_factory(
-    name: ModuleName, config: LibranetConfig, queues: ModuleQueues
-) -> ModuleBase:
-    """:data:`~libranet.supervision.specs.ModuleFactory` for :class:`UnbundlerModule`."""
-    return UnbundlerModule(name, queues, config)

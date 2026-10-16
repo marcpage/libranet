@@ -47,7 +47,6 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat
 from yaml import safe_dump
 
-from libranet.config.loader import build_config
 from libranet.config.models import (
     CONFIG_PORT_STEP,
     HIGHEST_PORT,
@@ -185,7 +184,7 @@ class NodePlace:
     @cached_property
     def config(self) -> LibranetConfig:
         """The node's configuration, as the node will read it."""
-        return build_config(self.document, source=self.config_path)
+        return LibranetConfig.from_document(self.document, source=self.config_path)
 
     @property
     def key_path(self) -> Path:

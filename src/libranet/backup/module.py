@@ -175,7 +175,7 @@ from libranet.backup.builds import Build
 from libranet.backup.errors import BuildRecordError, StorageFullError
 from libranet.backup.exports import Export
 from libranet.backup.imports import Import
-from libranet.backup.jobs import BackupJob, ExpandedBackups, load_jobs, save_jobs
+from libranet.backup.jobs import BackupJob, ExpandedBackups
 from libranet.backup.restores import Restore
 from libranet.backup.runs import AnnouncingStore, Backup, BuildSettings, back_up
 from libranet.backup.tasks import Task, TaskStatus, failure_reason
@@ -303,6 +303,11 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             }
         )
 
+    @classmethod
+    def of(cls, name: ModuleName, config: LibranetConfig, queues: ModuleQueues) -> BackupModule:
+        """:data:`~libranet.supervision.specs.ModuleFactory` for this class."""
+        return cls(name, queues, config)
+
     @property
     def node_id(self) -> ContentId:
         """This node's id; only available once the module has started."""
@@ -349,7 +354,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         """
         self._node_id = NodeIdentity.load(self._config).node_id
         self.publish(EventType.STORAGE_FULL_REQUESTED, {})
-        self._jobs = load_jobs(self._config.storage.backup_jobs_path)
+        self._jobs = BackupJob.load_all(self._config.storage.backup_jobs_path)
         now = self._clock()
         self._progress = {job_id: _Progress(now) for job_id in self._jobs}
         self._report()
@@ -875,7 +880,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         Raises:
             OSError: they could not be saved; the jobs kept are unchanged.
         """
-        save_jobs(self._config.storage.backup_jobs_path, jobs.values())
+        BackupJob.save_all(self._config.storage.backup_jobs_path, jobs.values())
         self._jobs = jobs
 
     def _report(self) -> None:
@@ -915,10 +920,3 @@ def _waiting(
     for task in tasks:
         if task.status is TaskStatus.WAITING:
             yield task.requested_at, partial(run, task)
-
-
-def backup_module_factory(
-    name: ModuleName, config: LibranetConfig, queues: ModuleQueues
-) -> ModuleBase:
-    """:data:`~libranet.supervision.specs.ModuleFactory` for :class:`BackupModule`."""
-    return BackupModule(name, queues, config)

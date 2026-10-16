@@ -93,6 +93,11 @@ class WebServerModule(ModuleBase):
             }
         )
 
+    @classmethod
+    def of(cls, name: ModuleName, config: LibranetConfig, queues: ModuleQueues) -> WebServerModule:
+        """:data:`~libranet.supervision.specs.ModuleFactory` for this class."""
+        return cls(name, queues, config)
+
     @property
     def server_address(self) -> tuple[str, int] | None:
         """Where the main port's server is listening, once started."""
@@ -245,10 +250,3 @@ def _address(server: LibranetHTTPServer | None) -> tuple[str, int] | None:
 
     host, port = server.server_address[:2]
     return str(host), int(port)
-
-
-def webserver_module_factory(
-    name: ModuleName, config: LibranetConfig, queues: ModuleQueues
-) -> ModuleBase:
-    """:data:`~libranet.supervision.specs.ModuleFactory` for :class:`WebServerModule`."""
-    return WebServerModule(name, queues, config)
