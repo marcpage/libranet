@@ -1,12 +1,13 @@
 """Shared pytest fixtures."""
 
 from __future__ import annotations
+from importlib import import_module
 from logging import getLogger
 from pathlib import Path
 from queue import Queue
 from typing import Iterator
 
-from pytest import fixture, skip
+from pytest import MonkeyPatch, fixture, skip
 from xattr import xattr
 
 from libranet.config.models import StorageConfig
@@ -15,13 +16,19 @@ from libranet.messaging.queues import ModuleQueues
 
 
 @fixture(autouse=True)
-def restore_logging() -> Iterator[None]:
-    """Leave the `libranet` logger as each test found it.
+def restore_logging(monkeypatch: MonkeyPatch) -> Iterator[None]:
+    """Leave the `libranet` logger, and the hooks for uncaught exceptions, as each test found them.
 
     `configure_logging` installs process-wide handlers and holds open log
     files under a test's temp directory; without this, one test's handlers
-    would still be writing during the next.
+    would still be writing during the next. It installs hooks too, which
+    would take the place of pytest's own for the rest of the run.
     """
+    for hooked in ("sys", "threading"):
+        module = import_module(hooked)
+        # Set to what it is, so that it is put back as it is now.
+        monkeypatch.setattr(module, "excepthook", module.excepthook)
+
     logger = getLogger(LOGGER_ROOT)
     saved_handlers = list(logger.handlers)
     saved_level = logger.level

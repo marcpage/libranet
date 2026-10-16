@@ -1,8 +1,11 @@
 """Tests for the centralized logging setup."""
 
 from __future__ import annotations
+from importlib import import_module
 from logging import getLogger
 from pathlib import Path
+from threading import Thread
+from typing import NoReturn
 
 from libranet.config.models import LoggingConfig
 from libranet.logging_setup import (
@@ -105,3 +108,48 @@ def test_rotation_keeps_the_configured_number_of_backups(tmp_path: Path) -> None
         "libranet-eviction.log.1",
         "libranet-eviction.log.2",
     ]
+
+
+def test_an_exception_that_ends_a_thread_reaches_the_file(tmp_path: Path) -> None:
+    config = make_config(tmp_path, console=False)
+    configure_logging(config, ModuleName.CONNECTIONS)
+
+    def fail() -> NoReturn:
+        raise RuntimeError("nothing caught this")
+
+    thread = Thread(target=fail, name="failing")
+    thread.start()
+    thread.join()
+
+    contents = config.log_file_path(ModuleName.CONNECTIONS).read_text(encoding="utf-8")
+    assert "Thread failing ended on an exception nothing caught" in contents
+    assert "RuntimeError: nothing caught this" in contents
+
+
+def test_a_thread_asking_to_end_is_not_logged(tmp_path: Path) -> None:
+    config = make_config(tmp_path, console=False)
+    configure_logging(config, ModuleName.CONNECTIONS)
+
+    def leave() -> NoReturn:
+        raise SystemExit()
+
+    thread = Thread(target=leave)
+    thread.start()
+    thread.join()
+
+    assert not config.log_file_path(ModuleName.CONNECTIONS).exists()
+
+
+def test_an_exception_that_ends_the_process_reaches_the_file(tmp_path: Path) -> None:
+    config = make_config(tmp_path, console=False)
+    configure_logging(config, ModuleName.SUPERVISOR)
+
+    try:
+        raise RuntimeError("nothing caught this")
+
+    except RuntimeError as error:
+        import_module("sys").excepthook(RuntimeError, error, error.__traceback__)
+
+    contents = config.log_file_path(ModuleName.SUPERVISOR).read_text(encoding="utf-8")
+    assert "Ending on an exception nothing caught" in contents
+    assert "RuntimeError: nothing caught this" in contents

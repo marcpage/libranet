@@ -3,7 +3,7 @@
 from __future__ import annotations
 from hashlib import sha256
 from json import loads
-from logging import DEBUG
+from logging import DEBUG, WARNING
 from pathlib import Path
 from threading import Timer
 from typing import Any, Mapping
@@ -391,7 +391,7 @@ def test_what_the_unbundler_found_instead_is_answered_sandboxed_and_not_cached(
     assert SANDBOX.items() <= response.headers.items()
 
 
-def test_a_file_whose_parts_cannot_be_read_is_400(
+def test_a_file_whose_parts_name_an_algorithm_this_node_lacks_is_400_and_a_warning(
     router: Router, files: ResolvedFiles, caplog: LogCaptureFixture
 ) -> None:
     unreadable = FileBundle(("blake3/" + "a" * 64,))
@@ -403,7 +403,9 @@ def test_a_file_whose_parts_cannot_be_read_is_400(
 
     assert response.status == 400
     assert loads(response.body)["type"] == UNUSABLE_BUNDLE
-    assert "blake3" in caplog.text
+    assert [record.levelno for record in caplog.records if "blake3" in record.getMessage()] == [
+        WARNING
+    ]
     assert KEY.hex() not in caplog.text
 
 
@@ -440,6 +442,7 @@ def test_a_file_with_a_part_blocked_is_400(
     outcomes: ApplicationOutcomes,
     asked: Recorder,
     tmp_path: Path,
+    caplog: LogCaptureFixture,
 ) -> None:
     resolve(files, store, BUNDLE, "film.mp4", *FILM_PARTS)
     part = ContentId.for_data(FILM_PARTS[1], "sha256")
@@ -447,11 +450,15 @@ def test_a_file_with_a_part_blocked_is_400(
         files, store, outcomes, asked, blocked=blocked_list(tmp_path / "blocked.json", part)
     )
 
-    response = read(router, f"/data/{BUNDLE}/film.mp4", headers={"Range": "bytes=12-20"})
+    with caplog.at_level(DEBUG):
+        response = read(router, f"/data/{BUNDLE}/film.mp4", headers={"Range": "bytes=12-20"})
 
     assert response.status == 400
     assert loads(response.body)["type"] == UNUSABLE_BUNDLE
     assert loads(response.body)["detail"] == f"{part} is blocked here"
+    assert [
+        record.levelno for record in caplog.records if "is blocked here" in record.getMessage()
+    ] == [DEBUG]
 
 
 @mark.parametrize("path", ["a/../b", "a//b", "./a", "%FF.mp4", "a%00b"])

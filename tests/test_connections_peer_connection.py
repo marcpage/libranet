@@ -12,7 +12,7 @@ from queue import Queue
 from socket import AF_INET, AF_INET6, SHUT_WR, create_server, socket, socketpair
 from threading import Event, Thread
 from time import monotonic, sleep
-from typing import Iterator, Mapping
+from typing import Iterator, Mapping, NoReturn
 
 from pytest import LogCaptureFixture, fixture, mark, raises, skip
 
@@ -354,6 +354,24 @@ def test_close_callback_added_after_closing_runs_at_once(
     connection.when_closed(lambda: calls.append("closed"))
 
     assert calls == ["closed"]
+
+
+def test_a_close_callback_that_fails_is_logged_and_the_next_still_runs(
+    pair: tuple[PeerConnection, socket], caplog: LogCaptureFixture
+) -> None:
+    connection, peer = pair
+    closed = Event()
+
+    def fail() -> NoReturn:
+        raise RuntimeError("the callback broke")
+
+    connection.when_closed(fail)
+    connection.when_closed(closed.set)
+    peer.close()
+
+    assert closed.wait(TIMEOUT)
+    assert "Calling back as the connection to peer.test:8080 closed failed" in caplog.text
+    assert "RuntimeError: the callback broke" in caplog.text
 
 
 def test_invalid_request_is_refused_before_it_is_queued(

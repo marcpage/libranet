@@ -56,11 +56,11 @@ what is resolved from it is kept while it is read (Phase 2 Step 29).
 from __future__ import annotations
 from dataclasses import dataclass
 from http import HTTPStatus
-from logging import getLogger
+from logging import DEBUG, WARNING, getLogger
 from typing import Any, Final
 from urllib.parse import quote
 
-from libranet.bundle.errors import BundleError
+from libranet.bundle.errors import BundleError, UnsupportedBundleError
 from libranet.bundle.parts import PartPath
 from libranet.bundle.shapes import DirectoryMarker, FileBundle, Symlink, is_entry_path
 from libranet.messaging.events import PathOutcome
@@ -157,8 +157,14 @@ class BundleReadHandler:
             return self.paths.file_response(found, entry_path, deadline, request, headers={})
 
         except BundleError as error:
-            _LOGGER.debug(
-                "%s in %s cannot be served from its parts: %s", entry_path, bundle.content_id, error
+            # A warning for a cipher or an algorithm this node lacks, which
+            # an update may bring, as unusable_bundle_response has it.
+            _LOGGER.log(
+                WARNING if isinstance(error, UnsupportedBundleError) else DEBUG,
+                "%s in %s cannot be served from its parts: %s",
+                entry_path,
+                bundle.content_id,
+                error,
             )
             return _unreadable_response(str(error), request)
 

@@ -4,11 +4,11 @@ from __future__ import annotations
 from itertools import count
 from logging import getLogger
 from queue import Empty
-from socket import herror
+from socket import gaierror, herror
 from time import monotonic, sleep
-from typing import Iterator, Sequence
+from typing import Iterator, NoReturn, Sequence
 
-from pytest import LogCaptureFixture, MonkeyPatch, fixture
+from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark
 
 from libranet.connections import reverse_dns
 from libranet.connections.reverse_dns import ReverseLookup, host_names
@@ -199,3 +199,25 @@ def test_host_names_are_the_name_and_its_aliases(monkeypatch: MonkeyPatch) -> No
 
     assert host_names("192.0.2.1") == ["peer.example.org", "alias.example.org"]
     assert host_names("192.0.2.2") == []
+
+
+@mark.parametrize(
+    "error, logged",
+    [
+        (herror(1, "Unknown host"), False),
+        (herror(4, "No address associated with name"), False),
+        (herror(2, "Host name lookup failure"), True),
+        (gaierror(8, "nodename nor servname provided, or not known"), True),
+        (OSError(24, "Too many open files"), True),
+    ],
+)
+def test_a_lookup_that_fails_finds_no_names_and_is_logged_unlike_an_address_with_none(
+    monkeypatch: MonkeyPatch, caplog: LogCaptureFixture, error: OSError, logged: bool
+) -> None:
+    def gethostbyaddr(address: str) -> NoReturn:
+        raise error
+
+    monkeypatch.setattr(reverse_dns, "gethostbyaddr", gethostbyaddr)
+
+    assert host_names("192.0.2.2") == []
+    assert ("Taking 192.0.2.2 to have no names for now" in caplog.text) is logged

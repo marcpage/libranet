@@ -68,6 +68,7 @@ from typing import Callable, Final, Mapping
 
 from libranet.bundle.errors import (
     BundleVerificationError,
+    IncorrectPasswordError,
     MalformedBundleError,
     MissingContentError,
     UnsupportedBundleError,
@@ -503,8 +504,19 @@ class Identities:  # pylint: disable=too-many-instance-attributes
             try:
                 person = PersonKey.opened(drop, key)
 
-            except (UnsupportedBundleError, MalformedBundleError) as error:
+            except (IncorrectPasswordError, MalformedBundleError) as error:
                 _LOGGER.debug("%s at %s does not open: %s", content_id, username.text, error)
+                continue
+
+            except UnsupportedBundleError as error:
+                # A warning, as a scheme this node lacks may come with an
+                # update (Coding Style §9.3).
+                _LOGGER.warning(
+                    "Passing over %s at %s, as this node cannot open it: %s",
+                    content_id,
+                    username.text,
+                    error,
+                )
                 continue
 
             except KeyFileError as error:

@@ -706,7 +706,10 @@ own, at debug when a client or peer sent it and it was refused. An id under
 a hash algorithm this node does not support is a warning wherever it is met,
 since the node may need an update, and `UnsupportedAlgorithms` logs a whole
 archive's or list's worth once, counting each id `ContentId.parse_supported`
-passes over. `tests/test_exception_logging.py` checks every handler.
+passes over. `tests/test_exception_logging.py` checks every handler. An
+exception nothing catches, which ends a thread a module started or the
+supervisor itself, is logged at error by the hooks `configure_logging`
+installs, rather than printed to stderr.
 
 A constant another module also needs is defined once, public, in the
 lowest module of the layer its meaning belongs to — bundle path syntax in
