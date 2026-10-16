@@ -4,7 +4,7 @@ from __future__ import annotations
 from base64 import b64encode
 from dataclasses import dataclass, replace
 from json import dumps, loads
-from logging import ERROR, WARNING
+from logging import DEBUG, ERROR, WARNING
 from os import urandom
 from typing import Any, Mapping
 
@@ -451,19 +451,22 @@ def test_a_fallback_that_has_not_taken_over_signs_nothing(
     assert recorder.messages == []
 
 
-def test_a_signature_by_another_key_does_not_check_and_is_a_warning(
+def test_a_signature_by_another_key_does_not_check_and_is_logged_at_debug(
     signed: SignedDrops, person: PersonKey, uploads: OwnUploads, caplog: LogCaptureFixture
 ) -> None:
     other = PersonKey.generate(2048)
     forged = SignedBundle.signed(TEXT, other.private_key, person.person_id)
     held(uploads, person.public_key)
 
-    with caplog.at_level(WARNING):
+    with caplog.at_level(DEBUG, logger="libranet.webserver.signed_handlers"):
         response = signed.read(reading(held(uploads, dropped(forged))))
 
     assert response.status == 400
     assert problem_type(response) == INVALID_BUNDLE_SIGNATURE
-    assert "signature does not check" in caplog.text
+    (record,) = [
+        record for record in caplog.records if "signature does not check" in record.getMessage()
+    ]
+    assert record.levelno == DEBUG
 
 
 def test_a_signer_naming_no_public_key_does_not_check(

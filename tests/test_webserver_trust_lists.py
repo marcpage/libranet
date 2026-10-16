@@ -22,6 +22,7 @@ from libranet.webserver.trust_lists import TrustLists
 BOB = ContentId.for_data(b"Bob's public key", "sha256")
 DAVE = ContentId.for_data(b"Dave's public key", "sha256")
 HASH_BITS = 256
+SIGNED_VERSIONS_LOGGER = "libranet.webserver.signed_versions"
 
 
 class Recorder:
@@ -170,7 +171,7 @@ def test_with_nothing_signed_at_the_drop_its_owners_key_is_not_needed(
     assert lists.read(alice.person_id) == HeldTrustList(alice.person_id)
 
 
-def test_a_version_someone_else_signed_is_passed_over_and_their_key_never_read(
+def test_a_version_someone_else_signed_is_passed_over_at_debug_and_their_key_never_read(
     lists: TrustLists,
     truth: CasStore,
     alice: PersonKey,
@@ -180,40 +181,46 @@ def test_a_version_someone_else_signed_is_passed_over_and_their_key_never_read(
     placed(truth, alice, signed(alice, TrustList({BOB: True}, 1).value()))
     forged = placed(truth, alice, signed(mallory, TrustList({BOB: False}, 9).value()))
 
-    with caplog.at_level(WARNING):
+    with caplog.at_level(DEBUG, logger=SIGNED_VERSIONS_LOGGER):
         held = lists.read(alice.person_id)
 
     assert held.entries == {BOB: True}
     assert held.missing == ()
-    assert f"Passing over {forged} at {alice.person_id}'s trust list, as {mallory.person_id}" in (
-        caplog.text
+    (record,) = caplog.records
+    assert record.levelno == DEBUG
+    assert record.getMessage().startswith(
+        f"Passing over {forged} at {alice.person_id}'s trust list, as {mallory.person_id}"
     )
 
 
-def test_a_version_whose_signature_does_not_check_is_passed_over(
+def test_a_version_whose_signature_does_not_check_is_passed_over_at_debug(
     lists: TrustLists, truth: CasStore, alice: PersonKey, caplog: LogCaptureFixture
 ) -> None:
     contents = dumps(TrustList({BOB: False}, 9).value())
     honest = alice.signed(dumps(TrustList({DAVE: True}, 1).value()))
     placed(truth, alice, SignedBundle(alice.person_id, contents, honest.signature).encoded())
 
-    with caplog.at_level(WARNING):
+    with caplog.at_level(DEBUG, logger=SIGNED_VERSIONS_LOGGER):
         held = lists.read(alice.person_id)
 
     assert held == HeldTrustList(alice.person_id)
-    assert "its signature does not check" in caplog.text
+    (record,) = caplog.records
+    assert record.levelno == DEBUG
+    assert "its signature does not check" in record.getMessage()
 
 
-def test_what_its_owner_signed_that_is_no_version_is_passed_over(
+def test_what_its_owner_signed_that_is_no_version_is_passed_over_at_debug(
     lists: TrustLists, truth: CasStore, alice: PersonKey, caplog: LogCaptureFixture
 ) -> None:
     placed(truth, alice, signed(alice, {"fields": {}, "version": 1}))
 
-    with caplog.at_level(WARNING):
+    with caplog.at_level(DEBUG, logger=SIGNED_VERSIONS_LOGGER):
         held = lists.read(alice.person_id)
 
     assert held == HeldTrustList(alice.person_id)
-    assert "as it is no version of one" in caplog.text
+    (record,) = caplog.records
+    assert record.levelno == DEBUG
+    assert "as it is no version of one" in record.getMessage()
 
 
 def test_a_version_with_entries_passed_over_names_its_drop_in_the_log(
@@ -233,7 +240,7 @@ def test_what_is_not_a_signed_bundle_is_passed_over_at_debug(
 ) -> None:
     content_id = placed(truth, alice, b"not signed at all")
 
-    with caplog.at_level(DEBUG, logger="libranet.webserver.signed_versions"):
+    with caplog.at_level(DEBUG, logger=SIGNED_VERSIONS_LOGGER):
         held = lists.read(alice.person_id)
 
     assert held == HeldTrustList(alice.person_id)

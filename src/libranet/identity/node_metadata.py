@@ -17,23 +17,23 @@ fallback, since a node has neither.
 Of the versions read that the node signed, the newest is the one numbered
 highest, ties going to the drop whose id sorts first, and the node blocks the
 rest when it places the next. Only a node signs its own, so the node reads
-and places its versions for ``/config`` (Phase 5 Step 104).
+and places its versions for ``/config`` (Phase 5 Step 104). A name in
+``versions`` that is no id is passed over, as a trust list's is, and the
+rest of the version counts.
 """
 
 from __future__ import annotations
 from dataclasses import dataclass
+from logging import getLogger
 from typing import Any, Final, Mapping
 
+from libranet.cas.algorithms import UnsupportedAlgorithms
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
-from libranet.identity.versions import (
-    FIELDS_FIELD,
-    VERSION_FIELD,
-    VERSIONS_FIELD,
-    HeldVersions,
-    Numbered,
-)
+from libranet.identity.versions import FIELDS_FIELD, VERSION_FIELD, HeldVersions, Numbered
 from libranet.json_fields import integer_field
+
+_LOGGER = getLogger(__name__)
 
 #: The fewest leading bits a version shares with its drop's target: each is
 #: placed matching at least as many, and a reader passes over a result that
@@ -76,26 +76,35 @@ class NodeMetadata(Numbered):
     def from_value(cls, value: object, *, named: str = "A node's metadata") -> NodeMetadata:
         """The version ``value``, the decoded ``contents`` of a signed bundle, is.
 
+        A name in ``versions`` that is no id is passed over, and so is
+        ``versions`` itself if it is not a list, since no reader needs the
+        versions a version replaces (HttpApi §11.8). What is passed over is
+        logged once for the version, called ``named``, and the rest counts.
         Members it does not know are ignored.
 
         Raises:
             ValueError: ``value``, called ``named``, is not an object whose
-                ``fields`` is an object of strings, whose ``version`` is a
-                whole number of at least 1, and whose ``versions``, if it has
-                one, is a list of ids.
+                ``fields`` is an object of strings, and whose ``version`` is a
+                whole number of at least 1.
         """
         fields = cls.fields_of(value.get(FIELDS_FIELD) if isinstance(value, dict) else None)
 
         if not isinstance(value, dict) or fields is None:
             raise ValueError(f'{named} is not an object with a "{FIELDS_FIELD}" object of strings')
 
-        replaced = value.get(VERSIONS_FIELD, [])
+        version = integer_field(value, VERSION_FIELD)
+        unsupported = UnsupportedAlgorithms()
+        versions, passed_over = cls.replaced_in(value, unsupported)
 
-        if not isinstance(replaced, list) or not all(isinstance(name, str) for name in replaced):
-            raise ValueError(f'{named} has a "{VERSIONS_FIELD}" that is not a list of ids')
+        if passed_over:
+            _LOGGER.warning(
+                "%s passes over %d of the versions it names as replaced: names that are no id",
+                named,
+                passed_over,
+            )
 
-        versions = tuple(ContentId.parse(name) for name in replaced)
-        return cls(fields, integer_field(value, VERSION_FIELD), versions)
+        unsupported.log(_LOGGER, named)
+        return cls(fields, version, versions)
 
     def value(self) -> dict[str, Any]:
         """The JSON object this version is, as a signed bundle's ``contents`` holds it."""

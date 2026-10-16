@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 from dataclasses import dataclass
+from logging import WARNING, getLogger
 
-from pytest import mark, raises
+from pytest import LogCaptureFixture, mark, raises
 
+from libranet.cas.algorithms import UnsupportedAlgorithms
 from libranet.cas.content_id import ContentId
 from libranet.identity.versions import HeldVersions, Numbered
 
@@ -62,6 +64,45 @@ def test_a_version_is_written_with_its_number_and_what_it_replaces() -> None:
 
 def test_the_first_version_names_no_versions() -> None:
     assert Note("hello", 1).numbered({}) == {"version": 1}
+
+
+@mark.parametrize(
+    ("value", "replaced"),
+    [
+        ({}, ((), 0)),
+        ({"versions": [str(FIRST), str(SECOND)]}, ((FIRST, SECOND), 0)),
+        ({"versions": [str(FIRST), "not an id", 7, None]}, ((FIRST,), 3)),
+        ({"versions": str(FIRST)}, ((), 1)),
+        ({"versions": {str(FIRST): True}}, ((), 1)),
+    ],
+)
+def test_what_a_version_names_as_replaced_passes_over_what_is_no_id(
+    value: dict[str, object], replaced: tuple[tuple[ContentId, ...], int]
+) -> None:
+    assert Note.replaced_in(value, UnsupportedAlgorithms()) == replaced
+
+
+def test_an_id_under_an_algorithm_this_node_lacks_is_passed_over_and_counted(
+    caplog: LogCaptureFixture,
+) -> None:
+    unsupported = UnsupportedAlgorithms()
+
+    replaced = Note.replaced_in({"versions": ["md5/" + "0" * 32, str(FIRST)]}, unsupported)
+    with caplog.at_level(WARNING):
+        unsupported.log(getLogger(__name__), "A note")
+
+    assert replaced == ((FIRST,), 1)
+    assert "A note names ids hashed with algorithms" in caplog.text
+    assert "1 under md5" in caplog.text
+
+
+@mark.parametrize("name", [7, None, "", "not an id", "sha256/short"])
+def test_a_name_that_is_no_id_names_none(name: object) -> None:
+    assert Note.named_id(name, UnsupportedAlgorithms()) is None
+
+
+def test_a_name_that_is_an_id_names_it() -> None:
+    assert Note.named_id(str(FIRST), UnsupportedAlgorithms()) == FIRST
 
 
 def test_with_nothing_read_there_is_no_newest_and_the_next_is_the_first() -> None:

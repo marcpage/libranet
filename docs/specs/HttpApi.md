@@ -2098,7 +2098,10 @@ node the drop names (§11.5) and is shaped as above. The newest is the one
 numbered highest, and of two numbered as high, the one whose drop's id
 comes first. Only the node signs a version, so no one else can make one
 newer, and no reader needs the versions it replaces: the node blocks them
-(§5.5), so that they do not crowd the newest out of a search.
+(§5.5), so that they do not crowd the newest out of a search. So a reader
+passes over a name in `versions` that is not a content identifier, as a
+trust list's reader does (Trust Network §3.1), and counts the rest of the
+version.
 
 Only the node places a version, for its operator. The `/config` application
 (§2.3) can neither search a drop nor check what is signed, since its port

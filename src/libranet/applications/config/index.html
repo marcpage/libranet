@@ -609,6 +609,9 @@ function unreachable(error) {
   return `The node could not be reached: ${error.message}`;
 }
 
+// How long `headers` say to wait before asking again (HttpApi 5.2): at least a
+// second, so that a Retry-After of 0 does not ask again at once, and the
+// default when they do not say.
 function retryAfter(headers) {
   const seconds = Number.parseInt(headers.get("Retry-After") || "", 10);
   return Number.isFinite(seconds) && seconds >= 0 ? Math.max(seconds, 1) : REFRESH_SECONDS;

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 from hashlib import sha256
+from logging import WARNING
 
-from pytest import mark, raises
+from pytest import LogCaptureFixture, mark, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.identity.node_metadata import HeldNodeMetadata, MetadataVersion, NodeMetadata
@@ -49,15 +50,47 @@ def test_members_it_does_not_know_are_ignored() -> None:
         {"fields": {}, "version": True},
         {"fields": {}},
         {"fields": {}, "version": 0},
-        {"fields": {}, "version": 2, "versions": str(FIRST)},
-        {"fields": {}, "version": 2, "versions": [1]},
-        {"fields": {}, "version": 2, "versions": ["not an id"]},
-        {"fields": {}, "version": 2, "versions": [f"sha512/{'0' * 128}"]},
     ],
 )
 def test_what_is_not_shaped_as_a_version_is_refused(value: object) -> None:
     with raises(ValueError):
         NodeMetadata.from_value(value, named="The metadata in a drop")
+
+
+@mark.parametrize(
+    ("versions", "read"),
+    [
+        (str(FIRST), ()),
+        ([1], ()),
+        (["not an id"], ()),
+        ([str(FIRST), "not an id"], (FIRST,)),
+    ],
+)
+def test_a_name_in_versions_that_is_no_id_is_passed_over_and_the_rest_kept(
+    versions: object, read: tuple[ContentId, ...], caplog: LogCaptureFixture
+) -> None:
+    value = {"fields": ATTIC, "version": 2, "versions": versions}
+
+    with caplog.at_level(WARNING):
+        said = NodeMetadata.from_value(value, named="The metadata in a drop")
+
+    assert said == NodeMetadata(ATTIC, 2, read)
+    (record,) = caplog.records
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith("The metadata in a drop passes over 1 of the versions")
+
+
+def test_an_id_in_versions_under_an_unknown_algorithm_is_passed_over_and_named(
+    caplog: LogCaptureFixture,
+) -> None:
+    value = {"fields": {}, "version": 2, "versions": [f"sha512/{'0' * 128}", str(FIRST)]}
+
+    with caplog.at_level(WARNING):
+        said = NodeMetadata.from_value(value, named="The metadata in a drop")
+
+    assert said == NodeMetadata({}, 2, (FIRST,))
+    assert "The metadata in a drop names ids hashed with algorithms" in caplog.text
+    assert "1 under sha512" in caplog.text
 
 
 def test_a_refusal_says_what_was_read() -> None:

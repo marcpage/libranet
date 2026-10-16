@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 from json import dumps, loads
-from logging import WARNING
+from logging import DEBUG
 from secrets import token_hex
 from threading import Thread
 from typing import Any, Mapping
@@ -37,6 +37,7 @@ MAX_SECONDS = 1.0
 MAX_MINIMUM_BITS = 20
 RETRY_AFTER_SECONDS = 3
 ATTIC = {"name": "Attic", "city": "Springfield"}
+SIGNED_VERSIONS_LOGGER = "libranet.webserver.signed_versions"
 
 
 class Recorder:
@@ -312,7 +313,7 @@ def test_a_body_that_is_not_fields_of_strings_is_400(
     assert not drops_placed(recorder, node)
 
 
-def test_a_version_someone_else_signed_is_passed_over(
+def test_a_version_someone_else_signed_is_passed_over_at_debug(
     metadata: OwnMetadata, truth: CasStore, node: NodeIdentity, caplog: LogCaptureFixture
 ) -> None:
     held_version(truth, node, NodeMetadata(ATTIC, 1))
@@ -325,14 +326,16 @@ def test_a_version_someone_else_signed_is_passed_over(
     forged_id = ContentId.for_data(forged.data, "sha256")
     truth.write(forged_id, forged.data)
 
-    with caplog.at_level(WARNING):
+    with caplog.at_level(DEBUG, logger=SIGNED_VERSIONS_LOGGER):
         response = metadata.read(reading())
 
     assert loads(response.body)["fields"] == ATTIC
-    assert f"at {node.node_id}'s metadata, as {impostor.node_id} signed it" in caplog.text
+    (record,) = caplog.records
+    assert record.levelno == DEBUG
+    assert f"at {node.node_id}'s metadata, as {impostor.node_id} signed it" in record.getMessage()
 
 
-def test_what_the_node_signed_that_is_no_version_is_passed_over(
+def test_what_the_node_signed_that_is_no_version_is_passed_over_at_debug(
     metadata: OwnMetadata, truth: CasStore, node: NodeIdentity, caplog: LogCaptureFixture
 ) -> None:
     drop = NodeMetadata.drop_target(node.node_id).placed(
@@ -342,11 +345,13 @@ def test_what_the_node_signed_that_is_no_version_is_passed_over(
     )
     truth.write(ContentId.for_data(drop.data, "sha256"), drop.data)
 
-    with caplog.at_level(WARNING):
+    with caplog.at_level(DEBUG, logger=SIGNED_VERSIONS_LOGGER):
         response = metadata.read(reading())
 
     assert loads(response.body) == {"id": None, "fields": {}, "version": None}
-    assert "as it is no version of one" in caplog.text
+    (record,) = caplog.records
+    assert record.levelno == DEBUG
+    assert "as it is no version of one" in record.getMessage()
 
 
 def test_a_persons_signature_is_checked_as_any_other_and_passed_over(

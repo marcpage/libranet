@@ -548,6 +548,10 @@ _LOGGER.warning("Cannot read %s, so the last backup is read back: %s", path, err
 | `error` | Something had to be stopped or left out: the node cannot start, a module had to be killed, a value is of no known kind |
 | `exception` | Inside `except Exception`, to keep the traceback |
 
+Signed content that does not check, or that someone other than the one
+expected signed, is what a client or peer sent, since anyone may place it:
+debug. What this node holds that is not what its id names is a warning.
+
 Data that is not what it should be is always logged. An id under a hash
 algorithm this node does not support is a warning wherever it is met, since
 the node may need an update, and a list or archive logs it once for all its

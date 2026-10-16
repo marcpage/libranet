@@ -222,7 +222,8 @@ class SignedDrops:
             )
 
         if isinstance(error, BundleSignatureError):
-            _LOGGER.warning(
+            # Only at debug, as anyone may place what a client names.
+            _LOGGER.debug(
                 "Refusing %s %s, as its signature does not check: %s",
                 request.method,
                 request.path,

@@ -330,9 +330,12 @@ function sleep(seconds) {
   return new Promise((resolve) => setTimeout(resolve, seconds * 1000));
 }
 
+// How long `headers` say to wait before asking again (HttpApi 5.2): at least a
+// second, so that a Retry-After of 0 does not ask again at once, and the
+// default when they do not say.
 function retryAfter(headers) {
   const seconds = Number.parseInt(headers.get("Retry-After") || "", 10);
-  return Number.isFinite(seconds) && seconds > 0 ? seconds : DEFAULT_RETRY_SECONDS;
+  return Number.isFinite(seconds) && seconds >= 0 ? Math.max(seconds, 1) : DEFAULT_RETRY_SECONDS;
 }
 
 function isObject(value) {
@@ -1185,7 +1188,8 @@ async function checked(id) {
 
 // The version of what `nodeId` says of itself that `signed`, checked at `id`,
 // holds; null if the node did not sign it, or it is not shaped as a version
-// is.
+// is. What it names in `versions` is not read, as no reader needs the versions
+// it replaces (HttpApi 11.8).
 function versionOf(id, signed, nodeId) {
   if (signed.signer !== nodeId || typeof signed.contents !== "string") {
     return null;
@@ -1199,15 +1203,12 @@ function versionOf(id, signed, nodeId) {
     return null;
   }
 
-  const versions = isObject(value) && value.versions !== undefined ? value.versions : [];
   const isVersion =
     isObject(value) &&
     isObject(value.fields) &&
     Object.values(value.fields).every((field) => typeof field === "string") &&
     Number.isSafeInteger(value.version) &&
-    value.version >= 1 &&
-    Array.isArray(versions) &&
-    versions.every((replaced) => CONTENT_ID.test(replaced));
+    value.version >= 1;
   return isVersion ? { id, fields: value.fields, version: value.version } : null;
 }
 
