@@ -409,10 +409,11 @@ def test_the_root_page_reads_what_its_node_says_where_the_node_keeps_it(
     page = root_page.decode("ascii")
     some_id = ContentId.for_data(b"a signed drop", "sha256")
 
-    assert findall(r"fetch\(`([^`$]*)", page) == ["/data/signed/", "/data/drop/"]
+    assert set(findall(r"`(/data/[^`$]*)\$\{", page)) == {"/data/drop/", "/data/signed/"}
     # The page names a drop by its target string, one segment, and hashes nothing.
     assert fullmatch(DROP_SEARCH_PATTERN, f"/data/drop/{quote(f'node:{some_id}', safe='')}")
     assert fullmatch(SIGNED_PATTERN, f"/data/signed/{some_id}")
+    assert "encodeURIComponent(target)" in page
     assert 'const NODE_METADATA_PREFIX = "node:";' in page
     assert f"const METADATA_MINIMUM_BITS = {MIN_NODE_METADATA_BITS};" in page
 
