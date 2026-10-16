@@ -15,6 +15,10 @@ A session ends when it is signed out, when it goes unused for its idle time,
 and when the web server stops, since nothing of it is written down. A session
 is between a browser and this node, and no part of the protocol between nodes
 (HandshakeProtocol §6). No log line holds a token.
+
+What holds something for each person signed in, as the build of their trust
+scores does (Trust Network §4.3, Phase 5 Step 99), is told as each session
+starts, and as each person's last session ends.
 """
 
 from __future__ import annotations
@@ -24,7 +28,7 @@ from logging import getLogger
 from secrets import token_urlsafe
 from threading import Lock
 from time import monotonic
-from typing import Callable, Final
+from typing import Callable, Final, Iterable, Protocol
 
 from libranet.cas.content_id import ContentId
 from libranet.identity.people import PersonKey, Username
@@ -75,6 +79,18 @@ class Session:
         }
 
 
+class SessionListener(Protocol):
+    """What is told as each person signs in, and as their last session ends."""
+
+    def session_started(self, person: ContentId) -> None:
+        """``person`` has signed in, in a session of its own."""
+        ...
+
+    def last_session_ended(self, person: ContentId) -> None:
+        """No session of ``person``'s is left: each was signed out or gone idle."""
+        ...
+
+
 @dataclass
 class _Held:
     """A session this node holds, and when it was last used, by the clock."""
@@ -86,18 +102,28 @@ class _Held:
 class Sessions:
     """The sessions signed in here, each ending once unused for ``idle_seconds``, by ``clock``.
 
-    Any number of request threads may use them at once.
+    Any number of request threads may use them at once. ``listener``, if
+    given, is told as each session starts, and as each person's last session
+    is ended or forgotten once idle. It is told with the sessions locked, so
+    that it hears of each in the order they happen, and must not use them.
 
     Raises:
         ValueError: ``idle_seconds`` is not positive.
     """
 
-    def __init__(self, idle_seconds: float, *, clock: Callable[[], float] = monotonic) -> None:
+    def __init__(
+        self,
+        idle_seconds: float,
+        *,
+        clock: Callable[[], float] = monotonic,
+        listener: SessionListener | None = None,
+    ) -> None:
         if idle_seconds <= 0:
             raise ValueError(f"idle_seconds must be positive, got {idle_seconds}")
 
         self._idle_seconds = idle_seconds
         self._clock = clock
+        self._listener = listener
         self._held: dict[str, _Held] = {}
         self._lock = Lock()
 
@@ -110,12 +136,11 @@ class Sessions:
         now = self._clock()
 
         with self._lock:
-            idle = [named for named, kept in self._held.items() if self._is_idle(kept, now)]
-
-            for named in idle:
-                del self._held[named]
-
+            self._forget([named for named, kept in self._held.items() if self._is_idle(kept, now)])
             self._held[token] = _Held(session, now)
+
+            if self._listener is not None:
+                self._listener.session_started(session.key.person_id)
 
         return f"{SESSION_COOKIE}{_NAME_SEPARATOR}{token}{_COOKIE_SEPARATOR} {_COOKIE_ATTRIBUTES}"
 
@@ -131,7 +156,7 @@ class Sessions:
                     continue
 
                 if self._is_idle(kept, now):
-                    del self._held[token]
+                    self._forget((token,))
                     continue
 
                 kept.last_used = now
@@ -180,13 +205,33 @@ class Sessions:
     def end(self, request: Request) -> str:
         """End any session ``request``'s cookie names, and return the ``Set-Cookie`` removing it."""
         with self._lock:
-            for token in _tokens(request):
-                self._held.pop(token, None)
+            self._forget(_tokens(request))
 
         return (
             f"{SESSION_COOKIE}{_NAME_SEPARATOR}{_COOKIE_SEPARATOR} "
             f"{_COOKIE_ATTRIBUTES}{_COOKIE_SEPARATOR} {_EXPIRED}"
         )
+
+    def _forget(self, tokens: Iterable[str]) -> None:
+        """Forget the sessions ``tokens`` name, telling the listener of each person left with none.
+
+        It is called with the sessions locked.
+        """
+        people = [
+            kept.session.key.person_id
+            for kept in (self._held.pop(token, None) for token in tokens)
+            if kept is not None
+        ]
+
+        if self._listener is None:
+            return
+
+        signed_in = {kept.session.key.person_id for kept in self._held.values()}
+
+        # Each told once, in the order their sessions were named.
+        for person in dict.fromkeys(people):
+            if person not in signed_in:
+                self._listener.last_session_ended(person)
 
     def _is_idle(self, kept: _Held, now: float) -> bool:
         """Whether ``kept`` has gone unused for this node's idle time, at ``now``."""

@@ -60,6 +60,16 @@ DEFAULT_PERSON_KEY_BITS: Final = (2048, 3072, 4096)
 # for, when not held, by default (HttpApi §13.2, Phase 3 Step 65).
 DEFAULT_READ_AHEAD_PARTS: Final = 8
 
+# How far a person's trust scores reach by default: the steps out from their
+# own list, and the lists read, as the specification says a node should go
+# (Trust Network §4.2, Phase 5 Step 99).
+DEFAULT_TRUST_MAX_STEPS: Final = 4
+DEFAULT_TRUST_MAX_LISTS: Final = 1000
+
+# How long a build of a person's scores looks for a list, by default, before
+# it reads what it holds of it (Trust Network §4.3, Phase 5 Step 99).
+DEFAULT_TRUST_LIST_WAIT_SECONDS: Final = 30.0
+
 # How many bits a target hash has, and so the most a drop can match it by
 # (HttpApi §9). It is defined here, where the settings are checked against
 # it, rather than with drops.
@@ -479,6 +489,21 @@ class IdentityConfig(_Section):
     # M2, 0.08 seconds at 2048 bits, 0.31 at 3072, and 0.69 at 4096, on
     # average. None is under MIN_PERSON_KEY_BITS.
     person_key_bits: tuple[int, ...] = DEFAULT_PERSON_KEY_BITS
+
+    # How far the trust scores of a person signed in here reach, built as they
+    # sign in (Trust Network §4.2, Phase 5 Step 99): the most steps out from
+    # their own list, those at the last scored but their lists not read, and
+    # the most lists read, their own among them. Each step multiplies the
+    # lists a build may read.
+    trust_max_steps: int = Field(default=DEFAULT_TRUST_MAX_STEPS, ge=1)
+    trust_max_lists: int = Field(default=DEFAULT_TRUST_MAX_LISTS, ge=1)
+
+    # How long a build looks for a list, asking the peers, before it reads
+    # the versions held then, or, holding none, leaves it out until the next
+    # sign-in (Trust Network §4.3). Longer than a search of the peers lasts,
+    # peers.search_passes less one, times network.retry_after_seconds, so
+    # that a list kept on another node is found.
+    trust_list_wait_seconds: float = Field(default=DEFAULT_TRUST_LIST_WAIT_SECONDS, ge=0)
 
     @field_validator("person_key_bits", mode="after")
     @classmethod

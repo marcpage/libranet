@@ -4,7 +4,9 @@ Routes are tried in registration order and a pattern must match the whole
 path. A path no route matches is ``404``; a path that matches only under
 other methods is ``405`` with an ``Allow`` header (HttpApi §4). Guards see
 every request before routing, in the order given, and any of them may refuse
-it outright.
+it outright. What a handler goes on doing after it answers, as building a
+person's trust scores does (Phase 5 Step 99), is ended as the server routing
+through it closes.
 """
 
 from __future__ import annotations
@@ -37,6 +39,7 @@ class Router:
     def __init__(self, *guards: Guard) -> None:
         self._routes: list[Route] = []
         self._guards = guards
+        self._closers: list[Callable[[], None]] = []
 
     def add(self, method: str, pattern: str, handler: Handler) -> None:
         """Route ``method`` requests whose whole path matches ``pattern``.
@@ -44,6 +47,15 @@ class Router:
         Named groups in ``pattern`` become :attr:`Request.params`.
         """
         self._routes.append(Route(method.upper(), compile_pattern(pattern), handler))
+
+    def when_closed(self, close: Callable[[], None]) -> None:
+        """Call ``close`` as the server routing through this closes, to end what it began."""
+        self._closers.append(close)
+
+    def close(self) -> None:
+        """End what each handler went on doing after it answered, as :meth:`when_closed` says."""
+        for close in self._closers:
+            close()
 
     def dispatch(self, request: Request) -> Response:
         """Run the handler for ``request``, or build a guard's or the 404/405 response."""

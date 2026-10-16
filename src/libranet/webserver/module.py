@@ -42,6 +42,7 @@ from libranet.config.models import CONFIG_LISTEN_ADDRESS, LibranetConfig
 from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import MessageSigner
+from libranet.identity.trust import TrustLimits
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType, PathOutcome
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
@@ -122,8 +123,15 @@ class WebServerModule(ModuleBase):
         signer = MessageSigner(node)
         content = LayeredSource.open(storage)
         costly_work = CostlyWork()
+        identity_config = self._config.identity
         described = NodeDescription(
-            node.node_id, network, person_key_bits=self._config.identity.person_key_bits
+            node.node_id,
+            network,
+            person_key_bits=identity_config.person_key_bits,
+            trust_limits=TrustLimits(
+                identity_config.trust_max_steps, identity_config.trust_max_lists
+            ),
+            trust_list_wait_seconds=identity_config.trust_list_wait_seconds,
         )
         config_server = LibranetHTTPServer.first_free(
             CONFIG_LISTEN_ADDRESS,

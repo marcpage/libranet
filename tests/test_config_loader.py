@@ -168,6 +168,16 @@ def test_the_example_config_states_the_default_person_key_sizes() -> None:
     assert load_config(example).identity.person_key_bits == IdentityConfig().person_key_bits
 
 
+def test_the_example_config_states_the_default_trust_score_settings() -> None:
+    example = Path(__file__).parent.parent / "examples" / "libranet.yaml"
+    stated = safe_load(example.read_text(encoding="utf-8"))["identity"]
+    settings = ("trust_max_steps", "trust_max_lists", "trust_list_wait_seconds")
+
+    assert {name: stated[name] for name in settings} == {
+        name: getattr(IdentityConfig(), name) for name in settings
+    }
+
+
 def test_the_example_config_states_the_default_excluded_extended_attributes() -> None:
     example = Path(__file__).parent.parent / "examples" / "libranet.yaml"
 

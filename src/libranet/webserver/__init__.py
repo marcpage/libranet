@@ -24,7 +24,8 @@ uploads from this node (Phase 3 Step 72), making a person's identity,
 and signing them in and out (Phase 4 Step 79), opening what is encrypted for
 them or by a password (Phase 4 Step 78), blocking content (Phase 4
 Step 30), and changing the trust list of whoever is signed in (Phase 5 Step
-97). Any client may read into a
+97). Signing in starts building the person's trust scores, behind the
+sign-in (Phase 5 Step 99). Any client may read into a
 bundle, by its id, as an application's files are served (Phase 3 Step 71).
 
 Every endpoint meant only for browsers but reading into a bundle,
@@ -261,7 +262,7 @@ from libranet.webserver.server import (
     build_config_router,
     build_router,
 )
-from libranet.webserver.sessions import SESSION_COOKIE, Session, Sessions
+from libranet.webserver.sessions import SESSION_COOKIE, Session, SessionListener, Sessions
 from libranet.webserver.signature_guard import SignatureGuard
 from libranet.webserver.signed_handlers import (
     SIGNED_PATH,
@@ -270,6 +271,11 @@ from libranet.webserver.signed_handlers import (
 )
 from libranet.webserver.signed_versions import FoundVersions, SignedVersions, VersionParser
 from libranet.webserver.site_checks import HOST_HEADER, SITE_HEADER, SiteChecks, host_name
+from libranet.webserver.trust_builds import (
+    DEFAULT_TRUST_POLL_INTERVAL_SECONDS,
+    TrustBuilds,
+    TrustListReader,
+)
 from libranet.webserver.trust_handlers import TRUST_PATH, TRUST_PATTERN, TrustEdits
 from libranet.webserver.trust_lists import TrustLists
 
@@ -307,6 +313,7 @@ __all__ = [
     "DEFAULT_MAX_OUTCOMES",
     "DEFAULT_PART_POLL_INTERVAL_SECONDS",
     "DEFAULT_REPORT_INTERVAL_SECONDS",
+    "DEFAULT_TRUST_POLL_INTERVAL_SECONDS",
     "DIRECTORY_PATTERN",
     "DROP_PATH",
     "DROP_SEARCH_PATTERN",
@@ -433,6 +440,7 @@ __all__ = [
     "SearchHandler",
     "SeekListHandler",
     "Session",
+    "SessionListener",
     "Sessions",
     "SignatureGuard",
     "SignedDrops",
@@ -449,7 +457,9 @@ __all__ = [
     "StoredValue",
     "StoredValues",
     "StreamedBody",
+    "TrustBuilds",
     "TrustEdits",
+    "TrustListReader",
     "TrustLists",
     "Turns",
     "UnsupportedMediaTypeError",

@@ -235,6 +235,16 @@ identity:
   # larger key takes longer to make: under a second at 4096 bits, on
   # average, on a recent laptop. None may be under 2048.
   person_key_bits: [2048, 3072, 4096]
+  # How far the trust scores of a person signed in here reach, built as they
+  # sign in (Trust Network §4.2): the most steps out from their own list,
+  # those at the last scored but their lists not read, and the most lists
+  # read, their own among them. Each at least 1.
+  trust_max_steps: 4
+  trust_max_lists: 1000
+  # How long building the scores looks for each list, asking the peers,
+  # before it reads the versions this node holds then, or, holding none,
+  # leaves the list out until the person next signs in (Trust Network §4.3).
+  trust_list_wait_seconds: 30.0
 
 stats:
   # How often the plain /data/nodes and /data/seek files are rewritten from

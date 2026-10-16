@@ -43,7 +43,7 @@ from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.people import PersonKey
 from libranet.identity.signatures import MessageSigner, MessageVerifier
-from libranet.identity.trust import MIN_TRUST_LIST_BITS
+from libranet.identity.trust import MIN_TRUST_LIST_BITS, TrustList
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
@@ -317,6 +317,21 @@ def _parse(reply: bytes) -> tuple[int, dict[str, str], bytes]:
 
 def _new_identity() -> NodeIdentity:
     return NodeIdentity.from_private_key(generate_private_key(), "sha256")
+
+
+def _awaited(queues: ModuleQueues, wanted: Callable[[Message], bool]) -> Message:
+    """The first message published that is ``wanted``, waited for up to five seconds.
+
+    Raises:
+        Empty: none came in time.
+    """
+    deadline = monotonic() + 5
+
+    while True:
+        message = queues.outbox.get(timeout=max(deadline - monotonic(), 0))
+
+        if wanted(message):
+            return message
 
 
 def _published(queues: ModuleQueues) -> list[Message]:
@@ -2124,6 +2139,45 @@ def test_a_local_client_makes_an_identity_and_is_signed_in_by_a_cookie(
         "fallback": None,
         "fallback_for": None,
     }
+
+
+def test_signing_in_starts_building_the_persons_trust_scores(
+    local_connection: HTTPConnection, queues: ModuleQueues
+) -> None:
+    page = _from_page(local_connection, "/movie/")
+    local_connection.request(
+        "POST",
+        "/data/users",
+        body=b'{"username": "Alice", "password": "correct horse", '
+        b'"fallback_password": "battery staple", "key_bits": 2048, "seconds": 0}',
+        headers={"Content-Type": JSON_CONTENT_TYPE, **page},
+    )
+    response = local_connection.getresponse()
+    person = ContentId.parse(loads(response.read())["id"])
+    target = TrustList.drop_target(person).hex
+
+    # The build reads the person's own list first, searching its drop.
+    searched = _awaited(
+        queues,
+        lambda message: message["event"] == EventType.SEARCH_REQUESTED
+        and message["prefix"] == target,
+    )
+
+    assert response.status == 201
+    assert searched["prefix"] == target
+
+
+def test_closing_a_server_ends_what_its_routes_began() -> None:
+    router = Router()
+    closed: list[bool] = []
+    router.when_closed(lambda: closed.append(True))
+    server = LibranetHTTPServer(
+        ("127.0.0.1", 0), router, getLogger("test.webserver"), MessageSigner(SERVER_IDENTITY)
+    )
+
+    server.server_close()
+
+    assert closed == [True]
 
 
 def test_a_signed_in_local_client_signs_a_drop_that_any_client_checks(

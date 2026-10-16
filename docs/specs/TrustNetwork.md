@@ -197,11 +197,13 @@ person's last session. Between sign-ins it is not refreshed, updated, or
 built again, except as §4.4 says.
 
 The node reads each list as §3.3 says, asking its peers for what it does
-not hold (HTTP API §5.2, §6). It reads a list once every version found at
-its drop is held, or once a time the node sets has passed since it began
-looking for it, from the versions it holds then. A list of which no version
-is held by then is empty for the rest of the build, and is not looked for
-again until the next sign-in.
+not hold (HTTP API §5.2, §6). It reads a list once a version is found at its
+drop and every version found there is held, or once a time the node sets has
+passed since it began looking for it, from the versions it holds then. Until
+then it looks again, so that a list kept only on another node is found by
+the search of the node's peers that looking starts. A list of which no
+version is held by then is empty for the rest of the build, and is not
+looked for again until the next sign-in.
 
 The scores of a step are final once every list of the step before it is
 read. Until then, the node answers with what it has read so far, saying

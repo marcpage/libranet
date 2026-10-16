@@ -87,7 +87,14 @@ from re import escape
 from typing import Any, Callable, Final, Protocol
 
 from libranet.cas.content_id import ContentId
-from libranet.config.models import DEFAULT_PERSON_KEY_BITS, NetworkConfig
+from libranet.config.models import (
+    DEFAULT_PERSON_KEY_BITS,
+    DEFAULT_TRUST_LIST_WAIT_SECONDS,
+    DEFAULT_TRUST_MAX_LISTS,
+    DEFAULT_TRUST_MAX_STEPS,
+    NetworkConfig,
+)
+from libranet.identity.trust import TrustLimits
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.protocol.backup_requests import (
@@ -195,12 +202,17 @@ class NodeDescription:
 
     It makes a person's key at the sizes ``person_key_bits`` names, and
     searches for the drop keeping it as ``network`` limits (HttpApi §11.3).
+    It builds the trust scores of a person signed in as far as
+    ``trust_limits`` reach, looking for each list for
+    ``trust_list_wait_seconds`` (Trust Network §4.2, §4.3).
     """
 
     node_id: ContentId
     network: NetworkConfig
     _: KW_ONLY
     person_key_bits: tuple[int, ...] = DEFAULT_PERSON_KEY_BITS
+    trust_limits: TrustLimits = TrustLimits(DEFAULT_TRUST_MAX_STEPS, DEFAULT_TRUST_MAX_LISTS)
+    trust_list_wait_seconds: float = DEFAULT_TRUST_LIST_WAIT_SECONDS
 
     def value(self) -> dict[str, Any]:
         """The JSON object ``GET /config/api/node`` answers."""
