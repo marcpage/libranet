@@ -317,7 +317,7 @@ class TrustBuilds:  # pylint: disable=too-many-instance-attributes
         else:
             _LOGGER.debug(
                 "Read version %d of %s's trust list for %s's scores",
-                newest.trust_list.version,
+                newest.number,
                 owner,
                 build.person,
             )

@@ -123,8 +123,8 @@ def test_nothing_read_says_nothing_and_its_next_version_is_the_first() -> None:
 
 
 def test_the_newest_is_numbered_highest_and_replaces_the_rest() -> None:
-    older = MetadataVersion(FIRST, NodeMetadata({"name": "Old"}, 1))
-    newest = MetadataVersion(SECOND, NodeMetadata(ATTIC, 2, (FIRST,)))
+    older = MetadataVersion(FIRST, NODE, NodeMetadata({"name": "Old"}, 1))
+    newest = MetadataVersion(SECOND, NODE, NodeMetadata(ATTIC, 2, (FIRST,)))
     held = HeldNodeMetadata(NODE, (newest, older))
 
     assert held.newest == newest
@@ -134,21 +134,28 @@ def test_the_newest_is_numbered_highest_and_replaces_the_rest() -> None:
 
 
 def test_of_two_numbered_as_high_the_newest_is_the_first_by_id() -> None:
-    one = MetadataVersion(THIRD, NodeMetadata({"name": "Three"}, 2))
-    other = MetadataVersion(SECOND, NodeMetadata({"name": "Two"}, 2))
+    one = MetadataVersion(THIRD, NODE, NodeMetadata({"name": "Three"}, 2))
+    other = MetadataVersion(SECOND, NODE, NodeMetadata({"name": "Two"}, 2))
 
     assert HeldNodeMetadata(NODE, (one, other)).newest == other
 
 
 def test_saying_what_the_newest_says_changes_nothing() -> None:
-    held = HeldNodeMetadata(NODE, (MetadataVersion(FIRST, NodeMetadata(ATTIC, 1)),))
+    held = HeldNodeMetadata(NODE, (MetadataVersion(FIRST, NODE, NodeMetadata(ATTIC, 1)),))
 
     assert held.next_version(dict(reversed(ATTIC.items()))) is None
     assert HeldNodeMetadata(NODE).next_version({}) is None
 
 
+def test_a_version_someone_other_than_the_node_signed_is_refused() -> None:
+    forged = MetadataVersion(FIRST, SECOND, NodeMetadata(ATTIC, 1))
+
+    with raises(ValueError, match="is signed by them"):
+        HeldNodeMetadata(NODE).with_version(forged)
+
+
 def test_a_version_placed_is_read_once() -> None:
-    placed = MetadataVersion(FIRST, NodeMetadata(ATTIC, 1))
+    placed = MetadataVersion(FIRST, NODE, NodeMetadata(ATTIC, 1))
     held = HeldNodeMetadata(NODE).with_version(placed)
 
     assert held.versions == (placed,)

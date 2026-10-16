@@ -84,11 +84,12 @@ class TrustList(Numbered):
         know are ignored (§3.1).
 
         Raises:
-            ValueError: ``value`` is not an object whose ``entries`` is an
-                object and whose ``version`` is a whole number of at least 1.
+            ValueError: ``value``, called ``named``, is not an object whose
+                ``entries`` is an object and whose ``version`` is a whole
+                number of at least 1.
         """
         if not isinstance(value, dict) or not isinstance(value.get(_ENTRIES_FIELD), dict):
-            raise ValueError(f'A trust list is an object with an "{_ENTRIES_FIELD}" object')
+            raise ValueError(f'{named} is not an object with an "{_ENTRIES_FIELD}" object')
 
         version = integer_field(value, VERSION_FIELD)
         unsupported = UnsupportedAlgorithms()
@@ -163,14 +164,6 @@ class HeldTrustList(HeldVersions[TrustVersion]):
         ValueError: a version is signed by someone other than ``owner``, as
             one given :meth:`with_version` may be.
     """
-
-    def __post_init__(self) -> None:
-        for version in self.versions:
-            if version.signer != self.owner:
-                raise ValueError(
-                    f"A version of {self.owner}'s list is signed by them, "
-                    f"got {version.content_id} signed by {version.signer}"
-                )
 
     @property
     def entries(self) -> Mapping[ContentId, bool]:

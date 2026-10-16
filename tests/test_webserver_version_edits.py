@@ -24,6 +24,7 @@ from libranet.protocol.search import LocalSearch, SearchCache
 from libranet.webserver.bundle_edits import OwnUploads
 from libranet.webserver.drop_handler import DropHandler, StoredDrop
 from libranet.webserver.http_types import Request, RequestBody, Response
+from libranet.webserver.node_metadata_reader import NodeMetadataReader
 from libranet.webserver.search_handler import SearchHandler
 from libranet.webserver.signed_versions import SignedVersions
 from libranet.webserver.version_edits import ReplacedVersions, VersionEdits
@@ -78,14 +79,7 @@ def versions(
     search = SearchHandler(
         LocalSearch(truth, storage.search_max_results), SearchCache.of(storage), recorder
     )
-    return SignedVersions(
-        search,
-        uploads,
-        kind="metadata",
-        target=NodeMetadata.drop_target,
-        minimum_bits=MIN_NODE_METADATA_BITS,
-        parse=NodeMetadata.from_value,
-    )
+    return NodeMetadataReader(search, uploads).versions
 
 
 def edits_of(
@@ -129,7 +123,7 @@ def test_replaced_versions_are_each_asked_to_be_blocked(recorder: Recorder) -> N
 def test_a_version_remembered_is_read_until_a_search_finds_it(
     edits: VersionEdits[NodeMetadata], node: NodeIdentity
 ) -> None:
-    placed = MetadataVersion(FIRST, NodeMetadata({"name": "Attic"}, 1))
+    placed = MetadataVersion(FIRST, node.node_id, NodeMetadata({"name": "Attic"}, 1))
     edits.remember(node.node_id, placed)
 
     assert edits.held(HeldNodeMetadata(node.node_id)).versions == (placed,)
@@ -141,7 +135,7 @@ def test_a_version_remembered_is_read_until_a_search_finds_it(
 def test_what_is_held_for_another_owner_is_not_read_with_it(
     edits: VersionEdits[NodeMetadata], node: NodeIdentity
 ) -> None:
-    edits.remember(node.node_id, MetadataVersion(FIRST, NodeMetadata({}, 1)))
+    edits.remember(node.node_id, MetadataVersion(FIRST, node.node_id, NodeMetadata({}, 1)))
     other = HeldNodeMetadata(SECOND)
 
     assert edits.held(other) is other
@@ -167,9 +161,9 @@ def test_every_version_but_the_newest_is_blocked(
     held = HeldNodeMetadata(
         node.node_id,
         (
-            MetadataVersion(FIRST, NodeMetadata({}, 1)),
-            MetadataVersion(THIRD, NodeMetadata({}, 3)),
-            MetadataVersion(SECOND, NodeMetadata({}, 2)),
+            MetadataVersion(FIRST, node.node_id, NodeMetadata({}, 1)),
+            MetadataVersion(THIRD, node.node_id, NodeMetadata({}, 3)),
+            MetadataVersion(SECOND, node.node_id, NodeMetadata({}, 2)),
         ),
     )
 
@@ -184,7 +178,9 @@ def test_a_version_placed_is_a_drop_at_its_owners_and_the_newest_is_blocked(
     node: NodeIdentity,
     recorder: Recorder,
 ) -> None:
-    held = HeldNodeMetadata(node.node_id, (MetadataVersion(FIRST, NodeMetadata({}, 1)),))
+    held = HeldNodeMetadata(
+        node.node_id, (MetadataVersion(FIRST, node.node_id, NodeMetadata({}, 1)),)
+    )
     signed = node.signed(dumps(NodeMetadata({"name": "Attic"}, 2, (FIRST,)).value()))
 
     stored = edits.place(REQUEST, held, signed)
@@ -216,7 +212,9 @@ def test_a_version_refused_blocks_nothing(
     recorder: Recorder,
 ) -> None:
     edits = edits_of(versions, uploads, recorder, max_object_bytes=64)
-    held = HeldNodeMetadata(node.node_id, (MetadataVersion(FIRST, NodeMetadata({}, 1)),))
+    held = HeldNodeMetadata(
+        node.node_id, (MetadataVersion(FIRST, node.node_id, NodeMetadata({}, 1)),)
+    )
     signed = node.signed(dumps(NodeMetadata({"name": "Attic"}, 2, (FIRST,)).value()))
 
     refused = edits.place(REQUEST, held, signed)
