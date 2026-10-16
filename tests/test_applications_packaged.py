@@ -60,6 +60,7 @@ from libranet.webserver.router import Router
 from libranet.webserver.search_handler import DROP_SEARCH_PATTERN
 from libranet.webserver.server import build_config_router, build_router
 from libranet.webserver.signed_handlers import SIGNED_PATH, SIGNED_PATTERN
+from libranet.webserver.trust_handlers import TRUST_PATH, TRUST_PATTERN
 
 from tests.stubs import StubModule
 
@@ -505,14 +506,29 @@ def test_the_directory_page_calls_only_endpoints_the_node_serves(directory_page:
         DROP_PATH,
         BUNDLES_PATH,
         SIGNED_PATH,
+        TRUST_PATH,
         "/data/drop/",
         "/data/signed/",
+        f"{TRUST_PATH}/",
         "/data/",
     }
     # The page names a drop by its target string, one segment, and hashes nothing.
     assert fullmatch(DROP_SEARCH_PATTERN, f"/data/drop/{quote('user:sha256/0a', safe='')}")
     assert fullmatch(SIGNED_PATTERN, f"/data/signed/{some_id}")
+    assert fullmatch(TRUST_PATTERN, f"{TRUST_PATH}/{some_id}")
     assert "encodeURIComponent(target)" in directory_page
+
+
+def test_the_directory_page_marks_trust_as_the_issue_does(directory_page: str) -> None:
+    # Above 0, 0, and below 0 (#322), and a mark of its own where there are no
+    # scores (Phase 5 §6).
+    assert 'const TRUSTED = "\\u{1F7E2}";' in directory_page
+    assert 'const NEITHER = "\\u{1F7E1}";' in directory_page
+    assert 'const DISTRUSTED = "\\u{1F534}";' in directory_page
+    assert 'const UNKNOWN = "\\u{26AA}";' in directory_page
+    # A change is one entry, trusted, distrusted, or cleared (HttpApi 11.7).
+    assert 'call("PUT", path, { trust: trusted })' in directory_page
+    assert 'call("DELETE", path)' in directory_page
 
 
 def test_the_directory_page_keeps_the_directory_where_the_node_does(directory_page: str) -> None:

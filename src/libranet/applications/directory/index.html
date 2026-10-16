@@ -94,6 +94,17 @@
   .fields { display: grid; grid-template-columns: max-content 1fr; gap: 0.4rem 0.75rem; align-items: center; }
   .extra { display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.4rem; margin-bottom: 0.4rem; }
   .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
+
+  /* An identity's trust: a mark to hover over or tap, what it says once
+     tapped, and the buttons changing it. */
+  .mark { font: inherit; border: 0; background: none; padding: 0; margin-right: 0.4rem; cursor: pointer; }
+  .score { color: var(--muted); font-weight: normal; font-size: 0.93rem; margin-left: 0.5rem; }
+  .choices { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 0.3rem; }
+  .choices button { padding: 0.15rem 0.6rem; }
+  #arrange { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin: 0 0 0.75rem; }
+  #arrange[hidden] { display: none; }
+  #trust-text { margin: 0 0 0.75rem; }
+  select { font: inherit; padding: 0.25rem 0.4rem; border: 1px solid var(--border); border-radius: 4px; background: var(--background); color: var(--text); }
 </style>
 </head>
 <body>
@@ -129,6 +140,16 @@
   <section>
     <h2 id="count">People</h2>
     <input id="search" type="search" placeholder="Search every detail" aria-label="Search the directory">
+    <div id="arrange" hidden>
+      <label>Sort
+        <select id="sort">
+          <option value="name">by name</option>
+          <option value="trust">by trust, most trusted first</option>
+        </select>
+      </label>
+      <label><input id="hide-distrusted" type="checkbox"> Hide those distrusted</label>
+    </div>
+    <p id="trust-text" class="note" hidden></p>
     <div id="people"><span class="note">Asking the node&hellip;</span></div>
   </section>
 
@@ -181,6 +202,12 @@
     versions name another fallback, or none, or whose fallback says so, is
     compromised. A fallback that says so takes over, with a fallback of its
     own.
+    Whom each person trusts and distrusts is their trust list, kept by the
+    node at the drop <code>trust:</code> and their id, signed by them, and
+    public, distrust included. Each person's mark is from the scores the node
+    builds from your list, the lists of those you trust, and so on onward:
+    &#x1F7E2; above 0, trusted; &#x1F7E1; 0, neither; &#x1F534; below 0,
+    distrusted; and &#x26AA; where there are no scores to show.
   </footer>
 </main>
 <script>
@@ -243,6 +270,17 @@ const NULL_BYTE = 0x00;
 
 // Where the hex of a hash begins in a content id, after "sha256/".
 const HASH_START = "sha256/".length;
+
+// What marks each person's trust (#322), by the scores of whoever is signed in
+// (HttpApi 11.7): a score above 0, of 0, and below 0; and where there are no
+// scores to show.
+const TRUSTED = "\u{1F7E2}";
+const NEITHER = "\u{1F7E1}";
+const DISTRUSTED = "\u{1F534}";
+const UNKNOWN = "\u{26AA}";
+
+// How long the page waits to read scores still being built again.
+const SCORES_AGAIN_SECONDS = 2;
 
 function byId(id) {
   return document.getElementById(id);
@@ -718,14 +756,31 @@ async function isLocal() {
   return result.ok && isObject(result.value) && result.value.local === true;
 }
 
-// What the list shows: everyone the directory lists, who is signed in, what
-// each person says of themselves as far as it has been read, and what is
-// searched for.
-const view = { everyone: new Set(), you: null, details: new Map(), query: "" };
+// What the list shows: everyone the directory lists, once it is read, who is
+// signed in, what each person says of themselves as far as it has been read,
+// and what is searched for. And trust: the scores of whoever is signed in by
+// id, and whether they are complete, or null and why there are none; how the
+// list is sorted, and whether those distrusted are hidden; whose trust is
+// shown in words, tapped; and what changing each person's trust last said.
+const view = {
+  everyone: new Set(),
+  listed: false,
+  you: null,
+  details: new Map(),
+  query: "",
+  scores: null,
+  complete: false,
+  unscored: "",
+  sort: "name",
+  hideDistrusted: false,
+  opened: new Set(),
+  changing: new Map(),
+};
 let renderQueued = false;
 
 function showPeople(everyone, you) {
   view.everyone = everyone;
+  view.listed = true;
   view.you = you;
   render();
 }
@@ -780,8 +835,213 @@ function entryOf(id) {
     compromised,
     complete: Boolean(details && details.complete),
     missing: details ? details.missing : 0,
+    trust: trustOf(id),
     text: searched.join("\n").toLocaleLowerCase(),
   };
+}
+
+// How whoever is signed in trusts `id`, by their scores: its score, and the
+// step it was reached at, null if it was not; null when there are no scores.
+function trustOf(id) {
+  if (view.scores === null) {
+    return null;
+  }
+
+  return view.scores.get(id) || { score: 0, step: null };
+}
+
+function markOf(trust) {
+  if (trust === null) {
+    return UNKNOWN;
+  }
+
+  return trust.score > 0 ? TRUSTED : trust.score < 0 ? DISTRUSTED : NEITHER;
+}
+
+// What a score reached at a step says: at step 1, what the person's own list
+// holds, and after it, what the lists of those they trust hold.
+function trustWords(trust) {
+  if (trust.step === 1) {
+    return trust.score > 0 ? "You trust them." : "You distrust them.";
+  }
+
+  if (trust.score > 0) {
+    return "Trusted by those you trust.";
+  }
+
+  return trust.score < 0 ? "Distrusted by those you trust." : "Trusted and distrusted alike by those you trust.";
+}
+
+// What a person's mark says in words: how they are trusted, their score and
+// its step, and whether the scores are still being built; or why there are
+// no scores.
+function trustText(trust) {
+  if (trust === null) {
+    return view.unscored;
+  }
+
+  const building = view.complete ? "" : " Your scores are still being built.";
+
+  if (trust.step === null) {
+    return `Not reached by your trust list, or by those it reaches. Score 0.${building}`;
+  }
+
+  return `${trustWords(trust)} Score ${trust.score}, step ${trust.step}.${building}`;
+}
+
+// A person's mark, saying their trust in words when hovered over, and beside
+// it once tapped.
+function markFor(entry) {
+  const text = trustText(entry.trust);
+  const mark = make("button", markOf(entry.trust), "mark");
+  mark.type = "button";
+  mark.title = text;
+  mark.setAttribute("aria-label", text);
+  mark.setAttribute("aria-expanded", String(view.opened.has(entry.id)));
+  mark.addEventListener("click", () => {
+    if (!view.opened.delete(entry.id)) {
+      view.opened.add(entry.id);
+    }
+
+    render();
+  });
+  return mark;
+}
+
+// Whether the scores say what the person's own list holds yet: it is the
+// first read, and only it scores at step 1.
+function ownListRead() {
+  return view.scores !== null && (view.complete || view.scores.size > 0);
+}
+
+// Trust, Distrust, and Clear, changing the entry for `entry` on the trust list
+// of whoever is signed in, the one saying what the list holds disabled; and
+// what the last change said.
+function choicesFor(entry) {
+  const row = make("li", "", "choices");
+  const held = ownListRead() && entry.trust.step === 1 ? entry.trust.score > 0 : null;
+  const change = view.changing.get(entry.id);
+
+  for (const [label, trusted] of [["Trust", true], ["Distrust", false], ["Clear", null]]) {
+    const button = make("button", label);
+    button.type = "button";
+    button.disabled = Boolean(change && change.busy) || (ownListRead() && held === trusted);
+    button.addEventListener("click", () => changeTrust(entry.id, trusted));
+    row.append(button);
+  }
+
+  if (change) {
+    row.append(make("span", change.text, change.className));
+  }
+
+  return row;
+}
+
+// Have the node trust `id`, distrust it (`trusted` false), or clear it (null)
+// on the list of whoever is signed in (HttpApi 11.7), waiting out a 503 while
+// it fetches a version of the list, then read the scores it gives them.
+async function changeTrust(id, trusted) {
+  const path = `/data/trust/${id}`;
+  view.changing.set(id, { busy: true, text: "Saving…", className: "note" });
+  render();
+
+  try {
+    for (let waits = 0; ; waits += 1) {
+      const result = trusted === null ? await call("DELETE", path) : await call("PUT", path, { trust: trusted });
+
+      if (result.ok) {
+        view.changing.delete(id);
+        break;
+      }
+
+      if (result.status !== 503 || waits >= MAX_WAITS) {
+        view.changing.set(id, { text: `Not changed: ${refusal(result)}`, className: "error" });
+        break;
+      }
+
+      await sleep(retryAfter(result.headers));
+    }
+
+    await readScores();
+  } catch (error) {
+    view.changing.set(id, { text: error.message, className: "error" });
+    render();
+  }
+}
+
+// Read the scores of whoever is signed in (HttpApi 11.7), and, while they are
+// still being built, read them again every few seconds until they are not.
+async function readScores() {
+  const result = await call("GET", "/data/trust");
+  const value = result.value;
+
+  if (result.ok && isObject(value) && isObject(value.scores)) {
+    const scored = Object.entries(value.scores).filter(
+      ([id, trust]) => CONTENT_ID.test(id) && isObject(trust) && Number.isFinite(trust.score),
+    );
+    view.scores = new Map(scored);
+    view.complete = value.complete === true;
+  } else {
+    view.scores = null;
+    view.unscored = `No trust is shown: ${refusal(result)}`;
+  }
+
+  showTrust();
+
+  if (view.scores !== null && !view.complete) {
+    followScores();
+  }
+}
+
+let followingScores = false;
+
+async function followScores() {
+  if (followingScores) {
+    return;
+  }
+
+  followingScores = true;
+
+  try {
+    while (view.scores !== null && !view.complete) {
+      await sleep(SCORES_AGAIN_SECONDS);
+      await readScores();
+    }
+  } catch (error) {
+    view.scores = null;
+    view.unscored = `No trust is shown: ${error.message}`;
+    showTrust();
+  } finally {
+    followingScores = false;
+  }
+}
+
+// Say what the marks show, and that the list is public, offer sorting and
+// hiding by trust once there are scores, and show them on everyone listed.
+function showTrust() {
+  const lines = [];
+
+  if (view.scores === null) {
+    lines.push(`${UNKNOWN} ${view.unscored}`);
+  } else {
+    lines.push(`${TRUSTED} trusted, ${NEITHER} neither, and ${DISTRUSTED} distrusted, by your trust scores. Hover over or tap a mark for its score.`);
+
+    if (view.you !== null) {
+      lines.push("Your trust list is public: anyone can read whom you trust, and whom you distrust.");
+    } else {
+      lines.push("Signed in as a fallback, you cannot change your trust list until you take over.");
+    }
+
+    if (!view.complete) {
+      lines.push("Your scores are still being built, and are read again until they are.");
+    }
+  }
+
+  const said = byId("trust-text");
+  said.textContent = lines.join(" ");
+  said.hidden = false;
+  byId("arrange").hidden = view.scores === null;
+  render();
 }
 
 // What an entry says of the person's fallback: that they are compromised,
@@ -819,9 +1079,20 @@ function compareEntries(one, other) {
   return byName || (one.id < other.id ? -1 : one.id > other.id ? 1 : 0);
 }
 
+// The most trusted first, then as compareEntries orders them.
+function compareTrust(one, other) {
+  return other.trust.score - one.trust.score || compareEntries(one, other);
+}
+
 function itemOf(entry) {
   const item = document.createElement("li");
   const first = make("div", entry.first, "first");
+  // Whoever is signed in is not scored, so they are shown no mark.
+  const others = entry.id !== view.you;
+
+  if (others) {
+    first.prepend(markFor(entry));
+  }
 
   if (!entry.first) {
     first.append(make("code", entry.id, "id"));
@@ -833,6 +1104,10 @@ function itemOf(entry) {
 
   if (entry.compromised) {
     first.append(make("span", "compromised", "flag"));
+  }
+
+  if (others && view.opened.has(entry.id)) {
+    first.append(make("span", trustText(entry.trust), "score"));
   }
 
   const rows = document.createElement("ul");
@@ -857,6 +1132,12 @@ function itemOf(entry) {
   const send = document.createElement("li");
   send.append(mail);
   rows.append(send);
+
+  // Only whoever is signed in, and can sign, changes their list.
+  if (others && view.you !== null) {
+    rows.append(choicesFor(entry));
+  }
+
   item.append(first);
 
   if (rows.childElementCount > 0) {
@@ -866,8 +1147,14 @@ function itemOf(entry) {
   return item;
 }
 
-// Show everyone listed whose details hold every word searched for.
+// Show everyone listed whose details hold every word searched for, but those
+// distrusted if they are hidden, in the order asked for, once the directory
+// is read.
 function render() {
+  if (!view.listed) {
+    return;
+  }
+
   const everyone = plural(view.everyone.size, "person", "people");
   byId("count").textContent = everyone;
 
@@ -877,17 +1164,21 @@ function render() {
   }
 
   const terms = view.query.toLocaleLowerCase().split(/\s+/).filter((term) => term);
+  const scored = view.scores !== null;
+  const hiding = scored && view.hideDistrusted;
   const entries = [...view.everyone]
     .map(entryOf)
     .filter((entry) => terms.every((term) => entry.text.includes(term)))
-    .sort(compareEntries);
+    .filter((entry) => !hiding || entry.trust.score >= 0)
+    .sort(scored && view.sort === "trust" ? compareTrust : compareEntries);
 
-  if (terms.length > 0) {
+  if (terms.length > 0 || hiding) {
     byId("count").textContent = `${entries.length} of ${everyone}`;
   }
 
   if (entries.length === 0) {
-    byId("people").replaceChildren(make("span", "No one listed matches the search.", "note"));
+    const none = terms.length > 0 ? "No one listed matches the search." : "Everyone listed is distrusted, so no one is shown.";
+    byId("people").replaceChildren(make("span", none, "note"));
     return;
   }
 
@@ -1792,13 +2083,36 @@ async function start() {
     view.query = event.target.value;
     render();
   });
+  byId("sort").addEventListener("change", (event) => {
+    view.sort = event.target.value;
+    render();
+  });
+  byId("hide-distrusted").addEventListener("change", (event) => {
+    view.hideDistrusted = event.target.checked;
+    render();
+  });
   const [session, local] = await Promise.all([signedIn(), isLocal()]);
   // A fallback is listed once it has taken over, with a fallback of its own.
   // Until then, readers find it through the identity it is the fallback of.
   const you = session !== null && CONTENT_ID.test(session.fallback) ? session.id : null;
+  view.you = you;
 
   if (local) {
     offerAccount(session);
+  }
+
+  // The scores are read as the session is, by a local client signed in, and
+  // shown as they come, while the directory is read.
+  if (session !== null) {
+    readScores().catch((error) => {
+      view.unscored = `No trust is shown: ${error.message}`;
+      showTrust();
+    });
+  } else {
+    view.unscored = local
+      ? "No trust is shown: sign in to see whom you trust."
+      : "No trust is shown: only a browser on the node's own machine, signed in, is shown it.";
+    showTrust();
   }
 
   // Whoever is signed in is offered what they can do before the directory

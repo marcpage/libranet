@@ -253,7 +253,8 @@ when trusted. `self.origin === "null"` tells a page it is sandboxed.
 | `/data/signed` | `POST` | Local | A trusted application's | Place JSON at a drop, signed as whoever is signed in (§6.13) |
 | `/data/signed/{id}` | `GET` | Any | Any, or none | Check signed content, and read what it signs (§6.13) |
 | `/data/encrypted/{id}` | `GET`, `POST` | Local | A trusted application's | Open a drop encrypted for whoever is signed in, or by a password (§6.15) |
-| `/data/trust/{id}` | `PUT`, `DELETE` | Local | A trusted application's | Trust, distrust, or clear an identity on the trust list of whoever is signed in (§6.17) |
+| `/data/trust` | `GET` | Local | A trusted application's | The trust scores of whoever is signed in (§6.17) |
+| `/data/trust/{id}` | `GET`, `PUT`, `DELETE` | Local | A trusted application's | One identity's score; trust, distrust, or clear it on the trust list of whoever is signed in (§6.17) |
 | `/data/{id}` | `DELETE` | Local | A trusted application's | Delete and block content the node will no longer hold (§6.11) |
 | `/data/nodes`, `/data/seek` | `GET` | Any | Any, or none | The peers the node knows, and what it seeks (§6.8) |
 | `/data/peers` | `GET` | Local | A trusted application's | What the node knows of each peer, and whether it is connected (§6.8) |
@@ -838,6 +839,18 @@ The directory application checks that the id names a public key the node
 holds, and adds them only when the person at the browser clicks **Add to
 the directory**, since a link from anywhere can name anyone.
 
+The directory application shows each person's trust, by the scores of
+whoever is signed in (§6.17): 🟢 for a score above 0, 🟡 for 0, and 🔴
+below, each saying the trust in words, with its score and step, on hover
+or tap. Where there are no scores, with no one signed in or on a client
+elsewhere, it shows ⚪, saying why. While the scores are still being built,
+it says so, and reads them again every few seconds until they are complete.
+It sorts the list by trust, and hides those distrusted. Whoever is signed
+in, with a fallback of their own, trusts, distrusts, or clears each person
+there, one entry at a time, and is told that their list is public,
+distrust included. The page shows the person signed in no mark of their
+own, since no one is scored by their own list.
+
 ### 6.13 Signing as a Person
 
 A page never reads a person's private key, so it cannot sign as them. Nor
@@ -1175,8 +1188,39 @@ nothing.
   wait as §5.3 shows, and ask again.
 - A list too large for an object is `413`.
 
-Only a local client, from a trusted application's page, changes the list,
-and no answer is cached. The node builds no scores from the lists yet.
+Signing in starts the node building the person's **scores**, from their own
+list, the lists of those they trust, the lists those lists trust, and so on,
+each step a tenth as strong as the one before (Trust Network §4). Read them
+with:
+
+```js
+const response = await fetch("/data/trust");
+const { complete, scores } = await response.json();
+// scores["sha256/…"] is {"score": 0.2, "step": 2}
+```
+
+or one identity's with `GET /data/trust/{id}`, which answers
+`{"id": "sha256/…", "score": 0.2, "step": 2, "complete": true}`. A score
+above 0 is trust, below 0 distrust, and 0 neither. At step 1 it says what
+the person's own list holds: 1 for trusted, and −1 for distrusted. An
+identity the scores do not reach, the person's own among them, is not in
+`scores`, and `GET /data/trust/{id}` answers it with a score of 0 and a
+`step` of `null`.
+
+The node builds the scores behind the sign-in, finding lists as it goes, so
+`complete` is `false` until it has read every list it will: read them again
+every few seconds until it is `true`. A change to the list scores again at
+once, reading only the lists it newly reaches, so read the scores again after
+one.
+
+- With no one signed in, each read is `401` `session-required`. A fallback
+  that has not taken over reads its scores, though it cannot change its
+  list.
+- An id that is not valid is `400` `invalid-content-address` (§5.4).
+
+Only a local client, from a trusted application's page, reads the scores or
+changes the list, and no answer is cached, since they say whom the person
+trusts.
 
 ### 6.18 What Nodes Say of Themselves
 

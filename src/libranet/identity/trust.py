@@ -315,6 +315,14 @@ class TrustScore:
         divisor: int = 10 ** (self.step - 1)
         return self.net_count / divisor
 
+    def value(self) -> dict[str, Any]:
+        """The JSON object a page reads this score as: its ``score`` and ``step`` (HttpApi §11.7).
+
+        A whole score is written as a whole number, as 1, not 1.0.
+        """
+        score = self.score
+        return {"score": int(score) if score.is_integer() else score, "step": self.step}
+
 
 @dataclass(frozen=True)
 class TrustScores:
@@ -383,6 +391,25 @@ class TrustScores:
     def complete(self) -> bool:
         """Whether every list the scores read is read, or given up on (§4.3)."""
         return not self.needed
+
+    def value(self) -> dict[str, Any]:
+        """The JSON object a page reads these scores as: each identity's, and ``complete``.
+
+        As HttpApi §11.7 gives it.
+        """
+        return {
+            "complete": self.complete,
+            "scores": {str(identity): score.value() for identity, score in self.scores.items()},
+        }
+
+    def value_for(self, identity: ContentId) -> dict[str, Any]:
+        """The JSON object a page reads the score of ``identity`` as (HttpApi §11.7).
+
+        An identity not reached, the person among them, scores 0 at no step.
+        """
+        score = self.scores.get(identity)
+        scored = {"score": 0, "step": None} if score is None else score.value()
+        return {"id": str(identity), **scored, "complete": self.complete}
 
 
 def _reading_order(scored: tuple[ContentId, int]) -> tuple[int, str]:

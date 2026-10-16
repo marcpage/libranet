@@ -15,6 +15,7 @@ from libranet.identity.trust import (
     TrustScores,
     TrustVersion,
 )
+from libranet.json_format import compact_json
 
 ALICE = ContentId.for_data(b"Alice's public key", "sha256")
 BOB = ContentId.for_data(b"Bob's public key", "sha256")
@@ -504,3 +505,39 @@ def test_scoring_again_after_a_change_needs_only_the_lists_newly_reached() -> No
 def test_the_limits_are_each_at_least_one(max_steps: int, max_lists: int) -> None:
     with raises(ValueError, match="must be at least 1"):
         TrustLimits(max_steps, max_lists)
+
+
+@mark.parametrize(
+    ("score", "written"),
+    [
+        (TrustScore(1, 1), b'{"score":1,"step":1}'),
+        (TrustScore(-1, 1), b'{"score":-1,"step":1}'),
+        (TrustScore(3, 2), b'{"score":0.3,"step":2}'),
+        (TrustScore(10, 2), b'{"score":1,"step":2}'),
+        (TrustScore(0, 2), b'{"score":0,"step":2}'),
+    ],
+)
+def test_a_score_is_written_whole_where_it_is_whole(score: TrustScore, written: bytes) -> None:
+    assert compact_json(score.value()) == written
+
+
+def test_the_scores_are_written_by_identity_saying_whether_they_are_complete() -> None:
+    scores = TrustScores({BOB: TrustScore(1, 1), ERIN: TrustScore(2, 2)}, (BOB,))
+
+    assert scores.value() == {
+        "complete": False,
+        "scores": {str(BOB): {"score": 1, "step": 1}, str(ERIN): {"score": 0.2, "step": 2}},
+    }
+    assert TrustScores({}).value() == {"complete": True, "scores": {}}
+
+
+def test_one_identitys_score_is_written_with_its_id() -> None:
+    scores = TrustScores({ERIN: TrustScore(2, 2)})
+
+    assert scores.value_for(ERIN) == {"id": str(ERIN), "score": 0.2, "step": 2, "complete": True}
+
+
+def test_an_identity_not_reached_is_written_scoring_0_at_no_step() -> None:
+    scores = TrustScores({BOB: TrustScore(1, 1)}, (BOB,))
+
+    assert scores.value_for(HANK) == {"id": str(HANK), "score": 0, "step": None, "complete": False}

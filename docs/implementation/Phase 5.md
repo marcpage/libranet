@@ -649,7 +649,7 @@ Found while building it:
 
 ---
 
-## Step 100 — Reading the Scores
+## Step 100 — Reading the Scores ✅
 
 **Issue:** #331. **Depends on:** Steps 97 and 99.
 
@@ -672,9 +672,60 @@ what the build has scored, and whether it is complete; that an edit scores
 again without reading again what the build holds; and that with no one
 signed in each read is `401`.
 
+Built together with Step 101, on the branch for #331, since Step 101's page
+reads what this step serves. This step adds 199 lines of non-test Python, 22
+of them replacing removed ones, and 459 of tests, against §5's estimate of
+about 200. No specification changes: HttpApi §11.7 gave the reads in Step 94.
+The App Developer Guide's §6.17 gains the scores, and its §5.2 the reads.
+
+- **`TrustReads`** (`webserver/trust_handlers.py`) serves `GET /data/trust`
+  and `GET /data/trust/{algorithm}/{hash}` from `TrustBuilds.scores`, served
+  as the edits are, every answer kept from caches.
+- **`TrustScore.value`**, **`TrustScores.value`**, and
+  **`TrustScores.value_for`** (`identity/trust.py`) write the answers.
+- **`TrustBuilds.changed(person, entries)`** gives the person's build their
+  new list, and the lists it newly reaches are read by the job reading the
+  build's lists, or by a new one if the build is done. **`TrustEdits`**
+  calls it with each version it places.
+
+My calls, not yet reviewed:
+
+- **A whole score is written as a whole number**, `1` rather than `1.0`, as
+  HttpApi §11.7 shows it (Step 98's finding), and so is ten lists' trust at
+  step 2.
+- **A fallback that has not taken over reads its scores**, as Step 94's call
+  gives it scores, so a read is `401` only with no session.
+- **A read after the person's build was let go of is `401`**, as with no one
+  signed in, should their last session end between the session being found
+  and the scores read.
+- **A version is handed to the build in the edit's turn**, so that the build
+  hears of one person's changes in the order they are made. A change that
+  changes nothing (`204`) hands it nothing, though the list held may say more
+  than the build's, if the person placed a version some other way since
+  signing in; Trust Network §4.4 leaves that to the next sign-in.
+- **A change made while the build is reading is read by the same job**, from
+  its next step. The lists the step under way looks for are still looked for,
+  though the change may no longer reach them, so a step may wait out a list
+  no longer needed, up to `trust_list_wait_seconds`.
+- **A change made while the person's own list is read is kept**: the read,
+  begun before it, does not replace it, since a version this node just placed
+  is found by a search only once the validator stores it.
+- **A build is marked done only if no change came since it last scored**, so
+  that a change made as it finishes is read rather than lost.
+- **A change after a build failed reads again**, rather than the build
+  staying as far as it read until the next sign-in, as Step 99 left a failed
+  build.
+- **`TrustEdits` takes the builds as an optional keyword**, as `Sessions`
+  takes its listener, so that Step 97's tests stand as they were.
+
+Found while building it:
+
+- The branch for #331, this step's issue, is named for Step 101, and holds
+  both steps.
+
 ---
 
-## Step 101 — Trust in the Directory
+## Step 101 — Trust in the Directory ✅
 
 **Issues:** #322 in part. **Depends on:** Steps 97 and 100;
 Phase 4 Step 92.
@@ -701,6 +752,53 @@ Work this implies:
 **Testable in isolation:** packaging tests asserting the page calls only
 endpoints the node serves. The page's logic is checked by hand, and in a
 live run with people trusting each other across nodes.
+
+Built together with Step 100, with no Python: the directory page gains 322
+lines, 8 of them replacing removed ones, and the packaging tests 16. The App
+Developer Guide's §6.12 gains the trust the directory shows.
+
+- **Each person's mark** comes first in their entry, from `GET /data/trust`.
+  Its `title` and its label for screen readers say the trust in words, with
+  the score and step, and tapping or clicking it shows the same beside it.
+- **Trust, Distrust, and Clear** are on every entry but the person's own,
+  each changing one entry with `PUT` or `DELETE /data/trust/{id}`, and then
+  reading the scores again.
+- **A line above the list** says what the marks mean, that the list is
+  public, distrust included, and, while they are, that the scores are still
+  being built; or, with no scores, ⚪ and why.
+- **Sorting by trust, and hiding those distrusted**, are offered once there
+  are scores.
+
+Checked live, with three local nodes and the page driven in headless Chrome:
+Bob, on node 1, trusts Carol and distrusts Dave; Alice, on node 0, clicks
+Trust on Bob, and within 3 seconds node 0 has read Bob's list from node 1,
+marking Carol 🟢 (0.1, step 2) and Dave 🔴 (−0.1, step 2). The scores stay
+"still being built" for 30 seconds more, as nobody has made a list for Carol
+(Step 99's wait). Distrust on Carol makes her 🔴 at step 1, over Bob's
+entry; hiding the distrusted leaves "2 of 4 people"; and Clear on Bob leaves
+Dave unreached. Signed out, every mark is ⚪, saying to sign in.
+
+My calls, not yet reviewed:
+
+- **⚪ is the unknown mark**, as noted when §6 was ruled, saying why there are
+  no scores: no one signed in, a client elsewhere, or what the node answered.
+- **The person signed in is shown no mark**, since they are never scored,
+  and 🟡, "not reached", would mislead.
+- **A fallback that has not taken over is shown marks and no buttons**, as it
+  cannot change its list, and a line says so.
+- **A button saying what the list holds already is disabled**: Trust for an
+  identity trusted at step 1, Distrust for one distrusted, and Clear for one
+  not on the list. None is, until the person's own list is read.
+- **The scores are read again every 2 seconds** while not complete
+  (`SCORES_AGAIN_SECONDS`), and once after each change.
+- **A change's `503` is waited out once**, as the page waits out one elsewhere
+  (`MAX_WAITS`), and then said beside the buttons.
+- **Sorting by trust puts the highest score first**, then by name as before,
+  and hiding those distrusted hides each score below 0, the count then
+  reading "N of M people", as a search does.
+- **The scores are read alongside the directory**, not after it, and the list
+  is drawn only once the directory is read. So a change saved before then no
+  longer says "No one is listed yet" while the directory is still being read.
 
 ---
 

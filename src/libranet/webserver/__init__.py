@@ -25,7 +25,8 @@ and signing them in and out (Phase 4 Step 79), opening what is encrypted for
 them or by a password (Phase 4 Step 78), blocking content (Phase 4
 Step 30), and changing the trust list of whoever is signed in (Phase 5 Step
 97). Signing in starts building the person's trust scores, behind the
-sign-in (Phase 5 Step 99). Any client may read into a
+sign-in (Phase 5 Step 99), which their pages read, and which a change to
+their list scores again (Phase 5 Step 100). Any client may read into a
 bundle, by its id, as an application's files are served (Phase 3 Step 71).
 
 Every endpoint meant only for browsers but reading into a bundle,
@@ -276,7 +277,7 @@ from libranet.webserver.trust_builds import (
     TrustBuilds,
     TrustListReader,
 )
-from libranet.webserver.trust_handlers import TRUST_PATH, TRUST_PATTERN, TrustEdits
+from libranet.webserver.trust_handlers import TRUST_PATH, TRUST_PATTERN, TrustEdits, TrustReads
 from libranet.webserver.trust_lists import TrustLists
 
 __all__ = [
@@ -461,6 +462,7 @@ __all__ = [
     "TrustEdits",
     "TrustListReader",
     "TrustLists",
+    "TrustReads",
     "Turns",
     "UnsupportedMediaTypeError",
     "ValueChangedError",
