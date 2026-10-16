@@ -155,10 +155,12 @@ from libranet.cas.content_id import ContentId
   from zlib import error as ZlibError
   ```
 
-Two exceptions are in use. A module of loose functions may be imported as a
+Three exceptions are in use. A module of loose functions may be imported as a
 namespace (`from libranet import cli`, `from libranet.config import paths`).
-And `supervisor.py` has `import sys`, because `sys.stderr` must be looked up
+`supervisor.py` has `import sys`, because `sys.stderr` must be looked up
 when it is used, not when the module loads; the comment above it says so.
+And `logging_setup.py` has `import sys` and `import threading`, because a
+hook for uncaught exceptions is installed by assigning to the module.
 
 ### 3.3 Blank Lines
 
@@ -525,7 +527,8 @@ phase plan or an issue.
 
 Catch the narrowest exception that can happen, and name it `error`.
 `except Exception` is only for a boundary that must survive whatever it runs:
-a module's receive loop, a worker thread, a request handler. Each is marked
+a module's receive loop, a worker thread, a request handler, a callback that
+a library calls and would otherwise log for itself. Each is marked
 `# pylint: disable=broad-exception-caught`, so that a new one is a decision
 and not an accident. One that ends by raising, as a module process does to
 exit once it has logged its crash, has no mark: `pylint` does not report it,
@@ -543,6 +546,10 @@ Every handler does one of three things, and
 queue with nothing in it, a file that may not be there), or one handed to
 code that logs it. It is never for skipping data that is not what it should
 be.
+
+An exception that nothing catches, and that ends a thread or the process, is
+logged at error, with its traceback, by the hooks `configure_logging`
+installs in every process, rather than printed to stderr by Python's own.
 
 ### 9.3 Logging
 
@@ -571,6 +578,10 @@ _LOGGER.warning("Cannot read %s, so the last backup is read back: %s", path, err
 Signed content that does not check, or that someone other than the one
 expected signed, is what a client or peer sent, since anyone may place it:
 debug. What this node holds that is not what its id names is a warning.
+
+A request refused for where it came from, such as another site's page, a
+`Host` another site may have pointed at this machine, or a page of another
+application, is a warning, though it is a `4xx`, since it may be an attack.
 
 Data that is not what it should be is always logged. An id under a hash
 algorithm this node does not support is a warning wherever it is met, since

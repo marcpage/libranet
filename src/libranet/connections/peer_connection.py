@@ -218,7 +218,15 @@ class PeerConnection:  # pylint: disable=too-many-instance-attributes
         thread, or at once on the calling thread if the connection has
         already closed, and must not block.
         """
-        self._finished.add_done_callback(lambda _: callback())
+        self._finished.add_done_callback(lambda _: self._call_back(callback))
+
+    def _call_back(self, callback: Callable[[], None]) -> None:
+        """Call ``callback``, logging what it raises, which a future logs out of the log file."""
+        try:
+            callback()
+
+        except Exception:  # pylint: disable=broad-exception-caught
+            self._logger.exception("Calling back as the connection to %s closed failed", self._host)
 
     def _fail(self, error: Exception) -> None:
         """Close the connection for ``error``, unless it has closed already.

@@ -5,12 +5,23 @@ safe to share across processes — two processes rotating the same file race
 on the rename. So every process writes its own file, named after the module
 it runs, and the ``libranet.<module>`` logger names stay consistent across
 all of them.
+
+An exception nothing catches, on any thread, is logged too, rather than left
+to Python's hooks, which print it to stderr and never to the log file.
 """
 
 from __future__ import annotations
+from dataclasses import dataclass
 from logging import Formatter, Logger, StreamHandler, getLogger
 from logging.handlers import RotatingFileHandler
+from threading import ExceptHookArgs
+from types import TracebackType
 from typing import Final
+
+# Imported whole, as a hook for what nothing catches is installed by
+# assigning to the module.
+import sys
+import threading
 
 from libranet.config.models import LoggingConfig
 from libranet.modules import ModuleName
@@ -65,7 +76,43 @@ def configure_logging(
         console_handler.setFormatter(formatter)
         root.addHandler(console_handler)
 
-    return get_logger(module)
+    logger = get_logger(module)
+    UncaughtExceptions(logger).install()
+    return logger
+
+
+@dataclass(frozen=True)
+class UncaughtExceptions:
+    """Logs an exception nothing caught, as it ends a thread or the process.
+
+    Each module's main thread catches and logs what its module raises, but
+    a thread it starts, and the supervisor's own main thread, end on an
+    exception only through Python's hooks.
+    """
+
+    logger: Logger
+
+    def install(self) -> None:
+        """Make this process's hooks for uncaught exceptions log with :attr:`logger`."""
+        sys.excepthook = self.ending_process
+        threading.excepthook = self.ending_thread
+
+    def ending_thread(self, args: ExceptHookArgs) -> None:
+        """Log the exception that ends a thread, as :data:`threading.excepthook` does."""
+        # How a thread asks to end, which Python's own hook does not report.
+        if args.exc_type is SystemExit:
+            return
+
+        name = "?" if args.thread is None else args.thread.name
+        self.logger.error(
+            "Thread %s ended on an exception nothing caught", name, exc_info=args.exc_value
+        )
+
+    def ending_process(
+        self, kind: type[BaseException], error: BaseException, trace: TracebackType | None
+    ) -> None:
+        """Log the exception that ends the process, as :data:`sys.excepthook` does."""
+        self.logger.error("Ending on an exception nothing caught", exc_info=(kind, error, trace))
 
 
 def _reset_handlers(logger: Logger) -> None:

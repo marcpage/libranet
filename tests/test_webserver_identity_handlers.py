@@ -593,6 +593,29 @@ def test_a_block_held_that_is_not_what_its_id_names_is_passed_over(
     assert f"Passing over {drop_id}" in caplog.text
 
 
+def test_a_block_under_a_scheme_this_node_lacks_is_a_warning_and_another_password_is_not(
+    identities: Identities, storage: StorageConfig, caplog: LogCaptureFixture
+) -> None:
+    answer = made(storage, identities, making())
+    sealed = Username.create("alice").password_key(PASSWORD).protect(b'{"not": "an identity"}')
+    more_bits = 1 + max(
+        matching_bits(stored.content_id.hash, TARGET.hex)
+        for stored in CasStore.source_of_truth(storage).held_objects()
+    )
+    unsupported = placed(storage, sealed.replace(b"-AES256-CBC", b"-AES512-CBC"), more_bits)
+    anothers = Username.create("alice").password_key("another person's").protect(b"{}")
+    placed(storage, anothers, more_bits)
+
+    with caplog.at_level(WARNING):
+        response = identities.sign_in(signing_in())
+
+    assert loads(response.body)["id"] == answer["id"]
+    assert [record.getMessage() for record in caplog.records] == [
+        f"Passing over {unsupported} at alice, as this node cannot open it: "
+        "Unsupported password protection: b'PW-ARGON2ID-AES512-CBC'"
+    ]
+
+
 def test_an_identity_whose_drop_is_too_large_for_an_object_is_413_and_leaves_nothing(
     identities: Identities, recorder: Recorder
 ) -> None:

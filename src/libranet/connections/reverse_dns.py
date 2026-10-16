@@ -26,12 +26,12 @@ any address is never published.
 
 from __future__ import annotations
 from ipaddress import ip_address
-from logging import Logger
+from logging import Logger, getLogger
 from queue import SimpleQueue
-from socket import gethostbyaddr
+from socket import gethostbyaddr, herror
 from threading import Thread
 from time import time
-from typing import Callable, Sequence
+from typing import Callable, Final, Sequence
 from urllib.parse import urlsplit, urlunsplit
 
 from libranet.messaging.events import AddressSource, EventType
@@ -42,14 +42,26 @@ from libranet.protocol.localhost_resolution import LOCALHOST
 #: Finds the names a reverse DNS lookup gives an IP address.
 ResolveNames = Callable[[str], Sequence[str]]
 
+# The h_errno values, HOST_NOT_FOUND and NO_DATA in netdb.h, with which a
+# lookup answers that an address has no name, rather than failing.
+_NO_NAME_ERRNOS: Final = frozenset((1, 4))
+
+_LOGGER = getLogger(__name__)
+
 
 def host_names(address: str) -> list[str]:
-    """The names a reverse DNS lookup finds for ``address``; none if it finds none."""
+    """The names a reverse DNS lookup finds for ``address``; none if it finds none, or fails."""
     try:
         name, aliases, _ = gethostbyaddr(address)
 
-    except OSError:
-        # Not logged: finding no name is an answer, cached like any other.
+    except OSError as error:
+        # Finding no name is an answer, cached like any other, so only a
+        # lookup that failed is logged.
+        if not (isinstance(error, herror) and error.errno in _NO_NAME_ERRNOS):
+            _LOGGER.warning(
+                "Taking %s to have no names for now, as looking up failed: %s", address, error
+            )
+
         return []
 
     return [name, *aliases]
