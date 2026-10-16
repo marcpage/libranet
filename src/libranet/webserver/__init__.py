@@ -221,7 +221,7 @@ from libranet.webserver.local_only import (
     local_refusal,
 )
 from libranet.webserver.metadata_handlers import OwnMetadata
-from libranet.webserver.module import WebServerModule, webserver_module_factory
+from libranet.webserver.module import WebServerModule
 from libranet.webserver.node_metadata_reader import NODE_METADATA_KIND, NodeMetadataReader
 from libranet.webserver.own_pages import (
     REFERER_HEADER,
@@ -504,5 +504,4 @@ __all__ = [
     "unreported_response",
     "unsupported_media_type_response",
     "unusable_bundle_response",
-    "webserver_module_factory",
 ]

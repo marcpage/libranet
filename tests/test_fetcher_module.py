@@ -13,12 +13,13 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
-from libranet.fetcher.module import FetcherModule, fetcher_module_factory
+from libranet.fetcher.module import FetcherModule
 from libranet.messaging.envelope import Message, make_message
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.supervision.registry import default_module_specs
+from libranet.supervision.specs import ModuleSpec
 from tests.helpers import published
 
 INTERVAL = 5
@@ -264,7 +265,7 @@ def test_a_miss_for_blocked_content_asks_for_nothing(
 def test_factory_asks_at_most_once_per_retry_after_period(
     queues: ModuleQueues, storage: StorageConfig
 ) -> None:
-    module = fetcher_module_factory(ModuleName.FETCHER, configured(storage, 7), queues)
+    module = FetcherModule.of(ModuleName.FETCHER, configured(storage, 7), queues)
 
     assert isinstance(module, FetcherModule)
     assert module.name == ModuleName.FETCHER
@@ -276,6 +277,6 @@ def test_factory_asks_at_most_once_per_retry_after_period(
 
 
 def test_the_node_runs_the_fetcher() -> None:
-    factories = {spec.name: spec.factory for spec in default_module_specs()}
+    spec = ModuleSpec(ModuleName.FETCHER, FetcherModule.of, FetcherModule.subscriptions)
 
-    assert factories[ModuleName.FETCHER] is fetcher_module_factory
+    assert spec in default_module_specs()

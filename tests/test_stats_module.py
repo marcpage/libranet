@@ -25,7 +25,7 @@ from libranet.messaging.envelope import Message, make_message
 from libranet.messaging.events import AddressSource, EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
-from libranet.stats.module import StatsModule, stats_module_factory
+from libranet.stats.module import StatsModule
 from libranet.stats.schema import SeekKind
 
 from tests.helpers import published, with_node_key
@@ -1056,7 +1056,7 @@ def test_the_module_subscribes_to_what_it_records() -> None:
 def test_factory_builds_a_stats_module_for_the_configured_node(
     config: LibranetConfig, queues: ModuleQueues
 ) -> None:
-    module = stats_module_factory(ModuleName.STATS, config, queues)
+    module = StatsModule.of(ModuleName.STATS, config, queues)
 
     assert isinstance(module, StatsModule)
     assert module.name == ModuleName.STATS

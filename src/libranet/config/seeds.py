@@ -30,23 +30,23 @@ class SeedPeer(BaseModel):
     address: str
     node_id: str | None = None
 
+    @classmethod
+    def load_all(cls, path: Path | None = None) -> tuple[SeedPeer, ...]:
+        """The seed list in ``path``, or the one shipped with the package.
 
-def load_seed_peers(path: Path | None = None) -> tuple[SeedPeer, ...]:
-    """Load the seed list from ``path``, or the one shipped with the package.
+        Raises:
+            SeedError: the file is unreadable, is not valid JSON, or does not
+                match the ``{"nodes": {address: id}}`` schema.
+        """
+        if path is None:
+            text = _read_packaged_seed_list()
+            origin = f"{SEED_RESOURCE_PACKAGE}/{SEED_RESOURCE_NAME}"
 
-    Raises:
-        SeedError: the file is unreadable, is not valid JSON, or does not
-            match the ``{"nodes": {address: id}}`` schema.
-    """
-    if path is None:
-        text = _read_packaged_seed_list()
-        origin = f"{SEED_RESOURCE_PACKAGE}/{SEED_RESOURCE_NAME}"
+        else:
+            text = _read_seed_file(path)
+            origin = str(path)
 
-    else:
-        text = _read_seed_file(path)
-        origin = str(path)
-
-    return _parse_seed_list(text, origin=origin)
+        return _parse_seed_list(text, origin=origin)
 
 
 def _read_packaged_seed_list() -> str:

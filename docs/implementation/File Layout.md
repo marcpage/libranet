@@ -73,7 +73,7 @@ A node on macOS with every default, after its first run, looks like this:
 
 A value on the command line wins over the config file, and the config file
 wins over the default. A switch that is not given never erases what the file
-says (`src/libranet/config/loader.py`, `_deep_merge`).
+says (`src/libranet/config/models.py`, `_deep_merge`).
 
 - **No `--config`.** The default config file is loaded if it exists. If it
   does not, the node starts on defaults alone.

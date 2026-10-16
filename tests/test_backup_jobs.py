@@ -11,7 +11,7 @@ from typing import Any
 from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.backup.errors import JobFileError
-from libranet.backup.jobs import BackupJob, ExpandedBackups, LatestBackup, load_jobs, save_jobs
+from libranet.backup.jobs import BackupJob, ExpandedBackups, LatestBackup
 from libranet.bundle.layering import Layering, Superseded
 from libranet.bundle.protection import protect
 from libranet.bundle.shapes import FileBundle, Metadata, Symlink
@@ -47,9 +47,9 @@ def test_jobs_are_read_back_as_saved(path: Path) -> None:
         BackupJob(BackupJobRequest("/home/me/notes")),
         BackupJob(BackupJobRequest("/home/me/photos", 60.0), LATEST),
     ]
-    save_jobs(path, jobs)
+    BackupJob.save_all(path, jobs)
 
-    assert load_jobs(path) == {job.job_id: job for job in jobs}
+    assert BackupJob.load_all(path) == {job.job_id: job for job in jobs}
 
 
 @mark.parametrize(
@@ -68,7 +68,7 @@ def test_a_job_is_read_back_from_the_value_it_is_saved_as(job: BackupJob) -> Non
 
 
 def test_jobs_are_saved_in_order_of_directory(path: Path) -> None:
-    save_jobs(
+    BackupJob.save_all(
         path,
         [BackupJob(BackupJobRequest("/b")), BackupJob(BackupJobRequest("/a"), LATEST)],
     )
@@ -93,27 +93,27 @@ def test_jobs_are_saved_in_order_of_directory(path: Path) -> None:
 
 def test_a_fingerprint_saved_before_one_pass_backups_is_not_used(path: Path) -> None:
     path.write_text(dumps({"jobs": [_saved(fingerprint="f" * 64)]}))
-    (job,) = load_jobs(path).values()
+    (job,) = BackupJob.load_all(path).values()
 
     assert job.latest == LatestBackup(BUNDLE, 1_789_000_000.0, "e" * 64)
     assert job.value()["latest"] == {**_saved()["latest"], "layering": None}
 
 
 def test_saving_replaces_what_was_saved(path: Path) -> None:
-    save_jobs(path, [BackupJob(BackupJobRequest("/a"))])
-    save_jobs(path, [])
+    BackupJob.save_all(path, [BackupJob(BackupJobRequest("/a"))])
+    BackupJob.save_all(path, [])
 
-    assert load_jobs(path) == {}
+    assert BackupJob.load_all(path) == {}
 
 
 def test_no_file_means_no_jobs(path: Path) -> None:
-    assert load_jobs(path) == {}
+    assert BackupJob.load_all(path) == {}
 
 
 def test_a_whole_number_interval_is_read_as_seconds(path: Path) -> None:
     path.write_text(dumps({"jobs": [{"directory": "/a", "interval_seconds": 60}]}))
 
-    assert [job.request.interval_seconds for job in load_jobs(path).values()] == [60.0]
+    assert [job.request.interval_seconds for job in BackupJob.load_all(path).values()] == [60.0]
 
 
 def test_a_job_is_named_as_the_web_server_names_it() -> None:
@@ -129,14 +129,14 @@ def test_a_file_that_does_not_hold_jobs_is_an_error(path: Path, content: bytes) 
     path.write_bytes(content)
 
     with raises(JobFileError):
-        load_jobs(path)
+        BackupJob.load_all(path)
 
 
 def test_a_file_that_cannot_be_read_is_an_error(path: Path) -> None:
     path.mkdir()
 
     with raises(JobFileError):
-        load_jobs(path)
+        BackupJob.load_all(path)
 
 
 @mark.parametrize(
@@ -168,14 +168,14 @@ def test_an_unusable_job_is_an_error(path: Path, job: object) -> None:
     path.write_text(dumps({"jobs": [job]}))
 
     with raises(JobFileError):
-        load_jobs(path)
+        BackupJob.load_all(path)
 
 
 def test_a_time_that_is_not_finite_is_an_error(path: Path) -> None:
     path.write_text(dumps({"jobs": [_saved(made_at=inf)]}))
 
     with raises(JobFileError):
-        load_jobs(path)
+        BackupJob.load_all(path)
 
 
 @mark.parametrize("made_at", [inf, -inf, nan])

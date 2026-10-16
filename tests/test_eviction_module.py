@@ -14,13 +14,14 @@ from pytest import LogCaptureFixture, fixture, raises
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import IdentityConfig, LibranetConfig, PeerConfig, StorageConfig
-from libranet.eviction.module import HAND_OFF_COPIES, EvictionModule, eviction_module_factory
+from libranet.eviction.module import HAND_OFF_COPIES, EvictionModule
 from libranet.identity.node_identity import NodeIdentity
 from libranet.messaging.envelope import Message, make_message
 from libranet.messaging.events import ConnectionDirection, EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.supervision.registry import default_module_specs
+from libranet.supervision.specs import ModuleSpec
 
 from tests.helpers import with_node_key
 
@@ -1502,13 +1503,13 @@ def test_the_module_subscribes_to_stored_content_and_answers() -> None:
 
 
 def test_factory_builds_an_eviction_module(config: LibranetConfig, queues: ModuleQueues) -> None:
-    module = eviction_module_factory(ModuleName.EVICTION, config, queues)
+    module = EvictionModule.of(ModuleName.EVICTION, config, queues)
 
     assert isinstance(module, EvictionModule)
     assert module.name == ModuleName.EVICTION
 
 
 def test_the_node_runs_the_eviction_module() -> None:
-    factories = {spec.name: spec.factory for spec in default_module_specs()}
+    spec = ModuleSpec(ModuleName.EVICTION, EvictionModule.of, EvictionModule.subscriptions)
 
-    assert factories[ModuleName.EVICTION] is eviction_module_factory
+    assert spec in default_module_specs()

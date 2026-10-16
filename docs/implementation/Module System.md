@@ -450,8 +450,9 @@ sequenceDiagram
 
 Children are started with the `spawn` method on every platform, so each is
 a fresh interpreter that receives its arguments pickled. That is why a
-`ModuleFactory` must be a module-level function, or a `functools.partial`
-of one, and never a lambda or nested function.
+`ModuleFactory` must be a module-level function, a classmethod of a
+module-level class (as each module's `of` is), or a `functools.partial` of
+one, and never a lambda or nested function.
 
 | Passed to | Argument | Type |
 | --- | --- | --- |
@@ -660,22 +661,20 @@ class ExampleModule(ModuleBase):
         self._config = config
         self._route({EventType.DATA_STORED: self._on_data_stored})
 
+    @classmethod
+    def of(cls, name: ModuleName, config: LibranetConfig, queues: ModuleQueues) -> ExampleModule:
+        """ModuleFactory for ExampleModule, called inside the module's own process."""
+        return cls(name, queues, config)
+
     def _on_data_stored(self, message: Message) -> None:
         self.logger.info("%s was stored", ContentId.from_fields(message))
-
-
-def example_module_factory(
-    name: ModuleName, config: LibranetConfig, queues: ModuleQueues
-) -> ModuleBase:
-    """ModuleFactory for ExampleModule, called inside the module's own process."""
-    return ExampleModule(name, queues, config)
 ```
 
 To add a module to the node:
 
 1. Add a member to `ModuleName`, and put it in `SPAWNED_MODULES` where it
    should start.
-2. Write the class and its factory in `src/libranet/{area}/module.py`.
+2. Write the class, with its `of` factory, in `src/libranet/{area}/module.py`.
 3. Map the name to the factory and the class in `_MODULES` in
    `supervision/registry.py`. Every spawned module but the dispatcher needs
    one there: without it, `default_module_specs` raises `KeyError`, and the

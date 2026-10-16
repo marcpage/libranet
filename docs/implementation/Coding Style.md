@@ -175,7 +175,8 @@ are kept by hand:
 - No blank line comes between a docstring and the first statement.
 
 ```Python
-def load_jobs(path: Path) -> dict[str, BackupJob]:
+@classmethod
+def load_all(cls, path: Path) -> dict[str, BackupJob]:
     """The jobs saved at ``path``, by id; none if nothing has been saved there.
 
     Raises:
@@ -197,7 +198,7 @@ def load_jobs(path: Path) -> dict[str, BackupJob]:
         raise JobFileError(f'{path} must hold an object with a "jobs" array')
 
     try:
-        parsed = [BackupJob.from_value(job) for job in jobs]
+        parsed = [cls.from_value(job) for job in jobs]
 
     except ValueError as error:
         raise JobFileError(f"{path} holds an unusable backup job: {error}") from None
@@ -234,7 +235,7 @@ PEP 8 casing throughout: `snake_case` for modules, functions, and variables,
 | Exception | Ends in `Error` | `MalformedBundleError` |
 | Protocol | For the role it plays | `ContentSource`, `Publish`, `StopSignal` |
 | Function returning a value | For the value, with no `get_` | `ancestors()`, `nearest()`, `advertised_endpoint()` |
-| Function that acts | A verb | `publish()`, `save_jobs()`, `write_atomically()` |
+| Function that acts | A verb | `publish()`, `save_all()`, `write_atomically()` |
 | Predicate | `is_…`, or a verb that reads as a question | `is_entry_path()`, `exists()`, `matches()`, `wants()` |
 | Message handler | `_on_{event}` | `_on_data_stored` |
 | Caught exception | `error` | `except OSError as error:` |
@@ -740,9 +741,9 @@ the signature of the one it overrides or stands in for is not counted
 | `cas/layered.py` | `packaged_archives(directory)`, `LayeredSource(archives, applications)`, `LayeredSource.open(packaged, sources)` |
 | `cas/verification.py` | `content_matches(registry)` |
 | `cli.py` | `parse_args(argv)` |
-| `config/loader.py` | `load_config(path)` |
+| `config/models.py` | `LibranetConfig.load(path)` |
 | `config/paths.py` | `default_local_folders(dirs)` |
-| `config/seeds.py` | `load_seed_peers(path)` |
+| `config/seeds.py` | `SeedPeer.load_all(path)` |
 | `connections/peer_connection.py` | `PeerConnection.request(headers, body)` |
 | `eviction/pressure.py` | `StoragePressure(headroom_bytes)`, `StoragePressure.of(free_bytes, headroom_bytes)`, `StoragePressure.over_limits(adding_bytes)` |
 | `identity/authentication.py` | `RequestAuthenticator(max_tracked_signers)`, `RequestAuthenticator.authenticate(body)` |

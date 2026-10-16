@@ -143,7 +143,7 @@ from libranet.cas.prefix import nearest
 from libranet.cas.store import CasStore
 from libranet.config.errors import SeedError
 from libranet.config.models import LibranetConfig
-from libranet.config.seeds import load_seed_peers
+from libranet.config.seeds import SeedPeer
 from libranet.connections.candidates import Candidate
 from libranet.connections.endpoints import PeerAddress
 from libranet.connections.peer_exchange import PeerExchange
@@ -426,6 +426,13 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             }
         )
 
+    @classmethod
+    def of(
+        cls, name: ModuleName, config: LibranetConfig, queues: ModuleQueues
+    ) -> ConnectionsModule:
+        """:data:`~libranet.supervision.specs.ModuleFactory` for this class."""
+        return cls(name, queues, config)
+
     @property
     def exchange(self) -> PeerExchange:
         """What this node says to peers; only available once the module has started."""
@@ -680,7 +687,8 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
     def _load_seeds(self) -> list[Candidate]:
         try:
             return [
-                Candidate.from_seed(seed) for seed in load_seed_peers(self._config.peers.seed_file)
+                Candidate.from_seed(seed)
+                for seed in SeedPeer.load_all(self._config.peers.seed_file)
             ]
 
         except SeedError as error:
@@ -1332,10 +1340,3 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
 def _dialable(endpoint: str) -> bool:
     """Whether this node can dial ``endpoint`` at all."""
     return PeerAddress.of(endpoint) is not None
-
-
-def connections_module_factory(
-    name: ModuleName, config: LibranetConfig, queues: ModuleQueues
-) -> ModuleBase:
-    """:data:`~libranet.supervision.specs.ModuleFactory` for :class:`ConnectionsModule`."""
-    return ConnectionsModule(name, queues, config)

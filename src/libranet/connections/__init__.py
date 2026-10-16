@@ -13,7 +13,6 @@ from libranet.connections.errors import (
 )
 from libranet.connections.module import (
     ConnectionsModule,
-    connections_module_factory,
 )
 from libranet.connections.peer_connection import PeerConnection
 from libranet.connections.peer_exchange import PeerExchange, Retrieval
@@ -47,7 +46,6 @@ __all__ = [
     "ResponseParser",
     "Retrieval",
     "ReverseLookup",
-    "connections_module_factory",
     "encode_request",
     "host_names",
 ]

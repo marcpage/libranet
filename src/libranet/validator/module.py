@@ -60,6 +60,11 @@ class ValidatorModule(ModuleBase):
         self._blocked = BlockedContent.of(config.storage)
         self._route({EventType.PUT_COMPLETED: self._on_put_completed})
 
+    @classmethod
+    def of(cls, name: ModuleName, config: LibranetConfig, queues: ModuleQueues) -> ValidatorModule:
+        """:data:`~libranet.supervision.specs.ModuleFactory` for this class."""
+        return cls(name, queues, config)
+
     def _on_put_completed(self, message: Message) -> None:
         """Check one upload."""
         content_id = ContentId.from_fields(message)
@@ -94,10 +99,3 @@ class ValidatorModule(ModuleBase):
             self.logger.debug("Rejected upload of %s from %s: hash mismatch", content_id, node_id)
 
         incoming.delete(content_id)
-
-
-def validator_module_factory(
-    name: ModuleName, config: LibranetConfig, queues: ModuleQueues
-) -> ModuleBase:
-    """:data:`~libranet.supervision.specs.ModuleFactory` for :class:`ValidatorModule`."""
-    return ValidatorModule(name, queues, config)

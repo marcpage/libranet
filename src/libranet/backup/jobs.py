@@ -155,6 +155,36 @@ class BackupJob:
             None if latest is None else LatestBackup.from_value(latest),
         )
 
+    @classmethod
+    def load_all(cls, path: Path) -> dict[str, BackupJob]:
+        """The jobs saved at ``path``, by id; none if nothing has been saved there.
+
+        Raises:
+            JobFileError: the file cannot be read, or does not hold backup jobs.
+        """
+        try:
+            value = loads(path.read_bytes())
+
+        except FileNotFoundError:
+            # Not logged: there are no jobs until one is saved.
+            return {}
+
+        except (OSError, ValueError) as error:
+            raise JobFileError(f"Cannot read backup jobs from {path}: {error}") from None
+
+        jobs = value.get("jobs") if isinstance(value, dict) else None
+
+        if not isinstance(jobs, list):
+            raise JobFileError(f'{path} must hold an object with a "jobs" array')
+
+        try:
+            parsed = [cls.from_value(job) for job in jobs]
+
+        except ValueError as error:
+            raise JobFileError(f"{path} holds an unusable backup job: {error}") from None
+
+        return {job.job_id: job for job in parsed}
+
     def value(self) -> dict[str, Any]:
         """The JSON object this job is saved as."""
         return {
@@ -162,6 +192,16 @@ class BackupJob:
             "interval_seconds": self.request.interval_seconds,
             "latest": None if self.latest is None else self.latest.value(),
         }
+
+    @staticmethod
+    def save_all(path: Path, jobs: Iterable[BackupJob]) -> None:
+        """Replace what ``path`` holds with ``jobs``.
+
+        Raises:
+            OSError: the file could not be written.
+        """
+        value = {"jobs": [job.value() for job in sorted(jobs, key=lambda job: job.directory)]}
+        write_atomically(path, pretty_json(value))
 
 
 class ExpandedBackups:
@@ -254,43 +294,3 @@ class ExpandedBackups:
 
         except OSError as error:
             _LOGGER.warning("Could not delete %s: %s", path, error)
-
-
-def load_jobs(path: Path) -> dict[str, BackupJob]:
-    """The jobs saved at ``path``, by id; none if nothing has been saved there.
-
-    Raises:
-        JobFileError: the file cannot be read, or does not hold backup jobs.
-    """
-    try:
-        value = loads(path.read_bytes())
-
-    except FileNotFoundError:
-        # Not logged: there are no jobs until one is saved.
-        return {}
-
-    except (OSError, ValueError) as error:
-        raise JobFileError(f"Cannot read backup jobs from {path}: {error}") from None
-
-    jobs = value.get("jobs") if isinstance(value, dict) else None
-
-    if not isinstance(jobs, list):
-        raise JobFileError(f'{path} must hold an object with a "jobs" array')
-
-    try:
-        parsed = [BackupJob.from_value(job) for job in jobs]
-
-    except ValueError as error:
-        raise JobFileError(f"{path} holds an unusable backup job: {error}") from None
-
-    return {job.job_id: job for job in parsed}
-
-
-def save_jobs(path: Path, jobs: Iterable[BackupJob]) -> None:
-    """Replace what ``path`` holds with ``jobs``.
-
-    Raises:
-        OSError: the file could not be written.
-    """
-    value = {"jobs": [job.value() for job in sorted(jobs, key=lambda job: job.directory)]}
-    write_atomically(path, pretty_json(value))

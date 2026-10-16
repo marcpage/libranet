@@ -22,9 +22,8 @@ from libranet import cli
 from libranet.cas.errors import ArchiveError
 from libranet.cas.layered import LayeredSource
 from libranet.config.errors import ConfigError, SeedError
-from libranet.config.loader import load_config
 from libranet.config.models import LibranetConfig
-from libranet.config.seeds import load_seed_peers
+from libranet.config.seeds import SeedPeer
 from libranet.connections.endpoints import PeerAddress
 from libranet.identity.errors import IdentityError
 from libranet.identity.node_identity import NodeIdentity
@@ -52,7 +51,7 @@ def main(argv: Sequence[str] | None = None, *, stop: StopSignal | None = None) -
     config_path, required = cli.resolve_config_path(args)
 
     try:
-        config = load_config(
+        config = LibranetConfig.load(
             config_path,
             overrides=cli.config_overrides(args),
             required=required,
@@ -169,7 +168,7 @@ def _report_seed_peers(config: LibranetConfig, *, logger: Logger) -> None:
     reads it, and one that doesn't can still be given peers by hand.
     """
     try:
-        seeds = load_seed_peers(config.peers.seed_file)
+        seeds = SeedPeer.load_all(config.peers.seed_file)
 
     except SeedError as error:
         logger.warning("Seed list unavailable: %s", error)

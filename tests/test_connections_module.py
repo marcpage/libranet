@@ -33,7 +33,7 @@ from libranet.config.models import (
     StatsConfig,
     StorageConfig,
 )
-from libranet.connections.module import ConnectionsModule, connections_module_factory
+from libranet.connections.module import ConnectionsModule
 from libranet.connections.peer_exchange import Retrieval
 from libranet.connections.peer_session import PeerSession
 from libranet.connections.reverse_dns import ResolveNames
@@ -2344,7 +2344,7 @@ def test_the_module_subscribes_to_node_lists_fetches_searches_hand_offs_and_new_
 
 
 def test_factory_builds_a_connections_module(config: LibranetConfig, queues: ModuleQueues) -> None:
-    module = connections_module_factory(ModuleName.CONNECTIONS, config, queues)
+    module = ConnectionsModule.of(ModuleName.CONNECTIONS, config, queues)
 
     assert isinstance(module, ConnectionsModule)
     assert module.name == ModuleName.CONNECTIONS

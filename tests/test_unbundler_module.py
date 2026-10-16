@@ -30,7 +30,8 @@ from libranet.messaging.events import EventType, PathOutcome
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.supervision.registry import default_module_specs
-from libranet.unbundler.module import UnbundlerModule, unbundler_module_factory
+from libranet.supervision.specs import ModuleSpec
+from libranet.unbundler.module import UnbundlerModule
 from libranet.webserver.app_outcomes import ApplicationOutcomes, KnownOutcome
 from libranet.webserver.app_registry import Application, ApplicationRegistry
 from libranet.webserver.http_types import Request
@@ -801,10 +802,10 @@ def test_the_module_subscribes_to_application_misses_content_stored_and_reclaimi
 
 
 def test_the_node_runs_the_unbundler(storage: StorageConfig, queues: ModuleQueues) -> None:
-    factories = {spec.name: spec.factory for spec in default_module_specs()}
-    module = unbundler_module_factory(ModuleName.UNBUNDLER, LibranetConfig(storage=storage), queues)
+    module = UnbundlerModule.of(ModuleName.UNBUNDLER, LibranetConfig(storage=storage), queues)
+    spec = ModuleSpec(ModuleName.UNBUNDLER, UnbundlerModule.of, UnbundlerModule.subscriptions)
 
-    assert factories[ModuleName.UNBUNDLER] is unbundler_module_factory
+    assert spec in default_module_specs()
     assert isinstance(module, UnbundlerModule)
     assert module.name == ModuleName.UNBUNDLER
 

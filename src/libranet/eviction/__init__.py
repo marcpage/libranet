@@ -10,7 +10,6 @@ from libranet.eviction.module import (
     DEFAULT_RECLAIM_TIMEOUT_SECONDS,
     HAND_OFF_COPIES,
     EvictionModule,
-    eviction_module_factory,
 )
 from libranet.eviction.pressure import FreeBytes, StoragePressure, free_bytes_under
 
@@ -21,6 +20,5 @@ __all__ = [
     "EvictionModule",
     "FreeBytes",
     "StoragePressure",
-    "eviction_module_factory",
     "free_bytes_under",
 ]

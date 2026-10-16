@@ -1,7 +1,6 @@
 """Configuration models, YAML loading, default paths, and the seed list."""
 
 from libranet.config.errors import ConfigError, SeedError
-from libranet.config.loader import build_config, load_config
 from libranet.config.models import (
     CONFIG_LISTEN_ADDRESS,
     CONFIG_PORT_STEP,
@@ -51,7 +50,6 @@ from libranet.config.seeds import (
     SEED_RESOURCE_NAME,
     SEED_RESOURCE_PACKAGE,
     SeedPeer,
-    load_seed_peers,
 )
 
 __all__ = [
@@ -95,13 +93,10 @@ __all__ = [
     "SeedPeer",
     "StatsConfig",
     "StorageConfig",
-    "build_config",
     "default_cache_dir",
     "default_config_dir",
     "default_config_file",
     "default_data_dir",
     "default_local_folders",
     "default_log_dir",
-    "load_config",
-    "load_seed_peers",
 ]
