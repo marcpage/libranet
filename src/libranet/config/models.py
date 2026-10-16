@@ -20,7 +20,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from libranet.config import paths
 from libranet.modules import ModuleName
 
-MIB: Final = 1024 * 1024
+KIB: Final = 1024
+MIB: Final = 1024 * KIB
 
 # An hour and a day, in seconds, as every setting gives a duration.
 HOUR_SECONDS: Final = 60 * 60.0
@@ -93,8 +94,8 @@ DEFAULT_MAX_BUNDLE_BYTES: Final = 16 * MIB
 # by default, each counted as compact JSON (HttpApi §13.3, §21). A store holds
 # where to find what an application keeps, not what it keeps, so a value is
 # about as small as a /config/api body, and a store holds many of them.
-DEFAULT_MAX_APPLICATION_VALUE_BYTES: Final = 64 * 1024
-DEFAULT_MAX_APPLICATION_STORE_BYTES: Final = MIB
+DEFAULT_MAX_APPLICATION_VALUE_BYTES: Final = 64 * KIB
+DEFAULT_MAX_APPLICATION_STORE_BYTES: Final = 1 * MIB
 
 # The names in the folders offered to local clients that are kept back from
 # them, by default: hidden names, beginning with "." (HttpApi §12.2).

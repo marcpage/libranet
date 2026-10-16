@@ -8,6 +8,7 @@ from pytest import mark, raises
 
 from libranet.config.models import (
     IDLE_TIMEOUT_SECONDS,
+    KIB,
     MIB,
     BackupConfig,
     IdentityConfig,
@@ -160,7 +161,7 @@ def test_eight_bundles_are_kept_in_memory_by_default_and_never_none() -> None:
 def test_an_application_keeps_64_kib_values_in_a_one_mib_store_by_default() -> None:
     storage = StorageConfig()
 
-    assert storage.max_application_value_bytes == 64 * 1024
+    assert storage.max_application_value_bytes == 64 * KIB
     assert storage.max_application_store_bytes == MIB
 
     for name in ("max_application_value_bytes", "max_application_store_bytes"):
