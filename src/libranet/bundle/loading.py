@@ -2,9 +2,10 @@
 
 A bundle is content like any other, so it may be stored zlib-compressed and
 fits the 1 MiB object limit only as stored (HighLevelDesign §4.3). Its JSON
-has to be held whole to be parsed, so decompression stops at a local cap: the
-protocol sets no limit on decompressed size, but a small object must not
-expand without bound (HttpApi §21).
+has to be held whole to be parsed, so decompression stops at a local cap,
+``storage.max_decompressed_bundle_bytes``: the protocol sets no limit on
+decompressed size, but a small object must not expand without bound (HttpApi
+§21).
 
 A password-protected bundle (BundleSpecification §6) is decrypted when a
 password is given, and is held to the same cap once decrypted and
@@ -16,7 +17,6 @@ the key it is decrypted with, and is read as a part named so is
 """
 
 from __future__ import annotations
-from typing import Final
 
 from libranet.bundle.content import ContentSource
 from libranet.bundle.errors import PasswordProtectedBundleError, UnsupportedBundleError
@@ -25,11 +25,7 @@ from libranet.bundle.parts import PartPath
 from libranet.bundle.protection import strip_targeting, unprotect
 from libranet.bundle.shapes import Bundle
 from libranet.cas.content_id import ContentId
-from libranet.config.models import MIB
-
-# Provisional default. Bundle JSON is mostly paths and hex hashes, which
-# compress about 2-4 times, so 1 MiB as stored is well within it.
-DEFAULT_MAX_BUNDLE_BYTES: Final = 16 * MIB
+from libranet.config.models import DEFAULT_MAX_BUNDLE_BYTES
 
 
 def load_bundle(

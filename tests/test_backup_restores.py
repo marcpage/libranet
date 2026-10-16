@@ -14,7 +14,7 @@ from xattr import xattr
 
 from libranet.backup.builds import Build, BuildRecord
 from libranet.backup.errors import BuildRecordError
-from libranet.backup.restores import RESUME_DELAY_SECONDS, Restore, RestorePass
+from libranet.backup.restores import Restore, RestorePass
 from libranet.backup.tasks import TaskStatus
 from libranet.backup.runs import AnnouncingStore, BuildSettings
 from libranet.bundle.building import IgnoredPaths, build_directory, build_file
@@ -35,7 +35,7 @@ from libranet.bundle.storing import store_bundle, store_object
 from libranet.bundle.xattrs import INLINE_LIMIT_BYTES, ExtendedAttributes
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
-from libranet.config.models import MIB
+from libranet.config.models import DEFAULT_MAX_BUNDLE_BYTES, MIB
 from libranet.messaging.events import ConflictBehavior
 from libranet.protocol.backup_requests import BuildRequest, RestoreRequest
 
@@ -44,6 +44,7 @@ NOW = 1_789_000_000.0
 ASK_INTERVAL = 1800.0
 # Longer than two ask intervals, and not a whole number of them.
 GIVE_UP_AFTER = 4000.0
+RESUME_SECONDS = 10.0
 BIG = urandom(MIB + 1000)
 # 2026-09-01T08:30:00.000123Z
 MODIFIED_NS = 1_788_251_400_000_123_000
@@ -152,10 +153,18 @@ def parts_of(entry: object) -> list[ContentId]:
 
 
 def restore_of(
-    bundle: ContentId, target: Path, on_conflict: ConflictBehavior = ConflictBehavior.REFUSE
+    bundle: ContentId,
+    target: Path,
+    on_conflict: ConflictBehavior = ConflictBehavior.REFUSE,
+    max_bundle_bytes: int = DEFAULT_MAX_BUNDLE_BYTES,
 ) -> Restore:
     return Restore(
-        RestoreRequest(bundle, str(target), on_conflict), NOW, ASK_INTERVAL, GIVE_UP_AFTER
+        RestoreRequest(bundle, str(target), on_conflict),
+        NOW,
+        ASK_INTERVAL,
+        GIVE_UP_AFTER,
+        resume_seconds=RESUME_SECONDS,
+        max_bundle_bytes=max_bundle_bytes,
     )
 
 
@@ -341,8 +350,8 @@ def test_content_arriving_while_more_is_lacked_is_restored_after_a_delay(
     copy(parts_of(first), held, store)
     restore.landed(parts_of(first)[0], NOW + 1)
 
-    assert not restore.is_due(NOW + RESUME_DELAY_SECONDS)
-    assert restore.is_due(NOW + 1 + RESUME_DELAY_SECONDS)
+    assert not restore.is_due(NOW + RESUME_SECONDS)
+    assert restore.is_due(NOW + 1 + RESUME_SECONDS)
     assert restore.report()["missing"] == 1
 
     assert attempt(restore, store, NOW + 20) == RestorePass({}, ())
@@ -711,6 +720,18 @@ def test_a_bundle_that_is_not_a_directory_cannot_be_restored(
 
     with raises(UnsupportedBundleError, match="not a directory"):
         attempt(restore_of(bundle, target), store)
+
+
+@mark.parametrize("secret", [None, SECRET])
+def test_a_bundle_larger_than_the_restore_reads_cannot_be_restored(
+    tmp_path: Path, store: CasStore, target: Path, secret: bytes | None
+) -> None:
+    entries = {"a.txt": file_entry(tmp_path, store, b"a")}
+    bundle = store_bundle(DirectoryBundle(entries), store, secret)
+    restore = restore_of(bundle, target, max_bundle_bytes=16)
+
+    with raises(UnsupportedBundleError, match="larger than 16 bytes"):
+        attempt(restore, store)
 
 
 def test_a_bundle_the_secret_does_not_decrypt_cannot_be_restored(

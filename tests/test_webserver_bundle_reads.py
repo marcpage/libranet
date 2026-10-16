@@ -27,6 +27,7 @@ from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.resolved_files import ResolvedFiles
 from libranet.cas.store import CasStore
+from libranet.config.models import HOUR_SECONDS
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType, PathOutcome
 from libranet.problems import CONTENT_UNAVAILABLE, INVALID_CONTENT_ADDRESS, UNUSABLE_BUNDLE
@@ -108,7 +109,7 @@ def router_for(
             outcomes,
             asked,
             RETRY_AFTER_SECONDS,
-            ApplicationUse(uses or Recorder()),
+            ApplicationUse(uses or Recorder(), HOUR_SECONDS),
             PartReader(
                 store,
                 Recorder(),

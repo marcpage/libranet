@@ -406,8 +406,9 @@ The first lists the folders, by name, and the second a folder within one:
 }}
 ```
 
-Hidden names, beginning with `.`, are left out. A path naming anything but a
-directory is `404`, and a directory the node may not read is `403`.
+Hidden names, beginning with `.`, are left out, as are any others the
+node's operator hides. A path naming anything but a directory is `404`, and
+a directory the node may not read is `403`.
 
 ### 6.4 Importing a File
 
@@ -477,7 +478,8 @@ A new bundle is answered `201 Created`, with `{"bundle": id}` and a
 `Location` reading into it. A request that changes nothing is answered
 `200 OK` with the base's id. The node makes the bundle from the bundles
 named, without needing the parts of any file it moves, so changing a
-playlist of films takes no time. A body is limited to 4 MiB.
+playlist of films takes no time. A body is limited to 4 MiB, unless the
+node's operator sets another limit.
 
 A page that has written a bundle's JSON itself, such as an extension of the
 user directory (§6.12), has the node store it as it is with
@@ -537,12 +539,12 @@ async function changeStored(store, key, change, tries = 5) {
 }
 ```
 
-A value is limited to 64 KiB, and a store to 1 MiB, as compact JSON; past
-either, a change is `413`. The store is kept by this node alone, never
-passed on, and lost with the node's files, so what needs keeping longer
-belongs in a bundle, with the store holding its id. Anyone who can reach the
-node can read the store, since the `Referer` it asks for is one any client
-can send, so keep no secrets in it.
+A value is limited to 64 KiB, and a store to 1 MiB, as compact JSON, unless
+the node's operator sets other limits; past either, a change is `413`. The
+store is kept by this node alone, never passed on, and lost with the node's
+files, so what needs keeping longer belongs in a bundle, with the store
+holding its id. Anyone who can reach the node can read the store, since the
+`Referer` it asks for is one any client can send, so keep no secrets in it.
 
 ### 6.7 Listing Applications
 

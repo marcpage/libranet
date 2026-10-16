@@ -197,6 +197,23 @@ def test_a_node_directory_beneath_a_folder_is_reached_through_no_spelling(machin
     assert listed(folders, "Movies/keys-link").status == 404
 
 
+def test_the_names_kept_back_are_those_the_hidden_patterns_match_whatever_their_case(
+    machine: Path,
+) -> None:
+    (machine / "Movies" / "Thumbs.db").write_bytes(b"thumbnails")
+    folders = LocalFolders({"Movies": machine / "Movies"}, hidden=("thumbs.DB", "*.tar.*"))
+
+    listing = set(entries(folders, "Movies"))
+
+    assert {".hidden", ".secret", "revealed"} <= listing
+    assert not {"Thumbs.db", "notes.tar.gz"} & listing
+    assert set(entries(folders, "Movies/revealed")) == {"kept.txt"}
+    assert folders.find_file("Movies/.secret/kept.txt") is not None
+    assert folders.find_file("Movies/Thumbs.db") is None
+    assert folders.find_file("Movies/THUMBS.DB") is None
+    assert folders.find_file("Movies/notes.tar.gz") is None
+
+
 def test_a_name_that_is_not_utf8_is_left_out_and_logged(
     folders: LocalFolders, machine: Path, caplog: LogCaptureFixture
 ) -> None:
@@ -282,6 +299,19 @@ def test_a_config_offers_its_folders_by_their_last_segment_and_not_its_own_direc
     }
     assert entries(folders, "Desktop") == {}
     assert listed(folders, "Desktop/libranet").status == 404
+
+
+def test_a_config_keeps_back_the_names_it_hides(machine: Path) -> None:
+    config = LibranetConfig(
+        storage=StorageConfig(data_dir=machine / "data", cache_dir=machine / "c"),
+        local=LocalConfig(folders=(machine / "Movies",), hidden=("README",)),
+        logging=LoggingConfig(directory=machine / "logs"),
+    )
+
+    listing = set(entries(LocalFolders.of(config), "Movies"))
+
+    assert ".hidden" in listing
+    assert "README" not in listing
 
 
 # -- Finding a file to import (Phase 3 Step 69) ------------------------------

@@ -204,13 +204,14 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
     ``/data/imports`` imports a file from one of them, for local clients
     alone too, and says how each import is doing from what ``backup_state``
     holds (Phase 3 Step 69). ``/data/store`` keeps each application's values
-    in ``storage``'s data directory, read by any client and changed by local
-    clients alone (Phase 3 Step 70). Any client may read into a bundle
+    in ``storage``'s data directory, as large as it allows, read by any client
+    and changed by local clients alone (Phase 3 Step 70). Any client may read into a bundle
     ``content`` holds, as an application's files are served (Phase 3 Step
     71). Given ``node``, ``/data/bundles`` makes bundles for local clients
     alone, from what ``content`` holds, storing what it makes as uploads
     from ``node``, each no more than ``max_update_layers`` update layers
-    above the last bundle stored whole; none, by default (Phase 3 Step 72).
+    above the last bundle stored whole; none, by default, from a request no
+    larger than ``node``'s network settings allow (Phase 3 Step 72).
     ``/data/drop`` makes drops for any client, stored as those are, searching
     for each no longer, and asked to match no more bits, than ``node``'s
     network settings allow (Phase 4 Step 89). ``/data/drop/{target}``
@@ -268,7 +269,7 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
     checks = SiteChecks(config_hosts, "This endpoint")
     pages = OwnPages(registry)
     state = BackupState() if backup_state is None else backup_state
-    app_store = ApplicationStore(storage.application_stores_dir)
+    app_store = ApplicationStore.of(storage)
     blocked = BlockedContent.of(storage)
     paths = _bundle_paths(
         storage,
@@ -321,6 +322,8 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
             retry_after_seconds,
             storage.max_object_bytes,
             max_update_layers,
+            max_body_bytes=node.network.max_bundles_request_bytes,
+            max_bundle_bytes=storage.max_decompressed_bundle_bytes,
         )
         router.add("POST", BUNDLES_PATH, LocalOnly(OwnPageOnly(edits, pages, trusted=True), checks))
         drops = DropHandler(
@@ -622,7 +625,7 @@ def _bundle_paths(
         outcomes or ApplicationOutcomes(),
         parts.publish,
         retry_after_seconds,
-        ApplicationUse(parts.publish),
+        ApplicationUse(parts.publish, storage.use_report_seconds()),
         parts,
     )
 

@@ -844,13 +844,17 @@ def test_settings_refuse_objects_holding_nothing_and_fewer_than_no_layers(
 def test_settings_from_config_ignore_the_node_own_directories(tmp_path: Path) -> None:
     config = LibranetConfig(
         storage=StorageConfig(
-            data_dir=tmp_path / "data", cache_dir=tmp_path / "cache", max_object_bytes=4096
+            data_dir=tmp_path / "data",
+            cache_dir=tmp_path / "cache",
+            max_object_bytes=4096,
+            max_decompressed_bundle_bytes=8192,
         ),
         backup=BackupConfig(max_update_layers=5, excluded_xattrs=("user.local",)),
     )
     settings = BuildSettings.from_config(config)
 
     assert (settings.max_object_bytes, settings.max_layers) == (4096, 5)
+    assert settings.max_bundle_bytes == 8192
     assert settings.ignore == config.directories()
     assert settings.xattrs is not None
     assert settings.xattrs.includes("user.tag")

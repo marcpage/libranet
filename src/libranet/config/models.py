@@ -80,6 +80,33 @@ DEFAULT_TRUST_LIST_WAIT_SECONDS: Final = 30.0
 # it, rather than with drops.
 TARGET_BITS: Final = 256
 
+# The largest body a request to make bundles may have, by default: room for a
+# poster as base64 beside the rest of an edit (HttpApi §21, Phase 3 Step 72).
+DEFAULT_MAX_BUNDLES_REQUEST_BYTES: Final = 4 * MIB
+
+# How large a bundle is read once decompressed or decrypted, by default.
+# Bundle JSON is mostly paths and hex hashes, which compress about 2-4 times,
+# so 1 MiB as stored is well within it (HttpApi §21).
+DEFAULT_MAX_BUNDLE_BYTES: Final = 16 * MIB
+
+# How large a value in an application's store, and the store itself, may be,
+# by default, each counted as compact JSON (HttpApi §13.3, §21). A store holds
+# where to find what an application keeps, not what it keeps, so a value is
+# about as small as a /config/api body, and a store holds many of them.
+DEFAULT_MAX_APPLICATION_VALUE_BYTES: Final = 64 * 1024
+DEFAULT_MAX_APPLICATION_STORE_BYTES: Final = MIB
+
+# The names in the folders offered to local clients that are kept back from
+# them, by default: hidden names, beginning with "." (HttpApi §12.2).
+DEFAULT_HIDDEN_NAMES: Final = (".*",)
+
+# How often, at most, an application in use is reported used: once an hour,
+# or ten times within resolved_idle_seconds if that is more often, so that one
+# taken to have gone unused that long has for nine-tenths of it at least
+# (Phase 2 Step 29).
+_USE_REPORT_SECONDS: Final = HOUR_SECONDS
+_USE_REPORTS_PER_IDLE: Final = 10
+
 # What a folder's last segment cannot be, if it is to be offered under it.
 _UNNAMED_FOLDERS: Final = frozenset({"", pardir})
 
@@ -136,6 +163,12 @@ class NetworkConfig(_Section):
     # runs at a time, holding a web server thread and a core.
     drop_max_seconds: float = Field(default=60.0, ge=0)
     drop_max_minimum_bits: int = Field(default=26, ge=0, le=TARGET_BITS)
+
+    # The largest body a page's request to make bundles may have (HttpApi
+    # §12.3, §21, Phase 3 Step 72). A larger one is refused unread. Files a
+    # request gives, such as a poster, come as base64, a third larger than
+    # they are. Provisional default.
+    max_bundles_request_bytes: int = Field(default=DEFAULT_MAX_BUNDLES_REQUEST_BYTES, ge=1)
 
     # How long a person's session goes unused before it ends, the private
     # key it holds in the web server's memory with it (HttpApi §11.4, Phase
@@ -355,6 +388,12 @@ class StorageConfig(_Section):
     # mostly hex, so 1 MiB sent is about 2 MiB of list.
     max_decompressed_list_bytes: int = Field(default=4 * MIB, ge=1)
 
+    # A bundle's JSON is held whole to be parsed, and the protocol sets no
+    # limit on its size once decompressed or decrypted either (HttpApi §21,
+    # BundleSpecification §9), so this is a local safeguard too. A larger
+    # bundle is refused. Provisional default.
+    max_decompressed_bundle_bytes: int = Field(default=DEFAULT_MAX_BUNDLE_BYTES, ge=1)
+
     # Eviction (Step 15) hands content off to other nodes and deletes it once
     # free space on the filesystem holding the source of truth drops below
     # min_free_bytes (0 turns that off), or the content held exceeds
@@ -370,10 +409,34 @@ class StorageConfig(_Section):
     # hand-off at a time (Phase 2 Step 63). Provisional default.
     max_hand_offs: int = Field(default=8, ge=1)
 
+    # How long eviction waits for the stats module to rank the content to let
+    # go of, before it gives up and asks again. Ranking reads every row of
+    # content held, so a node holding a great deal may need longer.
+    # Provisional default.
+    candidates_timeout_seconds: float = Field(default=60.0, gt=0)
+
+    # How long content just stored is kept from being let go of, whatever
+    # brought it, so that a request waiting for it reads it first (Phase 3
+    # Step 75). Parts of an application file asked for ahead of the one being
+    # sent (network.read_ahead_parts) are reached later, so asking for more
+    # ahead may need longer. Provisional default.
+    stored_grace_seconds: float = Field(default=30.0, ge=0)
+
     # When free space falls below min_free_bytes, the unbundler first deletes
     # the resolved files of every application not used for this long, to be
     # resolved again from its bundle when next asked for (Phase 2 Step 29).
     resolved_idle_seconds: float = Field(default=30 * DAY_SECONDS, gt=0)
+
+    # How many bundles the unbundler keeps the directories of in memory, the
+    # least recently used let go of first, so that each path asked for in one
+    # is not read from its bundle again. Provisional default.
+    max_cached_bundles: int = Field(default=8, ge=1)
+
+    # The most an application's store may hold, and any one value in it, as
+    # compact JSON (HttpApi §13.3, Phase 3 Step 70). A change past either is
+    # refused.
+    max_application_store_bytes: int = Field(default=DEFAULT_MAX_APPLICATION_STORE_BYTES, ge=1)
+    max_application_value_bytes: int = Field(default=DEFAULT_MAX_APPLICATION_VALUE_BYTES, ge=1)
 
     # Provisional default — see "Open Items" in the implementation plan.
     search_cache_ttl_seconds: float = Field(default=300.0, gt=0)
@@ -386,6 +449,15 @@ class StorageConfig(_Section):
     # 34). Their content is never evicted, nor counted as content held. One
     # that cannot be opened stops the node.
     archives: tuple[Path, ...] = ()
+
+    def use_report_seconds(self) -> float:
+        """How often, at most, an application's bundle is reported used while in use.
+
+        That is an hour, or a tenth of ``resolved_idle_seconds`` if less, so
+        that an application in use is never taken to have gone unused that
+        long (Phase 2 Step 29).
+        """
+        return min(_USE_REPORT_SECONDS, self.resolved_idle_seconds / _USE_REPORTS_PER_IDLE)
 
     @property
     def source_of_truth_dir(self) -> Path:
@@ -612,6 +684,11 @@ class BackupConfig(_Section):
     # that is offline overnight.
     restore_stall_seconds: float = Field(default=DAY_SECONDS, gt=0)
 
+    # How long after content a restore waits on arrives that it carries on,
+    # so that content arriving together is restored together; at once when
+    # the last of it arrives. Provisional default.
+    restore_resume_seconds: float = Field(default=10.0, ge=0)
+
     # A backup, build, or import waits, before storing more, while storage is
     # full, as eviction says it is; it gives up, and fails, once storage stays
     # full this long, as when no peer takes what is handed off (Phase 2 Step
@@ -647,6 +724,13 @@ class LocalConfig(_Section):
     # desktop, documents, downloads, music, pictures, and videos folders, as
     # the platform names them.
     folders: tuple[Path, ...] = Field(default_factory=paths.default_local_folders)
+
+    # The names within those folders kept back from local clients, neither
+    # listed nor imported, nor reached through (HttpApi §12.2): shell-style
+    # patterns, matched whatever their case against each name in a path, so
+    # that a filesystem ignoring case does not reach a name by another
+    # spelling. By default, hidden names, beginning with ".".
+    hidden: tuple[str, ...] = DEFAULT_HIDDEN_NAMES
 
     @field_validator("folders", mode="after")
     @classmethod

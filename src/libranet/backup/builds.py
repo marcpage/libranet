@@ -241,7 +241,11 @@ class Build(Task):
         record_path = BuildRecord.beside(directory)
         record = BuildRecord.load(record_path)
         previous = None if record is None else record.bundle
-        earlier = None if record is None else _Earlier.read(record, store, password)
+        earlier = (
+            None
+            if record is None
+            else _Earlier.read(record, store, password, settings.max_bundle_bytes)
+        )
         build = build_directory(
             directory,
             store,
@@ -307,11 +311,12 @@ class _Earlier:
 
     @classmethod
     def read(
-        cls, record: BuildRecord, source: ContentSource, password: bytes | None
+        cls, record: BuildRecord, source: ContentSource, password: bytes | None, max_bytes: int
     ) -> _Earlier | None:
         """The bundle ``record`` names, as it keeps it expanded or else read back with ``password``.
 
-        ``None`` if it keeps none, and the bundle cannot be read here.
+        ``None`` if it keeps none, and the bundle cannot be read here. A
+        bundle is read to at most ``max_bytes`` once decompressed.
         """
         bundle = record.bundle
         expanded = record.expanded
@@ -320,11 +325,11 @@ class _Earlier:
             if not record.protected or password is None:
                 return cls(expanded, not record.protected and password is None)
 
-            return cls(expanded, cls._opens(bundle, source, password))
+            return cls(expanded, cls._opens(bundle, source, password, max_bytes))
 
         try:
             try:
-                top, protected = load_bundle(bundle, source), False
+                top, protected = load_bundle(bundle, source, max_bytes), False
 
             except PasswordProtectedBundleError:
                 if password is None:
@@ -333,7 +338,7 @@ class _Earlier:
                     )
                     return None
 
-                top, protected = load_bundle(bundle, source, password=password), True
+                top, protected = load_bundle(bundle, source, max_bytes, password=password), True
 
             if not isinstance(top, DirectoryBundle):
                 return None
@@ -342,7 +347,9 @@ class _Earlier:
                 Superseded.resolve(
                     bundle,
                     top,
-                    lambda content_id: load_bundle(content_id, source, password=password),
+                    lambda content_id: load_bundle(
+                        content_id, source, max_bytes, password=password
+                    ),
                     record.layering,
                 ),
                 protected == (password is not None),
@@ -355,10 +362,10 @@ class _Earlier:
             return None
 
     @staticmethod
-    def _opens(bundle: ContentId, source: ContentSource, password: bytes) -> bool:
+    def _opens(bundle: ContentId, source: ContentSource, password: bytes, max_bytes: int) -> bool:
         """Whether ``password`` opens ``bundle``, recorded as protected, as held here."""
         try:
-            load_bundle(bundle, source, password=password)
+            load_bundle(bundle, source, max_bytes, password=password)
 
         except BundleError as error:
             _LOGGER.info(

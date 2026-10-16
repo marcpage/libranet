@@ -1268,7 +1268,8 @@ each `app.path_resolved` the main thread takes in wakes it (Phase 3 Step
 
 A third, `ApplicationUse`, is shared among request threads only: it
 remembers when each bundle's use was last reported, so `app.accessed` goes
-out at most once an hour per bundle.
+out at most once an hour per bundle, or a tenth of
+`storage.resolved_idle_seconds` if that is less.
 
 A fourth, `InboundPeers`, is written by request threads and read by the
 main thread. A connection counts for a peer from its first request whose

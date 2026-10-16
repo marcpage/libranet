@@ -341,8 +341,9 @@ decides which resolved application files may be deleted to free space.
 | `hash` | TEXT | no | — | Its hash, in lower-case hex |
 | `last_accessed` | REAL | no | — | When an application was last reported served from it |
 
-The web server reports a bundle's use at most once an hour, so
-`last_accessed` can be up to an hour behind. A row is never deleted; there
+The web server reports a bundle's use at most once an hour, or a tenth of
+`storage.resolved_idle_seconds` if that is less, so `last_accessed` can be
+up to that far behind. A row is never deleted; there
 is one for each bundle ever served.
 
 Index: the primary key only.

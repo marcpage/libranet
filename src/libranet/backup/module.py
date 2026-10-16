@@ -430,7 +430,12 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         if restore is None or not restore.can_carry_on:
             self._restores.pop(request.restore_id, None)
             self._restores[request.restore_id] = Restore(
-                request, now, self._ask_interval(), self._config.backup.restore_stall_seconds
+                request,
+                now,
+                self._ask_interval(),
+                self._config.backup.restore_stall_seconds,
+                resume_seconds=self._config.backup.restore_resume_seconds,
+                max_bundle_bytes=self._settings.max_bundle_bytes,
             )
             self.logger.info("Restoring %s into %s", request.bundle, request.directory)
 
@@ -464,7 +469,9 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             )
 
         self._exports.pop(request.export_id, None)
-        self._exports[request.export_id] = Export(request, self._clock())
+        self._exports[request.export_id] = Export(
+            request, self._clock(), max_bundle_bytes=self._settings.max_bundle_bytes
+        )
         self._report()
         self.logger.info("Exporting %s to %s", request.bundle, request.archive)
 

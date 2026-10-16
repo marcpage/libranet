@@ -85,10 +85,10 @@ class Modules:
             clock=lambda: self._now[0],
             poll_interval_seconds=0.01,
             free_bytes=lambda: self._free[0],
-            candidates_timeout_seconds=CANDIDATES_TIMEOUT,
             reclaim_timeout_seconds=RECLAIM_TIMEOUT,
             reclaim_interval_seconds=RECLAIM_INTERVAL,
             **{
+                "candidates_timeout_seconds": CANDIDATES_TIMEOUT,
                 "hand_off_timeout_seconds": TIMEOUT,
                 "headroom_bytes": 0,
                 "stored_grace_seconds": 0,
@@ -431,6 +431,33 @@ def test_a_request_stats_never_answers_is_made_again(
     module.on_idle()
 
     assert "never said what to let go of" in caplog.text
+    assert requested(queues) == (SIZE, [])
+
+
+def test_stats_is_waited_on_as_long_as_the_config_says_by_default(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+    now: list[float],
+) -> None:
+    storage = capped(config, store, node_id, 0).storage.model_copy(
+        update={"candidates_timeout_seconds": 45.0}
+    )
+    hold(store, CONTENT[0])
+    module = modules.start(
+        config.model_copy(update={"storage": storage}), candidates_timeout_seconds=None
+    )
+    requested(queues)
+
+    now[0] += 44.0
+    module.on_idle()
+    assert published(queues) == []
+
+    now[0] += 1.0
+    module.on_idle()
+
     assert requested(queues) == (SIZE, [])
 
 
@@ -966,6 +993,33 @@ def test_content_just_stored_is_left_out_of_what_stats_is_asked_for(
     module.handle(stored(CONTENT[1]))
 
     assert requested(queues) == (SIZE, [str(CONTENT[1])])
+
+
+def test_content_just_stored_is_kept_as_long_as_the_config_says_by_default(
+    modules: Modules,
+    config: LibranetConfig,
+    store: CasStore,
+    node_id: ContentId,
+    queues: ModuleQueues,
+    now: list[float],
+) -> None:
+    storage = capped(config, store, node_id, 3 * SIZE).storage.model_copy(
+        update={"stored_grace_seconds": 45.0}
+    )
+    hold(store, *CONTENT[:3])
+    module = modules.start(
+        config.model_copy(update={"storage": storage}), stored_grace_seconds=None
+    )
+    module.handle(stored(CONTENT[1], 0))
+    now[0] += 44.0
+    hold(store, CONTENT[3])
+
+    module.handle(stored(CONTENT[3]))
+
+    size, excluded = requested(queues)
+    assert size == SIZE
+    # The order of what is left out follows the hash seed.
+    assert sorted(excluded) == sorted([str(CONTENT[1]), str(CONTENT[3])])
 
 
 def test_content_just_stored_is_passed_over_when_stats_lists_it(

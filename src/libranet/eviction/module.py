@@ -24,7 +24,7 @@ not used up by the time storage is back within its limits is dropped, since
 it would be out of date the next time. An empty list, with nothing being
 handed off, means there is nothing left to let go of. A request stats never
 answers, as when it restarts, is given up on after
-``candidates_timeout_seconds``.
+``storage.candidates_timeout_seconds``.
 
 For each object it would let go of, it asks the connection manager to hand
 it off to one peer::
@@ -56,8 +56,8 @@ connection manager never answers, as when it restarts, is given up on after
 every peer of the mix could take, each taking its whole
 ``peers.request_timeout_seconds``, and a quarter as long again.
 
-Content stored within the last ``stored_grace_seconds`` is never let go of,
-whatever brought it (Phase 3 Step 75). Content fetched is most likely
+Content stored within the last ``storage.stored_grace_seconds`` is never let
+go of, whatever brought it (Phase 3 Step 75). Content fetched is most likely
 wanted by a request waiting to read it. Handed off at once, to the peer that
 had just sent it, it would be gone before that request read it, and be
 fetched again, without end. It is left out of what stats is asked for,
@@ -151,15 +151,6 @@ HAND_OFF_COPIES: Final = 1
 # seconds.
 _HAND_OFF_SPARE: Final = 1.25
 
-# Provisional default: how long the stats module may take to answer with
-# content to let go of. Ranking it reads every row of content held.
-DEFAULT_CANDIDATES_TIMEOUT_SECONDS: Final = 60.0
-
-# Provisional default: how long content just stored is kept from being let go
-# of, so that a request waiting for it reads it first (Phase 3 Step 75). A
-# waiting request looks for it four times a second.
-DEFAULT_STORED_GRACE_SECONDS: Final = 30.0
-
 # Provisional default: how long the unbundler may take to answer that it has
 # deleted the resolved files not used lately.
 DEFAULT_RECLAIM_TIMEOUT_SECONDS: Final = 60.0
@@ -248,14 +239,20 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
         free_bytes: FreeBytes | None = None,
         hand_off_timeout_seconds: float | None = None,
-        candidates_timeout_seconds: float = DEFAULT_CANDIDATES_TIMEOUT_SECONDS,
+        candidates_timeout_seconds: float | None = None,
         reclaim_timeout_seconds: float = DEFAULT_RECLAIM_TIMEOUT_SECONDS,
         reclaim_interval_seconds: float = DEFAULT_RECLAIM_INTERVAL_SECONDS,
         headroom_bytes: int | None = None,
-        stored_grace_seconds: float = DEFAULT_STORED_GRACE_SECONDS,
+        stored_grace_seconds: float | None = None,
     ) -> None:
         if hand_off_timeout_seconds is None:
             hand_off_timeout_seconds = config.peers.longest_hand_off_seconds() * _HAND_OFF_SPARE
+
+        if candidates_timeout_seconds is None:
+            candidates_timeout_seconds = config.storage.candidates_timeout_seconds
+
+        if stored_grace_seconds is None:
+            stored_grace_seconds = config.storage.stored_grace_seconds
 
         if hand_off_timeout_seconds <= 0:
             raise ValueError(

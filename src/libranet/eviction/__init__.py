@@ -6,10 +6,8 @@ stats module ranks what to let go of first (Phase 2 Step 28).
 """
 
 from libranet.eviction.module import (
-    DEFAULT_CANDIDATES_TIMEOUT_SECONDS,
     DEFAULT_RECLAIM_INTERVAL_SECONDS,
     DEFAULT_RECLAIM_TIMEOUT_SECONDS,
-    DEFAULT_STORED_GRACE_SECONDS,
     HAND_OFF_COPIES,
     EvictionModule,
     eviction_module_factory,
@@ -17,10 +15,8 @@ from libranet.eviction.module import (
 from libranet.eviction.pressure import FreeBytes, StoragePressure, free_bytes_under
 
 __all__ = [
-    "DEFAULT_CANDIDATES_TIMEOUT_SECONDS",
     "DEFAULT_RECLAIM_INTERVAL_SECONDS",
     "DEFAULT_RECLAIM_TIMEOUT_SECONDS",
-    "DEFAULT_STORED_GRACE_SECONDS",
     "HAND_OFF_COPIES",
     "EvictionModule",
     "FreeBytes",

@@ -34,7 +34,7 @@ from libranet.cas.archive import ArchiveSource
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
 from libranet.cas.store import CasStore
-from libranet.config.models import MIB
+from libranet.config.models import DEFAULT_MAX_BUNDLE_BYTES, MIB
 from libranet.messaging.events import ConflictBehavior
 from libranet.protocol.backup_requests import BuildRequest, ExportRequest, Password
 
@@ -90,9 +90,10 @@ def exporting(
     archive: Path,
     on_conflict: ConflictBehavior = ConflictBehavior.REFUSE,
     password: str | None = None,
+    max_bundle_bytes: int = DEFAULT_MAX_BUNDLE_BYTES,
 ) -> Export:
     request = ExportRequest(bundle, str(archive), on_conflict, Password.optional(password))
-    task = Export(request, REQUESTED_AT)
+    task = Export(request, REQUESTED_AT, max_bundle_bytes=max_bundle_bytes)
     task.begin()
     return task
 
@@ -403,6 +404,19 @@ def test_a_bundle_holding_an_entry_of_a_kind_not_known_is_logged_and_not_exporte
 
     assert [record.levelno for record in caplog.records] == [ERROR]
     assert str(bundle) in caplog.text and "Unknown" in caplog.text
+    assert not archive.exists()
+
+
+def test_a_bundle_larger_than_the_export_reads_is_not_exported(
+    store: CasStore, source: LayeredSource, archive: Path
+) -> None:
+    shown = store_object(b"a file", store)
+    bundle = store_bundle(DirectoryBundle({"file": FileBundle((str(shown),))}), store)
+    task = exporting(bundle, archive, max_bundle_bytes=16)
+
+    with raises(UnsupportedBundleError, match="larger than 16 bytes"):
+        task.run(source, IgnoredPaths(), lambda: FINISHED_AT)
+
     assert not archive.exists()
 
 

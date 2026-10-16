@@ -57,7 +57,7 @@ from libranet.bundle.errors import (
 )
 from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.layering import Layering, StoredVersion, Superseded
-from libranet.bundle.loading import DEFAULT_MAX_BUNDLE_BYTES, load_bundle
+from libranet.bundle.loading import load_bundle
 from libranet.bundle.parsing import decode_bundle, parse_bundle
 from libranet.bundle.parts import CIPHER, PartPath, PartWriter
 from libranet.bundle.person_encryption import EncryptedForPerson
@@ -116,7 +116,6 @@ __all__ = [
     "CAS_PATH_SEPARATOR",
     "CIPHER",
     "DEFAULT_IV",
-    "DEFAULT_MAX_BUNDLE_BYTES",
     "DEFAULT_MAX_EXTENSIONS",
     "DESCRIPTOR_FIELD_SEPARATOR",
     "DESCRIPTOR_SEPARATOR",
