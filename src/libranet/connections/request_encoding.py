@@ -11,7 +11,7 @@ from re import compile as compile_pattern
 from typing import Final, Mapping
 
 from libranet.identity.signatures import MessageSigner
-from libranet.protocol.http_syntax import TOKEN
+from libranet.protocol.http_syntax import CRLF, TOKEN
 
 # Methods that define a meaning for a body, so even an empty one is framed
 # with `Content-Length: 0` (RFC 9110 §8.6).
@@ -68,4 +68,4 @@ def encode_request(
     if body or method in _BODY_METHODS:
         lines.append(f"Content-Length: {len(body)}")
 
-    return ("\r\n".join(lines) + "\r\n\r\n").encode("ascii") + body
+    return (CRLF.join(lines) + CRLF * 2).encode("ascii") + body

@@ -52,7 +52,7 @@ from pathlib import Path
 from stat import S_ISDIR, S_ISREG
 from typing import Any, Final, Mapping
 
-from libranet.bundle.building import IgnoredPaths, modified_time
+from libranet.bundle.building import HIDDEN_PREFIX, IgnoredPaths, modified_time
 from libranet.bundle.shapes import PATH_SEPARATOR, is_entry_path, is_utf8
 from libranet.config.models import LibranetConfig
 from libranet.protocol.http_syntax import API_PREFIX
@@ -69,9 +69,6 @@ _LOGGER = getLogger(__name__)
 
 #: ``/data/directory``, and every path beneath it, its rest as ``path``.
 DIRECTORY_PATTERN: Final = rf"{API_PREFIX}/directory(?:/(?P<path>.*))?"
-
-# What a hidden entry's name begins with.
-_HIDDEN: Final = "."
 
 
 @dataclass(frozen=True)
@@ -118,7 +115,7 @@ class LocalFolders:
         try:
             with scandir(directory) as items:
                 for item in items:
-                    if item.name.startswith(_HIDDEN):
+                    if item.name.startswith(HIDDEN_PREFIX):
                         continue
 
                     if not is_utf8(item.name):
@@ -192,7 +189,7 @@ class LocalFolders:
         folder = self.folders.get(name)
         segments = rest.split(PATH_SEPARATOR) if rest else []
 
-        if folder is None or any(segment.startswith(_HIDDEN) for segment in segments):
+        if folder is None or any(segment.startswith(HIDDEN_PREFIX) for segment in segments):
             return None
 
         root = Path(realpath(folder))
@@ -255,7 +252,7 @@ class LocalFolders:
     def _within(path: Path, root: Path) -> bool:
         """Whether the real path ``path`` is ``root`` or beneath it, and nothing hidden there."""
         return path.is_relative_to(root) and not any(
-            part.startswith(_HIDDEN) for part in path.relative_to(root).parts
+            part.startswith(HIDDEN_PREFIX) for part in path.relative_to(root).parts
         )
 
     def _ignores(self, path: Path) -> bool:

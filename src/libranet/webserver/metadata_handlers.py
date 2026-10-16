@@ -52,6 +52,7 @@ from libranet.identity.node_metadata import (
     MetadataVersion,
     NodeMetadata,
 )
+from libranet.identity.versions import FIELDS_FIELD, VERSION_FIELD
 from libranet.json_format import compact_json
 from libranet.messaging.publishing import Publish
 from libranet.protocol.node_metadata_requests import NodeMetadataRequest
@@ -125,7 +126,7 @@ class OwnMetadata:
         newest = held.newest
 
         if newest is None:
-            return json_response({"id": None, "fields": {}, "version": None})
+            return json_response({"id": None, FIELDS_FIELD: {}, VERSION_FIELD: None})
 
         return json_response({"id": str(newest.content_id), **newest.metadata.value()})
 

@@ -9,10 +9,11 @@ from __future__ import annotations
 
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
-from typing import Any, Final, Sequence
+from typing import Any, Final, Sequence, get_args
 
 from libranet import __version__
 from libranet.config import paths
+from libranet.config.models import LogLevel
 
 PROGRAM_NAME: Final = "libranet"
 
@@ -52,7 +53,7 @@ def build_parser() -> ArgumentParser:
     )
     parser.add_argument(
         "--log-level",
-        choices=["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"],
+        choices=get_args(LogLevel),
         default=None,
         help="Override the configured log level",
     )

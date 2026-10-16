@@ -36,6 +36,12 @@ NOT_STORED: Final[Mapping[str, str]] = {"Cache-Control": "no-store"}
 # What lets any cache keep a response for good: CAS content never changes
 # under its identifier (HttpApi §20).
 IMMUTABLE_CACHE_CONTROL: Final = "public, max-age=31536000, immutable"
+CACHED_FOR_GOOD: Final[Mapping[str, str]] = {"Cache-Control": IMMUTABLE_CACHE_CONTROL}
+
+# What has a browser take a response as the type it says it is, never one it
+# guesses from its body. Reads into a bundle and untrusted applications send
+# it (HttpApi §12.1, §13.5).
+NOT_SNIFFED: Final[Mapping[str, str]] = {"X-Content-Type-Options": "nosniff"}
 
 # The methods that only read. A HEAD is answered as a GET would be, with
 # the body left out (RFC 9110 §9.3.2).

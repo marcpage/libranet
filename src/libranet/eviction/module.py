@@ -130,7 +130,7 @@ from typing import Callable, ClassVar, Final
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore, HeldObject
-from libranet.config.models import LibranetConfig
+from libranet.config.models import HOUR_SECONDS, LibranetConfig
 from libranet.eviction.pressure import FreeBytes, StoragePressure
 from libranet.identity.node_identity import NodeIdentity
 from libranet.messaging.connected_peers import ConnectedPeers
@@ -166,7 +166,7 @@ DEFAULT_RECLAIM_TIMEOUT_SECONDS: Final = 60.0
 
 # Provisional default: how often those are deleted while free space stays
 # short. A file is deleted only once unused for far longer.
-DEFAULT_RECLAIM_INTERVAL_SECONDS: Final = 3600.0
+DEFAULT_RECLAIM_INTERVAL_SECONDS: Final = HOUR_SECONDS
 
 
 @dataclass(frozen=True)

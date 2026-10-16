@@ -63,7 +63,7 @@ from libranet.protocol.drop_requests import SignedDropRequest
 from libranet.protocol.http_syntax import API_PREFIX
 from libranet.webserver.drop_handler import MAX_DROP_BODY_BYTES, DropHandler
 from libranet.webserver.http_types import (
-    IMMUTABLE_CACHE_CONTROL,
+    CACHED_FOR_GOOD,
     Request,
     Response,
     json_response,
@@ -158,7 +158,7 @@ class SignedDrops:
             return signed
 
         response = json_response(signed.read_value(content_id))
-        return response.with_headers({"Cache-Control": IMMUTABLE_CACHE_CONTROL})
+        return response.with_headers(CACHED_FOR_GOOD)
 
     def held(self, request: Request, content_id: ContentId) -> bytes | Response:
         """What is held for ``content_id``, announced as read; or the response refusing ``request``.

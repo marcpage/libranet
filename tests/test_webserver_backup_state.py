@@ -6,17 +6,16 @@ from threading import Thread
 from pytest import mark, raises
 
 from libranet.messaging.envelope import Message, make_message
-from libranet.messaging.events import EventType
-from libranet.modules import ModuleName
-from libranet.webserver.backup_state import (
+from libranet.messaging.events import (
     BUILDS_FIELD,
     EXPORTS_FIELD,
     IMPORTS_FIELD,
     JOBS_FIELD,
     RESTORES_FIELD,
-    BackupReport,
-    BackupState,
+    EventType,
 )
+from libranet.modules import ModuleName
+from libranet.webserver.backup_state import BackupReport, BackupState
 from libranet.webserver.errors import InvalidBackupReportError
 
 JOB = {"job_id": "0123456789abcdef", "directory": "/home/me/documents", "state": "idle"}

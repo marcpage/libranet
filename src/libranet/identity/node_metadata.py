@@ -26,7 +26,13 @@ from typing import Any, Final, Mapping
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
-from libranet.identity.versions import VERSION_FIELD, VERSIONS_FIELD, HeldVersions, Numbered
+from libranet.identity.versions import (
+    FIELDS_FIELD,
+    VERSION_FIELD,
+    VERSIONS_FIELD,
+    HeldVersions,
+    Numbered,
+)
 from libranet.json_fields import integer_field
 
 #: The fewest leading bits a version shares with its drop's target: each is
@@ -36,9 +42,6 @@ MIN_NODE_METADATA_BITS: Final = 16
 
 # What a node's metadata drop target string is, before its id.
 _DROP_PREFIX: Final = "node:"
-
-# The member of a version saying each detail.
-_FIELDS_FIELD: Final = "fields"
 
 
 @dataclass(frozen=True)
@@ -81,10 +84,10 @@ class NodeMetadata(Numbered):
                 whole number of at least 1, and whose ``versions``, if it has
                 one, is a list of ids.
         """
-        fields = cls.fields_of(value.get(_FIELDS_FIELD) if isinstance(value, dict) else None)
+        fields = cls.fields_of(value.get(FIELDS_FIELD) if isinstance(value, dict) else None)
 
         if not isinstance(value, dict) or fields is None:
-            raise ValueError(f'{named} is not an object with a "{_FIELDS_FIELD}" object of strings')
+            raise ValueError(f'{named} is not an object with a "{FIELDS_FIELD}" object of strings')
 
         replaced = value.get(VERSIONS_FIELD, [])
 
@@ -96,7 +99,7 @@ class NodeMetadata(Numbered):
 
     def value(self) -> dict[str, Any]:
         """The JSON object this version is, as a signed bundle's ``contents`` holds it."""
-        return self.numbered({_FIELDS_FIELD: dict(self.fields)})
+        return self.numbered({FIELDS_FIELD: dict(self.fields)})
 
 
 @dataclass(frozen=True)

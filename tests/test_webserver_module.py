@@ -29,17 +29,18 @@ from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import MessageSigner, MessageVerifier
 from libranet.messaging.envelope import make_message
-from libranet.messaging.events import ConnectionDirection, EventType
-from libranet.messaging.queues import ModuleQueues
-from libranet.modules import ModuleName
-from libranet.webserver.app_registry import CONFIG_APPLICATION, Application, ApplicationRegistry
-from libranet.webserver.backup_state import (
+from libranet.messaging.events import (
     BUILDS_FIELD,
     EXPORTS_FIELD,
     IMPORTS_FIELD,
     JOBS_FIELD,
     RESTORES_FIELD,
+    ConnectionDirection,
+    EventType,
 )
+from libranet.messaging.queues import ModuleQueues
+from libranet.modules import ModuleName
+from libranet.webserver.app_registry import CONFIG_APPLICATION, Application, ApplicationRegistry
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.module import WebServerModule, webserver_module_factory
 

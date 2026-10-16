@@ -11,6 +11,7 @@ marked as such.
 """
 
 from __future__ import annotations
+from os import pardir
 from pathlib import Path
 from typing import Final, Literal
 
@@ -20,6 +21,10 @@ from libranet.config import paths
 from libranet.modules import ModuleName
 
 MIB: Final = 1024 * 1024
+
+# An hour and a day, in seconds, as every setting gives a duration.
+HOUR_SECONDS: Final = 60 * 60.0
+DAY_SECONDS: Final = 24 * HOUR_SECONDS
 
 # How long the web server keeps a connection with no request on it open. A
 # connection to a peer is kept open by fetching its seek list more often
@@ -45,7 +50,7 @@ DEFAULT_CONFIG_HOSTS: Final = ("localhost", "127.0.0.1", "::1")
 
 # How long a person's session lasts unused before it ends, by default
 # (HttpApi §11.4, Phase 4 Step 79).
-DEFAULT_SESSION_IDLE_SECONDS: Final = 24 * 60 * 60.0
+DEFAULT_SESSION_IDLE_SECONDS: Final = DAY_SECONDS
 
 # The smallest RSA key a person's identity has, made or opened (HttpApi
 # §11.3, Phase 4 Step 79). Every node opens what any other makes, so it is
@@ -76,7 +81,7 @@ DEFAULT_TRUST_LIST_WAIT_SECONDS: Final = 30.0
 TARGET_BITS: Final = 256
 
 # What a folder's last segment cannot be, if it is to be offered under it.
-_UNNAMED_FOLDERS: Final = frozenset({"", ".."})
+_UNNAMED_FOLDERS: Final = frozenset({"", pardir})
 
 Scheme = Literal["http", "https"]
 
@@ -287,7 +292,7 @@ class PeerConfig(_Section):
 
     # How long a name found for an address, or finding none, is remembered
     # before the address is looked up again. Provisional default.
-    reverse_dns_cache_seconds: float = Field(default=3600.0, gt=0)
+    reverse_dns_cache_seconds: float = Field(default=HOUR_SECONDS, gt=0)
 
     @model_validator(mode="after")
     def _connections_fit_buckets(self) -> PeerConfig:
@@ -368,7 +373,7 @@ class StorageConfig(_Section):
     # When free space falls below min_free_bytes, the unbundler first deletes
     # the resolved files of every application not used for this long, to be
     # resolved again from its bundle when next asked for (Phase 2 Step 29).
-    resolved_idle_seconds: float = Field(default=30 * 86400.0, gt=0)
+    resolved_idle_seconds: float = Field(default=30 * DAY_SECONDS, gt=0)
 
     # Provisional default — see "Open Items" in the implementation plan.
     search_cache_ttl_seconds: float = Field(default=300.0, gt=0)
@@ -556,7 +561,7 @@ class StatsConfig(_Section):
 
     # An outstanding request this node never satisfied stops being advertised
     # in its own `/data/seek` list once it is this old. Provisional default.
-    seek_entry_ttl_seconds: float = Field(default=3600.0, gt=0)
+    seek_entry_ttl_seconds: float = Field(default=HOUR_SECONDS, gt=0)
 
     # Most addresses kept for any one peer node. Past it, addresses that have
     # never worked go first, relayed ones before the rest and the longest
@@ -580,7 +585,7 @@ class StatsConfig(_Section):
 
     # How long a peer given up on is left out before it is tried again.
     # Provisional default.
-    node_cool_off_seconds: float = Field(default=86400.0, gt=0)
+    node_cool_off_seconds: float = Field(default=DAY_SECONDS, gt=0)
 
     # Most peers the peer list served to local clients names (Phase 5 Step
     # 107). Statistics are never deleted, so a node running long knows more
@@ -594,7 +599,7 @@ class BackupConfig(_Section):
 
     # How often a backup job's directory is looked at for changes, when the
     # job was configured without an interval of its own. Provisional default.
-    interval_seconds: float = Field(default=3600.0, gt=0)
+    interval_seconds: float = Field(default=HOUR_SECONDS, gt=0)
 
     # A backup or build stores only what changed, as a layer over its last
     # bundle, until this many layers lie above the last one stored whole;
@@ -605,7 +610,7 @@ class BackupConfig(_Section):
     # with none of what it waits on arriving; asking for it again carries it
     # on (Phase 2 Step 51). Provisional default: a day, to outlast a peer
     # that is offline overnight.
-    restore_stall_seconds: float = Field(default=86400.0, gt=0)
+    restore_stall_seconds: float = Field(default=DAY_SECONDS, gt=0)
 
     # A backup, build, or import waits, before storing more, while storage is
     # full, as eviction says it is; it gives up, and fails, once storage stays
@@ -613,7 +618,7 @@ class BackupConfig(_Section):
     # 63, Phase 3 Step 69).
     # The next look carries on from what was stored. Provisional default: an
     # hour, so the backup module is not held up long from restores.
-    storage_stall_seconds: float = Field(default=3600.0, gt=0)
+    storage_stall_seconds: float = Field(default=HOUR_SECONDS, gt=0)
 
     # Extended attributes a backup or build leaves out of its bundle, and a
     # restore does not set: shell-style patterns, matched case sensitively

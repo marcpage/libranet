@@ -4,11 +4,20 @@ One enum, shared by every module, so a publisher and its subscribers can
 never disagree on spelling. Each member notes who publishes it and who is
 expected to react. Each publishing module's docstring describes the payload
 it sends beyond the common envelope. A payload value that more than one
-module spells gets an enum here too.
+module spells gets an enum here too, and a payload member a constant.
 """
 
 from __future__ import annotations
 from enum import StrEnum
+from typing import Final
+
+#: Payload members of a ``backup.state`` message, each listing what every job,
+#: restore, build, export, or import is doing.
+JOBS_FIELD: Final = "jobs"
+RESTORES_FIELD: Final = "restores"
+BUILDS_FIELD: Final = "builds"
+EXPORTS_FIELD: Final = "exports"
+IMPORTS_FIELD: Final = "imports"
 
 
 class EventType(StrEnum):

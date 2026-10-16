@@ -121,6 +121,9 @@ _OPEN_FLAGS: Final = O_RDONLY | O_NOFOLLOW | O_NONBLOCK
 # How much of a file is read at once to hash it.
 _READ_BYTES: Final = 1 * MIB
 
+#: What a hidden file's or directory's name begins with, on the host.
+HIDDEN_PREFIX: Final = "."
+
 
 class IgnoredPaths:
     """Paths a walk treats as though they were not there.

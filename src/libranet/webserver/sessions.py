@@ -55,6 +55,16 @@ _EXPIRED: Final = "Max-Age=0"
 _COOKIE_SEPARATOR: Final = ";"
 _NAME_SEPARATOR: Final = "="
 
+#: What says that no one is signed in: each member :meth:`Session.value` gives,
+#: as nothing (HttpApi §11.4).
+NO_ONE: Final = {
+    "id": None,
+    "username": None,
+    "created": None,
+    "fallback": None,
+    "fallback_for": None,
+}
+
 
 @dataclass(frozen=True)
 class Session:

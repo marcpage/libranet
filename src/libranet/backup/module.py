@@ -189,7 +189,15 @@ from libranet.identity.errors import KeyFileError
 from libranet.identity.keys import load_or_create_backup_secret
 from libranet.identity.node_identity import NodeIdentity
 from libranet.messaging.envelope import Message, event_of
-from libranet.messaging.events import ConflictBehavior, EventType
+from libranet.messaging.events import (
+    BUILDS_FIELD,
+    EXPORTS_FIELD,
+    IMPORTS_FIELD,
+    JOBS_FIELD,
+    RESTORES_FIELD,
+    ConflictBehavior,
+    EventType,
+)
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
@@ -869,11 +877,11 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self.publish(
             EventType.BACKUP_STATE,
             {
-                "jobs": [self._job_report(job) for job in jobs],
-                "restores": [restore.report() for restore in self._restores.values()],
-                "builds": [build.report() for build in self._builds.values()],
-                "exports": [export.report() for export in self._exports.values()],
-                "imports": [task.report() for task in self._imports.values()],
+                JOBS_FIELD: [self._job_report(job) for job in jobs],
+                RESTORES_FIELD: [restore.report() for restore in self._restores.values()],
+                BUILDS_FIELD: [build.report() for build in self._builds.values()],
+                EXPORTS_FIELD: [export.report() for export in self._exports.values()],
+                IMPORTS_FIELD: [task.report() for task in self._imports.values()],
             },
         )
 
