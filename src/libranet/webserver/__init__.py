@@ -265,6 +265,7 @@ from libranet.webserver.signed_handlers import (
     SIGNED_PATTERN,
     SignedDrops,
 )
+from libranet.webserver.signed_versions import FoundVersions, SignedVersions, VersionParser
 from libranet.webserver.site_checks import HOST_HEADER, SITE_HEADER, SiteChecks, host_name
 from libranet.webserver.trust_handlers import TRUST_PATH, TRUST_PATTERN, TrustEdits
 from libranet.webserver.trust_lists import TrustLists
@@ -389,6 +390,7 @@ __all__ = [
     "DropHandler",
     "EncryptedDrops",
     "FileStream",
+    "FoundVersions",
     "Guard",
     "Handler",
     "Identities",
@@ -429,6 +431,7 @@ __all__ = [
     "Sessions",
     "SignatureGuard",
     "SignedDrops",
+    "SignedVersions",
     "SiteChecks",
     "StoreFileError",
     "StoreHandler",
@@ -446,6 +449,7 @@ __all__ = [
     "Turns",
     "UnsupportedMediaTypeError",
     "ValueChangedError",
+    "VersionParser",
     "WebServerModule",
     "basic_credentials",
     "body_or_refusal",
