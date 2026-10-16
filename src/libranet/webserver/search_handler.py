@@ -44,7 +44,13 @@ from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.problems import INVALID_SEARCH_PREFIX
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
-from libranet.protocol.search import SEARCH_PATH, LocalSearch, SearchCache, normalize_prefix
+from libranet.protocol.search import (
+    RESULTS_FIELD,
+    SEARCH_PATH,
+    LocalSearch,
+    SearchCache,
+    normalize_prefix,
+)
 from libranet.webserver.drop_handler import DROP_PATH
 from libranet.webserver.http_types import (
     Request,
@@ -114,7 +120,9 @@ class SearchHandler:
 
         drop = DropTarget.of(target)
         found = self.fresh_results(drop.hex, asker=_asker(request))
-        return json_response({"target": drop.hex, "results": [str(found_id) for found_id in found]})
+        return json_response(
+            {"target": drop.hex, RESULTS_FIELD: [str(found_id) for found_id in found]}
+        )
 
     def fresh_results(self, prefix: str, *, asker: ContentId | None = None) -> list[ContentId]:
         """What is held nearest a normalized ``prefix``, with what was heard of, best first.

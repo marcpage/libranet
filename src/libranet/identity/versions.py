@@ -30,6 +30,10 @@ VERSIONS_FIELD: Final = "versions"
 #: What the first version is numbered.
 FIRST_VERSION: Final = 1
 
+#: The member of a version of what a person or node says of itself saying each
+#: detail (HttpApi §11.3, §11.8). A trust list has none.
+FIELDS_FIELD: Final = "fields"
+
 
 class Numbered:
     """A version of a document: numbered ``version``, naming in ``versions`` the one it replaces.

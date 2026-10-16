@@ -25,7 +25,7 @@ from types import MappingProxyType
 from typing import Any, Final, Mapping
 
 from libranet.atomic_file import write_atomically
-from libranet.bundle.building import build_directory
+from libranet.bundle.building import HIDDEN_PREFIX, build_directory
 from libranet.bundle.shapes import DirectoryBundle, DirectoryMarker, Entry, FileBundle
 from libranet.bundle.storing import store_bundle
 from libranet.cas.archive import ArchiveSink
@@ -57,9 +57,6 @@ SHIPPED_APPLICATIONS: Final = MappingProxyType(
 #: file giving their content ids.
 BUILT_ARCHIVE: Final = "applications.zip"
 BUILT_BUNDLES: Final = "applications.json"
-
-# What every hidden file's name begins with.
-_HIDDEN: Final = "."
 
 
 @dataclass(frozen=True)
@@ -146,7 +143,7 @@ class _Objects(dict[ContentId, bytes]):
             OSError: it could not be read.
             ValueError: a path within it could not be recorded.
         """
-        built = build_directory(directory, self, ignore=directory.rglob(f"{_HIDDEN}*"))
+        built = build_directory(directory, self, ignore=directory.rglob(f"{HIDDEN_PREFIX}*"))
 
         if built.skipped:
             raise ValueError(f"{directory} cannot be built whole: {dict(built.skipped)}")

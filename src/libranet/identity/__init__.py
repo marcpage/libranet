@@ -75,6 +75,7 @@ from libranet.identity.trust import (
     TrustVersion,
 )
 from libranet.identity.versions import (
+    FIELDS_FIELD,
     FIRST_VERSION,
     VERSION_FIELD,
     VERSIONS_FIELD,
@@ -87,6 +88,7 @@ __all__ = [
     "BACKUP_SECRET_BYTES",
     "CONTENT_DIGEST_HEADER",
     "DIGEST_COMPONENT",
+    "FIELDS_FIELD",
     "FIRST_VERSION",
     "MAX_IDENTITY_BYTES",
     "MAX_PUBLIC_KEY_BYTES",

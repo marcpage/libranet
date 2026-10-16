@@ -16,17 +16,17 @@ as with the application outcomes the unbundler reports.
 from __future__ import annotations
 from dataclasses import dataclass
 from threading import Lock
-from typing import Any, Final, Mapping
+from typing import Any, Mapping
 
 from libranet.messaging.envelope import Message
+from libranet.messaging.events import (
+    BUILDS_FIELD,
+    EXPORTS_FIELD,
+    IMPORTS_FIELD,
+    JOBS_FIELD,
+    RESTORES_FIELD,
+)
 from libranet.webserver.errors import InvalidBackupReportError
-
-#: Payload members of a ``backup.state`` message, and the endpoint each backs.
-JOBS_FIELD: Final = "jobs"
-RESTORES_FIELD: Final = "restores"
-BUILDS_FIELD: Final = "builds"
-EXPORTS_FIELD: Final = "exports"
-IMPORTS_FIELD: Final = "imports"
 
 
 @dataclass(frozen=True)

@@ -406,7 +406,8 @@ _MAX_EXPANDED_BYTES: Final = 1 << 40
 - A number or string with a meaning gets a name, rather than appearing bare
   in a function body.
 - A size is written as arithmetic that shows its unit: `1 << 40`,
-  `64 * 1024`, `4 * MIB`.
+  `64 * 1024`, `4 * MIB`. So is a duration of an hour or more, in
+  `HOUR_SECONDS` or `DAY_SECONDS`: `30 * DAY_SECONDS`.
 - A constant only one module uses is private. One that another module also
   needs is defined once, public, in the lowest module of the layer its
   meaning belongs to, and imported from there even where the literal would

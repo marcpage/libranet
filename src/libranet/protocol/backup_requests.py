@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from hashlib import sha256
 from logging import getLogger
 from math import isfinite
+from os import pardir
 from pathlib import Path, PurePath
 from typing import Any, Final
 
@@ -48,8 +49,6 @@ _LOGGER = getLogger(__name__)
 
 #: Hex characters of the hash a job or restore is named by.
 IDENTIFIER_LENGTH: Final = 16
-
-_PARENT_SEGMENT: Final = ".."
 
 
 @dataclass(frozen=True)
@@ -457,7 +456,7 @@ def check_path(local_path: str, what: str) -> None:
     if "\0" in local_path:
         raise ValueError(f"{what} may not hold a NUL character")
 
-    if _PARENT_SEGMENT in path.parts:
+    if pardir in path.parts:
         raise ValueError(f"{what} may not hold a '..' segment, got {local_path!r}")
 
     if str(path) != local_path:

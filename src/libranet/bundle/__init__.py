@@ -16,6 +16,7 @@ Operates purely on bundle JSON, local files, and CAS reads and writes.
 
 from libranet.bundle.building import (
     EPOCH,
+    HIDDEN_PREFIX,
     MICROSECOND,
     NANOSECONDS_PER_MICROSECOND,
     DirectoryBuild,
@@ -123,6 +124,7 @@ __all__ = [
     "ENCRYPTION_COMPRESSION_LEVEL",
     "EPOCH",
     "HASH_ALGORITHM",
+    "HIDDEN_PREFIX",
     "INLINE_LIMIT_BYTES",
     "KEY_BYTES",
     "MAX_SYMLINK_HOPS",

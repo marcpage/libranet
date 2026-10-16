@@ -72,6 +72,7 @@ from libranet.webserver.app_registry import (
 from libranet.webserver.bundle_paths import BundlePaths
 from libranet.webserver.config_guard import names_config
 from libranet.webserver.http_types import (
+    NOT_SNIFFED,
     READ_METHODS,
     Request,
     Response,
@@ -110,7 +111,7 @@ UNTRUSTED_APP_HEADERS: Final = {
     "Content-Security-Policy": (
         "sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads"
     ),
-    "X-Content-Type-Options": "nosniff",
+    **NOT_SNIFFED,
 }
 
 DEFAULT_FILE: Final = "index.html"

@@ -3,10 +3,11 @@
 Those refusing a body or a signature are shared by everything that reads
 request bodies or checks signatures. The ``503`` is for content that is on
 its way, whether from peers or out of a bundle, or for what the backup module
-has not reported yet. The ``500`` for a registry that cannot be read does not
-say why, which would name its file, since any client may ask. The ``400`` for
-content that is not a usable bundle is for everything that opens or checks
-one a request names.
+has not reported yet. The ``404`` for blocked content is for everything that
+serves content a path names, whole or read into. The ``500`` for a registry
+that cannot be read does not say why, which would name its file, since any
+client may ask. The ``400`` for content that is not a usable bundle is for
+everything that opens or checks one a request names.
 
 What more than one handler reads from a request is read here too, giving what
 was asked for or the response refusing it: the JSON value a body carries,
@@ -142,6 +143,15 @@ def content_unavailable_response(
         detail,
         extensions={"retry_after": retry_after_seconds},
         headers={"Retry-After": str(retry_after_seconds), **NOT_STORED},
+    )
+
+
+def blocked_response(request: Request) -> Response:
+    """The ``404`` for blocked content, which is neither served nor fetched (HttpApi §5.5)."""
+    return status_response(
+        request,
+        HTTPStatus.NOT_FOUND,
+        "The requested content is not stored here, and will not be retrieved.",
     )
 
 

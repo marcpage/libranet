@@ -25,7 +25,6 @@ that endpoint's own routes do not take is ``405`` there, not an upload.
 """
 
 from __future__ import annotations
-from http import HTTPStatus
 from logging import getLogger
 from typing import Final
 
@@ -38,13 +37,13 @@ from libranet.messaging.publishing import Publish
 from libranet.protocol.client_origin import is_local_client
 from libranet.protocol.http_syntax import API_PREFIX
 from libranet.webserver.http_types import (
-    IMMUTABLE_CACHE_CONTROL,
+    CACHED_FOR_GOOD,
     Request,
     Response,
     bytes_response,
-    status_response,
 )
 from libranet.webserver.request_refusals import (
+    blocked_response,
     content_id_or_refusal,
     content_unavailable_response,
 )
@@ -113,11 +112,7 @@ class DataReadHandler:
 
         if self._blocked is not None and self._blocked.blocks(content_id):
             _LOGGER.debug("%s is blocked, so it is neither served nor asked for", content_id)
-            return status_response(
-                request,
-                HTTPStatus.NOT_FOUND,
-                "The requested content is not stored here, and will not be retrieved.",
-            )
+            return blocked_response(request)
 
         try:
             body = self._content.read(content_id)
@@ -126,7 +121,7 @@ class DataReadHandler:
             _LOGGER.debug("%s is not held here, so it is asked for", content_id)
             return self._not_found(content_id, request)
 
-        return bytes_response(body, headers={"Cache-Control": IMMUTABLE_CACHE_CONTROL})
+        return bytes_response(body, headers=CACHED_FOR_GOOD)
 
     def _not_found(self, content_id: ContentId, request: Request) -> Response:
         self._publish(EventType.DATA_NOT_FOUND, content_id.fields())

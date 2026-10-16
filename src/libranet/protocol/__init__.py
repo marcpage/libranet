@@ -45,6 +45,7 @@ from libranet.protocol.errors import InvalidListError, InvalidRequestError
 from libranet.protocol.http_syntax import (
     API_PREFIX,
     BODILESS_STATUSES,
+    CRLF,
     DEFAULT_PORTS,
     JSON_CONTENT_TYPE,
     OCTET_STREAM,
@@ -84,6 +85,7 @@ from libranet.protocol.trust_requests import TrustRequest
 __all__ = [
     "API_PREFIX",
     "BODILESS_STATUSES",
+    "CRLF",
     "DEFAULT_PORTS",
     "IDENTIFIER_LENGTH",
     "JSON_CONTENT_TYPE",

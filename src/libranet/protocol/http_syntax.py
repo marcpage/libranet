@@ -22,6 +22,8 @@ DEFAULT_PORTS: Final[Mapping[str, int]] = {"http": 80, "https": 443}
 
 # A method or header field name (RFC 9110 §5.6.2).
 TOKEN: Final = compile_pattern(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
+# What ends each line of a message's head (RFC 9112 §2.1).
+CRLF: Final = "\r\n"
 # Statuses whose responses never carry a body (RFC 9110 §15.3.5, §15.4.5).
 BODILESS_STATUSES: Final = frozenset({HTTPStatus.NO_CONTENT, HTTPStatus.NOT_MODIFIED})
 

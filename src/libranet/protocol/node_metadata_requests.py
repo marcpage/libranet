@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Mapping
 
 from libranet.identity.node_metadata import NodeMetadata
+from libranet.identity.versions import FIELDS_FIELD
 from libranet.protocol.errors import InvalidRequestError
 
 
@@ -31,7 +32,9 @@ class NodeMetadataRequest:
             InvalidRequestError: it is not an object whose ``fields`` is an
                 object of strings.
         """
-        fields = NodeMetadata.fields_of(value.get("fields") if isinstance(value, dict) else None)
+        fields = NodeMetadata.fields_of(
+            value.get(FIELDS_FIELD) if isinstance(value, dict) else None
+        )
 
         if fields is None:
             raise InvalidRequestError(

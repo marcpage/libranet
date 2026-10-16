@@ -95,7 +95,13 @@ from libranet.config.models import (
     NetworkConfig,
 )
 from libranet.identity.trust import TrustLimits
-from libranet.messaging.events import EventType
+from libranet.messaging.events import (
+    BUILDS_FIELD,
+    EXPORTS_FIELD,
+    JOBS_FIELD,
+    RESTORES_FIELD,
+    EventType,
+)
 from libranet.messaging.publishing import Publish
 from libranet.protocol.backup_requests import (
     IDENTIFIER_LENGTH,
@@ -106,13 +112,7 @@ from libranet.protocol.backup_requests import (
 )
 from libranet.protocol.http_syntax import API_PREFIX
 from libranet.webserver.app_registry import CONFIG_APPLICATION, Application, ApplicationRegistry
-from libranet.webserver.backup_state import (
-    BUILDS_FIELD,
-    EXPORTS_FIELD,
-    JOBS_FIELD,
-    RESTORES_FIELD,
-    BackupState,
-)
+from libranet.webserver.backup_state import BackupState
 from libranet.webserver.errors import RegistryFileError
 from libranet.webserver.http_types import (
     Request,

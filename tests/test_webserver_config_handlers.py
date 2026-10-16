@@ -16,7 +16,7 @@ from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.config.models import NetworkConfig
-from libranet.messaging.events import EventType
+from libranet.messaging.events import JOBS_FIELD, EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.problems import CONTENT_TOO_LARGE, INVALID_REQUEST
@@ -34,7 +34,7 @@ from libranet.webserver.app_registry import (
     ApplicationRegistry,
     RegisteredApplications,
 )
-from libranet.webserver.backup_state import JOBS_FIELD, BackupReport, BackupState
+from libranet.webserver.backup_state import BackupReport, BackupState
 from libranet.webserver.config_handlers import (
     APPLICATIONS_PATH,
     BACKUPS_PATH,

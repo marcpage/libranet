@@ -22,6 +22,11 @@ from libranet.messaging.envelope import (
 )
 from libranet.messaging.errors import InvalidMessageError
 from libranet.messaging.events import (
+    BUILDS_FIELD,
+    EXPORTS_FIELD,
+    IMPORTS_FIELD,
+    JOBS_FIELD,
+    RESTORES_FIELD,
     AddressSource,
     ConflictBehavior,
     ConnectionDirection,
@@ -33,10 +38,15 @@ from libranet.messaging.publishing import Publish
 from libranet.messaging.queues import START_METHOD, MessageQueue, ModuleQueues, create_module_queues
 
 __all__ = [
+    "BUILDS_FIELD",
     "DEFAULT_DISPATCH_POLL_INTERVAL_SECONDS",
     "DEFAULT_POLL_INTERVAL_SECONDS",
     "ENVELOPE_FIELDS",
     "EVENT_FIELD",
+    "EXPORTS_FIELD",
+    "IMPORTS_FIELD",
+    "JOBS_FIELD",
+    "RESTORES_FIELD",
     "SOURCE_FIELD",
     "START_METHOD",
     "TIMESTAMP_FIELD",

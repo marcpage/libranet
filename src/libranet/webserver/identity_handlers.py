@@ -105,7 +105,7 @@ from libranet.webserver.request_refusals import (
     parsed_or_refusal,
 )
 from libranet.webserver.search_handler import SearchHandler
-from libranet.webserver.sessions import Session, Sessions
+from libranet.webserver.sessions import NO_ONE, Session, Sessions
 
 _LOGGER = getLogger(__name__)
 
@@ -117,15 +117,6 @@ FALLBACK_PATH: Final = API_PREFIX + "/fallback"
 
 #: Where a page signs in, asks who is signed in, and signs out.
 SESSION_PATH: Final = API_PREFIX + "/session"
-
-# What says that no one is signed in (HttpApi §11.4).
-_NO_ONE: Final = {
-    "id": None,
-    "username": None,
-    "created": None,
-    "fallback": None,
-    "fallback_for": None,
-}
 
 # How many drops making an identity places, which share the search asked for:
 # the fallback's identity block, the first version naming it, and the
@@ -294,7 +285,7 @@ class Identities:  # pylint: disable=too-many-instance-attributes
     def signed_in(self, request: Request) -> Response:
         """``GET /data/session``: who the session ``request`` names is signed in as, if anyone."""
         session = self.sessions.session(request)
-        return _with_headers(json_response(_NO_ONE if session is None else session.value()), {})
+        return _with_headers(json_response(NO_ONE if session is None else session.value()), {})
 
     def sign_out(self, request: Request) -> Response:
         """``DELETE /data/session``: end the session ``request`` names, and remove its cookie."""

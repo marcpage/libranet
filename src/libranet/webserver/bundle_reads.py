@@ -78,7 +78,8 @@ from libranet.webserver.data_handler import (
     DATA_PATTERN,
 )
 from libranet.webserver.http_types import (
-    IMMUTABLE_CACHE_CONTROL,
+    CACHED_FOR_GOOD,
+    NOT_SNIFFED,
     READ_METHODS,
     Request,
     Response,
@@ -88,7 +89,11 @@ from libranet.webserver.http_types import (
     status_response,
     typed_response,
 )
-from libranet.webserver.request_refusals import content_id_or_refusal, invalid_address_response
+from libranet.webserver.request_refusals import (
+    blocked_response,
+    content_id_or_refusal,
+    invalid_address_response,
+)
 
 _LOGGER = getLogger(__name__)
 
@@ -100,10 +105,7 @@ BUNDLE_PATTERN: Final = rf"{DATA_PATTERN}/(?P<path>.*)"
 BUNDLE_METHODS: Final = READ_METHODS
 
 # Carried by every response to a read into a bundle (HttpApi §12.1).
-_SANDBOX_HEADERS: Final = {
-    "Content-Security-Policy": "sandbox",
-    "X-Content-Type-Options": "nosniff",
-}
+_SANDBOX_HEADERS: Final = {"Content-Security-Policy": "sandbox", **NOT_SNIFFED}
 
 
 @dataclass(frozen=True)
@@ -115,9 +117,7 @@ class BundleReadHandler:
     def __call__(self, request: Request) -> Response:
         response = self._response(request)
         cached = response.status < HTTPStatus.BAD_REQUEST
-        return response.with_headers(
-            {**_SANDBOX_HEADERS, **({"Cache-Control": IMMUTABLE_CACHE_CONTROL} if cached else {})}
-        )
+        return response.with_headers({**_SANDBOX_HEADERS, **(CACHED_FOR_GOOD if cached else {})})
 
     def _response(self, request: Request) -> Response:  # pylint: disable=too-many-return-statements
         """The response to ``request``, before the headers every one carries."""
@@ -132,11 +132,7 @@ class BundleReadHandler:
             _LOGGER.debug(
                 "%s is blocked, so it is neither read into nor asked for", bundle.content_id
             )
-            return status_response(
-                request,
-                HTTPStatus.NOT_FOUND,
-                "The requested content is not stored here, and will not be retrieved.",
-            )
+            return blocked_response(request)
 
         self.paths.use.used(bundle.content_id)
         entry_path = rest.removesuffix("/")
