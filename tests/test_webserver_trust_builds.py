@@ -5,7 +5,7 @@ from logging import ERROR
 from threading import Event, current_thread
 from typing import Any, Callable, Mapping
 
-from pytest import LogCaptureFixture, fixture, mark, raises
+from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.identity.people import NewIdentity, Username
@@ -414,6 +414,167 @@ def test_a_build_that_fails_is_logged_and_keeps_what_it_read(
         f"Building {ALICE}'s trust scores failed, so they stay as far as they were read"
     )
     assert built(builds, ALICE) == TrustScores({BOB: TrustScore(1, 1)}, (BOB,))
+
+
+def test_a_change_scores_again_reading_only_the_lists_it_newly_reaches(
+    builds: TrustBuilds, reader: Reader, background: Background
+) -> None:
+    hold_the_example(reader)
+    reader.held[HANK] = held(HANK, {})
+    builds.session_started(ALICE)
+    background.run()
+    read_at_sign_in = len(reader.reads)
+
+    # Alice trusts Dave now, whose list names Hank, and no longer Carol.
+    builds.changed(ALICE, {BOB: True, DAVE: True})
+    background.run()
+
+    assert reader.reads[read_at_sign_in:] == [DAVE, HANK]
+    assert built(builds, ALICE) == TrustScores(
+        {
+            BOB: TrustScore(1, 1),
+            DAVE: TrustScore(1, 1),
+            ERIN: TrustScore(1, 2),
+            GINA: TrustScore(-1, 2),
+            HANK: TrustScore(1, 2),
+            FRANK: TrustScore(1, 3),
+        }
+    )
+
+
+def test_a_change_reaching_no_list_unread_reads_nothing(
+    builds: TrustBuilds, reader: Reader, background: Background
+) -> None:
+    hold_the_example(reader)
+    builds.session_started(ALICE)
+    background.run()
+    read_at_sign_in = list(reader.reads)
+
+    builds.changed(ALICE, {BOB: False, CAROL: True, DAVE: False})
+    background.run()
+
+    assert reader.reads == read_at_sign_in
+    assert built(builds, ALICE) == TrustScores(
+        {
+            BOB: TrustScore(-1, 1),
+            CAROL: TrustScore(1, 1),
+            DAVE: TrustScore(-1, 1),
+            ERIN: TrustScore(1, 2),
+            FRANK: TrustScore(1, 3),
+        }
+    )
+
+
+def test_a_change_while_the_build_reads_is_read_by_that_build(
+    builds: TrustBuilds, reader: Reader, background: Background
+) -> None:
+    reader.held[ALICE] = held(ALICE, {BOB: True})
+    reader.held[BOB] = held(BOB, {})
+    reader.held[CAROL] = held(CAROL, {})
+    jobs_waiting: list[int] = []
+
+    def changing() -> None:
+        builds.changed(ALICE, {BOB: True, CAROL: True})
+        jobs_waiting.append(len(background.jobs))
+
+    reader.on_read[BOB] = changing
+
+    builds.session_started(ALICE)
+    background.run()
+
+    assert jobs_waiting == [0]
+    assert reader.reads == [ALICE, BOB, CAROL]
+    assert built(builds, ALICE) == TrustScores({BOB: TrustScore(1, 1), CAROL: TrustScore(1, 1)})
+
+
+def test_a_change_made_as_the_build_finishes_is_read(
+    builds: TrustBuilds, reader: Reader, background: Background, monkeypatch: MonkeyPatch
+) -> None:
+    reader.held[ALICE] = held(ALICE, {})
+    reader.held[BOB] = held(BOB, {})
+    from_lists = TrustScores.from_lists
+
+    def scoring(
+        person: ContentId,
+        lists: Mapping[ContentId, Mapping[ContentId, bool]],
+        limits: TrustLimits,
+    ) -> TrustScores:
+        scores = from_lists(person, lists, limits)
+
+        # Once the build finds itself complete, and before it stops reading.
+        if scores.complete and BOB not in lists:
+            builds.changed(ALICE, {BOB: True})
+
+        return scores
+
+    monkeypatch.setattr(TrustScores, "from_lists", scoring)
+
+    builds.session_started(ALICE)
+    background.run()
+
+    assert reader.reads == [ALICE, BOB]
+    assert built(builds, ALICE) == TrustScores({BOB: TrustScore(1, 1)})
+
+
+def test_a_change_made_while_the_persons_own_list_is_read_is_kept(
+    builds: TrustBuilds, reader: Reader, background: Background
+) -> None:
+    reader.held[ALICE] = held(ALICE, {BOB: True})
+    reader.held[CAROL] = held(CAROL, {})
+    reader.on_read[ALICE] = lambda: builds.changed(ALICE, {CAROL: True})
+
+    builds.session_started(ALICE)
+    background.run()
+
+    assert reader.reads == [ALICE, CAROL]
+    assert built(builds, ALICE) == TrustScores({CAROL: TrustScore(1, 1)})
+
+
+def test_a_list_given_up_on_stays_given_up_after_a_change(
+    builds: TrustBuilds, reader: Reader, background: Background
+) -> None:
+    reader.held[ALICE] = held(ALICE, {BOB: True})
+    builds.session_started(ALICE)
+    background.run()
+    reader.held[BOB] = held(BOB, {DAVE: True})
+    reader.held[CAROL] = held(CAROL, {})
+    read_at_sign_in = len(reader.reads)
+
+    builds.changed(ALICE, {BOB: True, CAROL: True})
+    background.run()
+
+    assert reader.reads[read_at_sign_in:] == [CAROL]
+    assert built(builds, ALICE) == TrustScores({BOB: TrustScore(1, 1), CAROL: TrustScore(1, 1)})
+
+
+def test_a_change_for_someone_not_signed_in_does_nothing(
+    builds: TrustBuilds, background: Background
+) -> None:
+    builds.changed(ALICE, {BOB: True})
+
+    assert background.jobs == []
+    assert builds.scores(ALICE) is None
+
+
+def test_a_build_that_failed_reads_again_once_the_list_is_changed(
+    builds: TrustBuilds, reader: Reader, background: Background, caplog: LogCaptureFixture
+) -> None:
+    reader.held[ALICE] = held(ALICE, {BOB: True})
+    reader.held[CAROL] = held(CAROL, {})
+
+    def failing() -> None:
+        raise OSError("the store cannot be read")
+
+    reader.on_read[BOB] = failing
+
+    with caplog.at_level(ERROR, logger="libranet.webserver.trust_builds"):
+        builds.session_started(ALICE)
+        background.run()
+
+    builds.changed(ALICE, {CAROL: True})
+    background.run()
+
+    assert built(builds, ALICE) == TrustScores({CAROL: TrustScore(1, 1)})
 
 
 def test_a_build_runs_on_a_thread_of_its_own_by_default(

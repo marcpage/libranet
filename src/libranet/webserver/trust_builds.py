@@ -33,6 +33,11 @@ crowd its newest version out of a search of its drop (Trust Network §3.3)::
 The scores are worked out from the lists read so far each time they are
 asked for, so that they say what the build has read, and whether it is
 complete.
+
+When the person changes their list through this node, the build scores again
+with the new version as their own list, from the lists it holds, and reads
+only the lists the change newly reaches, as it reads any (Trust Network §4.4,
+Phase 5 Step 100). A list given up on stays given up.
 """
 
 from __future__ import annotations
@@ -72,13 +77,17 @@ class _Build:
     """A build of ``person``'s scores: the entries of each list read so far, by owner.
 
     What it finds and does not hold is asked for in ``asking``, and
-    ``ended`` is set once the build is to stop.
+    ``ended`` is set once the build is to stop. ``reading`` says whether a
+    job is reading lists for it, and ``changes`` counts the changes the
+    person has made to their own list.
     """
 
     person: ContentId
     asking: ContentWait
     lists: dict[ContentId, Mapping[ContentId, bool]] = field(default_factory=dict)
     ended: Event = field(default_factory=Event)
+    reading: bool = True
+    changes: int = 0
 
 
 class TrustBuilds:  # pylint: disable=too-many-instance-attributes
@@ -90,8 +99,10 @@ class TrustBuilds:  # pylint: disable=too-many-instance-attributes
     ``publish``, and asked for again once ``ask_again_seconds`` have passed,
     and what a newer version replaces is blocked with it. Each build is a job
     handed to ``in_background``, which runs it on a thread of its own unless
-    it is given. It is told as each person signs in, and as their last
-    session ends, as a :class:`~libranet.webserver.sessions.SessionListener`.
+    it is given, and so is reading what a change to the person's list newly
+    reaches, once the build is done. It is told as each person signs in, and
+    as their last session ends, as a
+    :class:`~libranet.webserver.sessions.SessionListener`.
     Any number of request threads may use it at once.
 
     Raises:
@@ -162,6 +173,29 @@ class TrustBuilds:  # pylint: disable=too-many-instance-attributes
             build.ended.set()
             _LOGGER.debug("Let go of %s's trust scores, as they are not signed in", person)
 
+    def changed(self, person: ContentId, entries: Mapping[ContentId, bool]) -> None:
+        """Score ``person`` again with ``entries`` as their own list, as they have just changed it.
+
+        The lists the change newly reaches are read, as a build reads them,
+        by the job reading the build's lists, or by a new one if none is.
+        Nothing is done for a person not signed in.
+        """
+        with self._lock:
+            build = self._builds.get(person)
+
+            if build is None:
+                return
+
+            build.lists[person] = entries
+            build.changes += 1
+            idle = not build.reading
+            build.reading = True
+
+        _LOGGER.debug("Scoring %s's trust again, as they changed their list", person)
+
+        if idle:
+            self._in_background(lambda: self._run(build))
+
     def scores(self, person: ContentId) -> TrustScores | None:
         """``person``'s scores, from the lists read so far; ``None`` if they are not signed in."""
         with self._lock:
@@ -182,28 +216,46 @@ class TrustBuilds:  # pylint: disable=too-many-instance-attributes
     def _run(self, build: _Build) -> None:
         """Read the lists ``build`` needs, a step at a time, until it is complete or ends.
 
-        A build that fails keeps the scores of the lists it read.
+        A build that fails keeps the scores of the lists it read, and reads
+        again only once the person changes their list.
         """
         try:
             while not build.ended.is_set():
-                scores = self._scores(build)
+                with self._lock:
+                    lists = dict(build.lists)
+                    changes = build.changes
 
-                if scores.complete:
+                scores = TrustScores.from_lists(build.person, lists, self._limits)
+
+                if not scores.complete:
+                    self._read_step(build, scores.needed)
+
+                elif self._done(build, changes):
                     _LOGGER.info(
                         "Built %s's trust scores: %d identities, from %d lists",
                         build.person,
                         len(scores.scores),
-                        len(build.lists),
+                        len(lists),
                     )
                     return
-
-                self._read_step(build, scores.needed)
 
         except Exception:  # pylint: disable=broad-exception-caught
             _LOGGER.exception(
                 "Building %s's trust scores failed, so they stay as far as they were read",
                 build.person,
             )
+
+            with self._lock:
+                build.reading = False
+
+    def _done(self, build: _Build, changes: int) -> bool:
+        """Whether ``build`` is done reading, its person's list unchanged since ``changes`` changes.
+
+        If it is, a change after this starts reading again.
+        """
+        with self._lock:
+            build.reading = build.changes != changes
+            return not build.reading
 
     def _read_step(self, build: _Build, needed: Iterable[ContentId]) -> None:
         """Read into ``build`` each list ``needed`` names, looking for them together, in order.
@@ -246,8 +298,9 @@ class TrustBuilds:  # pylint: disable=too-many-instance-attributes
         if (held.missing or not held.versions) and self._clock() < deadline:
             return False
 
+        # A change the person made since this read began is newer than it.
         with self._lock:
-            build.lists[owner] = held.entries
+            build.lists.setdefault(owner, held.entries)
 
         for content_id in held.replaced:
             self._publish(EventType.DATA_BLOCKED, content_id.fields())

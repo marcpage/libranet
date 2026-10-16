@@ -3,7 +3,7 @@
 from __future__ import annotations
 from json import dumps, loads
 from threading import Thread
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from pytest import fixture, mark, raises
 
@@ -14,7 +14,7 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
 from libranet.identity.people import NewIdentity, PersonKey, Username
-from libranet.identity.trust import MIN_TRUST_LIST_BITS, TrustList
+from libranet.identity.trust import MIN_TRUST_LIST_BITS, TrustLimits, TrustList
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.problems import (
@@ -31,7 +31,8 @@ from libranet.webserver.drop_handler import DropHandler
 from libranet.webserver.http_types import Request, RequestBody, Response
 from libranet.webserver.search_handler import SearchHandler
 from libranet.webserver.sessions import Session, Sessions
-from libranet.webserver.trust_handlers import TRUST_PATH, TrustEdits
+from libranet.webserver.trust_builds import TrustBuilds
+from libranet.webserver.trust_handlers import TRUST_PATH, TrustEdits, TrustReads
 from libranet.webserver.trust_lists import TrustLists
 
 from tests.helpers import problem_type
@@ -80,9 +81,53 @@ def uploads(storage: StorageConfig, truth: CasStore, recorder: Recorder) -> OwnU
     return OwnUploads.of(storage, truth, NODE_ID, recorder)
 
 
+class Jobs:
+    """Stands in for running each build on a thread of its own: keeps each until a test runs it."""
+
+    def __init__(self) -> None:
+        self.waiting: list[Callable[[], None]] = []
+
+    def __call__(self, job: Callable[[], None]) -> None:
+        self.waiting.append(job)
+
+    def run(self) -> None:
+        while self.waiting:
+            self.waiting.pop(0)()
+
+
+def trust_lists(
+    storage: StorageConfig, truth: CasStore, uploads: OwnUploads, recorder: Recorder
+) -> TrustLists:
+    """The trust lists held in ``truth``, read as the web server reads them."""
+    search = SearchHandler(
+        LocalSearch(truth, storage.search_max_results), SearchCache.of(storage), recorder
+    )
+    return TrustLists(search, uploads)
+
+
 @fixture
-def sessions() -> Sessions:
-    return Sessions(60.0)
+def jobs() -> Jobs:
+    return Jobs()
+
+
+@fixture
+def builds(
+    storage: StorageConfig, truth: CasStore, uploads: OwnUploads, recorder: Recorder, jobs: Jobs
+) -> TrustBuilds:
+    """Each person's scores, from the lists held, built only as a test runs ``jobs``."""
+    return TrustBuilds(
+        trust_lists(storage, truth, uploads, recorder),
+        recorder,
+        TrustLimits(4, 1000),
+        wait_seconds=0.0,
+        ask_again_seconds=0.0,
+        in_background=jobs,
+    )
+
+
+@fixture
+def sessions(builds: TrustBuilds) -> Sessions:
+    return Sessions(60.0, listener=builds)
 
 
 def trust_edits(
@@ -92,21 +137,22 @@ def trust_edits(
     sessions: Sessions,
     recorder: Recorder,
     max_object_bytes: int = MAX_BYTES,
+    *,
+    builds: TrustBuilds | None = None,
 ) -> TrustEdits:
     """The trust endpoints over ``truth``, as the web server makes them.
 
-    Each drop is stored in an object no larger than ``max_object_bytes``.
+    Each drop is stored in an object no larger than ``max_object_bytes``,
+    and each version placed handed to ``builds``, if given.
     """
-    search = SearchHandler(
-        LocalSearch(truth, storage.search_max_results), SearchCache.of(storage), recorder
-    )
     drops = DropHandler(uploads, max_object_bytes, MAX_SECONDS, MAX_MINIMUM_BITS)
     return TrustEdits(
-        TrustLists(search, uploads),
+        trust_lists(storage, truth, uploads, recorder),
         drops,
         sessions,
         recorder,
         retry_after_seconds=RETRY_AFTER_SECONDS,
+        builds=builds,
     )
 
 
@@ -117,8 +163,14 @@ def edits(
     uploads: OwnUploads,
     sessions: Sessions,
     recorder: Recorder,
+    builds: TrustBuilds,
 ) -> TrustEdits:
-    return trust_edits(storage, truth, uploads, sessions, recorder)
+    return trust_edits(storage, truth, uploads, sessions, recorder, builds=builds)
+
+
+@fixture
+def reads(builds: TrustBuilds, sessions: Sessions) -> TrustReads:
+    return TrustReads(builds, sessions)
 
 
 @fixture
@@ -184,6 +236,29 @@ def held_version(truth: CasStore, person: PersonKey, trust_list: TrustList) -> C
 def blocked(recorder: Recorder) -> list[dict[str, Any]]:
     """What this node was asked to block."""
     return recorder.payloads(EventType.DATA_BLOCKED)
+
+
+def reading(
+    reads: TrustReads, cookie: Mapping[str, str], identity: ContentId | None = None
+) -> Response:
+    """What ``GET /data/trust`` answers; or, for ``identity``, ``GET /data/trust/{id}``."""
+    if identity is None:
+        return reads.scores(Request("GET", TRUST_PATH, headers=dict(cookie)))
+
+    return reads.score(
+        Request("GET", f"{TRUST_PATH}/{identity}", headers=dict(cookie), params=identity.fields())
+    )
+
+
+def hold_list(truth: CasStore, person: PersonKey, entries: Mapping[ContentId, bool]) -> None:
+    """Hold ``person``'s key, and a first version of their list saying ``entries``."""
+    truth.write(person.person_id, person.public_key)
+    held_version(truth, person, TrustList(entries, 1))
+
+
+def searched(recorder: Recorder) -> list[str]:
+    """Each prefix searched for, in order: each list read is its drop's target."""
+    return [payload["prefix"] for payload in recorder.payloads(EventType.SEARCH_REQUESTED)]
 
 
 def drops_placed(recorder: Recorder, person: PersonKey) -> list[dict[str, Any]]:
@@ -500,3 +575,138 @@ def test_a_negative_retry_after_is_refused(
             recorder,
             retry_after_seconds=-1,
         )
+
+
+@mark.parametrize("identity", [None, BOB])
+def test_with_no_one_signed_in_reading_the_scores_is_401(
+    reads: TrustReads, identity: ContentId | None
+) -> None:
+    response = reading(reads, {}, identity)
+
+    assert response.status == 401
+    assert problem_type(response) == SESSION_REQUIRED
+    assert response.headers["Cache-Control"] == "no-store"
+
+
+def test_the_scores_read_are_what_the_build_has_read_and_whether_it_is_complete(
+    reads: TrustReads, truth: CasStore, person: PersonKey, cookie: Mapping[str, str], jobs: Jobs
+) -> None:
+    hold_list(truth, person, {BOB: True, CAROL: False})
+
+    before = reading(reads, cookie)
+    jobs.run()
+    after = reading(reads, cookie)
+
+    assert before.status == 200
+    assert before.headers["Cache-Control"] == "no-store"
+    assert loads(before.body) == {"complete": False, "scores": {}}
+    assert after.status == 200
+    assert loads(after.body) == {
+        "complete": True,
+        "scores": {str(BOB): {"score": 1, "step": 1}, str(CAROL): {"score": -1, "step": 1}},
+    }
+
+
+def test_one_identitys_score_is_read_and_one_not_reached_scores_0_at_no_step(
+    reads: TrustReads, truth: CasStore, person: PersonKey, cookie: Mapping[str, str], jobs: Jobs
+) -> None:
+    hold_list(truth, person, {BOB: True})
+    jobs.run()
+
+    bob, dave, own = (reading(reads, cookie, named) for named in (BOB, DAVE, person.person_id))
+
+    assert bob.status == 200
+    assert bob.headers["Cache-Control"] == "no-store"
+    assert loads(bob.body) == {"id": str(BOB), "score": 1, "step": 1, "complete": True}
+    assert loads(dave.body) == {"id": str(DAVE), "score": 0, "step": None, "complete": True}
+    assert loads(own.body) == {
+        "id": str(person.person_id),
+        "score": 0,
+        "step": None,
+        "complete": True,
+    }
+
+
+def test_reading_the_score_of_an_identifier_that_is_not_valid_is_400(
+    reads: TrustReads, cookie: Mapping[str, str]
+) -> None:
+    request = Request(
+        "GET",
+        f"{TRUST_PATH}/sha256/not-a-hash",
+        headers=dict(cookie),
+        params={"algorithm": "sha256", "hash": "not-a-hash"},
+    )
+
+    response = reads.score(request)
+
+    assert response.status == 400
+    assert problem_type(response) == INVALID_CONTENT_ADDRESS
+    assert response.headers["Cache-Control"] == "no-store"
+
+
+def test_a_fallback_that_has_not_taken_over_reads_its_scores(
+    reads: TrustReads, sessions: Sessions, jobs: Jobs
+) -> None:
+    fallback = NewIdentity.generate(2048).fallback
+    started = sessions.start(Session(Username.create("alice"), fallback))
+    jobs.run()
+
+    response = reading(reads, {"Cookie": started.partition(";")[0]})
+
+    assert response.status == 200
+    assert loads(response.body) == {"complete": True, "scores": {}}
+
+
+def test_reading_scores_let_go_of_since_the_session_was_found_is_401(
+    reads: TrustReads, builds: TrustBuilds, person: PersonKey, cookie: Mapping[str, str]
+) -> None:
+    builds.last_session_ended(person.person_id)
+
+    response = reading(reads, cookie)
+
+    assert response.status == 401
+    assert problem_type(response) == SESSION_REQUIRED
+    assert response.headers["Cache-Control"] == "no-store"
+
+
+def test_a_change_scores_again_without_reading_again_what_the_build_holds(
+    edits: TrustEdits,
+    reads: TrustReads,
+    truth: CasStore,
+    person: PersonKey,
+    cookie: Mapping[str, str],
+    recorder: Recorder,
+    jobs: Jobs,
+) -> None:
+    hold_list(truth, person, {BOB: True})
+    jobs.run()
+    read_at_sign_in = len(searched(recorder))
+
+    response = edits.trust(changing(CAROL, cookie))
+    changed = loads(reading(reads, cookie).body)
+    jobs.run()
+    built = loads(reading(reads, cookie).body)
+
+    assert response.status == 201
+    # The change reads the person's list, and the build only Carol's, newly reached.
+    assert searched(recorder)[read_at_sign_in:] == [
+        TrustList.drop_target(person.person_id).hex,
+        TrustList.drop_target(CAROL).hex,
+    ]
+    assert changed == {
+        "complete": False,
+        "scores": {str(BOB): {"score": 1, "step": 1}, str(CAROL): {"score": 1, "step": 1}},
+    }
+    assert built == {**changed, "complete": True}
+
+
+def test_a_change_that_changes_nothing_hands_the_build_nothing(
+    edits: TrustEdits, truth: CasStore, person: PersonKey, cookie: Mapping[str, str], jobs: Jobs
+) -> None:
+    hold_list(truth, person, {BOB: True})
+    jobs.run()
+
+    response = edits.trust(changing(BOB, cookie))
+
+    assert response.status == 204
+    assert jobs.waiting == []

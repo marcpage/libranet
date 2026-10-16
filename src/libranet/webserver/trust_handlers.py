@@ -1,7 +1,21 @@
-"""Changing the trust list of whoever is signed in, one entry at a time (HttpApi §11.7).
+"""Reading the trust scores of whoever is signed in, and changing their list (HttpApi §11.7).
+
+A page reads the scores the person's build holds, every identity's or one's,
+as far as the build has read, and whether it is complete (Phase 5 Step
+100)::
+
+    GET /data/trust
+    {"complete": false, "scores": {"sha256/…": {"score": 1, "step": 1}}}
+
+    GET /data/trust/{algorithm}/{hash}
+    {"id": "sha256/…", "score": 0.2, "step": 2, "complete": true}
+
+An identity not reached, the person among them, scores 0 at a ``step`` of
+``null``. A fallback that has not taken over reads its scores, though it
+cannot change its list.
 
 A page trusts or distrusts the identity a path names, or clears it, neither
-trusting nor distrusting it (Phase 5 Step 97)::
+trusting nor distrusting it, one entry at a time (Phase 5 Step 97)::
 
     PUT    /data/trust/{algorithm}/{hash}   {"trust": true}
     DELETE /data/trust/{algorithm}/{hash}
@@ -36,8 +50,9 @@ over ``403``, since it signs nothing.
 Changes are made one at a time, in the order they come, each over the version
 the one before it placed. What this node uploads is found by a search only
 once the validator has stored it, so the version each person's last change
-placed is remembered until a search of the drop finds it. Every answer is
-kept by no cache, since it says whom the person trusts.
+placed is remembered until a search of the drop finds it. Each version placed
+is handed to the person's build, which scores again (Trust Network §4.4).
+Every answer is kept by no cache, since it says whom the person trusts.
 """
 
 from __future__ import annotations
@@ -49,16 +64,29 @@ from typing import Final, Iterable
 from libranet.bundle.storing import store_object
 from libranet.cas.content_id import ContentId
 from libranet.identity.people import PersonKey
-from libranet.identity.trust import MIN_TRUST_LIST_BITS, HeldTrustList, TrustList, TrustVersion
+from libranet.identity.trust import (
+    MIN_TRUST_LIST_BITS,
+    HeldTrustList,
+    TrustList,
+    TrustScores,
+    TrustVersion,
+)
 from libranet.json_format import compact_json
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
+from libranet.problems import SESSION_REQUIRED
 from libranet.protocol.drop_requests import DropRequest
 from libranet.protocol.http_syntax import API_PREFIX
 from libranet.protocol.trust_requests import TrustRequest
 from libranet.webserver.costly_work import Turns
 from libranet.webserver.drop_handler import DropHandler
-from libranet.webserver.http_types import NOT_STORED, Request, Response, json_response
+from libranet.webserver.http_types import (
+    NOT_STORED,
+    Request,
+    Response,
+    json_response,
+    typed_response,
+)
 from libranet.webserver.request_refusals import (
     content_id_or_refusal,
     content_unavailable_response,
@@ -66,22 +94,77 @@ from libranet.webserver.request_refusals import (
     parsed_or_refusal,
 )
 from libranet.webserver.sessions import Sessions
+from libranet.webserver.trust_builds import TrustBuilds
 from libranet.webserver.trust_lists import TrustLists
 
 _LOGGER = getLogger(__name__)
 
-#: Where a page changes the trust list of whoever is signed in.
+#: Where a page reads the trust scores of whoever is signed in, and changes their list.
 TRUST_PATH: Final = API_PREFIX + "/trust"
 
-#: Where a page trusts, distrusts, or clears one identity on that list.
+#: Where a page reads the score of one identity, and trusts, distrusts, or clears it.
 TRUST_PATTERN: Final = rf"{TRUST_PATH}/(?P<algorithm>[^/]+)/(?P<hash>[^/]+)"
 
 # How long a version's nonce is searched for once it matches the bits it
 # must: not at all, so that a change is answered at once.
 _SEARCH_SECONDS: Final = 0.0
 
+# What reading the scores with no one signed in is refused for needing.
+_READING_NEEDS: Final = "Sign in to read your trust scores."
 
-class TrustEdits:
+
+class TrustReads:
+    """The endpoints reading the trust scores of the person ``sessions`` says is signed in.
+
+    The scores are those ``builds`` holds for them, as far as their build has
+    read. Any number of request threads may use them at once.
+    """
+
+    def __init__(self, builds: TrustBuilds, sessions: Sessions) -> None:
+        self._builds = builds
+        self._sessions = sessions
+
+    def scores(self, request: Request) -> Response:
+        """``GET /data/trust``: the score of every identity reached, and whether it is complete."""
+        scores = self._scores(request)
+        return _not_stored(
+            scores if isinstance(scores, Response) else json_response(scores.value())
+        )
+
+    def score(self, request: Request) -> Response:
+        """``GET /data/trust/{algorithm}/{hash}``: the score of the identity named."""
+        scores = self._scores(request)
+
+        if isinstance(scores, Response):
+            return _not_stored(scores)
+
+        identity = content_id_or_refusal(request, _LOGGER)
+
+        if isinstance(identity, Response):
+            return _not_stored(identity)
+
+        return _not_stored(json_response(scores.value_for(identity)))
+
+    def _scores(self, request: Request) -> TrustScores | Response:
+        """The scores of whoever ``request``'s session names; or the ``401`` refusing them."""
+        session = self._sessions.session_or_refusal(request, _READING_NEEDS)
+
+        if isinstance(session, Response):
+            return session
+
+        scores = self._builds.scores(session.key.person_id)
+
+        if scores is None:
+            # Their last session ended since it was looked up.
+            _LOGGER.debug("Refusing %s %s: no one is signed in now", request.method, request.path)
+            return typed_response(
+                request, SESSION_REQUIRED, HTTPStatus.UNAUTHORIZED, _READING_NEEDS
+            )
+
+        return scores
+
+
+class TrustEdits:  # pylint: disable=too-many-instance-attributes
     """The endpoints changing the trust list of the person ``sessions`` says is signed in.
 
     The list is read by ``lists``, and each version made a drop by
@@ -89,7 +172,9 @@ class TrustEdits:
     again in ``drops.uploads``. What was found at the list's drop and is not
     held is asked for with ``publish``, a client told to ask again after
     ``retry_after_seconds``, and what a newer version replaces is blocked
-    with it. Any number of request threads may use them at once.
+    with it. Each version placed is handed to the person's build in
+    ``builds``, if given, to score again. Any number of request threads may
+    use them at once.
 
     Raises:
         ValueError: ``retry_after_seconds`` is negative.
@@ -103,6 +188,7 @@ class TrustEdits:
         publish: Publish,
         *,
         retry_after_seconds: int,
+        builds: TrustBuilds | None = None,
     ) -> None:
         if retry_after_seconds < 0:
             raise ValueError(f"retry_after_seconds must not be negative, got {retry_after_seconds}")
@@ -112,6 +198,7 @@ class TrustEdits:
         self._sessions = sessions
         self._publish = publish
         self._retry_after_seconds = retry_after_seconds
+        self._builds = builds
         self._turns = Turns()
         # The version each person's last change placed, until a search of
         # their list's drop finds it. Used only in a turn.
@@ -201,6 +288,10 @@ class TrustEdits:
             self._block((newest.content_id,))
 
         self._placed[person.person_id] = TrustVersion(stored.content_id, person.person_id, changed)
+
+        if self._builds is not None:
+            self._builds.changed(person.person_id, changed.entries)
+
         _LOGGER.info(
             "Placed version %d of %s's trust list as %s",
             changed.version,

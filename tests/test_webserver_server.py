@@ -2251,6 +2251,43 @@ def test_a_signed_in_local_client_trusts_and_clears_an_identity(
     assert (cleared_answer["signer"], cleared_answer["version"]) == (person_id, 2)
 
 
+def test_a_signed_in_local_client_reads_the_scores_its_change_gives(
+    local_connection: HTTPConnection,
+) -> None:
+    page = _from_page(local_connection, "/movie/")
+    local_connection.request(
+        "POST",
+        "/data/users",
+        body=b'{"username": "alice", "password": "correct horse", '
+        b'"fallback_password": "battery staple", "key_bits": 2048, "seconds": 0}',
+        headers={"Content-Type": JSON_CONTENT_TYPE, **page},
+    )
+    made = local_connection.getresponse()
+    made.read()
+    cookie = {"Cookie": (made.getheader("Set-Cookie") or "").partition(";")[0]}
+    local_connection.request(
+        "PUT",
+        f"/data/trust/{CONTENT_ID}",
+        body=b'{"trust": false}',
+        headers={"Content-Type": JSON_CONTENT_TYPE, **page, **cookie},
+    )
+    local_connection.getresponse().read()
+
+    every, every_body = _get(local_connection, "/data/trust", headers={**page, **cookie})
+    one, one_body = _get(local_connection, f"/data/trust/{CONTENT_ID}", headers={**page, **cookie})
+
+    assert every.status == 200
+    assert every.getheader("Cache-Control") == "no-store"
+    assert loads(every_body)["scores"] == {str(CONTENT_ID): {"score": -1, "step": 1}}
+    assert one.status == 200
+    assert loads(one_body) == {
+        "id": str(CONTENT_ID),
+        "score": -1,
+        "step": 1,
+        "complete": loads(one_body)["complete"],
+    }
+
+
 @mark.parametrize(
     "path, method",
     [
@@ -2260,6 +2297,8 @@ def test_a_signed_in_local_client_trusts_and_clears_an_identity(
         ("/data/signed", "POST"),
         (f"/data/encrypted/{CONTENT_ID}", "GET"),
         (f"/data/encrypted/{CONTENT_ID}", "POST"),
+        ("/data/trust", "GET"),
+        (f"/data/trust/{CONTENT_ID}", "GET"),
         (f"/data/trust/{CONTENT_ID}", "PUT"),
         (f"/data/trust/{CONTENT_ID}", "DELETE"),
     ],

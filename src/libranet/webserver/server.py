@@ -143,7 +143,7 @@ from libranet.webserver.signature_guard import SignatureGuard
 from libranet.webserver.signed_handlers import SIGNED_PATH, SIGNED_PATTERN, SignedDrops
 from libranet.webserver.site_checks import SiteChecks
 from libranet.webserver.trust_builds import TrustBuilds
-from libranet.webserver.trust_handlers import TRUST_PATTERN, TrustEdits
+from libranet.webserver.trust_handlers import TRUST_PATH, TRUST_PATTERN, TrustEdits, TrustReads
 from libranet.webserver.trust_lists import TrustLists
 
 # Why a port is passed over for the next one to listen on: it is in use, or
@@ -375,7 +375,9 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
             sessions,
             publish,
             retry_after_seconds=retry_after_seconds,
+            builds=builds,
         )
+        trust_reads = TrustReads(builds, sessions)
 
         # The encrypted routes before the bundle route, whose pattern they also
         # fit.
@@ -388,6 +390,8 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
             ("POST", SIGNED_PATH, signed.make),
             ("GET", ENCRYPTED_PATTERN, encrypted.read),
             ("POST", ENCRYPTED_PATTERN, encrypted.read_by_password),
+            ("GET", TRUST_PATH, trust_reads.scores),
+            ("GET", TRUST_PATTERN, trust_reads.score),
             ("PUT", TRUST_PATTERN, trust.trust),
             ("DELETE", TRUST_PATTERN, trust.clear),
         ):
