@@ -15,6 +15,11 @@ key of the owner, and counts only if the owner signed it: anyone may place a
 version at the drop, and no one else's key is read. What was found, or is
 needed to check it, and is not held is named, not asked for, since whoever
 reads decides whether to wait for it.
+
+What is passed over because it is not a version the owner signed is logged
+at debug, as what a peer or a client sent: anyone may place it there. What
+this node holds that is not what its id names, or what is signed in a way
+this node cannot check, is a warning.
 """
 
 from __future__ import annotations
@@ -105,7 +110,13 @@ class SignedVersions(Generic[_Version]):
                 missing.append(content_id)
                 continue
 
-            except (BundleSignatureError, UnsupportedBundleError) as error:
+            except (BundleSignatureError, MalformedBundleError) as error:
+                # Only at debug, as anyone may place it, and a search lists
+                # whatever is nearest.
+                _LOGGER.debug("Passing over %s at %s's %s: %s", content_id, owner, self.kind, error)
+                continue
+
+            except UnsupportedBundleError as error:
                 _LOGGER.warning(
                     "Passing over %s at %s's %s: %s", content_id, owner, self.kind, error
                 )
@@ -117,13 +128,8 @@ class SignedVersions(Generic[_Version]):
                 )
                 continue
 
-            except MalformedBundleError as error:
-                # Only at debug, as a search lists whatever is nearest.
-                _LOGGER.debug("Passing over %s at %s's %s: %s", content_id, owner, self.kind, error)
-                continue
-
             if found.signer != owner:
-                _LOGGER.warning(
+                _LOGGER.debug(
                     "Passing over %s at %s's %s, as %s signed it",
                     content_id,
                     owner,
@@ -187,9 +193,7 @@ class SignedVersions(Generic[_Version]):
             found.verified(public_key)
 
         except BundleSignatureError as error:
-            _LOGGER.warning(
-                "Passing over %s, as its signature does not check: %s", content_id, error
-            )
+            _LOGGER.debug("Passing over %s, as its signature does not check: %s", content_id, error)
             return None
 
         named = f"The {self.kind} version in {content_id}"
@@ -198,7 +202,7 @@ class SignedVersions(Generic[_Version]):
             return self.parse(loads(found.contents), named=named)
 
         except (ValueError, RecursionError) as error:
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "Passing over %s, signed by %s at their %s, as it is no version of one: %s",
                 content_id,
                 found.signer,

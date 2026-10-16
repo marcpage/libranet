@@ -33,8 +33,7 @@ from typing import Any, Final, Mapping
 from libranet.cas.algorithms import UnsupportedAlgorithms
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
-from libranet.cas.errors import InvalidContentIdError
-from libranet.identity.versions import VERSION_FIELD, VERSIONS_FIELD, HeldVersions, Numbered
+from libranet.identity.versions import VERSION_FIELD, HeldVersions, Numbered
 from libranet.json_fields import integer_field
 
 _LOGGER = getLogger(__name__)
@@ -92,7 +91,6 @@ class TrustList(Numbered):
             raise ValueError(f'A trust list is an object with an "{_ENTRIES_FIELD}" object')
 
         version = integer_field(value, VERSION_FIELD)
-        replaced = value.get(VERSIONS_FIELD, [])
         unsupported = UnsupportedAlgorithms()
         said: dict[ContentId, bool] = {}
         # The ids one entry trusts and another distrusts, each spelling the id
@@ -102,7 +100,7 @@ class TrustList(Numbered):
         passed_over = 0
 
         for name, trusted in value[_ENTRIES_FIELD].items():
-            identity = _content_id(name, unsupported)
+            identity = cls.named_id(name, unsupported)
 
             if identity is None or not isinstance(trusted, bool):
                 passed_over += 1
@@ -110,16 +108,8 @@ class TrustList(Numbered):
             elif said.setdefault(identity, trusted) != trusted:
                 both.add(identity)
 
-        if not isinstance(replaced, list):
-            passed_over += 1
-            replaced = []
-
-        versions = tuple(
-            content_id
-            for content_id in (_content_id(name, unsupported) for name in replaced)
-            if content_id is not None
-        )
-        passed_over += len(both) + len(replaced) - len(versions)
+        versions, replaced_passed_over = cls.replaced_in(value, unsupported)
+        passed_over += len(both) + replaced_passed_over
 
         if passed_over:
             _LOGGER.warning(
@@ -365,16 +355,3 @@ def _reading_order(scored: tuple[ContentId, int]) -> tuple[int, str]:
     """Where an identity and its net count go among a step's: highest first, then by id (§4.2)."""
     identity, net = scored
     return -net, str(identity)
-
-
-def _content_id(name: object, unsupported: UnsupportedAlgorithms) -> ContentId | None:
-    """The id ``name`` is; ``None`` if none, and counted in ``unsupported`` if unknown here."""
-    if not isinstance(name, str):
-        return None
-
-    try:
-        return ContentId.parse_supported(name, unsupported)
-
-    except InvalidContentIdError:
-        # Not logged: counted, and logged once for the list.
-        return None

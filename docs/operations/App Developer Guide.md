@@ -1290,7 +1290,9 @@ follow the same rules as other pages do:
   `GET /data/signed/{id}` (§6.13), and pass over the rest, which are nearest
   the target but placed for something else.
 - **Pass over what is not the node's.** Count only content that checks,
-  whose `signer` is the node, and whose `contents` is shaped as above.
+  whose `signer` is the node, and whose `contents` is shaped as above. What
+  `versions` names need not be read: a name there that is no content id
+  does not make the version any less the node's.
 - **The newest is numbered highest**, and of two numbered as high, the one
   whose drop's id comes first. Only the node signs a version, so no one else
   can make one newer. There is no history to read back: the node blocks the

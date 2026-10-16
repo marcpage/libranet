@@ -12,14 +12,18 @@ Of the versions read that the owner signed, the newest is the one numbered
 highest, ties going to the drop whose id sorts first. Only the owner signs a
 version, so no one else can make one newer, and no clock is trusted. The
 newest replaces the rest, and the next version is made over it (Trust
-Network §3.3, §3.4).
+Network §3.3, §3.4). No reader needs the versions a version replaces, so a
+name in ``versions`` that is no id is passed over, and the rest of the
+version counts (Trust Network §3.1, HttpApi §11.8).
 """
 
 from __future__ import annotations
 from dataclasses import dataclass, replace
-from typing import Any, Final, Generic, Protocol, Self, TypeVar
+from typing import Any, Final, Generic, Mapping, Protocol, Self, TypeVar
 
+from libranet.cas.algorithms import UnsupportedAlgorithms
 from libranet.cas.content_id import ContentId
+from libranet.cas.errors import InvalidContentIdError
 
 #: The member of a version saying its number.
 VERSION_FIELD: Final = "version"
@@ -51,6 +55,41 @@ class Numbered:
     def __post_init__(self) -> None:
         if self.version < FIRST_VERSION:
             raise ValueError(f"version must be at least {FIRST_VERSION}, got {self.version}")
+
+    @staticmethod
+    def named_id(name: object, unsupported: UnsupportedAlgorithms) -> ContentId | None:
+        """The id ``name``, read from a version, is; ``None`` if it is none.
+
+        An id under an algorithm this node lacks is ``None`` too, and is
+        counted in ``unsupported``, which logs it once for the version.
+        """
+        if not isinstance(name, str):
+            return None
+
+        try:
+            return ContentId.parse_supported(name, unsupported)
+
+        except InvalidContentIdError:
+            # Not logged: counted, and logged once for the version.
+            return None
+
+    @classmethod
+    def replaced_in(
+        cls, value: Mapping[str, object], unsupported: UnsupportedAlgorithms
+    ) -> tuple[tuple[ContentId, ...], int]:
+        """The drops the version ``value`` names in ``versions``, and how many it passes over.
+
+        A name that is no id is passed over, as :meth:`named_id` reads it,
+        and so is ``versions`` itself, as one, if it is not a list.
+        """
+        replaced = value.get(VERSIONS_FIELD, [])
+
+        if not isinstance(replaced, list):
+            return (), 1
+
+        named = (cls.named_id(name, unsupported) for name in replaced)
+        versions = tuple(content_id for content_id in named if content_id is not None)
+        return versions, len(replaced) - len(versions)
 
     def numbered(self, value: dict[str, Any]) -> dict[str, Any]:
         """``value``, the rest of this version as JSON, with its number and what it replaces."""
