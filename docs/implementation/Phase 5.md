@@ -88,7 +88,7 @@ The conventions of [Phase 2](Phase%202.md) §3 and
 
 ---
 
-## Step 94 — How the Trust Network Works
+## Step 94 — How the Trust Network Works ✅
 
 **Issue:** #286. **Depends on:** Phase 4 Steps 79, 80, 92, and 93.
 
@@ -868,7 +868,7 @@ node and the shipped pages use.
 
 ---
 
-## Step 103 — Signing as a Node
+## Step 103 — Signing as a Node ✅
 
 **Issue:** #321, in part. **Depends on:** Phase 4 Step 80.
 
@@ -1266,7 +1266,7 @@ live run.
 
 ---
 
-## Step 107 — What a Node Knows of Its Peers
+## Step 107 — What a Node Knows of Its Peers ✅
 
 **Issue:** #323, in part. **Depends on:** Phase 2 Step 23.
 
