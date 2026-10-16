@@ -75,6 +75,7 @@ from libranet.webserver.bundle_edits import (
     BUNDLES_PATH,
     BundleEdit,
     BundleEditHandler,
+    BundleLimits,
     OwnUploads,
 )
 from libranet.webserver.bundle_paths import (
@@ -382,6 +383,7 @@ __all__ = [
     "BundleEdit",
     "BundleEditError",
     "BundleEditHandler",
+    "BundleLimits",
     "BundlePaths",
     "BundleReadHandler",
     "ByteRange",

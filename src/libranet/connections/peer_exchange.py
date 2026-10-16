@@ -83,7 +83,7 @@ from libranet.cas.layered import LayeredSource
 from libranet.cas.prefix import matching_bits
 from libranet.cas.store import CasStore
 from libranet.cas.verification import content_matches
-from libranet.config.models import LibranetConfig
+from libranet.config.models import LibranetConfig, StorageConfig
 from libranet.connections.endpoints import PeerAddress
 from libranet.connections.errors import ConnectionClosedError, PeerAuthenticationError
 from libranet.connections.peer_connection import PeerConnection
@@ -127,7 +127,53 @@ class Retrieval:
     retry_after_seconds: int | None = None
 
 
-class PeerExchange:  # pylint: disable=too-many-instance-attributes
+@dataclass(frozen=True)
+class _Signing:
+    """This node's ``identity``, which ``signer`` signs its messages as.
+
+    ``verifier`` checks what peers send against the public keys this node
+    holds.
+    """
+
+    identity: NodeIdentity
+    signer: MessageSigner
+    verifier: MessageVerifier
+
+    @classmethod
+    def of(
+        cls, identity: NodeIdentity, config: LibranetConfig, clock: Callable[[], float]
+    ) -> _Signing:
+        """How the node ``identity`` signs and checks messages, per ``config``."""
+        return cls(identity, MessageSigner(identity, clock), MessageVerifier.of(config, clock))
+
+
+@dataclass(frozen=True)
+class _LocalContent:
+    """What this node holds, and what it will not.
+
+    Content from peers is written to ``source_of_truth``, ``content`` is
+    read from to push, ``blocked`` names what is never pushed, and
+    ``search`` answers searches from ``content``.
+    """
+
+    source_of_truth: CasStore
+    content: LayeredSource
+    blocked: BlockedContent
+    search: LocalSearch
+
+    @classmethod
+    def of(cls, storage: StorageConfig) -> _LocalContent:
+        """The content a node holds, per its ``storage`` configuration."""
+        content = LayeredSource.open(storage)
+        return cls(
+            CasStore.source_of_truth(storage),
+            content,
+            BlockedContent.of(storage),
+            LocalSearch(content, storage.search_max_results),
+        )
+
+
+class PeerExchange:
     """Holds this node's side of every conversation with a peer.
 
     Shared by every connection: it keeps no state about any one peer.
@@ -142,23 +188,18 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
         *,
         clock: Callable[[], float] = time,
     ) -> None:
-        self._identity = identity
+        self._signing = _Signing.of(identity, config, clock)
         self._storage = config.storage
         self._peers = config.peers
         self._own_endpoints = config.network.own_endpoints()
         self._publish = publish
         self._logger = logger
-        self._signer = MessageSigner(identity, clock)
-        self._source_of_truth = CasStore.source_of_truth(config.storage)
-        self._content = LayeredSource.open(config.storage)
-        self._blocked = BlockedContent.of(config.storage)
-        self._search = LocalSearch(self._content, config.storage.search_max_results)
-        self._verifier = MessageVerifier.of(config, clock)
+        self._local = _LocalContent.of(config.storage)
 
     @property
     def node_id(self) -> ContentId:
         """This node's id."""
-        return self._identity.node_id
+        return self._signing.identity.node_id
 
     def open(self, endpoint: str) -> PeerSession:
         """Connect to ``endpoint`` and establish which node answers there (steps 1 and 2).
@@ -177,7 +218,7 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
         connection = PeerConnection.open(
             address.host,
             address.port,
-            self._signer,
+            self._signing.signer,
             self._logger,
             connect_timeout_seconds=self._peers.connect_timeout_seconds,
             request_timeout_seconds=self._peers.request_timeout_seconds,
@@ -194,7 +235,7 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
             connection.close()
             raise
 
-        return PeerSession(connection, endpoint, node_id, self._verifier)
+        return PeerSession(connection, endpoint, node_id, self._signing.verifier)
 
     def first_contact(self, session: PeerSession) -> None:
         """Steps 3 to 7: swap node lists, push what the peer seeks, ask for what this node seeks.
@@ -254,7 +295,7 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
         if not found:
             return []
 
-        found = found[: self._search.max_results]
+        found = found[: self._local.search.max_results]
         self._publish(
             EventType.SEARCH_ANSWERED,
             {
@@ -303,13 +344,15 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
         """The node id the peer on ``connection`` proves it holds the key for."""
         response = connection.request(
             "PUT",
-            data_path(self._identity.node_id),
+            data_path(self._signing.identity.node_id),
             _OCTET_STREAM_HEADERS,
-            self._identity.public_key,
+            self._signing.identity.public_key,
         ).result()
 
         try:
-            return self._verifier.verify_response(response.status, response.headers, response.body)
+            return self._signing.verifier.verify_response(
+                response.status, response.headers, response.body
+            )
 
         except UnknownKeyError as error:
             # Not logged: a peer's key is not held until it is fetched, below.
@@ -324,7 +367,7 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
         self._hold_public_key(node_id, response, endpoint)
 
         try:
-            signer = self._verifier.verify_response(
+            signer = self._signing.verifier.verify_response(
                 response.status, response.headers, response.body
             )
 
@@ -363,7 +406,7 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
                 f"{endpoint} did not send its public key {node_id}: {error}"
             ) from error
 
-        self._source_of_truth.write(node_id, response.body)
+        self._local.source_of_truth.write(node_id, response.body)
         self._publish(
             EventType.DATA_STORED,
             {**node_id.fields(), "node_id": str(node_id), "size": len(response.body)},
@@ -385,7 +428,7 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
         except OSError as error:
             self._logger.warning("Cannot read the node list, so only this node is named: %s", error)
 
-        own = {endpoint: str(self._identity.node_id) for endpoint in self._own_endpoints}
+        own = {endpoint: str(self._signing.identity.node_id) for endpoint in self._own_endpoints}
         return node_list_body(own)
 
     def _receive_node_list(self, session: PeerSession, response: PeerResponse) -> None:
@@ -398,7 +441,7 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
         others = {
             endpoint: node_id
             for endpoint, node_id in nodes.items()
-            if node_id != self._identity.node_id
+            if node_id != self._signing.identity.node_id
         }
         received = NodeListSender(session.node_id, session.peer_ip or "").received(others)
 
@@ -429,7 +472,7 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
         enough_bits = min(self._peers.search_push_min_bits, len(prefix) * BITS_PER_HEX_DIGIT)
         return [
             content_id
-            for content_id in self._search.search(prefix)
+            for content_id in self._local.search.search(prefix)
             if matching_bits(prefix, content_id.hash) >= enough_bits
         ]
 
@@ -485,12 +528,12 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
         held: list[tuple[ContentId, bytes]] = []
 
         for content_id in content_ids:
-            if self._blocked.blocks(content_id):
+            if self._local.blocked.blocks(content_id):
                 self._logger.debug("Not pushing %s, which this node has blocked", content_id)
                 continue
 
             try:
-                held.append((content_id, self._content.read(content_id)))
+                held.append((content_id, self._local.content.read(content_id)))
 
             except ContentNotFoundError:
                 # Not logged: only what is held is sent.
@@ -508,7 +551,9 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
     def _ask_for_sought(self, session: PeerSession) -> None:
         """Step 7: ask the peer for everything this node seeks and does not hold yet."""
         sought = [
-            content_id for content_id in self._own_sought() if not self._content.exists(content_id)
+            content_id
+            for content_id in self._own_sought()
+            if not self._local.content.exists(content_id)
         ]
 
         for batch in self._batches(sought):

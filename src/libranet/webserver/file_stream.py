@@ -141,6 +141,59 @@ class _Piece:
 
 
 @dataclass(frozen=True)
+class _Span:
+    """The pieces a response reads, whether they are the ``whole`` file, and its length.
+
+    ``length_bytes`` is how many bytes the response sends, if that is known
+    before they are read.
+    """
+
+    pieces: tuple[_Piece, ...]
+    length_bytes: int | None
+    whole: bool
+
+    @classmethod
+    def of(cls, entry: FileBundle, start_bytes: int, stop_bytes: int | None) -> _Span:
+        """The span of the file ``entry`` from ``start_bytes`` up to ``stop_bytes``.
+
+        The whole file, unless they are given.
+
+        Raises:
+            MalformedBundleError: a part is not a CAS path.
+            UnsupportedBundleError: a part uses a feature this node lacks.
+            ValueError: the span does not lie within the file, or does not
+                start at its start and the file records no part sizes.
+        """
+        paths = tuple(PartPath.parse(part) for part in entry.parts)
+        sizes_bytes = entry.part_sizes_bytes
+
+        if sizes_bytes is None:
+            if start_bytes != 0 or stop_bytes is not None:
+                raise ValueError(
+                    "A span of a file is found from its part sizes, which this one does not "
+                    f"record, so it is read whole, not from {start_bytes} to {stop_bytes}"
+                )
+
+            return cls(tuple(_Piece(path, None) for path in paths), entry.metadata.size_bytes, True)
+
+        file_bytes = sum(sizes_bytes)
+        stop = file_bytes if stop_bytes is None else stop_bytes
+
+        if not 0 <= start_bytes <= stop <= file_bytes:
+            raise ValueError(
+                f"A span must lie within the file's {file_bytes} bytes, "
+                f"got {start_bytes} up to {stop}"
+            )
+
+        whole = start_bytes == 0 and stop == file_bytes
+        return cls(
+            _pieces_within(paths, sizes_bytes, start_bytes, stop, whole),
+            stop - start_bytes,
+            whole,
+        )
+
+
+@dataclass(frozen=True)
 class PartReader:
     """Where the parts of application files are read from, and how one not held is waited for.
 
@@ -201,7 +254,7 @@ class PartReader:
         return self.blocked is not None and self.blocked.blocks(content_id)
 
 
-class FileStream:  # pylint: disable=too-many-instance-attributes
+class FileStream:
     """One response's read of a file, or of a span of it, from its parts, a part at a time.
 
     :meth:`begin` reads the first part the response sends, waiting for it if
@@ -228,36 +281,9 @@ class FileStream:  # pylint: disable=too-many-instance-attributes
         start_bytes: int = 0,
         stop_bytes: int | None = None,
     ) -> None:
-        paths = tuple(PartPath.parse(part) for part in entry.parts)
-        sizes_bytes = entry.part_sizes_bytes
-
-        if sizes_bytes is None:
-            if start_bytes != 0 or stop_bytes is not None:
-                raise ValueError(
-                    "A span of a file is found from its part sizes, which this one does not "
-                    f"record, so it is read whole, not from {start_bytes} to {stop_bytes}"
-                )
-
-            self._pieces = tuple(_Piece(path, None) for path in paths)
-            self._length_bytes = entry.metadata.size_bytes
-            whole = True
-
-        else:
-            file_bytes = sum(sizes_bytes)
-            stop = file_bytes if stop_bytes is None else stop_bytes
-
-            if not 0 <= start_bytes <= stop <= file_bytes:
-                raise ValueError(
-                    f"A span must lie within the file's {file_bytes} bytes, "
-                    f"got {start_bytes} up to {stop}"
-                )
-
-            whole = start_bytes == 0 and stop == file_bytes
-            self._pieces = _span(paths, sizes_bytes, start_bytes, stop, whole)
-            self._length_bytes = stop - start_bytes
-
+        self._span = _Span.of(entry, start_bytes, stop_bytes)
         self._reader = reader
-        self._check = WholeFileCheck(entry.metadata) if whole else None
+        self._check = WholeFileCheck(entry.metadata) if self._span.whole else None
         self._wait = ContentWait(
             reader.publish, reader.ask_again_seconds, reader.poll_interval_seconds
         )
@@ -267,13 +293,13 @@ class FileStream:  # pylint: disable=too-many-instance-attributes
         self._position = 0
         self._begun: bytes | None = None
 
-        if self._check is not None and not self._pieces:
+        if self._check is not None and not self._span.pieces:
             self._check.finish()
 
     @property
     def length_bytes(self) -> int | None:
         """How many bytes the response sends, if that is known before they are read."""
-        return self._length_bytes
+        return self._span.length_bytes
 
     def begin(self, deadline: float) -> bool:
         """Read the first part the response sends, waiting for it until ``deadline``.
@@ -292,7 +318,7 @@ class FileStream:  # pylint: disable=too-many-instance-attributes
                 any node could have stored.
             BlockedContentError: this node has blocked the part.
         """
-        if self._begun is not None or self._position >= len(self._pieces):
+        if self._begun is not None or self._position >= len(self._span.pieces):
             return True
 
         sent = self._next(deadline)
@@ -317,8 +343,8 @@ class FileStream:  # pylint: disable=too-many-instance-attributes
             begun, self._begun = self._begun, None
             yield begun
 
-        while self._position < len(self._pieces):
-            piece = self._pieces[self._position]
+        while self._position < len(self._span.pieces):
+            piece = self._span.pieces[self._position]
 
             try:
                 sent = self._next(monotonic() + self._reader.wait_seconds)
@@ -347,7 +373,7 @@ class FileStream:  # pylint: disable=too-many-instance-attributes
         Raises:
             As :meth:`begin` does.
         """
-        piece = self._pieces[self._position]
+        piece = self._span.pieces[self._position]
 
         if self._reader.blocks(piece.path.content_id):
             raise BlockedContentError(piece.path.content_id)
@@ -369,7 +395,7 @@ class FileStream:  # pylint: disable=too-many-instance-attributes
         if self._check is not None:
             self._check.update(part)
 
-            if self._position >= len(self._pieces):
+            if self._position >= len(self._span.pieces):
                 self._check.finish()
 
         return piece.sent(part)
@@ -381,10 +407,10 @@ class FileStream:  # pylint: disable=too-many-instance-attributes
         asked of the network if it is not held, unless it is blocked. A part
         asked for less than ``ask_again_seconds`` ago is not asked for again.
         """
-        end = min(self._position + self._reader.read_ahead_parts + 1, len(self._pieces))
+        end = min(self._position + self._reader.read_ahead_parts + 1, len(self._span.pieces))
 
         for index in range(self._position, end):
-            content_id = self._pieces[index].path.content_id
+            content_id = self._span.pieces[index].path.content_id
 
             if index >= self._requested_through:
                 self._reader.publish(
@@ -397,7 +423,7 @@ class FileStream:  # pylint: disable=too-many-instance-attributes
         self._requested_through = max(self._requested_through, end)
 
 
-def _span(
+def _pieces_within(
     paths: Sequence[PartPath],
     sizes_bytes: Sequence[int],
     start_bytes: int,

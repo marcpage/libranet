@@ -30,7 +30,25 @@ class PeerRequest:
     headers: Mapping[str, str] = field(default_factory=dict)
 
 
-class PeerSession:  # pylint: disable=too-many-instance-attributes
+class _Pushed:
+    """Content pushed to a peer, noted from threads of their own."""
+
+    def __init__(self) -> None:
+        self._content_ids: set[ContentId] = set()
+        self._lock = Lock()
+
+    def add(self, content_id: ContentId) -> None:
+        """Note that ``content_id`` was pushed."""
+        with self._lock:
+            self._content_ids.add(content_id)
+
+    def snapshot(self) -> frozenset[ContentId]:
+        """The content pushed so far."""
+        with self._lock:
+            return frozenset(self._content_ids)
+
+
+class PeerSession:
     """A connection to the node ``node_id``, reached at ``endpoint``.
 
     Takes ownership of ``connection``. ``verifier`` checks every response
@@ -52,8 +70,7 @@ class PeerSession:  # pylint: disable=too-many-instance-attributes
         # Content pushed to the peer on this connection, so a seek list that
         # still names it (it is not re-derived at once) does not get it again.
         # Pushes, hand-offs, and refreshes note it from threads of their own.
-        self._pushed: set[ContentId] = set()
-        self._pushed_lock = Lock()
+        self._pushed = _Pushed()
         # The search prefixes the peer's seek list named when last read, each
         # answered once while it is named (HttpApi §10.7.2, Phase 4 Step 93).
         self._answered: frozenset[str] = frozenset()
@@ -81,8 +98,7 @@ class PeerSession:  # pylint: disable=too-many-instance-attributes
     @property
     def pushed(self) -> frozenset[ContentId]:
         """The content pushed to the peer on this connection so far."""
-        with self._pushed_lock:
-            return frozenset(self._pushed)
+        return self._pushed.snapshot()
 
     @property
     def closed_locally(self) -> bool:
@@ -109,8 +125,7 @@ class PeerSession:  # pylint: disable=too-many-instance-attributes
 
     def note_pushed(self, content_id: ContentId) -> None:
         """Note that ``content_id`` was pushed to the peer on this connection."""
-        with self._pushed_lock:
-            self._pushed.add(content_id)
+        self._pushed.add(content_id)
 
     def answering(self, prefixes: Sequence[str]) -> list[str]:
         """Those of ``prefixes``, the searches the peer's seek list names, not yet answered.
