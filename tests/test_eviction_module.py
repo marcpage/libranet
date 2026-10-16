@@ -21,6 +21,7 @@ from libranet.messaging.events import ConnectionDirection, EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.supervision.registry import default_module_specs
+from libranet.supervision.specs import ModuleSpec
 
 from tests.helpers import with_node_key
 
@@ -1509,7 +1510,6 @@ def test_factory_builds_an_eviction_module(config: LibranetConfig, queues: Modul
 
 
 def test_the_node_runs_the_eviction_module() -> None:
-    factories = {spec.name: spec.factory for spec in default_module_specs()}
+    spec = ModuleSpec(ModuleName.EVICTION, EvictionModule.of, EvictionModule.subscriptions)
 
-    # pylint: disable-next=comparison-with-callable
-    assert factories[ModuleName.EVICTION] == EvictionModule.of
+    assert spec in default_module_specs()

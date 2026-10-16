@@ -55,6 +55,7 @@ from libranet.protocol.backup_requests import (
     RestoreRequest,
 )
 from libranet.supervision.registry import default_module_specs
+from libranet.supervision.specs import ModuleSpec
 from libranet.webserver.backup_state import BackupReport
 
 from tests.helpers import encrypted_part, published, with_node_key
@@ -761,9 +762,9 @@ def test_the_node_id_is_only_known_once_started(
 def test_the_supervisor_runs_the_backup_module(
     config: LibranetConfig, queues: ModuleQueues
 ) -> None:
-    factories = {spec.name: spec.factory for spec in default_module_specs()}
+    spec = ModuleSpec(ModuleName.BACKUP, BackupModule.of, BackupModule.subscriptions)
 
-    assert factories[ModuleName.BACKUP] == BackupModule.of
+    assert spec in default_module_specs()
     assert isinstance(BackupModule.of(ModuleName.BACKUP, config, queues), BackupModule)
 
 

@@ -19,6 +19,7 @@ from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.supervision.registry import default_module_specs
+from libranet.supervision.specs import ModuleSpec
 from tests.helpers import published
 
 INTERVAL = 5
@@ -276,7 +277,6 @@ def test_factory_asks_at_most_once_per_retry_after_period(
 
 
 def test_the_node_runs_the_fetcher() -> None:
-    factories = {spec.name: spec.factory for spec in default_module_specs()}
+    spec = ModuleSpec(ModuleName.FETCHER, FetcherModule.of, FetcherModule.subscriptions)
 
-    # pylint: disable-next=comparison-with-callable
-    assert factories[ModuleName.FETCHER] == FetcherModule.of
+    assert spec in default_module_specs()
