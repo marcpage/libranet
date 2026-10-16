@@ -193,12 +193,14 @@ replaces. A list is public, including distrust, since others read it for
 their scores to reach through it.
 
 - **Status:** in use, placed by the node when a page asks, since
-  [Phase 5](../implementation/Phase%205.md) Step 97. No shipped application
-  asks yet, and nothing scores the lists yet (Steps 99 to 101).
+  [Phase 5](../implementation/Phase%205.md) Step 97. The directory
+  application asks (Step 101).
 - **Placed by** the node, when the person signed in trusts, distrusts, or
   clears an identity, with `PUT` or `DELETE /data/trust/{id}`. A node may
   keep a list of its own, signed by its own key (Bundle Specification §5),
-  though nothing places one yet.
+  though nothing places one yet. The node reads the lists to build each
+  person's scores (Steps 99 and 100), and the directory application reads
+  a person's to show it on their page (Step 105).
 - **Signed** by the list's owner. **Not encrypted.**
 - **Bits:** placed matching at least 16, with no search for a nonce past
   that.

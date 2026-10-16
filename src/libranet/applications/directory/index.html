@@ -105,11 +105,16 @@
   #arrange[hidden] { display: none; }
   #trust-text { margin: 0 0 0.75rem; }
   select { font: inherit; padding: 0.25rem 0.4rem; border: 1px solid var(--border); border-radius: 4px; background: var(--background); color: var(--text); }
+
+  /* One person shown alone, and whom their trust list names. */
+  .one, .named { list-style: none; margin: 0; padding: 0; }
+  .unlisted { color: var(--muted); font-size: 0.93rem; margin-left: 0.5rem; }
 </style>
 </head>
 <body>
 <main>
   <h1>User directory</h1>
+  <p id="everyone" hidden><a href="/directory/">Everyone in the directory</a></p>
   <ul id="status"><li class="note">Reading the directory&hellip;</li></ul>
   <noscript><p class="note">Reading the directory needs JavaScript.</p></noscript>
 
@@ -151,6 +156,17 @@
     </div>
     <p id="trust-text" class="note" hidden></p>
     <div id="people"><span class="note">Asking the node&hellip;</span></div>
+  </section>
+
+  <section id="theirs" hidden>
+    <h2>Their trust list</h2>
+    <p class="note">
+      Whom they trust and distrust, by the newest version of their list this
+      node holds. Every trust list is public. Those the directory lists are
+      people, named and linked to their pages; anyone else is shown by id,
+      since nothing says whether it is a person or a node.
+    </p>
+    <div id="theirs-list"></div>
   </section>
 
   <section id="mine" hidden>
@@ -208,6 +224,8 @@
     builds from your list, the lists of those you trust, and so on onward:
     &#x1F7E2; above 0, trusted; &#x1F7E1; 0, neither; &#x1F534; below 0,
     distrusted; and &#x26AA; where there are no scores to show.
+    A link to <code>/directory/?id=</code> and a person's id shows them alone,
+    with whom their trust list names.
   </footer>
 </main>
 <script>
@@ -282,6 +300,16 @@ const UNKNOWN = "\u{26AA}";
 // How long the page waits to read scores still being built again.
 const SCORES_AGAIN_SECONDS = 2;
 
+// Whom each person trusts and distrusts is kept at the drop "trust:{id}", each
+// version signed by them, and placed by the node matching at least this many
+// bits (Trust Network 3.2).
+const TRUST_PREFIX = "trust:";
+const TRUST_LIST_MINIMUM_BITS = 16;
+
+// An id a trust list names, in any case (HttpApi 5.4), which the node reads
+// lower-cased (Trust Network 3.1).
+const NAMED_ID = /^sha256\/[0-9a-f]{64}$/i;
+
 function byId(id) {
   return document.getElementById(id);
 }
@@ -318,6 +346,15 @@ const status = {
 // string, as one path segment.
 function dropPath(target) {
   return `/data/drop/${encodeURIComponent(target)}`;
+}
+
+// A link showing `content` to the page of the person `id` names, which shows
+// them alone, as any page links a person (App Developer Guide 6.12).
+function personLink(id, content) {
+  const link = document.createElement("a");
+  link.href = `/directory/?id=${encodeURIComponent(id)}`;
+  link.append(content);
+  return link;
 }
 
 function sleep(seconds) {
@@ -762,6 +799,8 @@ async function isLocal() {
 // id, and whether they are complete, or null and why there are none; how the
 // list is sorted, and whether those distrusted are hidden; whose trust is
 // shown in words, tapped; and what changing each person's trust last said.
+// And the one person a link names, shown alone, or null; and what their trust
+// list says, once it is read.
 const view = {
   everyone: new Set(),
   listed: false,
@@ -775,6 +814,8 @@ const view = {
   hideDistrusted: false,
   opened: new Set(),
   changing: new Map(),
+  one: null,
+  theirs: null,
 };
 let renderQueued = false;
 
@@ -1040,7 +1081,7 @@ function showTrust() {
   const said = byId("trust-text");
   said.textContent = lines.join(" ");
   said.hidden = false;
-  byId("arrange").hidden = view.scores === null;
+  byId("arrange").hidden = view.scores === null || view.one !== null;
   render();
 }
 
@@ -1086,17 +1127,17 @@ function compareTrust(one, other) {
 
 function itemOf(entry) {
   const item = document.createElement("li");
-  const first = make("div", entry.first, "first");
+  const first = make("div", "", "first");
+  const name = entry.first || make("code", entry.id, "id");
   // Whoever is signed in is not scored, so they are shown no mark.
   const others = entry.id !== view.you;
 
   if (others) {
-    first.prepend(markFor(entry));
+    first.append(markFor(entry));
   }
 
-  if (!entry.first) {
-    first.append(make("code", entry.id, "id"));
-  }
+  // Each person listed links to their page, where they are shown alone.
+  first.append(view.one === null ? personLink(entry.id, name) : name);
 
   if (entry.id === view.you) {
     first.append(make("span", "you", "you"));
@@ -1147,10 +1188,15 @@ function itemOf(entry) {
   return item;
 }
 
-// Show everyone listed whose details hold every word searched for, but those
-// distrusted if they are hidden, in the order asked for, once the directory
-// is read.
+// Show the one person a link names; or everyone listed whose details hold
+// every word searched for, but those distrusted if they are hidden, in the
+// order asked for, once the directory is read.
 function render() {
+  if (view.one !== null) {
+    renderOne();
+    return;
+  }
+
   if (!view.listed) {
     return;
   }
@@ -1185,6 +1231,96 @@ function render() {
   const list = document.createElement("ol");
   entries.forEach((entry) => list.append(itemOf(entry)));
   byId("people").replaceChildren(list);
+}
+
+// Show the one person the link names, and whom their trust list names.
+function renderOne() {
+  const one = document.createElement("ul");
+  one.className = "one";
+  one.append(itemOf(entryOf(view.one)));
+  byId("people").replaceChildren(one);
+  byId("theirs-list").replaceChildren(...theirsShown());
+}
+
+// What the trust list of the person shown says, once it is read: whom it
+// trusts, and whom it distrusts, each by name, and then by id.
+function theirsShown() {
+  const theirs = view.theirs;
+
+  if (theirs === null) {
+    return [make("p", "Reading their trust list…", "note")];
+  }
+
+  if (theirs.error) {
+    return [make("p", theirs.error, "error")];
+  }
+
+  const shown = [];
+
+  if (theirs.missing > 0) {
+    shown.push(make("p", "Some versions of their list found are not held here yet, and one may be newer. The node asked its peers for them, and they are read when this page is opened again.", "note"));
+  }
+
+  if (theirs.entries === null) {
+    shown.push(make("p", "No version of their trust list is held here.", "note"));
+    return shown;
+  }
+
+  if (theirs.entries.size === 0) {
+    shown.push(make("p", "Their trust list names no one.", "note"));
+  }
+
+  for (const [title, trusted] of [["Trusted", true], ["Distrusted", false]]) {
+    const entries = [...theirs.entries]
+      .filter(([, value]) => value === trusted)
+      .map(([id]) => entryOf(id))
+      .sort(compareEntries);
+
+    if (entries.length > 0) {
+      const list = make("ul", "", "named");
+      entries.forEach((entry) => list.append(namedItem(entry)));
+      shown.push(make("h3", `${title}: ${entries.length}`), list);
+    }
+  }
+
+  return shown;
+}
+
+// An identity a trust list names: its mark, and, if the directory lists it,
+// so that it is a person, their name linked to their page; if not, its id
+// alone, since nothing says whether it is a person or a node (App Developer
+// Guide 6.18).
+function namedItem(entry) {
+  const item = document.createElement("li");
+  const others = entry.id !== view.you;
+
+  if (others) {
+    item.append(markFor(entry));
+  }
+
+  if (view.everyone.has(entry.id)) {
+    item.append(personLink(entry.id, entry.first || make("code", entry.id, "id")));
+  } else {
+    item.append(make("code", entry.id, "id"));
+
+    if (view.listed) {
+      item.append(make("span", "not in the directory", "unlisted"));
+    }
+  }
+
+  if (!others) {
+    item.append(make("span", "you", "you"));
+  }
+
+  if (entry.compromised) {
+    item.append(make("span", "compromised", "flag"));
+  }
+
+  if (others && view.opened.has(entry.id)) {
+    item.append(make("span", trustText(entry.trust), "score"));
+  }
+
+  return item;
 }
 
 // Render once the browser next paints, however many ask before then.
@@ -1252,6 +1388,16 @@ async function load(you, local, extra) {
   }
 
   return { everyone, listed: await reconcile(merge, everyone, local) };
+}
+
+// Everyone the directory lists, read as load reads it, but making and
+// blocking nothing: a page showing one person changes no directory.
+async function directoryPeople() {
+  const read = new Map();
+  await searched(read);
+  const merge = new Merge(directoriesIn(read));
+  status.say(`Read ${plural(merge.directories.length, "directory", "directories")} at the drop.`);
+  return merge.everyone([]);
 }
 
 // Whether `id` names a person's public key the node holds; null if the node
@@ -1453,12 +1599,12 @@ function judged(person, versions) {
   return { newest: newestOf([...own, ...notices]), fallback, compromised, first: firsts.length > 0 };
 }
 
-// What `person` says of themselves, read back through each version's history
-// as far as this node holds it: the newest version, their fallback, whether
-// they are compromised, whether every version named was read back to a first,
-// and how many found at their drop are not held yet.
-async function readDetails(person) {
-  const search = await call("GET", dropPath(DETAILS_PREFIX + person));
+// The ids a search of the drop `target` finds (HttpApi 9.7) that share at
+// least `bits` leading bits with its hash, as each version placed there does.
+// Whatever else is nearest is something else, and is not read. `what` names
+// what is searched for, should the search fail.
+async function dropResults(target, bits, what) {
+  const search = await call("GET", dropPath(target));
   const answered =
     search.ok &&
     isObject(search.value) &&
@@ -1466,15 +1612,21 @@ async function readDetails(person) {
     Array.isArray(search.value.results);
 
   if (!answered) {
-    throw new Error(`What ${person} says could not be searched for: ${refusal(search)}`);
+    throw new Error(`${what} could not be searched for: ${refusal(search)}`);
   }
 
-  // Each version is a drop sharing at least DROP_MINIMUM_BITS with the target
-  // hash. Whatever else is nearest is something else, and is not read.
-  const target = search.value.target;
-  const ids = search.value.results.filter(
-    (id) => CONTENT_ID.test(id) && matchingBits(id.slice(HASH_START), target) >= DROP_MINIMUM_BITS,
+  const hash = search.value.target;
+  return search.value.results.filter(
+    (id) => CONTENT_ID.test(id) && matchingBits(id.slice(HASH_START), hash) >= bits,
   );
+}
+
+// What `person` says of themselves, read back through each version's history
+// as far as this node holds it: the newest version, their fallback, whether
+// they are compromised, whether every version named was read back to a first,
+// and how many found at their drop are not held yet.
+async function readDetails(person) {
+  const ids = await dropResults(DETAILS_PREFIX + person, DROP_MINIMUM_BITS, `What ${person} says`);
   const found = new Set(ids);
   // Each id read: its version, or null if it is not held or is none.
   const read = new Map();
@@ -1512,6 +1664,87 @@ async function readDetails(person) {
   const versions = [...read.values()].filter((version) => version !== null);
   const { newest, fallback, compromised, first } = judged(person, versions);
   return { newest, fallback, compromised, complete: first && unbroken, missing };
+}
+
+// The version of a trust list that `signed`, checked at `id`, holds; null if
+// it is not shaped as one is (Trust Network 3.1).
+function listVersionOf(id, signed) {
+  if (typeof signed.contents !== "string") {
+    return null;
+  }
+
+  let value;
+
+  try {
+    value = JSON.parse(signed.contents);
+  } catch (error) {
+    return null;
+  }
+
+  const isVersion =
+    isObject(value) && isObject(value.entries) && Number.isSafeInteger(value.version) && value.version >= 1;
+  return isVersion ? { id, entries: value.entries, version: value.version } : null;
+}
+
+// Whom the entries of the list of `owner` trust (true) and distrust (false), by
+// id, as the node reads them (Trust Network 3.1): passing over a name that is
+// no id, a value neither true nor false, an id named both ways spelled in
+// different cases, and the owner.
+function trustedBy(entries, owner) {
+  const said = new Map();
+  const both = new Set();
+  let passed = 0;
+
+  for (const [name, trusted] of Object.entries(entries)) {
+    if (!NAMED_ID.test(name) || typeof trusted !== "boolean") {
+      passed += 1;
+      continue;
+    }
+
+    const id = name.toLowerCase();
+
+    if (said.has(id) && said.get(id) !== trusted) {
+      both.add(id);
+    }
+
+    said.set(id, trusted);
+  }
+
+  if (passed + both.size > 0) {
+    console.warn(`Passing over ${passed + both.size} of what the trust list of ${owner} names: names that are no id, entries neither true nor false, and ids both trusted and distrusted.`);
+  }
+
+  both.forEach((id) => said.delete(id));
+  said.delete(owner);
+  return said;
+}
+
+// The newest version of the trust list of `person` this node holds (Trust
+// Network 3.3): whom it trusts and distrusts, or null if none is found; and
+// how many found at its drop are not held yet. The node blocks the versions
+// the newest replaces, so there is no history to read back.
+async function readTrustList(person) {
+  const ids = await dropResults(TRUST_PREFIX + person, TRUST_LIST_MINIMUM_BITS, `The trust list of ${person}`);
+  const results = await Promise.all(ids.map(checked));
+  const versions = [];
+  let missing = 0;
+
+  ids.forEach((id, index) => {
+    const result = results[index];
+    // Only theirs counts: anyone may place a version of their own at the drop.
+    const version = result.signed && result.signed.signer === person ? listVersionOf(id, result.signed) : null;
+
+    if (result.missing) {
+      missing += 1;
+    } else if (version === null) {
+      console.warn(`Passing over ${id} for the trust list of ${person}: it is no version of theirs that checks.`);
+    } else {
+      versions.push(version);
+    }
+  });
+
+  const newest = newestOf(versions);
+  return { entries: newest === null ? null : trustedBy(newest.entries, person), missing };
 }
 
 // Read what each of `people` says of themselves, showing it as it comes.
@@ -2078,6 +2311,47 @@ function offerCompromise(session) {
   }
 }
 
+// Show the one person a link names, as `?id={id}` (App Developer Guide 6.12):
+// what they say of themselves, the trust in them of whoever is signed in, and
+// whom their own trust list names, those the directory lists by name, linked
+// to their pages.
+async function showOne(person) {
+  view.one = person;
+  byId("search").hidden = true;
+  byId("count").textContent = "One person";
+  byId("everyone").hidden = false;
+  byId("theirs").hidden = false;
+  render();
+  await Promise.all([
+    readDetails(person).then((details) => {
+      view.details.set(person, details);
+      render();
+    }),
+    readTrustList(person).then(
+      (theirs) => {
+        view.theirs = theirs;
+        render();
+      },
+      (error) => {
+        if (error instanceof Unreachable) {
+          throw error;
+        }
+
+        view.theirs = { error: error.message };
+        render();
+      },
+    ),
+    directoryPeople().then((everyone) => {
+      view.everyone = everyone;
+      view.listed = true;
+      render();
+    }),
+  ]);
+  // Only people are read at "user:{id}", and those the directory lists are.
+  const named = view.theirs.entries ? [...view.theirs.entries.keys()] : [];
+  await loadDetails(named.filter((id) => view.everyone.has(id) && !view.details.has(id)));
+}
+
 async function start() {
   byId("search").addEventListener("input", (event) => {
     view.query = event.target.value;
@@ -2113,6 +2387,18 @@ async function start() {
       ? "No trust is shown: sign in to see whom you trust."
       : "No trust is shown: only a browser on the node's own machine, signed in, is shown it.";
     showTrust();
+  }
+
+  // A link naming one person shows them alone, and offers nothing else.
+  const one = new URLSearchParams(location.search).get("id");
+
+  if (one !== null && CONTENT_ID.test(one)) {
+    await showOne(one);
+    return;
+  }
+
+  if (one !== null) {
+    status.say(`The link names ${one}, which is not a person's id, so everyone is shown.`, "error");
   }
 
   // Whoever is signed in is offered what they can do before the directory

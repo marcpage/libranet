@@ -839,6 +839,16 @@ The directory application checks that the id names a public key the node
 holds, and adds them only when the person at the browser clicks **Add to
 the directory**, since a link from anywhere can name anyone.
 
+To link a person, link to `/directory/?id={id}`, as the directory does each
+person it lists. The directory application shows them alone: what they say
+of themselves, and whether they are compromised (§6.14); their trust, by the
+scores of whoever is signed in, with **Trust**, **Distrust**, and **Clear**
+(§6.17); a link to mail them (§6.16); and whom their own trust list trusts
+and distrusts, each with its trust. It reads the directory only to know which
+of those the list names are people, named and linked to their own pages,
+and writes nothing there. Link only an id you know is a person's, by where
+you found it (§6.18).
+
 The directory application shows each person's trust, by the scores of
 whoever is signed in (§6.17): 🟢 for a score above 0, 🟡 for 0, and 🔴
 below, each saying the trust in words, with its score and step, on hover
@@ -1272,9 +1282,10 @@ carries its own reading rules.
 **Know a node by where you found it.** A node's id and a person's are of one
 form, so a page knows which an id is from where it found it: those of
 `GET /data/peers` (§6.8), and the node a response's signature names, are
-nodes, and those of the user directory (§6.12) are people. Read a node at
-`node:{id}`, never at `user:{id}`, and do not read a public key to tell the
-two apart.
+nodes, and those of the user directory (§6.12) are people. A trust list may
+name either (§6.17), so show an id it names by its id alone, unless you
+found it in one of those too. Read a node at `node:{id}`, never at
+`user:{id}`, and do not read a public key to tell the two apart.
 
 ## 7. Patterns From the Movie Library
 
