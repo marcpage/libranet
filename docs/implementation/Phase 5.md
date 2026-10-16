@@ -259,7 +259,7 @@ names them among the endpoints meant only for the node's pages.
 
 ---
 
-## Step 96 — The Trust List
+## Step 96 — The Trust List ✅
 
 **Issue:** #327. **Depends on:** Step 94; Phase 4 Steps 80 and 93.
 
@@ -355,7 +355,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 97 — Changing the Trust List
+## Step 97 — Changing the Trust List ✅
 
 **Issue:** #328. **Depends on:** Step 96; Phase 4 Steps 79 and 80.
 
