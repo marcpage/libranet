@@ -66,6 +66,7 @@ from libranet.protocol.lists import (
     parse_seek_list,
 )
 from libranet.protocol.localhost_resolution import LOCALHOST, NodeListSender, resolve_endpoint
+from libranet.protocol.node_metadata_requests import NodeMetadataRequest
 from libranet.protocol.search import (
     RESULTS_FIELD,
     SEARCH_PATH,
@@ -111,6 +112,7 @@ __all__ = [
     "InvalidRequestError",
     "LocalSearch",
     "NodeListSender",
+    "NodeMetadataRequest",
     "Password",
     "PasswordEncryption",
     "PersonEncryption",

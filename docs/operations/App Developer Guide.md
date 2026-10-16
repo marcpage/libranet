@@ -1178,6 +1178,60 @@ nothing.
 Only a local client, from a trusted application's page, changes the list,
 and no answer is cached. The node builds no scores from the lists yet.
 
+### 6.18 What Nodes Say of Themselves
+
+A node says what it is called, where it is, and anything else its operator
+gives it, as a person says what they say of themselves (§6.14). Its
+operator changes it on `/config`, and no page can: a node signs only what it
+places itself. The node keeps it in versions, each signed by the node and
+placed at the drop `node:{id}`, its id after `node:`. It is public. Each
+version's `contents` is:
+
+```json
+{"fields": {"name": "Attic", "description": "The family's node", "city": "Springfield"},
+ "version": 2,
+ "versions": ["sha256/…"]}
+```
+
+- **`fields`** maps each detail's name to its value, both strings. These
+  are the standard ones, each optional: `name`, `description`, `country`,
+  `state`, `province`, `county`, `city`, `latitude`, and `longitude`, the
+  last two in decimal degrees. An operator may give any other they name.
+- **`version`** is 1 for the first version, and one more than the version
+  it replaces for each after.
+- **`versions`** names the drop of the version it replaces, and is left out
+  of the first.
+
+Unlike a person's, it says nothing of when the node's id was made, and
+names no fallback, since a node has neither. To read what a node says, and
+follow the same rules as other pages do:
+
+- **Search the drop** `node:{id}` (§6.9). Read each result that shares at
+  least 16 leading bits with the `target` hash through
+  `GET /data/signed/{id}` (§6.13), and pass over the rest, which are nearest
+  the target but placed for something else.
+- **Pass over what is not the node's.** Count only content that checks,
+  whose `signer` is the node, and whose `contents` is shaped as above.
+- **The newest is numbered highest**, and of two numbered as high, the one
+  whose drop's id comes first. Only the node signs a version, so no one else
+  can make one newer. There is no history to read back: the node blocks the
+  versions it replaces.
+
+**Show a node by its name.** Wherever a page shows a node, show it by the
+`name` its newest version gives, and by its id when it gives none or says
+nothing. Show the rest of what it says, and its id, when the name is hovered
+over, and when it is tapped, since a touch screen has no hover. The root
+application shows its own node this way, and `/config` does too. Each page
+carries its own copy of the code that does it, as each shipped application
+carries its own reading rules.
+
+**Know a node by where you found it.** A node's id and a person's are of one
+form, so a page knows which an id is from where it found it: those of
+`GET /data/peers` (§6.8), and the node a response's signature names, are
+nodes, and those of the user directory (§6.12) are people. Read a node at
+`node:{id}`, never at `user:{id}`, and do not read a public key to tell the
+two apart.
+
 ## 7. Patterns From the Movie Library
 
 The movie library, `src/libranet/applications/movie/index.html`, is one page

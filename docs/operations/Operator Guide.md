@@ -153,9 +153,9 @@ learns the others that node knows.
 ## 4. The Administration Page: `/config`
 
 `/config` is how an operator puts their own content into Libranet: it backs
-up and restores directories, builds bundles, registers applications, and
-creates users. It is a page for a browser, and a set of JSON endpoints
-beneath `/config/api` for scripts.
+up and restores directories, builds bundles, registers applications,
+creates users, and says what the node is called. It is a page for a
+browser, and a set of JSON endpoints beneath `/config/api` for scripts.
 
 ### 4.1 Where It Is
 
@@ -221,10 +221,42 @@ curl -u admin:secret -e http://127.0.0.1:8180/config/ \
 | `GET`, `POST` | `/config/api/applications` | Registered applications (§6.1) |
 | `PATCH`, `DELETE` | `/config/api/applications/{name}` | Trust an application, or not (§6.2), or remove one |
 | `POST` | `/config/api/users` | Create a user (§6.5) |
+| `GET`, `PUT` | `/config/api/metadata` | What this node says of itself (§4.5) |
 
 A backup, restore, build, or export is answered `202` at once, with the id
 it is known by, and its `GET` says how it is doing. Restores, builds, and
 exports are forgotten when the node restarts; backup jobs are kept.
+
+### 4.5 What This Node Says of Itself
+
+A node can say what it is called, where it is, and anything else you want
+others to know of it. Pages show the node by its name, on this node and on
+others, with the rest of what it says when the name is hovered over or
+tapped. Fill in **What this node says of itself**, under **This node** on the
+page, and save. The details offered are a name, a description, a country,
+state, province, county, and city, and a latitude and longitude in decimal
+degrees, and **Add a detail** adds any other. Each is optional, and one left
+empty is left out.
+
+It is public. The node signs each version with its own key and keeps it in
+the network, at the drop `node:{id}`
+([Known Drops §3.9](../specs/KnownDrops.md#39-what-a-node-says-of-itself)),
+where anyone can read it, so give only what you would have anyone know.
+Saving replaces what the node said before, and the node blocks the version
+it replaces, but a copy a peer already holds can still be read there.
+
+A script gives every detail the node is to say, and any it leaves out are
+no longer said:
+
+```bash
+curl -u admin:secret -e http://127.0.0.1:8180/config/ \
+  -X PUT http://127.0.0.1:8180/config/api/metadata \
+  -H 'Content-Type: application/json' \
+  -d '{"fields": {"name": "Attic", "city": "Springfield"}}'
+```
+
+It is answered `201` with the new version's number, or `204` if nothing
+changed. `GET /config/api/metadata` reads what the node says now.
 
 ## 5. Backing Up and Restoring
 

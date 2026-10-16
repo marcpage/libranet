@@ -164,6 +164,7 @@ def config_server(
                 StubModule(ModuleName.WEBSERVER, queues).publish,
                 config_credential=credential,
                 node=SERVER_NODE,
+                identity=SERVER_IDENTITY,
             ),
             getLogger("test.webserver"),
             MessageSigner(SERVER_IDENTITY),
@@ -2550,6 +2551,43 @@ def test_an_identity_made_on_the_config_page_signs_in_at_an_application(
         "fallback": answer["fallback"],
         "fallback_for": None,
     }
+
+
+def test_what_the_node_says_of_itself_on_the_config_page_is_read_at_its_drop(
+    config_connection: HTTPConnection, local_connection: HTTPConnection, storage: StorageConfig
+) -> None:
+    changed, body = _config(
+        config_connection,
+        "/config/api/metadata",
+        "PUT",
+        _credentials(),
+        b'{"fields": {"name": "Attic"}}',
+    )
+    drop_id = ContentId.parse(loads(body)["id"])
+
+    # Stored as the validator stores what this node uploads: the drop and its key.
+    for content_id in (drop_id, SERVER_IDENTITY.node_id):
+        uploaded = CasStore.for_node(storage, SERVER_IDENTITY.node_id).read(content_id)
+        CasStore.source_of_truth(storage).write(content_id, uploaded)
+
+    read, read_body = _config(config_connection, "/config/api/metadata", headers=_credentials())
+    refused, _ = _config(config_connection, "/config/api/metadata")
+    searched, search_body = _get(
+        local_connection, f"/data/drop/{quote(f'node:{SERVER_IDENTITY.node_id}', safe='')}"
+    )
+    checked, checked_body = _get(local_connection, f"/data/signed/{drop_id}")
+
+    assert changed.status == 201
+    assert changed.getheader("Location") is None
+    assert read.status == 200
+    assert loads(read_body) == {"id": str(drop_id), "fields": {"name": "Attic"}, "version": 1}
+    assert refused.status == 401
+    # A page of the main port reads it with the endpoints any page has.
+    assert searched.status == 200
+    assert str(drop_id) in loads(search_body)["results"]
+    assert checked.status == 200
+    assert loads(checked_body)["signer"] == str(SERVER_IDENTITY.node_id)
+    assert loads(loads(checked_body)["contents"]) == {"fields": {"name": "Attic"}, "version": 1}
 
 
 def test_the_main_port_takes_its_turns_in_the_costly_work_it_is_given(

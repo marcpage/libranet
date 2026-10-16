@@ -14,6 +14,12 @@ does, but signs no one in (HttpApi §11.3, Phase 4 Step 91). Its handler is
 given to :func:`config_routes`, made as the main port's are
 (:class:`~libranet.webserver.identity_handlers.Identities`).
 
+``GET`` and ``PUT /config/api/metadata`` read and change what this node says
+of itself (HttpApi §11.8, Phase 5 Step 104), since the ``/config`` application
+cannot reach the endpoints a page reads a drop with. Its handlers are given to
+:func:`config_routes` too
+(:class:`~libranet.webserver.metadata_handlers.OwnMetadata`).
+
 The web server does none of the backup work. Each backup endpoint checks its
 own input, publishes one message, and answers ``202`` at once with the
 identifier the request will be known by::
@@ -108,6 +114,7 @@ from libranet.webserver.http_types import (
     percent_decoded,
     status_response,
 )
+from libranet.webserver.metadata_handlers import OwnMetadata
 from libranet.webserver.request_refusals import (
     body_or_refusal,
     invalid_request_response,
@@ -128,6 +135,7 @@ BUILDS_PATH: Final = CONFIG_API_PATH + "/builds"
 EXPORTS_PATH: Final = CONFIG_API_PATH + "/exports"
 APPLICATIONS_PATH: Final = CONFIG_API_PATH + "/applications"
 CONFIG_USERS_PATH: Final = CONFIG_API_PATH + "/users"
+METADATA_PATH: Final = CONFIG_API_PATH + "/metadata"
 BACKUP_JOB_PATTERN: Final = BACKUPS_PATH + rf"/(?P<job_id>[0-9a-fA-F]{{{IDENTIFIER_LENGTH}}})"
 BACKUP_RUN_PATTERN: Final = BACKUP_JOB_PATTERN + "/run"
 APPLICATION_PATTERN: Final = APPLICATIONS_PATH + "/(?P<name>[^/]+)"
@@ -171,6 +179,8 @@ ENDPOINTS: Final = (
     },
     {"method": "DELETE", "path": APPLICATION_TEMPLATE, "description": "Remove an application"},
     {"method": "POST", "path": CONFIG_USERS_PATH, "description": "Create a person's identity"},
+    {"method": "GET", "path": METADATA_PATH, "description": "What this node says of itself"},
+    {"method": "PUT", "path": METADATA_PATH, "description": "Change what this node says of itself"},
 )
 
 
@@ -445,10 +455,12 @@ def config_routes(
     retry_after_seconds: int,
     *,
     users: Handler | None = None,
+    metadata: OwnMetadata | None = None,
 ) -> tuple[tuple[str, str, Handler], ...]:
     """Every ``/config/api`` route, as ``(method, pattern, handler)`` in route order.
 
-    ``users`` makes a person's identity. Without it, no route makes one.
+    ``users`` makes a person's identity, and ``metadata`` reads and changes
+    what this node says of itself. Without either, no route does what it does.
     """
     configure = BackupRequestHandler(
         publish, BackupJobRequest.from_value, EventType.BACKUP_JOB_CONFIGURED, "job_id"
@@ -482,6 +494,11 @@ def config_routes(
         ("PATCH", APPLICATION_PATTERN, ApplicationTrustHandler(registry)),
         ("DELETE", APPLICATION_PATTERN, ApplicationRemovalHandler(registry)),
         *(() if users is None else (("POST", CONFIG_USERS_PATH, users),)),
+        *(
+            ()
+            if metadata is None
+            else (("GET", METADATA_PATH, metadata.read), ("PUT", METADATA_PATH, metadata.change))
+        ),
     )
     return tuple(
         (method, _CONFIG_SEGMENT + pattern.removeprefix(f"/{CONFIG_APPLICATION}"), handler)

@@ -61,6 +61,7 @@ from libranet.config.models import (
     StorageConfig,
 )
 from libranet.identity.authentication import RequestAuthenticator
+from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import MessageSigner
 from libranet.messaging.publishing import Publish
 from libranet.problems import Problem
@@ -133,6 +134,7 @@ from libranet.webserver.list_handlers import (
 from libranet.webserver.local_folders import DIRECTORY_PATTERN, DirectoryHandler, LocalFolders
 from libranet.webserver.local_imports import IMPORTS_PATH, ImportHandler, ImportListHandler
 from libranet.webserver.local_only import CLIENT_PATH, LocalOnly, OwnSiteOnly, client_handler
+from libranet.webserver.metadata_handlers import OwnMetadata
 from libranet.webserver.own_pages import OwnPageOnly, OwnPages
 from libranet.webserver.router import Router
 from libranet.webserver.search_handler import DROP_SEARCH_PATTERN, SEARCH_PATTERN, SearchHandler
@@ -448,6 +450,7 @@ def build_config_router(  # pylint: disable=too-many-locals
     *,
     config_credential: ConfigCredential,
     node: NodeDescription,
+    identity: NodeIdentity | None = None,
     app_outcomes: ApplicationOutcomes | None = None,
     backup_state: BackupState | None = None,
     content: LayeredSource | None = None,
@@ -469,8 +472,11 @@ def build_config_router(  # pylint: disable=too-many-locals
     storing them as uploads from ``node``, but signs no one in (Phase 4 Step
     91). Its drops are searched for, and its keys derived, in the turns of
     ``costly_work``, shared with the main port; in turns of their own if none
-    is given. ``retry_after_seconds``, ``app_outcomes``, ``app_wait_seconds``,
-    and ``read_ahead_parts`` are as for :func:`build_router`.
+    is given. Given ``identity``, the node's own, ``/config/api/metadata``
+    reads what the node says of itself, and places what it says next, signed
+    with ``identity``'s key, as drops are made and stored there (Phase 5 Step
+    104). ``retry_after_seconds``, ``app_outcomes``, ``app_wait_seconds``, and
+    ``read_ahead_parts`` are as for :func:`build_router`.
     """
     content = LayeredSource(CasStore.source_of_truth(storage)) if content is None else content
     registry = _registry(storage, content)
@@ -498,6 +504,18 @@ def build_config_router(  # pylint: disable=too-many-locals
         node,
         retry_after_seconds,
         users=identities.make_without_signing_in,
+        metadata=(
+            None
+            if identity is None
+            else OwnMetadata(
+                identity,
+                identities.search,
+                identities.drops,
+                publish,
+                content=identities.uploads,
+                retry_after_seconds=retry_after_seconds,
+            )
+        ),
     ):
         router.add(method, pattern, handler)
 

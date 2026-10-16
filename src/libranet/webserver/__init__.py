@@ -13,7 +13,8 @@ publish a message each rather than doing any of that work here. Its
 application endpoints change the application registry, the file naming each
 application's bundle, which the web server owns, and which names the pages
 shipped with the node at `/` and at `/config` until an administrator changes
-them. The one at `/config` drives all of them.
+them. The one at `/config` drives all of them, and has the node read and
+change what it says of itself (Phase 5 Step 104).
 
 A few `/data` endpoints serve only clients on this machine, and only this
 node's own pages there, such as the listing of the folders it offers them
@@ -133,6 +134,7 @@ from libranet.webserver.config_handlers import (
     DATA_APPLICATIONS_PATH,
     ENDPOINTS,
     EXPORTS_PATH,
+    METADATA_PATH,
     NODE_PATH,
     RESTORES_PATH,
     ApplicationListHandler,
@@ -225,6 +227,7 @@ from libranet.webserver.local_only import (
     client_handler,
     local_refusal,
 )
+from libranet.webserver.metadata_handlers import OwnMetadata
 from libranet.webserver.module import WebServerModule, webserver_module_factory
 from libranet.webserver.own_pages import (
     REFERER_HEADER,
@@ -329,6 +332,7 @@ __all__ = [
     "MAX_OPENED_BYTES",
     "MAX_STORE_BYTES",
     "MAX_VALUE_BYTES",
+    "METADATA_PATH",
     "NODE_PATH",
     "NOT_STORED",
     "PARALLELISM",
@@ -410,6 +414,7 @@ __all__ = [
     "NodeDescription",
     "NodeHandler",
     "NodeListHandler",
+    "OwnMetadata",
     "OwnPageOnly",
     "OwnPages",
     "OwnSiteOnly",

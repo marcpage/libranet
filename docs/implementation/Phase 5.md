@@ -782,7 +782,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 104 — Node Metadata
+## Step 104 — Node Metadata ✅
 
 **Issue:** #321. **Depends on:** Steps 102 and 103; Phase 4 Steps 80 and
 91.
@@ -817,20 +817,135 @@ Work this implies:
 - The known drops catalog gains `node:{id}` (Step 102), and the Operator
   Guide the form.
 
-Open questions:
+Ruled (2026-10-15), each my recommended option:
 
-- Whether the node holds the rules of its metadata, at an endpoint named
-  for it, since `/config` cannot reach the endpoints a page uses, or
-  `/config` gains generic ones, a signed drop and a drop's search, and the
-  page holds the rules, as the directory's page does for people (Phase 4
-  Step 80). Step 103 ruled that no endpoint has the node sign for a page,
-  which rules out a signed drop on `/config`.
-- Whether a node's metadata says when its id was made, as a person's does.
+- **The node holds the rules for `/config` alone.** `GET` and
+  `PUT /config/api/metadata` answer the newest version and place the next,
+  signed by the node. The pages of the main port read `node:{id}` with the
+  endpoints they have, `/data/drop/{target}` and `/data/signed/{id}`, by
+  the rule the App Developer Guide gives, each page carrying its own copy.
+  A main-port endpoint answering any node's newest was turned down, since
+  it would be named for one feature, against the node being building
+  blocks.
+- **A node's metadata does not say when its id was made.** The node keeps
+  no record of it: the key file's times change when it is copied or
+  restored, and nothing could check what was said.
+- **The versions a newer one replaces are blocked**, as a trust list's are,
+  placed matching 16 bits with no search for a nonce past that. Keeping
+  them, as a person's are kept, was turned down, since no reader of a
+  node's metadata reads its history back.
+- **The reading is shared with trust lists.** What reads the versions an
+  identity signs at its drop moved out of `TrustLists`, which reads through
+  it, unchanged to its callers.
 
 **Testable in isolation:** web server tests asserting the endpoint answers
 the newest version, places the next numbered one more and naming it,
 signed by the node, and is refused without `/config`'s credential;
 packaging tests asserting each page calls only endpoints its port serves.
+
+Built in full: 785 added lines of non-test Python, 152 removed, many of the
+added ones docstrings, and about 150 of them moved from `trust_lists.py`
+rather than new, with 715 lines of tests. The root page gains 210 lines and
+the `/config` page 264. That is past the 500-line threshold (§3), so it is
+two change sets, each green alone:
+
+1. **The library** (+446/−148, and 123 of tests): `SignedVersions`
+   (`webserver/signed_versions.py`), moved out of `TrustLists`, which now
+   reads through it; `NodeMetadata`, `MetadataVersion`, and
+   `HeldNodeMetadata` (`identity/node_metadata.py`); the package exports;
+   their tests; and the specification change, HttpApi §11.8.
+2. **The endpoints and pages** (+339/−4, and 592 of tests):
+   `NodeMetadataRequest` (`protocol/node_metadata_requests.py`),
+   `OwnMetadata` (`webserver/metadata_handlers.py`), the routes and their
+   wiring, the root and `/config` pages, their tests, App Developer Guide
+   §6.18, Known Drops §3.9, Operator Guide §4.5, and this section.
+
+- **`GET /config/api/metadata`** answers the newest version with the id of
+  its drop, and `{"id": null, "fields": {}, "version": null}` while the
+  node has said nothing. **`PUT /config/api/metadata`** takes
+  `{"fields": {…}}`, makes the next version over the newest, signs it with
+  `NodeIdentity.signed` (Step 103), places it at `node:{id}`, and blocks
+  what it replaces. Both are `503` while a version found at the drop is not
+  held.
+- **`SignedVersions`** reads one kind of document an identity signs at its
+  drop, given its name, its drop, its bits, and how a version is read; a
+  read gives each version by its drop, and what is missing.
+- **The root page** shows its node by its name, in the row that was "Node
+  id" and is now "Node", with what it says and its id on hover and on a
+  tap, reading the drop itself. **The `/config` page** shows it so in its
+  "Identity" row, and gains a form, "What this node says of itself", with
+  an input for each standard detail and "Add a detail" for others.
+
+A live run, on one node, in headless Chrome 155 over CDP: the root page
+showed the node by its id; `/config` said the node said nothing; saving a
+name, description, city, latitude, and an added detail placed version 1,
+and the "Identity" row showed the name with the rest on hover and on a
+click; a latitude of 123 was refused by the page; saving the same again
+answered "Nothing changed"; changing the city placed version 2, and the
+node blocked and deleted version 1; reloading `/config` read back every
+detail; and the root page, without the credential, showed the node by its
+name, with the new city on hover and on a click.
+
+My calls, not yet reviewed:
+
+- **A change gives every detail**, replacing what the newest says, rather
+  than changing one at a time, as the form saves them all. Members the node
+  does not know are ignored.
+- **The node checks only that each detail is a string.** Trimming, leaving
+  empty ones out, names given twice, and latitude and longitude in range
+  are the page's, as the directory's page checks a person's.
+- **Nothing is placed until the operator saves**, and saving nothing before
+  anything is said changes nothing (`204`).
+- **A read is `503` too** while a version found at the drop is not held,
+  as a change is, rather than answering the newest held, which may be
+  older.
+- **A version the node cannot read whole is no version**: any detail not a
+  string, or a name in `versions` that is no id, passes the version over
+  with a warning, as a person's page passes one over, where a trust list
+  passes over its bad entries one at a time. Only the node writes its
+  versions, so this happens only if another implementation wrote them.
+- **The node stores its public key again before each read**, as a trust
+  list's edit stores the person's, so that its versions can be checked
+  after an eviction.
+- **A change that changes nothing still blocks what the newest replaces**,
+  as a trust list's does.
+- **No `Location` and no `Cache-Control: no-store`.** `/config`'s port
+  serves nothing beneath `/data`, and its other reads carry no
+  `Cache-Control`; the page asks with `cache: "no-store"`.
+- **`build_config_router` takes the node's identity as an optional
+  keyword**, `identity`, and serves no metadata route without it, as
+  `config_routes` serves none for users without `users`.
+- **`OwnMetadata` takes what it reads from as `content`**, beside
+  `drops`, since `DropHandler.uploads` is typed as somewhere to write.
+- **`SignedVersions` holds the kind of document**: its name in what is
+  logged, its drop, its bits, and its reader. `TrustLists` keeps its fields
+  and what it logs, but the messages now come from
+  `libranet.webserver.signed_versions`, so one test's logger name changed.
+- **On the pages, `title` is the hover, and the name is a button** that
+  shows the same rows below it on a click or a tap, with `aria-expanded`.
+  The rows are the standard details in order, then any other by name, then
+  the id. A node that says nothing is shown by its id, as before.
+- **The root page waits out one `503` for each version it checks**, as the
+  directory's page does, and shows the node by its id when it can read
+  nothing, the drop's search refused to an unsigned read included.
+- **Known Drops §3.4 no longer says a node's trust list waits on a node's
+  signature**, which Step 103 defined.
+
+Found while building it:
+
+- **A peer can hold off both endpoints, and a trust list's edits.** The
+  stats module merges into a drop's search any id this node knows of near
+  the target, an id a peer only asked for included (`stats/enrichment.py`).
+  An id is any hex a peer chooses, so a peer asking for one sharing 16 bits
+  with `node:{id}`, or `trust:{id}`, makes a version that is never sent
+  appear missing, and each read and change `503` while it stays known. The
+  rule that holds off for what is missing is Step 97's, which this step
+  follows; bounding the wait, or reading only what peers say they hold, is
+  a change to both.
+- **`test_a_local_client_makes_an_identity_and_is_signed_in_by_a_cookie`
+  timed out once** in a run of the web server's tests, and passed in each
+  run after. It makes two RSA keys within a 5-second socket timeout. It is
+  unchanged.
 
 ---
 

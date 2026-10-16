@@ -17,7 +17,7 @@ from shutil import copytree
 from typing import Iterator
 from urllib.parse import quote
 
-from pytest import fixture, mark, raises
+from pytest import FixtureRequest, fixture, mark, raises
 
 from libranet.applications.packaged import (
     BUILT_ARCHIVE,
@@ -37,6 +37,7 @@ from libranet.cas.layered import LayeredSource
 from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
+from libranet.identity.node_metadata import MIN_NODE_METADATA_BITS
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
@@ -98,6 +99,18 @@ FIRST_ROW = (
     "province",
     "county",
     "city",
+)
+# The details a node may give of itself, as #321 names them (Phase 5 Step 104).
+NODE_FIELDS = (
+    "name",
+    "description",
+    "country",
+    "state",
+    "province",
+    "county",
+    "city",
+    "latitude",
+    "longitude",
 )
 CONFIG_CREDENTIALS = {"Authorization": "Basic " + b64encode(b"admin:secret").decode("ascii")}
 
@@ -370,6 +383,32 @@ def test_the_root_page_is_one_self_contained_document(root_page: bytes) -> None:
     assert findall(r'fetch\("([^"]*)"', page) == ["/data/nodes", "/data/applications"]
 
 
+def test_the_root_page_reads_what_its_node_says_where_the_node_keeps_it(
+    root_page: bytes,
+) -> None:
+    page = root_page.decode("ascii")
+    some_id = ContentId.for_data(b"a signed drop", "sha256")
+
+    assert findall(r"fetch\(`([^`$]*)", page) == ["/data/signed/", "/data/drop/"]
+    # The page names a drop by its target string, one segment, and hashes nothing.
+    assert fullmatch(DROP_SEARCH_PATTERN, f"/data/drop/{quote(f'node:{some_id}', safe='')}")
+    assert fullmatch(SIGNED_PATTERN, f"/data/signed/{some_id}")
+    assert 'const NODE_METADATA_PREFIX = "node:";' in page
+    assert f"const METADATA_MINIMUM_BITS = {MIN_NODE_METADATA_BITS};" in page
+
+
+@mark.parametrize("page_fixture", ["root_page", "config_page"])
+def test_each_page_showing_its_node_offers_the_details_the_issue_names(
+    request: FixtureRequest, page_fixture: str
+) -> None:
+    page = request.getfixturevalue(page_fixture)
+    text = page.decode("ascii") if isinstance(page, bytes) else page
+    [fields] = findall(r"const NODE_FIELDS = \[([^\]]*)\];", text)
+
+    assert tuple(findall(r'"([^"]+)"', fields)) == NODE_FIELDS
+    assert 'const NAME = "name";' in text
+
+
 def test_the_root_page_links_to_config_and_the_documentation(root_page: bytes) -> None:
     links = findall(r'\bhref="([^"]*)"', root_page.decode("ascii"))
 
@@ -395,6 +434,7 @@ def test_the_config_page_calls_only_endpoints_the_node_serves(config_page: str) 
 
     assert called == {
         "/node",
+        "/metadata",
         "/applications",
         "/users",
         "/builds",
