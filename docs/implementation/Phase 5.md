@@ -1434,7 +1434,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 108 — The Nodes Application
+## Step 108 — The Nodes Application ✅
 
 **Issue:** #323. **Depends on:** Steps 97, 100, 104, 106, and 107.
 
@@ -1460,15 +1460,108 @@ Work this implies:
   in, with signing in and out, as the directory offers them.
 - The App Developer Guide, the Operator Guide, and the README gain it.
 
-Open questions:
+Ruled (2026-10-16):
 
-- Whether a client elsewhere sees the list, as Step 107 rules its
-  endpoint.
-- Sorting and filtering, by name, by trust, or by whether connected.
+- **A client elsewhere sees the nodes `GET /data/nodes` names**, which any
+  client is given, by name, with the addresses it gives, and without whether
+  each is connected, its stats, or its trust, which the page says are shown
+  only on the node's own machine. Showing such a client only that the list
+  is shown on the node's own machine was turned down.
+- **Sorting and filtering as the directory does them**, my recommended
+  option: a search through every detail, sorting with those connected first,
+  as the endpoint orders them, by name, or by trust, and showing only those
+  connected, or hiding those distrusted. Sorting alone, and a fixed order,
+  were turned down.
+- **Every stat in the list**, each node's addresses on its own page. A
+  summary in the list, every stat on the node's page, my recommended option,
+  was turned down, and so was every address in the list too.
 
 **Testable in isolation:** packaging tests asserting the application is
 shipped and its page calls only endpoints the node serves. The page's
 logic is checked by hand, and in a live run of the local network script.
+
+Built in one change set, with 8 lines of non-test Python, 4 of them
+replacing removed ones: `nodes` joins `SHIPPED_APPLICATIONS`, and the
+package's docstrings name it. The nodes page is 1452 lines, the root page
+gains 13, `/config`'s 20, and the packaging tests 105. The App Developer
+Guide's §6.8, §6.17, §6.18, and §9, the Operator Guide's §6 and §7.3, and the
+README say what it does.
+
+- **The list, in a browser on the node's own machine**, is what
+  `GET /data/peers` gives: each node by its name, or its id if it gives
+  none, with the rest of what it says beneath, whether it is connected and
+  which way, and its eleven stats, each with what it counts on hover. Its
+  name links to its page, and says what it says on hover.
+- **Elsewhere**, it is the nodes `GET /data/nodes` names, but the node
+  itself, by name, sorted by name, with a search alone.
+- **`?id={id}`** shows that node alone, with its addresses, each with what
+  the node says of it where it is shown that, and a link above to every node.
+- **Trust** is shown as every page shows it, read once with `GET /data/trust`
+  and again every 2 s while it is being built, with Trust, Distrust, and
+  Clear for whoever is signed in, and signing in and out for a local client,
+  each the directory's code, copied.
+- **The root page and `/config` link their node to its page**, beneath it.
+  `/config`'s link is on the main port, as it links the applications.
+- A packaging test asserts that the page lists every member the node writes
+  of a peer's stats and addresses, in order, and every way an address is
+  learned, so that a column added to either is shown.
+
+Checked live, with three local nodes from the local network script and the
+pages driven in headless Chrome. Node 1 was named Attic on its `/config`.
+Signed out, node 0's list showed Attic, with its description and city, and
+node 2 by id, both connected outbound and inbound, every stat given, and
+each ⚪, saying to sign in. Signed in as Alice through the page's form, both
+were 🟡. Trust on Attic made it 🟢, "You trust it. Score 1, step 1.", which a
+real click on its mark showed beside it, with Trust disabled; Distrust on
+node 2 made it 🔴. Sorting by trust put Attic first; hiding those distrusted,
+and showing only those connected, each left Attic, "1 of 2 nodes"; searching
+"springfield" found Attic, and node 2's port found node 2. Attic's page gave
+its address, dialed, with its counts. Node 0's own page said it was the node
+serving it, and a made-up id that this node knew nothing of; each offered
+Trust, Distrust, and Clear. `?id=nonsense` said it named no node, and showed
+every node. The root page linked node 0 to its page, and node 1's `/config`
+linked Attic to `http://127.0.0.1:24401/nodes/?id=…`, which a click opened,
+naming it this node. The same nodes, run again at the machine's LAN address
+and opened there, so that the browser was elsewhere: the list was Attic and
+node 2 from the node list, without stats or sorting, each ⚪, "only a browser
+on the node's own machine, signed in, is shown it", and Attic's page gave the
+address the node list names.
+
+My calls, not yet reviewed:
+
+- **In the list, a node's name links to its page**, as the directory links a
+  person, and what it says is shown beneath the name, and in the link's
+  hover, rather than a button showing it once tapped, as on the root page
+  and `/config`. A tap opens its page, where it is all shown too.
+- **The list is read once, as the page opens**, and says when the node worked
+  it out, and that opening the page again reads it again. It is not read
+  again by itself, as the directory's is not.
+- **Each stat is shown by a short label and its value**, such as "dialed 3",
+  "closed by it 1", and "failures in a row 0", with what it counts in the
+  words of HttpApi §10.8 on hover. A moment is in the browser's own time and
+  manner, `null` "never", bytes in KiB, MiB, and so on, and a duration in its
+  two largest units. Each way an address is learned is said in words, such as
+  "reached there by this node".
+- **What is not shaped as the node gives it is passed over**, a peer or an
+  address, and how many is warned of in the browser's console, once for the
+  list, as the other pages warn of what they pass over.
+- **Elsewhere, the list leaves the node itself out**, as `GET /data/peers`
+  does, and is sorted by name, since the node list says nothing of
+  connections or trust. A node's page there gives only where it may be
+  reached.
+- **A page for this node itself, or for a node the node knows nothing of,
+  says so**, and still offers Trust, Distrust, and Clear, since a trust list
+  may name any node. A link whose id is no node's id says so, and shows
+  every node, as the directory does.
+- **The root page and `/config` say "Its page in the nodes application"**,
+  beneath the node and what its mark says.
+- **What a mark says shows only once it is tapped, on the root page and
+  `/config`**, as Step 106 meant: a style showing it as a block overrode its
+  being hidden, so it showed at once, and a tap did nothing. Both pages now
+  hide it until the mark is tapped.
+- **The directory still shows an id a trust list names by its id alone**,
+  as Step 105 ruled, though the node may know it as a peer: the directory
+  reads no peers.
 
 ---
 

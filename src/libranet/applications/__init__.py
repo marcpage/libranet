@@ -5,8 +5,10 @@ the wheel's content archives when a wheel is built, or in memory as each
 process starts when the node is run from its source. The root application,
 served at ``/`` until an administrator changes it, is ``root/``, the
 administration page, served at ``/config`` until one changes that, is
-``config/``, the movie library, served at ``/movie``, is ``movie/``, and the
-user directory, served at ``/directory``, is ``directory/``.
+``config/``, the movie library, served at ``/movie``, is ``movie/``, the
+user directory, served at ``/directory``, is ``directory/``, mail, served at
+``/mail``, is ``mail/``, and the nodes known, served at ``/nodes``, is
+``nodes/``.
 """
 
 from libranet.applications.packaged import (

@@ -88,6 +88,8 @@
   .identity { display: flex; align-items: baseline; }
   .mark { font: inherit; border: 0; background: none; padding: 0; margin-right: 0.4rem; cursor: pointer; }
   .score { display: block; color: var(--muted); font-size: 0.93rem; margin-top: 0.2rem; }
+  .score[hidden] { display: none; }
+  .node-page { display: block; font-size: 0.93rem; margin-top: 0.2rem; }
 
   .note, footer { color: var(--muted); }
   .note { display: block; }
@@ -255,13 +257,21 @@ trust.mark.addEventListener("click", () => {
   showTrust();
 });
 
-// The node as `shown` shows it, with the mark of its trust before it, and
-// what the mark says beneath it.
+// The node as `shown` shows it, with the mark of its trust before it, what
+// the mark says beneath it, and a link to its page.
 function showNode(shown) {
   const line = make("div", "", "identity");
   line.append(trust.mark, shown);
-  byId("node-id").replaceChildren(line, trust.said);
+  byId("node-id").replaceChildren(line, trust.said, nodeLink(trust.node));
   showTrust();
+}
+
+// A link to the page of the node `id` names, in the nodes application, which
+// shows it alone, as any page links a node (App Developer Guide 6.18).
+function nodeLink(id) {
+  const link = make("a", "Its page in the nodes application", "node-page");
+  link.href = `/nodes/?id=${encodeURIComponent(id)}`;
+  return link;
 }
 
 // How whoever is signed in trusts the node, by their scores: its score, and

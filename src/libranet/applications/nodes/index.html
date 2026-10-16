@@ -1,0 +1,1452 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Nodes</title>
+<style>
+  :root {
+    --background: #f6f6f4;
+    --surface: #ffffff;
+    --text: #1d1d1b;
+    --muted: #5d5d58;
+    --border: #d8d8d2;
+    --accent: #2a5db0;
+    --good: #1f7a3d;
+    --bad: #b3261e;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --background: #161615;
+      --surface: #1f1f1d;
+      --text: #ececea;
+      --muted: #a8a8a2;
+      --border: #3a3a36;
+      --accent: #7ea9f0;
+      --good: #6cc98a;
+      --bad: #f2877e;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  main { max-width: 44rem; margin: 0 auto; padding: 2.5rem 1rem; }
+  h1 { font-size: 1.5rem; margin: 0; }
+  h2 { font-size: 1.15rem; margin: 0 0 0.75rem; }
+  a { color: var(--accent); }
+
+  section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin: 1.25rem 0;
+  }
+
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    word-break: break-all;
+  }
+
+  /* A node's id: one click selects all of it. */
+  .id { user-select: all; }
+
+  .this { color: var(--good); font-weight: 600; margin-left: 0.5rem; }
+  .note, footer { color: var(--muted); }
+  .error { color: var(--bad); }
+  button { font: inherit; padding: 0.35rem 0.9rem; }
+  ol { margin: 0; padding-left: 1.75rem; }
+  li + li { margin-top: 0.35rem; }
+  #nodes > ol > li + li { margin-top: 0.75rem; }
+  #status { margin: 0.25rem 0 0; padding: 0; list-style: none; }
+  #status li + li { margin-top: 0.15rem; }
+  footer { font-size: 0.9rem; }
+
+  input {
+    font: inherit;
+    min-width: 0;
+    padding: 0.3rem 0.45rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--background);
+    color: var(--text);
+  }
+
+  #search { width: 100%; margin: 0 0 0.75rem; }
+
+  /* An entry's first row names the node; the rows after give the rest. */
+  .first { font-weight: 600; }
+  .rows { margin: 0.15rem 0 0; padding: 0; list-style: none; color: var(--muted); font-size: 0.93rem; }
+  .rows li + li { margin-top: 0.1rem; }
+
+  .fields { display: grid; grid-template-columns: max-content 1fr; gap: 0.4rem 0.75rem; align-items: center; }
+  .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
+
+  /* Whether a connection to a node is open now. */
+  .connected, .unconnected { font-weight: normal; font-size: 0.93rem; margin-left: 0.5rem; }
+  .connected { color: var(--good); }
+  .unconnected { color: var(--muted); }
+
+  /* What the node counts of a node, or of an address: each label and its
+     value, what it counts on hover. */
+  .stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: 0.1rem 1rem; margin: 0.2rem 0 0; }
+  .stats div { display: flex; gap: 0.4rem; min-width: 0; }
+  .stats dd { margin: 0; color: var(--text); }
+  .addresses { list-style: none; margin: 0; padding: 0; }
+  .addresses > li + li { margin-top: 0.75rem; }
+
+  /* A node's trust: a mark to hover over or tap, what it says once tapped,
+     and the buttons changing it. */
+  .mark { font: inherit; border: 0; background: none; padding: 0; margin-right: 0.4rem; cursor: pointer; }
+  .score { color: var(--muted); font-weight: normal; font-size: 0.93rem; margin-left: 0.5rem; }
+  .choices { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 0.3rem; }
+  .choices button { padding: 0.15rem 0.6rem; }
+  #arrange { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin: 0 0 0.75rem; }
+  #arrange[hidden] { display: none; }
+  #trust-text, #known-text { margin: 0 0 0.75rem; }
+  select { font: inherit; padding: 0.25rem 0.4rem; border: 1px solid var(--border); border-radius: 4px; background: var(--background); color: var(--text); }
+
+  /* One node shown alone. */
+  .one { list-style: none; margin: 0; padding: 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Nodes</h1>
+  <p id="every" hidden><a href="/nodes/">Every node known</a></p>
+  <ul id="status"><li class="note">Reading the nodes&hellip;</li></ul>
+  <noscript><p class="note">Listing the nodes needs JavaScript.</p></noscript>
+
+  <section id="account" hidden>
+    <h2 id="account-title">Sign in</h2>
+    <form id="sign-in" hidden>
+      <div class="fields">
+        <label for="username">Username</label>
+        <input id="username" autocomplete="username" required>
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" required>
+      </div>
+      <div class="actions"><button type="submit">Sign in</button></div>
+    </form>
+    <div id="signed-in" hidden>
+      <span id="signed-in-text"></span>
+      <div class="actions"><button id="sign-out" type="button">Sign out</button></div>
+    </div>
+    <p id="account-text" class="note"></p>
+  </section>
+
+  <section>
+    <h2 id="count">Nodes</h2>
+    <input id="search" type="search" placeholder="Search every detail" aria-label="Search the nodes">
+    <div id="arrange" hidden>
+      <label>Sort
+        <select id="sort">
+          <option value="connected">connected first</option>
+          <option value="name">by name</option>
+          <option id="sort-trust" value="trust">by trust, most trusted first</option>
+        </select>
+      </label>
+      <label><input id="connected-only" type="checkbox"> Connected only</label>
+      <label id="hide-distrusted-label"><input id="hide-distrusted" type="checkbox"> Hide those distrusted</label>
+    </div>
+    <p id="trust-text" class="note" hidden></p>
+    <p id="known-text" class="note" hidden></p>
+    <div id="nodes"><span class="note">Asking the node&hellip;</span></div>
+  </section>
+
+  <section id="addresses" hidden>
+    <h2>Its addresses</h2>
+    <div id="addresses-list"></div>
+  </section>
+
+  <footer>
+    Each node is listed by what it says of itself, kept at the drop
+    <code>node:</code> and its id, signed by it, and shown by its name, or by
+    its id, the content id of its public key, if it gives none. In a browser
+    on the node's own machine, the list is what the node knows of each other
+    node: whether a connection to it is open now, and which way, outbound if
+    this node dialed it and inbound if it dialed this node, and what this
+    node has counted of it, over all time. Elsewhere, it is the node list
+    this node gives other nodes, of the nodes to try.
+    Each node's mark is from the scores the node builds from your trust list,
+    the lists of those you trust, and so on onward: &#x1F7E2; above 0,
+    trusted; &#x1F7E1; 0, neither; &#x1F534; below 0, distrusted; and
+    &#x26AA; where there are no scores to show.
+    A link to <code>/nodes/?id=</code> and a node's id shows it alone, with
+    its addresses.
+  </footer>
+</main>
+<script>
+"use strict";
+
+// What a 503 waits when it does not say, and how many are waited out reading
+// what a node says. A search lists what the node has only heard of too, so a
+// version found there is not waited for long.
+const DEFAULT_RETRY_SECONDS = 5;
+const MAX_WAITS = 1;
+
+// Where a node keeps what it says of itself: its id after this, at a drop
+// whose versions each match at least as many bits (App Developer Guide 6.18).
+const NODE_METADATA_PREFIX = "node:";
+const METADATA_MINIMUM_BITS = 16;
+
+// The details a node is offered, in the order they are shown; any other
+// follows them. A node is shown by its name.
+const NODE_FIELDS = [
+  "name", "description", "country", "state", "province", "county", "city",
+  "latitude", "longitude",
+];
+const NAME = "name";
+
+// How many nodes' details are read at once.
+const DETAILS_AT_ONCE = 8;
+
+// A node's id: the only hash the node knows, in lower-case hex (HttpApi 5).
+const CONTENT_ID = /^sha256\/[0-9a-f]{64}$/;
+
+// Where the hex of a hash begins in a content id, after "sha256/".
+const HASH_START = "sha256/".length;
+
+// What marks each node's trust (#322), by the scores of whoever is signed in
+// (HttpApi 11.7): a score above 0, of 0, and below 0; and where there are no
+// scores to show.
+const TRUSTED = "\u{1F7E2}";
+const NEITHER = "\u{1F7E1}";
+const DISTRUSTED = "\u{1F534}";
+const UNKNOWN = "\u{26AA}";
+
+// How long the page waits to read scores still being built again.
+const SCORES_AGAIN_SECONDS = 2;
+
+// The ways a connection to a peer may be open (HttpApi 10.8): dialed by this
+// node, and dialed by the peer; in the order they are said.
+const WAYS = ["outbound", "inbound"];
+
+// What the node counts of each peer (HttpApi 10.8), every member of its stats
+// in the order shown: the member, its label, the kind of value it is, and
+// what it counts, shown on hover.
+const STATS = [
+  ["connection_attempts", "dialed", "count", "Addresses dialed to reach it, whether or not they did"],
+  ["successful_connections", "opened", "count", "Connections this node dialed to it that opened"],
+  ["remote_disconnects", "closed by it", "count", "Of those, the ones it closed, rather than this node"],
+  ["last_connected", "last connected", "moment", "When the last of them opened"],
+  ["connected_seconds", "time connected", "duration", "How long they lasted, added up as each closes, so not one open now"],
+  ["bytes_received", "received", "bytes", "Bytes of content stored that came from it"],
+  ["bytes_sent", "sent", "bytes", "Bytes of content pushed to it that it accepted"],
+  ["data_found", "found", "count", "Fetches from it that found the content"],
+  ["data_not_found", "not found", "count", "Fetches from it that did not find the content"],
+  ["consecutive_failures", "failures in a row", "count", "Attempts in a row that reached it at no address"],
+  ["last_failure", "last failure", "moment", "When the last such attempt ended"],
+];
+
+// What the node says of each address of a peer (HttpApi 10.8) but where it
+// is, as STATS gives the stats.
+const ADDRESS_STATS = [
+  ["source", "learned", "source", "The strongest way it was learned"],
+  ["last_learned", "last learned", "moment", "When a node list last named it, or when it was first reached if none has"],
+  ["first_success", "first reached", "moment", "When a connection there first proved who it is"],
+  ["last_success", "last reached", "moment", "When a connection there last proved who it is"],
+  ["attempts", "dialed", "count", "Times it was dialed"],
+  ["successes", "reached", "count", "Times that reached it"],
+  ["consecutive_failures", "failures in a row", "count", "Failed attempts there since the last success"],
+];
+
+// Each way an address may have been learned (HttpApi 10.8), in words.
+const SOURCES = {
+  relayed: "in another node's node list",
+  reverse_dns: "a name found for an address seen",
+  advertised: "in its own node list",
+  observed: "its localhost entry, resolved",
+  dialed: "reached there by this node",
+};
+
+// What a count of bytes is shown in, each 1024 of the one before.
+const BYTE_UNITS = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
+
+// What the units of a duration are shown in, and how many seconds each is.
+const DURATION_UNITS = [["d", 86400], ["h", 3600], ["min", 60], ["s", 1]];
+
+// What a moment is shown as.
+const MOMENT_STYLE = { dateStyle: "medium", timeStyle: "medium" };
+
+function byId(id) {
+  return document.getElementById(id);
+}
+
+function make(tag, text, className) {
+  const element = document.createElement(tag);
+  element.textContent = text;
+
+  if (className) {
+    element.className = className;
+  }
+
+  return element;
+}
+
+// Each line saying what loading the list did, the first replacing what was
+// there before.
+const status = {
+  started: false,
+
+  say(text, className) {
+    const list = byId("status");
+
+    if (!this.started) {
+      list.replaceChildren();
+      this.started = true;
+    }
+
+    list.append(make("li", text, className || "note"));
+  },
+};
+
+// Where the node searches the drop `target` names (HttpApi 9.7): the target
+// string, as one path segment.
+function dropPath(target) {
+  return `/data/drop/${encodeURIComponent(target)}`;
+}
+
+// A link showing `content` to the page of the node `id` names, which shows it
+// alone, as any page links a node (App Developer Guide 6.18).
+function nodeLink(id, content) {
+  const link = document.createElement("a");
+  link.href = `/nodes/?id=${encodeURIComponent(id)}`;
+  link.append(content);
+  return link;
+}
+
+function sleep(seconds) {
+  return new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+}
+
+function retryAfter(headers) {
+  const seconds = Number.parseInt(headers.get("Retry-After") || "", 10);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : DEFAULT_RETRY_SECONDS;
+}
+
+function isObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function plural(count, one, many) {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+// Every response this node sends is signed, and the signature names the
+// node that signed it (HttpApi 11).
+function signerOf(headers) {
+  const match = /;keyid="([^"]+)"/.exec(headers.get("Signature-Input") || "");
+  return match ? match[1] : null;
+}
+
+// How many leading bits two hashes in hex share.
+function matchingBits(hex, other) {
+  let bits = 0;
+
+  for (let i = 0; i < hex.length && i < other.length; i += 1) {
+    const differ = Number.parseInt(hex[i], 16) ^ Number.parseInt(other[i], 16);
+
+    if (differ !== 0) {
+      return bits + Math.clz32(differ) - 28;
+    }
+
+    bits += 4;
+  }
+
+  return bits;
+}
+
+// Run `work` over `items`, no more than `limit` at once.
+async function eachAtMost(items, limit, work) {
+  const pending = [...items];
+  const workers = Array.from({ length: Math.min(limit, pending.length) }, async () => {
+    while (pending.length > 0) {
+      await work(pending.shift());
+    }
+  });
+  await Promise.all(workers);
+}
+
+// The node could not be reached at all.
+class Unreachable extends Error {}
+
+// One request to the node, its body sent as JSON. `value` is the answer read
+// as JSON, or null.
+async function call(method, path, body) {
+  const init = { method, cache: "no-store", headers: {} };
+
+  if (body !== undefined) {
+    init.headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(body);
+  }
+
+  let response;
+
+  try {
+    response = await fetch(path, init);
+  } catch (error) {
+    throw new Unreachable(`The node could not be reached: ${error.message}`);
+  }
+
+  const text = await response.text();
+  let value = null;
+
+  try {
+    value = text ? JSON.parse(text) : null;
+  } catch (error) {
+    value = null;
+  }
+
+  return { status: response.status, ok: response.ok, headers: response.headers, value };
+}
+
+// What the node said of a request it did not do.
+function refusal(result) {
+  const problem = isObject(result.value) ? result.value : {};
+  return problem.detail || problem.title || `The node answered ${result.status}.`;
+}
+
+// Who is signed in, as the node says (HttpApi 11.4); null if no one is, or
+// this client cannot say.
+async function signedIn() {
+  const result = await call("GET", "/data/session");
+  return result.ok && isObject(result.value) && CONTENT_ID.test(result.value.id) ? result.value : null;
+}
+
+async function isLocal() {
+  const result = await call("GET", "/data/client");
+  return result.ok && isObject(result.value) && result.value.local === true;
+}
+
+// What the list shows: each node known, once it is read, by id, and where
+// it was read from, "peers" or "nodes"; when the node worked it out; this
+// node's id; what each node says of itself as far as it has been read; and
+// what is searched for. And trust: who is signed in, if they can change their
+// list; their scores by id, and whether they are complete, or null and why
+// there are none; how the list is sorted, and whether only those connected are
+// shown, and those distrusted hidden; whose trust is shown in words, tapped;
+// and what changing each node's trust last said. And the one node a link
+// names, shown alone, or null.
+const view = {
+  nodes: new Map(),
+  listed: false,
+  source: null,
+  derived: null,
+  self: null,
+  said: new Map(),
+  query: "",
+  you: null,
+  scores: null,
+  complete: false,
+  unscored: "",
+  sort: "connected",
+  connectedOnly: false,
+  hideDistrusted: false,
+  opened: new Set(),
+  changing: new Map(),
+  one: null,
+};
+let renderQueued = false;
+
+// Whether `values` holds each member `shown` names, as the kind it names.
+function isShaped(values, shown) {
+  return shown.every(([member, , kind]) => {
+    const value = values[member];
+
+    if (kind === "moment") {
+      return value === null || typeof value === "string";
+    }
+
+    return kind === "source" ? typeof value === "string" : Number.isFinite(value);
+  });
+}
+
+// Each peer the node lists (HttpApi 10.8), by id: its place in the list,
+// the ways a connection to it is open, what the node counts of it, and its
+// addresses. What is not shaped as the node gives it is passed over, and
+// warned of.
+function peersOf(value) {
+  const nodes = new Map();
+  const peers = Array.isArray(value.peers) ? value.peers : [];
+  let passed = Array.isArray(value.peers) ? 0 : 1;
+
+  peers.forEach((peer, order) => {
+    const isPeer =
+      isObject(peer) &&
+      CONTENT_ID.test(peer.node_id) &&
+      !nodes.has(peer.node_id) &&
+      Array.isArray(peer.connected) &&
+      peer.connected.every((way) => WAYS.includes(way)) &&
+      isObject(peer.stats) &&
+      isShaped(peer.stats, STATS) &&
+      Array.isArray(peer.addresses);
+
+    if (!isPeer) {
+      passed += 1;
+      return;
+    }
+
+    const addresses = peer.addresses.filter(
+      (address) => isObject(address) && typeof address.endpoint === "string" && isShaped(address, ADDRESS_STATS),
+    );
+    passed += peer.addresses.length - addresses.length;
+    nodes.set(peer.node_id, {
+      order,
+      connected: WAYS.filter((way) => peer.connected.includes(way)),
+      stats: peer.stats,
+      addresses,
+    });
+  });
+
+  if (passed > 0) {
+    console.warn(`Passing over ${passed} of what the node says of its peers: what is not shaped as the node gives it.`);
+  }
+
+  return nodes;
+}
+
+// Each node the node list names (HttpApi 10.6) but this one, by id: its place
+// in the list, and its addresses. The list does not say whether a node is
+// connected, or what is counted of it. An id that is no node's is passed
+// over, and warned of.
+function listedOf(value, self) {
+  const nodes = new Map();
+  const listed = isObject(value.nodes) ? Object.entries(value.nodes) : [];
+  let passed = isObject(value.nodes) ? 0 : 1;
+
+  listed.forEach(([endpoint, id], order) => {
+    if (!CONTENT_ID.test(id)) {
+      passed += 1;
+      return;
+    }
+
+    if (id === self) {
+      return;
+    }
+
+    const node = nodes.get(id) || { order, connected: null, stats: null, addresses: [] };
+    node.addresses.push({ endpoint });
+    nodes.set(id, node);
+  });
+
+  if (passed > 0) {
+    console.warn(`Passing over ${passed} of what the node list names: ids that are no node's.`);
+  }
+
+  return nodes;
+}
+
+// What `fields` says, as [name, value] pairs: the details a node is offered,
+// in their order, then the rest, by name, leaving out what is empty.
+function detailsOf(fields) {
+  const others = Object.keys(fields)
+    .filter((name) => !NODE_FIELDS.includes(name))
+    .sort();
+  return [...NODE_FIELDS, ...others]
+    .filter((name) => Object.hasOwn(fields, name) && fields[name].trim())
+    .map((name) => [name, fields[name].trim()]);
+}
+
+// The node `id` names as the list shows it: its name, the rest of what it
+// says, what the node knows of it, or null if nothing, and its trust.
+function entryOf(id) {
+  const known = view.nodes.get(id) || null;
+  const said = view.said.get(id);
+  const details = detailsOf(said && said.fields ? said.fields : {});
+  const name = details.find(([field]) => field === NAME);
+  const addresses = known ? known.addresses : [];
+  const searched = [id, ...details.map(([, value]) => value), ...addresses.map((address) => address.endpoint)];
+  return {
+    id,
+    known,
+    name: name ? name[1] : "",
+    rest: details.filter(([field]) => field !== NAME),
+    connected: known ? known.connected : null,
+    stats: known ? known.stats : null,
+    addresses,
+    order: known ? known.order : Number.POSITIVE_INFINITY,
+    missing: said ? said.missing : 0,
+    trust: trustOf(id),
+    text: searched.join("\n").toLocaleLowerCase(),
+  };
+}
+
+// How whoever is signed in trusts `id`, by their scores: its score, and the
+// step it was reached at, null if it was not; null when there are no scores.
+function trustOf(id) {
+  if (view.scores === null) {
+    return null;
+  }
+
+  return view.scores.get(id) || { score: 0, step: null };
+}
+
+function markOf(trust) {
+  if (trust === null) {
+    return UNKNOWN;
+  }
+
+  return trust.score > 0 ? TRUSTED : trust.score < 0 ? DISTRUSTED : NEITHER;
+}
+
+// What a score reached at a step says: at step 1, what the person's own list
+// holds, and after it, what the lists of those they trust hold.
+function trustWords(trust) {
+  if (trust.step === 1) {
+    return trust.score > 0 ? "You trust it." : "You distrust it.";
+  }
+
+  if (trust.score > 0) {
+    return "Trusted by those you trust.";
+  }
+
+  return trust.score < 0 ? "Distrusted by those you trust." : "Trusted and distrusted alike by those you trust.";
+}
+
+// What a node's mark says in words: how it is trusted, its score and its
+// step, and whether the scores are still being built; or why there are no
+// scores.
+function trustText(trust) {
+  if (trust === null) {
+    return view.unscored;
+  }
+
+  const building = view.complete ? "" : " Your scores are still being built.";
+
+  if (trust.step === null) {
+    return `Not reached by your trust list, or by those it reaches. Score 0.${building}`;
+  }
+
+  return `${trustWords(trust)} Score ${trust.score}, step ${trust.step}.${building}`;
+}
+
+// A node's mark, saying its trust in words when hovered over, and beside it
+// once tapped.
+function markFor(entry) {
+  const text = trustText(entry.trust);
+  const mark = make("button", markOf(entry.trust), "mark");
+  mark.type = "button";
+  mark.title = text;
+  mark.setAttribute("aria-label", text);
+  mark.setAttribute("aria-expanded", String(view.opened.has(entry.id)));
+  mark.addEventListener("click", () => {
+    if (!view.opened.delete(entry.id)) {
+      view.opened.add(entry.id);
+    }
+
+    render();
+  });
+  return mark;
+}
+
+// Whether the scores say what the person's own list holds yet: it is the
+// first read, and only it scores at step 1.
+function ownListRead() {
+  return view.scores !== null && (view.complete || view.scores.size > 0);
+}
+
+// Trust, Distrust, and Clear, changing the entry for `entry` on the trust list
+// of whoever is signed in, the one saying what the list holds disabled; and
+// what the last change said.
+function choicesFor(entry) {
+  const row = make("li", "", "choices");
+  const held = ownListRead() && entry.trust.step === 1 ? entry.trust.score > 0 : null;
+  const change = view.changing.get(entry.id);
+
+  for (const [label, trusted] of [["Trust", true], ["Distrust", false], ["Clear", null]]) {
+    const button = make("button", label);
+    button.type = "button";
+    button.disabled = Boolean(change && change.busy) || (ownListRead() && held === trusted);
+    button.addEventListener("click", () => changeTrust(entry.id, trusted));
+    row.append(button);
+  }
+
+  if (change) {
+    row.append(make("span", change.text, change.className));
+  }
+
+  return row;
+}
+
+// Have the node trust `id`, distrust it (`trusted` false), or clear it (null)
+// on the list of whoever is signed in (HttpApi 11.7), waiting out a 503 while
+// it fetches a version of the list, then read the scores it gives them.
+async function changeTrust(id, trusted) {
+  const path = `/data/trust/${id}`;
+  view.changing.set(id, { busy: true, text: "Saving…", className: "note" });
+  render();
+
+  try {
+    for (let waits = 0; ; waits += 1) {
+      const result = trusted === null ? await call("DELETE", path) : await call("PUT", path, { trust: trusted });
+
+      if (result.ok) {
+        view.changing.delete(id);
+        break;
+      }
+
+      if (result.status !== 503 || waits >= MAX_WAITS) {
+        view.changing.set(id, { text: `Not changed: ${refusal(result)}`, className: "error" });
+        break;
+      }
+
+      await sleep(retryAfter(result.headers));
+    }
+
+    await readScores();
+  } catch (error) {
+    view.changing.set(id, { text: error.message, className: "error" });
+    render();
+  }
+}
+
+// Read the scores of whoever is signed in (HttpApi 11.7), and, while they are
+// still being built, read them again every few seconds until they are not.
+async function readScores() {
+  const result = await call("GET", "/data/trust");
+  const value = result.value;
+
+  if (result.ok && isObject(value) && isObject(value.scores)) {
+    const scored = Object.entries(value.scores).filter(
+      ([id, trust]) => CONTENT_ID.test(id) && isObject(trust) && Number.isFinite(trust.score),
+    );
+    view.scores = new Map(scored);
+    view.complete = value.complete === true;
+  } else {
+    view.scores = null;
+    view.unscored = `No trust is shown: ${refusal(result)}`;
+  }
+
+  showTrust();
+
+  if (view.scores !== null && !view.complete) {
+    followScores();
+  }
+}
+
+let followingScores = false;
+
+async function followScores() {
+  if (followingScores) {
+    return;
+  }
+
+  followingScores = true;
+
+  try {
+    while (view.scores !== null && !view.complete) {
+      await sleep(SCORES_AGAIN_SECONDS);
+      await readScores();
+    }
+  } catch (error) {
+    view.scores = null;
+    view.unscored = `No trust is shown: ${error.message}`;
+    showTrust();
+  } finally {
+    followingScores = false;
+  }
+}
+
+// Offer sorting by whether each node is connected, and showing only those
+// that are, where the node says so, and sorting and hiding by trust where
+// there are scores, all of it for the list alone.
+function showArrange() {
+  const scored = view.scores !== null;
+  byId("arrange").hidden = view.source !== "peers" || view.one !== null;
+  byId("sort-trust").disabled = !scored;
+  byId("hide-distrusted-label").hidden = !scored;
+}
+
+// Say what the marks show, and that the list is public, and show them on
+// every node listed.
+function showTrust() {
+  const lines = [];
+
+  if (view.scores === null) {
+    lines.push(`${UNKNOWN} ${view.unscored}`);
+  } else {
+    lines.push(`${TRUSTED} trusted, ${NEITHER} neither, and ${DISTRUSTED} distrusted, by your trust scores. Hover over or tap a mark for its score.`);
+
+    if (view.you !== null) {
+      lines.push("Your trust list is public: anyone can read whom you trust, and whom you distrust.");
+    } else {
+      lines.push("Signed in as a fallback, you cannot change your trust list until you take over, in the user directory.");
+    }
+
+    if (!view.complete) {
+      lines.push("Your scores are still being built, and are read again until they are.");
+    }
+  }
+
+  const said = byId("trust-text");
+  said.textContent = lines.join(" ");
+  said.hidden = false;
+  showArrange();
+  render();
+}
+
+// Say where the list is from, and what it can and cannot say.
+function showKnown() {
+  const said = byId("known-text");
+  const derived = view.derived === null ? "" : `, at ${momentText(view.derived)}`;
+  said.textContent =
+    view.source === "peers"
+      ? `What this node knows of each other node, as it last worked it out${derived}. It works it out every minute or so, so a connection may have opened or closed since; open this page again to read it again.`
+      : "The nodes this node gives other nodes to try, in its node list. Whether each is connected, what this node counts of it, and its trust are shown only in a browser on the node's own machine.";
+  said.hidden = false;
+}
+
+function momentText(text) {
+  const moment = new Date(text);
+  return Number.isNaN(moment.getTime()) ? text : moment.toLocaleString(undefined, MOMENT_STYLE);
+}
+
+function bytesText(bytes) {
+  let value = bytes;
+  let unit = 0;
+
+  while (value >= 1024 && unit < BYTE_UNITS.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+
+  return unit === 0 ? `${value} B` : `${value.toFixed(1)} ${BYTE_UNITS[unit]}`;
+}
+
+// A duration in its two largest units, from the first that is not 0.
+function durationText(seconds) {
+  let left = Math.round(seconds);
+  const parts = DURATION_UNITS.map(([unit, size]) => {
+    const count = Math.floor(left / size);
+    left -= count * size;
+    return `${count} ${unit}`;
+  });
+  const first = parts.findIndex((part) => !part.startsWith("0 "));
+  return first < 0 ? "0 s" : parts.slice(first, first + 2).join(" ");
+}
+
+// A value, as the kind STATS or ADDRESS_STATS names shows it.
+function valueText(value, kind) {
+  if (kind === "moment") {
+    return value === null ? "never" : momentText(value);
+  }
+
+  if (kind === "bytes") {
+    return bytesText(value);
+  }
+
+  if (kind === "duration") {
+    return durationText(value);
+  }
+
+  if (kind === "source") {
+    return Object.hasOwn(SOURCES, value) ? SOURCES[value] : value;
+  }
+
+  return String(value);
+}
+
+// What `values` says by each member `shown` names: its label and its value,
+// with what it counts on hover.
+function statsList(values, shown) {
+  const list = make("dl", "", "stats");
+
+  for (const [member, label, kind, meaning] of shown) {
+    const pair = document.createElement("div");
+    pair.title = meaning;
+    pair.append(make("dt", label), make("dd", valueText(values[member], kind)));
+    list.append(pair);
+  }
+
+  return list;
+}
+
+// Whether a connection to the node is open now, and which ways; nothing where
+// the node does not say.
+function connectionOf(entry) {
+  if (entry.connected === null) {
+    return null;
+  }
+
+  if (entry.connected.length === 0) {
+    return make("span", "not connected", "unconnected");
+  }
+
+  const shown = make("span", `connected, ${entry.connected.join(" and ")}`, "connected");
+  shown.title = "Outbound: this node dialed it. Inbound: it dialed this node.";
+  return shown;
+}
+
+// What the node knows of the node shown alone, if it knows nothing.
+function unknownRow(entry) {
+  if (entry.id === view.self) {
+    return make("li", "This is the node serving this page, which counts nothing of itself.", "note");
+  }
+
+  return make(
+    "li",
+    view.source === "peers"
+      ? "This node knows nothing of it: it has no address of it, has counted nothing of it, and has no connection to it."
+      : "This node's node list does not name it.",
+    "note",
+  );
+}
+
+// Those named first, by name, then by id.
+function compareEntries(one, other) {
+  if (Boolean(one.name) !== Boolean(other.name)) {
+    return one.name ? -1 : 1;
+  }
+
+  const byName = one.name.localeCompare(other.name, undefined, { sensitivity: "base" });
+  return byName || (one.id < other.id ? -1 : one.id > other.id ? 1 : 0);
+}
+
+// As the node lists its peers: those connected first, then the most recently
+// connected, then the most recently learned of (HttpApi 10.8).
+function compareListed(one, other) {
+  return one.order - other.order || compareEntries(one, other);
+}
+
+// The most trusted first, then as compareEntries orders them.
+function compareTrust(one, other) {
+  return other.trust.score - one.trust.score || compareEntries(one, other);
+}
+
+// How the list is ordered: as asked for, where the node says who is
+// connected; by name where it does not.
+function comparison() {
+  if (view.source !== "peers" || view.sort === "name") {
+    return compareEntries;
+  }
+
+  return view.sort === "trust" && view.scores !== null ? compareTrust : compareListed;
+}
+
+function itemOf(entry) {
+  const item = document.createElement("li");
+  const first = make("div", "", "first");
+  const name = entry.name || make("code", entry.id, "id");
+  first.append(markFor(entry));
+
+  // Each node listed links to its page, where it is shown alone, and says
+  // what it says of itself when hovered over, as it does there.
+  if (view.one === null) {
+    const link = nodeLink(entry.id, name);
+    link.title = [...entry.rest, ["id", entry.id]].map(([field, value]) => `${field}: ${value}`).join("\n");
+    first.append(link);
+  } else {
+    first.append(name);
+  }
+
+  if (entry.id === view.self) {
+    first.append(make("span", "this node", "this"));
+  }
+
+  const connection = connectionOf(entry);
+
+  if (connection !== null) {
+    first.append(connection);
+  }
+
+  if (view.opened.has(entry.id)) {
+    first.append(make("span", trustText(entry.trust), "score"));
+  }
+
+  const rows = document.createElement("ul");
+  rows.className = "rows";
+  entry.rest.forEach(([field, value]) => rows.append(make("li", `${field}: ${value}`)));
+
+  if (entry.name) {
+    const id = make("li", "id: ");
+    id.append(make("code", entry.id, "id"));
+    rows.append(id);
+  }
+
+  if (entry.missing > 0) {
+    rows.append(make("li", "Some of what it says is not held here yet.", "note"));
+  }
+
+  if (entry.stats !== null) {
+    const stats = document.createElement("li");
+    stats.append(statsList(entry.stats, STATS));
+    rows.append(stats);
+  } else if (entry.known === null && view.listed) {
+    rows.append(unknownRow(entry));
+  }
+
+  // Only whoever is signed in, and can sign, changes their list.
+  if (view.you !== null) {
+    rows.append(choicesFor(entry));
+  }
+
+  item.append(first);
+
+  if (rows.childElementCount > 0) {
+    item.append(rows);
+  }
+
+  return item;
+}
+
+// Show the one node a link names; or every node listed whose details hold
+// every word searched for, but those not connected if they are hidden, and
+// those distrusted if they are, in the order asked for, once the list is read.
+function render() {
+  if (view.one !== null) {
+    renderOne();
+    return;
+  }
+
+  if (!view.listed) {
+    return;
+  }
+
+  const every = plural(view.nodes.size, "node", "nodes");
+  byId("count").textContent = every;
+
+  if (view.nodes.size === 0) {
+    const none = view.source === "peers" ? "This node knows of no other node yet." : "This node's node list names no other node yet.";
+    byId("nodes").replaceChildren(make("span", none, "note"));
+    return;
+  }
+
+  const terms = view.query.toLocaleLowerCase().split(/\s+/).filter((term) => term);
+  const hiding = view.scores !== null && view.hideDistrusted;
+  const connectedOnly = view.source === "peers" && view.connectedOnly;
+  const entries = [...view.nodes.keys()]
+    .map(entryOf)
+    .filter((entry) => terms.every((term) => entry.text.includes(term)))
+    .filter((entry) => !connectedOnly || entry.connected.length > 0)
+    .filter((entry) => !hiding || entry.trust.score >= 0)
+    .sort(comparison());
+
+  if (terms.length > 0 || connectedOnly || hiding) {
+    byId("count").textContent = `${entries.length} of ${every}`;
+  }
+
+  if (entries.length === 0) {
+    const none =
+      terms.length > 0
+        ? "No node listed matches the search."
+        : connectedOnly && hiding
+          ? "No node listed is both connected and not distrusted."
+          : connectedOnly
+            ? "No node listed is connected now."
+            : "Every node listed is distrusted, so none is shown.";
+    byId("nodes").replaceChildren(make("span", none, "note"));
+    return;
+  }
+
+  const list = document.createElement("ol");
+  entries.forEach((entry) => list.append(itemOf(entry)));
+  byId("nodes").replaceChildren(list);
+}
+
+// Show the one node the link names, and its addresses.
+function renderOne() {
+  const entry = entryOf(view.one);
+  const one = document.createElement("ul");
+  one.className = "one";
+  one.append(itemOf(entry));
+  byId("nodes").replaceChildren(one);
+  byId("addresses").hidden = entry.known === null;
+  byId("addresses-list").replaceChildren(...addressesShown(entry));
+}
+
+// Each address of the node shown alone, with what this node says of it where
+// it says anything, in the order it tries them.
+function addressesShown(entry) {
+  if (entry.addresses.length === 0) {
+    return [make("p", "This node knows no address of it.", "note")];
+  }
+
+  const list = make("ul", "", "addresses");
+
+  for (const address of entry.addresses) {
+    const item = document.createElement("li");
+    item.append(make("code", address.endpoint, "id"));
+
+    if (view.source === "peers") {
+      item.append(statsList(address, ADDRESS_STATS));
+    }
+
+    list.append(item);
+  }
+
+  return view.source === "peers" ? [make("p", "In the order this node tries them.", "note"), list] : [list];
+}
+
+// Render once the browser next paints, however many ask before then.
+function renderSoon() {
+  if (!renderQueued) {
+    renderQueued = true;
+    requestAnimationFrame(() => {
+      renderQueued = false;
+      render();
+    });
+  }
+}
+
+// What the node answers the list at `path` with, `what` the list is, waiting
+// out each 503 answered until the node has first worked it out; and who
+// signed the answer, this node.
+async function readList(path, what) {
+  for (let waits = 0; ; waits += 1) {
+    const result = await call("GET", path);
+
+    if (result.status === 503) {
+      const seconds = retryAfter(result.headers);
+
+      if (waits === 0) {
+        status.say(`The node has not worked out ${what} yet. Asking again every ${plural(seconds, "second", "seconds")}…`);
+      }
+
+      await sleep(seconds);
+      continue;
+    }
+
+    if (result.status === 401) {
+      throw new Error("This node shares its node list only with other nodes.");
+    }
+
+    if (!result.ok || !isObject(result.value)) {
+      throw new Error(`The node did not give ${what}: ${refusal(result)}`);
+    }
+
+    return { value: result.value, self: signerOf(result.headers) };
+  }
+}
+
+// Read the nodes known: on the node's own machine, what the node knows of each
+// peer (HttpApi 10.8); elsewhere, which it may not be shown, the node list it
+// gives other nodes (HttpApi 10.5), which says only where each may be reached.
+async function readNodes(local) {
+  if (local) {
+    const { value, self } = await readList("/data/peers", "what it knows of its peers");
+    view.nodes = peersOf(value);
+    view.source = "peers";
+    view.derived = typeof value.derived === "string" ? value.derived : null;
+    view.self = self;
+  } else {
+    const { value, self } = await readList("/data/nodes", "its node list");
+    view.nodes = listedOf(value, self);
+    view.source = "nodes";
+    view.self = self;
+  }
+
+  view.listed = true;
+  const others = plural(view.nodes.size, "other node", "other nodes");
+  status.say(view.source === "peers" ? `This node knows of ${others}.` : `Its node list names ${others}.`);
+  showKnown();
+  showArrange();
+  render();
+}
+
+// What the node made of the signed content `id` names (HttpApi 11.5),
+// waiting out the 503s answered while it fetches it: what it signs and who
+// signed it, or that it is not held yet, or that it is no signed content that
+// checks.
+async function checked(id) {
+  for (let waits = 0; ; waits += 1) {
+    let response;
+
+    try {
+      // A check that passes never changes, so the browser's cache may answer.
+      response = await fetch(`/data/signed/${id}`);
+    } catch (error) {
+      throw new Unreachable(`The node could not be reached: ${error.message}`);
+    }
+
+    if (response.status === 503) {
+      if (waits >= MAX_WAITS) {
+        return { missing: true };
+      }
+
+      await sleep(retryAfter(response.headers));
+      continue;
+    }
+
+    const value = response.ok ? await response.json().catch(() => null) : null;
+    return isObject(value) ? { signed: value } : { passed: true };
+  }
+}
+
+// The version of what `nodeId` says of itself that `signed`, checked at `id`,
+// holds; null if the node did not sign it, or it is not shaped as a version
+// is.
+function versionOf(id, signed, nodeId) {
+  if (signed.signer !== nodeId || typeof signed.contents !== "string") {
+    return null;
+  }
+
+  let value;
+
+  try {
+    value = JSON.parse(signed.contents);
+  } catch (error) {
+    return null;
+  }
+
+  const versions = isObject(value) && value.versions !== undefined ? value.versions : [];
+  const isVersion =
+    isObject(value) &&
+    isObject(value.fields) &&
+    Object.values(value.fields).every((field) => typeof field === "string") &&
+    Number.isSafeInteger(value.version) &&
+    value.version >= 1 &&
+    Array.isArray(versions) &&
+    versions.every((replaced) => CONTENT_ID.test(replaced));
+  return isVersion ? { id, fields: value.fields, version: value.version } : null;
+}
+
+// The newest of `versions`: the one numbered highest, and the first by id of
+// those numbered as high. Only the node signs a version, so no one else can
+// make one newer.
+function newestOf(versions) {
+  return versions.reduce(
+    (best, found) =>
+      best === null ||
+      found.version > best.version ||
+      (found.version === best.version && found.id < best.id)
+        ? found
+        : best,
+    null,
+  );
+}
+
+// The ids a search of the drop `target` finds (HttpApi 9.7) that share at
+// least `bits` leading bits with its hash, as each version placed there does.
+// Whatever else is nearest is something else, and is not read. `what` names
+// what is searched for, should the search fail.
+async function dropResults(target, bits, what) {
+  const search = await call("GET", dropPath(target));
+  const answered =
+    search.ok &&
+    isObject(search.value) &&
+    typeof search.value.target === "string" &&
+    Array.isArray(search.value.results);
+
+  if (!answered) {
+    throw new Error(`${what} could not be searched for: ${refusal(search)}`);
+  }
+
+  const hash = search.value.target;
+  return search.value.results.filter(
+    (id) => CONTENT_ID.test(id) && matchingBits(id.slice(HASH_START), hash) >= bits,
+  );
+}
+
+// What `nodeId` says of itself (App Developer Guide 6.18): the fields of the
+// newest version it signed at its drop, or null if none is held; and how many
+// found there are not held yet. The node blocks the versions the newest
+// replaces, so there is no history to read back.
+async function readMetadata(nodeId) {
+  const ids = await dropResults(NODE_METADATA_PREFIX + nodeId, METADATA_MINIMUM_BITS, `What ${nodeId} says`);
+  const results = await Promise.all(ids.map(checked));
+  const versions = [];
+  let missing = 0;
+
+  ids.forEach((id, index) => {
+    const result = results[index];
+    // Only its own counts: anyone may place a version of their own at the drop.
+    const version = result.signed ? versionOf(id, result.signed, nodeId) : null;
+
+    if (result.missing) {
+      missing += 1;
+    } else if (version === null) {
+      console.warn(`Passing over ${id} for what ${nodeId} says: it is no version of its own that checks.`);
+    } else {
+      versions.push(version);
+    }
+  });
+
+  const newest = newestOf(versions);
+  return { fields: newest === null ? null : newest.fields, missing };
+}
+
+// Read what each of `nodes` says of itself, showing it as it comes.
+async function loadMetadata(nodes) {
+  if (nodes.length === 0) {
+    return;
+  }
+
+  status.say(`Reading what ${plural(nodes.length, "node says", "nodes say")} of ${nodes.length === 1 ? "itself" : "themselves"}…`);
+  let failed = 0;
+
+  await eachAtMost(nodes, DETAILS_AT_ONCE, async (node) => {
+    try {
+      view.said.set(node, await readMetadata(node));
+    } catch (error) {
+      if (error instanceof Unreachable) {
+        throw error;
+      }
+
+      failed += 1;
+      console.warn(error.message);
+    }
+
+    renderSoon();
+  });
+
+  render();
+  const said = nodes.filter((node) => {
+    const fields = view.said.get(node)?.fields;
+    return fields && Object.keys(fields).length > 0;
+  }).length;
+  const missing = nodes.filter((node) => view.said.get(node)?.missing > 0).length;
+  status.say(`${plural(said, "node says", "nodes say")} something of ${said === 1 ? "itself" : "themselves"}.`);
+
+  if (missing > 0) {
+    status.say(`Some of what ${plural(missing, "node", "nodes")} said is not held here yet. The node asked its peers for it, and it is shown when this page is opened again.`);
+  }
+
+  if (failed > 0) {
+    status.say(`What ${plural(failed, "node says", "nodes say")} could not be read.`, "error");
+  }
+}
+
+function sayAccount(text, className) {
+  const said = byId("account-text");
+  said.textContent = text;
+  said.className = className || "note";
+}
+
+// Offer a local client signing in, or out. Either reloads the page, which
+// then reads the scores of whoever is signed in.
+function offerAccount(session) {
+  byId("account").hidden = false;
+
+  if (session !== null) {
+    byId("account-title").textContent = "Signed in";
+    byId("signed-in").hidden = false;
+    byId("signed-in-text").textContent =
+      session.fallback_for && !session.fallback
+        ? `Signed in as ${session.username}, with the fallback password.`
+        : `Signed in as ${session.username}.`;
+    byId("sign-out").addEventListener("click", async () => {
+      byId("sign-out").disabled = true;
+      await call("DELETE", "/data/session").catch(() => null);
+      location.reload();
+    });
+    return;
+  }
+
+  const form = byId("sign-in");
+  const button = form.querySelector("button");
+  form.hidden = false;
+  sayAccount("Sign in to see how far you trust each node, and to trust or distrust one. Your fallback password signs in as your fallback, should your identity be compromised.");
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    button.disabled = true;
+    sayAccount("Signing in…");
+
+    try {
+      // Once: the node looks twice, asking its peers between, and a person
+      // who tries again finds what they answered (HttpApi 11.4).
+      const result = await call("POST", "/data/session", {
+        username: byId("username").value,
+        password: byId("password").value,
+      });
+
+      if (result.ok) {
+        location.reload();
+        return;
+      }
+
+      sayAccount(
+        result.status === 503
+          ? "No identity that username and password open was found yet. The node " +
+              "has asked its peers, so try again in a moment."
+          : `Not signed in: ${refusal(result)}`,
+        "error",
+      );
+    } catch (error) {
+      sayAccount(error.message, "error");
+    }
+
+    button.disabled = false;
+  });
+}
+
+// Show the one node a link names, as `?id={id}` (App Developer Guide 6.18):
+// what it says of itself, whether it is connected, what this node counts of
+// it, and its addresses, as far as this client is shown them; and the trust in
+// it of whoever is signed in.
+function showOne(node) {
+  view.one = node;
+  byId("search").hidden = true;
+  byId("count").textContent = "One node";
+  byId("every").hidden = false;
+  showArrange();
+  render();
+}
+
+async function start() {
+  byId("search").addEventListener("input", (event) => {
+    view.query = event.target.value;
+    render();
+  });
+  byId("sort").addEventListener("change", (event) => {
+    view.sort = event.target.value;
+    render();
+  });
+  byId("connected-only").addEventListener("change", (event) => {
+    view.connectedOnly = event.target.checked;
+    render();
+  });
+  byId("hide-distrusted").addEventListener("change", (event) => {
+    view.hideDistrusted = event.target.checked;
+    render();
+  });
+  const [session, local] = await Promise.all([signedIn(), isLocal()]);
+  // A fallback reads its scores, but changes its list only once it has taken
+  // over, with a fallback of its own.
+  view.you = session !== null && CONTENT_ID.test(session.fallback) ? session.id : null;
+
+  if (local) {
+    offerAccount(session);
+  }
+
+  // The scores are read as the session is, by a local client signed in, and
+  // shown as they come, while the nodes are read.
+  if (session !== null) {
+    readScores().catch((error) => {
+      view.unscored = `No trust is shown: ${error.message}`;
+      showTrust();
+    });
+  } else {
+    view.unscored = local
+      ? "No trust is shown: sign in to see whom you trust."
+      : "No trust is shown: only a browser on the node's own machine, signed in, is shown it.";
+    showTrust();
+  }
+
+  // A link naming one node shows it alone.
+  const one = new URLSearchParams(location.search).get("id");
+
+  if (one !== null && CONTENT_ID.test(one)) {
+    showOne(one);
+  } else if (one !== null) {
+    status.say(`The link names ${one}, which is not a node's id, so every node known is shown.`, "error");
+  }
+
+  await readNodes(local);
+  await loadMetadata(view.one !== null ? [view.one] : [...view.nodes.keys()]);
+}
+
+start().catch((error) => status.say(error.message, "error"));
+</script>
+</body>
+</html>

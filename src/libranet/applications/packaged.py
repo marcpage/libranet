@@ -39,8 +39,9 @@ PACKAGED_APPLICATIONS: Final = Path(__file__).resolve().parent
 #: directory beside this module it is built from. ``/`` is the root
 #: application (HttpApi §13), ``config`` the one serving ``/config``
 #: (HttpApi §2.3), ``movie`` the movie library (Phase 3 Step 67),
-#: ``directory`` the user directory (Phase 4 Step 92), and ``mail`` mail
-#: between people (Phase 4 Step 82).
+#: ``directory`` the user directory (Phase 4 Step 92), ``mail`` mail
+#: between people (Phase 4 Step 82), and ``nodes`` the nodes known (Phase 5
+#: Step 108).
 SHIPPED_APPLICATIONS: Final = MappingProxyType(
     {
         "/": "root",
@@ -48,6 +49,7 @@ SHIPPED_APPLICATIONS: Final = MappingProxyType(
         "movie": "movie",
         "directory": "directory",
         "mail": "mail",
+        "nodes": "nodes",
     }
 )
 

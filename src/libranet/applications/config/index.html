@@ -161,6 +161,8 @@
   }
 
   .score { display: block; color: var(--muted); font-size: 0.85rem; margin-top: 0.2rem; }
+  .score[hidden] { display: none; }
+  .node-page { display: block; font-size: 0.85rem; margin-top: 0.2rem; }
   .extra { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem; }
 
   .visually-hidden {
@@ -791,12 +793,27 @@ trustMark.addEventListener("click", () => {
   trustMark.setAttribute("aria-expanded", String(!trustSaid.hidden));
 });
 
-// This node as `shown` shows it, with the mark of its trust before it, and
-// what the mark says beneath it.
+// This node as `shown` shows it, with the mark of its trust before it, what
+// the mark says beneath it, and a link to its page.
 function showNode(shown) {
   const line = make("div", null, "identity");
   line.append(trustMark, shown);
-  byId("node-id").replaceChildren(line, trustSaid);
+  byId("node-id").replaceChildren(line, trustSaid, nodeLink(nodeId));
+}
+
+// Where the nodes application shows the node `id` names alone (Phase 5 Step
+// 108), on the main port, as the applications are linked (applicationLink).
+function nodeLink(id) {
+  if (mainPort === null) {
+    return make("span", "Its page is in the nodes application.", "node-page");
+  }
+
+  const url = new URL("/nodes/", location.href);
+  url.port = String(mainPort);
+  url.searchParams.set("id", id);
+  const link = make("a", "Its page in the nodes application", "node-page");
+  link.href = url.href;
+  return link;
 }
 
 function listenText(address, port) {

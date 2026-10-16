@@ -357,9 +357,9 @@ replaced. The new node also needs peers that hold the backup's content
 ## 6. Applications
 
 An application is a directory bundle served as a website at `/{name}/` on
-the node's port. A new node ships five: its front page at `/`, the
+the node's port. A new node ships six: its front page at `/`, the
 `/config` page, the movie library at `/movie/`, the user directory at
-`/directory/`, and mail at `/mail/`. The
+`/directory/`, mail at `/mail/`, and the nodes it knows at `/nodes/`. The
 [App Developer Guide](App%20Developer%20Guide.md) describes writing one.
 
 ### 6.1 Registering an Application
@@ -607,6 +607,15 @@ address this connection came from": the node advertises a real address once
 `network.external_address` is set. The peers it knows follow, by address and
 node id. `GET /data/seek` lists the content it is still looking for, and
 peers `POST` their own lists to the same two paths.
+
+In a browser on the node's own machine, the nodes application, at `/nodes/`,
+shows each other node it knows, by the name it gives itself: whether a
+connection to it is open now, and which way, what the node has counted of it,
+such as the bytes received from it and sent to it, and each of its addresses.
+It reads `GET /data/peers`, which the node works out every minute or so, and
+serves only to its own machine. A browser elsewhere is shown the node list
+alone. Whoever is signed in there can trust or distrust a node, as they do a
+person ([App Developer Guide](App%20Developer%20Guide.md) §6.18).
 
 Content is read by its id, as any peer reads it:
 
