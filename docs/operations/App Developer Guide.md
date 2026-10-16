@@ -589,7 +589,8 @@ connection may have opened or closed since. Those connected come first.
 Only a trusted application's page on the node's own machine may read it,
 since it says whom the node talks to and how much; elsewhere it is `403`,
 so ask `GET /data/client` (§6.2) before offering it. Like the others, it
-answers `503` until the node has first worked it out.
+answers `503` until the node has first worked it out. The nodes application
+shows it (§6.18), and a client elsewhere the node list instead.
 
 ### 6.9 Making a Drop
 
@@ -1250,9 +1251,9 @@ asking for each, and read them again every few seconds while they are not
 complete. Show the person signed in no mark, since no one is scored by
 their own list. Each shipped application carries its own copy of the code
 that does it: the directory marks each person (§6.12), mail each person it
-shows (§6.16), and the root application its own node (§6.18). `/config`
-marks its node ⚪ alone, saying it reads no scores, since its pages ask
-only its own endpoints.
+shows (§6.16), the root application its own node (§6.18), and the nodes
+application each node (§6.18). `/config` marks its node ⚪ alone, saying it
+reads no scores, since its pages ask only its own endpoints.
 
 ### 6.18 What Nodes Say of Themselves
 
@@ -1297,9 +1298,25 @@ follow the same rules as other pages do:
 `name` its newest version gives, and by its id when it gives none or says
 nothing. Show the rest of what it says, and its id, when the name is hovered
 over, and when it is tapped, since a touch screen has no hover. The root
-application shows its own node this way, and `/config` does too. Each page
-carries its own copy of the code that does it, as each shipped application
-carries its own reading rules.
+application shows its own node this way, and `/config` does too, each with a
+link to its page. Each page carries its own copy of the code that does it, as
+each shipped application carries its own reading rules.
+
+To link a node, link to `/nodes/?id={id}`. The shipped `nodes` application,
+at `/nodes/`, lists the nodes known, each by its name, with the rest of what
+it says, and links each to its page, which shows it alone with its
+addresses. In a browser on the node's own machine, it lists what
+`GET /data/peers` gives (§6.8): whether each is connected, and which way,
+and everything the node has counted of it. It sorts them with those
+connected first, by name, or by trust, and shows only those connected, or
+hides those distrusted, on request; a search looks through what each says,
+its id, and its addresses. It shows each node's trust (§6.17), with
+**Trust**, **Distrust**, and **Clear** for whoever is signed in, and signs
+them in and out. Elsewhere, it lists the nodes `GET /data/nodes` names, by
+name, with the addresses it gives, and says that whether each is connected,
+what the node counts of it, and its trust are shown only on the node's own
+machine. A page for a node the node knows nothing of says so, and still
+offers its trust, since a trust list may name any node.
 
 **Know a node by where you found it.** A node's id and a person's are of one
 form, so a page knows which an id is from where it found it: those of
@@ -1362,9 +1379,9 @@ of HTML and script, and uses every endpoint above. What it does, and why:
 The applications a node ships with are directories under
 [`src/libranet/applications/`](../../src/libranet/applications/): `root`,
 served at `/`, `config`, served at `/config`, `movie`, served at
-`/movie`, `directory`, served at `/directory`, and `mail`, served at
-`/mail`. `SHIPPED_APPLICATIONS` in `packaged.py` names each, and a node
-trusts them from the start.
+`/movie`, `directory`, served at `/directory`, `mail`, served at `/mail`,
+and `nodes`, served at `/nodes`. `SHIPPED_APPLICATIONS` in `packaged.py`
+names each, and a node trusts them from the start.
 
 Run from the source, the node builds them in memory as it starts, so a
 changed page is served once the node restarts. `uv build` builds them into

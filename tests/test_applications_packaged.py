@@ -1,5 +1,5 @@
 """Tests for the applications shipped with the node, and the root, ``/config``, movie,
-directory, and mail pages.
+directory, mail, and nodes pages.
 
 Which way they were shipped, built into a wheel or run from source, is known
 only to the layered source, and is tested through it.
@@ -12,7 +12,7 @@ from json import loads
 from os import chmod, symlink, utime
 from pathlib import Path
 from queue import Queue
-from re import findall, fullmatch
+from re import DOTALL, MULTILINE, findall, fullmatch
 from shutil import copytree
 from typing import Iterator
 from urllib.parse import quote
@@ -40,9 +40,11 @@ from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.node_metadata import MIN_NODE_METADATA_BITS
 from libranet.identity.trust import MIN_TRUST_LIST_BITS, TrustList
-from libranet.messaging.events import EventType
+from libranet.messaging.events import AddressSource, EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
+from libranet.protocol.lists import NODES_PATH
+from libranet.stats.records import NodeAddress, NodeStats
 from libranet.unbundler.module import UnbundlerModule
 from libranet.webserver.app_handler import CONFIG_APP_POLICY
 from libranet.webserver.app_registry import CONFIG_APPLICATION, ROOT_APPLICATION
@@ -55,6 +57,7 @@ from libranet.webserver.drop_handler import DROP_PATH
 from libranet.webserver.encrypted_handlers import ENCRYPTED_PATH, ENCRYPTED_PATTERN
 from libranet.webserver.http_types import Request
 from libranet.webserver.identity_handlers import FALLBACK_PATH, SESSION_PATH
+from libranet.webserver.list_handlers import PEERS_PATH
 from libranet.webserver.local_folders import DIRECTORY_PATTERN
 from libranet.webserver.local_imports import IMPORTS_PATH
 from libranet.webserver.local_only import CLIENT_PATH
@@ -71,11 +74,13 @@ from tests.helpers import published
 MOVIE_APPLICATION = "movie"
 DIRECTORY_APPLICATION = "directory"
 MAIL_APPLICATION = "mail"
+NODES_APPLICATION = "nodes"
 ROOT_PAGE_SOURCE = PACKAGED_APPLICATIONS / "root" / "index.html"
 CONFIG_PAGE_SOURCE = PACKAGED_APPLICATIONS / "config" / "index.html"
 MOVIE_PAGE_SOURCE = PACKAGED_APPLICATIONS / "movie" / "index.html"
 DIRECTORY_PAGE_SOURCE = PACKAGED_APPLICATIONS / "directory" / "index.html"
 MAIL_PAGE_SOURCE = PACKAGED_APPLICATIONS / "mail" / "index.html"
+NODES_PAGE_SOURCE = PACKAGED_APPLICATIONS / "nodes" / "index.html"
 # The details a person may give of themselves, as #259 names them, and those
 # an entry's first row shows, in order (Phase 4 Step 80).
 STANDARD_FIELDS = (
@@ -160,6 +165,11 @@ def mail_page(content: LayeredSource, built: PackagedApplications) -> str:
     return index_page(built.bundles[MAIL_APPLICATION], content).decode("utf-8")
 
 
+@fixture
+def nodes_page(content: LayeredSource, built: PackagedApplications) -> str:
+    return index_page(built.bundles[NODES_APPLICATION], content).decode("utf-8")
+
+
 def index_page(bundle_id: ContentId, content: LayeredSource) -> bytes:
     """The ``index.html`` of the application ``bundle_id``, read through ``content``."""
     bundle = load_bundle(bundle_id, content)
@@ -213,7 +223,7 @@ def router_for(
     )
 
 
-def test_the_node_ships_the_root_config_movie_directory_and_mail_applications(
+def test_the_node_ships_the_root_config_movie_directory_mail_and_nodes_applications(
     built: PackagedApplications,
 ) -> None:
     assert (
@@ -225,6 +235,7 @@ def test_the_node_ships_the_root_config_movie_directory_and_mail_applications(
             MOVIE_APPLICATION,
             DIRECTORY_APPLICATION,
             MAIL_APPLICATION,
+            NODES_APPLICATION,
         }
     )
 
@@ -406,8 +417,8 @@ def test_the_root_page_reads_what_its_node_says_where_the_node_keeps_it(
     assert f"const METADATA_MINIMUM_BITS = {MIN_NODE_METADATA_BITS};" in page
 
 
-@mark.parametrize("page_fixture", ["root_page", "config_page"])
-def test_each_page_showing_its_node_offers_the_details_the_issue_names(
+@mark.parametrize("page_fixture", ["root_page", "config_page", "nodes_page"])
+def test_each_page_showing_a_node_offers_the_details_the_issue_names(
     request: FixtureRequest, page_fixture: str
 ) -> None:
     page = request.getfixturevalue(page_fixture)
@@ -527,7 +538,7 @@ def test_the_directory_page_calls_only_endpoints_the_node_serves(directory_page:
     assert "encodeURIComponent(target)" in directory_page
 
 
-@mark.parametrize("page_fixture", ["directory_page", "mail_page", "root_page"])
+@mark.parametrize("page_fixture", ["directory_page", "mail_page", "root_page", "nodes_page"])
 def test_each_page_showing_an_identity_marks_its_trust_as_the_issue_does(
     request: FixtureRequest, page_fixture: str
 ) -> None:
@@ -681,6 +692,92 @@ def test_the_mail_page_signs_each_copy_and_encrypts_it_for_its_reader(mail_page:
     assert "copy.bcc = [reader];" in mail_page
 
 
+def test_the_nodes_application_is_built_from_its_directory(nodes_page: str) -> None:
+    assert nodes_page == NODES_PAGE_SOURCE.read_text(encoding="utf-8")
+
+
+def test_the_nodes_page_is_one_self_contained_document(nodes_page: str) -> None:
+    assert nodes_page.startswith("<!doctype html>")
+    # Nothing is loaded from a file of its own, or from anywhere else.
+    assert "<link" not in nodes_page
+    assert findall(r"<script[^>]*\bsrc", nodes_page) == []
+    assert "url(" not in nodes_page.split("<style>", 1)[1].split("</style>", 1)[0]
+    assert "http:" not in nodes_page
+    assert "https:" not in nodes_page
+
+
+def test_the_nodes_page_calls_only_endpoints_the_node_serves(nodes_page: str) -> None:
+    called = set(findall(r'["`](/data/[^"`$]*)', nodes_page))
+    some_id = ContentId.for_data(b"a signed drop", "sha256")
+
+    assert called == {
+        CLIENT_PATH,
+        SESSION_PATH,
+        PEERS_PATH,
+        NODES_PATH,
+        TRUST_PATH,
+        "/data/drop/",
+        "/data/signed/",
+        f"{TRUST_PATH}/",
+    }
+    # The page names a drop by its target string, one segment, and hashes nothing.
+    assert fullmatch(DROP_SEARCH_PATTERN, f"/data/drop/{quote(f'node:{some_id}', safe='')}")
+    assert fullmatch(SIGNED_PATTERN, f"/data/signed/{some_id}")
+    assert fullmatch(TRUST_PATTERN, f"{TRUST_PATH}/{some_id}")
+    assert "encodeURIComponent(target)" in nodes_page
+
+
+def test_the_nodes_page_reads_what_each_node_says_where_the_node_keeps_it(
+    nodes_page: str,
+) -> None:
+    assert 'const NODE_METADATA_PREFIX = "node:";' in nodes_page
+    assert f"const METADATA_MINIMUM_BITS = {MIN_NODE_METADATA_BITS};" in nodes_page
+
+
+def test_the_nodes_page_shows_everything_the_node_says_of_each_peer(nodes_page: str) -> None:
+    some_id = ContentId.for_data(b"a node's public key", "sha256")
+    [stats] = findall(r"const STATS = \[(.*?)\n\];", nodes_page, flags=DOTALL)
+    [address_stats] = findall(r"const ADDRESS_STATS = \[(.*?)\n\];", nodes_page, flags=DOTALL)
+    [sources] = findall(r"const SOURCES = \{(.*?)\n\};", nodes_page, flags=DOTALL)
+    address = NodeAddress(some_id, "http://203.0.113.9:4300", AddressSource.DIALED, 0.0)
+
+    # Every member of each peer's stats, in the order HttpApi 10.8 gives them,
+    # and of each address but where it is.
+    assert findall(r'^  \["([a-z_]+)"', stats, flags=MULTILINE) == list(NodeStats(some_id).value())
+    assert findall(r'^  \["([a-z_]+)"', address_stats, flags=MULTILINE) == [
+        member for member in address.value() if member != "endpoint"
+    ]
+    assert set(findall(r"^  ([a-z_]+):", sources, flags=MULTILINE)) == {
+        source.value for source in AddressSource
+    }
+
+
+def test_the_nodes_page_changes_trust_one_entry_at_a_time(nodes_page: str) -> None:
+    # A change is one entry, trusted, distrusted, or cleared (HttpApi 11.7).
+    assert 'call("PUT", path, { trust: trusted })' in nodes_page
+    assert 'call("DELETE", path)' in nodes_page
+
+
+@mark.parametrize("page_fixture", ["nodes_page", "root_page"])
+def test_each_page_on_the_main_port_links_a_node_to_its_page(
+    request: FixtureRequest, page_fixture: str
+) -> None:
+    page = request.getfixturevalue(page_fixture)
+    text = page.decode("ascii") if isinstance(page, bytes) else page
+
+    # The link any page gives a node (Phase 5 Step 108), the id one value.
+    assert "link.href = `/nodes/?id=${encodeURIComponent(id)}`;" in text
+
+
+def test_the_config_page_links_its_node_to_its_page_on_the_main_port(config_page: str) -> None:
+    assert 'const url = new URL("/nodes/", location.href);' in config_page
+    assert 'url.searchParams.set("id", id);' in config_page
+
+
+def test_the_nodes_page_shows_one_node_alone(nodes_page: str) -> None:
+    assert 'new URLSearchParams(location.search).get("id")' in nodes_page
+
+
 def test_the_config_page_makes_a_user_with_a_fallback_password(config_page: str) -> None:
     assert 'id="user-fallback-password"' in config_page
     assert 'id="user-fallback-password-again"' in config_page
@@ -695,6 +792,7 @@ def test_the_config_page_makes_a_user_with_a_fallback_password(config_page: str)
         (MOVIE_APPLICATION, "/movie/", MOVIE_PAGE_SOURCE, "203.0.113.42", {}, None),
         (DIRECTORY_APPLICATION, "/directory/", DIRECTORY_PAGE_SOURCE, "203.0.113.42", {}, None),
         (MAIL_APPLICATION, "/mail/", MAIL_PAGE_SOURCE, "203.0.113.42", {}, None),
+        (NODES_APPLICATION, "/nodes/", NODES_PAGE_SOURCE, "203.0.113.42", {}, None),
         (
             CONFIG_APPLICATION,
             "/config/",
