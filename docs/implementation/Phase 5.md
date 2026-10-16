@@ -802,7 +802,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 102 — Known Drops
+## Step 102 — Known Drops ✅
 
 **Issue:** #320. **Depends on:** Step 94.
 
@@ -1118,7 +1118,7 @@ Found while building it:
 
 ---
 
-## Step 105 — A Page for One Identity
+## Step 105 — A Page for One Identity ✅
 
 **Issue:** #324. **Depends on:** Steps 97, 100, 101, and 104.
 
@@ -1143,17 +1143,76 @@ Work this implies:
   Trust, Distrust, and Clear (Step 101), and a link to mail it.
 - The page alone changes.
 
-Open questions:
+Ruled (2026-10-15):
 
-- Whether the page shows the identity's own trust list, whom it trusts
-  and distrusts, since every list is public.
-- Where a node's link goes: to this page, as `/directory/?node={id}`, say,
-  showing its node metadata (Step 104), or to a page of the nodes
-  application for one node, as `/nodes/?id={id}` (Step 108).
+- **The page shows the identity's own trust list**, read-only: whom it
+  trusts and whom it distrusts, read as Trust Network §3.3 reads a list.
+  Those the directory lists are people, by context (§6), named and linked to
+  their own pages; anyone else is shown by its id alone.
+- **A node's link goes to the nodes application**, as `/nodes/?id={id}`,
+  which shows what only a node has, whether it is connected and its stats,
+  with its metadata and trust (Step 108). This step builds the person's page
+  alone, and the directory stays a directory of people.
 
 **Testable in isolation:** packaging tests asserting the page calls only
 endpoints the node serves. The page's logic is checked by hand, and in a
 live run.
+
+Built with no Python: the directory page gains 307 lines, 21 of them
+replacing removed ones, and the packaging tests 22. The App Developer Guide's
+§6.12 gives the link, and §6.18 says how to show an id a trust list names.
+Known Drops §3.4 names the directory application as a reader of trust lists,
+and no longer says that nothing asks for them.
+
+- **`?id={id}` shows that person alone**: their entry as the list shows it,
+  with their mark, Trust, Distrust, and Clear, and Send mail; and **Their
+  trust list**, those it trusts and those it distrusts, each with its mark. A
+  link above leads to everyone in the directory.
+- **Each person listed links to their page**, by their name, or by their id
+  when they give none.
+- **`readTrustList`** searches `trust:{id}`, passes over results sharing
+  fewer than 16 bits, counts only versions the person signed, and takes the
+  newest. **`trustedBy`** reads its entries as the node does. The search it
+  shares with `readDetails` is `dropResults`, moved out of `readDetails`.
+
+Checked live, with three local nodes and the page driven in headless Chrome:
+Bob, on node 1, trusts Carol and node 2 and distrusts Dave; Alice, on node
+0, trusts Bob and opens his page. It shows Bob 🟢 at step 1, with Trust
+disabled, and his list: Carol 🟢 and Dave 🔴, at step 2, each named and
+linked, and node 2's id 🟢, "not in the directory". Carol's link opens her
+page, which says no version of her list is held. Distrust on Bob's page
+makes him 🔴, and the three he names 🟡, not reached; Trust puts him back.
+Signed out, every mark is ⚪, with no buttons. Alice's own page shows her
+no mark, and Bob 🟢 on her list. `?id=nonsense` says it names no person and
+shows everyone. No page for one person wrote a directory.
+
+My calls, not yet reviewed:
+
+- **The page reads the directory, and writes and blocks nothing there**: it
+  reads it only to know which of those the list names are people. Opening a
+  person's page never makes a copy, even for someone signed in whom the
+  directory does not list yet.
+- **It offers nothing else**: not what the person signed in says of
+  themselves, nor saying they are compromised, nor searching, sorting, or
+  `?add=`. Signing in and out stay, since the trust shown needs them.
+- **A link whose id is not a person's id says so, and shows everyone**, as
+  the page does with such an id in `?add=`.
+- **An id a list names is lower-cased, and one named both ways is passed
+  over**, as the node reads a list, so that the page shows what the scores
+  count. The owner's own entry is left out. What is passed over is warned of
+  in the browser's console, as the page does for other content it passes
+  over.
+- **Each identity on the list has its mark**, by the scores of whoever is
+  signed in, and the person signed in "you" and no mark, as in the list.
+  One the directory lists whom their versions mark compromised is flagged
+  so.
+- **What each person on the list says is read only if the directory lists
+  them**, since only people are read at `user:{id}` (App Developer Guide
+  §6.18).
+- **Versions of the list not held yet are said, not waited for**, beyond
+  the one `503` each read waits out, as for what a person says.
+- **The heading reads "One person"**, and the person's name is the first
+  row of their entry, as in the list.
 
 ---
 
@@ -1187,7 +1246,9 @@ Work this implies:
   shows none, and the nodes application (Step 108) is built with it.
 - **Each page reads `GET /data/trust` once**, and looks up each identity it
   shows. One the build has not reached is 🟡.
-- **Each identity shown links to its page** (Step 105).
+- **Each identity shown links to its page** (Step 105): a person's to
+  `/directory/?id={id}`, and a node's to `/nodes/?id={id}` once Step 108
+  serves it, as Step 105 ruled.
 - The pages alone change.
 
 My calls, not yet reviewed:
@@ -1325,6 +1386,10 @@ Work this implies:
 - **Each node by its name, or its id**, with its metadata on hover or tap
   (Step 104), whether it is connected, its stats (Step 107), and its trust
   (Step 106), linked to its page (Step 105).
+- **One node's page, `/nodes/?id={id}`**, as Step 105 ruled: the node alone,
+  with all it says of itself, whether it is connected, its stats, and its
+  trust. Each shipped page showing a node links it there, as Step 106 gives
+  each identity a link.
 - **Trust, Distrust, and Clear**, for a local client with someone signed
   in, with signing in and out, as the directory offers them.
 - The App Developer Guide, the Operator Guide, and the README gain it.

@@ -32,12 +32,14 @@ from libranet.bundle.loading import load_bundle
 from libranet.bundle.reassembly import write_file
 from libranet.bundle.shapes import DirectoryBundle, DirectoryMarker, FileBundle, Metadata, Symlink
 from libranet.cas.content_id import ContentId
+from libranet.cas.drops import DropTarget
 from libranet.cas.errors import ArchiveError
 from libranet.cas.layered import LayeredSource
 from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
 from libranet.identity.node_metadata import MIN_NODE_METADATA_BITS
+from libranet.identity.trust import MIN_TRUST_LIST_BITS, TrustList
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
@@ -567,6 +569,26 @@ def test_each_version_the_directory_page_writes_names_the_sessions_fallback(
 
 def test_the_directory_page_links_each_person_to_mail(directory_page: str) -> None:
     assert "/mail/?to=${encodeURIComponent(entry.id)}" in directory_page
+
+
+def test_the_directory_page_links_each_person_to_their_page_and_shows_them_alone(
+    directory_page: str,
+) -> None:
+    # The link any page gives a person (Phase 5 Step 105), the id one value.
+    assert "link.href = `/directory/?id=${encodeURIComponent(id)}`;" in directory_page
+    assert 'new URLSearchParams(location.search).get("id")' in directory_page
+
+
+def test_the_directory_page_reads_a_trust_list_where_the_node_keeps_it(
+    directory_page: str,
+) -> None:
+    some_id = ContentId.for_data(b"a public key", "sha256")
+    [prefix] = findall(r'const TRUST_PREFIX = "([^"]*)";', directory_page)
+
+    assert DropTarget.of(prefix + str(some_id)) == TrustList.drop_target(some_id)
+    assert f"const TRUST_LIST_MINIMUM_BITS = {MIN_TRUST_LIST_BITS};" in directory_page
+    # The page names the drop by its target string, one segment, and hashes nothing.
+    assert fullmatch(DROP_SEARCH_PATTERN, f"/data/drop/{quote(prefix + str(some_id), safe='')}")
 
 
 def test_the_mail_application_is_built_from_its_directory(mail_page: str) -> None:
