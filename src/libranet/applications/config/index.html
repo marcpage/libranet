@@ -144,6 +144,23 @@
 
   .node-details { margin: 0.35rem 0 0; padding: 0; list-style: none; color: var(--muted); }
   .node-details li + li { margin-top: 0.1rem; }
+
+  /* The node's trust: a mark before it to hover over or tap, and what it says
+     beneath once tapped. */
+  .identity { display: flex; align-items: baseline; }
+
+  .mark {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    margin-right: 0.4rem;
+    cursor: pointer;
+  }
+
+  .score { display: block; color: var(--muted); font-size: 0.85rem; margin-top: 0.2rem; }
   .extra { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem; }
 
   .visually-hidden {
@@ -752,6 +769,36 @@ const COORDINATES = { latitude: 90, longitude: 180 };
 // This node's id, once the node says it (loadNode).
 let nodeId = null;
 
+// What marks an identity's trust where there are no scores to show (#322).
+// This page reads none: it is served on a port of its own, whose pages ask
+// only its own endpoints, and those serve no one's trust scores.
+const UNKNOWN = "\u{26AA}";
+const UNSCORED =
+  "No trust is shown: the administration page reads no trust scores. The node's other pages " +
+  "show them to whoever is signed in there.";
+
+// The mark before this node, saying in words that there is no trust to show,
+// when hovered over, and beneath the node once tapped.
+const trustMark = make("button", UNKNOWN, "mark");
+const trustSaid = make("span", UNSCORED, "score");
+trustMark.type = "button";
+trustMark.title = UNSCORED;
+trustMark.setAttribute("aria-label", UNSCORED);
+trustMark.setAttribute("aria-expanded", "false");
+trustSaid.hidden = true;
+trustMark.addEventListener("click", () => {
+  trustSaid.hidden = !trustSaid.hidden;
+  trustMark.setAttribute("aria-expanded", String(!trustSaid.hidden));
+});
+
+// This node as `shown` shows it, with the mark of its trust before it, and
+// what the mark says beneath it.
+function showNode(shown) {
+  const line = make("div", null, "identity");
+  line.append(trustMark, shown);
+  byId("node-id").replaceChildren(line, trustSaid);
+}
+
 function listenText(address, port) {
   const host = String(address).includes(":") ? `[${address}]` : address;
   const everywhere = address === "0.0.0.0" || address === "::";
@@ -786,7 +833,7 @@ async function loadNode() {
   const advertised = byId("node-advertised");
   mainPort = node.listen_port;
   nodeId = node.node_id;
-  byId("node-id").replaceChildren(nodeShown(nodeId, {}));
+  showNode(nodeShown(nodeId, {}));
   byId("node-listen").textContent = listenText(node.listen_address, node.listen_port);
   advertised.replaceChildren(make("code", node.advertised_endpoint));
 
@@ -983,7 +1030,7 @@ async function loadMetadata() {
   showMetadata(fields);
 
   if (nodeId !== null) {
-    byId("node-id").replaceChildren(nodeShown(nodeId, fields));
+    showNode(nodeShown(nodeId, fields));
   }
 }
 

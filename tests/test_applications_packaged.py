@@ -383,7 +383,13 @@ def test_the_root_page_is_one_self_contained_document(root_page: bytes) -> None:
     assert "<link" not in page
     assert findall(r"\bsrc\s*=", page) == []
     assert "url(" not in page
-    assert findall(r'fetch\("([^"]*)"', page) == ["/data/nodes", "/data/applications"]
+    assert findall(r'(?:fetch|answered)\("([^"]*)"', page) == [
+        SESSION_PATH,
+        CLIENT_PATH,
+        TRUST_PATH,
+        "/data/nodes",
+        "/data/applications",
+    ]
 
 
 def test_the_root_page_reads_what_its_node_says_where_the_node_keeps_it(
@@ -521,13 +527,31 @@ def test_the_directory_page_calls_only_endpoints_the_node_serves(directory_page:
     assert "encodeURIComponent(target)" in directory_page
 
 
-def test_the_directory_page_marks_trust_as_the_issue_does(directory_page: str) -> None:
+@mark.parametrize("page_fixture", ["directory_page", "mail_page", "root_page"])
+def test_each_page_showing_an_identity_marks_its_trust_as_the_issue_does(
+    request: FixtureRequest, page_fixture: str
+) -> None:
+    page = request.getfixturevalue(page_fixture)
+    text = page.decode("ascii") if isinstance(page, bytes) else page
+
     # Above 0, 0, and below 0 (#322), and a mark of its own where there are no
-    # scores (Phase 5 §6).
-    assert 'const TRUSTED = "\\u{1F7E2}";' in directory_page
-    assert 'const NEITHER = "\\u{1F7E1}";' in directory_page
-    assert 'const DISTRUSTED = "\\u{1F534}";' in directory_page
-    assert 'const UNKNOWN = "\\u{26AA}";' in directory_page
+    # scores (Phase 5 §6), by the scores of whoever is signed in.
+    assert 'const TRUSTED = "\\u{1F7E2}";' in text
+    assert 'const NEITHER = "\\u{1F7E1}";' in text
+    assert 'const DISTRUSTED = "\\u{1F534}";' in text
+    assert 'const UNKNOWN = "\\u{26AA}";' in text
+    assert f'"{TRUST_PATH}"' in text
+
+
+def test_the_config_page_marks_its_node_with_no_scores_and_reads_none(config_page: str) -> None:
+    # Where there are no scores, the mark of its own, and /config reads none
+    # (Phase 5 §6).
+    assert 'const UNKNOWN = "\\u{26AA}";' in config_page
+    assert "const TRUSTED" not in config_page
+    assert TRUST_PATH not in config_page
+
+
+def test_the_directory_page_changes_trust_one_entry_at_a_time(directory_page: str) -> None:
     # A change is one entry, trusted, distrusted, or cleared (HttpApi 11.7).
     assert 'call("PUT", path, { trust: trusted })' in directory_page
     assert 'call("DELETE", path)' in directory_page
@@ -613,6 +637,7 @@ def test_the_mail_page_calls_only_endpoints_the_node_serves(mail_page: str) -> N
         CLIENT_PATH,
         SESSION_PATH,
         SIGNED_PATH,
+        TRUST_PATH,
         "/data/drop/",
         "/data/signed/",
         f"{ENCRYPTED_PATH}/",
@@ -623,6 +648,11 @@ def test_the_mail_page_calls_only_endpoints_the_node_serves(mail_page: str) -> N
     assert fullmatch(DROP_SEARCH_PATTERN, f"/data/drop/{quote(target, safe='')}")
     assert fullmatch(ENCRYPTED_PATTERN, f"{ENCRYPTED_PATH}/{some_id}")
     assert "encodeURIComponent(target)" in mail_page
+
+
+def test_the_mail_page_links_each_person_to_their_page(mail_page: str) -> None:
+    # The link any page gives a person (Phase 5 Step 105), the id one value.
+    assert "link.href = `/directory/?id=${encodeURIComponent(id)}`;" in mail_page
 
 
 def test_the_mail_page_keeps_mail_where_the_plan_names_it(mail_page: str) -> None:
