@@ -12,6 +12,7 @@ from libranet.config.loader import load_config
 from libranet.config.models import (
     BackupConfig,
     IdentityConfig,
+    LocalConfig,
     NetworkConfig,
     PeerConfig,
     StorageConfig,
@@ -194,6 +195,28 @@ def test_the_example_config_states_the_default_workers_hand_offs_and_read_ahead(
     }
     assert stated["storage"]["max_hand_offs"] == StorageConfig().max_hand_offs
     assert stated["network"]["read_ahead_parts"] == NetworkConfig().read_ahead_parts
+
+
+def test_the_example_config_states_the_default_limits_waits_and_hidden_names() -> None:
+    example = Path(__file__).parent.parent / "examples" / "libranet.yaml"
+    stated = safe_load(example.read_text(encoding="utf-8"))
+    storage = (
+        "max_decompressed_bundle_bytes",
+        "candidates_timeout_seconds",
+        "stored_grace_seconds",
+        "max_cached_bundles",
+        "max_application_store_bytes",
+        "max_application_value_bytes",
+    )
+
+    assert {name: stated["storage"][name] for name in storage} == {
+        name: getattr(StorageConfig(), name) for name in storage
+    }
+    assert (
+        stated["network"]["max_bundles_request_bytes"] == NetworkConfig().max_bundles_request_bytes
+    )
+    assert stated["backup"]["restore_resume_seconds"] == BackupConfig().restore_resume_seconds
+    assert tuple(stated["local"]["hidden"]) == LocalConfig().hidden
 
 
 def test_the_example_config_states_the_default_folders_on_macos() -> None:

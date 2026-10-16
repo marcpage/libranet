@@ -427,6 +427,18 @@ local:
     - "~/Movies"
 ```
 
+What is hidden is set in `local.hidden`: shell-style patterns, matched
+whatever their case against each name in a path, by default `".*"`, the
+names beginning with `.`. A list you set replaces the default, so keep
+`".*"` in it to add others:
+
+```yaml
+local:
+  hidden:
+    - ".*"
+    - "Thumbs.db"
+```
+
 The listings are served only to clients on this machine, and, like
 `/config`, only to the node's own pages or to no browser at all, so a page
 another site opens in your browser cannot read them. Every endpoint meant

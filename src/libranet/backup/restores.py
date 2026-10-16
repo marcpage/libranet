@@ -95,10 +95,6 @@ from libranet.protocol.backup_requests import RestoreRequest
 
 _LOGGER = getLogger(__name__)
 
-# Provisional default: how long after content it waits on arrives that a
-# restore carries on, so that content arriving together is restored together.
-RESUME_DELAY_SECONDS: Final = 10.0
-
 # Writing failing for any of these would fail every other entry alike.
 _STOPPING_ERRORS: Final = frozenset({ENOSPC, EDQUOT, EIO, EROFS})
 
@@ -122,11 +118,12 @@ class RestorePass:
 class Restore(Task):  # pylint: disable=too-many-instance-attributes
     """A backup bundle being restored into a directory, a pass at a time, until done.
 
-    A restore waiting on content carries on :data:`RESUME_DELAY_SECONDS`
-    after any of it arrives, or at once once all of it has, and otherwise
-    every ``ask_interval_seconds``, when its caller is to ask for whatever
-    it still lacks again. It gives up once ``give_up_after_seconds`` pass
-    with none of it arriving, and without its being asked for again.
+    A restore waiting on content carries on ``resume_seconds`` after any of
+    it arrives, or at once once all of it has, and otherwise every
+    ``ask_interval_seconds``, when its caller is to ask for whatever it still
+    lacks again. It gives up once ``give_up_after_seconds`` pass with none of
+    it arriving, and without its being asked for again. Each bundle it reads
+    is read to at most ``max_bundle_bytes`` once decompressed.
     """
 
     def __init__(
@@ -135,11 +132,16 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
         requested_at: float,
         ask_interval_seconds: float,
         give_up_after_seconds: float,
+        *,
+        resume_seconds: float,
+        max_bundle_bytes: int,
     ) -> None:
         super().__init__(requested_at)
         self._request = request
         self._ask_interval_seconds = ask_interval_seconds
         self._give_up_after_seconds = give_up_after_seconds
+        self._resume_seconds = resume_seconds
+        self._max_bundle_bytes = max_bundle_bytes
         self._due_at = requested_at
         self._asked_at: float | None = None
         # When content it waits on last arrived, or it was last asked for.
@@ -215,7 +217,7 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
 
         self._missing.discard(content_id)
         self._arrived_at = now
-        resume_at = now + RESUME_DELAY_SECONDS if self._missing else now
+        resume_at = now + self._resume_seconds if self._missing else now
         self._due_at = min(self._due_at, resume_at)
         return True
 
@@ -316,11 +318,11 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
         bundle = self._request.bundle
 
         try:
-            top, protected = load_bundle(bundle, source), False
+            top, protected = load_bundle(bundle, source, self._max_bundle_bytes), False
 
         except PasswordProtectedBundleError:
             # Not logged: a backup is protected, and is read with the secret.
-            top, protected = _load(bundle, source, secret), True
+            top, protected = _load(bundle, source, secret, self._max_bundle_bytes), True
 
         if not isinstance(top, DirectoryBundle):
             raise UnsupportedBundleError(
@@ -328,7 +330,7 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
             )
 
         def load(path: PartPath) -> Bundle:
-            return _load(path, source, secret)
+            return _load(path, source, secret, self._max_bundle_bytes)
 
         if protected:
             return resolve_directory(top, load)
@@ -537,8 +539,12 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
         self._missing.clear()
 
 
-def _load(content_id: ContentId | PartPath, source: ContentSource, secret: bytes) -> Bundle:
+def _load(
+    content_id: ContentId | PartPath, source: ContentSource, secret: bytes, max_bytes: int
+) -> Bundle:
     """The bundle held as ``content_id``, decrypted with ``secret``, and read as a drop if need be.
+
+    It is read to at most ``max_bytes`` once decompressed.
 
     Raises:
         MissingContentError: it is not held.
@@ -546,7 +552,7 @@ def _load(content_id: ContentId | PartPath, source: ContentSource, secret: bytes
             error is the one reading it as it is raised.
     """
     try:
-        return load_bundle(content_id, source, password=secret)
+        return load_bundle(content_id, source, max_bytes, password=secret)
 
     except MissingContentError:
         raise
@@ -554,7 +560,7 @@ def _load(content_id: ContentId | PartPath, source: ContentSource, secret: bytes
     except BundleError as error:
         # Not logged: it may be a drop; if not, its error is raised below.
         try:
-            return load_bundle(content_id, source, password=secret, targeted=True)
+            return load_bundle(content_id, source, max_bytes, password=secret, targeted=True)
 
         except BundleError:
             raise error from None

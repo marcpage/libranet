@@ -17,6 +17,7 @@ from libranet.bundle.shapes import DirectoryBundle, FileBundle
 from libranet.cas.content_id import ContentId
 from libranet.cas.resolved_files import ResolvedFiles
 from libranet.cas.store import CasStore
+from libranet.config.models import HOUR_SECONDS
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.protocol.http_syntax import OCTET_STREAM
@@ -59,7 +60,7 @@ def paths(files: ResolvedFiles, asked: Recorder, tmp_path: Path) -> BundlePaths:
         ApplicationOutcomes(),
         asked,
         9,
-        ApplicationUse(Recorder()),
+        ApplicationUse(Recorder(), HOUR_SECONDS),
         PartReader(CasStore(tmp_path / "cas", 4), Recorder(), WAIT_SECONDS, 9),
     )
 

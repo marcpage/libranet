@@ -387,8 +387,9 @@ the name gives it that store. Removing a store's last value removes its
 file. As for the registry, the web server checks a file's inode,
 modification time, and size on every request and rereads it when they
 change, and a file that cannot be read, or that holds another name's
-store, is an error, never saved over. A store's file is held to 1 MiB,
-and each value in it to 64 KiB.
+store, is an error, never saved over. A store's file is held to
+`storage.max_application_store_bytes`, 1 MiB by default, and each value in
+it to `storage.max_application_value_bytes`, 64 KiB.
 
 Deleting the directory, with the node stopped, makes every application
 forget what it kept here. What a store names is content, and stays in
@@ -561,9 +562,9 @@ only within the folders `local.folders` offers (HttpApi §12.2, Phase 3 Steps
 - **Backups** read the job's directory and write only into `cas/data`.
 - **Imports** read one file in a folder offered and write only into
   `cas/data`. The web server lists the folders and finds the file, never
-  following a symbolic link out of them or listing a hidden name, and the
-  backup module reads it. A file whose size or modification time changes
-  while it is read fails the import.
+  following a symbolic link out of them or listing a name `local.hidden`
+  matches, and the backup module reads it. A file whose size or
+  modification time changes while it is read fails the import.
 - **Builds** write a record named `{directory name}.bundle` beside the
   directory (`src/libranet/backup/builds.py`), holding the bundle kept
   expanded, as §3.7 describes, in the clear, and whether it is
@@ -633,6 +634,8 @@ optional; `examples/libranet.yaml` shows them all with their defaults.
 | `storage.min_free_bytes` | `1073741824` | — | Free space kept on the filesystem holding `cas/` |
 | `storage.max_storage_bytes` | `null` | — | Most bytes of objects kept in `cas/data` |
 | `storage.resolved_idle_seconds` | `2592000.0` | — | How long an application goes unused before its tree in `cas/resolved/` may be deleted for free space |
+| `storage.max_application_store_bytes` | `1048576` | — | Largest file in `store/` |
+| `storage.max_application_value_bytes` | `65536` | — | Largest value in a file in `store/` |
 | `storage.search_cache_ttl_seconds` | `300.0` | — | How long a file in `search/` is reused |
 | `storage.search_max_results` | `32` | — | Hashes per file in `search/` |
 | `identity.key_dir` | `{data_dir}/keys` | — | Where the three private files live |
@@ -652,6 +655,7 @@ optional; `examples/libranet.yaml` shows them all with their defaults.
 | `backup.storage_stall_seconds` | `3600.0` | — | How long a backup or build waits for eviction to make room before it gives up |
 | `backup.excluded_xattrs` | macOS local-copy attributes; Linux `security.*`, `system.*`, `trusted.*` | — | Extended attributes a backup or build leaves out of its bundle, and a restore does not set |
 | `local.folders` | The user's desktop, documents, downloads, music, pictures, and videos folders | — | The folders local clients may list and import files from (§7) |
+| `local.hidden` | `[".*"]` | — | Names within those folders never listed or imported |
 | `logging.directory` | Platform log directory | `--log-dir` | Root of §5 |
 | `logging.file_name` | `libranet.log` | — | Stem and suffix of every log file |
 | `logging.max_bytes` | `10485760` | — | Size at which a log rotates |

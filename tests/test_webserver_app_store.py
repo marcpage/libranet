@@ -12,13 +12,16 @@ from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.atomic_file import write_atomically
 from libranet.cas.content_id import ContentId
-from libranet.config.models import DEFAULT_CONFIG_HOSTS, StorageConfig
+from libranet.config.models import (
+    DEFAULT_CONFIG_HOSTS,
+    DEFAULT_MAX_APPLICATION_STORE_BYTES,
+    DEFAULT_MAX_APPLICATION_VALUE_BYTES,
+    StorageConfig,
+)
 from libranet.problems import CONTENT_TOO_LARGE, INVALID_REQUEST, PROBLEM_CONTENT_TYPE
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.webserver.app_registry import ApplicationRegistry, RegisteredApplications
 from libranet.webserver.app_store import (
-    MAX_STORE_BYTES,
-    MAX_VALUE_BYTES,
     STORE_KEY_PATTERN,
     STORE_PATTERN,
     ApplicationStore,
@@ -57,8 +60,7 @@ def store(directory: Path) -> ApplicationStore:
     return ApplicationStore(directory)
 
 
-@fixture
-def router(store: ApplicationStore, tmp_path: Path) -> Router:
+def router_for(store: ApplicationStore, tmp_path: Path) -> Router:
     """The store's routes, changed only by local clients, as the main port serves them."""
     checks = SiteChecks(DEFAULT_CONFIG_HOSTS, "This endpoint")
     pages = OwnPages(ApplicationRegistry(tmp_path / "applications.json", APPLICATIONS))
@@ -68,6 +70,11 @@ def router(store: ApplicationStore, tmp_path: Path) -> Router:
     router.add("PUT", STORE_KEY_PATTERN, LocalOnly(StoreWriteHandler(store, pages), checks))
     router.add("DELETE", STORE_KEY_PATTERN, LocalOnly(StoreRemovalHandler(store, pages), checks))
     return router
+
+
+@fixture
+def router(store: ApplicationStore, tmp_path: Path) -> Router:
+    return router_for(store, tmp_path)
 
 
 def kept(value: object) -> StoredValue:
@@ -274,11 +281,11 @@ def test_a_file_that_cannot_be_looked_at_is_an_error(store: ApplicationStore) ->
 
 
 def test_a_value_larger_than_a_store_allows_is_refused(store: ApplicationStore) -> None:
-    largest = kept("x" * (MAX_VALUE_BYTES - 2))
+    largest = kept("x" * (DEFAULT_MAX_APPLICATION_VALUE_BYTES - 2))
     store.put("movie", "largest", largest)
 
     with raises(StoreLimitError, match="stored value"):
-        store.put("movie", "larger", kept("x" * (MAX_VALUE_BYTES - 1)))
+        store.put("movie", "larger", kept("x" * (DEFAULT_MAX_APPLICATION_VALUE_BYTES - 1)))
 
     assert store.values("movie").values == {"largest": largest}
 
@@ -286,8 +293,8 @@ def test_a_value_larger_than_a_store_allows_is_refused(store: ApplicationStore) 
 def test_a_store_grown_past_its_limit_is_refused_and_left_as_it_was(
     store: ApplicationStore,
 ) -> None:
-    value = kept("x" * (MAX_VALUE_BYTES - 2))
-    count = MAX_STORE_BYTES // MAX_VALUE_BYTES - 1
+    value = kept("x" * (DEFAULT_MAX_APPLICATION_VALUE_BYTES - 2))
+    count = DEFAULT_MAX_APPLICATION_STORE_BYTES // DEFAULT_MAX_APPLICATION_VALUE_BYTES - 1
 
     for index in range(count):
         store.put("movie", f"{index}", value)
@@ -547,7 +554,7 @@ def test_a_body_of_another_type_is_415(router: Router, store: ApplicationStore) 
 
 @mark.parametrize("method", ["PUT", "DELETE"])
 def test_a_body_larger_than_a_value_is_413_unread(router: Router, method: str) -> None:
-    body = dumps(" " * MAX_VALUE_BYTES).encode("utf-8")
+    body = dumps(" " * DEFAULT_MAX_APPLICATION_VALUE_BYTES).encode("utf-8")
     sent = request(method, "/data/store/movie/last", body=body)
 
     found = problem(router.dispatch(sent), 413)
@@ -556,9 +563,33 @@ def test_a_body_larger_than_a_value_is_413_unread(router: Router, method: str) -
     assert not sent.body.consumed
 
 
+def test_a_store_of_a_config_is_held_to_its_limits(tmp_path: Path) -> None:
+    storage = StorageConfig(
+        data_dir=tmp_path / "data",
+        max_application_value_bytes=8,
+        max_application_store_bytes=64,
+    )
+    store = ApplicationStore.of(storage)
+    store.put("movie", "a", kept("x" * 6))
+
+    with raises(StoreLimitError, match="limited to 8 bytes"):
+        store.put("movie", "b", kept("x" * 7))
+
+    with raises(StoreLimitError, match="limited to 64 bytes"):
+        for index in range(10):
+            store.put("movie", f"{index}", kept("x" * 6))
+
+    assert store.directory == storage.application_stores_dir
+    sent = request("PUT", "/data/store/movie/b", body=b'"' + b"x" * 7 + b'"')
+    assert problem(router_for(store, tmp_path).dispatch(sent), 413)["type"] == CONTENT_TOO_LARGE
+    assert not sent.body.consumed
+
+
 def test_a_value_escaped_past_its_limit_is_413(router: Router) -> None:
     # Each é is two bytes as sent, and six once escaped as it is kept.
-    body = dumps("é" * (MAX_VALUE_BYTES // 4), ensure_ascii=False).encode("utf-8")
+    body = dumps("é" * (DEFAULT_MAX_APPLICATION_VALUE_BYTES // 4), ensure_ascii=False).encode(
+        "utf-8"
+    )
 
     found = problem(router.dispatch(request("PUT", "/data/store/movie/last", body=body)), 413)
 

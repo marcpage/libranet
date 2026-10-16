@@ -58,11 +58,12 @@ parts fail their checks is found so by the web server, as it reads them.
 A bundle's directory, once its extensions are overlaid, is saved beside its
 entries the first time it is resolved, as a flat directory bundle,
 zlib-compressed. The bundle and its extensions are then read once, and are
-not needed again even if they stop being held. The directories of the most
-recently used bundles are also kept in memory, so the saved one is not read
-for each path either. Content addressing means none of these go stale. A
-directory is listed from the saved one (HttpApi §12.1), so it is saved again,
-if it has been deleted since, whenever a path names a directory.
+not needed again even if they stop being held. The directories of the
+``storage.max_cached_bundles`` most recently used bundles are also kept in
+memory, so the saved one is not read for each path either. Content
+addressing means none of these go stale. A directory is listed from the
+saved one (HttpApi §12.1), so it is saved again, if it has been deleted
+since, whenever a path names a directory.
 
 A bundle found unusable is remembered only in memory, not saved, since a
 later version of this node may be able to serve it.
@@ -116,9 +117,6 @@ from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.unbundler.lookup import FoundDirectory, ResolvedDirectory
-
-# Provisional default: bundles whose directories are kept in memory.
-DEFAULT_MAX_CACHED_BUNDLES: Final = 8
 
 # Provisional default: paths waiting on content at once. Each is a request
 # holding one of the web server's threads, or was lately.
@@ -224,9 +222,12 @@ class UnbundlerModule(ModuleBase):
         logger: Logger | None = None,
         clock: Callable[[], float] = time,
         poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
-        max_cached_bundles: int = DEFAULT_MAX_CACHED_BUNDLES,
+        max_cached_bundles: int | None = None,
         max_waiting_paths: int = DEFAULT_MAX_WAITING_PATHS,
     ) -> None:
+        if max_cached_bundles is None:
+            max_cached_bundles = config.storage.max_cached_bundles
+
         if max_cached_bundles < 1:
             raise ValueError(f"max_cached_bundles must be at least 1, got {max_cached_bundles}")
 
@@ -240,6 +241,7 @@ class UnbundlerModule(ModuleBase):
         self._blocked = BlockedContent.of(config.storage)
         self._files = ResolvedFiles.of(config.storage)
         self._max_cached_bundles = max_cached_bundles
+        self._max_bundle_bytes = config.storage.max_decompressed_bundle_bytes
         # Least recently used first.
         self._directories: OrderedDict[PartPath, _Resolved] = OrderedDict()
         self._waiting = _WaitingPaths(config.network.app_wait_seconds, max_waiting_paths)
@@ -443,7 +445,7 @@ class UnbundlerModule(ModuleBase):
         if self._blocked.blocks(path.content_id):
             raise BlockedContentError(path.content_id)
 
-        return load_bundle(path, self._source)
+        return load_bundle(path, self._source, self._max_bundle_bytes)
 
     def _fetch(self, bundle: PartPath, path: str, missing: tuple[ContentId, ...]) -> None:
         """Ask for the content ``path`` in ``bundle`` needs and this node lacks, and wait on it."""

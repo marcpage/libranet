@@ -8,6 +8,7 @@ from pytest import mark, raises
 
 from libranet.config.models import (
     IDLE_TIMEOUT_SECONDS,
+    KIB,
     MIB,
     BackupConfig,
     IdentityConfig,
@@ -69,6 +70,14 @@ def test_eight_parts_are_read_ahead_by_default_and_never_a_negative_number() -> 
         NetworkConfig(read_ahead_parts=-1)
 
 
+def test_a_request_to_make_bundles_takes_four_mib_by_default_and_never_nothing() -> None:
+    assert NetworkConfig().max_bundles_request_bytes == 4 * MIB
+    assert NetworkConfig(max_bundles_request_bytes=1).max_bundles_request_bytes == 1
+
+    with raises(ValidationError):
+        NetworkConfig(max_bundles_request_bytes=0)
+
+
 def test_a_session_ends_after_a_day_unused_by_default_and_never_at_once() -> None:
     assert NetworkConfig().session_idle_seconds == 86_400.0
     assert NetworkConfig(session_idle_seconds=0.5).session_idle_seconds == 0.5
@@ -111,11 +120,55 @@ def test_eight_hand_offs_run_at_once_by_default_and_never_none() -> None:
         StorageConfig(max_hand_offs=0)
 
 
+def test_stats_is_given_a_minute_to_rank_content_to_let_go_of_by_default() -> None:
+    assert StorageConfig().candidates_timeout_seconds == 60.0
+    assert StorageConfig(candidates_timeout_seconds=0.5).candidates_timeout_seconds == 0.5
+
+    with raises(ValidationError):
+        StorageConfig(candidates_timeout_seconds=0)
+
+
+def test_content_just_stored_is_kept_thirty_seconds_by_default_or_none() -> None:
+    assert StorageConfig().stored_grace_seconds == 30.0
+    assert StorageConfig(stored_grace_seconds=0).stored_grace_seconds == 0
+
+    with raises(ValidationError):
+        StorageConfig(stored_grace_seconds=-1)
+
+
 def test_resolved_files_are_kept_for_thirty_days_unused_by_default() -> None:
     assert StorageConfig().resolved_idle_seconds == 30 * 86400.0
 
     with raises(ValidationError):
         StorageConfig(resolved_idle_seconds=0)
+
+
+def test_an_application_in_use_is_reported_hourly_or_ten_times_as_it_may_go_unused() -> None:
+    assert StorageConfig().use_report_seconds() == 3600.0
+    assert StorageConfig(resolved_idle_seconds=36_000.0).use_report_seconds() == 3600.0
+    assert StorageConfig(resolved_idle_seconds=600.0).use_report_seconds() == 60.0
+    assert StorageConfig(resolved_idle_seconds=5.0).use_report_seconds() == 0.5
+
+
+def test_eight_bundles_are_kept_in_memory_by_default_and_never_none() -> None:
+    assert StorageConfig().max_cached_bundles == 8
+    assert StorageConfig(max_cached_bundles=1).max_cached_bundles == 1
+
+    with raises(ValidationError):
+        StorageConfig(max_cached_bundles=0)
+
+
+def test_an_application_keeps_64_kib_values_in_a_one_mib_store_by_default() -> None:
+    storage = StorageConfig()
+
+    assert storage.max_application_value_bytes == 64 * KIB
+    assert storage.max_application_store_bytes == MIB
+
+    for name in ("max_application_value_bytes", "max_application_store_bytes"):
+        assert getattr(StorageConfig.model_validate({name: 1}), name) == 1
+
+        with raises(ValidationError, match=name):
+            StorageConfig.model_validate({name: 0})
 
 
 def test_decompressed_lists_may_exceed_the_object_limit() -> None:
@@ -127,6 +180,14 @@ def test_decompressed_lists_may_exceed_the_object_limit() -> None:
 
     with raises(ValidationError):
         StorageConfig(max_decompressed_list_bytes=0)
+
+
+def test_a_bundle_is_read_to_sixteen_mib_decompressed_by_default() -> None:
+    assert StorageConfig().max_decompressed_bundle_bytes == 16 * MIB
+    assert StorageConfig(max_decompressed_bundle_bytes=1).max_decompressed_bundle_bytes == 1
+
+    with raises(ValidationError):
+        StorageConfig(max_decompressed_bundle_bytes=0)
 
 
 # What the protocol constrains: an object, and a list, at most 1 MiB (HighLevelDesign
@@ -218,6 +279,14 @@ def test_a_restore_gives_up_after_a_day_with_nothing_arriving_by_default() -> No
 
     with raises(ValidationError):
         BackupConfig(restore_stall_seconds=0)
+
+
+def test_a_restore_carries_on_ten_seconds_after_content_arrives_by_default() -> None:
+    assert BackupConfig().restore_resume_seconds == 10.0
+    assert BackupConfig(restore_resume_seconds=0).restore_resume_seconds == 0
+
+    with raises(ValidationError):
+        BackupConfig(restore_resume_seconds=-1)
 
 
 def test_unsigned_api_reads_are_allowed_unless_disabled() -> None:
@@ -521,3 +590,8 @@ def test_a_folder_with_no_name_to_be_offered_under_is_refused(folder: str) -> No
 
 def test_no_folders_may_be_offered() -> None:
     assert not LocalConfig(folders=()).folders
+
+
+def test_hidden_names_are_kept_back_from_local_clients_by_default() -> None:
+    assert LocalConfig().hidden == (".*",)
+    assert LocalConfig(hidden=()).hidden == ()

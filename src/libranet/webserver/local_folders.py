@@ -17,12 +17,12 @@ the file would be served as
 
 The path is percent-decoded first, ``%2F`` becoming a ``/`` like any other,
 as an application's path is. No segment of it may be empty, ``.``, ``..``,
-or hidden (beginning with ``.``). Once every symbolic link in it is
-followed, it must still lie within its folder, reach nothing hidden there,
-and be neither one of the node's own directories nor within one, as a build
-ignores them. Anything else is ``404``, as is a path naming anything but a
-directory, so nothing is reached outside the folders however a path is
-spelled.
+or hidden: a name ``local.hidden`` keeps back, by default one beginning with
+``.``. Once every symbolic link in it is followed, it must still lie within
+its folder, reach nothing hidden there, and be neither one of the node's own
+directories nor within one, as a build ignores them. Anything else is
+``404``, as is a path naming anything but a directory, so nothing is reached
+outside the folders however a path is spelled.
 
 A listing leaves out what could not be asked for in turn: hidden entries,
 the node's own directories, a symbolic link leading out of its folder, to
@@ -44,6 +44,7 @@ at (:class:`~libranet.webserver.local_only.LocalOnly`).
 from __future__ import annotations
 from dataclasses import dataclass, field
 from errno import EISDIR
+from fnmatch import fnmatchcase
 from http import HTTPStatus
 from logging import getLogger
 from os import DirEntry, scandir
@@ -52,9 +53,9 @@ from pathlib import Path
 from stat import S_ISDIR, S_ISREG
 from typing import Any, Final, Mapping
 
-from libranet.bundle.building import HIDDEN_PREFIX, IgnoredPaths, modified_time
+from libranet.bundle.building import IgnoredPaths, modified_time
 from libranet.bundle.shapes import PATH_SEPARATOR, is_entry_path, is_utf8
-from libranet.config.models import LibranetConfig
+from libranet.config.models import DEFAULT_HIDDEN_NAMES, LibranetConfig
 from libranet.protocol.http_syntax import API_PREFIX
 from libranet.webserver.bundle_paths import LISTED_DIRECTORY, LISTED_FILE, content_type_for
 from libranet.webserver.http_types import (
@@ -76,11 +77,13 @@ class LocalFolders:
     """The folders offered to local clients, by name, and the node's own directories, never offered.
 
     ``folders`` are as configured, not yet looked at; ``ignored`` are the
-    node's own directories.
+    node's own directories. ``hidden`` are shell-style patterns, matched
+    whatever their case, for the names kept back within the folders.
     """
 
     folders: Mapping[str, Path] = field(default_factory=dict)
     ignored: IgnoredPaths = field(default_factory=IgnoredPaths)
+    hidden: tuple[str, ...] = DEFAULT_HIDDEN_NAMES
 
     @classmethod
     def of(cls, config: LibranetConfig) -> LocalFolders:
@@ -88,6 +91,7 @@ class LocalFolders:
         return cls(
             {folder.name: folder for folder in config.local.folders},
             IgnoredPaths(config.directories()),
+            config.local.hidden,
         )
 
     def offered(self) -> list[str]:
@@ -115,7 +119,7 @@ class LocalFolders:
         try:
             with scandir(directory) as items:
                 for item in items:
-                    if item.name.startswith(HIDDEN_PREFIX):
+                    if self._hides(item.name):
                         continue
 
                     if not is_utf8(item.name):
@@ -189,7 +193,7 @@ class LocalFolders:
         folder = self.folders.get(name)
         segments = rest.split(PATH_SEPARATOR) if rest else []
 
-        if folder is None or any(segment.startswith(HIDDEN_PREFIX) for segment in segments):
+        if folder is None or any(self._hides(segment) for segment in segments):
             return None
 
         root = Path(realpath(folder))
@@ -248,12 +252,16 @@ class LocalFolders:
 
         return S_ISDIR(status.st_mode) and not self._ignores(folder)
 
-    @staticmethod
-    def _within(path: Path, root: Path) -> bool:
+    def _within(self, path: Path, root: Path) -> bool:
         """Whether the real path ``path`` is ``root`` or beneath it, and nothing hidden there."""
         return path.is_relative_to(root) and not any(
-            part.startswith(HIDDEN_PREFIX) for part in path.relative_to(root).parts
+            self._hides(part) for part in path.relative_to(root).parts
         )
+
+    def _hides(self, name: str) -> bool:
+        """Whether ``name`` is kept back, as one of the ``hidden`` patterns matches it."""
+        folded = name.casefold()
+        return any(fnmatchcase(folded, pattern.casefold()) for pattern in self.hidden)
 
     def _ignores(self, path: Path) -> bool:
         """Whether ``path`` is one of the node's own directories, or lies within one."""

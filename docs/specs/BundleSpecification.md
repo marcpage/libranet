@@ -768,7 +768,8 @@ The following were identified during design discussion but not yet resolved:
 - How large a bundle a reader must read. The protocol sets no limit on a
   bundle's size once decompressed (HighLevelDesign §4.3), but a reader holds
   a bundle's JSON whole to parse it. The reference node reads one of up to
-  16 MiB once decompressed or decrypted, and refuses a larger one.
+  16 MiB once decompressed or decrypted, by default, and refuses a larger
+  one.
 - How many symbolic links a reader follows to resolve one path (§3.1),
   which ends a loop of them. The reference node follows up to 40, and takes
   a path needing more to name nothing, as it does one that climbs above the

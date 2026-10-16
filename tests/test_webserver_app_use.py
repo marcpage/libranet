@@ -8,7 +8,7 @@ from pytest import fixture, raises
 from libranet.cas.content_id import ContentId
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
-from libranet.webserver.app_use import DEFAULT_REPORT_INTERVAL_SECONDS, ApplicationUse
+from libranet.webserver.app_use import ApplicationUse
 
 WIKI_BUNDLE = ContentId.for_data(b"the wiki's bundle", "sha256")
 NOTES_BUNDLE = ContentId.for_data(b"the notes' bundle", "sha256")
@@ -68,10 +68,6 @@ def test_each_bundle_is_reported_on_its_own(use: ApplicationUse, published: Reco
     use.used(WIKI_BUNDLE)
 
     assert published.bundles == [str(WIKI_BUNDLE), str(NOTES_BUNDLE)]
-
-
-def test_a_bundle_is_reported_hourly_by_default() -> None:
-    assert DEFAULT_REPORT_INTERVAL_SECONDS == 3600.0
 
 
 def test_the_interval_may_not_be_negative(published: Recorder) -> None:

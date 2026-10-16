@@ -56,8 +56,6 @@ from libranet.webserver.app_registry import (
     RegisteredApplications,
 )
 from libranet.webserver.app_store import (
-    MAX_STORE_BYTES,
-    MAX_VALUE_BYTES,
     STORE_KEY_PATTERN,
     STORE_PATH,
     STORE_PATTERN,
@@ -70,12 +68,11 @@ from libranet.webserver.app_store import (
     StoredValue,
     StoredValues,
 )
-from libranet.webserver.app_use import DEFAULT_REPORT_INTERVAL_SECONDS, ApplicationUse
+from libranet.webserver.app_use import ApplicationUse
 from libranet.webserver.backup_state import BackupReport, BackupState
 from libranet.webserver.block_handler import BlockHandler
 from libranet.webserver.bundle_edits import (
     BUNDLES_PATH,
-    MAX_EDIT_BODY_BYTES,
     BundleEdit,
     BundleEditHandler,
     OwnUploads,
@@ -315,7 +312,6 @@ __all__ = [
     "DEFAULT_FILE",
     "DEFAULT_MAX_OUTCOMES",
     "DEFAULT_PART_POLL_INTERVAL_SECONDS",
-    "DEFAULT_REPORT_INTERVAL_SECONDS",
     "DEFAULT_TRUST_POLL_INTERVAL_SECONDS",
     "DIRECTORY_PATTERN",
     "DROP_PATH",
@@ -334,11 +330,8 @@ __all__ = [
     "LISTED_SYMLINK",
     "MAX_COST",
     "MAX_DROP_BODY_BYTES",
-    "MAX_EDIT_BODY_BYTES",
     "MAX_JSON_BODY_BYTES",
     "MAX_OPENED_BYTES",
-    "MAX_STORE_BYTES",
-    "MAX_VALUE_BYTES",
     "METADATA_PATH",
     "NODE_PATH",
     "NOT_SNIFFED",

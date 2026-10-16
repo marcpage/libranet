@@ -12,22 +12,20 @@ encrypted is named by what is stored, without its key::
 A page and all it loads would otherwise be a report each, so each bundle is
 reported at most once every ``report_interval_seconds``; the first use of
 one is always reported at once. Resolved files are only deleted once unused
-for far longer. Request threads report uses at the same time, so the times
-kept are guarded by a lock.
+for far longer
+(:meth:`~libranet.config.models.StorageConfig.use_report_seconds`). Request
+threads report uses at the same time, so the times kept are guarded by a
+lock.
 """
 
 from __future__ import annotations
 from threading import Lock
 from time import time
-from typing import Callable, Final
+from typing import Callable
 
 from libranet.cas.content_id import ContentId
-from libranet.config.models import HOUR_SECONDS
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
-
-# Provisional default: how often a bundle in use is reported.
-DEFAULT_REPORT_INTERVAL_SECONDS: Final = HOUR_SECONDS
 
 
 class ApplicationUse:
@@ -36,7 +34,7 @@ class ApplicationUse:
     def __init__(
         self,
         publish: Publish,
-        report_interval_seconds: float = DEFAULT_REPORT_INTERVAL_SECONDS,
+        report_interval_seconds: float,
         *,
         clock: Callable[[], float] = time,
     ) -> None:

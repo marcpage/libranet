@@ -84,7 +84,11 @@ from libranet.bundle.storing import ContentSink, store_object
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError
 from libranet.cas.store import CasStore
-from libranet.config.models import MIB, StorageConfig
+from libranet.config.models import (
+    DEFAULT_MAX_BUNDLE_BYTES,
+    DEFAULT_MAX_BUNDLES_REQUEST_BYTES,
+    StorageConfig,
+)
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.problems import UNUSABLE_BUNDLE
@@ -118,20 +122,20 @@ _LOGGER = getLogger(__name__)
 #: Where a local client makes a bundle, or a new version of one.
 BUNDLES_PATH: Final = API_PREFIX + "/bundles"
 
-#: Provisional: the largest request body, room for a poster as base64 beside
-#: the rest of an edit (Phase 3 Step 72).
-MAX_EDIT_BODY_BYTES: Final = 4 * MIB
-
 # What stands for a file whose bytes a request gives until they are stored,
 # so that nothing is stored for an edit that is refused.
 _BYTES_GIVEN: Final = FileBundle(())
 
 
 class _Reader:
-    """Reads the bundles an edit names from ``source``, each once, however often it is named."""
+    """Reads the bundles an edit names from ``source``, each once, however often it is named.
 
-    def __init__(self, source: ContentSource) -> None:
+    Each is read to at most ``max_bundle_bytes`` once decompressed.
+    """
+
+    def __init__(self, source: ContentSource, max_bundle_bytes: int) -> None:
         self._source = source
+        self._max_bundle_bytes = max_bundle_bytes
         self._resolved: dict[PartPath, FileBundle | Mapping[str, Entry]] = {}
 
     def load(self, path: PartPath) -> Bundle:
@@ -141,7 +145,7 @@ class _Reader:
             MissingContentError: it is not held.
             BundleError: it cannot be read.
         """
-        return load_bundle(path, self._source)
+        return load_bundle(path, self._source, self._max_bundle_bytes)
 
     def directory(self, path: PartPath, what: str) -> DirectoryBundle:
         """The directory bundle ``path`` names; ``what`` it is says which, if it is not one.
@@ -347,8 +351,15 @@ class BundleEdit:
     placed: Mapping[str, Mapping[str, Entry]]
 
     @classmethod
-    def read(cls, request: BundleEditRequest, source: ContentSource) -> BundleEdit:
+    def read(
+        cls,
+        request: BundleEditRequest,
+        source: ContentSource,
+        max_bundle_bytes: int = DEFAULT_MAX_BUNDLE_BYTES,
+    ) -> BundleEdit:
         """``request``, with the bundles it names read from ``source``.
+
+        Each is read to at most ``max_bundle_bytes`` once decompressed.
 
         Raises:
             MissingContentError: some of them, or their extensions, are not
@@ -358,7 +369,7 @@ class BundleEdit:
             BundleEditError: the base is not a directory bundle, or a source
                 names something other than what it must.
         """
-        reader = _Reader(source)
+        reader = _Reader(source, max_bundle_bytes)
         missing: list[ContentId] = []
         base: Superseded | None = None
         metadata = Metadata()
@@ -466,7 +477,7 @@ class BundleEdit:
 
 
 @dataclass(frozen=True)
-class BundleEditHandler:
+class BundleEditHandler:  # pylint: disable=too-many-instance-attributes
     """``POST /data/bundles``: make the bundle a request asks for, and answer with what names it.
 
     ``uploads`` holds the bundles a request names, and stores what is made.
@@ -475,7 +486,9 @@ class BundleEditHandler:
     waited for up to ``wait_seconds``, looked for every
     ``poll_interval_seconds``. No object stored is larger than
     ``max_object_bytes``, and no bundle lies more than ``max_layers`` update
-    layers above the last bundle stored whole.
+    layers above the last bundle stored whole. A request body larger than
+    ``max_body_bytes`` is refused unread, and a bundle it names is read to at
+    most ``max_bundle_bytes`` once decompressed.
 
     Raises:
         ValueError: ``wait_seconds`` or ``retry_after_seconds`` is negative,
@@ -490,6 +503,8 @@ class BundleEditHandler:
     max_layers: int
     _: KW_ONLY
     poll_interval_seconds: float = DEFAULT_PART_POLL_INTERVAL_SECONDS
+    max_body_bytes: int = DEFAULT_MAX_BUNDLES_REQUEST_BYTES
+    max_bundle_bytes: int = DEFAULT_MAX_BUNDLE_BYTES
 
     def __post_init__(self) -> None:
         if self.wait_seconds < 0:
@@ -506,7 +521,7 @@ class BundleEditHandler:
             )
 
     def __call__(self, request: Request) -> Response:
-        value = json_or_refusal(request, max_bytes=MAX_EDIT_BODY_BYTES)
+        value = json_or_refusal(request, max_bytes=self.max_body_bytes)
 
         if isinstance(value, Response):
             return value
@@ -573,7 +588,7 @@ class BundleEditHandler:
 
         while True:
             try:
-                return BundleEdit.read(asked, self.uploads)
+                return BundleEdit.read(asked, self.uploads, self.max_bundle_bytes)
 
             except MissingContentError as error:
                 # Not logged: what is not held is asked for, and waited for.

@@ -53,6 +53,11 @@ network:
   drop_max_seconds: 60.0
   drop_max_minimum_bits: 26
 
+  # Provisional: the largest body a page's request to make bundles may have
+  # (HTTP API §12.3), 4 MiB. Files it gives, such as a film's poster, come as
+  # base64, a third larger than they are. A larger request is refused.
+  max_bundles_request_bytes: 4194304
+
   # How long a person's session lasts unused before it ends, in seconds
   # (HTTP API §11.4). The node holds the person's private key in memory for
   # as long as the session lasts. Signing out, or the node stopping, ends a
@@ -175,6 +180,10 @@ storage:
   # zlib-compressed list may expand past that (HTTP API §10.6, §10.7.1).
   # The protocol sets no limit here; this is a local safeguard.
   max_decompressed_list_bytes: 4194304
+  # Provisional: how large a bundle is read once decompressed or decrypted,
+  # 16 MiB. A larger one is refused, and an application served from it is not
+  # served. The protocol sets no limit here either.
+  max_decompressed_bundle_bytes: 16777216
 
   # Content is handed off to another node and then deleted here whenever
   # free space on the disk holding it falls below min_free_bytes (0 turns
@@ -194,11 +203,31 @@ storage:
   # request_timeout_seconds, and a quarter as long again: 1,200 seconds at
   # the defaults. At least 1.
   max_hand_offs: 8
+  # Provisional: how long the node waits for its statistics to rank what to
+  # hand off first before it asks again. Ranking reads a row for every object
+  # held, so a node holding millions may need longer.
+  candidates_timeout_seconds: 60.0
+  # Provisional: content just stored is not handed off for this long, so that
+  # the request waiting for it reads it first. Parts of a film asked for ahead
+  # of the one playing (network.read_ahead_parts) are reached later, so a node
+  # asking for many more ahead may need longer. 0 hands content off at once.
+  stored_grace_seconds: 30.0
   # Before any content is handed off for want of free space, the resolved
   # files of every application not used for this long (30 days) are deleted.
   # They are resolved from the application's bundle again when next asked
-  # for.
+  # for. An application in use is noted at most once an hour, or ten times
+  # within this time if that is more often.
   resolved_idle_seconds: 2592000.0
+  # Provisional: how many applications' directories are kept in memory, the
+  # least recently used dropped first, so that each file asked for is not
+  # read from disk again. At least 1.
+  max_cached_bundles: 8
+  # The most each application may keep on this node through /data/store
+  # (HTTP API §13.3): its whole store, 1 MiB, and any one value in it,
+  # 64 KiB, each as compact JSON. A change past either is refused. The
+  # shipped applications keep well within these.
+  max_application_store_bytes: 1048576
+  max_application_value_bytes: 65536
 
   # Provisional: how long a cached /data/search result stays valid.
   search_cache_ttl_seconds: 300.0
@@ -289,6 +318,10 @@ backup:
   # once this long passes with none of that content arriving. Asking for the
   # same restore again carries it on where it left off.
   restore_stall_seconds: 86400.0
+  # Provisional: a restore waiting on content carries on this long after some
+  # of it arrives, so that content arriving together is restored together; at
+  # once when the last of it does.
+  restore_resume_seconds: 10.0
   # Provisional: a backup, build, or import waits, before storing more, while
   # storage is full, and gives up, and fails, once it has stayed full this
   # long, as when no peer takes what is handed off. The next look at a
@@ -326,6 +359,14 @@ local:
     - "~/Music"
     - "~/Pictures"
     - "~/Movies"
+  # The names within those folders kept back from that browser: neither
+  # listed nor imported, nor reached through. Shell-style patterns, matched
+  # whatever their case against each name in a path. The default keeps back
+  # hidden names, those beginning with "."; add "desktop.ini" or "Thumbs.db",
+  # say, to keep those back too. The list replaces the default, not adds to
+  # it; [] keeps back nothing.
+  hidden:
+    - ".*"
 
 # Applications are not configured here. Which directory bundle each one
 # serves is changed while the node runs, through /config/api/applications,

@@ -61,11 +61,18 @@ _LOGGER = getLogger(__name__)
 
 
 class Export(Task):
-    """A bundle being written, with all it needs, into a content archive, as a request asked."""
+    """A bundle being written, with all it needs, into a content archive, as a request asked.
 
-    def __init__(self, request: ExportRequest, requested_at: float) -> None:
+    Each bundle it needs is read to at most ``max_bundle_bytes`` once
+    decompressed.
+    """
+
+    def __init__(
+        self, request: ExportRequest, requested_at: float, *, max_bundle_bytes: int
+    ) -> None:
         super().__init__(requested_at)
         self._request = request
+        self._max_bundle_bytes = max_bundle_bytes
         self._objects = 0
 
     @property
@@ -152,9 +159,9 @@ class Export(Task):
 
         def load(path: PartPath) -> Bundle:
             needed.add(path.content_id)
-            return load_bundle(path, source, password=password)
+            return load_bundle(path, source, self._max_bundle_bytes, password=password)
 
-        top = load_bundle(bundle, source, password=password)
+        top = load_bundle(bundle, source, self._max_bundle_bytes, password=password)
         # Each looked at as whatever it is, so that a kind of entry this does
         # not know is logged and fails the export, rather than taken for
         # another.

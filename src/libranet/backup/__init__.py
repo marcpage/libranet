@@ -13,7 +13,7 @@ from libranet.backup.exports import Export
 from libranet.backup.imports import Import
 from libranet.backup.jobs import BackupJob, ExpandedBackups, LatestBackup, load_jobs, save_jobs
 from libranet.backup.module import BackupModule, backup_module_factory
-from libranet.backup.restores import RESUME_DELAY_SECONDS, Restore, RestorePass
+from libranet.backup.restores import Restore, RestorePass
 from libranet.backup.runs import (
     Announce,
     AnnouncingStore,
@@ -28,7 +28,6 @@ from libranet.backup.writing import DirectoryWriter
 
 __all__ = [
     "RECORD_SUFFIX",
-    "RESUME_DELAY_SECONDS",
     "Announce",
     "AnnouncingStore",
     "Backup",

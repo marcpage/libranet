@@ -81,7 +81,7 @@ from libranet.bundle.storing import ContentSink
 from libranet.bundle.xattrs import ExtendedAttributes
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
-from libranet.config.models import LibranetConfig
+from libranet.config.models import DEFAULT_MAX_BUNDLE_BYTES, LibranetConfig
 
 #: Told of each object an :class:`AnnouncingStore` writes, and its size as
 #: stored.
@@ -121,7 +121,8 @@ class BuildSettings:
     ``max_layers`` the most update layers a new bundle may lie above the
     last bundle stored whole. Whatever ``ignore`` names is treated as though
     it were not there. ``xattrs`` says which extended attributes are
-    recorded; without it, none are.
+    recorded; without it, none are. A bundle read back is read to at most
+    ``max_bundle_bytes`` once decompressed.
 
     Raises:
         ValueError: ``max_object_bytes`` is not positive, or ``max_layers``
@@ -132,6 +133,7 @@ class BuildSettings:
     max_layers: int
     ignore: tuple[Path, ...] = ()
     xattrs: ExtendedAttributes | None = None
+    max_bundle_bytes: int = DEFAULT_MAX_BUNDLE_BYTES
 
     def __post_init__(self) -> None:
         if self.max_object_bytes < 1:
@@ -148,6 +150,7 @@ class BuildSettings:
             config.backup.max_update_layers,
             config.directories(),
             ExtendedAttributes(config.backup.excluded_xattrs),
+            config.storage.max_decompressed_bundle_bytes,
         )
 
 
@@ -229,7 +232,9 @@ def back_up(
         if latest is None or expanded is not None
         else Superseded.read(
             latest.bundle,
-            lambda content_id: load_bundle(content_id, store, password=secret),
+            lambda content_id: load_bundle(
+                content_id, store, settings.max_bundle_bytes, password=secret
+            ),
             latest.layering,
         )
     )

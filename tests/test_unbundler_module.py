@@ -523,6 +523,19 @@ def test_a_bundle_that_cannot_be_served_is_unusable_for_every_path(
     assert all(detail in report["detail"] for report in reports)
 
 
+def test_a_bundle_larger_once_decompressed_than_the_config_reads_is_unusable(
+    storage: StorageConfig, queues: ModuleQueues, app_id: ContentId
+) -> None:
+    capped = storage.model_copy(update={"max_decompressed_bundle_bytes": 16})
+    unbundler = UnbundlerModule(ModuleName.UNBUNDLER, queues, LibranetConfig(storage=capped))
+
+    unbundler.handle(request(app_id, "index.html"))
+
+    (report,) = resolved(queues)
+    assert report["outcome"] == "unusable"
+    assert "larger than 16 bytes" in report["detail"]
+
+
 def test_a_bundle_is_read_once_for_many_paths(
     unbundler: UnbundlerModule, store: CasStore, caplog: LogCaptureFixture
 ) -> None:
@@ -616,9 +629,8 @@ def test_a_bundle_unusable_or_not_held_is_not_saved(
 def test_the_least_recently_used_bundle_is_forgotten_past_the_limit(
     storage: StorageConfig, queues: ModuleQueues, store: CasStore, caplog: LogCaptureFixture
 ) -> None:
-    unbundler = UnbundlerModule(
-        ModuleName.UNBUNDLER, queues, LibranetConfig(storage=storage), max_cached_bundles=2
-    )
+    cached = storage.model_copy(update={"max_cached_bundles": 2})
+    unbundler = UnbundlerModule(ModuleName.UNBUNDLER, queues, LibranetConfig(storage=cached))
     first, second, third = (put(store, f"not bundle {n}".encode()) for n in range(3))
 
     with caplog.at_level(WARNING):

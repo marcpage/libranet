@@ -56,7 +56,11 @@ from urllib.parse import unquote
 
 from libranet.atomic_file import KeptRead, write_atomically
 from libranet.cas.content_id import ContentId
-from libranet.config.models import MIB
+from libranet.config.models import (
+    DEFAULT_MAX_APPLICATION_STORE_BYTES,
+    DEFAULT_MAX_APPLICATION_VALUE_BYTES,
+    StorageConfig,
+)
 from libranet.json_fields import string_field
 from libranet.json_format import compact_json
 from libranet.protocol.http_syntax import API_PREFIX, JSON_CONTENT_TYPE
@@ -82,12 +86,6 @@ _LOGGER = getLogger(__name__)
 STORE_PATH: Final = API_PREFIX + "/store"
 STORE_PATTERN: Final = STORE_PATH + "/(?P<application>[^/]+)"
 STORE_KEY_PATTERN: Final = STORE_PATTERN + "/(?P<key>[^/]+)"
-
-# A store holds where to find what an application keeps, not what it keeps
-# (HttpApi §13.3), so a value is about as small as a /config/api body, and a
-# store holds many of them. Each is counted as it is kept: compact JSON.
-MAX_VALUE_BYTES: Final = 64 * 1024
-MAX_STORE_BYTES: Final = MIB
 
 # The hash a value's ETag is drawn from, named in the tag as an application
 # file's is (Phase 3 Step 66).
@@ -223,20 +221,44 @@ class ApplicationStore:
 
     It may be shared by request threads. A change is read, made, and saved
     under a lock only this process sees, so only one process may make them.
-    An application's name is taken however it is cased.
+    An application's name is taken however it is cased. A value kept may be
+    no larger than ``max_value_bytes``, and a store no larger than
+    ``max_store_bytes``, each counted as it is kept: compact JSON.
     """
 
-    def __init__(self, directory: Path) -> None:
+    def __init__(
+        self,
+        directory: Path,
+        *,
+        max_value_bytes: int = DEFAULT_MAX_APPLICATION_VALUE_BYTES,
+        max_store_bytes: int = DEFAULT_MAX_APPLICATION_STORE_BYTES,
+    ) -> None:
         self._directory = directory
+        self._max_value_bytes = max_value_bytes
+        self._max_store_bytes = max_store_bytes
         self._lock = Lock()
         # What each store's file held when last read, by application, for
         # those whose files were there when last looked at.
         self._files: dict[str, KeptRead[StoredValues]] = {}
 
+    @classmethod
+    def of(cls, storage: StorageConfig) -> ApplicationStore:
+        """The stores in ``storage``'s data directory, held to its limits."""
+        return cls(
+            storage.application_stores_dir,
+            max_value_bytes=storage.max_application_value_bytes,
+            max_store_bytes=storage.max_application_store_bytes,
+        )
+
     @property
     def directory(self) -> Path:
         """Where the stores are kept."""
         return self._directory
+
+    @property
+    def max_value_bytes(self) -> int:
+        """The most a value kept may hold, as compact JSON."""
+        return self._max_value_bytes
 
     def path(self, application: str) -> Path:
         """Where ``application``'s store is kept.
@@ -278,9 +300,9 @@ class ApplicationStore:
             StoreFileError: the file cannot be read, and is left alone.
             OSError: the file could not be written.
         """
-        if len(value.text) > MAX_VALUE_BYTES:
+        if len(value.text) > self._max_value_bytes:
             raise StoreLimitError(
-                f"A stored value is limited to {MAX_VALUE_BYTES} bytes as compact JSON, "
+                f"A stored value is limited to {self._max_value_bytes} bytes as compact JSON, "
                 f"got {len(value.text)}"
             )
 
@@ -380,9 +402,9 @@ class ApplicationStore:
         if stored.values:
             data = compact_json(stored.value())
 
-            if len(data) > MAX_STORE_BYTES:
+            if len(data) > self._max_store_bytes:
                 raise StoreLimitError(
-                    f"An application's store is limited to {MAX_STORE_BYTES} bytes "
+                    f"An application's store is limited to {self._max_store_bytes} bytes "
                     f"as compact JSON, and would be {len(data)}"
                 )
 
@@ -475,7 +497,9 @@ class StoreWriteHandler:
         if isinstance(names, Response):
             return names
 
-        value = parsed_or_refusal(request, StoredValue.from_value, max_bytes=MAX_VALUE_BYTES)
+        value = parsed_or_refusal(
+            request, StoredValue.from_value, max_bytes=self.store.max_value_bytes
+        )
 
         if isinstance(value, Response):
             return value
@@ -518,7 +542,7 @@ class StoreRemovalHandler:
         if isinstance(names, Response):
             return names
 
-        refusal = unreadable_body_response(request, MAX_VALUE_BYTES)
+        refusal = unreadable_body_response(request, self.store.max_value_bytes)
 
         if refusal is not None:
             return refusal

@@ -30,7 +30,12 @@ from libranet.bundle.shapes import (
 from libranet.bundle.storing import StoredDirectory, store_bundle, store_object
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
-from libranet.config.models import DEFAULT_CONFIG_HOSTS, StorageConfig
+from libranet.config.models import (
+    DEFAULT_CONFIG_HOSTS,
+    DEFAULT_MAX_BUNDLE_BYTES,
+    DEFAULT_MAX_BUNDLES_REQUEST_BYTES,
+    StorageConfig,
+)
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.problems import (
@@ -43,7 +48,6 @@ from libranet.protocol.bundle_requests import BundleEditRequest, CopySource
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.webserver.bundle_edits import (
     BUNDLES_PATH,
-    MAX_EDIT_BODY_BYTES,
     BundleEdit,
     BundleEditHandler,
     OwnUploads,
@@ -97,7 +101,13 @@ def uploads(storage: StorageConfig, store: CasStore, recorder: Recorder) -> OwnU
 
 
 def router_for(
-    uploads: OwnUploads, recorder: Recorder, *, wait_seconds: float = 0.0, max_layers: int = 3
+    uploads: OwnUploads,
+    recorder: Recorder,
+    *,
+    wait_seconds: float = 0.0,
+    max_layers: int = 3,
+    max_body_bytes: int = DEFAULT_MAX_BUNDLES_REQUEST_BYTES,
+    max_bundle_bytes: int = DEFAULT_MAX_BUNDLE_BYTES,
 ) -> Router:
     """``POST /data/bundles``, served only to local clients, as the main port serves it."""
     router = Router()
@@ -109,6 +119,8 @@ def router_for(
         MAX_BYTES,
         max_layers,
         poll_interval_seconds=POLL_INTERVAL_SECONDS,
+        max_body_bytes=max_body_bytes,
+        max_bundle_bytes=max_bundle_bytes,
     )
     router.add("POST", BUNDLES_PATH, LocalOnly(handler, SiteChecks(DEFAULT_CONFIG_HOSTS, "This")))
     return router
@@ -768,13 +780,38 @@ def test_a_body_larger_than_an_edit_may_be_is_too_large(router: Router) -> None:
         BUNDLES_PATH,
         headers={"Content-Type": JSON_CONTENT_TYPE},
         client_address="127.0.0.1",
-        body=RequestBody(MAX_EDIT_BODY_BYTES + 1, BytesIO()),
+        body=RequestBody(DEFAULT_MAX_BUNDLES_REQUEST_BYTES + 1, BytesIO()),
     )
 
     response = router.dispatch(request)
 
     assert response.status == 413
     assert problem_type(response) == CONTENT_TOO_LARGE
+
+
+def test_a_body_larger_than_the_handler_takes_is_too_large(
+    uploads: OwnUploads, recorder: Recorder, storage: StorageConfig
+) -> None:
+    router = router_for(uploads, recorder, max_body_bytes=16)
+
+    response = router.dispatch(edit_request({"add": {"a.txt": {"text": "longer than that"}}}))
+
+    assert response.status == 413
+    assert problem_type(response) == CONTENT_TOO_LARGE
+    assert list(uploaded(storage)) == []
+
+
+def test_a_bundle_larger_than_the_handler_reads_is_refused(
+    uploads: OwnUploads, recorder: Recorder, store: CasStore
+) -> None:
+    base = stored(store, DirectoryBundle(playlist(1)))
+    router = router_for(uploads, recorder, max_bundle_bytes=16)
+
+    response = router.dispatch(edit_request({"base": str(base)}))
+
+    assert response.status == 400
+    assert problem_type(response) == UNUSABLE_BUNDLE
+    assert "larger than 16 bytes" in loads(response.body)["detail"]
 
 
 def test_a_body_that_is_not_json_is_unsupported(router: Router) -> None:
