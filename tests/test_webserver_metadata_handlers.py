@@ -92,7 +92,7 @@ def own_metadata(
         LocalSearch(truth, storage.search_max_results), SearchCache.of(storage), recorder
     )
     drops = DropHandler(uploads, max_object_bytes, MAX_SECONDS, MAX_MINIMUM_BITS)
-    return OwnMetadata(
+    return OwnMetadata.of(
         node, search, drops, recorder, content=uploads, retry_after_seconds=RETRY_AFTER_SECONDS
     )
 
@@ -476,7 +476,7 @@ def test_a_negative_retry_after_is_refused(
     )
 
     with raises(ValueError, match="retry_after_seconds"):
-        OwnMetadata(
+        OwnMetadata.of(
             node,
             search,
             DropHandler(uploads, MAX_BYTES, MAX_SECONDS, MAX_MINIMUM_BITS),

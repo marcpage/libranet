@@ -110,6 +110,11 @@ class ReadVersion(Protocol):
         ...
 
     @property
+    def signer(self) -> ContentId:
+        """Who signed it: the signed bundle the drop holds checks under the key this names."""
+        ...
+
+    @property
     def number(self) -> int:
         """What it is numbered."""
         ...
@@ -126,11 +131,23 @@ class HeldVersions(Generic[_Read]):
     what was found at the drop, or is needed to check what was, such as
     ``owner``'s key, and is not held yet. While anything is missing, a newer
     version may be among it.
+
+    Raises:
+        ValueError: a version is signed by someone other than ``owner``, as
+            one given :meth:`with_version` may be.
     """
 
     owner: ContentId
     versions: tuple[_Read, ...] = ()
     missing: tuple[ContentId, ...] = ()
+
+    def __post_init__(self) -> None:
+        for version in self.versions:
+            if version.signer != self.owner:
+                raise ValueError(
+                    f"A version of what {self.owner} signs is signed by them, "
+                    f"got {version.content_id} signed by {version.signer}"
+                )
 
     @property
     def newest(self) -> _Read | None:

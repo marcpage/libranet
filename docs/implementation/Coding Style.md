@@ -314,6 +314,9 @@ module's class, when it has no one type to belong to (`write_atomically`,
 
 A value is a `@dataclass(frozen=True)`. So is an HTTP handler or guard: a
 frozen dataclass of the collaborators it is given, called once per request.
+A collaborator that keeps state of its own, made for the handler alone, is
+made by a factory classmethod and given to it like any other, as
+`TrustEdits.of` makes the `VersionEdits` it places versions with.
 A mutable dataclass is used only for a module's own bookkeeping, and is
 private (`_Progress`, `_Peer`, `_Child`).
 pydantic is used only in `config/`, for what an administrator writes by
@@ -403,6 +406,17 @@ _MAX_EXPANDED_BYTES: Final = 1 << 40
   inference would make it too narrow (`Final[Mapping[str, str]]`).
 - The comment above it says why it has that value, or what it means, and
   names the specification section that sets it.
+- Above a public constant or type alias, that comment is a Sphinx doc
+  comment: every line of it starts `#:`, so that Sphinx's `autodoc`
+  documents the name with it. Above a private one, it starts `#`, as any
+  other comment does (§8.2).
+
+  ```Python
+  #: The fewest leading bits a version shares with its drop's target
+  #: (Trust Network §3.2).
+  MIN_TRUST_LIST_BITS: Final = 16
+  ```
+
 - A number or string with a meaning gets a name, rather than appearing bare
   in a function body.
 - A size is written as arithmetic that shows its unit: `1 << 40`,
@@ -471,6 +485,12 @@ def create(
 A comment says why, not what: the reason for a value, the case a branch
 covers, the thing that would break if the line changed. Comments are whole
 sentences, wrapped at 79 columns, above the code they are about.
+
+Comments are formatted for Sphinx, as docstrings are (§8.1), in
+reStructuredText: a literal in double backticks (` ``reached`` `), other
+code named with a role (``:meth:`shutdown` ``), and never Markdown's single
+backticks. A comment that documents a public constant is a doc comment,
+each line starting `#:` (§7).
 
 ```Python
 # The verified bytes are written rather than the upload file moved:
@@ -662,7 +682,7 @@ New code comes with tests, and coverage is gated at 90%.
 
 ## 12. Where the Code Departs
 
-These are in the code as of Phase 4 Step 93. New code follows the rules
+These are in the code as of Phase 5 Step 108. New code follows the rules
 above. None of these is fixed in passing: a change set keeps to its task.
 Paths are relative to `src/libranet/`, except those that start with `tests/`.
 
@@ -671,12 +691,14 @@ Paths are relative to `src/libranet/`, except those that start with `tests/`.
 | `tests/test_config_models.py` | Three `Test…` classes (§11) |
 | `logging_setup.get_logger` | A `get_` name (§4) |
 | `applications/packaged.py` `_Objects`; `backup/builds.py` `_Earlier` | A private class at the bottom, after the public code that uses it (§3.1) |
-| `backup/module.py` `_waiting`; `bundle/building.py` every private function from `_identity` to `_metadata`, eleven, before `modified_time`; `connections/module.py` `_dialable`; `identity/keys.py` `_decompressed`; `stats/database.py` `_source_rank`; `stats/lists.py` `_cost`; `stats/module.py` `_started`; `webserver/config_guard.py` `_is_followed_link`, `_api_page_refusal`; `webserver/config_handlers.py` `_not_registered_response`, `_unreadable_registry_response`; `webserver/module.py` `_address`; `webserver/server.py` `_registry`, `_bundle_paths` | A private function before public code (§3.1) |
+| `backup/module.py` `_waiting`; `bundle/building.py` every private function from `_identity` to `_metadata`, eleven, before `modified_time`; `connections/module.py` `_dialable`; `identity/keys.py` `_decompressed`; `stats/database.py` `_source_rank`; `stats/lists.py` `_cost`; `stats/module.py` `_started`; `webserver/config_guard.py` `_is_page_navigation`, `_api_page_refusal`; `webserver/config_handlers.py` `_not_registered_response`, `_unreadable_registry_response`; `webserver/module.py` `_address`; `webserver/server.py` `_registry`, `_config_identities`, `_bundle_paths` | A private function before public code (§3.1) |
 | `webserver/data_handler.py` `DataReadHandler`; `webserver/data_write_handler.py` `DataWriteHandler` | A handler that keeps its collaborators in private attributes set by `__init__`, where every other handler and guard class is a frozen dataclass of them (§6.2) |
 | `problems.py` `Problem` | Its JSON form is `to_dict()`, and its body `to_json()`, rather than `value()` (§6.3) |
 | `webserver/config_credential.py` `StoredCredential` | `from_json()` and `to_json()` read and write the file's bytes, rather than `from_value()` and `value()` (§6.3) |
 | 82 public callables in 42 files, listed in §12.1 | An optional parameter a call may pass by position (§6.4) |
-| `backup/imports.py`, `backup/tasks.py`, `connections/peer_session.py`, `messaging/queues.py`, `stats/records.py`, `stats/schema.py`, `webserver/block_handler.py`, `webserver/data_handler.py`, `webserver/search_handler.py`, `webserver/site_checks.py` | No test file of its own: each is tested through the code that uses it (§11) |
+| 69 public constants and type aliases in 29 files, listed in §12.2; `stats/lists.py` `_NODE_LIST_BASE_BYTES`, `_SEEK_LIST_BASE_BYTES` | A public name's comment starts `#` rather than `#:`, and a private one's `#:` rather than `#` (§7) |
+| `cas/archive.py`, `config/models.py` (eleven lines), `connections/request_encoding.py`, `messaging/events.py` (two), `stats/database.py` (four), `stats/lists.py` (two), `stats/schema.py`, `supervisor.py`, `webserver/app_handler.py`, `webserver/app_registry.py` (two), `webserver/server.py` | A comment marks a literal with Markdown's single backticks rather than reStructuredText's double ones (§8.2) |
+| `backup/imports.py`, `backup/tasks.py`, `connections/peer_session.py`, `messaging/queues.py`, `stats/records.py`, `stats/schema.py`, `webserver/block_handler.py`, `webserver/data_handler.py`, `webserver/search_handler.py`, `webserver/signed_versions.py`, `webserver/site_checks.py` | No test file of its own: each is tested through the code that uses it (§11) |
 
 ### 12.1 Optional Parameters Taken Positionally
 
@@ -726,6 +748,43 @@ the signature of the one it overrides or stands in for is not counted
 | `supervisor.py` | `main(argv)` |
 | `webserver/app_outcomes.py` | `ApplicationOutcomes(max_outcomes)` |
 | `webserver/app_registry.py` | `ApplicationRegistry(initial)` |
-| `webserver/app_use.py` | `ApplicationUse(report_interval_seconds)` |
+| `webserver/bundle_edits.py` | `BundleEdit.read(max_bundle_bytes)` |
 | `webserver/http_types.py` | `RequestBody(stream)`, `bytes_response(content_type, headers)`, `json_response(status)`, `problem_response(headers)` |
 | `webserver/own_pages.py` | `OwnPages.refusal(application)`, `OwnPages.refused(application)` |
+
+### 12.2 Public Names Commented with `#`
+
+Each public constant or type alias whose comment is not yet a Sphinx doc
+comment (§7).
+
+| File | Names |
+| --- | --- |
+| `bundle/encryption.py` | `BLOCK_BYTES`, `KEY_BYTES`, `DEFAULT_IV`, `ENCRYPTION_COMPRESSION_LEVEL` |
+| `bundle/parts.py` | `CIPHER` |
+| `bundle/protection.py` | `DESCRIPTOR_SEPARATOR`, `NORMAL_FORM` |
+| `bundle/shapes.py` | `PATH_SEPARATOR`, `NO_STEP_SEGMENTS`, `DEFAULT_MAX_EXTENSIONS`, `XattrValue` |
+| `bundle/storing.py` | `STORAGE_COMPRESSION_LEVEL` |
+| `bundle/symlinks.py` | `MAX_SYMLINK_HOPS` |
+| `bundle/xattrs.py` | `INLINE_LIMIT_BYTES` |
+| `cas/compression.py` | `CHUNK_BYTES` |
+| `cas/content_id.py` | `HEX_DIGITS` |
+| `config/models.py` | `HOUR_SECONDS`, `IDLE_TIMEOUT_SECONDS`, `CONFIG_PORT_STEP`, `CONFIG_LISTEN_ADDRESS`, `DEFAULT_CONFIG_HOSTS`, `DEFAULT_SESSION_IDLE_SECONDS`, `MIN_PERSON_KEY_BITS`, `DEFAULT_PERSON_KEY_BITS`, `DEFAULT_READ_AHEAD_PARTS`, `DEFAULT_TRUST_MAX_STEPS`, `DEFAULT_TRUST_LIST_WAIT_SECONDS`, `TARGET_BITS`, `DEFAULT_MAX_BUNDLES_REQUEST_BYTES`, `DEFAULT_MAX_BUNDLE_BYTES`, `DEFAULT_MAX_APPLICATION_VALUE_BYTES`, `DEFAULT_HIDDEN_NAMES` |
+| `connections/response_parser.py` | `MAX_HEAD_BYTES` |
+| `eviction/module.py` | `HAND_OFF_COPIES`, `DEFAULT_RECLAIM_TIMEOUT_SECONDS`, `DEFAULT_RECLAIM_INTERVAL_SECONDS` |
+| `identity/authentication.py` | `MAX_TRACKED_SIGNERS` |
+| `identity/keys.py` | `MAX_PUBLIC_KEY_BYTES` |
+| `protocol/http_syntax.py` | `API_PREFIX`, `DEFAULT_PORTS`, `TOKEN`, `CRLF`, `BODILESS_STATUSES`, `REQUEST_PATH_HEADER` |
+| `protocol/search.py` | `RESULTS_FIELD` |
+| `stats/module.py` | `DEFAULT_MAX_CANDIDATES` |
+| `unbundler/module.py` | `DEFAULT_MAX_WAITING_PATHS` |
+| `webserver/app_handler.py` | `APP_PATTERN`, `CONFIG_APP_PATTERN`, `CONFIG_APP_POLICY`, `APP_METHODS` |
+| `webserver/app_outcomes.py` | `DEFAULT_MAX_OUTCOMES` |
+| `webserver/app_registry.py` | `ROOT_APPLICATION`, `CONFIG_APPLICATION`, `RESERVED_APPLICATION_NAMES`, `CONFIG_API_SEGMENT` |
+| `webserver/bundle_reads.py` | `BUNDLE_PATTERN`, `BUNDLE_METHODS` |
+| `webserver/byte_range.py` | `BYTES_UNIT` |
+| `webserver/config_credential.py` | `COST`, `MAX_COST` |
+| `webserver/config_handlers.py` | `BACKUP_JOB_TEMPLATE` |
+| `webserver/file_stream.py` | `DEFAULT_PART_POLL_INTERVAL_SECONDS` |
+| `webserver/http_types.py` | `NOT_STORED`, `IMMUTABLE_CACHE_CONTROL`, `NOT_SNIFFED`, `READ_METHODS` |
+| `webserver/request_refusals.py` | `MAX_JSON_BODY_BYTES` |
+| `webserver/trust_builds.py` | `DEFAULT_TRUST_POLL_INTERVAL_SECONDS` |

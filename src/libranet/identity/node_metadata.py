@@ -113,9 +113,14 @@ class NodeMetadata(Numbered):
 
 @dataclass(frozen=True)
 class MetadataVersion:
-    """``metadata``, a version of what a node says of itself, read from the drop ``content_id``."""
+    """``metadata``, a version of what a node says of itself, read from the drop ``content_id``.
+
+    ``signer`` signed it: the signed bundle the drop holds checks under the
+    key ``signer`` names.
+    """
 
     content_id: ContentId
+    signer: ContentId
     metadata: NodeMetadata
 
     @property
@@ -133,6 +138,10 @@ class HeldNodeMetadata(HeldVersions[MetadataVersion]):
     held yet. While anything is missing, a newer version may be among it.
     The newest is found, and the next numbered, as
     :class:`~libranet.identity.versions.HeldVersions` finds and numbers them.
+
+    Raises:
+        ValueError: a version is signed by someone other than ``owner``, as
+            one given :meth:`with_version` may be.
     """
 
     @property

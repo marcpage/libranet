@@ -27,10 +27,11 @@ class Note(Numbered):
 
 @dataclass(frozen=True)
 class ReadNote:
-    """A version of a note, read from the drop ``content_id``."""
+    """A version of a note, read from the drop ``content_id``, signed by ``signer``."""
 
     content_id: ContentId
     note: Note
+    signer: ContentId = OWNER
 
     @property
     def number(self) -> int:
@@ -130,6 +131,16 @@ def test_of_two_numbered_as_high_the_newest_is_the_one_whose_id_sorts_first() ->
 
     assert held.newest == other
     assert held.replaced == (THIRD,)
+
+
+def test_a_version_someone_other_than_the_owner_signed_is_refused() -> None:
+    forged = ReadNote(FIRST, Note("forged", 9), signer=SECOND)
+
+    with raises(ValueError, match=f"got {FIRST} signed by {SECOND}"):
+        HeldNotes(OWNER, (forged,))
+
+    with raises(ValueError, match="is signed by them"):
+        HeldNotes(OWNER).with_version(forged)
 
 
 def test_a_version_placed_is_read_once_and_keeps_its_kind_of_document() -> None:

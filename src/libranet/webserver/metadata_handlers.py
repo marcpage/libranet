@@ -9,8 +9,8 @@ next version, for the application (Phase 5 Step 104)::
     GET /config/api/metadata
     PUT /config/api/metadata   {"fields": {"name": "Attic", "city": "Springfield"}}
 
-The node reads its versions from what it holds, as any versions an identity
-signs are read (:class:`~libranet.webserver.signed_versions.SignedVersions`),
+The node reads its versions from what it holds
+(:class:`~libranet.webserver.node_metadata_reader.NodeMetadataReader`),
 storing its public key again first, should it have been evicted. A read
 answers the newest, with the id of the drop holding it::
 
@@ -39,6 +39,7 @@ over the version the one before it placed.
 """
 
 from __future__ import annotations
+from dataclasses import KW_ONLY, dataclass, field
 from http import HTTPStatus
 from logging import getLogger
 from typing import Final, Mapping
@@ -46,12 +47,7 @@ from typing import Final, Mapping
 from libranet.bundle.content import ContentSource
 from libranet.bundle.storing import store_object
 from libranet.identity.node_identity import NodeIdentity
-from libranet.identity.node_metadata import (
-    MIN_NODE_METADATA_BITS,
-    HeldNodeMetadata,
-    MetadataVersion,
-    NodeMetadata,
-)
+from libranet.identity.node_metadata import HeldNodeMetadata, MetadataVersion, NodeMetadata
 from libranet.identity.versions import FIELDS_FIELD, VERSION_FIELD
 from libranet.json_format import compact_json
 from libranet.messaging.publishing import Publish
@@ -59,9 +55,9 @@ from libranet.protocol.node_metadata_requests import NodeMetadataRequest
 from libranet.webserver.costly_work import Turns
 from libranet.webserver.drop_handler import DropHandler
 from libranet.webserver.http_types import Request, Response, json_response
+from libranet.webserver.node_metadata_reader import NodeMetadataReader
 from libranet.webserver.request_refusals import parsed_or_refusal
 from libranet.webserver.search_handler import SearchHandler
-from libranet.webserver.signed_versions import SignedVersions
 from libranet.webserver.version_edits import VersionEdits
 
 _LOGGER = getLogger(__name__)
@@ -73,23 +69,27 @@ _MISSING_DETAIL: Final = (
 )
 
 
+@dataclass(frozen=True)
 class OwnMetadata:
     """The endpoints reading and changing what ``node`` says of itself.
 
-    Its versions are read from ``content``, found by ``search``, and each
-    version is made a drop by ``drops``, its public key stored again in
-    ``drops.uploads``, which ``content`` reads too. What was found at the
-    drop and is not held is asked for with ``publish``, a client told to ask
-    again after ``retry_after_seconds``, and what a newer version replaces is
-    blocked with it (:class:`~libranet.webserver.version_edits.VersionEdits`).
-    Any number of request threads may use them at once.
-
-    Raises:
-        ValueError: ``retry_after_seconds`` is negative.
+    Its versions are read by ``reader``, and each version is placed by
+    ``edits``, as ``drops`` makes one, its public key stored again in
+    ``drops.uploads``, which ``reader`` reads too. Reads and changes take
+    ``turns``, as the edits are made one at a time. Any number of request
+    threads may use them at once.
     """
 
-    def __init__(
-        self,
+    node: NodeIdentity
+    reader: NodeMetadataReader
+    edits: VersionEdits[NodeMetadata]
+    drops: DropHandler
+    _: KW_ONLY
+    turns: Turns = field(default_factory=Turns)
+
+    @classmethod
+    def of(
+        cls,
         node: NodeIdentity,
         search: SearchHandler,
         drops: DropHandler,
@@ -97,31 +97,31 @@ class OwnMetadata:
         *,
         content: ContentSource,
         retry_after_seconds: int,
-    ) -> None:
-        versions = SignedVersions(
-            search,
-            content,
-            kind="metadata",
-            target=NodeMetadata.drop_target,
-            minimum_bits=MIN_NODE_METADATA_BITS,
-            parse=NodeMetadata.from_value,
+    ) -> OwnMetadata:
+        """The endpoints for ``node``, reading its versions from ``content``, found by ``search``.
+
+        Each version is made a drop by ``drops``. What was found at the drop
+        and is not held is asked for with ``publish``, a client told to ask
+        again after ``retry_after_seconds``, and what a newer version
+        replaces is blocked with it
+        (:class:`~libranet.webserver.version_edits.VersionEdits`).
+
+        Raises:
+            ValueError: ``retry_after_seconds`` is negative.
+        """
+        reader = NodeMetadataReader(search, content)
+        edits = VersionEdits(
+            reader.versions, drops, publish, retry_after_seconds=retry_after_seconds
         )
-        self._edits = VersionEdits(
-            versions, drops, publish, retry_after_seconds=retry_after_seconds
-        )
-        self._node = node
-        self._versions = versions
-        self._drops = drops
-        # Reads and changes take turns, as the edits are made one at a time.
-        self._turns = Turns()
+        return cls(node, reader, edits, drops)
 
     def read(self, request: Request) -> Response:
         """``GET /config/api/metadata``: the newest version of what this node says of itself."""
-        with self._turns.turn():
+        with self.turns.turn():
             held = self._held()
 
         if held.missing:
-            return self._edits.missing_response(request, held, _MISSING_DETAIL)
+            return self.edits.missing_response(request, held, _MISSING_DETAIL)
 
         newest = held.newest
 
@@ -137,7 +137,7 @@ class OwnMetadata:
         if isinstance(asked, Response):
             return asked
 
-        with self._turns.turn():
+        with self.turns.turn():
             return self._change(request, asked.fields)
 
     def _change(self, request: Request, fields: Mapping[str, str]) -> Response:
@@ -145,10 +145,10 @@ class OwnMetadata:
         held = self._held()
 
         if held.missing:
-            return self._edits.missing_response(request, held, _MISSING_DETAIL)
+            return self.edits.missing_response(request, held, _MISSING_DETAIL)
 
         # The newest replaces them, whether or not a version is placed over it.
-        self._edits.block_replaced(held)
+        self.edits.block_replaced(held)
         changed = held.next_version(fields)
 
         if changed is None:
@@ -156,12 +156,12 @@ class OwnMetadata:
             return Response(HTTPStatus.NO_CONTENT)
 
         text = compact_json(changed.value()).decode("utf-8")
-        stored = self._edits.place(request, held, self._node.signed(text))
+        stored = self.edits.place(request, held, self.node.signed(text))
 
         if isinstance(stored, Response):
             return stored
 
-        self._edits.remember(held.owner, MetadataVersion(stored.content_id, changed))
+        self.edits.remember(held.owner, MetadataVersion(stored.content_id, held.owner, changed))
         _LOGGER.info(
             "Placed version %d of this node's metadata as %s", changed.version, stored.content_id
         )
@@ -176,15 +176,5 @@ class OwnMetadata:
         Its public key is held again first, should it have been evicted, so
         that the versions can be checked.
         """
-        node_id = self._node.node_id
-        store_object(self._node.public_key, self._drops.uploads, self._drops.max_object_bytes)
-        found = self._versions.read(node_id)
-        return self._edits.held(
-            HeldNodeMetadata(
-                node_id,
-                tuple(
-                    MetadataVersion(content_id, metadata) for content_id, metadata in found.versions
-                ),
-                found.missing,
-            )
-        )
+        store_object(self.node.public_key, self.drops.uploads, self.drops.max_object_bytes)
+        return self.edits.held(self.reader.read(self.node.node_id))

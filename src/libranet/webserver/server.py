@@ -372,7 +372,7 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
             blocked=blocked,
         )
         encrypted = EncryptedDrops(signed, derivations=work.derivations)
-        trust = TrustEdits(
+        trust = TrustEdits.of(
             lists,
             drops,
             sessions,
@@ -527,7 +527,7 @@ def build_config_router(  # pylint: disable=too-many-locals
         metadata=(
             None
             if identity is None
-            else OwnMetadata(
+            else OwnMetadata.of(
                 identity,
                 identities.search,
                 identities.drops,

@@ -47,6 +47,7 @@ cache, since it says whom the person trusts.
 """
 
 from __future__ import annotations
+from dataclasses import KW_ONLY, dataclass, field
 from http import HTTPStatus
 from logging import getLogger
 from typing import Final
@@ -54,7 +55,7 @@ from typing import Final
 from libranet.bundle.storing import store_object
 from libranet.cas.content_id import ContentId
 from libranet.identity.people import PersonKey
-from libranet.identity.trust import TrustScores, TrustVersion
+from libranet.identity.trust import TrustList, TrustScores, TrustVersion
 from libranet.json_format import compact_json
 from libranet.messaging.publishing import Publish
 from libranet.problems import SESSION_REQUIRED
@@ -97,6 +98,7 @@ _MISSING_DETAIL: Final = (
 )
 
 
+@dataclass(frozen=True)
 class TrustReads:
     """The endpoints reading the trust scores of the person ``sessions`` says is signed in.
 
@@ -104,9 +106,8 @@ class TrustReads:
     read. Any number of request threads may use them at once.
     """
 
-    def __init__(self, builds: TrustBuilds, sessions: Sessions) -> None:
-        self._builds = builds
-        self._sessions = sessions
+    builds: TrustBuilds
+    sessions: Sessions
 
     def scores(self, request: Request) -> Response:
         """``GET /data/trust``: the score of every identity reached, and whether it is complete."""
@@ -130,12 +131,12 @@ class TrustReads:
 
     def _scores(self, request: Request) -> TrustScores | Response:
         """The scores of whoever ``request``'s session names; or the ``401`` refusing them."""
-        session = self._sessions.session_or_refusal(request, _READING_NEEDS)
+        session = self.sessions.session_or_refusal(request, _READING_NEEDS)
 
         if isinstance(session, Response):
             return session
 
-        scores = self._builds.scores(session.key.person_id)
+        scores = self.builds.scores(session.key.person_id)
 
         if scores is None:
             # Their last session ended since it was looked up.
@@ -147,24 +148,29 @@ class TrustReads:
         return scores
 
 
+@dataclass(frozen=True)
 class TrustEdits:
     """The endpoints changing the trust list of the person ``sessions`` says is signed in.
 
-    The list is read by ``lists``, and each version made a drop by
-    ``drops``, as ``/data/drop`` makes one, the person's public key stored
-    again in ``drops.uploads``. What was found at the list's drop and is not
-    held is asked for with ``publish``, a client told to ask again after
-    ``retry_after_seconds``, and what a newer version replaces is blocked
-    with it (:class:`~libranet.webserver.version_edits.VersionEdits`). Each
-    version placed is handed to the person's build in ``builds``, if given,
-    to score again. Any number of request threads may use them at once.
-
-    Raises:
-        ValueError: ``retry_after_seconds`` is negative.
+    The list is read by ``lists``, and each version placed by ``edits``, as
+    ``drops`` makes one, the person's public key stored again in
+    ``drops.uploads``. Each version placed is handed to the person's build in
+    ``builds``, if given, to score again. Changes take ``turns``, as the
+    edits are made one at a time. Any number of request threads may use them
+    at once.
     """
 
-    def __init__(
-        self,
+    edits: VersionEdits[TrustList]
+    lists: TrustLists
+    drops: DropHandler
+    sessions: Sessions
+    _: KW_ONLY
+    builds: TrustBuilds | None = None
+    turns: Turns = field(default_factory=Turns)
+
+    @classmethod
+    def of(
+        cls,
         lists: TrustLists,
         drops: DropHandler,
         sessions: Sessions,
@@ -172,16 +178,21 @@ class TrustEdits:
         *,
         retry_after_seconds: int,
         builds: TrustBuilds | None = None,
-    ) -> None:
-        self._edits = VersionEdits(
+    ) -> TrustEdits:
+        """The endpoints changing the lists ``lists`` reads, each version made a drop by ``drops``.
+
+        What was found at a list's drop and is not held is asked for with
+        ``publish``, a client told to ask again after ``retry_after_seconds``,
+        and what a newer version replaces is blocked with it
+        (:class:`~libranet.webserver.version_edits.VersionEdits`).
+
+        Raises:
+            ValueError: ``retry_after_seconds`` is negative.
+        """
+        edits = VersionEdits(
             lists.versions, drops, publish, retry_after_seconds=retry_after_seconds
         )
-        self._lists = lists
-        self._drops = drops
-        self._sessions = sessions
-        self._builds = builds
-        # Changes take turns, as the edits are made one at a time.
-        self._turns = Turns()
+        return cls(edits, lists, drops, sessions, builds=builds)
 
     def trust(self, request: Request) -> Response:
         """``PUT /data/trust/{algorithm}/{hash}``: trust or distrust the identity named."""
@@ -196,7 +207,7 @@ class TrustEdits:
 
         The entry is cleared if ``clears``, and set as the body says if not.
         """
-        session = self._sessions.signer_or_refusal(request, "Sign in to change your trust list.")
+        session = self.sessions.signer_or_refusal(request, "Sign in to change your trust list.")
 
         if isinstance(session, Response):
             return session
@@ -216,7 +227,7 @@ class TrustEdits:
 
             trusted = asked.trusted
 
-        with self._turns.turn():
+        with self.turns.turn():
             return self._change(request, session.key, identity, trusted)
 
     def _change(
@@ -227,8 +238,8 @@ class TrustEdits:
         ``None`` clears it.
         """
         # Held again, should it have been evicted, so that the list can be read.
-        store_object(person.public_key, self._drops.uploads, self._drops.max_object_bytes)
-        held = self._edits.held(self._lists.read(person.person_id))
+        store_object(person.public_key, self.drops.uploads, self.drops.max_object_bytes)
+        held = self.edits.held(self.lists.read(person.person_id))
 
         try:
             changed = held.next_version(identity, trusted)
@@ -238,27 +249,27 @@ class TrustEdits:
             return invalid_request_response(request, error, _LOGGER)
 
         if held.missing:
-            return self._edits.missing_response(request, held, _MISSING_DETAIL)
+            return self.edits.missing_response(request, held, _MISSING_DETAIL)
 
         # The newest replaces them, whether or not a version is placed over it.
-        self._edits.block_replaced(held)
+        self.edits.block_replaced(held)
 
         if changed is None:
             _LOGGER.debug("%s's trust list already says that of %s", person.person_id, identity)
             return Response(HTTPStatus.NO_CONTENT)
 
         text = compact_json(changed.value()).decode("utf-8")
-        stored = self._edits.place(request, held, person.signed(text))
+        stored = self.edits.place(request, held, person.signed(text))
 
         if isinstance(stored, Response):
             return stored
 
-        self._edits.remember(
+        self.edits.remember(
             person.person_id, TrustVersion(stored.content_id, person.person_id, changed)
         )
 
-        if self._builds is not None:
-            self._builds.changed(person.person_id, changed.entries)
+        if self.builds is not None:
+            self.builds.changed(person.person_id, changed.entries)
 
         _LOGGER.info(
             "Placed version %d of %s's trust list as %s",

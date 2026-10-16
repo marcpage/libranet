@@ -222,6 +222,7 @@ from libranet.webserver.local_only import (
 )
 from libranet.webserver.metadata_handlers import OwnMetadata
 from libranet.webserver.module import WebServerModule, webserver_module_factory
+from libranet.webserver.node_metadata_reader import NODE_METADATA_KIND, NodeMetadataReader
 from libranet.webserver.own_pages import (
     REFERER_HEADER,
     OwnPageOnly,
@@ -333,6 +334,7 @@ __all__ = [
     "MAX_JSON_BODY_BYTES",
     "MAX_OPENED_BYTES",
     "METADATA_PATH",
+    "NODE_METADATA_KIND",
     "NODE_PATH",
     "NOT_SNIFFED",
     "NOT_STORED",
@@ -416,6 +418,7 @@ __all__ = [
     "NodeDescription",
     "NodeHandler",
     "NodeListHandler",
+    "NodeMetadataReader",
     "OwnMetadata",
     "OwnPageOnly",
     "OwnPages",

@@ -146,7 +146,7 @@ def trust_edits(
     and each version placed handed to ``builds``, if given.
     """
     drops = DropHandler(uploads, max_object_bytes, MAX_SECONDS, MAX_MINIMUM_BITS)
-    return TrustEdits(
+    return TrustEdits.of(
         trust_lists(storage, truth, uploads, recorder),
         drops,
         sessions,
@@ -568,7 +568,7 @@ def test_a_negative_retry_after_is_refused(
     )
 
     with raises(ValueError, match="retry_after_seconds"):
-        TrustEdits(
+        TrustEdits.of(
             TrustLists(search, uploads),
             DropHandler(uploads, MAX_BYTES, MAX_SECONDS, MAX_MINIMUM_BITS),
             sessions,
