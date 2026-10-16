@@ -68,6 +68,21 @@
   /* A node id: one click selects all of it. */
   .id { user-select: all; }
 
+  /* A node by its name: hovering shows what it says of itself, and so does a tap. */
+  .node-name {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: 0;
+    border-bottom: 1px dotted var(--muted);
+    padding: 0;
+    cursor: help;
+    text-align: left;
+  }
+
+  .node-details { margin: 0.35rem 0 0; padding: 0; list-style: none; color: var(--muted); }
+  .node-details li + li { margin-top: 0.1rem; }
+
   .note, footer { color: var(--muted); }
   .note { display: block; }
   .error { color: var(--bad); }
@@ -84,7 +99,7 @@
   <section>
     <h2>This node</h2>
     <dl>
-      <dt>Node id</dt>
+      <dt>Node</dt>
       <dd id="node-id"><span class="note">Asking the node&hellip;</span></dd>
       <dt>Advertised endpoint</dt>
       <dd id="endpoint"><span class="note">Asking the node&hellip;</span></dd>
@@ -130,6 +145,23 @@
 
 // What the node list waits for when a 503 does not say.
 const DEFAULT_RETRY_SECONDS = 5;
+
+// Where a node keeps what it says of itself: its id after this, at a drop
+// whose versions each match at least as many bits (App Developer Guide 6.18).
+const NODE_METADATA_PREFIX = "node:";
+const METADATA_MINIMUM_BITS = 16;
+
+// The details a node is offered, in the order they are shown; any other
+// follows them. A node is shown by its name.
+const NODE_FIELDS = [
+  "name", "description", "country", "state", "province", "county", "city",
+  "latitude", "longitude",
+];
+const NAME = "name";
+
+// A content id: the only hash the node knows, in lower-case hex (HttpApi 5).
+const CONTENT_ID = /^sha256\/[0-9a-f]{64}$/;
+const HASH_START = "sha256/".length;
 
 function byId(id) {
   return document.getElementById(id);
@@ -182,6 +214,172 @@ function showNodeId(nodeId) {
   }
 }
 
+function isObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+// How many leading bits two hashes in hex share.
+function matchingBits(hex, other) {
+  let bits = 0;
+
+  for (let i = 0; i < hex.length && i < other.length; i += 1) {
+    const differ = Number.parseInt(hex[i], 16) ^ Number.parseInt(other[i], 16);
+
+    if (differ !== 0) {
+      return bits + Math.clz32(differ) - 28;
+    }
+
+    bits += 4;
+  }
+
+  return bits;
+}
+
+// What the node made of the signed content `id` names (HttpApi 11.5),
+// waiting out one 503 while it fetches it; null if it is not held, or is no
+// signed content that checks.
+async function checked(id) {
+  for (let waits = 0; ; waits += 1) {
+    // A check that passes never changes, so the browser's cache may answer.
+    const response = await fetch(`/data/signed/${id}`);
+
+    if (response.status === 503 && waits === 0) {
+      await sleep(retryAfter(response));
+      continue;
+    }
+
+    const value = response.ok ? await response.json().catch(() => null) : null;
+    return isObject(value) ? value : null;
+  }
+}
+
+// The version of what `nodeId` says of itself that `signed` holds; null if
+// the node did not sign it, or it is not shaped as a version is.
+function versionOf(id, signed, nodeId) {
+  if (signed.signer !== nodeId || typeof signed.contents !== "string") {
+    return null;
+  }
+
+  let value;
+
+  try {
+    value = JSON.parse(signed.contents);
+  } catch (error) {
+    return null;
+  }
+
+  const versions = isObject(value) && value.versions !== undefined ? value.versions : [];
+  const isVersion =
+    isObject(value) &&
+    isObject(value.fields) &&
+    Object.values(value.fields).every((field) => typeof field === "string") &&
+    Number.isSafeInteger(value.version) &&
+    value.version >= 1 &&
+    Array.isArray(versions) &&
+    versions.every((replaced) => CONTENT_ID.test(replaced));
+  return isVersion ? { id, fields: value.fields, version: value.version } : null;
+}
+
+// What `nodeId` says of itself (App Developer Guide 6.18): the fields of the
+// newest version it signed at its drop, the one numbered highest, and the
+// first by id of those numbered as high; null if none is read.
+async function readMetadata(nodeId) {
+  const search = await fetch(`/data/drop/${encodeURIComponent(NODE_METADATA_PREFIX + nodeId)}`, {
+    cache: "no-store",
+  });
+  const found = search.ok ? await search.json().catch(() => null) : null;
+
+  if (!isObject(found) || typeof found.target !== "string" || !Array.isArray(found.results)) {
+    return null;
+  }
+
+  // Whatever else is nearest the target is something else, and is not read.
+  const ids = found.results.filter(
+    (id) =>
+      CONTENT_ID.test(id) &&
+      matchingBits(id.slice(HASH_START), found.target) >= METADATA_MINIMUM_BITS,
+  );
+  const signed = await Promise.all(ids.map(checked));
+  const newest = ids
+    .map((id, index) => (signed[index] ? versionOf(id, signed[index], nodeId) : null))
+    .reduce(
+      (best, version) =>
+        version === null
+          ? best
+          : best === null ||
+              version.version > best.version ||
+              (version.version === best.version && version.id < best.id)
+            ? version
+            : best,
+      null,
+    );
+  return newest ? newest.fields : null;
+}
+
+// What `fields` says, as [name, value] pairs: the details a node is offered,
+// in their order, then the rest, by name, leaving out what is empty.
+function detailsOf(fields) {
+  const others = Object.keys(fields)
+    .filter((name) => !NODE_FIELDS.includes(name))
+    .sort();
+  return [...NODE_FIELDS, ...others]
+    .filter((name) => Object.hasOwn(fields, name) && fields[name].trim())
+    .map((name) => [name, fields[name].trim()]);
+}
+
+// The node `nodeId` names, shown as every page shows a node (App Developer
+// Guide 6.18): by its name, or by its id if it gives none, with what it says
+// of itself shown on hover, and on a tap, which does what hover does.
+function nodeShown(nodeId, fields) {
+  const details = detailsOf(fields);
+
+  if (details.length === 0) {
+    return make("code", nodeId, "id");
+  }
+
+  const name = details.find(([field]) => field === NAME);
+  const shown = make("button", name ? name[1] : nodeId, name ? "node-name" : "node-name id");
+  const list = make("ul", "", "node-details");
+  const rows = [...details.filter(([field]) => field !== NAME), ["id", nodeId]];
+  shown.type = "button";
+  shown.title = rows.map(([field, value]) => `${field}: ${value}`).join("\n");
+  shown.setAttribute("aria-expanded", "false");
+  list.id = "node-details";
+  list.hidden = true;
+  shown.setAttribute("aria-controls", list.id);
+
+  for (const [field, value] of rows) {
+    const row = make("li", `${field}: `);
+    row.append(make(field === "id" ? "code" : "span", value, field === "id" ? "id" : ""));
+    list.append(row);
+  }
+
+  shown.addEventListener("click", () => {
+    list.hidden = !list.hidden;
+    shown.setAttribute("aria-expanded", String(!list.hidden));
+  });
+
+  const node = document.createElement("div");
+  node.append(shown, list);
+  return node;
+}
+
+// Shows the node by its name, once what it says of itself is read. Until
+// then, and if it says nothing, it is shown by its id.
+async function showMetadata(nodeId) {
+  let fields;
+
+  try {
+    fields = await readMetadata(nodeId);
+  } catch (error) {
+    return;
+  }
+
+  if (fields) {
+    byId("node-id").replaceChildren(nodeShown(nodeId, fields));
+  }
+}
+
 function showEndpoint(endpoint) {
   const shown = byId("endpoint");
   shown.replaceChildren(make("code", endpoint));
@@ -194,6 +392,8 @@ function showEndpoint(endpoint) {
 // The node list names this node first, beside the endpoint it advertises
 // (HttpApi 10.1), and is answered 503 until it is first derived.
 async function describeNode() {
+  let named = false;
+
   for (;;) {
     let response;
 
@@ -206,7 +406,15 @@ async function describeNode() {
     }
 
     const nodeId = signerOf(response);
-    showNodeId(nodeId);
+
+    if (!named) {
+      showNodeId(nodeId);
+    }
+
+    if (nodeId && !named) {
+      named = true;
+      showMetadata(nodeId);
+    }
 
     if (response.status === 503) {
       note("endpoint", "Not known yet.");

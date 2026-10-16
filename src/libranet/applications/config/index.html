@@ -129,6 +129,23 @@
 
   footer { color: var(--muted); font-size: 0.85rem; padding-bottom: 2rem; }
 
+  /* A node by its name: hovering shows what it says of itself, and so does a tap. */
+  .node-name {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: 0;
+    border-bottom: 1px dotted var(--muted);
+    border-radius: 0;
+    padding: 0;
+    cursor: help;
+    text-align: left;
+  }
+
+  .node-details { margin: 0.35rem 0 0; padding: 0; list-style: none; color: var(--muted); }
+  .node-details li + li { margin-top: 0.1rem; }
+  .extra { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem; }
+
   .visually-hidden {
     position: absolute;
     width: 1px;
@@ -156,12 +173,27 @@
     <p class="state" id="node-state">Loading…</p>
     <dl id="node-details" hidden>
       <dt>Identity</dt>
-      <dd><code class="id whole" id="node-id"></code></dd>
+      <dd id="node-id"></dd>
       <dt>Listens on</dt>
       <dd id="node-listen"></dd>
       <dt>Advertises</dt>
       <dd id="node-advertised"></dd>
     </dl>
+    <form id="metadata-form">
+      <h3>What this node says of itself</h3>
+      <p class="hint">Pages show this node by its name, on this node and on others, with the rest
+      of what it says when the name is hovered over or tapped. It is public: the node signs each
+      version and keeps it in the network, where anyone can read it. Every detail is optional,
+      and you may add any other.</p>
+      <p class="state" id="metadata-state">Loading…</p>
+      <div class="fields" id="metadata-fields" hidden></div>
+      <div id="metadata-extra"></div>
+      <div class="fields">
+        <button type="button" class="secondary" id="metadata-add">Add a detail</button>
+        <button type="submit">Save</button>
+      </div>
+      <p class="result" role="status" hidden></p>
+    </form>
   </section>
 
   <section aria-labelledby="applications-heading">
@@ -707,6 +739,19 @@ function arrayOf(field) {
 
 // ---- This node ----
 
+// The details a node is offered, in the order they are shown; any other
+// follows them. A node is shown by its name (App Developer Guide 6.18).
+const NODE_FIELDS = [
+  "name", "description", "country", "state", "province", "county", "city",
+  "latitude", "longitude",
+];
+const NAME = "name";
+const WIDE_FIELDS = new Set(["description"]);
+const COORDINATES = { latitude: 90, longitude: 180 };
+
+// This node's id, once the node says it (loadNode).
+let nodeId = null;
+
 function listenText(address, port) {
   const host = String(address).includes(":") ? `[${address}]` : address;
   const everywhere = address === "0.0.0.0" || address === "::";
@@ -740,7 +785,8 @@ async function loadNode() {
   const node = result.value;
   const advertised = byId("node-advertised");
   mainPort = node.listen_port;
-  byId("node-id").textContent = node.node_id;
+  nodeId = node.node_id;
+  byId("node-id").replaceChildren(nodeShown(nodeId, {}));
   byId("node-listen").textContent = listenText(node.listen_address, node.listen_port);
   advertised.replaceChildren(make("code", node.advertised_endpoint));
 
@@ -753,6 +799,218 @@ async function loadNode() {
   byId("node-details").hidden = false;
   offerUserChoices(node);
 }
+
+// What `fields` says, as [name, value] pairs: the details a node is offered,
+// in their order, then the rest, by name, leaving out what is empty.
+function detailsOf(fields) {
+  const others = Object.keys(fields)
+    .filter((name) => !NODE_FIELDS.includes(name))
+    .sort();
+  return [...NODE_FIELDS, ...others]
+    .filter((name) => Object.hasOwn(fields, name) && fields[name].trim())
+    .map((name) => [name, fields[name].trim()]);
+}
+
+// The node `id` names, shown as every page shows a node (App Developer Guide
+// 6.18): by its name, or by its id if it gives none, with what it says of
+// itself shown on hover, and on a tap, which does what hover does.
+function nodeShown(id, fields) {
+  const details = detailsOf(fields);
+
+  if (details.length === 0) {
+    return make("code", id, "id whole");
+  }
+
+  const name = details.find(([field]) => field === NAME);
+  const shown = make("button", name ? name[1] : id, name ? "node-name" : "node-name id whole");
+  const list = make("ul", null, "node-details");
+  const rows = [...details.filter(([field]) => field !== NAME), ["id", id]];
+  shown.type = "button";
+  shown.title = rows.map(([field, value]) => `${field}: ${value}`).join("\n");
+  shown.setAttribute("aria-expanded", "false");
+  list.id = "node-said";
+  list.hidden = true;
+  shown.setAttribute("aria-controls", list.id);
+
+  for (const [field, value] of rows) {
+    const row = make("li", `${field}: `);
+    row.append(field === "id" ? make("code", value, "id whole") : value);
+    list.append(row);
+  }
+
+  shown.addEventListener("click", () => {
+    list.hidden = !list.hidden;
+    shown.setAttribute("aria-expanded", String(!list.hidden));
+  });
+
+  const node = make("div");
+  node.append(shown, list);
+  return node;
+}
+
+// ---- What this node says of itself ----
+
+const metadataForm = byId("metadata-form");
+
+// A row for a detail the operator names.
+function addDetail(name, value) {
+  const row = make("div", null, "extra");
+  const named = make("input");
+  named.className = "extra-name";
+  named.placeholder = "Detail";
+  named.setAttribute("aria-label", "Detail");
+  named.value = name;
+  const valued = make("input");
+  valued.className = "extra-value";
+  valued.placeholder = "Value";
+  valued.setAttribute("aria-label", "Value");
+  valued.value = value;
+  const remove = make("button", "Remove", "secondary");
+  remove.type = "button";
+  remove.addEventListener("click", () => row.remove());
+  row.append(named, valued, remove);
+  byId("metadata-extra").append(row);
+}
+
+// The form, holding `fields`: an input for each detail a node is offered,
+// and a row for each other.
+function showMetadata(fields) {
+  const inputs = NODE_FIELDS.map((name) => {
+    const input = make("input");
+    input.dataset.field = name;
+    input.value = Object.hasOwn(fields, name) ? fields[name] : "";
+    input.autocomplete = "off";
+
+    if (Object.hasOwn(COORDINATES, name)) {
+      input.inputMode = "decimal";
+    }
+
+    const label = make("label", name[0].toUpperCase() + name.slice(1), WIDE_FIELDS.has(name) ? "wide" : "");
+    label.append(input);
+    return label;
+  });
+  byId("metadata-fields").replaceChildren(...inputs);
+  byId("metadata-fields").hidden = false;
+  byId("metadata-extra").replaceChildren();
+  Object.keys(fields)
+    .filter((name) => !NODE_FIELDS.includes(name))
+    .sort()
+    .forEach((name) => addDetail(name, fields[name]));
+}
+
+// The details the form gives, none empty. Throws an Error saying what is
+// wrong with them.
+function formMetadata() {
+  const given = [];
+
+  for (const input of byId("metadata-fields").querySelectorAll("input")) {
+    const value = input.value.trim();
+
+    if (value) {
+      given.push([input.dataset.field, value]);
+    }
+  }
+
+  for (const row of byId("metadata-extra").children) {
+    const name = row.querySelector(".extra-name").value.trim();
+    const value = row.querySelector(".extra-value").value.trim();
+
+    if (!name && !value) {
+      continue;
+    }
+
+    if (!name) {
+      throw new Error(`Name the detail whose value is “${value}”.`);
+    }
+
+    if (!value) {
+      throw new Error(`Give “${name}” a value, or remove it.`);
+    }
+
+    given.push([name, value]);
+  }
+
+  const names = new Set();
+
+  for (const [name, value] of given) {
+    if (names.has(name)) {
+      throw new Error(`“${name}” is given twice.`);
+    }
+
+    names.add(name);
+
+    if (Object.hasOwn(COORDINATES, name)) {
+      const degrees = Number(value);
+      const most = COORDINATES[name];
+
+      if (!Number.isFinite(degrees) || Math.abs(degrees) > most) {
+        throw new Error(`The ${name} is a number of degrees from -${most} to ${most}.`);
+      }
+    }
+  }
+
+  return Object.fromEntries(given);
+}
+
+// Reads what this node says of itself into the form, and shows the node by
+// its name. While a version the node found is not held yet, it asks again.
+async function loadMetadata() {
+  const state = byId("metadata-state");
+  let result;
+
+  try {
+    result = await call("GET", "/metadata");
+  } catch (error) {
+    show(state, unreachable(error), true);
+    return;
+  }
+
+  if (result.status === 503) {
+    const seconds = retryAfter(result.headers);
+    show(state, `A version is not held here yet. Asking again in ${seconds} s.`);
+    setTimeout(loadMetadata, seconds * 1000);
+    return;
+  }
+
+  const fields = result.ok && result.value ? result.value.fields : null;
+
+  if (!fields || typeof fields !== "object" || Array.isArray(fields)) {
+    show(state, result.ok ? "The node's answer is not something this page can show." : failure(result), true);
+    return;
+  }
+
+  show(state, result.value.version === null ? "This node says nothing of itself yet." : "");
+  showMetadata(fields);
+
+  if (nodeId !== null) {
+    byId("node-id").replaceChildren(nodeShown(nodeId, fields));
+  }
+}
+
+byId("metadata-add").addEventListener("click", () => addDetail("", ""));
+
+onSubmit(metadataForm, async () => {
+  let fields;
+
+  try {
+    fields = formMetadata();
+  } catch (error) {
+    return [error.message, true];
+  }
+
+  const result = await call("PUT", "/metadata", { fields });
+
+  if (result.status === 204) {
+    return ["Nothing changed, so nothing was saved.", false];
+  }
+
+  if (!result.ok) {
+    return [failure(result), true];
+  }
+
+  await loadMetadata();
+  return [`Saved as version ${result.value.version}.`, false];
+});
 
 // ---- Applications ----
 
@@ -1386,7 +1644,10 @@ document.addEventListener("visibilitychange", () => {
 });
 
 // The node first, since the applications are linked on the port it names.
-loadNode().finally(() => views.forEach((view) => view.load()));
+loadNode().finally(() => {
+  loadMetadata();
+  views.forEach((view) => view.load());
+});
 </script>
 </body>
 </html>

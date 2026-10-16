@@ -134,6 +134,7 @@ class WebServerModule(ModuleBase):
                 self.publish,
                 config_credential=ConfigCredential.of(self._config),
                 node=described,
+                identity=node,
                 app_outcomes=self._app_outcomes,
                 backup_state=self._backup_state,
                 content=content,

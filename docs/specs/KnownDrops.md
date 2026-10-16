@@ -24,6 +24,7 @@ is placed at its target, and links to the documents that define it.
 | [`mail sent:{id}:{year}/{month}/{day}/{hour}`](#36-mail-sent) | The sender's own copy of each message they sent in that hour | The mail application | The sender | For the sender | In use |
 | [`mail address book:{id}`](#37-address-books) | The versions of a person's address book | The mail application | The person | For the person | In use |
 | [`mail state:{id}:{year}/{month}`](#38-read-and-hidden-marks) | The versions of what a person read and hid of a month's mail | The mail application | The person | For the person | In use |
+| [`node:{id}`](#39-what-a-node-says-of-itself) | The versions of what a node says of itself | The node | The node | No | In use |
 
 A drop **in use** is placed by the node or a shipped application today. A
 **specified** drop is defined by a specification, but nothing places it yet.
@@ -196,8 +197,8 @@ their scores to reach through it.
   asks yet, and nothing scores the lists yet (Steps 99 to 101).
 - **Placed by** the node, when the person signed in trusts, distrusts, or
   clears an identity, with `PUT` or `DELETE /data/trust/{id}`. A node may
-  keep a list of its own once Bundle Specification §5 defines a signature
-  by a node's key.
+  keep a list of its own, signed by its own key (Bundle Specification §5),
+  though nothing places one yet.
 - **Signed** by the list's owner. **Not encrypted.**
 - **Bits:** placed matching at least 16, with no search for a nonce past
   that.
@@ -298,3 +299,34 @@ drop id of each copy to whether the person has read it and hidden it.
   id of each copy, rather than by name.
 - **Defined in:**
   [App Developer Guide §6.16](../operations/App%20Developer%20Guide.md#616-mail).
+
+### 3.9 What a Node Says of Itself
+
+**Target:** `node:{id}`
+
+A node's public metadata is kept in versions: what it is called, a
+description of it, where it is, and any other detail its operator gives.
+Each version is numbered, and names the version it replaces. Pages show a
+node by its name, with the rest of what it says when the name is hovered
+over or tapped.
+
+- **Placed by** the node, when its operator saves what it says on `/config`,
+  with `PUT /config/api/metadata`. No page places one, since a node signs
+  only what it places itself.
+- **Signed** by the node, with its own key. **Not encrypted**: anyone may
+  read it.
+- **Bits:** placed matching at least 16, with no search for a nonce past
+  that.
+- **Reading:** a reader passes over each result that shares fewer than 16
+  bits with the target hash. It counts only the versions that the node
+  signed. The newest version is the one numbered highest. Of two numbered as
+  high, the newest is the one whose drop's id comes first. Whenever its
+  operator saves, the node blocks every version it reads but the newest,
+  and the newest too once it places a version over it.
+- **Defined in:**
+  [HTTP API §11.8](HttpApi.md#118-what-a-node-says-of-itself) for the
+  versions, their reading, and the endpoints that place them.
+- **See also:**
+  [App Developer Guide §6.18](../operations/App%20Developer%20Guide.md#618-what-nodes-say-of-themselves)
+  for reading them from a page and showing a node by its name;
+  [Operator Guide §4.5](../operations/Operator%20Guide.md#45-what-this-node-says-of-itself).

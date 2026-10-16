@@ -42,6 +42,7 @@ from libranet.webserver.config_handlers import (
     CONFIG_API_PATH,
     CONFIG_USERS_PATH,
     EXPORTS_PATH,
+    METADATA_PATH,
     NODE_PATH,
     RESTORES_PATH,
     BackupReportHandler,
@@ -164,6 +165,8 @@ def test_the_index_names_every_endpoint(router: Router) -> None:
         ("PATCH", "/config/api/applications/{name}"),
         ("DELETE", "/config/api/applications/{name}"),
         ("POST", "/config/api/users"),
+        ("GET", "/config/api/metadata"),
+        ("PUT", "/config/api/metadata"),
     }
 
 
@@ -216,6 +219,13 @@ def test_making_a_user_is_left_to_the_handler_given(
     assert response.status == 201
     assert loads(response.body) == sent
     assert published(queues) == []
+
+
+def test_without_its_handlers_no_route_reads_or_changes_what_the_node_says(
+    router: Router,
+) -> None:
+    # Reading and changing it are tested where /config's port is built.
+    assert router.dispatch(request("GET", METADATA_PATH)).status == 404
 
 
 def test_configuring_a_job_publishes_it_and_answers_with_its_name(
