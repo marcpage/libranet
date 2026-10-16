@@ -21,11 +21,12 @@ and places its versions for ``/config`` (Phase 5 Step 104).
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any, Final, Mapping
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
+from libranet.identity.versions import VERSION_FIELD, VERSIONS_FIELD, HeldVersions, Numbered
 from libranet.json_fields import integer_field
 
 #: The fewest leading bits a version shares with its drop's target: each is
@@ -36,15 +37,12 @@ MIN_NODE_METADATA_BITS: Final = 16
 # What a node's metadata drop target string is, before its id.
 _DROP_PREFIX: Final = "node:"
 
-# The members of a version, and the number of the first.
+# The member of a version saying each detail.
 _FIELDS_FIELD: Final = "fields"
-_VERSION_FIELD: Final = "version"
-_VERSIONS_FIELD: Final = "versions"
-_FIRST_VERSION: Final = 1
 
 
 @dataclass(frozen=True)
-class NodeMetadata:
+class NodeMetadata(Numbered):
     """A version of what a node says of itself: each detail's value, by its name.
 
     It is numbered ``version``, and ``versions`` names the drop of the
@@ -57,10 +55,6 @@ class NodeMetadata:
     fields: Mapping[str, str]
     version: int
     versions: tuple[ContentId, ...] = ()
-
-    def __post_init__(self) -> None:
-        if self.version < _FIRST_VERSION:
-            raise ValueError(f"version must be at least {_FIRST_VERSION}, got {self.version}")
 
     @staticmethod
     def drop_target(node: ContentId) -> DropTarget:
@@ -92,22 +86,17 @@ class NodeMetadata:
         if not isinstance(value, dict) or fields is None:
             raise ValueError(f'{named} is not an object with a "{_FIELDS_FIELD}" object of strings')
 
-        replaced = value.get(_VERSIONS_FIELD, [])
+        replaced = value.get(VERSIONS_FIELD, [])
 
         if not isinstance(replaced, list) or not all(isinstance(name, str) for name in replaced):
-            raise ValueError(f'{named} has a "{_VERSIONS_FIELD}" that is not a list of ids')
+            raise ValueError(f'{named} has a "{VERSIONS_FIELD}" that is not a list of ids')
 
         versions = tuple(ContentId.parse(name) for name in replaced)
-        return cls(fields, integer_field(value, _VERSION_FIELD), versions)
+        return cls(fields, integer_field(value, VERSION_FIELD), versions)
 
     def value(self) -> dict[str, Any]:
         """The JSON object this version is, as a signed bundle's ``contents`` holds it."""
-        value: dict[str, Any] = {_FIELDS_FIELD: dict(self.fields), _VERSION_FIELD: self.version}
-
-        if self.versions:
-            value[_VERSIONS_FIELD] = [str(content_id) for content_id in self.versions]
-
-        return value
+        return self.numbered({_FIELDS_FIELD: dict(self.fields)})
 
 
 @dataclass(frozen=True)
@@ -117,59 +106,28 @@ class MetadataVersion:
     content_id: ContentId
     metadata: NodeMetadata
 
+    @property
+    def number(self) -> int:
+        """What the version is numbered."""
+        return self.metadata.version
+
 
 @dataclass(frozen=True)
-class HeldNodeMetadata:
-    """What the node ``node_id`` says of itself, as what this node holds says it.
+class HeldNodeMetadata(HeldVersions[MetadataVersion]):
+    """What the node ``owner`` says of itself, as what this node holds says it.
 
     ``versions`` are those read, each signed by the node. ``missing`` names
     what was found at the drop, or is needed to check what was, and is not
     held yet. While anything is missing, a newer version may be among it.
+    The newest is found, and the next numbered, as
+    :class:`~libranet.identity.versions.HeldVersions` finds and numbers them.
     """
-
-    node_id: ContentId
-    versions: tuple[MetadataVersion, ...] = ()
-    missing: tuple[ContentId, ...] = ()
-
-    @property
-    def newest(self) -> MetadataVersion | None:
-        """The newest version read: the one numbered highest, then whose drop's id sorts first.
-
-        Only the node signs a version, so no one else can make one newer, and
-        no clock is trusted. ``None`` if none was read.
-        """
-        return min(
-            self.versions,
-            key=lambda version: (-version.metadata.version, str(version.content_id)),
-            default=None,
-        )
 
     @property
     def fields(self) -> Mapping[str, str]:
         """What the newest version says; nothing if none was read."""
         newest = self.newest
         return {} if newest is None else newest.metadata.fields
-
-    @property
-    def replaced(self) -> tuple[ContentId, ...]:
-        """The drops of every version read but the newest, which replaces them all."""
-        newest = self.newest
-        return tuple(
-            version.content_id
-            for version in self.versions
-            if newest is None or version.content_id != newest.content_id
-        )
-
-    def with_version(self, version: MetadataVersion) -> HeldNodeMetadata:
-        """This metadata, with ``version`` read too, should it not be already.
-
-        A version this node placed is held as an upload until the validator
-        stores it, and no search of the drop finds it until then.
-        """
-        if any(read.content_id == version.content_id for read in self.versions):
-            return self
-
-        return replace(self, versions=(*self.versions, version))
 
     def next_version(self, fields: Mapping[str, str]) -> NodeMetadata | None:
         """The version after the newest, saying ``fields``.
@@ -182,9 +140,4 @@ class HeldNodeMetadata:
         if fields == self.fields:
             return None
 
-        newest = self.newest
-
-        if newest is None:
-            return NodeMetadata(fields, _FIRST_VERSION)
-
-        return NodeMetadata(fields, newest.metadata.version + 1, (newest.content_id,))
+        return NodeMetadata(fields, *self._next_numbering())

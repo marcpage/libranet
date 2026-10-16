@@ -36,9 +36,10 @@ from libranet.atomic_file import write_atomically
 from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.config.models import StatsConfig, StorageConfig
+from libranet.messaging.connected_peers import ConnectedPeers
 from libranet.stats.database import StatsDatabase
 from libranet.stats.lists import render_candidate_list, render_node_list, render_seek_list
-from libranet.stats.peers import ConnectedPeers, PeerList
+from libranet.stats.peers import PeerList
 from libranet.stats.schema import SeekKind
 
 _LOGGER = getLogger(__name__)

@@ -133,8 +133,9 @@ from libranet.cas.store import CasStore, HeldObject
 from libranet.config.models import LibranetConfig
 from libranet.eviction.pressure import FreeBytes, StoragePressure
 from libranet.identity.node_identity import NodeIdentity
+from libranet.messaging.connected_peers import ConnectedPeers
 from libranet.messaging.envelope import Message
-from libranet.messaging.events import ConnectionDirection, EventType
+from libranet.messaging.events import EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
@@ -313,7 +314,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         # Asking for resolved files to be deleted.
         self._reclaiming = _Request(reclaim_timeout_seconds, reclaim_interval_seconds)
         # The peers last named connected, each way, whose keys are kept.
-        self._connected: dict[ConnectionDirection, frozenset[ContentId]] = {}
+        self._connected = ConnectedPeers()
         # Whether storage was last said to be full; None before it first is.
         self._full: bool | None = None
         # The content stored within its grace, and when, the earliest first.
@@ -519,9 +520,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
 
     def _on_peers_connected(self, message: Message) -> None:
         """Keep the keys of the peers now connected one way, in place of those named before."""
-        self._connected[ConnectionDirection(message["direction"])] = frozenset(
-            ContentId.parse(node_id) for node_id in message["node_ids"]
-        )
+        self._connected.named_in(message)
 
     def _on_resolved_reclaimed(self, message: Message) -> None:
         """Carry on, now that the resolved files not used lately are deleted."""
@@ -620,7 +619,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
 
     def _peer_keys(self) -> frozenset[ContentId]:
         """The public keys of the peers connected either way, by their node ids."""
-        return frozenset[ContentId]().union(*self._connected.values())
+        return self._connected.node_ids()
 
     def _kept(self, content_id: ContentId) -> bool:
         """Whether ``content_id`` is a public key that signatures are checked against now."""

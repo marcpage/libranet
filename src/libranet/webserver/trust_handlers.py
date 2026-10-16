@@ -23,22 +23,15 @@ trusting nor distrusting it, one entry at a time (Phase 5 Step 97)::
 The node reads the newest version of the person's list from what it holds
 (:class:`~libranet.webserver.trust_lists.TrustLists`), makes the next with
 the change (:meth:`~libranet.identity.trust.HeldTrustList.next_version`),
-signs it with the key the session holds, and makes it a drop at
-``trust:{id}``, as ``POST /data/signed`` makes one (:meth:`DropHandler.placed`),
-storing the person's public key again. The nonce is searched for until the
-drop matches :data:`~libranet.identity.trust.MIN_TRUST_LIST_BITS`, and no
-longer. It answers ``201``, with a ``Location`` naming the drop::
+signs it with the key the session holds, storing the person's public key
+again, and makes it a drop at ``trust:{id}``, matching
+:data:`~libranet.identity.trust.MIN_TRUST_LIST_BITS`, blocking what it
+replaces (Trust Network §3.3, §3.4), as what a node says of itself is changed
+(:mod:`libranet.webserver.version_edits`). It answers ``201``, with a
+``Location`` naming the drop::
 
     {"id": "sha256/…", "target": "<hex>", "matching_bits": 16,
      "signer": "sha256/…", "version": 3}
-
-Every version read but the newest is blocked, and the newest too once a
-version is placed over it, so that what is replaced does not crowd the newest
-out of a search of the drop (Trust Network §3.3, §3.4). The web server
-cannot block, so it asks the stats module, as
-``DELETE /data/{algorithm}/{hash}`` does::
-
-    data.blocked  {"algorithm": "sha256", "hash": "<hex>"}
 
 A change that changes nothing places nothing, and is ``204``. While a version
 found at the drop is not held, a change is ``503``, and what is not held is
@@ -48,34 +41,23 @@ person is ``400``, and so is a body that is not ``{"trust": true}`` or
 over ``403``, since it signs nothing.
 
 Changes are made one at a time, in the order they come, each over the version
-the one before it placed. What this node uploads is found by a search only
-once the validator has stored it, so the version each person's last change
-placed is remembered until a search of the drop finds it. Each version placed
-is handed to the person's build, which scores again (Trust Network §4.4).
-Every answer is kept by no cache, since it says whom the person trusts.
+the one before it placed. Each version placed is handed to the person's
+build, which scores again (Trust Network §4.4). Every answer is kept by no
+cache, since it says whom the person trusts.
 """
 
 from __future__ import annotations
-from dataclasses import replace
 from http import HTTPStatus
 from logging import getLogger
-from typing import Final, Iterable
+from typing import Final
 
 from libranet.bundle.storing import store_object
 from libranet.cas.content_id import ContentId
 from libranet.identity.people import PersonKey
-from libranet.identity.trust import (
-    MIN_TRUST_LIST_BITS,
-    HeldTrustList,
-    TrustList,
-    TrustScores,
-    TrustVersion,
-)
+from libranet.identity.trust import TrustScores, TrustVersion
 from libranet.json_format import compact_json
-from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.problems import SESSION_REQUIRED
-from libranet.protocol.drop_requests import DropRequest
 from libranet.protocol.http_syntax import API_PREFIX
 from libranet.protocol.trust_requests import TrustRequest
 from libranet.webserver.costly_work import Turns
@@ -89,13 +71,13 @@ from libranet.webserver.http_types import (
 )
 from libranet.webserver.request_refusals import (
     content_id_or_refusal,
-    content_unavailable_response,
     invalid_request_response,
     parsed_or_refusal,
 )
 from libranet.webserver.sessions import Sessions
 from libranet.webserver.trust_builds import TrustBuilds
 from libranet.webserver.trust_lists import TrustLists
+from libranet.webserver.version_edits import VersionEdits
 
 _LOGGER = getLogger(__name__)
 
@@ -105,12 +87,14 @@ TRUST_PATH: Final = API_PREFIX + "/trust"
 #: Where a page reads the score of one identity, and trusts, distrusts, or clears it.
 TRUST_PATTERN: Final = rf"{TRUST_PATH}/(?P<algorithm>[^/]+)/(?P<hash>[^/]+)"
 
-# How long a version's nonce is searched for once it matches the bits it
-# must: not at all, so that a change is answered at once.
-_SEARCH_SECONDS: Final = 0.0
-
 # What reading the scores with no one signed in is refused for needing.
 _READING_NEEDS: Final = "Sign in to read your trust scores."
+
+# What a change refused while a version found is not held says.
+_MISSING_DETAIL: Final = (
+    "A version of your trust list found at its drop is not stored here yet; retrieval "
+    "was requested."
+)
 
 
 class TrustReads:
@@ -127,23 +111,22 @@ class TrustReads:
     def scores(self, request: Request) -> Response:
         """``GET /data/trust``: the score of every identity reached, and whether it is complete."""
         scores = self._scores(request)
-        return _not_stored(
-            scores if isinstance(scores, Response) else json_response(scores.value())
-        )
+        response = scores if isinstance(scores, Response) else json_response(scores.value())
+        return response.with_headers(NOT_STORED)
 
     def score(self, request: Request) -> Response:
         """``GET /data/trust/{algorithm}/{hash}``: the score of the identity named."""
         scores = self._scores(request)
 
         if isinstance(scores, Response):
-            return _not_stored(scores)
+            return scores.with_headers(NOT_STORED)
 
         identity = content_id_or_refusal(request, _LOGGER)
 
         if isinstance(identity, Response):
-            return _not_stored(identity)
+            return identity.with_headers(NOT_STORED)
 
-        return _not_stored(json_response(scores.value_for(identity)))
+        return json_response(scores.value_for(identity)).with_headers(NOT_STORED)
 
     def _scores(self, request: Request) -> TrustScores | Response:
         """The scores of whoever ``request``'s session names; or the ``401`` refusing them."""
@@ -164,7 +147,7 @@ class TrustReads:
         return scores
 
 
-class TrustEdits:  # pylint: disable=too-many-instance-attributes
+class TrustEdits:
     """The endpoints changing the trust list of the person ``sessions`` says is signed in.
 
     The list is read by ``lists``, and each version made a drop by
@@ -172,9 +155,9 @@ class TrustEdits:  # pylint: disable=too-many-instance-attributes
     again in ``drops.uploads``. What was found at the list's drop and is not
     held is asked for with ``publish``, a client told to ask again after
     ``retry_after_seconds``, and what a newer version replaces is blocked
-    with it. Each version placed is handed to the person's build in
-    ``builds``, if given, to score again. Any number of request threads may
-    use them at once.
+    with it (:class:`~libranet.webserver.version_edits.VersionEdits`). Each
+    version placed is handed to the person's build in ``builds``, if given,
+    to score again. Any number of request threads may use them at once.
 
     Raises:
         ValueError: ``retry_after_seconds`` is negative.
@@ -190,27 +173,23 @@ class TrustEdits:  # pylint: disable=too-many-instance-attributes
         retry_after_seconds: int,
         builds: TrustBuilds | None = None,
     ) -> None:
-        if retry_after_seconds < 0:
-            raise ValueError(f"retry_after_seconds must not be negative, got {retry_after_seconds}")
-
+        self._edits = VersionEdits(
+            lists.versions, drops, publish, retry_after_seconds=retry_after_seconds
+        )
         self._lists = lists
         self._drops = drops
         self._sessions = sessions
-        self._publish = publish
-        self._retry_after_seconds = retry_after_seconds
         self._builds = builds
+        # Changes take turns, as the edits are made one at a time.
         self._turns = Turns()
-        # The version each person's last change placed, until a search of
-        # their list's drop finds it. Used only in a turn.
-        self._placed: dict[ContentId, TrustVersion] = {}
 
     def trust(self, request: Request) -> Response:
         """``PUT /data/trust/{algorithm}/{hash}``: trust or distrust the identity named."""
-        return _not_stored(self._changed(request, clears=False))
+        return self._changed(request, clears=False).with_headers(NOT_STORED)
 
     def clear(self, request: Request) -> Response:
         """``DELETE /data/trust/{algorithm}/{hash}``: neither trust nor distrust the one named."""
-        return _not_stored(self._changed(request, clears=True))
+        return self._changed(request, clears=True).with_headers(NOT_STORED)
 
     def _changed(self, request: Request, *, clears: bool) -> Response:
         """What changing the entry ``request`` names answers, before it is kept from caches.
@@ -249,45 +228,34 @@ class TrustEdits:  # pylint: disable=too-many-instance-attributes
         """
         # Held again, should it have been evicted, so that the list can be read.
         store_object(person.public_key, self._drops.uploads, self._drops.max_object_bytes)
-        held = self._held(person.person_id)
+        held = self._edits.held(self._lists.read(person.person_id))
 
         try:
             changed = held.next_version(identity, trusted)
 
         except ValueError as error:
-            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            return invalid_request_response(request, error)
+            # Not logged: the refusal logs it.
+            return invalid_request_response(request, error, _LOGGER)
 
         if held.missing:
-            return self._missing_response(request, held)
+            return self._edits.missing_response(request, held, _MISSING_DETAIL)
 
         # The newest replaces them, whether or not a version is placed over it.
-        self._block(held.replaced)
+        self._edits.block_replaced(held)
 
         if changed is None:
             _LOGGER.debug("%s's trust list already says that of %s", person.person_id, identity)
             return Response(HTTPStatus.NO_CONTENT)
 
         text = compact_json(changed.value()).decode("utf-8")
-        stored = self._drops.placed(
-            request,
-            DropRequest(
-                TrustList.drop_target(person.person_id),
-                person.signed(text).encoded(),
-                _SEARCH_SECONDS,
-                MIN_TRUST_LIST_BITS,
-            ),
-        )
+        stored = self._edits.place(request, held, person.signed(text))
 
         if isinstance(stored, Response):
             return stored
 
-        newest = held.newest
-
-        if newest is not None:
-            self._block((newest.content_id,))
-
-        self._placed[person.person_id] = TrustVersion(stored.content_id, person.person_id, changed)
+        self._edits.remember(
+            person.person_id, TrustVersion(stored.content_id, person.person_id, changed)
+        )
 
         if self._builds is not None:
             self._builds.changed(person.person_id, changed.entries)
@@ -298,54 +266,4 @@ class TrustEdits:  # pylint: disable=too-many-instance-attributes
             person.person_id,
             stored.content_id,
         )
-        response = json_response(
-            {**stored.value(), "signer": str(person.person_id), "version": changed.version},
-            HTTPStatus.CREATED,
-        )
-        location = f"{API_PREFIX}/{stored.content_id}"
-        return replace(response, headers={**response.headers, "Location": location})
-
-    def _held(self, owner: ContentId) -> HeldTrustList:
-        """``owner``'s list as held, with what their last change placed, until a search finds it."""
-        held = self._lists.read(owner)
-        placed = self._placed.get(owner)
-
-        if placed is None:
-            return held
-
-        read = held.with_version(placed)
-
-        if read is held:
-            # Stored, as the search found it, so it need not be remembered.
-            del self._placed[owner]
-
-        return read
-
-    def _block(self, replaced: Iterable[ContentId]) -> None:
-        """Have this node block each trust list version ``replaced`` names (Trust Network §3.3)."""
-        for content_id in replaced:
-            self._publish(EventType.DATA_BLOCKED, content_id.fields())
-            _LOGGER.debug("Asked for %s, a trust list version replaced, to be blocked", content_id)
-
-    def _missing_response(self, request: Request, held: HeldTrustList) -> Response:
-        """The ``503`` holding off a change while what ``held`` names as missing is asked for."""
-        _LOGGER.debug(
-            "Not changing %s's trust list yet: %d found at its drop are not held",
-            held.owner,
-            len(held.missing),
-        )
-
-        for content_id in held.missing:
-            self._publish(EventType.DATA_NOT_FOUND, content_id.fields())
-
-        return content_unavailable_response(
-            request,
-            "A version of your trust list found at its drop is not stored here yet; retrieval "
-            "was requested.",
-            self._retry_after_seconds,
-        )
-
-
-def _not_stored(response: Response) -> Response:
-    """``response``, kept by no cache, since each answer is for one session."""
-    return replace(response, headers={**response.headers, **NOT_STORED})
+        return stored.created_response(signer=str(person.person_id), version=changed.version)

@@ -96,7 +96,7 @@ from libranet.identity.signatures import MessageSigner, MessageVerifier
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.protocol.errors import InvalidListError
-from libranet.protocol.http_syntax import API_PREFIX, JSON_CONTENT_TYPE, OCTET_STREAM
+from libranet.protocol.http_syntax import JSON_CONTENT_TYPE, OCTET_STREAM, data_path
 from libranet.protocol.lists import (
     NODES_PATH,
     SEEK_PATH,
@@ -231,7 +231,7 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
         Raises:
             OSError: as :meth:`first_contact`.
         """
-        (response,) = session.exchange([PeerRequest("GET", _data_path(content_id))])
+        (response,) = session.exchange([PeerRequest("GET", data_path(content_id))])
 
         if self._receive_content(session, content_id, response):
             return Retrieval(found=True)
@@ -290,7 +290,7 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
         """
         responses = session.exchange(
             [
-                PeerRequest("PUT", _data_path(content_id), body, _OCTET_STREAM_HEADERS)
+                PeerRequest("PUT", data_path(content_id), body, _OCTET_STREAM_HEADERS)
                 for content_id, body in held
             ]
         )
@@ -303,7 +303,7 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
         """The node id the peer on ``connection`` proves it holds the key for."""
         response = connection.request(
             "PUT",
-            _data_path(self._identity.node_id),
+            data_path(self._identity.node_id),
             _OCTET_STREAM_HEADERS,
             self._identity.public_key,
         ).result()
@@ -320,7 +320,7 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
                 f"First response from {endpoint} failed verification: {error}"
             ) from error
 
-        response = connection.request("GET", _data_path(node_id)).result()
+        response = connection.request("GET", data_path(node_id)).result()
         self._hold_public_key(node_id, response, endpoint)
 
         try:
@@ -513,7 +513,7 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
 
         for batch in self._batches(sought):
             responses = session.exchange(
-                [PeerRequest("GET", _data_path(content_id)) for content_id in batch]
+                [PeerRequest("GET", data_path(content_id)) for content_id in batch]
             )
 
             for content_id, response in zip(batch, responses):
@@ -555,10 +555,6 @@ class PeerExchange:  # pylint: disable=too-many-instance-attributes
             EventType.FETCH_ATTEMPTED, {**_content_fields(content_id, session), "found": found}
         )
         return found
-
-
-def _data_path(content_id: ContentId) -> str:
-    return f"{API_PREFIX}/{content_id}"
 
 
 def _content_fields(content_id: ContentId, session: PeerSession) -> dict[str, str]:

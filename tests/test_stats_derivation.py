@@ -10,10 +10,10 @@ from pytest import LogCaptureFixture, MonkeyPatch, fixture
 
 from libranet.cas.content_id import ContentId
 from libranet.config.models import StatsConfig, StorageConfig
+from libranet.messaging.connected_peers import ConnectedPeers
 from libranet.messaging.events import AddressSource, ConnectionDirection
 from libranet.stats.database import StatsDatabase
 from libranet.stats.derivation import DerivedLists, ListDeriver
-from libranet.stats.peers import ConnectedPeers
 from libranet.stats.schema import SeekKind
 
 SELF_ID = ContentId.for_data(b"this node's public key", "sha256")

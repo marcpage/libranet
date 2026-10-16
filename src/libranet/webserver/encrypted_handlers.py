@@ -34,7 +34,7 @@ No log line holds a password, a key, or what was encrypted.
 
 from __future__ import annotations
 from base64 import b64encode
-from dataclasses import KW_ONLY, dataclass, field, replace
+from dataclasses import KW_ONLY, dataclass, field
 from http import HTTPStatus
 from logging import getLogger
 from typing import Final
@@ -88,7 +88,9 @@ class EncryptedDrops:
 
     ``signed`` says who is signed in, reads what is held, asking for what is
     not, and checks what was signed. A key is derived from a username and
-    password one at a time, in ``derivations``.
+    password one at a time, in ``derivations``. Each answer is kept by no
+    cache: it is for one session or one password, and holds what was
+    encrypted to keep it from everyone else.
     """
 
     signed: SignedDrops
@@ -97,11 +99,11 @@ class EncryptedDrops:
 
     def read(self, request: Request) -> Response:
         """``GET /data/encrypted/{algorithm}/{hash}``: open the drop named for who is signed in."""
-        return _not_stored(self._read(request))
+        return self._read(request).with_headers(NOT_STORED)
 
     def read_by_password(self, request: Request) -> Response:
         """``POST /data/encrypted/{algorithm}/{hash}``: open the drop named by a password."""
-        return _not_stored(self._read_by_password(request))
+        return self._read_by_password(request).with_headers(NOT_STORED)
 
     def _read(self, request: Request) -> Response:
         """What :meth:`read` answers, before it is kept from caches."""
@@ -200,12 +202,3 @@ def _refused(request: Request, content_id: ContentId, error: BundleError) -> Res
     return status_response(
         request, HTTPStatus.INTERNAL_SERVER_ERROR, "The content could not be opened."
     )
-
-
-def _not_stored(response: Response) -> Response:
-    """``response``, kept by no cache.
-
-    Each answer is for one session or one password, and holds what was
-    encrypted to keep it from everyone else.
-    """
-    return replace(response, headers={**response.headers, **NOT_STORED})

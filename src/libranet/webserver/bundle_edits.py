@@ -49,7 +49,7 @@ at (:class:`~libranet.webserver.local_only.LocalOnly`).
 """
 
 from __future__ import annotations
-from dataclasses import KW_ONLY, dataclass, replace
+from dataclasses import KW_ONLY, dataclass
 from http import HTTPStatus
 from logging import getLogger
 from pathlib import Path
@@ -532,8 +532,8 @@ class BundleEditHandler:
                 made = edit.store(self.uploads, self.max_object_bytes, self.max_layers)
 
         except InvalidRequestError as error:
-            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            return invalid_request_response(request, error)
+            # Not logged: the refusal logs it.
+            return invalid_request_response(request, error, _LOGGER)
 
         except (BundleError, BundleEditError) as error:
             # Not logged: the refusal logs it, at the level its kind calls for.
@@ -542,7 +542,7 @@ class BundleEditHandler:
         status = HTTPStatus.OK if made == base else HTTPStatus.CREATED
         response = json_response({"bundle": str(made)}, status)
         # It reads into the bundle (HttpApi §12.1).
-        return replace(response, headers={**response.headers, "Location": f"{API_PREFIX}/{made}/"})
+        return response.with_headers({"Location": f"{API_PREFIX}/{made}/"})
 
     def _stored_whole(self, asked: WholeBundleRequest) -> PartPath:
         """Store the bundle ``asked`` gives, as one object, and return what names it.

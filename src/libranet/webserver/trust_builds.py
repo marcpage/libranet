@@ -49,9 +49,10 @@ from typing import Callable, Final, Iterable, Mapping, Protocol
 
 from libranet.cas.content_id import ContentId
 from libranet.identity.trust import HeldTrustList, TrustLimits, TrustScores
-from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.webserver.file_stream import ContentWait
+from libranet.webserver.trust_lists import TRUST_LIST_KIND
+from libranet.webserver.version_edits import ReplacedVersions
 
 _LOGGER = getLogger(__name__)
 
@@ -133,6 +134,7 @@ class TrustBuilds:  # pylint: disable=too-many-instance-attributes
 
         self._lists = lists
         self._publish = publish
+        self._replaced = ReplacedVersions(publish, TRUST_LIST_KIND)
         self._limits = limits
         self._wait_seconds = wait_seconds
         self._ask_again_seconds = ask_again_seconds
@@ -302,10 +304,7 @@ class TrustBuilds:  # pylint: disable=too-many-instance-attributes
         with self._lock:
             build.lists.setdefault(owner, held.entries)
 
-        for content_id in held.replaced:
-            self._publish(EventType.DATA_BLOCKED, content_id.fields())
-            _LOGGER.debug("Asked for %s, a trust list version replaced, to be blocked", content_id)
-
+        self._replaced.block(owner, held.replaced)
         newest = held.newest
 
         if newest is None:

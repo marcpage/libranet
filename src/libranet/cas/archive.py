@@ -39,12 +39,7 @@ from zlib import error as ZlibError
 from libranet.atomic_file import atomic_writer
 from libranet.cas.algorithms import DEFAULT_REGISTRY, AlgorithmRegistry, UnsupportedAlgorithms
 from libranet.cas.content_id import ContentId
-from libranet.cas.errors import (
-    ArchiveError,
-    ContentNotFoundError,
-    InvalidContentIdError,
-    UnknownAlgorithmError,
-)
+from libranet.cas.errors import ArchiveError, ContentNotFoundError, InvalidContentIdError
 
 _LOGGER = getLogger(__name__)
 
@@ -196,16 +191,17 @@ class ArchiveSource:
                 raise ArchiveError(f"{self._name} holds {info.filename!r} in a form not read here")
 
             try:
-                members[ContentId.parse(info.filename, registry)] = info
-
-            except UnknownAlgorithmError:
-                # Not logged: counted, and logged once for the archive below.
-                unsupported.add(info.filename)
+                content_id = ContentId.parse_supported(
+                    info.filename, unsupported, registry=registry
+                )
 
             except InvalidContentIdError as error:
                 raise ArchiveError(
                     f"{self._name} holds something not a CAS object: {error}"
                 ) from None
+
+            if content_id is not None:
+                members[content_id] = info
 
         unsupported.log(_LOGGER, f"The archive {self._name}")
         return members

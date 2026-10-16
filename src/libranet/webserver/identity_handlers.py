@@ -60,7 +60,7 @@ No log line holds a password, a private key, or a session's token.
 """
 
 from __future__ import annotations
-from dataclasses import KW_ONLY, dataclass, field, replace
+from dataclasses import KW_ONLY, dataclass, field
 from http import HTTPStatus
 from logging import getLogger
 from time import sleep
@@ -83,7 +83,7 @@ from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.protocol.drop_requests import DropRequest
 from libranet.protocol.errors import InvalidRequestError
-from libranet.protocol.http_syntax import API_PREFIX
+from libranet.protocol.http_syntax import API_PREFIX, data_path
 from libranet.protocol.identity_requests import (
     FallbackRequest,
     IdentityRequest,
@@ -204,7 +204,7 @@ class Identities:  # pylint: disable=too-many-instance-attributes
         return _with_headers(
             json_response(made.value(), HTTPStatus.CREATED),
             {
-                "Location": f"{API_PREFIX}/{made.session.key.person_id}",
+                "Location": data_path(made.session.key.person_id),
                 "Set-Cookie": self.sessions.start(made.session),
             },
         )
@@ -237,8 +237,8 @@ class Identities:  # pylint: disable=too-many-instance-attributes
             self.drops.within_ceilings(asked.seconds, asked.minimum_bits)
 
         except InvalidRequestError as error:
-            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            return invalid_request_response(request, error)
+            # Not logged: the refusal logs it.
+            return invalid_request_response(request, error, _LOGGER)
 
         key = self._password_key(asked.username, asked.password)
         fallback_key = self._password_key(asked.username, asked.fallback_password)
@@ -313,8 +313,8 @@ class Identities:  # pylint: disable=too-many-instance-attributes
             self.drops.within_ceilings(asked.seconds, asked.minimum_bits)
 
         except InvalidRequestError as error:
-            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            return invalid_request_response(request, error)
+            # Not logged: the refusal logs it.
+            return invalid_request_response(request, error, _LOGGER)
 
         key = self._password_key(asked.username, asked.password)
         fallback_key = self._password_key(asked.username, asked.fallback_password)
@@ -566,4 +566,4 @@ class Identities:  # pylint: disable=too-many-instance-attributes
 
 def _with_headers(response: Response, headers: Mapping[str, str]) -> Response:
     """``response`` with ``headers`` as well, and kept by no cache, since each names a session."""
-    return replace(response, headers={**response.headers, **NOT_STORED, **headers})
+    return response.with_headers({**NOT_STORED, **headers})

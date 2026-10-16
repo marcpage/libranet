@@ -200,6 +200,7 @@ The modules communicate in three ways:
 | `src/libranet/supervision/specs.py` | `ModuleSpec`, and the `ModuleFactory` and `DispatcherEntry` signatures |
 | `src/libranet/supervision/registry.py` | Which factory builds each module, and which events it subscribes to |
 | `src/libranet/messaging/events.py` | `EventType`: every event on the bus, each noting its publishers and subscribers |
+| `src/libranet/messaging/connected_peers.py` | `ConnectedPeers`: the peers connected each way, as the `peers.connected` it builds and reads names them |
 | `src/libranet/messaging/envelope.py` | Building and validating message dicts |
 | `src/libranet/messaging/queues.py` | `ModuleQueues`, a module's inbox, outbox, and subscriptions, and the `MessageQueue` protocol |
 | `src/libranet/messaging/module.py` | `ModuleBase`: publishing, filtering, and the receive loop |
@@ -704,8 +705,8 @@ not what it should be is always logged: at warning when it is this node's
 own, at debug when a client or peer sent it and it was refused. An id under
 a hash algorithm this node does not support is a warning wherever it is met,
 since the node may need an update, and `UnsupportedAlgorithms` logs a whole
-archive's or list's worth once. `tests/test_exception_logging.py` checks
-every handler.
+archive's or list's worth once, counting each id `ContentId.parse_supported`
+passes over. `tests/test_exception_logging.py` checks every handler.
 
 A constant another module also needs is defined once, public, in the
 lowest module of the layer its meaning belongs to — bundle path syntax in

@@ -9,6 +9,8 @@ from http import HTTPStatus
 from re import compile as compile_pattern
 from typing import Final, Mapping
 
+from libranet.cas.content_id import ContentId
+
 OCTET_STREAM: Final = "application/octet-stream"
 JSON_CONTENT_TYPE: Final = "application/json"
 
@@ -29,3 +31,8 @@ BODILESS_STATUSES: Final = frozenset({HTTPStatus.NO_CONTENT, HTTPStatus.NOT_MODI
 # mismatch when debugging (Step 10). Other implementations need not send
 # it, and a proxy may rewrite paths.
 REQUEST_PATH_HEADER: Final = "X-Request-Path"
+
+
+def data_path(content_id: ContentId) -> str:
+    """The path naming ``content_id`` in the node's HTTP API: ``/data/{algorithm}/{hash}``."""
+    return f"{API_PREFIX}/{content_id}"

@@ -394,8 +394,7 @@ class ApplicationTrustHandler:
 
         if not isinstance(trusted, bool):
             error = ValueError('An application\'s trust must be {"trusted": true} or false')
-            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            return invalid_request_response(request, error)
+            return invalid_request_response(request, error, _LOGGER)
 
         name = percent_decoded(request.params["name"])
 
@@ -407,8 +406,8 @@ class ApplicationTrustHandler:
             return _unreadable_registry_response(request, error)
 
         except ValueError as error:
-            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            return invalid_request_response(request, error)
+            # Not logged: the refusal logs it.
+            return invalid_request_response(request, error, _LOGGER)
 
         if not registered:
             return _not_registered_response(request)

@@ -40,7 +40,7 @@ turn with those of signing in. A signed drop is signed, then encrypted.
 """
 
 from __future__ import annotations
-from dataclasses import KW_ONLY, dataclass, field, replace
+from dataclasses import KW_ONLY, dataclass, field
 from http import HTTPStatus
 from logging import getLogger
 from secrets import token_bytes
@@ -63,7 +63,7 @@ from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.protocol.drop_requests import DropRequest, PasswordEncryption, PersonEncryption
 from libranet.protocol.errors import InvalidRequestError
-from libranet.protocol.http_syntax import API_PREFIX
+from libranet.protocol.http_syntax import API_PREFIX, data_path
 from libranet.webserver.costly_work import Turns
 from libranet.webserver.http_types import Request, Response, json_response, status_response
 from libranet.webserver.local_only import local_refusal
@@ -101,6 +101,11 @@ class StoredDrop:
             "target": self.target.hex,
             "matching_bits": self.matching_bits,
         }
+
+    def created_response(self, **details: object) -> Response:
+        """The ``201`` saying it was made: its :meth:`value`, ``details``, and a ``Location``."""
+        response = json_response({**self.value(), **details}, HTTPStatus.CREATED)
+        return response.with_headers({"Location": data_path(self.content_id)})
 
 
 @dataclass(frozen=True)
@@ -224,8 +229,8 @@ class DropEncryption:
             return person_public_key(held, f'"for", {person_id},')
 
         except ValueError as error:
-            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            return invalid_request_response(request, error)
+            # Not logged: the refusal logs it.
+            return invalid_request_response(request, error, _LOGGER)
 
     def _password_refused(self, request: Request) -> Response | None:
         """The ``403`` refusing to encrypt by a password for ``request``; ``None`` if it may.
@@ -277,13 +282,7 @@ class DropHandler:
             return asked
 
         stored = self.placed(request, asked)
-
-        if isinstance(stored, Response):
-            return stored
-
-        response = json_response(stored.value(), HTTPStatus.CREATED)
-        location = f"{API_PREFIX}/{stored.content_id}"
-        return replace(response, headers={**response.headers, "Location": location})
+        return stored if isinstance(stored, Response) else stored.created_response()
 
     def placed(self, request: Request, asked: DropRequest) -> StoredDrop | Response:
         """The drop ``request`` asks for, as ``asked``, stored; or the response refusing it.
@@ -296,8 +295,8 @@ class DropHandler:
             self.within_ceilings(asked.seconds, asked.minimum_bits)
 
         except InvalidRequestError as error:
-            _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-            return invalid_request_response(request, error)
+            # Not logged: the refusal logs it.
+            return invalid_request_response(request, error, _LOGGER)
 
         if not self._fits(asked.data):
             _LOGGER.debug("Refusing %s %s: its content is too large", request.method, request.path)
@@ -346,9 +345,8 @@ class DropHandler:
             return asked
 
         if self.encryption is None:
-            _LOGGER.debug("Refusing %s %s: no drop is encrypted here", request.method, request.path)
             return invalid_request_response(
-                request, InvalidRequestError('"encrypt" is not served here')
+                request, InvalidRequestError('"encrypt" is not served here'), _LOGGER
             )
 
         try:

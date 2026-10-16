@@ -167,8 +167,12 @@ def unreported_response(request: Request, retry_after_seconds: int) -> Response:
     )
 
 
-def invalid_request_response(request: Request, error: ValueError) -> Response:
-    """The ``400`` for a body an endpoint cannot act on."""
+def invalid_request_response(request: Request, error: ValueError, logger: Logger) -> Response:
+    """The ``400`` for a body an endpoint cannot act on, as ``error`` says.
+
+    ``error`` is logged with ``logger``, at debug, as what a page sent.
+    """
+    logger.debug("Refusing %s %s: %s", request.method, request.path, error)
     return typed_response(request, INVALID_REQUEST, HTTPStatus.BAD_REQUEST, str(error))
 
 
@@ -198,8 +202,8 @@ def json_or_refusal(request: Request, *, max_bytes: int = MAX_JSON_BODY_BYTES) -
         return unsupported_media_type_response(request, error)
 
     except ValueError as error:
-        _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-        return invalid_request_response(request, error)
+        # Not logged: the refusal logs it.
+        return invalid_request_response(request, error, _LOGGER)
 
 
 def parsed_or_refusal(
@@ -222,8 +226,8 @@ def parsed_or_refusal(
         return parse(value)
 
     except ValueError as error:
-        _LOGGER.debug("Refusing %s %s: %s", request.method, request.path, error)
-        return invalid_request_response(request, error)
+        # Not logged: the refusal logs it.
+        return invalid_request_response(request, error, _LOGGER)
 
 
 def invalid_address_response(
