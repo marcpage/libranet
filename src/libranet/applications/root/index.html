@@ -83,6 +83,12 @@
   .node-details { margin: 0.35rem 0 0; padding: 0; list-style: none; color: var(--muted); }
   .node-details li + li { margin-top: 0.1rem; }
 
+  /* The node's trust: a mark before it to hover over or tap, and what it says
+     beneath once tapped. */
+  .identity { display: flex; align-items: baseline; }
+  .mark { font: inherit; border: 0; background: none; padding: 0; margin-right: 0.4rem; cursor: pointer; }
+  .score { display: block; color: var(--muted); font-size: 0.93rem; margin-top: 0.2rem; }
+
   .note, footer { color: var(--muted); }
   .note { display: block; }
   .error { color: var(--bad); }
@@ -138,6 +144,11 @@
   <footer>
     This is the page every node starts with at <code>/</code>. Its
     administrator can serve another application here instead.
+    The mark before the node is its trust, by the scores the node builds from
+    the trust list of whoever is signed in, the lists of those they trust, and
+    so on onward: &#x1F7E2; above 0, trusted; &#x1F7E1; 0, neither;
+    &#x1F534; below 0, distrusted; and &#x26AA; where there are no scores to
+    show.
   </footer>
 </main>
 <script>
@@ -162,6 +173,17 @@ const NAME = "name";
 // A content id: the only hash the node knows, in lower-case hex (HttpApi 5).
 const CONTENT_ID = /^sha256\/[0-9a-f]{64}$/;
 const HASH_START = "sha256/".length;
+
+// What marks the node's trust (#322), by the scores of whoever is signed in
+// (HttpApi 11.7): a score above 0, of 0, and below 0; and where there are no
+// scores to show. The user directory marks each person alike.
+const TRUSTED = "\u{1F7E2}";
+const NEITHER = "\u{1F7E1}";
+const DISTRUSTED = "\u{1F534}";
+const UNKNOWN = "\u{26AA}";
+
+// How long the page waits to read scores still being built again.
+const SCORES_AGAIN_SECONDS = 2;
 
 function byId(id) {
   return document.getElementById(id);
@@ -208,9 +230,146 @@ function isLocalhost(endpoint) {
 
 function showNodeId(nodeId) {
   if (nodeId) {
-    byId("node-id").replaceChildren(make("code", nodeId, "id"));
+    trust.node = nodeId;
+    showNode(make("code", nodeId, "id"));
   } else {
     note("node-id", "The node did not sign its answer.", "error");
+  }
+}
+
+// The node's trust: its id, the scores of whoever is signed in by id, and
+// whether they are complete, or null and why there are none. And its mark,
+// and what the mark says in words, shown beneath the node once tapped.
+const trust = {
+  node: null,
+  scores: null,
+  complete: false,
+  unscored: "Reading the trust scores\u2026",
+  mark: make("button", UNKNOWN, "mark"),
+  said: make("span", "", "score"),
+};
+trust.mark.type = "button";
+trust.said.hidden = true;
+trust.mark.addEventListener("click", () => {
+  trust.said.hidden = !trust.said.hidden;
+  showTrust();
+});
+
+// The node as `shown` shows it, with the mark of its trust before it, and
+// what the mark says beneath it.
+function showNode(shown) {
+  const line = make("div", "", "identity");
+  line.append(trust.mark, shown);
+  byId("node-id").replaceChildren(line, trust.said);
+  showTrust();
+}
+
+// How whoever is signed in trusts the node, by their scores: its score, and
+// the step it was reached at, null if it was not; null when there are no
+// scores.
+function trustOf(id) {
+  if (trust.scores === null) {
+    return null;
+  }
+
+  return trust.scores.get(id) || { score: 0, step: null };
+}
+
+function markOf(level) {
+  if (level === null) {
+    return UNKNOWN;
+  }
+
+  return level.score > 0 ? TRUSTED : level.score < 0 ? DISTRUSTED : NEITHER;
+}
+
+// What a score reached at a step says: at step 1, what the person's own list
+// holds, and after it, what the lists of those they trust hold.
+function trustWords(level) {
+  if (level.step === 1) {
+    return level.score > 0 ? "You trust it." : "You distrust it.";
+  }
+
+  if (level.score > 0) {
+    return "Trusted by those you trust.";
+  }
+
+  return level.score < 0 ? "Distrusted by those you trust." : "Trusted and distrusted alike by those you trust.";
+}
+
+// What the mark says in words: how the node is trusted, its score and its
+// step, and whether the scores are still being built; or why there are no
+// scores.
+function trustText(level) {
+  if (level === null) {
+    return trust.unscored;
+  }
+
+  const building = trust.complete ? "" : " Your scores are still being built.";
+
+  if (level.step === null) {
+    return `Not reached by your trust list, or by those it reaches. Score 0.${building}`;
+  }
+
+  return `${trustWords(level)} Score ${level.score}, step ${level.step}.${building}`;
+}
+
+function showTrust() {
+  const level = trustOf(trust.node);
+  const text = trustText(level);
+  trust.mark.textContent = markOf(level);
+  trust.mark.title = text;
+  trust.mark.setAttribute("aria-label", text);
+  trust.mark.setAttribute("aria-expanded", String(!trust.said.hidden));
+  trust.said.textContent = text;
+}
+
+// What the node answers `path` with, as JSON; null if it refuses, or answers
+// no JSON.
+async function answered(path) {
+  const response = await fetch(path, { cache: "no-store" });
+  return response.ok ? response.json().catch(() => null) : null;
+}
+
+// Read the scores of whoever is signed in (HttpApi 11.7), which only a browser
+// on the node's own machine is shown, and, while they are still being built,
+// read them again every few seconds until they are not.
+async function readTrust() {
+  const [session, client] = await Promise.all([answered("/data/session"), answered("/data/client")]);
+
+  if (!isObject(session) || !CONTENT_ID.test(session.id)) {
+    trust.unscored =
+      isObject(client) && client.local === true
+        ? "No trust is shown: sign in, in the user directory or in mail, to see whom you trust."
+        : "No trust is shown: only a browser on the node's own machine, signed in, is shown it.";
+    showTrust();
+    return;
+  }
+
+  for (;;) {
+    const response = await fetch("/data/trust", { cache: "no-store" });
+    const value = await response.json().catch(() => null);
+
+    if (!response.ok || !isObject(value) || !isObject(value.scores)) {
+      const problem = isObject(value) ? value.detail || value.title : null;
+      trust.scores = null;
+      trust.unscored = `No trust is shown: ${problem || `The node answered ${response.status}.`}`;
+      showTrust();
+      return;
+    }
+
+    const scored = Object.entries(value.scores).filter(
+      ([id, level]) => CONTENT_ID.test(id) && isObject(level) && Number.isFinite(level.score),
+    );
+    trust.scores = new Map(scored);
+    trust.complete = value.complete === true;
+    showTrust();
+
+    if (trust.complete) {
+      return;
+    }
+
+    await sleep(SCORES_AGAIN_SECONDS);
   }
 }
 
@@ -376,7 +535,7 @@ async function showMetadata(nodeId) {
   }
 
   if (fields) {
-    byId("node-id").replaceChildren(nodeShown(nodeId, fields));
+    showNode(nodeShown(nodeId, fields));
   }
 }
 
@@ -491,6 +650,11 @@ async function listApplications() {
 
 describeNode();
 listApplications();
+readTrust().catch(() => {
+  trust.scores = null;
+  trust.unscored = "No trust is shown: the node could not be reached.";
+  showTrust();
+});
 </script>
 </body>
 </html>

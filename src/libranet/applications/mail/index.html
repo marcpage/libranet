@@ -91,12 +91,17 @@
   .mail { margin: 0; padding: 0; list-style: none; }
   .mail > li + li { border-top: 1px solid var(--border); }
 
+  /* Those a row names, each with the mark of their trust, beside a button
+     opening it, which a click on a name does too. */
+  .mail .row { display: grid; grid-template-columns: minmax(0, 11rem) minmax(0, 1fr); gap: 0.75rem; align-items: center; }
+  .mail .who { padding: 0.45rem 0 0.45rem 0.25rem; cursor: pointer; }
+
   .mail .open {
     display: grid;
-    grid-template-columns: minmax(0, 11rem) minmax(0, 1fr) max-content;
+    grid-template-columns: minmax(0, 1fr) max-content;
     gap: 0.75rem;
     width: 100%;
-    padding: 0.45rem 0.25rem;
+    padding: 0.45rem 0.25rem 0.45rem 0;
     border: 0;
     background: none;
     color: inherit;
@@ -104,10 +109,10 @@
     cursor: pointer;
   }
 
-  .mail .open > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .mail .unread .open { font-weight: 600; }
+  .mail .who, .mail .open > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mail .unread .who, .mail .unread .open { font-weight: 600; }
   .mail .shown { display: flex; align-items: center; gap: 0.5rem; }
-  .mail .shown .open { flex: 1; }
+  .mail .shown .row { flex: 1; }
   .when, .count { color: var(--muted); font-weight: normal; }
 
   /* The people a message is for, each a chip, and what is typed after them. */
@@ -146,6 +151,13 @@
   .book > li + li { margin-top: 0.6rem; padding-top: 0.6rem; border-top: 1px solid var(--border); }
   .book .actions { margin-top: 0.25rem; }
   .book button { padding: 0.15rem 0.6rem; }
+
+  /* A person's trust: a mark to hover over or tap, and what it says once
+     tapped, beside the person, or beneath a row. Last, so that what a chip's
+     buttons and the address book's are given leaves a mark alone. */
+  button.mark { font: inherit; border: 0; background: none; padding: 0; margin-right: 0.3rem; cursor: pointer; }
+  .score { color: var(--muted); font-weight: normal; font-size: 0.93rem; margin-left: 0.4rem; }
+  .said { color: var(--muted); font-size: 0.93rem; margin: 0 0 0.4rem; padding-left: 0.25rem; }
 </style>
 </head>
 <body>
@@ -265,6 +277,11 @@
     <code>mail address book:</code> and your id, and at <code>mail state:</code>,
     your id, and each month of mail. Mail is read and sent only in a browser on
     the node's own machine, signed in.
+    Each person's mark is their trust, by the scores the node builds from your
+    trust list, the lists of those you trust, and so on onward: &#x1F7E2;
+    above 0, trusted; &#x1F7E1; 0, neither; &#x1F534; below 0, distrusted; and
+    &#x26AA; where there are no scores to show. Each person's name links to
+    their page in the user directory.
   </footer>
 </main>
 <script>
@@ -363,6 +380,17 @@ const SHORT_HASH = 12;
 // The two places mail is read from.
 const INBOX = "inbox";
 const SENT = "sent";
+
+// What marks each person's trust (#322), by the scores of whoever is signed in
+// (HttpApi 11.7): a score above 0, of 0, and below 0; and where there are no
+// scores to show. The user directory marks each person alike.
+const TRUSTED = "\u{1F7E2}";
+const NEITHER = "\u{1F7E1}";
+const DISTRUSTED = "\u{1F534}";
+const UNKNOWN = "\u{26AA}";
+
+// How long the page waits to read scores still being built again.
+const SCORES_AGAIN_SECONDS = 2;
 
 function byId(id) {
   return document.getElementById(id);
@@ -1737,6 +1765,168 @@ function oneEach(messages) {
 const ui = { view: INBOX, thread: null, single: null };
 let renderQueued = false;
 
+// Trust: the scores of whoever is signed in by id, and whether they are
+// complete, or null and why there are none; and which marks are tapped, each
+// as "{place} {id}", where the mark is and whose it is.
+const trust = { scores: null, complete: false, unscored: "Your trust scores are being read.", opened: new Set() };
+
+// How whoever is signed in trusts `person`, by their scores: its score, and
+// the step it was reached at, null if it was not; null when there are no
+// scores.
+function trustOf(person) {
+  if (trust.scores === null) {
+    return null;
+  }
+
+  return trust.scores.get(person) || { score: 0, step: null };
+}
+
+function trustSymbol(level) {
+  if (level === null) {
+    return UNKNOWN;
+  }
+
+  return level.score > 0 ? TRUSTED : level.score < 0 ? DISTRUSTED : NEITHER;
+}
+
+// What a score reached at a step says: at step 1, what the person's own list
+// holds, and after it, what the lists of those they trust hold.
+function trustWords(level) {
+  if (level.step === 1) {
+    return level.score > 0 ? "You trust them." : "You distrust them.";
+  }
+
+  if (level.score > 0) {
+    return "Trusted by those you trust.";
+  }
+
+  return level.score < 0 ? "Distrusted by those you trust." : "Trusted and distrusted alike by those you trust.";
+}
+
+// What the mark of `person` says in words: how they are trusted, their score
+// and its step, and whether the scores are still being built; or why there
+// are no scores.
+function trustText(person) {
+  const level = trustOf(person);
+
+  if (level === null) {
+    return trust.unscored;
+  }
+
+  const building = trust.complete ? "" : " Your scores are still being built.";
+
+  if (level.step === null) {
+    return `Not reached by your trust list, or by those it reaches. Score 0.${building}`;
+  }
+
+  return `${trustWords(level)} Score ${level.score}, step ${level.step}.${building}`;
+}
+
+function isOpened(person, place) {
+  return trust.opened.has(`${place} ${person}`);
+}
+
+// The mark of the trust of `person` where `place` shows them, saying it in
+// words when hovered over, and where the place shows it once tapped.
+function trustMarkFor(person, place) {
+  const mark = make("button", "", "mark");
+  mark.type = "button";
+  mark.dataset.mark = person;
+  mark.dataset.place = place;
+  mark.addEventListener("click", (event) => {
+    // A mark tapped in a row shows its words, and opens nothing.
+    event.stopPropagation();
+
+    if (!trust.opened.delete(`${place} ${person}`)) {
+      trust.opened.add(`${place} ${person}`);
+    }
+
+    render();
+  });
+  showTrustMark(mark);
+  return mark;
+}
+
+function showTrustMark(mark) {
+  const text = trustText(mark.dataset.mark);
+  mark.textContent = trustSymbol(trustOf(mark.dataset.mark));
+  mark.title = text;
+  mark.setAttribute("aria-label", text);
+  mark.setAttribute("aria-expanded", String(isOpened(mark.dataset.mark, mark.dataset.place)));
+}
+
+// What the mark of `person` where `place` shows them says, beside it once it
+// is tapped.
+function trustWordsFor(person, place) {
+  const words = make("span", "", "score");
+  words.dataset.words = person;
+  words.dataset.place = place;
+  showTrustWords(words);
+  return words;
+}
+
+function showTrustWords(words) {
+  words.textContent = trustText(words.dataset.words);
+  words.hidden = !isOpened(words.dataset.words, words.dataset.place);
+}
+
+// Read the scores of whoever is signed in (HttpApi 11.7), and, while they are
+// still being built, read them again every few seconds until they are not.
+async function readScores() {
+  const result = await call("GET", "/data/trust");
+  const value = result.value;
+
+  if (result.ok && isObject(value) && isObject(value.scores)) {
+    const scored = Object.entries(value.scores).filter(
+      ([id, level]) => CONTENT_ID.test(id) && isObject(level) && Number.isFinite(level.score),
+    );
+    trust.scores = new Map(scored);
+    trust.complete = value.complete === true;
+  } else {
+    trust.scores = null;
+    trust.unscored = `No trust is shown: ${refusal(result)}`;
+  }
+
+  renderSoon();
+
+  if (trust.scores !== null && !trust.complete) {
+    followScores();
+  }
+}
+
+let followingScores = false;
+
+async function followScores() {
+  if (followingScores) {
+    return;
+  }
+
+  followingScores = true;
+
+  try {
+    while (trust.scores !== null && !trust.complete) {
+      await sleep(SCORES_AGAIN_SECONDS);
+      await readScores();
+    }
+  } catch (error) {
+    trust.scores = null;
+    trust.unscored = `No trust is shown: ${error.message}`;
+    renderSoon();
+  } finally {
+    followingScores = false;
+  }
+}
+
+// A link showing `content` to the page of the person `id` names, in the user
+// directory, which shows them alone, as any page links a person (App
+// Developer Guide 6.12).
+function personLink(id, content) {
+  const link = document.createElement("a");
+  link.href = `/directory/?id=${encodeURIComponent(id)}`;
+  link.append(content);
+  return link;
+}
+
 function when(sent) {
   return new Date(sent).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
@@ -1764,17 +1954,18 @@ function rowOf(thread, kind) {
       : [...new Set(thread.shown.filter((message) => message.kind === SENT).flatMap((message) => [...message.to, ...message.cc, ...message.bcc]))];
   const item = document.createElement("li");
   item.className = unread ? "unread" : "";
-  const open = button("", () => openThread(thread.key));
-  open.className = "open";
-  const who = make("span", (kind === SENT ? "To " : "") + namesOf(people));
+  const open = () => openThread(thread.key);
+  const opener = button("", open);
+  opener.className = "open";
   const subject = make("span", first.subject || "(no subject)");
 
   if (thread.shown.length > 1) {
     subject.append(make("span", ` (${thread.shown.length})`, "count"));
   }
 
-  open.append(who, subject, make("span", when(newest.sent), "when"));
-  item.append(open);
+  opener.append(subject, make("span", when(newest.sent), "when"));
+  const place = `row ${thread.key}`;
+  item.append(lineOf(people, kind === SENT ? "To " : "", place, open, opener), ...saidOf(people, place));
   return item;
 }
 
@@ -1782,11 +1973,13 @@ function hiddenRowOf(message) {
   const item = document.createElement("li");
   const shown = document.createElement("div");
   shown.className = "shown";
-  const open = button("", () => openSingle(message.drop));
-  open.className = "open";
-  const who = message.kind === SENT ? `To ${namesOf([...message.to, ...message.cc, ...message.bcc])}` : namesOf([message.signer]);
-  open.append(make("span", who), make("span", message.subject || "(no subject)"), make("span", when(message.sent), "when"));
-  shown.append(open);
+  const open = () => openSingle(message.drop);
+  const opener = button("", open);
+  opener.className = "open";
+  const [prefix, people] = message.kind === SENT ? ["To ", [...message.to, ...message.cc, ...message.bcc]] : ["", [message.signer]];
+  opener.append(make("span", message.subject || "(no subject)"), make("span", when(message.sent), "when"));
+  const place = `row ${message.drop}`;
+  shown.append(lineOf(people, prefix, place, open, opener));
 
   if (mail.canSign) {
     shown.append(button("Show again", () => {
@@ -1795,8 +1988,30 @@ function hiddenRowOf(message) {
     }));
   }
 
-  item.append(shown);
+  item.append(shown, ...saidOf(people, place));
   return item;
+}
+
+// A row's line: those it names, each by name with the mark of their trust,
+// but for whoever is signed in, and a click on them opening the row as
+// `opener`, its button, does; then that button.
+function lineOf(people, prefix, place, open, opener) {
+  const who = make("span", prefix, "who");
+  people.forEach((person, index) => {
+    who.append(...(index > 0 ? [", "] : []), ...(person === mail.you ? [] : [trustMarkFor(person, place)]), nameOf(person));
+  });
+  who.addEventListener("click", open);
+  const line = document.createElement("div");
+  line.className = "row";
+  line.append(who, opener);
+  return line;
+}
+
+// What the marks tapped in a row say, beneath it, each after whose it is.
+function saidOf(people, place) {
+  return people
+    .filter((person) => person !== mail.you && isOpened(person, place))
+    .map((person) => make("p", `${nameOf(person)}: ${trustText(person)}`, "said"));
 }
 
 function renderList() {
@@ -1856,11 +2071,22 @@ function renderBook() {
 
 function bookRowOf(person) {
   const item = document.createElement("li");
-  const name = make("strong", person.name);
+  const name = make("strong", "");
   const known = knownOf(person.id);
+  const others = person.id !== mail.you;
+
+  if (others) {
+    name.append(trustMarkFor(person.id, "book"));
+  }
+
+  name.append(personLink(person.id, person.name));
 
   if (known && known.compromised) {
     name.append(make("span", "compromised", "flag"));
+  }
+
+  if (others) {
+    name.append(trustWordsFor(person.id, "book"));
   }
 
   const id = make("div", "");
@@ -2037,6 +2263,7 @@ class Recipients {
     this.chips = byId(`${name}-chips`);
     this.input = byId(`${name}-input`);
     this.people = [];
+    this.place = `compose ${name}`;
     this.input.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === ",") {
         event.preventDefault();
@@ -2108,8 +2335,15 @@ class Recipients {
   render() {
     this.chips.replaceChildren(
       ...this.people.map((person) => {
-        const chip = make("span", nameOf(person.id), "chip");
+        const chip = make("span", "", "chip");
         chip.title = person.id;
+        const others = person.id !== mail.you;
+        chip.append(...(others ? [trustMarkFor(person.id, this.place)] : []), nameOf(person.id));
+
+        if (others) {
+          chip.append(trustWordsFor(person.id, this.place));
+        }
+
         const remove = button("×", () => {
           this.people = this.people.filter((other) => other.id !== person.id);
           this.render();
@@ -2393,18 +2627,27 @@ async function delivered({ to, cc, bcc, subject, text, bundle, isBundle }) {
   }
 }
 
-// One person, by name, with their id to hover over.
-function personOf(person) {
-  const said = make("span", nameOf(person));
-  said.title = person;
-  said.dataset.person = person;
+// One person, by name, linked to their page, with their id to hover over, and
+// the mark of their trust where `place` shows them, but for whoever is signed
+// in.
+function personOf(person, place) {
+  const name = personLink(person, nameOf(person));
+  name.title = person;
+  name.dataset.person = person;
+
+  if (person === mail.you) {
+    return name;
+  }
+
+  const said = document.createElement("span");
+  said.append(trustMarkFor(person, place), name, trustWordsFor(person, place));
   return said;
 }
 
-function peopleOf(people) {
+function peopleOf(people, place) {
   const said = document.createElement("span");
   people.forEach((person, index) => {
-    said.append(...(index > 0 ? [", "] : []), personOf(person));
+    said.append(...(index > 0 ? [", "] : []), personOf(person, place));
   });
   return said;
 }
@@ -2472,15 +2715,16 @@ function articleOf(message) {
     said.append(value);
     headers.append(said);
   };
-  row("From", personOf(message.signer));
-  row("To", peopleOf(message.to));
+  const place = `message ${message.drop}`;
+  row("From", personOf(message.signer, place));
+  row("To", peopleOf(message.to, place));
 
   if (message.cc.length > 0) {
-    row("CC", peopleOf(message.cc));
+    row("CC", peopleOf(message.cc, place));
   }
 
   if (message.bcc.length > 0) {
-    row("BCC", peopleOf(message.bcc));
+    row("BCC", peopleOf(message.bcc, place));
   }
 
   row("Date", when(message.sent));
@@ -2611,6 +2855,8 @@ function render() {
   document.querySelectorAll("[data-person]").forEach((said) => {
     said.textContent = nameOf(said.dataset.person);
   });
+  document.querySelectorAll("[data-mark]").forEach(showTrustMark);
+  document.querySelectorAll("[data-words]").forEach(showTrustWords);
   [compose.to, compose.cc, compose.bcc].forEach((field) => field.render());
 
   if (!byId("compose").hidden) {
@@ -2755,6 +3001,11 @@ async function start() {
   compose.to = new Recipients("to");
   compose.cc = new Recipients("cc");
   compose.bcc = new Recipients("bcc");
+  // The scores are read as the mail is, and each mark shows them as they come.
+  readScores().catch((error) => {
+    trust.unscored = `No trust is shown: ${error.message}`;
+    renderSoon();
+  });
 
   if (!mail.canSign) {
     status.say("You signed in with your fallback password. Until your fallback takes over, in the user directory, it reads mail but sends none, and nothing you mark is saved.");

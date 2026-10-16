@@ -1154,6 +1154,12 @@ each copy found in that month's hours to `{"changed", "hidden", "read"}`.
 To have someone mailed, link to `/mail/?to={id}`, as the directory does for
 each person.
 
+The mail application shows the trust of each person it shows (§6.17): each
+sender and reader in its lists and in a message, each person in the address
+book, and each it is to send to. A click on a name in a list opens the
+conversation, as the rest of the row does; a name in a message or the
+address book links to the person's page (§6.12).
+
 ### 6.17 The Trust List
 
 Whoever is signed in has a trust list: the identities they trust, and those
@@ -1231,6 +1237,22 @@ one.
 Only a local client, from a trusted application's page, reads the scores or
 changes the list, and no answer is cached, since they say whom the person
 trusts.
+
+**Show each identity's trust** wherever a page shows a person or a node, by
+the scores of whoever is signed in: 🟢 for a score above 0, 🟡 for 0, an
+identity the scores do not reach among them, and 🔴 below. Say the trust in
+words, with its score and step, when the mark is hovered over, and when it
+is tapped, since a touch screen has no hover, and label the mark with the
+same words for a screen reader. Where there are no scores, with no one
+signed in or on a client elsewhere, show ⚪, saying why. Read the scores
+once with `GET /data/trust`, and look up each identity there, rather than
+asking for each, and read them again every few seconds while they are not
+complete. Show the person signed in no mark, since no one is scored by
+their own list. Each shipped application carries its own copy of the code
+that does it: the directory marks each person (§6.12), mail each person it
+shows (§6.16), and the root application its own node (§6.18). `/config`
+marks its node ⚪ alone, saying it reads no scores, since its pages ask
+only its own endpoints.
 
 ### 6.18 What Nodes Say of Themselves
 

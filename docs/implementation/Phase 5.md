@@ -88,7 +88,7 @@ The conventions of [Phase 2](Phase%202.md) §3 and
 
 ---
 
-## Step 94 — How the Trust Network Works
+## Step 94 — How the Trust Network Works ✅
 
 **Issue:** #286. **Depends on:** Phase 4 Steps 79, 80, 92, and 93.
 
@@ -868,7 +868,7 @@ node and the shipped pages use.
 
 ---
 
-## Step 103 — Signing as a Node
+## Step 103 — Signing as a Node ✅
 
 **Issue:** #321, in part. **Depends on:** Phase 4 Step 80.
 
@@ -1216,7 +1216,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 106 — Trust Shown Throughout
+## Step 106 — Trust Shown Throughout ✅
 
 **Issue:** #322. **Depends on:** Steps 100, 101, and 105.
 
@@ -1256,17 +1256,83 @@ My calls, not yet reviewed:
 - **The unknown marker is ⚪**, a circle as the others are, and of none of
   their colours.
 - **The hover and the tap say the level in words**, with the score and its
-  step, such as "Trusted: 0.2, step 2", and a label a screen reader reads
-  says the same, since the colours alone tell some people nothing. An
-  identity the build has not reached says so: "Untrusted: not reached".
+  step, in the words Step 101 gave the directory, such as "Trusted by those
+  you trust. Score 0.1, step 2.", and a label a screen reader reads says the
+  same, since the colours alone tell some people nothing. An identity the
+  build has not reached says so: "Not reached by your trust list, or by
+  those it reaches. Score 0."
 
 **Testable in isolation:** packaging tests asserting each page calls only
 endpoints the node serves. The pages' logic is checked by hand, and in a
 live run.
 
+Built with no Python: the mail page gains 280 lines, 29 of them replacing
+removed ones, the root page 166, and `/config`'s 49, and the packaging tests
+37. The App Developer Guide's §6.17 says how a page shows each identity's
+trust, and §6.16 what mail shows.
+
+- **Mail marks each person it shows**: the senders and readers in the
+  inbox, the sent, and the hidden lists, and in a message's From, To, CC,
+  and BCC; each person in the address book; and each one a new message is
+  to be sent to. A name in a message or the address book links to the
+  person's page, `/directory/?id={id}`.
+- **The root page marks its node**, before its name or id, and says the
+  trust beneath once the mark is tapped. It reads who is signed in, and
+  whether the client is local, as the directory does, to say why there are
+  no scores.
+- **`/config` marks its node ⚪**, saying the administration page reads no
+  trust scores, and that the node's other pages show them.
+- **Each page reads the scores once, and again every 2 s while they are not
+  complete**, as the directory does. The directory is unchanged.
+- A packaging test asserts that the directory, mail, and root pages each
+  carry the four marks and read `GET /data/trust`, and that `/config`
+  carries ⚪ alone and reads nothing.
+
+Checked live, with three local nodes and the pages driven in headless
+Chrome: Alice, on node 0, trusts Bob and distrusts Carol, and Bob trusts node
+0. Signed out, the root page shows node 0 ⚪, saying to sign in; Alice sees
+it 🟡, not reached, and after the changes 🟢, "Trusted by those you trust.
+Score 0.1, step 2.", which a real click on the mark shows beneath it. Bob
+mails Alice and Carol, and Carol mails Alice. Alice's inbox shows Carol 🔴
+and Bob 🟢; a click on Carol's mark shows her words beneath the row and opens
+nothing, and a click on Bob's name opens his message, whose From and To are
+marked and linked, Alice herself "you" with no mark. Bob, added to the
+address book, is marked and linked there, and chips for Bob and Carol in a
+new message carry their marks. Bob's sent list shows both his readers 🟡.
+`/config` shows node 0 ⚪, its words shown by a tap. Once node 0 is named
+Attic, both pages show the mark before the name, whose own tap still shows
+what the node says.
+
+My calls, not yet reviewed:
+
+- **In mail's lists, those a row names left the button opening it**, so
+  that each mark is a button of its own, which a button cannot hold. A click
+  on a name still opens the conversation, as the rest of the row does, and
+  the row looks as it did. A tapped mark's words show beneath the row, after
+  whose they are. A name in a list is not linked, since a click there opens
+  the conversation.
+- **A tapped mark shows its words where it is**, each place apart: a row,
+  a message, the address book, and each of To, CC, and BCC. Tapping a person
+  in one row does not open them in every row.
+- **The suggestions mail's To, CC, and BCC offer carry no mark**, since a
+  browser shows a datalist as text alone. A person picked becomes a chip,
+  which carries one.
+- **Only an identity shown as someone is marked**, not an id a page names
+  within what it says: the fallback a directory entry names, mail's warning
+  that a sender is compromised, the id `?add=` asks about, status lines, and
+  the ids `/config` gives a user it has just made.
+- **The root page says "it"**, "You trust it.", where the directory and mail
+  say "them", and tells someone signed out to sign in in the user directory
+  or mail, since it offers no sign-in itself.
+- **The node's mark sits before its name, and its words beneath the node**,
+  apart from what the name's own tap shows, on the root page and `/config`.
+  Neither links the node yet; Step 108 adds `/nodes/?id={id}`.
+- **Mail and the root page read the scores as they open, and not again**
+  once they are complete, since neither changes the list.
+
 ---
 
-## Step 107 — What a Node Knows of Its Peers
+## Step 107 — What a Node Knows of Its Peers ✅
 
 **Issue:** #323, in part. **Depends on:** Phase 2 Step 23.
 
