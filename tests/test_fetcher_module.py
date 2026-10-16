@@ -278,4 +278,5 @@ def test_factory_asks_at_most_once_per_retry_after_period(
 def test_the_node_runs_the_fetcher() -> None:
     factories = {spec.name: spec.factory for spec in default_module_specs()}
 
-    assert factories[ModuleName.FETCHER] == FetcherModule.of  # pylint: disable=comparison-with-callable
+    # pylint: disable-next=comparison-with-callable
+    assert factories[ModuleName.FETCHER] == FetcherModule.of
