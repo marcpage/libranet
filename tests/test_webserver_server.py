@@ -3124,7 +3124,7 @@ def test_a_request_failing_outside_its_route_is_logged(
         try:
             raise error
 
-        except Exception:  # pylint: disable=broad-exception-caught
+        except (ConnectionResetError, RuntimeError):
             server.handle_error(request, ("127.0.0.1", 4300))
 
     (record,) = [record for record in caplog.records if record.name == "test.webserver"]

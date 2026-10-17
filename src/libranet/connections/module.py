@@ -853,7 +853,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             try:
                 session = self.exchange.open(endpoint)
 
-            except Exception as error:  # pylint: disable=broad-exception-caught
+            except OSError as error:
                 # Not logged: _attempt_failed logs it.
                 self._attempt_failed(candidate, endpoint, error)
                 continue
@@ -876,12 +876,8 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         self._publish_unreached(candidate)
         return None
 
-    def _attempt_failed(self, candidate: Candidate, endpoint: str, error: Exception) -> None:
-        if isinstance(error, OSError):
-            self.logger.info("Could not connect to %s: %s", endpoint, error)
-
-        else:
-            self.logger.error("Connecting to %s failed", endpoint, exc_info=error)
+    def _attempt_failed(self, candidate: Candidate, endpoint: str, error: OSError) -> None:
+        self.logger.info("Could not connect to %s: %s", endpoint, error)
 
         if candidate.node_id is not None:
             self._publish_failed(candidate.node_id, endpoint)
@@ -1206,6 +1202,10 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             self.logger.info("%s is not held, so cannot be handed off", content_id)
             return []
 
+        except OSError as error:
+            self.logger.warning("Cannot read %s, so it is not handed off: %s", content_id, error)
+            return []
+
         accepted: list[ContentId] = []
 
         for session in self._by_match(content_id):
@@ -1278,6 +1278,12 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
 
             except ContentNotFoundError:
                 self.logger.info("%s is no longer held, so cannot be pushed", new.content_id)
+                continue
+
+            except OSError as error:
+                self.logger.warning(
+                    "Cannot read %s, so it is not pushed: %s", new.content_id, error
+                )
                 continue
 
             pending.append(_Push(new, body, self._by_match(new.content_id)))

@@ -269,6 +269,17 @@ class TrustBuilds:  # pylint: disable=too-many-instance-attributes
                     )
                     return
 
+        except OSError as error:
+            _LOGGER.warning(
+                "Cannot read the lists for %s's trust scores, so they stay as far as they were "
+                "read: %s",
+                build.person,
+                error,
+            )
+
+            with self._builds.lock:
+                build.reading = False
+
         except Exception:  # pylint: disable=broad-exception-caught
             _LOGGER.exception(
                 "Building %s's trust scores failed, so they stay as far as they were read",

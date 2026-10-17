@@ -1,7 +1,7 @@
 """Tests for building the trust scores of each person signed in (Trust Network §4.3)."""
 
 from __future__ import annotations
-from logging import ERROR
+from logging import ERROR, WARNING
 from threading import Event, current_thread
 from typing import Any, Callable, Mapping
 
@@ -395,24 +395,46 @@ def test_closing_ends_every_build_and_starts_no_more(
     assert builds.scores(BOB) is None
 
 
+@mark.parametrize(
+    "error, level, message",
+    [
+        (
+            OSError("the store cannot be read"),
+            WARNING,
+            f"Cannot read the lists for {ALICE}'s trust scores, so they stay as far as they were "
+            "read: the store cannot be read",
+        ),
+        (
+            RuntimeError("broken"),
+            ERROR,
+            f"Building {ALICE}'s trust scores failed, so they stay as far as they were read",
+        ),
+    ],
+)
 def test_a_build_that_fails_is_logged_and_keeps_what_it_read(
-    builds: TrustBuilds, reader: Reader, background: Background, caplog: LogCaptureFixture
+    builds: TrustBuilds,
+    reader: Reader,
+    background: Background,
+    caplog: LogCaptureFixture,
+    error: Exception,
+    level: int,
+    message: str,
 ) -> None:
     reader.held[ALICE] = held(ALICE, {BOB: True})
 
     def failing() -> None:
-        raise OSError("the store cannot be read")
+        raise error
 
     reader.on_read[BOB] = failing
 
-    with caplog.at_level(ERROR, logger="libranet.webserver.trust_builds"):
+    with caplog.at_level(WARNING, logger="libranet.webserver.trust_builds"):
         builds.session_started(ALICE)
         background.run()
 
     (record,) = caplog.records
-    assert record.getMessage() == (
-        f"Building {ALICE}'s trust scores failed, so they stay as far as they were read"
-    )
+    assert (record.levelno, record.getMessage()) == (level, message)
+    # A store that cannot be read needs no traceback; anything else keeps it.
+    assert (record.exc_info is not None) == (level == ERROR)
     assert built(builds, ALICE) == TrustScores({BOB: TrustScore(1, 1)}, (BOB,))
 
 
