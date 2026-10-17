@@ -91,6 +91,51 @@ class _Build:
     changes: int = 0
 
 
+@dataclass(frozen=True)
+class _Settings:
+    """How long a build looks for each list, and how often, as :class:`TrustBuilds` says.
+
+    Raises:
+        ValueError: ``wait_seconds`` or ``ask_again_seconds`` is negative, or
+            ``poll_interval_seconds`` is not positive.
+    """
+
+    wait_seconds: float
+    ask_again_seconds: float
+    poll_interval_seconds: float
+
+    def __post_init__(self) -> None:
+        if self.wait_seconds < 0:
+            raise ValueError(f"wait_seconds must not be negative, got {self.wait_seconds}")
+
+        if self.ask_again_seconds < 0:
+            raise ValueError(
+                f"ask_again_seconds must not be negative, got {self.ask_again_seconds}"
+            )
+
+        if self.poll_interval_seconds <= 0:
+            raise ValueError(
+                f"poll_interval_seconds must be positive, got {self.poll_interval_seconds}"
+            )
+
+    def asking(self, publish: Publish) -> ContentWait:
+        """What asks a build's peers, with ``publish``, for what it finds and does not hold."""
+        return ContentWait(publish, self.ask_again_seconds, self.poll_interval_seconds)
+
+
+@dataclass
+class _Builds:
+    """The build of each person signed in, by person.
+
+    ``closed`` is set once the web server stops, after which nothing is
+    built. ``lock`` guards the builds, and the lists each holds.
+    """
+
+    by_person: dict[ContentId, _Build] = field(default_factory=dict)
+    closed: bool = False
+    lock: Lock = field(default_factory=Lock)
+
+
 class TrustBuilds:  # pylint: disable=too-many-instance-attributes
     """The trust scores of each person signed in, each built behind their sign-in.
 
@@ -123,42 +168,25 @@ class TrustBuilds:  # pylint: disable=too-many-instance-attributes
         clock: Callable[[], float] = monotonic,
         in_background: Callable[[Callable[[], None]], None] | None = None,
     ) -> None:
-        if wait_seconds < 0:
-            raise ValueError(f"wait_seconds must not be negative, got {wait_seconds}")
-
-        if ask_again_seconds < 0:
-            raise ValueError(f"ask_again_seconds must not be negative, got {ask_again_seconds}")
-
-        if poll_interval_seconds <= 0:
-            raise ValueError(f"poll_interval_seconds must be positive, got {poll_interval_seconds}")
-
+        self._settings = _Settings(wait_seconds, ask_again_seconds, poll_interval_seconds)
         self._lists = lists
         self._publish = publish
         self._replaced = ReplacedVersions(publish, TRUST_LIST_KIND)
         self._limits = limits
-        self._wait_seconds = wait_seconds
-        self._ask_again_seconds = ask_again_seconds
-        self._poll_interval_seconds = poll_interval_seconds
         self._clock = clock
         self._in_background = _on_a_thread if in_background is None else in_background
-        self._builds: dict[ContentId, _Build] = {}
-        # Set once the web server stops, after which nothing is built.
-        self._closed = False
-        # Guards the builds, and the lists each holds.
-        self._lock = Lock()
+        self._builds = _Builds()
 
     def session_started(self, person: ContentId) -> None:
         """Build ``person``'s scores again from the start, as they have just signed in."""
-        build = _Build(
-            person, ContentWait(self._publish, self._ask_again_seconds, self._poll_interval_seconds)
-        )
+        build = _Build(person, self._settings.asking(self._publish))
 
-        with self._lock:
-            if self._closed:
+        with self._builds.lock:
+            if self._builds.closed:
                 return
 
-            replaced = self._builds.get(person)
-            self._builds[person] = build
+            replaced = self._builds.by_person.get(person)
+            self._builds.by_person[person] = build
 
         if replaced is not None:
             replaced.ended.set()
@@ -168,8 +196,8 @@ class TrustBuilds:  # pylint: disable=too-many-instance-attributes
 
     def last_session_ended(self, person: ContentId) -> None:
         """Stop building ``person``'s scores, and let go of them, as they are not signed in."""
-        with self._lock:
-            build = self._builds.pop(person, None)
+        with self._builds.lock:
+            build = self._builds.by_person.pop(person, None)
 
         if build is not None:
             build.ended.set()
@@ -182,8 +210,8 @@ class TrustBuilds:  # pylint: disable=too-many-instance-attributes
         by the job reading the build's lists, or by a new one if none is.
         Nothing is done for a person not signed in.
         """
-        with self._lock:
-            build = self._builds.get(person)
+        with self._builds.lock:
+            build = self._builds.by_person.get(person)
 
             if build is None:
                 return
@@ -200,17 +228,17 @@ class TrustBuilds:  # pylint: disable=too-many-instance-attributes
 
     def scores(self, person: ContentId) -> TrustScores | None:
         """``person``'s scores, from the lists read so far; ``None`` if they are not signed in."""
-        with self._lock:
-            build = self._builds.get(person)
+        with self._builds.lock:
+            build = self._builds.by_person.get(person)
 
         return None if build is None else self._scores(build)
 
     def close(self) -> None:
         """End every build, and start no more, as the web server stops."""
-        with self._lock:
-            self._closed = True
-            builds = list(self._builds.values())
-            self._builds.clear()
+        with self._builds.lock:
+            self._builds.closed = True
+            builds = list(self._builds.by_person.values())
+            self._builds.by_person.clear()
 
         for build in builds:
             build.ended.set()
@@ -223,7 +251,7 @@ class TrustBuilds:  # pylint: disable=too-many-instance-attributes
         """
         try:
             while not build.ended.is_set():
-                with self._lock:
+                with self._builds.lock:
                     lists = dict(build.lists)
                     changes = build.changes
 
@@ -247,7 +275,7 @@ class TrustBuilds:  # pylint: disable=too-many-instance-attributes
                 build.person,
             )
 
-            with self._lock:
+            with self._builds.lock:
                 build.reading = False
 
     def _done(self, build: _Build, changes: int) -> bool:
@@ -255,7 +283,7 @@ class TrustBuilds:  # pylint: disable=too-many-instance-attributes
 
         If it is, a change after this starts reading again.
         """
-        with self._lock:
+        with self._builds.lock:
             build.reading = build.changes != changes
             return not build.reading
 
@@ -266,7 +294,7 @@ class TrustBuilds:  # pylint: disable=too-many-instance-attributes
         from what is held of it then (§4.3). It stops early if the build
         ends.
         """
-        deadline = self._clock() + self._wait_seconds
+        deadline = self._clock() + self._settings.wait_seconds
         looking = list(needed)
 
         while looking:
@@ -280,7 +308,7 @@ class TrustBuilds:  # pylint: disable=too-many-instance-attributes
                     still_looking.append(owner)
 
             looking = still_looking
-            pause_seconds = min(self._poll_interval_seconds, deadline - self._clock())
+            pause_seconds = min(self._settings.poll_interval_seconds, deadline - self._clock())
 
             if looking and build.ended.wait(max(pause_seconds, 0.0)):
                 return
@@ -301,7 +329,7 @@ class TrustBuilds:  # pylint: disable=too-many-instance-attributes
             return False
 
         # A change the person made since this read began is newer than it.
-        with self._lock:
+        with self._builds.lock:
             build.lists.setdefault(owner, held.entries)
 
         self._replaced.block(owner, held.replaced)
@@ -326,7 +354,7 @@ class TrustBuilds:  # pylint: disable=too-many-instance-attributes
 
     def _scores(self, build: _Build) -> TrustScores:
         """``build``'s scores, from the lists it has read so far."""
-        with self._lock:
+        with self._builds.lock:
             lists = dict(build.lists)
 
         return TrustScores.from_lists(build.person, lists, self._limits)

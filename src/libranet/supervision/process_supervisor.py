@@ -23,7 +23,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from logging import Logger
 from multiprocessing import get_context
+from multiprocessing.context import BaseContext
 from multiprocessing.process import BaseProcess
+from multiprocessing.synchronize import Event
 from time import monotonic, sleep
 from typing import Final, Iterable, Sequence
 
@@ -92,6 +94,64 @@ class _Backoff:
         return float(min(self.delay_seconds * 2 ** (failures - 1), self.max_delay_seconds))
 
 
+@dataclass(frozen=True)
+class _Settings:
+    """How the supervisor paces itself.
+
+    It looks over its children every ``poll_interval_seconds``, waits up to
+    ``ready_timeout_seconds`` for a (re)started dispatcher to come up, and
+    up to ``stop_timeout_seconds`` for a child to stop at each step of
+    stopping it. A module that keeps failing waits as ``backoff`` says.
+
+    Raises:
+        ValueError: ``poll_interval_seconds``, ``ready_timeout_seconds``,
+            or ``stop_timeout_seconds`` is not positive.
+    """
+
+    poll_interval_seconds: float
+    ready_timeout_seconds: float
+    stop_timeout_seconds: float
+    backoff: _Backoff
+
+    def __post_init__(self) -> None:
+        if (
+            self.poll_interval_seconds <= 0
+            or self.ready_timeout_seconds <= 0
+            or self.stop_timeout_seconds <= 0
+        ):
+            raise ValueError(
+                "poll_interval_seconds, ready_timeout_seconds, and stop_timeout_seconds "
+                "must be positive"
+            )
+
+
+@dataclass
+class _StopSignals:
+    """What tells the supervisor and its children to stop.
+
+    Modules watch ``stop``, which only :meth:`ProcessSupervisor.shutdown`
+    sets. The node's signal handler sets ``stop_requested`` instead, the
+    signal :meth:`ProcessSupervisor.run` is given, so a child never sees a
+    signal meant for the supervisor. Until then, ``stop`` stands in for it.
+    The dispatcher has its own, ``dispatcher_stop``, set once every module
+    has exited.
+    """
+
+    stop: Event
+    dispatcher_stop: Event
+    stop_requested: StopSignal
+
+    @classmethod
+    def of(cls, context: BaseContext) -> _StopSignals:
+        """New signals, none of them set, shared with children ``context`` starts."""
+        stop = context.Event()
+        return cls(stop, context.Event(), stop)
+
+    def stopping(self) -> bool:
+        """Whether the node was asked to stop, or has been shut down."""
+        return self.stop.is_set() or self.stop_requested.is_set()
+
+
 class ProcessSupervisor:  # pylint: disable=too-many-instance-attributes
     """Runs the dispatcher and a fixed set of modules, restarting any that exit.
 
@@ -121,32 +181,21 @@ class ProcessSupervisor:  # pylint: disable=too-many-instance-attributes
         if len(set(names)) != len(names):
             raise ValueError(f"Module names must be unique, got {names}")
 
-        if poll_interval_seconds <= 0 or ready_timeout_seconds <= 0 or stop_timeout_seconds <= 0:
-            raise ValueError(
-                "poll_interval_seconds, ready_timeout_seconds, and stop_timeout_seconds "
-                "must be positive"
-            )
-
-        backoff = _Backoff(restart_delay_seconds, max_restart_delay_seconds, stable_after_seconds)
+        settings = _Settings(
+            poll_interval_seconds,
+            ready_timeout_seconds,
+            stop_timeout_seconds,
+            _Backoff(restart_delay_seconds, max_restart_delay_seconds, stable_after_seconds),
+        )
 
         self._config = config
         self._specs = {spec.name: spec for spec in modules}
         self._dispatcher_entry = dispatcher_entry
         self._logger = logger or get_logger(ModuleName.SUPERVISOR)
-        self._poll_interval_seconds = poll_interval_seconds
-        self._backoff = backoff
-        self._ready_timeout_seconds = ready_timeout_seconds
-        self._stop_timeout_seconds = stop_timeout_seconds
+        self._settings = settings
 
         self._context = get_context(START_METHOD)
-        # Children watch ``_stop``, which only :meth:`shutdown` sets. The
-        # node's signal handler sets the signal :meth:`run` is given instead,
-        # so a child never sees a signal meant for the supervisor. Until then,
-        # ``_stop`` stands in for it; :meth:`_stopping` checks both.
-        self._stop = self._context.Event()
-        # The dispatcher has its own, set once every module has exited.
-        self._dispatcher_stop = self._context.Event()
-        self._stop_requested: StopSignal = self._stop
+        self._signals = _StopSignals.of(self._context)
         self._queues = create_module_queues(
             names,
             START_METHOD,
@@ -175,13 +224,13 @@ class ProcessSupervisor:  # pylint: disable=too-many-instance-attributes
         if stop.is_set():
             return
 
-        self._stop_requested = stop
+        self._signals.stop_requested = stop
         self._logger.info("Supervising the dispatcher and %d modules", len(self._modules))
 
         try:
             while not self._stopping():
                 self.poll()
-                sleep(self._poll_interval_seconds)
+                sleep(self._settings.poll_interval_seconds)
 
         finally:
             self.shutdown()
@@ -211,16 +260,16 @@ class ProcessSupervisor:  # pylint: disable=too-many-instance-attributes
         until they have exited. A module cannot exit until whatever it
         published on the way out has been read.
         """
-        self._stop.set()
+        self._signals.stop.set()
         self._stop_children(self._modules.values())
-        self._dispatcher_stop.set()
+        self._signals.dispatcher_stop.set()
         self._stop_children([self._dispatcher])
         self._logger.info("All module processes stopped")
 
     def _stop_children(self, children: Iterable[_Child]) -> None:
         """Wait for ``children``, asked to stop, escalating to ``SIGTERM`` and ``SIGKILL``."""
         running = [(child, child.process) for child in children if child.process is not None]
-        deadline = monotonic() + self._stop_timeout_seconds
+        deadline = monotonic() + self._settings.stop_timeout_seconds
 
         for _, process in running:
             process.join(max(0.0, deadline - monotonic()))
@@ -229,18 +278,18 @@ class ProcessSupervisor:  # pylint: disable=too-many-instance-attributes
             if process.is_alive():
                 self._logger.warning("Module %s did not stop in time; terminating", child.name)
                 process.terminate()
-                process.join(self._stop_timeout_seconds)
+                process.join(self._settings.stop_timeout_seconds)
 
             if process.is_alive():
                 self._logger.error("Module %s ignored SIGTERM; killing", child.name)
                 process.kill()
-                process.join(self._stop_timeout_seconds)
+                process.join(self._settings.stop_timeout_seconds)
 
             self._release(child, process)
 
     def _stopping(self) -> bool:
         """Whether the node was asked to stop, or has been shut down."""
-        return self._stop.is_set() or self._stop_requested.is_set()
+        return self._signals.stopping()
 
     def _child(self, name: ModuleName) -> _Child:
         if name == ModuleName.DISPATCHER:
@@ -274,14 +323,14 @@ class ProcessSupervisor:  # pylint: disable=too-many-instance-attributes
                 self._dispatcher_entry,
                 self._config,
                 self._queues,
-                self._dispatcher_stop,
+                self._signals.dispatcher_stop,
                 ready,
             ),
             name=f"libranet-{ModuleName.DISPATCHER}",
             daemon=True,
         )
         self._launch(self._dispatcher, process)
-        deadline = monotonic() + self._ready_timeout_seconds
+        deadline = monotonic() + self._settings.ready_timeout_seconds
 
         while not ready.wait(_READY_CHECK_INTERVAL_SECONDS):
             if self._stopping():
@@ -294,7 +343,7 @@ class ProcessSupervisor:  # pylint: disable=too-many-instance-attributes
             if monotonic() >= deadline:
                 self._logger.error(
                     "Dispatcher not ready after %.1f seconds; terminating it",
-                    self._ready_timeout_seconds,
+                    self._settings.ready_timeout_seconds,
                 )
                 process.terminate()
                 return False
@@ -308,7 +357,7 @@ class ProcessSupervisor:  # pylint: disable=too-many-instance-attributes
                 return
 
             self._reap(child, now)
-            delay_seconds = self._backoff.delay(child.failures)
+            delay_seconds = self._settings.backoff.delay(child.failures)
             child.restart_at = now + delay_seconds
             self._logger.info("Restarting module %s in %.1f seconds", child.name, delay_seconds)
 
@@ -316,7 +365,13 @@ class ProcessSupervisor:  # pylint: disable=too-many-instance-attributes
             spec = self._specs[child.name]
             process = self._context.Process(
                 target=run_module_process,
-                args=(spec.name, spec.factory, self._config, self._queues[spec.name], self._stop),
+                args=(
+                    spec.name,
+                    spec.factory,
+                    self._config,
+                    self._queues[spec.name],
+                    self._signals.stop,
+                ),
                 name=f"libranet-{spec.name}",
                 daemon=True,
             )
@@ -352,9 +407,9 @@ class ProcessSupervisor:  # pylint: disable=too-many-instance-attributes
         if process is None:
             raise RuntimeError(f"Module {child.name} has no process to reap")
 
-        process.join(self._stop_timeout_seconds)
+        process.join(self._settings.stop_timeout_seconds)
         uptime_seconds = now - child.started_at
-        child.failures = self._backoff.failures(child.failures, uptime_seconds)
+        child.failures = self._settings.backoff.failures(child.failures, uptime_seconds)
         self._logger.warning(
             "Module %s exited with status %s after %.1f seconds (consecutive failures: %d)",
             child.name,
