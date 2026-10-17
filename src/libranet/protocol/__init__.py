@@ -35,6 +35,7 @@ from libranet.protocol.bundle_requests import (
     WholeBundleRequest,
 )
 from libranet.protocol.client_origin import is_local_client
+from libranet.protocol.connecting_requests import ONLY_TRUSTED_FIELD, ConnectingRequest
 from libranet.protocol.dial_requests import ADDRESS_FIELD, DialRequest
 from libranet.protocol.drop_requests import (
     DropRequest,
@@ -96,6 +97,7 @@ __all__ = [
     "MIN_PASSWORD_CHARACTERS",
     "NODES_PATH",
     "OCTET_STREAM",
+    "ONLY_TRUSTED_FIELD",
     "REQUEST_PATH_HEADER",
     "RESULTS_FIELD",
     "SEARCH_PATH",
@@ -105,6 +107,7 @@ __all__ = [
     "BuildRequest",
     "BundleEditRequest",
     "BytesSource",
+    "ConnectingRequest",
     "CopySource",
     "DialRequest",
     "DropRequest",

@@ -119,7 +119,10 @@ def _config(
         LibranetConfig(
             network=NetworkConfig(**settings),
             storage=StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache"),
-            identity=IdentityConfig(allow_unsigned_api_reads=allow_unsigned_api_reads),
+            # The node's own trust build reads its list once, and is done.
+            identity=IdentityConfig(
+                allow_unsigned_api_reads=allow_unsigned_api_reads, trust_list_wait_seconds=0
+            ),
         )
     )
 
@@ -150,7 +153,11 @@ def _config_port(module: WebServerModule) -> int:
 
 
 def _serving(module: WebServerModule, queues: ModuleQueues) -> tuple[str, int]:
-    """Where ``module`` listens, once it has named the peers connected to it: none yet."""
+    """Where ``module`` listens, once it has named the peers connected to it, none yet.
+
+    And once it has said whom the node trusts, no one, from what stats is said
+    to have kept, after its own build searched the drop of the node's list.
+    """
     address = _wait_for_address(module)
     started = queues.outbox.get(timeout=1)
     assert (started["event"], started["direction"], started["node_ids"]) == (
@@ -158,6 +165,17 @@ def _serving(module: WebServerModule, queues: ModuleQueues) -> tuple[str, int]:
         ConnectionDirection.INBOUND,
         [],
     )
+    assert queues.outbox.get(timeout=1)["event"] == EventType.NODE_TRUST_REQUESTED
+    queues.inbox.put(
+        make_message(
+            EventType.NODE_TRUST_STORED, ModuleName.STATS, {"trusted": [], "untrusted": []}
+        )
+    )
+    said = [queues.outbox.get(timeout=5) for _ in range(2)]
+    assert {message["event"] for message in said} == {
+        EventType.SEARCH_REQUESTED,
+        EventType.NODE_TRUST,
+    }
     return address
 
 
@@ -650,6 +668,7 @@ def test_module_subscribes_to_what_other_modules_report() -> None:
         EventType.BACKUP_STATE,
         EventType.PEERS_CONNECTED_REQUESTED,
         EventType.ADDRESS_DIALED,
+        EventType.NODE_TRUST_STORED,
     }
 
 

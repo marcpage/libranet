@@ -14,7 +14,13 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
 from libranet.identity.node_identity import NodeIdentity
-from libranet.identity.trust import MIN_TRUST_LIST_BITS, TrustList
+from libranet.identity.trust import (
+    MIN_TRUST_LIST_BITS,
+    HeldTrustList,
+    TrustLimits,
+    TrustList,
+    TrustScore,
+)
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.problems import CONTENT_UNAVAILABLE, INVALID_CONTENT_ADDRESS, INVALID_REQUEST
@@ -26,6 +32,7 @@ from libranet.webserver.drop_handler import DropHandler
 from libranet.webserver.http_types import Request, RequestBody, Response
 from libranet.webserver.node_trust_handlers import OwnTrust
 from libranet.webserver.search_handler import SearchHandler
+from libranet.webserver.trust_builds import TrustBuilds
 from libranet.webserver.trust_lists import TrustLists
 
 from tests.helpers import new_identity, problem_type
@@ -377,3 +384,51 @@ def test_a_negative_retry_after_is_refused(
 
     with raises(ValueError, match="retry_after_seconds"):
         OwnTrust.of(node, search, drops, recorder, content=uploads, retry_after_seconds=-1)
+
+
+class NoLists:
+    """Stands in for the trust list reader of the node's own build, which holds no list."""
+
+    def read(self, owner: ContentId) -> HeldTrustList:
+        return HeldTrustList(owner)
+
+
+@fixture
+def builds(recorder: Recorder) -> TrustBuilds:
+    """A build of the node's own scores, which reads nothing unless a test runs it."""
+    return TrustBuilds(
+        NoLists(),
+        recorder,
+        TrustLimits(4, 1000),
+        wait_seconds=0,
+        ask_again_seconds=RETRY_AFTER_SECONDS,
+        in_background=lambda job: None,
+    )
+
+
+def test_each_version_placed_is_handed_to_the_node_s_own_build(
+    search: SearchHandler,
+    uploads: OwnUploads,
+    node: NodeIdentity,
+    recorder: Recorder,
+    builds: TrustBuilds,
+) -> None:
+    drops = DropHandler(uploads, MAX_BYTES, MAX_SECONDS, MAX_MINIMUM_BITS)
+    trust = OwnTrust.of(
+        node,
+        search,
+        drops,
+        recorder,
+        content=uploads,
+        retry_after_seconds=RETRY_AFTER_SECONDS,
+        builds=builds,
+    )
+    builds.session_started(node.node_id)
+
+    assert trust.trust(changing(BOB)).status == 201
+    assert trust.trust(changing(BOB)).status == 204
+    assert trust.trust(changing(node.node_id)).status == 400
+    scores = builds.scores(node.node_id)
+
+    assert scores is not None
+    assert scores.scores == {BOB: TrustScore(1, 1)}

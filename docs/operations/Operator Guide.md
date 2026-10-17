@@ -631,15 +631,21 @@ those they trust, each step out a tenth as strong, as the
 them behind the sign-in, which it does not hold up, and keeps them until the
 person's last session ends. A node keeps a list of its own, which you change
 on `/config` (§4.7), and the scores of whoever trusts the node reach through
-it.
+it. The node builds scores of its own from it too.
 
-Three settings bound the work:
+Three settings bound the work, the node's own scores' too:
 
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `identity.trust_max_steps` | `4` | How many steps out from the person's own list the scores reach; the lists of those at the last step are not read |
 | `identity.trust_max_lists` | `1000` | The most lists read for one person, their own among them |
 | `identity.trust_list_wait_seconds` | `30.0` | How long the node looks for each list, asking its peers, before it scores from what it holds of it |
+
+And one says how often the node builds its own again:
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `identity.node_trust_rebuild_seconds` | `3600.0` | How often the node builds its own scores again, reading afresh the lists it reaches through its own |
 
 Each step multiplies the lists read, and each list read is kept in memory
 for as long as the person is signed in, so raising either limit costs memory

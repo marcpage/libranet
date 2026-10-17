@@ -241,7 +241,7 @@ that subscriber's inbox.
 #### 3.2.1 Stats
 
 The node's memory, and the only process that opens `libranet.sqlite3`. It
-subscribes to 21 of the 46 events, nearly everything the other modules
+subscribes to 23 of the 49 events, nearly everything the other modules
 report, and records each in one small statement. Every
 `stats.derive_interval_seconds` it rewrites the node, seek, candidate,
 blocked, and peer lists into `lists/`, which the web server, connection
@@ -252,7 +252,9 @@ list (Phase 5 Step 107), and asks for them as it starts. It keeps the
 content the node has blocked
 (`data.blocked`, Phase 4 Step 30), and writes the blocked list at once when
 that grows, and the seek list when a search names a prefix it does not list
-(Phase 4 Step 93).
+(Phase 4 Step 93). It keeps whom the node trusts and distrusts, as the web
+server says it (`node.trust`), and says what it kept when the web server asks
+as it starts (`node.trust_stored`, Phase 5 Step 113).
 It answers two questions from the eviction module: which content to let go
 of first (`eviction.candidates`), and which bundles' resolved files to keep
 (`resolved.reclaim`). It also adds identifiers it knows of to cached search
@@ -285,9 +287,13 @@ module keeps, and which the stats module lists. A page that deletes content
 `data.blocked`, and it answers for blocked content, as `lists/blocked.json`
 names it, as for content it does not hold. An address the operator asks to
 connect to on `/config` it hands the connection manager, and waits for what
-came of it, `address.dialed`, to answer (Phase 5 Step 109).
-It subscribes to only four events, `app.path_resolved`, `backup.state`,
-`peers.connected_requested`, and `address.dialed`, and publishes nineteen.
+came of it, `address.dialed`, to answer (Phase 5 Step 109). It builds the
+node's own trust scores, from its list outward, starting from what stats kept
+of them (`node.trust_stored`), and says whom they trust (`node.trust`, Phase 5
+Step 113).
+It subscribes to only five events, `app.path_resolved`, `backup.state`,
+`peers.connected_requested`, `address.dialed`, and `node.trust_stored`, and
+publishes twenty-one.
 
 #### 3.2.3 Validator
 
@@ -863,6 +869,9 @@ to end its loop.
 | `address.verified` | | P | | S | | | | |
 | `address.dial_requested` | P | S | | | | | | |
 | `address.dialed` | S | P | | | | | | |
+| `node.trust` | P | | | S | | | | |
+| `node.trust_requested` | P | | | S | | | | |
+| `node.trust_stored` | S | | | P | | | | |
 | *Connections and fetching* | | | | | | | | |
 | `connection.opened` | | P | | S | | | | |
 | `connection.closed` | | P | | S | | | | |
@@ -906,7 +915,7 @@ to end its loop.
 | `data.blocked` | P | | | S | | | S | |
 | *Lifecycle* | | | | | | | | |
 | `shutdown` | S | S | S | S | S | S | S | S |
-| **Publishes / subscribes** | 19 / 4 | 16 / 8 | 2 / 1 | 4 / 21 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 |
+| **Publishes / subscribes** | 21 / 5 | 16 / 8 | 2 / 1 | 5 / 23 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 |
 
 The `shutdown` row and its subscriptions are implicit: every module
 receives it without listing it, and nothing publishes it (§6.4). The totals
@@ -932,6 +941,9 @@ A content id is an `algorithm` and a lower-case hex `hash`, or, in
 | `address.verified` | `node_id`, `endpoint` | The endpoint reached a node already connected at another |
 | `address.dial_requested` | `dial_id`, `endpoint` | The operator asked on `/config` to connect to this address; dial it now |
 | `address.dialed` | `dial_id`, `outcome`, `node_id`, `detail` | What came of that dial: `connected`, `already_connected`, `this_node`, or `unreached`, with the node reached, or why none was |
+| `node.trust` | `trusted`, `untrusted`, `only_trusted` | Whom the node's own scores trust and distrust, any other being of unknown trust, and whether it connects only to the trusted |
+| `node.trust_requested` | — | Say whom the node trusted and distrusted when it last said so |
+| `node.trust_stored` | `trusted`, `untrusted` | Whom the node trusted and distrusted, as stats kept it |
 | `connection.opened` | `node_id`, `endpoint` | A peer proved its node id |
 | `connection.closed` | `node_id`, `remote` | A connection closed; `remote` is false if this node closed it |
 | `connection.failed` | `node_id`, `endpoint` | Dialing the endpoint did not reach the node expected there |
@@ -996,6 +1008,7 @@ flowchart TB
     web <-->|"backup requests<br/>backup.state"| backup
     web -->|"data.put_completed"| val
     web <-->|"data.search_requested, address.dial_requested<br/>address.dialed"| conn
+    web <-->|"node.trust_requested<br/>node.trust_stored"| stats
     conn -->|"data.put_completed"| val
     val --> stored
     backup --> stored

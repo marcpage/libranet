@@ -264,10 +264,10 @@ files together; there is no switch for it.
 ### 3.5 The Statistics Database
 
 `libranet.sqlite3` holds what the node knows about content and peers, in the
-tables `data_stats`, `node_stats`, `node_addresses`, `app_bundles`, and
-`seek_entries` (`src/libranet/stats/schema.py`). Only the stats module ever
-opens it; every other module learns from messages and from the lists derived
-into the cache directory.
+tables `data_stats`, `node_stats`, `node_addresses`, `node_trust`,
+`app_bundles`, and `seek_entries` (`src/libranet/stats/schema.py`). Only the
+stats module ever opens it; every other module learns from messages and from
+the lists derived into the cache directory.
 
 It runs in write-ahead-log mode, so `libranet.sqlite3-wal` and
 `libranet.sqlite3-shm` sit beside it while the node runs. Its location
@@ -275,7 +275,8 @@ follows `storage.data_dir` and cannot be set on its own.
 
 Deleting it, with the node stopped, makes the node forget every peer, every
 statistic, and every block (Phase 4 Step 30). Knowing no peers, it falls back
-to the seed list (§6.1).
+to the seed list (§6.1). It forgets whom it trusted too, until it builds its
+trust scores again (Phase 5 Step 113).
 
 ### 3.6 The Application Registry: `applications.json`
 

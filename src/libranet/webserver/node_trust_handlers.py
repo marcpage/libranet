@@ -35,7 +35,9 @@ change are both ``503``, and what is not held is asked for, since it may be
 newer than the newest held.
 
 Reads and changes are made one at a time, in the order they come, each change
-over the version the one before it placed.
+over the version the one before it placed. Each version placed is handed to
+the build of the node's own scores, which score again, as a person's change is
+handed to theirs (Phase 5 Step 113).
 """
 
 from __future__ import annotations
@@ -52,6 +54,7 @@ from libranet.webserver.costly_work import Turns
 from libranet.webserver.drop_handler import DropHandler
 from libranet.webserver.http_types import Request, Response, json_response
 from libranet.webserver.search_handler import SearchHandler
+from libranet.webserver.trust_builds import TrustBuilds
 from libranet.webserver.trust_handlers import TrustEntry, TrustListChanges
 from libranet.webserver.trust_lists import TrustLists
 
@@ -67,13 +70,16 @@ class OwnTrust:
     """The endpoints reading and changing ``node``'s own trust list.
 
     Its list is read, and each version placed, by ``changes``, signed by
-    ``node``. Reads and changes take ``turns``, as the edits are made one at
-    a time. Any number of request threads may use them at once.
+    ``node``. Each version placed is handed to the build of the node's own
+    scores in ``builds``, if given, to score again. Reads and changes take
+    ``turns``, as the edits are made one at a time. Any number of request
+    threads may use them at once.
     """
 
     node: NodeIdentity
     changes: TrustListChanges
     _: KW_ONLY
+    builds: TrustBuilds | None = None
     turns: Turns = field(default_factory=Turns)
 
     @classmethod
@@ -86,14 +92,16 @@ class OwnTrust:
         *,
         content: ContentSource,
         retry_after_seconds: int,
+        builds: TrustBuilds | None = None,
     ) -> OwnTrust:
         """The endpoints for ``node``, reading its list from ``content``, found by ``search``.
 
         Each version is made a drop by ``drops``, its public key stored
-        again in ``drops.uploads``, which ``content`` reads too. What was
-        found at the drop and is not held is asked for with ``publish``, a
-        client told to ask again after ``retry_after_seconds``, and what a
-        newer version replaces is blocked with it.
+        again in ``drops.uploads``, which ``content`` reads too, and handed
+        to ``builds``, if given. What was found at the drop and is not held
+        is asked for with ``publish``, a client told to ask again after
+        ``retry_after_seconds``, and what a newer version replaces is blocked
+        with it.
 
         Raises:
             ValueError: ``retry_after_seconds`` is negative.
@@ -105,7 +113,7 @@ class OwnTrust:
             retry_after_seconds=retry_after_seconds,
             missing_detail=_MISSING_DETAIL,
         )
-        return cls(node, changes)
+        return cls(node, changes, builds=builds)
 
     def read(self, request: Request) -> Response:
         """``GET /config/api/trust``: the newest version of this node's trust list."""
@@ -143,10 +151,15 @@ class OwnTrust:
         with self.turns.turn():
             placed = self.changes.change(request, self.node.node_id, self.node, entry)
 
-        if isinstance(placed, Response):
-            return placed
+            if isinstance(placed, Response):
+                return placed
 
-        stored, changed = placed
+            stored, changed = placed
+
+            # In its turn, so that the build is handed each version in order.
+            if self.builds is not None:
+                self.builds.changed(self.node.node_id, changed.entries)
+
         return json_response(
             {**stored.value(), "signer": str(self.node.node_id), "version": changed.version},
             HTTPStatus.CREATED,

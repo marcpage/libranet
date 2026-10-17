@@ -96,6 +96,10 @@ DEFAULT_TRUST_MAX_LISTS: Final = 1000
 # it reads what it holds of it (Trust Network §4.3, Phase 5 Step 99).
 DEFAULT_TRUST_LIST_WAIT_SECONDS: Final = 30.0
 
+# How often the node builds its own trust scores again by default (Phase 5
+# Step 113).
+DEFAULT_NODE_TRUST_REBUILD_SECONDS: Final = HOUR_SECONDS
+
 # How many bits a target hash has, and so the most a drop can match it by
 # (HttpApi §9). It is defined here, where the settings are checked against
 # it, rather than with drops.
@@ -564,6 +568,11 @@ class StorageConfig(_Section):
         """Each application's store, a file each, owned by the web server (Phase 3 Step 70)."""
         return self.data_dir / "store"
 
+    @property
+    def connecting_path(self) -> Path:
+        """Whether to connect only to trusted nodes, owned by the web server (Phase 5 Step 113)."""
+        return self.data_dir / "connecting.json"
+
 
 class IdentityConfig(_Section):
     """Node key material and RFC 9421 signature policy (Step 6)."""
@@ -611,6 +620,11 @@ class IdentityConfig(_Section):
     # peers.search_passes less one, times network.retry_after_seconds, so
     # that a list kept on another node is found.
     trust_list_wait_seconds: float = Field(default=DEFAULT_TRUST_LIST_WAIT_SECONDS, ge=0)
+
+    # How often the node builds its own trust scores again, reading the lists
+    # it reaches afresh, as they say which peers it connects to (Phase 5 Step
+    # 113). A change to its own list on /config is scored at once.
+    node_trust_rebuild_seconds: float = Field(default=DEFAULT_NODE_TRUST_REBUILD_SECONDS, gt=0)
 
     @field_validator("person_key_bits", mode="after")
     @classmethod

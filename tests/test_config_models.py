@@ -322,6 +322,21 @@ def test_trust_scores_reach_4_steps_and_1000_lists_waiting_30_seconds_for_each_b
     assert IdentityConfig(trust_list_wait_seconds=0).trust_list_wait_seconds == 0
 
 
+def test_the_node_builds_its_own_trust_scores_again_hourly_by_default() -> None:
+    assert IdentityConfig().node_trust_rebuild_seconds == 3600.0
+
+    with raises(ValidationError, match="node_trust_rebuild_seconds"):
+        IdentityConfig(node_trust_rebuild_seconds=0)
+
+
+def test_whether_to_connect_only_to_trusted_nodes_is_kept_in_the_data_directory(
+    tmp_path: Path,
+) -> None:
+    storage = StorageConfig(data_dir=tmp_path / "data", cache_dir=tmp_path / "cache")
+
+    assert storage.connecting_path == tmp_path / "data" / "connecting.json"
+
+
 @mark.parametrize(
     "setting, value",
     [("trust_max_steps", 0), ("trust_max_lists", 0), ("trust_list_wait_seconds", -0.5)],
@@ -755,7 +770,12 @@ def test_the_example_config_states_the_default_person_key_sizes() -> None:
 def test_the_example_config_states_the_default_trust_score_settings() -> None:
     example = Path(__file__).parent.parent / "examples" / "libranet.yaml"
     stated = safe_load(example.read_text(encoding="utf-8"))["identity"]
-    settings = ("trust_max_steps", "trust_max_lists", "trust_list_wait_seconds")
+    settings = (
+        "trust_max_steps",
+        "trust_max_lists",
+        "trust_list_wait_seconds",
+        "node_trust_rebuild_seconds",
+    )
 
     assert {name: stated[name] for name in settings} == {
         name: getattr(IdentityConfig(), name) for name in settings

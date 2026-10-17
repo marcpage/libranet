@@ -274,6 +274,12 @@ identity:
   # before it reads the versions this node holds then, or, holding none,
   # leaves the list out until the person next signs in (Trust Network §4.3).
   trust_list_wait_seconds: 30.0
+  # How often the node builds its own trust scores again, reading afresh
+  # the lists it reaches through its own. They say which nodes it connects
+  # to: never one it distrusts, and, if /config says so, only those it
+  # trusts. It builds them as it starts, and scores a change to its own
+  # list at once.
+  node_trust_rebuild_seconds: 3600.0
 
 stats:
   # How often the plain /data/nodes and /data/seek files are rewritten from
