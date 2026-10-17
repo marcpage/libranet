@@ -1877,10 +1877,10 @@ for the movie library, one of them changed, and 23 for `/config`.
   as `loadNode` learns the main port.
 
 Checked live, with a new node from the scratchpad on `127.0.0.1`, and an
-untrusted application, `hello`, built from the App Developer Guide's
-example. In headless Chrome, at 1280 and 375 pixels wide, each of the movie
-library, the directory, mail, the nodes list, one node's page, `hello`, and
-`/config` showed 🏠 at the same place, nothing drawn under it, labelled
+untrusted application, `hello`, carrying the same link and style. In
+headless Chrome, at 1280 and 375 pixels wide, each of the movie library, the
+directory, mail, the nodes list, one node's page, `hello`, and `/config`
+showed 🏠 at the same place, with nothing of the page's under it, labelled
 "Home". A real click on it took each to `http://127.0.0.1:24600/`, the
 front page: `hello`, whose origin is `"null"` in its sandbox, as well, and
 `/config`, from its own port. The node logged no warning or error.
