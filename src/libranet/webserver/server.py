@@ -58,6 +58,7 @@ from libranet.config.models import (
     DEFAULT_CONFIG_HOSTS,
     DEFAULT_READ_AHEAD_PARTS,
     IDLE_TIMEOUT_SECONDS,
+    LOOPBACK_FOR_ANY,
     StorageConfig,
 )
 from libranet.identity.authentication import RequestAuthenticator
@@ -155,10 +156,6 @@ from libranet.webserver.trust_lists import TrustLists
 # this process may not listen on it, as one below 1024 may need privileges
 # for.
 _PORT_TAKEN: Final = frozenset({EADDRINUSE, EACCES})
-
-# The address a port is asked about before it is bound, for each address that
-# stands for every address of its family.
-_LOOPBACK_FOR_ANY: Final = {"": "127.0.0.1", "0.0.0.0": "127.0.0.1", "::": "::1"}
 
 # How long that question waits for an answer. Something listening on this
 # machine answers at once.
@@ -714,7 +711,7 @@ class LibranetHTTPServer(ThreadingHTTPServer):
         host, port = self.server_address[:2]
 
         # Port 0 asks for any free port, which nothing can be using.
-        if port and _answered(_LOOPBACK_FOR_ANY.get(str(host), str(host)), int(port)):
+        if port and _answered(LOOPBACK_FOR_ANY.get(str(host), str(host)), int(port)):
             raise OSError(EADDRINUSE, f"Port {port} is already in use on this machine")
 
         TCPServer.server_bind(self)

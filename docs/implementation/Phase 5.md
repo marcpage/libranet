@@ -1596,6 +1596,7 @@ where it went.
 | #352 | Broad exception catches, where known exceptions can be named | None: cleanup, #367 |
 | #353 | Documentation out of sync with the code or other documentation | None: cleanup |
 | #354 | What the specifications can settle from the implementation | None: cleanup |
+| #370 | The local network's nodes listening only at `127.0.0.1` | None: a fix |
 
 ## 5. Suggested Build Order
 

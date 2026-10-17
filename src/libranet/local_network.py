@@ -1,9 +1,10 @@
 """Run a local network of Libranet nodes for manual testing.
 
-Starts ``--count`` nodes (40 by default) at ``--host`` (``127.0.0.1`` by
-default), one per port from ``--base-port`` up, and tells each one about all
-the others, at that address, by posting a node list to its ``/data/nodes``
-(HttpApi §10.5). Each node's ``/config`` is on its port plus 100, as a node's
+Starts ``--count`` nodes (40 by default) at ``--host`` (``0.0.0.0``, every
+IPv4 address, by default), one per port from ``--base-port`` up, and tells
+each one about all the others, at that address, or at this machine's
+loopback address if it stands for every address, by posting a node list to
+its ``/data/nodes`` (HttpApi §10.5). Each node's ``/config`` is on its port plus 100, as a node's
 is by default, or plus the next multiple of 100 above every node's port when
 there are more than 100 nodes. The first sixteen nodes are given keys whose
 node ids start with the hex digits ``0`` to ``f`` in order, so every
@@ -50,6 +51,7 @@ from yaml import safe_dump
 from libranet.config.models import (
     CONFIG_PORT_STEP,
     HIGHEST_PORT,
+    LOOPBACK_FOR_ANY,
     MIB,
     LibranetConfig,
     LoggingConfig,
@@ -65,9 +67,9 @@ from libranet.modules import ModuleName
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.protocol.lists import NODES_PATH, node_list_body
 
-#: Where the nodes listen, and are told about each other, unless ``--host``
-#: says otherwise.
-HOST: Final = "127.0.0.1"
+#: Where the nodes listen unless ``--host`` says otherwise: every IPv4
+#: address, as a node does by default, so other machines can use them too.
+HOST: Final = "0.0.0.0"
 
 #: How many nodes get distinct first hex digits: one per hex digit.
 DISTINCT_DIGITS: Final = 16
@@ -138,8 +140,9 @@ class NodePlace:
 
     @property
     def endpoint(self) -> str:
-        """The URL the node is reached at."""
-        host = f"[{self.host}]" if ":" in self.host else self.host
+        """The URL the node is reached at: its host, or loopback if that is every address."""
+        reached = LOOPBACK_FOR_ANY.get(self.host, self.host)
+        host = f"[{reached}]" if ":" in reached else reached
         return f"http://{host}:{self.port}"
 
     @property
@@ -240,7 +243,8 @@ class LocalNetwork:
         """A network of ``count`` nodes under ``root``, reusing any keys left there.
 
         With ``debug``, every node logs at ``DEBUG`` rather than ``INFO``.
-        Every node listens at ``host``, and holds no more than
+        Every node listens at ``host``, is reached at its
+        :attr:`NodePlace.endpoint`, and holds no more than
         ``max_storage_bytes`` of content when that is given.
         """
         offset = config_port_offset(count)
@@ -620,8 +624,9 @@ def parse_args(argv: Sequence[str] | None = None) -> Namespace:
     parser.add_argument(
         "--host",
         default=HOST,
-        help=f"IP address the nodes listen at and are told about each other at (default "
-        f"{HOST}); one that other machines reach this one at lets them use the nodes too",
+        help=f"IP address the nodes listen at (default {HOST}, every IPv4 address); they are "
+        f"told about each other at it, or at the loopback address if it is every address, "
+        f"so nodes on other machines can use them only if it is one address",
     )
     parser.add_argument(
         "--max-storage-bytes",
@@ -656,10 +661,6 @@ def parse_args(argv: Sequence[str] | None = None) -> Namespace:
 
     except ValueError:
         parser.error(f"--host must be an IP address, got {args.host!r}")
-
-    # The nodes are told each other's endpoints at it, and pass them on.
-    if host.is_unspecified:
-        parser.error(f"--host must be one address the nodes are reached at, not {args.host}")
 
     args.host = str(host)
 

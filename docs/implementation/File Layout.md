@@ -692,7 +692,7 @@ opened.
 ## 11. The Local Network Script
 
 `libranet-local-network`, or `python -m libranet.local_network`, runs a
-network of nodes on `127.0.0.1`, or the `--host` given, for manual testing
+network of nodes at every address, or the `--host` given, for manual testing
 (`src/libranet/local_network.py`), each with its own directories:
 
 ```text
@@ -715,7 +715,7 @@ network of nodes on `127.0.0.1`, or the `--host` given, for manual testing
 | `--base-port` | `18400` | Port of `node-00`; node *n* listens on `base-port + n` |
 | `--dir` | A new temporary directory | Where the nodes' directories go |
 | `--debug` | Off | Every node sets `logging.level` to `DEBUG`, for this run only |
-| `--host` | `127.0.0.1` | Every node sets `network.listen_address` to it, and is told the others are there |
+| `--host` | `0.0.0.0` | Every node sets `network.listen_address` to it, and is told the others are there, or at `127.0.0.1` for `0.0.0.0` and `::1` for `::` |
 | `--max-storage-bytes` | No limit | Every node sets `storage.max_storage_bytes` to it, for this run only |
 
 The script writes each node's key before starting it, so that the ids of
