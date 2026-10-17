@@ -668,6 +668,29 @@ def test_first_contact_pushes_what_the_peer_seeks(
     assert session.pushed == {HELD_ID}
 
 
+def test_content_that_cannot_be_read_is_a_warning_and_not_pushed(
+    exchange: PeerExchange,
+    session: PeerSession,
+    peer: FixturePeer,
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    caplog: LogCaptureFixture,
+) -> None:
+    # A directory where the content should be cannot be read as a file.
+    CasStore.source_of_truth(config.storage).path_for(HELD_ID).mkdir(parents=True)
+    peer.write_lists({}, [HELD_ID])
+
+    with caplog.at_level(WARNING, logger=LOGGER.name):
+        exchange.first_contact(session)
+
+    (record,) = [record for record in caplog.records if record.name == LOGGER.name]
+    assert record.getMessage().startswith(f"Cannot read {HELD_ID}, so it is not pushed: ")
+    assert published(queues, EventType.DATA_SENT) == []
+    assert peer.published(EventType.PUT_COMPLETED) == []
+    # Not noted as pushed, so it is tried again once it can be read.
+    assert session.pushed == set()
+
+
 def test_a_push_the_peer_refuses_is_not_counted_as_sent_or_tried_again(
     exchange: PeerExchange, config: LibranetConfig, queues: ModuleQueues
 ) -> None:

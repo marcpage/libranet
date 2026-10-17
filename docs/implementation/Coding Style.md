@@ -528,8 +528,11 @@ phase plan or an issue.
 
 Catch the narrowest exception that can happen, and name it `error`.
 `except Exception` is only for a boundary that must survive whatever it runs:
-a module's receive loop, a worker thread, a request handler, a callback that
-a library calls and would otherwise log for itself. Each is marked
+a module's receive loop, a worker thread, a request handler, a task whose
+failure must be recorded, a callback that a library calls and would otherwise
+log for itself. A boundary catches what it is known to meet by name first, at
+the level §9.3 gives it, and leaves `except Exception` to what no one
+expected, which it logs with its traceback. Each `except Exception` is marked
 `# pylint: disable=broad-exception-caught`, so that a new one is a decision
 and not an accident. One that ends by raising, as a module process does to
 exit once it has logged its crash, has no mark: `pylint` does not report it,

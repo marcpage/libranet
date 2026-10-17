@@ -34,7 +34,7 @@ from libranet.config.models import (
     StorageConfig,
 )
 from libranet.connections.module import ConnectionsModule
-from libranet.connections.peer_exchange import Retrieval
+from libranet.connections.peer_exchange import PeerExchange, Retrieval
 from libranet.connections.peer_session import PeerSession
 from libranet.connections.reverse_dns import ResolveNames
 from libranet.identity.authentication import RequestAuthenticator
@@ -907,6 +907,31 @@ def test_a_dial_that_fails_unexpectedly_is_logged_and_rests(
     bus.wait_for(EventType.CONNECTION_OPENED)
 
 
+def test_a_dial_that_fails_unexpectedly_is_not_counted_against_the_peer(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    caplog: LogCaptureFixture,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    def broken(exchange: PeerExchange, endpoint: str) -> PeerSession:
+        raise RuntimeError("broken")
+
+    monkeypatch.setattr(PeerExchange, "open", broken)
+    write_lists(config.storage, node_list(identity, peers[0]))
+
+    modules.start(config)
+
+    wait_until(
+        lambda: f"Connecting to {peers[0].node_id} failed" in caplog.text, "the dial to fail"
+    )
+    # The fault is this node's, not the peer's, so stats hears nothing of it.
+    assert bus.events(EventType.CONNECTION_FAILED) == []
+    assert bus.events(EventType.NODE_UNREACHED) == []
+
+
 def test_the_peers_connected_are_named_at_start_as_they_come_and_go_and_when_asked(
     modules: Modules,
     config: LibranetConfig,
@@ -1730,6 +1755,29 @@ def test_content_not_held_is_not_handed_off(
     assert bus.events(EventType.DATA_SENT) == []
 
 
+def test_content_that_cannot_be_read_is_not_handed_off(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    caplog: LogCaptureFixture,
+) -> None:
+    # A directory where the content should be cannot be read as a file.
+    CasStore.source_of_truth(config.storage).path_for(HELD_ID).mkdir(parents=True)
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+
+    module.handle(eviction_notice(HELD_ID))
+
+    (answer,) = bus.wait_for(EventType.EVICTION_ACKNOWLEDGED)
+    assert answer["node_ids"] == []
+    assert f"Cannot read {HELD_ID}, so it is not handed off" in caplog.text
+    assert f"Handing off {HELD_ID} failed" not in caplog.text
+    assert bus.events(EventType.DATA_SENT) == []
+
+
 def test_a_hand_off_that_goes_wrong_is_still_answered(
     modules: Modules,
     config: LibranetConfig,
@@ -1998,6 +2046,27 @@ def test_content_no_longer_held_is_not_pushed(
     module.handle(stored(NOWHERE_ID, identity.node_id))
 
     wait_until(lambda: f"{NOWHERE_ID} is no longer held" in caplog.text, "the push to be dropped")
+    assert bus.events(EventType.DATA_SENT) == []
+
+
+def test_content_that_cannot_be_read_is_not_pushed(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    bus: Bus,
+    caplog: LogCaptureFixture,
+) -> None:
+    # A directory where the content should be cannot be read as a file.
+    CasStore.source_of_truth(config.storage).path_for(HELD_ID).mkdir(parents=True)
+    module = modules.start(config)
+
+    module.handle(stored(HELD_ID, identity.node_id))
+
+    wait_until(
+        lambda: f"Cannot read {HELD_ID}, so it is not pushed" in caplog.text,
+        "the push to be dropped",
+    )
+    assert f"Pushing {HELD_ID} failed" not in caplog.text
     assert bus.events(EventType.DATA_SENT) == []
 
 

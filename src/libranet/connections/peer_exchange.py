@@ -539,6 +539,10 @@ class PeerExchange:
                 # Not logged: only what is held is sent.
                 continue
 
+            except OSError as error:
+                self._logger.warning("Cannot read %s, so it is not pushed: %s", content_id, error)
+                continue
+
         return held
 
     def _batches(self, items: Sequence[_Item]) -> Iterator[Sequence[_Item]]:
