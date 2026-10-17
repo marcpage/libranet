@@ -513,7 +513,7 @@ A new bundle is answered `201 Created`, with `{"bundle": id}` and a
 `Location` reading into it. A request that changes nothing is answered
 `200 OK` with the base's id. The node makes the bundle from the bundles
 named, without needing the parts of any file it moves, so changing a
-playlist of films takes no time. A body is limited to 4 MiB, unless the
+collection of films takes no time. A body is limited to 4 MiB, unless the
 node's operator sets another limit.
 
 A page that has written a bundle's JSON itself, such as an extension of the
@@ -547,7 +547,7 @@ A value read by its key carries an `ETag`. A `PUT` or `DELETE` carrying
 since, so that two browsers changing one key do not lose each other's
 changes. A `PUT`'s answer carries no `ETag`: the node keeps the value in a
 form of its own, so read it again for the new tag. The movie library changes
-its list of playlists like this:
+its list of collections like this:
 
 ```js
 // Changes the value at `key` of this application's store with `change`,
@@ -1372,27 +1372,29 @@ The movie library, `src/libranet/applications/movie/index.html`, is one page
 of HTML and script, and uses every endpoint above. What it does, and why:
 
 - **Data in bundles, the newest in the store.** A movie is a directory
-  bundle holding the video, an `info.json`, and a `poster.jpg`. A playlist
+  bundle holding the video, an `info.json`, and a `poster.jpg`. A collection
   is an encrypted directory bundle holding a `playlist.json`, which gives
   its name and the order of its movies, and a directory for each movie,
-  copied in with `from`. Each change to a playlist makes a new version,
+  copied in with `from`. Each change to a collection makes a new version,
   with the one before as its `base`. The store's `playlists` key lists each
-  playlist's name and newest id.
-- **Changes that do not cross.** The list of playlists is changed as
-  §6.6 shows. An edit made to an older version of a playlist than the
+  collection's name and newest id. These stored names keep the word
+  playlist, which the page used before, so that collections made then
+  can still be read.
+- **Changes that do not cross.** The list of collections is changed as
+  §6.6 shows. An edit made to an older version of a collection than the
   newest is refused, and the page opens the newest, rather than merge the
   two.
 - **More for a local client.** The page asks `/data/client` as it loads,
   and shows adding and editing only to a local client. A browser elsewhere
   plays.
-- **Sharing by id.** A playlist is shared by its encrypted id, which carries
+- **Sharing by id.** A collection is shared by its encrypted id, which carries
   its key. Another node's movie library reads into it, and copies the
-  movies chosen into a playlist of its own with `from`, without reading a
+  movies chosen into a collection of its own with `from`, without reading a
   film.
-- **Playing.** A film is a `<video>` whose `src` reads into its playlist
+- **Playing.** A film is a `<video>` whose `src` reads into its collection
   (§6.1). The browser asks for a range at a time, and the node fetches the
   parts it needs first.
-- **Remembering per browser.** The last playlist chosen is kept in
+- **Remembering per browser.** The last collection chosen is kept in
   `localStorage` as `movie.playlist`, inside `try`, since storage may be
   refused.
 - **Waiting.** Every read waits out `503`s as §5.3 shows.
