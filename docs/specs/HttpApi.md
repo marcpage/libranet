@@ -2079,6 +2079,44 @@ page of a trusted application (§2.4, §2.5), as the session does, since the
 scores say whom the person trusts. Every answer carries
 `Cache-Control: no-store`.
 
+A node keeps a list of its own too, signed with its own key (Trust Network
+§3.2), which its operator changes. The `/config` application (§2.3) can
+neither search a drop nor check what is signed, as §11.8 says, so the node
+reads its list, and places the next version, at endpoints of its own on
+`/config`'s port. It answers the newest version with:
+
+```http
+GET /config/api/trust
+```
+
+```json
+{"id": "sha256/…", "entries": {"sha256/…": true}, "version": 2, "versions": ["sha256/…"]}
+```
+
+`id` names the drop holding the newest version, and the rest is that
+version. While the node has placed none, `id` and `version` are `null`, and
+`entries` is empty. It changes one entry at a time with:
+
+```http
+PUT /config/api/trust/{hash-algorithm}/{hash}
+Content-Type: application/json
+
+{"trust": true}
+```
+
+and with `DELETE` of the same path, as a person's list is changed above,
+but signed with the node's own key, and answered `201 Created` with no
+`Location`, since `/config`'s port serves nothing beneath `/data`. `signer`
+is the node's id. A change naming the node's own id is `400 Bad Request`,
+and while a version found at the node's drop is not held yet, a read and a
+change are each `503 Service Unavailable` with `Retry-After`. The other
+answers are a person's. The node reads and changes its list one at a time,
+each change over the version the one before it placed. Both endpoints are
+served as every endpoint beneath `/config/api` is (§2.3), and their answers
+carry no `Cache-Control`, as the list is public. The scores of a person who
+trusts the node reach through its list, and read a change to it at their
+next sign-in (Trust Network §4.3).
+
 ### 11.8 What a Node Says of Itself
 
 A node says what it is called, where it is, and anything else its operator

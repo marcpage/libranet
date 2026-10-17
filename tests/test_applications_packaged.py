@@ -457,6 +457,7 @@ def test_the_config_page_calls_only_endpoints_the_node_serves(config_page: str) 
         "/node",
         "/metadata",
         "/connections",
+        "/trust",
         "/applications",
         "/users",
         "/builds",
@@ -785,6 +786,16 @@ def test_the_config_page_connects_to_an_address_typed_without_its_scheme(config_
     assert 'return typed.includes("://") ? typed : `http://${typed}`;' in config_page
     assert 'const address = addressOf(byId("connect-address").value);' in config_page
     assert 'await call("POST", "/connections", { address });' in config_page
+
+
+def test_the_config_page_changes_whom_the_node_trusts_one_entry_at_a_time(
+    config_page: str,
+) -> None:
+    # A change is one entry, trusted, distrusted, or cleared (HttpApi 11.7), the
+    # id's hash algorithm and hash each one segment of the path.
+    assert 'return `/trust/${id.split("/").map(encodeURIComponent).join("/")}`;' in config_page
+    assert 'await call("PUT", path, { trust: trusted })' in config_page
+    assert 'await call("DELETE", path)' in config_page
 
 
 def test_the_config_page_makes_a_user_with_a_fallback_password(config_page: str) -> None:

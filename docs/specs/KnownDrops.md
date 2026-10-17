@@ -194,11 +194,12 @@ their scores to reach through it.
 
 - **Status:** in use, placed by the node when a page asks, since
   [Phase 5](../implementation/Phase%205.md) Step 97. The directory
-  application asks (Step 101).
+  application asks (Step 101). A node's own list is in use since Step 110.
 - **Placed by** the node, when the person signed in trusts, distrusts, or
-  clears an identity, with `PUT` or `DELETE /data/trust/{id}`. A node may
-  keep a list of its own, signed by its own key (Bundle Specification §5),
-  though nothing places one yet. The node reads the lists to build each
+  clears an identity, with `PUT` or `DELETE /data/trust/{id}`. A node keeps
+  a list of its own, signed by its own key (Bundle Specification §5), and
+  places it when its operator changes it on `/config`, with `PUT` or
+  `DELETE /config/api/trust/{id}`. The node reads the lists to build each
   person's scores (Steps 99 and 100), and the directory application reads
   a person's to show it on their page (Step 105).
 - **Signed** by the list's owner. **Not encrypted.**

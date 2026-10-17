@@ -67,6 +67,9 @@ ordinary content, signed by its owner.
 - **Connecting to another node.** The operator gives `/config` the address
   of a node to reach, which the node dials at once, saying whether it could.
   Step 109.
+- **Whom a node trusts.** The operator has the node trust or distrust other
+  nodes on `/config`, which shows whom it trusts, and whoever trusts the
+  node reaches through its list. Step 110.
 
 ## 3. How to Read the Steps Below
 
@@ -1702,6 +1705,132 @@ My calls, not yet reviewed:
 
 ---
 
+## Step 110 — Whom a Node Trusts
+
+**Issue:** #376. **Depends on:** Steps 96, 97, and 103, and Step 108 for its
+links.
+
+Settled in the issue, which has only its title, and as asked when it was
+built:
+
+- **The administration page has the node trust other nodes.**
+- **It shows whom the node trusts.**
+
+The Trust Network Specification lets a node keep a list of its own (Step
+94), and Step 103 lets a node sign, but nothing placed one. A node's list
+matters to whoever trusts the node: their scores reach through it to the
+nodes it trusts, a step further out, as they reach through a person's.
+
+Work this implies:
+
+- **Endpoints beneath `/config/api`** reading the node's list and changing
+  one entry of it, as `/data/trust/{id}` changes a person's (Step 97), but
+  signed by the node, as `/config/api/metadata` places what it says of itself
+  (Step 104).
+- **A section of `/config`** listing whom the node trusts and distrusts,
+  with a way to change each entry, and a form taking a node's id.
+- HttpApi §11.7, Trust Network §3.2, Known Drops §3.4, the Operator Guide,
+  and the README gain it.
+
+**Testable in isolation:** web server tests asserting a read answers the
+newest version with its drop, and an empty list before any; that a change
+places the next version naming the newest, signed by the node, with no
+`Location`; that a change that changes nothing is `204`, one naming the node
+`400`, and a version found but not held `503`; that changes are made one at
+a time; and that a list the node placed reads as its own to any reader, as a
+person's build reads it. Packaging tests assert the page calls only
+endpoints its port serves.
+
+Built in one change set, with 404 lines of non-test Python, 86 of them
+replacing removed ones, most of those moved rather than new, and 468 of
+tests. The `/config` page gains 134 lines.
+
+- **`TrustListChanges`** (`webserver/trust_handlers.py`) is what
+  `TrustEdits` did to make a change, moved out of it so that any owner's key
+  signs, a person's or the node's, as a `TrustSigner`. **`TrustEntry`** reads
+  the entry a request's path names and what its body sets it to. `TrustEdits`
+  keeps its interface, the session, and handing each version to the build,
+  still in the change's turn.
+- **`OwnTrust`** (`webserver/node_trust_handlers.py`, new) serves
+  **`GET /config/api/trust`**, the newest version with the id of its drop,
+  or `{"id": null, "entries": {}, "version": null}` before any, and
+  **`PUT` and `DELETE /config/api/trust/{algorithm}/{hash}`**, answered as a
+  person's change is, but `201` with no `Location`. Both are `503` while a
+  version found at the drop is not held. `ENTRIES_FIELD`, the name of a
+  version's entries, is public now, for the read before any version.
+- **`/config`'s "Trust"**, after "Other nodes", lists each node in the list,
+  trusted first, by its id, with a link to its page in the nodes
+  application, whether it is trusted, and buttons to trust or distrust it
+  instead, and to remove it. Its form, "Trust or distrust a node", takes a
+  node's id and whether this node trusts or distrusts it.
+
+Checked live, with two new nodes from the scratchpad on `127.0.0.1`. In
+headless Chrome, node A's `/config` said it trusted no one; its form trusted
+node B's id, version 1, listed as "Trusted" with a link to
+`http://127.0.0.1:24500/nodes/?id=…`; "Distrust" and "Trust" made versions 2
+and 3; the same again said "Nothing changed"; `not an id` was refused by the
+page, and A's own id by the node, "A trust list never names its owner";
+"Remove" made version 4, leaving the list empty; and a version 5 trusting B
+again read back after a reload. A person made on A's `/config`, signed in on
+its main port, then trusted A, and a second later their scores held B at step
+2, scoring 0.1, read through A's list. Neither node logged a warning or an
+error.
+
+My calls, not yet reviewed:
+
+- **The list is read and changed on `/config` alone**, as the node's
+  metadata is (Step 104): the node signs only what it places itself, for its
+  operator, and no main-port endpoint is added. A page there reads the list
+  as it reads anyone's, at the drop `trust:{id}`.
+- **The endpoints follow a person's**: one entry per request, `PUT` with
+  `{"trust": true}` or `false`, and `DELETE`, at the id's path. The read
+  answers the list itself, as `/config/api/metadata` answers what the node
+  says, since no scores are built from the node's list.
+- **No scores are built from the node's list on the node.** It matters only
+  to those who trust the node, whose builds read it, and "see what the node
+  trusts" is the list. Nothing else on the node reads it.
+- **A person's build reads a change at their next sign-in.** A change on
+  `/config` is not handed to the builds of the main port, as a person's own
+  change is (Trust Network §4.4), since a build holds others' lists only as
+  read at sign-in (§4.3). HttpApi §11.7 says so.
+- **The page takes a node's id, typed or pasted**, rather than offering the
+  nodes known, since `/config`'s port cannot read `GET /data/peers`. It says
+  where an id is shown: on the node's page in the nodes application, and on
+  its own `/config`. The page checks only that an id is an algorithm and a
+  hash, and the node refuses the rest, the page showing what it says.
+- **The page speaks of nodes**, and links each entry to the nodes
+  application, as an id's kind is told by context (§6). The endpoints take
+  any id, a person's too, as the specification allows.
+- **Each node is shown by its id**, not its name, since `/config` cannot
+  read another node's metadata; its page in the nodes application shows it by
+  name.
+- **The words**: the section "Trust", its columns "Node" and "Trust", the
+  entries "Trusted" and "Distrusted", in green and red, the buttons
+  "Distrust" or "Trust", and "Remove" for clearing; the form "Trust or
+  distrust a node", its fields "Node id" and "This node", "Trusts it" or
+  "Distrusts it", and "Save".
+- **The change logic is shared, not repeated.** `TrustListChanges` holds
+  what a person's change and the node's both do, rather than `OwnTrust`
+  copying `TrustEdits`. Its methods take the owner and the signer apart,
+  since a person's id is `person_id` and a node's `node_id`.
+- **No `Cache-Control`** on the answers, as `/config/api/metadata` has none;
+  the page asks with `cache: "no-store"`.
+- **Specified in HttpApi §11.7**, beside a person's list, rather than in a
+  section of its own, as §11.8 is for the node's metadata.
+- **`config_routes` turns off `too-many-locals`**, which its new handler
+  passed by one, as `build_config_router` does.
+
+Found while building it:
+
+- **Step 104's finding holds here too**: a peer asking for a made-up id
+  sharing 16 bits with `trust:{id}` makes a version appear missing, so the
+  node's reads and changes are `503` while it stays known.
+- **"Connect to a node" could offer to trust the node it reaches**, since
+  its answer names the node. Not built; a small change to the page if
+  wanted.
+
+---
+
 ## 4. Issues in the Milestone
 
 Every issue in the **Phase 5 - Trust Network** milestone, by number, and
@@ -1732,6 +1861,7 @@ where it went.
 | #353 | Documentation out of sync with the code or other documentation | None: cleanup |
 | #354 | What the specifications can settle from the implementation | None: cleanup |
 | #370 | The local network's nodes listening only at `127.0.0.1` | None: a fix |
+| #376 | The administration page having the node trust other nodes | 110 |
 | #377 | The administration page taking a node's address to add to the network | 109 |
 
 ## 5. Suggested Build Order
@@ -1756,6 +1886,7 @@ made before it is built (§3).
 | H | 106 (#322) | None; the pages alone | Needs 105's link for each identity it shows. |
 | I | 108 (#323) | About 20, shipping it | An application of every step before it but 102. |
 | J | 109 (#377) | None made before it was built; 444 as built | Independent of the trust steps; links to 108's application. |
+| K | 110 (#376) | None made before it was built; 404 as built | Needs 97's edits and 103's signing as a node; links to 108's application. |
 
 ## 6. Open Items Not Yet Decided
 
@@ -1775,9 +1906,9 @@ that cut across more than one step:
   follows an identity to its fallback, and whether a compromised
   identity's list is read, is open in Step 94; Step 98's rule and Step
   99's reading build whichever is ruled.
-- **A node's own list** (Steps 94 and 103) — allowed by the specification.
-  Step 103 lets a node sign, for its metadata, but no step builds a node's
-  list.
+- **A node's own list** (Steps 94, 103, and 110) — allowed by the
+  specification. Step 103 lets a node sign, for its metadata, and Step 110
+  places the node's list as its operator changes it on `/config`.
 - **Telling a node's id from a person's** (Steps 104, 105, 106, and 108)
   — both are the content id of a public key, of one form. Ruled
   (2026-10-14): by context. A page knows which an id is from where it

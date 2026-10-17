@@ -14,7 +14,8 @@ application endpoints change the application registry, the file naming each
 application's bundle, which the web server owns, and which names the pages
 shipped with the node at `/` and at `/config` until an administrator changes
 them. The one at `/config` drives all of them, and has the node read and
-change what it says of itself (Phase 5 Step 104).
+change what it says of itself (Phase 5 Step 104), and whom it trusts (Phase 5
+Step 110).
 
 A few `/data` endpoints serve only clients on this machine, and only this
 node's own pages there, such as the listing of the folders it offers them
@@ -122,6 +123,9 @@ from libranet.webserver.config_handlers import (
     BACKUPS_PATH,
     BUILDS_PATH,
     CONFIG_API_PATH,
+    CONFIG_TRUST_PATH,
+    CONFIG_TRUST_PATTERN,
+    CONFIG_TRUST_TEMPLATE,
     CONFIG_USERS_PATH,
     CONNECTIONS_PATH,
     DATA_APPLICATIONS_PATH,
@@ -227,6 +231,7 @@ from libranet.webserver.local_only import (
 from libranet.webserver.metadata_handlers import OwnMetadata
 from libranet.webserver.module import WebServerModule
 from libranet.webserver.node_metadata_reader import NODE_METADATA_KIND, NodeMetadataReader
+from libranet.webserver.node_trust_handlers import OwnTrust
 from libranet.webserver.own_pages import (
     REFERER_HEADER,
     OwnPageOnly,
@@ -280,7 +285,15 @@ from libranet.webserver.trust_builds import (
     TrustBuilds,
     TrustListReader,
 )
-from libranet.webserver.trust_handlers import TRUST_PATH, TRUST_PATTERN, TrustEdits, TrustReads
+from libranet.webserver.trust_handlers import (
+    TRUST_PATH,
+    TRUST_PATTERN,
+    TrustEdits,
+    TrustEntry,
+    TrustListChanges,
+    TrustReads,
+    TrustSigner,
+)
 from libranet.webserver.trust_lists import TRUST_LIST_KIND, TrustLists
 from libranet.webserver.version_edits import ReplacedVersions, VersionEdits
 
@@ -309,6 +322,9 @@ __all__ = [
     "CONFIG_APP_PATTERN",
     "CONFIG_APP_POLICY",
     "CONFIG_REALM",
+    "CONFIG_TRUST_PATH",
+    "CONFIG_TRUST_PATTERN",
+    "CONFIG_TRUST_TEMPLATE",
     "CONFIG_USERS_PATH",
     "CONNECTIONS_PATH",
     "COST",
@@ -430,6 +446,7 @@ __all__ = [
     "NodeListHandler",
     "NodeMetadataReader",
     "OwnMetadata",
+    "OwnTrust",
     "OwnPageOnly",
     "OwnPages",
     "OwnSiteOnly",
@@ -468,9 +485,12 @@ __all__ = [
     "StreamedBody",
     "TrustBuilds",
     "TrustEdits",
+    "TrustEntry",
+    "TrustListChanges",
     "TrustListReader",
     "TrustLists",
     "TrustReads",
+    "TrustSigner",
     "Turns",
     "UnsupportedMediaTypeError",
     "ValueChangedError",

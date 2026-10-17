@@ -226,6 +226,8 @@ curl -u admin:secret -e http://127.0.0.1:8180/config/ \
 | `POST` | `/config/api/users` | Create a user (§6.5) |
 | `GET`, `PUT` | `/config/api/metadata` | What this node says of itself (§4.5) |
 | `POST` | `/config/api/connections` | Connect to a node at an address (§4.6) |
+| `GET` | `/config/api/trust` | Whom this node trusts (§4.7) |
+| `PUT`, `DELETE` | `/config/api/trust/{algorithm}/{hash}` | Trust or distrust an identity as this node, or neither (§4.7) |
 
 A backup, restore, build, or export is answered `202` at once, with the id
 it is known by, and its `GET` says how it is doing. Restores, builds, and
@@ -301,6 +303,44 @@ the node dialed it, its host in lower case and its port always given:
 node is reached it is `502`, saying why, and `409` if the address is this
 node's own. `504` means the node did not say in time; it may still reach the
 other node, which the nodes application then shows.
+
+### 4.7 What This Node Trusts
+
+A node keeps a list of the nodes it trusts and those it distrusts, as each
+person keeps one (§6.6). A person who trusts this node reaches through its
+list: their trust scores count the nodes it trusts, and against those it
+distrusts, a tenth as strongly as their own entries, unless their own list
+names them. **Trust**, on the page, lists the nodes in this node's list. In
+**Trust or distrust a node**, give a node's id, such as `sha256/0a1b…`,
+choose whether this node trusts or distrusts it, and **Save**. A node's id is
+on its page in the nodes application, and under **This node** on its own
+`/config`. **Distrust** or **Trust** in the list changes an entry, and
+**Remove** takes it out, so that this node neither trusts nor distrusts that
+node.
+
+It is public. The node signs each version with its own key and keeps it in
+the network, at the drop `trust:{id}`
+([Known Drops §3.4](../specs/KnownDrops.md#34-trust-lists)), where anyone
+can read it. The node blocks the version each change replaces, but a copy a
+peer already holds can still be read there. A person signed in reads a
+change at their next sign-in.
+
+A script changes one entry at a time:
+
+```bash
+curl -u admin:secret -e http://127.0.0.1:8180/config/ \
+  -X PUT http://127.0.0.1:8180/config/api/trust/sha256/0a1b… \
+  -H 'Content-Type: application/json' \
+  -d '{"trust": true}'
+```
+
+`{"trust": false}` distrusts it, and `DELETE` of the same path removes it. It
+is answered `201` with the new version's number, `204` if nothing changed,
+and `400` for this node's own id. `GET /config/api/trust` reads the list:
+
+```json
+{"id": "sha256/…", "entries": {"sha256/0a1b…": true}, "version": 2, "versions": ["sha256/…"]}
+```
 
 ## 5. Backing Up and Restoring
 
@@ -589,7 +629,9 @@ in, the node builds their trust scores from their own list and the lists of
 those they trust, each step out a tenth as strong, as the
 [Trust Network Specification](../specs/TrustNetwork.md) gives them. It builds
 them behind the sign-in, which it does not hold up, and keeps them until the
-person's last session ends.
+person's last session ends. A node keeps a list of its own, which you change
+on `/config` (§4.7), and the scores of whoever trusts the node reach through
+it.
 
 Three settings bound the work:
 
