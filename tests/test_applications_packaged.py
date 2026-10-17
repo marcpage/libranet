@@ -53,6 +53,7 @@ from libranet.webserver.bundle_edits import BUNDLES_PATH
 from libranet.webserver.bundle_reads import BUNDLE_PATTERN
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import CONFIG_API_PATH, ENDPOINTS, NodeDescription
+from libranet.webserver.data_handler import DATA_PATTERN
 from libranet.webserver.drop_handler import DROP_PATH
 from libranet.webserver.encrypted_handlers import ENCRYPTED_PATH, ENCRYPTED_PATTERN
 from libranet.webserver.http_types import Request
@@ -494,10 +495,20 @@ def test_the_movie_page_calls_only_endpoints_the_node_serves(movie_page: str) ->
         BUNDLES_PATH,
         f"{STORE_PATH}/{MOVIE_APPLICATION}",
         "/data/",
+        SESSION_PATH,
+        SIGNED_PATH,
+        DROP_PATH,
+        f"{ENCRYPTED_PATH}/",
     }
     # The folders, the playlists in its store, and a movie's file in a playlist.
     assert fullmatch(DIRECTORY_PATTERN, "/data/directory/Movies/Holidays")
     assert fullmatch(STORE_KEY_PATTERN, f"{STORE_PATH}/{MOVIE_APPLICATION}/playlists")
+    # A person's collections: searched at their drop, each version opened, and
+    # those replaced blocked.
+    target = quote(f"movie collections:sha256/{hex_digits}", safe="")
+    assert fullmatch(DROP_SEARCH_PATTERN, f"{DROP_PATH}/{target}")
+    assert fullmatch(ENCRYPTED_PATTERN, f"{ENCRYPTED_PATH}/sha256/{hex_digits}")
+    assert fullmatch(DATA_PATTERN, f"/data/sha256/{hex_digits}")
     assert fullmatch(
         BUNDLE_PATTERN,
         f"/data/sha256/{hex_digits}/AES256-CBC/{hex_digits}/{hex_digits[:16]}/Film.mp4",

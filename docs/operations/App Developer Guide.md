@@ -1377,9 +1377,13 @@ of HTML and script, and uses every endpoint above. What it does, and why:
   its name and the order of its movies, and a directory for each movie,
   copied in with `from`. Each change to a collection makes a new version,
   with the one before as its `base`. The store's `playlists` key lists each
-  collection's name and newest id. These stored names keep the word
-  playlist, which the page used before, so that collections made then
-  can still be read.
+  collection's name and newest id for whoever is not signed in. These
+  stored names keep the word playlist, which the page used before, so
+  that collections made then can still be read.
+- **A person's own, at their drop.** Signed in, a person's list of
+  collections is kept at the drop `movie collections:{id}`, never in the
+  store, in versions each signed by them and encrypted for them, merged as
+  they are read, as mail keeps its address book (§6.13, §6.15, §6.16).
 - **Changes that do not cross.** The list of collections is changed as
   §6.6 shows. An edit made to an older version of a collection than the
   newest is refused, and the page opens the newest, rather than merge the

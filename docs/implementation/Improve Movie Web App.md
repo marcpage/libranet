@@ -69,6 +69,28 @@ The movie application keeps the playlists a node knows in its store
 - Step 86 renames playlists to collections. Whichever is built second
   uses the other's name.
 
+Settled with #261: a person's collections are never kept in the store,
+which any client reads and only one node keeps. They are kept at the drop
+`movie collections:{id}`, in versions each signed by the person and
+encrypted for them (HttpApi 11.5, 11.6), so that they follow the person
+from node to node:
+
+- A version lists each collection by name, with its newest bundle and
+  when it last changed. Versions made apart, on two nodes say, are merged
+  as they are read: each collection at the version that changed it last,
+  and of two changed in the same second, the one whose drop's id comes
+  first. A version not held yet is passed over, and merged once it is.
+- Each change places a version holding the merged list, and blocks the
+  versions read, which it replaces, so that they do not push the newest
+  out of a search, as mail does its address book (Phase 4 Step 82).
+- A client that is not signed in, and every client that is not local,
+  since only a local client is signed in, sees the node's collections, in
+  the store's `playlists` key, as before.
+- Signed in with a fallback password before the fallback takes over, a
+  person's collections are read but not changed, since nothing is signed.
+- Sharing stays by id. Sharing with a person named from the user directory
+  is left for later.
+
 **Testable in isolation:** checked by hand in the page, signed in as two
 people on one node.
 
