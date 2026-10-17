@@ -3,7 +3,8 @@
 The shared event-type enum, the message envelope, the module base class, and
 the dispatcher process that delivers each message to the modules that
 subscribe to it. Which peers are connected, as the message more than one
-module reads says (Phase 2 Step 53).
+module reads says (Phase 2 Step 53), and whom this node trusts (Phase 5 Step
+113).
 """
 
 from libranet.messaging.connected_peers import ConnectedPeers
@@ -35,6 +36,7 @@ from libranet.messaging.events import (
     PathOutcome,
 )
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase, StopSignal
+from libranet.messaging.node_trust import NodeTrust
 from libranet.messaging.publishing import Publish
 from libranet.messaging.queues import START_METHOD, MessageQueue, ModuleQueues, create_module_queues
 
@@ -63,6 +65,7 @@ __all__ = [
     "MessageQueue",
     "ModuleBase",
     "ModuleQueues",
+    "NodeTrust",
     "PathOutcome",
     "Publish",
     "StopSignal",

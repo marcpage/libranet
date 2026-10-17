@@ -11,6 +11,7 @@ from pytest import fixture, mark, raises
 from libranet.cas.content_id import ContentId
 from libranet.cas.store import HeldObject
 from libranet.config.models import MIB
+from libranet.identity.trust import TrustState
 from libranet.messaging.events import AddressSource
 from libranet.stats.database import StatsDatabase
 from libranet.stats.schema import SeekKind, apply_schema
@@ -86,7 +87,7 @@ def test_no_primary_key_column_may_be_null() -> None:
             if primary_key and not not_null
         ]
 
-    assert len(tables) == 5
+    assert len(tables) == 6
     assert nullable == []
 
 
@@ -857,3 +858,22 @@ def test_a_closed_database_cannot_be_used(tmp_path: Path) -> None:
 
     with raises(ProgrammingError):
         database.record_push(CONTENT_ID)
+
+
+def test_the_trust_kept_replaces_what_was_kept_before_and_leaves_out_the_unknown(
+    database: StatsDatabase,
+) -> None:
+    first = ContentId.for_data(b"first node's key", "sha256")
+    second = ContentId.for_data(b"second node's key", "sha256")
+    third = ContentId.for_data(b"third node's key", "sha256")
+    database.record_trust({first: TrustState.TRUSTED, second: TrustState.UNTRUSTED})
+
+    database.record_trust(
+        {second: TrustState.TRUSTED, third: TrustState.UNTRUSTED, first: TrustState.UNKNOWN}
+    )
+
+    assert database.trust_states() == {second: TrustState.TRUSTED, third: TrustState.UNTRUSTED}
+
+
+def test_no_trust_is_kept_before_any_is_said(database: StatsDatabase) -> None:
+    assert database.trust_states() == {}

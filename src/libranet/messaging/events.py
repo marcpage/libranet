@@ -49,6 +49,12 @@ class EventType(StrEnum):
     DIAL_REQUESTED = "address.dial_requested"  # webserver → connections (Phase 5 Step 109)
     ADDRESS_DIALED = "address.dialed"  # connections → webserver (Phase 5 Step 109)
 
+    # Whom this node trusts, and so which peers it connects to (Phase 5 Step
+    # 113).
+    NODE_TRUST = "node.trust"  # webserver → stats
+    NODE_TRUST_REQUESTED = "node.trust_requested"  # webserver → stats
+    NODE_TRUST_STORED = "node.trust_stored"  # stats → webserver
+
     # Outgoing connections and fetching (Steps 11 and 12).
     CONNECTION_OPENED = "connection.opened"  # connections → stats
     CONNECTION_CLOSED = "connection.closed"  # connections → stats

@@ -13,6 +13,7 @@ from libranet.identity.trust import (
     TrustList,
     TrustScore,
     TrustScores,
+    TrustState,
     TrustVersion,
 )
 from libranet.json_format import compact_json
@@ -558,3 +559,38 @@ def test_the_person_is_written_scoring_1_at_step_0_whatever_the_lists_say() -> N
     assert ALICE not in scores.scores
     assert scores.value_for(ALICE) == {"id": str(ALICE), "score": 1, "step": 0, "complete": True}
     assert scores.value()["scores"][str(ALICE)] == {"score": 1, "step": 0}
+
+
+@mark.parametrize(
+    "score, state",
+    [
+        (1, TrustState.TRUSTED),
+        (0.01, TrustState.TRUSTED),
+        (0, TrustState.UNKNOWN),
+        (-0.1, TrustState.UNTRUSTED),
+        (-2, TrustState.UNTRUSTED),
+    ],
+)
+def test_a_score_above_0_is_trusted_below_untrusted_and_0_unknown(
+    score: float, state: TrustState
+) -> None:
+    assert TrustState.of(score) == state
+
+
+def test_the_states_name_whom_the_lists_trust_and_distrust_but_not_the_person() -> None:
+    lists = {
+        **EXAMPLE,
+        # Erin is trusted by Bob and distrusted by Carol, at step 2, so is
+        # neither, and Dave's list names Alice.
+        CAROL: {ERIN: False},
+        DAVE: {ALICE: False},
+    }
+
+    scores = TrustScores.from_lists(ALICE, lists, LIMITS)
+
+    assert scores.states() == {
+        BOB: TrustState.TRUSTED,
+        CAROL: TrustState.TRUSTED,
+        DAVE: TrustState.UNTRUSTED,
+        GINA: TrustState.UNTRUSTED,
+    }

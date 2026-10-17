@@ -4,7 +4,7 @@ Every statement is ``IF NOT EXISTS``, so :func:`apply_schema` both creates a
 fresh database and leaves an existing one alone. It is applied on every
 start; no other process opens this file.
 
-Five tables cover what the implementation plan asks a node to remember:
+Six tables cover what the implementation plan asks a node to remember:
 
 ``data_stats``
     One row per content identifier the node has heard of, whether or not it
@@ -40,6 +40,15 @@ Five tables cover what the implementation plan asks a node to remember:
     ``first_success`` and ``last_success`` are when a connection to the node
     there first and last proved the node's identity, and
     ``consecutive_failures`` counts the attempts since the last that did.
+
+``node_trust``
+    The last state this node's own trust scores gave each identity they
+    trust or distrust: ``trust`` is 1 for trusted and -1 for untrusted, as
+    :class:`~libranet.identity.trust.TrustState` numbers them (Phase 5 Step
+    113). An identity with no row is of unknown trust. The rows are replaced
+    whenever the web server says whom the node trusts, and read back as it
+    starts, so that the node connects to no node it distrusted before it
+    stopped while it builds its scores again.
 
 ``app_bundles``
     One row per bundle an application has been served from, and
@@ -125,6 +134,12 @@ SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
         successes INTEGER NOT NULL DEFAULT 0,
         consecutive_failures INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (node_id, endpoint)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS node_trust (
+        node_id TEXT NOT NULL PRIMARY KEY,
+        trust INTEGER NOT NULL
     )
     """,
     """
