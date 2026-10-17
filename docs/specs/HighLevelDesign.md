@@ -122,11 +122,11 @@ of hashes a node is currently seeking.
 
 Beneath `/data` a node also serves endpoints meant only for the applications it
 serves, and never for another node: whether the client is local, blocking
-content, making a drop, making an identity and signing in, signing as a person,
-opening an encrypted block, the trust scores and trust list of whoever is
-signed in, reading into a bundle, the folders and imports a local client may
-use, making bundles, an application's store, and the list of applications
-(HTTP API §2.1, §2.4, §2.5).
+content, making a drop, what the node knows of its peers, making an identity
+and signing in, signing as a person, opening an encrypted block, the trust
+scores and trust list of whoever is signed in, reading into a bundle, the
+folders and imports a local client may use, making bundles, an application's
+store, and the list of applications (HTTP API §2.1, §2.4, §2.5).
 
 #### 3.3.1 Reserved Top-Level Paths
 

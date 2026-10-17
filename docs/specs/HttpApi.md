@@ -78,11 +78,10 @@ content (§5.5), making a drop (§9.6), what the node knows of its peers
 (§10.8), making an identity and signing in (§11.3, §11.4), signing as a
 person (§11.5), opening an encrypted block (§11.6), the trust of whoever is
 signed in (§11.7), reading into a bundle (§12.1), the folders and imports
-(§12.2),
-making bundles (§12.3), an application's store (§13.3), and the list of
-applications (§13.4). Each
-but reading into a bundle requires a `Referer` naming a page of the node
-(§2.5). A few serve only clients on the node's own machine (§2.4).
+(§12.2), making bundles (§12.3), an application's store (§13.3), and the
+list of applications (§13.4). Each but reading into a bundle requires a
+`Referer` naming a page of the node (§2.5). A few serve only clients on the
+node's own machine (§2.4).
 
 ### 2.2 Web Applications
 
@@ -130,7 +129,10 @@ application is at `/config/`, and the endpoints are beneath
 `/config/api/`. Which port `/config`'s is, is implementation-defined. An
 implementation SHOULD document how it is chosen, so that an operator can
 tell it from the node's configuration, and SHOULD report the port it
-chose as the node starts.
+chose as the node starts. The reference node listens for `/config` at
+`127.0.0.1` alone, on the port its configuration names, or, if it names
+none, on the first port free of 100 above its main port, 200 above, and so
+on. It logs the port as it starts.
 
 On its main port, a node MUST NOT challenge for, check, or capture the
 `/config` credential (§2.3.1). A browser that sent the credential there
@@ -512,7 +514,7 @@ This allows multiple hash algorithms to coexist.
 The names of the other endpoints beneath `/data` are never hash algorithms:
 `search`, `nodes`, `seek`, `client`, `directory`, `imports`, `bundles`,
 `store`, `applications`, `signed`, `drop`, `encrypted`, `users`, `fallback`,
-`session`, and `trust`.
+`session`, `peers`, and `trust`.
 
 A path that goes on past `{hash}` does not retrieve an object. It reads into
 the bundle the identifier names (§12.1). That includes an identifier written
@@ -710,6 +712,13 @@ it has outgoing connections to for the same prefix, in passes, and knows the
 hashes they answer from then on, so that a later search lists them. The node
 lists the prefix in its seek list (§10.7) too, so that the peers connected to it
 push what they hold that matches (§10.7.2).
+
+A node MAY answer a search again from the answer it last gave, rather than
+look through what it holds each time. The reference node keeps each answer,
+adding to it what its peers answer the same search with, and answers from
+it until it has gone 5 minutes unchanged, by default. Content it stores in
+that time may not be listed until then. A search of a drop by its target
+(§9.7), and signing in (§11.4), look through what it holds every time.
 
 ### 6.1 Search Response
 
@@ -1527,6 +1536,12 @@ GET /data/nodes HTTP/1.1  # fetch server node list of nodes
 Server nodes MUST NOT break connection due to authentication failure until after
 at least the first two requests. This allows the identity exchange to happen.
 
+The reference node trusts up to 3 requests from a signer whose public key it
+does not hold yet, by default, and never fewer than 2, while the key is
+obtained. It refuses the next, and closes its connection. A signature it can
+check, and that fails, closes the connection at once (HandshakeProtocol
+§3.2).
+
 ### 11.2 Keys and Signature Parameters
 
 - **Key algorithm.** A node identity key is an
@@ -1789,8 +1804,9 @@ every port of the node's host, `/config`'s too, which ignores it.
 "fallback_for": null}` when no one is.
 `DELETE /data/session` signs out, and is answered `204 No Content`, removing
 the cookie. A session also ends when it goes unused for a time the node
-sets, and when the node restarts. Every response that names a session
-carries `Cache-Control: no-store`.
+sets, and when the node restarts. The reference node ends one unused for a
+day, by default. Every response that names a session carries
+`Cache-Control: no-store`.
 
 Making an identity, signing in, and the session serve only local clients,
 from a page of a trusted application (§2.4, §2.5), or, for making an
@@ -2320,17 +2336,32 @@ at once, with what the import is known by:
 {"import_id": "…"}
 ```
 
+A path naming a directory is `400 Bad Request`, one naming no file the
+folders offer, or anything a listing leaves out, is `404 Not Found`, and a
+file the node may not read is `403 Forbidden`.
+
 `GET /data/imports` says how each import is doing. Once an import is done,
 it gives the content identifier of the file bundle it stored:
 
 ```json
 {"imports": {"<import_id>": {"path": "Movies/Film.mp4", "status": "done",
+                             "error": null,
+                             "requested_at": 1791892800.25,
+                             "finished_at": 1791892861.5,
                              "bytes_read": 4294967296, "size": 4294967296,
                              "file": "sha256/…"}}}
 ```
 
-`status` is `waiting`, `running`, `done`, or `failed`, and a failed import
-also carries `error`. An import stores the file's parts and a file bundle
+`status` is `waiting`, `running`, `done`, or `failed`, and `error` says why
+a failed import failed, and is `null` for any other. `requested_at` is when
+the import was asked for, and `finished_at` when it was done or failed, or
+`null` until then, each in seconds since the Unix epoch. `bytes_read` is
+how much of the file has been read, `size` its size, or `null` until that
+is known, and `file` the file bundle's identifier, or `null` until it is
+stored. A node that cannot yet say how its imports are doing, as one just
+started may not, answers `503 Service Unavailable` with `Retry-After`.
+
+An import stores the file's parts and a file bundle
 ([Bundle Specification §2](BundleSpecification.md#2-raw-file-bundle)) that
 names them and records each one's size. An imported file is shared, not
 private, so its parts are pushed as they are stored (§7.4). Importing the
@@ -2583,7 +2614,9 @@ bounded time, before answering `503`. A `<video>` element does not retry a
 `503`, so a node that answers at once leaves a video unable to start, or to
 seek, until every part it needs is held. The parts nearest the bytes
 requested SHOULD be asked for first. Once a response has begun, a part that
-does not arrive in time ends it short, as above.
+does not arrive in time ends it short, as above. The reference node waits
+up to 10 seconds for each object it lacks, by default, and asks, as well,
+for the 8 parts after the one it is sending that it does not hold.
 
 An application response is not part of the programmatic API, and its
 signature (§11) MAY cover its headers alone, leaving out the body, so that a
@@ -3102,7 +3135,9 @@ value from an application's store (§13.3) may change at any time, and SHOULD
 carry `Cache-Control: no-cache`, so that a cache asks again before using it.
 An encrypted block opened (§11.6) MUST carry `Cache-Control: no-store`, since
 it is opened for one session, or one username and password, and holds what
-was encrypted to keep it from everyone else.
+was encrypted to keep it from everyone else. Every response that names a
+session (§11.4), and every answer about the trust of whoever is signed in
+(§11.7), carries it too, since each is for that person alone.
 
 **TBD:**
 
@@ -3150,14 +3185,18 @@ that must know a body's size before it reads it.
 
 **TBD:**
 
-- Default limits. The reference node takes a body of at most 1 MiB with a
-  signed request, as it takes an object (HighLevelDesign §4.3), and a node
-  or seek list of at most 4 MiB once decompressed. A page's request to make
-  a drop, signed or not, or to make bundles takes at most 4 MiB, a value in
-  an application's store 64 KiB, and the store itself 1 MiB, and any other
-  JSON body 64 KiB. It reads a bundle of at most 16 MiB once decompressed or
-  decrypted. A drop's search takes at most 60 seconds, and matches at most
-  26 bits (§9.6), and a search answers with at most 32 results (§6).
+- Default limits. By default, the reference node takes a body of at most
+  1 MiB with a signed request, as it takes an object (HighLevelDesign
+  §4.3), and a node or seek list of at most 4 MiB once decompressed. A
+  page's request to make bundles takes at most 4 MiB, a value in an
+  application's store 64 KiB, and the store itself 1 MiB. It reads a bundle
+  of at most 16 MiB once decompressed or decrypted. A drop's search takes at
+  most 60 seconds, and matches at most 26 bits (§9.6), and a search answers
+  with at most 32 results (§6). A sign-in's trust scores reach at most 4
+  steps out and read at most 1,000 lists, spending up to 30 seconds looking
+  for each (Trust Network §4.2, §4.3). The node's operator may change each
+  of these limits but two, which are fixed: a page's request to make a
+  drop, signed or not, takes at most 4 MiB, and any other JSON body 64 KiB.
 - Negotiation of limits.
 - Whether limits are protocol parameters or local policy.
 

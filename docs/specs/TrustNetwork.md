@@ -62,9 +62,9 @@ whose value is not `true` or `false`, and a name in `versions` that is not a
 content identifier, and counts the rest of the list. An identity named
 more than once, its identifier spelled in different cases (HTTP API §5.4),
 counts only if each entry says the same, so that a list reads alike in
-whatever order its members are read. A reader ignores any other member of the object, so that a
-later version of this document can add one. An entry naming the list's own
-owner never counts (§4.1).
+whatever order its members are read. A reader ignores any other member of
+the object, so that a later version of this document can add one. An entry
+naming the list's own owner never counts (§4.1).
 
 ### 3.2 Where a List Is Kept
 
@@ -203,7 +203,9 @@ passed since it began looking for it, from the versions it holds then. Until
 then it looks again, so that a list kept only on another node is found by
 the search of the node's peers that looking starts. A list of which no
 version is held by then is empty for the rest of the build, and is not
-looked for again until the next sign-in.
+looked for again until the next sign-in. The reference node looks for a list
+for 30 seconds, by default, longer than its search of its peers lasts
+(High-Level Design §4.7).
 
 The scores of a step are final once every list of the step before it is
 read. Until then, the node answers with what it has read so far, saying
