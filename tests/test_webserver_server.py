@@ -16,14 +16,14 @@ from json import dumps, loads
 from logging import DEBUG, ERROR, WARNING, getLogger
 from pathlib import Path
 from queue import Empty, Queue
-from socket import SHUT_WR, create_connection, gethostname, socket
+from socket import AF_INET6, SHUT_WR, create_connection, gethostname, socket
 from threading import Thread
 from time import monotonic, sleep
 from typing import Callable, Iterator
 from urllib.parse import quote
 from zlib import compress
 
-from pytest import LogCaptureFixture, fixture, mark, raises
+from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
 
 from libranet.atomic_file import write_atomically
 from libranet.bundle.serialization import encode_bundle
@@ -3142,6 +3142,68 @@ def test_a_port_something_on_this_machine_answers_on_is_refused(
             )
 
     assert raised.value.errno == EADDRINUSE
+
+
+def _ipv6_available() -> bool:
+    """Whether this host can listen at an IPv6 address."""
+    try:
+        with socket(AF_INET6) as probe:
+            probe.bind(("::1", 0))
+            return True
+
+    except OSError:
+        return False
+
+
+@mark.skipif(not _ipv6_available(), reason="this host has no IPv6")
+@mark.parametrize("client_at", ["127.0.0.1", "::1"])
+def test_every_address_is_listened_at_for_ipv4_and_ipv6(client_at: str) -> None:
+    server = LibranetHTTPServer(
+        ("::", 0), Router(), getLogger("test.webserver"), MessageSigner(SERVER_IDENTITY)
+    )
+
+    try:
+        with create_connection((client_at, server.server_port), timeout=1.0):
+            pass
+
+    finally:
+        server.server_close()
+
+
+@mark.skipif(not _ipv6_available(), reason="this host has no IPv6")
+def test_a_port_answered_on_for_ipv4_is_refused_at_every_address() -> None:
+    with socket() as held:
+        held.bind(("127.0.0.1", 0))
+        held.listen()
+        port = int(held.getsockname()[1])
+
+        with raises(OSError) as raised:
+            LibranetHTTPServer(
+                ("::", port),
+                Router(),
+                getLogger("test.webserver"),
+                MessageSigner(SERVER_IDENTITY),
+            )
+
+    assert raised.value.errno == EADDRINUSE
+
+
+def test_every_address_is_every_ipv4_address_on_a_host_with_no_ipv6(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("libranet.webserver.server._ipv6_listenable", lambda: False)
+    server = LibranetHTTPServer(
+        ("::", 0), Router(), getLogger("test.webserver"), MessageSigner(SERVER_IDENTITY)
+    )
+
+    try:
+        assert server.server_name == "0.0.0.0"
+
+        with create_connection(("127.0.0.1", server.server_port), timeout=1.0):
+            pass
+
+    finally:
+        server.server_close()
 
 
 def test_the_first_free_port_is_listened_on_and_each_taken_one_logged(

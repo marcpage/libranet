@@ -128,7 +128,7 @@ The settings an operator is most likely to change:
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `network.listen_address` | `0.0.0.0` | The address the node listens at: every address the machine has |
+| `network.listen_address` | `::` | The address the node listens at: every IPv6 and IPv4 address the machine has, or every IPv4 one on a machine with no IPv6 |
 | `network.listen_port` | `8080` | The port it listens on, for peers, applications, and `/data` |
 | `network.external_address`, `network.external_port` | `null` | The address and port it tells peers to reach it at, when they differ from what peers see |
 | `network.config_port` | `null` | `/config`'s port (§4.1) |
@@ -177,7 +177,7 @@ The node logs the address it took as it starts, to the terminal and in
 `libranet-webserver.log`:
 
 ```text
-Web server listening on 0.0.0.0:8080, and /config at http://127.0.0.1:8180/config/
+Web server listening on :::8080, and /config at http://127.0.0.1:8180/config/
 ```
 
 `http://127.0.0.1:8080/config` sends a browser there.

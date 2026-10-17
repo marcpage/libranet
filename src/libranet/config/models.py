@@ -59,12 +59,20 @@ CONFIG_PORT_STEP: Final = 100
 # where this machine reaches it.
 CONFIG_LISTEN_ADDRESS: Final = "127.0.0.1"
 
+# The address that stands for every address of both IPv4 and IPv6: a server
+# listening at it takes IPv4 connections too, on a dual-stack socket.
+ANY_ADDRESS: Final = "::"
+
+# The address that stands for every IPv4 address, listened at instead of
+# ANY_ADDRESS on a host with no IPv6.
+ANY_IPV4_ADDRESS: Final = "0.0.0.0"
+
 # Where this machine reaches a server listening at an address that stands
 # for every address of its family.
 LOOPBACK_FOR_ANY: Final[Mapping[str, str]] = {
     "": "127.0.0.1",
-    "0.0.0.0": "127.0.0.1",
-    "::": "::1",
+    ANY_IPV4_ADDRESS: "127.0.0.1",
+    ANY_ADDRESS: "::1",
 }
 
 # The hosts /config, and every endpoint serving only local clients, are
@@ -156,7 +164,7 @@ class _Section(BaseModel):
 class NetworkConfig(_Section):
     """Listening sockets and the endpoint this node advertises to peers."""
 
-    listen_address: str = "0.0.0.0"
+    listen_address: str = ANY_ADDRESS
     listen_port: int = Field(default=8080, ge=1, le=HIGHEST_PORT)
 
     # Self-description in `/data/nodes` (HttpApi §10.1). With neither field

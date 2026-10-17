@@ -236,7 +236,7 @@ class WebServerModule(ModuleBase):  # pylint: disable=too-many-instance-attribut
 
         self.logger.info(
             "Web server listening on %s:%s, and /config at http://%s:%s/config/",
-            network.listen_address,
+            server.server_name,
             server.server_port,
             CONFIG_LISTEN_ADDRESS,
             config_server.server_port,
