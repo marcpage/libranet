@@ -16,7 +16,7 @@ from json import dumps, loads
 from logging import DEBUG, ERROR, WARNING, getLogger
 from pathlib import Path
 from queue import Empty, Queue
-from socket import SHUT_WR, create_connection, socket
+from socket import SHUT_WR, create_connection, gethostname, socket
 from threading import Thread
 from time import monotonic, sleep
 from typing import Callable, Iterator
@@ -1636,6 +1636,22 @@ def test_another_sites_config_request_is_refused_before_it_can_capture_anything(
     assert not credential.captured
     assert not registry.path.exists()
     assert _published(queues) == []
+
+
+def test_config_is_served_as_the_name_this_machine_gives_itself(
+    config_connection: HTTPConnection,
+) -> None:
+    # As a browser on this machine sends it, having looked up MacBook.local
+    # as a loopback address (#375).
+    host = f"{gethostname()}:8180"
+
+    response, _ = _get(
+        config_connection,
+        "/config/api",
+        headers={**_credentials(), "Host": host, "Referer": f"http://{host}/config/"},
+    )
+
+    assert response.status == 200
 
 
 def test_the_config_pages_own_requests_are_served(

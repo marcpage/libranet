@@ -66,7 +66,7 @@ class SiteChecks:
 
         return (
             f"{self.served} is not served as {host!r}, which the Host header names "
-            "(network.config_hosts lists what it is served as)."
+            "(it is served as this machine's own name, and as network.config_hosts lists)."
         )
 
     def page_refusal(self, request: Request) -> str | None:

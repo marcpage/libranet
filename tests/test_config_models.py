@@ -5,7 +5,7 @@ from pathlib import Path
 
 from platformdirs.macos import MacOS
 from pydantic import ValidationError
-from pytest import mark, raises
+from pytest import MonkeyPatch, mark, raises
 from yaml import safe_load
 
 from libranet.config.errors import ConfigError
@@ -240,6 +240,16 @@ def test_local_copy_and_privileged_attributes_are_excluded_by_default() -> None:
 
 def test_config_is_served_as_this_machine_alone_by_default() -> None:
     assert NetworkConfig().config_hosts == ("localhost", "127.0.0.1", "::1")
+
+
+def test_config_is_served_as_the_name_this_machine_gives_itself_too(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("libranet.config.models.gethostname", lambda: "MacBook.local")
+
+    assert NetworkConfig().served_as() == ("localhost", "127.0.0.1", "::1", "MacBook.local")
+    assert NetworkConfig(config_hosts=("*.lan",)).served_as() == ("*.lan", "MacBook.local")
+    assert NetworkConfig(config_hosts=()).served_as() == ("MacBook.local",)
 
 
 def test_config_tries_every_100th_port_above_the_main_one_by_default() -> None:

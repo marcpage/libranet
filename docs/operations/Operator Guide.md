@@ -194,9 +194,10 @@ change them, or if they are forgotten, see §8.
 A browser sends the `/config` credential with every request to `/config`'s
 port, whichever page made it, so `/config` refuses any request that another
 page made: one whose `Sec-Fetch-Site` or `Origin` header says so, or whose
-`Host` is not `localhost`, `127.0.0.1`, or `[::1]`. The applications the
-node serves are on its own port, so their pages are other pages too. If you
-reach `/config` by another name, add it to `network.config_hosts`.
+`Host` is not `localhost`, `127.0.0.1`, `[::1]`, or the name the machine
+gives itself, such as `macbook.local`. The applications the node serves are
+on its own port, so their pages are other pages too. If you reach `/config`
+by another name, add it to `network.config_hosts`.
 
 A link you click on another page of this machine, such as the root page's,
 opens the `/config` page, and the first time asks for the username and

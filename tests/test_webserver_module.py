@@ -7,7 +7,7 @@ from json import dumps, loads
 from pathlib import Path
 from queue import Empty, Queue
 from random import randrange
-from socket import socket
+from socket import gethostname, socket
 from threading import Event, Thread
 from time import monotonic, sleep
 from typing import Any
@@ -42,6 +42,7 @@ from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.webserver.app_registry import CONFIG_APPLICATION, Application, ApplicationRegistry
 from libranet.webserver.config_credential import ConfigCredential
+from libranet.webserver.local_imports import IMPORTS_PATH
 from libranet.webserver.module import WebServerModule
 
 from tests.helpers import published, with_node_key
@@ -336,10 +337,14 @@ def test_module_follows_the_unsigned_api_read_setting(
     assert not thread.is_alive()
 
 
-def _status(host: str, port: int, path: str) -> tuple[int, str | None]:
-    """A GET from the root application's page, as a page of the node it reads into sends."""
+def _status(host: str, port: int, path: str, *, named: str | None = None) -> tuple[int, str | None]:
+    """A GET from the root application's page, as a page of the node it reads into sends.
+
+    Given ``named``, its ``Host`` header names that, as a browser that looked it up sends.
+    """
+    authority = named or f"{host}:{port}"
     connection = HTTPConnection(host, port, timeout=5)
-    connection.request("GET", path, headers={"Referer": f"http://{host}:{port}/"})
+    connection.request("GET", path, headers={"Host": authority, "Referer": f"http://{authority}/"})
     response = connection.getresponse()
     response.read()
     connection.close()
@@ -494,14 +499,21 @@ def _authorized(
     page: str = "/config/",
     *,
     value: object = None,
+    named: str | None = None,
 ) -> tuple[int, bytes]:
     """A GET carrying Basic credentials for ``user``, from the page ``page`` names.
 
-    Given ``value``, it is a POST sending it as JSON.
+    Given ``value``, it is a POST sending it as JSON. Given ``named``, its
+    ``Host`` header names that, as a browser that looked it up sends.
     """
+    authority = named or f"{host}:{port}"
     encoded = b64encode(f"{user}:secret".encode("utf-8")).decode("ascii")
     connection = HTTPConnection(host, port, timeout=5)
-    headers = {"Authorization": f"Basic {encoded}", "Referer": f"http://{host}:{port}{page}"}
+    headers = {
+        "Host": authority,
+        "Authorization": f"Basic {encoded}",
+        "Referer": f"http://{authority}{page}",
+    }
 
     if value is None:
         connection.request("GET", path, headers=headers)
@@ -828,6 +840,40 @@ def test_config_has_a_port_of_its_own_that_the_main_port_sends_its_pages_to(
     assert not thread.is_alive()
     assert module.config_address is None
     assert _is_free(config_port)
+
+
+def test_config_is_reached_by_the_name_this_machine_gives_itself(tmp_path: Path) -> None:
+    # As a browser on this machine reaching the node as MacBook.local, which it
+    # looks up as a loopback address, and following the root page's link (#375).
+    queues = _queues()
+    module = WebServerModule(
+        ModuleName.WEBSERVER, queues, _config(tmp_path, _free_port()), poll_interval_seconds=0.01
+    )
+    stop = Event()
+    thread = Thread(target=module.run, args=(stop,), daemon=True)
+    thread.start()
+
+    try:
+        host, port = _serving(module, queues)
+        config_port = _config_port(module)
+        name = gethostname()
+
+        assert _status(host, port, "/config/", named=f"{name}:{port}") == (
+            302,
+            f"http://{name.casefold()}:{config_port}/config/",
+        )
+        assert (
+            _authorized(host, config_port, "/config/api", named=f"{name}:{config_port}")[0] == 200
+        )
+        # Past the checks to the endpoint, which has no backup state to say yet.
+        assert _status(host, port, IMPORTS_PATH, named=f"{name}:{port}")[0] == 503
+        assert _status(host, port, IMPORTS_PATH, named=f"evil.example:{port}")[0] == 403
+
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+    assert not thread.is_alive()
 
 
 def test_factory_builds_a_web_server_module(tmp_path: Path) -> None:
