@@ -15,7 +15,8 @@ application's bundle, which the web server owns, and which names the pages
 shipped with the node at `/` and at `/config` until an administrator changes
 them. The one at `/config` drives all of them, and has the node read and
 change what it says of itself (Phase 5 Step 104), and whom it trusts (Phase 5
-Step 110).
+Step 110). It builds the node's own trust scores from that list (Phase 5 Step
+113).
 
 A few `/data` endpoints serve only clients on this machine, and only this
 node's own pages there, such as the listing of the folders it offers them
@@ -238,6 +239,7 @@ from libranet.webserver.own_pages import (
     OwnPages,
     RefererPage,
 )
+from libranet.webserver.peer_trust import ConnectingRule, PeerTrust
 from libranet.webserver.request_refusals import (
     MAX_JSON_BODY_BYTES,
     blocked_response,
@@ -412,6 +414,7 @@ __all__ = [
     "ConfigCredential",
     "ConfigSiteGuard",
     "ConnectHandler",
+    "ConnectingRule",
     "ContentWait",
     "CostlyWork",
     "CredentialFileError",
@@ -452,6 +455,7 @@ __all__ = [
     "OwnSiteOnly",
     "OwnUploads",
     "PartReader",
+    "PeerTrust",
     "RefererPage",
     "RegisteredApplications",
     "RegistryFileError",

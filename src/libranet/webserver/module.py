@@ -28,6 +28,11 @@ named once as the server starts too (Phase 2 Step 53). And it takes what came
 of each dial ``/config`` asked the connection manager for, ``address.dialed``,
 which wakes the request waiting on it (Phase 5 Step 109).
 
+It builds the node's own trust scores, and says whom they trust
+(:mod:`libranet.webserver.peer_trust`, Phase 5 Step 113). As it starts, it asks
+the stats module what it kept of them, and takes in ``node.trust_stored``,
+until its build is complete.
+
 The ``/config`` credential is loaded from disk like the node key, rather
 than being carried across the process boundary.
 """
@@ -58,6 +63,7 @@ from libranet.webserver.costly_work import CostlyWork
 from libranet.webserver.dial_outcomes import DIAL_REPORT_SECONDS, DialOutcomes, DialReport
 from libranet.webserver.inbound_peers import InboundPeers
 from libranet.webserver.local_folders import LocalFolders
+from libranet.webserver.peer_trust import PeerTrust
 from libranet.webserver.server import LibranetHTTPServer, build_config_router, build_router
 
 
@@ -70,6 +76,7 @@ class WebServerModule(ModuleBase):  # pylint: disable=too-many-instance-attribut
             EventType.BACKUP_STATE,
             EventType.PEERS_CONNECTED_REQUESTED,
             EventType.ADDRESS_DIALED,
+            EventType.NODE_TRUST_STORED,
         }
     )
 
@@ -91,6 +98,7 @@ class WebServerModule(ModuleBase):  # pylint: disable=too-many-instance-attribut
         self._backup_state = BackupState()
         self._dial_outcomes = DialOutcomes()
         self._inbound_peers = InboundPeers(self.publish)
+        self._peers: PeerTrust | None = None
         self._server: LibranetHTTPServer | None = None
         self._config_server: LibranetHTTPServer | None = None
         self._threads: tuple[Thread, ...] = ()
@@ -100,6 +108,7 @@ class WebServerModule(ModuleBase):  # pylint: disable=too-many-instance-attribut
                 EventType.BACKUP_STATE: self._on_backup_state,
                 EventType.PEERS_CONNECTED_REQUESTED: self._on_peers_connected_requested,
                 EventType.ADDRESS_DIALED: self._on_address_dialed,
+                EventType.NODE_TRUST_STORED: self._on_node_trust_stored,
             }
         )
 
@@ -148,6 +157,16 @@ class WebServerModule(ModuleBase):  # pylint: disable=too-many-instance-attribut
             ),
             trust_list_wait_seconds=identity_config.trust_list_wait_seconds,
         )
+        peers = PeerTrust.of(
+            storage,
+            content,
+            node.node_id,
+            self.publish,
+            limits=described.trust_limits,
+            wait_seconds=described.trust_list_wait_seconds,
+            retry_after_seconds=network.retry_after_seconds,
+            rebuild_seconds=identity_config.node_trust_rebuild_seconds,
+        )
         config_server = LibranetHTTPServer.first_free(
             CONFIG_LISTEN_ADDRESS,
             network.config_ports(),
@@ -166,6 +185,7 @@ class WebServerModule(ModuleBase):  # pylint: disable=too-many-instance-attribut
                 costly_work=costly_work,
                 dial_outcomes=self._dial_outcomes,
                 dial_wait_seconds=self._config.peers.longest_dial_seconds() + DIAL_REPORT_SECONDS,
+                peers=peers,
             ),
             self.logger,
             signer,
@@ -203,6 +223,8 @@ class WebServerModule(ModuleBase):  # pylint: disable=too-many-instance-attribut
 
         self._server = server
         self._config_server = config_server
+        self._peers = peers
+        peers.start()
         self._threads = (
             Thread(target=server.serve_forever, name=f"{self.name}-http", daemon=True),
             Thread(target=config_server.serve_forever, name=f"{self.name}-config", daemon=True),
@@ -219,8 +241,17 @@ class WebServerModule(ModuleBase):  # pylint: disable=too-many-instance-attribut
             config_server.server_port,
         )
 
+    def on_idle(self) -> None:
+        """Build the node's own trust scores again when it is time, and say what they say."""
+        if self._peers is not None:
+            self._peers.check()
+
     def on_stop(self) -> None:
-        """Stop accepting requests and release the listening sockets."""
+        """Stop accepting requests, release the listening sockets, and stop building scores."""
+        if self._peers is not None:
+            self._peers.close()
+            self._peers = None
+
         for server in (self._server, self._config_server):
             if server is not None:
                 server.shutdown()
@@ -257,6 +288,11 @@ class WebServerModule(ModuleBase):  # pylint: disable=too-many-instance-attribut
     def _on_address_dialed(self, message: Message) -> None:
         """Hand what came of a dial to the ``/config`` request waiting on it."""
         self._dial_outcomes.report(message["dial_id"], DialReport.from_message(message))
+
+    def _on_node_trust_stored(self, message: Message) -> None:
+        """Take what the stats module kept of whom the node trusts, until its scores are built."""
+        if self._peers is not None:
+            self._peers.stored(message)
 
 
 def _address(server: LibranetHTTPServer | None) -> tuple[str, int] | None:
