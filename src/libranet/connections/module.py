@@ -648,7 +648,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         self._maintain()
 
     def _on_dial_requested(self, message: Message) -> None:
-        """Dial the address the operator asked for, on a thread of its own, unless it is connected."""
+        """Dial an address the operator asked for, on its own thread, unless a peer is there."""
         dial_id = message["dial_id"]
         endpoint = message["endpoint"]
 

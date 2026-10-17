@@ -1,4 +1,4 @@
-"""What came of each dial the operator asked for, for the request asking to wait on (Phase 5 Step 109).
+"""The outcomes of the dials ``/config`` asks for, for its requests to wait on (Phase 5 Step 109).
 
 ``POST /config/api/connections`` asks the connection manager to dial an
 address, with ``address.dial_requested``, and answers only once it hears

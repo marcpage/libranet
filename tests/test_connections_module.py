@@ -849,7 +849,12 @@ def test_an_address_asked_for_where_the_answer_proves_nothing_is_said_to_be_unre
 ) -> None:
     with create_server(("127.0.0.1", 0)) as listener:
         port = listener.getsockname()[1]
-        Thread(target=lambda: listener.accept()[0].close(), daemon=True).start()
+
+        def hang_up() -> None:
+            accepted, _ = listener.accept()
+            accepted.close()
+
+        Thread(target=hang_up, daemon=True).start()
         module = modules.start(config)
         module.handle(dial_requested(f"http://127.0.0.1:{port}"))
         (dialed,) = bus.wait_for(EventType.ADDRESS_DIALED)
