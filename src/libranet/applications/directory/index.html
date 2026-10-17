@@ -142,7 +142,6 @@
     </form>
     <div id="signed-in" hidden>
       <span id="signed-in-text"></span>
-      <div class="actions"><button id="sign-out" type="button">Sign out</button></div>
     </div>
     <p id="account-text" class="note"></p>
   </section>
@@ -1808,7 +1807,8 @@ function sayAccount(text, className) {
   said.className = className || "note";
 }
 
-// Offer a local client signing in, or out. Either reloads the page, which
+// Offer a local client signing in, if no one is; signing out is on the home
+// page alone. Signing in reloads the page, which
 // then reads the directory as whoever is signed in.
 function offerAccount(session) {
   byId("account").hidden = false;
@@ -1820,11 +1820,7 @@ function offerAccount(session) {
       session.fallback_for && !session.fallback
         ? `Signed in as ${session.username}, with the fallback password.`
         : `Signed in as ${session.username}.`;
-    byId("sign-out").addEventListener("click", async () => {
-      byId("sign-out").disabled = true;
-      await call("DELETE", "/data/session").catch(() => null);
-      location.reload();
-    });
+    sayAccount("Sign out on the home page.");
     return;
   }
 
