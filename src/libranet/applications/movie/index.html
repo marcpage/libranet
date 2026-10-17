@@ -315,7 +315,9 @@
     <div class="fields">
       <label class="wide">Name <input id="new-name" required autocomplete="off"></label>
     </div>
-    <p class="hint">Only this node keeps its list of collections. A collection itself is held by the
+    <p class="hint">Signed in, your list of collections is kept at a drop of yours, signed by you and
+    encrypted for you alone, so that you find it on any node you sign in on. Not signed in, only this
+    node keeps its list. A collection itself is held by the
     network, encrypted, and can be read only by whoever is given its id.</p>
     <p class="result" id="new-result" role="status" hidden></p>
     <div class="buttons">
@@ -424,9 +426,24 @@ const IMPORTS = "/data/imports";
 const BUNDLES = "/data/bundles";
 const STORE = "/data/store/movie";
 const DATA = "/data/";
+const SESSION = "/data/session";
+const SIGNED = "/data/signed";
+const DROPS = "/data/drop";
+const ENCRYPTED = "/data/encrypted/";
 
-// The key of this application's store listing the playlists this node keeps.
+// The key of this application's store listing the playlists this node keeps
+// for whoever is not signed in.
 const PLAYLISTS = "playlists";
+
+// Where a person's playlists are kept, "movie collections:{id}": in versions
+// at the drop, each signed by them and encrypted for them (HttpApi 9, 11.5,
+// 11.6), never in the store, which any client reads and only this node keeps.
+const COLLECTIONS_PREFIX = "movie collections:";
+
+// What each version placed asks the node to search for its nonce, and how
+// many leading bits a drop found must share with the target's hash to be read.
+const DROP_SECONDS = 1;
+const DROP_MINIMUM_BITS = 16;
 
 // Where this browser remembers the last playlist chosen.
 const REMEMBERED = "movie.playlist";
@@ -468,6 +485,9 @@ const CONTENT_ID = /^[a-z0-9-]+\/[0-9a-f]+(?:\/[A-Za-z0-9:-]+\/[0-9a-f]+)?$/;
 const state = {
   // Whether this browser is on the node's own machine (HttpApi 2.4).
   local: false,
+  // Whoever is signed in (HttpApi 11.4), whose own playlists are kept, or
+  // null, for those this node keeps for whoever is not.
+  owner: null,
   // The playlist open, and the folder of the movie chosen in it.
   playlist: null,
   selected: null,
@@ -757,15 +777,170 @@ function isEntry(entry) {
   return isObject(entry) && isText(entry.name) && isText(entry.bundle);
 }
 
-// The playlists this node keeps, each by name at its newest version, as
-// this application's store lists them (HttpApi 13.3).
+// How many leading bits the hex hashes `hex` and `other` share.
+function matchingBits(hex, other) {
+  let bits = 0;
+
+  for (let i = 0; i < hex.length && i < other.length; i += 1) {
+    const differ = Number.parseInt(hex[i], 16) ^ Number.parseInt(other[i], 16);
+
+    if (differ !== 0) {
+      return bits + Math.clz32(differ) - 28;
+    }
+
+    bits += 4;
+  }
+
+  return bits;
+}
+
+// The ids a search of the drop `target` finds (HttpApi 9.7) sharing at least
+// DROP_MINIMUM_BITS with its hash. Whatever else is nearest is something
+// else, and is not read.
+async function foundAt(target) {
+  const search = await call("GET", `${DROPS}/${encodeURIComponent(target)}`);
+  const answered = search.ok && isObject(search.value) && isText(search.value.target) &&
+    Array.isArray(search.value.results);
+
+  if (!answered) {
+    throw new Refusal(search);
+  }
+
+  const hash = search.value.target;
+  return search.value.results.filter(
+    (id) => isText(id) && CONTENT_ID.test(id) && matchingBits(id.split("/")[1], hash) >= DROP_MINIMUM_BITS,
+  );
+}
+
+// The session ended while the page was open (HttpApi 11.4).
+class SessionEnded extends Error {
+  constructor() {
+    super("Your session has ended. Reload the page, and sign in again.");
+  }
+}
+
+// The playlists kept for whoever is signed in, or, for whoever is not, those
+// this node keeps, each by name at its newest version. This node's are listed
+// by this application's store (HttpApi 13.3). A person's are a version at
+// their drop, or more than one, made apart, on two nodes say, and merged as
+// they are read: each playlist at the version that last changed it.
 class Kept {
-  constructor(list, tag) {
+  constructor(list, tag, versions = []) {
     this.list = list;
     this.tag = tag;
+    // The ids of the person's versions read, which the next replaces.
+    this.versions = versions;
   }
 
   static async read() {
+    return state.owner ? Kept.readOwn() : Kept.readNode();
+  }
+
+  // The drop of whoever is signed in.
+  static target() {
+    return `${COLLECTIONS_PREFIX}${state.owner.id}`;
+  }
+
+  static async readOwn() {
+    const ids = await foundAt(Kept.target());
+    const lists = await Promise.all(ids.map((id) => Kept.version(id)));
+    const merged = new Map();
+
+    ids.forEach((id, index) => {
+      for (const entry of lists[index] || []) {
+        const held = merged.get(entry.name);
+        const later = !held || entry.changed > held.entry.changed ||
+          (entry.changed === held.entry.changed && id < held.id);
+
+        if (later) {
+          merged.set(entry.name, { entry, id });
+        }
+      }
+    });
+
+    const list = [...merged.values()].map((held) => held.entry);
+    list.sort((one, other) => one.name.localeCompare(other.name));
+    return new Kept(list, null, ids.filter((id, index) => lists[index] !== null));
+  }
+
+  // The playlists the version at the drop `id` lists, opened with the key of
+  // whoever is signed in (HttpApi 11.6); null if it is not held, or is not a
+  // version they signed.
+  static async version(id) {
+    const result = await patiently("GET", `${ENCRYPTED}${id}`);
+
+    if (result.status === 401) {
+      throw new SessionEnded();
+    }
+
+    const value = result.value;
+
+    if (!result.ok || !isObject(value) || value.signer !== state.owner.id || !isText(value.contents)) {
+      console.warn(`Passing over ${id}: it is no version of your collections held here.`);
+      return null;
+    }
+
+    let contents;
+
+    try {
+      contents = JSON.parse(value.contents);
+    } catch (error) {
+      contents = null;
+    }
+
+    if (!isObject(contents) || !Array.isArray(contents.collections)) {
+      console.warn(`Passing over ${id}: it is no version of your collections.`);
+      return null;
+    }
+
+    return contents.collections.filter((entry) => isEntry(entry) && isText(entry.changed));
+  }
+
+  // Places `list` as a version of the person's playlists, signed by them and
+  // encrypted for them, each playlist it changes marked when, then blocks the
+  // versions it replaces (HttpApi 5.5), so that they do not push the newest
+  // out of a search.
+  async place(list) {
+    const before = new Map(this.list.map((entry) => [entry.name, entry]));
+    const now = new Date().toISOString();
+    const collections = list.map((entry) => {
+      const held = before.get(entry.name);
+      return held && held.bundle === entry.bundle ? held : { ...entry, changed: now };
+    });
+    const result = await patiently("POST", SIGNED, {
+      body: {
+        target: Kept.target(),
+        text: JSON.stringify({ collections }),
+        seconds: DROP_SECONDS,
+        minimum_bits: DROP_MINIMUM_BITS,
+        encrypt: { for: state.owner.id },
+      },
+    });
+
+    if (result.status === 401) {
+      throw new SessionEnded();
+    }
+
+    if (result.status === 403) {
+      throw new Error("Signed in with your fallback password, your collections are not changed until your fallback takes over.");
+    }
+
+    if (!result.ok) {
+      throw new Refusal(result);
+    }
+
+    for (const id of this.versions) {
+      const blocked = await call("DELETE", `${DATA}${id}`);
+
+      if (!blocked.ok) {
+        console.warn(`The replaced version ${id} was not blocked: ${new Refusal(blocked).message}`);
+      }
+    }
+
+    return new Kept(collections, null);
+  }
+
+  static async readNode() {
     const result = await call("GET", `${STORE}/${PLAYLISTS}`);
 
     if (result.status === 404) {
@@ -783,6 +958,11 @@ class Kept {
   // Keeps the list `change` makes of the one kept, reading it again and
   // making the change again whenever another change came first.
   static async change(change) {
+    if (state.owner) {
+      const kept = await Kept.readOwn();
+      return kept.place(change(kept.list));
+    }
+
     for (let attempt = 1; ; attempt += 1) {
       const kept = await Kept.read();
       const list = change(kept.list);
@@ -829,6 +1009,12 @@ function forget() {
   }
 }
 
+// Who keeps the playlists listed, whoever is signed in or this node, saying
+// that they `adverb` keep one.
+function keeps(adverb) {
+  return state.owner ? `You ${adverb} keep` : `This node ${adverb} keeps`;
+}
+
 // A playlist was changed elsewhere since this page read it.
 class Conflict extends Error {}
 
@@ -839,7 +1025,7 @@ async function keepVersion(previous, next) {
     const index = list.findIndex((entry) => entry.name === next.name);
 
     if (previous === null && index >= 0) {
-      throw new Error(`This node already keeps a collection named “${next.name}”.`);
+      throw new Error(`${keeps("already")} a collection named “${next.name}”.`);
     }
 
     if (index < 0) {
@@ -874,7 +1060,7 @@ async function newest(name) {
   const entry = (await Kept.read()).find(name);
 
   if (!entry) {
-    throw new Error(`This node no longer keeps a collection named “${name}”.`);
+    throw new Error(`${keeps("no longer")} a collection named “${name}”.`);
   }
 
   return Playlist.read(entry.bundle, name);
@@ -922,7 +1108,7 @@ async function changePlaylist(
 // `source`, if any, and keeps it.
 async function makePlaylist(name, folders = [], source = null) {
   if ((await Kept.read()).find(name)) {
-    throw new Error(`This node already keeps a collection named “${name}”.`);
+    throw new Error(`${keeps("already")} a collection named “${name}”.`);
   }
 
   const add = { [PLAYLIST_FILE]: { text: playlistText(name, folders) } };
@@ -1022,6 +1208,8 @@ async function showChooser() {
 
   if (kept.list.length > 0) {
     show(status, "Choose a collection.");
+  } else if (state.owner) {
+    show(status, "You keep no collections yet. Make one, or import one by its id.");
   } else if (state.local) {
     show(status, "This node keeps no collections yet. Make one, or import one by its id.");
   } else {
@@ -1835,16 +2023,35 @@ async function askClient() {
   }
 }
 
+// Who is signed in, as the node says (HttpApi 11.4); null if no one is, or
+// this client cannot say. Only a local client is signed in.
+async function askSession() {
+  try {
+    const result = await call("GET", SESSION);
+    const signed = result.ok && isObject(result.value) && isText(result.value.id) && CONTENT_ID.test(result.value.id);
+    return signed ? result.value : null;
+  } catch (error) {
+    console.warn(error.message);
+    return null;
+  }
+}
+
 async function start() {
   state.local = await askClient();
+  state.owner = state.local ? await askSession() : null;
 
   for (const element of document.querySelectorAll(".local-only")) {
     element.hidden = !state.local;
   }
 
-  byId("client-note").textContent = state.local
-    ? "This browser is on the node's own machine: add movies, edit them, and keep and share collections."
-    : "This browser is not on the node's own machine, so it can only play. Movies are added there.";
+  if (state.owner) {
+    byId("client-note").textContent =
+      `Signed in as ${state.owner.username}: add movies, edit them, and keep and share collections of your own.`;
+  } else {
+    byId("client-note").textContent = state.local
+      ? "This browser is on the node's own machine: add movies, edit them, and keep and share this node's collections. Sign in, in mail or the user directory, to keep your own."
+      : "This browser is not on the node's own machine, so it can only play. Movies are added there.";
+  }
   byId("choose-playlist").hidden = false;
   const remembered = recall();
 
