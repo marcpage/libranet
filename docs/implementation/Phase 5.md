@@ -73,6 +73,9 @@ ordinary content, signed by its owner.
 - **A way home.** Every page of the shipped applications but the front page
   links to it, with 🏠 in its upper right corner, and the App Developer
   Guide asks the same of every application. Step 111.
+- **Trusting yourself.** The scores of whoever is signed in always trust
+  them, at a step of their own, whatever any list says, and the directory
+  marks them so. Step 112.
 
 ## 3. How to Read the Steps Below
 
@@ -1941,6 +1944,7 @@ where it went.
 | #354 | What the specifications can settle from the implementation | None: cleanup |
 | #370 | The local network's nodes listening only at `127.0.0.1` | None: a fix |
 | #371 | A home link in the upper right corner of every application's pages | 111 |
+| #372 | A node and a person each always in their own trust network | 112 |
 | #376 | The administration page having the node trust other nodes | 110 |
 | #377 | The administration page taking a node's address to add to the network | 109 |
 
@@ -1968,6 +1972,7 @@ made before it is built (§3).
 | J | 109 (#377) | None made before it was built; 444 as built | Independent of the trust steps; links to 108's application. |
 | K | 110 (#376) | None made before it was built; 404 as built | Needs 97's edits and 103's signing as a node; links to 108's application. |
 | L | 111 (#371) | None; the pages alone | Independent of every other step; links to the root application. |
+| M | 112 (#372) | None made before it was built; 30 as built | Needs 100's reads of the scores, and 101's marks in the directory. |
 
 ## 6. Open Items Not Yet Decided
 
