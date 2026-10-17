@@ -3,7 +3,7 @@
 from __future__ import annotations
 from base64 import b64encode
 from http.client import HTTPConnection
-from json import loads
+from json import dumps, loads
 from pathlib import Path
 from queue import Empty, Queue
 from random import randrange
@@ -469,13 +469,29 @@ def test_a_read_into_an_encrypted_bundle_is_answered_by_the_report_naming_its_ke
 
 
 def _authorized(
-    host: str, port: int, path: str, user: str = "admin", page: str = "/config/"
+    host: str,
+    port: int,
+    path: str,
+    user: str = "admin",
+    page: str = "/config/",
+    *,
+    value: object = None,
 ) -> tuple[int, bytes]:
-    """A GET carrying Basic credentials for ``user``, from the page ``page`` names."""
+    """A GET carrying Basic credentials for ``user``, from the page ``page`` names.
+
+    Given ``value``, it is a POST sending it as JSON.
+    """
     encoded = b64encode(f"{user}:secret".encode("utf-8")).decode("ascii")
     connection = HTTPConnection(host, port, timeout=5)
     headers = {"Authorization": f"Basic {encoded}", "Referer": f"http://{host}:{port}{page}"}
-    connection.request("GET", path, headers=headers)
+
+    if value is None:
+        connection.request("GET", path, headers=headers)
+
+    else:
+        headers["Content-Type"] = "application/json"
+        connection.request("POST", path, dumps(value).encode("utf-8"), headers)
+
     response = connection.getresponse()
     body = response.read()
     connection.close()
@@ -571,11 +587,69 @@ def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: P
     assert not thread.is_alive()
 
 
+def test_a_connection_asked_for_on_config_is_answered_with_what_the_dial_came_to(
+    tmp_path: Path,
+) -> None:
+    queues = _queues()
+    module = WebServerModule(
+        ModuleName.WEBSERVER, queues, _config(tmp_path, _free_port()), poll_interval_seconds=0.01
+    )
+    stop = Event()
+    thread = Thread(target=module.run, args=(stop,), daemon=True)
+    thread.start()
+    reached = ContentId.for_data(b"the public key of the node reached", "sha256")
+    answered: list[tuple[int, bytes]] = []
+
+    try:
+        host, _ = _serving(module, queues)
+        config_port = _config_port(module)
+        asking = Thread(
+            target=lambda: answered.append(
+                _authorized(
+                    host,
+                    config_port,
+                    "/config/api/connections",
+                    value={"address": "http://192.168.1.10:8080"},
+                )
+            )
+        )
+        asking.start()
+        asked = queues.outbox.get(timeout=5)
+        queues.inbox.put(
+            make_message(
+                EventType.ADDRESS_DIALED,
+                ModuleName.CONNECTIONS,
+                {
+                    "dial_id": asked["dial_id"],
+                    "outcome": "connected",
+                    "node_id": str(reached),
+                    "detail": "",
+                },
+            )
+        )
+        asking.join(timeout=5)
+
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+    assert (asked["event"], asked["endpoint"]) == (
+        EventType.DIAL_REQUESTED,
+        "http://192.168.1.10:8080",
+    )
+    ((status, body),) = answered
+    assert (status, loads(body)) == (
+        200,
+        {"address": "http://192.168.1.10:8080", "node_id": str(reached), "outcome": "connected"},
+    )
+
+
 def test_module_subscribes_to_what_other_modules_report() -> None:
     assert WebServerModule.subscriptions == {
         EventType.APP_PATH_RESOLVED,
         EventType.BACKUP_STATE,
         EventType.PEERS_CONNECTED_REQUESTED,
+        EventType.ADDRESS_DIALED,
     }
 
 

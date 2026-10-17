@@ -2,8 +2,9 @@
 
 Every backup endpoint answers at once and leaves the work to the backup
 module, so what each one publishes is what these assert. The application
-endpoints change the registry themselves, and publish nothing.
-Authentication is a router guard and is tested separately.
+endpoints change the registry themselves, and publish nothing. Connecting to
+a node waits for what the connection manager reports, which these report as
+it is asked for. Authentication is a router guard and is tested separately.
 """
 
 from __future__ import annotations
@@ -11,12 +12,14 @@ from http import HTTPStatus
 from json import dumps, loads
 from logging import DEBUG, WARNING, LogRecord
 from pathlib import Path
+from typing import Any, Mapping
 
 from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.config.models import NetworkConfig
-from libranet.messaging.events import JOBS_FIELD, EventType
+from libranet.messaging.envelope import Message
+from libranet.messaging.events import JOBS_FIELD, DialOutcome, EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.problems import CONTENT_TOO_LARGE, INVALID_REQUEST
@@ -35,17 +38,20 @@ from libranet.webserver.app_registry import (
     RegisteredApplications,
 )
 from libranet.webserver.backup_state import BackupReport, BackupState
+from libranet.webserver.dial_outcomes import DialOutcomes, DialReport
 from libranet.webserver.config_handlers import (
     APPLICATIONS_PATH,
     BACKUPS_PATH,
     BUILDS_PATH,
     CONFIG_API_PATH,
     CONFIG_USERS_PATH,
+    CONNECTIONS_PATH,
     EXPORTS_PATH,
     METADATA_PATH,
     NODE_PATH,
     RESTORES_PATH,
     BackupReportHandler,
+    ConnectHandler,
     NodeDescription,
     config_routes,
 )
@@ -76,6 +82,8 @@ BUILD_ENTRY = {"build_id": BUILD_ID, "directory": SITE, "status": "done"}
 EXPORT_ENTRY = {"export_id": EXPORT_ID, "archive": ARCHIVE, "status": "waiting"}
 NODE_ID = ContentId.for_data(b"this node's public key", "sha256")
 NETWORK = NetworkConfig(listen_address="0.0.0.0", listen_port=8080, external_port=4300)
+REACHED = ContentId.for_data(b"the public key of the node reached", "sha256")
+LAN = "http://192.168.1.10:8080"
 
 
 @fixture
@@ -167,6 +175,7 @@ def test_the_index_names_every_endpoint(router: Router) -> None:
         ("POST", "/config/api/users"),
         ("GET", "/config/api/metadata"),
         ("PUT", "/config/api/metadata"),
+        ("POST", "/config/api/connections"),
     }
 
 
@@ -807,6 +816,131 @@ def test_a_registry_that_cannot_be_read_is_logged_as_a_warning(
     assert record.levelno == WARNING
     assert record.getMessage().startswith(f"Refusing {method} {path}: ")
     assert str(registry.path) in record.getMessage()
+
+
+class Dialing:
+    """Stands in for the connection manager: each dial asked for is reported at once, as given.
+
+    With no report given, none is, as when the connection manager does not
+    answer in time.
+    """
+
+    def __init__(self, report: DialReport | None) -> None:
+        self.report = report
+        self.outcomes = DialOutcomes()
+        self.asked: list[dict[str, object]] = []
+
+    def publish(self, event: EventType, payload: Mapping[str, Any] | None = None) -> Message:
+        assert event == EventType.DIAL_REQUESTED and payload is not None
+        self.asked.append(dict(payload))
+
+        if self.report is not None:
+            self.outcomes.report(str(payload["dial_id"]), self.report)
+
+        return {"event": event, **payload}
+
+    def router(self, state: BackupState, registry: ApplicationRegistry) -> Router:
+        router = Router()
+
+        for method, pattern, handler in config_routes(
+            self.publish,
+            state,
+            registry,
+            NodeDescription(NODE_ID, NETWORK),
+            RETRY_AFTER_SECONDS,
+            connect=ConnectHandler(self.publish, self.outcomes, 0.05),
+        ):
+            router.add(method, pattern, handler)
+
+        return router
+
+
+@mark.parametrize("outcome", [DialOutcome.CONNECTED, DialOutcome.ALREADY_CONNECTED])
+def test_connecting_to_a_node_reached_answers_with_its_id(
+    state: BackupState, registry: ApplicationRegistry, outcome: DialOutcome
+) -> None:
+    dialing = Dialing(DialReport(outcome, REACHED))
+
+    response = dialing.router(state, registry).dispatch(
+        request("POST", CONNECTIONS_PATH, {"address": "http://192.168.1.10:8080/"})
+    )
+
+    assert response.status == 200
+    assert json_body(response) == {
+        "address": LAN,
+        "node_id": str(REACHED),
+        "outcome": outcome.value,
+    }
+    (asked,) = dialing.asked
+    assert asked["endpoint"] == LAN
+    assert isinstance(asked["dial_id"], str) and asked["dial_id"]
+
+
+@mark.parametrize(
+    "report, status, detail",
+    [
+        (
+            DialReport(DialOutcome.UNREACHED, detail="[Errno 61] Connection refused"),
+            502,
+            f"No node was reached at {LAN}: [Errno 61] Connection refused",
+        ),
+        (
+            DialReport(DialOutcome.UNREACHED),
+            502,
+            f"No node was reached at {LAN}: no reason was given",
+        ),
+        (DialReport(DialOutcome.THIS_NODE, REACHED), 409, f"{LAN} is this node's own address."),
+        (None, 504, f"The node did not say in time whether it reached {LAN}. It may yet."),
+    ],
+)
+def test_connecting_where_no_other_node_is_reached_says_why(
+    state: BackupState,
+    registry: ApplicationRegistry,
+    report: DialReport | None,
+    status: int,
+    detail: str,
+) -> None:
+    dialing = Dialing(report)
+
+    response = dialing.router(state, registry).dispatch(
+        request("POST", CONNECTIONS_PATH, {"address": LAN})
+    )
+
+    assert response.status == status
+    assert problem_type(response) == "about:blank"
+    assert loads(response.body)["detail"] == detail
+    assert len(dialing.asked) == 1
+
+
+@mark.parametrize(
+    "value, content_type, status",
+    [
+        ({"address": "192.168.1.10:8080"}, JSON_CONTENT_TYPE, 400),
+        ({"address": "https://node.example"}, JSON_CONTENT_TYPE, 400),
+        ({}, JSON_CONTENT_TYPE, 400),
+        ({"address": LAN}, "text/plain", 415),
+    ],
+)
+def test_a_connection_request_this_node_cannot_act_on_dials_nothing(
+    state: BackupState,
+    registry: ApplicationRegistry,
+    value: object,
+    content_type: str,
+    status: int,
+) -> None:
+    dialing = Dialing(DialReport(DialOutcome.CONNECTED, REACHED))
+
+    response = dialing.router(state, registry).dispatch(
+        request("POST", CONNECTIONS_PATH, value, content_type=content_type)
+    )
+
+    assert response.status == status
+    assert dialing.asked == []
+
+
+def test_without_its_handler_no_route_connects_to_a_node(router: Router) -> None:
+    # Connecting is tested where /config's port is built, and above.
+    assert router.dispatch(request("POST", CONNECTIONS_PATH, {"address": LAN})).status == 404
 
 
 def test_a_report_handler_refuses_a_negative_retry_after(state: BackupState) -> None:

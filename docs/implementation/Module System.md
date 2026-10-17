@@ -241,7 +241,7 @@ that subscriber's inbox.
 #### 3.2.1 Stats
 
 The node's memory, and the only process that opens `libranet.sqlite3`. It
-subscribes to 21 of the 44 events, nearly everything the other modules
+subscribes to 21 of the 46 events, nearly everything the other modules
 report, and records each in one small statement. Every
 `stats.derive_interval_seconds` it rewrites the node, seek, candidate,
 blocked, and peer lists into `lists/`, which the web server, connection
@@ -283,9 +283,11 @@ also keeps count of the peers connected to it, whose keys the eviction
 module keeps, and which the stats module lists. A page that deletes content
 (`DELETE /data/{algorithm}/{hash}`, Phase 4 Step 30) has it publish
 `data.blocked`, and it answers for blocked content, as `lists/blocked.json`
-names it, as for content it does not hold.
-It subscribes to only three events, `app.path_resolved`, `backup.state`,
-and `peers.connected_requested`, and publishes eighteen.
+names it, as for content it does not hold. An address the operator asks to
+connect to on `/config` it hands the connection manager, and waits for what
+came of it, `address.dialed`, to answer (Phase 5 Step 109).
+It subscribes to only four events, `app.path_resolved`, `backup.state`,
+`peers.connected_requested`, and `address.dialed`, and publishes nineteen.
 
 #### 3.2.3 Validator
 
@@ -303,7 +305,10 @@ neither.
 
 Owns every outgoing connection. It keeps up the peer mix (HighLevelDesign
 §4.6), dialing again whenever the candidate list changes (`nodes.updated`)
-or a connection opens, fails, or closes. It searches connected peers for
+or a connection opens, fails, or closes. An address the operator asks to
+connect to on `/config` (`address.dial_requested`) it dials at once, outside
+the mix, and says what came of it (`address.dialed`, Phase 5 Step 109). It
+searches connected peers for
 content the fetcher asks for (`fetch.requested`), pushes new content to the
 best-matching peer (`data.stored`), in pipelined batches when it arrives
 faster than it can be sent, and offers content the eviction module wants to
@@ -856,6 +861,8 @@ to end its loop.
 | `seek.received` | P | | | S | | | | |
 | `nodes.updated` | | S | | P | | | | |
 | `address.verified` | | P | | S | | | | |
+| `address.dial_requested` | P | S | | | | | | |
+| `address.dialed` | S | P | | | | | | |
 | *Connections and fetching* | | | | | | | | |
 | `connection.opened` | | P | | S | | | | |
 | `connection.closed` | | P | | S | | | | |
@@ -899,7 +906,7 @@ to end its loop.
 | `data.blocked` | P | | | S | | | S | |
 | *Lifecycle* | | | | | | | | |
 | `shutdown` | S | S | S | S | S | S | S | S |
-| **Publishes / subscribes** | 18 / 3 | 15 / 7 | 2 / 1 | 4 / 21 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 |
+| **Publishes / subscribes** | 19 / 4 | 16 / 8 | 2 / 1 | 4 / 21 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 |
 
 The `shutdown` row and its subscriptions are implicit: every module
 receives it without listing it, and nothing publishes it (§6.4). The totals
@@ -923,6 +930,8 @@ A content id is an `algorithm` and a lower-case hex `hash`, or, in
 | `seek.received` | `node_id`, `data`, `search` | A peer's seek list |
 | `nodes.updated` | — | The candidate list, `lists/candidates.json`, changed |
 | `address.verified` | `node_id`, `endpoint` | The endpoint reached a node already connected at another |
+| `address.dial_requested` | `dial_id`, `endpoint` | The operator asked on `/config` to connect to this address; dial it now |
+| `address.dialed` | `dial_id`, `outcome`, `node_id`, `detail` | What came of that dial: `connected`, `already_connected`, `this_node`, or `unreached`, with the node reached, or why none was |
 | `connection.opened` | `node_id`, `endpoint` | A peer proved its node id |
 | `connection.closed` | `node_id`, `remote` | A connection closed; `remote` is false if this node closed it |
 | `connection.failed` | `node_id`, `endpoint` | Dialing the endpoint did not reach the node expected there |
@@ -986,7 +995,7 @@ flowchart TB
     web <-->|"app.path_not_found<br/>app.path_resolved"| unb
     web <-->|"backup requests<br/>backup.state"| backup
     web -->|"data.put_completed"| val
-    web -->|"data.search_requested"| conn
+    web <-->|"data.search_requested, address.dial_requested<br/>address.dialed"| conn
     conn -->|"data.put_completed"| val
     val --> stored
     backup --> stored

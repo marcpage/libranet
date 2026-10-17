@@ -21,6 +21,18 @@ it for a while after enough of them by leaving it out of the candidate list
 (Phase 2 Step 26). Connecting and talking to peers happen on background
 threads, so the receive loop never waits on the network.
 
+An address the operator asks the node to connect to on ``/config``
+(``address.dial_requested`` ``{"dial_id", "endpoint"}``, Phase 5 Step 109) is
+dialed at once, outside the peer mix, and whatever rest it may be under,
+unless a peer is connected there already. What came of it is published for
+the web server, which waits for it to answer the operator::
+
+    address.dialed  {"dial_id", "outcome", "node_id", "detail"}
+
+``outcome`` is a :class:`~libranet.messaging.events.DialOutcome`. ``node_id``
+is the node reached there, or ``null`` if none was, and ``detail`` says why
+none was. A node reached is taken in, and learned, as any node dialed is.
+
 Each address a peer was observed at (``nodes.received`` marking it
 ``observed``), whether by this module or by the web server, is looked up in
 reverse DNS on a worker thread, unless ``peers.reverse_dns`` is off, and any
@@ -153,7 +165,7 @@ from libranet.connections.reverse_dns import ResolveNames, ReverseLookup, host_n
 from libranet.identity.node_identity import NodeIdentity
 from libranet.messaging.connected_peers import ConnectedPeers
 from libranet.messaging.envelope import Message
-from libranet.messaging.events import AddressSource, ConnectionDirection, EventType
+from libranet.messaging.events import AddressSource, ConnectionDirection, DialOutcome, EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
@@ -465,6 +477,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             EventType.EVICTION_NOTICE,
             EventType.DATA_STORED,
             EventType.PEERS_CONNECTED_REQUESTED,
+            EventType.DIAL_REQUESTED,
         }
     )
 
@@ -504,6 +517,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
                 EventType.EVICTION_NOTICE: self._on_eviction_notice,
                 EventType.DATA_STORED: self._on_data_stored,
                 EventType.PEERS_CONNECTED_REQUESTED: self._on_peers_connected_requested,
+                EventType.DIAL_REQUESTED: self._on_dial_requested,
             }
         )
 
@@ -632,6 +646,87 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
     def _on_node_list_updated(self, _message: Message) -> None:
         self._reload_candidates()
         self._maintain()
+
+    def _on_dial_requested(self, message: Message) -> None:
+        """Dial an address the operator asked for, on its own thread, unless a peer is there."""
+        dial_id = message["dial_id"]
+        endpoint = message["endpoint"]
+
+        with self._lock:
+            reached = [
+                node_id
+                for node_id, peer in self._peers.items()
+                if peer.session.endpoint == endpoint
+            ]
+
+        if reached:
+            self._publish_dialed(dial_id, DialOutcome.ALREADY_CONNECTED, reached[0])
+            return
+
+        self._start("dial", partial(self._dial_asked, dial_id, endpoint))
+
+    def _dial_asked(self, dial_id: str, endpoint: str) -> None:
+        """Dial ``endpoint``, as the operator asked, and say what came of it.
+
+        A peer reached there is taken into the mix, whatever its size, and
+        then greeted, as any peer dialed is.
+        """
+        peer: _Peer | None = None
+        node_id: ContentId | None = None
+
+        try:
+            session = self.exchange.open(endpoint)
+            node_id = session.node_id
+            peer = self._admit(session)
+
+        except OSError as error:
+            self.logger.info("Could not connect to %s: %s", endpoint, error)
+            self._publish_dialed(dial_id, DialOutcome.UNREACHED, detail=str(error))
+            return
+
+        except Exception as error:  # pylint: disable=broad-exception-caught
+            self.logger.exception("Connecting to %s failed", endpoint)
+            self._publish_dialed(dial_id, DialOutcome.UNREACHED, detail=str(error))
+            return
+
+        if peer is not None:
+            self._publish_dialed(dial_id, DialOutcome.CONNECTED, node_id)
+            self._push_unpushed()
+            self._talk(peer, self.exchange.first_contact)
+
+        elif node_id == self.exchange.node_id:
+            self._publish_dialed(dial_id, DialOutcome.THIS_NODE, node_id)
+
+        elif self._stopping():
+            self._publish_dialed(dial_id, DialOutcome.UNREACHED, detail="the node is stopping")
+
+        else:
+            # Connected at another endpoint, which this one was verified as.
+            self._publish_dialed(dial_id, DialOutcome.ALREADY_CONNECTED, node_id)
+
+    def _stopping(self) -> bool:
+        """Whether the module is stopping, or has stopped."""
+        with self._lock:
+            return not self._running
+
+    def _publish_dialed(
+        self,
+        dial_id: str,
+        outcome: DialOutcome,
+        node_id: ContentId | None = None,
+        *,
+        detail: str = "",
+    ) -> None:
+        """Tell the web server what came of the dial ``dial_id`` names."""
+        self.publish(
+            EventType.ADDRESS_DIALED,
+            {
+                "dial_id": dial_id,
+                "outcome": outcome.value,
+                "node_id": None if node_id is None else str(node_id),
+                "detail": detail,
+            },
+        )
 
     def _on_nodes_received(self, message: Message) -> None:
         """Look up names for the addresses the web server observed peers at."""

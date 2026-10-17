@@ -64,6 +64,9 @@ ordinary content, signed by its owner.
   each identity it shows. Step 106.
 - **The nodes application.** The known nodes, whether each is connected,
   its stats, and its trust, which a person can change. Steps 107 and 108.
+- **Connecting to another node.** The operator gives `/config` the address
+  of a node to reach, which the node dials at once, saying whether it could.
+  Step 109.
 
 ## 3. How to Read the Steps Below
 
@@ -1567,6 +1570,138 @@ My calls, not yet reviewed:
 
 ---
 
+## Step 109 — Connecting to Another Node
+
+**Issue:** #377. **Depends on:** Phase 2 Steps 23 and 25, and Step 108.
+
+Settled in the issue, which has only its title:
+
+- **The administration page takes a node's address**, to add that node to
+  the network.
+
+A node learns of others from those it connects to, so reaching one node of
+a network is enough to join it. Until now a node reached its first only
+through its seed list, which it reads only while it knows no peers at all,
+and which an operator names in the configuration file before a restart
+(Operator Guide §10.5). A node that already knew peers had no way to reach
+another network.
+
+Work this implies:
+
+- **A section of `/config`**, where the operator types an address, and the
+  node is told to dial it.
+- **An endpoint beneath `/config/api`** for scripts, as the page's others are.
+- The Operator Guide, the Module System, and the README gain it.
+
+Ruled (2026-10-17):
+
+- **Dialed whatever the peer mix**, my recommended option: an address asked
+  for is dialed even when the mix has all the peers it wants, and even while
+  it rests. Dialing it only when the mix has room for it was turned down.
+- **No list of addresses; the dial is attempted, and its failure said.** The
+  node dials the address at once, and the operator is told whether it
+  reached a node there. A node reached is in the statistics database from
+  then on, as every node dialed is, and is dialed again as a candidate, after
+  a restart too, so a list of the addresses would only repeat it. An address
+  where no node was reached is not remembered.
+
+  This replaces two rulings made earlier the same day and built first, in
+  `f1fd1ba`: that the addresses be kept in a list of the node's own, dialed
+  at once and again whenever no peer was connected, and removable (rather
+  than my recommended option, dialing once); and that the endpoint answer
+  `202` at once (my recommended option, rather than waiting for the dial).
+  Asked why the list was kept when a node reached is dialed after a restart
+  anyway, I found that it added only an address never reached, and dialing
+  outside the database's rules for giving up on a node, which comes back to
+  it after a day regardless.
+
+**Testable in isolation:** unit tests of the request and of the outcomes
+waited on, the endpoint through a router with a stand-in for the connection
+manager, the web server module answering from an `address.dialed` it is
+sent, and the connection manager against fixture peers: an address dialed
+with the mix full and said to be connected, one where a peer is connected,
+or that reaches one connected elsewhere, said to be so, this node's own, and
+one where nothing answers, or where what answers proves nothing, each said
+to be so.
+
+Built in one change set, with 444 lines of non-test Python, 9 of them
+replacing removed ones, and 572 of tests. The `/config` page gains 67 lines.
+
+- **`DialRequest`**, in `src/libranet/protocol/dial_requests.py`: the address
+  asked for, written as it is dialed.
+- **`POST /config/api/connections`** (`ConnectHandler`) publishes
+  `address.dial_requested` `{"dial_id", "endpoint"}`, and waits in
+  `DialOutcomes` (`src/libranet/webserver/dial_outcomes.py`) for the
+  `address.dialed` `{"dial_id", "outcome", "node_id", "detail"}` naming its
+  dial, for as long as one dial may take (`PeerConfig.longest_dial_seconds`,
+  70 s by default) and 5 s more. A node reached is `200`, with its id and
+  `outcome` `connected` or `already_connected`; this node's own address
+  `409`; no node reached `502`, saying why; no report in time `504`.
+- **The connection manager** answers at once a dial of an endpoint a peer is
+  connected at. Any other it dials on a thread of its own, outside the mix
+  and whatever its rest, and takes a peer reached into the mix, and greets it,
+  as any peer dialed is. `DialOutcome` names what came of it.
+- **`/config`'s "Other nodes"**, after "This node": "Connect to a node", whose
+  one field takes an address, given `http://` if it is typed without. It says
+  "Connecting to …" while it waits, then the node reached, linking the nodes
+  application on the main port, or why none was.
+
+Checked live, with two new nodes from the scratchpad on `127.0.0.1`, neither
+with a seed list. On node A's `/config/api/connections`,
+`http://127.0.0.1:24410/` was `200` in 0.1 s, `connected`, naming node B as
+`http://127.0.0.1:24410`, and the same again `already_connected`. A closed
+port was `502`, "Connection refused", at once; A's own address `409`; and
+`http://10.255.255.1:8080`, where nothing answers, `502`, "timed out", in
+10.1 s. In headless Chrome, A's page took `127.0.0.1:24410`, said "Connecting
+to http://127.0.0.1:24410…", then that A was already connected to B, linking
+`http://127.0.0.1:24400/nodes/`. B's page, connecting to A, which had only
+dialed B, said "Connected to" A. Each page then gave the closed port's
+refusal, in red, leaving it in the field. Neither node logged an error.
+
+My calls, not yet reviewed:
+
+- **The web server waits on the connection manager**, as an application file
+  waits on the unbundler (Phase 3 Step 65), rather than dialing itself, since
+  the connection manager owns every outgoing connection. Each request names
+  its dial by a random id, so that two requests for one address are each
+  answered, and a report for a request that has given up is logged at info
+  and dropped.
+- **The endpoint is `/config/api/connections`**, and its body names the
+  address `address`, as the seed list names one.
+- **An address is dialed as one endpoint however it is written**:
+  `http://{host}:{port}`, its host in lower case, an IPv6 one in brackets, its
+  port 80 if it gives none, as a node list's endpoint is (HttpApi §10.6), and
+  any path dropped. Only `http` is taken, since HTTPS is deferred. It is in
+  `libranet.protocol`, since no module package imports another (Module System
+  §2).
+- **The endpoint takes a URL, and the page a host and port too**: the
+  endpoint refuses anything but an `http` URL with `400`, and the page gives
+  what is typed without a scheme `http://`. A host typed without a port is
+  port 80, not the node's default port.
+- **"Already connected" is a success**, answered `200` like a new connection,
+  whether a peer was connected at that very address, which is not dialed, or
+  the address reached a peer connected at another, whose new connection is
+  closed and the address counted as verified, as Phase 2 Step 23 counts one.
+- **The statuses**: `502 Bad Gateway` for no node reached, saying why in the
+  words the connection gave (refused, timed out, failed verification); `409
+  Conflict` for this node's own address; `504 Gateway Timeout` for no report
+  in time, saying the node may yet reach it. A node stopping while it dials
+  is `502`, "the node is stopping".
+- **The longest wait is a minute and more** by default, for a host that takes
+  the connection and then does not answer: connecting may take
+  `peers.connect_timeout_seconds` (10 s), and learning which node is there
+  two requests of `peers.request_timeout_seconds` (30 s) each. A refused
+  connection is answered at once, and an address nothing answers at in 10 s.
+  The page says so beneath the field.
+- **No specification changes**: the endpoint is implementation-defined, as
+  the backup and application endpoints are, and the Operator Guide (§4.6)
+  says how it is used.
+- **The section is called "Other nodes"**, its form "Connect to a node", its
+  one field "Address", with `192.168.1.10:8080` as its placeholder, and its
+  button "Connect".
+
+---
+
 ## 4. Issues in the Milestone
 
 Every issue in the **Phase 5 - Trust Network** milestone, by number, and
@@ -1597,6 +1732,7 @@ where it went.
 | #353 | Documentation out of sync with the code or other documentation | None: cleanup |
 | #354 | What the specifications can settle from the implementation | None: cleanup |
 | #370 | The local network's nodes listening only at `127.0.0.1` | None: a fix |
+| #377 | The administration page taking a node's address to add to the network | 109 |
 
 ## 5. Suggested Build Order
 
@@ -1619,6 +1755,7 @@ made before it is built (§3).
 | G | 105 (#324) | None; the page alone | Needs 101's trust in the directory, and 104's metadata for a node. |
 | H | 106 (#322) | None; the pages alone | Needs 105's link for each identity it shows. |
 | I | 108 (#323) | About 20, shipping it | An application of every step before it but 102. |
+| J | 109 (#377) | None made before it was built; 444 as built | Independent of the trust steps; links to 108's application. |
 
 ## 6. Open Items Not Yet Decided
 

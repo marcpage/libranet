@@ -42,7 +42,7 @@ from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import MessageSigner
 from libranet.messaging.envelope import Message, make_message
-from libranet.messaging.events import ConnectionDirection, EventType
+from libranet.messaging.events import ConnectionDirection, DialOutcome, EventType
 from libranet.messaging.queues import MessageQueue, ModuleQueues
 from libranet.modules import ModuleName
 from libranet.stats.module import StatsModule
@@ -351,6 +351,13 @@ def node_list_updated(config: LibranetConfig) -> Message:
         EventType.NODE_LIST_UPDATED,
         ModuleName.STATS,
         {"path": str(config.storage.candidate_list_path)},
+    )
+
+
+def dial_requested(endpoint: str, dial_id: str = "dial-1") -> Message:
+    """An address the operator asked to connect to on ``/config``, as the web server asks it."""
+    return make_message(
+        EventType.DIAL_REQUESTED, ModuleName.WEBSERVER, {"dial_id": dial_id, "endpoint": endpoint}
     )
 
 
@@ -712,6 +719,148 @@ def test_an_endpoint_that_is_this_node_is_not_dialed_again(
     assert module.connected == {}
     assert bus.events(EventType.CONNECTION_OPENED) == []
     assert bus.events(EventType.CONNECTION_FAILED) == []
+
+
+# -- Connecting at the operator's request (Phase 5 Step 109) ---------------
+
+
+def test_an_address_asked_for_is_dialed_whatever_the_mix_and_said_to_be_connected(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+) -> None:
+    write_lists(config.storage, node_list(identity, peers[0]))
+    module = modules.start(
+        with_peers(config, min_outgoing_connections=1, min_neighborhood_connections=0)
+    )
+    bus.wait_for(EventType.CONNECTION_OPENED, node_id=str(peers[0].node_id))
+
+    module.handle(dial_requested(peers[1].endpoint))
+
+    (dialed,) = bus.wait_for(EventType.ADDRESS_DIALED)
+    assert dialed["source"] == ModuleName.CONNECTIONS
+    assert (dialed["dial_id"], dialed["outcome"], dialed["node_id"], dialed["detail"]) == (
+        "dial-1",
+        DialOutcome.CONNECTED,
+        str(peers[1].node_id),
+        "",
+    )
+    (opened,) = bus.wait_for(EventType.CONNECTION_OPENED, node_id=str(peers[1].node_id))
+    assert opened["endpoint"] == peers[1].endpoint
+    assert module.connected == {peer.node_id: peer.endpoint for peer in peers}
+    # Greeted as any peer dialed is: it was told about this node.
+    (told,) = peers[1].bus.wait_for(EventType.NODES_RECEIVED)
+    assert told["nodes"]["http://127.0.0.1:8080"] == str(identity.node_id)
+
+
+def test_an_address_asked_for_where_a_peer_is_connected_is_said_to_be_so_undialed(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+) -> None:
+    write_lists(config.storage, node_list(identity, peers[0]))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED)
+
+    module.handle(dial_requested(peers[0].endpoint))
+
+    (dialed,) = bus.wait_for(EventType.ADDRESS_DIALED)
+    assert (dialed["outcome"], dialed["node_id"]) == (
+        DialOutcome.ALREADY_CONNECTED,
+        str(peers[0].node_id),
+    )
+    sleep(0.2)
+    assert len(bus.events(EventType.CONNECTION_OPENED)) == 1
+    assert bus.events(EventType.ADDRESS_VERIFIED) == []
+
+
+def test_an_address_asked_for_reaching_a_peer_connected_elsewhere_is_said_to_be_so(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+) -> None:
+    write_lists(config.storage, node_list(identity, peers[0]))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED)
+    port = peers[0].server.server_address[1]
+
+    module.handle(dial_requested(f"http://localhost:{port}"))
+
+    (dialed,) = bus.wait_for(EventType.ADDRESS_DIALED)
+    assert (dialed["outcome"], dialed["node_id"]) == (
+        DialOutcome.ALREADY_CONNECTED,
+        str(peers[0].node_id),
+    )
+    (verified,) = bus.wait_for(EventType.ADDRESS_VERIFIED)
+    assert verified["endpoint"] == f"http://localhost:{port}"
+    assert module.connected == {peers[0].node_id: peers[0].endpoint}
+
+
+def test_an_address_asked_for_that_is_this_node_is_said_to_be_so(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    bus: Bus,
+    tmp_path: Path,
+) -> None:
+    itself = FixturePeer(tmp_path / "itself", identity)
+
+    try:
+        module = modules.start(config)
+        module.handle(dial_requested(itself.endpoint))
+        (dialed,) = bus.wait_for(EventType.ADDRESS_DIALED)
+
+    finally:
+        itself.stop()
+
+    assert (dialed["outcome"], dialed["node_id"]) == (DialOutcome.THIS_NODE, str(identity.node_id))
+    assert module.connected == {}
+
+
+def test_an_address_asked_for_where_nothing_answers_is_said_to_be_unreached(
+    modules: Modules, config: LibranetConfig, bus: Bus, caplog: LogCaptureFixture
+) -> None:
+    caplog.set_level(INFO, logger="libranet")
+    endpoint = f"http://127.0.0.1:{closed_port()}"
+    module = modules.start(config)
+
+    module.handle(dial_requested(endpoint, "dial-2"))
+
+    (dialed,) = bus.wait_for(EventType.ADDRESS_DIALED)
+    assert (dialed["dial_id"], dialed["outcome"], dialed["node_id"]) == (
+        "dial-2",
+        DialOutcome.UNREACHED,
+        None,
+    )
+    assert "refused" in dialed["detail"].lower()
+    assert f"Could not connect to {endpoint}" in caplog.text
+    # Stats count attempts per node id, and this one has none to count against.
+    assert bus.events(EventType.CONNECTION_FAILED) == []
+
+
+def test_an_address_asked_for_where_the_answer_proves_nothing_is_said_to_be_unreached(
+    modules: Modules, config: LibranetConfig, bus: Bus
+) -> None:
+    with create_server(("127.0.0.1", 0)) as listener:
+        port = listener.getsockname()[1]
+
+        def hang_up() -> None:
+            accepted, _ = listener.accept()
+            accepted.close()
+
+        Thread(target=hang_up, daemon=True).start()
+        module = modules.start(config)
+        module.handle(dial_requested(f"http://127.0.0.1:{port}"))
+        (dialed,) = bus.wait_for(EventType.ADDRESS_DIALED)
+
+    assert (dialed["outcome"], dialed["node_id"]) == (DialOutcome.UNREACHED, None)
+    assert dialed["detail"]
 
 
 class Twins:
@@ -2409,6 +2558,7 @@ def test_the_module_subscribes_to_node_lists_fetches_searches_hand_offs_and_new_
         EventType.EVICTION_NOTICE,
         EventType.DATA_STORED,
         EventType.PEERS_CONNECTED_REQUESTED,
+        EventType.DIAL_REQUESTED,
     }
 
 

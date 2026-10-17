@@ -30,6 +30,7 @@ from libranet.messaging.events import (
     AddressSource,
     ConflictBehavior,
     ConnectionDirection,
+    DialOutcome,
     EventType,
     PathOutcome,
 )
@@ -54,6 +55,7 @@ __all__ = [
     "ConflictBehavior",
     "ConnectedPeers",
     "ConnectionDirection",
+    "DialOutcome",
     "Dispatcher",
     "EventType",
     "InvalidMessageError",

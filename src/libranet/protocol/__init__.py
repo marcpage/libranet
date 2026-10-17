@@ -6,7 +6,8 @@ is resolved, search prefixes and the cached search responses, the
 request bodies the backup module acts on, the bundles local
 clients ask the web server to make, the drops pages ask it to make, signed,
 encrypted, or neither, the identities and sign-ins local clients ask for,
-and the changes to a trust list they ask for are each defined once, here.
+the changes to a trust list they ask for, and the addresses an operator asks
+the node to connect to are each defined once, here.
 No module package imports another; what two modules share is here, in
 :mod:`libranet.messaging`, or in a library package below them both.
 """
@@ -34,6 +35,7 @@ from libranet.protocol.bundle_requests import (
     WholeBundleRequest,
 )
 from libranet.protocol.client_origin import is_local_client
+from libranet.protocol.dial_requests import ADDRESS_FIELD, DialRequest
 from libranet.protocol.drop_requests import (
     DropRequest,
     Encryption,
@@ -83,6 +85,7 @@ from libranet.protocol.search import (
 from libranet.protocol.trust_requests import TrustRequest
 
 __all__ = [
+    "ADDRESS_FIELD",
     "API_PREFIX",
     "BODILESS_STATUSES",
     "CRLF",
@@ -103,6 +106,7 @@ __all__ = [
     "BundleEditRequest",
     "BytesSource",
     "CopySource",
+    "DialRequest",
     "DropRequest",
     "Encryption",
     "EntrySource",

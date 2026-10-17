@@ -215,6 +215,27 @@
     </form>
   </section>
 
+  <section aria-labelledby="connect-heading">
+    <h2 id="connect-heading">Other nodes</h2>
+    <p class="hint">This node learns of other nodes from those it connects to, so reaching one
+    node of a network is enough to join it. Give the address of a node to reach, and this node
+    connects to it now, and says whether it could. A node it reaches is known from then on, as
+    every node it reaches is, and is listed in the nodes application.</p>
+    <form id="connect-form">
+      <h3>Connect to a node</h3>
+      <div class="fields">
+        <label class="wide">Address
+          <input id="connect-address" required autocomplete="off" spellcheck="false"
+                 placeholder="192.168.1.10:8080">
+        </label>
+        <button type="submit">Connect</button>
+      </div>
+      <p class="hint">An address is the host name or IP address of the node's machine, and the
+      port the node listens on. Reaching a node that does not answer can take a minute.</p>
+      <p class="result" role="status" hidden></p>
+    </form>
+  </section>
+
   <section aria-labelledby="applications-heading">
     <h2 id="applications-heading">Applications</h2>
     <p class="hint">Each serves a directory bundle as a website at <code>/{name}/</code>. The
@@ -1077,6 +1098,52 @@ onSubmit(metadataForm, async () => {
 
   await loadMetadata();
   return [`Saved as version ${result.value.version}.`, false];
+});
+
+// ---- Other nodes ----
+
+const connectForm = byId("connect-form");
+
+// An address as the node takes one, an http URL (HttpApi 10.6), from what was
+// typed: a URL, or a host and port, which are given the scheme.
+function addressOf(text) {
+  const typed = text.trim();
+  return typed.includes("://") ? typed : `http://${typed}`;
+}
+
+// Where the nodes application lists every node this node knows (Phase 5 Step
+// 108), on the main port, as the applications are linked (applicationLink).
+function nodesLink(text) {
+  if (mainPort === null) {
+    return make("span", text);
+  }
+
+  const url = new URL("/nodes/", location.href);
+  url.port = String(mainPort);
+  const link = make("a", text);
+  link.href = url.href;
+  return link;
+}
+
+onSubmit(connectForm, async () => {
+  const message = connectForm.querySelector(".result");
+  const address = addressOf(byId("connect-address").value);
+  show(message, `Connecting to ${address}…`);
+  const result = await call("POST", "/connections", { address });
+
+  if (!result.ok || !result.value) {
+    return [failure(result), true];
+  }
+
+  const { node_id: id, outcome } = result.value;
+  const said =
+    outcome === "already_connected"
+      ? `This node was already connected to ${id}, which ${result.value.address} reaches.`
+      : `Connected to ${id}, at ${result.value.address}.`;
+  connectForm.reset();
+  show(message, `${said} It is listed in the `);
+  message.append(nodesLink("nodes application"), ".");
+  return null;
 });
 
 // ---- Applications ----

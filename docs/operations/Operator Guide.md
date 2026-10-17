@@ -145,16 +145,19 @@ that moves a file or decides what goes into one.
 
 A node finds its first peers in its seed list, which it reads only while it
 knows no peers at all. The list shipped with Libranet is empty, and there is
-no public network yet, so a new node starts alone until it is given a list
-naming another node. §10.5 shows one, naming a super node; a list naming any
-other node is written the same way. From the first node it reaches, a node
-learns the others that node knows.
+no public network yet, so a new node starts alone until it is given another
+node to reach. The quickest way is to give that node's address on `/config`
+(§4.6), which the node connects to at once, whether it knows peers or not. A
+seed list does the same for a node that knows none; §10.5 shows one, naming a
+super node, and a list naming any other node is written the same way. From
+the first node it reaches, a node learns the others that node knows.
 
 ## 4. The Administration Page: `/config`
 
 `/config` is how an operator puts their own content into Libranet: it backs
 up and restores directories, builds bundles, registers applications,
-creates users, and says what the node is called. It is a page for a
+creates users, says what the node is called, and connects it to other
+nodes. It is a page for a
 browser, and a set of JSON endpoints beneath `/config/api` for scripts.
 
 ### 4.1 Where It Is
@@ -222,6 +225,7 @@ curl -u admin:secret -e http://127.0.0.1:8180/config/ \
 | `PATCH`, `DELETE` | `/config/api/applications/{name}` | Trust an application, or not (§6.2), or remove one |
 | `POST` | `/config/api/users` | Create a user (§6.5) |
 | `GET`, `PUT` | `/config/api/metadata` | What this node says of itself (§4.5) |
+| `POST` | `/config/api/connections` | Connect to a node at an address (§4.6) |
 
 A backup, restore, build, or export is answered `202` at once, with the id
 it is known by, and its `GET` says how it is doing. Restores, builds, and
@@ -257,6 +261,46 @@ curl -u admin:secret -e http://127.0.0.1:8180/config/ \
 
 It is answered `201` with the new version's number, or `204` if nothing
 changed. `GET /config/api/metadata` reads what the node says now.
+
+### 4.6 Connecting to Another Node
+
+A node learns of other nodes from those it connects to, so reaching one node
+of a network is enough to join it. Under **Other nodes** on the page, type
+that node's address in **Connect to a node**: the host name or IP address of
+its machine and the port it listens on, such as `192.168.1.10:18400`, and
+**Connect**. The node dials it at once, even if it has all the peers it
+wants, and says what came of it: the node it reached, or why it reached none,
+such as the connection being refused or timing out. A node that does not
+answer at all can take about a minute to give up on.
+
+A node reached is known from then on, as every node it reaches is: it is
+listed in the nodes application, each node learns the nodes the other knows,
+and it is dialed again as any other peer is, after a restart too. An address
+where no node was reached is not remembered; give it again once the other
+node is running and reachable. If none is reached, check that the other node
+listens at an address this machine can reach, as its `network.listen_address`
+sets (§3), and that nothing between the two machines blocks the port.
+
+A script gives the address as a URL:
+
+```bash
+curl -u admin:secret -e http://127.0.0.1:8180/config/ \
+  -X POST http://127.0.0.1:8180/config/api/connections \
+  -H 'Content-Type: application/json' \
+  -d '{"address": "http://192.168.1.10:18400"}'
+```
+
+It is answered `200` once a node is reached, with its id and the address as
+the node dialed it, its host in lower case and its port always given:
+
+```json
+{"address": "http://192.168.1.10:18400", "node_id": "sha256/…", "outcome": "connected"}
+```
+
+`outcome` is `already_connected` if the node was connected already. Where no
+node is reached it is `502`, saying why, and `409` if the address is this
+node's own. `504` means the node did not say in time; it may still reach the
+other node, which the nodes application then shows.
 
 ## 5. Backing Up and Restoring
 
@@ -991,7 +1035,9 @@ curl http://127.0.0.1:8080/data/nodes
 ```
 
 A node that already knows peers does not read its seed list, so it finds the
-super node only if one of its peers knows it.
+super node only if one of its peers knows it. On such a node, connect to
+`192.168.1.10:18400` on its `/config` page instead (§4.6), which works
+whether it knows peers or not, and needs no restart.
 
 ### 10.6 Starting It Again
 

@@ -1,5 +1,7 @@
 """The ``/config/api`` JSON endpoints (HttpApi §2.3): backups, restores, builds, applications.
 
+And connecting to another node at an address the operator gives.
+
 Every endpoint is beneath ``/config/api``, leaving the rest of ``/config`` to
 the administration application's own pages.
 
@@ -67,6 +69,15 @@ holds is also answered to any client there, at ``GET /data/applications``
 file that cannot be read is ``500``, saying why, and is never saved over:
 fixing or removing it by hand is the way back.
 
+``POST /config/api/connections`` ``{"address"}`` has the connection manager
+dial an address at once (Phase 5 Step 109), and, unlike the backup endpoints,
+waits to hear what came of it (:mod:`libranet.webserver.dial_outcomes`),
+since the operator asking wants to know whether the node could be reached.
+A node reached there is ``200``, with its id, whether it was connected
+already or not; the address of this node itself is ``409``, and one where no
+node was reached ``502``, saying why. No answer in time is ``504``: the dial
+may still reach the node, which the nodes application then shows.
+
 ``GET /config/api`` names the endpoints, so a client has somewhere to start.
 A browser has the ``/config`` application instead, served like any other
 (see :mod:`libranet.webserver.app_handler`).
@@ -100,6 +111,7 @@ from libranet.messaging.events import (
     EXPORTS_FIELD,
     JOBS_FIELD,
     RESTORES_FIELD,
+    DialOutcome,
     EventType,
 )
 from libranet.messaging.publishing import Publish
@@ -110,9 +122,11 @@ from libranet.protocol.backup_requests import (
     ExportRequest,
     RestoreRequest,
 )
+from libranet.protocol.dial_requests import DialRequest
 from libranet.protocol.http_syntax import API_PREFIX
 from libranet.webserver.app_registry import CONFIG_APPLICATION, Application, ApplicationRegistry
 from libranet.webserver.backup_state import BackupState
+from libranet.webserver.dial_outcomes import DialOutcomes, DialReport
 from libranet.webserver.errors import RegistryFileError
 from libranet.webserver.http_types import (
     Request,
@@ -143,6 +157,7 @@ EXPORTS_PATH: Final = CONFIG_API_PATH + "/exports"
 APPLICATIONS_PATH: Final = CONFIG_API_PATH + "/applications"
 CONFIG_USERS_PATH: Final = CONFIG_API_PATH + "/users"
 METADATA_PATH: Final = CONFIG_API_PATH + "/metadata"
+CONNECTIONS_PATH: Final = CONFIG_API_PATH + "/connections"
 BACKUP_JOB_PATTERN: Final = BACKUPS_PATH + rf"/(?P<job_id>[0-9a-fA-F]{{{IDENTIFIER_LENGTH}}})"
 BACKUP_RUN_PATTERN: Final = BACKUP_JOB_PATTERN + "/run"
 APPLICATION_PATTERN: Final = APPLICATIONS_PATH + "/(?P<name>[^/]+)"
@@ -188,6 +203,7 @@ ENDPOINTS: Final = (
     {"method": "POST", "path": CONFIG_USERS_PATH, "description": "Create a person's identity"},
     {"method": "GET", "path": METADATA_PATH, "description": "What this node says of itself"},
     {"method": "PUT", "path": METADATA_PATH, "description": "Change what this node says of itself"},
+    {"method": "POST", "path": CONNECTIONS_PATH, "description": "Connect to a node at an address"},
 )
 
 
@@ -446,6 +462,78 @@ class ApplicationRemovalHandler:
         return Response(HTTPStatus.NO_CONTENT)
 
 
+@dataclass(frozen=True)
+class ConnectHandler:
+    """``POST /config/api/connections``: connect to the node at an address, and say whether it did.
+
+    The connection manager is asked to dial it, and what came of it is
+    waited for in ``outcomes`` for up to ``wait_seconds``.
+    """
+
+    publish: Publish
+    outcomes: DialOutcomes
+    wait_seconds: float
+
+    def __call__(self, request: Request) -> Response:
+        asked = parsed_or_refusal(request, DialRequest.from_value)
+
+        if isinstance(asked, Response):
+            return asked
+
+        report = self.outcomes.await_dial(
+            lambda dial_id: self.publish(
+                EventType.DIAL_REQUESTED, {"dial_id": dial_id, "endpoint": asked.endpoint}
+            ),
+            self.wait_seconds,
+        )
+        return self._answer(request, asked, report)
+
+    @staticmethod
+    def _answer(request: Request, asked: DialRequest, report: DialReport | None) -> Response:
+        """The answer saying what ``report`` says came of dialing ``asked``."""
+        endpoint = asked.endpoint
+
+        if report is None:
+            _LOGGER.info("No outcome of dialing %s was reported in time", endpoint)
+            return status_response(
+                request,
+                HTTPStatus.GATEWAY_TIMEOUT,
+                f"The node did not say in time whether it reached {endpoint}. It may yet.",
+            )
+
+        # Declared as any object, so that an outcome none of these names is
+        # still checked for, though the type allows none.
+        outcome: object = report.outcome
+
+        if outcome in (DialOutcome.CONNECTED, DialOutcome.ALREADY_CONNECTED):
+            return json_response(
+                {
+                    **asked.value(),
+                    "node_id": str(report.node_id),
+                    "outcome": report.outcome.value,
+                }
+            )
+
+        if outcome == DialOutcome.THIS_NODE:
+            return status_response(
+                request, HTTPStatus.CONFLICT, f"{endpoint} is this node's own address."
+            )
+
+        if outcome == DialOutcome.UNREACHED:
+            return status_response(
+                request,
+                HTTPStatus.BAD_GATEWAY,
+                f"No node was reached at {endpoint}: {report.detail or 'no reason was given'}",
+            )
+
+        _LOGGER.error("Dialing %s came to %r, which is no outcome there is", endpoint, report)
+        return status_response(
+            request,
+            HTTPStatus.INTERNAL_SERVER_ERROR,
+            f"What came of dialing {endpoint} is unknown.",
+        )
+
+
 def _not_registered_response(request: Request) -> Response:
     """The ``404`` for a path naming no registered application."""
     return status_response(
@@ -467,11 +555,13 @@ def config_routes(
     *,
     users: Handler | None = None,
     metadata: OwnMetadata | None = None,
+    connect: Handler | None = None,
 ) -> tuple[tuple[str, str, Handler], ...]:
     """Every ``/config/api`` route, as ``(method, pattern, handler)`` in route order.
 
-    ``users`` makes a person's identity, and ``metadata`` reads and changes
-    what this node says of itself. Without either, no route does what it does.
+    ``users`` makes a person's identity, ``metadata`` reads and changes what
+    this node says of itself, and ``connect`` connects to a node at an
+    address. Without one of them, no route does what it does.
     """
     configure = BackupRequestHandler(
         publish, BackupJobRequest.from_value, EventType.BACKUP_JOB_CONFIGURED, "job_id"
@@ -510,6 +600,7 @@ def config_routes(
             if metadata is None
             else (("GET", METADATA_PATH, metadata.read), ("PUT", METADATA_PATH, metadata.change))
         ),
+        *(() if connect is None else (("POST", CONNECTIONS_PATH, connect),)),
     )
     return tuple(
         (method, _CONFIG_SEGMENT + pattern.removeprefix(f"/{CONFIG_APPLICATION}"), handler)

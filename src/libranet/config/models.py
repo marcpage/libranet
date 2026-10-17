@@ -383,6 +383,15 @@ class PeerConfig(_Section):
         """
         return self.mix_size * self.request_timeout_seconds
 
+    def longest_dial_seconds(self) -> float:
+        """How long dialing one endpoint may take: connecting, then learning which node is there.
+
+        Learning it takes two requests at most: the first, which this node
+        signs, and one for the peer's public key, if this node lacks it
+        (HandshakeProtocol §3).
+        """
+        return self.connect_timeout_seconds + 2 * self.request_timeout_seconds
+
 
 class StorageConfig(_Section):
     """Filesystem CAS layout and capacity limits (HighLevelDesign §4.5)."""
