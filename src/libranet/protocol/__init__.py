@@ -34,7 +34,7 @@ from libranet.protocol.bundle_requests import (
     FileSource,
     WholeBundleRequest,
 )
-from libranet.protocol.client_origin import is_local_client
+from libranet.protocol.client_origin import is_local_client, parsed_address
 from libranet.protocol.connecting_requests import ONLY_TRUSTED_FIELD, ConnectingRequest
 from libranet.protocol.dial_requests import ADDRESS_FIELD, DialRequest
 from libranet.protocol.drop_requests import (
@@ -148,5 +148,6 @@ __all__ = [
     "parse_node_list",
     "parse_search_results",
     "parse_seek_list",
+    "parsed_address",
     "resolve_endpoint",
 ]
