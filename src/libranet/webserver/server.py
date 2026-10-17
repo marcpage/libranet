@@ -42,7 +42,7 @@ from errno import EACCES, EADDRINUSE
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from logging import Logger
-from socket import AF_INET, AF_INET6, create_connection, socket
+from socket import AF_INET, AF_INET6, IPPROTO_IPV6, IPV6_V6ONLY, create_connection, socket
 from socketserver import TCPServer
 from sys import exc_info
 from typing import Any, Final, Iterable
@@ -55,6 +55,8 @@ from libranet.cas.layered import LayeredSource
 from libranet.cas.resolved_files import ResolvedFiles
 from libranet.cas.store import CasStore
 from libranet.config.models import (
+    ANY_ADDRESS,
+    ANY_IPV4_ADDRESS,
     DEFAULT_CONFIG_HOSTS,
     DEFAULT_READ_AHEAD_PARTS,
     IDLE_TIMEOUT_SECONDS,
@@ -687,6 +689,9 @@ class LibranetHTTPServer(ThreadingHTTPServer):
         *,
         inbound_peers: InboundPeers | None = None,
     ) -> None:
+        if address[0] == ANY_ADDRESS and not _ipv6_listenable():
+            address = (ANY_IPV4_ADDRESS, address[1])
+
         self.address_family = AF_INET6 if ":" in address[0] else AF_INET
         self.router = router
         self.logger = logger
@@ -736,6 +741,8 @@ class LibranetHTTPServer(ThreadingHTTPServer):
         without either being told. Linux refuses such a bind, and so does
         this, on every platform.
 
+        At :data:`ANY_ADDRESS` it takes IPv4 too, even on Windows, where IPv6 alone is the default.
+
         It binds without ``HTTPServer``'s reverse DNS lookup of the host:
         ``socket.getfqdn`` can stall for seconds (notably on macOS), and the
         name it finds is never used.
@@ -744,9 +751,14 @@ class LibranetHTTPServer(ThreadingHTTPServer):
             OSError: the port is in use, or cannot be bound.
         """
         host, port = self.server_address[:2]
+        loopbacks = [LOOPBACK_FOR_ANY.get(str(host), str(host))]
+
+        if host == ANY_ADDRESS:
+            self.socket.setsockopt(IPPROTO_IPV6, IPV6_V6ONLY, 0)
+            loopbacks.append(LOOPBACK_FOR_ANY[ANY_IPV4_ADDRESS])
 
         # Port 0 asks for any free port, which nothing can be using.
-        if port and _answered(LOOPBACK_FOR_ANY.get(str(host), str(host)), int(port)):
+        if port and any(_answered(loopback, int(port)) for loopback in loopbacks):
             raise OSError(EADDRINUSE, f"Port {port} is already in use on this machine")
 
         TCPServer.server_bind(self)
@@ -963,6 +975,17 @@ class RequestHandler(BaseHTTPRequestHandler):
                 PartPath.without_keys(self.path),
             )
             self.close_connection = True
+
+
+def _ipv6_listenable() -> bool:
+    """Whether this host can listen at every IPv6 address."""
+    try:
+        with socket(AF_INET6) as probe:
+            probe.bind((ANY_ADDRESS, 0))
+        return True
+    except OSError:
+        # Not logged: it is the answer, not a failure.
+        return False
 
 
 def _answered(host: str, port: int) -> bool:

@@ -10,8 +10,9 @@
 # than a setting that silently does nothing.
 
 network:
-  # Peer-facing listener.
-  listen_address: "0.0.0.0"
+  # Peer-facing listener. "::" is every IPv6 and every IPv4 address, or
+  # every IPv4 address alone on a host with no IPv6; "0.0.0.0" is IPv4 alone.
+  listen_address: "::"
   listen_port: 8080
 
   # How this node describes itself in /data/nodes (HTTP API §10.1). With
