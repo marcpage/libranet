@@ -66,6 +66,14 @@ Directory Bundles with no format extensions of their own.
   prior bundle as a `versions` entry (BundleSpecification.md §3.1) on the
   new bundle, consistent with the update/merge semantics already defined
   for `versions`.
+- The node MAY store the new bundle as an update layer over the prior one
+  (BundleSpecification.md §4): a bundle holding only the entries that
+  changed, with `null` for each path removed, and naming the prior bundle
+  among its `extensions` for the rest. A backup then stores in proportion
+  to what changed, rather than to the whole directory. The reference node
+  layers each new bundle over the prior one until 32 layers lie above the
+  last bundle stored whole, by default, and then stores the next whole
+  again.
 - A change to metadata only (no file's contents, no path, and no symlink
   target changed) does not require a new bundle; the node MAY defer it to
   the next bundle it constructs for a content change. Until then the

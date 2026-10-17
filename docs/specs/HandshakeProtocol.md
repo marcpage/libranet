@@ -142,7 +142,8 @@ connection due to authentication failure until after at least the first
 two requests. This is necessary because identity verification is not yet
 possible until both keys have been exchanged: the server cannot validate
 the client's signature until step 1 completes, and the client cannot
-validate the server's response signature until step 2 completes.
+validate the server's response signature until step 2 completes. How many
+requests the reference node allows is given in HTTP API §11.1.
 
 This grace period applies only to the *inability to verify yet* during
 steps 1–2. It does not relax the rule in §2.1: a signature that is
