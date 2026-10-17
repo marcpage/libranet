@@ -32,12 +32,29 @@ def test_localhost_becomes_the_source_address(endpoint: str, expected: str) -> N
         "http://itsme.duckdns.org:4300",
         "https://192.0.2.9:443",
         "http://[2001:db8::1]:8080",
-        # Only the name is the convention; a literal loopback address is not.
-        "http://127.0.0.1:8080",
     ],
 )
 def test_other_hosts_are_kept_as_sent(endpoint: str) -> None:
     assert resolve_endpoint(endpoint, SOURCE) == endpoint
+
+
+@mark.parametrize(
+    ("endpoint", "expected"),
+    [
+        ("http://127.0.0.1:18401", "http://203.0.113.42:18401"),
+        ("http://127.8.9.10:18401", "http://203.0.113.42:18401"),
+        ("http://[::1]:18401", "http://203.0.113.42:18401"),
+        ("http://[::ffff:127.0.0.1]:18401", "http://203.0.113.42:18401"),
+    ],
+)
+def test_a_loopback_address_from_elsewhere_names_the_sender(endpoint: str, expected: str) -> None:
+    assert resolve_endpoint(endpoint, SOURCE) == expected
+
+
+@mark.parametrize("source", ["127.0.0.1", "::1", "::ffff:127.0.0.1"])
+@mark.parametrize("endpoint", ["http://127.0.0.1:18401", "http://[::1]:18401"])
+def test_a_loopback_address_from_this_machine_is_kept_as_sent(endpoint: str, source: str) -> None:
+    assert resolve_endpoint(endpoint, source) == endpoint
 
 
 def test_an_ipv6_source_is_bracketed() -> None:
@@ -69,6 +86,7 @@ def test_unusable_endpoints_are_refused(endpoint: str) -> None:
 
 def test_localhost_is_refused_without_a_source_address_to_replace_it() -> None:
     assert resolve_endpoint("http://localhost:8080", "") is None
+    assert resolve_endpoint("http://127.0.0.1:8080", "") is None
     assert resolve_endpoint("http://192.0.2.9:8080", "") == "http://192.0.2.9:8080"
 
 
@@ -81,6 +99,7 @@ def test_a_senders_own_entries_are_marked_as_observed_or_advertised() -> None:
             "http://sender.example.org:4300": SENDER_ID,
             "http://localhost:9999": OTHER_ID,
             "http://192.0.2.9:8080": OTHER_ID,
+            "http://127.0.0.1:18401": OTHER_ID,
         }
     )
 
@@ -91,6 +110,8 @@ def test_a_senders_own_entries_are_marked_as_observed_or_advertised() -> None:
             # A `localhost` not the sender's own was relayed, against §10.2.
             "http://203.0.113.42:9999": str(OTHER_ID),
             "http://192.0.2.9:8080": str(OTHER_ID),
+            # A peer on the sender's machine, which it reaches at loopback.
+            "http://203.0.113.42:18401": str(OTHER_ID),
         },
         "sources": {
             "http://203.0.113.42:4300": "observed",

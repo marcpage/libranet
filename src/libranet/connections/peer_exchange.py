@@ -57,8 +57,9 @@ peer answered a search with, no more of it than this node answers a search
 with, for the stats module to know.
 
 A received node list loses its entries naming this node. A ``localhost``
-endpoint is resolved to the peer's IP address, as this node's socket saw it
-(HttpApi §10.2), and dropped if that is not known. The peer's own entries
+endpoint, or a loopback one from a peer on another machine, is resolved to
+the peer's IP address, as this node's socket saw it (HttpApi §10.2), and
+dropped if that is not known. The peer's own entries
 are kept as addresses to try, and ``sources`` says which were observed and
 which advertised (Phase 2 Step 23). For each ``search`` entry of the peer's
 seek list, this node pushes the content it holds whose hash shares at least

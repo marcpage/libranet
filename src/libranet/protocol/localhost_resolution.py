@@ -4,8 +4,11 @@ A node that does not know its own public address advertises itself under the
 host ``localhost``, meaning "the address this node list came from". The
 receiving node puts the connection's source address in its place before the
 list is stored, so ``localhost`` is never passed on to a node that was not on
-that connection. Only node lists are resolved this way; ``localhost``
-anywhere else keeps its ordinary meaning.
+that connection. A loopback address, such as ``127.0.0.1`` or ``::1``,
+names the sender's machine just as well, so it is resolved the same way,
+unless the list came from this machine, whose loopback address it is too.
+Only node lists are resolved this way; ``localhost`` anywhere else keeps its
+ordinary meaning.
 
 A received list is published as ``nodes.received``, and the payload says how
 each of the sender's own entries was learned (Phase 2 Step 23)::
@@ -27,6 +30,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from libranet.cas.content_id import ContentId
 from libranet.messaging.events import AddressSource
+from libranet.protocol.client_origin import parsed_address
 
 _LOGGER = getLogger(__name__)
 
@@ -35,13 +39,14 @@ _SCHEMES: Final = frozenset({"http", "https"})
 
 
 def resolve_endpoint(endpoint: str, source_address: str) -> str | None:
-    """``endpoint`` with a ``localhost`` host replaced by ``source_address``.
+    """``endpoint`` with a host naming the sender's machine replaced by ``source_address``.
 
-    Any other host is returned unchanged, so an endpoint resolved by an
-    earlier node is never resolved again. ``None`` means the entry cannot be
-    stored: it is not an ``http`` or ``https`` URL naming a host and a valid
-    port, or its host is ``localhost`` and ``source_address`` is not an IP
-    address to put in its place.
+    That host is ``localhost``, or a loopback address unless
+    ``source_address`` is one too. Any other host is returned unchanged, so
+    an endpoint resolved by an earlier node is never resolved again. ``None``
+    means the entry cannot be stored: it is not an ``http`` or ``https`` URL
+    naming a host and a valid port, or its host names the sender's machine
+    and ``source_address`` is not an IP address to put in its place.
     """
     try:
         parts = urlsplit(endpoint)
@@ -58,7 +63,7 @@ def resolve_endpoint(endpoint: str, source_address: str) -> str | None:
         )
         return None
 
-    if parts.hostname != LOCALHOST:
+    if not _names_sender(parts.hostname, source_address):
         return endpoint
 
     host = _url_host(source_address)
@@ -67,7 +72,7 @@ def resolve_endpoint(endpoint: str, source_address: str) -> str | None:
         _LOGGER.debug(
             "Dropping the entry for %s from a node list: no address to put in place of %s",
             endpoint,
-            LOCALHOST,
+            parts.hostname,
         )
         return None
 
@@ -106,6 +111,26 @@ class NodeListSender:
                 sources[resolved] = source.value
 
         return {"nodes": received, "sources": sources}
+
+
+def _names_sender(host: str, source_address: str) -> bool:
+    """Whether ``host``, in a node list from ``source_address``, names the sender's machine.
+
+    ``localhost`` always does (HttpApi §10.2). A loopback address does too,
+    unless ``source_address`` is itself a loopback address: the sender is
+    then on this machine, and the address is kept as sent, since its family
+    may be the only one the node there listens at.
+    """
+    if host == LOCALHOST:
+        return True
+
+    parsed = parsed_address(host)
+
+    if parsed is None or not parsed.is_loopback:
+        return False
+
+    source = parsed_address(source_address)
+    return source is None or not source.is_loopback
 
 
 def _url_host(address: str) -> str | None:

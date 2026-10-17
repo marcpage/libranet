@@ -1194,6 +1194,13 @@ and does not perform another `localhost` substitution.
 
 The substitution applies to every `localhost` endpoint received in a node list.
 
+A loopback address, such as `127.0.0.1` or `::1`, names the sender's machine
+just as `localhost` does: a node lists the peers on its own machine that way
+when it reaches them there. A node that receives one in a node list MUST
+resolve it the same way, unless the source address is itself a loopback
+address. The sender is then on the receiving node's machine, and the endpoint
+is kept as sent.
+
 A node MUST NOT substitute `localhost` in arbitrary HTTP requests or other
 Libranet data structures.
 

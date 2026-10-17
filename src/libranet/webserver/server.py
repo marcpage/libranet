@@ -37,6 +37,8 @@ from :func:`build_router`, serves ``/data`` and the applications, and never
 origin (HttpApi §2.3, Phase 2 Step 58).
 """
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 from errno import EACCES, EADDRINUSE
 from http import HTTPStatus
