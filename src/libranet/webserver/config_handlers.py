@@ -1,6 +1,6 @@
 """The ``/config/api`` JSON endpoints (HttpApi §2.3): backups, restores, builds, applications.
 
-And the addresses of other nodes the operator added for this node to dial.
+And connecting to another node at an address the operator gives.
 
 Every endpoint is beneath ``/config/api``, leaving the rest of ``/config`` to
 the administration application's own pages.
@@ -69,17 +69,14 @@ holds is also answered to any client there, at ``GET /data/applications``
 file that cannot be read is ``500``, saying why, and is never saved over:
 fixing or removing it by hand is the way back.
 
-The addresses the operator added for this node to dial are the web server's
-own too (:mod:`libranet.protocol.added_addresses`, Phase 5 Step 109), so its
-endpoints change them themselves. Each change is also published for the
-connection manager, which dials an address added at once::
-
-    GET    /config/api/addresses             every address added
-    POST   /config/api/addresses             add {"address"}    address.added
-    DELETE /config/api/addresses/{address}   remove one         address.removed
-
-An address in a path is percent-encoded as one segment, as a name is. A file
-of them that cannot be read is ``500``, saying why, and is never saved over.
+``POST /config/api/connections`` ``{"address"}`` has the connection manager
+dial an address at once (Phase 5 Step 109), and, unlike the backup endpoints,
+waits to hear what came of it (:mod:`libranet.webserver.dial_outcomes`),
+since the operator asking wants to know whether the node could be reached.
+A node reached there is ``200``, with its id, whether it was connected
+already or not; the address of this node itself is ``409``, and one where no
+node was reached ``502``, saying why. No answer in time is ``504``: the dial
+may still reach the node, which the nodes application then shows.
 
 ``GET /config/api`` names the endpoints, so a client has somewhere to start.
 A browser has the ``/config`` application instead, served like any other
@@ -114,10 +111,10 @@ from libranet.messaging.events import (
     EXPORTS_FIELD,
     JOBS_FIELD,
     RESTORES_FIELD,
+    DialOutcome,
     EventType,
 )
 from libranet.messaging.publishing import Publish
-from libranet.protocol.added_addresses import ADDRESSES_FIELD, AddedAddress, AddedAddresses
 from libranet.protocol.backup_requests import (
     IDENTIFIER_LENGTH,
     BackupJobRequest,
@@ -125,10 +122,11 @@ from libranet.protocol.backup_requests import (
     ExportRequest,
     RestoreRequest,
 )
-from libranet.protocol.errors import AddressListError
+from libranet.protocol.dial_requests import DialRequest
 from libranet.protocol.http_syntax import API_PREFIX
 from libranet.webserver.app_registry import CONFIG_APPLICATION, Application, ApplicationRegistry
 from libranet.webserver.backup_state import BackupState
+from libranet.webserver.dial_outcomes import DialOutcomes, DialReport
 from libranet.webserver.errors import RegistryFileError
 from libranet.webserver.http_types import (
     Request,
@@ -159,11 +157,10 @@ EXPORTS_PATH: Final = CONFIG_API_PATH + "/exports"
 APPLICATIONS_PATH: Final = CONFIG_API_PATH + "/applications"
 CONFIG_USERS_PATH: Final = CONFIG_API_PATH + "/users"
 METADATA_PATH: Final = CONFIG_API_PATH + "/metadata"
-ADDRESSES_PATH: Final = CONFIG_API_PATH + "/addresses"
+CONNECTIONS_PATH: Final = CONFIG_API_PATH + "/connections"
 BACKUP_JOB_PATTERN: Final = BACKUPS_PATH + rf"/(?P<job_id>[0-9a-fA-F]{{{IDENTIFIER_LENGTH}}})"
 BACKUP_RUN_PATTERN: Final = BACKUP_JOB_PATTERN + "/run"
 APPLICATION_PATTERN: Final = APPLICATIONS_PATH + "/(?P<name>[^/]+)"
-ADDRESS_PATTERN: Final = ADDRESSES_PATH + "/(?P<address>[^/]+)"
 
 #: Where any client asks the main port which applications it serves
 #: (HttpApi §13.4).
@@ -178,7 +175,6 @@ _CONFIG_SEGMENT: Final = rf"/(?i:{escape(CONFIG_APPLICATION)})"
 BACKUP_JOB_TEMPLATE: Final = BACKUPS_PATH + "/{job_id}"
 BACKUP_RUN_TEMPLATE: Final = BACKUP_JOB_TEMPLATE + "/run"
 APPLICATION_TEMPLATE: Final = APPLICATIONS_PATH + "/{name}"
-ADDRESS_TEMPLATE: Final = ADDRESSES_PATH + "/{address}"
 
 # Whether an application is trusted, in a request changing it (HttpApi §13.5).
 _TRUSTED_FIELD: Final = "trusted"
@@ -207,9 +203,7 @@ ENDPOINTS: Final = (
     {"method": "POST", "path": CONFIG_USERS_PATH, "description": "Create a person's identity"},
     {"method": "GET", "path": METADATA_PATH, "description": "What this node says of itself"},
     {"method": "PUT", "path": METADATA_PATH, "description": "Change what this node says of itself"},
-    {"method": "GET", "path": ADDRESSES_PATH, "description": "Addresses added to dial"},
-    {"method": "POST", "path": ADDRESSES_PATH, "description": "Add an address, and dial it now"},
-    {"method": "DELETE", "path": ADDRESS_TEMPLATE, "description": "Remove an address added"},
+    {"method": "POST", "path": CONNECTIONS_PATH, "description": "Connect to a node at an address"},
 )
 
 
@@ -469,96 +463,75 @@ class ApplicationRemovalHandler:
 
 
 @dataclass(frozen=True)
-class AddedAddressHandlers:
-    """``/config/api/addresses``: the addresses the operator added for this node to dial.
+class ConnectHandler:
+    """``POST /config/api/connections``: connect to the node at an address, and say whether it did.
 
-    Each change made to ``addresses`` is published for the connection manager.
+    The connection manager is asked to dial it, and what came of it is
+    waited for in ``outcomes`` for up to ``wait_seconds``.
     """
 
-    addresses: AddedAddresses
     publish: Publish
+    outcomes: DialOutcomes
+    wait_seconds: float
 
-    def routes(self) -> tuple[tuple[str, str, Handler], ...]:
-        """Its routes, as ``(method, pattern, handler)``."""
-        return (
-            ("GET", ADDRESSES_PATH, self.read),
-            ("POST", ADDRESSES_PATH, self.add),
-            ("DELETE", ADDRESS_PATTERN, self.remove),
+    def __call__(self, request: Request) -> Response:
+        asked = parsed_or_refusal(request, DialRequest.from_value)
+
+        if isinstance(asked, Response):
+            return asked
+
+        report = self.outcomes.await_dial(
+            lambda dial_id: self.publish(
+                EventType.DIAL_REQUESTED, {"dial_id": dial_id, "endpoint": asked.endpoint}
+            ),
+            self.wait_seconds,
         )
+        return self._answer(request, asked, report)
 
-    def read(self, request: Request) -> Response:
-        """``GET``: every address added, in the order they were added."""
-        try:
-            added = self.addresses.addresses()
+    @staticmethod
+    def _answer(request: Request, asked: DialRequest, report: DialReport | None) -> Response:
+        """The answer saying what ``report`` says came of dialing ``asked``."""
+        endpoint = asked.endpoint
 
-        except AddressListError as error:
-            # Not logged: the refusal logs it.
-            return _unreadable_addresses_response(request, error)
+        if report is None:
+            _LOGGER.info("No outcome of dialing %s was reported in time", endpoint)
+            return status_response(
+                request,
+                HTTPStatus.GATEWAY_TIMEOUT,
+                f"The node did not say in time whether it reached {endpoint}. It may yet.",
+            )
 
-        return json_response({ADDRESSES_FIELD: [address.endpoint for address in added]})
+        # Declared as any object, so that an outcome none of these names is
+        # still checked for, though the type allows none.
+        outcome: object = report.outcome
 
-    def add(self, request: Request) -> Response:
-        """``POST``: keep an address, and have it dialed now, answering with it as it is kept.
+        if outcome in (DialOutcome.CONNECTED, DialOutcome.ALREADY_CONNECTED):
+            return json_response(
+                {
+                    **asked.value(),
+                    "node_id": str(report.node_id),
+                    "outcome": report.outcome.value,
+                }
+            )
 
-        One kept already is dialed again all the same.
-        """
-        address = parsed_or_refusal(request, AddedAddress.from_value)
+        if outcome == DialOutcome.THIS_NODE:
+            return status_response(
+                request, HTTPStatus.CONFLICT, f"{endpoint} is this node's own address."
+            )
 
-        if isinstance(address, Response):
-            return address
+        if outcome == DialOutcome.UNREACHED:
+            return status_response(
+                request,
+                HTTPStatus.BAD_GATEWAY,
+                f"No node was reached at {endpoint}: {report.detail or 'no reason was given'}",
+            )
 
-        try:
-            self.addresses.add(address)
-
-        except AddressListError as error:
-            # Not logged: the refusal logs it.
-            return _unreadable_addresses_response(request, error)
-
-        self.publish(EventType.ADDRESS_ADDED, {"endpoint": address.endpoint})
-        return json_response(address.value(), HTTPStatus.ACCEPTED)
-
-    def remove(self, request: Request) -> Response:
-        """``DELETE``: stop keeping the address the path names; one not kept is ``404``."""
-        body = body_or_refusal(request)
-
-        if isinstance(body, Response):
-            return body
-
-        named = percent_decoded(request.params["address"])
-
-        try:
-            address = None if named is None else AddedAddress.create(named)
-
-        except ValueError:
-            # Not logged: what is no address is none of those kept, as the 404 says.
-            address = None
-
-        if address is None:
-            return _not_added_response(request)
-
-        try:
-            removed = self.addresses.remove(address)
-
-        except AddressListError as error:
-            # Not logged: the refusal logs it.
-            return _unreadable_addresses_response(request, error)
-
-        if not removed:
-            return _not_added_response(request)
-
-        self.publish(EventType.ADDRESS_REMOVED, {"endpoint": address.endpoint})
-        return Response(HTTPStatus.NO_CONTENT)
-
-
-def _not_added_response(request: Request) -> Response:
-    """The ``404`` for a path naming no address added."""
-    return status_response(request, HTTPStatus.NOT_FOUND, "No such address was added.")
-
-
-def _unreadable_addresses_response(request: Request, error: AddressListError) -> Response:
-    """The ``500`` for a file of addresses that must be fixed by hand before it can be changed."""
-    _LOGGER.warning("Refusing %s %s: %s", request.method, request.path, error)
-    return status_response(request, HTTPStatus.INTERNAL_SERVER_ERROR, str(error))
+        _LOGGER.error("Dialing %s came to %r, which is no outcome there is", endpoint, report)
+        return status_response(
+            request,
+            HTTPStatus.INTERNAL_SERVER_ERROR,
+            f"What came of dialing {endpoint} is unknown.",
+        )
 
 
 def _not_registered_response(request: Request) -> Response:
@@ -582,13 +555,13 @@ def config_routes(
     *,
     users: Handler | None = None,
     metadata: OwnMetadata | None = None,
-    addresses: AddedAddresses | None = None,
+    connect: Handler | None = None,
 ) -> tuple[tuple[str, str, Handler], ...]:
     """Every ``/config/api`` route, as ``(method, pattern, handler)`` in route order.
 
     ``users`` makes a person's identity, ``metadata`` reads and changes what
-    this node says of itself, and ``addresses`` holds the addresses added for
-    it to dial. Without one of them, no route does what it does.
+    this node says of itself, and ``connect`` connects to a node at an
+    address. Without one of them, no route does what it does.
     """
     configure = BackupRequestHandler(
         publish, BackupJobRequest.from_value, EventType.BACKUP_JOB_CONFIGURED, "job_id"
@@ -627,7 +600,7 @@ def config_routes(
             if metadata is None
             else (("GET", METADATA_PATH, metadata.read), ("PUT", METADATA_PATH, metadata.change))
         ),
-        *(() if addresses is None else AddedAddressHandlers(addresses, publish).routes()),
+        *(() if connect is None else (("POST", CONNECTIONS_PATH, connect),)),
     )
     return tuple(
         (method, _CONFIG_SEGMENT + pattern.removeprefix(f"/{CONFIG_APPLICATION}"), handler)

@@ -46,8 +46,8 @@ class EventType(StrEnum):
     SEEK_RECEIVED = "seek.received"  # webserver → stats
     NODE_LIST_UPDATED = "nodes.updated"  # stats → connections
     ADDRESS_VERIFIED = "address.verified"  # connections → stats (Phase 2 Step 23)
-    ADDRESS_ADDED = "address.added"  # webserver → connections (Phase 5 Step 109)
-    ADDRESS_REMOVED = "address.removed"  # webserver → connections (Phase 5 Step 109)
+    DIAL_REQUESTED = "address.dial_requested"  # webserver → connections (Phase 5 Step 109)
+    ADDRESS_DIALED = "address.dialed"  # connections → webserver (Phase 5 Step 109)
 
     # Outgoing connections and fetching (Steps 11 and 12).
     CONNECTION_OPENED = "connection.opened"  # connections → stats
@@ -118,6 +118,15 @@ class AddressSource(StrEnum):
     ADVERTISED = "advertised"  # in the node's own node list, as its own
     OBSERVED = "observed"  # a `localhost` entry resolved to the connection's address
     DIALED = "dialed"  # this node reached the node there
+
+
+class DialOutcome(StrEnum):
+    """What came of dialing an address the operator asked for, as ``address.dialed`` says."""
+
+    CONNECTED = "connected"  # a node proved its id there, and was taken into the mix
+    ALREADY_CONNECTED = "already_connected"  # the node there was connected already
+    THIS_NODE = "this_node"  # the address is this node's own
+    UNREACHED = "unreached"  # no node proved its id there; the message's `detail` says why
 
 
 class ConnectionDirection(StrEnum):

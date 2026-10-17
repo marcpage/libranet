@@ -6,13 +6,12 @@ is resolved, search prefixes and the cached search responses, the
 request bodies the backup module acts on, the bundles local
 clients ask the web server to make, the drops pages ask it to make, signed,
 encrypted, or neither, the identities and sign-ins local clients ask for,
-the changes to a trust list they ask for, and the addresses an operator adds
-for the node to dial are each defined once, here.
+the changes to a trust list they ask for, and the addresses an operator asks
+the node to connect to are each defined once, here.
 No module package imports another; what two modules share is here, in
 :mod:`libranet.messaging`, or in a library package below them both.
 """
 
-from libranet.protocol.added_addresses import ADDRESSES_FIELD, AddedAddress, AddedAddresses
 from libranet.protocol.backup_requests import (
     IDENTIFIER_LENGTH,
     BackupJobRequest,
@@ -36,6 +35,7 @@ from libranet.protocol.bundle_requests import (
     WholeBundleRequest,
 )
 from libranet.protocol.client_origin import is_local_client
+from libranet.protocol.dial_requests import ADDRESS_FIELD, DialRequest
 from libranet.protocol.drop_requests import (
     DropRequest,
     Encryption,
@@ -43,7 +43,7 @@ from libranet.protocol.drop_requests import (
     PersonEncryption,
     SignedDropRequest,
 )
-from libranet.protocol.errors import AddressListError, InvalidListError, InvalidRequestError
+from libranet.protocol.errors import InvalidListError, InvalidRequestError
 from libranet.protocol.http_syntax import (
     API_PREFIX,
     BODILESS_STATUSES,
@@ -85,7 +85,7 @@ from libranet.protocol.search import (
 from libranet.protocol.trust_requests import TrustRequest
 
 __all__ = [
-    "ADDRESSES_FIELD",
+    "ADDRESS_FIELD",
     "API_PREFIX",
     "BODILESS_STATUSES",
     "CRLF",
@@ -101,14 +101,12 @@ __all__ = [
     "SEARCH_PATH",
     "SEEK_PATH",
     "TOKEN",
-    "AddedAddress",
-    "AddedAddresses",
-    "AddressListError",
     "BackupJobRequest",
     "BuildRequest",
     "BundleEditRequest",
     "BytesSource",
     "CopySource",
+    "DialRequest",
     "DropRequest",
     "Encryption",
     "EntrySource",

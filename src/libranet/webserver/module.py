@@ -24,7 +24,9 @@ reports its jobs, restores, and imports are doing, ``backup.state`` (Step
 19), for request threads on either port to answer from. It also takes the
 eviction module's ``peers.connected_requested``, answered with the peers
 connected to the server (:mod:`libranet.webserver.inbound_peers`), which are
-named once as the server starts too (Phase 2 Step 53).
+named once as the server starts too (Phase 2 Step 53). And it takes what came
+of each dial ``/config`` asked the connection manager for, ``address.dialed``,
+which wakes the request waiting on it (Phase 5 Step 109).
 
 The ``/config`` credential is loaded from disk like the node key, rather
 than being carried across the process boundary.
@@ -53,16 +55,22 @@ from libranet.webserver.backup_state import BackupReport, BackupState
 from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.costly_work import CostlyWork
+from libranet.webserver.dial_outcomes import DIAL_REPORT_SECONDS, DialOutcomes, DialReport
 from libranet.webserver.inbound_peers import InboundPeers
 from libranet.webserver.local_folders import LocalFolders
 from libranet.webserver.server import LibranetHTTPServer, build_config_router, build_router
 
 
-class WebServerModule(ModuleBase):
+class WebServerModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
     """Serves the node's HTTP API while the module runs."""
 
     subscriptions: ClassVar[frozenset[EventType]] = frozenset(
-        {EventType.APP_PATH_RESOLVED, EventType.BACKUP_STATE, EventType.PEERS_CONNECTED_REQUESTED}
+        {
+            EventType.APP_PATH_RESOLVED,
+            EventType.BACKUP_STATE,
+            EventType.PEERS_CONNECTED_REQUESTED,
+            EventType.ADDRESS_DIALED,
+        }
     )
 
     def __init__(
@@ -81,6 +89,7 @@ class WebServerModule(ModuleBase):
         self._config = config
         self._app_outcomes = ApplicationOutcomes()
         self._backup_state = BackupState()
+        self._dial_outcomes = DialOutcomes()
         self._inbound_peers = InboundPeers(self.publish)
         self._server: LibranetHTTPServer | None = None
         self._config_server: LibranetHTTPServer | None = None
@@ -90,6 +99,7 @@ class WebServerModule(ModuleBase):
                 EventType.APP_PATH_RESOLVED: self._on_app_path_resolved,
                 EventType.BACKUP_STATE: self._on_backup_state,
                 EventType.PEERS_CONNECTED_REQUESTED: self._on_peers_connected_requested,
+                EventType.ADDRESS_DIALED: self._on_address_dialed,
             }
         )
 
@@ -154,6 +164,8 @@ class WebServerModule(ModuleBase):
                 app_wait_seconds=network.app_wait_seconds,
                 read_ahead_parts=network.read_ahead_parts,
                 costly_work=costly_work,
+                dial_outcomes=self._dial_outcomes,
+                dial_wait_seconds=self._config.peers.longest_dial_seconds() + DIAL_REPORT_SECONDS,
             ),
             self.logger,
             signer,
@@ -241,6 +253,10 @@ class WebServerModule(ModuleBase):
 
     def _on_peers_connected_requested(self, _: Message) -> None:
         self._inbound_peers.publish()
+
+    def _on_address_dialed(self, message: Message) -> None:
+        """Hand what came of a dial to the ``/config`` request waiting on it."""
+        self._dial_outcomes.report(message["dial_id"], DialReport.from_message(message))
 
 
 def _address(server: LibranetHTTPServer | None) -> tuple[str, int] | None:

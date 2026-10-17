@@ -59,7 +59,6 @@ A node on macOS with every default, after its first run, looks like this:
 │   ├── incoming/                   unverified uploads
 │   ├── keys/                       identity.key_dir
 │   ├── libranet.sqlite3            statistics database
-│   ├── added_addresses.json        addresses added on /config to dial
 │   ├── applications.json           application registry
 │   ├── backup_jobs.json            backup jobs
 │   ├── backup_jobs/                each job's last bundle, kept expanded
@@ -123,7 +122,6 @@ something is written to it.
 ├── libranet.sqlite3
 ├── libranet.sqlite3-wal                 only while the node runs
 ├── libranet.sqlite3-shm                 only while the node runs
-├── added_addresses.json
 ├── applications.json
 ├── backup_jobs.json
 ├── backup_jobs/
@@ -141,7 +139,6 @@ something is written to it.
 | `keys/backup_secret` | Backup module, when first needed | Backup module |
 | `keys/config_credential` | Web server, on the first `/config` request | Web server |
 | `libranet.sqlite3` | Stats module | Stats module only |
-| `added_addresses.json` | Web server | Web server; connection manager, as it starts |
 | `applications.json` | Web server | Web server |
 | `backup_jobs.json` | Backup module | Backup module |
 | `backup_jobs/` | Backup module | Backup module |
@@ -398,36 +395,6 @@ it to `storage.max_application_value_bytes`, 64 KiB.
 Deleting the directory, with the node stopped, makes every application
 forget what it kept here. What a store names is content, and stays in
 `cas/data` until it is evicted.
-
-### 3.9 Addresses Added: `added_addresses.json`
-
-The addresses of other nodes the operator added on `/config`, through
-`/config/api/addresses`, for this node to dial (Phase 5 Step 109;
-`src/libranet/protocol/added_addresses.py`), in the order they were added:
-
-```json
-{
-  "addresses": [
-    "http://192.168.1.10:18400"
-  ]
-}
-```
-
-Each is an `http` endpoint, as a node list names one, always written with
-its port and its host in lower case, so that one address is kept once
-however it was typed. The connection manager dials one at once when it is
-added, outside the peer mix, and every one whenever no peer is connected, as
-when it starts.
-
-Only the web server writes the file, and the connection manager reads it as
-it starts, and is told of each change after that (`address.added` and
-`address.removed`). Until the first address is added, the file does not
-exist. One that cannot be read is an error rather than no addresses, and is
-never saved over: the page and `/config/api/addresses` say why, and the
-connection manager logs it and dials none. An edit by hand takes effect when
-the node next starts, and is listed by the page at once. Deleting the file
-forgets the addresses, but not the nodes reached at them, which the
-statistics database keeps as it keeps every node reached.
 
 ## 4. The Cache Directory
 

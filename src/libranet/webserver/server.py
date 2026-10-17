@@ -66,7 +66,6 @@ from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import MessageSigner
 from libranet.messaging.publishing import Publish
 from libranet.problems import Problem
-from libranet.protocol.added_addresses import AddedAddresses
 from libranet.protocol.http_syntax import BODILESS_STATUSES, REQUEST_PATH_HEADER
 from libranet.protocol.lists import NODES_PATH, SEEK_PATH
 from libranet.protocol.search import LocalSearch, SearchCache
@@ -108,12 +107,14 @@ from libranet.webserver.config_guard import (
 from libranet.webserver.config_handlers import (
     DATA_APPLICATIONS_PATH,
     ApplicationListHandler,
+    ConnectHandler,
     NodeDescription,
     config_routes,
 )
 from libranet.webserver.costly_work import CostlyWork
 from libranet.webserver.data_handler import DATA_PATTERN, DataReadHandler
 from libranet.webserver.data_write_handler import DataWriteHandler
+from libranet.webserver.dial_outcomes import DialOutcomes
 from libranet.webserver.drop_handler import DROP_PATH, DropEncryption, DropHandler
 from libranet.webserver.encrypted_handlers import ENCRYPTED_PATTERN, EncryptedDrops
 from libranet.webserver.errors import IncompleteBodyError, ResponseCutShortError
@@ -482,6 +483,8 @@ def build_config_router(  # pylint: disable=too-many-locals
     app_wait_seconds: float = 0.0,
     read_ahead_parts: int = DEFAULT_READ_AHEAD_PARTS,
     costly_work: CostlyWork | None = None,
+    dial_outcomes: DialOutcomes | None = None,
+    dial_wait_seconds: float = 0.0,
 ) -> Router:
     """``/config``'s port's routes: its endpoints and its application, and nothing else.
 
@@ -500,10 +503,10 @@ def build_config_router(  # pylint: disable=too-many-locals
     is given. Given ``identity``, the node's own, ``/config/api/metadata``
     reads what the node says of itself, and places what it says next, signed
     with ``identity``'s key, as drops are made and stored there (Phase 5 Step
-    104). ``/config/api/addresses`` keeps the addresses added for the node to
-    dial in ``storage``'s data directory (Phase 5 Step 109).
-    ``retry_after_seconds``, ``app_outcomes``, ``app_wait_seconds``, and
-    ``read_ahead_parts`` are as for :func:`build_router`.
+    104). ``/config/api/connections`` has an address dialed, and waits for what
+    came of it in ``dial_outcomes`` for up to ``dial_wait_seconds`` (Phase 5
+    Step 109). ``retry_after_seconds``, ``app_outcomes``, ``app_wait_seconds``,
+    and ``read_ahead_parts`` are as for :func:`build_router`.
     """
     content = LayeredSource(CasStore.source_of_truth(storage)) if content is None else content
     registry = _registry(storage, content)
@@ -543,7 +546,9 @@ def build_config_router(  # pylint: disable=too-many-locals
                 retry_after_seconds=retry_after_seconds,
             )
         ),
-        addresses=AddedAddresses(storage.added_addresses_path),
+        connect=ConnectHandler(
+            publish, DialOutcomes() if dial_outcomes is None else dial_outcomes, dial_wait_seconds
+        ),
     ):
         router.add(method, pattern, handler)
 

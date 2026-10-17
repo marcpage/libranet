@@ -239,7 +239,7 @@ needs no configuration to start.
 
 A node finds other nodes through the ones it is told about, and there is no
 public network to tell it about yet, so it starts alone. To join the nodes
-on your own computers into a network, add another's address on each one's
+on your own computers into a network, connect each one to another on its
 administration page, or run a super node on a computer that is always on,
 which tries to hold everything your other computers share. To try a
 network of many nodes on one computer:
@@ -297,7 +297,7 @@ Deliberately deferred, and specified but not yet built:
 
 There is no bootstrap network: a node ships with an empty seed list, so nodes
 currently find each other only through peers you configure yourself, by
-adding another node's address on `/config`, or with a seed list.
+connecting to another node's address on `/config`, or with a seed list.
 
 ---
 

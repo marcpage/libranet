@@ -1563,25 +1563,23 @@ def test_a_config_endpoint_publishes_what_the_backup_module_will_act_on(
     assert message["directory"] == "/home/me/documents"
 
 
-def test_an_address_added_through_config_is_kept_in_the_data_directory_and_dialed(
-    config_connection: HTTPConnection, storage: StorageConfig, queues: ModuleQueues
+def test_connecting_through_config_asks_for_a_dial_and_waits_for_what_came_of_it(
+    config_connection: HTTPConnection, queues: ModuleQueues
 ) -> None:
     response, body = _config(
         config_connection,
-        "/config/api/addresses",
+        "/config/api/connections",
         "POST",
         _credentials(),
         dumps({"address": "http://192.168.1.10:8080"}).encode("utf-8"),
     )
 
-    assert response.status == 202
-    assert loads(body) == {"address": "http://192.168.1.10:8080"}
-    assert loads(storage.added_addresses_path.read_bytes()) == {
-        "addresses": ["http://192.168.1.10:8080"]
-    }
+    # Nothing here reports one, so the wait the router was built with ends.
+    assert response.status == 504
+    assert "did not say in time" in loads(body)["detail"]
     (message,) = _published(queues)
     assert (message["event"], message["endpoint"]) == (
-        EventType.ADDRESS_ADDED,
+        EventType.DIAL_REQUESTED,
         "http://192.168.1.10:8080",
     )
 

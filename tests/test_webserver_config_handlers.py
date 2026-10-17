@@ -2,9 +2,9 @@
 
 Every backup endpoint answers at once and leaves the work to the backup
 module, so what each one publishes is what these assert. The application
-endpoints change the registry themselves, and publish nothing. The address
-endpoints change the addresses added themselves, and publish each change.
-Authentication is a router guard and is tested separately.
+endpoints change the registry themselves, and publish nothing. Connecting to
+a node waits for what the connection manager reports, which these report as
+it is asked for. Authentication is a router guard and is tested separately.
 """
 
 from __future__ import annotations
@@ -12,16 +12,17 @@ from http import HTTPStatus
 from json import dumps, loads
 from logging import DEBUG, WARNING, LogRecord
 from pathlib import Path
+from typing import Any, Mapping
 
 from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.config.models import NetworkConfig
-from libranet.messaging.events import JOBS_FIELD, EventType
+from libranet.messaging.envelope import Message
+from libranet.messaging.events import JOBS_FIELD, DialOutcome, EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.problems import CONTENT_TOO_LARGE, INVALID_REQUEST
-from libranet.protocol.added_addresses import AddedAddress, AddedAddresses
 from libranet.protocol.backup_requests import (
     BackupJobRequest,
     BuildRequest,
@@ -37,18 +38,20 @@ from libranet.webserver.app_registry import (
     RegisteredApplications,
 )
 from libranet.webserver.backup_state import BackupReport, BackupState
+from libranet.webserver.dial_outcomes import DialOutcomes, DialReport
 from libranet.webserver.config_handlers import (
-    ADDRESSES_PATH,
     APPLICATIONS_PATH,
     BACKUPS_PATH,
     BUILDS_PATH,
     CONFIG_API_PATH,
     CONFIG_USERS_PATH,
+    CONNECTIONS_PATH,
     EXPORTS_PATH,
     METADATA_PATH,
     NODE_PATH,
     RESTORES_PATH,
     BackupReportHandler,
+    ConnectHandler,
     NodeDescription,
     config_routes,
 )
@@ -79,9 +82,8 @@ BUILD_ENTRY = {"build_id": BUILD_ID, "directory": SITE, "status": "done"}
 EXPORT_ENTRY = {"export_id": EXPORT_ID, "archive": ARCHIVE, "status": "waiting"}
 NODE_ID = ContentId.for_data(b"this node's public key", "sha256")
 NETWORK = NetworkConfig(listen_address="0.0.0.0", listen_port=8080, external_port=4300)
-LAN = AddedAddress.create("http://192.168.1.10:8080")
-# The address in a path, percent-encoded as one segment, as the page encodes it.
-LAN_PATH = f"{ADDRESSES_PATH}/http%3A%2F%2F192.168.1.10%3A8080"
+REACHED = ContentId.for_data(b"the public key of the node reached", "sha256")
+LAN = "http://192.168.1.10:8080"
 
 
 @fixture
@@ -94,11 +96,6 @@ def registry(tmp_path: Path) -> ApplicationRegistry:
     return ApplicationRegistry(tmp_path / "applications.json")
 
 
-@fixture
-def added(tmp_path: Path) -> AddedAddresses:
-    return AddedAddresses(tmp_path / "added_addresses.json")
-
-
 def making_a_user(request: Request) -> Response:
     """Stands in for making a person's identity, answering with what it was sent.
 
@@ -108,9 +105,7 @@ def making_a_user(request: Request) -> Response:
 
 
 @fixture
-def router(
-    queues: ModuleQueues, state: BackupState, registry: ApplicationRegistry, added: AddedAddresses
-) -> Router:
+def router(queues: ModuleQueues, state: BackupState, registry: ApplicationRegistry) -> Router:
     publish = StubModule(ModuleName.WEBSERVER, queues).publish
     router = Router()
 
@@ -121,7 +116,6 @@ def router(
         NodeDescription(NODE_ID, NETWORK),
         RETRY_AFTER_SECONDS,
         users=making_a_user,
-        addresses=added,
     ):
         router.add(method, pattern, handler)
 
@@ -181,9 +175,7 @@ def test_the_index_names_every_endpoint(router: Router) -> None:
         ("POST", "/config/api/users"),
         ("GET", "/config/api/metadata"),
         ("PUT", "/config/api/metadata"),
-        ("GET", "/config/api/addresses"),
-        ("POST", "/config/api/addresses"),
-        ("DELETE", "/config/api/addresses/{address}"),
+        ("POST", "/config/api/connections"),
     }
 
 
@@ -826,148 +818,129 @@ def test_a_registry_that_cannot_be_read_is_logged_as_a_warning(
     assert str(registry.path) in record.getMessage()
 
 
-def test_no_addresses_are_listed_until_one_is_added(router: Router, queues: ModuleQueues) -> None:
-    response = router.dispatch(request("GET", ADDRESSES_PATH))
+class Dialing:
+    """Stands in for the connection manager: each dial asked for is reported at once, as given.
+
+    With no report given, none is, as when the connection manager does not
+    answer in time.
+    """
+
+    def __init__(self, report: DialReport | None) -> None:
+        self.report = report
+        self.outcomes = DialOutcomes()
+        self.asked: list[dict[str, object]] = []
+
+    def publish(self, event: EventType, payload: Mapping[str, Any] | None = None) -> Message:
+        assert event == EventType.DIAL_REQUESTED and payload is not None
+        self.asked.append(dict(payload))
+
+        if self.report is not None:
+            self.outcomes.report(str(payload["dial_id"]), self.report)
+
+        return {"event": event, **payload}
+
+    def router(self, state: BackupState, registry: ApplicationRegistry) -> Router:
+        router = Router()
+
+        for method, pattern, handler in config_routes(
+            self.publish,
+            state,
+            registry,
+            NodeDescription(NODE_ID, NETWORK),
+            RETRY_AFTER_SECONDS,
+            connect=ConnectHandler(self.publish, self.outcomes, 0.05),
+        ):
+            router.add(method, pattern, handler)
+
+        return router
+
+
+@mark.parametrize("outcome", [DialOutcome.CONNECTED, DialOutcome.ALREADY_CONNECTED])
+def test_connecting_to_a_node_reached_answers_with_its_id(
+    state: BackupState, registry: ApplicationRegistry, outcome: DialOutcome
+) -> None:
+    dialing = Dialing(DialReport(outcome, REACHED))
+
+    response = dialing.router(state, registry).dispatch(
+        request("POST", CONNECTIONS_PATH, {"address": "http://192.168.1.10:8080/"})
+    )
 
     assert response.status == 200
-    assert json_body(response) == {"addresses": []}
-    assert published(queues) == []
-
-
-def test_adding_an_address_keeps_it_and_has_it_dialed(
-    router: Router, added: AddedAddresses, queues: ModuleQueues
-) -> None:
-    response = router.dispatch(
-        request("POST", ADDRESSES_PATH, {"address": "http://192.168.1.10:8080/"})
-    )
-
-    assert response.status == 202
-    assert json_body(response) == {"address": "http://192.168.1.10:8080"}
-    assert added.addresses() == (LAN,)
-    (message,) = published(queues)
-    assert message["event"] == EventType.ADDRESS_ADDED
-    assert message["source"] == ModuleName.WEBSERVER
-    assert message["endpoint"] == "http://192.168.1.10:8080"
-    assert json_body(router.dispatch(request("GET", ADDRESSES_PATH))) == {
-        "addresses": ["http://192.168.1.10:8080"]
+    assert json_body(response) == {
+        "address": LAN,
+        "node_id": str(REACHED),
+        "outcome": outcome.value,
     }
-
-
-def test_an_address_added_again_is_dialed_again_and_kept_once(
-    router: Router, added: AddedAddresses, queues: ModuleQueues
-) -> None:
-    added.add(LAN)
-
-    response = router.dispatch(request("POST", ADDRESSES_PATH, LAN.value()))
-
-    assert response.status == 202
-    assert added.addresses() == (LAN,)
-    assert [message["event"] for message in published(queues)] == [EventType.ADDRESS_ADDED]
+    (asked,) = dialing.asked
+    assert asked["endpoint"] == LAN
+    assert isinstance(asked["dial_id"], str) and asked["dial_id"]
 
 
 @mark.parametrize(
-    "value", [{"address": "192.168.1.10:8080"}, {"address": "https://node.example"}, {}]
-)
-def test_an_address_this_node_cannot_dial_is_refused_where_it_is_added(
-    router: Router, added: AddedAddresses, queues: ModuleQueues, value: object
-) -> None:
-    response = router.dispatch(request("POST", ADDRESSES_PATH, value))
-
-    assert response.status == 400
-    assert problem_type(response) == INVALID_REQUEST
-    assert published(queues) == []
-    assert not added.path.exists()
-
-
-@mark.parametrize(
-    "path", [LAN_PATH, f"{ADDRESSES_PATH}/HTTP%3A%2F%2F192.168.1.10%3A8080%2F", f"{LAN_PATH}%2F"]
-)
-def test_removing_an_address_forgets_it_however_it_is_written(
-    router: Router, added: AddedAddresses, queues: ModuleQueues, path: str
-) -> None:
-    added.add(LAN)
-
-    response = router.dispatch(request("DELETE", path))
-
-    assert response.status == 204
-    assert response.body == b""
-    assert added.addresses() == ()
-    (message,) = published(queues)
-    assert message["event"] == EventType.ADDRESS_REMOVED
-    assert message["endpoint"] == "http://192.168.1.10:8080"
-
-
-@mark.parametrize(
-    "path", [LAN_PATH, f"{ADDRESSES_PATH}/192.168.1.10%3A8080", f"{ADDRESSES_PATH}/%FF"]
-)
-def test_removing_what_was_not_added_is_not_found(
-    router: Router, added: AddedAddresses, queues: ModuleQueues, path: str
-) -> None:
-    other = AddedAddress.create("http://192.168.1.11:8080")
-    added.add(other)
-
-    response = router.dispatch(request("DELETE", path))
-
-    assert response.status == 404
-    assert added.addresses() == (other,)
-    assert published(queues) == []
-
-
-def test_without_the_addresses_added_no_route_reads_or_changes_them(
-    queues: ModuleQueues, state: BackupState, registry: ApplicationRegistry
-) -> None:
-    router = Router()
-    publish = StubModule(ModuleName.WEBSERVER, queues).publish
-
-    for method, pattern, handler in config_routes(
-        publish, state, registry, NodeDescription(NODE_ID, NETWORK), RETRY_AFTER_SECONDS
-    ):
-        router.add(method, pattern, handler)
-
-    assert router.dispatch(request("GET", ADDRESSES_PATH)).status == 404
-
-
-@mark.parametrize(
-    "method, path, value",
+    "report, status, detail",
     [
-        ("GET", ADDRESSES_PATH, None),
-        ("POST", ADDRESSES_PATH, LAN.value()),
-        ("DELETE", LAN_PATH, None),
+        (
+            DialReport(DialOutcome.UNREACHED, detail="[Errno 61] Connection refused"),
+            502,
+            f"No node was reached at {LAN}: [Errno 61] Connection refused",
+        ),
+        (
+            DialReport(DialOutcome.UNREACHED),
+            502,
+            f"No node was reached at {LAN}: no reason was given",
+        ),
+        (DialReport(DialOutcome.THIS_NODE, REACHED), 409, f"{LAN} is this node's own address."),
+        (None, 504, f"The node did not say in time whether it reached {LAN}. It may yet."),
     ],
 )
-def test_a_file_of_addresses_that_cannot_be_read_is_reported_and_left_alone(
-    router: Router,
-    added: AddedAddresses,
-    queues: ModuleQueues,
-    caplog: LogCaptureFixture,
-    method: str,
-    path: str,
-    value: object,
+def test_connecting_where_no_other_node_is_reached_says_why(
+    state: BackupState,
+    registry: ApplicationRegistry,
+    report: DialReport | None,
+    status: int,
+    detail: str,
 ) -> None:
-    added.path.write_bytes(b"{not json")
+    dialing = Dialing(report)
 
-    response = router.dispatch(request(method, path, value))
-
-    assert response.status == 500
-    assert problem_type(response) == "about:blank"
-    assert str(added.path) in loads(response.body)["detail"]
-    assert added.path.read_bytes() == b"{not json"
-    assert published(queues) == []
-    (record,) = handler_records(caplog)
-    assert record.levelno == WARNING
-    assert record.getMessage().startswith(f"Refusing {method} {path}: ")
-
-
-def test_an_address_request_not_sent_as_json_is_not_acted_on(
-    router: Router, added: AddedAddresses, queues: ModuleQueues
-) -> None:
-    response = router.dispatch(
-        request("POST", ADDRESSES_PATH, LAN.value(), content_type="text/plain")
+    response = dialing.router(state, registry).dispatch(
+        request("POST", CONNECTIONS_PATH, {"address": LAN})
     )
 
-    assert response.status == 415
-    assert published(queues) == []
-    assert not added.path.exists()
+    assert response.status == status
+    assert problem_type(response) == "about:blank"
+    assert loads(response.body)["detail"] == detail
+    assert len(dialing.asked) == 1
+
+
+@mark.parametrize(
+    "value, content_type, status",
+    [
+        ({"address": "192.168.1.10:8080"}, JSON_CONTENT_TYPE, 400),
+        ({"address": "https://node.example"}, JSON_CONTENT_TYPE, 400),
+        ({}, JSON_CONTENT_TYPE, 400),
+        ({"address": LAN}, "text/plain", 415),
+    ],
+)
+def test_a_connection_request_this_node_cannot_act_on_dials_nothing(
+    state: BackupState,
+    registry: ApplicationRegistry,
+    value: object,
+    content_type: str,
+    status: int,
+) -> None:
+    dialing = Dialing(DialReport(DialOutcome.CONNECTED, REACHED))
+
+    response = dialing.router(state, registry).dispatch(
+        request("POST", CONNECTIONS_PATH, value, content_type=content_type)
+    )
+
+    assert response.status == status
+    assert dialing.asked == []
+
+
+def test_without_its_handler_no_route_connects_to_a_node(router: Router) -> None:
+    # Connecting is tested where /config's port is built, and above.
+    assert router.dispatch(request("POST", CONNECTIONS_PATH, {"address": LAN})).status == 404
 
 
 def test_a_report_handler_refuses_a_negative_retry_after(state: BackupState) -> None:

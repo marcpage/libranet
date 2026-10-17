@@ -456,7 +456,7 @@ def test_the_config_page_calls_only_endpoints_the_node_serves(config_page: str) 
     assert called == {
         "/node",
         "/metadata",
-        "/addresses",
+        "/connections",
         "/applications",
         "/users",
         "/builds",
@@ -780,10 +780,11 @@ def test_the_nodes_page_shows_one_node_alone(nodes_page: str) -> None:
     assert 'new URLSearchParams(location.search).get("id")' in nodes_page
 
 
-def test_the_config_page_adds_an_address_typed_without_its_scheme(config_page: str) -> None:
+def test_the_config_page_connects_to_an_address_typed_without_its_scheme(config_page: str) -> None:
     # What the node takes is an http URL; a host and port typed are given the scheme.
     assert 'return typed.includes("://") ? typed : `http://${typed}`;' in config_page
-    assert 'address: addressOf(byId("address").value)' in config_page
+    assert 'const address = addressOf(byId("connect-address").value);' in config_page
+    assert 'await call("POST", "/connections", { address });' in config_page
 
 
 def test_the_config_page_makes_a_user_with_a_fallback_password(config_page: str) -> None:

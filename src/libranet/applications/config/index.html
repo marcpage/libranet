@@ -215,37 +215,23 @@
     </form>
   </section>
 
-  <section aria-labelledby="addresses-heading">
-    <h2 id="addresses-heading">Other nodes</h2>
+  <section aria-labelledby="connect-heading">
+    <h2 id="connect-heading">Other nodes</h2>
     <p class="hint">This node learns of other nodes from those it connects to, so reaching one
-    node of a network is enough to join it. Add the address of a node to reach, and this node
-    dials it at once, and again whenever it has no peer connected, as when it starts. Once it
-    connects, the node is listed in the nodes application, with the others this node knows.</p>
-    <p class="state" id="addresses-state">Loading…</p>
-    <div class="table-wrap">
-      <table id="addresses-table" aria-labelledby="addresses-heading" hidden>
-        <thead>
-          <tr>
-            <th scope="col">Address</th>
-            <th scope="col"><span class="visually-hidden">Actions</span></th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-    <p class="result" id="addresses-message" role="status" hidden></p>
-    <form id="address-form">
-      <h3>Add a node</h3>
+    node of a network is enough to join it. Give the address of a node to reach, and this node
+    connects to it now, and says whether it could. A node it reaches is known from then on, as
+    every node it reaches is, and is listed in the nodes application.</p>
+    <form id="connect-form">
+      <h3>Connect to a node</h3>
       <div class="fields">
         <label class="wide">Address
-          <input id="address" required autocomplete="off" spellcheck="false"
+          <input id="connect-address" required autocomplete="off" spellcheck="false"
                  placeholder="192.168.1.10:8080">
         </label>
-        <button type="submit">Add</button>
+        <button type="submit">Connect</button>
       </div>
       <p class="hint">An address is the host name or IP address of the node's machine, and the
-      port the node listens on. Removing one stops this node dialing it as one added, but a node
-      reached there stays known, as every node this node has reached does.</p>
+      port the node listens on. Reaching a node that does not answer can take a minute.</p>
       <p class="result" role="status" hidden></p>
     </form>
   </section>
@@ -1116,8 +1102,7 @@ onSubmit(metadataForm, async () => {
 
 // ---- Other nodes ----
 
-const addressesMessage = byId("addresses-message");
-const addressForm = byId("address-form");
+const connectForm = byId("connect-form");
 
 // An address as the node takes one, an http URL (HttpApi 10.6), from what was
 // typed: a URL, or a host and port, which are given the scheme.
@@ -1140,52 +1125,23 @@ function nodesLink(text) {
   return link;
 }
 
-function addressRow(address) {
-  const row = make("tr");
-  const actions = cell(
-    button("Remove", `Stop dialing ${address}`, "danger", addressesMessage, () =>
-      removeAddress(address),
-    ),
-  );
-  actions.className = "actions";
-  row.append(cell(make("code", address)), actions);
-  return row;
-}
+onSubmit(connectForm, async () => {
+  const message = connectForm.querySelector(".result");
+  const address = addressOf(byId("connect-address").value);
+  show(message, `Connecting to ${address}…`);
+  const result = await call("POST", "/connections", { address });
 
-async function removeAddress(address) {
-  const question =
-    `Stop dialing ${address}?\n\nA node this node has reached there stays known, as every ` +
-    "node it has reached does.";
-
-  if (!confirm(question)) {
-    return null;
-  }
-
-  const result = await call("DELETE", `/addresses/${encodeURIComponent(address)}`);
-  addresses.load();
-  return result.ok ? [`${address} is no longer dialed as an address added.`, false] : [failure(result), true];
-}
-
-const addresses = new ListView({
-  path: "/addresses",
-  table: byId("addresses-table"),
-  state: byId("addresses-state"),
-  entries: arrayOf("addresses"),
-  row: addressRow,
-  empty: "No addresses are added.",
-});
-
-onSubmit(addressForm, async () => {
-  const result = await call("POST", "/addresses", { address: addressOf(byId("address").value) });
-
-  if (!result.ok) {
+  if (!result.ok || !result.value) {
     return [failure(result), true];
   }
 
-  const message = addressForm.querySelector(".result");
-  addressForm.reset();
-  addresses.load();
-  show(message, `This node is dialing ${result.value.address}. Once it connects, it is listed in the `);
+  const { node_id: id, outcome } = result.value;
+  const said =
+    outcome === "already_connected"
+      ? `This node was already connected to ${id}, which ${result.value.address} reaches.`
+      : `Connected to ${id}, at ${result.value.address}.`;
+  connectForm.reset();
+  show(message, `${said} It is listed in the `);
   message.append(nodesLink("nodes application"), ".");
   return null;
 });
@@ -1813,7 +1769,7 @@ onSubmit(byId("restore-form"), async () => {
 
 // ---- Start ----
 
-const views = [addresses, applications, builds, exports, backups, restores];
+const views = [applications, builds, exports, backups, restores];
 
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) {
