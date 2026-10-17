@@ -88,7 +88,12 @@ from libranet.webserver.app_store import (
 from libranet.webserver.app_use import ApplicationUse
 from libranet.webserver.backup_state import BackupState
 from libranet.webserver.block_handler import BlockHandler
-from libranet.webserver.bundle_edits import BUNDLES_PATH, BundleEditHandler, OwnUploads
+from libranet.webserver.bundle_edits import (
+    BUNDLES_PATH,
+    BundleEditHandler,
+    BundleLimits,
+    OwnUploads,
+)
 from libranet.webserver.bundle_paths import BundlePaths
 from libranet.webserver.bundle_reads import BUNDLE_METHODS, BUNDLE_PATTERN, BundleReadHandler
 from libranet.webserver.config_auth import ConfigAuthGuard
@@ -320,10 +325,12 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
             publish,
             app_wait_seconds,
             retry_after_seconds,
-            storage.max_object_bytes,
-            max_update_layers,
-            max_body_bytes=node.network.max_bundles_request_bytes,
-            max_bundle_bytes=storage.max_decompressed_bundle_bytes,
+            BundleLimits(
+                storage.max_object_bytes,
+                max_update_layers,
+                max_body_bytes=node.network.max_bundles_request_bytes,
+                max_bundle_bytes=storage.max_decompressed_bundle_bytes,
+            ),
         )
         router.add("POST", BUNDLES_PATH, LocalOnly(OwnPageOnly(edits, pages, trusted=True), checks))
         drops = DropHandler(

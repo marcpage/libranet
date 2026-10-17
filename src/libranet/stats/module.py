@@ -111,6 +111,7 @@ module does, since it may start again after they were last named.
 """
 
 from __future__ import annotations
+from dataclasses import dataclass
 from logging import Logger
 from time import time
 from typing import Callable, ClassVar, Final, Mapping, TypeVar
@@ -142,7 +143,42 @@ _SENDERS_OWN: Final = frozenset({AddressSource.ADVERTISED, AddressSource.OBSERVE
 DEFAULT_MAX_CANDIDATES: Final = 256
 
 
-class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
+@dataclass(frozen=True)
+class _Running:
+    """What the module works with while it runs: built in on_start, released in on_stop."""
+
+    node_id: ContentId
+    database: StatsDatabase
+    deriver: ListDeriver
+    enricher: SearchEnricher
+
+    @classmethod
+    def open(
+        cls, config: LibranetConfig, connected: ConnectedPeers, clock: Callable[[], float]
+    ) -> _Running:
+        """Read the node identity and open the database and what works on it."""
+        storage = config.storage
+        identity = NodeIdentity.load(config)
+        database = StatsDatabase(storage.database_path, clock=clock)
+        return cls(
+            identity.node_id,
+            database,
+            ListDeriver(
+                database,
+                storage,
+                config.stats,
+                config.network.own_endpoints(),
+                identity.node_id,
+                connected=connected,
+                clock=clock,
+            ),
+            SearchEnricher(
+                database, SearchCache.of(storage, clock=clock), storage.search_max_results
+            ),
+        )
+
+
+class StatsModule(ModuleBase):
     """Records what the node sees and derives the lists it publishes."""
 
     subscriptions: ClassVar[frozenset[EventType]] = frozenset(
@@ -191,10 +227,7 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._config = config
         self._max_candidates = max_candidates
         self._store = CasStore.source_of_truth(config.storage)
-        self._node_id: ContentId | None = None
-        self._database: StatsDatabase | None = None
-        self._deriver: ListDeriver | None = None
-        self._enricher: SearchEnricher | None = None
+        self._running: _Running | None = None
         self._connected = ConnectedPeers()
         self._derived_at = 0.0
         self._route(
@@ -231,17 +264,17 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
     @property
     def database(self) -> StatsDatabase:
         """The open database; only available while the module is running."""
-        return _started(self._database)
+        return _started(self._running).database
 
     @property
     def deriver(self) -> ListDeriver:
         """The derived-list writer; only available while the module is running."""
-        return _started(self._deriver)
+        return _started(self._running).deriver
 
     @property
     def enricher(self) -> SearchEnricher:
         """The search-cache enricher; only available while the module is running."""
-        return _started(self._enricher)
+        return _started(self._running).enricher
 
     def on_start(self) -> None:
         """Open the database, write the lists before they are asked for, and ask who is connected.
@@ -250,25 +283,8 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         boundary, for the same reason the web server reads it: the private
         key stays on disk.
         """
-        storage = self._config.storage
-        identity = NodeIdentity.load(self._config)
-        self._node_id = identity.node_id
-        self._database = StatsDatabase(storage.database_path, clock=self._clock)
-        self._deriver = ListDeriver(
-            self._database,
-            storage,
-            self._config.stats,
-            self._config.network.own_endpoints(),
-            identity.node_id,
-            connected=self._connected,
-            clock=self._clock,
-        )
-        self._enricher = SearchEnricher(
-            self._database,
-            SearchCache.of(storage, clock=self._clock),
-            storage.search_max_results,
-        )
-        self.logger.info("Stats database open at %s", storage.database_path)
+        self._running = _Running.open(self._config, self._connected, self._clock)
+        self.logger.info("Stats database open at %s", self._config.storage.database_path)
         self.derive()
         self.publish(EventType.PEERS_CONNECTED_REQUESTED)
 
@@ -279,12 +295,9 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
 
     def on_stop(self) -> None:
         """Close the database, whichever way the module stopped."""
-        if self._database is not None:
-            self._database.close()
-            self._database = None
-
-        self._deriver = None
-        self._enricher = None
+        if self._running is not None:
+            self._running.database.close()
+            self._running = None
 
     def derive(self) -> None:
         """Rewrite the derived lists and announce a candidate list that changed."""
@@ -433,7 +446,7 @@ class StatsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         covered = 0
 
         for held in self.database.eviction_order(
-            _started(self._node_id), self._max_candidates, exclude
+            _started(self._running).node_id, self._max_candidates, exclude
         ):
             if not self._store.exists(held.content_id):
                 self.database.record_deleted(held.content_id)

@@ -477,18 +477,32 @@ class BundleEdit:
 
 
 @dataclass(frozen=True)
-class BundleEditHandler:  # pylint: disable=too-many-instance-attributes
+class BundleLimits:
+    """How large what ``POST /data/bundles`` reads and stores may be.
+
+    No object stored is larger than ``max_object_bytes``, and no bundle lies
+    more than ``max_layers`` update layers above the last bundle stored
+    whole. A request body larger than ``max_body_bytes`` is refused unread,
+    and a bundle it names is read to at most ``max_bundle_bytes`` once
+    decompressed.
+    """
+
+    max_object_bytes: int
+    max_layers: int
+    _: KW_ONLY
+    max_body_bytes: int = DEFAULT_MAX_BUNDLES_REQUEST_BYTES
+    max_bundle_bytes: int = DEFAULT_MAX_BUNDLE_BYTES
+
+
+@dataclass(frozen=True)
+class BundleEditHandler:
     """``POST /data/bundles``: make the bundle a request asks for, and answer with what names it.
 
     ``uploads`` holds the bundles a request names, and stores what is made.
     What it lacks is asked for with ``publish``, and again every
     ``retry_after_seconds``, which a ``503`` tells a client to wait, and is
     waited for up to ``wait_seconds``, looked for every
-    ``poll_interval_seconds``. No object stored is larger than
-    ``max_object_bytes``, and no bundle lies more than ``max_layers`` update
-    layers above the last bundle stored whole. A request body larger than
-    ``max_body_bytes`` is refused unread, and a bundle it names is read to at
-    most ``max_bundle_bytes`` once decompressed.
+    ``poll_interval_seconds``. What it reads and stores is held to ``limits``.
 
     Raises:
         ValueError: ``wait_seconds`` or ``retry_after_seconds`` is negative,
@@ -499,12 +513,9 @@ class BundleEditHandler:  # pylint: disable=too-many-instance-attributes
     publish: Publish
     wait_seconds: float
     retry_after_seconds: int
-    max_object_bytes: int
-    max_layers: int
+    limits: BundleLimits
     _: KW_ONLY
     poll_interval_seconds: float = DEFAULT_PART_POLL_INTERVAL_SECONDS
-    max_body_bytes: int = DEFAULT_MAX_BUNDLES_REQUEST_BYTES
-    max_bundle_bytes: int = DEFAULT_MAX_BUNDLE_BYTES
 
     def __post_init__(self) -> None:
         if self.wait_seconds < 0:
@@ -521,7 +532,7 @@ class BundleEditHandler:  # pylint: disable=too-many-instance-attributes
             )
 
     def __call__(self, request: Request) -> Response:
-        value = json_or_refusal(request, max_bytes=self.max_body_bytes)
+        value = json_or_refusal(request, max_bytes=self.limits.max_body_bytes)
 
         if isinstance(value, Response):
             return value
@@ -544,7 +555,9 @@ class BundleEditHandler:  # pylint: disable=too-many-instance-attributes
                         self.retry_after_seconds,
                     )
 
-                made = edit.store(self.uploads, self.max_object_bytes, self.max_layers)
+                made = edit.store(
+                    self.uploads, self.limits.max_object_bytes, self.limits.max_layers
+                )
 
         except InvalidRequestError as error:
             # Not logged: the refusal logs it.
@@ -567,7 +580,7 @@ class BundleEditHandler:  # pylint: disable=too-many-instance-attributes
                 compressed.
         """
         return PartPath(
-            store_object(encode_bundle(asked.bundle), self.uploads, self.max_object_bytes)
+            store_object(encode_bundle(asked.bundle), self.uploads, self.limits.max_object_bytes)
         )
 
     def _read(self, asked: BundleEditRequest) -> BundleEdit | None:
@@ -588,7 +601,7 @@ class BundleEditHandler:  # pylint: disable=too-many-instance-attributes
 
         while True:
             try:
-                return BundleEdit.read(asked, self.uploads, self.max_bundle_bytes)
+                return BundleEdit.read(asked, self.uploads, self.limits.max_bundle_bytes)
 
             except MissingContentError as error:
                 # Not logged: what is not held is asked for, and waited for.

@@ -50,6 +50,7 @@ from libranet.webserver.bundle_edits import (
     BUNDLES_PATH,
     BundleEdit,
     BundleEditHandler,
+    BundleLimits,
     OwnUploads,
 )
 from libranet.webserver.errors import BundleEditError
@@ -116,11 +117,13 @@ def router_for(
         recorder,
         wait_seconds,
         RETRY_AFTER_SECONDS,
-        MAX_BYTES,
-        max_layers,
+        BundleLimits(
+            MAX_BYTES,
+            max_layers,
+            max_body_bytes=max_body_bytes,
+            max_bundle_bytes=max_bundle_bytes,
+        ),
         poll_interval_seconds=POLL_INTERVAL_SECONDS,
-        max_body_bytes=max_body_bytes,
-        max_bundle_bytes=max_bundle_bytes,
     )
     router.add("POST", BUNDLES_PATH, LocalOnly(handler, SiteChecks(DEFAULT_CONFIG_HOSTS, "This")))
     return router
@@ -848,8 +851,7 @@ def test_a_handler_refuses_settings_it_cannot_work_with(
             Recorder(),
             wait_seconds,
             retry_after_seconds,
-            MAX_BYTES,
-            MAX_LAYERS,
+            BundleLimits(MAX_BYTES, MAX_LAYERS),
             poll_interval_seconds=poll_interval_seconds,
         )
 
