@@ -145,16 +145,20 @@ path on `/config`'s port, so that an address typed or bookmarked before
 A node SHOULD listen on `/config`'s port only at a loopback address.
 Wherever it listens, a node MUST serve `/config` only to requests whose
 connecting (source) address is a loopback address (`127.0.0.0/8` or
-`::1`, including IPv4-mapped IPv6 forms such as `::ffff:127.0.0.1`). A
-`/config` request from any other source address MUST be refused with
-`403 Forbidden`, regardless of the credentials it carries, and MUST NOT
-trigger credential capture (§2.3.1).
+`::1`, including IPv4-mapped IPv6 forms such as `::ffff:127.0.0.1`), or
+is the address of the node's machine that the connection reached. A
+client on that machine that connects to one of its network addresses, as
+it does by a name the machine resolves to that address, connects from
+that address too. A client elsewhere cannot, since the replies to it
+never leave the machine. A `/config` request from any other source
+address MUST be refused with `403 Forbidden`, regardless of the
+credentials it carries, and MUST NOT trigger credential capture (§2.3.1).
 
-The check is made against the address of the TCP connection itself, not
-against any request header (e.g. `Host`, `Forwarded`,
+The check is made against the addresses of the TCP connection itself,
+not against any request header (e.g. `Host`, `Forwarded`,
 `X-Forwarded-For`). An operator who places a reverse proxy, tunnel, or
 port forward on the node's own host should be aware that remote requests
-relayed through it arrive from a loopback address and pass this check,
+relayed through it arrive from the machine itself and pass this check,
 leaving HTTP Basic Authentication as the only remaining protection.
 
 `/config` MUST require HTTP Basic Authentication on every request.
@@ -228,9 +232,12 @@ credentials are looked at. A request that fails one MUST be refused with
   which by default holds only `localhost`, `127.0.0.1`, `::1`, and the
   name the node's machine gives itself, such as `macbook.local`, which a
   browser on that machine reaches it by. A request whose `Host` header
-  names any other host MUST be refused. The port is not compared. This is what stops a site that points a name of
-  its own at a loopback address: a browser takes that site's requests to
-  be same-origin, so neither check below catches them. An operator who
+  names any other host MUST be refused, unless it names, as an address,
+  the address of the node's machine that the request's connection
+  reached. The port is not compared. This is what stops a site that points
+  a name of its own at a loopback address: a browser takes that site's
+  requests to be same-origin, so neither check below catches them. A site
+  can point a name at the machine, but not an address. An operator who
   reaches `/config` under another name, through a reverse proxy for
   example, adds that name to the list.
 - **`Sec-Fetch-Site`.** A request carrying this header with any value
@@ -302,9 +309,11 @@ forms only to it.
 ### 2.4 Local Clients
 
 A local client is one whose connecting (source) address is a loopback
-address, as §2.3 defines one, judged by the TCP connection itself and
-never by a request header. A browser on the node's own machine is one. A
-browser elsewhere is not, even one on the same home network.
+address, or the address of the node's machine its connection reached, as
+§2.3 defines them, judged by the TCP connection itself and never by a
+request header. A browser on the node's own machine is one, whichever of
+the machine's addresses it reaches the node at. A browser elsewhere is
+not, even one on the same home network.
 
 An application asks whether it is being served to a local client with:
 
@@ -338,13 +347,15 @@ signed drops, encrypted blocks, trust, folders, imports, and bundles are
 served only from a page of a trusted application, and an application's
 store is changed only from a page of its own (§2.5).
 
-A loopback source does not show that the person at the machine made the
+A local source does not show that the person at the machine made the
 request. Any site's page that a browser on the machine has open can send
-requests to the node's main port at a loopback address. Each of these
-endpoints therefore makes the checks of §2.3.3 on every request, and
-refuses one that fails them with `403 Forbidden`, with these differences:
+requests to the node's main port at a loopback address, or another of the
+machine's own. Each of these endpoints therefore makes the checks of
+§2.3.3 on every request, and refuses one that fails them with
+`403 Forbidden`, with these differences:
 
-- **`Host`** is checked against the same list of hosts as `/config`'s.
+- **`Host`** is checked against the same list of hosts as `/config`'s,
+  and passes the address the connection reached as `/config`'s does.
 - **`Sec-Fetch-Site`** passes only `same-origin` or `none`. The exception
   §2.3.3 makes for a link the operator follows does not apply, since none
   of these endpoints is a page.

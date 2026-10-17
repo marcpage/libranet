@@ -2241,6 +2241,7 @@ where it went.
 | #376 | The administration page having the node trust other nodes | 110 |
 | #377 | The administration page taking a node's address to add to the network | 109 |
 | #383 | Not connecting to untrusted nodes, and a setting to connect only to trusted ones | 113 |
+| #395 | A browser on the node's own machine taken as one at any of its addresses | None: a fix |
 
 ## 5. Suggested Build Order
 

@@ -831,6 +831,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             path=path,
             headers=dict(self.headers.items()),
             client_address=str(self.client_address[0]),
+            server_address=str(self.connection.getsockname()[0]),
             body=body,
             connection=self.inbound,
         )

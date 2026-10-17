@@ -58,7 +58,6 @@ from libranet.cas.content_id import ContentId
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.problems import INVALID_BUNDLE_SIGNATURE
-from libranet.protocol.client_origin import is_local_client
 from libranet.protocol.drop_requests import SignedDropRequest
 from libranet.protocol.http_syntax import API_PREFIX
 from libranet.webserver.drop_handler import MAX_DROP_BODY_BYTES, DropHandler
@@ -167,7 +166,7 @@ class SignedDrops:
         """
         self.publish(
             EventType.DATA_REQUESTED,
-            {**content_id.fields(), "external": not is_local_client(request.client_address)},
+            {**content_id.fields(), "external": not request.from_local_client()},
         )
 
         try:

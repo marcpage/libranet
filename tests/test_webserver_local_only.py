@@ -19,6 +19,9 @@ HOST = "localhost:8080"
 CHECKS = SiteChecks(DEFAULT_CONFIG_HOSTS, "This endpoint")
 REMOTE = ["203.0.113.42", "2001:db8::1", "::ffff:192.168.1.20", ""]
 LOCAL = ["127.0.0.1", "127.1.2.3", "::1", "::ffff:127.0.0.1"]
+# This machine's own address on the network, which a browser on it connects
+# from when it reaches the node there.
+OWN = "192.168.1.20"
 
 
 class Endpoint:
@@ -265,3 +268,63 @@ def test_a_local_client_at_a_host_served_as_is_not_refused(client: str) -> None:
     request = Request("POST", PATH, headers={"Host": HOST}, client_address=client)
 
     assert local_refusal(request, CHECKS) is None
+
+
+def test_a_browser_on_this_machine_reaching_it_at_a_network_address_is_told_it_is_local() -> None:
+    # As one reaching MacBook.local, which it looks up as an address of the
+    # machine on the network (#395).
+    request = Request(
+        "GET",
+        "/data/client",
+        headers={"Host": "MacBook.local:8080"},
+        client_address=OWN,
+        server_address=OWN,
+    )
+
+    assert loads(client_handler(request).body) == {"local": True}
+
+
+def test_a_client_elsewhere_reaching_this_machines_network_address_is_told_it_is_not() -> None:
+    request = Request("GET", "/data/client", client_address="192.168.1.21", server_address=OWN)
+
+    assert loads(client_handler(request).body) == {"local": False}
+
+
+@mark.parametrize(
+    ("host", "address"),
+    [
+        (f"{OWN}:8080", OWN),
+        (OWN, OWN),
+        (f"{OWN}:8080", f"::ffff:{OWN}"),
+        ("[2001:db8::5]:8080", "2001:db8::5"),
+    ],
+)
+def test_a_local_client_at_the_address_it_reached_is_served(host: str, address: str) -> None:
+    endpoint = Endpoint()
+    request = Request(
+        "GET",
+        PATH,
+        headers={"Host": host, "Sec-Fetch-Site": "same-origin"},
+        client_address=address,
+        server_address=address,
+    )
+
+    response = LocalOnly(endpoint, CHECKS)(request)
+
+    assert response.body == b"handled"
+    assert len(endpoint.handled) == 1
+
+
+@mark.parametrize("host", ["192.168.1.21:8080", "evil.example:8080", "[2001:db8::5]:8080"])
+def test_a_local_client_at_a_host_neither_served_as_nor_reached_is_refused(
+    caplog: LogCaptureFixture, host: str
+) -> None:
+    caplog.set_level(WARNING)
+    request = Request("GET", PATH, headers={"Host": host}, client_address=OWN, server_address=OWN)
+
+    refused = local_refusal(request, CHECKS)
+
+    assert refused is not None
+    assert refused.status == 403
+    assert f"not served as {host!r}" in loads(refused.body)["detail"]
+    assert [record.levelno for record in caplog.records] == [WARNING]

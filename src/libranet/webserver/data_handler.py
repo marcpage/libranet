@@ -34,7 +34,6 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
-from libranet.protocol.client_origin import is_local_client
 from libranet.protocol.http_syntax import API_PREFIX
 from libranet.webserver.http_types import (
     CACHED_FOR_GOOD,
@@ -107,7 +106,7 @@ class DataReadHandler:
 
         self._publish(
             EventType.DATA_REQUESTED,
-            {**content_id.fields(), "external": not is_local_client(request.client_address)},
+            {**content_id.fields(), "external": not request.from_local_client()},
         )
 
         if self._blocked is not None and self._blocked.blocks(content_id):

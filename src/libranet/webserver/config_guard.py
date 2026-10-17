@@ -64,7 +64,6 @@ from typing import Final
 from urllib.parse import unquote
 
 from libranet.config.models import CONFIG_LISTEN_ADDRESS
-from libranet.protocol.client_origin import is_local_client
 from libranet.webserver.app_registry import CONFIG_API_SEGMENT, CONFIG_APPLICATION
 from libranet.webserver.http_types import (
     Request,
@@ -94,7 +93,7 @@ _PAGE_NAVIGATION: Final = {
 
 def local_config_guard(request: Request) -> Request | Response:
     """A :data:`~libranet.webserver.router.Guard` refusing ``/config`` to remote clients."""
-    if not names_config(request.path) or is_local_client(request.client_address):
+    if not names_config(request.path) or request.from_local_client():
         return request
 
     return status_response(
