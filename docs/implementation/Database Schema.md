@@ -28,7 +28,7 @@ no other node, and no other module, ever sees a table.
 | File | `{storage.data_dir}/libranet.sqlite3`, with no setting of its own | `StorageConfig.database_path` |
 | Opened by | The stats module process, on one connection | `StatsModule.on_start` |
 | Journal | Write-ahead log | `PRAGMA journal_mode=WAL` in `StatsDatabase.__init__` |
-| Transactions | Autocommit: each statement is its own | `isolation_level=None` |
+| Transactions | Autocommit: each statement is its own, but replacing `node_trust` | `isolation_level=None` |
 | Rows | `sqlite3.Row`, read by column name | `row_factory` |
 | Synchronous | SQLite's default, `FULL` | Not set |
 | Busy timeout | Python's default, 5 seconds | Not set |
@@ -65,6 +65,11 @@ Two things follow:
   search answer is written with `executemany`, one transaction for each
   entry.
 
+The one exception is `node_trust`, whose rows are replaced whole in one
+transaction (`BEGIN`, then the connection's context manager commits it or
+rolls it back), so that a crash part-way keeps the trust kept before rather
+than none (§4.6).
+
 ### 2.3 How the Schema Is Applied
 
 `apply_schema` runs every statement of `SCHEMA_STATEMENTS` each time the
@@ -73,8 +78,8 @@ a new database and leaves an existing one alone. There is no other schema
 code: no migration, no version check, no trigger, and no view. §9 describes
 what that means for a database made by an older version.
 
-The schema is five tables and three indexes, plus the index SQLite makes for
-each table's primary key. All five are ordinary rowid tables; none is
+The schema is six tables and three indexes, plus the index SQLite makes for
+each table's primary key. All six are ordinary rowid tables; none is
 `STRICT` or `WITHOUT ROWID`.
 
 ## 3. Conventions
@@ -119,6 +124,7 @@ These hold for every table:
 | `data_stats` | Content id the node has heard of | `algorithm`, `hash` | `DataStats` |
 | `node_stats` | Node id the node has dealt with | `node_id` | `NodeStats` |
 | `node_addresses` | Place a node may be reached | `node_id`, `endpoint` | `NodeAddress` |
+| `node_trust` | Identity this node trusts or distrusts | `node_id` | — |
 | `app_bundles` | Bundle an application was served from | `algorithm`, `hash` | — |
 | `seek_entries` | Outstanding request, this node's or a peer's | `node_id`, `kind`, `value` | — |
 
@@ -176,7 +182,12 @@ erDiagram
         TEXT value PK
         REAL requested_at
     }
+    node_trust {
+        TEXT node_id PK
+        INTEGER trust
+    }
     node_stats |o..o{ node_addresses : "node_id"
+    node_stats |o..o| node_trust : "node_id"
     node_stats |o..o{ seek_entries : "node_id, a peer's list"
     data_stats |o..o| app_bundles : "algorithm, hash"
     data_stats |o..o{ seek_entries : "value, kind data"
@@ -380,6 +391,29 @@ and not answered. This node's own entries become its `/data/seek` list
 
 Index: the primary key only, which also finds one node's entries of a kind.
 
+### 4.6 `node_trust`
+
+Whom this node trusts and distrusts, as its own trust scores last said
+(Phase 5 Step 113, Trust Network §4.5). It is what the node goes by, as it
+starts, until it has built its scores again.
+
+| Column | Type | Null | Default | Meaning |
+| --- | --- | --- | --- | --- |
+| `node_id` | TEXT | no | — | The identity's id, a node's or a person's |
+| `trust` | INTEGER | no | — | 1 for trusted, -1 for untrusted, as `TrustState` numbers them |
+
+- **An identity with no row is of unknown trust.** No row says 0.
+- **The rows are replaced whole** whenever the web server says whom the node
+  trusts (`node.trust`), in one transaction (§2.2). An identity the scores
+  stop naming loses its row.
+- **The node itself has no row.** It is always trusted, whatever the rows
+  say.
+- **Any identity the scores trust or distrust has one**, a person's too, and
+  one with no `node_stats` row, so its rows are not the nodes the node has
+  dealt with.
+
+Index: the primary key only.
+
 ## 5. Indexes
 
 | Index | On | Made by | Serves |
@@ -390,6 +424,7 @@ Index: the primary key only, which also finds one node's entries of a kind.
 | `data_stats_blocked` | `data_stats (hash) WHERE blocked_at IS NOT NULL` | Schema | The blocked list: every blocked row, however many others there are |
 | `sqlite_autoindex_node_stats_1` | `node_stats (node_id)` | Primary key | Every upsert of one node |
 | `sqlite_autoindex_node_addresses_1` | `node_addresses (node_id, endpoint)` | Primary key | Every upsert of one address; a node's addresses |
+| `sqlite_autoindex_node_trust_1` | `node_trust (node_id)` | Primary key | Every insert of one identity's state |
 | `sqlite_autoindex_app_bundles_1` | `app_bundles (algorithm, hash)` | Primary key | Every upsert of one bundle |
 | `sqlite_autoindex_seek_entries_1` | `seek_entries (node_id, kind, value)` | Primary key | Every upsert of one entry; one node's entries of a kind |
 
@@ -431,6 +466,7 @@ event happened.
 | `app.accessed` | Web server | `app_bundles`: `last_accessed` = now |
 | `eviction.candidates_requested` | Eviction | `data_stats`: as `data.deleted`, for any object it would list that is gone from the store |
 | `data.blocked` | Web server | `data_stats`: `blocked_at` = now, unless it is set already. `seek_entries`: this node's `data` entry for it deleted |
+| `node.trust` | Web server | `node_trust`: every row deleted, and one inserted for each identity trusted or untrusted, in one transaction |
 
 Two more writes come from no event. Each time the lists are derived (§7.2),
 stats first deletes the seek entries and addresses that are past keeping
@@ -455,6 +491,7 @@ stats first deletes the seek entries and addresses that are past keeping
 | `node_stats` | `node.unreached`, to read the new count | `node_stats` | Primary key |
 | `is_blocked` | `data.not_found` | `data_stats` | Primary key |
 | `blocked_ids` | Each derivation, and each new block | `data_stats` | Every row of `data_stats_blocked`, sorted |
+| `trust_states` | `node.trust_requested`, as the web server starts | `node_trust` | Whole table |
 
 `data_stats` and `node_addresses`, which return one content id's row and one
 node's addresses, are called only by tests.
@@ -517,6 +554,7 @@ to a cached search response (`src/libranet/stats/enrichment.py`).
 | `node_addresses` | At each derivation, by the two rules below | The nodes known, up to `stats.max_addresses_per_node` each |
 | `app_bundles` | Never | Every bundle ever served |
 | `seek_entries` | When its content is stored or blocked, for this node's `data` entries; and at each derivation, once older than `stats.seek_entry_ttl_seconds` (3600) | The requests of the last hour |
+| `node_trust` | Whenever the web server says whom the node trusts, all of them, before the new rows go in | The identities the node's scores trust or distrust, up to every identity they reach |
 
 An address is deleted, each time the lists are derived, when:
 
@@ -574,7 +612,9 @@ Deleting the database, with the node stopped, loses:
 - this node's outstanding requests, which are recorded again when asked for
   again;
 - every block, so content blocked before is kept and served again when it
-  next arrives.
+  next arrives;
+- whom the node trusted, so that, until it builds its scores again, it may
+  connect to a node it distrusted before (Phase 5 Step 113).
 
 ### 9.2 History
 
@@ -587,6 +627,7 @@ Deleting the database, with the node stopped, loses:
 | Phase 2 Step 29 (#143) | `app_bundles` | Gains the new table |
 | #173 | `node_stats.node_id` is declared `NOT NULL` | Keeps the old declaration, which allows a null; nothing writes one, so it works as it is |
 | Phase 4 Step 30 (#71) | `data_stats` gains `blocked_at`; the index `data_stats_blocked` | Must be deleted |
+| Phase 5 Step 113 (#383) | `node_trust` | Gains the new table |
 
 ### 9.3 What a Change Touches
 

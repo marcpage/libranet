@@ -33,6 +33,9 @@ The payloads it consumes, by event:
 ``resolved.reclaim_requested`` ``{}`` (Phase 2 Step 29)
 ``data.blocked``       ``{"algorithm", "hash"}`` (Phase 4 Step 30)
 ``peers.connected``    ``{"direction", "node_ids": [...]}`` (Phase 5 Step 107)
+``node.trust``         ``{"trusted": [...], "untrusted": [...], "only_trusted"}``
+                       (Phase 5 Step 113)
+``node.trust_requested`` ``{}`` (Phase 5 Step 113)
 
 A miss on ``GET /data/{algorithm}/{hash}`` and a ``GET /data/search/{prefix}``
 are both requests this node could not answer, so each becomes an entry in
@@ -108,6 +111,14 @@ name them in ``peers.connected``, are kept for the peer list a derivation
 writes (:mod:`libranet.stats.peers`, Phase 5 Step 107). Stats asks for both
 lists as it starts, with ``peers.connected_requested``, as the eviction
 module does, since it may start again after they were last named.
+
+Whom this node trusts and distrusts, as the web server says in ``node.trust``,
+is kept in place of what was kept before, each identity's last state (Phase 5
+Step 113). Asked by the web server as it starts, it says what it kept, for the
+web server to go by until its own scores are built again
+(:class:`~libranet.messaging.node_trust.NodeTrust`)::
+
+    node.trust_stored      {"trusted": ["sha256/<hex>", ...], "untrusted": [...]}
 """
 
 from __future__ import annotations
@@ -125,6 +136,7 @@ from libranet.messaging.connected_peers import ConnectedPeers
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import AddressSource, EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
+from libranet.messaging.node_trust import NodeTrust
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.protocol.search import SearchCache, normalize_prefix
@@ -204,6 +216,8 @@ class StatsModule(ModuleBase):
             EventType.RESOLVED_RECLAIM_REQUESTED,
             EventType.DATA_BLOCKED,
             EventType.PEERS_CONNECTED,
+            EventType.NODE_TRUST,
+            EventType.NODE_TRUST_REQUESTED,
         }
     )
 
@@ -253,6 +267,8 @@ class StatsModule(ModuleBase):
                 EventType.RESOLVED_RECLAIM_REQUESTED: self._on_reclaim_requested,
                 EventType.DATA_BLOCKED: self._on_data_blocked,
                 EventType.PEERS_CONNECTED: self._on_peers_connected,
+                EventType.NODE_TRUST: self._on_node_trust,
+                EventType.NODE_TRUST_REQUESTED: self._on_node_trust_requested,
             }
         )
 
@@ -482,6 +498,16 @@ class StatsModule(ModuleBase):
     def _on_peers_connected(self, message: Message) -> None:
         """Keep the peers now connected one way, in place of those named before."""
         self._connected.named_in(message)
+
+    def _on_node_trust(self, message: Message) -> None:
+        """Keep the state of each identity the node trusts or distrusts, in place of the last."""
+        trust = NodeTrust.from_payload(_started(self._running).node_id, message)
+        self.database.record_trust(trust.states)
+
+    def _on_node_trust_requested(self, _message: Message) -> None:
+        """Tell the web server the state kept of each identity the node trusts or distrusts."""
+        kept = NodeTrust(_started(self._running).node_id, self.database.trust_states())
+        self.publish(EventType.NODE_TRUST_STORED, kept.stored_payload())
 
     def _on_reclaim_requested(self, _message: Message) -> None:
         """Tell the unbundler whose resolved files to keep: those of applications used lately."""

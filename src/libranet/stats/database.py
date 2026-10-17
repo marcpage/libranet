@@ -32,6 +32,7 @@ from typing import Any, Callable, Collection, Final, Iterable, Mapping
 from libranet.cas.content_id import ContentId
 from libranet.cas.prefix import matching_bits, nearest
 from libranet.cas.store import HeldObject
+from libranet.identity.trust import TrustState
 from libranet.messaging.events import AddressSource
 from libranet.stats.priority import EvictionScorer
 from libranet.stats.records import DataStats, NodeAddress, NodeStats
@@ -354,6 +355,34 @@ class StatsDatabase:  # pylint: disable=too-many-public-methods
             {"max_failures": max_failures, "cutoff": self._clock() - cool_off_seconds},
         )
         return {row["node_id"] for row in rows}
+
+    # -- Whom this node trusts --------------------------------------------
+
+    def record_trust(self, states: Mapping[ContentId, TrustState]) -> None:
+        """Keep ``states`` as the last state of each identity named, in place of those before.
+
+        An identity named unknown, or not named, is kept as nothing. It is one
+        transaction, so that a stop part-way keeps the states before.
+        """
+        # The block commits the transaction begun, or rolls it back.
+        with self._connection:
+            self._execute("BEGIN", {})
+            self._execute("DELETE FROM node_trust", {})
+            self._connection.executemany(
+                "INSERT INTO node_trust (node_id, trust) VALUES (:node_id, :trust)",
+                [
+                    {"node_id": str(identity), "trust": int(state)}
+                    for identity, state in states.items()
+                    if state != TrustState.UNKNOWN
+                ],
+            )
+
+    def trust_states(self) -> dict[ContentId, TrustState]:
+        """The last state kept of each identity trusted or untrusted, by identity."""
+        return {
+            ContentId.parse(row["node_id"]): TrustState(row["trust"])
+            for row in self._query("SELECT node_id, trust FROM node_trust", {})
+        }
 
     # -- Where nodes may be reached --------------------------------------
 

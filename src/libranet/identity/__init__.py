@@ -73,6 +73,7 @@ from libranet.identity.trust import (
     TrustList,
     TrustScore,
     TrustScores,
+    TrustState,
     TrustVersion,
 )
 from libranet.identity.versions import (
@@ -130,6 +131,7 @@ __all__ = [
     "TrustList",
     "TrustScore",
     "TrustScores",
+    "TrustState",
     "TrustVersion",
     "UnknownKeyError",
     "Username",

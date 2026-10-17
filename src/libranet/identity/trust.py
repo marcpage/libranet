@@ -22,11 +22,14 @@ server reads them from what the node holds (Phase 5 Step 96).
 
 A person's scores are built from their own list outward, in steps, from the
 lists read so far, and say which lists are to be read next (§4.1, §4.2).
-Nothing here reads a list, or keeps the time (Phase 5 Step 98).
+Nothing here reads a list, or keeps the time (Phase 5 Step 98). A node's own
+scores are built the same way, and say which identities it trusts (Phase 5
+Step 113).
 """
 
 from __future__ import annotations
 from dataclasses import dataclass
+from enum import IntEnum
 from logging import getLogger
 from typing import Any, Final, Mapping
 
@@ -260,6 +263,22 @@ class TrustScore:
         return {"score": int(score) if score.is_integer() else score, "step": self.step}
 
 
+class TrustState(IntEnum):
+    """What a score makes of an identity: trusted above 0, untrusted below, unknown at 0."""
+
+    UNTRUSTED = -1
+    UNKNOWN = 0
+    TRUSTED = 1
+
+    @classmethod
+    def of(cls, score: float) -> TrustState:
+        """What ``score`` makes of the identity it scores."""
+        if score > 0:
+            return cls.TRUSTED
+
+        return cls.UNTRUSTED if score < 0 else cls.UNKNOWN
+
+
 @dataclass(frozen=True)
 class TrustScores:
     """``person``'s ``scores``, by identity, and the lists ``needed`` before they are complete.
@@ -330,6 +349,14 @@ class TrustScores:
     def complete(self) -> bool:
         """Whether every list the scores read is read, or given up on (§4.3)."""
         return not self.needed
+
+    def states(self) -> dict[ContentId, TrustState]:
+        """Each identity the lists make trusted or untrusted, by identity; the unknown left out.
+
+        ``person`` is never among them, as the lists never score them.
+        """
+        states = ((identity, TrustState.of(score.score)) for identity, score in self.scores.items())
+        return {identity: state for identity, state in states if state != TrustState.UNKNOWN}
 
     def value(self) -> dict[str, Any]:
         """The JSON object a page reads these scores as: each identity's, and ``complete``.

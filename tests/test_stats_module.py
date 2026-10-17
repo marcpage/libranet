@@ -1049,6 +1049,8 @@ def test_the_module_subscribes_to_what_it_records() -> None:
     assert EventType.DATA_BLOCKED in StatsModule.subscriptions
     assert EventType.SEARCH_ANSWERED in StatsModule.subscriptions
     assert EventType.PEERS_CONNECTED in StatsModule.subscriptions
+    assert EventType.NODE_TRUST in StatsModule.subscriptions
+    assert EventType.NODE_TRUST_REQUESTED in StatsModule.subscriptions
     assert EventType.PUT_COMPLETED not in StatsModule.subscriptions
     assert EventType.NODE_LIST_UPDATED not in StatsModule.subscriptions
 
@@ -1067,3 +1069,50 @@ def test_offering_no_candidates_at_all_is_refused(
 ) -> None:
     with raises(ValueError, match="max_candidates"):
         StatsModule(ModuleName.STATS, queues, config, max_candidates=0)
+
+
+def test_whom_the_node_trusts_is_kept_and_said_when_the_web_server_asks(
+    module: StatsModule, queues: ModuleQueues
+) -> None:
+    published(queues)
+    module.handle(
+        broadcast(
+            EventType.NODE_TRUST,
+            {"trusted": [str(PEER_ID)], "untrusted": [str(OTHER_PEER_ID)], "only_trusted": True},
+            ModuleName.WEBSERVER,
+        )
+    )
+
+    module.handle(broadcast(EventType.NODE_TRUST_REQUESTED, {}, ModuleName.WEBSERVER))
+
+    (said,) = published(queues)
+    assert said["event"] == EventType.NODE_TRUST_STORED
+    assert (said["trusted"], said["untrusted"]) == ([str(PEER_ID)], [str(OTHER_PEER_ID)])
+    assert "only_trusted" not in said
+
+
+def test_whom_the_node_trusts_replaces_what_was_kept_and_outlasts_a_restart(
+    config: LibranetConfig, queues: ModuleQueues, module: StatsModule
+) -> None:
+    for trusted in ([str(PEER_ID), str(OTHER_PEER_ID)], [str(OTHER_PEER_ID)]):
+        module.handle(
+            broadcast(
+                EventType.NODE_TRUST,
+                {"trusted": trusted, "untrusted": [], "only_trusted": False},
+                ModuleName.WEBSERVER,
+            )
+        )
+
+    module.on_stop()
+    restarted = StatsModule(ModuleName.STATS, queues, config)
+    restarted.on_start()
+    published(queues)
+
+    try:
+        restarted.handle(broadcast(EventType.NODE_TRUST_REQUESTED, {}, ModuleName.WEBSERVER))
+
+    finally:
+        restarted.on_stop()
+
+    (said,) = published(queues)
+    assert (said["trusted"], said["untrusted"]) == ([str(OTHER_PEER_ID)], [])
