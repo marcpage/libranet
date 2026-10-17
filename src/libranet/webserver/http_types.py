@@ -24,6 +24,7 @@ from libranet.cas.content_id import ContentId
 from libranet.identity.authentication import AuthenticationResult
 from libranet.json_format import compact_json
 from libranet.problems import PROBLEM_CONTENT_TYPE, Problem
+from libranet.protocol.client_origin import is_local_client
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE, OCTET_STREAM
 from libranet.webserver.errors import IncompleteBodyError, UnsupportedMediaTypeError
 from libranet.webserver.inbound_peers import InboundConnection
@@ -124,9 +125,11 @@ class Request:  # pylint: disable=too-many-instance-attributes
     """An incoming request, reduced to what handlers need.
 
     ``path`` excludes any query string; ``params`` holds the named groups the
-    route pattern matched. ``authentication`` is the outcome of checking the
-    request's signature, once something has checked it. ``connection`` is
-    the connection it arrived on, if the server keeps track of them.
+    route pattern matched. ``server_address`` is the address of this machine
+    the client's connection reached. ``authentication`` is the outcome of
+    checking the request's signature, once something has checked it.
+    ``connection`` is the connection it arrived on, if the server keeps track
+    of them.
     """
 
     method: str
@@ -134,6 +137,7 @@ class Request:  # pylint: disable=too-many-instance-attributes
     params: Mapping[str, str] = field(default_factory=dict)
     headers: Mapping[str, str] = field(default_factory=dict)
     client_address: str = ""
+    server_address: str = ""
     body: RequestBody = field(default_factory=lambda: RequestBody(0))
     authentication: AuthenticationResult | None = None
     connection: InboundConnection | None = None
@@ -147,6 +151,10 @@ class Request:  # pylint: disable=too-many-instance-attributes
                 return value
 
         return None
+
+    def from_local_client(self) -> bool:
+        """Whether the client that sent it is on this machine (HttpApi §2.4)."""
+        return is_local_client(self.client_address, self.server_address)
 
     def carries_json(self) -> bool:
         """Whether the request says its body is JSON: its ``Content-Type`` is ``application/json``.

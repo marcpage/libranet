@@ -647,6 +647,25 @@ def test_handler_crash_is_a_500_problem(server: LibranetHTTPServer) -> None:
     }
 
 
+def test_a_request_carries_the_address_its_connection_reached(server: LibranetHTTPServer) -> None:
+    def reached(request: Request) -> Response:
+        return Response(200, request.server_address.encode("ascii"))
+
+    # Added under /data, since every other path is already the applications' route.
+    server.router.add("GET", "/data/reached", reached)
+    host, port = server.server_address[:2]
+    connection = HTTPConnection(str(host), int(port), timeout=5)
+
+    try:
+        response, body = _get(connection, "/data/reached")
+
+    finally:
+        connection.close()
+
+    assert response.status == 200
+    assert body == b"127.0.0.1"
+
+
 def test_signed_upload_is_accepted_and_the_connection_reused(
     connection: HTTPConnection, queues: ModuleQueues, storage: StorageConfig
 ) -> None:

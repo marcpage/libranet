@@ -266,3 +266,14 @@ def test_a_request_saying_its_body_is_json_is_required_to() -> None:
 
     with raises(UnsupportedMediaTypeError, match="text/plain"):
         Request("PUT", "/x", headers={"Content-Type": "text/plain"}).require_json()
+
+
+def test_a_request_is_from_a_local_client_at_loopback_or_at_the_address_it_reached() -> None:
+    assert Request("GET", "/x", client_address="127.0.0.1").from_local_client()
+    assert Request(
+        "GET", "/x", client_address="192.168.1.20", server_address="192.168.1.20"
+    ).from_local_client()
+    assert not Request(
+        "GET", "/x", client_address="192.168.1.21", server_address="192.168.1.20"
+    ).from_local_client()
+    assert not Request("GET", "/x", client_address="192.168.1.20").from_local_client()

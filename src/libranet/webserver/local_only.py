@@ -1,9 +1,9 @@
 """The ``/data`` endpoints serving only local clients, and how a page asks if it is one.
 
-A local client is one whose connecting address is a loopback address, judged
-by the TCP connection itself and never by a request header, as for
-``/config`` (HttpApi §2.4). ``GET /data/client`` tells any client whether it
-is one::
+A local client is one whose connecting address is a loopback address, or
+the address of this machine its connection reached, judged by the TCP
+connection itself and never by a request header, as for ``/config``
+(HttpApi §2.4). ``GET /data/client`` tells any client whether it is one::
 
     {"local": true}
 
@@ -13,11 +13,12 @@ since each endpoint serving only local clients is wrapped in
 request from any other client, and then one whose headers say another
 site's page made it (:class:`~libranet.webserver.site_checks.SiteChecks`):
 any page a browser on this machine has open can send a request to the main
-port at a loopback address. The exception ``/config`` makes for a link the
-operator follows is not made, since none of these endpoints is a page. A
-body that does not say it is JSON is ``415``, as a page on another site can
-send a form's types without asking this node first. All of this is checked
-before the endpoint sees the request, or reads its body.
+port at a loopback address, or another of this machine's. The exception
+``/config`` makes for a link the operator follows is not made, since none of
+these endpoints is a page. A body that does not say it is JSON is ``415``,
+as a page on another site can send a form's types without asking this node
+first. All of this is checked before the endpoint sees the request, or reads
+its body.
 
 The checks keep other sites' pages out (Phase 3 Step 68), and an
 application the operator has not trusted, which is served in a sandbox whose
@@ -30,7 +31,7 @@ each can do whatever another can.
 
 Making a drop serves any client, from this node's own pages
 (:class:`OwnSiteOnly`, Phase 4 Step 89). It makes the same checks, but for
-the loopback source and ``Host``, since a client elsewhere reaches this node
+the local source and ``Host``, since a client elsewhere reaches this node
 by a name of its own on the network.
 """
 
@@ -40,7 +41,6 @@ from http import HTTPStatus
 from logging import getLogger
 from typing import Final
 
-from libranet.protocol.client_origin import is_local_client
 from libranet.protocol.http_syntax import API_PREFIX
 from libranet.webserver.errors import UnsupportedMediaTypeError
 from libranet.webserver.http_types import Request, Response, json_response, status_response
@@ -56,7 +56,7 @@ CLIENT_PATH: Final = API_PREFIX + "/client"
 
 def client_handler(request: Request) -> Response:
     """``GET /data/client``: whether the client asking is on this machine."""
-    return json_response({"local": is_local_client(request.client_address)})
+    return json_response({"local": request.from_local_client()})
 
 
 @dataclass(frozen=True)
@@ -110,7 +110,7 @@ def local_refusal(request: Request, checks: SiteChecks) -> Response | None:
     ``None`` if one did. A ``Host`` refused is logged as a warning, as another
     site may have pointed a name of its own at this machine.
     """
-    if not is_local_client(request.client_address):
+    if not request.from_local_client():
         _LOGGER.debug("Refusing %s %s: not a local client", request.method, request.path)
         return status_response(
             request,

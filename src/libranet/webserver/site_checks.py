@@ -1,13 +1,15 @@
 """The checks keeping other sites' pages out of what is served only to this node's own.
 
-A browser on this machine reaches the node at a loopback address whichever
-page made the request, so a loopback source does not show that this node's
-own page made it. These checks refuse a request whose headers say another
-site's page did (HttpApi §2.3.3, §2.4):
+A browser on this machine reaches the node at a loopback address, or
+another of this machine's own, whichever page made the request, so a local
+source does not show that this node's own page made it. These checks refuse
+a request whose headers say another site's page did (HttpApi §2.3.3, §2.4):
 
-- ``Host`` names a host it is not served as. A site can point a name of its
-  own at this machine, and a browser then takes its requests to be
-  same-origin, so nothing below catches them.
+- ``Host`` names a host it is not served as, nor the address of this
+  machine the connection reached. A site can point a name of its own at
+  this machine, and a browser then takes its requests to be same-origin, so
+  nothing below catches them. Only a name can be pointed at this machine,
+  so the address it was reached at passes.
 - ``Sec-Fetch-Site`` is anything but ``same-origin`` or ``none``, which is
   what a browser sends when the person using it asked for the page. Another
   port on this machine is ``same-site``, and is another origin.
@@ -28,6 +30,7 @@ from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from typing import Final
 
+from libranet.protocol.client_origin import parsed_address
 from libranet.webserver.http_types import Request
 
 HOST_HEADER: Final = "Host"
@@ -58,15 +61,19 @@ class SiteChecks:
         return refusal if refusal is not None else self.page_refusal(request)
 
     def host_refusal(self, request: Request) -> str | None:
-        """Why ``request``'s ``Host`` is refused, or ``None`` if it names one served as, or none."""
+        """Why ``request``'s ``Host`` is refused, or ``None`` if it names one served as, or none.
+
+        The address of this machine its connection reached is served as too.
+        """
         host = request.header(HOST_HEADER)
 
-        if host is None or self.serves_as(host):
+        if host is None or self.serves_as(host) or _names_address(host, request.server_address):
             return None
 
         return (
             f"{self.served} is not served as {host!r}, which the Host header names "
-            "(it is served as this machine's own name, and as network.config_hosts lists)."
+            "(it is served as the address it is reached at, this machine's own name, "
+            "and as network.config_hosts lists)."
         )
 
     def page_refusal(self, request: Request) -> str | None:
@@ -114,6 +121,12 @@ def host_name(authority: str) -> str:
         return name if closed else ""
 
     return authority.partition(":")[0]
+
+
+def _names_address(authority: str, address: str) -> bool:
+    """Whether ``authority`` names the IP address ``address``, whatever its port."""
+    named = parsed_address(host_name(authority))
+    return named is not None and named == parsed_address(address)
 
 
 def _same_authority(origin: str, host: str) -> bool:
