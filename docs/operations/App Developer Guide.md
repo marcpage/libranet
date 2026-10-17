@@ -896,8 +896,8 @@ it says so, and reads them again every few seconds until they are complete.
 It sorts the list by trust, and hides those distrusted. Whoever is signed
 in, with a fallback of their own, trusts, distrusts, or clears each person
 there, one entry at a time, and is told that their list is public,
-distrust included. The page shows the person signed in no mark of their
-own, since no one is scored by their own list.
+distrust included. The person signed in is marked 🟢, saying it is them,
+since they are at step 0 of their own scores.
 
 ### 6.13 Signing as a Person
 
@@ -1255,11 +1255,11 @@ const { complete, scores } = await response.json();
 
 or one identity's with `GET /data/trust/{id}`, which answers
 `{"id": "sha256/…", "score": 0.2, "step": 2, "complete": true}`. A score
-above 0 is trust, below 0 distrust, and 0 neither. At step 1 it says what
-the person's own list holds: 1 for trusted, and −1 for distrusted. An
-identity the scores do not reach, the person's own among them, is not in
-`scores`, and `GET /data/trust/{id}` answers it with a score of 0 and a
-`step` of `null`.
+above 0 is trust, below 0 distrust, and 0 neither. The person themselves
+is at step 0, scoring 1, whatever any list says. At step 1 it says what
+their own list holds: 1 for trusted, and −1 for distrusted. An identity the
+scores do not reach is not in `scores`, and `GET /data/trust/{id}` answers
+it with a score of 0 and a `step` of `null`.
 
 The node builds the scores behind the sign-in, finding lists as it goes, so
 `complete` is `false` until it has read every list it will: read them again
@@ -1285,10 +1285,11 @@ same words for a screen reader. Where there are no scores, with no one
 signed in or on a client elsewhere, show ⚪, saying why. Read the scores
 once with `GET /data/trust`, and look up each identity there, rather than
 asking for each, and read them again every few seconds while they are not
-complete. Show the person signed in no mark, since no one is scored by
-their own list. Each shipped application carries its own copy of the code
-that does it: the directory marks each person (§6.12), mail each person it
-shows (§6.16), the root application its own node (§6.18), and the nodes
+complete. The person signed in is at step 0, scoring 1: mark them 🟢,
+saying it is them, or leave them unmarked among others a page names, as
+mail does. Each shipped application carries its own copy of the code that
+does it: the directory marks each person (§6.12), mail each person it shows
+(§6.16), the root application its own node (§6.18), and the nodes
 application each node (§6.18). `/config` marks its node ⚪ alone, saying it
 reads no scores, since its pages ask only its own endpoints.
 

@@ -913,9 +913,14 @@ function markOf(trust) {
   return trust.score > 0 ? TRUSTED : trust.score < 0 ? DISTRUSTED : NEITHER;
 }
 
-// What a score reached at a step says: at step 1, what the person's own list
-// holds, and after it, what the lists of those they trust hold.
+// What a score reached at a step says: at step 0, that it is the person
+// themselves; at step 1, what their own list holds; and after it, what the
+// lists of those they trust hold.
 function trustWords(trust) {
+  if (trust.step === 0) {
+    return "This is you.";
+  }
+
   if (trust.step === 1) {
     return trust.score > 0 ? "You trust them." : "You distrust them.";
   }
@@ -964,9 +969,10 @@ function markFor(entry) {
 }
 
 // Whether the scores say what the person's own list holds yet: it is the
-// first read, and only it scores at step 1.
+// first read, and only it scores at step 1, the person being at step 0 from
+// the start.
 function ownListRead() {
-  return view.scores !== null && (view.complete || view.scores.size > 0);
+  return view.scores !== null && (view.complete || [...view.scores.values()].some((trust) => trust.step > 0));
 }
 
 // Trust, Distrust, and Clear, changing the entry for `entry` on the trust list
@@ -1143,12 +1149,8 @@ function itemOf(entry) {
   const item = document.createElement("li");
   const first = make("div", "", "first");
   const name = entry.first || make("code", entry.id, "id");
-  // Whoever is signed in is not scored, so they are shown no mark.
   const others = entry.id !== view.you;
-
-  if (others) {
-    first.append(markFor(entry));
-  }
+  first.append(markFor(entry));
 
   // Each person listed links to their page, where they are shown alone.
   first.append(view.one === null ? personLink(entry.id, name) : name);
@@ -1161,7 +1163,7 @@ function itemOf(entry) {
     first.append(make("span", "compromised", "flag"));
   }
 
-  if (others && view.opened.has(entry.id)) {
+  if (view.opened.has(entry.id)) {
     first.append(make("span", trustText(entry.trust), "score"));
   }
 
@@ -1307,10 +1309,7 @@ function theirsShown() {
 function namedItem(entry) {
   const item = document.createElement("li");
   const others = entry.id !== view.you;
-
-  if (others) {
-    item.append(markFor(entry));
-  }
+  item.append(markFor(entry));
 
   if (view.everyone.has(entry.id)) {
     item.append(personLink(entry.id, entry.first || make("code", entry.id, "id")));
@@ -1330,7 +1329,7 @@ function namedItem(entry) {
     item.append(make("span", "compromised", "flag"));
   }
 
-  if (others && view.opened.has(entry.id)) {
+  if (view.opened.has(entry.id)) {
     item.append(make("span", trustText(entry.trust), "score"));
   }
 

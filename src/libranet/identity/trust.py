@@ -50,6 +50,10 @@ _DROP_PREFIX: Final = "trust:"
 #: The member of a version naming whom it trusts or distrusts (§3.1).
 ENTRIES_FIELD: Final = "entries"
 
+# The step a person is at in their own scores: before step 1, which reads
+# their list, so that no list changes it (§4.1).
+_OWN_STEP: Final = 0
+
 
 @dataclass(frozen=True)
 class TrustList(Numbered):
@@ -258,12 +262,15 @@ class TrustScore:
 
 @dataclass(frozen=True)
 class TrustScores:
-    """A person's ``scores``, by identity, and the lists ``needed`` before they are complete.
+    """``person``'s ``scores``, by identity, and the lists ``needed`` before they are complete.
 
+    ``scores`` are those the lists give. ``person`` is written at step 0,
+    scoring 1, whatever any list says, and the lists never score them (§4.1).
     ``needed`` names, in the order they are to be read, the owners of the
     lists the step under way reads and that are not read yet (§4.3).
     """
 
+    person: ContentId
     scores: Mapping[ContentId, TrustScore]
     needed: tuple[ContentId, ...] = ()
 
@@ -307,7 +314,7 @@ class TrustScores:
             needed = tuple(owner for owner in owners if owner not in lists)
 
             if needed:
-                return cls(scores, needed)
+                return cls(person, scores, needed)
 
             # Only the trusted are followed, the most trusted first, so that
             # a build stopped by the most lists has read theirs.
@@ -317,7 +324,7 @@ class TrustScores:
                 if net > 0
             ]
 
-        return cls(scores)
+        return cls(person, scores)
 
     @property
     def complete(self) -> bool:
@@ -327,21 +334,29 @@ class TrustScores:
     def value(self) -> dict[str, Any]:
         """The JSON object a page reads these scores as: each identity's, and ``complete``.
 
-        As HttpApi §11.7 gives it.
+        As HttpApi §11.7 gives it, ``person`` among them.
         """
+        identities = (self.person, *self.scores)
         return {
             "complete": self.complete,
-            "scores": {str(identity): score.value() for identity, score in self.scores.items()},
+            "scores": {str(identity): self._score_value(identity) for identity in identities},
         }
 
     def value_for(self, identity: ContentId) -> dict[str, Any]:
-        """The JSON object a page reads the score of ``identity`` as (HttpApi §11.7).
+        """The JSON object a page reads the score of ``identity`` as (HttpApi §11.7)."""
+        return {"id": str(identity), **self._score_value(identity), "complete": self.complete}
 
-        An identity not reached, the person among them, scores 0 at no step.
+    def _score_value(self, identity: ContentId) -> dict[str, Any]:
+        """The ``score`` and ``step`` of ``identity``, as a page reads them.
+
+        ``person`` scores 1 at step 0, and an identity not reached scores 0
+        at no step (§4.1).
         """
+        if identity == self.person:
+            return {"score": 1, "step": _OWN_STEP}
+
         score = self.scores.get(identity)
-        scored = {"score": 0, "step": None} if score is None else score.value()
-        return {"id": str(identity), **scored, "complete": self.complete}
+        return {"score": 0, "step": None} if score is None else score.value()
 
 
 def _reading_order(scored: tuple[ContentId, int]) -> tuple[int, str]:

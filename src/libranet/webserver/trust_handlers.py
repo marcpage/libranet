@@ -5,14 +5,16 @@ as far as the build has read, and whether it is complete (Phase 5 Step
 100)::
 
     GET /data/trust
-    {"complete": false, "scores": {"sha256/…": {"score": 1, "step": 1}}}
+    {"complete": false, "scores": {"sha256/…": {"score": 1, "step": 0},
+                                   "sha256/…": {"score": 1, "step": 1}}}
 
     GET /data/trust/{algorithm}/{hash}
     {"id": "sha256/…", "score": 0.2, "step": 2, "complete": true}
 
-An identity not reached, the person among them, scores 0 at a ``step`` of
-``null``. A fallback that has not taken over reads its scores, though it
-cannot change its list.
+The person is among them, scoring 1 at a ``step`` of 0, whatever any list
+says, and an identity not reached scores 0 at a ``step`` of ``null``. A
+fallback that has not taken over reads its scores, though it cannot change
+its list.
 
 A page trusts or distrusts the identity a path names, or clears it, neither
 trusting nor distrusting it, one entry at a time (Phase 5 Step 97)::

@@ -129,6 +129,8 @@ replaces them all (§3.3).
 
 A person's scores are built from their own list outward, in **steps**:
 
+- **Step 0** is the person, who scores 1, whatever any list says, since
+  everyone is in their own trust network.
 - **Step 1** reads the person's own list. Each identity it names is at
   step 1.
 - **Step n + 1** reads the list of every identity at step n whose score is
@@ -152,8 +154,9 @@ rather than by adding weights one at a time, so that three entries at step
 - **Only the trusted are followed.** A score above 0 is trust, below 0 is
   distrust, and 0 is neither. The list of an identity scoring 0 or less is
   not read.
-- **The person is not scored.** Their own id is passed over wherever a
-  list names it.
+- **The person always trusts themselves.** They are at step 0, and their
+  own id is passed over wherever a list names it, so that no list, theirs
+  or another's, changes their score.
 - **Each list is read at most once.** An identity is at one step, so a
   cycle ends where it comes back to an identity already reached.
 
@@ -163,6 +166,7 @@ Dave trusts Hank. Alice's scores are:
 
 | Identity | Step | Score | Why |
 | --- | --- | --- | --- |
+| Alice | 0 | 1 | She is the person whose scores they are |
 | Bob | 1 | 1 | Alice trusts him |
 | Carol | 1 | 1 | Alice trusts her |
 | Dave | 1 | −1 | Alice distrusts him; Bob's trust is at step 2, and does not count |
