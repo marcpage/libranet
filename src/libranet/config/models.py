@@ -13,6 +13,8 @@ provisional-trust attempt limit) the value chosen here is provisional and
 marked as such.
 """
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 from os import pardir
 from pathlib import Path
