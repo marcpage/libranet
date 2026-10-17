@@ -16,6 +16,7 @@ marked as such.
 from __future__ import annotations
 from os import pardir
 from pathlib import Path
+from socket import gethostname
 from typing import Any, Final, Literal, Mapping
 
 from pydantic import (
@@ -200,11 +201,12 @@ class NetworkConfig(_Section):
     # 4 Step 79). Signing out, or the web server stopping, ends one sooner.
     session_idle_seconds: float = Field(default=DEFAULT_SESSION_IDLE_SECONDS, gt=0)
 
-    # The hosts `/config` is served as. A request there whose `Host` header
-    # names any other is refused, so a site that points a name of its own at
-    # this machine is not taken for this node (HttpApi §2.3.3, Phase 2 Step
-    # 41). Shell-style patterns, matched whatever their case against the
-    # host without its port, an IPv6 address written without its brackets.
+    # The hosts `/config` is served as, beside the name this machine gives
+    # itself (served_as). A request there whose `Host` header names any other
+    # is refused, so a site that points a name of its own at this machine is
+    # not taken for this node (HttpApi §2.3.3, Phase 2 Step 41). Shell-style
+    # patterns, matched whatever their case against the host without its
+    # port, an IPv6 address written without its brackets.
     config_hosts: tuple[str, ...] = DEFAULT_CONFIG_HOSTS
 
     # The port /config listens on, at CONFIG_LISTEN_ADDRESS alone, apart from
@@ -238,6 +240,15 @@ class NetworkConfig(_Section):
             return range(self.config_port, self.config_port + 1)
 
         return range(self.listen_port + CONFIG_PORT_STEP, HIGHEST_PORT + 1, CONFIG_PORT_STEP)
+
+    def served_as(self) -> tuple[str, ...]:
+        """The hosts ``/config``, and every endpoint serving only local clients, are served as.
+
+        That is ``config_hosts``, and the name this machine gives itself, such
+        as ``MacBook.local``, which a browser on it reaches the node by
+        (HttpApi §2.3.3, §2.4).
+        """
+        return (*self.config_hosts, gethostname())
 
     def advertised_endpoint(self) -> str:
         """The endpoint string this node publishes in its own node list.
