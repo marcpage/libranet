@@ -1913,6 +1913,89 @@ My calls, not yet reviewed:
 
 ---
 
+## Step 112 — Trusting Yourself
+
+**Issue:** #372. **Depends on:** Step 100's reads of the scores, and Step
+101's marks in the directory.
+
+Settled in the issue, which has only its title:
+
+- **A node and a person are each always in their own trust network.**
+
+Until now, the scores of whoever is signed in never named them.
+`GET /data/trust` left them out, `GET /data/trust/{id}` answered their own
+id as it did one not reached, a score of 0 at no step, and the directory
+showed them no mark.
+
+Ruled when it was built (2026-10-17):
+
+- **The person's own id scores 1 at step 0**, whatever any list says, theirs
+  or another's. It is a step of its own, ahead of step 1, which reads their
+  list, rather than the 1 at step 1 of an identity their list trusts, so
+  that a page tells the two apart. The directory marks them 🟢, saying it is
+  them.
+- **Nothing changes for a node's own id.** A node builds no scores of its
+  own, and the scores of whoever is signed in reach the node as their lists
+  do.
+- **The build is unchanged.** Only what the reads answer changes. The person
+  is passed over wherever a list names them, as before, and the node's list
+  is read only where a person's lists trust the node.
+
+Work this implies:
+
+- **`TrustScores`** knows whose scores they are, and answers that person
+  scoring 1 at step 0, in `GET /data/trust` and `GET /data/trust/{id}`.
+- **The directory** marks the person signed in, and it and the nodes
+  application no longer take the person's own score for their list read.
+- Trust Network §4.1, HttpApi §11.7, and the App Developer Guide §6.12 and
+  §6.17 say so.
+
+**Testable in isolation:** scoring rule tests asserting the person is
+answered scoring 1 at step 0, both alone and among every score, though the
+lists of those they trust distrust them, and is never among the scores the
+lists give; and web server tests asserting both reads answer them so, a
+fallback that has not taken over included, from the first read of a build
+to the last.
+
+Built in one change set, with 30 lines of non-test Python, 13 of them
+replacing removed ones, and 70 of tests, 29 of them replacing removed ones.
+The directory gains 14 lines and loses 15, and the nodes application gains
+3 and loses 2.
+
+- **`TrustScores.person`**, its first field, is set by `from_lists`.
+  `value()` writes the person first among `scores`, and `value_for()`
+  answers them, each through `_score_value`, which gives them
+  `{"score": 1, "step": 0}`. `scores` itself holds only what the lists give,
+  so the build, and what it logs, are unchanged.
+- **`ownListRead()`**, on the directory and nodes pages, took any score at
+  all to mean the person's own list was read, as only it scored before. The
+  person's own score is there from the first read now, so it looks for a
+  score past step 0.
+- **The directory** marks the person in its list, on their own page, and
+  where a list on someone's page names them, saying "This is you." Trust,
+  Distrust, and Clear are still not offered for them.
+
+LIVE-RUN
+
+My calls, not yet reviewed:
+
+- **Mail still shows the person signed in no mark**, in its rows, chips,
+  address book, and message headers, where they are among those a message
+  names, and a 🟢 beside them on every message would say nothing.
+- **The root, nodes, and `/config` pages say nothing new.** They mark only
+  nodes, none of which is ever at step 0, so they gain no "This is you."
+- **Step 0's score is written, not computed.** A `TrustScore` weighs its
+  count by a tenth for each step after the first, which would make step 0's
+  10, so the person is no `TrustScore`, and is never among `scores`.
+- **A change naming the person is still `400`**, since a list never names
+  its owner, and **a read with no one signed in is still `401`**, their own
+  id among them, since there is no one whose scores they would be.
+- **Steps 94 and 101 are left as written.** "The signed-in person is never
+  scored" and "shown no mark" say what was ruled then, and this step changes
+  both.
+
+---
+
 ## 4. Issues in the Milestone
 
 Every issue in the **Phase 5 - Trust Network** milestone, by number, and
