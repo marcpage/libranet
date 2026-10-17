@@ -28,10 +28,10 @@ named once as the server starts too (Phase 2 Step 53). And it takes what came
 of each dial ``/config`` asked the connection manager for, ``address.dialed``,
 which wakes the request waiting on it (Phase 5 Step 109).
 
-It builds the node's own trust scores, and says whom they trust
-(:mod:`libranet.webserver.peer_trust`, Phase 5 Step 113). As it starts, it asks
-the stats module what it kept of them, and takes in ``node.trust_stored``,
-until its build is complete.
+It builds the node's own trust scores, and says whom they trust, and so which
+peers the node connects to and serves (:mod:`libranet.webserver.peer_trust`,
+Phase 5 Step 113). As it starts, it asks the stats module what it kept of
+them, and takes in ``node.trust_stored``, until its build is complete.
 
 The ``/config`` credential is loaded from disk like the node key, rather
 than being carried across the process boundary.
@@ -211,6 +211,7 @@ class WebServerModule(ModuleBase):  # pylint: disable=too-many-instance-attribut
                     node=described,
                     max_update_layers=self._config.backup.max_update_layers,
                     costly_work=costly_work,
+                    peers=peers,
                 ),
                 self.logger,
                 signer,

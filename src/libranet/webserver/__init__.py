@@ -15,8 +15,9 @@ application's bundle, which the web server owns, and which names the pages
 shipped with the node at `/` and at `/config` until an administrator changes
 them. The one at `/config` drives all of them, and has the node read and
 change what it says of itself (Phase 5 Step 104), and whom it trusts (Phase 5
-Step 110). It builds the node's own trust scores from that list (Phase 5 Step
-113).
+Step 110), and whether it connects only to the nodes it trusts (Phase 5 Step
+113). It builds the node's own trust scores, which say which peers the node
+connects to and serves.
 
 A few `/data` endpoints serve only clients on this machine, and only this
 node's own pages there, such as the listing of the folders it offers them
@@ -128,6 +129,7 @@ from libranet.webserver.config_handlers import (
     CONFIG_TRUST_PATTERN,
     CONFIG_TRUST_TEMPLATE,
     CONFIG_USERS_PATH,
+    CONNECTING_PATH,
     CONNECTIONS_PATH,
     DATA_APPLICATIONS_PATH,
     ENDPOINTS,
@@ -232,7 +234,7 @@ from libranet.webserver.local_only import (
 from libranet.webserver.metadata_handlers import OwnMetadata
 from libranet.webserver.module import WebServerModule
 from libranet.webserver.node_metadata_reader import NODE_METADATA_KIND, NodeMetadataReader
-from libranet.webserver.node_trust_handlers import OwnTrust
+from libranet.webserver.node_trust_handlers import Connecting, OwnTrust
 from libranet.webserver.own_pages import (
     REFERER_HEADER,
     OwnPageOnly,
@@ -252,6 +254,7 @@ from libranet.webserver.request_refusals import (
     invalid_signature_response,
     json_or_refusal,
     parsed_or_refusal,
+    peer_not_allowed_response,
     signature_required_response,
     unreadable_body_response,
     unreadable_registry_response,
@@ -328,6 +331,7 @@ __all__ = [
     "CONFIG_TRUST_PATTERN",
     "CONFIG_TRUST_TEMPLATE",
     "CONFIG_USERS_PATH",
+    "CONNECTING_PATH",
     "CONNECTIONS_PATH",
     "COST",
     "DATA_APPLICATIONS_PATH",
@@ -414,6 +418,7 @@ __all__ = [
     "ConfigCredential",
     "ConfigSiteGuard",
     "ConnectHandler",
+    "Connecting",
     "ConnectingRule",
     "ContentWait",
     "CostlyWork",
@@ -527,6 +532,7 @@ __all__ = [
     "names_config",
     "names_config_api",
     "parsed_or_refusal",
+    "peer_not_allowed_response",
     "percent_decoded",
     "problem_response",
     "redirect_response",

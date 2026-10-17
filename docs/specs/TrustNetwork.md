@@ -9,7 +9,9 @@
 Each identity may keep a **trust list**: the identities it trusts, and the
 identities it distrusts. From the list of whoever is signed in, the lists of
 those they trust, the lists those lists trust, and so on onward, a node
-builds a **score** for every identity the lists reach.
+builds a **score** for every identity the lists reach. A node builds scores
+of its own the same way, from its own list, and connects only to the nodes
+they allow (§4.5).
 
 This document specifies what a trust list holds, where it is kept, how its
 newest version is found, and the rule that turns lists into scores. Every
@@ -29,10 +31,10 @@ signed in, and to read their scores, are in
   have one form, so a list may name either, and either may keep a list
   (§3.2).
 - Scores are built for a person signed in on a node
-  ([HTTP API §11.4](HttpApi.md#114-signing-in)). The session is between a
-  browser and its node, and is no part of the protocol between nodes, and
-  neither are the scores a node builds. What nodes exchange is the lists,
-  as they exchange any content.
+  ([HTTP API §11.4](HttpApi.md#114-signing-in)), and for the node itself
+  (§4.5). The session is between a browser and its node, and is no part of
+  the protocol between nodes, and neither are the scores a node builds.
+  What nodes exchange is the lists, as they exchange any content.
 
 ## 3. Trust Lists
 
@@ -230,6 +232,32 @@ as §4.3 reads them, so that the scores are those a build would give from
 the same lists. A list given up stays given up. A version the person places
 any other way is read at their next sign-in.
 
+### 4.5 A Node's Own Scores
+
+A node that keeps a list (§3.2) builds scores of its own from it, as a
+person's are built (§4.1 to §4.3), with the node at step 0, and goes by them
+in choosing its peers. An identity they score above 0 is **trusted**, below 0
+**untrusted**, and any other of **unknown** trust. The node itself is always
+trusted.
+
+- **No untrusted peer.** A node connects to no node its scores call
+  untrusted, and serves no request one signs
+  ([HTTP API §7.3](HttpApi.md#73-valid-connections)). It closes a connection
+  to a node as soon as its scores call it untrusted.
+- **Only the trusted, if its operator says so.** A node connects to the
+  nodes of unknown trust too, by default, and its operator may have it
+  connect only to those it trusts, and serve only those.
+- **When it builds them.** It builds its scores as it starts, and again
+  from time to time, reading every list afresh, so that it reads what has
+  changed in the lists of others. It scores a change its operator makes to
+  its own list at once, as §4.4 scores a person's. The reference node builds
+  them again every hour, by default.
+- **What it goes by meanwhile.** Until a build is complete, the node goes by
+  what the last complete build said, with what the build under way has read
+  laid over it, and keeps the state of each identity across a restart, so
+  that it connects to no node it distrusted before it stopped while it reads
+  the lists again.
+
 **TBD:**
 
 - **Compromised identities.** Whether an entry naming an identity that is
@@ -259,3 +287,8 @@ any other way is read at their next sign-in.
   may read different versions and give different scores.
 - **A build is bounded** by the limits of §4.2, and by the time a list is
   looked for (§4.3), so a sign-in cannot be made to read without end.
+- **A node trusted can turn a node away from others.** A node's scores
+  reach through the lists of the nodes it trusts (§4.5), so a node it trusts
+  that distrusts another makes it refuse that one too, unless its own list,
+  nearer, trusts it. Distrusting the first stops its list being read at the
+  next build.

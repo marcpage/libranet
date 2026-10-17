@@ -27,10 +27,11 @@ from libranet.problems import CONTENT_UNAVAILABLE, INVALID_CONTENT_ADDRESS, INVA
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.protocol.search import LocalSearch, SearchCache
 from libranet.webserver.bundle_edits import OwnUploads
-from libranet.webserver.config_handlers import CONFIG_TRUST_PATH
+from libranet.webserver.config_handlers import CONFIG_TRUST_PATH, CONNECTING_PATH
 from libranet.webserver.drop_handler import DropHandler
 from libranet.webserver.http_types import Request, RequestBody, Response
-from libranet.webserver.node_trust_handlers import OwnTrust
+from libranet.webserver.node_trust_handlers import Connecting, OwnTrust
+from libranet.webserver.peer_trust import ConnectingRule, PeerTrust
 from libranet.webserver.search_handler import SearchHandler
 from libranet.webserver.trust_builds import TrustBuilds
 from libranet.webserver.trust_lists import TrustLists
@@ -406,6 +407,23 @@ def builds(recorder: Recorder) -> TrustBuilds:
     )
 
 
+@fixture
+def peers(builds: TrustBuilds, recorder: Recorder, storage: StorageConfig) -> PeerTrust:
+    return PeerTrust(
+        BOB, builds, recorder, ConnectingRule(storage.connecting_path), rebuild_seconds=60
+    )
+
+
+def asking(only_trusted: object) -> Request:
+    """``PUT /config/api/connecting`` with ``only_trusted``."""
+    return Request(
+        "PUT",
+        CONNECTING_PATH,
+        headers={"Content-Type": JSON_CONTENT_TYPE},
+        body=RequestBody.of(dumps({"only_trusted": only_trusted}).encode("utf-8")),
+    )
+
+
 def test_each_version_placed_is_handed_to_the_node_s_own_build(
     search: SearchHandler,
     uploads: OwnUploads,
@@ -432,3 +450,46 @@ def test_each_version_placed_is_handed_to_the_node_s_own_build(
 
     assert scores is not None
     assert scores.scores == {BOB: TrustScore(1, 1)}
+
+
+def test_the_node_connects_to_those_of_unknown_trust_until_told_otherwise(
+    peers: PeerTrust,
+) -> None:
+    response = Connecting(peers).read(Request("GET", CONNECTING_PATH))
+
+    assert response.status == 200
+    assert loads(response.body) == {"only_trusted": False}
+
+
+def test_connecting_only_to_the_trusted_is_kept_and_read_back(
+    peers: PeerTrust, storage: StorageConfig
+) -> None:
+    connecting = Connecting(peers)
+
+    changed = connecting.change(asking(True))
+
+    assert changed.status == 200
+    assert loads(changed.body) == {"only_trusted": True}
+    assert loads(connecting.read(Request("GET", CONNECTING_PATH)).body) == {"only_trusted": True}
+    assert loads(storage.connecting_path.read_bytes()) == {"only_trusted": True}
+
+
+@mark.parametrize("only_trusted", ["yes", 1, None])
+def test_a_rule_that_is_not_true_or_false_is_400(peers: PeerTrust, only_trusted: object) -> None:
+    response = Connecting(peers).change(asking(only_trusted))
+
+    assert response.status == 400
+    assert problem_type(response) == INVALID_REQUEST
+    assert not peers.only_trusted
+
+
+def test_a_rule_that_cannot_be_kept_is_500_and_not_changed(
+    peers: PeerTrust, storage: StorageConfig
+) -> None:
+    storage.connecting_path.mkdir(parents=True)
+
+    response = Connecting(peers).change(asking(True))
+
+    assert response.status == 500
+    assert "could not be kept" in loads(response.body)["detail"]
+    assert not peers.only_trusted

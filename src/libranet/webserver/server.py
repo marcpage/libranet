@@ -143,7 +143,7 @@ from libranet.webserver.local_folders import DIRECTORY_PATTERN, DirectoryHandler
 from libranet.webserver.local_imports import IMPORTS_PATH, ImportHandler, ImportListHandler
 from libranet.webserver.local_only import CLIENT_PATH, LocalOnly, OwnSiteOnly, client_handler
 from libranet.webserver.metadata_handlers import OwnMetadata
-from libranet.webserver.node_trust_handlers import OwnTrust
+from libranet.webserver.node_trust_handlers import Connecting, OwnTrust
 from libranet.webserver.own_pages import OwnPageOnly, OwnPages
 from libranet.webserver.peer_trust import PeerTrust
 from libranet.webserver.router import Router
@@ -184,6 +184,7 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
     node: NodeDescription | None = None,
     max_update_layers: int = 0,
     costly_work: CostlyWork | None = None,
+    peers: PeerTrust | None = None,
 ) -> Router:
     """The main port's routes, serving the configured source of truth, derived lists, and apps.
 
@@ -195,7 +196,9 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
     asks for, when not held.
     ``authenticator`` checks the signature of every signed request; unsigned
     reads of the ``/data`` API are served only if ``allow_unsigned_api_reads``
-    is set. Applications are served as the registry in ``storage``'s data
+    is set. A request signed by a node ``peers`` does not allow is refused;
+    with no ``peers``, none is (Phase 5 Step 113).
+    Applications are served as the registry in ``storage``'s data
     directory names them, and as ``content`` says the node ships them until
     it does, but for ``/config``, whose pages are redirected to
     ``config_port``, where it is served. ``/data/applications`` lists them
@@ -269,6 +272,7 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
             authenticator,
             storage.max_object_bytes,
             allow_unsigned_api_reads=allow_unsigned_api_reads,
+            allows=None if peers is None else peers.allows,
         ),
     )
     folders = LocalFolders() if local_folders is None else local_folders
@@ -508,8 +512,9 @@ def build_config_router(  # pylint: disable=too-many-locals
     with ``identity``'s key, as drops are made and stored there (Phase 5 Step
     104), and ``/config/api/trust`` reads and changes the node's own trust
     list, signed so too (Phase 5 Step 110), handing each version to the build
-    of the node's own scores ``peers`` holds, if given (Phase 5 Step 113).
-    ``/config/api/connections`` has an
+    of the node's own scores ``peers`` holds, if given, and
+    ``/config/api/connecting`` reads and changes whether it connects only to
+    the nodes it trusts (Phase 5 Step 113). ``/config/api/connections`` has an
     address dialed, and waits for what came of it in ``dial_outcomes`` for up
     to ``dial_wait_seconds`` (Phase 5 Step 109). ``retry_after_seconds``,
     ``app_outcomes``, ``app_wait_seconds``, and ``read_ahead_parts`` are as for
@@ -569,6 +574,7 @@ def build_config_router(  # pylint: disable=too-many-locals
                 builds=None if peers is None else peers.builds,
             )
         ),
+        connecting=None if peers is None else Connecting(peers),
     ):
         router.add(method, pattern, handler)
 

@@ -84,7 +84,8 @@ Unless the configuration moves them:
 | Logs | `~/Library/Logs/libranet` | `~/.local/state/libranet/log` |
 
 The data directory holds the node's content, its database, its registered
-applications, its backup jobs, and, in `keys`, its secrets: its private key,
+applications, its backup jobs, whether it connects only to the nodes it
+trusts (§4.7), and, in `keys`, its secrets: its private key,
 its backup secret (§5.2), and its `/config` credential (§8). `uv run
 libranet --help` prints the defaults for the machine it runs on, and
 [File Layout](../implementation/File%20Layout.md) describes every file.
@@ -150,7 +151,9 @@ node to reach. The quickest way is to give that node's address on `/config`
 (§4.6), which the node connects to at once, whether it knows peers or not. A
 seed list does the same for a node that knows none; §10.5 shows one, naming a
 super node, and a list naming any other node is written the same way. From
-the first node it reaches, a node learns the others that node knows.
+the first node it reaches, a node learns the others that node knows. It
+never connects to a node it distrusts, and connects only to those it trusts
+if you say so (§4.7).
 
 ## 4. The Administration Page: `/config`
 
@@ -228,6 +231,7 @@ curl -u admin:secret -e http://127.0.0.1:8180/config/ \
 | `POST` | `/config/api/connections` | Connect to a node at an address (§4.6) |
 | `GET` | `/config/api/trust` | Whom this node trusts (§4.7) |
 | `PUT`, `DELETE` | `/config/api/trust/{algorithm}/{hash}` | Trust or distrust an identity as this node, or neither (§4.7) |
+| `GET`, `PUT` | `/config/api/connecting` | Whether this node connects only to the nodes it trusts (§4.7) |
 
 A backup, restore, build, or export is answered `202` at once, with the id
 it is known by, and its `GET` says how it is doing. Restores, builds, and
@@ -301,8 +305,10 @@ the node dialed it, its host in lower case and its port always given:
 
 `outcome` is `already_connected` if the node was connected already. Where no
 node is reached it is `502`, saying why, and `409` if the address is this
-node's own. `504` means the node did not say in time; it may still reach the
-other node, which the nodes application then shows.
+node's own. It is `403` if the node reached is one this node does not
+connect to (§4.7): trust it first, then connect again. `504` means the node
+did not say in time; it may still reach the other node, which the nodes
+application then shows.
 
 ### 4.7 What This Node Trusts
 
@@ -341,6 +347,36 @@ and `400` for this node's own id. `GET /config/api/trust` reads the list:
 ```json
 {"id": "sha256/…", "entries": {"sha256/0a1b…": true}, "version": 2, "versions": ["sha256/…"]}
 ```
+
+The node goes by its list in choosing its peers. It builds trust scores of
+its own from it, as a person's are built (§6.6): the nodes it trusts, and,
+through their lists, a tenth as strongly, the nodes they trust and distrust,
+and so on. A node they score above 0 is trusted, below 0 distrusted, and any
+other of unknown trust. The node never connects to a node it distrusts, and
+refuses any request one signs, closing a connection to it as soon as it is
+distrusted. Its own list is nearest, so a node it trusts stays trusted
+whatever another's list says, and a node it trusts can make it distrust
+others only where its own list says nothing of them. It builds the scores as
+it starts and again every `identity.node_trust_rebuild_seconds` (§6.6), and
+scores a change made here at once. Until they are built, it goes by what
+they said before, kept across a restart.
+
+By default it connects to the nodes it trusts and to those of unknown trust.
+In **Which nodes this node connects to**, choose **Only the nodes it trusts**
+and **Save** to have it connect to, and serve, no other; it closes its
+connections to the rest at once. A node it reaches then joins its peers only
+once this node trusts it, so trust a node before connecting to it (§4.6). A
+script reads the choice with `GET /config/api/connecting`, and changes it:
+
+```bash
+curl -u admin:secret -e http://127.0.0.1:8180/config/ \
+  -X PUT http://127.0.0.1:8180/config/api/connecting \
+  -H 'Content-Type: application/json' \
+  -d '{"only_trusted": true}'
+```
+
+Each is answered with what the node does now, `{"only_trusted": true}`. The
+choice is kept in `connecting.json` in the data directory (§2.3).
 
 ## 5. Backing Up and Restoring
 
@@ -631,7 +667,8 @@ those they trust, each step out a tenth as strong, as the
 them behind the sign-in, which it does not hold up, and keeps them until the
 person's last session ends. A node keeps a list of its own, which you change
 on `/config` (§4.7), and the scores of whoever trusts the node reach through
-it. The node builds scores of its own from it too.
+it. The node builds scores of its own from it too, which say which nodes it
+connects to (§4.7).
 
 Three settings bound the work, the node's own scores' too:
 

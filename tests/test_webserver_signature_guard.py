@@ -249,3 +249,56 @@ def test_strict_guard_leaves_unsigned_reads_outside_the_api_alone(
     request = Request("GET", path)
 
     assert strict(request) is request
+
+
+def test_a_request_signed_by_a_node_not_allowed_is_refused_and_closes(
+    authenticator: RequestAuthenticator, known: NodeIdentity
+) -> None:
+    named: list[Mapping[str, Any] | None] = []
+
+    def publish(event: EventType, payload: Mapping[str, Any] | None = None) -> Message:
+        # pylint: disable=unused-argument
+        named.append(payload)
+        return {}
+
+    connection = InboundPeers(publish).connection()
+    guard = SignatureGuard(
+        authenticator,
+        MAX_BYTES,
+        allow_unsigned_api_reads=True,
+        allows=lambda node_id: node_id != known.node_id,
+    )
+
+    response = refused(guard(replace(signed(known), connection=connection)))
+
+    assert response.status == 403
+    assert response.close
+    assert str(known.node_id) in loads(response.body)["detail"]
+    # Not counted as a peer connected to this node.
+    assert named == []
+
+
+def test_a_node_not_allowed_is_refused_before_its_key_is_held(
+    authenticator: RequestAuthenticator,
+) -> None:
+    stranger = new_identity()
+    guard = SignatureGuard(
+        authenticator, MAX_BYTES, allow_unsigned_api_reads=True, allows=lambda _node_id: False
+    )
+
+    assert refused(guard(signed(stranger))).status == 403
+
+
+def test_a_request_signed_by_a_node_allowed_or_unsigned_passes(
+    authenticator: RequestAuthenticator, known: NodeIdentity
+) -> None:
+    guard = SignatureGuard(
+        authenticator,
+        MAX_BYTES,
+        allow_unsigned_api_reads=True,
+        allows=lambda node_id: node_id == known.node_id,
+    )
+    unsigned = Request("GET", PATH)
+
+    assert passed(guard(signed(known))).authentication is not None
+    assert guard(unsigned) is unsigned

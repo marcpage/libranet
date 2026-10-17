@@ -62,6 +62,7 @@ A node on macOS with every default, after its first run, looks like this:
 │   ├── applications.json           application registry
 │   ├── backup_jobs.json            backup jobs
 │   ├── backup_jobs/                each job's last bundle, kept expanded
+│   ├── connecting.json             which nodes to connect to
 │   └── store/                      each application's store
 ├── Caches/libranet/                storage.cache_dir
 │   ├── lists/                      the lists stats derives (§4.1)
@@ -126,6 +127,7 @@ something is written to it.
 ├── backup_jobs.json
 ├── backup_jobs/
 │   └── {job id}                         a job's last bundle, kept expanded
+├── connecting.json
 └── store/
     └── {SHA-256 of a name}.json         an application's store
 ```
@@ -142,6 +144,7 @@ something is written to it.
 | `applications.json` | Web server | Web server |
 | `backup_jobs.json` | Backup module | Backup module |
 | `backup_jobs/` | Backup module | Backup module |
+| `connecting.json` | Web server | Web server |
 | `store/` | Web server | Web server |
 
 ### 3.1 The Source of Truth: `cas/data`
@@ -396,6 +399,28 @@ it to `storage.max_application_value_bytes`, 64 KiB.
 Deleting the directory, with the node stopped, makes every application
 forget what it kept here. What a store names is content, and stays in
 `cas/data` until it is evicted.
+
+### 3.9 Which Nodes to Connect To: `connecting.json`
+
+Whether the node connects only to the nodes it trusts, as the operator says
+on `/config` (Phase 5 Step 113; `src/libranet/webserver/peer_trust.py`):
+
+```json
+{
+  "only_trusted": true
+}
+```
+
+Only the web server writes it, through `/config/api/connecting`, and reads it
+as it starts. Until the first change the file does not exist, and the node
+connects to the nodes it trusts and to those of unknown trust. A file that
+cannot be read, or holds no such object, is read as `true`, connecting only
+to the trusted, rather than to more than the operator may have said, and a
+warning is logged; saving the choice again on `/config` writes it afresh. It
+never connects to a node it distrusts, whatever the file says.
+
+Deleting it, with the node stopped, puts the node back to connecting to the
+nodes of unknown trust too.
 
 ## 4. The Cache Directory
 

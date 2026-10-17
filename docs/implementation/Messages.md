@@ -77,7 +77,7 @@ other modules sent.
 | `address.verified` | Connections | Stats | An address reached a node already connected |
 | `address.dial_requested` | Web server | Connections | The operator asked to dial an address |
 | `address.dialed` | Connections | Web server | What came of that dial |
-| `node.trust` | Web server | Stats | Whom the node trusts and distrusts |
+| `node.trust` | Web server | Connections, Stats | Whom the node trusts and distrusts |
 | `node.trust_requested` | Web server | Stats | Say whom the node trusted when it last said so |
 | `node.trust_stored` | Stats | Web server | Whom the node trusted, as stats kept it |
 | `connection.opened` | Connections | Stats | A peer proved its node id |
@@ -300,9 +300,14 @@ it and what each does with it.
   (`peer_trust.py`, Phase 5 Step 113), once it knows whom the node trusts,
   from stats or from a complete build, and whenever that or `only_trusted`
   changes.
-- **Received by:** Stats, which keeps each identity's state in `node_trust`,
-  in place of what it kept before.
-- **Purpose:** say whom the node trusts, and keep it across a restart.
+- **Received by:**
+  - Connections, which dials nothing until the first, and then connects to
+    no node it does not allow, closing the connection of each peer it no
+    longer allows.
+  - Stats, which keeps each identity's state in `node_trust`, in place of
+    what it kept before.
+- **Purpose:** connect only to the nodes the node allows, and keep whom it
+  trusts across a restart.
 
 #### `node.trust_requested`
 
@@ -588,7 +593,7 @@ is never logged or reported.
 | Module | Sends | Receives |
 | --- | --- | --- |
 | Web server | `data.requested`, `data.not_found`, `data.search_requested`, `data.put_completed`, `data.stored`, `nodes.received`, `seek.received`, `address.dial_requested`, `app.path_not_found`, `app.accessed`, `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `data.blocked`, `peers.connected`, `node.trust`, `node.trust_requested` | `app.path_resolved`, `backup.state`, `peers.connected_requested`, `address.dialed`, `node.trust_stored` |
-| Connections | `data.search_answered`, `data.put_completed`, `data.stored`, `nodes.received`, `address.verified`, `address.dialed`, `connection.opened`, `connection.closed`, `connection.failed`, `node.unreached`, `data.sent`, `fetch.attempted`, `fetch.succeeded`, `fetch.failed`, `eviction.acknowledged`, `peers.connected` | `nodes.updated`, `nodes.received`, `fetch.requested`, `data.search_requested`, `eviction.notice`, `data.stored`, `peers.connected_requested`, `address.dial_requested` |
+| Connections | `data.search_answered`, `data.put_completed`, `data.stored`, `nodes.received`, `address.verified`, `address.dialed`, `connection.opened`, `connection.closed`, `connection.failed`, `node.unreached`, `data.sent`, `fetch.attempted`, `fetch.succeeded`, `fetch.failed`, `eviction.acknowledged`, `peers.connected` | `nodes.updated`, `nodes.received`, `fetch.requested`, `data.search_requested`, `eviction.notice`, `data.stored`, `peers.connected_requested`, `address.dial_requested`, `node.trust` |
 | Validator | `data.stored`, `data.rejected` | `data.put_completed` |
 | Stats | `nodes.updated`, `eviction.candidates`, `resolved.reclaim`, `peers.connected_requested`, `node.trust_stored` | `data.requested`, `data.not_found`, `data.search_requested`, `data.search_answered`, `data.stored`, `data.rejected`, `nodes.received`, `seek.received`, `connection.opened`, `connection.closed`, `connection.failed`, `node.unreached`, `address.verified`, `data.sent`, `fetch.attempted`, `data.deleted`, `eviction.candidates_requested`, `app.accessed`, `resolved.reclaim_requested`, `data.blocked`, `peers.connected`, `node.trust`, `node.trust_requested` |
 | Fetcher | `fetch.requested` | `data.not_found`, `fetch.succeeded`, `fetch.failed` |

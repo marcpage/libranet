@@ -180,6 +180,8 @@ def test_the_index_names_every_endpoint(router: Router) -> None:
         ("GET", "/config/api/trust"),
         ("PUT", "/config/api/trust/{algorithm}/{hash}"),
         ("DELETE", "/config/api/trust/{algorithm}/{hash}"),
+        ("GET", "/config/api/connecting"),
+        ("PUT", "/config/api/connecting"),
     }
 
 
@@ -909,6 +911,12 @@ def test_connecting_to_a_node_reached_answers_with_its_id(
             f"No node was reached at {LAN}: no reason was given",
         ),
         (DialReport(DialOutcome.THIS_NODE, REACHED), 409, f"{LAN} is this node's own address."),
+        (
+            DialReport(DialOutcome.NOT_TRUSTED, REACHED, f"this node does not trust {REACHED}"),
+            403,
+            f"{REACHED} was reached at {LAN}, and not connected to: "
+            f"this node does not trust {REACHED}",
+        ),
         (None, 504, f"The node did not say in time whether it reached {LAN}. It may yet."),
     ],
 )

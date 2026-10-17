@@ -265,7 +265,7 @@ applications, and running test networks and super nodes.
 | Phase 2 — steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–63 | Implemented |
 | Phase 3 — video playback, steps 64–77 | Implemented |
 | Phase 4 — user accounts, steps 30, 78–82, and 89–93 | Implemented |
-| Phase 5 — the trust network, steps 94 and 96–110 | Implemented |
+| Phase 5 — the trust network, steps 94 and 96–113 | Implemented |
 | Phase 6 — Karma, step 56 | Planned |
 | Phase 7 — enhancements, steps 16, 50, 57, and 95 | Planned |
 | Phase 8 — a seed node, step 84 | Planned |
@@ -282,7 +282,8 @@ encrypted backup and restore, the endpoints applications use (reading into
 bundles, making bundles and drops, importing local files, a store for each
 application, blocking content), people's identities (signing in on any node,
 a fallback identity, signing and encrypting for a person), the trust
-network (each person's trust list, and scores built from it at sign-in),
+network (each person's trust list, and scores built from it at sign-in,
+and the node's own, which say which nodes it connects to),
 what nodes say of themselves, trusted and sandboxed applications, and the
 movie library, user directory, mail, and nodes applications.
 
@@ -297,7 +298,9 @@ Deliberately deferred, and specified but not yet built:
 
 There is no bootstrap network: a node ships with an empty seed list, so nodes
 currently find each other only through peers you configure yourself, by
-connecting to another node's address on `/config`, or with a seed list.
+connecting to another node's address on `/config`, or with a seed list. A node
+never connects to a node it distrusts, and connects only to those it trusts if
+you say so on `/config`.
 
 ---
 
@@ -320,7 +323,7 @@ connecting to another node's address on `/config`, or with a seed list.
 | [Phase 2 Plan](docs/implementation/Phase%202.md) | Implementation steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–63, all built |
 | [Phase 3 Plan](docs/implementation/Phase%203.md) | Video playback: steps 64–77, all built |
 | [Phase 4 Plan](docs/implementation/Phase%204.md) | User accounts: steps 30, 78–82, and 89–93, all built |
-| [Phase 5 Plan](docs/implementation/Phase%205.md) | The trust network: steps 94 and 96–110, all built |
+| [Phase 5 Plan](docs/implementation/Phase%205.md) | The trust network: steps 94 and 96–113, all built |
 | [Phase 6 Plan](docs/implementation/Phase%206.md) | Karma: step 56 so far, planned |
 | [Phase 7 Plan](docs/implementation/Phase%207.md) | Enhancements: steps 16, 50, 57, and 95, planned |
 | [Phase 8 Plan](docs/implementation/Phase%208.md) | A seed node: step 84, planned |

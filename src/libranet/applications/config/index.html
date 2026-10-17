@@ -289,6 +289,22 @@
       on its own administration page.</p>
       <p class="result" role="status" hidden></p>
     </form>
+    <form id="connecting-form">
+      <h3>Which nodes this node connects to</h3>
+      <div class="fields">
+        <label class="wide">This node connects to
+          <select id="connecting-choice">
+            <option value="false" selected>The nodes it trusts, and those of unknown trust</option>
+            <option value="true">Only the nodes it trusts</option>
+          </select>
+        </label>
+        <button type="submit">Save</button>
+      </div>
+      <p class="hint">It never connects to a node it distrusts, nor serves one. Whom it trusts
+      is worked out from its list outward, as a person's trust scores are: a node the nodes it
+      trusts distrust is distrusted too, unless its own list says otherwise.</p>
+      <p class="result" role="status" hidden></p>
+    </form>
   </section>
 
   <section aria-labelledby="applications-heading">
@@ -1303,6 +1319,51 @@ onSubmit(trustForm, async () => {
   return outcome;
 });
 
+const connectingForm = byId("connecting-form");
+const connectingChoice = byId("connecting-choice");
+
+// What the node now does, said in words.
+function connectingSaid(onlyTrusted) {
+  return onlyTrusted
+    ? "This node connects only to the nodes it trusts."
+    : "This node connects to the nodes it trusts, and to those of unknown trust.";
+}
+
+// Reads whether this node connects only to the nodes it trusts into the form.
+async function loadConnecting() {
+  const message = connectingForm.querySelector(".result");
+  let result;
+
+  try {
+    result = await call("GET", "/connecting");
+  } catch (error) {
+    show(message, unreachable(error), true);
+    return;
+  }
+
+  const onlyTrusted = result.ok && result.value ? result.value.only_trusted : null;
+
+  if (typeof onlyTrusted !== "boolean") {
+    show(message, result.ok ? "The node's answer is not something this page can show." : failure(result), true);
+    return;
+  }
+
+  connectingChoice.value = String(onlyTrusted);
+}
+
+onSubmit(connectingForm, async () => {
+  const result = await call("PUT", "/connecting", {
+    only_trusted: connectingChoice.value === "true",
+  });
+
+  if (!result.ok || !result.value || typeof result.value.only_trusted !== "boolean") {
+    return [failure(result), true];
+  }
+
+  connectingChoice.value = String(result.value.only_trusted);
+  return [connectingSaid(result.value.only_trusted), false];
+});
+
 // ---- Applications ----
 
 const applicationsMessage = byId("applications-message");
@@ -1937,6 +1998,7 @@ document.addEventListener("visibilitychange", () => {
 // The node first, since the applications are linked on the port it names.
 loadNode().finally(() => {
   loadMetadata();
+  loadConnecting();
   views.forEach((view) => view.load());
 });
 </script>

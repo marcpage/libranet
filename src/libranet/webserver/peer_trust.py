@@ -18,9 +18,13 @@ before the node started, which the web server asks for as it starts::
 
 Once either is known, and whenever what it says changes, it is published, with
 whether the operator has the node connect only to the nodes it trusts, for the
-stats module, which keeps each identity's state::
+connection manager, which connects to none it does not allow, and the stats
+module, which keeps each identity's state::
 
     node.trust  {"trusted": ["sha256/<hex>", ...], "untrusted": [...], "only_trusted": false}
+
+The web server serves no request a node signs that it does not allow
+(:class:`~libranet.webserver.signature_guard.SignatureGuard`).
 
 Whether the node connects only to the nodes it trusts is kept in a file of
 the web server's own, ``storage.connecting_path``::
