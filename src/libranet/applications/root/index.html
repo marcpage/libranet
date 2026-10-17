@@ -97,6 +97,22 @@
   ul { margin: 0; padding-left: 1.25rem; }
   li + li { margin-top: 0.5rem; }
   footer { font-size: 0.9rem; }
+
+  button { font: inherit; padding: 0.35rem 0.9rem; }
+
+  input {
+    font: inherit;
+    min-width: 0;
+    padding: 0.3rem 0.45rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--background);
+    color: var(--text);
+  }
+
+  .fields { display: grid; grid-template-columns: max-content 1fr; gap: 0.4rem 0.75rem; align-items: center; }
+  .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
+  #account-text { margin: 0.75rem 0 0; }
 </style>
 </head>
 <body>
@@ -113,6 +129,24 @@
       <dd id="endpoint"><span class="note">Asking the node&hellip;</span></dd>
     </dl>
     <noscript><p class="note">Showing what this node is needs JavaScript.</p></noscript>
+  </section>
+
+  <section id="account" hidden>
+    <h2 id="account-title">Sign in</h2>
+    <form id="sign-in" hidden>
+      <div class="fields">
+        <label for="username">Username</label>
+        <input id="username" autocomplete="username" required>
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" required>
+      </div>
+      <div class="actions"><button type="submit">Sign in</button></div>
+    </form>
+    <div id="signed-in" hidden>
+      <span id="signed-in-text"></span>
+      <div class="actions"><button id="sign-out" type="button">Sign out</button></div>
+    </div>
+    <p id="account-text" class="note"></p>
   </section>
 
   <section>
@@ -352,12 +386,18 @@ async function answered(path) {
 // read them again every few seconds until they are not.
 async function readTrust() {
   const [session, client] = await Promise.all([answered("/data/session"), answered("/data/client")]);
+  const you = isObject(session) && CONTENT_ID.test(session.id) ? session : null;
+  const local = isObject(client) && client.local === true;
 
-  if (!isObject(session) || !CONTENT_ID.test(session.id)) {
-    trust.unscored =
-      isObject(client) && client.local === true
-        ? "No trust is shown: sign in, in the user directory or in mail, to see whom you trust."
-        : "No trust is shown: only a browser on the node's own machine, signed in, is shown it.";
+  // Only a browser on the node's own machine signs in, or out (HttpApi 11.4).
+  if (local) {
+    offerAccount(you);
+  }
+
+  if (you === null) {
+    trust.unscored = local
+      ? "No trust is shown: sign in to see whom you trust."
+      : "No trust is shown: only a browser on the node's own machine, signed in, is shown it.";
     showTrust();
     return;
   }
@@ -391,6 +431,70 @@ async function readTrust() {
 
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function sayAccount(text, className) {
+  const said = byId("account-text");
+  said.textContent = text;
+  said.className = className || "note";
+}
+
+// Offer a local client signing in, or out, which is done here and not in each
+// application's page. Either reloads the page, which then reads the scores of
+// whoever is signed in.
+function offerAccount(session) {
+  byId("account").hidden = false;
+
+  if (session !== null) {
+    byId("account-title").textContent = "Signed in";
+    byId("signed-in").hidden = false;
+    byId("signed-in-text").textContent =
+      session.fallback_for && !session.fallback
+        ? `Signed in as ${session.username}, with the fallback password.`
+        : `Signed in as ${session.username}.`;
+    byId("sign-out").addEventListener("click", async () => {
+      byId("sign-out").disabled = true;
+      await call("DELETE", "/data/session").catch(() => null);
+      location.reload();
+    });
+    return;
+  }
+
+  const form = byId("sign-in");
+  const submit = form.querySelector("button");
+  form.hidden = false;
+  sayAccount("Sign in to use this node's applications as yourself. Your fallback password signs in as your fallback, should your identity be compromised.");
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    submit.disabled = true;
+    sayAccount("Signing in\u2026");
+
+    try {
+      // Once: the node looks twice, asking its peers between, and a person
+      // who tries again finds what they answered (HttpApi 11.4).
+      const result = await call("POST", "/data/session", {
+        username: byId("username").value,
+        password: byId("password").value,
+      });
+
+      if (result.ok) {
+        location.reload();
+        return;
+      }
+
+      sayAccount(
+        result.status === 503
+          ? "No identity that username and password open was found yet. The node " +
+              "has asked its peers, so try again in a moment."
+          : `Not signed in: ${refusal(result)}`,
+        "error",
+      );
+    } catch (error) {
+      sayAccount(error.message, "error");
+    }
+
+    submit.disabled = false;
+  });
 }
 
 // How many leading bits two hashes in hex share.

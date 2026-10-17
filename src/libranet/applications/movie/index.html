@@ -2049,7 +2049,7 @@ async function start() {
       `Signed in as ${state.owner.username}: add movies, edit them, and keep and share collections of your own.`;
   } else {
     byId("client-note").textContent = state.local
-      ? "This browser is on the node's own machine: add movies, edit them, and keep and share this node's collections. Sign in, in mail or the user directory, to keep your own."
+      ? "This browser is on the node's own machine: add movies, edit them, and keep and share this node's collections. Sign in on the home page to keep your own."
       : "This browser is not on the node's own machine, so it can only play. Movies are added there.";
   }
   byId("choose-playlist").hidden = false;
