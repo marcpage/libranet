@@ -3,31 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
+<meta name="color-scheme" content="dark">
 <title>Movies</title>
 <style>
+  /* Always dark, like a theater, with its red curtains for accents. */
   :root {
-    --background: #f6f6f4;
-    --surface: #ffffff;
-    --text: #1d1d1b;
-    --muted: #5d5d58;
-    --border: #d8d8d2;
-    --accent: #2a5db0;
-    --accent-text: #ffffff;
-    --bad: #b3261e;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --background: #161615;
-      --surface: #1f1f1d;
-      --text: #ececea;
-      --muted: #a8a8a2;
-      --border: #3a3a36;
-      --accent: #7ea9f0;
-      --accent-text: #0e1a2e;
-      --bad: #f2877e;
-    }
+    --background: #0d0b0b;
+    --surface: #1a1414;
+    --text: #f0e9e6;
+    --muted: #ab9f9b;
+    --border: #3d2b2b;
+    --accent: #c8102e;
+    --accent-text: #fff6f0;
+    --bad: #ff8a80;
   }
 
   * { box-sizing: border-box; }
@@ -100,7 +88,7 @@
     cursor: pointer;
   }
 
-  button.secondary { background: transparent; color: var(--accent); }
+  button.secondary { background: transparent; color: var(--text); }
   button.danger { background: transparent; color: var(--bad); border-color: var(--bad); }
   button.small { padding: 0.2rem 0.55rem; font-size: 0.85rem; }
   button:disabled { opacity: 0.6; cursor: default; }
@@ -485,6 +473,8 @@ const state = {
   selected: null,
   // The poster taken while editing: its bytes, as base64, and a URL showing it.
   poster: null,
+  // Whether the person left fullscreen while the movie chosen played.
+  leftFullscreen: false,
 };
 
 function byId(id) {
@@ -1145,6 +1135,7 @@ function select(folder) {
 
     if (source) {
       video.src = playlist.url(folder, info.video);
+      state.leftFullscreen = false;
     } else {
       video.removeAttribute("src");
       video.load();
@@ -1187,6 +1178,27 @@ function refreshControls() {
   byId("move-up").disabled = at <= 0;
   byId("move-down").disabled = at < 0 || at >= playlist.order.length - 1;
   byId("edit-movie").disabled = at < 0 || !playlist.movies.get(state.selected);
+}
+
+// A movie plays fullscreen, unless the person has left fullscreen while it played.
+function playFullscreen() {
+  const video = byId("video");
+
+  if (state.leftFullscreen || document.fullscreenElement || video.webkitDisplayingFullscreen) {
+    return;
+  }
+
+  if (video.requestFullscreen) {
+    video.requestFullscreen().catch(() => {});
+  } else if (video.webkitEnterFullscreen) {
+    video.webkitEnterFullscreen();
+  }
+}
+
+function leftFullscreen() {
+  if (!document.fullscreenElement) {
+    state.leftFullscreen = true;
+  }
 }
 
 function videoTrouble() {
@@ -1853,6 +1865,9 @@ async function start() {
 const video = byId("video");
 video.addEventListener("loadedmetadata", fillDuration);
 video.addEventListener("error", videoTrouble);
+video.addEventListener("play", playFullscreen);
+video.addEventListener("fullscreenchange", leftFullscreen);
+video.addEventListener("webkitendfullscreen", leftFullscreen);
 video.addEventListener("loadeddata", () => { byId("video-trouble").hidden = true; });
 byId("video-again").addEventListener("click", () => {
   byId("video-trouble").hidden = true;
