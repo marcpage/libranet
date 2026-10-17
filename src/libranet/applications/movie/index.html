@@ -232,7 +232,7 @@
     <h1>Movies</h1>
     <p class="subtitle" id="client-note">Asking the node&hellip;</p>
   </div>
-  <button type="button" class="secondary" id="choose-playlist" hidden>Playlists</button>
+  <button type="button" class="secondary" id="choose-playlist" hidden>Collections</button>
 </header>
 
 <main>
@@ -240,12 +240,12 @@
   <p class="state" id="page-state" role="status" hidden></p>
 
   <section id="chooser" aria-labelledby="chooser-heading" hidden>
-    <h2 id="chooser-heading">Playlists</h2>
+    <h2 id="chooser-heading">Collections</h2>
     <p class="state" id="chooser-state" role="status" hidden></p>
     <ul class="choices state" id="chooser-list"></ul>
     <div class="toolbar local-only" hidden>
-      <button type="button" id="new-playlist">New playlist</button>
-      <button type="button" class="secondary" id="import-playlist">Import a playlist</button>
+      <button type="button" id="new-playlist">New collection</button>
+      <button type="button" class="secondary" id="import-playlist">Import a collection</button>
     </div>
   </section>
 
@@ -323,11 +323,11 @@
 
 <dialog id="new-dialog" aria-labelledby="new-heading">
   <form id="new-form">
-    <h3 id="new-heading">New playlist</h3>
+    <h3 id="new-heading">New collection</h3>
     <div class="fields">
       <label class="wide">Name <input id="new-name" required autocomplete="off"></label>
     </div>
-    <p class="hint">Only this node keeps its list of playlists. A playlist itself is held by the
+    <p class="hint">Only this node keeps its list of collections. A collection itself is held by the
     network, encrypted, and can be read only by whoever is given its id.</p>
     <p class="result" id="new-result" role="status" hidden></p>
     <div class="buttons">
@@ -340,7 +340,7 @@
 <dialog id="file-dialog" aria-labelledby="file-heading">
   <h3 id="file-heading">Add a movie from a file</h3>
   <p class="hint">The folders this node offers. Choose a video, and it is imported into the
-  network, and added to this playlist.</p>
+  network, and added to this collection.</p>
   <nav class="crumbs" id="folder-path" aria-label="Where in the folders"></nav>
   <ul class="entries" id="folder-entries"></ul>
   <p class="result" id="folder-state" role="status" hidden></p>
@@ -366,8 +366,8 @@
 </dialog>
 
 <dialog id="share-dialog" aria-labelledby="share-heading">
-  <h3 id="share-heading">Share this playlist</h3>
-  <p class="hint">Whoever is given this id can play the whole playlist as it is now, and import
+  <h3 id="share-heading">Share this collection</h3>
+  <p class="hint">Whoever is given this id can play the whole collection as it is now, and import
   it on their own node. No one else can read it.</p>
   <p><code class="id" id="share-whole"></code></p>
   <div class="toolbar"><button type="button" class="secondary small" data-copy="share-whole">Copy</button></div>
@@ -390,7 +390,7 @@
 
 <dialog id="shared-dialog" aria-labelledby="shared-heading">
   <h3 id="shared-heading"></h3>
-  <p class="hint">Whoever is given this id can play this movie, and add it to a playlist of their
+  <p class="hint">Whoever is given this id can play this movie, and add it to a collection of their
   own.</p>
   <p><code class="id" id="shared-id"></code></p>
   <div class="toolbar"><button type="button" class="secondary small" data-copy="shared-id">Copy</button></div>
@@ -400,10 +400,10 @@
 </dialog>
 
 <dialog id="import-dialog" aria-labelledby="import-heading">
-  <h3 id="import-heading">Import a playlist</h3>
+  <h3 id="import-heading">Import a collection</h3>
   <form id="import-read">
     <div class="fields">
-      <label class="wide">Playlist id
+      <label class="wide">Collection id
         <input id="import-id" required autocomplete="off" spellcheck="false" placeholder="sha256/…">
       </label>
       <button type="submit">Read</button>
@@ -721,7 +721,7 @@ class Playlist {
     const file = await readEntry(bundle, PLAYLIST_FILE);
 
     if (!isObject(file) || !Array.isArray(file.order) || !file.order.every(isText)) {
-      throw new Error(`That bundle's ${PLAYLIST_FILE} is not a playlist's.`);
+      throw new Error(`That bundle's ${PLAYLIST_FILE} is not a collection's.`);
     }
 
     const order = [...new Set(file.order)];
@@ -827,7 +827,7 @@ function remember(entry) {
   try {
     localStorage.setItem(REMEMBERED, JSON.stringify(entry));
   } catch (error) {
-    console.warn(`This browser cannot remember the playlist chosen: ${error.message}`);
+    console.warn(`This browser cannot remember the collection chosen: ${error.message}`);
   }
 }
 
@@ -841,7 +841,7 @@ async function keepVersion(previous, next) {
     const index = list.findIndex((entry) => entry.name === next.name);
 
     if (previous === null && index >= 0) {
-      throw new Error(`This node already keeps a playlist named “${next.name}”.`);
+      throw new Error(`This node already keeps a collection named “${next.name}”.`);
     }
 
     if (index < 0) {
@@ -876,7 +876,7 @@ async function newest(name) {
   const entry = (await Kept.read()).find(name);
 
   if (!entry) {
-    throw new Error(`This node no longer keeps a playlist named “${name}”.`);
+    throw new Error(`This node no longer keeps a collection named “${name}”.`);
   }
 
   return Playlist.read(entry.bundle, name);
@@ -924,7 +924,7 @@ async function changePlaylist(
 // `source`, if any, and keeps it.
 async function makePlaylist(name, folders = [], source = null) {
   if ((await Kept.read()).find(name)) {
-    throw new Error(`This node already keeps a playlist named “${name}”.`);
+    throw new Error(`This node already keeps a collection named “${name}”.`);
   }
 
   const add = { [PLAYLIST_FILE]: { text: playlistText(name, folders) } };
@@ -1016,18 +1016,18 @@ async function showChooser() {
   try {
     kept = await Kept.read();
   } catch (error) {
-    show(status, `The playlists could not be read: ${error.message}`, true);
+    show(status, `The collections could not be read: ${error.message}`, true);
     return;
   }
 
   list.replaceChildren(...kept.list.map((entry) => playlistChoice(entry)));
 
   if (kept.list.length > 0) {
-    show(status, "Choose a playlist.");
+    show(status, "Choose a collection.");
   } else if (state.local) {
-    show(status, "This node keeps no playlists yet. Make one, or import one by its id.");
+    show(status, "This node keeps no collections yet. Make one, or import one by its id.");
   } else {
-    show(status, "This node keeps no playlists yet. They are made in a browser on the node's own machine.");
+    show(status, "This node keeps no collections yet. They are made in a browser on the node's own machine.");
   }
 }
 
@@ -1058,9 +1058,9 @@ function renderLibrary() {
   if (count > 0) {
     show(byId("library-state"), "");
   } else if (state.local) {
-    show(byId("library-state"), "This playlist holds no movies yet. Add one from a file, or by its id.");
+    show(byId("library-state"), "This collection holds no movies yet. Add one from a file, or by its id.");
   } else {
-    show(byId("library-state"), "This playlist holds no movies yet.");
+    show(byId("library-state"), "This collection holds no movies yet.");
   }
 
   if (state.selected !== null && !playlist.holds(state.selected)) {
@@ -1588,7 +1588,7 @@ async function addById() {
     info = await readEntry(movie, INFO_FILE);
   } catch (error) {
     if (error.status === 404) {
-      throw new Error(`That bundle holds no ${INFO_FILE}, so it is not a movie. A playlist's id is imported from Playlists.`);
+      throw new Error(`That bundle holds no ${INFO_FILE}, so it is not a movie. A collection's id is imported from Collections.`);
     }
 
     throw error;
@@ -1633,7 +1633,7 @@ function openShare() {
   );
   byId("share-choices").hidden = playlist.order.length === 0;
   byId("share-made").hidden = true;
-  show(byId("share-state"), playlist.order.length ? "" : "This playlist holds no movies yet.");
+  show(byId("share-state"), playlist.order.length ? "" : "This collection holds no movies yet.");
   byId("share-dialog").showModal();
 }
 
@@ -1685,7 +1685,7 @@ async function readImport() {
     source = await Playlist.read(bundle);
   } catch (error) {
     if (error.status === 404) {
-      throw new Error(`That bundle holds no ${PLAYLIST_FILE}, so it is not a playlist. A movie's id is added to a playlist with Add by id.`);
+      throw new Error(`That bundle holds no ${PLAYLIST_FILE}, so it is not a collection. A movie's id is added to a collection with Add by id.`);
     }
 
     throw error;
@@ -1693,7 +1693,7 @@ async function readImport() {
 
   const kept = await Kept.read();
   const target = byId("import-target");
-  const options = [make("option", "A new playlist")];
+  const options = [make("option", "A new collection")];
   options[0].value = "";
 
   for (const entry of kept.list) {
@@ -1728,7 +1728,7 @@ async function importChosen() {
   }
 
   if (target === "" && !name) {
-    throw new Error("Give the new playlist a name.");
+    throw new Error("Give the new collection a name.");
   }
 
   let skipped = 0;
@@ -1823,7 +1823,7 @@ async function start() {
   }
 
   byId("client-note").textContent = state.local
-    ? "This browser is on the node's own machine: add movies, edit them, and keep and share playlists."
+    ? "This browser is on the node's own machine: add movies, edit them, and keep and share collections."
     : "This browser is not on the node's own machine, so it can only play. Movies are added there.";
   byId("choose-playlist").hidden = false;
   const remembered = recall();
@@ -1839,7 +1839,7 @@ async function start() {
   try {
     entry = (await Kept.read()).find(remembered.name) || remembered;
   } catch (error) {
-    console.warn(`The playlists could not be read: ${error.message}`);
+    console.warn(`The collections could not be read: ${error.message}`);
   }
 
   try {
@@ -1906,7 +1906,7 @@ onSubmit("new-form", "new-result", async () => {
   const name = byId("new-name").value.trim();
 
   if (!name) {
-    throw new Error("Give the playlist a name.");
+    throw new Error("Give the collection a name.");
   }
 
   const playlist = await serially(() => makePlaylist(name));

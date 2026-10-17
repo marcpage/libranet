@@ -30,7 +30,7 @@ The applications that ship with every node show what the network is for:
 - **Backups.** Keep folders on your computer backed up into the network,
   encrypted so that only your node can read them.
 - **Movies.** Keep a movie library, play films from the network in a
-  browser, and share playlists with your friends.
+  browser, and share collections with your friends.
 - **People.** Make an identity that signs you in on any node that holds it,
   and find other people in a user directory.
 - **Mail.** Send messages to other people, encrypted so that only they can
@@ -139,18 +139,18 @@ Every node ships a movie library, at `/movie/` on the node. In a browser on
 the node's own computer, it imports a video from your Movies folder, or
 another the node offers, and keeps what you know of it: its title, year,
 rating, cast, a description, and a poster taken from a frame. Movies go into
-playlists.
+collections.
 
-Share a playlist with a friend by giving them its id. Their node's movie
+Share a collection with a friend by giving them its id. Their node's movie
 library imports it, all of it or only the movies they choose, and plays the
 films from the network. A film starts playing as soon as its first pieces
 arrive, and skipping ahead fetches the pieces from there, so no one waits
 for the whole film.
 
-A playlist is encrypted, so only those given its id can see what is in it.
+A collection is encrypted, so only those given its id can see what is in it.
 The films themselves are not. A browser on another computer can play the
-playlists your node keeps, but cannot change them, and anyone who can reach
-your node can see those playlists' ids.
+collections your node keeps, but cannot change them, and anyone who can reach
+your node can see those collections' ids.
 
 ### Use and share applications
 
@@ -181,7 +181,7 @@ what an application can do, and how to write one.
 Everything in Libranet is found by its content id, a cryptographic hash of
 its bytes. No object is larger than 1 MiB, so a larger file is cut into
 pieces, and a **bundle** lists the pieces. A directory bundle lists files
-and folders, and is how a backup, a playlist, and an application are kept.
+and folders, and is how a backup, a movie collection, and an application are kept.
 Content never changes: a changed file, or a new version of a folder, is new
 content, with a new id, which names the version it came from.
 
