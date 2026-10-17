@@ -337,18 +337,14 @@ def test_module_follows_the_unsigned_api_read_setting(
     assert not thread.is_alive()
 
 
-def _status(
-    host: str, port: int, path: str, *, named: str | None = None
-) -> tuple[int, str | None]:
+def _status(host: str, port: int, path: str, *, named: str | None = None) -> tuple[int, str | None]:
     """A GET from the root application's page, as a page of the node it reads into sends.
 
     Given ``named``, its ``Host`` header names that, as a browser that looked it up sends.
     """
     authority = named or f"{host}:{port}"
     connection = HTTPConnection(host, port, timeout=5)
-    connection.request(
-        "GET", path, headers={"Host": authority, "Referer": f"http://{authority}/"}
-    )
+    connection.request("GET", path, headers={"Host": authority, "Referer": f"http://{authority}/"})
     response = connection.getresponse()
     response.read()
     connection.close()
@@ -866,7 +862,9 @@ def test_config_is_reached_by_the_name_this_machine_gives_itself(tmp_path: Path)
             302,
             f"http://{name.casefold()}:{config_port}/config/",
         )
-        assert _authorized(host, config_port, "/config/api", named=f"{name}:{config_port}")[0] == 200
+        assert (
+            _authorized(host, config_port, "/config/api", named=f"{name}:{config_port}")[0] == 200
+        )
         # Past the checks to the endpoint, which has no backup state to say yet.
         assert _status(host, port, IMPORTS_PATH, named=f"{name}:{port}")[0] == 503
         assert _status(host, port, IMPORTS_PATH, named=f"evil.example:{port}")[0] == 403

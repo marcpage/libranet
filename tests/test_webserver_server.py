@@ -1647,7 +1647,7 @@ def test_config_is_served_as_the_name_this_machine_gives_itself(
 
     response, _ = _get(
         config_connection,
-        "/config/api/backups",
+        "/config/api",
         headers={**_credentials(), "Host": host, "Referer": f"http://{host}/config/"},
     )
 
