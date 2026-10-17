@@ -2055,8 +2055,9 @@ Work this implies:
   node goes by as it starts.
 - **A choice on `/config`**, with an endpoint beneath `/config/api`.
 - Trust Network §1, §2, §4.5 (new), and §5, HttpApi §7.3 and §11.7,
-  HighLevelDesign §4.6, the Operator Guide, the Module System, the Database
-  Schema, File Layout, the example configuration, and the README gain it.
+  HighLevelDesign §4.6, the Operator Guide, the Module System, Messages, the
+  Database Schema, File Layout, the example configuration, and the README
+  gain it.
 
 **Testable in isolation:** library tests of the trust a score makes, and of
 `node.trust`'s payload, the node itself always trusted and allowed; tests of
@@ -2074,14 +2075,18 @@ address asked for.
 
 Built with 847 lines of non-test Python, 40 of them replacing removed ones,
 and 996 of tests, 8 of them replacing removed ones. The `/config` page gains
-62 lines. All of it was committed together as `cc8e244`. As that is more than
-500, it divides into three change sets, each green alone, in this order:
+62 lines. As that is more than 500, it went in as three change sets, each
+green alone, in this order:
 
 | Set | What a reviewer answers | Files | Lines |
 | --- | --- | --- | --- |
-| 1 | Is whom the node trusts said and kept right? | `identity/trust.py` (`TrustState`, `states`), `messaging/node_trust.py`, the three `node.trust*` events, the stats table, its two methods and handlers, with their tests and the Database Schema | About 211 |
-| 2 | Does the node build its own scores, and say them? | `webserver/peer_trust.py`, `protocol/connecting_requests.py`, the setting, the web server module, `OwnTrust` handing each version to the build, `build_config_router`'s `peers`, with their tests, the Trust Network, File Layout, and the example configuration | About 431 |
-| 3 | Does the node refuse what it does not allow? | The connection manager, `DialOutcome.NOT_TRUSTED` and its `403`, the signature guard and its refusal, `Connecting` and its routes, the page, with their tests, and the other documents | About 205 |
+| 1 (#388) | Is whom the node trusts said and kept right? | `identity/trust.py` (`TrustState`, `states`), `messaging/node_trust.py`, the three `node.trust*` events, the stats table, its two methods and handlers, with their tests and the Database Schema | 211, 3 replacing; 195 of tests |
+| 2 (#389) | Does the node build its own scores, and say them? | `webserver/peer_trust.py`, `protocol/connecting_requests.py`, the setting, the web server module, `OwnTrust` handing each version to the build, `build_config_router`'s `peers`, with their tests, Messages, the Module System, File Layout, the Operator Guide's setting, and the example configuration | 424, 14 replacing; 487 of tests |
+| 3 | Does the node refuse what it does not allow? | The connection manager, `DialOutcome.NOT_TRUSTED` and its `403`, the signature guard and its refusal, `Connecting` and its routes, the page, with their tests, the tests of `protocol/connecting_requests.py`, and the other documents | 222, 33 replacing; 314 of tests |
+
+Sets 1 and 2 said nothing of what only set 3 builds, the connection manager
+receiving `node.trust` and the guard refusing, and set 3 added it back, so
+the three replace 50 lines between them, rather than 40.
 
 - **`TrustState`** (`identity/trust.py`) is what a score makes of an
   identity, `TRUSTED` (1), `UNKNOWN` (0), or `UNTRUSTED` (-1), and
