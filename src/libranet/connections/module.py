@@ -21,6 +21,14 @@ it for a while after enough of them by leaving it out of the candidate list
 (Phase 2 Step 26). Connecting and talking to peers happen on background
 threads, so the receive loop never waits on the network.
 
+It connects to no node this node does not allow: one it distrusts, or one it
+does not trust while the operator has it connect only to the nodes it trusts,
+as the web server says in ``node.trust`` (Phase 5 Step 113,
+:class:`~libranet.messaging.node_trust.NodeTrust`). It dials nothing until
+the web server first says so, leaves out each candidate whose id it does not
+allow, takes in no peer it does not allow, whatever it was dialed as, and
+closes the connection of a peer as soon as it is no longer allowed.
+
 An address the operator asks the node to connect to on ``/config``
 (``address.dial_requested`` ``{"dial_id", "endpoint"}``, Phase 5 Step 109) is
 dialed at once, outside the peer mix, and whatever rest it may be under,
@@ -31,7 +39,8 @@ the web server, which waits for it to answer the operator::
 
 ``outcome`` is a :class:`~libranet.messaging.events.DialOutcome`. ``node_id``
 is the node reached there, or ``null`` if none was, and ``detail`` says why
-none was. A node reached is taken in, and learned, as any node dialed is.
+none was, or why the node reached is not one this node connects to. A node
+reached is taken in, and learned, as any node dialed is, if it is allowed.
 
 Each address a peer was observed at (``nodes.received`` marking it
 ``observed``), whether by this module or by the web server, is looked up in
@@ -147,7 +156,7 @@ from logging import Logger
 from queue import Empty, SimpleQueue
 from threading import Lock, Thread
 from time import time
-from typing import Any, Callable, ClassVar, Generic, Hashable, Mapping, Sequence, TypeVar
+from typing import Any, Callable, ClassVar, Final, Generic, Hashable, Mapping, Sequence, TypeVar
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError
@@ -167,9 +176,14 @@ from libranet.messaging.connected_peers import ConnectedPeers
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import AddressSource, ConnectionDirection, DialOutcome, EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
+from libranet.messaging.node_trust import NodeTrust
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.protocol.search import normalize_prefix
+
+# Why no peer is taken in before the web server first says whom this node
+# trusts.
+_TRUST_UNKNOWN: Final = "this node does not know yet whom it trusts"
 
 
 @dataclass(frozen=True)
@@ -386,13 +400,14 @@ class _Dialing:
     own_endpoints: set[str] = field(default_factory=set)
     duplicates: dict[str, ContentId] = field(default_factory=dict)
 
-    def available(self, peers: Mapping[ContentId, _Peer]) -> list[Candidate]:
+    def available(self, peers: Mapping[ContentId, _Peer], trust: NodeTrust) -> list[Candidate]:
         """The candidates that may be dialed now, each with only the endpoints that may be.
 
-        A candidate being dialed or resting may not. Nor may an endpoint
-        that is this node, is in use by a connection to one of ``peers`` or
-        one being opened, or reaches one of ``peers`` at another endpoint.
-        Called under the module's lock.
+        A candidate being dialed or resting may not, nor one whose id
+        ``trust`` does not allow. Nor may an endpoint that is this node, is
+        in use by a connection to one of ``peers`` or one being opened, or
+        reaches one of ``peers`` at another endpoint. Called under the
+        module's lock.
         """
         unusable = (
             self.own_endpoints
@@ -404,6 +419,9 @@ class _Dialing:
 
         for candidate in self.candidates:
             if candidate.key in self.pending or candidate.key in self.resting:
+                continue
+
+            if candidate.node_id is not None and not trust.allows(candidate.node_id):
                 continue
 
             usable = candidate.keeping(lambda endpoint: endpoint not in unusable)
@@ -478,6 +496,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             EventType.DATA_STORED,
             EventType.PEERS_CONNECTED_REQUESTED,
             EventType.DIAL_REQUESTED,
+            EventType.NODE_TRUST,
         }
     )
 
@@ -505,6 +524,8 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         self._lock = Lock()
         self._running = False
         self._peers: dict[ContentId, _Peer] = {}
+        # None until the web server first says whom this node trusts.
+        self._trust: NodeTrust | None = None
         self._dialing = _Dialing()
         self._searches = _Searching()
         self._pushing = _Pushing()
@@ -518,6 +539,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
                 EventType.DATA_STORED: self._on_data_stored,
                 EventType.PEERS_CONNECTED_REQUESTED: self._on_peers_connected_requested,
                 EventType.DIAL_REQUESTED: self._on_dial_requested,
+                EventType.NODE_TRUST: self._on_node_trust,
             }
         )
 
@@ -647,6 +669,25 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         self._reload_candidates()
         self._maintain()
 
+    def _on_node_trust(self, message: Message) -> None:
+        """Take whom this node trusts, close the peers it no longer allows, and tend the mix."""
+        trust = NodeTrust.from_payload(self.exchange.node_id, message)
+
+        with self._lock:
+            self._trust = trust
+            refused = [peer for node_id, peer in self._peers.items() if not trust.allows(node_id)]
+
+        for peer in refused:
+            self.logger.info(
+                "Closing the connection to %s at %s: %s",
+                peer.session.node_id,
+                peer.session.endpoint,
+                trust.refusal(peer.session.node_id),
+            )
+            peer.session.close()
+
+        self._maintain()
+
     def _on_dial_requested(self, message: Message) -> None:
         """Dial an address the operator asked for, on its own thread, unless a peer is there."""
         dial_id = message["dial_id"]
@@ -700,6 +741,9 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         elif self._stopping():
             self._publish_dialed(dial_id, DialOutcome.UNREACHED, detail="the node is stopping")
 
+        elif refusal := self._refusal(session.node_id):
+            self._publish_dialed(dial_id, DialOutcome.NOT_TRUSTED, node_id, detail=refusal)
+
         else:
             # Connected at another endpoint, which this one was verified as.
             self._publish_dialed(dial_id, DialOutcome.ALREADY_CONNECTED, node_id)
@@ -708,6 +752,13 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         """Whether the module is stopping, or has stopped."""
         with self._lock:
             return not self._running
+
+    def _refusal(self, node_id: ContentId) -> str:
+        """Why this node does not connect to ``node_id``, as a clause; empty if it does."""
+        with self._lock:
+            trust = self._trust
+
+        return _TRUST_UNKNOWN if trust is None else trust.refusal(node_id)
 
     def _publish_dialed(
         self,
@@ -883,13 +934,13 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             self._dialing.candidates = dialable
 
     def _maintain(self) -> None:
-        """Dial whatever the peer mix is short of."""
+        """Dial whatever the peer mix is short of, once it is known whom this node trusts."""
         with self._lock:
-            if not self._running:
+            if not self._running or self._trust is None:
                 return
 
             chosen = PeerMix(self._config.peers, self.exchange.node_id).choose(
-                self._dialing.available(self._peers),
+                self._dialing.available(self._peers, self._trust),
                 [
                     *self._peers,
                     *(candidate.node_id for candidate in self._dialing.pending.values()),
@@ -1000,7 +1051,8 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
     def _admit(self, session: PeerSession) -> _Peer | None:
         """Take a peer that has proven its node id into the mix, unless it is not wanted.
 
-        It is not wanted if it is this node, if that node is already
+        It is not wanted if it is this node, if this node does not allow it,
+        or does not know yet whom it trusts, if that node is already
         connected, or if the module is stopping. A node already connected
         was reached at this endpoint all the same, which stats is told, and
         the endpoint is not dialed again while the first connection lasts.
@@ -1019,6 +1071,12 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             elif session.node_id == self.exchange.node_id:
                 self._dialing.own_endpoints.add(session.endpoint)
                 refusal = "it is this node"
+
+            elif self._trust is None:
+                refusal = _TRUST_UNKNOWN
+
+            elif not self._trust.allows(session.node_id):
+                refusal = self._trust.refusal(session.node_id)
 
             elif session.node_id in self._peers:
                 self._dialing.duplicates[session.endpoint] = session.node_id

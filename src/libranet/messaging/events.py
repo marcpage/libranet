@@ -51,7 +51,7 @@ class EventType(StrEnum):
 
     # Whom this node trusts, and so which peers it connects to (Phase 5 Step
     # 113).
-    NODE_TRUST = "node.trust"  # webserver → stats
+    NODE_TRUST = "node.trust"  # webserver → connections, stats
     NODE_TRUST_REQUESTED = "node.trust_requested"  # webserver → stats
     NODE_TRUST_STORED = "node.trust_stored"  # stats → webserver
 
@@ -132,6 +132,7 @@ class DialOutcome(StrEnum):
     CONNECTED = "connected"  # a node proved its id there, and was taken into the mix
     ALREADY_CONNECTED = "already_connected"  # the node there was connected already
     THIS_NODE = "this_node"  # the address is this node's own
+    NOT_TRUSTED = "not_trusted"  # a node this node does not connect to; `detail` says why
     UNREACHED = "unreached"  # no node proved its id there; the message's `detail` says why
 
 

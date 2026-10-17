@@ -128,6 +128,19 @@ def invalid_signature_response(request: Request, reason: str | None) -> Response
     return replace(response, close=True)
 
 
+def peer_not_allowed_response(request: Request, node_id: ContentId) -> Response:
+    """The ``403`` for a node this node does not connect to, which ends the connection.
+
+    The node serves no peer it would not connect to (Phase 5 Step 113).
+    """
+    response = status_response(
+        request,
+        HTTPStatus.FORBIDDEN,
+        f"This node does not serve {node_id}, as it does not connect to it.",
+    )
+    return replace(response, close=True)
+
+
 def content_unavailable_response(
     request: Request, detail: str, retry_after_seconds: int
 ) -> Response:

@@ -17,18 +17,26 @@ identity (uploads) refuse unsigned requests themselves.
 A signature may cover the body, so the body is read before the check; a
 signed request whose body cannot be read within ``max_body_bytes`` is refused
 unread.
+
+A request signed by a node this node does not connect to, whose trust says
+it is untrusted, or not trusted while the node connects only to the nodes it
+trusts, is refused ``403``, and its connection closed, whether its signature
+is verified or its key not yet held (Phase 5 Step 113). The node serves no
+peer it would not connect to.
 """
 
 from __future__ import annotations
 from dataclasses import KW_ONLY, dataclass, replace
-from typing import Final, Mapping
+from typing import Callable, Final, Mapping
 
+from libranet.cas.content_id import ContentId
 from libranet.identity.authentication import AuthenticationStatus, RequestAuthenticator
 from libranet.identity.signatures import SIGNATURE_HEADER, SIGNATURE_INPUT_HEADER
 from libranet.protocol.http_syntax import API_PREFIX
 from libranet.webserver.http_types import READ_METHODS, Request, Response
 from libranet.webserver.request_refusals import (
     invalid_signature_response,
+    peer_not_allowed_response,
     signature_required_response,
     unreadable_body_response,
 )
@@ -38,12 +46,17 @@ _SIGNATURE_FIELDS: Final = frozenset({SIGNATURE_HEADER.lower(), SIGNATURE_INPUT_
 
 @dataclass(frozen=True)
 class SignatureGuard:
-    """A :data:`~libranet.webserver.router.Guard` applying the signature policy."""
+    """A :data:`~libranet.webserver.router.Guard` applying the signature policy.
+
+    A request signed by a node ``allows`` does not allow is refused; with no
+    ``allows``, every node is allowed.
+    """
 
     authenticator: RequestAuthenticator
     max_body_bytes: int
     _: KW_ONLY
     allow_unsigned_api_reads: bool
+    allows: Callable[[ContentId], bool] | None = None
 
     def __call__(self, request: Request) -> Request | Response:
         if not _is_signed(request.headers):
@@ -63,6 +76,11 @@ class SignatureGuard:
 
         if result.rejected:
             return invalid_signature_response(request, result.reason)
+
+        signer = result.node_id
+
+        if signer is not None and self.allows is not None and not self.allows(signer):
+            return peer_not_allowed_response(request, signer)
 
         verified = result.status is AuthenticationStatus.VERIFIED
 

@@ -794,6 +794,12 @@ Nodes MAY restrict `/data` communication by clients to local connections if they
 do not have the node ID headers. Nodes MAY restrict `/data` communications in
 general if they do not have the node ID headers.
 
+A node that builds scores of its own (Trust Network §4.5) connects to no
+node it does not allow: one they call untrusted, and, if its operator says
+so, one they do not call trusted. It answers a request signed by such a node
+`403 Forbidden`, and closes the connection, whether or not it holds the
+signer's key yet (§11.2). An unsigned request is answered as any is.
+
 ### 7.4 Pushing New Content
 
 In general, a node SHOULD move content it receives or creates, other than
@@ -2117,7 +2123,9 @@ each change over the version the one before it placed. Both endpoints are
 served as every endpoint beneath `/config/api` is (§2.3), and their answers
 carry no `Cache-Control`, as the list is public. The scores of a person who
 trusts the node reach through its list, and read a change to it at their
-next sign-in (Trust Network §4.3).
+next sign-in (Trust Network §4.3). The node builds scores of its own from
+its list, which score a change to it at once, and say which nodes it
+connects to (Trust Network §4.5, §7.3).
 
 ### 11.8 What a Node Says of Itself
 

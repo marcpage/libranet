@@ -38,11 +38,21 @@ Reads and changes are made one at a time, in the order they come, each change
 over the version the one before it placed. Each version placed is handed to
 the build of the node's own scores, which score again, as a person's change is
 handed to theirs (Phase 5 Step 113).
+
+Whether the node connects only to the nodes it trusts is read and changed as
+well (:class:`Connecting`)::
+
+    GET /config/api/connecting
+    PUT /config/api/connecting   {"only_trusted": true}
+
+Each answers what the node does now, ``{"only_trusted": false}`` until the
+operator says otherwise. It never connects to a node it distrusts.
 """
 
 from __future__ import annotations
 from dataclasses import KW_ONLY, dataclass, field
 from http import HTTPStatus
+from logging import getLogger
 from typing import Final
 
 from libranet.bundle.content import ContentSource
@@ -50,13 +60,18 @@ from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.trust import ENTRIES_FIELD
 from libranet.identity.versions import VERSION_FIELD
 from libranet.messaging.publishing import Publish
+from libranet.protocol.connecting_requests import ConnectingRequest
 from libranet.webserver.costly_work import Turns
 from libranet.webserver.drop_handler import DropHandler
-from libranet.webserver.http_types import Request, Response, json_response
+from libranet.webserver.http_types import Request, Response, json_response, status_response
+from libranet.webserver.peer_trust import PeerTrust
+from libranet.webserver.request_refusals import parsed_or_refusal
 from libranet.webserver.search_handler import SearchHandler
 from libranet.webserver.trust_builds import TrustBuilds
 from libranet.webserver.trust_handlers import TrustEntry, TrustListChanges
 from libranet.webserver.trust_lists import TrustLists
+
+_LOGGER = getLogger(__name__)
 
 # What a read or a change refused while a version found is not held says.
 _MISSING_DETAIL: Final = (
@@ -164,3 +179,37 @@ class OwnTrust:
             {**stored.value(), "signer": str(self.node.node_id), "version": changed.version},
             HTTPStatus.CREATED,
         )
+
+
+@dataclass(frozen=True)
+class Connecting:
+    """The endpoints reading and changing whether the node connects only to the nodes it trusts.
+
+    ``peers`` keeps it, and the connection manager is told of a change.
+    """
+
+    peers: PeerTrust
+
+    def read(self, _request: Request) -> Response:
+        """``GET /config/api/connecting``: whether the node connects only to the nodes it trusts."""
+        return json_response(ConnectingRequest(self.peers.only_trusted).value())
+
+    def change(self, request: Request) -> Response:
+        """``PUT /config/api/connecting``: have the node connect only to those it trusts, or not."""
+        asked = parsed_or_refusal(request, ConnectingRequest.from_value)
+
+        if isinstance(asked, Response):
+            return asked
+
+        try:
+            self.peers.connect_only_trusted(asked.only_trusted)
+
+        except OSError as error:
+            _LOGGER.error("Cannot keep which nodes this node connects to: %s", error)
+            return status_response(
+                request,
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                f"Which nodes this node connects to could not be kept: {error}",
+            )
+
+        return json_response(asked.value())

@@ -289,8 +289,8 @@ names it, as for content it does not hold. An address the operator asks to
 connect to on `/config` it hands the connection manager, and waits for what
 came of it, `address.dialed`, to answer (Phase 5 Step 109). It builds the
 node's own trust scores, from its list outward, starting from what stats kept
-of them (`node.trust_stored`), and says whom they trust (`node.trust`, Phase 5
-Step 113).
+of them (`node.trust_stored`), says whom they trust (`node.trust`), and
+refuses a request a node it does not allow signs (Phase 5 Step 113).
 It subscribes to only five events, `app.path_resolved`, `backup.state`,
 `peers.connected_requested`, `address.dialed`, and `node.trust_stored`, and
 publishes twenty-one.
@@ -314,7 +314,9 @@ Owns every outgoing connection. It keeps up the peer mix (HighLevelDesign
 or a connection opens, fails, or closes. An address the operator asks to
 connect to on `/config` (`address.dial_requested`) it dials at once, outside
 the mix, and says what came of it (`address.dialed`, Phase 5 Step 109). It
-searches connected peers for
+dials nothing until the web server says whom the node trusts (`node.trust`),
+and then connects to no node it does not allow, closing a connection as
+soon as it does not (Phase 5 Step 113). It searches connected peers for
 content the fetcher asks for (`fetch.requested`), pushes new content to the
 best-matching peer (`data.stored`), in pipelined batches when it arrives
 faster than it can be sent, and offers content the eviction module wants to
@@ -869,7 +871,7 @@ to end its loop.
 | `address.verified` | | P | | S | | | | |
 | `address.dial_requested` | P | S | | | | | | |
 | `address.dialed` | S | P | | | | | | |
-| `node.trust` | P | | | S | | | | |
+| `node.trust` | P | S | | S | | | | |
 | `node.trust_requested` | P | | | S | | | | |
 | `node.trust_stored` | S | | | P | | | | |
 | *Connections and fetching* | | | | | | | | |
@@ -915,7 +917,7 @@ to end its loop.
 | `data.blocked` | P | | | S | | | S | |
 | *Lifecycle* | | | | | | | | |
 | `shutdown` | S | S | S | S | S | S | S | S |
-| **Publishes / subscribes** | 21 / 5 | 16 / 8 | 2 / 1 | 5 / 23 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 |
+| **Publishes / subscribes** | 21 / 5 | 16 / 9 | 2 / 1 | 5 / 23 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 |
 
 The `shutdown` row and its subscriptions are implicit: every module
 receives it without listing it, and nothing publishes it (§6.4). The totals
@@ -940,7 +942,7 @@ A content id is an `algorithm` and a lower-case hex `hash`, or, in
 | `nodes.updated` | — | The candidate list, `lists/candidates.json`, changed |
 | `address.verified` | `node_id`, `endpoint` | The endpoint reached a node already connected at another |
 | `address.dial_requested` | `dial_id`, `endpoint` | The operator asked on `/config` to connect to this address; dial it now |
-| `address.dialed` | `dial_id`, `outcome`, `node_id`, `detail` | What came of that dial: `connected`, `already_connected`, `this_node`, or `unreached`, with the node reached, or why none was |
+| `address.dialed` | `dial_id`, `outcome`, `node_id`, `detail` | What came of that dial: `connected`, `already_connected`, `this_node`, `not_trusted`, or `unreached`, with the node reached, or why none was or it was not taken in |
 | `node.trust` | `trusted`, `untrusted`, `only_trusted` | Whom the node's own scores trust and distrust, any other being of unknown trust, and whether it connects only to the trusted |
 | `node.trust_requested` | — | Say whom the node trusted and distrusted when it last said so |
 | `node.trust_stored` | `trusted`, `untrusted` | Whom the node trusted and distrusted, as stats kept it |
@@ -1007,7 +1009,7 @@ flowchart TB
     web <-->|"app.path_not_found<br/>app.path_resolved"| unb
     web <-->|"backup requests<br/>backup.state"| backup
     web -->|"data.put_completed"| val
-    web <-->|"data.search_requested, address.dial_requested<br/>address.dialed"| conn
+    web <-->|"data.search_requested, address.dial_requested, node.trust<br/>address.dialed"| conn
     web <-->|"node.trust_requested<br/>node.trust_stored"| stats
     conn -->|"data.put_completed"| val
     val --> stored

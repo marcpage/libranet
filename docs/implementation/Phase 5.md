@@ -76,6 +76,10 @@ ordinary content, signed by its owner.
 - **Trusting yourself.** The scores of whoever is signed in always trust
   them, at a step of their own, whatever any list says, and the directory
   marks them so. Step 112.
+- **Connecting only to nodes it trusts.** The node builds trust scores of its
+  own from its list, and neither connects to nor serves a node they distrust,
+  nor, if its operator says so on `/config`, one they do not trust. It keeps
+  each node's last state in its database. Step 113.
 
 ## 3. How to Read the Steps Below
 
@@ -1913,7 +1917,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 112 — Trusting Yourself
+## Step 112 — Trusting Yourself ✅
 
 **Issue:** #372. **Depends on:** Step 100's reads of the scores, and Step
 101's marks in the directory.
@@ -2008,6 +2012,199 @@ My calls, not yet reviewed:
 
 ---
 
+## Step 113 — Connecting Only to Nodes It Trusts
+
+**Issue:** #383. **Depends on:** Steps 99 and 110, and Phase 2 Steps 23, 25,
+and 26.
+
+Settled in the issue:
+
+- **Using the node's trust list, it does not connect to untrusted nodes.**
+- **A setting on `/config` switches it to connecting only to trusted
+  nodes.** By default it connects to the trusted and to those of unknown
+  trust, and never to the untrusted.
+- **The last trust state of each node is kept in the database.**
+- **The code working out the trust of a node's id answers trusted, 1, for
+  the node itself**, though nothing here turns on it.
+
+Step 110 placed the node's own list, but nothing on the node read it: it
+mattered only to whoever trusts the node. A node connected to any node it
+could reach, and served any peer that reached it.
+
+Ruled when it was built (2026-10-17):
+
+- **The node's trust is scores of its own, built from its list outward**, as
+  a person's are (Trust Network §4): the nodes it trusts are step 1, the
+  lists of those are read at step 2, and so on. A node scoring above 0 is
+  trusted, below 0 untrusted, and any other of unknown trust. My recommended
+  option, its own list alone, was turned down. This replaces Step 110's call
+  that no scores are built from the node's list on the node, and Step 112's
+  ruling that a node builds no scores of its own.
+- **Both directions**, my recommended option: the node dials no node it does
+  not allow, and refuses any request one signs. Refusing only what it dials
+  was turned down.
+
+Work this implies:
+
+- **A build of the node's own scores** in the web server, which reads the
+  lists, publishing whom they trust for the modules that act on it.
+- **The connection manager** dials no node it does not allow, takes none in,
+  and closes a connection to one as soon as it is not allowed.
+- **The web server** refuses a request signed by a node it does not allow.
+- **The statistics database** keeps each identity's last state, which the
+  node goes by as it starts.
+- **A choice on `/config`**, with an endpoint beneath `/config/api`.
+- Trust Network §1, §2, §4.5 (new), and §5, HttpApi §7.3 and §11.7,
+  HighLevelDesign §4.6, the Operator Guide, the Module System, Messages, the
+  Database Schema, File Layout, the example configuration, and the README
+  gain it.
+
+**Testable in isolation:** library tests of the trust a score makes, and of
+`node.trust`'s payload, the node itself always trusted and allowed; tests of
+the node's own build against a stand-in reader, saying nothing until stats
+answers or a build is complete, laying a build under way over what was kept,
+scoring a change at once, building again after the setting's interval while
+keeping the last, and keeping the choice in its file, a file that cannot be
+read meaning only the trusted; the signature guard refusing a node not
+allowed, with or without its key; the endpoints; stats keeping and answering
+the states across a restart; and the connection manager against fixture
+peers: dialing nothing until told, never a distrusted node, only the trusted
+when only those are allowed, closing a peer no longer allowed and not dialing
+it again, taking in no seed that proves to be one, and saying so of an
+address asked for.
+
+Built with 847 lines of non-test Python, 40 of them replacing removed ones,
+and 996 of tests, 8 of them replacing removed ones. The `/config` page gains
+62 lines. As that is more than 500, it went in as three change sets, each
+green alone, in this order:
+
+| Set | What a reviewer answers | Files | Lines |
+| --- | --- | --- | --- |
+| 1 (#388) | Is whom the node trusts said and kept right? | `identity/trust.py` (`TrustState`, `states`), `messaging/node_trust.py`, the three `node.trust*` events, the stats table, its two methods and handlers, with their tests and the Database Schema | 211, 3 replacing; 195 of tests |
+| 2 (#389) | Does the node build its own scores, and say them? | `webserver/peer_trust.py`, `protocol/connecting_requests.py`, the setting, the web server module, `OwnTrust` handing each version to the build, `build_config_router`'s `peers`, with their tests, Messages, the Module System, File Layout, the Operator Guide's setting, and the example configuration | 424, 14 replacing; 487 of tests |
+| 3 | Does the node refuse what it does not allow? | The connection manager, `DialOutcome.NOT_TRUSTED` and its `403`, the signature guard and its refusal, `Connecting` and its routes, the page, with their tests, the tests of `protocol/connecting_requests.py`, and the other documents | 222, 33 replacing; 314 of tests |
+
+Sets 1 and 2 said nothing of what only set 3 builds, the connection manager
+receiving `node.trust` and the guard refusing, and set 3 added it back, so
+the three replace 50 lines between them, rather than 40.
+
+- **`TrustState`** (`identity/trust.py`) is what a score makes of an
+  identity, `TRUSTED` (1), `UNKNOWN` (0), or `UNTRUSTED` (-1), and
+  **`TrustScores.states()`** each identity the lists make trusted or
+  untrusted.
+- **`NodeTrust`** (`messaging/node_trust.py`) is whom the node trusts and
+  distrusts, and whether it allows only the trusted. `of()` answers
+  `TRUSTED` for the node itself, whatever the states say, `allows()` whether
+  a node is allowed, and `refusal()` why not. It is the payload of
+  `node.trust` `{"trusted", "untrusted", "only_trusted"}` (web server to the
+  connection manager and stats) and of `node.trust_stored`
+  `{"trusted", "untrusted"}` (stats to the web server, answering
+  `node.trust_requested`).
+- **`PeerTrust`** (`webserver/peer_trust.py`) builds the node's scores with
+  a `TrustBuilds` of its own, started as the web server starts and again
+  every `identity.node_trust_rebuild_seconds` (3600), and reads them at most
+  once a second from the module's idle loop. Until a build is complete, it
+  lays what the build has read over the last complete one, or, before any,
+  over what stats kept; once either is known it publishes `node.trust`
+  whenever it changes. **`ConnectingRule`** keeps the choice in
+  `connecting.json`, in the data directory.
+- **`OwnTrust`** hands each version of the node's list it places to that
+  build, in the change's turn, which scores it at once.
+- **The connection manager** dials nothing until the first `node.trust`,
+  leaves out each candidate it does not allow, refuses to take in a peer it
+  does not allow, whatever it was dialed as, and closes each connection that
+  `node.trust` no longer allows. An address asked for on `/config` that
+  reaches such a node is `DialOutcome.NOT_TRUSTED`, `403`.
+- **`SignatureGuard`** answers a request signed by a node `peers` does not
+  allow `403`, closing the connection, before the request is counted as the
+  peer's (Phase 2 Step 53).
+- **Stats** keeps the states in a table of their own, `node_trust`,
+  replaced whole in one transaction, and answers `node.trust_requested`
+  with them.
+- **`GET` and `PUT /config/api/connecting`** `{"only_trusted": true}`
+  (`Connecting`, in `webserver/node_trust_handlers.py`) read and change the
+  choice. **`/config`'s "Trust"** gains "Which nodes this node connects to".
+
+Checked live, with three new nodes from the scratchpad on `127.0.0.1`, A, B,
+and C, A and B each connected to C, and A to B, on `/config`. B distrusted
+C, then A trusted B: A trusted B at once, and seven seconds later, having
+fetched B's list from B, distrusted C at step 2, and closed its connection to
+C, "this node does not trust" it. "Connect to a node" on A, given C's
+address, was `403`, saying so. When C next dialed A and B, each answered its
+first request `403` and closed the connection. A's `connecting.json` held the
+choice once made on `/config`, a body of `"yes"` was `400`, and A stayed
+connected to B, which it trusts. Its `node_trust` table held B as 1 and C as
+-1. Restarted, A said "trusts 1, distrusts 1" as its web server started, from
+what stats kept, and dialed only B, though C headed its candidate list. In
+headless Chrome over CDP, A's `/config` showed "Only the nodes it trusts", and
+saving each choice said what the node now did, and the node then answered it.
+No node logged a warning or an error but those of connections closed.
+
+My calls, not yet reviewed:
+
+- **The state is kept in a table of its own, `node_trust`**, rather than a
+  column of `node_stats`: the scores name people too, and nodes this node has
+  never dealt with, and a `node_stats` row for each would list them all as
+  peers in `GET /data/peers`. An identity of unknown trust has no row, and
+  the node itself none.
+- **What was kept is what the node goes by as it starts.** The web server
+  asks stats for it, and lays its build over it until the build is complete,
+  so that a node only another's list distrusts is not dialed in the seconds
+  after a restart, and a node trusted at step 2 is dialed at once though
+  only the trusted are allowed.
+- **The connection manager dials nothing until it is told**, and takes in no
+  peer, an address asked for on `/config` included, which is `403`, saying
+  the node does not know yet whom it trusts. The web server tells it
+  within moments of starting, once stats answers.
+- **A request is refused by the signer it claims**, whether its key is held
+  or not: refusing on a claim harms only whoever makes it. Unsigned requests,
+  a browser's, are served as before.
+- **`403` with `about:blank`**, as a status says it all, and no problem type
+  of its own; the connection is closed, as a failed signature's is.
+- **A peer no longer allowed is closed at once**, and rests as any closed
+  peer does. A seed whose id is not known, which proves to be a node not
+  allowed, is not taken in, and rests by its endpoint.
+- **"Connect to a node" reaching a node not allowed is `403`**, not taken
+  in, rather than connecting because the operator asked: the operator
+  trusts it first. The Operator Guide says so.
+- **The choice is kept in a file of the web server's own**, as the
+  application registry is, rather than the configuration file, since
+  `/config` changes it while the node runs. A file that cannot be read means
+  only the trusted, with a warning, rather than more than the operator may
+  have said.
+- **The node's build reaches as a person's does**, with
+  `identity.trust_max_steps`, `trust_max_lists`, and `trust_list_wait_seconds`,
+  and is built again hourly, a new setting,
+  `identity.node_trust_rebuild_seconds`. Until a rebuild is complete the last
+  one stands, with what the rebuild has read laid over it.
+- **The scores are read from the idle loop**, at most once a second, rather
+  than told by the build, so that `TrustBuilds` is unchanged; `PeerTrust`
+  starts it as a sign-in would, with `session_started`.
+- **The node reads lists as a person's build does**, through a search of its
+  own over what it holds and its own uploads, so that a version it has just
+  placed is read before the validator stores it.
+- **The setting is `only_trusted`**, at `/config/api/connecting`,
+  implementation-defined as the other `/config` endpoints are, and the
+  Operator Guide (§4.7) says how it is used. The page calls it "Which nodes
+  this node connects to", with "The nodes it trusts, and those of unknown
+  trust" and "Only the nodes it trusts".
+
+Found while building it:
+
+- **Step 104's finding holds here too**: a made-up id sharing 16 bits with
+  `trust:{id}` makes a version of a list appear missing, so the node's build
+  looks for it until the wait is up.
+- **The node's build searches as a person's does** (Step 99's flag): every
+  second, for up to `trust_list_wait_seconds`, for each list it has not
+  found, at every start and every hour.
+- **The README said steps 96–110** after Steps 111 and 112 were merged; it
+  says 96–113 now. **The Module System's scope line** still says Phase 5's
+  Steps 94 and 96–108. **HttpApi §16** says the reference node sends no
+  `504`, though Step 109's endpoint does. **§4 below** does not list #373,
+  closed in this milestone.
+
+---
+
 ## 4. Issues in the Milestone
 
 Every issue in the **Phase 5 - Trust Network** milestone, by number, and
@@ -2042,6 +2239,7 @@ where it went.
 | #372 | A node and a person each always in their own trust network | 112 |
 | #376 | The administration page having the node trust other nodes | 110 |
 | #377 | The administration page taking a node's address to add to the network | 109 |
+| #383 | Not connecting to untrusted nodes, and a setting to connect only to trusted ones | 113 |
 
 ## 5. Suggested Build Order
 
@@ -2068,6 +2266,7 @@ made before it is built (§3).
 | K | 110 (#376) | None made before it was built; 404 as built | Needs 97's edits and 103's signing as a node; links to 108's application. |
 | L | 111 (#371) | None; the pages alone | Independent of every other step; links to the root application. |
 | M | 112 (#372) | None made before it was built; 30 as built | Needs 100's reads of the scores, and 101's marks in the directory. |
+| N | 113 (#383) | None made before it was built; 847 as built, in three sets | Needs 99's builds and 110's list; changes what Phase 2's peer mix dials. |
 
 ## 6. Open Items Not Yet Decided
 

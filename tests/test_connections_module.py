@@ -19,6 +19,7 @@ from socket import SHUT_RDWR, create_server, socket
 from threading import Event, Thread, current_thread
 from threading import enumerate as running_threads
 from time import monotonic, sleep, time
+from types import MappingProxyType
 from typing import Any, Callable, Iterator, Mapping, Sequence
 
 from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
@@ -262,6 +263,17 @@ def now() -> list[float]:
     return [time()]
 
 
+# What the web server says when this node trusts and distrusts no one.
+TRUSTING_NO_ONE: Mapping[str, Any] = MappingProxyType(
+    {"trusted": [], "untrusted": [], "only_trusted": False}
+)
+
+
+def node_trust(payload: Mapping[str, Any]) -> Message:
+    """Whom this node trusts, as the web server says it."""
+    return make_message(EventType.NODE_TRUST, ModuleName.WEBSERVER, dict(payload))
+
+
 def no_names(_address: str) -> Sequence[str]:
     """A reverse DNS lookup that finds nothing, so tests never touch real DNS."""
     return ()
@@ -276,8 +288,13 @@ class Modules:
         self.built: list[ConnectionsModule] = []
 
     def start(
-        self, config: LibranetConfig, resolve_names: ResolveNames = no_names
+        self,
+        config: LibranetConfig,
+        resolve_names: ResolveNames = no_names,
+        *,
+        trust: Mapping[str, Any] | None = TRUSTING_NO_ONE,
     ) -> ConnectionsModule:
+        """A connection manager, started and told ``trust``, unless it is ``None``."""
         module = ConnectionsModule(
             ModuleName.CONNECTIONS,
             self._queues,
@@ -288,6 +305,10 @@ class Modules:
         )
         self.built.append(module)
         module.on_start()
+
+        if trust is not None:
+            module.handle(node_trust(trust))
+
         return module
 
 
@@ -2559,6 +2580,7 @@ def test_the_module_subscribes_to_node_lists_fetches_searches_hand_offs_and_new_
         EventType.DATA_STORED,
         EventType.PEERS_CONNECTED_REQUESTED,
         EventType.DIAL_REQUESTED,
+        EventType.NODE_TRUST,
     }
 
 
@@ -2567,3 +2589,147 @@ def test_factory_builds_a_connections_module(config: LibranetConfig, queues: Mod
 
     assert isinstance(module, ConnectionsModule)
     assert module.name == ModuleName.CONNECTIONS
+
+
+def trusting(
+    trusted: Sequence[FixturePeer] = (),
+    untrusted: Sequence[FixturePeer] = (),
+    *,
+    only_trusted: bool = False,
+) -> dict[str, Any]:
+    """What the web server says when this node trusts ``trusted`` and distrusts ``untrusted``."""
+    return {
+        "trusted": [str(peer.node_id) for peer in trusted],
+        "untrusted": [str(peer.node_id) for peer in untrusted],
+        "only_trusted": only_trusted,
+    }
+
+
+def test_nothing_is_dialed_until_it_is_known_whom_this_node_trusts(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+) -> None:
+    write_lists(config.storage, node_list(identity, *peers))
+
+    module = modules.start(config, trust=None)
+    sleep(0.2)
+    dialed_before = bus.events(EventType.CONNECTION_OPENED)
+    module.handle(node_trust(TRUSTING_NO_ONE))
+
+    assert dialed_before == []
+    assert len(bus.wait_for(EventType.CONNECTION_OPENED, count=2)) == 2
+
+
+def test_a_node_this_node_distrusts_is_never_dialed(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+) -> None:
+    write_lists(config.storage, node_list(identity, *peers))
+
+    module = modules.start(config, trust=trusting(untrusted=[peers[0]]))
+
+    bus.wait_for(EventType.CONNECTION_OPENED, node_id=str(peers[1].node_id))
+    sleep(0.2)
+    assert module.connected == {peers[1].node_id: peers[1].endpoint}
+    assert bus.events(EventType.CONNECTION_FAILED) == []
+    assert peers[0].bus.events(EventType.NODES_RECEIVED) == []
+
+
+def test_only_the_trusted_are_dialed_while_the_node_connects_only_to_those(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+) -> None:
+    write_lists(config.storage, node_list(identity, *peers))
+
+    module = modules.start(config, trust=trusting(trusted=[peers[1]], only_trusted=True))
+
+    bus.wait_for(EventType.CONNECTION_OPENED, node_id=str(peers[1].node_id))
+    sleep(0.2)
+    assert module.connected == {peers[1].node_id: peers[1].endpoint}
+
+
+def test_a_peer_no_longer_allowed_is_closed_and_not_dialed_again(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    now: list[float],
+    caplog: LogCaptureFixture,
+) -> None:
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+
+    with caplog.at_level(INFO, logger="libranet.connections"):
+        module.handle(node_trust(trusting(untrusted=[peers[0]])))
+        (closed,) = bus.wait_for(EventType.CONNECTION_CLOSED)
+
+    assert (closed["node_id"], closed["remote"]) == (str(peers[0].node_id), False)
+    assert f"this node does not trust {peers[0].node_id}" in caplog.text
+    assert module.connected == {peers[1].node_id: peers[1].endpoint}
+    # Not even once its rest is over.
+    now[0] += RETRY_DELAY + 1
+    module.on_idle()
+    sleep(0.2)
+    assert len(bus.events(EventType.CONNECTION_OPENED, node_id=str(peers[0].node_id))) == 1
+
+
+def test_a_seed_that_proves_to_be_a_node_not_allowed_is_not_taken_in(
+    modules: Modules,
+    config: LibranetConfig,
+    peers: list[FixturePeer],
+    bus: Bus,
+    tmp_path: Path,
+    caplog: LogCaptureFixture,
+) -> None:
+    seeds = write_seeds(tmp_path / "unknown-seeds.json", {peers[0].endpoint: None})
+
+    with caplog.at_level(INFO, logger="libranet.connections"):
+        module = modules.start(
+            with_peers(config, seed_file=seeds), trust=trusting(only_trusted=True)
+        )
+        wait_until(lambda: "connects only to nodes it trusts" in caplog.text, "the refusal")
+
+    assert module.connected == {}
+    assert bus.events(EventType.CONNECTION_OPENED) == []
+
+
+def test_an_address_asked_for_that_reaches_a_node_not_allowed_is_said_to_be_so(
+    modules: Modules, config: LibranetConfig, peers: list[FixturePeer], bus: Bus
+) -> None:
+    module = modules.start(config, trust=trusting(untrusted=[peers[0]]))
+
+    module.handle(dial_requested(peers[0].endpoint))
+
+    (dialed,) = bus.wait_for(EventType.ADDRESS_DIALED)
+    assert (dialed["outcome"], dialed["node_id"], dialed["detail"]) == (
+        DialOutcome.NOT_TRUSTED,
+        str(peers[0].node_id),
+        f"this node does not trust {peers[0].node_id}",
+    )
+    assert module.connected == {}
+
+
+def test_an_address_asked_for_before_it_is_known_whom_this_node_trusts_is_not_taken_in(
+    modules: Modules, config: LibranetConfig, peers: list[FixturePeer], bus: Bus
+) -> None:
+    module = modules.start(config, trust=None)
+
+    module.handle(dial_requested(peers[0].endpoint))
+
+    (dialed,) = bus.wait_for(EventType.ADDRESS_DIALED)
+    assert (dialed["outcome"], dialed["detail"]) == (
+        DialOutcome.NOT_TRUSTED,
+        "this node does not know yet whom it trusts",
+    )
+    assert module.connected == {}

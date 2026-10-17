@@ -322,6 +322,10 @@ four bits of the identifier space, meaning they cover distinct 4-bit buckets.
 This guarantees a well-distributed view of the network and supports the
 directional search strategy described below.
 
+A node chooses its peers only among the nodes it allows: never one its own
+trust scores call untrusted, and, if its operator says so, only those they
+call trusted (Trust Network §4.5).
+
 ### 4.7 Request Routing Algorithm
 
 When a node receives a request for data that it does not hold locally, or a

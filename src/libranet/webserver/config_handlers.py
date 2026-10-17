@@ -26,7 +26,10 @@ cannot reach the endpoints a page reads a drop with. Its handlers are given to
 ``DELETE /config/api/trust/{algorithm}/{hash}`` trust, distrust, or clear one
 identity in it, the node signing each version (HttpApi §11.7, Phase 5 Step
 110). Its handlers are given to :func:`config_routes` too
-(:class:`~libranet.webserver.node_trust_handlers.OwnTrust`).
+(:class:`~libranet.webserver.node_trust_handlers.OwnTrust`), and so are those
+of ``GET`` and ``PUT /config/api/connecting``, which read and change whether
+the node connects only to the nodes it trusts (Phase 5 Step 113,
+:class:`~libranet.webserver.node_trust_handlers.Connecting`).
 
 The web server does none of the backup work. Each backup endpoint checks its
 own input, publishes one message, and answers ``202`` at once with the
@@ -80,8 +83,9 @@ dial an address at once (Phase 5 Step 109), and, unlike the backup endpoints,
 waits to hear what came of it (:mod:`libranet.webserver.dial_outcomes`),
 since the operator asking wants to know whether the node could be reached.
 A node reached there is ``200``, with its id, whether it was connected
-already or not; the address of this node itself is ``409``, and one where no
-node was reached ``502``, saying why. No answer in time is ``504``: the dial
+already or not; the address of this node itself is ``409``, one where a node
+this node does not connect to was reached ``403``, and one where no node was
+reached ``502``, each saying why (Phase 5 Step 113). No answer in time is ``504``: the dial
 may still reach the node, which the nodes application then shows.
 
 ``GET /config/api`` names the endpoints, so a client has somewhere to start.
@@ -142,7 +146,7 @@ from libranet.webserver.http_types import (
     status_response,
 )
 from libranet.webserver.metadata_handlers import OwnMetadata
-from libranet.webserver.node_trust_handlers import OwnTrust
+from libranet.webserver.node_trust_handlers import Connecting, OwnTrust
 from libranet.webserver.request_refusals import (
     body_or_refusal,
     invalid_request_response,
@@ -166,6 +170,7 @@ CONFIG_USERS_PATH: Final = CONFIG_API_PATH + "/users"
 METADATA_PATH: Final = CONFIG_API_PATH + "/metadata"
 CONNECTIONS_PATH: Final = CONFIG_API_PATH + "/connections"
 CONFIG_TRUST_PATH: Final = CONFIG_API_PATH + "/trust"
+CONNECTING_PATH: Final = CONFIG_API_PATH + "/connecting"
 BACKUP_JOB_PATTERN: Final = BACKUPS_PATH + rf"/(?P<job_id>[0-9a-fA-F]{{{IDENTIFIER_LENGTH}}})"
 BACKUP_RUN_PATTERN: Final = BACKUP_JOB_PATTERN + "/run"
 APPLICATION_PATTERN: Final = APPLICATIONS_PATH + "/(?P<name>[^/]+)"
@@ -224,6 +229,16 @@ ENDPOINTS: Final = (
         "method": "DELETE",
         "path": CONFIG_TRUST_TEMPLATE,
         "description": "Neither trust nor distrust an identity as this node",
+    },
+    {
+        "method": "GET",
+        "path": CONNECTING_PATH,
+        "description": "Whether this node connects only to the nodes it trusts",
+    },
+    {
+        "method": "PUT",
+        "path": CONNECTING_PATH,
+        "description": "Connect only to the nodes this node trusts, or not",
     },
 )
 
@@ -540,6 +555,14 @@ class ConnectHandler:
                 request, HTTPStatus.CONFLICT, f"{endpoint} is this node's own address."
             )
 
+        if outcome == DialOutcome.NOT_TRUSTED:
+            return status_response(
+                request,
+                HTTPStatus.FORBIDDEN,
+                f"{report.node_id} was reached at {endpoint}, and not connected to: "
+                f"{report.detail or 'no reason was given'}",
+            )
+
         if outcome == DialOutcome.UNREACHED:
             return status_response(
                 request,
@@ -578,13 +601,15 @@ def config_routes(  # pylint: disable=too-many-locals
     metadata: OwnMetadata | None = None,
     connect: Handler | None = None,
     trust: OwnTrust | None = None,
+    connecting: Connecting | None = None,
 ) -> tuple[tuple[str, str, Handler], ...]:
     """Every ``/config/api`` route, as ``(method, pattern, handler)`` in route order.
 
     ``users`` makes a person's identity, ``metadata`` reads and changes what
     this node says of itself, ``connect`` connects to a node at an address,
-    and ``trust`` reads and changes this node's trust list. Without one of
-    them, no route does what it does.
+    ``trust`` reads and changes this node's trust list, and ``connecting``
+    whether it connects only to the nodes it trusts. Without one of them, no
+    route does what it does.
     """
     configure = BackupRequestHandler(
         publish, BackupJobRequest.from_value, EventType.BACKUP_JOB_CONFIGURED, "job_id"
@@ -631,6 +656,14 @@ def config_routes(  # pylint: disable=too-many-locals
                 ("GET", CONFIG_TRUST_PATH, trust.read),
                 ("PUT", CONFIG_TRUST_PATTERN, trust.trust),
                 ("DELETE", CONFIG_TRUST_PATTERN, trust.clear),
+            )
+        ),
+        *(
+            ()
+            if connecting is None
+            else (
+                ("GET", CONNECTING_PATH, connecting.read),
+                ("PUT", CONNECTING_PATH, connecting.change),
             )
         ),
     )
