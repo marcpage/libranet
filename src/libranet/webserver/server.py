@@ -143,6 +143,7 @@ from libranet.webserver.local_folders import DIRECTORY_PATTERN, DirectoryHandler
 from libranet.webserver.local_imports import IMPORTS_PATH, ImportHandler, ImportListHandler
 from libranet.webserver.local_only import CLIENT_PATH, LocalOnly, OwnSiteOnly, client_handler
 from libranet.webserver.metadata_handlers import OwnMetadata
+from libranet.webserver.node_trust_handlers import OwnTrust
 from libranet.webserver.own_pages import OwnPageOnly, OwnPages
 from libranet.webserver.router import Router
 from libranet.webserver.search_handler import DROP_SEARCH_PATTERN, SEARCH_PATTERN, SearchHandler
@@ -503,10 +504,12 @@ def build_config_router(  # pylint: disable=too-many-locals
     is given. Given ``identity``, the node's own, ``/config/api/metadata``
     reads what the node says of itself, and places what it says next, signed
     with ``identity``'s key, as drops are made and stored there (Phase 5 Step
-    104). ``/config/api/connections`` has an address dialed, and waits for what
-    came of it in ``dial_outcomes`` for up to ``dial_wait_seconds`` (Phase 5
-    Step 109). ``retry_after_seconds``, ``app_outcomes``, ``app_wait_seconds``,
-    and ``read_ahead_parts`` are as for :func:`build_router`.
+    104), and ``/config/api/trust`` reads and changes the node's own trust
+    list, signed so too (Phase 5 Step 110). ``/config/api/connections`` has an
+    address dialed, and waits for what came of it in ``dial_outcomes`` for up
+    to ``dial_wait_seconds`` (Phase 5 Step 109). ``retry_after_seconds``,
+    ``app_outcomes``, ``app_wait_seconds``, and ``read_ahead_parts`` are as for
+    :func:`build_router`.
     """
     content = LayeredSource(CasStore.source_of_truth(storage)) if content is None else content
     registry = _registry(storage, content)
@@ -548,6 +551,18 @@ def build_config_router(  # pylint: disable=too-many-locals
         ),
         connect=ConnectHandler(
             publish, DialOutcomes() if dial_outcomes is None else dial_outcomes, dial_wait_seconds
+        ),
+        trust=(
+            None
+            if identity is None
+            else OwnTrust.of(
+                identity,
+                identities.search,
+                identities.drops,
+                publish,
+                content=identities.uploads,
+                retry_after_seconds=retry_after_seconds,
+            )
         ),
     ):
         router.add(method, pattern, handler)

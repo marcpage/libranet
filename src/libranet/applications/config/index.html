@@ -98,6 +98,8 @@
   .status-running { color: var(--busy); }
   .status-done { color: var(--good); }
   .status-failed { color: var(--bad); }
+  .trusted { color: var(--good); }
+  .distrusted { color: var(--bad); }
 
   form { border-top: 1px solid var(--border); margin-top: 1rem; padding-top: 1rem; }
   .fields { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end; margin-bottom: 0.5rem; }
@@ -232,6 +234,48 @@
       </div>
       <p class="hint">An address is the host name or IP address of the node's machine, and the
       port the node listens on. Reaching a node that does not answer can take a minute.</p>
+      <p class="result" role="status" hidden></p>
+    </form>
+  </section>
+
+  <section aria-labelledby="trust-heading">
+    <h2 id="trust-heading">Trust</h2>
+    <p class="hint">This node keeps a list of the nodes it trusts, and those it distrusts. A
+    person who trusts this node reaches through its list: their trust scores count the nodes it
+    trusts, and against those it distrusts, a tenth as strongly as their own. The list is
+    public: the node signs each version and keeps it in the network, where anyone can read
+    it.</p>
+    <p class="state" id="trust-state">Loading…</p>
+    <div class="table-wrap">
+      <table id="trust-table" aria-labelledby="trust-heading" hidden>
+        <thead>
+          <tr>
+            <th scope="col">Node</th>
+            <th scope="col">Trust</th>
+            <th scope="col"><span class="visually-hidden">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="result" id="trust-message" role="status" hidden></p>
+    <form id="trust-form">
+      <h3>Trust or distrust a node</h3>
+      <div class="fields">
+        <label class="wide">Node id
+          <input id="trust-id" required autocomplete="off" spellcheck="false"
+                 placeholder="sha256/…">
+        </label>
+        <label>This node
+          <select id="trust-choice">
+            <option value="true" selected>Trusts it</option>
+            <option value="false">Distrusts it</option>
+          </select>
+        </label>
+        <button type="submit">Save</button>
+      </div>
+      <p class="hint">A node's id is on its page in the nodes application, and under "This node"
+      on its own administration page.</p>
       <p class="result" role="status" hidden></p>
     </form>
   </section>
@@ -1146,6 +1190,96 @@ onSubmit(connectForm, async () => {
   return null;
 });
 
+// ---- Trust ----
+
+const trustMessage = byId("trust-message");
+const trustForm = byId("trust-form");
+
+// Where this node's entry for the identity `id` names is changed: its hash
+// algorithm and hash, each one segment (HttpApi 11.7).
+function trustPath(id) {
+  return `/trust/${id.split("/").map(encodeURIComponent).join("/")}`;
+}
+
+// The entries of this node's list, as [id, trusted] pairs: those it trusts
+// first, then by id.
+function trustEntries(value) {
+  const entries = value ? value.entries : null;
+
+  if (!entries || typeof entries !== "object" || Array.isArray(entries)) {
+    return null;
+  }
+
+  return Object.entries(entries).sort(
+    ([one, trusted], [other, alsoTrusted]) =>
+      Number(alsoTrusted) - Number(trusted) || one.localeCompare(other),
+  );
+}
+
+// Has this node trust the identity `id` names, distrust it, or, given null,
+// neither, and reads its list again.
+async function changeTrust(id, trusted) {
+  const path = trustPath(id);
+  const result =
+    trusted === null ? await call("DELETE", path) : await call("PUT", path, { trust: trusted });
+
+  if (result.status === 204) {
+    return ["Nothing changed, so nothing was saved.", false];
+  }
+
+  if (!result.ok || !result.value) {
+    return [failure(result), true];
+  }
+
+  await trustList.load();
+  const said = trusted === null ? "neither trusts nor distrusts" : trusted ? "trusts" : "distrusts";
+  return [`This node ${said} ${id}, as version ${result.value.version} of its list.`, false];
+}
+
+function trustRow([id, trusted]) {
+  const other = trusted ? "Distrust" : "Trust";
+  const actions = cell(
+    button(other, `${other} ${id}`, "secondary", trustMessage, () => changeTrust(id, !trusted)),
+    button("Remove", `Neither trust nor distrust ${id}`, "danger", trustMessage, () =>
+      changeTrust(id, null),
+    ),
+  );
+  const row = make("tr");
+  actions.className = "actions";
+  row.append(
+    cell(contentId(id), nodeLink(id)),
+    make("td", trusted ? "Trusted" : "Distrusted", trusted ? "trusted" : "distrusted"),
+    actions,
+  );
+  return row;
+}
+
+const trustList = new ListView({
+  path: "/trust",
+  table: byId("trust-table"),
+  state: byId("trust-state"),
+  entries: trustEntries,
+  row: trustRow,
+  empty: "This node trusts and distrusts no one yet.",
+  unknown: "A version of this node's list is not held here yet.",
+});
+
+onSubmit(trustForm, async () => {
+  const id = byId("trust-id").value.trim();
+
+  if (!/^[^/\s]+\/[^/\s]+$/.test(id)) {
+    return ["A node's id is its hash algorithm and hash, such as sha256/0a1b….", true];
+  }
+
+  const outcome = await changeTrust(id, byId("trust-choice").value === "true");
+
+  if (!outcome[1]) {
+    trustForm.reset();
+  }
+
+  return outcome;
+});
+
 // ---- Applications ----
 
 const applicationsMessage = byId("applications-message");
@@ -1769,7 +1903,7 @@ onSubmit(byId("restore-form"), async () => {
 
 // ---- Start ----
 
-const views = [applications, builds, exports, backups, restores];
+const views = [trustList, applications, builds, exports, backups, restores];
 
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) {

@@ -66,6 +66,7 @@ from libranet.identity.signatures import (
     MessageVerifier,
 )
 from libranet.identity.trust import (
+    ENTRIES_FIELD,
     MIN_TRUST_LIST_BITS,
     HeldTrustList,
     TrustLimits,
@@ -88,6 +89,7 @@ __all__ = [
     "BACKUP_SECRET_BYTES",
     "CONTENT_DIGEST_HEADER",
     "DIGEST_COMPONENT",
+    "ENTRIES_FIELD",
     "FIELDS_FIELD",
     "FIRST_VERSION",
     "MAX_IDENTITY_BYTES",

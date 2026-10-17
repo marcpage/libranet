@@ -44,6 +44,7 @@ from libranet.webserver.config_handlers import (
     BACKUPS_PATH,
     BUILDS_PATH,
     CONFIG_API_PATH,
+    CONFIG_TRUST_PATH,
     CONFIG_USERS_PATH,
     CONNECTIONS_PATH,
     EXPORTS_PATH,
@@ -176,6 +177,9 @@ def test_the_index_names_every_endpoint(router: Router) -> None:
         ("GET", "/config/api/metadata"),
         ("PUT", "/config/api/metadata"),
         ("POST", "/config/api/connections"),
+        ("GET", "/config/api/trust"),
+        ("PUT", "/config/api/trust/{algorithm}/{hash}"),
+        ("DELETE", "/config/api/trust/{algorithm}/{hash}"),
     }
 
 
@@ -235,6 +239,21 @@ def test_without_its_handlers_no_route_reads_or_changes_what_the_node_says(
 ) -> None:
     # Reading and changing it are tested where /config's port is built.
     assert router.dispatch(request("GET", METADATA_PATH)).status == 404
+
+
+@mark.parametrize(
+    "method, path",
+    [
+        ("GET", CONFIG_TRUST_PATH),
+        ("PUT", f"{CONFIG_TRUST_PATH}/{NODE_ID}"),
+        ("DELETE", f"{CONFIG_TRUST_PATH}/{NODE_ID}"),
+    ],
+)
+def test_without_its_handlers_no_route_reads_or_changes_whom_the_node_trusts(
+    router: Router, method: str, path: str
+) -> None:
+    # Reading and changing it are tested where /config's port is built.
+    assert router.dispatch(request(method, path, {"trust": True})).status == 404
 
 
 def test_configuring_a_job_publishes_it_and_answers_with_its_name(

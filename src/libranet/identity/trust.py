@@ -47,8 +47,8 @@ MIN_TRUST_LIST_BITS: Final = 16
 # What a trust list's drop target string is, before its owner's id (§3.2).
 _DROP_PREFIX: Final = "trust:"
 
-# The member of a version naming whom it trusts or distrusts (§3.1).
-_ENTRIES_FIELD: Final = "entries"
+#: The member of a version naming whom it trusts or distrusts (§3.1).
+ENTRIES_FIELD: Final = "entries"
 
 
 @dataclass(frozen=True)
@@ -88,8 +88,8 @@ class TrustList(Numbered):
                 ``entries`` is an object and whose ``version`` is a whole
                 number of at least 1.
         """
-        if not isinstance(value, dict) or not isinstance(value.get(_ENTRIES_FIELD), dict):
-            raise ValueError(f'{named} is not an object with an "{_ENTRIES_FIELD}" object')
+        if not isinstance(value, dict) or not isinstance(value.get(ENTRIES_FIELD), dict):
+            raise ValueError(f'{named} is not an object with an "{ENTRIES_FIELD}" object')
 
         version = integer_field(value, VERSION_FIELD)
         unsupported = UnsupportedAlgorithms()
@@ -100,7 +100,7 @@ class TrustList(Numbered):
         both: set[ContentId] = set()
         passed_over = 0
 
-        for name, trusted in value[_ENTRIES_FIELD].items():
+        for name, trusted in value[ENTRIES_FIELD].items():
             identity = cls.named_id(name, unsupported)
 
             if identity is None or not isinstance(trusted, bool):
@@ -127,7 +127,7 @@ class TrustList(Numbered):
     def value(self) -> dict[str, Any]:
         """The JSON object this version is, as a signed bundle's ``contents`` holds it (§3.1)."""
         return self.numbered(
-            {_ENTRIES_FIELD: {str(identity): trusted for identity, trusted in self.entries.items()}}
+            {ENTRIES_FIELD: {str(identity): trusted for identity, trusted in self.entries.items()}}
         )
 
 

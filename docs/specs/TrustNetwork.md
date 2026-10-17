@@ -81,7 +81,8 @@ A person's list is signed with their key, as HTTP API §11.5 signs for them.
 Nothing in this document tells a person's list from a node's, and a node's
 is kept and read the same way, signed with its Ed25519 key (HTTP API §11.2),
 as Bundle Specification §5 defines a node's signature. A node signs only
-what it places itself (HTTP API §11.5), and nothing places a node's list yet.
+what it places itself (HTTP API §11.5), and places its own list as its
+operator changes it (HTTP API §11.7).
 
 ### 3.3 Reading a List
 

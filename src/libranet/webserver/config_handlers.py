@@ -22,6 +22,12 @@ cannot reach the endpoints a page reads a drop with. Its handlers are given to
 :func:`config_routes` too
 (:class:`~libranet.webserver.metadata_handlers.OwnMetadata`).
 
+``GET /config/api/trust`` reads this node's own trust list, and ``PUT`` and
+``DELETE /config/api/trust/{algorithm}/{hash}`` trust, distrust, or clear one
+identity in it, the node signing each version (HttpApi §11.7, Phase 5 Step
+110). Its handlers are given to :func:`config_routes` too
+(:class:`~libranet.webserver.node_trust_handlers.OwnTrust`).
+
 The web server does none of the backup work. Each backup endpoint checks its
 own input, publishes one message, and answers ``202`` at once with the
 identifier the request will be known by::
@@ -136,6 +142,7 @@ from libranet.webserver.http_types import (
     status_response,
 )
 from libranet.webserver.metadata_handlers import OwnMetadata
+from libranet.webserver.node_trust_handlers import OwnTrust
 from libranet.webserver.request_refusals import (
     body_or_refusal,
     invalid_request_response,
@@ -158,9 +165,11 @@ APPLICATIONS_PATH: Final = CONFIG_API_PATH + "/applications"
 CONFIG_USERS_PATH: Final = CONFIG_API_PATH + "/users"
 METADATA_PATH: Final = CONFIG_API_PATH + "/metadata"
 CONNECTIONS_PATH: Final = CONFIG_API_PATH + "/connections"
+CONFIG_TRUST_PATH: Final = CONFIG_API_PATH + "/trust"
 BACKUP_JOB_PATTERN: Final = BACKUPS_PATH + rf"/(?P<job_id>[0-9a-fA-F]{{{IDENTIFIER_LENGTH}}})"
 BACKUP_RUN_PATTERN: Final = BACKUP_JOB_PATTERN + "/run"
 APPLICATION_PATTERN: Final = APPLICATIONS_PATH + "/(?P<name>[^/]+)"
+CONFIG_TRUST_PATTERN: Final = CONFIG_TRUST_PATH + "/(?P<algorithm>[^/]+)/(?P<hash>[^/]+)"
 
 #: Where any client asks the main port which applications it serves
 #: (HttpApi §13.4).
@@ -175,6 +184,7 @@ _CONFIG_SEGMENT: Final = rf"/(?i:{escape(CONFIG_APPLICATION)})"
 BACKUP_JOB_TEMPLATE: Final = BACKUPS_PATH + "/{job_id}"
 BACKUP_RUN_TEMPLATE: Final = BACKUP_JOB_TEMPLATE + "/run"
 APPLICATION_TEMPLATE: Final = APPLICATIONS_PATH + "/{name}"
+CONFIG_TRUST_TEMPLATE: Final = CONFIG_TRUST_PATH + "/{algorithm}/{hash}"
 
 # Whether an application is trusted, in a request changing it (HttpApi §13.5).
 _TRUSTED_FIELD: Final = "trusted"
@@ -204,6 +214,17 @@ ENDPOINTS: Final = (
     {"method": "GET", "path": METADATA_PATH, "description": "What this node says of itself"},
     {"method": "PUT", "path": METADATA_PATH, "description": "Change what this node says of itself"},
     {"method": "POST", "path": CONNECTIONS_PATH, "description": "Connect to a node at an address"},
+    {"method": "GET", "path": CONFIG_TRUST_PATH, "description": "Whom this node trusts"},
+    {
+        "method": "PUT",
+        "path": CONFIG_TRUST_TEMPLATE,
+        "description": "Trust or distrust an identity as this node",
+    },
+    {
+        "method": "DELETE",
+        "path": CONFIG_TRUST_TEMPLATE,
+        "description": "Neither trust nor distrust an identity as this node",
+    },
 )
 
 
@@ -546,7 +567,7 @@ def _unreadable_registry_response(request: Request, error: RegistryFileError) ->
     return status_response(request, HTTPStatus.INTERNAL_SERVER_ERROR, str(error))
 
 
-def config_routes(
+def config_routes(  # pylint: disable=too-many-locals
     publish: Publish,
     state: BackupState,
     registry: ApplicationRegistry,
@@ -556,12 +577,14 @@ def config_routes(
     users: Handler | None = None,
     metadata: OwnMetadata | None = None,
     connect: Handler | None = None,
+    trust: OwnTrust | None = None,
 ) -> tuple[tuple[str, str, Handler], ...]:
     """Every ``/config/api`` route, as ``(method, pattern, handler)`` in route order.
 
     ``users`` makes a person's identity, ``metadata`` reads and changes what
-    this node says of itself, and ``connect`` connects to a node at an
-    address. Without one of them, no route does what it does.
+    this node says of itself, ``connect`` connects to a node at an address,
+    and ``trust`` reads and changes this node's trust list. Without one of
+    them, no route does what it does.
     """
     configure = BackupRequestHandler(
         publish, BackupJobRequest.from_value, EventType.BACKUP_JOB_CONFIGURED, "job_id"
@@ -601,6 +624,15 @@ def config_routes(
             else (("GET", METADATA_PATH, metadata.read), ("PUT", METADATA_PATH, metadata.change))
         ),
         *(() if connect is None else (("POST", CONNECTIONS_PATH, connect),)),
+        *(
+            ()
+            if trust is None
+            else (
+                ("GET", CONFIG_TRUST_PATH, trust.read),
+                ("PUT", CONFIG_TRUST_PATTERN, trust.trust),
+                ("DELETE", CONFIG_TRUST_PATTERN, trust.clear),
+            )
+        ),
     )
     return tuple(
         (method, _CONFIG_SEGMENT + pattern.removeprefix(f"/{CONFIG_APPLICATION}"), handler)
