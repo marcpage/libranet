@@ -370,11 +370,11 @@ Some endpoints are meant only for the pages a node serves, and never for
 another node:
 
 - on the main port: whether the client is local (§2.4), blocking content
-  (§5.5), making a drop (§9.6), making an identity, a fallback taking over,
-  and the session (§11.3, §11.4), making a signed drop (§11.5), opening an
-  encrypted block (§11.6), trust (§11.7),
-  the folders and imports (§12.2), making bundles (§12.3), an application's
-  store (§13.3), and the list of applications (§13.4);
+  (§5.5), making a drop (§9.6), what the node knows of its peers (§10.8),
+  making an identity, a fallback taking over, and the session (§11.3,
+  §11.4), making a signed drop (§11.5), opening an encrypted block (§11.6),
+  trust (§11.7), the folders and imports (§12.2), making bundles (§12.3), an
+  application's store (§13.3), and the list of applications (§13.4);
 - on `/config`'s port: every endpoint beneath `/config/api` (§2.3).
 
 Reading into a bundle (§12.1) is meant for those pages too, but is not
@@ -399,11 +399,11 @@ Some endpoints ask more of the page:
 
 - **An application's store** is read and changed only from a page of the
   application whose store it is (§13.3).
-- **Blocking content, making an identity, a fallback taking over, the
-  session, making a signed drop, opening an encrypted block, making a drop
-  encrypted by a password, trust,
-  the folders, imports, and making bundles** are served only from a page of
-  a trusted application (§13.5).
+- **Blocking content, the peers, making an identity, a fallback taking
+  over, the session, making a signed drop, opening an encrypted block,
+  making a drop encrypted by a password, trust, the folders, imports, and
+  making bundles** are served only from a page of a trusted application
+  (§13.5).
 
 A browser sends a page's full address as the `Referer` of each request the
 page makes of its own origin, unless the page asks it not to, as with
@@ -2688,13 +2688,13 @@ opens is sandboxed as it is.
 A trusted application is served without these headers, on the main
 port's origin. A page of one, open in a local client, may list and import
 from the folders offered (§12.2), make bundles (§12.3), change its own
-application's store (§13.3), block content (§5.5), make identities and sign
-people in (§11.3, §11.4), make signed drops (§11.5), open encrypted
-blocks and encrypt by a username and password (§11.6), and read the trust
-scores of whoever is signed in and change their trust list (§11.7). Open in
-any client,
-it may make a drop (§9.6). Trusted applications share that origin, so each
-can do whatever another can (§2.4).
+application's store (§13.3), block content (§5.5), read what the node
+knows of its peers (§10.8), make identities and sign people in (§11.3,
+§11.4), make signed drops (§11.5), open encrypted blocks and encrypt by a
+username and password (§11.6), and read the trust scores of whoever is
+signed in and change their trust list (§11.7). Open in any client, it may
+make a drop (§9.6). Trusted applications share that origin, so each can do
+whatever another can (§2.4).
 
 The `/config` application is neither trusted nor untrusted. It is served
 only on its own port (§2.3), where trust gives nothing, and never in a

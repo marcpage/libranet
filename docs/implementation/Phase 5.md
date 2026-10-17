@@ -638,14 +638,16 @@ My calls, not yet reviewed:
   version blocked at debug; a build complete at info, with how many
   identities it scored and lists it read.
 - **Blocking repeats the three lines `TrustEdits` and `OwnMetadata` use**,
-  rather than sharing them.
+  rather than sharing them. Shared since: #356 moved them into
+  `ReplacedVersions`, in `webserver/version_edits.py`, which the builds and
+  both kinds of change use.
 - **`trust_list_wait_seconds` may be 0**, reading only what the node holds,
   and asking the peers for nothing it waits for.
 
 Found while building it:
 
 - Steps 96 and 97 are on main (#332, #335), but their headings have no ✅.
-  Not changed here.
+  Not changed here; added since.
 
 ---
 
@@ -1572,12 +1574,28 @@ where it went.
 
 | Issue | Asks for | Step |
 | --- | --- | --- |
-| #286 | Planning the trust network's specification and implementation | 94, which wrote it down, and 96–101, which build it |
+| #286 | Planning the trust network's specification and implementation | 94, which wrote it down; 96–101, which build it, took issues of their own |
 | #320 | A document cataloging the known drops | 102 |
 | #321 | Node metadata, edited on the admin page, and nodes shown by name | 103, signing as a node, and 104 |
 | #322 | Showing each identity's trust throughout the shipped applications | 101 for the directory, and 106 |
 | #323 | A nodes application, with each node's connection, stats, and trust | 107, what a node knows of its peers, and 108 |
 | #324 | A page in the directory for one identity, by a standard link | 105 |
+| #327 | The trust list | 96 |
+| #328 | Changing the trust list | 97 |
+| #329 | The scoring rule | 98 |
+| #330 | Building the scores at sign-in | 99 |
+| #331 | Reading the scores | 100, and 101, built with it on its branch |
+| #337 | A test that fails now and then | None: a fix, #338 |
+| #345 | Duplicate logic in the Python | None: cleanup, #356 |
+| #346 | Constants that can be shared | None: cleanup, #357 |
+| #347 | Constants better suited to the configuration file | None: cleanup, #358 |
+| #348 | Inconsistencies in the code | None: cleanup, #359 and #360 |
+| #349 | Exceptions not logged where they should be | None: cleanup, #361 |
+| #350 | Functions that should be methods | None: cleanup, #362 |
+| #351 | Classes with too many instance attributes | None: cleanup, #363–#366 |
+| #352 | Broad exception catches, where known exceptions can be named | None: cleanup, #367 |
+| #353 | Documentation out of sync with the code or other documentation | None: cleanup |
+| #354 | What the specifications can settle from the implementation | None: cleanup |
 
 ## 5. Suggested Build Order
 
@@ -1588,15 +1606,15 @@ made before it is built (§3).
 | --- | --- | --- | --- |
 | A | 94 (#286) | None | Every step after it is written from it. Phase 4, which it builds on, is built. |
 | A | 102 (#320) | None | Documentation of the drops there are, and `trust:{id}` from 94. Each later step that adds a drop adds it. |
-| B | 96 (#286) | About 250 | Needs 94's format. Every step after it reads lists this way. |
+| B | 96 (#327) | About 250 | Needs 94's format. Every step after it reads lists this way. |
 | B | 103 (#321) | About 200 | Independent of the trust steps. Needed before a node signs anything. |
 | B | 107 (#323) | About 400 | Independent of the trust steps. Needed by 108. |
-| C | 97 (#286) | About 300 | Needs 96's list. A person needs a way to make a list before there is one to score. |
-| C | 98 (#286) | About 200 | Needs 96's list, and nothing of 97, so the two may be built in either order. |
+| C | 97 (#328) | About 300 | Needs 96's list. A person needs a way to make a list before there is one to score. |
+| C | 98 (#329) | About 200 | Needs 96's list, and nothing of 97, so the two may be built in either order. |
 | C | 104 (#321) | About 300 | Needs 103's signing, and 102's catalog to add its drop to. |
-| D | 99 (#286) | About 400 | Needs 96's reading and 98's rule. |
-| E | 100 (#286) | About 200 | Needs 97's edits to score again, and 99's builds to read. |
-| F | 101 (#286, #322) | None; the page alone | An application of 97 and 100. |
+| D | 99 (#330) | About 400 | Needs 96's reading and 98's rule. |
+| E | 100 (#331) | About 200 | Needs 97's edits to score again, and 99's builds to read. |
+| F | 101 (#322) | None; the page alone | An application of 97 and 100. |
 | G | 105 (#324) | None; the page alone | Needs 101's trust in the directory, and 104's metadata for a node. |
 | H | 106 (#322) | None; the pages alone | Needs 105's link for each identity it shows. |
 | I | 108 (#323) | About 20, shipping it | An application of every step before it but 102. |

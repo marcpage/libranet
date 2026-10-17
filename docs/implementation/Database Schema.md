@@ -11,7 +11,8 @@ tables, columns, and indexes, what each value means, which event writes it,
 what reads it, and how long a row lives. It is written for someone about to
 read or change `src/libranet/stats/`, or to look inside a node's database,
 and describes the implementation as of version 0.2 and Phase 3, up to Step
-77, and Phase 4's Steps 30, 78–82, and 89–93. Phase 3 changed no table.
+77, Phase 4's Steps 30, 78–82, and 89–93, and Phase 5's Steps 94 and
+96–108. Neither Phase 3 nor Phase 5 changed a table.
 
 A node has one database, `libranet.sqlite3`, with one schema, defined in
 `src/libranet/stats/schema.py`. Everything else a node keeps is a plain
