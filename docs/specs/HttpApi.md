@@ -225,9 +225,10 @@ credentials are looked at. A request that fails one MUST be refused with
 `403 Forbidden` and MUST NOT trigger credential capture.
 
 - **`Host`.** A node keeps a list of the hosts it serves `/config` as,
-  which by default holds only `localhost`, `127.0.0.1`, and `::1`. A
-  request whose `Host` header names any other host MUST be refused. The
-  port is not compared. This is what stops a site that points a name of
+  which by default holds only `localhost`, `127.0.0.1`, `::1`, and the
+  name the node's machine gives itself, such as `macbook.local`, which a
+  browser on that machine reaches it by. A request whose `Host` header
+  names any other host MUST be refused. The port is not compared. This is what stops a site that points a name of
   its own at a loopback address: a browser takes that site's requests to
   be same-origin, so neither check below catches them. An operator who
   reaches `/config` under another name, through a reverse proxy for

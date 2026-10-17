@@ -2237,6 +2237,7 @@ where it went.
 | #370 | The local network's nodes listening only at `127.0.0.1` | None: a fix |
 | #371 | A home link in the upper right corner of every application's pages | 111 |
 | #372 | A node and a person each always in their own trust network | 112 |
+| #375 | The administration page reached by the machine's network name | None: a fix |
 | #376 | The administration page having the node trust other nodes | 110 |
 | #377 | The administration page taking a node's address to add to the network | 109 |
 | #383 | Not connecting to untrusted nodes, and a setting to connect only to trusted ones | 113 |

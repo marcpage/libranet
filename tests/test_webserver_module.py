@@ -867,7 +867,8 @@ def test_config_is_reached_by_the_name_this_machine_gives_itself(tmp_path: Path)
             f"http://{name.casefold()}:{config_port}/config/",
         )
         assert _authorized(host, config_port, "/config/api", named=f"{name}:{config_port}")[0] == 200
-        assert _status(host, port, IMPORTS_PATH, named=f"{name}:{port}")[0] == 200
+        # Past the checks to the endpoint, which has no backup state to say yet.
+        assert _status(host, port, IMPORTS_PATH, named=f"{name}:{port}")[0] == 503
         assert _status(host, port, IMPORTS_PATH, named=f"evil.example:{port}")[0] == 403
 
     finally:
