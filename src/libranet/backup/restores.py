@@ -115,6 +115,43 @@ class RestorePass:
     given_up: Mapping[str, tuple[ContentId, ...]] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class _Settings:
+    """How a restore paces its waiting, and how large a bundle it reads may be.
+
+    As :class:`Restore` describes them.
+    """
+
+    ask_interval_seconds: float
+    give_up_after_seconds: float
+    resume_seconds: float
+    max_bundle_bytes: int
+
+
+@dataclass
+class _Waiting:
+    """Where a restore stands in waiting on content.
+
+    It is next to carry on at ``due_at``. ``arrived_at`` is when content it
+    waits on last arrived, or it was last asked for, and ``asked_at`` when
+    it last asked for all it lacks; ``None`` until it first does, and again
+    once asked for itself. ``gave_up`` is whether it gave up waiting.
+    """
+
+    due_at: float
+    arrived_at: float
+    asked_at: float | None = None
+    gave_up: bool = False
+
+
+@dataclass
+class _Counts:
+    """How many entries a restore has restored, and left out, so far."""
+
+    restored: int = 0
+    skipped: int = 0
+
+
 class Restore(Task):  # pylint: disable=too-many-instance-attributes
     """A backup bundle being restored into a directory, a pass at a time, until done.
 
@@ -138,15 +175,10 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
     ) -> None:
         super().__init__(requested_at)
         self._request = request
-        self._ask_interval_seconds = ask_interval_seconds
-        self._give_up_after_seconds = give_up_after_seconds
-        self._resume_seconds = resume_seconds
-        self._max_bundle_bytes = max_bundle_bytes
-        self._due_at = requested_at
-        self._asked_at: float | None = None
-        # When content it waits on last arrived, or it was last asked for.
-        self._arrived_at = requested_at
-        self._gave_up = False
+        self._settings = _Settings(
+            ask_interval_seconds, give_up_after_seconds, resume_seconds, max_bundle_bytes
+        )
+        self._waiting = _Waiting(requested_at, requested_at)
         self._missing: set[ContentId] = set()
         # What each entry waiting on content lacked, by path, as of the last
         # pass.
@@ -158,8 +190,7 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
         # read and plain.
         self._expanded: Superseded | None = None
         self._started = False
-        self._restored = 0
-        self._skipped = 0
+        self._counts = _Counts()
 
     @property
     def request(self) -> RestoreRequest:
@@ -180,12 +211,12 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
     def can_carry_on(self) -> bool:
         """Whether asking for the restore again carries it on, rather than starting it over:
         it is waiting on content, or gave up waiting."""
-        return not self.finished or self._gave_up
+        return not self.finished or self._waiting.gave_up
 
     @property
     def due_at(self) -> float:
         """When the restore is next to carry on, if it is waiting."""
-        return self._due_at
+        return self._waiting.due_at
 
     @property
     def missing(self) -> frozenset[ContentId]:
@@ -194,7 +225,7 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
 
     def is_due(self, now: float) -> bool:
         """Whether the restore is waiting, and it is time for it to carry on."""
-        return self._status is TaskStatus.WAITING and self._due_at <= now
+        return self._status is TaskStatus.WAITING and self._waiting.due_at <= now
 
     def ask_again(self, request: RestoreRequest, now: float) -> None:
         """Carry on at once, as ``request`` asks, asking again for everything lacked.
@@ -203,12 +234,12 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
         gave up carries on where it left off.
         """
         self._request = request
-        self._due_at = self._arrived_at = now
-        self._asked_at = None
+        self._waiting.due_at = self._waiting.arrived_at = now
+        self._waiting.asked_at = None
 
-        if self._gave_up:
+        if self._waiting.gave_up:
             self._status, self._error, self._finished_at = TaskStatus.WAITING, None, None
-            self._gave_up = False
+            self._waiting.gave_up = False
 
     def landed(self, content_id: ContentId, now: float) -> bool:
         """Note that ``content_id`` is now held, and say whether the restore waited on it."""
@@ -216,9 +247,9 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
             return False
 
         self._missing.discard(content_id)
-        self._arrived_at = now
-        resume_at = now + self._resume_seconds if self._missing else now
-        self._due_at = min(self._due_at, resume_at)
+        self._waiting.arrived_at = now
+        resume_at = now + self._settings.resume_seconds if self._missing else now
+        self._waiting.due_at = min(self._waiting.due_at, resume_at)
         return True
 
     def attempt(
@@ -279,13 +310,15 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
             # logs it.
             missing = list(error.content_ids)
 
-        self._skipped += len(skipped)
+        self._counts.skipped += len(skipped)
 
         if not missing:
             self._record()
 
         asking = self._wait_on(missing, now)
-        return RestorePass(skipped, asking, unset, dict(self._lacking) if self._gave_up else {})
+        return RestorePass(
+            skipped, asking, unset, dict(self._lacking) if self._waiting.gave_up else {}
+        )
 
     def fail(self, error: Exception, now: float) -> None:
         """Note that the restore failed, and why."""
@@ -301,8 +334,8 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
             "directory": request.directory,
             "on_conflict": request.on_conflict.value,
             **self.progress(),
-            "restored": self._restored,
-            "skipped": self._skipped,
+            "restored": self._counts.restored,
+            "skipped": self._counts.skipped,
             "missing": len(self._missing),
         }
 
@@ -318,11 +351,11 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
         bundle = self._request.bundle
 
         try:
-            top, protected = load_bundle(bundle, source, self._max_bundle_bytes), False
+            top, protected = load_bundle(bundle, source, self._settings.max_bundle_bytes), False
 
         except PasswordProtectedBundleError:
             # Not logged: a backup is protected, and is read with the secret.
-            top, protected = _load(bundle, source, secret, self._max_bundle_bytes), True
+            top, protected = _load(bundle, source, secret, self._settings.max_bundle_bytes), True
 
         if not isinstance(top, DirectoryBundle):
             raise UnsupportedBundleError(
@@ -330,7 +363,7 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
             )
 
         def load(path: PartPath) -> Bundle:
-            return _load(path, source, secret, self._max_bundle_bytes)
+            return _load(path, source, secret, self._settings.max_bundle_bytes)
 
         if protected:
             return resolve_directory(top, load)
@@ -477,7 +510,7 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
             skipped[path] = str(error)
 
         else:
-            self._restored += 1
+            self._counts.restored += 1
 
         del pending[path]
         return ()
@@ -497,27 +530,30 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
         if waited - self._missing:
             # Held now, though its arrival was not noted, as content stored
             # during the pass is.
-            self._arrived_at = now
+            self._waiting.arrived_at = now
 
         if not missing:
             self._finish(now)
             return ()
 
-        give_up_at = self._arrived_at + self._give_up_after_seconds
+        give_up_at = self._waiting.arrived_at + self._settings.give_up_after_seconds
 
         if now >= give_up_at:
             self._give_up(now)
             return ()
 
-        if self._asked_at is None or now >= self._asked_at + self._ask_interval_seconds:
-            self._asked_at = now
+        asked_at = self._waiting.asked_at
+        ask_interval_seconds = self._settings.ask_interval_seconds
+
+        if asked_at is None or now >= asked_at + ask_interval_seconds:
+            asked_at = self._waiting.asked_at = now
             asking = tuple(missing)
 
         else:
             asking = tuple(content_id for content_id in missing if content_id not in waited)
 
         self._status = TaskStatus.WAITING
-        self._due_at = min(self._asked_at + self._ask_interval_seconds, give_up_at)
+        self._waiting.due_at = min(asked_at + ask_interval_seconds, give_up_at)
         return asking
 
     def _give_up(self, now: float) -> None:
@@ -532,10 +568,10 @@ class Restore(Task):  # pylint: disable=too-many-instance-attributes
 
         self._failed(
             f"Gave up, as none of the content it waits on arrived in "
-            f"{self._give_up_after_seconds:g} seconds; {what}",
+            f"{self._settings.give_up_after_seconds:g} seconds; {what}",
             now,
         )
-        self._gave_up = True
+        self._waiting.gave_up = True
         self._missing.clear()
 
 

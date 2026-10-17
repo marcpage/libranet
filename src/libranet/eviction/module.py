@@ -213,6 +213,90 @@ class _Request:
         return True
 
 
+@dataclass(frozen=True)
+class _Settings:
+    """How eviction paces itself.
+
+    No more than ``max_hand_offs`` hand-offs are under way at once, each
+    given up on once unanswered for ``hand_off_timeout_seconds``, and one
+    that falls short waits ``retry_delay_seconds`` before another starts.
+    Eviction aims ``headroom_bytes`` short of each storage limit, and
+    content stored within ``stored_grace_seconds`` is not let go of.
+    """
+
+    retry_delay_seconds: float
+    max_hand_offs: int
+    hand_off_timeout_seconds: float
+    headroom_bytes: int
+    stored_grace_seconds: float
+
+    @classmethod
+    def of(
+        cls,
+        config: LibranetConfig,
+        hand_off_timeout_seconds: float | None,
+        headroom_bytes: int | None,
+        stored_grace_seconds: float | None,
+    ) -> _Settings:
+        """The settings ``config`` gives, with any of the others given in place of its own.
+
+        Raises:
+            ValueError: ``hand_off_timeout_seconds`` is not positive, or
+                ``headroom_bytes`` or ``stored_grace_seconds`` is negative.
+        """
+        if hand_off_timeout_seconds is None:
+            hand_off_timeout_seconds = config.peers.longest_hand_off_seconds() * _HAND_OFF_SPARE
+
+        if stored_grace_seconds is None:
+            stored_grace_seconds = config.storage.stored_grace_seconds
+
+        if hand_off_timeout_seconds <= 0:
+            raise ValueError(
+                f"hand_off_timeout_seconds must be positive, got {hand_off_timeout_seconds}"
+            )
+
+        if headroom_bytes is not None and headroom_bytes < 0:
+            raise ValueError(f"headroom_bytes must not be negative, got {headroom_bytes}")
+
+        if stored_grace_seconds < 0:
+            raise ValueError(
+                f"stored_grace_seconds must not be negative, got {stored_grace_seconds}"
+            )
+
+        max_hand_offs = config.storage.max_hand_offs
+        return cls(
+            # A hand-off that falls short waits as long as a peer that could
+            # not be reached does, giving the peer mix the same time to change.
+            config.peers.retry_delay_seconds,
+            max_hand_offs,
+            hand_off_timeout_seconds,
+            (
+                max_hand_offs * config.storage.max_object_bytes
+                if headroom_bytes is None
+                else headroom_bytes
+            ),
+            stored_grace_seconds,
+        )
+
+
+@dataclass(frozen=True)
+class _Running:
+    """What the module works with once it has started: this node's id, and the limits kept."""
+
+    node_id: ContentId
+    pressure: StoragePressure
+
+    @classmethod
+    def open(
+        cls, config: LibranetConfig, free_bytes: FreeBytes | None, headroom_bytes: int
+    ) -> _Running:
+        """Read the node identity and count what is held."""
+        return cls(
+            NodeIdentity.load(config).node_id,
+            StoragePressure.of(config.storage, free_bytes, headroom_bytes),
+        )
+
+
 class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
     """Hands off and deletes the content this node has least claim to, as storage runs short."""
 
@@ -245,19 +329,12 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         headroom_bytes: int | None = None,
         stored_grace_seconds: float | None = None,
     ) -> None:
-        if hand_off_timeout_seconds is None:
-            hand_off_timeout_seconds = config.peers.longest_hand_off_seconds() * _HAND_OFF_SPARE
+        settings = _Settings.of(
+            config, hand_off_timeout_seconds, headroom_bytes, stored_grace_seconds
+        )
 
         if candidates_timeout_seconds is None:
             candidates_timeout_seconds = config.storage.candidates_timeout_seconds
-
-        if stored_grace_seconds is None:
-            stored_grace_seconds = config.storage.stored_grace_seconds
-
-        if hand_off_timeout_seconds <= 0:
-            raise ValueError(
-                f"hand_off_timeout_seconds must be positive, got {hand_off_timeout_seconds}"
-            )
 
         if candidates_timeout_seconds <= 0:
             raise ValueError(
@@ -274,33 +351,14 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
                 f"reclaim_interval_seconds must not be negative, got {reclaim_interval_seconds}"
             )
 
-        if headroom_bytes is not None and headroom_bytes < 0:
-            raise ValueError(f"headroom_bytes must not be negative, got {headroom_bytes}")
-
-        if stored_grace_seconds < 0:
-            raise ValueError(
-                f"stored_grace_seconds must not be negative, got {stored_grace_seconds}"
-            )
-
         super().__init__(
             name, queues, logger=logger, clock=clock, poll_interval_seconds=poll_interval_seconds
         )
         self._config = config
-        # A hand-off that falls short waits as long as a peer that could not
-        # be reached does, giving the peer mix the same time to change.
-        self._retry_delay_seconds = config.peers.retry_delay_seconds
+        self._settings = settings
         self._free_bytes = free_bytes
-        self._max_hand_offs = config.storage.max_hand_offs
-        self._hand_off_timeout_seconds = hand_off_timeout_seconds
-        self._headroom_bytes = (
-            self._max_hand_offs * config.storage.max_object_bytes
-            if headroom_bytes is None
-            else headroom_bytes
-        )
-        self._stored_grace_seconds = stored_grace_seconds
         self._store = CasStore.source_of_truth(config.storage)
-        self._node_id: ContentId | None = None
-        self._pressure: StoragePressure | None = None
+        self._running: _Running | None = None
         self._handing_off: dict[ContentId, _HandOff] = {}
         # What stats last ranked first to let go of, not yet handed off.
         self._candidates: deque[HeldObject] = deque()
@@ -336,18 +394,12 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
     @property
     def node_id(self) -> ContentId:
         """This node's id; only available once the module has started."""
-        if self._node_id is None:
-            raise RuntimeError("The eviction module is not running")
-
-        return self._node_id
+        return self._started().node_id
 
     @property
     def pressure(self) -> StoragePressure:
         """The storage limits being kept; only available once the module has started."""
-        if self._pressure is None:
-            raise RuntimeError("The eviction module is not running")
-
-        return self._pressure
+        return self._started().pressure
 
     def on_start(self) -> None:
         """Count what is held, and start letting go of content if storage is already short.
@@ -359,10 +411,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         started meanwhile is. Whether storage is full is said at once, for
         a backup module that asked while this module was down.
         """
-        self._node_id = NodeIdentity.load(self._config).node_id
-        self._pressure = StoragePressure.of(
-            self._config.storage, self._free_bytes, self._headroom_bytes
-        )
+        self._running = _Running.open(self._config, self._free_bytes, self._settings.headroom_bytes)
         self.publish(EventType.PEERS_CONNECTED_REQUESTED, {})
         self._report_full(always=True)
         self._evict()
@@ -378,7 +427,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         overdue = [
             content_id
             for content_id, hand_off in self._handing_off.items()
-            if now - hand_off.started_at >= self._hand_off_timeout_seconds
+            if now - hand_off.started_at >= self._settings.hand_off_timeout_seconds
         ]
 
         for content_id in overdue:
@@ -403,6 +452,13 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         if overdue or unanswered or unreclaimed or resumed:
             self._evict()
 
+    def _started(self) -> _Running:
+        """What the module works with, if it has started, otherwise a clear failure."""
+        if self._running is None:
+            raise RuntimeError("The eviction module is not running")
+
+        return self._running
+
     def _on_data_stored(self, message: Message) -> None:
         content_id = ContentId.from_fields(message)
         self._forget_old_stores()
@@ -423,7 +479,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         self._handing_off.pop(content_id, None)
 
         if len(holders) < HAND_OFF_COPIES:
-            self._paused_until = self._clock() + self._retry_delay_seconds
+            self._paused_until = self._clock() + self._settings.retry_delay_seconds
             self.logger.info(
                 "%s was taken by %d peers, short of the %d needed, so it is kept for now",
                 content_id,
@@ -474,16 +530,18 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         self._forget_old_stores()
 
         if self._stored_at:
-            self._paused_until = next(iter(self._stored_at.values())) + self._stored_grace_seconds
+            self._paused_until = (
+                next(iter(self._stored_at.values())) + self._settings.stored_grace_seconds
+            )
             self.logger.debug(
                 "Only content stored in the last %s seconds is left to let go of, "
                 "so %d bytes wait for it",
-                self._stored_grace_seconds,
+                self._settings.stored_grace_seconds,
                 excess,
             )
             return
 
-        self._paused_until = self._clock() + self._retry_delay_seconds
+        self._paused_until = self._clock() + self._settings.retry_delay_seconds
 
         if self.pressure.over_limits():
             self.logger.warning(
@@ -544,7 +602,10 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         """
         self._report_full()
 
-        if self._clock() < self._paused_until or len(self._handing_off) >= self._max_hand_offs:
+        if (
+            self._clock() < self._paused_until
+            or len(self._handing_off) >= self._settings.max_hand_offs
+        ):
             return
 
         if self._reclaiming.pending:
@@ -563,7 +624,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         freeing_bytes = sum(hand_off.size_bytes for hand_off in self._handing_off.values())
         self._forget_old_stores()
 
-        while freeing_bytes < excess and len(self._handing_off) < self._max_hand_offs:
+        while freeing_bytes < excess and len(self._handing_off) < self._settings.max_hand_offs:
             if not self._candidates:
                 self._ask_for_candidates(excess - freeing_bytes)
                 return
@@ -603,7 +664,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
 
     def _forget_old_stores(self) -> None:
         """Forget the content stored longest ago whose grace is over."""
-        since = self._clock() - self._stored_grace_seconds
+        since = self._clock() - self._settings.stored_grace_seconds
 
         while self._stored_at and next(iter(self._stored_at.values())) <= since:
             del self._stored_at[next(iter(self._stored_at))]
