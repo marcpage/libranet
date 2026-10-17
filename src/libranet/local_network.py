@@ -1,12 +1,14 @@
 """Run a local network of Libranet nodes for manual testing.
 
-Starts ``--count`` nodes (40 by default) at ``--host`` (``0.0.0.0``, every
-IPv4 address, by default), one per port from ``--base-port`` up, and tells
-each one about all the others, at that address, or at this machine's
-loopback address if it stands for every address, by posting a node list to
-its ``/data/nodes`` (HttpApi §10.5). Each node's ``/config`` is on its port plus 100, as a node's
-is by default, or plus the next multiple of 100 above every node's port when
-there are more than 100 nodes. The first sixteen nodes are given keys whose
+Starts ``--count`` nodes (40 by default) at ``--host`` (``::``, every IPv4
+and IPv6 address, by default), one per port from ``--base-port`` up, and
+tells each one about all the others, at that address, or at ``127.0.0.1`` if
+it stands for every address, by posting a node list to its ``/data/nodes``
+(HttpApi §10.5). A node on another machine they pass ``127.0.0.1`` on to
+puts the address it reached them at in its place (§10.2). Each node's
+``/config`` is on its port plus 100, as a node's is by default, or plus the
+next multiple of 100 above every node's port when there are more than 100
+nodes. The first sixteen nodes are given keys whose
 node ids start with the hex digits ``0`` to ``f`` in order, so every
 identifier bucket (HighLevelDesign §4.6) has a node in it; any further nodes
 get random keys. ``--max-storage-bytes`` limits the content each node holds.
@@ -49,6 +51,8 @@ from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption,
 from yaml import safe_dump
 
 from libranet.config.models import (
+    ANY_ADDRESS,
+    ANY_IPV4_ADDRESS,
     CONFIG_PORT_STEP,
     HIGHEST_PORT,
     LOOPBACK_FOR_ANY,
@@ -67,9 +71,9 @@ from libranet.modules import ModuleName
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.protocol.lists import NODES_PATH, node_list_body
 
-#: Where the nodes listen unless ``--host`` says otherwise: every IPv4
-#: address, as a node does by default, so other machines can use them too.
-HOST: Final = "0.0.0.0"
+#: Where the nodes listen unless ``--host`` says otherwise: every IPv4 and
+#: IPv6 address, as a node does by default, so other machines can use them too.
+HOST: Final = ANY_ADDRESS
 
 #: How many nodes get distinct first hex digits: one per hex digit.
 DISTINCT_DIGITS: Final = 16
@@ -140,8 +144,14 @@ class NodePlace:
 
     @property
     def endpoint(self) -> str:
-        """The URL the node is reached at: its host, or loopback if that is every address."""
-        reached = LOOPBACK_FOR_ANY.get(self.host, self.host)
+        """The URL the node is reached at: its host, or loopback if that is every address.
+
+        Every address of both families is reached at the IPv4 loopback
+        address, which a dual-stack listener takes too, and which a node on
+        a host with no IPv6 listens at instead.
+        """
+        host = ANY_IPV4_ADDRESS if self.host == ANY_ADDRESS else self.host
+        reached = LOOPBACK_FOR_ANY.get(host, host)
         host = f"[{reached}]" if ":" in reached else reached
         return f"http://{host}:{self.port}"
 
@@ -624,9 +634,9 @@ def parse_args(argv: Sequence[str] | None = None) -> Namespace:
     parser.add_argument(
         "--host",
         default=HOST,
-        help=f"IP address the nodes listen at (default {HOST}, every IPv4 address); they are "
-        f"told about each other at it, or at the loopback address if it is every address, "
-        f"so nodes on other machines can use them only if it is one address",
+        help=f"IP address the nodes listen at (default {HOST}, every IPv4 and IPv6 address); "
+        f"they are told about each other at it, or at 127.0.0.1 if it is every address, "
+        f"which a node on another machine replaces with the address it reached them at",
     )
     parser.add_argument(
         "--max-storage-bytes",

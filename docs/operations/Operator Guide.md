@@ -969,11 +969,11 @@ processes keeps its own log, rotated at 10 MiB with five old files kept, so a
 node can hold up to 600 MiB of them, and 40 nodes 24 GiB.
 
 `--host ADDRESS` has the nodes listen at that IP address alone, and tells each
-one the others are there. Without it, the nodes know one another at
-`127.0.0.1`, and pass that on to any node that asks: a browser on another
-computer can use them, but a node there is told addresses that name its own
-computer. `--max-storage-bytes N` limits the content each node holds. Like
-`--debug`, both last for that run only. Sixteen nodes run this way make a
+one the others are there. Without it, the nodes listen at every IPv4 and IPv6
+address and know one another at `127.0.0.1`. A node on another computer they
+pass that on to puts the address it reached them at in its place, so it can
+use them as well as a browser there can. `--max-storage-bytes N` limits the
+content each node holds. Like `--debug`, both last for that run only. Sixteen nodes run this way make a
 super node (§10).
 
 ## 10. Running a Super Node
@@ -1131,7 +1131,7 @@ Run the same command again, with the same switches. The script finds the
 keys in `--dir` and starts the same sixteen nodes, holding the content and
 knowing the peers they had. It writes their configuration afresh from the
 switches it is given, which is why each must be given again: run without
-`--host`, the nodes pass one another on at `127.0.0.1`, and without
+`--host`, the nodes listen at every address, not the one given, and without
 `--max-storage-bytes`, they have no limit. Keep the ports the same too, by
 giving the same `--base-port` if one was given, since your computers know
 the nodes by their ports.
