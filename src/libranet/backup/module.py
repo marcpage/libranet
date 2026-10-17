@@ -163,7 +163,7 @@ reported.
 
 from __future__ import annotations
 from collections import deque
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from functools import partial
 from logging import Logger
 from operator import itemgetter
@@ -236,6 +236,36 @@ class _Progress:
         self.status, self.error = TaskStatus.FAILED, failure_reason(error)
 
 
+@dataclass
+class _Tasks:
+    """How each job's looks go, and every restore, build, export, and import asked for, by id.
+
+    Kept in memory only, so a restart forgets them. Each restore, build,
+    export, and import is kept in the order it was started, or last started
+    over.
+    """
+
+    progress: dict[str, _Progress] = field(default_factory=dict)
+    restores: dict[str, Restore] = field(default_factory=dict)
+    builds: dict[str, Build] = field(default_factory=dict)
+    exports: dict[str, Export] = field(default_factory=dict)
+    imports: dict[str, Import] = field(default_factory=dict)
+
+
+@dataclass
+class _Backpressure:
+    """Whether eviction last said storage is full, and how the work under way waited for room.
+
+    ``set_aside`` holds the messages received while a backup, build, or
+    import stored content, to be handled after it, and ``waited_seconds``
+    how long the one under way has waited for room so far.
+    """
+
+    storage_full: bool = False
+    set_aside: deque[Message] = field(default_factory=deque)
+    waited_seconds: float = 0.0
+
+
 class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
     """Keeps configured directories backed up into the source of truth, and restores them."""
 
@@ -276,19 +306,8 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._node_id: ContentId | None = None
         self._secret: bytes | None = None
         self._jobs: dict[str, BackupJob] = {}
-        self._progress: dict[str, _Progress] = {}
-        self._restores: dict[str, Restore] = {}
-        self._builds: dict[str, Build] = {}
-        self._exports: dict[str, Export] = {}
-        self._imports: dict[str, Import] = {}
-        # Whether eviction last said storage is full.
-        self._storage_full = False
-        # Messages received while a backup, build, or import stored content,
-        # handled after it.
-        self._set_aside: deque[Message] = deque()
-        # How long the backup, build, or import under way has waited for room
-        # so far.
-        self._waited_seconds = 0.0
+        self._tasks = _Tasks()
+        self._backpressure = _Backpressure()
         self._route(
             {
                 EventType.BACKUP_JOB_CONFIGURED: self._on_job_configured,
@@ -324,22 +343,22 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
     @property
     def restores(self) -> Mapping[str, Restore]:
         """Every restore asked for since the module started, by id."""
-        return self._restores
+        return self._tasks.restores
 
     @property
     def builds(self) -> Mapping[str, Build]:
         """Every build asked for since the module started, by id."""
-        return self._builds
+        return self._tasks.builds
 
     @property
     def exports(self) -> Mapping[str, Export]:
         """Every export asked for since the module started, by id."""
-        return self._exports
+        return self._tasks.exports
 
     @property
     def imports(self) -> Mapping[str, Import]:
         """Every import asked for since the module started, by id."""
-        return self._imports
+        return self._tasks.imports
 
     def on_start(self) -> None:
         """Read the saved jobs and report them; each is looked at once the module is idle.
@@ -356,7 +375,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self.publish(EventType.STORAGE_FULL_REQUESTED, {})
         self._jobs = BackupJob.load_all(self._config.storage.backup_jobs_path)
         now = self._clock()
-        self._progress = {job_id: _Progress(now) for job_id in self._jobs}
+        self._tasks.progress = {job_id: _Progress(now) for job_id in self._jobs}
         self._report()
         self.logger.info("Keeping %d directories backed up", len(self._jobs))
 
@@ -366,8 +385,8 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
 
     def receive(self, timeout_seconds: float | None = None) -> Message | None:
         """The first message set aside while content was stored, if any, or else the next wanted."""
-        if self._set_aside:
-            return self._set_aside.popleft()
+        if self._backpressure.set_aside:
+            return self._backpressure.set_aside.popleft()
 
         return super().receive(timeout_seconds)
 
@@ -388,7 +407,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         job = self._jobs.get(request.job_id)
         configured = BackupJob(request) if job is None else replace(job, request=request)
         self._keep({**self._jobs, request.job_id: configured})
-        self._progress.setdefault(request.job_id, _Progress(0.0)).due_at = self._clock()
+        self._tasks.progress.setdefault(request.job_id, _Progress(0.0)).due_at = self._clock()
         self._report()
         self.logger.info("Keeping %s backed up as job %s", request.directory, request.job_id)
 
@@ -402,13 +421,13 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
 
         self._keep({other: kept for other, kept in self._jobs.items() if other != job_id})
         self._expanded.remove(job_id)
-        del self._progress[job_id]
+        del self._tasks.progress[job_id]
         self._report()
         self.logger.info("No longer backing up %s", job.directory)
 
     def _on_run_requested(self, message: Message) -> None:
         job_id: str = message["job_id"]
-        progress = self._progress.get(job_id)
+        progress = self._tasks.progress.get(job_id)
 
         if progress is None:
             self.logger.info("There is no backup job %s to run", job_id)
@@ -430,11 +449,11 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             )
 
         now = self._clock()
-        restore = self._restores.get(request.restore_id)
+        restore = self._tasks.restores.get(request.restore_id)
 
         if restore is None or not restore.can_carry_on:
-            self._restores.pop(request.restore_id, None)
-            self._restores[request.restore_id] = Restore(
+            self._tasks.restores.pop(request.restore_id, None)
+            self._tasks.restores[request.restore_id] = Restore(
                 request,
                 now,
                 self._ask_interval(),
@@ -454,8 +473,8 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         if request.build_id != message["build_id"]:
             raise ValueError(f"Build {message['build_id']} does not name {request.directory}")
 
-        self._builds.pop(request.build_id, None)
-        self._builds[request.build_id] = Build(request, self._clock())
+        self._tasks.builds.pop(request.build_id, None)
+        self._tasks.builds[request.build_id] = Build(request, self._clock())
         self._report()
         self.logger.info("Building %s", request.directory)
 
@@ -473,8 +492,8 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
                 f"to {request.archive}"
             )
 
-        self._exports.pop(request.export_id, None)
-        self._exports[request.export_id] = Export(
+        self._tasks.exports.pop(request.export_id, None)
+        self._tasks.exports[request.export_id] = Export(
             request, self._clock(), max_bundle_bytes=self._settings.max_bundle_bytes
         )
         self._report()
@@ -488,21 +507,21 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         if request.import_id != message["import_id"]:
             raise ValueError(f"Import {message['import_id']} does not name {request.path}")
 
-        self._imports.pop(request.import_id, None)
-        self._imports[request.import_id] = Import(request, Path(local_path), self._clock())
+        self._tasks.imports.pop(request.import_id, None)
+        self._tasks.imports[request.import_id] = Import(request, Path(local_path), self._clock())
         self._report()
         self.logger.info("Importing %s from %s", request.path, local_path)
 
     def _on_data_stored(self, message: Message) -> None:
         content_id = ContentId.from_fields(message)
         now = self._clock()
-        landed = [restore.landed(content_id, now) for restore in self._restores.values()]
+        landed = [restore.landed(content_id, now) for restore in self._tasks.restores.values()]
 
         if any(landed):
             self._report()
 
     def _on_storage_full(self, message: Message) -> None:
-        self._storage_full = bool(message["full"])
+        self._backpressure.storage_full = bool(message["full"])
 
     def _work_next(self) -> None:
         """Carry on with the work most due, a restore before anything else.
@@ -513,17 +532,17 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         now = self._clock()
         due = [
             (restore.due_at, restore_id)
-            for restore_id, restore in self._restores.items()
+            for restore_id, restore in self._tasks.restores.items()
             if restore.is_due(now)
         ]
         waiting = [
-            *_waiting(self._builds.values(), self._build),
-            *_waiting(self._exports.values(), self._export),
-            *_waiting(self._imports.values(), self._import),
+            *_waiting(self._tasks.builds.values(), self._build),
+            *_waiting(self._tasks.exports.values(), self._export),
+            *_waiting(self._tasks.imports.values(), self._import),
         ]
 
         if due:
-            self._carry_on(self._restores[min(due)[-1]])
+            self._carry_on(self._tasks.restores[min(due)[-1]])
 
         elif waiting:
             _, run = min(waiting, key=itemgetter(0))
@@ -711,13 +730,13 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         now = self._clock()
         due = [
             (not progress.requested, progress.due_at, job_id)
-            for job_id, progress in self._progress.items()
+            for job_id, progress in self._tasks.progress.items()
             if progress.requested or progress.due_at <= now
         ]
 
         if due:
             job_id = min(due)[-1]
-            self._look_at(self._jobs[job_id], self._progress[job_id])
+            self._look_at(self._jobs[job_id], self._tasks.progress[job_id])
 
     def _look_at(self, job: BackupJob, progress: _Progress) -> None:
         """Back ``job`` up, publishing a change to metadata alone only if a backup was asked for."""
@@ -810,7 +829,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         """
         self._take_messages(0.0)
 
-        if not self._storage_full:
+        if not self._backpressure.storage_full:
             return
 
         started_at = self._clock()
@@ -818,7 +837,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self.logger.debug("Storage is full; waiting for eviction to make room")
 
         try:
-            while self._storage_full:
+            while self._backpressure.storage_full:
                 if self._clock() - started_at >= stall_seconds:
                     raise StorageFullError(
                         f"Storage stayed full for {stall_seconds:.0f} seconds, "
@@ -828,7 +847,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
                 self._take_messages(self._poll_interval_seconds)
 
         finally:
-            self._waited_seconds += self._clock() - started_at
+            self._backpressure.waited_seconds += self._clock() - started_at
 
     def _take_messages(self, timeout_seconds: float) -> None:
         """Take what eviction said of storage, waiting up to ``timeout_seconds`` for a message.
@@ -843,20 +862,20 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
                 self._on_storage_full(message)
 
             else:
-                self._set_aside.append(message)
+                self._backpressure.set_aside.append(message)
 
             message = super().receive(0.0)
 
     def _log_wait(self, task: str) -> None:
         """Log how long ``task`` waited for room, if it did, and count afresh."""
-        if self._waited_seconds > 0:
+        if self._backpressure.waited_seconds > 0:
             self.logger.info(
                 "%s waited %.1f seconds in all for eviction to make room",
                 task,
-                self._waited_seconds,
+                self._backpressure.waited_seconds,
             )
 
-        self._waited_seconds = 0.0
+        self._backpressure.waited_seconds = 0.0
 
     def _announce(self, content_id: ContentId, size_bytes: int) -> None:
         self.publish(
@@ -890,15 +909,15 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             EventType.BACKUP_STATE,
             {
                 JOBS_FIELD: [self._job_report(job) for job in jobs],
-                RESTORES_FIELD: [restore.report() for restore in self._restores.values()],
-                BUILDS_FIELD: [build.report() for build in self._builds.values()],
-                EXPORTS_FIELD: [export.report() for export in self._exports.values()],
-                IMPORTS_FIELD: [task.report() for task in self._imports.values()],
+                RESTORES_FIELD: [restore.report() for restore in self._tasks.restores.values()],
+                BUILDS_FIELD: [build.report() for build in self._tasks.builds.values()],
+                EXPORTS_FIELD: [export.report() for export in self._tasks.exports.values()],
+                IMPORTS_FIELD: [task.report() for task in self._tasks.imports.values()],
             },
         )
 
     def _job_report(self, job: BackupJob) -> dict[str, Any]:
-        progress = self._progress[job.job_id]
+        progress = self._tasks.progress[job.job_id]
         latest = job.latest
         return {
             "job_id": job.job_id,
