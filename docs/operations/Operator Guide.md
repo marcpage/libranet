@@ -793,8 +793,9 @@ nodes on this machine for trying Libranet out by hand. From a clone:
 uv run libranet-local-network
 ```
 
-It starts 40 nodes on `127.0.0.1`, on ports 18400 to 18439, and tells each one
-about all the others by posting it a node list. The first sixteen get keys
+It starts 40 nodes, listening at every address the machine has on ports 18400
+to 18439, and tells each one about all the others, at `127.0.0.1`, by posting
+it a node list. The first sixteen get keys
 whose node ids start with the hex digits `0` to `f` in turn, so every
 identifier bucket holds a node; the other 24 get random keys. It then shows
 each node's URL and connections, updated as they change:
@@ -819,10 +820,11 @@ among its neighbors, the peers whose ids start with its own first hex digit. A
 network this small has too few neighbors to fill that second set, so other
 peers make up the number. With fewer than 33 nodes, each aims for every other
 node. `in` counts the other nodes connected to it. Open any URL in a browser to
-use that node. `Ctrl-C` stops every node and deletes the network's
-files. Nodes stop four at a time, so a large network takes a while; a second
-`Ctrl-C` kills whatever is left at once, and the script ignores any more until
-every node is killed.
+use that node, or, from another computer, the same URL with this machine's
+address or name in place of `127.0.0.1`. `Ctrl-C` stops every node and
+deletes the network's files. Nodes stop four at a time, so a large network
+takes a while; a second `Ctrl-C` kills whatever is left at once, and the
+script ignores any more until every node is killed.
 
 `--count` sets how many nodes run and `--base-port` the port of the first.
 `--dir DIR` keeps the network's files in `DIR`, and a later run with the same
@@ -836,9 +838,11 @@ no `--debug` is back at `INFO`. Debug logs grow fast. Each of a node's ten
 processes keeps its own log, rotated at 10 MiB with five old files kept, so a
 node can hold up to 600 MiB of them, and 40 nodes 24 GiB.
 
-`--host ADDRESS` has the nodes listen at that IP address rather than
-`127.0.0.1`, and tells each one the others are there, so other machines can
-use them. `--max-storage-bytes N` limits the content each node holds. Like
+`--host ADDRESS` has the nodes listen at that IP address alone, and tells each
+one the others are there. Without it, the nodes know one another at
+`127.0.0.1`, and pass that on to any node that asks: a browser on another
+computer can use them, but a node there is told addresses that name its own
+computer. `--max-storage-bytes N` limits the content each node holds. Like
 `--debug`, both last for that run only. Sixteen nodes run this way make a
 super node (§10).
 
@@ -903,7 +907,8 @@ uv run libranet-local-network --count 16 \
   deleted when the script stops.
 - `--host` is the address the nodes listen at, and the address each is told
   the others are at, which they pass on to your computers. Without it, they
-  listen only at `127.0.0.1`, where no other computer can reach them.
+  are told the others are at `127.0.0.1`, which on each of your computers
+  names that computer itself.
 - `--max-storage-bytes` limits the content each node holds (§10.4).
 
 The script starts the nodes, node *n* on port 18400 + *n*, tells each one
@@ -994,7 +999,7 @@ Run the same command again, with the same switches. The script finds the
 keys in `--dir` and starts the same sixteen nodes, holding the content and
 knowing the peers they had. It writes their configuration afresh from the
 switches it is given, which is why each must be given again: run without
-`--host`, the nodes listen only at `127.0.0.1`, and without
+`--host`, the nodes pass one another on at `127.0.0.1`, and without
 `--max-storage-bytes`, they have no limit. Keep the ports the same too, by
 giving the same `--base-port` if one was given, since your computers know
 the nodes by their ports.

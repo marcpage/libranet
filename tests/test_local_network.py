@@ -141,7 +141,7 @@ def test_a_node_config_keeps_everything_under_its_directory(tmp_path: Path) -> N
     place = NodePlace(2, tmp_path / "node-02", 18402, 18502)
 
     assert place.endpoint == "http://127.0.0.1:18402"
-    assert place.config.network.listen_address == "127.0.0.1"
+    assert place.config.network.listen_address == "0.0.0.0"
     assert place.config.network.listen_port == 18402
     assert place.config.network.config_port == 18502
     assert place.key_path.is_relative_to(place.directory)
@@ -220,11 +220,23 @@ def test_an_ipv6_host_is_bracketed_in_the_endpoint(tmp_path: Path) -> None:
     assert place.config.network.listen_address == "fd00::10"
 
 
-def test_the_host_must_be_one_ip_address() -> None:
-    assert parse_args([]).host == "127.0.0.1"
-    assert parse_args(["--host", "192.168.1.10"]).host == "192.168.1.10"
+@mark.parametrize(("host", "endpoint"), [("0.0.0.0", "127.0.0.1"), ("::", "[::1]")])
+def test_nodes_listening_at_every_address_are_listed_at_the_loopback_address(
+    tmp_path: Path, host: str, endpoint: str
+) -> None:
+    network = LocalNetwork.create(tmp_path, 2, 18400, host=host)
+    node = network.nodes[0]
 
-    for host in ("0.0.0.0", "::", "supernode.local"):
+    assert node.place.config.network.listen_address == host
+    assert list(loads(network.seed_list(node))["nodes"]) == [f"http://{endpoint}:18401"]
+
+
+def test_the_host_must_be_an_ip_address() -> None:
+    assert parse_args([]).host == "0.0.0.0"
+    assert parse_args(["--host", "192.168.1.10"]).host == "192.168.1.10"
+    assert parse_args(["--host", "::"]).host == "::"
+
+    for host in ("supernode.local", ""):
         with raises(SystemExit):
             parse_args(["--host", host])
 

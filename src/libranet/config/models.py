@@ -56,6 +56,14 @@ CONFIG_PORT_STEP: Final = 100
 # where this machine reaches it.
 CONFIG_LISTEN_ADDRESS: Final = "127.0.0.1"
 
+# Where this machine reaches a server listening at an address that stands
+# for every address of its family.
+LOOPBACK_FOR_ANY: Final[Mapping[str, str]] = {
+    "": "127.0.0.1",
+    "0.0.0.0": "127.0.0.1",
+    "::": "::1",
+}
+
 # The hosts /config, and every endpoint serving only local clients, are
 # served as by default: this machine's own names for itself (HttpApi §2.3.3,
 # §2.4).
