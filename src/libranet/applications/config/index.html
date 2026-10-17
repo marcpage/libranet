@@ -50,6 +50,16 @@
   h3 { font-size: 1rem; margin: 0 0 0.5rem; }
   a { color: var(--accent); }
 
+  /* Home, the node's front page, in the upper right corner of every page. */
+  .home {
+    position: absolute;
+    top: 0.75rem;
+    right: 1rem;
+    font-size: 1.5rem;
+    line-height: 1;
+    text-decoration: none;
+  }
+
   section {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -178,6 +188,7 @@
 </style>
 </head>
 <body>
+<a class="home" id="home" title="Home" aria-label="Home" hidden>&#x1F3E0;</a>
 <header>
   <h1>Libranet node</h1>
   <p class="subtitle">Administration, served only to this machine.</p>
@@ -898,6 +909,17 @@ function isLocalhost(endpoint) {
   }
 }
 
+// Home, the node's front page, on the main port, as the applications are
+// linked (applicationLink). Until the node says which port that is, there is
+// no link to show.
+function showHome() {
+  const url = new URL("/", location.href);
+  url.port = String(mainPort);
+  const home = byId("home");
+  home.href = url.href;
+  home.hidden = false;
+}
+
 async function loadNode() {
   const state = byId("node-state");
   let result;
@@ -917,6 +939,7 @@ async function loadNode() {
   const node = result.value;
   const advertised = byId("node-advertised");
   mainPort = node.listen_port;
+  showHome();
   nodeId = node.node_id;
   showNode(nodeShown(nodeId, {}));
   byId("node-listen").textContent = listenText(node.listen_address, node.listen_port);

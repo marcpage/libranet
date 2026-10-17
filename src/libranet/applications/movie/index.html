@@ -42,7 +42,7 @@
 
   header, main { max-width: 76rem; margin: 0 auto; padding: 0 1rem; }
   header {
-    padding-top: 1.5rem;
+    padding-top: 2.5rem;
     display: flex;
     flex-wrap: wrap;
     align-items: flex-start;
@@ -50,6 +50,16 @@
     gap: 0.5rem 1rem;
   }
   main { padding-bottom: 2rem; }
+
+  /* Home, the node's front page, in the upper right corner of every page. */
+  .home {
+    position: absolute;
+    top: 0.75rem;
+    right: 1rem;
+    font-size: 1.5rem;
+    line-height: 1;
+    text-decoration: none;
+  }
   h1 { font-size: 1.5rem; margin: 0; }
   h2 { font-size: 1.15rem; margin: 0; }
   h3 { font-size: 1.05rem; margin: 0 0 0.75rem; }
@@ -216,6 +226,7 @@
 </style>
 </head>
 <body>
+<a class="home" href="/" title="Home" aria-label="Home">&#x1F3E0;</a>
 <header>
   <div>
     <h1>Movies</h1>

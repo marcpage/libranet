@@ -44,6 +44,16 @@
   h2 { font-size: 1.15rem; margin: 0 0 0.75rem; }
   a { color: var(--accent); }
 
+  /* Home, the node's front page, in the upper right corner of every page. */
+  .home {
+    position: absolute;
+    top: 0.75rem;
+    right: 1rem;
+    font-size: 1.5rem;
+    line-height: 1;
+    text-decoration: none;
+  }
+
   section {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -121,6 +131,7 @@
 </style>
 </head>
 <body>
+<a class="home" href="/" title="Home" aria-label="Home">&#x1F3E0;</a>
 <main>
   <h1>Nodes</h1>
   <p id="every" hidden><a href="/nodes/">Every node known</a></p>
