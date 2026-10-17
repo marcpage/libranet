@@ -78,6 +78,7 @@ A small application, `hello/index.html`:
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <a class="home" href="/" title="Home" aria-label="Home">&#x1F3E0;</a>
   <h1>Hello from Libranet</h1>
   <p id="status">Asking the node…</p>
   <script src="hello.js"></script>
@@ -88,7 +89,17 @@ A small application, `hello/index.html`:
 `hello/style.css`:
 
 ```css
-body { font-family: sans-serif; margin: 2em; }
+body { font-family: sans-serif; margin: 2.5rem 2rem; }
+
+/* Home, the node's front page, in the upper right corner of every page. */
+.home {
+  position: absolute;
+  top: 0.75rem;
+  right: 1rem;
+  font-size: 1.5rem;
+  line-height: 1;
+  text-decoration: none;
+}
 ```
 
 and `hello/hello.js`, which asks the node whether the browser is on the
@@ -114,6 +125,28 @@ async function showClient() {
 
 showClient();
 ```
+
+**Give every page a way home.** Each page of an application links to the
+node's front page, the root application, with the house emoji, 🏠, in its
+upper right corner, as `hello/index.html` does. A person then goes from any
+page back to the applications the node serves without the browser's back
+button or editing the address.
+
+- **Link it as `/`**, the one link that is not relative: the front page is
+  at the root, whatever name the application is registered under.
+- **Place it in the page's corner**, not a column's: `0.75rem` from the top
+  and `1rem` from the right, positioned absolutely, so that it is in one
+  place on every page, whatever each one's layout.
+- **Keep the corner clear.** Nothing else lies under it: the shipped
+  applications start what they show `2.5rem` from the top.
+- **Label it `Home`**, for a screen reader and on hover, since an emoji
+  alone says little.
+
+An untrusted page follows the link as a trusted one does: its sandbox (§4)
+keeps it from reading what the node answers, not from going to another page.
+Every shipped application links home this way but the root application,
+which is home. `/config`, on a port of its own (§6.7), links to the front
+page on the main port, once the node has said which port that is.
 
 ### 3.2 Building It
 
@@ -1387,7 +1420,10 @@ The applications a node ships with are directories under
 served at `/`, `config`, served at `/config`, `movie`, served at
 `/movie`, `directory`, served at `/directory`, `mail`, served at `/mail`,
 and `nodes`, served at `/nodes`. `SHIPPED_APPLICATIONS` in `packaged.py`
-names each, and a node trusts them from the start.
+names each, and a node trusts them from the start. Each but `root` links
+home from its upper right corner (§3.1), and each carries its own copy of
+the link and its style, as each carries its own code for showing trust
+(§6.17).
 
 Run from the source, the node builds them in memory as it starts, so a
 changed page is served once the node restarts. `uv build` builds them into

@@ -777,6 +777,28 @@ def test_the_config_page_links_its_node_to_its_page_on_the_main_port(config_page
     assert 'url.searchParams.set("id", id);' in config_page
 
 
+@mark.parametrize("page_fixture", ["movie_page", "directory_page", "mail_page", "nodes_page"])
+def test_each_page_on_the_main_port_links_home_from_its_upper_right_corner(
+    request: FixtureRequest, page_fixture: str
+) -> None:
+    page = request.getfixturevalue(page_fixture)
+    [body] = findall(r"<body>\n(.*)\n", page)
+
+    # The front page, whatever name the application is registered under (#371).
+    assert body == '<a class="home" href="/" title="Home" aria-label="Home">&#x1F3E0;</a>'
+    assert ".home {\n    position: absolute;\n    top: 0.75rem;\n    right: 1rem;\n" in page
+
+
+def test_the_config_page_links_home_on_the_main_port(config_page: str) -> None:
+    [body] = findall(r"<body>\n(.*)\n", config_page)
+
+    # No link until the node says which port is the main port.
+    assert body == '<a class="home" id="home" title="Home" aria-label="Home" hidden>&#x1F3E0;</a>'
+    assert ".home {\n    position: absolute;\n    top: 0.75rem;\n    right: 1rem;\n" in config_page
+    assert 'const url = new URL("/", location.href);' in config_page
+    assert "mainPort = node.listen_port;\n  showHome();" in config_page
+
+
 def test_the_nodes_page_shows_one_node_alone(nodes_page: str) -> None:
     assert 'new URLSearchParams(location.search).get("id")' in nodes_page
 
