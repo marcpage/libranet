@@ -1975,7 +1975,19 @@ The directory gains 14 lines and loses 15, and the nodes application gains
   where a list on someone's page names them, saying "This is you." Trust,
   Distrust, and Clear are still not offered for them.
 
-LIVE-RUN
+Checked live, with a new node from the scratchpad on `127.0.0.1`, and
+headless Chrome over CDP. A person made from the directory's page read
+`GET /data/trust` as only themselves, `{"score": 1, "step": 0}`, while
+their list, of which there was none, was looked for, and
+`GET /data/trust/{id}` of their own id the same. The directory's page for
+them marked them 🟢, "This is you. Score 1, step 0. Your scores are still
+being built.", with no Trust, Distrust, or Clear. The node's page in the
+nodes application, while the build was still looking, offered all three, as
+it did before, rather than taking the person's own score for their list
+read; once the build was complete, Clear was disabled, as the list held
+nothing for the node. Trusting the node scored it 1 at step 1, the person
+still 1 at step 0, and a change naming the person was `400`. The node logged
+no warning or error.
 
 My calls, not yet reviewed:
 
