@@ -70,6 +70,9 @@ ordinary content, signed by its owner.
 - **Whom a node trusts.** The operator has the node trust or distrust other
   nodes on `/config`, which shows whom it trusts, and whoever trusts the
   node reaches through its list. Step 110.
+- **A way home.** Every page of the shipped applications but the front page
+  links to it, with 🏠 in its upper right corner, and the App Developer
+  Guide asks the same of every application. Step 111.
 
 ## 3. How to Read the Steps Below
 
@@ -1573,7 +1576,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 109 — Connecting to Another Node
+## Step 109 — Connecting to Another Node ✅
 
 **Issue:** #377. **Depends on:** Phase 2 Steps 23 and 25, and Step 108.
 
@@ -1705,7 +1708,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 110 — Whom a Node Trusts
+## Step 110 — Whom a Node Trusts ✅
 
 **Issue:** #376. **Depends on:** Steps 96, 97, and 103, and Step 108 for its
 links.
@@ -1831,6 +1834,82 @@ Found while building it:
 
 ---
 
+## Step 111 — A Way Home ✅
+
+**Issue:** #371. **Depends on:** nothing of this phase; Phase 1 Step 37's
+root application is the home it links to.
+
+Settled in the issue:
+
+- **The home emoji, 🏠, in the upper right corner of every page**, going
+  back to the home page when clicked.
+- **Every page reached without the browser's back button**, or editing the
+  address.
+
+Until now, only the front page linked to the applications, and none of them
+linked back, so a person who opened one left it with the back button.
+
+Work this implies:
+
+- **Each shipped application's page** gains the link, in the same place.
+- **The App Developer Guide** asks the same of every application (§3.1), and
+  says how the shipped ones do it (§9).
+
+**Testable in isolation:** packaging tests asserting that the movie,
+directory, mail, and nodes pages each begin with the link to `/`, placed in
+the corner, and that `/config`'s begins with the link hidden, and gives it
+the main port's `/` as it learns which port that is.
+
+Built in one change set, with no Python but 22 lines of tests. The pages
+gain 69 lines and change 1: 11 each for the directory, mail, and nodes, 13
+for the movie library, one of them changed, and 23 for `/config`.
+
+- **The link** is the first thing in each page's body,
+  `<a class="home" href="/" title="Home" aria-label="Home">&#x1F3E0;</a>`,
+  and **`.home`** places it `0.75rem` from the top and `1rem` from the right
+  of the page.
+- **The movie library's header** starts `2.5rem` from the top, not `1.5rem`,
+  as the other pages' content does, so that its "Playlists" button, at the
+  header's right, is not under the link.
+- **`/config`** starts with the link hidden and without an address.
+  `showHome()` gives it the main port's `/`, at the host the page was
+  reached at, as `applicationLink` links the applications, and shows it,
+  as `loadNode` learns the main port.
+
+Checked live, with a new node from the scratchpad on `127.0.0.1`, and an
+untrusted application, `hello`, built from the App Developer Guide's
+example. In headless Chrome, at 1280 and 375 pixels wide, each of the movie
+library, the directory, mail, the nodes list, one node's page, `hello`, and
+`/config` showed 🏠 at the same place, nothing drawn under it, labelled
+"Home". A real click on it took each to `http://127.0.0.1:24600/`, the
+front page: `hello`, whose origin is `"null"` in its sandbox, as well, and
+`/config`, from its own port. The node logged no warning or error.
+
+My calls, not yet reviewed:
+
+- **The front page has none**, since it is home, and a link to itself would
+  do nothing.
+- **The corner is the page's, not the content's.** The link is positioned
+  absolutely, so that it is in one place on every page, whatever the width of
+  each one's content: 44, 52, or 76 rem. It scrolls away with the page
+  rather than staying fixed in the window, which on a narrow screen would
+  cover what scrolls beneath it.
+- **`/config` shows no link until the node says which port is the main
+  port**, as it shows each application's path without a link until then,
+  rather than guessing one.
+- **Labelled "Home"**, as its `aria-label` and its `title`, since an emoji
+  alone says little to a screen reader, or to a person unsure what it does.
+- **A convention, not something the node does.** The node serves an
+  application's files as they are, and adds nothing to its pages, so an
+  application without the link has none. The App Developer Guide asks for
+  it.
+- **No specification changes**: HttpApi §13 says how applications are
+  served, not what their pages show.
+- **The guide's example starts `2.5rem` from the top** too, rather than
+  `2em`, so that it follows its own advice.
+
+---
+
 ## 4. Issues in the Milestone
 
 Every issue in the **Phase 5 - Trust Network** milestone, by number, and
@@ -1861,6 +1940,7 @@ where it went.
 | #353 | Documentation out of sync with the code or other documentation | None: cleanup |
 | #354 | What the specifications can settle from the implementation | None: cleanup |
 | #370 | The local network's nodes listening only at `127.0.0.1` | None: a fix |
+| #371 | A home link in the upper right corner of every application's pages | 111 |
 | #376 | The administration page having the node trust other nodes | 110 |
 | #377 | The administration page taking a node's address to add to the network | 109 |
 
@@ -1887,6 +1967,7 @@ made before it is built (§3).
 | I | 108 (#323) | About 20, shipping it | An application of every step before it but 102. |
 | J | 109 (#377) | None made before it was built; 444 as built | Independent of the trust steps; links to 108's application. |
 | K | 110 (#376) | None made before it was built; 404 as built | Needs 97's edits and 103's signing as a node; links to 108's application. |
+| L | 111 (#371) | None; the pages alone | Independent of every other step; links to the root application. |
 
 ## 6. Open Items Not Yet Decided
 
