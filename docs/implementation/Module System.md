@@ -11,8 +11,8 @@ those processes work together: which modules there are and what each one is
 responsible for, how the supervisor starts, restarts, and stops them, and the
 message bus, shared files, and signals they communicate through. It is
 written for someone about to read or change the code, and describes the
-implementation as of version 0.2 and Phase 3, up to Step 77, and Phase 4's
-Steps 30, 78–82, and 89–93.
+implementation as of version 0.2 and Phase 3, up to Step 77, Phase 4's
+Steps 30, 78–82, and 89–93, and Phase 5's Steps 94 and 96–108.
 
 The architecture was chosen in [Phase 1](Phase%201.md) §2 and Steps 3 and 4,
 and [Phase 2](Phase%202.md) and [Phase 3](Phase%203.md) leave it unchanged.
@@ -222,7 +222,7 @@ through the dispatcher.
 | --- | --- | --- | --- | --- |
 | — | Supervisor | `supervisor` | `ProcessSupervisor` | Starts, restarts, and stops every other process |
 | 1 | Dispatcher | `dispatcher` | `Dispatcher` | Puts each published message into the inbox of every module that subscribes to it |
-| 2 | Stats | `stats` | `StatsModule` | Records what the node sees; derives the node, seek, and candidate lists; ranks content for eviction |
+| 2 | Stats | `stats` | `StatsModule` | Records what the node sees; derives the node, seek, candidate, blocked, and peer lists; ranks content for eviction |
 | 3 | Web server | `webserver` | `WebServerModule` | Serves the HTTP API, applications, and `/config`, and reports what it was asked |
 | 4 | Validator | `validator` | `ValidatorModule` | Checks uploads against their content ids and promotes them into `cas/data` |
 | 5 | Connection manager | `connections` | `ConnectionsModule` | Keeps the peer mix; fetches from, pushes to, and hands content off to peers |
@@ -618,7 +618,7 @@ What each module does in them:
 | Module | `on_start` | `on_idle` | `on_stop` |
 | --- | --- | --- | --- |
 | Stats | Read the node id; open the database; derive the lists; ask which peers are connected | Derive the lists once the interval has passed | Close the database |
-| Web server | Name no peers connected; read the key and credential; bind; start the HTTP thread | — | Stop the HTTP server; close the socket |
+| Web server | Name no peers connected; read the key and credential; bind `/config`'s port, then the main port; start a thread for each HTTP server | — | Stop both HTTP servers, ending every trust build; close their sockets |
 | Validator | — | — | — |
 | Connection manager | Read the key; name no peers connected; start the workers; load candidates; dial | Dial rested candidates; refresh peers due; resume searches, and searches of the peers, due a next pass | Stop the workers; close every connection |
 | Fetcher | — | — | — |
@@ -725,7 +725,7 @@ Six of the eight modules are single-threaded. The other two are not:
 
 | Module | Threads besides the main one | Their shared state is guarded by |
 | --- | --- | --- |
-| Web server | A thread for each HTTP server, the main port's and `/config`'s; one thread per request | A lock in each shared object (§9.3) |
+| Web server | A thread for each HTTP server, the main port's and `/config`'s; one thread per request; a thread for each build of a signed-in person's trust scores, started as they sign in, and for reading what a change to their list newly reaches (Phase 5 Step 99) | A lock in each shared object (§9.3) |
 | Connection manager | `peers.search_workers` search workers; `peers.push_workers` push workers; `peers.broadcast_workers` broadcast workers, for searches of the peers, 8 of each by default; a reverse-DNS worker; a thread per dial, refresh, and hand-off | One lock for the whole module |
 
 Any thread may publish: `publish()` only puts the message on the outbox,
@@ -899,7 +899,7 @@ to end its loop.
 | `data.blocked` | P | | | S | | | S | |
 | *Lifecycle* | | | | | | | | |
 | `shutdown` | S | S | S | S | S | S | S | S |
-| **Publishes / subscribes** | 18 / 3 | 14 / 6 | 2 / 1 | 4 / 21 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 |
+| **Publishes / subscribes** | 18 / 3 | 15 / 7 | 2 / 1 | 4 / 21 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 |
 
 The `shutdown` row and its subscriptions are implicit: every module
 receives it without listing it, and nothing publishes it (§6.4). The totals
@@ -1280,6 +1280,16 @@ of every peer connected goes out as `peers.connected` whenever one comes
 or goes. The main thread reads it only to answer
 `peers.connected_requested`.
 
+Two more hold who is signed in, and are kept in the web server's memory
+alone (Phase 4 Step 79, Phase 5 Step 99). `Sessions` is shared among
+request threads only: signing in starts a session, and signing out, or
+leaving it unused for `network.session_idle_seconds`, ends it. It tells
+`TrustBuilds` as each person signs in, and as their last session ends.
+`TrustBuilds` holds the build of each signed-in person's trust scores. Each
+build's own thread (§5.4) writes the lists it reads, request threads read
+the scores from them, and a change a request makes to the person's list is
+handed to it to score again. The web server stopping ends every build.
+
 ## 10. How Modules Converse
 
 ### 10.1 Patterns
@@ -1313,7 +1323,7 @@ side recovers:
 | Module restarted | What is lost | How the node recovers |
 | --- | --- | --- |
 | Stats | An answer it owed the eviction module | The database is kept, and the lists are derived again at start; eviction times out and asks again |
-| Web server | Remembered outcomes; the last `backup.state`; requests in progress; its connections | Paths are asked of the unbundler again. The `/config/api` backup endpoints, and `GET /data/imports`, answer `503` until the backup module next reports, which it does only when something changes. It names no peers connected as it starts, and peers that dial again are named anew |
+| Web server | Remembered outcomes; the last `backup.state`; requests in progress; its connections; every session, and the trust builds of those signed in | Paths are asked of the unbundler again. The `/config/api` backup endpoints, and `GET /data/imports`, answer `503` until the backup module next reports, which it does only when something changes. It names no peers connected as it starts, and peers that dial again are named anew. No one is signed in: each person signs in again, which builds their trust scores afresh |
 | Validator | The upload it was checking, if it died mid-message | The upload stays in `incoming/` until the same content arrives from the same node again |
 | Connection manager | Connections, searches, searches of the peers and their holds, hand-offs, content not yet pushed | It dials from the candidate list again, naming no peers connected until one is; eviction times out a hand-off after 1,200 s by default; a fetch is asked for again at the next miss after the fetcher's interval; the next search of a prefix searches the peers again |
 | Fetcher | Which content it asked for lately | The next miss is asked for at once |

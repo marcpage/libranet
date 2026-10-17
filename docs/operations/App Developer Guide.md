@@ -176,7 +176,9 @@ network holds.
 | List and import from the folders offered, and make bundles (§6.3–§6.5) | No | From a local client |
 | Make a drop, encrypted for a person or not (§6.9, §6.15) | No | Yes |
 | Make identities, sign people in and out, sign as them, and open what is encrypted for them or by a password (§6.10, §6.13, §6.15) | No | From a local client |
+| Read the trust scores of whoever is signed in, and change their trust list (§6.17) | No | From a local client |
 | Block content the node will no longer hold (§6.11) | No | From a local client |
+| Read what the node knows of each peer, and whether it is connected (§6.8) | No | From a local client |
 
 An untrusted application is served with:
 

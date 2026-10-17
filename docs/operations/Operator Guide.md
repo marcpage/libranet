@@ -396,10 +396,12 @@ serves at `/` links to each.
 An application you register is not trusted, and is served in a sandbox: its
 pages can show what the network holds, and nothing more. A trusted
 application can import any file from the folders this node offers (§6.3),
-make bundles, and read and change every application's store. It can also
-sign people in, see the passwords they type, and act as them while they are
-signed in (§6.5), and have this node delete content and refuse it for good,
-which nothing undoes but deleting the node's database. So trust only one you
+make bundles, and read and change every application's store. It can see
+which nodes this node talks to, and how much (§7.3). It can also sign
+people in, see the passwords they type, and act as them while they are
+signed in (§6.5), changing whom they trust among the rest (§6.6), and have
+this node delete content and refuse it for good, which nothing undoes but
+deleting the node's database. So trust only one you
 would trust with those folders and with the people who use it. Tick its box
 on the `/config` page, or:
 

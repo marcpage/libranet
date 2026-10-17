@@ -301,6 +301,11 @@ stats:
   # it, or the peer connecting to this node, starts the count again.
   max_node_failures: 5
   node_cool_off_seconds: 86400.0
+  # Provisional: the most peers the peer list names, which this machine's
+  # pages read at /data/peers (HTTP API §10.8). Statistics are never deleted,
+  # so a node running long knows more nodes than a page can show. Those
+  # connected now are kept first, then the most recently connected.
+  max_peers_listed: 1000
 
 backup:
   # Provisional: how often each backup job's directory is looked at for

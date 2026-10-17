@@ -167,9 +167,10 @@ what you registered never changes under you.
 An application you have not trusted runs in a sandbox: its pages can show
 what the network holds, and nothing more. A trusted one can also import
 files from the folders your node offers, make bundles, and keep data on your
-node, as the movie library does. It can sign people in and act for them, as
-the user directory and mail do, and have your node delete content and never
-hold it again. The
+node, as the movie library does, and see which nodes yours talks to, as the
+nodes application does. It can sign people in and act for them, as the user
+directory and mail do, and have your node delete content and never hold it
+again. The
 [App Developer Guide](docs/operations/App%20Developer%20Guide.md) describes
 what an application can do, and how to write one.
 
