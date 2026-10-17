@@ -840,8 +840,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             response = self.server.router.dispatch(request)
 
         except IncompleteBodyError as error:
-            # The client stopped mid-body, so the connection is unusable
-            # (RFC 9112 §8).
+            # The client stopped mid-body, so the connection is unusable (RFC 9112 §8).
             self.log_error("%s", error)
             self.close_connection = True
             return
