@@ -353,6 +353,106 @@ class _Peer:
     busy: bool = True
 
 
+@dataclass
+class _Dialing:
+    """The candidates the peer mix is chosen from, and what of them may not be dialed now.
+
+    ``seeds`` stand in for ``candidates`` while the candidate list names no
+    peer. ``pending`` holds the candidates being dialed, by their keys, and
+    ``resting`` the candidate keys not to be dialed again until the time
+    given. ``own_endpoints`` turned out to be this node itself, and
+    ``duplicates`` reached a node connected at another endpoint, with that
+    node: they are not dialed again while that connection lasts. All but
+    ``seeds`` are shared with the background threads, under the module's
+    lock.
+    """
+
+    seeds: list[Candidate] = field(default_factory=list)
+    candidates: list[Candidate] = field(default_factory=list)
+    pending: dict[ContentId | str, Candidate] = field(default_factory=dict)
+    resting: dict[ContentId | str, float] = field(default_factory=dict)
+    own_endpoints: set[str] = field(default_factory=set)
+    duplicates: dict[str, ContentId] = field(default_factory=dict)
+
+    def available(self, peers: Mapping[ContentId, _Peer]) -> list[Candidate]:
+        """The candidates that may be dialed now, each with only the endpoints that may be.
+
+        A candidate being dialed or resting may not. Nor may an endpoint
+        that is this node, is in use by a connection to one of ``peers`` or
+        one being opened, or reaches one of ``peers`` at another endpoint.
+        Called under the module's lock.
+        """
+        unusable = (
+            self.own_endpoints
+            | {peer.session.endpoint for peer in peers.values()}
+            | {endpoint for pending in self.pending.values() for endpoint in pending.endpoints}
+            | {endpoint for endpoint, node_id in self.duplicates.items() if node_id in peers}
+        )
+        available: list[Candidate] = []
+
+        for candidate in self.candidates:
+            if candidate.key in self.pending or candidate.key in self.resting:
+                continue
+
+            usable = candidate.keeping(lambda endpoint: endpoint not in unusable)
+
+            if usable is not None:
+                available.append(usable)
+
+        return available
+
+    def rested(self, now: float) -> bool:
+        """Let the candidates whose rest is over by ``now`` be dialed again; whether any were."""
+        rested = [key for key, until in self.resting.items() if until <= now]
+
+        for key in rested:
+            del self.resting[key]
+
+        return bool(rested)
+
+    def release_duplicates(self, node_id: ContentId) -> None:
+        """Make what reached ``node_id`` at another endpoint a route to it again."""
+        self.duplicates = {
+            endpoint: reached for endpoint, reached in self.duplicates.items() if reached != node_id
+        }
+
+
+@dataclass
+class _Searching:
+    """Every search under way, of either kind.
+
+    ``content`` holds the searches for content, by the content each seeks,
+    carried on by the search workers; content a search found nothing for is
+    held. ``prefixes`` holds the searches of the peers for a prefix, by the
+    prefix, carried on by the broadcast workers.
+    """
+
+    content: _Searches[ContentId, _Search] = field(default_factory=_Searches)
+    prefixes: _Searches[str, _Broadcast] = field(default_factory=_Searches)
+
+
+@dataclass
+class _Pushing:
+    """New content to push to a peer, and content being handed off.
+
+    ``queue`` holds the new content for the push workers to push, with
+    ``None`` telling a worker to stop. ``unpushed`` holds the new content no
+    peer was connected to take, by content id, with the node each came from:
+    pushed once a connection opens. ``handing_off`` is the content being
+    handed off. Those two are shared with the background threads, under the
+    module's lock.
+    """
+
+    queue: SimpleQueue[_NewContent | None] = field(default_factory=SimpleQueue)
+    unpushed: dict[ContentId, ContentId] = field(default_factory=dict)
+    handing_off: set[ContentId] = field(default_factory=set)
+
+    def stop(self, workers: int) -> None:
+        """Tell each of ``workers`` push workers to stop."""
+        for _ in range(workers):
+            self.queue.put(None)
+
+
 class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
     """Keeps this node connected to a spread of peers and fetches from them."""
 
@@ -387,33 +487,14 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         self._exchange: PeerExchange | None = None
         self._resolve_names = resolve_names
         self._lookup: ReverseLookup | None = None
-        self._seeds: list[Candidate] = []
         # Everything below is shared with the background threads, under the
-        # lock.
+        # lock, as each type says.
         self._lock = Lock()
         self._running = False
-        self._candidates: list[Candidate] = []
         self._peers: dict[ContentId, _Peer] = {}
-        # Candidates being dialed, by their keys.
-        self._pending: dict[ContentId | str, Candidate] = {}
-        # Candidate keys not to be dialed again until the time given.
-        self._resting: dict[ContentId | str, float] = {}
-        # Endpoints that turned out to be this node itself.
-        self._own_endpoints: set[str] = set()
-        # Endpoints that reached a node connected at another endpoint, with
-        # that node: not dialed again while that connection lasts.
-        self._duplicates: dict[str, ContentId] = {}
-        # Searches for content, by the content each seeks, carried on by the
-        # search workers. Content a search found nothing for is held.
-        self._searches: _Searches[ContentId, _Search] = _Searches()
-        # Searches of the peers for a prefix, by the prefix, carried on by the
-        # broadcast workers.
-        self._broadcasts: _Searches[str, _Broadcast] = _Searches()
-        self._handing_off: set[ContentId] = set()
-        self._pushes: SimpleQueue[_NewContent | None] = SimpleQueue()
-        # New content no peer was connected to take, by content id, with the
-        # node each came from: pushed once a connection opens.
-        self._unpushed: dict[ContentId, ContentId] = {}
+        self._dialing = _Dialing()
+        self._searches = _Searching()
+        self._pushing = _Pushing()
         self._route(
             {
                 EventType.NODE_LIST_UPDATED: self._on_node_list_updated,
@@ -457,7 +538,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         self._exchange = PeerExchange(
             NodeIdentity.load(self._config), self._config, self._publish_learned, self.logger
         )
-        self._seeds = self._load_seeds()
+        self._dialing.seeds = self._load_seeds()
 
         with self._lock:
             self._running = True
@@ -501,11 +582,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         now = self._clock()
 
         with self._lock:
-            rested = [key for key, until in self._resting.items() if until <= now]
-
-            for key in rested:
-                del self._resting[key]
-
+            rested = self._dialing.rested(now)
             due = [
                 peer for peer in self._peers.values() if not peer.busy and peer.refresh_at <= now
             ]
@@ -513,17 +590,17 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             for peer in due:
                 peer.busy = True
 
-            resumed = self._searches.resumed(now)
-            passes = self._broadcasts.resumed(now)
+            resumed = self._searches.content.resumed(now)
+            passes = self._searches.prefixes.resumed(now)
 
         for peer in due:
             self._start("refresh", partial(self._talk, peer, self.exchange.refresh))
 
         for search in resumed:
-            self._searches.ready.put(search)
+            self._searches.content.ready.put(search)
 
         for broadcast in passes:
-            self._broadcasts.ready.put(broadcast)
+            self._searches.prefixes.ready.put(broadcast)
 
         if rested:
             self._maintain()
@@ -542,12 +619,9 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         if running:  # tell worker threads to stop
             settings = self._config.peers
 
-            self._searches.stop(settings.search_workers)
-
-            for _ in range(settings.push_workers):
-                self._pushes.put(None)
-
-            self._broadcasts.stop(settings.broadcast_workers)
+            self._searches.content.stop(settings.search_workers)
+            self._pushing.stop(settings.push_workers)
+            self._searches.prefixes.stop(settings.broadcast_workers)
 
             if self._lookup is not None:
                 self._lookup.stop()
@@ -596,18 +670,18 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         search: _Search | None = None
 
         with self._lock:
-            held_until = self._searches.held_until(content_id, now)
+            held_until = self._searches.content.held_until(content_id, now)
 
-            if content_id not in self._searches.under_way and held_until <= now:
-                self._searches.release(content_id)
-                search = self._searches.under_way[content_id] = _Search(
+            if content_id not in self._searches.content.under_way and held_until <= now:
+                self._searches.content.release(content_id)
+                search = self._searches.content.under_way[content_id] = _Search(
                     content_id,
                     self._config.network.retry_after_seconds,
                     self._config.peers.search_passes,
                 )
 
         if search is not None:
-            self._searches.ready.put(search)
+            self._searches.content.ready.put(search)
 
         elif held_until > now:
             self.logger.debug(
@@ -625,17 +699,17 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         broadcast: _Broadcast | None = None
 
         with self._lock:
-            under_way = prefix in self._broadcasts.under_way
-            held = self._broadcasts.held_until(prefix, now) > now
+            under_way = prefix in self._searches.prefixes.under_way
+            held = self._searches.prefixes.held_until(prefix, now) > now
 
             if not under_way and not held:
-                broadcast = self._broadcasts.under_way[prefix] = _Broadcast(
+                broadcast = self._searches.prefixes.under_way[prefix] = _Broadcast(
                     prefix, asker, self._config.peers.search_passes
                 )
 
         if broadcast is not None:
             self.logger.debug("Searching the peers for %s", prefix)
-            self._broadcasts.ready.put(broadcast)
+            self._searches.prefixes.ready.put(broadcast)
 
         elif held:
             self.logger.debug("Not searching the peers for %s: the last search just ended", prefix)
@@ -649,10 +723,10 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         copies = int(message["copies"])
 
         with self._lock:
-            if content_id in self._handing_off:
+            if content_id in self._pushing.handing_off:
                 return
 
-            self._handing_off.add(content_id)
+            self._pushing.handing_off.add(content_id)
 
         self._start("hand-off", partial(self._hand_off, content_id, copies))
 
@@ -661,13 +735,13 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         content_id = ContentId.from_fields(message)
 
         with self._lock:
-            searched = self._searches.under_way.pop(content_id, None) is not None
-            self._searches.release(content_id)
+            searched = self._searches.content.under_way.pop(content_id, None) is not None
+            self._searches.content.release(content_id)
 
         if searched:
             self.logger.debug("%s arrived while being searched for", content_id)
 
-        self._pushes.put(_NewContent(content_id, ContentId.parse(message["node_id"])))
+        self._pushing.queue.put(_NewContent(content_id, ContentId.parse(message["node_id"])))
 
     def _on_peers_connected_requested(self, _message: Message) -> None:
         with self._lock:
@@ -706,12 +780,12 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         )
         dialable = [
             usable
-            for candidate in candidates or self._seeds
+            for candidate in candidates or self._dialing.seeds
             if (usable := candidate.keeping(_dialable)) is not None
         ]
 
         with self._lock:
-            self._candidates = dialable
+            self._dialing.candidates = dialable
 
     def _maintain(self) -> None:
         """Dial whatever the peer mix is short of."""
@@ -720,41 +794,18 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
                 return
 
             chosen = PeerMix(self._config.peers, self.exchange.node_id).choose(
-                self._available(),
-                [*self._peers, *(candidate.node_id for candidate in self._pending.values())],
+                self._dialing.available(self._peers),
+                [
+                    *self._peers,
+                    *(candidate.node_id for candidate in self._dialing.pending.values()),
+                ],
             )
 
             for candidate in chosen:
-                self._pending[candidate.key] = candidate
+                self._dialing.pending[candidate.key] = candidate
 
         for candidate in chosen:
             self._start("connect", partial(self._connect, candidate))
-
-    def _available(self) -> list[Candidate]:
-        """The candidates that may be dialed now, each with only the endpoints that may be.
-
-        A candidate being dialed or resting may not. Nor may an endpoint
-        that is this node, is in use by a connection or one being opened, or
-        reaches a node connected at another endpoint. Called under the lock.
-        """
-        unusable = (
-            self._own_endpoints
-            | {peer.session.endpoint for peer in self._peers.values()}
-            | {endpoint for pending in self._pending.values() for endpoint in pending.endpoints}
-            | {endpoint for endpoint, node_id in self._duplicates.items() if node_id in self._peers}
-        )
-        available: list[Candidate] = []
-
-        for candidate in self._candidates:
-            if candidate.key in self._pending or candidate.key in self._resting:
-                continue
-
-            usable = candidate.keeping(lambda endpoint: endpoint not in unusable)
-
-            if usable is not None:
-                available.append(usable)
-
-        return available
 
     def _start(self, purpose: str, job: Callable[[], None]) -> None:
         """Run ``job`` on its own thread, which never holds up the process exiting."""
@@ -775,10 +826,10 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             self.logger.exception("Connecting to %s failed", candidate.key)
 
         with self._lock:
-            self._pending.pop(candidate.key, None)
+            self._dialing.pending.pop(candidate.key, None)
 
             if peer is None and candidate.node_id not in self._peers:
-                self._resting[candidate.key] = (
+                self._dialing.resting[candidate.key] = (
                     self._clock() + self._config.peers.retry_delay_seconds
                 )
 
@@ -875,11 +926,11 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
                 refusal = "the module is stopping"
 
             elif session.node_id == self.exchange.node_id:
-                self._own_endpoints.add(session.endpoint)
+                self._dialing.own_endpoints.add(session.endpoint)
                 refusal = "it is this node"
 
             elif session.node_id in self._peers:
-                self._duplicates[session.endpoint] = session.node_id
+                self._dialing.duplicates[session.endpoint] = session.node_id
                 duplicate = True
                 refusal = f"{session.node_id} is already connected"
 
@@ -918,19 +969,14 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             if self._peers.get(session.node_id) is peer:
                 del self._peers[session.node_id]
                 self._publish_connected()
-                # What reached it at another endpoint is a route to it again.
-                self._duplicates = {
-                    endpoint: node_id
-                    for endpoint, node_id in self._duplicates.items()
-                    if node_id != session.node_id
-                }
+                self._dialing.release_duplicates(session.node_id)
 
             # Even when this node closed it (a response that failed
             # verification), or it would be dialed straight back. By its
             # endpoint too, for a seed dialed without knowing its node id.
             rest_until = self._clock() + self._config.peers.retry_delay_seconds
-            self._resting[session.node_id] = rest_until
-            self._resting[session.endpoint] = rest_until
+            self._dialing.resting[session.node_id] = rest_until
+            self._dialing.resting[session.endpoint] = rest_until
 
         self.logger.info("Connection to %s at %s closed", session.node_id, session.endpoint)
         self.publish(
@@ -956,7 +1002,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
 
     def _search_loop(self) -> None:
         """Search-worker thread: carry searches on until told to stop."""
-        while (search := self._searches.ready.get()) is not None:
+        while (search := self._searches.content.ready.get()) is not None:
             try:
                 self._search(search)
 
@@ -985,7 +1031,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             with self._lock:
                 if (
                     not self._running
-                    or self._searches.under_way.get(search.content_id) is not search
+                    or self._searches.content.under_way.get(search.content_id) is not search
                 ):
                     return None
 
@@ -1000,7 +1046,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
                 resume_at = search.start_next_pass(ranked, now)
 
                 if resume_at > now:
-                    self._searches.wait(search, resume_at)
+                    self._searches.content.wait(search, resume_at)
                     waiting = True
 
         if waiting:
@@ -1032,7 +1078,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             return False
 
         with self._lock:
-            self._searches.end(content_id, search)
+            self._searches.content.end(content_id, search)
 
         self.publish(
             EventType.FETCH_SUCCEEDED,
@@ -1050,17 +1096,19 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         now = self._clock()
 
         with self._lock:
-            if not self._searches.end(content_id, search):
+            if not self._searches.content.end(content_id, search):
                 return
 
             if search.asks:
-                self._searches.hold(content_id, now + self._config.peers.failed_search_hold_seconds)
+                self._searches.content.hold(
+                    content_id, now + self._config.peers.failed_search_hold_seconds
+                )
 
         self.publish(EventType.FETCH_FAILED, content_id.fields())
 
     def _broadcast_loop(self) -> None:
         """Broadcast-worker thread: make searches' passes of the peers until told to stop."""
-        while (broadcast := self._broadcasts.ready.get()) is not None:
+        while (broadcast := self._searches.prefixes.ready.get()) is not None:
             try:
                 self._make_pass(broadcast)
 
@@ -1102,7 +1150,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         pause_seconds = self._config.network.retry_after_seconds
 
         with self._lock:
-            self._broadcasts.wait(broadcast, self._clock() + pause_seconds)
+            self._searches.prefixes.wait(broadcast, self._clock() + pause_seconds)
 
         self.logger.debug(
             "The search of the peers for %s asks again in %d seconds",
@@ -1113,10 +1161,10 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
     def _end_broadcast(self, broadcast: _Broadcast) -> None:
         """End ``broadcast``, holding off another search of its prefix for a while."""
         with self._lock:
-            if not self._broadcasts.end(broadcast.prefix, broadcast):
+            if not self._searches.prefixes.end(broadcast.prefix, broadcast):
                 return
 
-            self._broadcasts.hold(
+            self._searches.prefixes.hold(
                 broadcast.prefix, self._clock() + self._config.peers.broadcast_hold_seconds
             )
 
@@ -1138,7 +1186,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
 
         finally:
             with self._lock:
-                self._handing_off.discard(content_id)
+                self._pushing.handing_off.discard(content_id)
 
             self.publish(
                 EventType.EVICTION_ACKNOWLEDGED,
@@ -1177,7 +1225,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
 
     def _push_loop(self) -> None:
         """Push-worker thread: push new content, a batch at a time, until told to stop."""
-        while (first := self._pushes.get()) is not None:
+        while (first := self._pushing.queue.get()) is not None:
             batch = self._batch_from(first)
 
             try:
@@ -1199,14 +1247,14 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
 
         while len(batch) < self._config.peers.pipeline_depth:
             try:
-                new = self._pushes.get_nowait()
+                new = self._pushing.queue.get_nowait()
 
             except Empty:
                 # Not logged: nothing more is waiting, which ends the batch.
                 break
 
             if new is None:
-                self._pushes.put(None)
+                self._pushing.queue.put(None)
                 break
 
             batch.append(new)
@@ -1278,13 +1326,13 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             waiting = self._peers.keys() <= push.tried
 
             if waiting:
-                self._unpushed[new.content_id] = new.source
+                self._pushing.unpushed[new.content_id] = new.source
 
         if waiting:
             self.logger.debug("No peer to push %s to yet", new.content_id)
 
         else:  # a peer connected meanwhile
-            self._pushes.put(new)
+            self._pushing.queue.put(new)
 
     def _push_to(self, session: PeerSession, group: Sequence[_Push]) -> Sequence[_Push]:
         """Send ``group`` to ``session``'s peer in one pipelined exchange.
@@ -1317,10 +1365,10 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
     def _push_unpushed(self) -> None:
         """Push the new content that was waiting for a peer, now that one is connected."""
         with self._lock:
-            unpushed, self._unpushed = self._unpushed, {}
+            unpushed, self._pushing.unpushed = self._pushing.unpushed, {}
 
         for content_id, source in unpushed.items():
-            self._pushes.put(_NewContent(content_id, source))
+            self._pushing.queue.put(_NewContent(content_id, source))
 
     def _by_match(self, content_id: ContentId) -> list[PeerSession]:
         """The connected peers, those whose id best matches ``content_id``'s hash first."""
