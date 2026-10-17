@@ -665,9 +665,10 @@ function markFor(entry) {
 }
 
 // Whether the scores say what the person's own list holds yet: it is the
-// first read, and only it scores at step 1.
+// first read, and only it scores at step 1, the person being at step 0 from
+// the start.
 function ownListRead() {
-  return view.scores !== null && (view.complete || view.scores.size > 0);
+  return view.scores !== null && (view.complete || [...view.scores.values()].some((trust) => trust.step > 0));
 }
 
 // Trust, Distrust, and Clear, changing the entry for `entry` on the trust list

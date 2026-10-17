@@ -592,6 +592,7 @@ def test_the_scores_read_are_what_the_build_has_read_and_whether_it_is_complete(
     reads: TrustReads, truth: CasStore, person: PersonKey, cookie: Mapping[str, str], jobs: Jobs
 ) -> None:
     hold_list(truth, person, {BOB: True, CAROL: False})
+    own = {str(person.person_id): {"score": 1, "step": 0}}
 
     before = reading(reads, cookie)
     jobs.run()
@@ -599,15 +600,19 @@ def test_the_scores_read_are_what_the_build_has_read_and_whether_it_is_complete(
 
     assert before.status == 200
     assert before.headers["Cache-Control"] == "no-store"
-    assert loads(before.body) == {"complete": False, "scores": {}}
+    assert loads(before.body) == {"complete": False, "scores": own}
     assert after.status == 200
     assert loads(after.body) == {
         "complete": True,
-        "scores": {str(BOB): {"score": 1, "step": 1}, str(CAROL): {"score": -1, "step": 1}},
+        "scores": {
+            **own,
+            str(BOB): {"score": 1, "step": 1},
+            str(CAROL): {"score": -1, "step": 1},
+        },
     }
 
 
-def test_one_identitys_score_is_read_and_one_not_reached_scores_0_at_no_step(
+def test_one_identitys_score_is_read_and_the_persons_own_scores_1_at_step_0(
     reads: TrustReads, truth: CasStore, person: PersonKey, cookie: Mapping[str, str], jobs: Jobs
 ) -> None:
     hold_list(truth, person, {BOB: True})
@@ -621,8 +626,8 @@ def test_one_identitys_score_is_read_and_one_not_reached_scores_0_at_no_step(
     assert loads(dave.body) == {"id": str(DAVE), "score": 0, "step": None, "complete": True}
     assert loads(own.body) == {
         "id": str(person.person_id),
-        "score": 0,
-        "step": None,
+        "score": 1,
+        "step": 0,
         "complete": True,
     }
 
@@ -654,7 +659,10 @@ def test_a_fallback_that_has_not_taken_over_reads_its_scores(
     response = reading(reads, {"Cookie": started.partition(";")[0]})
 
     assert response.status == 200
-    assert loads(response.body) == {"complete": True, "scores": {}}
+    assert loads(response.body) == {
+        "complete": True,
+        "scores": {str(fallback.person_id): {"score": 1, "step": 0}},
+    }
 
 
 def test_reading_scores_let_go_of_since_the_session_was_found_is_401(
@@ -695,7 +703,11 @@ def test_a_change_scores_again_without_reading_again_what_the_build_holds(
     ]
     assert changed == {
         "complete": False,
-        "scores": {str(BOB): {"score": 1, "step": 1}, str(CAROL): {"score": 1, "step": 1}},
+        "scores": {
+            str(person.person_id): {"score": 1, "step": 0},
+            str(BOB): {"score": 1, "step": 1},
+            str(CAROL): {"score": 1, "step": 1},
+        },
     }
     assert built == {**changed, "complete": True}
 

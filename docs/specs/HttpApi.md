@@ -2001,7 +2001,8 @@ GET /data/trust
 
 ```json
 {"complete": false,
- "scores": {"sha256/…": {"score": 1, "step": 1},
+ "scores": {"sha256/…": {"score": 1, "step": 0},
+            "sha256/…": {"score": 1, "step": 1},
             "sha256/…": {"score": 0.2, "step": 2}}}
 ```
 
@@ -2009,8 +2010,9 @@ GET /data/trust
 step (Trust Network §4.1). `complete` is `true` once the build has read
 every list it will, and `false` while it is reading, after a sign-in or a
 change, when the scores of the step under way may still change (Trust
-Network §4.3). An identity at step 1 is one the person names: a score of 1
-is one they trust, and −1 one they distrust.
+Network §4.3). The person is among them from the start, at step 0 with a
+score of 1, whatever any list says. An identity at step 1 is one the person
+names: a score of 1 is one they trust, and −1 one they distrust.
 
 A page reads one identity's score with:
 
@@ -2022,8 +2024,8 @@ GET /data/trust/{hash-algorithm}/{hash}
 {"id": "sha256/…", "score": 0.2, "step": 2, "complete": true}
 ```
 
-An identity the build has not reached, the person's own among them, has a
-`score` of 0 and a `step` of `null`.
+The person's own id has a `score` of 1 and a `step` of 0, and an identity
+the build has not reached a `score` of 0 and a `step` of `null`.
 
 A page changes the list of whoever is signed in one entry at a time, with:
 

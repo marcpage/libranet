@@ -194,7 +194,7 @@ def test_signing_in_starts_the_build_behind_the_sign_in(
 
     assert reads_before == []
     assert (before.scores, before.needed) == ({}, (ALICE,))
-    assert built(builds, ALICE) == TrustScores({BOB: TrustScore(1, 1)})
+    assert built(builds, ALICE) == TrustScores(ALICE, {BOB: TrustScore(1, 1)})
 
 
 def test_the_lists_are_read_a_step_at_a_time_in_the_order_the_rule_asks(
@@ -209,6 +209,7 @@ def test_the_lists_are_read_a_step_at_a_time_in_the_order_the_rule_asks(
     # Dave, distrusted, is not read, and Frank, at the last step, is.
     assert reader.reads == [ALICE, *sorted((BOB, CAROL), key=str), ERIN, FRANK]
     assert built(builds, ALICE) == TrustScores(
+        ALICE,
         {
             BOB: TrustScore(1, 1),
             CAROL: TrustScore(1, 1),
@@ -216,7 +217,7 @@ def test_the_lists_are_read_a_step_at_a_time_in_the_order_the_rule_asks(
             ERIN: TrustScore(2, 2),
             GINA: TrustScore(-1, 2),
             FRANK: TrustScore(1, 3),
-        }
+        },
     )
 
 
@@ -236,7 +237,7 @@ def test_a_list_not_found_in_time_is_left_out_and_not_looked_for_again(
     assert BOB not in reader.reads[erin_read:]
     assert clock.now - started >= WAIT_SECONDS
     assert built(builds, ALICE) == TrustScores(
-        {BOB: TrustScore(1, 1), CAROL: TrustScore(1, 1), ERIN: TrustScore(1, 2)}
+        ALICE, {BOB: TrustScore(1, 1), CAROL: TrustScore(1, 1), ERIN: TrustScore(1, 2)}
     )
 
 
@@ -280,7 +281,9 @@ def test_what_is_found_and_not_held_is_asked_for_and_the_list_read_once_held(
     # Asked for once, as it is asked for again only after a while.
     assert recorder.payloads(EventType.DATA_NOT_FOUND) == [second.content_id.fields()]
     assert reader.reads.count(BOB) == 3
-    assert built(builds, ALICE) == TrustScores({BOB: TrustScore(1, 1), DAVE: TrustScore(1, 2)})
+    assert built(builds, ALICE) == TrustScores(
+        ALICE, {BOB: TrustScore(1, 1), DAVE: TrustScore(1, 2)}
+    )
 
 
 def test_a_list_held_in_part_when_the_time_is_up_is_read_from_what_is_held(
@@ -332,7 +335,7 @@ def test_each_sign_in_builds_again_from_the_start(
     background.run()
 
     assert reader.reads == [ALICE, BOB, ALICE, CAROL]
-    assert built(builds, ALICE) == TrustScores({CAROL: TrustScore(1, 1)})
+    assert built(builds, ALICE) == TrustScores(ALICE, {CAROL: TrustScore(1, 1)})
 
 
 def test_a_build_started_again_stops_the_one_before(
@@ -363,7 +366,7 @@ def test_two_sessions_of_one_person_share_a_build_that_ends_with_the_last(
     sessions.end(second)
 
     assert reader.reads == [person, BOB]
-    assert after_one == TrustScores({BOB: TrustScore(1, 1)})
+    assert after_one == TrustScores(person, {BOB: TrustScore(1, 1)})
     assert builds.scores(person) is None
 
 
@@ -435,7 +438,7 @@ def test_a_build_that_fails_is_logged_and_keeps_what_it_read(
     assert (record.levelno, record.getMessage()) == (level, message)
     # A store that cannot be read needs no traceback; anything else keeps it.
     assert (record.exc_info is not None) == (level == ERROR)
-    assert built(builds, ALICE) == TrustScores({BOB: TrustScore(1, 1)}, (BOB,))
+    assert built(builds, ALICE) == TrustScores(ALICE, {BOB: TrustScore(1, 1)}, (BOB,))
 
 
 def test_a_change_scores_again_reading_only_the_lists_it_newly_reaches(
@@ -453,6 +456,7 @@ def test_a_change_scores_again_reading_only_the_lists_it_newly_reaches(
 
     assert reader.reads[read_at_sign_in:] == [DAVE, HANK]
     assert built(builds, ALICE) == TrustScores(
+        ALICE,
         {
             BOB: TrustScore(1, 1),
             DAVE: TrustScore(1, 1),
@@ -460,7 +464,7 @@ def test_a_change_scores_again_reading_only_the_lists_it_newly_reaches(
             GINA: TrustScore(-1, 2),
             HANK: TrustScore(1, 2),
             FRANK: TrustScore(1, 3),
-        }
+        },
     )
 
 
@@ -477,13 +481,14 @@ def test_a_change_reaching_no_list_unread_reads_nothing(
 
     assert reader.reads == read_at_sign_in
     assert built(builds, ALICE) == TrustScores(
+        ALICE,
         {
             BOB: TrustScore(-1, 1),
             CAROL: TrustScore(1, 1),
             DAVE: TrustScore(-1, 1),
             ERIN: TrustScore(1, 2),
             FRANK: TrustScore(1, 3),
-        }
+        },
     )
 
 
@@ -506,7 +511,9 @@ def test_a_change_while_the_build_reads_is_read_by_that_build(
 
     assert jobs_waiting == [0]
     assert reader.reads == [ALICE, BOB, CAROL]
-    assert built(builds, ALICE) == TrustScores({BOB: TrustScore(1, 1), CAROL: TrustScore(1, 1)})
+    assert built(builds, ALICE) == TrustScores(
+        ALICE, {BOB: TrustScore(1, 1), CAROL: TrustScore(1, 1)}
+    )
 
 
 def test_a_change_made_as_the_build_finishes_is_read(
@@ -535,7 +542,7 @@ def test_a_change_made_as_the_build_finishes_is_read(
     background.run()
 
     assert reader.reads == [ALICE, BOB]
-    assert built(builds, ALICE) == TrustScores({BOB: TrustScore(1, 1)})
+    assert built(builds, ALICE) == TrustScores(ALICE, {BOB: TrustScore(1, 1)})
 
 
 def test_a_change_made_while_the_persons_own_list_is_read_is_kept(
@@ -549,7 +556,7 @@ def test_a_change_made_while_the_persons_own_list_is_read_is_kept(
     background.run()
 
     assert reader.reads == [ALICE, CAROL]
-    assert built(builds, ALICE) == TrustScores({CAROL: TrustScore(1, 1)})
+    assert built(builds, ALICE) == TrustScores(ALICE, {CAROL: TrustScore(1, 1)})
 
 
 def test_a_list_given_up_on_stays_given_up_after_a_change(
@@ -566,7 +573,9 @@ def test_a_list_given_up_on_stays_given_up_after_a_change(
     background.run()
 
     assert reader.reads[read_at_sign_in:] == [CAROL]
-    assert built(builds, ALICE) == TrustScores({BOB: TrustScore(1, 1), CAROL: TrustScore(1, 1)})
+    assert built(builds, ALICE) == TrustScores(
+        ALICE, {BOB: TrustScore(1, 1), CAROL: TrustScore(1, 1)}
+    )
 
 
 def test_a_change_for_someone_not_signed_in_does_nothing(
@@ -596,7 +605,7 @@ def test_a_build_that_failed_reads_again_once_the_list_is_changed(
     builds.changed(ALICE, {CAROL: True})
     background.run()
 
-    assert built(builds, ALICE) == TrustScores({CAROL: TrustScore(1, 1)})
+    assert built(builds, ALICE) == TrustScores(ALICE, {CAROL: TrustScore(1, 1)})
 
 
 def test_a_build_runs_on_a_thread_of_its_own_by_default(

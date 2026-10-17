@@ -467,7 +467,7 @@ def test_of_identities_trusted_alike_the_list_whose_id_sorts_first_is_read() -> 
 def test_with_the_persons_own_list_not_read_it_is_all_that_is_needed() -> None:
     scores = TrustScores.from_lists(ALICE, {BOB: {CAROL: True}}, LIMITS)
 
-    assert scores == TrustScores({}, (ALICE,))
+    assert scores == TrustScores(ALICE, {}, (ALICE,))
     assert not scores.complete
 
 
@@ -522,22 +522,39 @@ def test_a_score_is_written_whole_where_it_is_whole(score: TrustScore, written: 
 
 
 def test_the_scores_are_written_by_identity_saying_whether_they_are_complete() -> None:
-    scores = TrustScores({BOB: TrustScore(1, 1), ERIN: TrustScore(2, 2)}, (BOB,))
+    scores = TrustScores(ALICE, {BOB: TrustScore(1, 1), ERIN: TrustScore(2, 2)}, (BOB,))
 
     assert scores.value() == {
         "complete": False,
-        "scores": {str(BOB): {"score": 1, "step": 1}, str(ERIN): {"score": 0.2, "step": 2}},
+        "scores": {
+            str(ALICE): {"score": 1, "step": 0},
+            str(BOB): {"score": 1, "step": 1},
+            str(ERIN): {"score": 0.2, "step": 2},
+        },
     }
-    assert TrustScores({}).value() == {"complete": True, "scores": {}}
+    assert TrustScores(ALICE, {}).value() == {
+        "complete": True,
+        "scores": {str(ALICE): {"score": 1, "step": 0}},
+    }
 
 
 def test_one_identitys_score_is_written_with_its_id() -> None:
-    scores = TrustScores({ERIN: TrustScore(2, 2)})
+    scores = TrustScores(ALICE, {ERIN: TrustScore(2, 2)})
 
     assert scores.value_for(ERIN) == {"id": str(ERIN), "score": 0.2, "step": 2, "complete": True}
 
 
 def test_an_identity_not_reached_is_written_scoring_0_at_no_step() -> None:
-    scores = TrustScores({BOB: TrustScore(1, 1)}, (BOB,))
+    scores = TrustScores(ALICE, {BOB: TrustScore(1, 1)}, (BOB,))
 
     assert scores.value_for(HANK) == {"id": str(HANK), "score": 0, "step": None, "complete": False}
+
+
+def test_the_person_is_written_scoring_1_at_step_0_whatever_the_lists_say() -> None:
+    lists = {ALICE: {BOB: True}, BOB: {ALICE: False, CAROL: True}, CAROL: {ALICE: False}}
+
+    scores = TrustScores.from_lists(ALICE, lists, LIMITS)
+
+    assert ALICE not in scores.scores
+    assert scores.value_for(ALICE) == {"id": str(ALICE), "score": 1, "step": 0, "complete": True}
+    assert scores.value()["scores"][str(ALICE)] == {"score": 1, "step": 0}

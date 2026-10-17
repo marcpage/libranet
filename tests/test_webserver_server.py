@@ -2285,7 +2285,7 @@ def test_a_signed_in_local_client_reads_the_scores_its_change_gives(
         headers={"Content-Type": JSON_CONTENT_TYPE, **page},
     )
     made = local_connection.getresponse()
-    made.read()
+    person_id = loads(made.read())["id"]
     cookie = {"Cookie": (made.getheader("Set-Cookie") or "").partition(";")[0]}
     local_connection.request(
         "PUT",
@@ -2300,7 +2300,10 @@ def test_a_signed_in_local_client_reads_the_scores_its_change_gives(
 
     assert every.status == 200
     assert every.getheader("Cache-Control") == "no-store"
-    assert loads(every_body)["scores"] == {str(CONTENT_ID): {"score": -1, "step": 1}}
+    assert loads(every_body)["scores"] == {
+        person_id: {"score": 1, "step": 0},
+        str(CONTENT_ID): {"score": -1, "step": 1},
+    }
     assert one.status == 200
     assert loads(one_body) == {
         "id": str(CONTENT_ID),

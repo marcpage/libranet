@@ -73,6 +73,9 @@ ordinary content, signed by its owner.
 - **A way home.** Every page of the shipped applications but the front page
   links to it, with 🏠 in its upper right corner, and the App Developer
   Guide asks the same of every application. Step 111.
+- **Trusting yourself.** The scores of whoever is signed in always trust
+  them, at a step of their own, whatever any list says, and the directory
+  marks them so. Step 112.
 
 ## 3. How to Read the Steps Below
 
@@ -1910,6 +1913,101 @@ My calls, not yet reviewed:
 
 ---
 
+## Step 112 — Trusting Yourself
+
+**Issue:** #372. **Depends on:** Step 100's reads of the scores, and Step
+101's marks in the directory.
+
+Settled in the issue, which has only its title:
+
+- **A node and a person are each always in their own trust network.**
+
+Until now, the scores of whoever is signed in never named them.
+`GET /data/trust` left them out, `GET /data/trust/{id}` answered their own
+id as it did one not reached, a score of 0 at no step, and the directory
+showed them no mark.
+
+Ruled when it was built (2026-10-17):
+
+- **The person's own id scores 1 at step 0**, whatever any list says, theirs
+  or another's. It is a step of its own, ahead of step 1, which reads their
+  list, rather than the 1 at step 1 of an identity their list trusts, so
+  that a page tells the two apart. The directory marks them 🟢, saying it is
+  them.
+- **Nothing changes for a node's own id.** A node builds no scores of its
+  own, and the scores of whoever is signed in reach the node as their lists
+  do.
+- **The build is unchanged.** Only what the reads answer changes. The person
+  is passed over wherever a list names them, as before, and the node's list
+  is read only where a person's lists trust the node.
+
+Work this implies:
+
+- **`TrustScores`** knows whose scores they are, and answers that person
+  scoring 1 at step 0, in `GET /data/trust` and `GET /data/trust/{id}`.
+- **The directory** marks the person signed in, and it and the nodes
+  application no longer take the person's own score for their list read.
+- Trust Network §4.1, HttpApi §11.7, and the App Developer Guide §6.12 and
+  §6.17 say so.
+
+**Testable in isolation:** scoring rule tests asserting the person is
+answered scoring 1 at step 0, both alone and among every score, though the
+lists of those they trust distrust them, and is never among the scores the
+lists give; and web server tests asserting both reads answer them so, a
+fallback that has not taken over included, from the first read of a build
+to the last.
+
+Built in one change set, with 30 lines of non-test Python, 13 of them
+replacing removed ones, and 70 of tests, 29 of them replacing removed ones.
+The directory gains 14 lines and loses 15, and the nodes application gains
+3 and loses 2.
+
+- **`TrustScores.person`**, its first field, is set by `from_lists`.
+  `value()` writes the person first among `scores`, and `value_for()`
+  answers them, each through `_score_value`, which gives them
+  `{"score": 1, "step": 0}`. `scores` itself holds only what the lists give,
+  so the build, and what it logs, are unchanged.
+- **`ownListRead()`**, on the directory and nodes pages, took any score at
+  all to mean the person's own list was read, as only it scored before. The
+  person's own score is there from the first read now, so it looks for a
+  score past step 0.
+- **The directory** marks the person in its list, on their own page, and
+  where a list on someone's page names them, saying "This is you." Trust,
+  Distrust, and Clear are still not offered for them.
+
+Checked live, with a new node from the scratchpad on `127.0.0.1`, and
+headless Chrome over CDP. A person made from the directory's page read
+`GET /data/trust` as only themselves, `{"score": 1, "step": 0}`, while
+their list, of which there was none, was looked for, and
+`GET /data/trust/{id}` of their own id the same. The directory's page for
+them marked them 🟢, "This is you. Score 1, step 0. Your scores are still
+being built.", with no Trust, Distrust, or Clear. The node's page in the
+nodes application, while the build was still looking, offered all three, as
+it did before, rather than taking the person's own score for their list
+read; once the build was complete, Clear was disabled, as the list held
+nothing for the node. Trusting the node scored it 1 at step 1, the person
+still 1 at step 0, and a change naming the person was `400`. The node logged
+no warning or error.
+
+My calls, not yet reviewed:
+
+- **Mail still shows the person signed in no mark**, in its rows, chips,
+  address book, and message headers, where they are among those a message
+  names, and a 🟢 beside them on every message would say nothing.
+- **The root, nodes, and `/config` pages say nothing new.** They mark only
+  nodes, none of which is ever at step 0, so they gain no "This is you."
+- **Step 0's score is written, not computed.** A `TrustScore` weighs its
+  count by a tenth for each step after the first, which would make step 0's
+  10, so the person is no `TrustScore`, and is never among `scores`.
+- **A change naming the person is still `400`**, since a list never names
+  its owner, and **a read with no one signed in is still `401`**, their own
+  id among them, since there is no one whose scores they would be.
+- **Steps 94 and 101 are left as written.** "The signed-in person is never
+  scored" and "shown no mark" say what was ruled then, and this step changes
+  both.
+
+---
+
 ## 4. Issues in the Milestone
 
 Every issue in the **Phase 5 - Trust Network** milestone, by number, and
@@ -1941,6 +2039,7 @@ where it went.
 | #354 | What the specifications can settle from the implementation | None: cleanup |
 | #370 | The local network's nodes listening only at `127.0.0.1` | None: a fix |
 | #371 | A home link in the upper right corner of every application's pages | 111 |
+| #372 | A node and a person each always in their own trust network | 112 |
 | #376 | The administration page having the node trust other nodes | 110 |
 | #377 | The administration page taking a node's address to add to the network | 109 |
 
@@ -1968,6 +2067,7 @@ made before it is built (§3).
 | J | 109 (#377) | None made before it was built; 444 as built | Independent of the trust steps; links to 108's application. |
 | K | 110 (#376) | None made before it was built; 404 as built | Needs 97's edits and 103's signing as a node; links to 108's application. |
 | L | 111 (#371) | None; the pages alone | Independent of every other step; links to the root application. |
+| M | 112 (#372) | None made before it was built; 30 as built | Needs 100's reads of the scores, and 101's marks in the directory. |
 
 ## 6. Open Items Not Yet Decided
 
