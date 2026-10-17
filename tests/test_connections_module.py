@@ -45,6 +45,7 @@ from libranet.messaging.envelope import Message, make_message
 from libranet.messaging.events import ConnectionDirection, EventType
 from libranet.messaging.queues import MessageQueue, ModuleQueues
 from libranet.modules import ModuleName
+from libranet.protocol.added_addresses import AddedAddress, AddedAddresses
 from libranet.stats.module import StatsModule
 from libranet.webserver.router import Router
 from libranet.webserver.server import LibranetHTTPServer, RequestHandler, build_router
@@ -352,6 +353,24 @@ def node_list_updated(config: LibranetConfig) -> Message:
         ModuleName.STATS,
         {"path": str(config.storage.candidate_list_path)},
     )
+
+
+def address_added(endpoint: str) -> Message:
+    """An address the operator added on ``/config``, as the web server announces it."""
+    return make_message(EventType.ADDRESS_ADDED, ModuleName.WEBSERVER, {"endpoint": endpoint})
+
+
+def address_removed(endpoint: str) -> Message:
+    """An address the operator removed on ``/config``, as the web server announces it."""
+    return make_message(EventType.ADDRESS_REMOVED, ModuleName.WEBSERVER, {"endpoint": endpoint})
+
+
+def write_added(config: LibranetConfig, *endpoints: str) -> None:
+    """The addresses added on ``/config``, as the web server keeps them."""
+    added = AddedAddresses(config.storage.added_addresses_path)
+
+    for endpoint in endpoints:
+        added.add(AddedAddress.create(endpoint))
 
 
 def best_and_other(
@@ -712,6 +731,165 @@ def test_an_endpoint_that_is_this_node_is_not_dialed_again(
     assert module.connected == {}
     assert bus.events(EventType.CONNECTION_OPENED) == []
     assert bus.events(EventType.CONNECTION_FAILED) == []
+
+
+# -- Addresses added on /config (Phase 5 Step 109) -------------------------
+
+
+def test_an_address_added_is_dialed_at_once_whatever_the_mix(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+) -> None:
+    write_lists(config.storage, node_list(identity, peers[0]))
+    module = modules.start(
+        with_peers(config, min_outgoing_connections=1, min_neighborhood_connections=0)
+    )
+    bus.wait_for(EventType.CONNECTION_OPENED, node_id=str(peers[0].node_id))
+
+    module.handle(address_added(peers[1].endpoint))
+
+    bus.wait_for(EventType.CONNECTION_OPENED, node_id=str(peers[1].node_id))
+    assert module.connected == {peer.node_id: peer.endpoint for peer in peers}
+
+
+def test_an_address_added_is_dialed_again_at_once_while_it_rests(
+    modules: Modules, config: LibranetConfig, caplog: LogCaptureFixture
+) -> None:
+    caplog.set_level(INFO, logger="libranet")
+    endpoint = f"http://127.0.0.1:{closed_port()}"
+    module = modules.start(config)
+
+    module.handle(address_added(endpoint))
+    wait_until(lambda: f"Could not connect to {endpoint}" in caplog.text, "the attempt to fail")
+
+    def dialed_again() -> bool:
+        # Added again until the first attempt is over, which is logged before
+        # it rests; the clock never moves, so it rests throughout.
+        if caplog.text.count(f"Could not connect to {endpoint}") < 2:
+            module.handle(address_added(endpoint))
+
+        return caplog.text.count(f"Could not connect to {endpoint}") == 2
+
+    wait_until(dialed_again, "the second attempt to fail")
+
+
+def test_an_address_added_where_a_peer_is_connected_is_not_dialed(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    caplog: LogCaptureFixture,
+) -> None:
+    caplog.set_level(INFO, logger="libranet")
+    write_lists(config.storage, node_list(identity, peers[0]))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED)
+
+    module.handle(address_added(peers[0].endpoint))
+
+    assert f"Not dialing {peers[0].endpoint}, added" in caplog.text
+    sleep(0.2)
+    assert len(bus.events(EventType.CONNECTION_OPENED)) == 1
+    assert bus.events(EventType.ADDRESS_VERIFIED) == []
+
+
+def test_the_addresses_added_are_dialed_as_the_module_starts_besides_the_mix(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+) -> None:
+    write_lists(config.storage, node_list(identity, peers[0]))
+    write_added(config, peers[1].endpoint)
+
+    module = modules.start(
+        with_peers(config, min_outgoing_connections=1, min_neighborhood_connections=0)
+    )
+
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+    assert module.connected == {peer.node_id: peer.endpoint for peer in peers}
+
+
+def test_an_address_added_is_dialed_again_once_it_has_rested_while_no_peer_is_connected(
+    modules: Modules, config: LibranetConfig, now: list[float], caplog: LogCaptureFixture
+) -> None:
+    caplog.set_level(INFO, logger="libranet")
+    endpoint = f"http://127.0.0.1:{closed_port()}"
+    write_added(config, endpoint)
+    module = modules.start(config)
+    wait_until(lambda: f"Could not connect to {endpoint}" in caplog.text, "the attempt to fail")
+
+    module.on_idle()
+    sleep(0.2)
+    assert caplog.text.count(f"Could not connect to {endpoint}") == 1
+
+    now[0] += RETRY_DELAY
+    module.on_idle()
+
+    wait_until(
+        lambda: caplog.text.count(f"Could not connect to {endpoint}") == 2,
+        "the address to be dialed again",
+    )
+
+
+def test_an_address_added_is_not_dialed_again_while_a_peer_is_connected(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    now: list[float],
+    caplog: LogCaptureFixture,
+) -> None:
+    caplog.set_level(INFO, logger="libranet")
+    endpoint = f"http://127.0.0.1:{closed_port()}"
+    write_lists(config.storage, node_list(identity, peers[0]))
+    write_added(config, endpoint)
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED)
+    wait_until(lambda: f"Could not connect to {endpoint}" in caplog.text, "the attempt to fail")
+    sleep(0.2)
+
+    now[0] += RETRY_DELAY
+    module.on_idle()
+    sleep(0.2)
+
+    assert caplog.text.count(f"Could not connect to {endpoint}") == 1
+
+
+def test_an_address_removed_is_no_longer_dialed(
+    modules: Modules, config: LibranetConfig, now: list[float], caplog: LogCaptureFixture
+) -> None:
+    caplog.set_level(INFO, logger="libranet")
+    endpoint = f"http://127.0.0.1:{closed_port()}"
+    write_added(config, endpoint)
+    module = modules.start(config)
+    wait_until(lambda: f"Could not connect to {endpoint}" in caplog.text, "the attempt to fail")
+    sleep(0.2)
+
+    module.handle(address_removed(endpoint))
+    now[0] += RETRY_DELAY
+    module.on_idle()
+    sleep(0.2)
+
+    assert caplog.text.count(f"Could not connect to {endpoint}") == 1
+
+
+def test_an_unusable_file_of_addresses_added_leaves_none_to_dial(
+    modules: Modules, config: LibranetConfig, caplog: LogCaptureFixture
+) -> None:
+    config.storage.added_addresses_path.parent.mkdir(parents=True, exist_ok=True)
+    config.storage.added_addresses_path.write_text("not json")
+
+    module = modules.start(config)
+
+    assert "Added addresses unavailable" in caplog.text
+    assert module.connected == {}
 
 
 class Twins:
@@ -2409,6 +2587,8 @@ def test_the_module_subscribes_to_node_lists_fetches_searches_hand_offs_and_new_
         EventType.EVICTION_NOTICE,
         EventType.DATA_STORED,
         EventType.PEERS_CONNECTED_REQUESTED,
+        EventType.ADDRESS_ADDED,
+        EventType.ADDRESS_REMOVED,
     }
 
 

@@ -215,6 +215,41 @@
     </form>
   </section>
 
+  <section aria-labelledby="addresses-heading">
+    <h2 id="addresses-heading">Other nodes</h2>
+    <p class="hint">This node learns of other nodes from those it connects to, so reaching one
+    node of a network is enough to join it. Add the address of a node to reach, and this node
+    dials it at once, and again whenever it has no peer connected, as when it starts. Once it
+    connects, the node is listed in the nodes application, with the others this node knows.</p>
+    <p class="state" id="addresses-state">Loading…</p>
+    <div class="table-wrap">
+      <table id="addresses-table" aria-labelledby="addresses-heading" hidden>
+        <thead>
+          <tr>
+            <th scope="col">Address</th>
+            <th scope="col"><span class="visually-hidden">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="result" id="addresses-message" role="status" hidden></p>
+    <form id="address-form">
+      <h3>Add a node</h3>
+      <div class="fields">
+        <label class="wide">Address
+          <input id="address" required autocomplete="off" spellcheck="false"
+                 placeholder="192.168.1.10:8080">
+        </label>
+        <button type="submit">Add</button>
+      </div>
+      <p class="hint">An address is the host name or IP address of the node's machine, and the
+      port the node listens on. Removing one stops this node dialing it as one added, but a node
+      reached there stays known, as every node this node has reached does.</p>
+      <p class="result" role="status" hidden></p>
+    </form>
+  </section>
+
   <section aria-labelledby="applications-heading">
     <h2 id="applications-heading">Applications</h2>
     <p class="hint">Each serves a directory bundle as a website at <code>/{name}/</code>. The
@@ -1079,6 +1114,82 @@ onSubmit(metadataForm, async () => {
   return [`Saved as version ${result.value.version}.`, false];
 });
 
+// ---- Other nodes ----
+
+const addressesMessage = byId("addresses-message");
+const addressForm = byId("address-form");
+
+// An address as the node takes one, an http URL (HttpApi 10.6), from what was
+// typed: a URL, or a host and port, which are given the scheme.
+function addressOf(text) {
+  const typed = text.trim();
+  return typed.includes("://") ? typed : `http://${typed}`;
+}
+
+// Where the nodes application lists every node this node knows (Phase 5 Step
+// 108), on the main port, as the applications are linked (applicationLink).
+function nodesLink(text) {
+  if (mainPort === null) {
+    return make("span", text);
+  }
+
+  const url = new URL("/nodes/", location.href);
+  url.port = String(mainPort);
+  const link = make("a", text);
+  link.href = url.href;
+  return link;
+}
+
+function addressRow(address) {
+  const row = make("tr");
+  const actions = cell(
+    button("Remove", `Stop dialing ${address}`, "danger", addressesMessage, () =>
+      removeAddress(address),
+    ),
+  );
+  actions.className = "actions";
+  row.append(cell(make("code", address)), actions);
+  return row;
+}
+
+async function removeAddress(address) {
+  const question =
+    `Stop dialing ${address}?\n\nA node this node has reached there stays known, as every ` +
+    "node it has reached does.";
+
+  if (!confirm(question)) {
+    return null;
+  }
+
+  const result = await call("DELETE", `/addresses/${encodeURIComponent(address)}`);
+  addresses.load();
+  return result.ok ? [`${address} is no longer dialed as an address added.`, false] : [failure(result), true];
+}
+
+const addresses = new ListView({
+  path: "/addresses",
+  table: byId("addresses-table"),
+  state: byId("addresses-state"),
+  entries: arrayOf("addresses"),
+  row: addressRow,
+  empty: "No addresses are added.",
+});
+
+onSubmit(addressForm, async () => {
+  const result = await call("POST", "/addresses", { address: addressOf(byId("address").value) });
+
+  if (!result.ok) {
+    return [failure(result), true];
+  }
+
+  const message = addressForm.querySelector(".result");
+  addressForm.reset();
+  addresses.load();
+  show(message, `This node is dialing ${result.value.address}. Once it connects, it is listed in the `);
+  message.append(nodesLink("nodes application"), ".");
+  return null;
+});
+
 // ---- Applications ----
 
 const applicationsMessage = byId("applications-message");
@@ -1702,7 +1813,7 @@ onSubmit(byId("restore-form"), async () => {
 
 // ---- Start ----
 
-const views = [applications, builds, exports, backups, restores];
+const views = [addresses, applications, builds, exports, backups, restores];
 
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) {

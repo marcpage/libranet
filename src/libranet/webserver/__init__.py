@@ -112,6 +112,9 @@ from libranet.webserver.config_guard import (
     names_config_api,
 )
 from libranet.webserver.config_handlers import (
+    ADDRESS_PATTERN,
+    ADDRESS_TEMPLATE,
+    ADDRESSES_PATH,
     APPLICATION_PATTERN,
     APPLICATION_TEMPLATE,
     APPLICATIONS_PATH,
@@ -129,6 +132,7 @@ from libranet.webserver.config_handlers import (
     METADATA_PATH,
     NODE_PATH,
     RESTORES_PATH,
+    AddedAddressHandlers,
     ApplicationListHandler,
     ApplicationRegistrationHandler,
     ApplicationRemovalHandler,
@@ -282,6 +286,9 @@ from libranet.webserver.trust_lists import TRUST_LIST_KIND, TrustLists
 from libranet.webserver.version_edits import ReplacedVersions, VersionEdits
 
 __all__ = [
+    "ADDRESSES_PATH",
+    "ADDRESS_PATTERN",
+    "ADDRESS_TEMPLATE",
     "APPLICATIONS_PATH",
     "APPLICATION_PATTERN",
     "APPLICATION_TEMPLATE",
@@ -363,6 +370,7 @@ __all__ = [
     "TRUST_PATTERN",
     "UNTRUSTED_APP_HEADERS",
     "USERS_PATH",
+    "AddedAddressHandlers",
     "AppHandler",
     "Application",
     "ApplicationListHandler",

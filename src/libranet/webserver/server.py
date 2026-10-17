@@ -66,6 +66,7 @@ from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import MessageSigner
 from libranet.messaging.publishing import Publish
 from libranet.problems import Problem
+from libranet.protocol.added_addresses import AddedAddresses
 from libranet.protocol.http_syntax import BODILESS_STATUSES, REQUEST_PATH_HEADER
 from libranet.protocol.lists import NODES_PATH, SEEK_PATH
 from libranet.protocol.search import LocalSearch, SearchCache
@@ -499,7 +500,9 @@ def build_config_router(  # pylint: disable=too-many-locals
     is given. Given ``identity``, the node's own, ``/config/api/metadata``
     reads what the node says of itself, and places what it says next, signed
     with ``identity``'s key, as drops are made and stored there (Phase 5 Step
-    104). ``retry_after_seconds``, ``app_outcomes``, ``app_wait_seconds``, and
+    104). ``/config/api/addresses`` keeps the addresses added for the node to
+    dial in ``storage``'s data directory (Phase 5 Step 109).
+    ``retry_after_seconds``, ``app_outcomes``, ``app_wait_seconds``, and
     ``read_ahead_parts`` are as for :func:`build_router`.
     """
     content = LayeredSource(CasStore.source_of_truth(storage)) if content is None else content
@@ -540,6 +543,7 @@ def build_config_router(  # pylint: disable=too-many-locals
                 retry_after_seconds=retry_after_seconds,
             )
         ),
+        addresses=AddedAddresses(storage.added_addresses_path),
     ):
         router.add(method, pattern, handler)
 

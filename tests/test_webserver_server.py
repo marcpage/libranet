@@ -1563,6 +1563,29 @@ def test_a_config_endpoint_publishes_what_the_backup_module_will_act_on(
     assert message["directory"] == "/home/me/documents"
 
 
+def test_an_address_added_through_config_is_kept_in_the_data_directory_and_dialed(
+    config_connection: HTTPConnection, storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    response, body = _config(
+        config_connection,
+        "/config/api/addresses",
+        "POST",
+        _credentials(),
+        dumps({"address": "http://192.168.1.10:8080"}).encode("utf-8"),
+    )
+
+    assert response.status == 202
+    assert loads(body) == {"address": "http://192.168.1.10:8080"}
+    assert loads(storage.added_addresses_path.read_bytes()) == {
+        "addresses": ["http://192.168.1.10:8080"]
+    }
+    (message,) = _published(queues)
+    assert (message["event"], message["endpoint"]) == (
+        EventType.ADDRESS_ADDED,
+        "http://192.168.1.10:8080",
+    )
+
+
 def test_a_remote_config_request_is_refused_before_it_can_capture_anything(
     config_server: LibranetHTTPServer, credential: ConfigCredential, queues: ModuleQueues
 ) -> None:

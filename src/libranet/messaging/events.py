@@ -46,6 +46,8 @@ class EventType(StrEnum):
     SEEK_RECEIVED = "seek.received"  # webserver → stats
     NODE_LIST_UPDATED = "nodes.updated"  # stats → connections
     ADDRESS_VERIFIED = "address.verified"  # connections → stats (Phase 2 Step 23)
+    ADDRESS_ADDED = "address.added"  # webserver → connections (Phase 5 Step 109)
+    ADDRESS_REMOVED = "address.removed"  # webserver → connections (Phase 5 Step 109)
 
     # Outgoing connections and fetching (Steps 11 and 12).
     CONNECTION_OPENED = "connection.opened"  # connections → stats

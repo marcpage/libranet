@@ -239,10 +239,10 @@ needs no configuration to start.
 
 A node finds other nodes through the ones it is told about, and there is no
 public network to tell it about yet, so it starts alone. To join the nodes
-on your own computers into a network, give each one a list naming another,
-or run a super node on a computer that is always on, which tries to hold
-everything your other computers share. To try a network of many nodes on
-one computer:
+on your own computers into a network, add another's address on each one's
+administration page, or run a super node on a computer that is always on,
+which tries to hold everything your other computers share. To try a
+network of many nodes on one computer:
 
 ```bash
 uv run libranet-local-network --count 8
@@ -265,7 +265,7 @@ applications, and running test networks and super nodes.
 | Phase 2 — steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–63 | Implemented |
 | Phase 3 — video playback, steps 64–77 | Implemented |
 | Phase 4 — user accounts, steps 30, 78–82, and 89–93 | Implemented |
-| Phase 5 — the trust network, steps 94 and 96–108 | Implemented |
+| Phase 5 — the trust network, steps 94 and 96–109 | Implemented |
 | Phase 6 — Karma, step 56 | Planned |
 | Phase 7 — enhancements, steps 16, 50, 57, and 95 | Planned |
 | Phase 8 — a seed node, step 84 | Planned |
@@ -296,7 +296,8 @@ Deliberately deferred, and specified but not yet built:
   password-protected applications (HTTP API §13.1)
 
 There is no bootstrap network: a node ships with an empty seed list, so nodes
-currently find each other only through peers you configure yourself.
+currently find each other only through peers you configure yourself, by
+adding another node's address on `/config`, or with a seed list.
 
 ---
 
@@ -319,7 +320,7 @@ currently find each other only through peers you configure yourself.
 | [Phase 2 Plan](docs/implementation/Phase%202.md) | Implementation steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–63, all built |
 | [Phase 3 Plan](docs/implementation/Phase%203.md) | Video playback: steps 64–77, all built |
 | [Phase 4 Plan](docs/implementation/Phase%204.md) | User accounts: steps 30, 78–82, and 89–93, all built |
-| [Phase 5 Plan](docs/implementation/Phase%205.md) | The trust network: steps 94 and 96–108, all built |
+| [Phase 5 Plan](docs/implementation/Phase%205.md) | The trust network: steps 94 and 96–109, all built |
 | [Phase 6 Plan](docs/implementation/Phase%206.md) | Karma: step 56 so far, planned |
 | [Phase 7 Plan](docs/implementation/Phase%207.md) | Enhancements: steps 16, 50, 57, and 95, planned |
 | [Phase 8 Plan](docs/implementation/Phase%208.md) | A seed node: step 84, planned |

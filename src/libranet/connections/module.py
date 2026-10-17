@@ -21,6 +21,15 @@ it for a while after enough of them by leaving it out of the candidate list
 (Phase 2 Step 26). Connecting and talking to peers happen on background
 threads, so the receive loop never waits on the network.
 
+An address the operator added on ``/config`` (``address.added``
+``{"endpoint"}``, Phase 5 Step 109) is dialed at once, outside the peer mix,
+and even while it rests, since the operator asked for it, unless it is being
+dialed already or a peer is connected there. Every address added, as the
+file held them when the module started and as ``address.added`` and
+``address.removed`` have changed them since, is dialed outside the mix too
+whenever no peer is connected, as when the module starts, and rests as a seed
+does once it has failed. A node reached at one is learned as any other is.
+
 Each address a peer was observed at (``nodes.received`` marking it
 ``observed``), whether by this module or by the web server, is looked up in
 reverse DNS on a worker thread, unless ``peers.reverse_dns`` is off, and any
@@ -157,6 +166,8 @@ from libranet.messaging.events import AddressSource, ConnectionDirection, EventT
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
+from libranet.protocol.added_addresses import AddedAddress, AddedAddresses
+from libranet.protocol.errors import AddressListError
 from libranet.protocol.search import normalize_prefix
 
 
@@ -358,7 +369,8 @@ class _Dialing:
     """The candidates the peer mix is chosen from, and what of them may not be dialed now.
 
     ``seeds`` stand in for ``candidates`` while the candidate list names no
-    peer. ``pending`` holds the candidates being dialed, by their keys, and
+    peer, and ``added`` are the addresses the operator added, dialed besides
+    them. ``pending`` holds the candidates being dialed, by their keys, and
     ``resting`` the candidate keys not to be dialed again until the time
     given. ``own_endpoints`` turned out to be this node itself, and
     ``duplicates`` reached a node connected at another endpoint, with that
@@ -369,18 +381,27 @@ class _Dialing:
 
     seeds: list[Candidate] = field(default_factory=list)
     candidates: list[Candidate] = field(default_factory=list)
+    added: list[Candidate] = field(default_factory=list)
     pending: dict[ContentId | str, Candidate] = field(default_factory=dict)
     resting: dict[ContentId | str, float] = field(default_factory=dict)
     own_endpoints: set[str] = field(default_factory=set)
     duplicates: dict[str, ContentId] = field(default_factory=dict)
 
-    def available(self, peers: Mapping[ContentId, _Peer]) -> list[Candidate]:
+    def available(
+        self,
+        peers: Mapping[ContentId, _Peer],
+        among: Sequence[Candidate] | None = None,
+        *,
+        resting_too: bool = False,
+    ) -> list[Candidate]:
         """The candidates that may be dialed now, each with only the endpoints that may be.
 
-        A candidate being dialed or resting may not. Nor may an endpoint
-        that is this node, is in use by a connection to one of ``peers`` or
-        one being opened, or reaches one of ``peers`` at another endpoint.
-        Called under the module's lock.
+        They are those ``among`` the candidates given, or of the candidate
+        list if none are. A candidate being dialed may not be, nor one
+        resting, unless ``resting_too``. Nor may an endpoint that is this
+        node, is in use by a connection to one of ``peers`` or one being
+        opened, or reaches one of ``peers`` at another endpoint. Called under
+        the module's lock.
         """
         unusable = (
             self.own_endpoints
@@ -390,8 +411,8 @@ class _Dialing:
         )
         available: list[Candidate] = []
 
-        for candidate in self.candidates:
-            if candidate.key in self.pending or candidate.key in self.resting:
+        for candidate in self.candidates if among is None else among:
+            if candidate.key in self.pending or (candidate.key in self.resting and not resting_too):
                 continue
 
             usable = candidate.keeping(lambda endpoint: endpoint not in unusable)
@@ -400,6 +421,13 @@ class _Dialing:
                 available.append(usable)
 
         return available
+
+    def pend(self, candidates: Sequence[Candidate]) -> Sequence[Candidate]:
+        """``candidates``, each now being dialed. Called under the module's lock."""
+        for candidate in candidates:
+            self.pending[candidate.key] = candidate
+
+        return candidates
 
     def rested(self, now: float) -> bool:
         """Let the candidates whose rest is over by ``now`` be dialed again; whether any were."""
@@ -465,6 +493,8 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             EventType.EVICTION_NOTICE,
             EventType.DATA_STORED,
             EventType.PEERS_CONNECTED_REQUESTED,
+            EventType.ADDRESS_ADDED,
+            EventType.ADDRESS_REMOVED,
         }
     )
 
@@ -504,6 +534,8 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
                 EventType.EVICTION_NOTICE: self._on_eviction_notice,
                 EventType.DATA_STORED: self._on_data_stored,
                 EventType.PEERS_CONNECTED_REQUESTED: self._on_peers_connected_requested,
+                EventType.ADDRESS_ADDED: self._on_address_added,
+                EventType.ADDRESS_REMOVED: self._on_address_removed,
             }
         )
 
@@ -539,8 +571,10 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             NodeIdentity.load(self._config), self._config, self._publish_learned, self.logger
         )
         self._dialing.seeds = self._load_seeds()
+        added = self._load_added()
 
         with self._lock:
+            self._dialing.added = added
             self._running = True
             # None yet: any named before a restart are gone.
             self._publish_connected()
@@ -632,6 +666,43 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
     def _on_node_list_updated(self, _message: Message) -> None:
         self._reload_candidates()
         self._maintain()
+
+    def _on_address_added(self, message: Message) -> None:
+        """Keep an address the operator added, and dial it now, outside the peer mix.
+
+        It is dialed even while it rests, since the operator asked for it.
+        """
+        added = Candidate.from_added(AddedAddress(message["endpoint"]))
+
+        with self._lock:
+            if not self._running:
+                return
+
+            if added not in self._dialing.added:
+                self._dialing.added.append(added)
+
+            chosen = self._dialing.pend(
+                self._dialing.available(self._peers, [added], resting_too=True)
+            )
+
+        if not chosen:
+            self.logger.info(
+                "Not dialing %s, added: it is being dialed, is this node, or reaches a peer",
+                added.key,
+            )
+
+        self._dial(chosen)
+
+    def _on_address_removed(self, message: Message) -> None:
+        """Stop dialing an address the operator removed, as an address added.
+
+        The candidate list may still name it, and a connection made there is
+        left open.
+        """
+        removed = Candidate.from_added(AddedAddress(message["endpoint"]))
+
+        with self._lock:
+            self._dialing.added = [added for added in self._dialing.added if added != removed]
 
     def _on_nodes_received(self, message: Message) -> None:
         """Look up names for the addresses the web server observed peers at."""
@@ -769,6 +840,17 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             self.logger.warning("Seed list unavailable: %s", error)
             return []
 
+    def _load_added(self) -> list[Candidate]:
+        """The addresses the operator added, in the order they were added."""
+        try:
+            addresses = AddedAddresses(self._config.storage.added_addresses_path).addresses()
+
+        except AddressListError as error:
+            self.logger.warning("Added addresses unavailable: %s", error)
+            return []
+
+        return [Candidate.from_added(address) for address in addresses]
+
     def _reload_candidates(self) -> None:
         """Read the candidate list afresh, falling back to the seeds while it names no peer.
 
@@ -788,23 +870,36 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             self._dialing.candidates = dialable
 
     def _maintain(self) -> None:
-        """Dial whatever the peer mix is short of."""
+        """Dial whatever the peer mix is short of, and the addresses added if no peer is connected.
+
+        Those are dialed outside the mix, unless they rest, so that a node
+        with no peer reaches them whatever its candidates are.
+        """
         with self._lock:
             if not self._running:
                 return
 
-            chosen = PeerMix(self._config.peers, self.exchange.node_id).choose(
-                self._dialing.available(self._peers),
-                [
-                    *self._peers,
-                    *(candidate.node_id for candidate in self._dialing.pending.values()),
-                ],
+            chosen = self._dialing.pend(
+                PeerMix(self._config.peers, self.exchange.node_id).choose(
+                    self._dialing.available(self._peers),
+                    [
+                        *self._peers,
+                        *(candidate.node_id for candidate in self._dialing.pending.values()),
+                    ],
+                )
             )
 
-            for candidate in chosen:
-                self._dialing.pending[candidate.key] = candidate
+            if not self._peers:
+                chosen = [
+                    *chosen,
+                    *self._dialing.pend(self._dialing.available(self._peers, self._dialing.added)),
+                ]
 
-        for candidate in chosen:
+        self._dial(chosen)
+
+    def _dial(self, candidates: Sequence[Candidate]) -> None:
+        """Dial each of ``candidates``, already marked as being dialed, on a thread of its own."""
+        for candidate in candidates:
             self._start("connect", partial(self._connect, candidate))
 
     def _start(self, purpose: str, job: Callable[[], None]) -> None:

@@ -551,6 +551,11 @@ class StorageConfig(_Section):
         return self.data_dir / "applications.json"
 
     @property
+    def added_addresses_path(self) -> Path:
+        """The addresses added on ``/config``, owned by the web server (Phase 5 Step 109)."""
+        return self.data_dir / "added_addresses.json"
+
+    @property
     def application_stores_dir(self) -> Path:
         """Each application's store, a file each, owned by the web server (Phase 3 Step 70)."""
         return self.data_dir / "store"

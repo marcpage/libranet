@@ -2,7 +2,8 @@
 
 Every backup endpoint answers at once and leaves the work to the backup
 module, so what each one publishes is what these assert. The application
-endpoints change the registry themselves, and publish nothing.
+endpoints change the registry themselves, and publish nothing. The address
+endpoints change the addresses added themselves, and publish each change.
 Authentication is a router guard and is tested separately.
 """
 
@@ -20,6 +21,7 @@ from libranet.messaging.events import JOBS_FIELD, EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.problems import CONTENT_TOO_LARGE, INVALID_REQUEST
+from libranet.protocol.added_addresses import AddedAddress, AddedAddresses
 from libranet.protocol.backup_requests import (
     BackupJobRequest,
     BuildRequest,
@@ -36,6 +38,7 @@ from libranet.webserver.app_registry import (
 )
 from libranet.webserver.backup_state import BackupReport, BackupState
 from libranet.webserver.config_handlers import (
+    ADDRESSES_PATH,
     APPLICATIONS_PATH,
     BACKUPS_PATH,
     BUILDS_PATH,
@@ -76,6 +79,9 @@ BUILD_ENTRY = {"build_id": BUILD_ID, "directory": SITE, "status": "done"}
 EXPORT_ENTRY = {"export_id": EXPORT_ID, "archive": ARCHIVE, "status": "waiting"}
 NODE_ID = ContentId.for_data(b"this node's public key", "sha256")
 NETWORK = NetworkConfig(listen_address="0.0.0.0", listen_port=8080, external_port=4300)
+LAN = AddedAddress.create("http://192.168.1.10:8080")
+# The address in a path, percent-encoded as one segment, as the page encodes it.
+LAN_PATH = f"{ADDRESSES_PATH}/http%3A%2F%2F192.168.1.10%3A8080"
 
 
 @fixture
@@ -88,6 +94,11 @@ def registry(tmp_path: Path) -> ApplicationRegistry:
     return ApplicationRegistry(tmp_path / "applications.json")
 
 
+@fixture
+def added(tmp_path: Path) -> AddedAddresses:
+    return AddedAddresses(tmp_path / "added_addresses.json")
+
+
 def making_a_user(request: Request) -> Response:
     """Stands in for making a person's identity, answering with what it was sent.
 
@@ -97,7 +108,9 @@ def making_a_user(request: Request) -> Response:
 
 
 @fixture
-def router(queues: ModuleQueues, state: BackupState, registry: ApplicationRegistry) -> Router:
+def router(
+    queues: ModuleQueues, state: BackupState, registry: ApplicationRegistry, added: AddedAddresses
+) -> Router:
     publish = StubModule(ModuleName.WEBSERVER, queues).publish
     router = Router()
 
@@ -108,6 +121,7 @@ def router(queues: ModuleQueues, state: BackupState, registry: ApplicationRegist
         NodeDescription(NODE_ID, NETWORK),
         RETRY_AFTER_SECONDS,
         users=making_a_user,
+        addresses=added,
     ):
         router.add(method, pattern, handler)
 
@@ -167,6 +181,9 @@ def test_the_index_names_every_endpoint(router: Router) -> None:
         ("POST", "/config/api/users"),
         ("GET", "/config/api/metadata"),
         ("PUT", "/config/api/metadata"),
+        ("GET", "/config/api/addresses"),
+        ("POST", "/config/api/addresses"),
+        ("DELETE", "/config/api/addresses/{address}"),
     }
 
 
@@ -807,6 +824,150 @@ def test_a_registry_that_cannot_be_read_is_logged_as_a_warning(
     assert record.levelno == WARNING
     assert record.getMessage().startswith(f"Refusing {method} {path}: ")
     assert str(registry.path) in record.getMessage()
+
+
+def test_no_addresses_are_listed_until_one_is_added(router: Router, queues: ModuleQueues) -> None:
+    response = router.dispatch(request("GET", ADDRESSES_PATH))
+
+    assert response.status == 200
+    assert json_body(response) == {"addresses": []}
+    assert published(queues) == []
+
+
+def test_adding_an_address_keeps_it_and_has_it_dialed(
+    router: Router, added: AddedAddresses, queues: ModuleQueues
+) -> None:
+    response = router.dispatch(
+        request("POST", ADDRESSES_PATH, {"address": "http://192.168.1.10:8080/"})
+    )
+
+    assert response.status == 202
+    assert json_body(response) == {"address": "http://192.168.1.10:8080"}
+    assert added.addresses() == (LAN,)
+    (message,) = published(queues)
+    assert message["event"] == EventType.ADDRESS_ADDED
+    assert message["source"] == ModuleName.WEBSERVER
+    assert message["endpoint"] == "http://192.168.1.10:8080"
+    assert json_body(router.dispatch(request("GET", ADDRESSES_PATH))) == {
+        "addresses": ["http://192.168.1.10:8080"]
+    }
+
+
+def test_an_address_added_again_is_dialed_again_and_kept_once(
+    router: Router, added: AddedAddresses, queues: ModuleQueues
+) -> None:
+    added.add(LAN)
+
+    response = router.dispatch(request("POST", ADDRESSES_PATH, LAN.value()))
+
+    assert response.status == 202
+    assert added.addresses() == (LAN,)
+    assert [message["event"] for message in published(queues)] == [EventType.ADDRESS_ADDED]
+
+
+@mark.parametrize(
+    "value", [{"address": "192.168.1.10:8080"}, {"address": "https://node.example"}, {}]
+)
+def test_an_address_this_node_cannot_dial_is_refused_where_it_is_added(
+    router: Router, added: AddedAddresses, queues: ModuleQueues, value: object
+) -> None:
+    response = router.dispatch(request("POST", ADDRESSES_PATH, value))
+
+    assert response.status == 400
+    assert problem_type(response) == INVALID_REQUEST
+    assert published(queues) == []
+    assert not added.path.exists()
+
+
+@mark.parametrize(
+    "path", [LAN_PATH, f"{ADDRESSES_PATH}/HTTP%3A%2F%2F192.168.1.10%3A8080%2F", f"{LAN_PATH}%2F"]
+)
+def test_removing_an_address_forgets_it_however_it_is_written(
+    router: Router, added: AddedAddresses, queues: ModuleQueues, path: str
+) -> None:
+    added.add(LAN)
+
+    response = router.dispatch(request("DELETE", path))
+
+    assert response.status == 204
+    assert response.body == b""
+    assert added.addresses() == ()
+    (message,) = published(queues)
+    assert message["event"] == EventType.ADDRESS_REMOVED
+    assert message["endpoint"] == "http://192.168.1.10:8080"
+
+
+@mark.parametrize(
+    "path", [LAN_PATH, f"{ADDRESSES_PATH}/192.168.1.10%3A8080", f"{ADDRESSES_PATH}/%FF"]
+)
+def test_removing_what_was_not_added_is_not_found(
+    router: Router, added: AddedAddresses, queues: ModuleQueues, path: str
+) -> None:
+    other = AddedAddress.create("http://192.168.1.11:8080")
+    added.add(other)
+
+    response = router.dispatch(request("DELETE", path))
+
+    assert response.status == 404
+    assert added.addresses() == (other,)
+    assert published(queues) == []
+
+
+def test_without_the_addresses_added_no_route_reads_or_changes_them(
+    queues: ModuleQueues, state: BackupState, registry: ApplicationRegistry
+) -> None:
+    router = Router()
+    publish = StubModule(ModuleName.WEBSERVER, queues).publish
+
+    for method, pattern, handler in config_routes(
+        publish, state, registry, NodeDescription(NODE_ID, NETWORK), RETRY_AFTER_SECONDS
+    ):
+        router.add(method, pattern, handler)
+
+    assert router.dispatch(request("GET", ADDRESSES_PATH)).status == 404
+
+
+@mark.parametrize(
+    "method, path, value",
+    [
+        ("GET", ADDRESSES_PATH, None),
+        ("POST", ADDRESSES_PATH, LAN.value()),
+        ("DELETE", LAN_PATH, None),
+    ],
+)
+def test_a_file_of_addresses_that_cannot_be_read_is_reported_and_left_alone(
+    router: Router,
+    added: AddedAddresses,
+    queues: ModuleQueues,
+    caplog: LogCaptureFixture,
+    method: str,
+    path: str,
+    value: object,
+) -> None:
+    added.path.write_bytes(b"{not json")
+
+    response = router.dispatch(request(method, path, value))
+
+    assert response.status == 500
+    assert problem_type(response) == "about:blank"
+    assert str(added.path) in loads(response.body)["detail"]
+    assert added.path.read_bytes() == b"{not json"
+    assert published(queues) == []
+    (record,) = handler_records(caplog)
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith(f"Refusing {method} {path}: ")
+
+
+def test_an_address_request_not_sent_as_json_is_not_acted_on(
+    router: Router, added: AddedAddresses, queues: ModuleQueues
+) -> None:
+    response = router.dispatch(
+        request("POST", ADDRESSES_PATH, LAN.value(), content_type="text/plain")
+    )
+
+    assert response.status == 415
+    assert published(queues) == []
+    assert not added.path.exists()
 
 
 def test_a_report_handler_refuses_a_negative_retry_after(state: BackupState) -> None:

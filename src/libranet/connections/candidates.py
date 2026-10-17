@@ -3,7 +3,8 @@
 Normally these are the candidate list the stats module derives (Phase 2
 Step 23), which is already in priority order and names each node with every
 address it may be reached at, in the order to try them. The seed list is
-used instead only while that list names no peer but this node itself.
+used instead only while that list names no peer but this node itself. The
+addresses added on ``/config`` are dialed besides them (Phase 5 Step 109).
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from typing import Callable
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
 from libranet.config.seeds import SeedPeer
+from libranet.protocol.added_addresses import AddedAddress
 
 _LOGGER = getLogger(__name__)
 
@@ -31,8 +33,8 @@ class Candidate:
     def key(self) -> ContentId | str:
         """What tells this candidate apart from others.
 
-        That is its node id, or for a seed whose id is unknown, its one
-        endpoint.
+        That is its node id, or for a seed or address added whose id is
+        unknown, its one endpoint.
         """
         return self.endpoints[0] if self.node_id is None else self.node_id
 
@@ -90,3 +92,8 @@ class Candidate:
             node_id = None
 
         return cls((seed.address,), node_id)
+
+    @classmethod
+    def from_added(cls, address: AddedAddress) -> Candidate:
+        """The address ``address`` added on ``/config``, whose node id is unknown."""
+        return cls((address.endpoint,), None)

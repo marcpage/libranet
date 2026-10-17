@@ -64,6 +64,9 @@ ordinary content, signed by its owner.
   each identity it shows. Step 106.
 - **The nodes application.** The known nodes, whether each is connected,
   its stats, and its trust, which a person can change. Steps 107 and 108.
+- **Adding another node.** The operator gives `/config` the address of a
+  node to reach, which the node dials at once, and again whenever it has no
+  peer. Step 109.
 
 ## 3. How to Read the Steps Below
 
@@ -1567,6 +1570,139 @@ My calls, not yet reviewed:
 
 ---
 
+## Step 109 — Adding Another Node
+
+**Issue:** #377. **Depends on:** Phase 2 Steps 23 and 25, and Step 108.
+
+Settled in the issue, which has only its title:
+
+- **The administration page takes a node's address**, to add that node to
+  the network.
+
+A node learns of others from those it connects to, so reaching one node of
+a network is enough to join it. Until now a node reached its first only
+through its seed list, which it reads only while it knows no peers at all,
+and which an operator names in the configuration file before a restart
+(Operator Guide §10.5). A node that already knew peers had no way to reach
+another network.
+
+Work this implies:
+
+- **A section of `/config`**, where the operator types an address, and the
+  node is told to dial it.
+- **Endpoints beneath `/config/api`** for scripts, as the page's others are.
+- The Operator Guide, the File Layout, the Module System, and the README
+  gain it.
+
+Ruled (2026-10-17):
+
+- **Dialed at once, and remembered.** The node dials the address at once,
+  and again whenever it has no peer connected, as when it starts. The
+  addresses are kept in a list of the node's own, which the operator can
+  remove one from. Dialing it once and forgetting it, my recommended option,
+  was turned down, and so was writing it into the seed list, which a node
+  that knows peers never reads.
+- **Answered at once**, my recommended option: `202`, as the backup
+  endpoints answer, with the page pointing to the nodes application, where
+  the node is shown once it is connected. Waiting for the dial to say
+  whether it reached a node, and which, was turned down.
+- **Dialed whatever the peer mix**, my recommended option: an address added
+  is dialed even when the mix has all the peers it wants, and even while it
+  rests. Dialing it only when the mix has room for it was turned down.
+
+**Testable in isolation:** unit tests of an address and the file keeping
+them, the endpoints through a router, and the connection manager against
+fixture peers: an address added is dialed at once with the mix full, and
+again while it rests, but not where a peer is connected; every address
+added is dialed as the module starts, and again once it has rested while no
+peer is connected, but not while one is; one removed is not dialed again.
+
+Built in one change set, with 498 lines of non-test Python, 27 of them
+replacing removed ones, about half of them docstrings, and 580 of tests.
+The `/config` page gains 112 lines.
+
+- **`AddedAddress` and `AddedAddresses`**, in
+  `src/libranet/protocol/added_addresses.py`, with `AddressListError`: an
+  address, and the file keeping them, `added_addresses.json` in the data
+  directory (File Layout §3.9), which only the web server writes.
+- **`GET`, `POST /config/api/addresses`, and `DELETE
+  /config/api/addresses/{address}`** (`AddedAddressHandlers`), which change
+  the file themselves and publish each change, as `address.added` and
+  `address.removed`, `{"endpoint"}`, for the connection manager.
+- **The connection manager** reads the file as it starts, keeps the list as
+  those events change it, and dials an address added at once, outside the
+  mix and despite its rest, unless it is being dialed or a peer is connected
+  there. On each pass over the mix with no peer connected, it dials every
+  address added that is neither being dialed nor resting, outside the mix.
+  A node reached at one is learned as any node dialed is, from
+  `connection.opened`.
+- **`/config`'s "Other nodes"**, after "This node": the addresses added,
+  each with Remove, and "Add a node", whose one field takes an address,
+  given `http://` if it is typed without, and says the node is dialing it,
+  with a link to the nodes application on the main port.
+
+Checked live, with two nodes from the scratchpad on `127.0.0.1`, neither
+with a seed list. Node A's `/config/api/addresses` listed none.
+`POST`ing `http://127.0.0.1:24410/` answered `202` with
+`http://127.0.0.1:24410`, which the file then held, and A was connected to B
+within a second. A while later, A's `/data/peers` named B outbound, at that
+address, and B's named A inbound. `DELETE` answered `204`, and again `404`,
+and `127.0.0.1:24410` without its scheme was `400`. In headless Chrome, A's
+`/config` said "No addresses are added."; the form took `127.0.0.1:24410`,
+said "This node is dialing http://127.0.0.1:24410. Once it connects, it is
+listed in the nodes application.", linked `http://127.0.0.1:24400/nodes/`,
+and listed the address; Remove, confirmed, said it is no longer dialed as an
+address added, and emptied the list. Neither node logged an error.
+
+My calls, not yet reviewed:
+
+- **The list is the web server's**, as the application registry is, and the
+  connection manager is told of each change by two new events, rather than
+  the connection manager keeping the file, which would leave the page to
+  read back a change made in another process.
+- **It is in `libranet.protocol`**, since no module package imports another
+  (Module System §2), and the configuration package imports nothing above
+  it.
+- **An address is kept once however it is written**: `http://{host}:{port}`,
+  its host in lower case, an IPv6 one in brackets, its port 80 if it gives
+  none, as a node list's endpoint is (HttpApi §10.6), and any path dropped.
+  Only `http` is taken, since HTTPS is deferred. A file edited by hand is read
+  that way too, and one holding anything else is an error.
+- **The endpoint takes a URL, and the page a host and port too**: `POST`
+  takes `{"address": "http://…"}` and refuses anything else with `400`, and
+  the page gives what is typed without a scheme `http://`. A host typed
+  without a port is port 80, not the node's default port.
+- **"No peer connected" means no peer this node dialed**, since the
+  connection manager knows only its own connections: a node whose only peers
+  dialed it still dials the addresses added. An address that failed rests
+  `peers.retry_delay_seconds`, a minute by default, as a seed of unknown id
+  does, so a node alone dials each about once a minute.
+- **Every address added is dialed as the node starts**, besides the
+  candidates the mix chooses, since no peer is connected then. A node with
+  candidates enough dials them anyway, and an address reaching a node also
+  chosen from the candidates makes a second connection, which is closed,
+  and counted as the address verified.
+- **An address added again is dialed again**, even while it rests, but not
+  while it is being dialed, nor when it turned out to be this node, nor where
+  a peer is connected, which is logged at info. It is answered `202` all the
+  same, and kept once.
+- **Removing an address stops only its being dialed as one added.** A
+  connection made there stays open, and a node reached there stays in the
+  statistics database, so it may still be dialed as a candidate. An address
+  not added is `404`, as is a path that names no address.
+- **A file that cannot be read is `500`, saying why, and is never saved
+  over**, as the application registry is, and the connection manager logs a
+  warning and dials none, as it does for a seed list it cannot read. An edit
+  by hand reaches the connection manager only when the node next starts.
+- **No specification changes**: the endpoints are implementation-defined, as
+  the backup and application endpoints are, and the Operator Guide (§4.6)
+  says how they are used.
+- **The section is called "Other nodes"**, its form "Add a node", and its one
+  field "Address", with `192.168.1.10:8080` as its placeholder. Remove asks
+  first, saying a node reached there stays known.
+
+---
+
 ## 4. Issues in the Milestone
 
 Every issue in the **Phase 5 - Trust Network** milestone, by number, and
@@ -1597,6 +1733,7 @@ where it went.
 | #353 | Documentation out of sync with the code or other documentation | None: cleanup |
 | #354 | What the specifications can settle from the implementation | None: cleanup |
 | #370 | The local network's nodes listening only at `127.0.0.1` | None: a fix |
+| #377 | The administration page taking a node's address to add to the network | 109 |
 
 ## 5. Suggested Build Order
 
@@ -1619,6 +1756,7 @@ made before it is built (§3).
 | G | 105 (#324) | None; the page alone | Needs 101's trust in the directory, and 104's metadata for a node. |
 | H | 106 (#322) | None; the pages alone | Needs 105's link for each identity it shows. |
 | I | 108 (#323) | About 20, shipping it | An application of every step before it but 102. |
+| J | 109 (#377) | None made before it was built; 498 as built | Independent of the trust steps; links to 108's application. |
 
 ## 6. Open Items Not Yet Decided
 
