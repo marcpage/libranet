@@ -821,6 +821,14 @@ function remember(entry) {
   }
 }
 
+function forget() {
+  try {
+    localStorage.removeItem(REMEMBERED);
+  } catch (error) {
+    console.warn(`This browser cannot forget the collection chosen: ${error.message}`);
+  }
+}
+
 // A playlist was changed elsewhere since this page read it.
 class Conflict extends Error {}
 
@@ -1846,12 +1854,20 @@ async function start() {
   }
 
   // A playlist remembered is played at the newest version the node keeps.
+  // One this node does not keep, as when the browser remembers it of another
+  // node at the same address, is forgotten rather than waited on.
   let entry = remembered;
 
   try {
-    entry = (await Kept.read()).find(remembered.name) || remembered;
+    entry = (await Kept.read()).find(remembered.name);
   } catch (error) {
     console.warn(`The collections could not be read: ${error.message}`);
+  }
+
+  if (!entry) {
+    forget();
+    await showChooser();
+    return;
   }
 
   try {
