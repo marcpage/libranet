@@ -163,6 +163,10 @@ creates users, says what the node is called, and connects it to other
 nodes. It is a page for a
 browser, and a set of JSON endpoints beneath `/config/api` for scripts.
 
+The page lists its categories down its left side, **This node**, **Trust**,
+**Builds** and the rest, and shows only the one chosen there. The address
+names it, as `/config/#builds` does, so a reload or a link shows it again.
+
 ### 4.1 Where It Is
 
 `/config` has a port of its own, apart from the node's port, so that no
