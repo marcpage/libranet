@@ -38,6 +38,10 @@
     gap: 0.5rem 1rem;
   }
   main { padding-bottom: 2rem; }
+  header .toolbar { margin: 0; }
+
+  /* What has focus from the keyboard, plain on the dark. */
+  :focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 
   /* Home, the node's front page, in the upper right corner of every page. */
   .home {
@@ -211,6 +215,19 @@
   }
 
   dialog::backdrop { background: rgb(0 0 0 / 0.5); }
+
+  /* The keys, and what each does. */
+  .keys { display: grid; grid-template-columns: auto 1fr; gap: 0.5rem 1rem; margin: 0; }
+  .keys dd { margin: 0; }
+
+  kbd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85em;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.05rem 0.35rem;
+    background: var(--background);
+  }
 </style>
 </head>
 <body>
@@ -220,7 +237,10 @@
     <h1>Movies</h1>
     <p class="subtitle" id="client-note">Asking the node&hellip;</p>
   </div>
-  <button type="button" class="secondary" id="choose-playlist" hidden>Collections</button>
+  <div class="toolbar">
+    <button type="button" class="secondary" id="choose-playlist" hidden>Collections</button>
+    <button type="button" class="secondary" id="show-keys">Keys</button>
+  </div>
 </header>
 
 <main>
@@ -412,6 +432,34 @@
   <div class="buttons">
     <button type="button" class="secondary" data-close>Close</button>
     <button type="button" id="import-go" hidden>Import</button>
+  </div>
+</dialog>
+
+<dialog id="keys-dialog" aria-labelledby="keys-heading">
+  <h3 id="keys-heading">Keys</h3>
+  <p class="hint">Anywhere on the page but in a field, and while no other dialog is open.</p>
+  <dl class="keys">
+    <dt><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></dt>
+    <dd>Move through the movies, or the collections, as they are laid out.</dd>
+    <dt><kbd>Home</kbd> <kbd>End</kbd></dt>
+    <dd>To the first, or the last.</dd>
+    <dt><kbd>Enter</kbd></dt>
+    <dd>Choose the movie, or open the collection. A movie chosen plays, or pauses.</dd>
+    <dt><kbd>Space</kbd> <kbd>K</kbd></dt>
+    <dd>Play or pause the movie chosen. Space presses a button that has focus instead.</dd>
+    <dt><kbd>F</kbd></dt>
+    <dd>Full screen, or back.</dd>
+    <dt><kbd>S</kbd></dt>
+    <dd>Stop: back to the start, out of full screen, and back to the movie in the collection.</dd>
+    <dt><kbd>N</kbd> <kbd>P</kbd></dt>
+    <dd>The next movie, or the one before, playing on if one was playing.</dd>
+    <dt><kbd>C</kbd></dt>
+    <dd>Choose another collection.</dd>
+    <dt><kbd>?</kbd></dt>
+    <dd>These keys.</dd>
+  </dl>
+  <div class="buttons">
+    <button type="button" class="secondary" data-close>Done</button>
   </div>
 </dialog>
 
@@ -1163,6 +1211,7 @@ function showPlaylist(playlist) {
   byId("chooser").hidden = true;
   show(byId("library-result"), "");
   renderLibrary();
+  focusMovie(null);
 }
 
 async function openPlaylist(entry) {
@@ -1205,6 +1254,12 @@ async function showChooser() {
   }
 
   list.replaceChildren(...kept.list.map((entry) => playlistChoice(entry)));
+  const first = list.querySelector("[aria-current=true]") || list.querySelector("button")
+    || chooser.querySelector(".toolbar:not([hidden]) button");
+
+  if (first) {
+    first.focus();
+  }
 
   if (kept.list.length > 0) {
     show(status, "Choose a collection.");
@@ -1236,10 +1291,16 @@ function playlistChoice(entry) {
 function renderLibrary() {
   const playlist = state.playlist;
   const count = playlist.order.length;
+  const focused = byId("movies").contains(document.activeElement) ? document.activeElement.dataset.folder : null;
   byId("library").hidden = false;
   byId("playlist-name").textContent = playlist.name;
   byId("playlist-count").textContent = plural(count, "movie", "movies");
   byId("movies").replaceChildren(...playlist.order.map((folder) => movieItem(playlist, folder)));
+
+  // The movie that had focus keeps it in the newer version.
+  if (focused !== null) {
+    focusMovie(focused);
+  }
 
   if (count > 0) {
     show(byId("library-state"), "");
@@ -1264,9 +1325,75 @@ function movieItem(playlist, folder) {
   pick.dataset.folder = folder;
   pick.setAttribute("aria-pressed", String(folder === state.selected));
   pick.append(posterImage(playlist, folder, info), caption(playlist, folder, info));
-  pick.addEventListener("click", () => select(folder));
+
+  // Chosen again, the movie chosen plays, or pauses.
+  pick.addEventListener("click", () => {
+    if (folder === state.selected) {
+      playOrPause();
+    } else {
+      select(folder);
+    }
+  });
   item.append(pick);
   return item;
+}
+
+// Gives focus to the movie in `folder` of the collection open, or to its
+// first, if it holds no such movie, or to adding one, if it holds none.
+// `options` are focus()'s.
+function focusMovie(folder, options = {}) {
+  const picks = [...byId("movies").querySelectorAll("button.pick")];
+  const pick = picks.find((each) => each.dataset.folder === folder) || picks[0]
+    || byId("library").querySelector(".toolbar:not([hidden]) button");
+
+  if (pick) {
+    pick.focus(options);
+  }
+}
+
+// The button of `buttons` in the row above `from`, or below it if `below`,
+// nearest it across; or null, if there is no such row.
+function across(buttons, from, below) {
+  const origin = from.getBoundingClientRect();
+  const middle = (rect) => rect.left + rect.width / 2;
+  const beyond = buttons.map((button) => ({ button, rect: button.getBoundingClientRect() }))
+    .filter(({ rect }) => (below ? rect.top >= origin.bottom : rect.bottom <= origin.top));
+  const tops = beyond.map(({ rect }) => rect.top);
+  const row = below ? Math.min(...tops) : Math.max(...tops);
+  const distance = ({ rect }) => Math.abs(middle(rect) - middle(origin));
+  const nearest = beyond.filter(({ rect }) => Math.abs(rect.top - row) < 1)
+    .sort((one, other) => distance(one) - distance(other))[0];
+  return nearest ? nearest.button : null;
+}
+
+// Moves focus through the buttons of `list` from the keyboard: the arrow
+// keys to the one beside, above, or below, as they are laid out, and Home
+// and End to the first and the last.
+function arrowKeys(list) {
+  list.addEventListener("keydown", (event) => {
+    const buttons = [...list.querySelectorAll("button")];
+    const at = buttons.indexOf(event.target);
+    const moves = {
+      ArrowLeft: () => buttons[at - 1],
+      ArrowRight: () => buttons[at + 1],
+      ArrowUp: () => across(buttons, event.target, false),
+      ArrowDown: () => across(buttons, event.target, true),
+      Home: () => buttons[0],
+      End: () => buttons[buttons.length - 1],
+    };
+    const move = moves[event.key];
+
+    if (at < 0 || !move || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+      return;
+    }
+
+    event.preventDefault();
+    const next = move();
+
+    if (next) {
+      next.focus();
+    }
+  });
 }
 
 function noPoster() {
@@ -1384,10 +1511,96 @@ function playFullscreen() {
     return;
   }
 
+  enterFullscreen(video);
+}
+
+// Shows `video` full screen, as this browser can.
+function enterFullscreen(video) {
   if (video.requestFullscreen) {
     video.requestFullscreen().catch(() => {});
   } else if (video.webkitEnterFullscreen) {
     video.webkitEnterFullscreen();
+  }
+}
+
+function toggleFullscreen() {
+  if (document.fullscreenElement) {
+    document.exitFullscreen().catch(() => {});
+  } else if (state.selected !== null) {
+    enterFullscreen(byId("video"));
+  }
+}
+
+// Plays the movie chosen, or pauses it.
+function playOrPause() {
+  const video = byId("video");
+
+  if (!video.getAttribute("src")) {
+    return;
+  }
+
+  if (video.paused) {
+    video.play().catch((error) => console.warn(`The movie did not play: ${error.message}`));
+  } else {
+    video.pause();
+  }
+}
+
+// Stops the movie chosen: paused, back at its start, out of full screen,
+// and with focus back on it in the collection, to choose another.
+function stopMovie() {
+  const video = byId("video");
+
+  if (state.selected === null) {
+    return;
+  }
+
+  video.pause();
+  video.currentTime = 0;
+
+  if (!document.fullscreenElement) {
+    focusMovie(state.selected);
+    return;
+  }
+
+  // Stopped is not left: played again, it plays full screen again. This
+  // listener hears the change after the video's own, leftFullscreen. Only
+  // out of full screen can focus go to the movie in the collection.
+  document.addEventListener("fullscreenchange", () => {
+    state.leftFullscreen = false;
+    focusMovie(state.selected);
+  }, { once: true });
+  document.exitFullscreen().catch(() => {});
+}
+
+// Chooses the movie `delta` from the one chosen in the collection, or its
+// first or last, if none is, and plays it if the one chosen was playing.
+function stepMovie(delta) {
+  const playlist = state.playlist;
+  const video = byId("video");
+
+  if (!playlist || playlist.order.length === 0) {
+    return;
+  }
+
+  const at = playlist.order.indexOf(state.selected);
+  const folder = playlist.order[at < 0 ? (delta > 0 ? 0 : playlist.order.length - 1) : at + delta];
+  const playing = !video.paused;
+  const listed = byId("movies").contains(document.activeElement);
+
+  if (folder === undefined) {
+    return;
+  }
+
+  select(folder);
+
+  if (playing) {
+    playOrPause();
+  }
+
+  // Focus follows, leaving in view the player select shows.
+  if (listed) {
+    focusMovie(folder, { preventScroll: true });
   }
 }
 
@@ -1552,6 +1765,7 @@ async function saveEdit() {
   });
 
   stopEditing();
+  byId("edit-movie").focus();
   return ["Saved.", false];
 }
 
@@ -1650,6 +1864,7 @@ async function browse(segments) {
   });
 
   byId("folder-path").replaceChildren(...crumbs);
+  crumbs[crumbs.length - 1].focus();
   list.replaceChildren();
   list.hidden = true;
   show(status, "Asking the node…");
@@ -1683,6 +1898,10 @@ async function browse(segments) {
     })),
   );
   list.hidden = folders.length + videos.length === 0;
+
+  if (list.firstElementChild) {
+    list.querySelector("button").focus();
+  }
 
   if (segments.length === 0 && entries.length === 0) {
     show(status, "This node offers no folders. Its operator chooses them, in local.folders.");
@@ -1977,6 +2196,7 @@ async function importChosen() {
 // Runs `action` with `control` disabled, and says what it returned in
 // `message`. An action returns [text, isError], or nothing to say nothing.
 async function perform(control, message, action) {
+  const focused = document.activeElement === control;
   control.disabled = true;
 
   try {
@@ -1997,6 +2217,39 @@ async function perform(control, message, action) {
   } finally {
     control.disabled = false;
     refreshControls();
+
+    if (focused) {
+      regainFocus(control);
+    }
+  }
+}
+
+// Whether nothing on the page has focus: the page itself has it, or what
+// had it is no longer shown.
+function focusLost() {
+  const active = document.activeElement;
+  return !active || active === document.body || active.getClientRects().length === 0;
+}
+
+// Gives focus back to `control`, which lost it as it was disabled, unless
+// something else has taken it: or, if `control` cannot take it, to the movie
+// chosen. If `control` opened a dialog, once the dialog closes.
+function regainFocus(control) {
+  const opened = [...document.querySelectorAll("dialog[open]")].find((dialog) => !dialog.contains(control));
+
+  if (opened) {
+    opened.addEventListener("close", () => regainFocus(control), { once: true });
+    return;
+  }
+
+  if (!focusLost()) {
+    return;
+  }
+
+  control.focus();
+
+  if (document.activeElement !== control && state.playlist) {
+    focusMovie(state.selected);
   }
 }
 
@@ -2095,7 +2348,66 @@ video.addEventListener("loadeddata", () => { byId("video-trouble").hidden = true
 byId("video-again").addEventListener("click", () => {
   byId("video-trouble").hidden = true;
   video.load();
+  video.focus();
 });
+
+// Full screen, the keys go to the video, not to a control hidden behind it.
+video.addEventListener("fullscreenchange", () => {
+  if (document.fullscreenElement === video) {
+    video.focus();
+  }
+});
+
+// Keys, as video players have, anywhere but in a field, and while no dialog
+// is open. Each is heard before the element with focus hears it, so that a
+// video's own controls do not act on it too.
+const SHORTCUTS = {
+  k: playOrPause,
+  f: toggleFullscreen,
+  s: stopMovie,
+  n: () => stepMovie(1),
+  p: () => stepMovie(-1),
+  c: showChooser,
+  "?": () => byId("keys-dialog").showModal(),
+};
+
+window.addEventListener("keydown", (event) => {
+  const target = event.target instanceof Element ? event.target : document.body;
+  const ignored = event.altKey || event.ctrlKey || event.metaKey || event.isComposing || event.repeat
+    || document.querySelector("dialog[open]") || target.closest("input, select, textarea");
+
+  if (ignored) {
+    return;
+  }
+
+  // Space presses a button or link that has focus, and scrolls when no movie is chosen.
+  const pressed = target.closest("button, a[href], summary") || state.selected === null;
+  const key = event.key === " " ? (pressed ? "" : "k") : String(event.key).toLowerCase();
+
+  if (!Object.hasOwn(SHORTCUTS, key)) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  SHORTCUTS[key]();
+}, true);
+
+// The keyboard's media keys, as the browser passes them on. Play and pause
+// it handles itself.
+const MEDIA_KEYS = { stop: stopMovie, previoustrack: () => stepMovie(-1), nexttrack: () => stepMovie(1) };
+
+for (const [action, handler] of Object.entries(MEDIA_KEYS)) {
+  try {
+    navigator.mediaSession.setActionHandler(action, handler);
+  } catch (error) {
+    console.warn(`This browser passes on no ${action} key: ${error.message}`);
+  }
+}
+
+arrowKeys(byId("movies"));
+arrowKeys(byId("chooser-list"));
+arrowKeys(byId("folder-entries"));
 
 for (const control of document.querySelectorAll("[data-close]")) {
   control.addEventListener("click", () => control.closest("dialog").close());
@@ -2118,6 +2430,7 @@ for (const control of document.querySelectorAll("[data-copy]")) {
 }
 
 byId("choose-playlist").addEventListener("click", showChooser);
+byId("show-keys").addEventListener("click", () => byId("keys-dialog").showModal());
 byId("new-playlist").addEventListener("click", () => {
   byId("new-form").reset();
   show(byId("new-result"), "");
@@ -2135,7 +2448,10 @@ byId("add-id").addEventListener("click", () => {
 });
 byId("share-playlist").addEventListener("click", openShare);
 byId("edit-movie").addEventListener("click", startEditing);
-byId("cancel-edit").addEventListener("click", stopEditing);
+byId("cancel-edit").addEventListener("click", () => {
+  stopEditing();
+  byId("edit-movie").focus();
+});
 byId("import-target").addEventListener("change", () => {
   byId("import-name-label").hidden = byId("import-target").value !== "";
 });
