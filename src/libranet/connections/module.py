@@ -50,6 +50,13 @@ names found are published as more addresses of that peer
 publishes itself, so the addresses this module observes are looked up as
 they are published.
 
+When the stats module derives a node list naming a node at an endpoint it did
+not name before (``nodes.updated``), as when this node has just reached a node
+there, the nodes it names anew are posted to every peer connected, each on a
+thread of its own (HandshakeProtocol §3.3, Phase 5 Step 114). A peer is told
+only of the nodes other than itself, and nothing if there are none. A peer
+connected later is told of them by first contact.
+
 An endpoint that answers as a node other than the one expected did not reach
 the node expected there, and did reach the node that answered. That node is
 taken into the mix if it is not connected yet. If it is, the new connection
@@ -668,6 +675,31 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
     def _on_node_list_updated(self, _message: Message) -> None:
         self._reload_candidates()
         self._maintain()
+        self._pass_on(self.exchange.newly_listed())
+
+    def _pass_on(self, nodes: Mapping[str, ContentId]) -> None:
+        """Post ``nodes``, newly listed, to every peer connected, each on a thread of its own."""
+        if not nodes:
+            return
+
+        with self._lock:
+            sessions = [peer.session for peer in self._peers.values()]
+
+        self.logger.debug("Passing %d newly listed nodes on to %d peers", len(nodes), len(sessions))
+
+        for session in sessions:
+            self._start("pass-on", partial(self._pass_on_to, session, nodes))
+
+    def _pass_on_to(self, session: PeerSession, nodes: Mapping[str, ContentId]) -> None:
+        """Pass-on thread: post ``nodes`` to ``session``'s peer."""
+        try:
+            self.exchange.pass_on(session, nodes)
+
+        except OSError as error:
+            self.logger.debug("Could not pass new nodes on to %s: %s", session.endpoint, error)
+
+        except Exception:  # pylint: disable=broad-exception-caught
+            self.logger.exception("Passing new nodes on to %s failed", session.endpoint)
 
     def _on_node_trust(self, message: Message) -> None:
         """Take whom this node trusts, close the peers it no longer allows, and tend the mix."""

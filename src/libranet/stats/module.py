@@ -2,8 +2,8 @@
 
 It is the only process that opens the SQLite file. Everything it records
 arrives as a broadcast from another module, and everything it publishes
-leaves as one of the derived list files plus a notice that the candidate
-list changed, or in answer to the eviction module. Between derivations
+leaves as one of the derived list files plus a notice that the node or
+candidate list changed, or in answer to the eviction module. Between derivations
 it does nothing but record, so a burst of requests costs one small statement
 each.
 
@@ -102,9 +102,11 @@ names itself, the entries ``sources`` marks ``advertised`` or ``observed``.
 A node list that merely relays the node does not.
 
 It publishes ``nodes.updated``, with no payload, whenever the derived
-candidate list (``storage.candidate_list_path``) changes, which is the
-connection manager's cue to reconsider its peer mix (Step 11). The candidate
-list's shape is documented in :mod:`libranet.stats.derivation`.
+candidate list (``storage.candidate_list_path``) or node list
+(``storage.node_list_path``) changes, which is the connection manager's cue
+to reconsider its peer mix (Step 11), and to pass on to its peers the nodes
+the node list names anew (Phase 5 Step 114). The candidate list's shape is
+documented in :mod:`libranet.stats.derivation`.
 
 The peers connected each way, as the connection manager and the web server
 name them in ``peers.connected``, are kept for the peer list a derivation
@@ -316,13 +318,18 @@ class StatsModule(ModuleBase):
             self._running = None
 
     def derive(self) -> None:
-        """Rewrite the derived lists and announce a candidate list that changed."""
+        """Rewrite the derived lists and announce a node or candidate list that changed."""
         self._derived_at = self._clock()
         lists = self.deriver.derive()
 
         if lists.candidate_list_changed:
-            self.publish(EventType.NODE_LIST_UPDATED)
             self.logger.debug("Candidate list rewritten at %s", lists.candidate_list)
+
+        if lists.node_list_changed:
+            self.logger.debug("Node list rewritten at %s", lists.node_list)
+
+        if lists.candidate_list_changed or lists.node_list_changed:
+            self.publish(EventType.NODE_LIST_UPDATED)
 
     def _on_data_requested(self, message: Message) -> None:
         self.database.record_request(

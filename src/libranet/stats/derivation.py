@@ -47,11 +47,12 @@ _LOGGER = getLogger(__name__)
 
 @dataclass(frozen=True)
 class DerivedLists:
-    """The five files a derivation maintains, and whether the candidate list changed.
+    """The five files a derivation maintains, and whether the node and candidate lists changed.
 
-    Only the candidate list carries a changed flag, because only it is
-    announced: a new one is the connection manager's cue to reconsider its
-    peer mix (Step 11). Nothing is published about the others — a peer
+    Only those two carry a changed flag, because only they are announced: a
+    new candidate list is the connection manager's cue to reconsider its peer
+    mix (Step 11), and a new node list its cue to pass on the nodes it names
+    anew (Phase 5 Step 114). Nothing is published about the others — a peer
     reads them from the file when it asks, and a module refusing blocked
     content when it looks — so whether they were rewritten is this module's
     business alone.
@@ -62,6 +63,7 @@ class DerivedLists:
     candidate_list: Path
     blocked_list: Path
     peer_list: Path
+    node_list_changed: bool
     candidate_list_changed: bool
 
 
@@ -100,13 +102,14 @@ class ListDeriver:
         first, so neither list offers them.
 
         Returns:
-            The five files, and whether the candidate list was rewritten.
+            The five files, and whether the node and candidate lists were
+            rewritten.
         """
         self._database.prune_seek(self._stats.seek_entry_ttl_seconds)
         self._database.prune_addresses(
             self._stats.max_addresses_per_node, self._stats.max_address_failures
         )
-        _write_if_changed(self._storage.node_list_path, self._node_list_body())
+        node_list_changed = _write_if_changed(self._storage.node_list_path, self._node_list_body())
         self.write_seek_list()
         candidate_list_changed = _write_if_changed(
             self._storage.candidate_list_path, render_candidate_list(self._candidates())
@@ -119,6 +122,7 @@ class ListDeriver:
             candidate_list=self._storage.candidate_list_path,
             blocked_list=self._storage.blocked_list_path,
             peer_list=self._storage.peer_list_path,
+            node_list_changed=node_list_changed,
             candidate_list_changed=candidate_list_changed,
         )
 

@@ -964,6 +964,31 @@ def test_a_candidate_list_that_changed_is_announced_once(
     assert message["source"] == ModuleName.STATS
 
 
+def test_a_node_list_that_changed_alone_is_announced_too(
+    module: StatsModule, config: LibranetConfig, queues: ModuleQueues
+) -> None:
+    module.database.record_address_worked(PEER_ID, PEER_ENDPOINT)
+    module.derive()
+    published(queues)
+    listed = candidates(config)
+
+    # The peer's one address leaves the node list once it fails, but is still
+    # the candidate list's one endpoint.
+    module.handle(
+        broadcast(
+            EventType.CONNECTION_FAILED,
+            {"node_id": str(PEER_ID), "endpoint": PEER_ENDPOINT},
+            ModuleName.CONNECTIONS,
+        )
+    )
+    module.derive()
+
+    assert PEER_ENDPOINT not in node_list(config)
+    assert candidates(config) == listed
+    (message,) = published(queues)
+    assert message["event"] == EventType.NODE_LIST_UPDATED
+
+
 def test_the_lists_are_rederived_once_the_interval_passes(
     config: LibranetConfig, queues: ModuleQueues
 ) -> None:

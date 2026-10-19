@@ -23,9 +23,13 @@ search of the peers (Phase 4 Step 93).
 :meth:`PeerExchange.hand_off` pushes one content id the peer did not ask
 for, for it to keep: content this node is letting go (HighLevelDesign §4.5).
 :meth:`PeerExchange.hand_off_many` pushes several such, pipelined: new
-content (§4.10), in batches (Phase 2 Step 45). Steps 1 and 2 wait for their
-responses. Steps 3 to 5 are sent together, pipelined, and so are the
-requests of step 6 and of step 7.
+content (§4.10), in batches (Phase 2 Step 45).
+:meth:`PeerExchange.newly_listed` finds the nodes this node's node list has
+come to name since it was last read, and :meth:`PeerExchange.pass_on` posts
+them to a peer, which first contact told of the list only as it was then
+(§3.3, Phase 5 Step 114). Steps 1 and 2 wait for their responses. Steps 3 to
+5 are sent together, pipelined, and so are the requests of step 6 and of
+step 7.
 
 What this node holds, which step 6 pushes and step 7 does not ask for, is
 what it holds in the source of truth or its content archives (Step 34). Step
@@ -177,7 +181,9 @@ class _LocalContent:
 class PeerExchange:
     """Holds this node's side of every conversation with a peer.
 
-    Shared by every connection: it keeps no state about any one peer.
+    Shared by every connection: it keeps no state about any one peer. It
+    keeps the nodes this node's node list named when last read, to find
+    those it names anew.
     """
 
     def __init__(
@@ -196,6 +202,7 @@ class PeerExchange:
         self._publish = publish
         self._logger = logger
         self._local = _LocalContent.of(config.storage)
+        self._listed = self._listed_nodes()
 
     @property
     def node_id(self) -> ContentId:
@@ -264,6 +271,43 @@ class PeerExchange:
         """
         (seek,) = session.exchange([PeerRequest("GET", SEEK_PATH)])
         self._push(session, self._sought_by(session, seek))
+
+    def newly_listed(self) -> dict[str, ContentId]:
+        """The nodes this node's node list names at endpoints it did not when last read.
+
+        The list as it was when this exchange was made is the first read.
+
+        Returns:
+            Each node id by the endpoint it is newly named at, this node's
+            own entries left out.
+        """
+        listed = self._listed_nodes()
+        newly = {
+            endpoint: node_id
+            for endpoint, node_id in listed.items()
+            if self._listed.get(endpoint) != node_id
+        }
+        self._listed = listed
+        return newly
+
+    def pass_on(self, session: PeerSession, nodes: Mapping[str, ContentId]) -> None:
+        """Post ``nodes``, by endpoint, to the peer, with this node's own entries (§3.3).
+
+        Entries naming the peer itself are left out, and nothing is posted if
+        they were all there was.
+
+        Raises:
+            OSError: as :meth:`first_contact`.
+        """
+        others = {
+            endpoint: str(node_id)
+            for endpoint, node_id in nodes.items()
+            if node_id != session.node_id
+        }
+
+        if others:
+            body = node_list_body({**self._own_entries(), **others})
+            session.exchange([PeerRequest("POST", NODES_PATH, body, _JSON_HEADERS)])
 
     def retrieve(self, session: PeerSession, content_id: ContentId) -> Retrieval:
         """Ask the peer for ``content_id``; whether it sent it, and if not, when to ask again.
@@ -429,8 +473,28 @@ class PeerExchange:
         except OSError as error:
             self._logger.warning("Cannot read the node list, so only this node is named: %s", error)
 
-        own = {endpoint: str(self._signing.identity.node_id) for endpoint in self._own_endpoints}
-        return node_list_body(own)
+        return node_list_body(self._own_entries())
+
+    def _own_entries(self) -> dict[str, str]:
+        """This node's own entries in a node list it sends (HttpApi §10.1)."""
+        return {endpoint: str(self._signing.identity.node_id) for endpoint in self._own_endpoints}
+
+    def _listed_nodes(self) -> dict[str, ContentId]:
+        """The nodes this node's node list names, as last derived, by endpoint, but itself."""
+        try:
+            nodes = parse_node_list(
+                decode_list(self._node_list(), self._storage.max_decompressed_list_bytes)
+            )
+
+        except InvalidListError as error:
+            self._logger.warning("Cannot read the node list, so it names no node: %s", error)
+            return {}
+
+        return {
+            endpoint: node_id
+            for endpoint, node_id in nodes.items()
+            if node_id != self._signing.identity.node_id
+        }
 
     def _receive_node_list(self, session: PeerSession, response: PeerResponse) -> None:
         """Publish the nodes the peer's node list names, for the stats module to keep."""

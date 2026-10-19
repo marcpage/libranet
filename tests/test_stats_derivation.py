@@ -106,6 +106,7 @@ def test_every_file_exists_even_with_nothing_to_report(
     assert loads(lists.seek_list.read_bytes()) == {"data": [], "search": []}
     assert lists.candidate_list == storage.candidate_list_path
     assert candidates(lists) == []
+    assert lists.node_list_changed
     assert lists.candidate_list_changed
     assert lists.blocked_list == storage.blocked_list_path
     assert loads(lists.blocked_list.read_bytes()) == {"blocked": []}
@@ -137,6 +138,7 @@ def test_a_derivation_that_changes_nothing_rewrites_nothing(
 
     unchanged = deriver.derive()
 
+    assert not unchanged.node_list_changed
     assert not unchanged.candidate_list_changed
     assert (
         unchanged.node_list.stat().st_mtime_ns,
@@ -149,7 +151,12 @@ def test_a_derivation_that_changes_nothing_rewrites_nothing(
 
     assert changed.candidate_list_changed
     # An address never reached is not published, and the seek list is untouched.
+    assert not changed.node_list_changed
     assert changed.node_list.stat().st_mtime_ns == written_at[0]
+
+    database.record_address_worked(PEER_ID, "http://203.0.113.9:4300")
+
+    assert deriver.derive().node_list_changed
     assert changed.seek_list.stat().st_mtime_ns == written_at[1]
 
 

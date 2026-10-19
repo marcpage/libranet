@@ -541,6 +541,79 @@ def test_a_new_node_list_brings_new_connections(
     bus.wait_for(EventType.CONNECTION_OPENED, node_id=str(peers[0].node_id))
 
 
+def test_nodes_newly_listed_are_passed_on_to_every_peer_connected_but_the_one_named(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+) -> None:
+    write_lists(config.storage, node_list(identity, *peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+
+    for peer in peers:
+        peer.bus.wait_for(EventType.NODES_RECEIVED)
+
+    # Read again as it was, it names nothing newly.
+    module.handle(node_list_updated(config))
+    moved = f"http://127.0.0.1:{closed_port()}"
+    elsewhere = f"http://127.0.0.1:{closed_port()}"
+    write_lists(
+        config.storage,
+        {**node_list(identity, *peers), moved: str(peers[0].node_id), elsewhere: str(OTHER_ID)},
+    )
+    module.handle(node_list_updated(config))
+
+    own = {"http://127.0.0.1:8080": str(identity.node_id)}
+    _, told_first = peers[0].bus.wait_for(EventType.NODES_RECEIVED, count=2)
+    assert told_first["nodes"] == {**own, elsewhere: str(OTHER_ID)}
+    _, told_second = peers[1].bus.wait_for(EventType.NODES_RECEIVED, count=2)
+    assert told_second["nodes"] == {
+        **own,
+        moved: str(peers[0].node_id),
+        elsewhere: str(OTHER_ID),
+    }
+
+
+@mark.parametrize(
+    ("error", "logged"),
+    [
+        (ConnectionResetError("gone"), "Could not pass new nodes on to"),
+        (RuntimeError("broken"), "Passing new nodes on to"),
+    ],
+)
+def test_passing_nodes_on_that_fails_is_logged(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    monkeypatch: MonkeyPatch,
+    caplog: LogCaptureFixture,
+    error: Exception,
+    logged: str,
+) -> None:
+    caplog.set_level(DEBUG, logger="libranet")
+    write_lists(config.storage, node_list(identity, peers[0]))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED)
+
+    def broken(session: PeerSession, nodes: Mapping[str, ContentId]) -> None:
+        raise error
+
+    monkeypatch.setattr(module.exchange, "pass_on", broken)
+    write_lists(
+        config.storage,
+        {**node_list(identity, peers[0]), f"http://127.0.0.1:{closed_port()}": str(OTHER_ID)},
+    )
+    module.handle(node_list_updated(config))
+
+    wait_until(
+        lambda: f"{logged} {peers[0].endpoint}" in caplog.text, "the failure to be logged"
+    )
+
+
 def test_seeds_are_used_while_no_peer_is_known(
     modules: Modules, config: LibranetConfig, peers: list[FixturePeer], bus: Bus, tmp_path: Path
 ) -> None:
