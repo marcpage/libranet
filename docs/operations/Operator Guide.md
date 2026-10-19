@@ -282,7 +282,9 @@ answer at all can take about a minute to give up on.
 
 A node reached is known from then on, as every node it reaches is: it is
 listed in the nodes application, each node learns the nodes the other knows,
-and it is dialed again as any other peer is, after a restart too. An address
+and it is dialed again as any other peer is, after a restart too. The nodes
+this node already connects to are told of it as well, within about a minute
+(`stats.derive_interval_seconds`), so that they can connect to it too. An address
 where no node was reached is not remembered; give it again once the other
 node is running and reachable. If none is reached, check that the other node
 listens at an address this machine can reach, as its `network.listen_address`

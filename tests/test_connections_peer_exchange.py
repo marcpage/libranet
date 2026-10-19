@@ -619,6 +619,89 @@ def test_lists_a_peer_has_not_derived_yet_are_skipped(
     assert published(queues, EventType.DATA_SENT) == []
 
 
+# -- Passing on the nodes newly listed (§3.3, Phase 5 Step 114) ------------
+
+
+def test_the_nodes_newly_listed_are_those_named_at_an_endpoint_not_named_before(
+    exchange: PeerExchange, config: LibranetConfig, identity: NodeIdentity
+) -> None:
+    own = {"http://localhost:8080": str(identity.node_id)}
+    write_lists(config.storage, {**own, "http://192.0.2.1:8080": str(OTHER_ID)}, [])
+
+    assert exchange.newly_listed() == {"http://192.0.2.1:8080": OTHER_ID}
+    assert exchange.newly_listed() == {}
+
+    # One node moves, and another is named where it was.
+    write_lists(
+        config.storage,
+        {**own, "http://192.0.2.2:8080": str(OTHER_ID), "http://192.0.2.1:8080": str(THIRD_ID)},
+        [],
+    )
+
+    assert exchange.newly_listed() == {
+        "http://192.0.2.2:8080": OTHER_ID,
+        "http://192.0.2.1:8080": THIRD_ID,
+    }
+
+
+def test_the_node_list_as_it_was_when_the_exchange_was_made_names_nothing_newly(
+    config: LibranetConfig, identity: NodeIdentity, queues: ModuleQueues
+) -> None:
+    write_lists(config.storage, {"http://192.0.2.1:8080": str(OTHER_ID)}, [])
+    exchange = PeerExchange(
+        identity, config, StubModule(ModuleName.CONNECTIONS, queues).publish, LOGGER
+    )
+
+    assert exchange.newly_listed() == {}
+
+
+def test_a_node_list_that_is_not_one_names_nothing_newly_and_is_logged(
+    exchange: PeerExchange, config: LibranetConfig, caplog: LogCaptureFixture
+) -> None:
+    config.storage.derived_dir.mkdir(parents=True)
+    config.storage.node_list_path.write_bytes(b"not a list")
+
+    assert exchange.newly_listed() == {}
+    (record,) = [
+        record
+        for record in caplog.records
+        if record.getMessage().startswith("Cannot read the node list, so it names no node")
+    ]
+    assert record.levelno == WARNING
+
+
+def test_pass_on_posts_the_nodes_with_this_nodes_own_entries(
+    exchange: PeerExchange, session: PeerSession, peer: FixturePeer, identity: NodeIdentity
+) -> None:
+    exchange.pass_on(session, {"http://192.0.2.1:8080": OTHER_ID})
+
+    (told,) = peer.published(EventType.NODES_RECEIVED)
+    assert told["nodes"] == {
+        "http://127.0.0.1:8080": str(identity.node_id),
+        "http://192.0.2.1:8080": str(OTHER_ID),
+    }
+    assert told["sources"] == {"http://127.0.0.1:8080": "observed"}
+
+
+def test_pass_on_tells_a_peer_nothing_of_itself(
+    exchange: PeerExchange, session: PeerSession, peer: FixturePeer, identity: NodeIdentity
+) -> None:
+    exchange.pass_on(session, {"http://192.0.2.1:8080": peer.identity.node_id})
+
+    assert peer.published(EventType.NODES_RECEIVED) == []
+
+    exchange.pass_on(
+        session,
+        {"http://192.0.2.1:8080": peer.identity.node_id, "http://192.0.2.2:8080": OTHER_ID},
+    )
+
+    (told,) = peer.published(EventType.NODES_RECEIVED)
+    assert told["nodes"] == {
+        "http://127.0.0.1:8080": str(identity.node_id),
+        "http://192.0.2.2:8080": str(OTHER_ID),
+    }
+
+
 def test_an_unusable_list_is_ignored(
     exchange: PeerExchange,
     session: PeerSession,

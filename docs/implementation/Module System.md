@@ -246,7 +246,7 @@ report, and records each in one small statement. Every
 `stats.derive_interval_seconds` it rewrites the node, seek, candidate,
 blocked, and peer lists into `lists/`, which the web server, connection
 manager, validator, and fetcher read as plain files, and publishes
-`nodes.updated` when the candidate list changed. It keeps the peers
+`nodes.updated` when the candidate list or node list changed. It keeps the peers
 connected each way in memory, as `peers.connected` names them, for the peer
 list (Phase 5 Step 107), and asks for them as it starts. It keeps the
 content the node has blocked
@@ -311,7 +311,9 @@ neither.
 
 Owns every outgoing connection. It keeps up the peer mix (HighLevelDesign
 §4.6), dialing again whenever the candidate list changes (`nodes.updated`)
-or a connection opens, fails, or closes. An address the operator asks to
+or a connection opens, fails, or closes. When the node list comes to name a
+node at a new address, it posts those entries to every peer connected
+(Phase 5 Step 114). An address the operator asks to
 connect to on `/config` (`address.dial_requested`) it dials at once, outside
 the mix, and says what came of it (`address.dialed`, Phase 5 Step 109). It
 dials nothing until the web server says whom the node trusts (`node.trust`),
@@ -739,7 +741,7 @@ Six of the eight modules are single-threaded. The other two are not:
 | Module | Threads besides the main one | Their shared state is guarded by |
 | --- | --- | --- |
 | Web server | A thread for each HTTP server, the main port's and `/config`'s; one thread per request; a thread for each build of a signed-in person's trust scores, started as they sign in, and for reading what a change to their list newly reaches (Phase 5 Step 99) | A lock in each shared object (§9.3) |
-| Connection manager | `peers.search_workers` search workers; `peers.push_workers` push workers; `peers.broadcast_workers` broadcast workers, for searches of the peers, 8 of each by default; a reverse-DNS worker; a thread per dial, refresh, and hand-off | One lock for the whole module |
+| Connection manager | `peers.search_workers` search workers; `peers.push_workers` push workers; `peers.broadcast_workers` broadcast workers, for searches of the peers, 8 of each by default; a reverse-DNS worker; a thread per dial, refresh, and hand-off, and per peer told of the nodes newly listed | One lock for the whole module |
 
 Any thread may publish: `publish()` only puts the message on the outbox,
 and `multiprocessing.Queue.put` is thread-safe. Only the main thread
@@ -939,7 +941,7 @@ A content id is an `algorithm` and a lower-case hex `hash`, or, in
 | `data.rejected` | `algorithm`, `hash`, `node_id` | An upload did not match its content id |
 | `nodes.received` | `nodes`: endpoint → node id; `sources`: endpoint → `AddressSource` | Addresses learned, and how |
 | `seek.received` | `node_id`, `data`, `search` | A peer's seek list |
-| `nodes.updated` | — | The candidate list, `lists/candidates.json`, changed |
+| `nodes.updated` | — | The candidate list, `lists/candidates.json`, or the node list, `lists/nodes.json`, changed |
 | `address.verified` | `node_id`, `endpoint` | The endpoint reached a node already connected at another |
 | `address.dial_requested` | `dial_id`, `endpoint` | The operator asked on `/config` to connect to this address; dial it now |
 | `address.dialed` | `dial_id`, `outcome`, `node_id`, `detail` | What came of that dial: `connected`, `already_connected`, `this_node`, `not_trusted`, or `unreached`, with the node reached, or why none was or it was not taken in |
@@ -1244,7 +1246,8 @@ data moves through files, and a message tells the reader where to look.
 | `cas/data/`, deletions | Eviction | — | `data.deleted` |
 | `cas/resolved/` | Unbundler; the web server deletes an entry it cannot read | Web server | `app.path_resolved`, `resolved.reclaimed` |
 | `lists/candidates.json` | Stats | Connection manager | `nodes.updated` |
-| `lists/nodes.json`, `lists/seek.json` | Stats | Web server; connection manager | Nothing; read when needed |
+| `lists/nodes.json` | Stats | Web server; connection manager | `nodes.updated`, for the connection manager; the web server reads it when needed |
+| `lists/seek.json` | Stats | Web server; connection manager | Nothing; read when needed |
 | `lists/blocked.json` | Stats | Web server; validator; fetcher | Nothing; read again once replaced |
 | `lists/peers.json` | Stats | Web server | Nothing; read when needed |
 | `search/` | Web server; stats, adding identifiers | Web server | `data.search_requested`, which names the prefix |

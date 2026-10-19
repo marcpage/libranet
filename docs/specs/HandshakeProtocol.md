@@ -161,6 +161,14 @@ two nodes is no longer a distinct "handshake" — it is ordinary traffic:
 - The client periodically re-fetches the server's outstanding-request
   list and pushes any newly-available fulfillable content, continuing
   the same add-value-first convention on an ongoing basis.
+- Whenever the client's own node list comes to name a node at an address
+  it did not name before, as once the client has reached that node there
+  (HTTP API §10.6), the client publishes those entries to every server it
+  is connected to (`POST /data/nodes`, HTTP API §10.5), with its own
+  (HTTP API §10.1), so that the servers learn of nodes the client reaches
+  after their first contact. A server is not sent its own entry. A server
+  the client connects to later learns of them in step 3 of its own
+  first-contact exchange.
 
 ## 4. Roles: Guests and Hosts
 
