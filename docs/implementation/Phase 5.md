@@ -80,6 +80,9 @@ ordinary content, signed by its owner.
   own from its list, and neither connects to nor serves a node they distrust,
   nor, if its operator says so on `/config`, one they do not trust. It keeps
   each node's last state in its database. Step 113.
+- **Telling peers of new connections.** Each node the node reaches at an
+  address it did not list before is posted to every peer it is connected
+  to, rather than only to peers it connects to later. Step 114.
 
 ## 3. How to Read the Steps Below
 
@@ -2205,6 +2208,105 @@ Found while building it:
 
 ---
 
+## Step 114 — Telling Peers of New Connections
+
+**Issue:** #407. **Depends on:** Phase 2 Step 23's node list, which names
+only addresses that worked, and Phase 1 Step 11's first contact.
+
+Settled in the issue:
+
+- **When new connections are discovered, they are pushed to the outgoing
+  connections.**
+
+Until now, a node told a peer which nodes it knew only at first contact,
+in step 3 (HandshakeProtocol §3). A refresh fetched only the peer's seek
+list (§3.3), so a peer already connected never heard of a node this node
+reached later. Two local networks on two machines, joined at one node each,
+linked only where a node dialed across itself (found 2026-10-17, with
+#405's fixes).
+
+Work this implies:
+
+- **The stats module** announces a node list that changed, as it does a
+  candidate list that changed, with `nodes.updated`.
+- **The connection manager** reads the node list on each, and posts what it
+  names newly to every peer it is connected to.
+- HandshakeProtocol §3.3, HttpApi §10.5, HighLevelDesign §4.9, the Operator
+  Guide §4.6, Messages, the Module System, and File Layout say so.
+
+**Testable in isolation:** derivation tests asserting the node list says
+whether it was rewritten; a stats test asserting a node list that changed
+while the candidate list did not is announced; exchange tests against a
+fixture peer asserting what is named newly, at a new endpoint or by a node
+moved there, that the list as it was when the exchange was made is not new,
+that a list that cannot be read names nothing and is a warning, and that a
+post carries this node's own entries, never the peer's, and is not sent when
+only the peer is new; and connection manager tests asserting every peer
+connected is told, each but of itself, a list read again unchanged tells
+none, and a post that fails is logged.
+
+Built in one change set, with 160 lines of non-test Python, 38 of them
+replacing removed ones, and 186 of tests.
+
+- **`DerivedLists.node_list_changed`** says whether a derivation rewrote
+  the node list, and **the stats module** publishes `nodes.updated` when it
+  did, or when the candidate list changed, as before.
+- **`_NodeList`** (`connections/peer_exchange.py`) reads the node list, as
+  `PeerExchange` did before, and keeps what it named when last read, first
+  read as the exchange is made. **`PeerExchange.newly_listed()`** is what it
+  names at an endpoint it did not when last read, the node's own entries
+  left out, and **`PeerExchange.pass_on()`** posts nodes to a peer, with the
+  node's own entries, leaving out any naming the peer, and posting nothing
+  if no other is left.
+- **The connection manager**, on `nodes.updated`, reloads its candidates and
+  tends its mix, as before, then posts what `newly_listed()` finds to every
+  peer connected, on a thread for each.
+
+Checked live, with three new nodes from the scratchpad on `127.0.0.1` and
+`stats.derive_interval_seconds` at 5. B seeded from A, and the two connected
+each way. C seeded from A too, with `peers.min_outgoing_connections` at 1
+and `min_neighborhood_connections` at 0, so that it dialed only A. A dialed
+C back, and 5 seconds later, its list derived again, posted C to its two
+peers. B's web server took that post, its only node list since first
+contact, and B connected to C 5 seconds after, though C never dialed B. No
+node logged a warning or error.
+
+My calls, not yet reviewed:
+
+- **"Discovered" is listed.** A node's own list names only addresses it has
+  reached a node at (HttpApi §10.6), so a node is passed on once this node
+  has connected to it there, not as soon as it is heard of from a peer's
+  list or local discovery. Phase 2 Step 16 ruled the same for a discovered
+  address: published once it is verified.
+- **Only what is new is posted**, with the node's own entries (HttpApi
+  §10.1), rather than the whole list, which may be up to 1 MiB, to each of
+  up to 32 peers each time.
+- **A peer is not told of itself**, and is sent nothing when it alone is
+  new, as when this node has just connected to it.
+- **At once, not with the next refresh.** The post goes as soon as the list
+  is derived again, within `stats.derive_interval_seconds`, rather than
+  waiting up to `peers.seek_refresh_seconds` more for each peer's refresh.
+- **Outgoing connections only**, as the issue says. A node that connected to
+  this one, and that this one has not connected to, is not told, since this
+  node sends requests only over its own connections.
+- **`nodes.updated` is reused** rather than joined by a new event, and means
+  either list changed. When only the node list did, the connection manager
+  reconsiders its mix to no effect.
+- **What is new is kept in memory.** The list as it was when the module
+  started is the first read, so nothing is posted after a restart until the
+  list changes. A peer connected since was sent the whole list at first
+  contact.
+- **An entry that leaves the list and comes back is new again**, as is a
+  node at an address the list did not name it at. One that leaves is not
+  reported. A peer whose first contact is under way as the list changes may
+  be told of a node twice.
+- **A list that cannot be read names no node**, and is a warning. The next
+  read that can posts everything it names.
+- **No new setting.** The posts are bounded by the derivations, at most one
+  each, and the peers connected.
+
+---
+
 ## 4. Issues in the Milestone
 
 Every issue in the **Phase 5 - Trust Network** milestone, by number, and
@@ -2242,6 +2344,7 @@ where it went.
 | #377 | The administration page taking a node's address to add to the network | 109 |
 | #383 | Not connecting to untrusted nodes, and a setting to connect only to trusted ones | 113 |
 | #395 | A browser on the node's own machine taken as one at any of its addresses | None: a fix |
+| #407 | Nodes telling their outgoing connections of the new connections they discover | 114 |
 
 ## 5. Suggested Build Order
 
@@ -2269,6 +2372,7 @@ made before it is built (§3).
 | L | 111 (#371) | None; the pages alone | Independent of every other step; links to the root application. |
 | M | 112 (#372) | None made before it was built; 30 as built | Needs 100's reads of the scores, and 101's marks in the directory. |
 | N | 113 (#383) | None made before it was built; 847 as built, in three sets | Needs 99's builds and 110's list; changes what Phase 2's peer mix dials. |
+| O | 114 (#407) | None made before it was built; 160 as built | Independent of the trust steps; changes what Phase 1's first contact alone told peers. |
 
 ## 6. Open Items Not Yet Decided
 
