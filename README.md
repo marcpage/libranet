@@ -139,7 +139,8 @@ Every node ships a movie library, at `/movie/` on the node. In a browser on
 the node's own computer, it imports a video from your Movies folder, or
 another the node offers, and keeps what you know of it: its title, year,
 rating, cast, a description, and a poster taken from a frame. Movies go into
-collections.
+collections. Everything can be done from the keyboard, with keys like a
+video player's, which the page lists under Keys.
 
 Share a collection with a friend by giving them its id. Their node's movie
 library imports it, all of it or only the movies they choose, and plays the

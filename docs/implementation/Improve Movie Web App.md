@@ -203,6 +203,33 @@ Work this implies:
 - Whether the issue asks for shortcuts as well: space to play or pause,
   arrows to seek, `f` for full screen, as video sites have.
 
+Settled with #264: moving through the movies, switching collections,
+playing, pausing, full screen, and stopping each have a key, as video
+players have, and the page lists them under **Keys**, or `?`:
+
+- In a collection, the arrow keys move through the movies as they are
+  laid out, and Home and End to the first and the last. The collections
+  in the chooser, and the folders of **Add from a file**, move the same
+  way. Enter, or a click, chooses a movie, and on the movie chosen plays
+  or pauses it.
+- Space or `k` plays or pauses the movie chosen, `f` goes full screen or
+  back, and `s` stops it: back at its start, out of full screen, with
+  focus back on it in the collection. `n` and `p` choose the next movie
+  and the one before, playing on if one was playing, and `c` shows the
+  collections. A keyboard's stop, next, and previous keys do the same, as
+  the browser passes them on (Media Session).
+- The keys are heard anywhere but in a field, and while no dialog is
+  open, before the video's own controls hear them. Space presses a button
+  that has focus instead. Seeking is left to the video's own controls.
+- Focus goes where it makes sense: to the first movie when a collection
+  opens, to the collection open when the chooser shows, to the video when
+  it goes full screen, back to **Edit** when an edit is saved or
+  cancelled, and back to a button disabled while it worked, which loses
+  focus in some browsers. What has focus is outlined plainly on the dark.
+
+**Testable in isolation:** checked by hand in the page, from the keyboard
+alone.
+
 ---
 
 ## 4. Issues in the Milestone
