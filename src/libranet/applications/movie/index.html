@@ -231,7 +231,7 @@
     <h2 id="chooser-heading">Collections</h2>
     <p class="state" id="chooser-state" role="status" hidden></p>
     <ul class="choices state" id="chooser-list"></ul>
-    <div class="toolbar local-only" hidden>
+    <div class="toolbar signed-in-only" hidden>
       <button type="button" id="new-playlist">New collection</button>
       <button type="button" class="secondary" id="import-playlist">Import a collection</button>
     </div>
@@ -254,7 +254,7 @@
           <p class="note" id="movie-facts"></p>
           <p id="movie-cast"></p>
           <p class="description" id="movie-description"></p>
-          <div class="toolbar local-only" hidden>
+          <div class="toolbar signed-in-only" hidden>
             <button type="button" id="edit-movie">Edit</button>
             <button type="button" class="secondary" id="share-movie">Share</button>
             <button type="button" class="secondary" id="move-up">Earlier</button>
@@ -297,7 +297,7 @@
       <h2 id="playlist-name"></h2>
       <span class="note" id="playlist-count"></span>
     </div>
-    <div class="toolbar local-only" hidden>
+    <div class="toolbar signed-in-only" hidden>
       <button type="button" id="add-file">Add from a file</button>
       <button type="button" class="secondary" id="add-id">Add by id</button>
       <button type="button" class="secondary" id="share-playlist">Share</button>
@@ -1211,9 +1211,9 @@ async function showChooser() {
   } else if (state.owner) {
     show(status, "You keep no collections yet. Make one, or import one by its id.");
   } else if (state.local) {
-    show(status, "This node keeps no collections yet. Make one, or import one by its id.");
+    show(status, "This node keeps no collections yet. Sign in on the home page to make one, or import one by its id.");
   } else {
-    show(status, "This node keeps no collections yet. They are made in a browser on the node's own machine.");
+    show(status, "This node keeps no collections yet. They are made by someone signed in on the node's own machine.");
   }
 }
 
@@ -1243,7 +1243,7 @@ function renderLibrary() {
 
   if (count > 0) {
     show(byId("library-state"), "");
-  } else if (state.local) {
+  } else if (state.owner) {
     show(byId("library-state"), "This collection holds no movies yet. Add one from a file, or by its id.");
   } else {
     show(byId("library-state"), "This collection holds no movies yet.");
@@ -2040,8 +2040,9 @@ async function start() {
   state.local = await askClient();
   state.owner = state.local ? await askSession() : null;
 
-  for (const element of document.querySelectorAll(".local-only")) {
-    element.hidden = !state.local;
+  // Only whoever is signed in manages collections; everyone else only plays.
+  for (const element of document.querySelectorAll(".signed-in-only")) {
+    element.hidden = !state.owner;
   }
 
   if (state.owner) {
@@ -2049,7 +2050,7 @@ async function start() {
       `Signed in as ${state.owner.username}: add movies, edit them, and keep and share collections of your own.`;
   } else {
     byId("client-note").textContent = state.local
-      ? "This browser is on the node's own machine: add movies, edit them, and keep and share this node's collections. Sign in on the home page to keep your own."
+      ? "This browser is on the node's own machine, but no one is signed in, so it can only play. Sign in on the home page to add movies, edit them, and keep and share collections of your own."
       : "This browser is not on the node's own machine, so it can only play. Movies are added there.";
   }
   byId("choose-playlist").hidden = false;
