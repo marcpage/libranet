@@ -73,7 +73,7 @@ other modules sent.
 | `data.rejected` | Validator | Stats | An upload did not match its content id |
 | `nodes.received` | Web server, Connections | Stats, Connections | Peer addresses learned |
 | `seek.received` | Web server | Stats | A peer's seek list |
-| `nodes.updated` | Stats | Connections | The candidate list changed |
+| `nodes.updated` | Stats | Connections | The candidate list or node list changed |
 | `address.verified` | Connections | Stats | An address reached a node already connected |
 | `address.dial_requested` | Web server | Connections | The operator asked to dial an address |
 | `address.dialed` | Connections | Web server | What came of that dial |
@@ -260,9 +260,13 @@ it and what each does with it.
 
 - **Payload:** none.
 - **Sent by:** Stats, whenever the derived candidate list
-  (`storage.candidate_list_path`) changes.
-- **Received by:** Connections, which reconsiders its peer mix.
-- **Purpose:** cue the connection manager to re-read the candidate list.
+  (`storage.candidate_list_path`) or node list (`storage.node_list_path`)
+  changes.
+- **Received by:** Connections, which reconsiders its peer mix, and posts
+  the nodes the node list newly names to every peer connected (Phase 5 Step
+  114).
+- **Purpose:** cue the connection manager to re-read the candidate list and
+  the node list.
 
 #### `address.verified`
 

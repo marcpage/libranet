@@ -450,7 +450,7 @@ since none of them may open SQLite.
 
 | File | Read by | Bounded by |
 | --- | --- | --- |
-| `nodes.json` | Web server (`GET /data/nodes`); connection manager (the list it sends peers) | `stats.max_list_bytes` |
+| `nodes.json` | Web server (`GET /data/nodes`); connection manager (the list it sends peers, and the nodes it newly names) | `stats.max_list_bytes` |
 | `seek.json` | Web server (`GET /data/seek`); connection manager | `stats.max_list_bytes`, `stats.seek_entry_ttl_seconds` |
 | `candidates.json` | Connection manager, choosing whom to dial | `stats.max_addresses_per_node` |
 | `blocked.json` | Web server, validator, and fetcher, refusing blocked content (`src/libranet/cas/blocked.py`) | Nothing: every block the database holds |

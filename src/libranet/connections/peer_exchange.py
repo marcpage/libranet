@@ -178,6 +178,68 @@ class _LocalContent:
         )
 
 
+class _NodeList:
+    """This node's node list, as the stats module last derived it, and the nodes it last named.
+
+    It is first read when this is made.
+    """
+
+    def __init__(self, identity: NodeIdentity, config: LibranetConfig, logger: Logger) -> None:
+        self._storage = config.storage
+        self._node_id = identity.node_id
+        self._own = {endpoint: str(identity.node_id) for endpoint in config.network.own_endpoints()}
+        self._logger = logger
+        self._listed = self._nodes()
+
+    def own_entries(self) -> dict[str, str]:
+        """This node's own entries in a node list it sends (HttpApi §10.1)."""
+        return dict(self._own)
+
+    def body(self) -> bytes:
+        """The node list as it is sent.
+
+        Before the first derivation, it names only this node, which a node
+        list always must (HttpApi §10.1).
+        """
+        try:
+            return self._storage.node_list_path.read_bytes()
+
+        except FileNotFoundError:
+            # Not logged: there is none before the first derivation, as above.
+            pass
+
+        except OSError as error:
+            self._logger.warning("Cannot read the node list, so only this node is named: %s", error)
+
+        return node_list_body(self._own)
+
+    def newly_listed(self) -> dict[str, ContentId]:
+        """The nodes the list names at endpoints it did not when last read, but this one."""
+        listed = self._nodes()
+        newly = {
+            endpoint: node_id
+            for endpoint, node_id in listed.items()
+            if self._listed.get(endpoint) != node_id
+        }
+        self._listed = listed
+        return newly
+
+    def _nodes(self) -> dict[str, ContentId]:
+        """The nodes the list names, by endpoint, but this one."""
+        try:
+            nodes = parse_node_list(
+                decode_list(self.body(), self._storage.max_decompressed_list_bytes)
+            )
+
+        except InvalidListError as error:
+            self._logger.warning("Cannot read the node list, so it names no node: %s", error)
+            return {}
+
+        return {
+            endpoint: node_id for endpoint, node_id in nodes.items() if node_id != self._node_id
+        }
+
+
 class PeerExchange:
     """Holds this node's side of every conversation with a peer.
 
@@ -198,11 +260,10 @@ class PeerExchange:
         self._signing = _Signing.of(identity, config, clock)
         self._storage = config.storage
         self._peers = config.peers
-        self._own_endpoints = config.network.own_endpoints()
+        self._node_list = _NodeList(identity, config, logger)
         self._publish = publish
         self._logger = logger
         self._local = _LocalContent.of(config.storage)
-        self._listed = self._listed_nodes()
 
     @property
     def node_id(self) -> ContentId:
@@ -254,7 +315,7 @@ class PeerExchange:
         """
         _, seek, nodes = session.exchange(
             [
-                PeerRequest("POST", NODES_PATH, self._node_list(), _JSON_HEADERS),
+                PeerRequest("POST", NODES_PATH, self._node_list.body(), _JSON_HEADERS),
                 PeerRequest("GET", SEEK_PATH),
                 PeerRequest("GET", NODES_PATH),
             ]
@@ -281,14 +342,7 @@ class PeerExchange:
             Each node id by the endpoint it is newly named at, this node's
             own entries left out.
         """
-        listed = self._listed_nodes()
-        newly = {
-            endpoint: node_id
-            for endpoint, node_id in listed.items()
-            if self._listed.get(endpoint) != node_id
-        }
-        self._listed = listed
-        return newly
+        return self._node_list.newly_listed()
 
     def pass_on(self, session: PeerSession, nodes: Mapping[str, ContentId]) -> None:
         """Post ``nodes``, by endpoint, to the peer, with this node's own entries (§3.3).
@@ -306,7 +360,7 @@ class PeerExchange:
         }
 
         if others:
-            body = node_list_body({**self._own_entries(), **others})
+            body = node_list_body({**self._node_list.own_entries(), **others})
             session.exchange([PeerRequest("POST", NODES_PATH, body, _JSON_HEADERS)])
 
     def retrieve(self, session: PeerSession, content_id: ContentId) -> Retrieval:
@@ -456,45 +510,6 @@ class PeerExchange:
             EventType.DATA_STORED,
             {**node_id.fields(), "node_id": str(node_id), "size": len(response.body)},
         )
-
-    def _node_list(self) -> bytes:
-        """This node's node list, as the stats module last derived it.
-
-        Before the first derivation, it names only this node, which a node
-        list always must (HttpApi §10.1).
-        """
-        try:
-            return self._storage.node_list_path.read_bytes()
-
-        except FileNotFoundError:
-            # Not logged: there is none before the first derivation, as above.
-            pass
-
-        except OSError as error:
-            self._logger.warning("Cannot read the node list, so only this node is named: %s", error)
-
-        return node_list_body(self._own_entries())
-
-    def _own_entries(self) -> dict[str, str]:
-        """This node's own entries in a node list it sends (HttpApi §10.1)."""
-        return {endpoint: str(self._signing.identity.node_id) for endpoint in self._own_endpoints}
-
-    def _listed_nodes(self) -> dict[str, ContentId]:
-        """The nodes this node's node list names, as last derived, by endpoint, but itself."""
-        try:
-            nodes = parse_node_list(
-                decode_list(self._node_list(), self._storage.max_decompressed_list_bytes)
-            )
-
-        except InvalidListError as error:
-            self._logger.warning("Cannot read the node list, so it names no node: %s", error)
-            return {}
-
-        return {
-            endpoint: node_id
-            for endpoint, node_id in nodes.items()
-            if node_id != self._signing.identity.node_id
-        }
 
     def _receive_node_list(self, session: PeerSession, response: PeerResponse) -> None:
         """Publish the nodes the peer's node list names, for the stats module to keep."""

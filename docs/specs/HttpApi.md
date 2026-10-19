@@ -1281,6 +1281,13 @@ using their local network addresses.
 Client nodes SHOULD publish their peer list shortly after connection.
 Client nodes MAY request a peer list of the server node.
 
+While connected, a client node SHOULD also publish each entry its own list
+comes to name, with its own entries (§10.1), so that the server learns of a
+node the client reaches after their first contact (HandshakeProtocol §3.3).
+The reference node publishes only the entries its list newly names, each time
+it derives the list again (`stats.derive_interval_seconds`), to every node it
+holds an outgoing connection to, leaving out an entry naming that node.
+
 #### Publish Peer List
 
 To publish the peer list, the client sends:

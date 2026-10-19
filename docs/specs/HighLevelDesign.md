@@ -426,6 +426,11 @@ GET/POST /data/nodes
 
 The JSON schema for this list is defined in HTTP API §10.6.
 
+A node publishes its list to each node it connects to, and, while connected,
+each address its list newly names (Handshake Protocol §3.3). Since the list
+names only addresses that worked (HTTP API §10.6), a node it learns of
+spreads to the nodes connected to each node that reaches it.
+
 #### 4.9.1 Optional Local Discovery (mDNS/DNS-SD)
 
 In addition to the `/data/nodes` exchange above, a node MAY support mDNS/DNS-SD

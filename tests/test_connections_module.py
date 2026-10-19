@@ -609,9 +609,7 @@ def test_passing_nodes_on_that_fails_is_logged(
     )
     module.handle(node_list_updated(config))
 
-    wait_until(
-        lambda: f"{logged} {peers[0].endpoint}" in caplog.text, "the failure to be logged"
-    )
+    wait_until(lambda: f"{logged} {peers[0].endpoint}" in caplog.text, "the failure to be logged")
 
 
 def test_seeds_are_used_while_no_peer_is_known(
