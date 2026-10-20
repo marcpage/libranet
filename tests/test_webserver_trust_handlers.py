@@ -41,6 +41,7 @@ NODE_ID = ContentId.for_data(b"this node's public key", "sha256")
 BOB = ContentId.for_data(b"Bob's public key", "sha256")
 CAROL = ContentId.for_data(b"Carol's public key", "sha256")
 DAVE = ContentId.for_data(b"Dave's public key", "sha256")
+BLOCK = ContentId.for_data(b"an identity block", "sha256")
 MAX_BYTES = 64 * 1024
 MAX_SECONDS = 1.0
 MAX_MINIMUM_BITS = 20
@@ -180,7 +181,7 @@ def reads(builds: TrustBuilds, sessions: Sessions) -> TrustReads:
 @fixture
 def cookie(sessions: Sessions, person: PersonKey) -> dict[str, str]:
     """The ``Cookie`` header of a browser Alice is signed in on."""
-    started = sessions.start(Session(Username.create("alice"), person))
+    started = sessions.start(Session(Username.create("alice"), person, BLOCK))
     return {"Cookie": started.partition(";")[0]}
 
 
@@ -290,7 +291,7 @@ def test_a_fallback_that_has_not_taken_over_changes_nothing(
     edits: TrustEdits, sessions: Sessions, person: PersonKey, recorder: Recorder
 ) -> None:
     fallback = NewIdentity.generate(2048).fallback
-    started = sessions.start(Session(Username.create("alice"), fallback))
+    started = sessions.start(Session(Username.create("alice"), fallback, BLOCK))
 
     response = edits.trust(changing(BOB, {"Cookie": started.partition(";")[0]}))
 
@@ -659,7 +660,7 @@ def test_a_fallback_that_has_not_taken_over_reads_its_scores(
     reads: TrustReads, sessions: Sessions, jobs: Jobs
 ) -> None:
     fallback = NewIdentity.generate(2048).fallback
-    started = sessions.start(Session(Username.create("alice"), fallback))
+    started = sessions.start(Session(Username.create("alice"), fallback, BLOCK))
     jobs.run()
 
     response = reading(reads, {"Cookie": started.partition(";")[0]})
