@@ -197,6 +197,7 @@ def test_a_removal_carrying_too_large_a_body_is_refused_unread(
     asked = Request(
         "DELETE",
         f"{ARCHIVES_PATH}/{ARCHIVE_ID}",
+        headers={"Content-Type": JSON_CONTENT_TYPE},
         client_address="127.0.0.1",
         body=RequestBody.of(b"x" * (MAX_JSON_BODY_BYTES + 1)),
     )
