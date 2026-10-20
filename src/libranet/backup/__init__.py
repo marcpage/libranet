@@ -4,14 +4,21 @@ Turns configured local directories into encrypted directory bundles in the
 source of truth, keeps them current as those directories change, and restores
 a backup bundle into a local directory (Phase 1 Steps 19 and 20). Builds a
 directory into a bundle, and exports a bundle as a content archive (Step 38).
-Imports a local file as a file bundle (Phase 3 Step 69).
+Imports a local file as a file bundle (Phase 3 Step 69). Keeps content in an
+archive of the node's own, until it expires (Step 115).
 """
 
 from libranet.backup.builds import RECORD_SUFFIX, Build, BuildRecord
-from libranet.backup.errors import BuildRecordError, JobFileError, StorageFullError
+from libranet.backup.errors import (
+    BuildRecordError,
+    JobFileError,
+    KeptArchivesFileError,
+    StorageFullError,
+)
 from libranet.backup.exports import Export
 from libranet.backup.imports import Import
 from libranet.backup.jobs import BackupJob, ExpandedBackups, LatestBackup
+from libranet.backup.kept_archives import KeptArchive, KeptRecord
 from libranet.backup.module import BackupModule
 from libranet.backup.restores import Restore, RestorePass
 from libranet.backup.runs import (
@@ -43,6 +50,9 @@ __all__ = [
     "Export",
     "Import",
     "JobFileError",
+    "KeptArchive",
+    "KeptArchivesFileError",
+    "KeptRecord",
     "LatestBackup",
     "MakeRoom",
     "Restore",

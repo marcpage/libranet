@@ -9,5 +9,9 @@ class BuildRecordError(ValueError):
     """What is where a build's record goes cannot be read, or is not a build record."""
 
 
+class KeptArchivesFileError(ValueError):
+    """The file recording the archives the node keeps cannot be read, or does not hold them."""
+
+
 class StorageFullError(OSError):
     """Storage stayed full for too long to store more of a backup or build (Phase 2 Step 63)."""
