@@ -46,6 +46,7 @@ from libranet.webserver.signed_handlers import SIGNED_PATH, SignedDrops
 from tests.helpers import new_identity, problem_type
 
 NODE_ID = ContentId.for_data(b"this node's public key", "sha256")
+BLOCK = ContentId.for_data(b"an identity block", "sha256")
 MAX_BYTES = 64 * 1024
 MAX_SECONDS = 1.0
 MAX_MINIMUM_BITS = 12
@@ -109,7 +110,7 @@ def signed(
 @fixture
 def cookie(sessions: Sessions, person: PersonKey) -> dict[str, str]:
     """The ``Cookie`` header of a browser Alice is signed in on."""
-    started = sessions.start(Session(Username.create("alice"), person))
+    started = sessions.start(Session(Username.create("alice"), person, BLOCK))
     return {"Cookie": started.partition(";")[0]}
 
 
@@ -441,7 +442,7 @@ def test_a_fallback_that_has_not_taken_over_signs_nothing(
     signed: SignedDrops, sessions: Sessions, recorder: Recorder
 ) -> None:
     fallback = NewIdentity.generate(2048).fallback
-    started = sessions.start(Session(Username.create("alice"), fallback))
+    started = sessions.start(Session(Username.create("alice"), fallback, BLOCK))
     cookie = {"Cookie": started.partition(";")[0]}
 
     response = signed.make(signing(fallback, cookie))

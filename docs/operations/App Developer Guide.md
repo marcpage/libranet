@@ -755,8 +755,9 @@ await fetch("/data/session", { method: "DELETE" });
 ```
 
 Signing in answers with the person's `id`, `username`, `created`, and
-`fallback`, with `fallback_for` `null`, and asking who is signed in answers
-the same, or each `null` when no one is. Signed in with the fallback
+`fallback`, with `fallback_for` `null`, and the `block`, the identity block
+the session was opened from. Asking who is signed in answers the same, or
+each `null` when no one is. Signed in with the fallback
 password, the person is signed in as the fallback: `id` is the fallback's,
 `fallback_for` is the identity it takes over from, and `fallback` is `null`
 until it has taken over, below. When

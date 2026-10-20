@@ -31,6 +31,7 @@ ERIN = ContentId.for_data(b"Erin's public key", "sha256")
 FRANK = ContentId.for_data(b"Frank's public key", "sha256")
 GINA = ContentId.for_data(b"Gina's public key", "sha256")
 HANK = ContentId.for_data(b"Hank's public key", "sha256")
+BLOCK = ContentId.for_data(b"an identity block", "sha256")
 LIMITS = TrustLimits(4, 1000)
 WAIT_SECONDS = 30.0
 ASK_AGAIN_SECONDS = 5.0
@@ -138,7 +139,7 @@ def builds(reader: Reader, recorder: Recorder, clock: Clock, background: Backgro
 
 @fixture(scope="module")
 def alice_session() -> Session:
-    return Session(Username.create("alice"), NewIdentity.generate(2048).key)
+    return Session(Username.create("alice"), NewIdentity.generate(2048).key, BLOCK)
 
 
 def version_id(owner: ContentId, version: int) -> ContentId:

@@ -13,6 +13,7 @@ from libranet.webserver.http_types import Request, Response
 from libranet.webserver.sessions import SESSION_COOKIE, Session, Sessions
 
 IDLE_SECONDS = 60.0
+BLOCK = ContentId.for_data(b"an identity block", "sha256")
 
 
 class Clock:
@@ -40,12 +41,12 @@ class Listener:
 
 @fixture(scope="module")
 def session() -> Session:
-    return Session(Username.create("alice"), NewIdentity.generate(2048).key)
+    return Session(Username.create("alice"), NewIdentity.generate(2048).key, BLOCK)
 
 
 @fixture(scope="module")
 def other_session() -> Session:
-    return Session(Username.create("bob"), NewIdentity.generate(2048).key)
+    return Session(Username.create("bob"), NewIdentity.generate(2048).key, BLOCK)
 
 
 @fixture
@@ -102,18 +103,20 @@ def test_the_session_says_who_is_signed_in(session: Session) -> None:
         "created": session.key.created_text,
         "fallback": str(session.key.fallback),
         "fallback_for": None,
+        "block": str(BLOCK),
     }
 
 
 def test_a_fallbacks_session_names_the_identity_it_takes_over_from() -> None:
     made = NewIdentity.generate(2048)
 
-    assert Session(Username.create("alice"), made.fallback).value() == {
+    assert Session(Username.create("alice"), made.fallback, BLOCK).value() == {
         "id": str(made.fallback.person_id),
         "username": "alice",
         "created": made.fallback.created_text,
         "fallback": None,
         "fallback_for": str(made.key.person_id),
+        "block": str(BLOCK),
     }
 
 
@@ -165,7 +168,7 @@ def test_no_session_is_refused_for_signing_as_a_session_required(sessions: Sessi
 
 
 def test_a_fallback_that_has_not_taken_over_is_refused_for_signing(sessions: Sessions) -> None:
-    fallback = Session(Username.create("alice"), NewIdentity.generate(2048).fallback)
+    fallback = Session(Username.create("alice"), NewIdentity.generate(2048).fallback, BLOCK)
     request = with_cookie(sessions.start(fallback))
 
     refusal = sessions.signer_or_refusal(request, "Sign in to sign.")

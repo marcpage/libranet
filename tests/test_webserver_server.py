@@ -2219,6 +2219,7 @@ def test_a_local_client_makes_an_identity_and_is_signed_in_by_a_cookie(
         "created": answer["created"],
         "fallback": answer["fallback"],
         "fallback_for": None,
+        "block": answer["drop"],
     }
     assert out.status == 204
     assert after.status == 200
@@ -2228,6 +2229,7 @@ def test_a_local_client_makes_an_identity_and_is_signed_in_by_a_cookie(
         "created": None,
         "fallback": None,
         "fallback_for": None,
+        "block": None,
     }
 
 
@@ -2738,6 +2740,7 @@ def test_an_identity_made_on_the_config_page_signs_in_at_an_application(
         "created": answer["created"],
         "fallback": answer["fallback"],
         "fallback_for": None,
+        "block": answer["drop"],
     }
 
 

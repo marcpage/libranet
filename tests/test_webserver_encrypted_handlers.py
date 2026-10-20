@@ -51,6 +51,7 @@ from tests.helpers import problem_type
 
 NODE_ID = ContentId.for_data(b"this node's public key", "sha256")
 APP_BUNDLE = ContentId.for_data(b"an application's bundle", "sha256")
+BLOCK = ContentId.for_data(b"an identity block", "sha256")
 MAX_BYTES = 64 * 1024
 RETRY_AFTER_SECONDS = 3
 TEXT = '{"subject":"hello","body":"for one person"}'
@@ -140,7 +141,7 @@ def encrypted(signed: SignedDrops) -> EncryptedDrops:
 
 def cookie(sessions: Sessions, person: PersonKey, username: str) -> dict[str, str]:
     """The ``Cookie`` header of a browser ``person`` is signed in on."""
-    started = sessions.start(Session(Username.create(username), person))
+    started = sessions.start(Session(Username.create(username), person, BLOCK))
     return {"Cookie": started.partition(";")[0]}
 
 

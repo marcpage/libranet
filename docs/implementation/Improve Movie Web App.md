@@ -11,7 +11,7 @@ This document plans changes to the movie application that
 list of movies, whose lists they are, how it looks and is used, and a
 page left reading a playlist it cannot find. None of it changes the
 node, unless Step 83 keeps a person's lists where the node has to keep
-others out.
+others out, but for Step 115, which has the node keep content offline.
 
 Every step below comes from an issue in the GitHub **Improve Movie Web
 App** milestone, and each step names its issues. Every issue in the
@@ -21,7 +21,7 @@ any phase.
 
 ## 2. What It Adds
 
-So far, five steps, the last four in `applications/movie/index.html`
+So far, six steps, Steps 85 to 88 in `applications/movie/index.html`
 alone:
 
 - **Each person's playlists are their own.** Step 83, moved here from
@@ -30,6 +30,7 @@ alone:
 - **Playlists are called collections.** Step 86.
 - **A dark theme.** Step 87.
 - **Everything can be done from the keyboard.** Step 88.
+- **Movies can be kept to play offline.** Step 115.
 
 ## 3. How to Read the Steps Below
 
@@ -230,6 +231,105 @@ players have, and the page lists them under **Keys**, or `?`:
 **Testable in isolation:** checked by hand in the page, from the keyboard
 alone.
 
+## Step 115 — Keeping Movies Offline
+
+**Issue:** #380, which asks for an API keeping bundles in a zip file in a
+known place, for the movie application to keep a collection and the movie
+chosen for viewing offline, on a laptop brought on a plane. **Depends on:**
+Phase 1 Steps 34, 38; Phase 4 Steps 78, 79; Step 83.
+
+A person chooses movies of a collection to keep on their node, until a date
+they choose, so that they still play once the node is offline and its store
+has evicted them. Offline playback is on the same node only.
+
+The node keeps content in a content archive (Phase 1 Step 34) of its own,
+which it reads as content it always holds, and which eviction never touches.
+What playing offline needs is reached from what the page holds:
+
+- **An offline collection** of the movies kept, made as sharing part of a
+  collection makes one: an encrypted bundle, holding only those movies.
+  Walked whole, as an export walks a bundle (Phase 1 Step 38), it gives
+  every object those movies need.
+- **A version listing it**, signed by the person and encrypted for them, at
+  a drop of its own, `movie offline:{id}`. Not at `movie collections:{id}`,
+  since each change there blocks the versions it replaces, and a node's
+  search leaves out what it has blocked, archived or not.
+- **What signing in reads**: the person's identity block, which the session
+  now names, and their public key, which every version read is checked
+  against.
+
+Settled with the user:
+
+- Offline playback is on the same node only.
+- `GET /data/session` reports `block`, the identity block the session was
+  opened from (HttpApi §11.4).
+- The node writes the archive into a folder of its own, `archives/`, which
+  every process reading content reads (File Layout §3.10).
+- Content the node lacks is fetched and waited for, with progress reported,
+  before the archive is written.
+- An archive is read as soon as it is written, with no restart.
+- An archive may expire: optionally in the API, and always on the movie
+  page, which asks **Keep until**.
+
+The work, in three change sets:
+
+1. **The session names its block; the node reads the archives it keeps.**
+   `Session.block`, and `LayeredSource` reading `storage.kept_archives_dir`
+   through `ArchiveFolder` (`cas/archive_folder.py`), last of its layers.
+2. **`POST`, `GET`, and `DELETE /data/archives`.** The backup module's
+   `KeptArchive` task walks each bundle asked for, asks for what it lacks
+   as a restore does, writes the archive once it holds everything, and
+   removes it once it expires.
+3. **Keep offline** in the page.
+
+My calls, not yet reviewed:
+
+- The folder is looked at again whenever a lookup finds nothing in any
+  other layer, and before each prefix scan, rather than each process being
+  told of each archive. It finds an archive exactly when the store no
+  longer answers for its content, and needs no message.
+- Kept archives are read last of the layers, after the shipped
+  applications, not before the package's archives as first planned:
+  nothing depends on the order but the store's coming first.
+- A kept archive that cannot be opened is logged and left out, and does
+  not stop the node, as a configured one does.
+- Kept archives are not counted against `storage.max_storage_bytes`, as no
+  archive is, and what they hold stays in the store too until eviction
+  removes it, so a kept movie takes up to twice its size for a while.
+- The page's **Keep until** starts empty, so the person chooses the date.
+
+**Testable in isolation:** each change set has its tests, and the whole is
+checked by hand on two nodes: kept on one from the other, played on it with
+the other stopped and its store evicted, before and after a restart.
+
+Live run, 2026-10-20, on two nodes, A and B, on one machine. A imported a
+15 MB film into an encrypted collection. On B, with an identity made there,
+a collection of the film was kept offline, through the API as the page
+calls it, and then from the page, in headless Chrome:
+
+- Every object it needed was written into B's own archive: 21, in 14.9 MB.
+  `GET /data/archives` named the bundle without its key, and so did the
+  record.
+- With A stopped, and everything the archive held deleted from B's store,
+  B served the film whole, and a range of it, from the archive, with no
+  restart.
+- Restarted, still without A, B signed the person in from the identity
+  block in the archive. The search of `movie offline:{id}` found the
+  version, which opened, and the film played.
+- On the page, **Kept offline** listed the collection with its date, and it
+  played, with nothing that changes it shown. **Keep offline** refused no
+  movie chosen and no day, and kept the movie chosen until the day chosen.
+  **Keep longer** moved the date, and **Stop keeping** removed the archive.
+- With its objects deleted from B's store, keeping a collection again waited
+  on the 17 B lacked, which were fetched from A at once, and was written.
+- An archive kept for four seconds was removed once they passed.
+
+Found and fixed in the run: an archive removed was still read from, and
+its space not freed, until the process that had it open restarted, since
+the folder was looked at again only when a lookup missed. Now every lookup
+that reaches the kept archives looks at the folder first, and an archive no
+longer there is closed at once; a read of it that comes after finds nothing.
+
 ---
 
 ## 4. Issues in the Milestone
@@ -244,6 +344,7 @@ where it went.
 | #262 | Calling a playlist a collection | 86 |
 | #263 | A dark theme | 87 |
 | #264 | Full keyboard navigation | 88 |
+| #380 | Offline viewing | 115 |
 
 ## 5. Suggested Build Order
 

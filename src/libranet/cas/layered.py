@@ -15,6 +15,13 @@ Archives come from the configuration, in the order it lists them, and then
 from those shipped in the package, in name order. Each process that reads
 content opens them for itself, and keeps them open while it runs.
 
+The archives the node keeps for itself, to keep content offline, are read
+last, from a folder of its own that they come and go from as it runs
+(:class:`~libranet.cas.archive_folder.ArchiveFolder`, Step 115). The folder
+is looked at again whenever a lookup finds nothing in any other layer, and
+before each prefix scan, so an archive just written answers as soon as the
+store no longer does, and one removed answers no more.
+
 The applications the node ships (Step 37) are read last, and this is the one
 place that knows how they were shipped. A wheel carries them built: the
 package's archives hold their objects, beside a file naming each one's
@@ -40,6 +47,7 @@ from libranet.applications.packaged import (
     PackagedApplications,
 )
 from libranet.cas.archive import ARCHIVE_SUFFIX, ArchiveSource
+from libranet.cas.archive_folder import ArchiveFolder
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ArchiveError, ContentNotFoundError
 from libranet.cas.store import CasStore
@@ -67,7 +75,7 @@ def packaged_archives(directory: Traversable = PACKAGED_ARCHIVES) -> tuple[Trave
 
 
 class LayeredSource:
-    """Content read from a store, and then from archives, in order.
+    """Content read from a store, and then from archives, in order, the ones ``kept`` holds last.
 
     ``applications`` names the bundle of each application the node ships,
     which the layers hold. Use it as a context manager, or close it, so that
@@ -79,10 +87,12 @@ class LayeredSource:
         store: CasStore,
         archives: Sequence[ArchiveSource] = (),
         applications: Mapping[str, ContentId] | None = None,
+        kept: ArchiveFolder | None = None,
     ) -> None:
         self._store = store
         self._archives = tuple(archives)
         self._applications = dict(applications or {})
+        self._kept = kept
         self._layers: tuple[CasStore | ArchiveSource, ...] = (store, *self._archives)
 
     @classmethod
@@ -92,11 +102,13 @@ class LayeredSource:
         packaged: Traversable = PACKAGED_ARCHIVES,
         sources: Path = PACKAGED_APPLICATIONS,
     ) -> LayeredSource:
-        """The source of truth, then the node's archives, then the applications it ships.
+        """The source of truth, then the node's archives and applications, then those it keeps.
 
         The archives are those ``storage`` names and those in ``packaged``. The
         applications the node ships are read from ``packaged`` if it holds
-        them built, and are otherwise built from ``sources`` now.
+        them built, and are otherwise built from ``sources`` now. The archives
+        it keeps are those in ``storage.kept_archives_dir``, and any there
+        that cannot be opened is logged and left out.
 
         Raises:
             ArchiveError: an archive cannot be opened, or holds something
@@ -115,12 +127,14 @@ class LayeredSource:
         if shipped.archive is not None:
             archives.append(ArchiveSource(BytesIO(shipped.archive), _BUILT_APPLICATIONS))
 
-        return cls(CasStore.source_of_truth(storage), archives, shipped.bundles)
+        kept = ArchiveFolder(storage.kept_archives_dir)
+        kept.refresh()
+        return cls(CasStore.source_of_truth(storage), archives, shipped.bundles, kept)
 
     @property
     def archives(self) -> tuple[ArchiveSource, ...]:
-        """The archives read after the store, in order."""
-        return self._archives
+        """The archives read after the store, in order, those kept as last looked at."""
+        return (*self._archives, *self._kept_archives())
 
     @property
     def applications(self) -> Mapping[str, ContentId]:
@@ -133,11 +147,15 @@ class LayeredSource:
         return self._store.prefix_length
 
     def exists(self, content_id: ContentId) -> bool:
-        """Whether any layer holds ``content_id``."""
-        return any(layer.exists(content_id) for layer in self._layers)
+        """Whether any layer holds ``content_id``, looking at the kept archives again if need be."""
+        return any(layer.exists(content_id) for layer in self._layers) or any(
+            archive.exists(content_id) for archive in self._kept_now()
+        )
 
     def read(self, content_id: ContentId) -> bytes:
         """The bytes the first layer holding ``content_id`` holds for it.
+
+        The kept archives are looked at again if no other layer holds it.
 
         Raises:
             ContentNotFoundError: no layer holds it.
@@ -151,6 +169,14 @@ class LayeredSource:
                 # Not logged: the next layer may hold it.
                 continue
 
+        for archive in self._kept_now():
+            try:
+                return archive.read(content_id)
+
+            except ContentNotFoundError:
+                # Not logged: the next archive may hold it.
+                continue
+
         raise ContentNotFoundError(f"Content not found: {content_id}")
 
     def iter_prefix(self, algorithm: str, hash_prefix: str) -> Iterator[ContentId]:
@@ -161,16 +187,19 @@ class LayeredSource:
         """
         seen: set[ContentId] = set()
 
-        for layer in self._layers:
+        for layer in (*self._layers, *self._kept_now()):
             for content_id in layer.iter_prefix(algorithm, hash_prefix):
                 if content_id not in seen:
                     seen.add(content_id)
                     yield content_id
 
     def close(self) -> None:
-        """Close every archive."""
+        """Close every archive, those kept too."""
         for archive in self._archives:
             archive.close()
+
+        if self._kept is not None:
+            self._kept.close()
 
     def __enter__(self) -> LayeredSource:
         return self
@@ -182,6 +211,18 @@ class LayeredSource:
         traceback: TracebackType | None,
     ) -> None:
         self.close()
+
+    def _kept_archives(self) -> tuple[ArchiveSource, ...]:
+        """The archives kept, as last looked at; none without a folder of them."""
+        return () if self._kept is None else self._kept.archives
+
+    def _kept_now(self) -> tuple[ArchiveSource, ...]:
+        """The archives kept, the folder looked at again first; none without a folder of them."""
+        if self._kept is None:
+            return ()
+
+        self._kept.refresh()
+        return self._kept.archives
 
 
 def _shipped_applications(packaged: Traversable, sources: Path) -> PackagedApplications:
