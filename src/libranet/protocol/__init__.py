@@ -14,6 +14,7 @@ No module package imports another; what two modules share is here, in
 
 from libranet.protocol.backup_requests import (
     IDENTIFIER_LENGTH,
+    ArchiveRequest,
     BackupJobRequest,
     BuildRequest,
     ExportRequest,
@@ -103,6 +104,7 @@ __all__ = [
     "SEARCH_PATH",
     "SEEK_PATH",
     "TOKEN",
+    "ArchiveRequest",
     "BackupJobRequest",
     "BuildRequest",
     "BundleEditRequest",
