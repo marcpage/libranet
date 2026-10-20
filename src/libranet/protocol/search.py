@@ -44,7 +44,7 @@ _CACHE_SUFFIX: Final = ".json"
 
 # HttpApi §6.1: a search answer is less than 1 MiB as it is sent, which for
 # one sent zlib-compressed is its compressed size.
-_MAX_ANSWER_BYTES: Final = MIB
+_MAX_ANSWER_BYTES: Final = 1 * MIB
 
 # How many results an answer too large as it is is compressed by at a time.
 _RESULTS_PER_BLOCK: Final = 256
