@@ -171,6 +171,8 @@
   /* Lists of choices: playlists, folders, and movies to take. */
   .choices { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem; }
   .choices button[aria-current="true"] { background: var(--accent); color: var(--accent-text); }
+  #offline-list li { display: flex; align-items: stretch; gap: 0.25rem; }
+  #offline-list .note { display: block; }
 
   .entries {
     list-style: none;
@@ -251,6 +253,8 @@
     <h2 id="chooser-heading">Collections</h2>
     <p class="state" id="chooser-state" role="status" hidden></p>
     <ul class="choices state" id="chooser-list"></ul>
+    <h3 id="offline-heading" hidden>Kept offline</h3>
+    <ul class="choices state" id="offline-list" hidden></ul>
     <div class="toolbar signed-in-only" hidden>
       <button type="button" id="new-playlist">New collection</button>
       <button type="button" class="secondary" id="import-playlist">Import a collection</button>
@@ -321,6 +325,7 @@
       <button type="button" id="add-file">Add from a file</button>
       <button type="button" class="secondary" id="add-id">Add by id</button>
       <button type="button" class="secondary" id="share-playlist">Share</button>
+      <button type="button" class="secondary" id="keep-offline">Keep offline</button>
     </div>
     <ul class="activity" id="activity"></ul>
     <p class="result" id="library-result" role="status" hidden></p>
@@ -435,6 +440,40 @@
   </div>
 </dialog>
 
+<dialog id="keep-dialog" aria-labelledby="keep-heading">
+  <form id="keep-form">
+    <h3 id="keep-heading">Keep movies offline</h3>
+    <p class="hint">The movies chosen are kept on this node, in a collection of their own, and play
+    here even once it is offline, until the day chosen. Signing in still works offline too.</p>
+    <ul class="entries" id="keep-choices"></ul>
+    <div class="fields">
+      <label class="wide">Name <input id="keep-name" required autocomplete="off"></label>
+      <label>Keep until <input type="date" id="keep-until" required></label>
+    </div>
+    <p class="result" id="keep-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="submit">Keep offline</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="kept-dialog" aria-labelledby="kept-heading">
+  <form id="kept-form">
+    <h3 id="kept-heading"></h3>
+    <p class="hint" id="kept-state"></p>
+    <div class="fields">
+      <label>Keep until <input type="date" id="kept-until" required></label>
+      <button type="submit">Keep longer</button>
+    </div>
+    <p class="result" id="kept-result" role="status" hidden></p>
+    <div class="buttons">
+      <button type="button" class="danger" id="stop-keeping">Stop keeping</button>
+      <button type="button" class="secondary" data-close>Done</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="keys-dialog" aria-labelledby="keys-heading">
   <h3 id="keys-heading">Keys</h3>
   <p class="hint">Anywhere on the page but in a field, and while no other dialog is open.</p>
@@ -478,6 +517,7 @@ const SESSION = "/data/session";
 const SIGNED = "/data/signed";
 const DROPS = "/data/drop";
 const ENCRYPTED = "/data/encrypted/";
+const ARCHIVES = "/data/archives";
 
 // The key of this application's store listing the playlists this node keeps
 // for whoever is not signed in.
@@ -487,6 +527,19 @@ const PLAYLISTS = "playlists";
 // at the drop, each signed by them and encrypted for them (HttpApi 9, 11.5,
 // 11.6), never in the store, which any client reads and only this node keeps.
 const COLLECTIONS_PREFIX = "movie collections:";
+
+// Where the collections a person keeps offline are listed, "movie
+// offline:{id}": a version for each, signed by them and encrypted for them,
+// which a change to their collections never blocks, as it blocks those it
+// replaces. Each is kept in an archive of the node's own (HttpApi 12.4),
+// beside the version, the identity block they signed in with, and their
+// public key, so that signing in and reading the version work offline.
+const OFFLINE_PREFIX = "movie offline:";
+
+// How long a version kept offline may go without its archive being reported
+// before it is taken to be no longer kept, as the node reports an archive
+// asked for within moments.
+const REPORT_GRACE_SECONDS = 60;
 
 // What each version placed asks the node to search for its nonce, matching as
 // many bits as a node's search returns by default, so that it is found.
@@ -539,6 +592,8 @@ const state = {
   // The playlist open, and the folder of the movie chosen in it.
   playlist: null,
   selected: null,
+  // Whether the playlist open is one kept offline, which is only played.
+  offline: false,
   // The poster taken while editing: its bytes, as base64, and a URL showing it.
   poster: null,
   // Whether the person left fullscreen while the movie chosen played.
@@ -934,27 +989,7 @@ class Kept {
       const held = before.get(entry.name);
       return held && held.bundle === entry.bundle ? held : { ...entry, changed: now };
     });
-    const result = await patiently("POST", SIGNED, {
-      body: {
-        target: Kept.target(),
-        text: JSON.stringify({ collections }),
-        seconds: DROP_SECONDS,
-        minimum_bits: DROP_MINIMUM_BITS,
-        encrypt: { for: state.owner.id },
-      },
-    });
-
-    if (result.status === 401) {
-      throw new SessionEnded();
-    }
-
-    if (result.status === 403) {
-      throw new Error("Signed in with your fallback password, your collections are not changed until your fallback takes over.");
-    }
-
-    if (!result.ok) {
-      throw new Refusal(result);
-    }
+    await placeVersion(Kept.target(), collections);
 
     for (const id of this.versions) {
       const blocked = await call("DELETE", `${DATA}${id}`);
@@ -1009,6 +1044,190 @@ class Kept {
   find(name) {
     return this.list.find((entry) => entry.name === name) || null;
   }
+}
+
+// Places a version listing `collections` at the drop `target`, signed by
+// whoever is signed in and encrypted for them (HttpApi 11.5, 11.6), and
+// returns its id.
+async function placeVersion(target, collections) {
+  const result = await patiently("POST", SIGNED, {
+    body: {
+      target,
+      text: JSON.stringify({ collections }),
+      seconds: DROP_SECONDS,
+      minimum_bits: DROP_MINIMUM_BITS,
+      encrypt: { for: state.owner.id },
+    },
+  });
+
+  if (result.status === 401) {
+    throw new SessionEnded();
+  }
+
+  if (result.status === 403) {
+    throw new Error("Signed in with your fallback password, your collections are not changed until your fallback takes over.");
+  }
+
+  if (!result.ok || !isObject(result.value) || !isText(result.value.id)) {
+    throw new Refusal(result);
+  }
+
+  return result.value.id;
+}
+
+// A bundle's id without the key it may carry, as the node names what it keeps.
+function plainId(bundle) {
+  return bundle.split("/").slice(0, 2).join("/");
+}
+
+// The collections whoever is signed in keeps offline, each as its version at
+// their offline drop lists it, with the archive keeping it, as the node last
+// reported it, or null if the node has not said.
+class Offline {
+  constructor(entry, version, archive) {
+    this.entry = entry;
+    this.version = version;
+    this.archive = archive;
+  }
+
+  static target() {
+    return `${OFFLINE_PREFIX}${state.owner.id}`;
+  }
+
+  // Each collection kept offline. One whose archive the node no longer keeps,
+  // as once it expires, is forgotten, and its version blocked.
+  static async read() {
+    const ids = await foundAt(Offline.target());
+    const lists = await Promise.all(ids.map((id) => Kept.version(id)));
+    const archives = await Offline.archives();
+    const kept = [];
+
+    for (const [index, id] of ids.entries()) {
+      for (const entry of lists[index] || []) {
+        const archive = archives && archives.find((each) => each.bundles.includes(plainId(entry.bundle)));
+        const reported = (Date.now() - Date.parse(entry.changed)) / 1000 > REPORT_GRACE_SECONDS;
+
+        if (archives && !archive && reported) {
+          await Offline.forget(id);
+        } else {
+          kept.push(new Offline(entry, id, archive || null));
+        }
+      }
+    }
+
+    kept.sort((one, other) => one.entry.name.localeCompare(other.entry.name));
+    return kept;
+  }
+
+  // Every archive the node reports it keeps, each with its id; null if the
+  // node cannot say yet.
+  static async archives() {
+    const result = await call("GET", ARCHIVES);
+
+    if (result.status === 503) {
+      return null;
+    }
+
+    if (!result.ok || !isObject(result.value) || !isObject(result.value.archives)) {
+      throw new Refusal(result);
+    }
+
+    return Object.entries(result.value.archives)
+      .filter(([, report]) => isObject(report) && Array.isArray(report.bundles))
+      .map(([id, report]) => ({ ...report, id }));
+  }
+
+  // Keeps the movies in `folders` of `playlist` offline, in a collection of
+  // their own named `name`, until `expires`, and returns the archive's id.
+  static async keep(playlist, folders, name, expires) {
+    const session = await askSession();
+
+    if (!session || session.id !== state.owner.id) {
+      throw new SessionEnded();
+    }
+
+    if (!isText(session.block)) {
+      throw new Error("This node does not say which identity block you signed in with, so signing in could not be kept offline.");
+    }
+
+    const add = { [PLAYLIST_FILE]: { text: playlistText(name, folders) } };
+
+    for (const folder of folders) {
+      add[folder] = { from: playlist.bundle, path: folder };
+    }
+
+    const bundle = await makeBundle({ encrypted: true, add });
+    const entry = { name, bundle, changed: new Date().toISOString(), block: session.block };
+    const version = await placeVersion(Offline.target(), [entry]);
+    return new Offline(entry, version, null).archiveUntil(expires);
+  }
+
+  // Blocks the version `id`, which lists a collection no longer kept offline.
+  static async forget(id) {
+    const blocked = await call("DELETE", `${DATA}${id}`);
+
+    if (!blocked.ok) {
+      console.warn(`The version ${id} no longer kept offline was not blocked: ${new Refusal(blocked).message}`);
+    }
+  }
+
+  // Asks the node to keep this collection, its version, and what signing in
+  // reads, until `expires`, and returns the archive's id. Asked again, the
+  // same archive is kept longer.
+  async archiveUntil(expires) {
+    const result = await call("POST", ARCHIVES, {
+      body: {
+        bundles: [this.entry.bundle],
+        objects: [this.version, this.entry.block, state.owner.id],
+        expires,
+      },
+    });
+
+    if (result.status !== 202 || !isObject(result.value) || !isText(result.value.archive_id)) {
+      throw new Refusal(result);
+    }
+
+    return result.value.archive_id;
+  }
+
+  // Stops keeping this collection offline.
+  async stop() {
+    if (this.archive) {
+      const removed = await call("DELETE", `${ARCHIVES}/${this.archive.id}`);
+
+      if (!removed.ok) {
+        throw new Refusal(removed);
+      }
+    }
+
+    await Offline.forget(this.version);
+  }
+}
+
+// When the day `dateText`, from a date field, ends where the browser is, as
+// the node is told an archive expires; null if it is not a day yet to come.
+function endOfDay(dateText) {
+  const [year, month, day] = dateText.split("-").map(Number);
+  const end = new Date(year, month - 1, day + 1);
+  return Number.isNaN(end.getTime()) || end <= new Date() ? null : end.toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+// The day an archive expiring at `expires` is kept until, as a date field gives it.
+function dayBefore(expires) {
+  const last = new Date(Date.parse(expires) - 1000);
+  return dateValue(last);
+}
+
+function dateValue(date) {
+  const pad = (number) => String(number).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+// The first day a date field may choose: tomorrow.
+function tomorrow() {
+  const day = new Date();
+  day.setDate(day.getDate() + 1);
+  return dateValue(day);
 }
 
 function recall() {
@@ -1080,7 +1299,7 @@ function serially(action) {
 
 // The newest version this page knows of the playlist named `name`.
 async function newest(name) {
-  if (state.playlist && state.playlist.name === name) {
+  if (state.playlist && !state.offline && state.playlist.name === name) {
     return state.playlist;
   }
 
@@ -1115,7 +1334,7 @@ async function changePlaylist(
         throw error;
       }
 
-      if (state.playlist && state.playlist.name === playlist.name) {
+      if (state.playlist && !state.offline && state.playlist.name === playlist.name) {
         await reopen(playlist.name);
       }
 
@@ -1123,7 +1342,7 @@ async function changePlaylist(
     }
   }
 
-  if (state.playlist && state.playlist.name === next.name) {
+  if (state.playlist && !state.offline && state.playlist.name === next.name) {
     state.playlist = next;
     renderLibrary();
   }
@@ -1183,22 +1402,33 @@ function closePlayer() {
   byId("player-section").hidden = true;
 }
 
-function showPlaylist(playlist) {
+// Shows `playlist`, one kept offline if `offline`, which is only played, and
+// not remembered, as the node's collections are.
+function showPlaylist(playlist, offline = false) {
   closePlayer();
   state.playlist = playlist;
-  remember(playlist.entry());
+  state.offline = offline;
+
+  if (!offline) {
+    remember(playlist.entry());
+  }
+
+  for (const element of document.querySelectorAll("#library .signed-in-only, #details .signed-in-only")) {
+    element.hidden = !state.owner || offline;
+  }
+
   byId("chooser").hidden = true;
   show(byId("library-result"), "");
   renderLibrary();
   focusMovie(null);
 }
 
-async function openPlaylist(entry) {
+async function openPlaylist(entry, offline = false) {
   const status = byId("page-state");
   show(status, `Reading “${entry.name}”…`);
 
   try {
-    showPlaylist(await Playlist.read(entry.bundle, entry.name));
+    showPlaylist(await Playlist.read(entry.bundle, entry.name), offline);
   } finally {
     show(status, "");
   }
@@ -1233,14 +1463,16 @@ async function showChooser() {
   }
 
   list.replaceChildren(...kept.list.map((entry) => playlistChoice(entry)));
+  const offline = await showOffline();
   const first = list.querySelector("[aria-current=true]") || list.querySelector("button")
+    || byId("offline-list").querySelector("button")
     || chooser.querySelector(".toolbar:not([hidden]) button");
 
   if (first) {
     first.focus();
   }
 
-  if (kept.list.length > 0) {
+  if (kept.list.length > 0 || offline > 0) {
     show(status, "Choose a collection.");
   } else if (state.owner) {
     show(status, "You keep no collections yet. Make one, or import one by its id.");
@@ -1249,6 +1481,76 @@ async function showChooser() {
   } else {
     show(status, "This node keeps no collections yet. They are made by someone signed in on the node's own machine.");
   }
+}
+
+// Lists the collections kept offline, for whoever is signed in, beneath the
+// rest, and returns how many there are.
+async function showOffline() {
+  const heading = byId("offline-heading");
+  const list = byId("offline-list");
+  list.replaceChildren();
+  heading.hidden = true;
+  list.hidden = true;
+
+  if (!state.owner) {
+    return 0;
+  }
+
+  let kept;
+
+  try {
+    kept = await Offline.read();
+  } catch (error) {
+    console.warn(`The collections kept offline could not be read: ${error.message}`);
+    return 0;
+  }
+
+  list.replaceChildren(...kept.map((offline) => offlineChoice(offline)));
+  heading.hidden = kept.length === 0;
+  list.hidden = kept.length === 0;
+  return kept.length;
+}
+
+function offlineChoice(offline) {
+  const item = make("li");
+  const open = make("button", null, "secondary");
+  open.type = "button";
+  open.append(make("span", offline.entry.name), make("span", keptText(offline.archive), "note"));
+  open.addEventListener("click", () => perform(open, byId("chooser-state"), () => openPlaylist(offline.entry, true)));
+  const manage = make("button", "Keeping…", "secondary small");
+  manage.type = "button";
+  manage.setAttribute("aria-label", `Keeping “${offline.entry.name}” offline`);
+  manage.addEventListener("click", () => openKept(offline));
+  item.append(open, manage);
+  return item;
+}
+
+// What an archive keeping a collection offline is doing, as the node last
+// said, or that it has not said, if `archive` is null.
+function keptText(archive) {
+  if (!archive) {
+    return "Kept offline";
+  }
+
+  if (archive.status === "done") {
+    return `Kept until ${untilText(archive.expires)}`;
+  }
+
+  if (archive.status === "failed") {
+    return `Not kept: ${archive.error || "the node did not say why"}`;
+  }
+
+  if (archive.status === "running") {
+    return `Writing ${archive.written} of ${archive.needed}`;
+  }
+
+  return `Fetching ${plural(archive.missing, "part", "parts")} it lacks`;
+}
+
+// The last day an archive expiring at `expires` is kept, as the browser
+// shows a date; or that it is kept until removed, if `expires` is null.
+function untilText(expires) {
+  return isText(expires) ? new Date(Date.parse(expires) - 1000).toLocaleDateString() : "it is removed";
 }
 
 function playlistChoice(entry) {
@@ -2172,6 +2474,144 @@ async function importChosen() {
   return null;
 }
 
+// Keeping movies offline.
+
+function openKeep() {
+  const playlist = state.playlist;
+  byId("keep-form").reset();
+  byId("keep-choices").replaceChildren(
+    ...playlist.order.map((folder) => checkbox(folder, playlist.title(folder), folder === state.selected)),
+  );
+  byId("keep-name").value = `${playlist.name}, offline`;
+  byId("keep-until").min = tomorrow();
+  show(byId("keep-result"), playlist.order.length ? "" : "This collection holds no movies yet.");
+  byId("keep-dialog").showModal();
+}
+
+async function keepChosen() {
+  const folders = checked("keep-choices");
+  const name = byId("keep-name").value.trim();
+  const expires = endOfDay(byId("keep-until").value);
+
+  if (folders.length === 0) {
+    throw new Error("Choose at least one movie.");
+  }
+
+  if (!name) {
+    throw new Error("Give the movies kept a name.");
+  }
+
+  if (!expires) {
+    throw new Error("Choose a day to keep them until, after today.");
+  }
+
+  const archive = await Offline.keep(state.playlist, folders, name, expires);
+  byId("keep-dialog").close();
+  followKeeping(archive, name);
+  return null;
+}
+
+// Says, in the activity list, how keeping `name` offline in the archive
+// `archive` goes, until it is kept or not.
+function followKeeping(archive, name) {
+  const item = make("li");
+  const label = make("span", `Keeping “${name}” offline`);
+  const bar = make("progress");
+  const note = make("span", "Asking the node…", "note");
+  bar.setAttribute("aria-label", `How much of “${name}” is kept offline`);
+  item.append(label, bar, note);
+  byId("activity").append(item);
+
+  const ended = (text, isError) => {
+    const dismiss = make("button", "Dismiss", "secondary small");
+    dismiss.type = "button";
+    dismiss.addEventListener("click", () => item.remove());
+    label.textContent = text;
+    label.className = isError ? "error" : "";
+    bar.remove();
+    note.remove();
+    item.append(dismiss);
+  };
+
+  const progress = (report) => {
+    if (typeof report.needed === "number" && report.needed > 0) {
+      bar.max = report.needed;
+      bar.value = report.status === "running" ? report.written : report.needed - report.missing;
+    }
+
+    note.textContent = keptText(report);
+  };
+
+  writtenArchive(archive, progress).then(
+    (report) => ended(`“${name}” is kept offline until ${untilText(report.expires)}.`, false),
+    (error) => ended(`“${name}” was not kept offline: ${error.message}`, true),
+  );
+}
+
+// The node's report of the archive `archive`, once it is written, `progress`
+// told of each report before then.
+async function writtenArchive(archive, progress) {
+  for (;;) {
+    const archives = await Offline.archives();
+    const report = archives && archives.find((each) => each.id === archive);
+
+    if (report && report.status === "done") {
+      return report;
+    }
+
+    if (report && report.status === "failed") {
+      throw new Error(report.error || "The node did not say why.");
+    }
+
+    if (report) {
+      progress(report);
+    }
+
+    await sleep(IMPORT_POLL_SECONDS);
+  }
+}
+
+// The collection kept offline that the dialog for it is open on.
+let managing = null;
+
+function openKept(offline) {
+  managing = offline;
+  const archive = offline.archive;
+  byId("kept-form").reset();
+  byId("kept-heading").textContent = `Keeping “${offline.entry.name}” offline`;
+  byId("kept-state").textContent = archive ? `${keptText(archive)}.` : "The node has not said yet how keeping it goes.";
+  byId("kept-until").min = tomorrow();
+  byId("kept-until").value = archive && isText(archive.expires) ? dayBefore(archive.expires) : "";
+  show(byId("kept-result"), "");
+  byId("kept-dialog").showModal();
+}
+
+async function keepLonger() {
+  const expires = endOfDay(byId("kept-until").value);
+
+  if (!expires) {
+    throw new Error("Choose a day to keep it until, after today.");
+  }
+
+  await managing.archiveUntil(expires);
+  byId("kept-dialog").close();
+  await showChooser();
+  return null;
+}
+
+async function stopKeeping() {
+  const offline = managing;
+
+  if (!window.confirm(`Stop keeping “${offline.entry.name}” offline?`)) {
+    return null;
+  }
+
+  await offline.stop();
+  byId("kept-dialog").close();
+  await showChooser();
+  return null;
+}
+
 // Runs `action` with `control` disabled, and says what it returned in
 // `message`. An action returns [text, isError], or nothing to say nothing.
 async function perform(control, message, action) {
@@ -2387,6 +2827,7 @@ for (const [action, handler] of Object.entries(MEDIA_KEYS)) {
 
 arrowKeys(byId("movies"));
 arrowKeys(byId("chooser-list"));
+arrowKeys(byId("offline-list"));
 arrowKeys(byId("folder-entries"));
 
 for (const control of document.querySelectorAll("[data-close]")) {
@@ -2427,6 +2868,7 @@ byId("add-id").addEventListener("click", () => {
   byId("id-dialog").showModal();
 });
 byId("share-playlist").addEventListener("click", openShare);
+byId("keep-offline").addEventListener("click", openKeep);
 byId("edit-movie").addEventListener("click", startEditing);
 byId("cancel-edit").addEventListener("click", () => {
   stopEditing();
@@ -2458,6 +2900,9 @@ onClick("move-down", "movie-result", () => move(1));
 onClick("remove-movie", "movie-result", removeMovie);
 onClick("share-part", "share-state", sharePart);
 onClick("import-go", "import-state", importChosen);
+onSubmit("keep-form", "keep-result", keepChosen);
+onSubmit("kept-form", "kept-result", keepLonger);
+onClick("stop-keeping", "kept-result", stopKeeping);
 
 start();
 </script>
