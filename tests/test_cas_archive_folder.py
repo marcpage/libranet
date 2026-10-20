@@ -1,11 +1,11 @@
 """Tests for the content archives a node keeps in a folder of its own."""
 
 from __future__ import annotations
-from logging import ERROR
-from os import utime
+from logging import ERROR, WARNING
+from os import geteuid, utime
 from pathlib import Path
 
-from pytest import LogCaptureFixture, raises
+from pytest import LogCaptureFixture, mark, raises
 
 from libranet.cas.archive import ArchiveSink
 from libranet.cas.archive_folder import ArchiveFolder
@@ -162,3 +162,74 @@ def test_closing_closes_every_archive_opened(tmp_path: Path) -> None:
 
     with raises(ValueError):
         opened.read(id_of(FIRST))
+
+
+def test_a_folder_that_cannot_be_looked_at_is_logged(
+    tmp_path: Path, caplog: LogCaptureFixture
+) -> None:
+    (tmp_path / "a file").write_text("not a folder")
+    folder = settled(tmp_path / "a file" / "archives")
+
+    with caplog.at_level(WARNING, logger="libranet.cas.archive_folder"):
+        assert folder.refresh() is False
+
+    (record,) = caplog.records
+    assert "Cannot look at the kept archives" in record.getMessage()
+
+
+@mark.skipif(geteuid() == 0, reason="the superuser lists any folder")
+def test_a_folder_that_cannot_be_listed_is_logged_and_looked_at_again(
+    tmp_path: Path, caplog: LogCaptureFixture
+) -> None:
+    write_archive(tmp_path / "a.zip", FIRST)
+    folder = settled(tmp_path)
+    tmp_path.chmod(0o300)
+
+    try:
+        with caplog.at_level(WARNING, logger="libranet.cas.archive_folder"):
+            assert folder.refresh() is False
+
+    finally:
+        tmp_path.chmod(0o700)
+
+    (record,) = caplog.records
+    assert "Cannot list the kept archives" in record.getMessage()
+    assert folder.refresh() is True
+    folder.close()
+
+
+def test_a_link_to_nothing_is_passed_over_and_one_that_cannot_be_followed_is_logged(
+    tmp_path: Path, caplog: LogCaptureFixture
+) -> None:
+    write_archive(tmp_path / "a.zip", FIRST)
+    (tmp_path / "gone.zip").symlink_to(tmp_path / "nothing here")
+    (tmp_path / "loop.zip").symlink_to(tmp_path / "loop.zip")
+    folder = settled(tmp_path)
+
+    with caplog.at_level(WARNING, logger="libranet.cas.archive_folder"):
+        folder.refresh()
+
+    assert names(folder) == ["a.zip"]
+    (record,) = caplog.records
+    assert "loop.zip" in record.getMessage()
+    folder.close()
+
+
+def test_an_archive_refused_and_removed_is_tried_again_once_put_back(
+    tmp_path: Path, caplog: LogCaptureFixture
+) -> None:
+    bad = tmp_path / "bad.zip"
+    bad.write_bytes(b"not an archive")
+    stamp = bad.stat().st_mtime_ns
+    folder = ArchiveFolder(tmp_path, clock=lambda: 0.0)
+
+    with caplog.at_level(ERROR, logger="libranet.cas.archive_folder"):
+        folder.refresh()
+        bad.unlink()
+        folder.refresh()
+        bad.write_bytes(b"not an archive")
+        # Just as it was when it was refused.
+        utime(bad, ns=(stamp, stamp))
+        folder.refresh()
+
+    assert len(caplog.records) == 2

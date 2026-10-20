@@ -275,3 +275,14 @@ def test_closing_closes_the_kept_archives(tmp_path: Path) -> None:
 
     with raises(ValueError):
         kept.read(id_of(FIRST))
+
+
+def test_content_a_kept_archive_written_later_holds_is_read_at_once(tmp_path: Path) -> None:
+    storage = storage_for(tmp_path)
+
+    with LayeredSource.open(storage, tmp_path / "none") as content:
+        storage.kept_archives_dir.mkdir(parents=True)
+        write_archive(storage.kept_archives_dir / "a.zip", {id_of(FIRST): FIRST})
+        write_archive(storage.kept_archives_dir / "b.zip", {id_of(SECOND): SECOND})
+
+        assert content.read(id_of(SECOND)) == SECOND

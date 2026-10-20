@@ -25,6 +25,7 @@ not cut off. A file removed stays readable while it is open.
 from __future__ import annotations
 from logging import getLogger
 from pathlib import Path
+from stat import S_ISREG
 from threading import Lock
 from time import time
 from typing import Callable, Final
@@ -75,11 +76,6 @@ class ArchiveFolder:  # pylint: disable=too-many-instance-attributes
         self._archives: tuple[ArchiveSource, ...] = ()
 
     @property
-    def directory(self) -> Path:
-        """Where the archives are kept."""
-        return self._directory
-
-    @property
     def archives(self) -> tuple[ArchiveSource, ...]:
         """The archives found there when the folder was last looked at, in name order."""
         return self._archives
@@ -106,13 +102,13 @@ class ArchiveFolder:  # pylint: disable=too-many-instance-attributes
                 return False
 
             settled = changed_ns is not None and self._clock() - changed_ns / 1e9 >= _SETTLE_SECONDS
-            names = self._names() if changed_ns is not None else set()
+            listed = self._listed() if changed_ns is not None else {}
 
-            if names is None:
+            if listed is None:
                 return False
 
             self._listed_ns = changed_ns if settled else None
-            return self._open_only(names)
+            return self._open_only(listed)
 
     def close(self) -> None:
         """Close every archive opened, those no longer there too."""
@@ -124,61 +120,70 @@ class ArchiveFolder:  # pylint: disable=too-many-instance-attributes
             self._retired.clear()
             self._archives = ()
 
-    def _names(self) -> set[str] | None:
-        """The names of the archives in the folder; ``None`` if it cannot be listed."""
-        try:
-            return {
-                entry.name
-                for entry in self._directory.iterdir()
-                if entry.name.endswith(ARCHIVE_SUFFIX)
-                and not entry.name.startswith(_HIDDEN_PREFIX)
-                and entry.is_file()
-            }
+    def _listed(self) -> dict[str, tuple[int, int]] | None:
+        """Each archive file in the folder, by name, with its modification time and size.
 
-        except FileNotFoundError:
-            # Not logged: it was removed as it was looked at.
-            return set()
+        Returns:
+            Those listed; ``None`` if the folder cannot be listed.
+        """
+        try:
+            entries = list(self._directory.iterdir())
 
         except OSError as error:
             _LOGGER.warning("Cannot list the kept archives in %s: %s", self._directory, error)
             return None
 
-    def _open_only(self, names: set[str]) -> bool:
-        """Open each archive named that is not open, and leave out each open one not named.
+        listed: dict[str, tuple[int, int]] = {}
+
+        for entry in entries:
+            if not entry.name.endswith(ARCHIVE_SUFFIX) or entry.name.startswith(_HIDDEN_PREFIX):
+                continue
+
+            try:
+                found = entry.stat()
+
+            except FileNotFoundError:
+                continue  # Not logged: it was removed as it was listed.
+
+            except OSError as error:
+                _LOGGER.warning("Cannot look at the kept archive %s: %s", entry, error)
+                continue
+
+            if S_ISREG(found.st_mode):
+                listed[entry.name] = (found.st_mtime_ns, found.st_size)
+
+        return listed
+
+    def _open_only(self, listed: dict[str, tuple[int, int]]) -> bool:
+        """Open each archive ``listed`` that is not open, and leave out each open one not listed.
 
         Returns:
             Whether the archives read changed.
         """
         before = self._archives
 
-        for name in sorted(set(self._open) - names):
+        for name in sorted(set(self._open) - set(listed)):
             self._retired.append(self._open.pop(name))
             _LOGGER.info("No longer reading the kept archive %s", name)
 
-        for name in set(self._refused) - names:
+        for name in set(self._refused) - set(listed):
             del self._refused[name]
 
-        for name in sorted(names - set(self._open)):
-            self._open_one(name)
+        for name in sorted(set(listed) - set(self._open)):
+            self._open_one(name, listed[name])
 
         self._archives = tuple(self._open[name] for name in sorted(self._open))
         return self._archives != before
 
-    def _open_one(self, name: str) -> None:
-        """Open the archive ``name``, unless it was refused as it is now."""
-        path = self._directory / name
+    def _open_one(self, name: str, stamp: tuple[int, int]) -> None:
+        """Open the archive ``name``, unless it was refused with the same ``stamp``.
 
-        try:
-            found = path.stat()
-
-        except OSError as error:
-            _LOGGER.warning("Cannot look at the kept archive %s: %s", path, error)
-            return
-
-        stamp = (found.st_mtime_ns, found.st_size)
-
+        ``stamp`` is its modification time and size.
+        """
         if self._refused.get(name) == stamp:
             return  # Not logged: it was as it was refused.
+
+        path = self._directory / name
 
         try:
             self._open[name] = ArchiveSource.open(path, self._registry)

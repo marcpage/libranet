@@ -4,9 +4,9 @@ Path construction for the source of truth and each sending node's store,
 hash-prefix subdirectory splitting, the hash-algorithm registry, ranking
 identifiers against a prefix, and checking content against its identifier
 (Step 7). Content archives, and reading them after the source of truth
-(Step 34), those the node keeps for itself too (Step 115). Placing content at a drop (Phase 4 Step 89). The content the
-node has blocked (Phase 4 Step 30). Pure library code: no network, no
-messaging.
+(Step 34), those the node keeps for itself too (Step 115). Placing content
+at a drop (Phase 4 Step 89). The content the node has blocked (Phase 4 Step
+30). Pure library code: no network, no messaging.
 
 :class:`~libranet.cas.layered.LayeredSource` is not exported here. It builds
 the applications the node ships (Step 37) with the bundle library, which
