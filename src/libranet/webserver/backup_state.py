@@ -63,7 +63,7 @@ class BackupReport:
         )
 
     def entries(self, field: str) -> tuple[Mapping[str, Any], ...]:
-        """The report's ``jobs``, ``restores``, ``builds``, ``exports``, ``imports``, or ``archives``.
+        """The report's list named ``field``: ``jobs``, ``restores``, ``archives``, and the rest.
 
         Raises:
             KeyError: ``field`` names none of them.

@@ -314,7 +314,7 @@ class KeptArchive(Task):
         now: float,
         progressed: Callable[[], None] = lambda: None,
     ) -> tuple[ContentId, ...]:
-        """Write the archive into ``directory`` from what ``source`` holds, or wait on what it lacks.
+        """Write the archive into ``directory`` from what ``source`` holds, or wait on the rest.
 
         ``progressed`` is called as each object is written.
 

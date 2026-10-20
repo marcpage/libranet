@@ -187,6 +187,8 @@ it (§4.2), so a problem with it fails that backup or restore, where it is
 reported.
 """
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field, replace
