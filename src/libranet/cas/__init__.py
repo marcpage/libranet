@@ -50,6 +50,7 @@ from libranet.cas.errors import (
     StreamTooLargeError,
     UnknownAlgorithmError,
 )
+from libranet.cas.nonce_search import NEAREST, ROUND, SEARCHER_COMMAND, NonceSearch, serve
 from libranet.cas.prefix import matching_bits, nearest
 from libranet.cas.resolved_files import DIRECTORY_FILE, ResolvedFiles
 from libranet.cas.store import (
@@ -71,7 +72,10 @@ __all__ = [
     "DROP_SEPARATOR",
     "HEX_DIGITS",
     "LOWER_HEX_DIGITS",
+    "NEAREST",
     "NONCE_SEARCHERS",
+    "ROUND",
+    "SEARCHER_COMMAND",
     "TRIES_PER_CLOCK_READ",
     "AlgorithmRegistry",
     "ArchiveError",
@@ -89,6 +93,7 @@ __all__ = [
     "Hasher",
     "HeldObject",
     "InvalidContentIdError",
+    "NonceSearch",
     "NonceSearchers",
     "NotZlibStreamError",
     "ResolvedFiles",
@@ -104,5 +109,6 @@ __all__ = [
     "matching_bits",
     "matching_chunks",
     "nearest",
+    "serve",
     "subdirectories",
 ]
