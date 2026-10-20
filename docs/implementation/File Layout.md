@@ -472,10 +472,11 @@ The web server writes the response to each `GET /data/search/{prefix}` here,
 and reuses it until the file is older than `storage.search_cache_ttl_seconds`
 (`src/libranet/protocol/search.py`). The stats module may then rewrite a
 fresh file with identifiers it knows of but the node does not hold
-(`src/libranet/stats/enrichment.py`). A response lists at most
-`storage.search_max_results` hashes, and only those sharing at least
-`storage.search_min_bits` leading bits with the prefix, or all of a shorter
-one. A prefix shorter than
+(`src/libranet/stats/enrichment.py`). A response lists only the hashes
+sharing at least `storage.search_min_bits` leading bits with the prefix, or
+all of a shorter one, and as many of them as fit in an answer of less than
+1 MiB once compressed (HTTP API §6.1). The file is never compressed, so it
+may be larger. A prefix shorter than
 `hash_prefix_length` is filed under itself, so `ab` is `search/ab/ab.json`.
 
 An expired file is replaced on the next search for the same prefix, but
@@ -666,7 +667,6 @@ optional; `examples/libranet.yaml` shows them all with their defaults.
 | `storage.max_application_store_bytes` | `1048576` | — | Largest file in `store/` |
 | `storage.max_application_value_bytes` | `65536` | — | Largest value in a file in `store/` |
 | `storage.search_cache_ttl_seconds` | `300.0` | — | How long a file in `search/` is reused |
-| `storage.search_max_results` | `32` | — | Hashes per file in `search/` |
 | `storage.search_min_bits` | `24` | — | Fewest leading bits a hash in `search/` shares with its prefix, or all of a shorter one, for a search to return it |
 | `identity.key_dir` | `{data_dir}/keys` | — | Where the three private files live |
 | `identity.hash_algorithm` | `sha256` | — | Algorithm of the node id, and so where the public key is stored |

@@ -74,7 +74,7 @@ def versions(
 ) -> SignedVersions[NodeMetadata]:
     truth = CasStore.source_of_truth(storage)
     search = SearchHandler(
-        LocalSearch(truth, storage.search_max_results, min_bits=MINIMUM_BITS),
+        LocalSearch(truth, min_bits=MINIMUM_BITS),
         SearchCache.of(storage),
         recorder,
     )

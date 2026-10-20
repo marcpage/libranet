@@ -1119,9 +1119,7 @@ each part but the year, such as `mail:sha256/…:2026/10/12/09`:
 | `mail address book:{id}` | The versions of the person's address book |
 | `mail state:{id}:{year}/{month}` | The versions of what they read and hid of the mail found in that month's hours |
 
-A search answers no more than so many results, 32 unless the operator says
-otherwise, so mail is kept by the hour, not the day. Each copy's `contents`
-is:
+Mail is kept by the hour, not the day. Each copy's `contents` is:
 
 ```json
 {"bcc": ["sha256/…"],

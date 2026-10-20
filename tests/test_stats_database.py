@@ -576,7 +576,10 @@ def test_a_match_above_the_prefix_can_beat_one_below_it(database: StatsDatabase)
     # or above it, but only `90...` shares the query's top bit.
     store_hashes(database, "7" + "f" * 63, "9" + "0" * 63)
 
-    assert database.content_ids_near("8" + "0" * 63, 1) == [ContentId("sha256", "9" + "0" * 63)]
+    assert database.content_ids_near("8" + "0" * 63, 0) == [
+        ContentId("sha256", "9" + "0" * 63),
+        ContentId("sha256", "7" + "f" * 63),
+    ]
 
 
 def test_a_match_below_the_prefix_can_beat_one_above_it(database: StatsDatabase) -> None:
@@ -584,29 +587,40 @@ def test_a_match_below_the_prefix_can_beat_one_above_it(database: StatsDatabase)
     # a whole digit with it, while `ff...` shares one bit.
     store_hashes(database, "8" + "0" * 63, "f" * 64)
 
-    assert database.content_ids_near("88" + "0" * 62, 1) == [ContentId("sha256", "8" + "0" * 63)]
+    assert database.content_ids_near("88" + "0" * 62, 0) == [
+        ContentId("sha256", "8" + "0" * 63),
+        ContentId("sha256", "f" * 64),
+    ]
 
 
-def test_a_nearby_scan_returns_no_more_than_the_limit(database: StatsDatabase) -> None:
+def test_a_nearby_scan_returns_only_what_shares_the_minimum_bits(database: StatsDatabase) -> None:
     store_hashes(database, *(f"{index}" + "0" * 63 for index in range(10)))
 
-    found = database.content_ids_near("5" + "0" * 63, 3)
+    found = database.content_ids_near("5" + "0" * 63, 2)
 
-    # `5` matches exactly, `4` shares three bits of the first digit, `6` two.
-    assert [content_id.hash[0] for content_id in found] == ["5", "4", "6"]
+    # `5` matches exactly, `4` shares three bits of the first digit, `6` and
+    # `7` two, and the rest fewer.
+    assert [content_id.hash[0] for content_id in found] == ["5", "4", "6", "7"]
 
 
-def test_a_nearby_scan_returns_everything_known_when_that_is_under_the_limit(
+def test_a_nearby_scan_with_no_minimum_returns_everything_known(database: StatsDatabase) -> None:
+    store_hashes(database, "5" + "0" * 63, "f" * 64)
+
+    assert len(database.content_ids_near("5" + "0" * 63, 0)) == 2
+
+
+def test_a_nearby_scan_of_bits_all_set_reaches_the_last_hash(database: StatsDatabase) -> None:
+    store_hashes(database, "e" * 64, "f" * 64)
+
+    assert database.content_ids_near("f" * 64, 4) == [ContentId("sha256", "f" * 64)]
+
+
+def test_a_prefix_shorter_than_the_minimum_bits_is_matched_whole(
     database: StatsDatabase,
 ) -> None:
-    store_hashes(database, "5" + "0" * 63, "6" + "0" * 63)
+    store_hashes(database, "ab" + "0" * 62, "ac" + "0" * 62)
 
-    assert len(database.content_ids_near("5" + "0" * 63, 8)) == 2
-
-
-def test_a_nearby_scan_needs_room_for_at_least_one_result(database: StatsDatabase) -> None:
-    with raises(ValueError, match="limit must be at least 1"):
-        database.content_ids_near("5", 0)
+    assert database.content_ids_near("ab", 24) == [ContentId("sha256", "ab" + "0" * 62)]
 
 
 def test_content_heard_of_is_found_nearby_and_what_was_known_is_kept(
@@ -618,7 +632,7 @@ def test_content_heard_of_is_found_nearby_and_what_was_known_is_kept(
 
     database.record_heard_of([requested, heard_of])
 
-    assert database.content_ids_near("8" + "0" * 63, 2) == [requested, heard_of]
+    assert database.content_ids_near("8" + "0" * 63, 24) == [requested, heard_of]
     stats = database.data_stats(requested)
     assert stats is not None
     assert stats.external_requests == 1
@@ -640,7 +654,7 @@ def test_a_nearby_scan_leaves_blocked_content_out(database: StatsDatabase) -> No
     store_hashes(database, *(f"{index}" + "0" * 63 for index in range(10)))
     database.record_blocked(ContentId("sha256", "5" + "0" * 63))
 
-    found = database.content_ids_near("5" + "0" * 63, 3)
+    found = database.content_ids_near("5" + "0" * 63, 2)
 
     # `4` shares three bits of `5`, then `6` and `7` two.
     assert [content_id.hash[0] for content_id in found] == ["4", "6", "7"]

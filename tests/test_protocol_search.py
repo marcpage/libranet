@@ -1,22 +1,26 @@
 """Tests for local prefix search and the search-result cache."""
 
 from __future__ import annotations
-from json import dumps
+from hashlib import sha256
+from json import dumps, loads
 from logging import DEBUG, WARNING
 from os import utime
 from pathlib import Path
 from typing import Iterator
+from zlib import compress, decompress
 
 from pytest import LogCaptureFixture, mark, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
-from libranet.cas.prefix import matching_bits
+from libranet.cas.prefix import nearest
 from libranet.cas.store import CasStore
-from libranet.config.models import StorageConfig
+from libranet.config.models import MIB, StorageConfig
+from libranet.json_format import compact_json
 from libranet.protocol.errors import InvalidListError
 from libranet.protocol.search import (
     LocalSearch,
+    SearchAnswer,
     SearchCache,
     normalize_prefix,
     parse_search_results,
@@ -24,6 +28,16 @@ from libranet.protocol.search import (
 from libranet.stats.database import StatsDatabase
 
 ANSWERED_ID = ContentId.for_data(b"sought", "sha256")
+
+# More hashes starting with `a` than one answer can name, even compressed,
+# best first for a search of `a`.
+_MANY = nearest(
+    "a",
+    (
+        ContentId.create("sha256", "a" + sha256(str(index).encode()).hexdigest()[1:])
+        for index in range(40_000)
+    ),
+)
 
 
 def _hash(prefix: str) -> str:
@@ -52,24 +66,24 @@ def test_normalize_prefix_rejects_invalid_prefixes(text: str) -> None:
 def test_search_ranks_by_matching_bits(tmp_path: Path) -> None:
     store = _store(tmp_path, "abc1", "abcf", "ab00", "0000")
 
-    results = LocalSearch(store, max_results=3).search("abcf")
+    results = LocalSearch(store).search("abcf")
 
-    assert [content_id.hash[:4] for content_id in results] == ["abcf", "abc1", "ab00"]
+    assert [content_id.hash[:4] for content_id in results] == ["abcf", "abc1", "ab00", "0000"]
 
 
-def test_search_widens_until_enough_candidates(tmp_path: Path) -> None:
+def test_search_widens_until_it_has_every_match(tmp_path: Path) -> None:
     store = _store(tmp_path, "a100", "a200", "b000")
 
-    results = LocalSearch(store, max_results=2).search("a1ff")
+    results = LocalSearch(store).search("a1ff")
 
-    assert [content_id.hash[:4] for content_id in results] == ["a100", "a200"]
+    assert [content_id.hash[:4] for content_id in results] == ["a100", "a200", "b000"]
 
 
 def test_search_widens_past_the_first_digit_a_bit_at_a_time(tmp_path: Path) -> None:
     # `a` is 1010 and `b` 1011: they differ in the first digit, but share three bits.
     store = _store(tmp_path, "b000", "a123")
 
-    results = LocalSearch(store, max_results=5).search("a")
+    results = LocalSearch(store).search("a")
 
     assert [content_id.hash[:4] for content_id in results] == ["a123", "b000"]
 
@@ -78,7 +92,7 @@ def test_hashes_sharing_fewer_bits_are_ranked_after_those_sharing_more(tmp_path:
     # Against `a` (1010): `9` (1001) shares two bits, `e` (1110) one, `2` (0010) none.
     store = _store(tmp_path, "2000", "e000", "9000", "b000", "a123")
 
-    results = LocalSearch(store, max_results=5).search("a")
+    results = LocalSearch(store).search("a")
 
     assert [content_id.hash[:4] for content_id in results] == [
         "a123",
@@ -105,19 +119,44 @@ class _AskedFor:
         return self.store.iter_prefix(algorithm, hash_prefix)
 
 
-def test_widening_stops_once_there_are_enough_candidates(tmp_path: Path) -> None:
-    source = _AskedFor(_store(tmp_path, "a100", "b000", "e000", "2000"))
+class _Many:
+    """A store holding :data:`_MANY` under ``a``, and one hash under every other digit."""
 
-    results = LocalSearch(source, max_results=2).search("a")
+    def __init__(self) -> None:
+        self.asked: list[str] = []
 
-    assert [content_id.hash[:4] for content_id in results] == ["a100", "b000"]
-    # `b` shares three bits with `a`, so no digit sharing fewer is scanned.
-    assert source.asked == ["a", "b"]
+    @property
+    def prefix_length(self) -> int:
+        return 1
+
+    def iter_prefix(self, algorithm: str, hash_prefix: str) -> Iterator[ContentId]:
+        self.asked.append(hash_prefix)
+
+        if algorithm != "sha256":
+            return iter([])
+
+        if hash_prefix == "a":
+            return iter(_MANY)
+
+        return iter([ContentId.create("sha256", _hash(hash_prefix))])
 
 
+def test_widening_stops_once_the_answer_is_full() -> None:
+    source = _Many()
+
+    results = LocalSearch(source).search("a")
+
+    assert 0 < len(results) < len(_MANY)
+    assert results == nearest("a", _MANY)[: len(results)]
+    # What shares the first digit is more than an answer can name, so no
+    # digit sharing fewer bits is scanned.
+    assert source.asked == ["a"]
+
+
+@mark.parametrize("min_bits", [0, 2, 5, 12])
 @mark.parametrize("prefix", ["8", "80", "a", "7f", "0", "fff", "c3"])
 def test_search_agrees_with_what_stats_finds_among_the_same_hashes(
-    tmp_path: Path, prefix: str
+    tmp_path: Path, prefix: str, min_bits: int
 ) -> None:
     held = ["0000", "17ab", "7fff", "9000", "9f00", "a1b2", "b000", "e3e3", "fe00"]
     store = _store(tmp_path, *held)
@@ -126,40 +165,21 @@ def test_search_agrees_with_what_stats_finds_among_the_same_hashes(
         for hashed in held:
             database.record_acquired(ContentId.create("sha256", _hash(hashed)), 1)
 
-        known = database.content_ids_near(prefix, 3)
+        known = database.content_ids_near(prefix, min_bits)
 
-    found = LocalSearch(store, max_results=3).search(prefix)
-
-    # Each finds the hashes sharing the most leading bits (HttpApi §6). Where
-    # several share as many at the limit, each may name a different one.
-    assert [matching_bits(prefix, content_id.hash) for content_id in found] == [
-        matching_bits(prefix, content_id.hash) for content_id in known
-    ]
+    # Each finds the hashes sharing the most leading bits (HttpApi §6), and
+    # every one sharing enough of them.
+    assert LocalSearch(store, min_bits=min_bits).search(prefix) == known
 
 
 def test_a_search_of_an_empty_store_finds_nothing(tmp_path: Path) -> None:
-    assert LocalSearch(_store(tmp_path), max_results=5).search("a") == []
-
-
-def test_search_is_limited_to_max_results(tmp_path: Path) -> None:
-    store = _store(tmp_path, "aa01", "aa02", "aa03")
-
-    assert len(LocalSearch(store, max_results=2).search("aa")) == 2
-
-
-def test_a_search_says_how_many_matches_it_gives(tmp_path: Path) -> None:
-    assert LocalSearch(_store(tmp_path), max_results=7).max_results == 7
-
-
-def test_search_rejects_a_zero_limit(tmp_path: Path) -> None:
-    with raises(ValueError):
-        LocalSearch(_store(tmp_path), max_results=0)
+    assert LocalSearch(_store(tmp_path)).search("a") == []
 
 
 def test_a_search_returns_only_what_shares_its_minimum_bits(tmp_path: Path) -> None:
     store = _store(tmp_path, "abc1", "abcf", "ab00", "0000")
 
-    results = LocalSearch(store, max_results=3, min_bits=12).search("abcf")
+    results = LocalSearch(store, min_bits=12).search("abcf")
 
     assert [content_id.hash[:4] for content_id in results] == ["abcf", "abc1"]
 
@@ -167,7 +187,7 @@ def test_a_search_returns_only_what_shares_its_minimum_bits(tmp_path: Path) -> N
 def test_a_prefix_shorter_than_the_minimum_bits_is_matched_whole(tmp_path: Path) -> None:
     store = _store(tmp_path, "abc1", "abcf", "ab00", "a000")
 
-    results = LocalSearch(store, max_results=5, min_bits=24).search("ab")
+    results = LocalSearch(store, min_bits=24).search("ab")
 
     assert [content_id.hash[:4] for content_id in results] == ["ab00", "abc1", "abcf"]
 
@@ -175,7 +195,7 @@ def test_a_prefix_shorter_than_the_minimum_bits_is_matched_whole(tmp_path: Path)
 def test_widening_stops_once_every_match_is_scanned(tmp_path: Path) -> None:
     source = _AskedFor(_store(tmp_path, "a100", "b000"))
 
-    results = LocalSearch(source, max_results=5, min_bits=4).search("a1")
+    results = LocalSearch(source, min_bits=4).search("a1")
 
     assert [content_id.hash[:4] for content_id in results] == ["a100"]
     # Whatever shares the first digit is scanned, and nothing sharing less.
@@ -185,7 +205,7 @@ def test_widening_stops_once_every_match_is_scanned(tmp_path: Path) -> None:
 def test_widening_a_bit_at_a_time_stops_at_the_minimum_bits(tmp_path: Path) -> None:
     source = _AskedFor(_store(tmp_path, "a100", "b000", "e000"))
 
-    results = LocalSearch(source, max_results=5, min_bits=2).search("a")
+    results = LocalSearch(source, min_bits=2).search("a")
 
     assert [content_id.hash[:4] for content_id in results] == ["a100", "b000"]
     # `b` shares three bits with `a`, and `8` and `9` two; `e` shares one.
@@ -195,25 +215,59 @@ def test_widening_a_bit_at_a_time_stops_at_the_minimum_bits(tmp_path: Path) -> N
 def test_what_is_found_elsewhere_is_kept_only_if_it_shares_enough_bits(tmp_path: Path) -> None:
     near, far = (ContentId.create("sha256", _hash(prefix)) for prefix in ("abc0", "ab00"))
 
-    assert LocalSearch(_store(tmp_path), max_results=1, min_bits=12).matching(
-        "abcf", [far, near]
-    ) == [near]
+    assert LocalSearch(_store(tmp_path), min_bits=12).matching("abcf", [far, near]) == [near]
 
 
 def test_a_search_says_how_many_bits_a_match_shares(tmp_path: Path) -> None:
-    assert LocalSearch(_store(tmp_path), max_results=1).min_bits == 0
-    assert LocalSearch(_store(tmp_path), max_results=1, min_bits=24).min_bits == 24
+    assert LocalSearch(_store(tmp_path)).min_bits == 0
+    assert LocalSearch(_store(tmp_path), min_bits=24).min_bits == 24
 
 
 def test_search_rejects_a_negative_minimum(tmp_path: Path) -> None:
     with raises(ValueError, match="min_bits"):
-        LocalSearch(_store(tmp_path), max_results=1, min_bits=-1)
+        LocalSearch(_store(tmp_path), min_bits=-1)
 
 
 def test_a_nodes_search_is_held_to_its_storage_configuration(tmp_path: Path) -> None:
-    search = LocalSearch.of(_store(tmp_path), StorageConfig(search_max_results=7))
+    search = LocalSearch.of(_store(tmp_path), StorageConfig(search_min_bits=12))
 
-    assert (search.max_results, search.min_bits) == (7, 24)
+    assert search.min_bits == 12
+
+
+def test_an_answer_that_fits_is_sent_as_it_is() -> None:
+    found = [ContentId.create("sha256", _hash(prefix)) for prefix in ("ab", "cd")]
+
+    answer = SearchAnswer.of(found, target="ab")
+
+    assert answer.results == found
+    assert loads(answer.body) == {"target": "ab", "results": [str(found[0]), str(found[1])]}
+    assert (answer.compressed, answer.headers) == (False, {})
+
+
+def test_an_answer_too_large_as_it_is_is_compressed() -> None:
+    found = _MANY[:20_000]
+
+    answer = SearchAnswer.of(found)
+
+    assert len(SearchCache.body(found)) >= MIB
+    assert len(answer.body) < MIB
+    assert answer.results == found
+    assert loads(decompress(answer.body)) == {"results": [str(found_id) for found_id in found]}
+    assert (answer.compressed, answer.headers) == (True, {"Content-Encoding": "deflate"})
+
+
+def test_an_answer_names_as_many_of_the_best_as_fit_once_compressed() -> None:
+    answer = SearchAnswer.of(_MANY, target="a")
+
+    assert len(answer.body) < MIB
+    assert 0 < len(answer.results) < len(_MANY)
+    assert answer.results == _MANY[: len(answer.results)]
+    assert loads(decompress(answer.body)) == {
+        "target": "a",
+        "results": [str(found_id) for found_id in answer.results],
+    }
+    one_more = [str(found_id) for found_id in _MANY[: len(answer.results) + 1]]
+    assert len(compress(compact_json({"target": "a", "results": one_more}), 6)) >= MIB
 
 
 def test_cache_misses_when_nothing_is_saved(tmp_path: Path) -> None:

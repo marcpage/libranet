@@ -710,12 +710,11 @@ For example:
 GET /data/search/0123456789abcdef... HTTP/1.1
 ```
 
-The node returns the best matching content hashes known to it.
-
-The node MUST have a configurable limit to the number of results it returns for
-search. The list MUST contain the hashes that match the most number of leading
-bits in the hash known to the node. The node MAY return hashes it is aware of
-but may not actually have locally. It leaves out content it has blocked (§5.5).
+The node returns the best matching content hashes known to it, as many as its
+answer can name (§6.1). The list MUST contain the hashes that match the most
+number of leading bits in the hash known to the node. The node MAY return
+hashes it is aware of but may not actually have locally. It leaves out content
+it has blocked (§5.5).
 
 The node SHOULD have a configurable minimum number of leading bits a hash must
 share with the one searched for to be returned, or all of a shorter one: what
@@ -758,6 +757,15 @@ Example:
 
 The result list is ordered by the quality (defined as most matching leading
 bits) of the prefix match.
+
+The answer MAY be zlib-compressed (level at the discretion of the node), and is
+then sent with `Content-Encoding: deflate`, which a browser undoes before a page
+reads it. The answer MUST be less than 1 MiB in size as transferred; when it is
+compressed, this is the compressed size. That is the only limit on how many
+hashes it lists: a node lists as many of the best matches as fit, best first.
+There is no protocol limit on the size of the answer once decompressed. The
+reference node compresses an answer, at level 6, only when it would not fit
+otherwise.
 
 ---
 
@@ -3273,16 +3281,16 @@ that must know a body's size before it reads it.
 
 - Default limits. By default, the reference node takes a body of at most
   1 MiB with a signed request, as it takes an object (HighLevelDesign
-  §4.3), and a node or seek list of at most 4 MiB once decompressed. A
-  page's request to make bundles takes at most 4 MiB, a value in an
-  application's store 64 KiB, and the store itself 1 MiB. It reads a bundle
-  of at most 16 MiB once decompressed or decrypted. A drop's search takes at
-  most 60 seconds, and matches at most 26 bits (§9.6), and a search answers
-  with at most 32 results (§6). A sign-in's trust scores reach at most 4
-  steps out and read at most 1,000 lists, spending up to 30 seconds looking
-  for each (Trust Network §4.2, §4.3). The node's operator may change each
-  of these limits but two, which are fixed: a page's request to make a
-  drop, signed or not, takes at most 4 MiB, and any other JSON body 64 KiB.
+  §4.3), and a node or seek list, or a peer's search answer, of at most
+  4 MiB once decompressed. A page's request to make bundles takes at most
+  4 MiB, a value in an application's store 64 KiB, and the store itself
+  1 MiB. It reads a bundle of at most 16 MiB once decompressed or decrypted.
+  A drop's search takes at most 60 seconds, and matches at most 26 bits
+  (§9.6). A sign-in's trust scores reach at most 4 steps out and read at
+  most 1,000 lists, spending up to 30 seconds looking for each (Trust
+  Network §4.2, §4.3). The node's operator may change each of these limits
+  but two, which are fixed: a page's request to make a drop, signed or not,
+  takes at most 4 MiB, and any other JSON body 64 KiB.
 - Negotiation of limits.
 - Whether limits are protocol parameters or local policy.
 

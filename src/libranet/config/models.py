@@ -489,9 +489,6 @@ class StorageConfig(_Section):
     # Provisional default — see "Open Items" in the implementation plan.
     search_cache_ttl_seconds: float = Field(default=300.0, gt=0)
 
-    # HttpApi §6: the number of hashes one search returns must be capped.
-    search_max_results: int = Field(default=32, ge=1)
-
     # How many leading bits a hash must share with a prefix searched for, at
     # least, for a search to return it, or as many as the prefix has if it
     # has fewer (HttpApi §6). Whatever shares fewer is nearest the prefix but

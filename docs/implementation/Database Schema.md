@@ -419,7 +419,7 @@ Index: the primary key only.
 | Index | On | Made by | Serves |
 | --- | --- | --- | --- |
 | `sqlite_autoindex_data_stats_1` | `data_stats (algorithm, hash)` | Primary key | Every upsert of one content id |
-| `data_stats_by_hash` | `data_stats (hash)` | Schema | Search: the known hashes either side of a prefix, across every algorithm |
+| `data_stats_by_hash` | `data_stats (hash)` | Schema | Search: the known hashes sharing a prefix's leading bits, across every algorithm |
 | `data_stats_held` | `data_stats (hash) WHERE size IS NOT NULL` | Schema | Eviction: the held hashes either side of the node id's |
 | `data_stats_blocked` | `data_stats (hash) WHERE blocked_at IS NOT NULL` | Schema | The blocked list: every blocked row, however many others there are |
 | `sqlite_autoindex_node_stats_1` | `node_stats (node_id)` | Primary key | Every upsert of one node |
@@ -479,7 +479,7 @@ stats first deletes the seek entries and addresses that are past keeping
 | Query (`StatsDatabase`) | Run when | Reads | How |
 | --- | --- | --- | --- |
 | `eviction_order` | `eviction.candidates_requested` | `data_stats` | Two scans of the whole table, and two seeks in `data_stats_held` |
-| `content_ids_near` | `data.search_requested`, `data.search_answered` | `data_stats` | Two range scans of `data_stats_by_hash`, up to `storage.search_max_results` rows each that are not blocked |
+| `content_ids_near` | `data.search_requested`, `data.search_answered` | `data_stats` | One range scan of `data_stats_by_hash`: every row not blocked whose hash shares `storage.search_min_bits` leading bits with the prefix, or all of a shorter one |
 | `is_sought` | `data.search_requested`, to tell a new search | `seek_entries` | Primary key |
 | `last_good_endpoints` | Each derivation | `node_addresses` | Whole table, with a window function |
 | `candidate_endpoints` | Each derivation | `node_addresses` | Whole table, with two window functions |

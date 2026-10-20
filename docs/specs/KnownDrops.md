@@ -225,9 +225,8 @@ their scores to reach through it.
 Each message is sent as a copy for each of its readers. The copy for a
 reader is placed at the reader's drop for the hour, in UTC, that the
 message is sent in. A reader reads a period by searching each hour of it.
-Mail is kept by the hour, not the day, since a search answers no more than
-32 results by default. A reader who is compromised is mailed at their
-fallback instead.
+Mail is kept by the hour, not the day. A reader who is compromised is
+mailed at their fallback instead.
 
 - **Placed by** the mail application, with `POST /data/signed`, given
   `encrypt: {for: reader}`.

@@ -93,9 +93,7 @@ def identities(storage: StorageConfig, recorder: Recorder, waited: list[float]) 
     uploads = OwnUploads.of(storage, truth, NODE_ID, recorder)
     return Identities(
         uploads,
-        SearchHandler(
-            LocalSearch(truth, storage.search_max_results), SearchCache.of(storage), recorder
-        ),
+        SearchHandler(LocalSearch(truth), SearchCache.of(storage), recorder),
         DropHandler(uploads, MAX_BYTES, MAX_SECONDS, MAX_MINIMUM_BITS),
         Sessions(60.0),
         recorder,
@@ -674,9 +672,7 @@ def test_a_search_of_a_drop_leaves_out_what_this_node_has_blocked(
     truth.write(blocked, b"blocked")
     write_atomically(storage.blocked_list_path, BlockedContent.body([blocked]))
     cache = SearchCache.of(storage)
-    search = SearchHandler(
-        LocalSearch(truth, 8), cache, recorder, blocked=BlockedContent.of(storage)
-    )
+    search = SearchHandler(LocalSearch(truth), cache, recorder, blocked=BlockedContent.of(storage))
 
     found = search.fresh_results(blocked.hash)
 

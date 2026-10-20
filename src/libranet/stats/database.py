@@ -29,7 +29,7 @@ from time import time
 from types import TracebackType
 from typing import Any, Callable, Collection, Final, Iterable, Mapping
 
-from libranet.cas.content_id import ContentId
+from libranet.cas.content_id import BITS_PER_HEX_DIGIT, ContentId
 from libranet.cas.prefix import matching_bits, nearest
 from libranet.cas.store import HeldObject
 from libranet.identity.trust import TrustState
@@ -49,6 +49,28 @@ _BYTES_RECEIVED: Final = "bytes_received"
 _BYTES_SENT: Final = "bytes_sent"
 _DATA_FOUND: Final = "data_found"
 _DATA_NOT_FOUND: Final = "data_not_found"
+
+
+# Sorts after every hash, each written in lower-case hex.
+_PAST_EVERY_HASH: Final = "g"
+
+
+def _hash_range(prefix: str, bits: int) -> tuple[str, str]:
+    """Where the hashes sharing the first ``bits`` leading bits of ``prefix`` lie, in hash order.
+
+    Each sorts at or after the first bound and before the second.
+    """
+    digits = -(-bits // BITS_PER_HEX_DIGIT)
+
+    if digits == 0:
+        return "", _PAST_EVERY_HASH
+
+    spare_bits = digits * BITS_PER_HEX_DIGIT - bits
+    first = int(prefix[:digits], 16) >> spare_bits << spare_bits
+    after = first + (1 << spare_bits)
+    # When those bits are all ones, every hash from the first bound on shares them.
+    high = _PAST_EVERY_HASH if after >> (digits * BITS_PER_HEX_DIGIT) else f"{after:0{digits}x}"
+    return f"{first:0{digits}x}", high
 
 
 def _source_rank(expression: str) -> str:
@@ -218,33 +240,20 @@ class StatsDatabase:  # pylint: disable=too-many-public-methods
         )
         return None if row is None else DataStats.from_row(row)
 
-    def content_ids_near(self, prefix: str, limit: int) -> list[ContentId]:
-        """The ``limit`` known identifiers whose hash best matches ``prefix``, none blocked.
+    def content_ids_near(self, prefix: str, min_bits: int) -> list[ContentId]:
+        """The known identifiers sharing ``min_bits`` leading bits with ``prefix``, none blocked.
 
-        Both sides of ``prefix`` are scanned — the nearest hashes at or above
-        it and the nearest below — because the best match by leading bits can
-        lie on either side (``7`` and ``9`` are both one step from ``8``, but
-        only ``9`` shares its top bit). Each side can supply the whole answer,
-        so each is scanned ``limit`` deep and the two are ranked together down
-        to ``limit`` results. A hash outside a full window shares no more
-        leading bits with ``prefix`` than any hash between it and ``prefix``,
-        so none matching better can be missed. One matching as well can be: of
-        hashes tied at the limit, this names those nearest ``prefix`` in order
-        of hash, which need not be those first in order of identifier.
+        Or all of ``prefix``, if it has fewer. They are ranked best first.
+        Every hash sharing as many lies in one range, which is all that is
+        scanned.
         """
-        if limit < 1:
-            raise ValueError(f"limit must be at least 1, got {limit}")
-
+        low, high = _hash_range(prefix, min(min_bits, len(prefix) * BITS_PER_HEX_DIGIT))
         rows = self._query(
-            "SELECT algorithm, hash FROM data_stats WHERE hash >= :prefix AND blocked_at IS NULL "
-            "ORDER BY hash ASC LIMIT :limit",
-            {"prefix": prefix, "limit": limit},
-        ) + self._query(
-            "SELECT algorithm, hash FROM data_stats WHERE hash < :prefix AND blocked_at IS NULL "
-            "ORDER BY hash DESC LIMIT :limit",
-            {"prefix": prefix, "limit": limit},
+            "SELECT algorithm, hash FROM data_stats WHERE hash >= :low AND hash < :high "
+            "AND blocked_at IS NULL",
+            {"low": low, "high": high},
         )
-        return nearest(prefix, (ContentId(row["algorithm"], row["hash"]) for row in rows), limit)
+        return nearest(prefix, (ContentId(row["algorithm"], row["hash"]) for row in rows))
 
     # -- Node statistics -------------------------------------------------
 

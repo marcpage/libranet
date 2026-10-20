@@ -276,7 +276,7 @@ def test_what_a_peer_answers_a_search_with_is_known_and_added_to_its_answer(
     )
 
     assert loads(cache_path.read_bytes())["results"] == [str(nearer), str(farther)]
-    assert module.database.content_ids_near(prefix, 1) == [nearer]
+    assert module.database.content_ids_near(prefix, 24) == [nearer]
 
 
 def test_a_search_request_enriches_its_cached_response(

@@ -1573,7 +1573,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         if not sessions:
             return []
 
-        return [sessions[node_id] for node_id in nearest(prefix, sessions, len(sessions))]
+        return [sessions[node_id] for node_id in nearest(prefix, sessions)]
 
 
 def _dialable(endpoint: str) -> bool:

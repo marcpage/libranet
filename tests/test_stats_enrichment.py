@@ -55,7 +55,7 @@ def cache(tmp_path: Path, clock: FakeClock) -> SearchCache:
 
 @fixture
 def enricher(database: StatsDatabase, cache: SearchCache) -> SearchEnricher:
-    return SearchEnricher(database, cache, max_results=4)
+    return SearchEnricher(database, cache, min_bits=0)
 
 
 def cached_results(cache: SearchCache) -> list[str]:
@@ -86,14 +86,24 @@ def test_a_better_match_the_node_only_heard_of_is_added(
     assert cached_results(cache) == [str(NEARER_ID), str(CACHED_ID)]
 
 
-def test_enrichment_never_exceeds_the_result_limit(
-    database: StatsDatabase, cache: SearchCache
+def test_enrichment_adds_every_match_an_answer_has_room_for(
+    enricher: SearchEnricher, database: StatsDatabase, cache: SearchCache
 ) -> None:
     save(cache, CACHED_ID)
     known(database, *(ContentId("sha256", f"8{index:063x}") for index in range(10)))
 
-    assert SearchEnricher(database, cache, max_results=3).enrich(PREFIX)
-    assert len(cached_results(cache)) == 3
+    assert enricher.enrich(PREFIX)
+    assert len(cached_results(cache)) == 11
+
+
+def test_only_what_shares_the_minimum_bits_is_added(
+    database: StatsDatabase, cache: SearchCache
+) -> None:
+    save(cache, CACHED_ID)
+    known(database, NEARER_ID, FURTHER_ID)
+
+    assert SearchEnricher(database, cache, min_bits=4).enrich(PREFIX)
+    assert cached_results(cache) == [str(NEARER_ID), str(CACHED_ID)]
 
 
 def test_a_cached_response_the_database_cannot_improve_is_left_alone(
@@ -166,11 +176,11 @@ def test_a_cache_file_of_the_wrong_shape_is_rebuilt(
         assert cached_results(cache) == [str(NEARER_ID)]
 
 
-def test_an_enricher_needs_room_for_at_least_one_result(
+def test_an_enricher_refuses_a_negative_minimum(
     database: StatsDatabase, cache: SearchCache
 ) -> None:
-    with raises(ValueError, match="max_results must be at least 1"):
-        SearchEnricher(database, cache, max_results=0)
+    with raises(ValueError, match="min_bits must not be negative"):
+        SearchEnricher(database, cache, min_bits=-1)
 
 
 def test_an_unreadable_cache_file_is_logged_as_a_warning(

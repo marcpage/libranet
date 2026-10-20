@@ -102,7 +102,7 @@ def trust_lists(
 ) -> TrustLists:
     """The trust lists held in ``truth``, read as the web server reads them."""
     search = SearchHandler(
-        LocalSearch(truth, storage.search_max_results, min_bits=MINIMUM_BITS),
+        LocalSearch(truth, min_bits=MINIMUM_BITS),
         SearchCache.of(storage),
         recorder,
     )
@@ -568,7 +568,7 @@ def test_a_negative_retry_after_is_refused(
     recorder: Recorder,
 ) -> None:
     search = SearchHandler(
-        LocalSearch(truth, storage.search_max_results, min_bits=MINIMUM_BITS),
+        LocalSearch(truth, min_bits=MINIMUM_BITS),
         SearchCache.of(storage),
         recorder,
     )

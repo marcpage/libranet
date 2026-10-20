@@ -982,33 +982,6 @@ def test_search_asks_the_peer_and_publishes_what_it_answers(
     assert (asked["prefix"], asked["node_id"]) == (OFFERED_ID.hash, str(identity.node_id))
 
 
-def test_a_search_answer_is_cut_to_what_this_node_answers_a_search_with(
-    identity: NodeIdentity,
-    config: LibranetConfig,
-    peer: FixturePeer,
-    queues: ModuleQueues,
-) -> None:
-    storage = config.storage.model_copy(update={"search_max_results": 1})
-    exchange = PeerExchange(
-        identity,
-        config.model_copy(update={"storage": storage}),
-        StubModule(ModuleName.CONNECTIONS, queues).publish,
-        LOGGER,
-    )
-    peer.store.write(OFFERED_ID, OFFERED)
-    session = exchange.open(peer.endpoint)
-
-    try:
-        found = exchange.search(session, OFFERED_ID.hash)
-
-    finally:
-        session.close()
-
-    assert found == [OFFERED_ID]
-    (answered,) = published(queues, EventType.SEARCH_ANSWERED)
-    assert answered["results"] == [str(OFFERED_ID)]
-
-
 def test_a_peer_that_answers_a_search_unusably_teaches_nothing(
     exchange: PeerExchange, queues: ModuleQueues
 ) -> None:

@@ -67,7 +67,7 @@ def truth(storage: StorageConfig, alice: PersonKey) -> CasStore:
 @fixture
 def lists(storage: StorageConfig, truth: CasStore, recorder: Recorder) -> TrustLists:
     search = SearchHandler(
-        LocalSearch(truth, storage.search_max_results, min_bits=MINIMUM_BITS),
+        LocalSearch(truth, min_bits=MINIMUM_BITS),
         SearchCache.of(storage),
         recorder,
     )

@@ -14,7 +14,9 @@ node, as by a page::
 Content this node has blocked is left out of every answer (HttpApi §5.5,
 Phase 4 Step 30), even one cached before it was blocked, and so is whatever
 shares too few leading bits with the prefix for the search to return it
-(``storage.search_min_bits``), even what the stats module adds.
+(``storage.search_min_bits``), even what the stats module adds. Each answer
+names as many of the best matches as fit in under 1 MiB, zlib-compressed if
+they would not fit otherwise (:class:`SearchAnswer`, HttpApi §6.1).
 
 Signing in searches a drop as a page would, but scans the store every time
 (:meth:`SearchHandler.fresh_results`), so that a block stored since the last
@@ -47,9 +49,9 @@ from libranet.messaging.publishing import Publish
 from libranet.problems import INVALID_SEARCH_PREFIX
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE
 from libranet.protocol.search import (
-    RESULTS_FIELD,
     SEARCH_PATH,
     LocalSearch,
+    SearchAnswer,
     SearchCache,
     normalize_prefix,
 )
@@ -58,7 +60,6 @@ from libranet.webserver.http_types import (
     Request,
     Response,
     bytes_response,
-    json_response,
     percent_decoded,
     status_response,
     typed_response,
@@ -103,7 +104,8 @@ class SearchHandler:
             self.cache.save_results(prefix, found)
 
         self._announce(prefix, _asker(request))
-        return bytes_response(SearchCache.body(self._returned(prefix, found)), JSON_CONTENT_TYPE)
+        answer = SearchAnswer.of(self._returned(prefix, found))
+        return bytes_response(answer.body, JSON_CONTENT_TYPE, answer.headers)
 
     def at_drop(self, request: Request) -> Response:
         """``GET /data/drop/{target}``: what a search of the drop ``target`` names finds.
@@ -123,24 +125,22 @@ class SearchHandler:
 
         drop = DropTarget.of(target)
         found = self.fresh_results(drop.hex, asker=_asker(request))
-        return json_response(
-            {"target": drop.hex, RESULTS_FIELD: [str(found_id) for found_id in found]}
-        )
+        answer = SearchAnswer.of(found, target=drop.hex)
+        return bytes_response(answer.body, JSON_CONTENT_TYPE, answer.headers)
 
     def fresh_results(self, prefix: str, *, asker: ContentId | None = None) -> list[ContentId]:
         """What is held nearest a normalized ``prefix``, with what was heard of, best first.
 
         The store is scanned whether or not an answer is cached, and what the
         cached answer lists is kept among the matches, since the stats module
-        adds what this node has heard of but does not hold. The result is
-        cached, and announced as any search is, as ``asker``'s if a peer asked.
+        adds what this node has heard of but does not hold, as many as an
+        answer names. The result is cached, and announced as any search is,
+        as ``asker``'s if a peer asked.
         """
         cached = self.cache.load_results(prefix) or []
-        found = nearest(
-            prefix,
-            self._returned(prefix, {*self.search.search(prefix), *cached}),
-            self.search.max_results,
-        )
+        found = SearchAnswer.of(
+            nearest(prefix, self._returned(prefix, {*self.search.search(prefix), *cached}))
+        ).results
         self.cache.save_results(prefix, found)
         self._announce(prefix, asker)
         return found
