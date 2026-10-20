@@ -12,9 +12,9 @@ the drop::
 
     {"id": "sha256/…", "target": "<hex>", "matching_bits": 21}
 
-The nonce is searched for in the request's thread
-(:meth:`~libranet.cas.drops.DropTarget.placed`), and one search runs at a
-time: a request that comes during one waits its turn
+The nonce is searched for from the request's thread, by a process on each
+core (:meth:`~libranet.cas.drops.DropTarget.placed`), and one search runs at
+a time: a request that comes during one waits its turn
 (:class:`~libranet.webserver.costly_work.Turns`), and its ``seconds`` count
 only once its turn has come. A request asking for more ``seconds`` or
 ``minimum_bits`` than the node's ceilings is ``400``, and one whose content

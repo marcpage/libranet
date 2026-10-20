@@ -31,7 +31,14 @@ from libranet.cas.content_id import (
     LOWER_HEX_DIGITS,
     ContentId,
 )
-from libranet.cas.drops import DROP_SEPARATOR, TRIES_PER_CLOCK_READ, Drop, DropTarget
+from libranet.cas.drops import (
+    DROP_SEPARATOR,
+    NONCE_SEARCHERS,
+    TRIES_PER_CLOCK_READ,
+    Drop,
+    DropTarget,
+    NonceSearchers,
+)
 from libranet.cas.errors import (
     ArchiveError,
     CasError,
@@ -39,6 +46,7 @@ from libranet.cas.errors import (
     ContentNotFoundError,
     InvalidContentIdError,
     NotZlibStreamError,
+    SearcherExitedError,
     StreamTooLargeError,
     UnknownAlgorithmError,
 )
@@ -63,6 +71,7 @@ __all__ = [
     "DROP_SEPARATOR",
     "HEX_DIGITS",
     "LOWER_HEX_DIGITS",
+    "NONCE_SEARCHERS",
     "TRIES_PER_CLOCK_READ",
     "AlgorithmRegistry",
     "ArchiveError",
@@ -80,8 +89,10 @@ __all__ = [
     "Hasher",
     "HeldObject",
     "InvalidContentIdError",
+    "NonceSearchers",
     "NotZlibStreamError",
     "ResolvedFiles",
+    "SearcherExitedError",
     "Sha256Algorithm",
     "StrayPrefixDirectories",
     "StreamTooLargeError",

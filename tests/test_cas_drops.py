@@ -3,9 +3,11 @@
 from __future__ import annotations
 from hashlib import sha256
 from itertools import count
+from os import cpu_count
+from sys import executable
 from typing import Callable, Iterator
 
-from pytest import mark, raises
+from pytest import MonkeyPatch, fixture, mark, raises
 
 from libranet.bundle.protection import strip_targeting
 from libranet.cas.drops import (
@@ -13,12 +15,15 @@ from libranet.cas.drops import (
     TRIES_PER_CLOCK_READ,
     Drop,
     DropTarget,
+    NonceSearchers,
 )
+from libranet.cas.nonce_search import NonceSearch
 from libranet.cas.prefix import matching_bits
 from libranet.config.models import TARGET_BITS
 
 TARGET = DropTarget.of("user:alice")
 CONTENT = b"a private key, encrypted"
+SEARCH = NonceSearch(CONTENT + DROP_SEPARATOR, TARGET.digest)
 
 
 def ticking(*readings: float) -> Callable[[], float]:
@@ -33,10 +38,22 @@ def ticking(*readings: float) -> Callable[[], float]:
     return clock
 
 
+@fixture
+def searchers() -> Iterator[NonceSearchers]:
+    made = NonceSearchers(2)
+    yield made
+    made.close()
+
+
+def counted(start: int, stop: int) -> Iterator[bytes]:
+    """The nonces of the counts from ``start`` up to ``stop``."""
+    return (b"%d" % number for number in range(start, stop))
+
+
 def nonces(tries: int) -> Iterator[bytes]:
     """The nonces a search tries first, in order: the empty one, then each count from 0."""
     yield b""
-    yield from (b"%d" % number for number in range(tries - 1))
+    yield from counted(0, tries - 1)
 
 
 def nearest(content: bytes, tries: int) -> bytes:
@@ -74,11 +91,14 @@ def test_no_time_and_no_minimum_tries_the_empty_nonce_alone() -> None:
     assert drop.matching_bits == matching_bits(expected, TARGET.hex)
 
 
-def test_the_nearest_of_every_nonce_tried_within_the_time_is_kept() -> None:
-    # The deadline is read once, then passed at the second check, after one round.
-    drop = TARGET.placed(CONTENT, 1, clock=ticking(10.0, 10.5, 11.0))
+def test_the_nearest_of_every_nonce_tried_within_the_time_is_kept(
+    searchers: NonceSearchers,
+) -> None:
+    # The deadline is read once, then passed at the second check, after one
+    # round, of a share for each process.
+    drop = TARGET.placed(CONTENT, 1, clock=ticking(10.0, 10.5, 11.0), searchers=searchers)
 
-    best = nearest(CONTENT, TRIES_PER_CLOCK_READ + 1)
+    best = nearest(CONTENT, 2 * TRIES_PER_CLOCK_READ + 1)
     assert drop.data == CONTENT + DROP_SEPARATOR + best
     assert drop.matching_bits == matching_bits(sha256(drop.data).hexdigest(), TARGET.hex)
 
@@ -120,6 +140,51 @@ def test_a_nonce_holds_no_null_so_a_reader_strips_it_whatever_the_content(conten
 def test_a_search_asking_the_impossible_is_refused(seconds: float, minimum_bits: int) -> None:
     with raises(ValueError):
         TARGET.placed(CONTENT, seconds, minimum_bits=minimum_bits)
+
+
+def test_there_is_a_searching_process_for_each_cpu_unless_asked_otherwise() -> None:
+    assert NonceSearchers().processes == (cpu_count() or 1)
+    assert NonceSearchers(3).processes == 3
+
+
+@mark.parametrize("processes", [0, -1])
+def test_a_search_needs_a_process(processes: int) -> None:
+    with raises(ValueError, match="processes must be at least 1"):
+        NonceSearchers(processes)
+
+
+def test_a_round_tries_every_count_of_each_processs_share(searchers: NonceSearchers) -> None:
+    nonce = searchers.nearest(SEARCH, 1000, 300)
+
+    assert nonce == min(counted(1000, 1600), key=SEARCH.distance)
+
+
+def test_a_new_search_replaces_the_one_the_processes_hold(searchers: NonceSearchers) -> None:
+    other = NonceSearch(b"other content" + DROP_SEPARATOR, TARGET.digest)
+    searchers.nearest(SEARCH, 0, 300)
+
+    nonce = searchers.nearest(other, 0, 300)
+
+    assert nonce == min(counted(0, 600), key=other.distance)
+
+
+def test_a_round_needs_a_try_from_each_process(searchers: NonceSearchers) -> None:
+    with raises(ValueError, match="tries_each must be at least 1"):
+        searchers.nearest(SEARCH, 0, 0)
+
+
+def test_a_process_that_exits_fails_the_round_and_the_next_starts_them_again(
+    searchers: NonceSearchers, monkeypatch: MonkeyPatch
+) -> None:
+    searchers.nearest(SEARCH, 0, 300)
+    searchers.close()
+    monkeypatch.setattr("libranet.cas.drops.SEARCHER_COMMAND", (executable, "-I", "-c", ""))
+
+    with raises(OSError):
+        searchers.nearest(SEARCH, 0, 300)
+
+    monkeypatch.undo()
+    assert searchers.nearest(SEARCH, 0, 300) == min(counted(0, 600), key=SEARCH.distance)
 
 
 @mark.parametrize("bits", [-1, TARGET_BITS + 1])

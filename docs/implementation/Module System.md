@@ -743,6 +743,14 @@ Six of the eight modules are single-threaded. The other two are not:
 | Web server | A thread for each HTTP server, the main port's and `/config`'s; one thread per request; a thread for each build of a signed-in person's trust scores, started as they sign in, and for reading what a change to their list newly reaches (Phase 5 Step 99) | A lock in each shared object (§9.3) |
 | Connection manager | `peers.search_workers` search workers; `peers.push_workers` push workers; `peers.broadcast_workers` broadcast workers, for searches of the peers, 8 of each by default; a reverse-DNS worker; a thread per dial, refresh, and hand-off, and per peer told of the nodes newly listed | One lock for the whole module |
 
+The web server also starts a process for each CPU, the first time it
+searches for a drop's nonce, and keeps them while it runs: the hashing holds
+the GIL, so threads would take turns at one core. They are not modules, and
+neither send nor receive messages. Each runs `cas/nonce_search.py`, which
+imports only the standard library, tries the nonces of each round it reads
+on a pipe, and exits once the pipe closes, as it does when the web server's
+process exits, however it exits.
+
 Any thread may publish: `publish()` only puts the message on the outbox,
 and `multiprocessing.Queue.put` is thread-safe. Only the main thread
 receives.
