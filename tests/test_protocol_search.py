@@ -156,6 +156,66 @@ def test_search_rejects_a_zero_limit(tmp_path: Path) -> None:
         LocalSearch(_store(tmp_path), max_results=0)
 
 
+def test_a_search_returns_only_what_shares_its_minimum_bits(tmp_path: Path) -> None:
+    store = _store(tmp_path, "abc1", "abcf", "ab00", "0000")
+
+    results = LocalSearch(store, max_results=3, min_bits=12).search("abcf")
+
+    assert [content_id.hash[:4] for content_id in results] == ["abcf", "abc1"]
+
+
+def test_a_prefix_shorter_than_the_minimum_bits_is_matched_whole(tmp_path: Path) -> None:
+    store = _store(tmp_path, "abc1", "abcf", "ab00", "a000")
+
+    results = LocalSearch(store, max_results=5, min_bits=24).search("ab")
+
+    assert [content_id.hash[:4] for content_id in results] == ["ab00", "abc1", "abcf"]
+
+
+def test_widening_stops_once_every_match_is_scanned(tmp_path: Path) -> None:
+    source = _AskedFor(_store(tmp_path, "a100", "b000"))
+
+    results = LocalSearch(source, max_results=5, min_bits=4).search("a1")
+
+    assert [content_id.hash[:4] for content_id in results] == ["a100"]
+    # Whatever shares the first digit is scanned, and nothing sharing less.
+    assert source.asked == ["a1", "a"]
+
+
+def test_widening_a_bit_at_a_time_stops_at_the_minimum_bits(tmp_path: Path) -> None:
+    source = _AskedFor(_store(tmp_path, "a100", "b000", "e000"))
+
+    results = LocalSearch(source, max_results=5, min_bits=2).search("a")
+
+    assert [content_id.hash[:4] for content_id in results] == ["a100", "b000"]
+    # `b` shares three bits with `a`, and `8` and `9` two; `e` shares one.
+    assert source.asked == ["a", "b", "8", "9"]
+
+
+def test_what_is_found_elsewhere_is_kept_only_if_it_shares_enough_bits(tmp_path: Path) -> None:
+    near, far = (ContentId.create("sha256", _hash(prefix)) for prefix in ("abc0", "ab00"))
+
+    assert LocalSearch(_store(tmp_path), max_results=1, min_bits=12).matching(
+        "abcf", [far, near]
+    ) == [near]
+
+
+def test_a_search_says_how_many_bits_a_match_shares(tmp_path: Path) -> None:
+    assert LocalSearch(_store(tmp_path), max_results=1).min_bits == 0
+    assert LocalSearch(_store(tmp_path), max_results=1, min_bits=24).min_bits == 24
+
+
+def test_search_rejects_a_negative_minimum(tmp_path: Path) -> None:
+    with raises(ValueError, match="min_bits"):
+        LocalSearch(_store(tmp_path), max_results=1, min_bits=-1)
+
+
+def test_a_nodes_search_is_held_to_its_storage_configuration(tmp_path: Path) -> None:
+    search = LocalSearch.of(_store(tmp_path), StorageConfig(search_max_results=7))
+
+    assert (search.max_results, search.min_bits) == (7, 24)
+
+
 def test_cache_misses_when_nothing_is_saved(tmp_path: Path) -> None:
     assert SearchCache(tmp_path, ttl_seconds=10, prefix_length=2).load("abcd") is None
 

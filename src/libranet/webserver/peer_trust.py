@@ -164,7 +164,7 @@ class PeerTrust:  # pylint: disable=too-many-instance-attributes
         directory.
         """
         search = SearchHandler(
-            LocalSearch(content, storage.search_max_results),
+            LocalSearch.of(content, storage),
             SearchCache.of(storage),
             publish,
             blocked=BlockedContent.of(storage),

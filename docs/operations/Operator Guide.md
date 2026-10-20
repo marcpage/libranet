@@ -135,6 +135,7 @@ The settings an operator is most likely to change:
 | `peers.seed_file` | `null` | The node's first peers (§3.1) |
 | `storage.max_storage_bytes` | `null` | The most bytes of content the node keeps; `null` is no limit |
 | `storage.min_free_bytes` | `1073741824` | The free space the node keeps on its disk |
+| `storage.search_min_bits` | `24` | How many leading bits a hash must share with what is searched for to be found; a drop placed matching fewer is not found. No more than `network.drop_max_minimum_bits` |
 | `backup.interval_seconds` | `3600.0` | How often each backed-up directory is looked at (§5.1) |
 | `local.folders` | Your desktop, documents, downloads, music, pictures, and videos folders | The folders offered to trusted applications (§6.3) |
 | `logging.level` | `INFO` | What is logged (§7.2) |
@@ -647,7 +648,8 @@ themselves, for anyone to read, or say their identity is compromised.
 From a script, `seconds` and `minimum_bits` also say how long the node
 searches for where to keep the identity, and how many bits it must match
 there, as the [App Developer Guide](App%20Developer%20Guide.md) §6.10 gives
-them. The page asks for 10 seconds and 16 bits:
+them. The page asks for 10 seconds and 24 bits, as many as a search
+finds by default:
 
 ```bash
 curl -u admin:secret -e http://127.0.0.1:8180/config/ \
@@ -655,7 +657,7 @@ curl -u admin:secret -e http://127.0.0.1:8180/config/ \
   -H 'Content-Type: application/json' \
   -d '{"username": "alice", "password": "<8 characters or more>",
        "fallback_password": "<8 characters or more, another>",
-       "key_bits": 3072, "seconds": 10, "minimum_bits": 16}'
+       "key_bits": 3072, "seconds": 10, "minimum_bits": 24}'
 ```
 
 It is answered `201`, with the person's id and their fallback's, once the

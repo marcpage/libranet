@@ -96,19 +96,20 @@ def test_content_no_layer_holds_is_not_found(tmp_path: Path) -> None:
 
 
 def test_prefix_iteration_spans_every_layer_giving_each_id_once(tmp_path: Path) -> None:
+    # A prefix long enough that no application the node ships falls under it.
     storage = storage_for(
         tmp_path,
-        write_archive(tmp_path / "first.zip", {with_hash("ab1"): b"x", with_hash("ab2"): b"x"}),
-        write_archive(tmp_path / "second.zip", {with_hash("ab2"): b"x", with_hash("ac"): b"x"}),
+        write_archive(tmp_path / "first.zip", {with_hash("abcd1"): b"x", with_hash("abcd2"): b"x"}),
+        write_archive(tmp_path / "second.zip", {with_hash("abcd2"): b"x", with_hash("abce"): b"x"}),
     )
     store = CasStore.source_of_truth(storage)
-    store.write(with_hash("ab0"), b"x")
-    store.write(with_hash("ab1"), b"x")
+    store.write(with_hash("abcd0"), b"x")
+    store.write(with_hash("abcd1"), b"x")
 
     with LayeredSource.open(storage, tmp_path / "none") as content:
-        found = list(content.iter_prefix("sha256", "ab"))
+        found = list(content.iter_prefix("sha256", "abcd"))
 
-    assert sorted(found) == [with_hash("ab0"), with_hash("ab1"), with_hash("ab2")]
+    assert sorted(found) == [with_hash("abcd0"), with_hash("abcd1"), with_hash("abcd2")]
     assert len(found) == 3
 
 

@@ -10,8 +10,8 @@ bundle's ``contents`` (BundleSpecification §5)::
 distrusted. ``version`` is one more than the version it replaces, and
 ``versions`` names that version's drop; the first is numbered 1 and names
 none. Each version is made a drop at ``trust:{id}``, its owner's id after
-``trust:``, matching at least :data:`MIN_TRUST_LIST_BITS` (§3.2). Nothing here
-tells a person's list from a node's.
+``trust:``, matching at least as many bits as a search returns (§3.2).
+Nothing here tells a person's list from a node's.
 
 A reader passes over an entry that is not an id trusted or distrusted, and
 counts the rest of the list (§3.1). Of the versions read that the owner
@@ -40,12 +40,6 @@ from libranet.identity.versions import VERSION_FIELD, HeldVersions, Numbered
 from libranet.json_fields import integer_field
 
 _LOGGER = getLogger(__name__)
-
-#: The fewest leading bits a version shares with its drop's target: each is
-#: placed matching at least as many, and a reader passes over a result that
-#: shares fewer, as nearest the target but placed for something else (Trust
-#: Network §3.2, §3.3).
-MIN_TRUST_LIST_BITS: Final = 16
 
 # What a trust list's drop target string is, before its owner's id (§3.2).
 _DROP_PREFIX: Final = "trust:"

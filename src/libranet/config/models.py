@@ -334,13 +334,6 @@ class PeerConfig(_Section):
     # Provisional default.
     broadcast_hold_seconds: float = Field(default=60.0, gt=0)
 
-    # How many leading bits content must share with a prefix a peer's seek
-    # list searches for, at least, for this node to push it there, or as many
-    # as the prefix has if it has fewer (HttpApi §10.7.2, Phase 4 Step 93). A
-    # drop this node's pages make matches its target by at least 16, and other
-    # content seldom matches as many by chance. Provisional default.
-    search_push_min_bits: int = Field(default=16, ge=0, le=TARGET_BITS)
-
     # How many searches of the connected peers for content are carried on at
     # once, and how many searches of them for a prefix make a pass at once
     # (HighLevelDesign §4.7). Each asks one peer at a time, so these also bound
@@ -498,6 +491,13 @@ class StorageConfig(_Section):
 
     # HttpApi §6: the number of hashes one search returns must be capped.
     search_max_results: int = Field(default=32, ge=1)
+
+    # How many leading bits a hash must share with a prefix searched for, at
+    # least, for a search to return it, or as many as the prefix has if it
+    # has fewer (HttpApi §6). Whatever shares fewer is nearest the prefix but
+    # placed for something else. Every search this node makes or answers is
+    # held to it, and each drop this node places for itself matches as many.
+    search_min_bits: int = Field(default=24, ge=0, le=TARGET_BITS)
 
     # Zip files of CAS objects, each named `{algorithm}/{hash}`, read after
     # the source of truth and before those shipped with the package (Step
@@ -884,6 +884,18 @@ class LibranetConfig(_Section):
                     f"peers.search_passes ({peers.search_passes}) less one, times "
                     f"network.retry_after_seconds ({self.network.retry_after_seconds})"
                 )
+
+        return self
+
+    @model_validator(mode="after")
+    def _drops_reach_searches(self) -> LibranetConfig:
+        # Each drop this node places for itself matches as many bits as a
+        # search returns, and is refused if that is more than a drop may ask.
+        if self.storage.search_min_bits > self.network.drop_max_minimum_bits:
+            raise ValueError(
+                f"storage.search_min_bits ({self.storage.search_min_bits}) must not exceed "
+                f"network.drop_max_minimum_bits ({self.network.drop_max_minimum_bits})"
+            )
 
         return self
 

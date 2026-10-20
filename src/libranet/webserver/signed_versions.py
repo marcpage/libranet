@@ -6,9 +6,9 @@ drops at a target named for them. The versions are found by a search of the
 drop, which scans the store whether or not an answer is cached, as signing in
 does (:meth:`SearchHandler.fresh_results`), so that a version stored since the
 last search is found at once. The search asks this node's peers too, as any
-does (Phase 4 Step 93). A result sharing fewer leading bits with the target
-hash than a version is placed matching is passed over, as nearest the target
-but placed for something else.
+does (Phase 4 Step 93). The search returns only what shares enough leading
+bits with the target hash to match it (``storage.search_min_bits``), and each
+version is placed matching as many.
 
 Each result held is checked as signed content is (HttpApi §11.5), under the
 key of the owner, and counts only if the owner signed it: anyone may place a
@@ -40,7 +40,6 @@ from libranet.bundle.protection import strip_targeting
 from libranet.bundle.signing import SignedBundle
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
-from libranet.cas.prefix import matching_bits
 from libranet.webserver.search_handler import SearchHandler
 
 _LOGGER = getLogger(__name__)
@@ -79,8 +78,8 @@ class SignedVersions(Generic[_Version]):
     """Reads the versions of a ``kind`` of document from what ``content`` holds.
 
     The versions of an owner's are at the drop ``target`` names for them,
-    found by ``search``, each placed matching at least ``minimum_bits``, and
-    read by ``parse``.
+    found by ``search``, each placed matching at least :attr:`minimum_bits`,
+    and read by ``parse``.
     """
 
     search: SearchHandler
@@ -88,8 +87,12 @@ class SignedVersions(Generic[_Version]):
     _: KW_ONLY
     kind: str
     target: Callable[[ContentId], DropTarget]
-    minimum_bits: int
     parse: VersionParser[_Version]
+
+    @property
+    def minimum_bits(self) -> int:
+        """The fewest leading bits a version is placed matching: as many as ``search`` returns."""
+        return self.search.search.min_bits
 
     def read(self, owner: ContentId) -> FoundVersions[_Version]:
         """The versions of ``owner``'s document held at its drop, and what is not held."""
@@ -98,9 +101,6 @@ class SignedVersions(Generic[_Version]):
         missing: list[ContentId] = []
 
         for content_id in self.search.fresh_results(target):
-            if matching_bits(target, content_id.hash) < self.minimum_bits:
-                continue
-
             # A signature error is a verification error, so it is caught first.
             try:
                 found = SignedBundle.decoded(strip_targeting(self._held(content_id)))

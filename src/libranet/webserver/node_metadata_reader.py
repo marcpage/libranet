@@ -2,14 +2,11 @@
 
 The versions are found by a search of the node's drop, ``node:{id}``, and
 read as any versions an identity signs are
-(:class:`~libranet.webserver.signed_versions.SignedVersions`): a result
-sharing fewer than
-:data:`~libranet.identity.node_metadata.MIN_NODE_METADATA_BITS` with the
-target hash is passed over, and each result held counts only if the node
-signed it, checked under its key. What was found, or is needed to check it,
-and is not held is named, not asked for, since a read and a change hold off
-for it (Phase 5 Step 104), as a trust list's are read
-(:class:`~libranet.webserver.trust_lists.TrustLists`).
+(:class:`~libranet.webserver.signed_versions.SignedVersions`): each result
+held counts only if the node signed it, checked under its key. What was
+found, or is needed to check it, and is not held is named, not asked for,
+since a read and a change hold off for it (Phase 5 Step 104), as a trust
+list's are read (:class:`~libranet.webserver.trust_lists.TrustLists`).
 """
 
 from __future__ import annotations
@@ -18,12 +15,7 @@ from typing import Final
 
 from libranet.bundle.content import ContentSource
 from libranet.cas.content_id import ContentId
-from libranet.identity.node_metadata import (
-    MIN_NODE_METADATA_BITS,
-    HeldNodeMetadata,
-    MetadataVersion,
-    NodeMetadata,
-)
+from libranet.identity.node_metadata import HeldNodeMetadata, MetadataVersion, NodeMetadata
 from libranet.webserver.search_handler import SearchHandler
 from libranet.webserver.signed_versions import SignedVersions
 
@@ -40,13 +32,12 @@ class NodeMetadataReader:
 
     @property
     def versions(self) -> SignedVersions[NodeMetadata]:
-        """How the versions are read: at the node's drop, by the bits a version must match."""
+        """How the versions are read: at the node's drop."""
         return SignedVersions(
             self.search,
             self.content,
             kind=NODE_METADATA_KIND,
             target=NodeMetadata.drop_target,
-            minimum_bits=MIN_NODE_METADATA_BITS,
             parse=NodeMetadata.from_value,
         )
 

@@ -131,13 +131,6 @@ peers:
   # refuses to start with one no longer than its own search_passes less one,
   # times its network.retry_after_seconds (High-Level Design §4.7).
   broadcast_hold_seconds: 60.0
-  # Provisional: how many leading bits content this node holds must share
-  # with a prefix a connected peer is searching for, as its seek list says,
-  # for this node to push it there; or the whole prefix, if it is shorter
-  # (HTTP API §10.7.2). Drops the shipped pages make match by 16 or more, and
-  # other content seldom does by chance. 0 pushes the nearest content,
-  # however far, as many items as a search here answers with. 0 to 256.
-  search_push_min_bits: 16
   # Provisional: how many searches of the connected peers for content run at
   # once, and how many searches of them for a prefix make a pass at once
   # (High-Level Design §4.7). Each asks one peer at a time, so these also
@@ -236,6 +229,15 @@ storage:
   search_cache_ttl_seconds: 300.0
   # Most hashes a single /data/search response lists (HTTP API §6).
   search_max_results: 32
+  # How many leading bits a hash must share with a prefix searched for, at
+  # least, for a search to return it; or the whole prefix, if it is shorter
+  # (HTTP API §6). It holds every search this node answers, or makes, as to
+  # push content to a peer searching for it (HTTP API §10.7.2), and each drop
+  # this node places for itself, as a trust list's, matches as many. The
+  # shipped pages place their drops matching 24 or more, and other content
+  # seldom does by chance. 0 returns the nearest content, however far. 0 to
+  # 256, and no more than network.drop_max_minimum_bits.
+  search_min_bits: 24
 
   # Zip files of CAS objects, each named `{algorithm}/{hash}`, served after
   # the content stored here and before those shipped with the package. Their

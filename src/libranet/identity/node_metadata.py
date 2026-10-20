@@ -9,8 +9,8 @@ A version is JSON of its own, signed by the node as a signed bundle's
 ``fields`` maps each detail's name to its value, both strings. ``version`` is
 one more than the version it replaces, and ``versions`` names that version's
 drop; the first is numbered 1 and names none. Each version is made a drop at
-``node:{id}``, the node's id after ``node:``, matching at least
-:data:`MIN_NODE_METADATA_BITS`. It is public. Unlike a person's (App
+``node:{id}``, the node's id after ``node:``, matching at least as many
+bits as a search returns. It is public. Unlike a person's (App
 Developer Guide §6.14), it says nothing of when the id was made, nor of a
 fallback, since a node has neither.
 
@@ -34,11 +34,6 @@ from libranet.identity.versions import FIELDS_FIELD, VERSION_FIELD, HeldVersions
 from libranet.json_fields import integer_field
 
 _LOGGER = getLogger(__name__)
-
-#: The fewest leading bits a version shares with its drop's target: each is
-#: placed matching at least as many, and a reader passes over a result that
-#: shares fewer, as nearest the target but placed for something else.
-MIN_NODE_METADATA_BITS: Final = 16
 
 # What a node's metadata drop target string is, before its id.
 _DROP_PREFIX: Final = "node:"

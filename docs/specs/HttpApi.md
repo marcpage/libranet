@@ -717,6 +717,15 @@ search. The list MUST contain the hashes that match the most number of leading
 bits in the hash known to the node. The node MAY return hashes it is aware of
 but may not actually have locally. It leaves out content it has blocked (§5.5).
 
+The node SHOULD have a configurable minimum number of leading bits a hash must
+share with the one searched for to be returned, or all of a shorter one: what
+shares fewer is nearest the hash, but was placed for something else. The
+reference node returns only what shares at least 24 bits, by default
+(`storage.search_min_bits`), and a search that finds nothing so near returns
+an empty list. Every search it makes is held to it too, as when it answers a
+peer's seek list (§10.7.2), and each drop it places for itself, as a version of
+a trust list (§11.7), matches as many.
+
 A node answers a search at once, with what it knows then, and never waits on
 its peers. Each search, whoever asks it, SHOULD also start a search of the
 node's peers in the background (HighLevelDesign §4.7): the node asks the peers
@@ -975,7 +984,7 @@ instead:
 POST /data/drop
 Content-Type: application/json
 
-{"target": "user:alice", "text": "…", "seconds": 5, "minimum_bits": 16}
+{"target": "user:alice", "text": "…", "seconds": 5, "minimum_bits": 24}
 ```
 
 - **`target`** is the target string (§9.3). The node hashes its UTF-8
@@ -987,7 +996,8 @@ Content-Type: application/json
   hash, sharing the most leading bits with it.
 - **`minimum_bits`**, 0 if absent, is how many leading bits the drop's hash
   must share with the target hash. A search that has not reached it when its
-  time is up goes on until it has.
+  time is up goes on until it has. A drop sharing fewer bits than a node's
+  search returns (§6), 24 by default, is not found by a search there.
 - **`encrypt`**, if present, has the content encrypted, for a person or by
   a username and password, before the drop is made of it (§11.6).
 
@@ -995,7 +1005,7 @@ The drop is the content, a null byte, and the nonce (§9). The request is
 answered `201 Created`, with a `Location` naming the drop (§5.1):
 
 ```json
-{"id": "sha256/…", "target": "<target hash>", "matching_bits": 21}
+{"id": "sha256/…", "target": "<target hash>", "matching_bits": 25}
 ```
 
 `target` is the target hash, in lower-case hex, by which a page searches
@@ -1410,12 +1420,12 @@ fulfilled directly via `PUT /data/{algorithm}/{hash}` (§7).
 
 A `search` entry names a hash prefix, and is fulfilled the same way, with
 content. A node that reads one pushes, via `PUT /data/{algorithm}/{hash}`, the
-content it holds whose hash shares at least a configurable number of leading
-bits with the prefix, or the whole prefix when it has fewer bits, best match
-first, and no more of it than it returns for a search (§6). The number SHOULD
-be 16 by default: a drop that a node's own pages make matches its target by at
-least 16 bits (§9.6), and other content seldom matches as many by chance, so
-what is pushed is mostly the drops at that target. A node answers each `search`
+content it holds that it returns for a search of the prefix (§6), best match
+first: whose hash shares at least the leading bits a search must match with the
+prefix, or the whole prefix when it has fewer bits. A drop that a node's own
+pages make matches its target by at least 24 bits (§9.6), as many as a search
+returns by default, and other content seldom matches as many by chance, so what
+is pushed is mostly the drops at that target. A node answers each `search`
 entry once while the entry stays listed.
 
 ### 10.8 What a Node Knows of Its Peers
@@ -1683,7 +1693,7 @@ POST /data/users
 Content-Type: application/json
 
 {"username": "alice", "password": "…", "fallback_password": "…",
- "key_bits": 3072, "seconds": 10, "minimum_bits": 16}
+ "key_bits": 3072, "seconds": 10, "minimum_bits": 24}
 ```
 
 - **`username`**, **`password`**, and **`fallback_password`** are strings.
@@ -1706,7 +1716,7 @@ identity's public key, and signs the person in (§11.4):
 ```json
 {"id": "sha256/…", "username": "alice", "created": "2026-10-10T14:03:22Z",
  "fallback": "sha256/…", "fallback_for": null,
- "drop": "sha256/…", "target": "<target hash>", "matching_bits": 21}
+ "drop": "sha256/…", "target": "<target hash>", "matching_bits": 25}
 ```
 
 `id` is the person's id, `username` the normalized username, `created`
@@ -1726,7 +1736,7 @@ POST /config/api/users
 Content-Type: application/json
 
 {"username": "alice", "password": "…", "fallback_password": "…",
- "key_bits": 3072, "seconds": 10, "minimum_bits": 16}
+ "key_bits": 3072, "seconds": 10, "minimum_bits": 24}
 ```
 
 It takes the same body as `POST /data/users`, makes the identity the same
@@ -1747,7 +1757,7 @@ POST /data/fallback
 Content-Type: application/json
 
 {"username": "alice", "password": "…", "fallback_password": "…",
- "seconds": 10, "minimum_bits": 16}
+ "seconds": 10, "minimum_bits": 24}
 ```
 
 `password` is the fallback password that opens the fallback, and
@@ -1868,7 +1878,7 @@ A page has the node make a drop signed by whoever is signed in with:
 POST /data/signed
 Content-Type: application/json
 
-{"target": "user:sha256/…", "text": "{\"version\":1}", "seconds": 10, "minimum_bits": 16}
+{"target": "user:sha256/…", "text": "{\"version\":1}", "seconds": 10, "minimum_bits": 24}
 ```
 
 `text` is the JSON text of an object, which the node signs as it is, with
@@ -1881,7 +1891,7 @@ hold it, so that a reader can check the signature. It answers `201 Created`,
 with a `Location` naming the drop:
 
 ```json
-{"id": "sha256/…", "target": "<target hash>", "matching_bits": 21, "signer": "sha256/…"}
+{"id": "sha256/…", "target": "<target hash>", "matching_bits": 25, "signer": "sha256/…"}
 ```
 
 `signer` is the person's id. A request from a browser no one is signed in
@@ -1934,7 +1944,7 @@ A page has the node encrypt what it places at a drop (§9.6), or what it signs
 (§11.5), with an `encrypt` member in the request's body:
 
 ```json
-{"target": "mail:sha256/…", "text": "…", "seconds": 10, "minimum_bits": 16,
+{"target": "mail:sha256/…", "text": "…", "seconds": 10, "minimum_bits": 24,
  "encrypt": {"for": "sha256/…"}}
 ```
 
@@ -2078,14 +2088,15 @@ DELETE /data/trust/{hash-algorithm}/{hash}
 which neither trusts nor distrusts it. The node reads the newest version of
 the person's list from what it holds (Trust Network §3.3), makes the next
 version with the change, and has it signed by the person and made a drop at
-`trust:{id}`, as making a signed drop does (§11.5), matching at least 16
-bits, with its nonce searched for no longer than that takes (§9.6). It then
+`trust:{id}`, as making a signed drop does (§11.5), matching at least as
+many bits as a search returns (§6), with its nonce searched for no longer than
+that takes (§9.6). It then
 blocks every version of the list it read (§5.5), since the new one replaces
 them (Trust Network §3.4). It answers `201 Created`, with a `Location`
 naming the drop:
 
 ```json
-{"id": "sha256/…", "target": "<target hash>", "matching_bits": 21,
+{"id": "sha256/…", "target": "<target hash>", "matching_bits": 25,
  "signer": "sha256/…", "version": 3}
 ```
 
@@ -2181,10 +2192,10 @@ Unlike a person's, a node's metadata says nothing of when its id was made,
 and names no fallback, since a node has neither. Members a reader does not
 know are ignored.
 
-Each version is made a drop matching at least 16 bits. A reader passes over
-each result of a search of the drop (§9.7) that shares fewer bits than that
-with the target hash, and counts only a version that checks as signed by the
-node the drop names (§11.5) and is shaped as above. The newest is the one
+Each version is made a drop matching at least as many bits as a search returns
+(§6), so that a search of the drop (§9.7) finds it. A reader counts only a
+version among the results that checks as signed by the node the drop names
+(§11.5) and is shaped as above. The newest is the one
 numbered highest, and of two numbered as high, the one whose drop's id
 comes first. Only the node signs a version, so no one else can make one
 newer, and no reader needs the versions it replaces: the node blocks them
@@ -2221,13 +2232,14 @@ Content-Type: application/json
 `fields` is every detail the node is to say, as a version gives them. The
 node reads the newest version as a reader does, makes the next, saying
 `fields`, signs it with its own key, and makes it a drop at `node:{id}`, as
-making a signed drop does (§11.5), matching at least 16 bits, with its nonce
-searched for no longer than that takes (§9.6). It then blocks every version
-it read, since the new one replaces them. It answers `201 Created`, with no
-`Location`, since `/config`'s port serves nothing beneath `/data`:
+making a signed drop does (§11.5), matching at least as many bits as a search
+returns (§6), with its nonce searched for no longer than that takes (§9.6). It
+then blocks every version it read, since the new one replaces them. It answers
+`201 Created`, with no `Location`, since `/config`'s port serves nothing
+beneath `/data`:
 
 ```json
-{"id": "sha256/…", "target": "<target hash>", "matching_bits": 16,
+{"id": "sha256/…", "target": "<target hash>", "matching_bits": 24,
  "signer": "sha256/…", "version": 3}
 ```
 

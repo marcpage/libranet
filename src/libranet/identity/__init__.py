@@ -42,7 +42,6 @@ from libranet.identity.keys import (
 )
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.node_metadata import (
-    MIN_NODE_METADATA_BITS,
     HeldNodeMetadata,
     MetadataVersion,
     NodeMetadata,
@@ -67,7 +66,6 @@ from libranet.identity.signatures import (
 )
 from libranet.identity.trust import (
     ENTRIES_FIELD,
-    MIN_TRUST_LIST_BITS,
     HeldTrustList,
     TrustLimits,
     TrustList,
@@ -97,8 +95,6 @@ __all__ = [
     "MAX_PUBLIC_KEY_BYTES",
     "MAX_TRACKED_SIGNERS",
     "MAX_USERNAME_CHARACTERS",
-    "MIN_NODE_METADATA_BITS",
-    "MIN_TRUST_LIST_BITS",
     "REQUEST_COMPONENTS",
     "RESPONSE_COMPONENTS",
     "SIGNATURE_HEADER",

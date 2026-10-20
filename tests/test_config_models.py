@@ -103,6 +103,28 @@ def test_a_drop_may_be_searched_for_a_minute_and_to_26_bits_by_default() -> None
             NetworkConfig(drop_max_minimum_bits=wrong)
 
 
+def test_a_search_returns_what_shares_24_bits_by_default() -> None:
+    assert StorageConfig().search_min_bits == 24
+    assert StorageConfig(search_min_bits=0).search_min_bits == 0
+    assert StorageConfig(search_min_bits=256).search_min_bits == 256
+
+    for wrong in (-1, 257):
+        with raises(ValidationError, match="search_min_bits"):
+            StorageConfig(search_min_bits=wrong)
+
+
+def test_a_search_needs_no_more_bits_than_a_drop_may_ask_for() -> None:
+    def searching(bits: int) -> LibranetConfig:
+        return LibranetConfig.model_validate(
+            {"network": {"drop_max_minimum_bits": 20}, "storage": {"search_min_bits": bits}}
+        )
+
+    with raises(ValidationError, match="search_min_bits"):
+        searching(21)
+
+    assert searching(20).storage.search_min_bits == 20
+
+
 def test_a_peer_is_given_up_on_after_five_failures_for_a_day() -> None:
     stats = StatsConfig()
 
@@ -433,15 +455,6 @@ class TestPeerPolicy:
 
         with raises(ValidationError, match="search_passes"):
             PeerConfig(search_passes=1)
-
-    def test_content_pushed_for_a_search_shares_16_bits_by_default(self) -> None:
-        assert PeerConfig().search_push_min_bits == 16
-        assert PeerConfig(search_push_min_bits=0).search_push_min_bits == 0
-        assert PeerConfig(search_push_min_bits=256).search_push_min_bits == 256
-
-        for bits in (-1, 257):
-            with raises(ValidationError, match="search_push_min_bits"):
-                PeerConfig(search_push_min_bits=bits)
 
     def test_eight_searches_pushes_and_pipelined_requests_at_once_by_default(self) -> None:
         settings = ("search_workers", "broadcast_workers", "push_workers", "pipeline_depth")

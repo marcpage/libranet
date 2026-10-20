@@ -12,7 +12,7 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
 from libranet.identity.people import NewIdentity, PersonKey
-from libranet.identity.trust import MIN_TRUST_LIST_BITS, HeldTrustList, TrustList, TrustVersion
+from libranet.identity.trust import HeldTrustList, TrustList, TrustVersion
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.protocol.search import LocalSearch, SearchCache
@@ -22,6 +22,8 @@ from libranet.webserver.trust_lists import TrustLists
 BOB = ContentId.for_data(b"Bob's public key", "sha256")
 DAVE = ContentId.for_data(b"Dave's public key", "sha256")
 HASH_BITS = 256
+# The fewest bits the search returns, fewer than a node's, to be quick to match.
+MINIMUM_BITS = 16
 SIGNED_VERSIONS_LOGGER = "libranet.webserver.signed_versions"
 
 
@@ -65,7 +67,9 @@ def truth(storage: StorageConfig, alice: PersonKey) -> CasStore:
 @fixture
 def lists(storage: StorageConfig, truth: CasStore, recorder: Recorder) -> TrustLists:
     search = SearchHandler(
-        LocalSearch(truth, storage.search_max_results), SearchCache.of(storage), recorder
+        LocalSearch(truth, storage.search_max_results, min_bits=MINIMUM_BITS),
+        SearchCache.of(storage),
+        recorder,
     )
     return TrustLists(search, truth)
 
@@ -79,7 +83,7 @@ def placed(
     truth: CasStore,
     owner: PersonKey,
     data: bytes,
-    minimum_bits: int = MIN_TRUST_LIST_BITS,
+    minimum_bits: int = MINIMUM_BITS,
 ) -> ContentId:
     """``data`` stored in ``truth`` as a drop at ``owner``'s list, matching ``minimum_bits``."""
     drop = TrustList.drop_target(owner.person_id).placed(data, 0, minimum_bits=minimum_bits)
@@ -136,7 +140,7 @@ def test_versions_found_and_not_held_are_named(
     storage: StorageConfig, lists: TrustLists, truth: CasStore, alice: PersonKey
 ) -> None:
     placed(truth, alice, signed(alice, TrustList({BOB: True}, 1).value()))
-    elsewhere = heard_of(storage, alice, MIN_TRUST_LIST_BITS)
+    elsewhere = heard_of(storage, alice, MINIMUM_BITS)
 
     held = lists.read(alice.person_id)
 
@@ -147,7 +151,7 @@ def test_versions_found_and_not_held_are_named(
 def test_a_result_sharing_too_few_bits_is_passed_over(
     storage: StorageConfig, lists: TrustLists, alice: PersonKey
 ) -> None:
-    heard_of(storage, alice, MIN_TRUST_LIST_BITS - 1)
+    heard_of(storage, alice, MINIMUM_BITS - 1)
 
     assert lists.read(alice.person_id) == HeldTrustList(alice.person_id)
 

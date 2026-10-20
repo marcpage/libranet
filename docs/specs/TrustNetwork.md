@@ -73,7 +73,9 @@ naming the list's own owner never counts (§4.1).
 A trust list is a signed bundle whose `contents` is a version of the list,
 signed by its owner, and made a drop at the target string `trust:{id}`,
 the owner's id after `trust:`, such as `trust:sha256/0a1b…`. Each version
-is placed matching at least 16 leading bits of the target hash.
+is placed matching at least as many leading bits of the target hash as a
+node's search returns ([HTTP API §6](HttpApi.md#6-content-search)), 24 by
+default, so that a search of the drop finds it.
 
 A list is **public**, distrust included. It is read by others for their
 scores to reach through it (§4), so it is never encrypted, and anyone may
@@ -91,9 +93,10 @@ operator changes it (HTTP API §11.7).
 A reader finds the newest version of the list of an identity `X` this way:
 
 - **Search the drop** `trust:X`
-  ([HTTP API §9.7](HttpApi.md#97-searching-a-drop-by-its-target)), and
-  pass over each result that shares fewer than 16 leading bits with the
-  target hash, which is nearest the target but placed for something else.
+  ([HTTP API §9.7](HttpApi.md#97-searching-a-drop-by-its-target)). The node
+  leaves out what shares too few leading bits with the target hash, which is
+  nearest the target but placed for something else
+  ([HTTP API §6](HttpApi.md#6-content-search)).
 - **Count only what is `X`'s.** Check each result as signed content
   ([HTTP API §11.5](HttpApi.md#115-signing-as-a-person)), and count it only
   if its `signer` is `X` and its `contents` is a version shaped as §3.1
@@ -121,8 +124,8 @@ while a version found at the drop is not held yet, since it may be newer
 than the newest read, and one placed over the older would be numbered
 under it.
 
-A writer places the new version matching at least 16 leading bits of the
-target hash (§3.2), and blocks every version it read, since the new one
+A writer places the new version matching at least as many leading bits of
+the target hash as a search returns (§3.2), and blocks every version it read, since the new one
 replaces them all (§3.3).
 
 ## 4. Scores

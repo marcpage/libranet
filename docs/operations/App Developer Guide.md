@@ -643,7 +643,7 @@ const response = await fetch("/data/drop", {
     target: "user:alice",
     text: "hello",
     seconds: 5,
-    minimum_bits: 16,
+    minimum_bits: 24,
   }),
 });
 const { id, target, matching_bits } = await response.json();
@@ -656,7 +656,9 @@ const { id, target, matching_bits } = await response.json();
   drop's id near the target hash. It searches for all of it.
 - **`minimum_bits`**, 0 if left out, is how many leading bits the drop's id
   must share with the target hash. The search goes on past `seconds` until
-  it does. Each bit more doubles the search, on average.
+  it does. Each bit more doubles the search, on average. A node's search
+  finds only what shares 24 bits or more, by default, so ask for at least
+  as many.
 - **`encrypt`**, if given, has the content encrypted first, for a person or
   by a username and password (§6.15).
 
@@ -672,7 +674,9 @@ const { target, results } = await response.json();
 The node hashes the string, and answers with the `target` hash and the
 `results` a search of it gives (§6.1), what lies nearest the target hash
 first: the more bits a drop matches, the nearer the top it is, however much
-else is placed there. A page need not hash anything. Unlike
+else is placed there. What shares fewer bits than the node's search returns,
+24 by default, is left out, as placed for something else. A page need not
+hash anything. Unlike
 `/data/search`, it looks at what the node holds every time, so a drop just
 made is found at once. Like it, it starts the node asking its peers, so a
 drop made on another node may show up when you search again a few seconds
@@ -704,7 +708,7 @@ const response = await fetch("/data/users", {
     fallback_password,
     key_bits: 3072,
     seconds: 10,
-    minimum_bits: 16,
+    minimum_bits: 24,
   }),
 });
 const { id, username, created, fallback, drop, target, matching_bits } =
@@ -777,7 +781,7 @@ const response = await fetch("/data/fallback", {
     password: fallback_password,
     fallback_password: new_fallback_password,
     seconds: 10,
-    minimum_bits: 16,
+    minimum_bits: 24,
   }),
 });
 const { id, fallback, fallback_for } = await response.json();
@@ -915,7 +919,7 @@ const response = await fetch("/data/signed", {
     target: `user:${id}`,
     text: JSON.stringify({ version: 1 }),
     seconds: 10,
-    minimum_bits: 16,
+    minimum_bits: 24,
   }),
 });
 const { id: drop, target, matching_bits, signer } = await response.json();
@@ -991,10 +995,8 @@ in person's. The node places the first version as it makes the identity
 
 To read what someone says, and follow the same rules as other pages do:
 
-- **Search the drop** `user:{id}` (§6.9). Read each result that shares at
-  least 16 leading bits with the `target` hash through
-  `GET /data/signed/{id}`, and pass over the rest, which are nearest the
-  target but placed for something else.
+- **Search the drop** `user:{id}` (§6.9), and read each result through
+  `GET /data/signed/{id}`.
 - **Pass over what is not theirs.** Count only content that checks, whose
   `signer` is the person, and whose `contents` is shaped as above, but for
   a version their fallback signed saying they are compromised.
@@ -1018,7 +1020,7 @@ To read what someone says, and follow the same rules as other pages do:
   fallback one saying they are compromised, so no one else can make one
   newer.
 - **Write a new version over the newest.** Place it with
-  `POST /data/signed`, at the person's drop, matching at least 16 bits,
+  `POST /data/signed`, at the person's drop, matching at least 24 bits,
   numbered one more than the newest and naming it in `versions`, and naming
   the fallback the session gives. Hold off while a version found there is
   not held yet, since it may be newer than the newest read, and once the
@@ -1048,9 +1050,9 @@ username and password. Add `encrypt` to what `POST /data/drop` (§6.9) or
 `POST /data/signed` (§6.13) is given:
 
 ```js
-const forBob = { target: `notes:${bob}`, text, seconds: 10, minimum_bits: 16,
+const forBob = { target: `notes:${bob}`, text, seconds: 10, minimum_bits: 24,
                  encrypt: { for: bob } };
-const byPassword = { target: "my notes", text, seconds: 10, minimum_bits: 16,
+const byPassword = { target: "my notes", text, seconds: 10, minimum_bits: 24,
                      encrypt: { username: "alice", password } };
 ```
 
@@ -1150,14 +1152,13 @@ is:
 - There is no `from`: whoever signed a copy sent it.
 
 **Send** a copy for each reader with `POST /data/signed`, given `encrypt:
-{for: reader}`, at their drop for the hour it is sent, matching at least 16
+{for: reader}`, at their drop for the hour it is sent, matching at least 24
 bits, and one for yourself at `mail sent:`. Mail a compromised reader at
 their fallback instead, and at its fallback while that is compromised too
 (§6.14), and say so before sending.
 
 **Read** a period by searching each of its hours (§6.9). Open each result
-that shares at least 16 bits with the `target` hash with
-`GET /data/encrypted/{id}`, and pass over anything that does not open, is
+with `GET /data/encrypted/{id}`, and pass over anything that does not open, is
 not signed, or is not shaped as above with `for` naming whoever is signed
 in. A copy at `mail sent:` counts only if you signed it. Ask again later for
 what is not held yet. Show a message from someone compromised with a
@@ -1226,9 +1227,9 @@ neither trusts nor distrusts it. The node reads the newest version of the
 list, makes the next with the change, has the person sign it, and places
 it. It answers `201 Created`, as a signed drop is answered (§6.13), with the
 new version's number in `version`. There is no `seconds` or `minimum_bits`
-to give: the node places each version matching 16 bits, and blocks the
-versions it replaces (§6.11), so that they do not crowd the newest out of a
-search. A change that changes nothing, such as trusting someone already
+to give: the node places each version matching as many bits as its search
+returns, and blocks the versions it replaces (§6.11), so that they do not
+crowd the newest out of a search. A change that changes nothing, such as trusting someone already
 trusted, places nothing, and is `204`.
 Make one change per request. The node makes one person's changes one at a
 time, each over the one before, so two pages changing the list at once lose
@@ -1321,10 +1322,8 @@ Unlike a person's, it says nothing of when the node's id was made, and
 names no fallback, since a node has neither. To read what a node says, and
 follow the same rules as other pages do:
 
-- **Search the drop** `node:{id}` (§6.9). Read each result that shares at
-  least 16 leading bits with the `target` hash through
-  `GET /data/signed/{id}` (§6.13), and pass over the rest, which are nearest
-  the target but placed for something else.
+- **Search the drop** `node:{id}` (§6.9), and read each result through
+  `GET /data/signed/{id}` (§6.13).
 - **Pass over what is not the node's.** Count only content that checks,
   whose `signer` is the node, and whose `contents` is shaped as above. What
   `versions` names need not be read: a name there that is no content id

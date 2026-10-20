@@ -16,7 +16,7 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
 from libranet.identity.node_identity import NodeIdentity
-from libranet.identity.node_metadata import MIN_NODE_METADATA_BITS, NodeMetadata
+from libranet.identity.node_metadata import NodeMetadata
 from libranet.identity.people import NewIdentity
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
@@ -35,6 +35,8 @@ from tests.helpers import new_identity, problem_type
 MAX_BYTES = 64 * 1024
 MAX_SECONDS = 1.0
 MAX_MINIMUM_BITS = 20
+# The fewest bits the search returns, fewer than a node's, to be quick to match.
+MINIMUM_BITS = 16
 RETRY_AFTER_SECONDS = 3
 ATTIC = {"name": "Attic", "city": "Springfield"}
 SIGNED_VERSIONS_LOGGER = "libranet.webserver.signed_versions"
@@ -89,7 +91,9 @@ def own_metadata(
     Each drop is stored in an object no larger than ``max_object_bytes``.
     """
     search = SearchHandler(
-        LocalSearch(truth, storage.search_max_results), SearchCache.of(storage), recorder
+        LocalSearch(truth, storage.search_max_results, min_bits=MINIMUM_BITS),
+        SearchCache.of(storage),
+        recorder,
     )
     drops = DropHandler(uploads, max_object_bytes, MAX_SECONDS, MAX_MINIMUM_BITS)
     return OwnMetadata.of(
@@ -147,7 +151,7 @@ def stored(truth: CasStore, uploads: OwnUploads, response: Response) -> ContentI
 def held_version(truth: CasStore, node: NodeIdentity, said: NodeMetadata) -> ContentId:
     """``said``, signed by ``node``, stored in ``truth`` as a drop at its metadata's."""
     drop = NodeMetadata.drop_target(node.node_id).placed(
-        node.signed(dumps(said.value())).encoded(), 0, minimum_bits=MIN_NODE_METADATA_BITS
+        node.signed(dumps(said.value())).encoded(), 0, minimum_bits=MINIMUM_BITS
     )
     content_id = ContentId.for_data(drop.data, "sha256")
     truth.write(content_id, drop.data)
@@ -190,7 +194,7 @@ def test_a_change_places_the_first_version_signed_by_the_node(
         "signer": str(node.node_id),
         "version": 1,
     }
-    assert answer["matching_bits"] >= MIN_NODE_METADATA_BITS
+    assert answer["matching_bits"] >= MINIMUM_BITS
     # This port serves nothing beneath /data for one to name.
     assert "Location" not in response.headers
     assert version_in(uploads, response, node) == NodeMetadata(ATTIC, 1)
@@ -321,7 +325,7 @@ def test_a_version_someone_else_signed_is_passed_over_at_debug(
     forged = NodeMetadata.drop_target(node.node_id).placed(
         impostor.signed(dumps(NodeMetadata({"name": "Forged"}, 9).value())).encoded(),
         0,
-        minimum_bits=MIN_NODE_METADATA_BITS,
+        minimum_bits=MINIMUM_BITS,
     )
     forged_id = ContentId.for_data(forged.data, "sha256")
     truth.write(forged_id, forged.data)
@@ -341,7 +345,7 @@ def test_what_the_node_signed_that_is_no_version_is_passed_over_at_debug(
     drop = NodeMetadata.drop_target(node.node_id).placed(
         node.signed(dumps({"entries": {}, "version": 1})).encoded(),
         0,
-        minimum_bits=MIN_NODE_METADATA_BITS,
+        minimum_bits=MINIMUM_BITS,
     )
     truth.write(ContentId.for_data(drop.data, "sha256"), drop.data)
 
@@ -362,7 +366,7 @@ def test_a_persons_signature_is_checked_as_any_other_and_passed_over(
     drop = NodeMetadata.drop_target(node.node_id).placed(
         person.signed(dumps(NodeMetadata({"name": "A person's"}, 1).value())).encoded(),
         0,
-        minimum_bits=MIN_NODE_METADATA_BITS,
+        minimum_bits=MINIMUM_BITS,
     )
     truth.write(ContentId.for_data(drop.data, "sha256"), drop.data)
 
@@ -472,7 +476,9 @@ def test_a_negative_retry_after_is_refused(
     recorder: Recorder,
 ) -> None:
     search = SearchHandler(
-        LocalSearch(truth, storage.search_max_results), SearchCache.of(storage), recorder
+        LocalSearch(truth, storage.search_max_results, min_bits=MINIMUM_BITS),
+        SearchCache.of(storage),
+        recorder,
     )
 
     with raises(ValueError, match="retry_after_seconds"):

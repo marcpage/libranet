@@ -206,9 +206,8 @@ const DEFAULT_RETRY_SECONDS = 5;
 const MAX_WAITS = 1;
 
 // Where a node keeps what it says of itself: its id after this, at a drop
-// whose versions each match at least as many bits (App Developer Guide 6.18).
+// (App Developer Guide 6.18).
 const NODE_METADATA_PREFIX = "node:";
-const METADATA_MINIMUM_BITS = 16;
 
 // The details a node is offered, in the order they are shown; any other
 // follows them. A node is shown by its name.
@@ -223,9 +222,6 @@ const DETAILS_AT_ONCE = 8;
 
 // A node's id: the only hash the node knows, in lower-case hex (HttpApi 5).
 const CONTENT_ID = /^sha256\/[0-9a-f]{64}$/;
-
-// Where the hex of a hash begins in a content id, after "sha256/".
-const HASH_START = "sha256/".length;
 
 // What marks each node's trust (#322), by the scores of whoever is signed in
 // (HttpApi 11.7): a score above 0, of 0, and below 0; and where there are no
@@ -361,23 +357,6 @@ function plural(count, one, many) {
 function signerOf(headers) {
   const match = /;keyid="([^"]+)"/.exec(headers.get("Signature-Input") || "");
   return match ? match[1] : null;
-}
-
-// How many leading bits two hashes in hex share.
-function matchingBits(hex, other) {
-  let bits = 0;
-
-  for (let i = 0; i < hex.length && i < other.length; i += 1) {
-    const differ = Number.parseInt(hex[i], 16) ^ Number.parseInt(other[i], 16);
-
-    if (differ !== 0) {
-      return bits + Math.clz32(differ) - 28;
-    }
-
-    bits += 4;
-  }
-
-  return bits;
 }
 
 // Run `work` over `items`, no more than `limit` at once.
@@ -1238,11 +1217,10 @@ function newestOf(versions) {
   );
 }
 
-// The ids a search of the drop `target` finds (HttpApi 9.7) that share at
-// least `bits` leading bits with its hash, as each version placed there does.
-// Whatever else is nearest is something else, and is not read. `what` names
-// what is searched for, should the search fail.
-async function dropResults(target, bits, what) {
+// The ids a search of the drop `target` finds (HttpApi 9.7). The node finds
+// only what shares enough leading bits with its hash to have been placed
+// there. `what` names what is searched for, should the search fail.
+async function dropResults(target, what) {
   const search = await call("GET", dropPath(target));
   const answered =
     search.ok &&
@@ -1254,10 +1232,7 @@ async function dropResults(target, bits, what) {
     throw new Error(`${what} could not be searched for: ${refusal(search)}`);
   }
 
-  const hash = search.value.target;
-  return search.value.results.filter(
-    (id) => CONTENT_ID.test(id) && matchingBits(id.slice(HASH_START), hash) >= bits,
-  );
+  return search.value.results.filter((id) => CONTENT_ID.test(id));
 }
 
 // What `nodeId` says of itself (App Developer Guide 6.18): the fields of the
@@ -1265,7 +1240,7 @@ async function dropResults(target, bits, what) {
 // found there are not held yet. The node blocks the versions the newest
 // replaces, so there is no history to read back.
 async function readMetadata(nodeId) {
-  const ids = await dropResults(NODE_METADATA_PREFIX + nodeId, METADATA_MINIMUM_BITS, `What ${nodeId} says`);
+  const ids = await dropResults(NODE_METADATA_PREFIX + nodeId, `What ${nodeId} says`);
   const results = await Promise.all(ids.map(checked));
   const versions = [];
   let missing = 0;

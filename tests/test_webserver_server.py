@@ -43,7 +43,7 @@ from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.people import PersonKey
 from libranet.identity.signatures import MessageSigner, MessageVerifier
-from libranet.identity.trust import MIN_TRUST_LIST_BITS, TrustList
+from libranet.identity.trust import TrustList
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.messaging.queues import ModuleQueues
@@ -85,6 +85,17 @@ SERVER_IDENTITY = NodeIdentity.from_private_key(generate_private_key(), "sha256"
 ANOTHER_NODE = ContentId.for_data(b"another node's public key", "sha256")
 SERVER_NODE = NodeDescription(SERVER_IDENTITY.node_id, NetworkConfig())
 FILM = b"0123456789"
+# The fewest bits a search returns, fewer than a node's, so that what the
+# node places for itself, as a trust list's version, is quick to match.
+MINIMUM_BITS = 16
+
+
+@fixture
+def storage(tmp_path: Path) -> StorageConfig:
+    """Storage beneath the test's temp directory, searching for :data:`MINIMUM_BITS`."""
+    return StorageConfig(
+        data_dir=tmp_path / "data", cache_dir=tmp_path / "cache", search_min_bits=MINIMUM_BITS
+    )
 
 
 @fixture
@@ -479,7 +490,7 @@ def test_search_serves_a_fresh_cache_file(
 ) -> None:
     cache_file = storage.search_cache_dir / "abcd" / "abcdef.json"
     cache_file.parent.mkdir(parents=True)
-    enriched = f"sha256/{'ab' * 32}"
+    enriched = f"sha256/abcdef{'ab' * 29}"
     cache_file.write_bytes(f'{{"results":["{enriched}"]}}'.encode())
 
     response, body = _get(connection, "/data/search/abcdef")
@@ -489,16 +500,34 @@ def test_search_serves_a_fresh_cache_file(
     assert len(_published(queues)) == 1
 
 
-def test_search_answers_with_what_is_held_nearest_even_sharing_no_bit(
+def test_search_leaves_out_what_a_cache_file_names_sharing_too_few_bits(
+    connection: HTTPConnection, storage: StorageConfig
+) -> None:
+    cache_file = storage.search_cache_dir / "abcd" / "abcdef.json"
+    cache_file.parent.mkdir(parents=True)
+    # Sharing all 16 bits a search returns, and 12.
+    near, far = f"sha256/abcd{'0' * 60}", f"sha256/abc0{'0' * 60}"
+    cache_file.write_bytes(dumps({"results": [near, far]}).encode())
+
+    response, body = _get(connection, "/data/search/abcdef")
+
+    assert response.status == 200
+    assert loads(body) == {"results": [near]}
+
+
+def test_search_answers_with_nothing_held_sharing_too_few_bits(
     connection: HTTPConnection,
 ) -> None:
     # The opposite top bit to the content's first digit, so they share none.
     other = "0" if int(CONTENT_ID.hash[0], 16) >= 8 else "f"
 
     response, body = _get(connection, f"/data/search/{other}")
+    matched, matched_body = _get(connection, f"/data/search/{CONTENT_ID.hash[:4]}")
 
     assert response.status == 200
-    assert loads(body) == {"results": [str(CONTENT_ID)]}
+    assert loads(body) == {"results": []}
+    assert matched.status == 200
+    assert loads(matched_body) == {"results": [str(CONTENT_ID)]}
 
 
 def test_invalid_search_prefix_is_400(connection: HTTPConnection, queues: ModuleQueues) -> None:
@@ -524,7 +553,7 @@ def test_a_drop_is_searched_by_its_target_string(
 
 
 def test_a_drop_stored_since_its_search_was_cached_is_found_at_once(
-    connection: HTTPConnection, storage: StorageConfig
+    connection: HTTPConnection, storage: StorageConfig, store: CasStore
 ) -> None:
     # A cached answer for the target, listing only what the node heard of.
     target = DropTarget.of("user directory")
@@ -534,12 +563,15 @@ def test_a_drop_stored_since_its_search_was_cached_is_found_at_once(
     cache_file.write_bytes(dumps({"results": [heard_of]}).encode())
 
     cached, cached_body = _get(connection, f"/data/search/{target.hex}")
+    drop = target.placed(b"a directory", 0, minimum_bits=MINIMUM_BITS)
+    dropped = ContentId.for_data(drop.data, "sha256")
+    store.write(dropped, drop.data)
     response, body = _get(connection, f"/data/drop/{quote('user directory', safe='')}")
 
     assert cached.status == 200
     assert loads(cached_body)["results"] == [heard_of]
     assert response.status == 200
-    assert set(loads(body)["results"]) == {heard_of, str(CONTENT_ID)}
+    assert set(loads(body)["results"]) == {heard_of, str(dropped)}
 
 
 def test_a_drop_target_that_is_not_utf_8_is_400(
@@ -1865,8 +1897,9 @@ def local_server(
                 local_folders=LocalFolders({"Movies": tmp_path / "Movies"}),
                 node=NodeDescription(
                     SERVER_IDENTITY.node_id,
-                    # As many bits as a trust list's version matches, and no more.
-                    NetworkConfig(drop_max_seconds=1.0, drop_max_minimum_bits=MIN_TRUST_LIST_BITS),
+                    # As many bits as a search returns, and a trust list's
+                    # version matches, and no more.
+                    NetworkConfig(drop_max_seconds=1.0, drop_max_minimum_bits=MINIMUM_BITS),
                 ),
             ),
             getLogger("test.webserver"),
@@ -2644,10 +2677,12 @@ def test_a_search_leaves_blocked_content_out_even_when_cached(
     assert str(CONTENT_ID) not in loads(scan_body)["results"]
 
 
-# Making Alice's identity at the smallest key size, with no search.
+# Making Alice's identity at the smallest key size, with no search past what
+# a search here finds.
 MAKING_ALICE = (
     b'{"username": "Alice", "password": "correct horse", '
-    b'"fallback_password": "battery staple", "key_bits": 2048, "seconds": 0}'
+    b'"fallback_password": "battery staple", "key_bits": 2048, "seconds": 0, '
+    + f'"minimum_bits": {MINIMUM_BITS}}}'.encode()
 )
 
 # Where a request put to a router directly says it is from: the /config page.

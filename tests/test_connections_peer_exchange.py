@@ -77,7 +77,11 @@ class FixturePeer:
 
     def __init__(self, root: Path, identity: NodeIdentity | None = None) -> None:
         self.identity = identity or new_identity()
-        self.storage = StorageConfig(data_dir=root / "data", cache_dir=root / "cache")
+        # Answering a search with whatever it holds nearest, however far, so
+        # that every peer asked answers something.
+        self.storage = StorageConfig(
+            data_dir=root / "data", cache_dir=root / "cache", search_min_bits=0
+        )
         self.store = CasStore.source_of_truth(self.storage)
         self.queues = ModuleQueues(inbox=Queue(), outbox=Queue())
         self._seen: list[Message] = []
@@ -151,13 +155,16 @@ def config(tmp_path: Path) -> LibranetConfig:
     root = tmp_path / "client"
     return with_node_key(
         LibranetConfig(
-            storage=StorageConfig(data_dir=root / "data", cache_dir=root / "cache"),
+            storage=StorageConfig(
+                data_dir=root / "data",
+                cache_dir=root / "cache",
+                # What answering a search entry is tested against, whatever the default.
+                search_min_bits=16,
+            ),
             identity=IdentityConfig(key_dir=root / "keys"),
             peers=PeerConfig(
                 connect_timeout_seconds=TIMEOUT,
                 request_timeout_seconds=TIMEOUT,
-                # What answering a search entry is tested against, whatever the default.
-                search_push_min_bits=16,
             ),
         )
     )
@@ -1055,10 +1062,10 @@ def test_fewer_bits_set_push_content_matching_a_search_less_closely(
     peer: FixturePeer,
     queues: ModuleQueues,
 ) -> None:
-    peers = config.peers.model_copy(update={"search_push_min_bits": 0})
+    storage = config.storage.model_copy(update={"search_min_bits": 0})
     exchange = PeerExchange(
         identity,
-        config.model_copy(update={"peers": peers}),
+        config.model_copy(update={"storage": storage}),
         StubModule(ModuleName.CONNECTIONS, queues).publish,
         LOGGER,
     )
