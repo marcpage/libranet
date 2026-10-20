@@ -15,9 +15,9 @@ others out, but for Step 115, which has the node keep content offline.
 
 Every step below comes from an issue in the GitHub **Improve Movie Web
 App** milestone, and each step names its issues. Every issue in the
-milestone is either a step or accounted for in §4. Step 115 has no issue
-yet. The milestone is not a numbered phase: it changes one application,
-and can be built alongside any phase.
+milestone is either a step or accounted for in §4. The milestone is not
+a numbered phase: it changes one application, and can be built alongside
+any phase.
 
 ## 2. What It Adds
 
@@ -233,8 +233,10 @@ alone.
 
 ## Step 115 — Keeping Movies Offline
 
-**Issue:** none yet. **Depends on:** Phase 1 Steps 34, 38; Phase 4 Steps
-78, 79; Step 83.
+**Issue:** #380, which asks for an API keeping bundles in a zip file in a
+known place, for the movie application to keep a collection and the movie
+chosen for viewing offline, on a laptop brought on a plane. **Depends on:**
+Phase 1 Steps 34, 38; Phase 4 Steps 78, 79; Step 83.
 
 A person chooses movies of a collection to keep on their node, until a date
 they choose, so that they still play once the node is offline and its store
@@ -342,7 +344,7 @@ where it went.
 | #262 | Calling a playlist a collection | 86 |
 | #263 | A dark theme | 87 |
 | #264 | Full keyboard navigation | 88 |
-| — | Keeping movies to play offline | 115, no issue yet |
+| #380 | Offline viewing | 115 |
 
 ## 5. Suggested Build Order
 
