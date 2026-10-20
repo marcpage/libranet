@@ -63,7 +63,8 @@ A node on macOS with every default, after its first run, looks like this:
 │   ├── backup_jobs.json            backup jobs
 │   ├── backup_jobs/                each job's last bundle, kept expanded
 │   ├── connecting.json             which nodes to connect to
-│   └── store/                      each application's store
+│   ├── store/                      each application's store
+│   └── archives/                   content archives kept offline
 ├── Caches/libranet/                storage.cache_dir
 │   ├── lists/                      the lists stats derives (§4.1)
 │   └── search/                     cached search responses
@@ -128,8 +129,10 @@ something is written to it.
 ├── backup_jobs/
 │   └── {job id}                         a job's last bundle, kept expanded
 ├── connecting.json
-└── store/
-    └── {SHA-256 of a name}.json         an application's store
+├── store/
+│   └── {SHA-256 of a name}.json         an application's store
+└── archives/
+    └── {archive id}.zip                 a content archive kept offline
 ```
 
 | Path | Written by | Read by |
@@ -146,6 +149,7 @@ something is written to it.
 | `backup_jobs/` | Backup module | Backup module |
 | `connecting.json` | Web server | Web server |
 | `store/` | Web server | Web server |
+| `archives/` | Backup module (`/data/archives`, Step 115) | Every module that reads content |
 
 ### 3.1 The Source of Truth: `cas/data`
 
@@ -422,6 +426,28 @@ never connects to a node it distrusts, whatever the file says.
 Deleting it, with the node stopped, puts the node back to connecting to the
 nodes of unknown trust too.
 
+### 3.10 Kept Archives: `archives/`
+
+Content archives the node keeps for itself, so that content stays held, for
+playing offline say, once the store has evicted it (Step 115;
+`src/libranet/cas/archive_folder.py`). Each `*.zip` here is a content
+archive as §6.3 describes. Every process that reads content reads them after
+every other layer, in name order, and looks at the folder again whenever a
+lookup finds nothing in another layer, and before each prefix scan. So an
+archive written or removed while the node runs is read, or left out, with no
+restart, from the moment the store no longer answers for its content.
+
+A name starting with `.`, as a file being written here has (§8), is not
+read. An archive that cannot be opened, or that holds anything but objects,
+is logged as an error and left out, without stopping the node, and tried
+again once it has changed. An archive left out stays open, so that a read
+under way is not cut off, until its process stops.
+
+What an archive here holds, as any archive's, is never evicted, and not
+counted against the storage limits. Deleting a file here, even while the
+node runs, stops keeping what it holds; whatever the store still holds of it
+stays, and is evicted as any content is.
+
 ## 4. The Cache Directory
 
 ```text
@@ -560,12 +586,14 @@ that holds an object answers:
 1. `cas/data`, so nothing an archive holds can shadow verified content;
 2. each archive in `storage.archives`, in the order listed;
 3. each `*.zip` in the package's `archives/` directory, in name order;
-4. the shipped applications built in memory, when run from source.
+4. the shipped applications built in memory, when run from source;
+5. each archive the node keeps in `archives/` (§3.10), in name order.
 
 Archive content is never evicted, never counted against the storage limits,
-and never written to. An archive that cannot be opened, or that holds
-anything but objects, stops the node at startup with exit status 2. Exports
-(§7) write archives in this format.
+and never written to. An archive in `storage.archives` or the package that
+cannot be opened, or that holds anything but objects, stops the node at
+startup with exit status 2; one the node keeps is left out instead (§3.10).
+Exports (§7) write archives in this format.
 
 ## 7. Files Outside the Node's Directories
 

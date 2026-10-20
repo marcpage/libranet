@@ -502,7 +502,8 @@ class StorageConfig(_Section):
     # Zip files of CAS objects, each named `{algorithm}/{hash}`, read after
     # the source of truth and before those shipped with the package (Step
     # 34). Their content is never evicted, nor counted as content held. One
-    # that cannot be opened stops the node.
+    # that cannot be opened stops the node. Those the node keeps for itself
+    # are in `kept_archives_dir`, and read last.
     archives: tuple[Path, ...] = ()
 
     def use_report_seconds(self) -> float:
@@ -588,6 +589,11 @@ class StorageConfig(_Section):
     def application_stores_dir(self) -> Path:
         """Each application's store, a file each, owned by the web server (Phase 3 Step 70)."""
         return self.data_dir / "store"
+
+    @property
+    def kept_archives_dir(self) -> Path:
+        """Content archives the node keeps for itself, read as they come and go (Step 115)."""
+        return self.data_dir / "archives"
 
     @property
     def connecting_path(self) -> Path:

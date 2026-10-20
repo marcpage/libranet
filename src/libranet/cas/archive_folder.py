@@ -44,7 +44,7 @@ _HIDDEN_PREFIX: Final = "."
 _SETTLE_SECONDS: Final = 2.0
 
 
-class ArchiveFolder:
+class ArchiveFolder:  # pylint: disable=too-many-instance-attributes
     """The content archives in ``directory``, opened again whenever it changes.
 
     The archives are read from many threads at once, and the folder looked
