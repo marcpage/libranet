@@ -300,6 +300,34 @@ My calls, not yet reviewed:
 checked by hand on two nodes: kept on one from the other, played on it with
 the other stopped and its store evicted, before and after a restart.
 
+Live run, 2026-10-20, on two nodes, A and B, on one machine. A imported a
+15 MB film into an encrypted collection. On B, with an identity made there,
+a collection of the film was kept offline, through the API as the page
+calls it, and then from the page, in headless Chrome:
+
+- Every object it needed was written into B's own archive: 21, in 14.9 MB.
+  `GET /data/archives` named the bundle without its key, and so did the
+  record.
+- With A stopped, and everything the archive held deleted from B's store,
+  B served the film whole, and a range of it, from the archive, with no
+  restart.
+- Restarted, still without A, B signed the person in from the identity
+  block in the archive. The search of `movie offline:{id}` found the
+  version, which opened, and the film played.
+- On the page, **Kept offline** listed the collection with its date, and it
+  played, with nothing that changes it shown. **Keep offline** refused no
+  movie chosen and no day, and kept the movie chosen until the day chosen.
+  **Keep longer** moved the date, and **Stop keeping** removed the archive.
+- With its objects deleted from B's store, keeping a collection again waited
+  on the 17 B lacked, which were fetched from A at once, and was written.
+- An archive kept for four seconds was removed once they passed.
+
+Found and fixed in the run: an archive removed was still read from, and
+its space not freed, until the process that had it open restarted, since
+the folder was looked at again only when a lookup missed. Now every lookup
+that reaches the kept archives looks at the folder first, and an archive no
+longer there is closed at once; a read of it that comes after finds nothing.
+
 ---
 
 ## 4. Issues in the Milestone
