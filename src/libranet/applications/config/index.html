@@ -43,8 +43,36 @@
     font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   }
 
-  header, main, footer { max-width: 76rem; margin: 0 auto; padding: 0 1rem; }
+  header, .layout, footer { max-width: 76rem; margin: 0 auto; padding: 0 1rem; }
   header { padding-top: 1.5rem; }
+
+  /* The categories, down the left of the one shown, or above it on a narrow screen. */
+  .layout {
+    display: grid;
+    grid-template-columns: 12rem minmax(0, 1fr);
+    gap: 0 1.5rem;
+    align-items: start;
+  }
+
+  .categories { position: sticky; top: 0; padding-top: 1.25rem; }
+  .categories ul { list-style: none; margin: 0; padding: 0; }
+
+  .categories a {
+    display: block;
+    padding: 0.4rem 0.75rem;
+    border-radius: 6px;
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  .categories a:hover { background: var(--surface); }
+  .categories a[aria-current="page"] { background: var(--accent); color: var(--accent-text); }
+
+  @media (max-width: 48rem) {
+    .layout { grid-template-columns: minmax(0, 1fr); }
+    .categories { position: static; }
+    .categories ul { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+  }
   h1 { font-size: 1.5rem; margin: 0; }
   h2 { font-size: 1.15rem; margin: 0 0 0.35rem; }
   h3 { font-size: 1rem; margin: 0 0 0.5rem; }
@@ -194,13 +222,18 @@
   <p class="subtitle">Administration, served only to this machine.</p>
 </header>
 
+<div class="layout">
+<nav class="categories" aria-label="Categories">
+  <ul id="categories"></ul>
+</nav>
+
 <main>
   <noscript>
     <section><p>This page needs JavaScript. The endpoints it uses are listed at
     <a href="/config/api">/config/api</a>.</p></section>
   </noscript>
 
-  <section aria-labelledby="node-heading">
+  <section data-category="node" aria-labelledby="node-heading">
     <h2 id="node-heading">This node</h2>
     <p class="state" id="node-state">Loading…</p>
     <dl id="node-details" hidden>
@@ -228,7 +261,7 @@
     </form>
   </section>
 
-  <section aria-labelledby="connect-heading">
+  <section data-category="nodes" aria-labelledby="connect-heading">
     <h2 id="connect-heading">Other nodes</h2>
     <p class="hint">This node learns of other nodes from those it connects to, so reaching one
     node of a network is enough to join it. Give the address of a node to reach, and this node
@@ -249,7 +282,7 @@
     </form>
   </section>
 
-  <section aria-labelledby="trust-heading">
+  <section data-category="trust" aria-labelledby="trust-heading">
     <h2 id="trust-heading">Trust</h2>
     <p class="hint">This node keeps a list of the nodes it trusts, and those it distrusts. A
     person who trusts this node reaches through its list: their trust scores count the nodes it
@@ -307,7 +340,7 @@
     </form>
   </section>
 
-  <section aria-labelledby="applications-heading">
+  <section data-category="applications" aria-labelledby="applications-heading">
     <h2 id="applications-heading">Applications</h2>
     <p class="hint">Each serves a directory bundle as a website at <code>/{name}/</code>. The
     root application, named <code>/</code>, also answers every path no other one claims.</p>
@@ -350,7 +383,7 @@
     </form>
   </section>
 
-  <section aria-labelledby="users-heading">
+  <section data-category="users" aria-labelledby="users-heading">
     <h2 id="users-heading">Users</h2>
     <p class="hint">A person signs in to this node's applications with a username and password.
     Their identity is kept in the network, encrypted by both, so they can sign in with them on
@@ -399,7 +432,7 @@
     </form>
   </section>
 
-  <section aria-labelledby="builds-heading">
+  <section data-category="builds" aria-labelledby="builds-heading">
     <h2 id="builds-heading">Builds</h2>
     <p class="hint">Each makes a directory on this machine into a bundle, and records the
     bundle's content id beside the directory, in <code>{name}.bundle</code>. Building it again
@@ -444,7 +477,7 @@
     </form>
   </section>
 
-  <section aria-labelledby="exports-heading">
+  <section data-category="exports" aria-labelledby="exports-heading">
     <h2 id="exports-heading">Exports</h2>
     <p class="hint">Each writes a bundle, and everything needed to serve it, into a content
     archive. A node started with the archive among its <code>storage.archives</code> holds the
@@ -496,7 +529,7 @@
     </form>
   </section>
 
-  <section aria-labelledby="backups-heading">
+  <section data-category="backups" aria-labelledby="backups-heading">
     <h2 id="backups-heading">Backup jobs</h2>
     <p class="hint">Each keeps a directory on this machine backed up into the network as an
     encrypted bundle.</p>
@@ -537,7 +570,7 @@
     </form>
   </section>
 
-  <section aria-labelledby="restores-heading">
+  <section data-category="restores" aria-labelledby="restores-heading">
     <h2 id="restores-heading">Restores</h2>
     <p class="hint">Each rebuilds a backup bundle into a directory, fetching from peers whatever
     this node lacks, and gives up if none of that arrives for a long while; asking for the same
@@ -582,6 +615,7 @@
     </form>
   </section>
 </main>
+</div>
 
 <footer>
   <p>Scripts use the same endpoints as this page. <a href="/config/api">/config/api</a> lists
@@ -850,6 +884,63 @@ class ListView {
 function arrayOf(field) {
   return (value) => (value && Array.isArray(value[field]) ? value[field] : null);
 }
+
+// ---- Categories ----
+
+// Each section is a category, listed beside them, and only the one chosen
+// there is shown. The address names it, so a reload, or going back, shows it
+// again.
+const categories = [...document.querySelectorAll("main section[data-category]")];
+const categoryLinks = new Map();
+let shownCategory = null;
+
+for (const section of categories) {
+  const link = make("a", section.querySelector("h2").textContent);
+  const item = make("li");
+  link.href = `#${section.dataset.category}`;
+  item.append(link);
+  byId("categories").append(item);
+  categoryLinks.set(section, link);
+}
+
+// Shows the category `name` names, or the first if none is named so, and
+// hides the rest. Says whether that changed which is shown.
+function showCategory(name) {
+  const chosen = categories.find((section) => section.dataset.category === name) || categories[0];
+
+  if (chosen === shownCategory) {
+    return false;
+  }
+
+  for (const section of categories) {
+    const link = categoryLinks.get(section);
+    section.hidden = section !== chosen;
+
+    if (section === chosen) {
+      link.setAttribute("aria-current", "page");
+    } else {
+      link.removeAttribute("aria-current");
+    }
+  }
+
+  shownCategory = chosen;
+  return true;
+}
+
+// Shows the category that holds `element`, and names it in the address.
+function showCategoryOf(element) {
+  const name = element.closest("section[data-category]").dataset.category;
+  showCategory(name);
+  location.hash = name;
+}
+
+window.addEventListener("hashchange", () => {
+  if (showCategory(location.hash.slice(1))) {
+    window.scrollTo(0, 0);
+  }
+});
+
+showCategory(location.hash.slice(1));
 
 // ---- This node ----
 
@@ -1612,13 +1703,16 @@ function directoryLink(id) {
 
 const buildsMessage = byId("builds-message");
 
-// Puts `value` in each field named, and brings the last one into view, ready to type in.
-function fill(values, focus) {
+// Puts `value` in each field named, and shows the category that holds the
+// last one, with it in view, ready to type in, and `message` beneath its form.
+function fill(values, focus, message) {
   for (const [id, value] of Object.entries(values)) {
     byId(id).value = value;
   }
 
   const field = byId(focus);
+  showCategoryOf(field);
+  show(field.form.querySelector(".result"), message);
   field.focus();
   field.scrollIntoView({ block: "center" });
 }
@@ -1692,8 +1786,9 @@ function buildRow(build) {
 // The page is never told a build's password, so building a protected one again needs it anew.
 async function buildAgain(build) {
   if (build.protected) {
-    fill({ "build-directory": build.directory }, "build-password");
-    return [`Give the password to build ${build.directory} again.`, false];
+    const message = `Give the password to build ${build.directory} again.`;
+    fill({ "build-directory": build.directory }, "build-password", message);
+    return null;
   }
 
   const result = await call("POST", "/builds", { directory: build.directory });
@@ -1708,14 +1803,16 @@ async function buildAgain(build) {
 
 function prepareRegistration(build) {
   const name = lastSegment(build.directory).toLowerCase();
-  fill({ "application-bundle": build.bundle, "application-name": name }, "application-name");
-  return [`The registration form above now names the bundle built from ${build.directory}.`, false];
+  const values = { "application-bundle": build.bundle, "application-name": name };
+  fill(values, "application-name", `This form now names the bundle built from ${build.directory}.`);
+  return null;
 }
 
 function prepareExport(build) {
   const values = { "export-bundle": build.bundle, "export-archive": `${build.directory}.zip` };
-  fill(values, build.protected ? "export-password" : "export-archive");
-  return [`The export form below now names the bundle built from ${build.directory}.`, false];
+  const message = `This form now names the bundle built from ${build.directory}.`;
+  fill(values, build.protected ? "export-password" : "export-archive", message);
+  return null;
 }
 
 const builds = new ListView({
@@ -1884,11 +1981,9 @@ async function removeJob(job) {
 }
 
 function prepareRestore(job) {
-  const directory = byId("restore-directory");
-  byId("restore-bundle").value = job.bundle;
-  directory.focus();
-  directory.scrollIntoView({ block: "center" });
-  return [`The restore form below now names the latest backup of ${job.directory}.`, false];
+  const message = `This form now names the latest backup of ${job.directory}.`;
+  fill({ "restore-bundle": job.bundle }, "restore-directory", message);
+  return null;
 }
 
 const backups = new ListView({
