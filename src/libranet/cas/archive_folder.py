@@ -1,0 +1,192 @@
+"""The content archives a node keeps in a folder of its own, read as they come and go (Step 115).
+
+The node writes an archive into ``storage.kept_archives_dir`` to keep content
+offline, and removes it once it is no longer wanted, while every process
+reading content runs. So :class:`ArchiveFolder` looks at the folder again
+whenever :meth:`ArchiveFolder.refresh` is asked to, which costs one ``stat``
+when nothing changed: the folder's modification time changes as a file is
+added, renamed, or removed. A folder changed within the last
+:data:`_SETTLE_SECONDS` is listed again at the next look as well, since a
+file system keeping coarse times could change it twice within one tick.
+
+Each ``*.zip`` there is opened as a content archive (Step 34). One whose name
+starts with ``.``, as a file being written there does
+(:func:`~libranet.atomic_file.atomic_writer`), is not. One that cannot be
+opened, or that holds anything but objects, is logged as an error and left
+out, rather than stopping the node, since the node put it there itself; it is
+tried again once it has changed, as a file copied in by hand does while it is
+copied, and the folder is next looked at.
+
+An archive no longer there is left out of every lookup from then on, but
+closed only as the folder is, so that a read under way in another thread is
+not cut off. A file removed stays readable while it is open.
+"""
+
+from __future__ import annotations
+from logging import getLogger
+from pathlib import Path
+from threading import Lock
+from time import time
+from typing import Callable, Final
+
+from libranet.cas.algorithms import DEFAULT_REGISTRY, AlgorithmRegistry
+from libranet.cas.archive import ARCHIVE_SUFFIX, ArchiveSource
+from libranet.cas.errors import ArchiveError
+
+_LOGGER = getLogger(__name__)
+
+# What a file being written starts with, and so what is never read as an
+# archive.
+_HIDDEN_PREFIX: Final = "."
+
+# A folder changed this recently is listed again at the next look, as its
+# modification time may not show a second change within the same tick.
+_SETTLE_SECONDS: Final = 2.0
+
+
+class ArchiveFolder:
+    """The content archives in ``directory``, opened again whenever it changes.
+
+    The archives are read from many threads at once, and the folder looked
+    at again from any of them. ``clock`` says the time, in seconds since the
+    epoch, as file times are given. Close it, so that every archive it
+    opened is closed.
+    """
+
+    def __init__(
+        self,
+        directory: Path,
+        registry: AlgorithmRegistry = DEFAULT_REGISTRY,
+        *,
+        clock: Callable[[], float] = time,
+    ) -> None:
+        self._directory = directory
+        self._registry = registry
+        self._clock = clock
+        self._lock = Lock()
+        # The folder's modification time as last listed, and not since
+        # changed; None until it is, or while it may change unseen.
+        self._listed_ns: int | None = None
+        self._open: dict[str, ArchiveSource] = {}
+        # Each archive that could not be opened, by name, with the
+        # modification time and size it had then.
+        self._refused: dict[str, tuple[int, int]] = {}
+        self._retired: list[ArchiveSource] = []
+        self._archives: tuple[ArchiveSource, ...] = ()
+
+    @property
+    def directory(self) -> Path:
+        """Where the archives are kept."""
+        return self._directory
+
+    @property
+    def archives(self) -> tuple[ArchiveSource, ...]:
+        """The archives found there when the folder was last looked at, in name order."""
+        return self._archives
+
+    def refresh(self) -> bool:
+        """Look at the folder again, if it may have changed since it was last listed.
+
+        Returns:
+            Whether the archives read changed: one was added, or one left out.
+        """
+        try:
+            changed_ns: int | None = self._directory.stat().st_mtime_ns
+
+        except FileNotFoundError:
+            # Not logged: there is no folder until an archive is first kept.
+            changed_ns = None
+
+        except OSError as error:
+            _LOGGER.warning("Cannot look at the kept archives in %s: %s", self._directory, error)
+            return False
+
+        with self._lock:
+            if changed_ns is not None and changed_ns == self._listed_ns:
+                return False
+
+            settled = changed_ns is not None and self._clock() - changed_ns / 1e9 >= _SETTLE_SECONDS
+            names = self._names() if changed_ns is not None else set()
+
+            if names is None:
+                return False
+
+            self._listed_ns = changed_ns if settled else None
+            return self._open_only(names)
+
+    def close(self) -> None:
+        """Close every archive opened, those no longer there too."""
+        with self._lock:
+            for archive in (*self._open.values(), *self._retired):
+                archive.close()
+
+            self._open.clear()
+            self._retired.clear()
+            self._archives = ()
+
+    def _names(self) -> set[str] | None:
+        """The names of the archives in the folder; ``None`` if it cannot be listed."""
+        try:
+            return {
+                entry.name
+                for entry in self._directory.iterdir()
+                if entry.name.endswith(ARCHIVE_SUFFIX)
+                and not entry.name.startswith(_HIDDEN_PREFIX)
+                and entry.is_file()
+            }
+
+        except FileNotFoundError:
+            # Not logged: it was removed as it was looked at.
+            return set()
+
+        except OSError as error:
+            _LOGGER.warning("Cannot list the kept archives in %s: %s", self._directory, error)
+            return None
+
+    def _open_only(self, names: set[str]) -> bool:
+        """Open each archive named that is not open, and leave out each open one not named.
+
+        Returns:
+            Whether the archives read changed.
+        """
+        before = self._archives
+
+        for name in sorted(set(self._open) - names):
+            self._retired.append(self._open.pop(name))
+            _LOGGER.info("No longer reading the kept archive %s", name)
+
+        for name in set(self._refused) - names:
+            del self._refused[name]
+
+        for name in sorted(names - set(self._open)):
+            self._open_one(name)
+
+        self._archives = tuple(self._open[name] for name in sorted(self._open))
+        return self._archives != before
+
+    def _open_one(self, name: str) -> None:
+        """Open the archive ``name``, unless it was refused as it is now."""
+        path = self._directory / name
+
+        try:
+            found = path.stat()
+
+        except OSError as error:
+            _LOGGER.warning("Cannot look at the kept archive %s: %s", path, error)
+            return
+
+        stamp = (found.st_mtime_ns, found.st_size)
+
+        if self._refused.get(name) == stamp:
+            return  # Not logged: it was as it was refused.
+
+        try:
+            self._open[name] = ArchiveSource.open(path, self._registry)
+
+        except ArchiveError as error:
+            self._refused[name] = stamp
+            _LOGGER.error("Leaving out the kept archive %s: %s", name, error)
+            return
+
+        self._refused.pop(name, None)
+        _LOGGER.info("Reading the kept archive %s", name)
