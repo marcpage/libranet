@@ -722,6 +722,19 @@ def test_the_mail_page_keeps_mail_where_the_plan_names_it(mail_page: str) -> Non
     assert int(minimum_bits) <= network.drop_max_minimum_bits
 
 
+def test_the_mail_page_sends_each_copy_by_the_postage_chosen(mail_page: str) -> None:
+    [postage] = findall(r"const POSTAGE_BITS = \{ ([^}]*) \};", mail_page)
+    bits = dict(findall(r'"?([a-z][a-z ]*)"?: (\w+)', postage))
+    [options] = findall(r'<select id="postage">(.*?)</select>', mail_page, DOTALL)
+
+    # Bulk matches as many bits as any drop placed, and each choice after it 4 more.
+    assert bits == {"bulk": "DROP_MINIMUM_BITS", "first class": "28", "priority": "32"}
+    assert findall(r'<option value="([^"]*)"', options) == list(bits)
+    assert "minimum_bits: minimumBits," in mail_page
+    # Within the ceiling a node sets unless its operator lowers it.
+    assert int(bits["priority"]) <= NetworkConfig().drop_max_minimum_bits
+
+
 def test_the_mail_page_signs_each_copy_and_encrypts_it_for_its_reader(mail_page: str) -> None:
     # Every copy, and every version of what a person keeps, is placed signed.
     assert 'call("POST", "/data/signed", {' in mail_page

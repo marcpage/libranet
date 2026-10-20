@@ -1150,10 +1150,14 @@ Mail is kept by the hour, not the day. Each copy's `contents` is:
 - There is no `from`: whoever signed a copy sent it.
 
 **Send** a copy for each reader with `POST /data/signed`, given `encrypt:
-{for: reader}`, at their drop for the hour it is sent, matching at least 24
-bits, and one for yourself at `mail sent:`. Mail a compromised reader at
-their fallback instead, and at its fallback while that is compromised too
-(§6.14), and say so before sending.
+{for: reader}`, at their drop for the hour it is sent, matching at least the
+bits its postage asks for, and one for yourself at `mail sent:`, matching at
+least 24. The mail application offers three: bulk, 24 bits; first class,
+28; and priority, 32. The more bits a copy matches, the nearer the top of a
+search of the reader's drop it is, however much else is placed there, and
+each 4 bits more takes the node 16 times as long to place, on average.
+Mail a compromised reader at their fallback instead, and at its fallback
+while that is compromised too (§6.14), and say so before sending.
 
 **Read** a period by searching each of its hours (§6.9). Open each result
 with `GET /data/encrypted/{id}`, and pass over anything that does not open, is

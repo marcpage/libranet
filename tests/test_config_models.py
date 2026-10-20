@@ -90,9 +90,9 @@ def test_a_session_ends_after_a_day_unused_by_default_and_never_at_once() -> Non
             NetworkConfig(session_idle_seconds=wrong)
 
 
-def test_a_drop_may_be_searched_for_a_minute_and_to_26_bits_by_default() -> None:
+def test_a_drop_may_be_searched_for_a_minute_and_to_32_bits_by_default() -> None:
     assert NetworkConfig().drop_max_seconds == 60.0
-    assert NetworkConfig().drop_max_minimum_bits == 26
+    assert NetworkConfig().drop_max_minimum_bits == 32
     assert NetworkConfig(drop_max_minimum_bits=256).drop_max_minimum_bits == 256
 
     with raises(ValidationError):

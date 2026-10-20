@@ -48,11 +48,11 @@ network:
   # The most a page may ask this node to spend making a drop (HTTP API
   # §9.6): seconds searching for its nonce, and how many leading bits the
   # drop's hash must share with its target's however long that takes. Each
-  # bit more doubles the search, on average; 26 bits takes this node tens
-  # of seconds on one core. A request asking for more is refused. One search
-  # runs at a time, and the rest wait their turn.
+  # bit more doubles the search, on average; 32 bits, which mail sent by
+  # priority asks for, takes this node tens of minutes. A request asking for
+  # more is refused. One search runs at a time, and the rest wait their turn.
   drop_max_seconds: 60.0
-  drop_max_minimum_bits: 26
+  drop_max_minimum_bits: 32
 
   # Provisional: the largest body a page's request to make bundles may have
   # (HTTP API §12.3), 4 MiB. Files it gives, such as a film's poster, come as

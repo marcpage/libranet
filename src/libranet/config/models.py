@@ -198,7 +198,7 @@ class NetworkConfig(_Section):
     # Phase 4 Step 89). A request asking for more is refused. One search
     # runs at a time, holding a web server thread and a core.
     drop_max_seconds: float = Field(default=60.0, ge=0)
-    drop_max_minimum_bits: int = Field(default=26, ge=0, le=TARGET_BITS)
+    drop_max_minimum_bits: int = Field(default=32, ge=0, le=TARGET_BITS)
 
     # The largest body a page's request to make bundles may have (HttpApi
     # §12.3, §21, Phase 3 Step 72). A larger one is refused unread. Files a
