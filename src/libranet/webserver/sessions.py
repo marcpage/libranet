@@ -63,22 +63,29 @@ NO_ONE: Final = {
     "created": None,
     "fallback": None,
     "fallback_for": None,
+    "block": None,
 }
 
 
 @dataclass(frozen=True)
 class Session:
-    """Who a session is signed in as: ``username``, whose key pair is ``key``."""
+    """Who a session is signed in as: ``username``, whose key pair is ``key``.
+
+    ``block`` is the identity block the key pair was opened from, or was
+    placed in as the identity was made or its fallback took over.
+    """
 
     username: Username
     key: PersonKey
+    block: ContentId
 
     def value(self) -> dict[str, str | None]:
         """What says who is signed in: the person's id, username, when the id was made, and more.
 
         The more is the identity's fallback, or, signed in as a fallback, the
-        identity it takes over from, each ``None`` when not named, as HttpApi
-        §11.4 gives them.
+        identity it takes over from, each ``None`` when not named, and the
+        block it was opened from, which a page keeps beside content it keeps
+        offline, so that signing in still finds it (HttpApi §11.4).
         """
         return {
             "id": str(self.key.person_id),
@@ -86,6 +93,7 @@ class Session:
             "created": self.key.created_text,
             "fallback": _text(self.key.fallback),
             "fallback_for": _text(self.key.fallback_for),
+            "block": str(self.block),
         }
 
 

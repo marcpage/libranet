@@ -196,3 +196,94 @@ def test_closing_closes_every_archive(tmp_path: Path) -> None:
         pass
 
     assert all(file.closed for file in files)
+
+
+def test_an_archive_kept_answers_as_soon_as_it_is_written(tmp_path: Path) -> None:
+    storage = storage_for(tmp_path)
+
+    with LayeredSource.open(storage, tmp_path / "none") as content:
+        assert not content.exists(id_of(FIRST))
+        storage.kept_archives_dir.mkdir(parents=True)
+        write_archive(storage.kept_archives_dir / "kept.zip", {id_of(FIRST): FIRST})
+
+        assert content.exists(id_of(FIRST))
+        assert content.read(id_of(FIRST)) == FIRST
+        assert list(content.iter_prefix("sha256", id_of(FIRST).hash[:4])) == [id_of(FIRST)]
+
+
+def test_kept_archives_are_read_last(tmp_path: Path) -> None:
+    storage = storage_for(tmp_path, write_archive(tmp_path / "configured.zip", {}))
+    storage.kept_archives_dir.mkdir(parents=True)
+    write_archive(storage.kept_archives_dir / "b.zip", {})
+    write_archive(storage.kept_archives_dir / "a.zip", {})
+
+    with LayeredSource.open(storage, tmp_path / "none") as content:
+        assert [archive.name for archive in content.archives] == [
+            str(tmp_path / "configured.zip"),
+            "the applications shipped with the node, built from their source",
+            str(storage.kept_archives_dir / "a.zip"),
+            str(storage.kept_archives_dir / "b.zip"),
+        ]
+
+
+def test_the_store_answers_before_a_kept_archive(tmp_path: Path) -> None:
+    storage = storage_for(tmp_path)
+    storage.kept_archives_dir.mkdir(parents=True)
+    write_archive(storage.kept_archives_dir / "kept.zip", {id_of(SHARED): compress(SHARED)})
+    CasStore.source_of_truth(storage).write(id_of(SHARED), SHARED)
+
+    with LayeredSource.open(storage, tmp_path / "none") as content:
+        assert content.read(id_of(SHARED)) == SHARED
+
+
+def test_a_kept_archive_that_cannot_be_opened_is_left_out(tmp_path: Path) -> None:
+    storage = storage_for(tmp_path)
+    storage.kept_archives_dir.mkdir(parents=True)
+    write_archive(storage.kept_archives_dir / "good.zip", {id_of(FIRST): FIRST})
+    (storage.kept_archives_dir / "bad.zip").write_bytes(b"not an archive")
+
+    with LayeredSource.open(storage, tmp_path / "none") as content:
+        assert content.read(id_of(FIRST)) == FIRST
+        assert str(storage.kept_archives_dir / "bad.zip") not in [
+            archive.name for archive in content.archives
+        ]
+
+
+def test_a_kept_archive_removed_answers_no_more_from_the_next_lookup(tmp_path: Path) -> None:
+    storage = storage_for(tmp_path)
+    storage.kept_archives_dir.mkdir(parents=True)
+    kept = write_archive(storage.kept_archives_dir / "kept.zip", {id_of(FIRST): FIRST})
+
+    with LayeredSource.open(storage, tmp_path / "none") as content:
+        assert content.read(id_of(FIRST)) == FIRST
+        kept.unlink()
+
+        with raises(ContentNotFoundError):
+            content.read(id_of(FIRST))
+
+        assert not content.exists(id_of(FIRST))
+        assert list(content.iter_prefix("sha256", id_of(FIRST).hash[:4])) == []
+
+
+def test_closing_closes_the_kept_archives(tmp_path: Path) -> None:
+    storage = storage_for(tmp_path)
+    storage.kept_archives_dir.mkdir(parents=True)
+    write_archive(storage.kept_archives_dir / "kept.zip", {id_of(FIRST): FIRST})
+    content = LayeredSource.open(storage, tmp_path / "none")
+    kept = content.archives[-1]
+
+    content.close()
+
+    with raises(ContentNotFoundError):
+        kept.read(id_of(FIRST))
+
+
+def test_content_a_kept_archive_written_later_holds_is_read_at_once(tmp_path: Path) -> None:
+    storage = storage_for(tmp_path)
+
+    with LayeredSource.open(storage, tmp_path / "none") as content:
+        storage.kept_archives_dir.mkdir(parents=True)
+        write_archive(storage.kept_archives_dir / "a.zip", {id_of(FIRST): FIRST})
+        write_archive(storage.kept_archives_dir / "b.zip", {id_of(SECOND): SECOND})
+
+        assert content.read(id_of(SECOND)) == SECOND

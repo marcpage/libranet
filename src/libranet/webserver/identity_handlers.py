@@ -16,8 +16,10 @@ the person says of themselves, naming the fallback, at ``user:{id}``
 drops share the search's ``seconds``. It answers ``201``, signed in::
 
     {"id": "sha256/…", "username": "alice", "created": "2026-10-10T14:03:22Z",
-     "fallback": "sha256/…", "fallback_for": null,
+     "fallback": "sha256/…", "fallback_for": null, "block": "sha256/…",
      "drop": "sha256/…", "target": "<hex>", "matching_bits": 21}
+
+``block`` names the identity's own block, as ``drop`` does.
 
 ``POST /config/api/users`` makes one the same way, for the ``/config``
 application, so that the operator can make one for a person (Phase 4 Step
@@ -39,7 +41,8 @@ signed in as the fallback, as making an identity answers.
 
 ``POST /data/session`` signs in with a username and password, ``GET`` says who
 is signed in, as ``{"id": …, "username": …, "created": …, "fallback": …,
-"fallback_for": …}`` or each ``null``, and ``DELETE`` signs out. A fallback
+"fallback_for": …, "block": …}`` or each ``null``, and ``DELETE`` signs out.
+``block`` names the identity block the session was opened from. A fallback
 password signs in as the fallback, as the block naming its own fallback once
 it has taken over. Signing in tries each block a search of the drop finds,
 held here or uploaded and not yet stored, with the key the username and
@@ -127,9 +130,13 @@ _DROPS_MADE: Final = 3
 
 @dataclass(frozen=True)
 class _Found:
-    """The key pair a block at a drop opened to, if one did, and how many found were not held."""
+    """The key pair a block at a drop opened to, if one did, and how many found were not held.
+
+    ``block`` is the block it opened from, ``None`` as ``key`` is.
+    """
 
     key: PersonKey | None
+    block: ContentId | None
     missing: int
     found: int
 
@@ -256,7 +263,7 @@ class Identities:  # pylint: disable=too-many-instance-attributes
             made.key.fallback_for,
             made.fallback.person_id,
         )
-        session = Session(asked.username, made.key)
+        session = Session(asked.username, made.key, stored.content_id)
         return _with_headers(
             json_response(_Made(session, stored).value()),
             {"Set-Cookie": self.sessions.start(session)},
@@ -272,12 +279,12 @@ class Identities:  # pylint: disable=too-many-instance-attributes
         key = self._password_key(asked.username, asked.password)
         found = self._opened(asked.username, key)
 
-        if found.key is None:
+        if found.key is None or found.block is None:
             return self._not_found(request, found)
 
         # Held again, should it have been evicted since it was made.
         store_object(found.key.public_key, self.uploads, self.drops.max_object_bytes)
-        session = Session(asked.username, found.key)
+        session = Session(asked.username, found.key, found.block)
         _LOGGER.info("Signed in as %s", found.key.person_id)
         return _with_headers(
             json_response(session.value()), {"Set-Cookie": self.sessions.start(session)}
@@ -336,7 +343,7 @@ class Identities:  # pylint: disable=too-many-instance-attributes
             stored.content_id,
             made.fallback.person_id,
         )
-        return _Made(Session(asked.username, made.key), stored)
+        return _Made(Session(asked.username, made.key, stored.content_id), stored)
 
     def _takeover_refused(
         self, request: Request, opened: PersonKey, username: Username, fallback_key: PasswordKey
@@ -484,6 +491,7 @@ class Identities:  # pylint: disable=too-many-instance-attributes
         found = self.search.fresh_results(username.drop_target.hex)
         missing = 0
         opened: PersonKey | None = None
+        opened_from: ContentId | None = None
 
         for content_id in found:
             try:
@@ -529,12 +537,12 @@ class Identities:  # pylint: disable=too-many-instance-attributes
                 continue
 
             if opened is None:
-                opened = person
+                opened, opened_from = person, content_id
 
             if person.person_id == opened.person_id and person.fallback is not None:
-                return _Found(person, missing, len(found))
+                return _Found(person, content_id, missing, len(found))
 
-        return _Found(opened, missing, len(found))
+        return _Found(opened, opened_from, missing, len(found))
 
     def _drop(self, content_id: ContentId) -> bytes | None:
         """What ``content_id`` holds, checked against it; ``None`` if it can be no identity block.
