@@ -6,12 +6,12 @@ Version 0.2 • October 2026
 
 ## 1. Purpose
 
-This document plans changes to the movie application that [Phase
-3](Phase%203.md) Step 67 shipped at `/movie`: what it calls a list of
-movies, whose lists they are, how it looks and is used, and a page left
-reading a playlist it cannot find. None of it changes the node, unless
-Step 83 keeps a person's lists where the node has to keep others out,
-but for Step 115, which has the node keep content offline.
+This document plans changes to the movie application that
+[Phase 3](Phase%203.md) Step 67 shipped at `/movie`: what it calls a
+list of movies, whose lists they are, how it looks and is used, and a
+page left reading a playlist it cannot find. None of it changes the
+node, unless Step 83 keeps a person's lists where the node has to keep
+others out, but for Step 115, which has the node keep content offline.
 
 Every step below comes from an issue in the GitHub **Improve Movie Web
 App** milestone, and each step names its issues. Every issue in the
