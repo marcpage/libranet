@@ -1,8 +1,9 @@
 """Costly work that one request at a time may do, taking turns (HttpApi §9.6, §11.4).
 
-Searching for a drop's nonce holds a web server thread and a core for as long
-as it was asked to search, and deriving a key from a username and password
-holds 64 MiB for a fifth of a second by design (BundleSpecification §6.2.1).
+Searching for a drop's nonce holds a web server thread, and every core
+(:class:`~libranet.cas.drops.NonceSearchers`), for as long as it was asked to
+search, and deriving a key from a username and password holds 64 MiB for a
+fifth of a second by design (BundleSpecification §6.2.1).
 So each is done one request at a time, in the order the requests asked for a
 turn, and a request that comes during one waits its turn (Phase 4 Steps 79
 and 89). Searches and derivations take turns apart, so a sign-in waits for no

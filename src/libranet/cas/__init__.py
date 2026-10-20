@@ -31,7 +31,14 @@ from libranet.cas.content_id import (
     LOWER_HEX_DIGITS,
     ContentId,
 )
-from libranet.cas.drops import DROP_SEPARATOR, TRIES_PER_CLOCK_READ, Drop, DropTarget
+from libranet.cas.drops import (
+    DROP_SEPARATOR,
+    NONCE_SEARCHERS,
+    TRIES_PER_CLOCK_READ,
+    Drop,
+    DropTarget,
+    NonceSearchers,
+)
 from libranet.cas.errors import (
     ArchiveError,
     CasError,
@@ -39,9 +46,11 @@ from libranet.cas.errors import (
     ContentNotFoundError,
     InvalidContentIdError,
     NotZlibStreamError,
+    SearcherExitedError,
     StreamTooLargeError,
     UnknownAlgorithmError,
 )
+from libranet.cas.nonce_search import NEAREST, ROUND, SEARCHER_COMMAND, NonceSearch, serve
 from libranet.cas.prefix import matching_bits, nearest
 from libranet.cas.resolved_files import DIRECTORY_FILE, ResolvedFiles
 from libranet.cas.store import (
@@ -63,6 +72,10 @@ __all__ = [
     "DROP_SEPARATOR",
     "HEX_DIGITS",
     "LOWER_HEX_DIGITS",
+    "NEAREST",
+    "NONCE_SEARCHERS",
+    "ROUND",
+    "SEARCHER_COMMAND",
     "TRIES_PER_CLOCK_READ",
     "AlgorithmRegistry",
     "ArchiveError",
@@ -80,8 +93,11 @@ __all__ = [
     "Hasher",
     "HeldObject",
     "InvalidContentIdError",
+    "NonceSearch",
+    "NonceSearchers",
     "NotZlibStreamError",
     "ResolvedFiles",
+    "SearcherExitedError",
     "Sha256Algorithm",
     "StrayPrefixDirectories",
     "StreamTooLargeError",
@@ -93,5 +109,6 @@ __all__ = [
     "matching_bits",
     "matching_chunks",
     "nearest",
+    "serve",
     "subdirectories",
 ]

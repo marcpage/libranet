@@ -27,6 +27,10 @@ class ArchiveError(CasError, OSError):
     """A content archive cannot be opened or read, or holds something other than CAS objects."""
 
 
+class SearcherExitedError(CasError, OSError):
+    """A process searching for a drop's nonce exited before it answered its round."""
+
+
 class NotZlibStreamError(CasError, ValueError):
     """Bytes are not one complete zlib stream."""
 
