@@ -212,7 +212,7 @@ def test_the_node_is_described_as_it_was_started(router: Router, queues: ModuleQ
         # What a person's identity made here may ask for, as the node makes them by default.
         "person_key_bits": [2048, 3072, 4096],
         "drop_max_seconds": 60.0,
-        "drop_max_minimum_bits": 26,
+        "drop_max_minimum_bits": 32,
     }
     assert published(queues) == []
 

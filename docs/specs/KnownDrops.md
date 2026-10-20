@@ -67,7 +67,7 @@ leading bits with the target hash
 ([HTTP API §9.6](HttpApi.md#96-making-a-drop-from-a-page)). The more bits
 it shares, the nearer the top of a search it is, however much else is
 placed there. A node limits what a page may ask for, by default to 60
-seconds and 26 bits.
+seconds and 32 bits.
 
 ### 2.3 Adding a Drop
 
@@ -233,8 +233,10 @@ mailed at their fallback instead.
 - **Signed** by the sender, then **encrypted** for the reader. The copy
   names its reader, so that a reader can pass over a copy encrypted again
   for them by someone else.
-- **Bits:** placed matching at least 24, searched for 1 second, since a
-  message to many people places many copies.
+- **Bits:** placed matching at least the bits the sender's postage asks
+  for: 24 for bulk, 28 for first class, and 32 for priority, searched for
+  1 second, since a message to many people places many copies. The more
+  bits, the nearer the top of a search the copy is.
 - **Reading:** a reader passes over each copy that does not open, is not
   signed, or does not name them. Every copy left is mail. What the reader
   has read and hidden is kept apart (§3.8).

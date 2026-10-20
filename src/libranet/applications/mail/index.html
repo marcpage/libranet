@@ -79,7 +79,7 @@
   #status li + li { margin-top: 0.15rem; }
   footer { font-size: 0.9rem; }
 
-  input, textarea {
+  input, select, textarea {
     font: inherit;
     min-width: 0;
     padding: 0.3rem 0.45rem;
@@ -214,6 +214,12 @@
         <div class="chips"><span id="bcc-chips"></span><input id="bcc-input" list="people"></div>
         <label for="subject">Subject</label>
         <input id="subject">
+        <label for="postage">Postage</label>
+        <select id="postage">
+          <option value="bulk" selected>Bulk</option>
+          <option value="first class">First class</option>
+          <option value="priority">Priority</option>
+        </select>
         <span>Body</span>
         <div>
           <label><input type="radio" name="body" value="text" checked> Text</label>
@@ -282,11 +288,15 @@
     <code>mail:</code> and their id, followed by the hour it was sent in UTC,
     such as <code>2026/10/12/09</code>. A person reads a period by searching
     each hour of it. The sender keeps a copy of their own at
-    <code>mail sent:</code>, their id, and the hour. Your address book, and
-    what you have read and hidden, are kept the same way, encrypted for you, at
-    <code>mail address book:</code> and your id, and at <code>mail state:</code>,
-    your id, and each month of mail. Mail is read and sent only in a browser on
-    the node's own machine, signed in.
+    <code>mail sent:</code>, their id, and the hour. Each person's copy is
+    placed with the postage chosen, its id sharing at least 24 leading bits
+    with the drop's for bulk, 28 for first class, and 32 for priority: the
+    more it shares, the nearer the top of a search of the drop it is, and each
+    4 bits more takes the node 16 times as long to place, on average. Your
+    address book, and what you have read and hidden, are kept the same way,
+    encrypted for you, at <code>mail address book:</code> and your id, and at
+    <code>mail state:</code>, your id, and each month of mail. Mail is read and
+    sent only in a browser on the node's own machine, signed in.
     Each person's mark is their trust, by the scores the node builds from your
     trust list, the lists of those you trust, and so on onward: &#x1F7E2;
     above 0, trusted; &#x1F7E1; 0, neither; &#x1F534; below 0, distrusted; and
@@ -329,6 +339,13 @@ const HANDLE = "handle";
 // kept short. No one sending mail decides how hard the node searches.
 const DROP_SECONDS = 1;
 const DROP_MINIMUM_BITS = 24;
+
+// The postage a message may be sent with: how many bits each reader's copy
+// is placed matching. The more it matches, the nearer the top of a search of
+// the reader's drop it is, however much else is placed there, and each 4 bits
+// more is 16 times the node's search, on average. Bulk matches as many as any
+// other drop placed, and the sender's own copy is always sent bulk.
+const POSTAGE_BITS = { bulk: DROP_MINIMUM_BITS, "first class": 28, priority: 32 };
 
 // What a 503 waits when it does not say, and how many are waited out reading
 // and while the node fetches the key of whoever a copy is for.
@@ -751,16 +768,16 @@ async function opened(id) {
 }
 
 // Have the node place `contents` at the drop `target`, signed by whoever is
-// signed in and encrypted for `reader` (HttpApi 11.5 and 11.6), waiting while
-// it fetches the reader's key: its id, or that it does not fit in a drop, or
-// why it was refused.
-async function placed(target, contents, reader) {
+// signed in and encrypted for `reader` (HttpApi 11.5 and 11.6), matching
+// `minimumBits`, waiting while it fetches the reader's key: its id, or that it
+// does not fit in a drop, or why it was refused.
+async function placed(target, contents, reader, minimumBits = DROP_MINIMUM_BITS) {
   for (let waits = 0; ; waits += 1) {
     const result = await call("POST", "/data/signed", {
       target,
       text: JSON.stringify(canonical(contents)),
       seconds: DROP_SECONDS,
-      minimum_bits: DROP_MINIMUM_BITS,
+      minimum_bits: minimumBits,
       encrypt: { for: reader },
     });
 
@@ -2376,6 +2393,7 @@ function openCompose({ to = [], cc = [], subject = "", text = "", bundle = null,
   byId("subject").value = subject;
   byId("text").value = text;
   byId("bundle").value = bundle || "";
+  byId("postage").value = "bulk";
   document.querySelector(`input[name="body"][value="${bundle === null ? "text" : "bundle"}"]`).checked = true;
   showBodyKind();
   byId("compose-title").textContent = replyTo === null ? "New message" : "Reply";
@@ -2534,6 +2552,7 @@ async function send(event) {
   const isBundle = bodyKind() === "bundle";
   const text = byId("text").value;
   const bundle = byId("bundle").value.trim();
+  const minimumBits = POSTAGE_BITS[byId("postage").value];
 
   if (readers.length === 0) {
     sayCompose("Say who the message is for.", "error");
@@ -2562,7 +2581,7 @@ async function send(event) {
       }
     }
 
-    await delivered({ to, cc, bcc, subject, text, bundle, isBundle });
+    await delivered({ to, cc, bcc, subject, text, bundle, isBundle, minimumBits });
   } catch (error) {
     sayCompose(error.message, "error");
   } finally {
@@ -2571,9 +2590,9 @@ async function send(event) {
 }
 
 // Place a copy of the message for each reader, at the drop of the hour it is
-// sent, and one for the sender, then add anyone mailed from a link or by an
-// id to the address book.
-async function delivered({ to, cc, bcc, subject, text, bundle, isBundle }) {
+// sent, with the postage `minimumBits` asks for, and one for the sender, then
+// add anyone mailed from a link or by an id to the address book.
+async function delivered({ to, cc, bcc, subject, text, bundle, isBundle, minimumBits }) {
   const now = new Date();
   const hour = hourOf(now.getTime());
   const message = { to, cc, bcc, subject, sent: utcSecond(now), message: newMessageId() };
@@ -2588,7 +2607,7 @@ async function delivered({ to, cc, bcc, subject, text, bundle, isBundle }) {
 
   for (const [index, reader] of readers.entries()) {
     sayCompose(`Sending to ${nameOf(reader)}, ${index + 1} of ${readers.length}…`);
-    const made = await placed(hourTarget(MAIL_PREFIX, reader, hour), copyFor(reader, message, mail.you), reader);
+    const made = await placed(hourTarget(MAIL_PREFIX, reader, hour), copyFor(reader, message, mail.you), reader, minimumBits);
 
     if (made.tooLarge) {
       sayCompose("The message does not fit in a drop. Send it as a bundle instead.", "error");

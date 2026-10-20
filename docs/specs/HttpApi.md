@@ -3285,7 +3285,7 @@ that must know a body's size before it reads it.
   4 MiB once decompressed. A page's request to make bundles takes at most
   4 MiB, a value in an application's store 64 KiB, and the store itself
   1 MiB. It reads a bundle of at most 16 MiB once decompressed or decrypted.
-  A drop's search takes at most 60 seconds, and matches at most 26 bits
+  A drop's search takes at most 60 seconds, and matches at most 32 bits
   (§9.6). A sign-in's trust scores reach at most 4 steps out and read at
   most 1,000 lists, spending up to 30 seconds looking for each (Trust
   Network §4.2, §4.3). The node's operator may change each of these limits

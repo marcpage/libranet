@@ -571,7 +571,7 @@ def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: P
                 "advertised_endpoint": f"http://localhost:{port}",
                 "person_key_bits": [4096],
                 "drop_max_seconds": 5.0,
-                "drop_max_minimum_bits": 26,
+                "drop_max_minimum_bits": 32,
             },
         )
 
