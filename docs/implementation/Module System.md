@@ -378,17 +378,19 @@ to no peer, but for a key it keeps.
 
 Does the `/config` work that takes time: backing up directories, and
 restoring, building, and exporting bundles. It also imports a file a local
-client asks for (Phase 3 Step 69). The web server publishes each request and
-answers at once, and the backup module works through them one at a time on
-its main thread, between messages. It publishes its whole
-state as `backup.state` whenever that changes. Every object it stores is
-announced with `data.stored`, as the validator announces what it stores,
-and content a restore or export lacks is asked for with `data.not_found`.
+client asks for (Phase 3 Step 69), and keeps content in archives of the
+node's own until they expire (Step 115). The web server publishes each
+request and answers at once, and the backup module works through them one at
+a time on its main thread, between messages. It publishes its whole state as
+`backup.state` whenever that changes. Every object it stores is announced
+with `data.stored`, as the validator announces what it stores, and content a
+restore, export, or kept archive lacks is asked for with `data.not_found`.
 Before each object it stores, it looks at its inbox for `storage.full`, and
 waits while storage is full, setting other messages aside until it is done.
 Jobs are kept in `backup_jobs.json`, and each job's last bundle, kept
-expanded, in `backup_jobs/`; restores, builds, exports, and imports are kept
-in memory only.
+expanded, in `backup_jobs/`, and the archives kept, in `archives/`, are
+recorded in `kept_archives.json`; restores, builds, exports, imports, and
+archives under way are kept in memory only.
 
 ### 3.3 What Each Module Owns
 
@@ -905,6 +907,8 @@ to end its loop.
 | `backup.build_requested` | P | | | | | | | S |
 | `backup.export_requested` | P | | | | | | | S |
 | `backup.import_requested` | P | | | | | | | S |
+| `backup.archive_requested` | P | | | | | | | S |
+| `backup.archive_removed` | P | | | | | | | S |
 | `backup.state` | S | | | | | | | P |
 | *Eviction* | | | | | | | | |
 | `eviction.notice` | | S | | | | | P | |
@@ -974,7 +978,9 @@ A content id is an `algorithm` and a lower-case hex `hash`, or, in
 | `backup.build_requested` | `build_id`, `directory`, `password` | Build a directory into a bundle; `password` is never logged |
 | `backup.export_requested` | `export_id`, `bundle`, `archive`, `on_conflict`, `password` | Write a bundle into a content archive |
 | `backup.import_requested` | `import_id`, `path`, `local_path` | Import the file the web server found at `local_path`, which a local client asked for as `path` |
-| `backup.state` | `jobs`, `restores`, `builds`, `exports`, `imports` | Everything the backup module is doing, replacing the last report |
+| `backup.archive_requested` | `archive_id`, `bundles`, `objects`, `expires` | Keep the bundles, with all they need, and the objects in an archive of the node's own until `expires`; a bundle's key is never logged |
+| `backup.archive_removed` | `archive_id` | Stop keeping the archive, and delete it |
+| `backup.state` | `jobs`, `restores`, `builds`, `exports`, `imports`, `archives` | Everything the backup module is doing, replacing the last report |
 | `eviction.notice` | `algorithm`, `hash`, `copies` | Hand this content off to `copies` peers |
 | `eviction.acknowledged` | `algorithm`, `hash`, `node_ids` | The peers that accepted it, best match first |
 | `data.deleted` | `algorithm`, `hash`, `size` | Content was deleted from `cas/data` |

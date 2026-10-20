@@ -78,10 +78,10 @@ content (§5.5), making a drop (§9.6), what the node knows of its peers
 (§10.8), making an identity and signing in (§11.3, §11.4), signing as a
 person (§11.5), opening an encrypted block (§11.6), the trust of whoever is
 signed in (§11.7), reading into a bundle (§12.1), the folders and imports
-(§12.2), making bundles (§12.3), an application's store (§13.3), and the
-list of applications (§13.4). Each but reading into a bundle requires a
-`Referer` naming a page of the node (§2.5). A few serve only clients on the
-node's own machine (§2.4).
+(§12.2), making bundles (§12.3), keeping content offline (§12.4), an
+application's store (§13.3), and the list of applications (§13.4). Each but
+reading into a bundle requires a `Referer` naming a page of the node (§2.5).
+A few serve only clients on the node's own machine (§2.4).
 
 ### 2.2 Web Applications
 
@@ -338,14 +338,15 @@ node knows of its peers (§10.8), making an identity, a fallback taking over,
 and the session (§11.3, §11.4), making a signed drop (§11.5),
 opening an encrypted block (§11.6), reading trust scores and changing a trust
 list (§11.7), listing the folders a node offers and
-importing a file from one (§12.2), making and changing bundles (§12.3), and
-changing an application's store (§13.3). So does making a drop encrypted by
+importing a file from one (§12.2), making and changing bundles (§12.3),
+keeping content offline (§12.4), and changing an application's store
+(§13.3). So does making a drop encrypted by
 a username and password (§11.6).
 A request to one of them from any other client MUST be refused with
 `403 Forbidden`. Blocking, the peers, the identities, fallbacks, session,
-signed drops, encrypted blocks, trust, folders, imports, and bundles are
-served only from a page of a trusted application, and an application's
-store is changed only from a page of its own (§2.5).
+signed drops, encrypted blocks, trust, folders, imports, bundles, and
+archives are served only from a page of a trusted application, and an
+application's store is changed only from a page of its own (§2.5).
 
 A local source does not show that the person at the machine made the
 request. Any site's page that a browser on the machine has open can send
@@ -387,8 +388,9 @@ another node:
   (§5.5), making a drop (§9.6), what the node knows of its peers (§10.8),
   making an identity, a fallback taking over, and the session (§11.3,
   §11.4), making a signed drop (§11.5), opening an encrypted block (§11.6),
-  trust (§11.7), the folders and imports (§12.2), making bundles (§12.3), an
-  application's store (§13.3), and the list of applications (§13.4);
+  trust (§11.7), the folders and imports (§12.2), making bundles (§12.3),
+  keeping content offline (§12.4), an application's store (§13.3), and the
+  list of applications (§13.4);
 - on `/config`'s port: every endpoint beneath `/config/api` (§2.3).
 
 Reading into a bundle (§12.1) is meant for those pages too, but is not
@@ -526,7 +528,7 @@ This allows multiple hash algorithms to coexist.
 The names of the other endpoints beneath `/data` are never hash algorithms:
 `search`, `nodes`, `seek`, `client`, `directory`, `imports`, `bundles`,
 `store`, `applications`, `signed`, `drop`, `encrypted`, `users`, `fallback`,
-`session`, `peers`, and `trust`.
+`session`, `peers`, `trust`, and `archives`.
 
 A path that goes on past `{hash}` does not retrieve an object. It reads into
 the bundle the identifier names (§12.1). That includes an identifier written
@@ -1830,8 +1832,8 @@ fallback. A page writes `fallback` into what it has the person sign (§11.5),
 as the block records it. `block` is the id of the identity block the session
 was opened from: the one found, or, for a session that making an identity or
 a fallback's taking over starts, the identity's own block just placed, which
-`drop` names too. A page keeping content offline keeps that block with it,
-so that signing in still finds it once the node no longer holds it
+`drop` names too. A page keeping content offline keeps that block with it
+(§12.4), so that signing in still finds it once the node no longer holds it
 otherwise.
 
 Each search of the drop starts a search of the node's peers, as any search does
@@ -2566,6 +2568,85 @@ names. A bundle that is not well-formed, or that does not fit in one
 object even compressed (§8), is `400 Bad Request`.
 
 ---
+
+### 12.4 Keeping Content Offline
+
+A node MAY keep content for a local client (§2.4) in a content archive of its
+own, so that it is still held, to be played offline say, once the node's
+store has let it go. The node reads the archive as content it always holds:
+it is never evicted, and serves, searches, and unbundles from it as from
+anything it holds. The client names the bundles to keep, each with
+everything it needs, and the objects to keep as they are, and may say until
+when:
+
+```http
+POST /data/archives
+Content-Type: application/json
+
+{"bundles": ["sha256/…/AES256-CBC/…"], "objects": ["sha256/…"],
+ "expires": "2026-11-20T00:00:00Z"}
+```
+
+A bundle may carry the key it is stored encrypted under (§5). Everything a
+bundle needs is the bundle, every extension of it, and every part of every
+file it holds once they are overlaid
+([Bundle Specification §4](BundleSpecification.md#4-directory-extensions)),
+and of every extended attribute recorded. The bundles it supersedes are not
+needed, unless it extends them, nor are the parts of entries its extensions
+hide. An object kept as it is may be anything: a version at a drop (§9), say,
+or an identity block, and the public key a signed one is checked against
+(§11.4), so that signing in, and reading a person's signed versions, still
+work offline. `objects` may be left out. `expires` is a UTC time to the
+second, and left out, or `null`, the archive is kept until it is removed.
+
+Content the node lacks is asked for, as missing content is (§5.2), and
+waited for, so the request is answered `202 Accepted` at once, with what the
+archive is known by:
+
+```json
+{"archive_id": "…"}
+```
+
+It is derived from the content kept alone, never a key nor when it expires,
+so asking again with the same content keeps the same archive, until the new
+`expires`, without writing it again. A request naming nothing to keep, or
+naming it in a way the node cannot read, is `400 Bad Request`, and so is an
+`expires` already past.
+
+`GET /data/archives` says how each archive is doing:
+
+```json
+{"archives": {"<archive_id>": {"bundles": ["sha256/…"], "status": "done",
+                               "error": null,
+                               "requested_at": 1791892800.25,
+                               "finished_at": 1791892861.5,
+                               "expires": "2026-11-20T00:00:00Z",
+                               "needed": 4100, "missing": 0,
+                               "written": 4100, "size": 4294967296}}}
+```
+
+`bundles` names each bundle kept by its identifier alone, without its key.
+`status` is `waiting` while content is lacked, `running` while the archive is
+written, `done` once it is, and `failed`, with `error` saying why, if it could
+not be written, or if none of what it waits on arrived for a time the node
+sets. `requested_at` and `finished_at` are as for an import (§12.2), and
+`expires` as asked. `needed` is how many objects the archive is known to need
+so far, `missing` how many of them are lacked, `written` how many are written,
+and `size` the archive's size once written, or `null` until then. A node that
+cannot yet say, as one just started may not, answers `503 Service
+Unavailable` with `Retry-After`.
+
+```http
+DELETE /data/archives/{archive_id}
+```
+
+stops keeping an archive, written or not, and deletes it, and is answered
+`202 Accepted`. Once `expires` has passed, the node does the same, whether or
+not it was running then. What the store still holds of an archive removed
+stays, and is evicted as anything it holds is.
+
+Every request to these endpoints is from a local client, on a page of a
+trusted application, or refused (§2.4, §2.5).
 
 ## 13. Web Application Routing
 

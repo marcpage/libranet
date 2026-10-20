@@ -1978,12 +1978,44 @@ def test_a_local_client_imports_a_file_from_a_folder_offered(
     assert status.status == 503
 
 
+def test_a_local_client_keeps_content_offline_and_stops_keeping_it(
+    local_connection: HTTPConnection, queues: ModuleQueues
+) -> None:
+    page = _from_page(local_connection, "/movie/")
+    local_connection.request(
+        "POST",
+        "/data/archives",
+        body=dumps({"bundles": [str(CONTENT_ID)]}).encode("utf-8"),
+        headers={"Content-Type": JSON_CONTENT_TYPE, **page},
+    )
+    response = local_connection.getresponse()
+    archive_id = loads(response.read())["archive_id"]
+    status, _ = _get(local_connection, "/data/archives", headers=page)
+    removed, _ = _get(
+        local_connection, f"/data/archives/{archive_id}", method="DELETE", headers=page
+    )
+
+    # Not taken for /data/{algorithm}/{hash}, whose pattern they also fit.
+    assert response.status == 202
+    assert removed.status == 202
+    assert [
+        (message["event"], message["archive_id"])
+        for message in _published(queues)
+        if message["event"] in (EventType.ARCHIVE_REQUESTED, EventType.ARCHIVE_REMOVED)
+    ] == [(EventType.ARCHIVE_REQUESTED, archive_id), (EventType.ARCHIVE_REMOVED, archive_id)]
+    # The backup module has reported nothing to this server.
+    assert status.status == 503
+
+
 @mark.parametrize(
     "path, method",
     [
         ("/data/directory", "GET"),
         ("/data/imports", "GET"),
         ("/data/imports", "POST"),
+        ("/data/archives", "GET"),
+        ("/data/archives", "POST"),
+        ("/data/archives/0123456789abcdef", "DELETE"),
         ("/data/bundles", "POST"),
         ("/data/users", "POST"),
         ("/data/session", "POST"),

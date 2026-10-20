@@ -57,6 +57,7 @@ from libranet.webserver.drop_handler import DROP_PATH
 from libranet.webserver.encrypted_handlers import ENCRYPTED_PATH, ENCRYPTED_PATTERN
 from libranet.webserver.http_types import Request
 from libranet.webserver.identity_handlers import FALLBACK_PATH, SESSION_PATH
+from libranet.webserver.kept_archives import ARCHIVE_PATTERN, ARCHIVES_PATH
 from libranet.webserver.list_handlers import PEERS_PATH
 from libranet.webserver.local_folders import DIRECTORY_PATTERN
 from libranet.webserver.local_imports import IMPORTS_PATH
@@ -525,6 +526,7 @@ def test_the_movie_page_calls_only_endpoints_the_node_serves(movie_page: str) ->
         SIGNED_PATH,
         DROP_PATH,
         f"{ENCRYPTED_PATH}/",
+        ARCHIVES_PATH,
     }
     # The folders, the playlists in its store, and a movie's file in a playlist.
     assert fullmatch(DIRECTORY_PATTERN, "/data/directory/Movies/Holidays")
@@ -533,6 +535,11 @@ def test_the_movie_page_calls_only_endpoints_the_node_serves(movie_page: str) ->
     # those replaced blocked.
     target = quote(f"movie collections:sha256/{hex_digits}", safe="")
     assert fullmatch(DROP_SEARCH_PATTERN, f"{DROP_PATH}/{target}")
+    # Those kept offline: searched at their drop of their own, and each archive
+    # stopped by its id.
+    offline = quote(f"movie offline:sha256/{hex_digits}", safe="")
+    assert fullmatch(DROP_SEARCH_PATTERN, f"{DROP_PATH}/{offline}")
+    assert fullmatch(ARCHIVE_PATTERN, f"{ARCHIVES_PATH}/{hex_digits[:16]}")
     assert fullmatch(ENCRYPTED_PATTERN, f"{ENCRYPTED_PATH}/sha256/{hex_digits}")
     assert fullmatch(DATA_PATTERN, f"/data/sha256/{hex_digits}")
     assert fullmatch(
