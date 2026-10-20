@@ -339,3 +339,27 @@ def test_a_record_kept_longer_expires_later_and_one_kept_until_removed_never() -
     assert not RECORD.kept_until(later).expired(EXPIRES.timestamp())
     assert RECORD.kept_until(later).expired(later.timestamp())
     assert not RECORD.kept_until(None).expired(later.timestamp() * 2)
+
+
+def test_an_object_not_held_is_asked_for_too(
+    store: CasStore, source: LayeredSource, kept_dir: Path
+) -> None:
+    version = id_of(VERSION)
+
+    assert keeping(collection(store), (version,)).attempt(source, kept_dir, REQUESTED_AT) == (
+        version,
+    )
+
+
+def test_content_held_since_though_not_noted_starts_the_wait_again(
+    store: CasStore, source: LayeredSource, kept_dir: Path
+) -> None:
+    task = keeping(collection(store, held=False))
+    task.attempt(source, kept_dir, REQUESTED_AT)
+    store_object(FILM[0], store)
+
+    task.attempt(source, kept_dir, REQUESTED_AT + GIVE_UP_AFTER_SECONDS - 1)
+    task.attempt(source, kept_dir, REQUESTED_AT + GIVE_UP_AFTER_SECONDS)
+
+    assert task.report()["status"] == "waiting"
+    assert task.missing == {id_of(FILM[1])}

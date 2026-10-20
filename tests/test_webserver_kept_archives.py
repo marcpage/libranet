@@ -26,6 +26,7 @@ from libranet.webserver.kept_archives import (
     ArchiveRemovalHandler,
 )
 from libranet.webserver.local_only import LocalOnly
+from libranet.webserver.request_refusals import MAX_JSON_BODY_BYTES
 from libranet.webserver.router import Router
 from libranet.webserver.site_checks import SiteChecks
 
@@ -188,3 +189,18 @@ def test_an_archive_is_removed_by_its_id(
 def test_an_archive_list_refuses_a_negative_retry_after(state: BackupState) -> None:
     with raises(ValueError, match="retry_after_seconds"):
         ArchiveListHandler(state, -1)
+
+
+def test_a_removal_carrying_too_large_a_body_is_refused_unread(
+    router: Router, queues: ModuleQueues
+) -> None:
+    asked = Request(
+        "DELETE",
+        f"{ARCHIVES_PATH}/{ARCHIVE_ID}",
+        client_address="127.0.0.1",
+        body=RequestBody.of(b"x" * (MAX_JSON_BODY_BYTES + 1)),
+    )
+
+    problem(router.dispatch(asked), 413)
+
+    assert published(queues) == []

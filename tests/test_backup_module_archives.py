@@ -4,10 +4,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from json import dumps
 from logging import INFO, WARNING
+from os import geteuid
 from pathlib import Path
 from typing import Any
 
-from pytest import LogCaptureFixture, MonkeyPatch, fixture, raises
+from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
 
 from libranet.backup.errors import KeptArchivesFileError
 from libranet.backup.kept_archives import KeptArchive, KeptRecord
@@ -429,3 +430,111 @@ def test_the_archives_are_reported_in_the_order_asked_for(
     second = keep(module, collection(store, held=False), store_object(VERSION, store))
 
     assert [state["archive_id"] for state in archives(published(queues))[-1]] == [first, second]
+
+
+def test_how_far_writing_has_got_is_reported_at_most_once_a_second(
+    config: LibranetConfig, queues: ModuleQueues, store: CasStore
+) -> None:
+    ticks = iter(range(10_000))
+    module = BackupModule(
+        ModuleName.BACKUP,
+        queues,
+        config,
+        clock=lambda: START + next(ticks),
+        poll_interval_seconds=0.01,
+    )
+    module.on_start()
+    published(queues)
+
+    keep(module, collection(store))
+
+    written = [
+        state[0]["written"]
+        for state in archives(published(queues))
+        if state[0]["status"] == "running"
+    ]
+    assert written[0] == 0
+    assert max(written) > 0
+
+
+def test_one_that_gives_up_waiting_fails_and_says_why(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    store: CasStore,
+    caplog: LogCaptureFixture,
+) -> None:
+    module = start(config, queues, now)
+    archive_id = keep(module, collection(store, held=False))
+    now[0] += config.backup.restore_stall_seconds
+
+    with caplog.at_level(WARNING, logger=module.logger.name):
+        module.on_idle()
+
+    final = archives(published(queues))[-1][0]
+    assert final["status"] == "failed"
+    assert "Gave up" in final["error"]
+    assert archive_id in caplog.text
+
+
+def test_an_archive_that_cannot_be_removed_is_kept_and_says_why(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    store: CasStore,
+    caplog: LogCaptureFixture,
+) -> None:
+    module = start(config, queues, now)
+    archive_id = keep(module, collection(store))
+    path = archive_path(config, archive_id)
+    path.unlink()
+    path.mkdir()
+
+    with caplog.at_level(WARNING, logger=module.logger.name):
+        remove(module, archive_id)
+
+    assert archive_id in module.kept
+    assert "Could not remove" in caplog.text
+
+
+def test_one_removed_is_forgotten_though_its_records_cannot_be_saved(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    store: CasStore,
+    caplog: LogCaptureFixture,
+) -> None:
+    module = start(config, queues, now)
+    archive_id = keep(module, collection(store))
+    config.storage.kept_archives_path.unlink()
+    config.storage.kept_archives_path.mkdir()
+
+    with caplog.at_level(WARNING, logger=module.logger.name):
+        remove(module, archive_id)
+
+    assert module.kept == {}
+    assert not archive_path(config, archive_id).exists()
+    assert "Could not save" in caplog.text
+
+
+@mark.skipif(geteuid() == 0, reason="the superuser writes any folder")
+def test_records_forgotten_at_start_are_forgotten_though_they_cannot_be_saved(
+    config: LibranetConfig,
+    queues: ModuleQueues,
+    now: list[float],
+    store: CasStore,
+    caplog: LogCaptureFixture,
+) -> None:
+    archive_id = keep(start(config, queues, now), collection(store))
+    archive_path(config, archive_id).unlink()
+    config.storage.data_dir.chmod(0o500)
+
+    try:
+        with caplog.at_level(WARNING):
+            restarted = start(config, queues, now)
+
+    finally:
+        config.storage.data_dir.chmod(0o700)
+
+    assert restarted.kept == {}
+    assert "Could not save" in caplog.text
