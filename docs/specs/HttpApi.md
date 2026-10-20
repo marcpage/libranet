@@ -1715,13 +1715,13 @@ identity's public key, and signs the person in (§11.4):
 
 ```json
 {"id": "sha256/…", "username": "alice", "created": "2026-10-10T14:03:22Z",
- "fallback": "sha256/…", "fallback_for": null,
+ "fallback": "sha256/…", "fallback_for": null, "block": "sha256/…",
  "drop": "sha256/…", "target": "<target hash>", "matching_bits": 25}
 ```
 
 `id` is the person's id, `username` the normalized username, `created`
-when the identity was made, as its block records it, and `fallback` and
-`fallback_for` as signing in gives them. `drop`, `target`, and
+when the identity was made, as its block records it, and `fallback`,
+`fallback_for`, and `block` as signing in gives them. `drop`, `target`, and
 `matching_bits` are the identity block's id, the target hash, and how many
 leading bits the two share, as §9.6 gives them. A request is `409 Conflict`
 if the username and either password already open an identity at the drop,
@@ -1809,7 +1809,7 @@ Set-Cookie: libranet-session=…; Path=/; HttpOnly; SameSite=Strict
 
 ```json
 {"id": "sha256/…", "username": "alice", "created": "2026-10-10T14:03:22Z",
- "fallback": "sha256/…", "fallback_for": null}
+ "fallback": "sha256/…", "fallback_for": null, "block": "sha256/…"}
 ```
 
 `created` is when the identity was made, as its block records it (§11.3), so
@@ -1819,7 +1819,12 @@ that what a person says of themselves can say when their id was made.
 is the id of the identity the fallback takes over from, and `fallback` is
 `null` until the fallback has taken over, and then the id of its own
 fallback. A page writes `fallback` into what it has the person sign (§11.5),
-as the block records it.
+as the block records it. `block` is the id of the identity block the session
+was opened from: the one found, or, for a session that making an identity or
+a fallback's taking over starts, the identity's own block just placed, which
+`drop` names too. A page keeping content offline keeps that block with it,
+so that signing in still finds it once the node no longer holds it
+otherwise.
 
 Each search of the drop starts a search of the node's peers, as any search does
 (§6), unless one is under way or has only just ended. Blocks found and not held
@@ -1843,7 +1848,7 @@ every port of the node's host, `/config`'s too, which ignores it.
 
 `GET /data/session` says who is signed in, as signing in answers, or
 `{"id": null, "username": null, "created": null, "fallback": null,
-"fallback_for": null}` when no one is.
+"fallback_for": null, "block": null}` when no one is.
 `DELETE /data/session` signs out, and is answered `204 No Content`, removing
 the cookie. A session also ends when it goes unused for a time the node
 sets, and when the node restarts. The reference node ends one unused for a
