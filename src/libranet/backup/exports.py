@@ -3,12 +3,10 @@
 An export writes a content archive (Step 34) holding the bundle, every
 extension of it, and every part of every file it holds once they are
 overlaid, and of every extended attribute recorded (Phase 2 Step 52):
-everything needed to serve or restore it, and nothing else. The bundles it
-supersedes are not needed, unless it extends them as an update layer does
-(Phase 2 Step 31), nor are the parts of entries its extensions hide, so
-neither is written. A node started with the archive among its
-``storage.archives`` holds the bundle as it holds anything shipped with it,
-and serves it once it is registered as an application.
+everything needed to serve or restore it, and nothing else
+(:class:`~libranet.bundle.needed.NeededObjects`). A node started with the
+archive among its ``storage.archives`` holds the bundle as it holds anything
+shipped with it, and serves it once it is registered as an application.
 
 Objects are written as this node holds them, compressed or not, in content id
 order, so exporting the same bundle again writes the same archive. Each is
@@ -23,7 +21,7 @@ the export fails, and what it lacks is to be asked for, as a restore asks, so
 that asking for the export again once that has arrived can succeed. A bundle
 holding an entry that is not a file, a symlink, or a directory, which no
 bundle this node reads holds, cannot be exported, since what that entry needs
-cannot be told. That is logged as an error.
+cannot be told.
 
 A file already where the archive goes is replaced only if the request says
 it may be, and the paths given to be ignored, such as the node's own
@@ -34,30 +32,21 @@ was there.
 
 from __future__ import annotations
 from errno import EEXIST
-from logging import getLogger
 from os.path import lexists
 from pathlib import Path
 from typing import Any, Callable
 
 from libranet.backup.tasks import Task
 from libranet.bundle.building import IgnoredPaths
-from libranet.bundle.content import ContentSource, check_held
-from libranet.bundle.errors import (
-    BundleVerificationError,
-    MissingContentError,
-    UnsupportedBundleError,
-)
-from libranet.bundle.extensions import resolve_directory
-from libranet.bundle.loading import load_bundle
+from libranet.bundle.content import ContentSource
+from libranet.bundle.errors import BundleVerificationError, MissingContentError
+from libranet.bundle.needed import NeededObjects
 from libranet.bundle.parts import PartPath
-from libranet.bundle.shapes import Bundle, DirectoryBundle, DirectoryMarker, FileBundle, Symlink
 from libranet.cas.archive import ArchiveSink
 from libranet.cas.content_id import ContentId
 from libranet.cas.verification import content_matches
 from libranet.messaging.events import ConflictBehavior
 from libranet.protocol.backup_requests import ExportRequest
-
-_LOGGER = getLogger(__name__)
 
 
 class Export(Task):
@@ -153,45 +142,8 @@ class Export(Task):
             BundleError: the bundle or an extension cannot be read, or holds
                 an entry that is not a file, a symlink, or a directory.
         """
-        bundle = self._request.bundle
         password = None if self._request.password is None else self._request.password.encoded
-        needed = {bundle}
-
-        def load(path: PartPath) -> Bundle:
-            needed.add(path.content_id)
-            return load_bundle(path, source, self._max_bundle_bytes, password=password)
-
-        top = load_bundle(bundle, source, self._max_bundle_bytes, password=password)
-        # Each looked at as whatever it is, so that a kind of entry this does
-        # not know is logged and fails the export, rather than taken for
-        # another.
-        found: list[object] = [top]
-
-        if isinstance(top, DirectoryBundle):
-            found.extend(resolve_directory(top, load).values())
-
-        paths: list[str] = []
-
-        for entry in found:
-            if isinstance(entry, FileBundle):
-                paths.extend(entry.parts)
-                paths.extend(entry.metadata.xattr_parts())
-
-            elif isinstance(entry, (DirectoryBundle, DirectoryMarker)):
-                paths.extend(entry.metadata.xattr_parts())
-
-            elif isinstance(entry, Symlink):
-                continue  # Symlinks have no parts, and don't get xattrs.
-
-            else:
-                kind = type(entry).__name__
-                _LOGGER.error(
-                    "Cannot export %s, as a %s is not a file, a symlink, or a directory",
-                    bundle,
-                    kind,
-                )
-                raise UnsupportedBundleError(f"Not a file, a symlink, or a directory: {kind}")
-
-        parts = {PartPath.parse(part).content_id for part in paths}
-        check_held(sorted(parts), source)
-        return sorted(needed | parts)
+        needed = NeededObjects.of(
+            PartPath(self._request.bundle), source, self._max_bundle_bytes, password=password
+        )
+        return list(needed.content_ids)

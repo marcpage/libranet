@@ -593,6 +593,11 @@ class StorageConfig(_Section):
         return self.data_dir / "archives"
 
     @property
+    def kept_archives_path(self) -> Path:
+        """What the backup module records of each archive it keeps, and until when (Step 115)."""
+        return self.data_dir / "kept_archives.json"
+
+    @property
     def connecting_path(self) -> Path:
         """Whether to connect only to trusted nodes, owned by the web server (Phase 5 Step 113)."""
         return self.data_dir / "connecting.json"
