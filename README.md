@@ -319,6 +319,7 @@ you say so on `/config`.
 | [Backup Specification](docs/specs/BackupSpecification.md) | Backing up and restoring local directories |
 | [Trust Network Specification](docs/specs/TrustNetwork.md) | Trust lists, and the scores a node builds from them |
 | [Known Drops](docs/specs/KnownDrops.md) | Every target string the node and the shipped applications place drops at |
+| [RFC References](docs/specs/RfcReferences.md) | Every RFC the project uses, and where and how it is used |
 | [Karma and Kismet](docs/specs/Karma.md) | The reputation and contribution system |
 | [Phase 1 Plan](docs/implementation/Phase%201.md) | Implementation steps 1–15, 17–20, and 33–40, all built |
 | [Phase 2 Plan](docs/implementation/Phase%202.md) | Implementation steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–63, all built |
