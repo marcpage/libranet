@@ -13,10 +13,14 @@ server asks. It also imports a file a local client asks for (HttpApi §12.2)::
     backup.build_requested    {"build_id", "directory", "password"}
     backup.export_requested   {"export_id", "bundle", "archive", "on_conflict", "password"}
     backup.import_requested   {"import_id", "path", "local_path"}
+    backup.archive_requested  {"archive_id", "bundles", "objects", "expires"}
+    backup.archive_removed    {"archive_id"}
 
 ``password`` is ``null`` for none. It is never logged or reported. An
 import's ``path`` is the one the client asked for, a folder's name and a path
-beneath it, and ``local_path`` where the web server found that file.
+beneath it, and ``local_path`` where the web server found that file. A kept
+archive's ``bundles`` may carry their keys, which are never logged, reported,
+or recorded either.
 
 A job's directory is looked at once it is configured, again when the module
 starts, and ``interval_seconds`` after each look, or
@@ -98,6 +102,18 @@ file bundle naming them, and is done or fails as a build is, in turn with
 builds and exports. Like restores, builds, exports, and imports are kept in
 memory only.
 
+A kept archive (:mod:`libranet.backup.kept_archives`, Step 115) keeps
+bundles, each with everything it needs, and objects as they are, in a content
+archive of the node's own, which every process reading content reads. It is
+carried on in passes, as a restore is, its turn with theirs, asking for what
+it lacks and waiting for it, and giving up after
+``backup.restore_stall_seconds`` with none of it arriving. Once all of it is
+held, the archive is written into ``storage.kept_archives_dir``, and recorded
+in ``storage.kept_archives_path``, so that it is removed once it expires,
+which is looked at before any other work. Asking for one again, with the
+same content, keeps it until the new time, or carries on one waiting at once;
+removing one deletes its archive.
+
 Jobs, and the bundle each was last backed up to, are kept in a file
 (:mod:`libranet.backup.jobs`), and each job's bundle is kept expanded in a
 file of its own, encrypted with the backup secret, for the next backup to be
@@ -105,10 +121,10 @@ built from. Removing a job forgets its bundle, and deletes it as kept
 expanded, but leaves the content in CAS. What every job and restore is doing is
 reported whenever it changes, for the web server to serve at
 ``GET /config/api/backups``, ``restores``, ``builds``, and ``exports``, and at
-``GET /data/imports``::
+``GET /data/imports`` and ``/data/archives``::
 
     backup.state  {"jobs": [...], "restores": [...], "builds": [...], "exports": [...],
-                   "imports": [...]}
+                   "imports": [...], "archives": [...]}
 
 Each job is reported as::
 
@@ -153,13 +169,25 @@ Each import is reported, in the order they were asked for, as::
 ``status`` is as for a build. ``bytes_read`` counts the bytes of the file
 read so far, ``size`` is the file's once it is known, and ``file`` is the
 file bundle stored, once the import is done. While a file is read, how far it
-has got is reported at most once a second. Times are seconds since the
-epoch, and ``null`` until there is one.
+has got is reported at most once a second. Each kept archive, written or
+under way, is reported, in the order they were asked for, as::
+
+    {"archive_id", "bundles", "status", "error", "requested_at", "finished_at",
+     "expires", "needed", "missing", "written", "size"}
+
+``status`` is as for a restore, and ``done`` once written. ``bundles`` are
+the plain ids of the bundles kept, ``expires`` when the archive is removed,
+or ``null`` for never, ``needed`` how many objects it is known to need so
+far, ``missing`` how many it waits on, ``written`` how many are written, at
+most once a second as they are, and ``size`` the archive's, once written.
+Times are seconds since the epoch, and ``null`` until there is one.
 
 The backup secret is read, or first made, when a backup or restore first needs
 it (§4.2), so a problem with it fails that backup or restore, where it is
 reported.
 """
+
+# pylint: disable=too-many-lines
 
 from __future__ import annotations
 from collections import deque
@@ -176,6 +204,7 @@ from libranet.backup.errors import BuildRecordError, StorageFullError
 from libranet.backup.exports import Export
 from libranet.backup.imports import Import
 from libranet.backup.jobs import BackupJob, ExpandedBackups
+from libranet.backup.kept_archives import KeptArchive, KeptRecord
 from libranet.backup.restores import Restore
 from libranet.backup.runs import AnnouncingStore, Backup, BuildSettings, back_up
 from libranet.backup.tasks import Task, TaskStatus, failure_reason
@@ -190,6 +219,7 @@ from libranet.identity.keys import load_or_create_backup_secret
 from libranet.identity.node_identity import NodeIdentity
 from libranet.messaging.envelope import Message, event_of
 from libranet.messaging.events import (
+    ARCHIVES_FIELD,
     BUILDS_FIELD,
     EXPORTS_FIELD,
     IMPORTS_FIELD,
@@ -202,6 +232,7 @@ from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.protocol.backup_requests import (
+    ArchiveRequest,
     BackupJobRequest,
     BuildRequest,
     ExportRequest,
@@ -238,11 +269,12 @@ class _Progress:
 
 @dataclass
 class _Tasks:
-    """How each job's looks go, and every restore, build, export, and import asked for, by id.
+    """How each job's looks go, and every restore, build, export, import, and archive, by id.
 
-    Kept in memory only, so a restart forgets them. Each restore, build,
-    export, and import is kept in the order it was started, or last started
-    over.
+    Kept in memory only, so a restart forgets them, but for the archives
+    kept, whose records are read as the module starts. Each restore, build,
+    export, import, and archive under way is kept in the order it was
+    started, or last started over.
     """
 
     progress: dict[str, _Progress] = field(default_factory=dict)
@@ -250,6 +282,8 @@ class _Tasks:
     builds: dict[str, Build] = field(default_factory=dict)
     exports: dict[str, Export] = field(default_factory=dict)
     imports: dict[str, Import] = field(default_factory=dict)
+    archiving: dict[str, KeptArchive] = field(default_factory=dict)
+    kept: dict[str, KeptRecord] = field(default_factory=dict)
 
 
 @dataclass
@@ -278,6 +312,8 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             EventType.BUILD_REQUESTED,
             EventType.EXPORT_REQUESTED,
             EventType.IMPORT_REQUESTED,
+            EventType.ARCHIVE_REQUESTED,
+            EventType.ARCHIVE_REMOVED,
             EventType.DATA_STORED,
             EventType.STORAGE_FULL,
         }
@@ -317,6 +353,8 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
                 EventType.BUILD_REQUESTED: self._on_build_requested,
                 EventType.EXPORT_REQUESTED: self._on_export_requested,
                 EventType.IMPORT_REQUESTED: self._on_import_requested,
+                EventType.ARCHIVE_REQUESTED: self._on_archive_requested,
+                EventType.ARCHIVE_REMOVED: self._on_archive_removed,
                 EventType.DATA_STORED: self._on_data_stored,
                 EventType.STORAGE_FULL: self._on_storage_full,
             }
@@ -360,6 +398,16 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         """Every import asked for since the module started, by id."""
         return self._tasks.imports
 
+    @property
+    def archiving(self) -> Mapping[str, KeptArchive]:
+        """Every archive asked to be kept since the module started, and not yet written, by id."""
+        return self._tasks.archiving
+
+    @property
+    def kept(self) -> Mapping[str, KeptRecord]:
+        """Every archive kept, by id."""
+        return self._tasks.kept
+
     def on_start(self) -> None:
         """Read the saved jobs and report them; each is looked at once the module is idle.
 
@@ -367,13 +415,18 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         boundary, for the same reason the web server reads it: the private
         key stays on disk.
 
+        A record of a kept archive no longer there is forgotten.
+
         Raises:
             JobFileError: the saved jobs cannot be read. The module stops
                 rather than start with no jobs and save over them.
+            KeptArchivesFileError: the records of the archives kept cannot be
+                read, and the module stops, as for the jobs.
         """
         self._node_id = NodeIdentity.load(self._config).node_id
         self.publish(EventType.STORAGE_FULL_REQUESTED, {})
         self._jobs = BackupJob.load_all(self._config.storage.backup_jobs_path)
+        self._load_kept()
         now = self._clock()
         self._tasks.progress = {job_id: _Progress(now) for job_id in self._jobs}
         self._report()
@@ -512,10 +565,53 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._report()
         self.logger.info("Importing %s from %s", request.path, local_path)
 
+    def _on_archive_requested(self, message: Message) -> None:
+        request = ArchiveRequest.from_value(message)
+
+        if request.archive_id != message["archive_id"]:
+            raise ValueError(f"Archive {message['archive_id']} does not name what it keeps")
+
+        archive_id, now = request.archive_id, self._clock()
+        kept = self._tasks.kept.get(archive_id)
+        under_way = self._tasks.archiving.get(archive_id)
+
+        if kept is not None:
+            self._record_kept({**self._tasks.kept, archive_id: kept.kept_until(request.expires)})
+            self.logger.info("Keeping the archive %s until %s", archive_id, request.expires_text)
+
+        elif under_way is not None and under_way.status is TaskStatus.WAITING:
+            under_way.ask_again(request, now)
+            self.logger.info("Carrying on keeping the archive %s", archive_id)
+
+        else:
+            self._tasks.archiving.pop(archive_id, None)
+            self._tasks.archiving[archive_id] = KeptArchive(
+                request,
+                now,
+                ask_interval_seconds=self._ask_interval(),
+                give_up_after_seconds=self._config.backup.restore_stall_seconds,
+                max_bundle_bytes=self._settings.max_bundle_bytes,
+            )
+            self.logger.info("Keeping an archive, %s", archive_id)
+
+        self._report()
+
+    def _on_archive_removed(self, message: Message) -> None:
+        archive_id: str = message["archive_id"]
+
+        if archive_id not in self._tasks.kept and archive_id not in self._tasks.archiving:
+            self.logger.info("There is no kept archive %s to remove", archive_id)
+            return
+
+        self._remove_archive(archive_id)
+        self._report()
+        self.logger.info("No longer keeping the archive %s", archive_id)
+
     def _on_data_stored(self, message: Message) -> None:
         content_id = ContentId.from_fields(message)
         now = self._clock()
         landed = [restore.landed(content_id, now) for restore in self._tasks.restores.values()]
+        landed += [archive.landed(content_id, now) for archive in self._tasks.archiving.values()]
 
         if any(landed):
             self._report()
@@ -524,16 +620,25 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._backpressure.storage_full = bool(message["full"])
 
     def _work_next(self) -> None:
-        """Carry on with the work most due, a restore before anything else.
+        """Carry on with the work most due, a restore or an archive before anything else.
 
-        That is the restore longest due, if any, or else the build, export, or
+        Whatever kept archive has expired is removed first. Then comes the
+        restore or archive longest due, if any, or else the build, export, or
         import asked for first, or else the next job due.
         """
         now = self._clock()
+        self._expire(now)
         due = [
-            (restore.due_at, restore_id)
-            for restore_id, restore in self._tasks.restores.items()
-            if restore.is_due(now)
+            *(
+                (restore.due_at, partial(self._carry_on, restore))
+                for restore in self._tasks.restores.values()
+                if restore.is_due(now)
+            ),
+            *(
+                (archive.due_at, partial(self._keep_archive, archive))
+                for archive in self._tasks.archiving.values()
+                if archive.is_due(now)
+            ),
         ]
         waiting = [
             *_waiting(self._tasks.builds.values(), self._build),
@@ -542,7 +647,8 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         ]
 
         if due:
-            self._carry_on(self._tasks.restores[min(due)[-1]])
+            _, carry_on = min(due, key=itemgetter(0))
+            carry_on()
 
         elif waiting:
             _, run = min(waiting, key=itemgetter(0))
@@ -725,6 +831,162 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._log_wait(f"The import of {local_path}")
         self._report()
 
+    def _keep_archive(self, archive: KeptArchive) -> None:
+        """Write what ``archive`` keeps, if all of it is held, and ask for what it lacks if not."""
+        archive_id = archive.archive_id
+        archive.begin()
+        self._report()
+        reported_at = self._clock()
+
+        def progressed() -> None:
+            nonlocal reported_at
+            now = self._clock()
+
+            if now - reported_at >= _PROGRESS_INTERVAL_SECONDS:
+                reported_at = now
+                self._report()
+
+        try:
+            asking = archive.attempt(
+                self._content, self._config.storage.kept_archives_dir, self._clock(), progressed
+            )
+
+        except (OSError, BundleError) as error:
+            archive.fail(error, self._clock())
+            self.logger.warning("Could not keep the archive %s: %s", archive_id, error)
+
+        except Exception as error:  # pylint: disable=broad-exception-caught
+            archive.fail(error, self._clock())
+            self.logger.exception("Keeping the archive %s failed", archive_id)
+
+        else:
+            for content_id in asking:
+                self.publish(EventType.DATA_NOT_FOUND, content_id.fields())
+
+            self._log_archive(archive)
+
+        self._report()
+
+    def _log_archive(self, archive: KeptArchive) -> None:
+        """Log how keeping ``archive`` went, and record it once written."""
+        archive_id, record = archive.archive_id, archive.record
+
+        if archive.status is TaskStatus.FAILED:
+            self.logger.warning("Could not keep the archive %s: %s", archive_id, archive.error)
+            return
+
+        if record is None:
+            self.logger.info(
+                "Keeping the archive %s waits on %d objects not held here",
+                archive_id,
+                len(archive.missing),
+            )
+            return
+
+        try:
+            self._record_kept({**self._tasks.kept, archive_id: record})
+
+        except OSError as error:
+            # What is not recorded would never expire, so it is not kept.
+            record.path(self._config.storage.kept_archives_dir).unlink(missing_ok=True)
+            archive.fail(error, self._clock())
+            self.logger.warning(
+                "Could not record the archive %s, so removed it: %s", archive_id, error
+            )
+            return
+
+        del self._tasks.archiving[archive_id]
+        self.logger.info(
+            "Kept %d objects in the archive %s, of %d bytes, until %s",
+            record.object_count,
+            archive_id,
+            record.size_bytes,
+            archive.request.expires_text,
+        )
+
+    def _expire(self, now: float) -> None:
+        """Remove every kept archive, and every one under way, that has expired by ``now``."""
+        expired = [
+            *(archive_id for archive_id, kept in self._tasks.kept.items() if kept.expired(now)),
+            *(
+                archive_id
+                for archive_id, archive in self._tasks.archiving.items()
+                if archive.expired(now)
+            ),
+        ]
+
+        for archive_id in expired:
+            self._remove_archive(archive_id)
+            self.logger.info("The kept archive %s expired, and was removed", archive_id)
+
+        if expired:
+            self._report()
+
+    def _remove_archive(self, archive_id: str) -> None:
+        """Stop keeping the archive ``archive_id``, deleting it if it was written.
+
+        The record is forgotten even if the records cannot be saved, since
+        a record whose archive is gone is forgotten as the module starts.
+        """
+        self._tasks.archiving.pop(archive_id, None)
+        kept = self._tasks.kept.get(archive_id)
+
+        if kept is None:
+            return
+
+        try:
+            kept.path(self._config.storage.kept_archives_dir).unlink(missing_ok=True)
+
+        except OSError as error:
+            self.logger.warning("Could not remove the kept archive %s: %s", archive_id, error)
+            return
+
+        remaining = {
+            other: record for other, record in self._tasks.kept.items() if other != archive_id
+        }
+
+        try:
+            self._record_kept(remaining)
+
+        except OSError as error:
+            self._tasks.kept = remaining
+            self.logger.warning("Could not save the records of the kept archives: %s", error)
+
+    def _load_kept(self) -> None:
+        """Read the records of the archives kept, forgetting those no longer there.
+
+        Raises:
+            KeptArchivesFileError: they cannot be read.
+        """
+        directory = self._config.storage.kept_archives_dir
+        records = KeptRecord.load_all(self._config.storage.kept_archives_path)
+        there = {key: record for key, record in records.items() if record.path(directory).is_file()}
+
+        for archive_id in records.keys() - there.keys():
+            self.logger.warning(
+                "Forgetting the kept archive %s, which is no longer there", archive_id
+            )
+
+        if there == records:
+            self._tasks.kept = records
+            return
+
+        try:
+            self._record_kept(there)
+
+        except OSError as error:
+            self._tasks.kept = there
+            self.logger.warning("Could not save the records of the kept archives: %s", error)
+
+    def _record_kept(self, records: dict[str, KeptRecord]) -> None:
+        """Save ``records``, then make them the archives kept, so what is kept is always saved.
+
+        Raises:
+            OSError: they could not be saved; the archives kept are unchanged.
+        """
+        KeptRecord.save_all(self._config.storage.kept_archives_path, records.values())
+        self._tasks.kept = records
+
     def _back_up_next(self) -> None:
         """Look at the job a backup was asked for, or else the one longest due, if any."""
         now = self._clock()
@@ -903,7 +1165,7 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._jobs = jobs
 
     def _report(self) -> None:
-        """Publish what every job, restore, build, export, and import is doing, to be served."""
+        """Publish what every job, restore, build, export, import, and archive is doing."""
         jobs = sorted(self._jobs.values(), key=lambda job: job.directory)
         self.publish(
             EventType.BACKUP_STATE,
@@ -913,8 +1175,17 @@ class BackupModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
                 BUILDS_FIELD: [build.report() for build in self._tasks.builds.values()],
                 EXPORTS_FIELD: [export.report() for export in self._tasks.exports.values()],
                 IMPORTS_FIELD: [task.report() for task in self._tasks.imports.values()],
+                ARCHIVES_FIELD: self._archives_report(),
             },
         )
+
+    def _archives_report(self) -> list[dict[str, Any]]:
+        """Every archive kept or under way, in the order they were asked for."""
+        reports = [
+            *(record.report() for record in self._tasks.kept.values()),
+            *(archive.report() for archive in self._tasks.archiving.values()),
+        ]
+        return sorted(reports, key=itemgetter("requested_at", "archive_id"))
 
     def _job_report(self, job: BackupJob) -> dict[str, Any]:
         progress = self._tasks.progress[job.job_id]

@@ -30,6 +30,7 @@ from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import MessageSigner, MessageVerifier
 from libranet.messaging.envelope import make_message
 from libranet.messaging.events import (
+    ARCHIVES_FIELD,
     BUILDS_FIELD,
     EXPORTS_FIELD,
     IMPORTS_FIELD,
@@ -589,6 +590,7 @@ def test_module_serves_config_from_the_credential_and_state_it_holds(tmp_path: P
                     BUILDS_FIELD: [],
                     EXPORTS_FIELD: [],
                     IMPORTS_FIELD: [imported],
+                    ARCHIVES_FIELD: [],
                 },
             )
         )

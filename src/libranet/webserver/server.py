@@ -144,6 +144,13 @@ from libranet.webserver.list_handlers import (
     SeekListHandler,
 )
 from libranet.webserver.local_folders import DIRECTORY_PATTERN, DirectoryHandler, LocalFolders
+from libranet.webserver.kept_archives import (
+    ARCHIVE_PATTERN,
+    ARCHIVES_PATH,
+    ArchiveHandler,
+    ArchiveListHandler,
+    ArchiveRemovalHandler,
+)
 from libranet.webserver.local_imports import IMPORTS_PATH, ImportHandler, ImportListHandler
 from libranet.webserver.local_only import CLIENT_PATH, LocalOnly, OwnSiteOnly, client_handler
 from libranet.webserver.metadata_handlers import OwnMetadata
@@ -305,8 +312,8 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
         blocked=blocked,
     )
     router.add("GET", CLIENT_PATH, OwnPageOnly(client_handler, pages))
-    # The directory, import, store, bundle, and search routes must precede the
-    # data route, whose pattern they also fit.
+    # The directory, import, archive, store, bundle, and search routes must
+    # precede the data route, whose pattern they also fit.
     router.add(
         "GET",
         DIRECTORY_PATTERN,
@@ -318,6 +325,18 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
         "POST",
         IMPORTS_PATH,
         LocalOnly(OwnPageOnly(ImportHandler(folders, publish), pages, trusted=True), checks),
+    )
+    archives = ArchiveListHandler(state, retry_after_seconds)
+    router.add("GET", ARCHIVES_PATH, LocalOnly(OwnPageOnly(archives, pages, trusted=True), checks))
+    router.add(
+        "POST",
+        ARCHIVES_PATH,
+        LocalOnly(OwnPageOnly(ArchiveHandler(publish), pages, trusted=True), checks),
+    )
+    router.add(
+        "DELETE",
+        ARCHIVE_PATTERN,
+        LocalOnly(OwnPageOnly(ArchiveRemovalHandler(publish), pages, trusted=True), checks),
     )
     router.add("GET", STORE_PATTERN, StoreHandler(app_store, pages))
     router.add("GET", STORE_KEY_PATTERN, StoreValueHandler(app_store, pages))

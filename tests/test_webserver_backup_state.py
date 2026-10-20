@@ -7,6 +7,7 @@ from pytest import mark, raises
 
 from libranet.messaging.envelope import Message, make_message
 from libranet.messaging.events import (
+    ARCHIVES_FIELD,
     BUILDS_FIELD,
     EXPORTS_FIELD,
     IMPORTS_FIELD,
@@ -23,10 +24,16 @@ RESTORE = {"restore_id": "fedcba9876543210", "directory": "/tmp/restored", "stat
 BUILD = {"build_id": "0011223344556677", "directory": "/home/me/site", "status": "done"}
 EXPORT = {"export_id": "8899aabbccddeeff", "archive": "/tmp/site.zip", "status": "waiting"}
 IMPORT = {"import_id": "7766554433221100", "path": "Movies/Film.mp4", "status": "running"}
+ARCHIVE = {"archive_id": "1122334455667788", "bundles": ["sha256/ab"], "status": "done"}
 
 
 def report_message(
-    jobs: object, restores: object, builds: object, exports: object, imports: object
+    jobs: object,
+    restores: object,
+    builds: object,
+    exports: object,
+    imports: object,
+    archives: object = (),
 ) -> Message:
     return make_message(
         EventType.BACKUP_STATE,
@@ -37,6 +44,7 @@ def report_message(
             BUILDS_FIELD: builds,
             EXPORTS_FIELD: exports,
             IMPORTS_FIELD: imports,
+            ARCHIVES_FIELD: list(archives) if isinstance(archives, tuple) else archives,
         },
     )
 
@@ -58,7 +66,7 @@ def test_a_report_replaces_the_one_before_it() -> None:
 
 def test_a_report_carries_the_entries_as_the_backup_module_published_them() -> None:
     report = BackupReport.from_message(
-        report_message([JOB], [RESTORE], [BUILD], [EXPORT], [IMPORT])
+        report_message([JOB], [RESTORE], [BUILD], [EXPORT], [IMPORT], [ARCHIVE])
     )
 
     assert report.jobs == (JOB,)
@@ -66,11 +74,13 @@ def test_a_report_carries_the_entries_as_the_backup_module_published_them() -> N
     assert report.builds == (BUILD,)
     assert report.exports == (EXPORT,)
     assert report.imports == (IMPORT,)
+    assert report.archives == (ARCHIVE,)
     assert report.entries(JOBS_FIELD) == (JOB,)
     assert report.entries(RESTORES_FIELD) == (RESTORE,)
     assert report.entries(BUILDS_FIELD) == (BUILD,)
     assert report.entries(EXPORTS_FIELD) == (EXPORT,)
     assert report.entries(IMPORTS_FIELD) == (IMPORT,)
+    assert report.entries(ARCHIVES_FIELD) == (ARCHIVE,)
 
 
 def test_a_report_naming_neither_list_is_an_error() -> None:
@@ -79,27 +89,38 @@ def test_a_report_naming_neither_list_is_an_error() -> None:
 
 
 @mark.parametrize(
-    "jobs,restores,builds,exports,imports",
+    "jobs,restores,builds,exports,imports,archives",
     [
-        ("not a list", [], [], [], []),
-        ([], {"job_id": "a"}, [], [], []),
-        ([JOB, "not an object"], [], [], [], []),
-        ([], [None], [], [], []),
-        ([], [], "not a list", [], []),
-        ([], [], [], [EXPORT, 7], []),
-        ([], [], [], [], {"import_id": "a"}),
-        ([], [], [], [], [IMPORT, None]),
-        (None, None, None, None, None),
+        ("not a list", [], [], [], [], []),
+        ([], {"job_id": "a"}, [], [], [], []),
+        ([JOB, "not an object"], [], [], [], [], []),
+        ([], [None], [], [], [], []),
+        ([], [], "not a list", [], [], []),
+        ([], [], [], [EXPORT, 7], [], []),
+        ([], [], [], [], {"import_id": "a"}, []),
+        ([], [], [], [], [IMPORT, None], []),
+        ([], [], [], [], [], {"archive_id": "a"}),
+        ([], [], [], [], [], [ARCHIVE, "not an object"]),
+        (None, None, None, None, None, None),
     ],
 )
-def test_a_report_that_is_not_five_arrays_of_objects_is_an_error(
-    jobs: object, restores: object, builds: object, exports: object, imports: object
+def test_a_report_that_is_not_six_arrays_of_objects_is_an_error(
+    jobs: object,
+    restores: object,
+    builds: object,
+    exports: object,
+    imports: object,
+    archives: object,
 ) -> None:
     with raises(InvalidBackupReportError):
-        BackupReport.from_message(report_message(jobs, restores, builds, exports, imports))
+        BackupReport.from_message(
+            report_message(jobs, restores, builds, exports, imports, archives)
+        )
 
 
-@mark.parametrize("missing", [RESTORES_FIELD, BUILDS_FIELD, EXPORTS_FIELD, IMPORTS_FIELD])
+@mark.parametrize(
+    "missing", [RESTORES_FIELD, BUILDS_FIELD, EXPORTS_FIELD, IMPORTS_FIELD, ARCHIVES_FIELD]
+)
 def test_a_message_missing_a_list_entirely_is_an_error(missing: str) -> None:
     lists: dict[str, object] = {
         JOBS_FIELD: [],
@@ -107,6 +128,7 @@ def test_a_message_missing_a_list_entirely_is_an_error(missing: str) -> None:
         BUILDS_FIELD: [],
         EXPORTS_FIELD: [],
         IMPORTS_FIELD: [],
+        ARCHIVES_FIELD: [],
     }
     del lists[missing]
     message = make_message(EventType.BACKUP_STATE, ModuleName.WEBSERVER, lists)

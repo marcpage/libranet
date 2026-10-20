@@ -99,6 +99,8 @@ other modules sent.
 | `backup.build_requested` | Web server | Backup | Build a directory into a bundle |
 | `backup.export_requested` | Web server | Backup | Export a bundle as a content archive |
 | `backup.import_requested` | Web server | Backup | Import a local file |
+| `backup.archive_requested` | Web server | Backup | Keep content in an archive of the node's own |
+| `backup.archive_removed` | Web server | Backup | Stop keeping an archive |
 | `backup.state` | Backup | Web server | Everything the backup module is doing |
 | `eviction.notice` | Eviction | Connections | Hand this content off to peers |
 | `eviction.acknowledged` | Connections | Eviction | The peers that accepted the hand-off |
@@ -439,9 +441,11 @@ it and what each does with it.
 
 These requests are all sent by the Web server from `/config` handlers
 (`config_handlers.py`), except `backup.import_requested`, which a local
-client's import sends (`local_imports.py`). Each is received by Backup alone,
-which reports progress in `backup.state`. `password` is `null` for none and
-is never logged or reported.
+client's import sends (`local_imports.py`), and `backup.archive_requested` and
+`backup.archive_removed`, which a local client keeping content offline sends
+(`kept_archives.py`). Each is received by Backup alone, which reports
+progress in `backup.state`. `password` is `null` for none and is never logged
+or reported, nor is the key a kept archive's bundle may carry.
 
 | Message | Payload | What Backup does |
 | --- | --- | --- |
@@ -452,17 +456,19 @@ is never logged or reported.
 | `backup.build_requested` | `build_id`, `directory`, `password` | Builds the directory into a bundle, or a new version of it |
 | `backup.export_requested` | `export_id`, `bundle`, `archive`, `on_conflict`, `password` | Writes the bundle and all it needs into a content archive |
 | `backup.import_requested` | `import_id`, `path`, `local_path` | Reads the file at `local_path` into parts and a file bundle |
+| `backup.archive_requested` | `archive_id`, `bundles`, `objects`, `expires` | Writes the bundles, with all they need, and the objects into an archive of its own once all is held, asking for what it lacks, and keeps it until `expires`; asked again, keeps it until the new time |
+| `backup.archive_removed` | `archive_id` | Stops keeping the archive, and deletes it |
 
 `on_conflict` is a `ConflictBehavior`, `refuse` or `overwrite`.
 
 #### `backup.state`
 
-- **Payload:** `jobs`, `restores`, `builds`, `exports`, `imports`, each a
-  list of reports.
+- **Payload:** `jobs`, `restores`, `builds`, `exports`, `imports`,
+  `archives`, each a list of reports.
 - **Sent by:** Backup, whenever any of them changes.
 - **Received by:** Web server, which keeps the latest to answer
   `GET /config/api/backups`, `restores`, `builds`, and `exports`, and
-  `GET /data/imports` (`backup_state.py`).
+  `GET /data/imports` and `/data/archives` (`backup_state.py`).
 - **Purpose:** show the operator and local clients what the backup module
   is doing.
 
@@ -596,13 +602,13 @@ is never logged or reported.
 
 | Module | Sends | Receives |
 | --- | --- | --- |
-| Web server | `data.requested`, `data.not_found`, `data.search_requested`, `data.put_completed`, `data.stored`, `nodes.received`, `seek.received`, `address.dial_requested`, `app.path_not_found`, `app.accessed`, `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `data.blocked`, `peers.connected`, `node.trust`, `node.trust_requested` | `app.path_resolved`, `backup.state`, `peers.connected_requested`, `address.dialed`, `node.trust_stored` |
+| Web server | `data.requested`, `data.not_found`, `data.search_requested`, `data.put_completed`, `data.stored`, `nodes.received`, `seek.received`, `address.dial_requested`, `app.path_not_found`, `app.accessed`, `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.blocked`, `peers.connected`, `node.trust`, `node.trust_requested` | `app.path_resolved`, `backup.state`, `peers.connected_requested`, `address.dialed`, `node.trust_stored` |
 | Connections | `data.search_answered`, `data.put_completed`, `data.stored`, `nodes.received`, `address.verified`, `address.dialed`, `connection.opened`, `connection.closed`, `connection.failed`, `node.unreached`, `data.sent`, `fetch.attempted`, `fetch.succeeded`, `fetch.failed`, `eviction.acknowledged`, `peers.connected` | `nodes.updated`, `nodes.received`, `fetch.requested`, `data.search_requested`, `eviction.notice`, `data.stored`, `peers.connected_requested`, `address.dial_requested`, `node.trust` |
 | Validator | `data.stored`, `data.rejected` | `data.put_completed` |
 | Stats | `nodes.updated`, `eviction.candidates`, `resolved.reclaim`, `peers.connected_requested`, `node.trust_stored` | `data.requested`, `data.not_found`, `data.search_requested`, `data.search_answered`, `data.stored`, `data.rejected`, `nodes.received`, `seek.received`, `connection.opened`, `connection.closed`, `connection.failed`, `node.unreached`, `address.verified`, `data.sent`, `fetch.attempted`, `data.deleted`, `eviction.candidates_requested`, `app.accessed`, `resolved.reclaim_requested`, `data.blocked`, `peers.connected`, `node.trust`, `node.trust_requested` |
 | Fetcher | `fetch.requested` | `data.not_found`, `fetch.succeeded`, `fetch.failed` |
 | Unbundler | `data.not_found`, `app.path_resolved`, `resolved.reclaimed` | `app.path_not_found`, `data.stored`, `resolved.reclaim` |
 | Eviction | `eviction.notice`, `data.deleted`, `eviction.candidates_requested`, `resolved.reclaim_requested`, `peers.connected_requested`, `storage.full` | `data.stored`, `eviction.acknowledged`, `eviction.candidates`, `resolved.reclaimed`, `peers.connected`, `storage.full_requested`, `data.blocked` |
-| Backup | `data.not_found`, `data.stored`, `backup.state`, `storage.full_requested` | `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `data.stored`, `storage.full` |
+| Backup | `data.not_found`, `data.stored`, `backup.state`, `storage.full_requested` | `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.stored`, `storage.full` |
 
 Every module also receives `shutdown`.

@@ -69,6 +69,7 @@ DATA_ENDPOINT_NAMES: Final = (
     "session",
     "peers",
     "trust",
+    "archives",
 )
 
 DATA_PATTERN: Final = (
