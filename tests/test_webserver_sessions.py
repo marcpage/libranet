@@ -103,6 +103,7 @@ def test_the_session_says_who_is_signed_in(session: Session) -> None:
         "created": session.key.created_text,
         "fallback": str(session.key.fallback),
         "fallback_for": None,
+        "block": str(BLOCK),
     }
 
 
@@ -115,6 +116,7 @@ def test_a_fallbacks_session_names_the_identity_it_takes_over_from() -> None:
         "created": made.fallback.created_text,
         "fallback": None,
         "fallback_for": str(made.key.person_id),
+        "block": str(BLOCK),
     }
 
 

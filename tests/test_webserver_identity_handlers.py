@@ -48,7 +48,14 @@ PASSWORD = "correct horse"
 FALLBACK_PASSWORD = "battery staple"
 NEW_FALLBACK_PASSWORD = "stapled battery"
 TARGET = DropTarget.of("user:alice")
-NO_ONE = {"id": None, "username": None, "created": None, "fallback": None, "fallback_for": None}
+NO_ONE = {
+    "id": None,
+    "username": None,
+    "created": None,
+    "fallback": None,
+    "fallback_for": None,
+    "block": None,
+}
 
 
 class Recorder:
@@ -225,6 +232,7 @@ def test_making_an_identity_keeps_its_keys_and_signs_it_in(
         "created": answer["created"],
         "fallback": answer["fallback"],
         "fallback_for": None,
+        "block": answer["drop"],
     }
 
 
@@ -286,13 +294,20 @@ def test_the_fallback_password_signs_in_as_the_fallback(
     response = identities.sign_in(signing_in(password=FALLBACK_PASSWORD))
 
     assert response.status == 200, response.body
-    assert loads(response.body) == {
+    signed_in = loads(response.body)
+    block = ContentId.parse(signed_in.pop("block"))
+    assert signed_in == {
         "id": answer["fallback"],
         "username": "alice",
         "created": answer["created"],
         "fallback": None,
         "fallback_for": answer["id"],
     }
+    # The block named is the fallback's own, which the fallback password opens.
+    fallback = PersonKey.opened(
+        uploaded(storage, block), Username.create("alice").password_key(FALLBACK_PASSWORD)
+    )
+    assert str(fallback.person_id) == answer["fallback"]
 
 
 def test_a_fallback_password_that_opens_an_identity_here_makes_none(
@@ -330,6 +345,7 @@ def test_an_identity_made_without_signing_in_starts_no_session(
         "created": answer["created"],
         "fallback": answer["fallback"],
         "fallback_for": None,
+        "block": answer["drop"],
     }
 
 
@@ -347,6 +363,8 @@ def test_a_fallback_takes_over_with_a_fallback_of_its_own(
     assert taken["id"] == answer["fallback"]
     assert taken["fallback_for"] == answer["id"]
     assert taken["created"] == answer["created"]
+    # The session names the block the fallback is sealed in again, naming both.
+    assert taken["block"] == taken["drop"]
     assert taken["target"] == TARGET.hex
     assert response.headers["Cache-Control"] == "no-store"
     # The fallback's public key is held already, so storing it uploads nothing.
@@ -504,6 +522,7 @@ def test_signing_in_opens_the_identity_at_the_usernames_drop(
         "created": answer["created"],
         "fallback": answer["fallback"],
         "fallback_for": None,
+        "block": answer["drop"],
     }
     assert response.headers["Cache-Control"] == "no-store"
     assert response.headers["Set-Cookie"].endswith("; Path=/; HttpOnly; SameSite=Strict")
