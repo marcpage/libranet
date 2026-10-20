@@ -258,6 +258,11 @@ class KeptArchive(Task):
         return self._request
 
     @property
+    def error(self) -> str | None:
+        """Why keeping it failed; ``None`` unless it has."""
+        return self._error
+
+    @property
     def due_at(self) -> float:
         """When it is next to carry on, if it is waiting."""
         return self._waiting.due_at

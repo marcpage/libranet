@@ -48,6 +48,7 @@ from libranet.cas.verification import content_matches
 from libranet.messaging.events import ConflictBehavior
 from libranet.protocol.backup_requests import ExportRequest
 
+
 class Export(Task):
     """A bundle being written, with all it needs, into a content archive, as a request asked.
 

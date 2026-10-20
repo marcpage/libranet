@@ -1,4 +1,4 @@
-"""What the backup module last said its jobs, restores, builds, exports, and imports were doing.
+"""What the backup module last said its jobs, restores, builds, exports, and the rest were doing.
 
 The web server does no backup work and keeps no job state of its own, so
 what a ``GET`` reads back is whatever the backup module (Step 19) last
@@ -20,6 +20,7 @@ from typing import Any, Mapping
 
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import (
+    ARCHIVES_FIELD,
     BUILDS_FIELD,
     EXPORTS_FIELD,
     IMPORTS_FIELD,
@@ -31,7 +32,7 @@ from libranet.webserver.errors import InvalidBackupReportError
 
 @dataclass(frozen=True)
 class BackupReport:
-    """One report of every configured job, and every requested restore, build, export, and import.
+    """One report of every configured job, and every restore, build, export, import, and archive.
 
     The entries are passed to clients as the backup module published them,
     so it alone decides what it says about each.
@@ -42,6 +43,7 @@ class BackupReport:
     builds: tuple[Mapping[str, Any], ...] = ()
     exports: tuple[Mapping[str, Any], ...] = ()
     imports: tuple[Mapping[str, Any], ...] = ()
+    archives: tuple[Mapping[str, Any], ...] = ()
 
     @classmethod
     def from_message(cls, message: Message) -> BackupReport:
@@ -57,10 +59,11 @@ class BackupReport:
             _entries(message, BUILDS_FIELD),
             _entries(message, EXPORTS_FIELD),
             _entries(message, IMPORTS_FIELD),
+            _entries(message, ARCHIVES_FIELD),
         )
 
     def entries(self, field: str) -> tuple[Mapping[str, Any], ...]:
-        """The report's ``jobs``, ``restores``, ``builds``, ``exports``, or ``imports``.
+        """The report's ``jobs``, ``restores``, ``builds``, ``exports``, ``imports``, or ``archives``.
 
         Raises:
             KeyError: ``field`` names none of them.
@@ -71,6 +74,7 @@ class BackupReport:
             BUILDS_FIELD: self.builds,
             EXPORTS_FIELD: self.exports,
             IMPORTS_FIELD: self.imports,
+            ARCHIVES_FIELD: self.archives,
         }[field]
 
 
