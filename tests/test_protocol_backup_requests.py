@@ -1,16 +1,19 @@
-"""Tests for what the ``/config`` backup and build endpoints, and ``/data/imports``, accept."""
+"""Tests for what the ``/config`` backup and build endpoints, ``/data/imports``, and ``/data/archives`` accept."""
 
 from __future__ import annotations
+from datetime import UTC, datetime, timedelta, timezone
 from logging import WARNING
 from pathlib import Path
 from typing import Callable
 
 from pytest import LogCaptureFixture, mark, raises
 
+from libranet.bundle.parts import PartPath
 from libranet.cas.content_id import ContentId
 from libranet.messaging.events import ConflictBehavior
 from libranet.protocol.backup_requests import (
     IDENTIFIER_LENGTH,
+    ArchiveRequest,
     BackupJobRequest,
     BuildRequest,
     ExportRequest,
@@ -332,3 +335,112 @@ def test_a_password_is_taken_as_utf8() -> None:
     assert Password("pässwörd").encoded == "pässwörd".encode("utf-8")
     assert Password.optional(None) is None
     assert Password.optional("pw") == Password("pw")
+
+
+KEY = bytes(range(32))
+COLLECTION = PartPath(ContentId.for_data(b"a collection, encrypted", "sha256"), KEY)
+VERSION = ContentId.for_data(b"a version at a drop", "sha256")
+EXPIRES = "2026-11-20T00:00:00Z"
+
+
+def test_an_archive_names_the_bundles_and_objects_it_keeps_and_until_when() -> None:
+    asked = ArchiveRequest.from_value(
+        {"bundles": [str(COLLECTION)], "objects": [str(VERSION)], "expires": EXPIRES}
+    )
+
+    assert asked.bundles == (COLLECTION,)
+    assert asked.objects == (VERSION,)
+    assert asked.expires == datetime(2026, 11, 20, tzinfo=UTC)
+    assert asked.expires_text == EXPIRES
+    assert len(asked.archive_id) == IDENTIFIER_LENGTH
+    assert asked.payload() == {
+        "archive_id": asked.archive_id,
+        "bundles": [str(COLLECTION)],
+        "objects": [str(VERSION)],
+        "expires": EXPIRES,
+    }
+
+
+def test_an_archive_kept_until_removed_names_no_time_and_may_name_no_objects() -> None:
+    asked = ArchiveRequest.from_value({"bundles": [str(BUNDLE)]})
+
+    assert asked == ArchiveRequest((PartPath(BUNDLE),))
+    assert asked.expires is None
+    assert asked.payload()["expires"] is None
+
+
+def test_the_message_asking_for_an_archive_is_read_back_as_the_request() -> None:
+    asked = ArchiveRequest.from_value(
+        {"bundles": [str(COLLECTION)], "objects": [str(VERSION)], "expires": EXPIRES}
+    )
+
+    assert ArchiveRequest.from_value(asked.payload()) == asked
+
+
+def test_an_archive_is_named_by_its_content_whatever_its_keys_or_when_it_expires() -> None:
+    asked = ArchiveRequest((COLLECTION,), (VERSION,), datetime(2026, 11, 20, tzinfo=UTC))
+
+    assert (
+        asked.archive_id
+        == ArchiveRequest((PartPath(COLLECTION.content_id),), (VERSION,)).archive_id
+    )
+    assert KEY.hex() not in asked.archive_id
+
+
+def test_a_bundle_kept_whole_is_not_named_as_the_same_object_kept_as_it_is() -> None:
+    whole = ArchiveRequest((PartPath(BUNDLE),))
+    as_it_is = ArchiveRequest((), (BUNDLE,))
+
+    assert whole.archive_id != as_it_is.archive_id
+
+
+@mark.parametrize(
+    "value,message",
+    [
+        ("not an object", "must be a JSON object"),
+        ({"bundles": "sha256/ab"}, "arrays of strings"),
+        ({"bundles": [7]}, "arrays of strings"),
+        ({"bundles": [], "objects": [None]}, "arrays of strings"),
+        ({"bundles": [str(BUNDLE)], "expires": 1_789_000_000}, "a string or null"),
+        ({"bundles": [str(BUNDLE)], "expires": "2026-11-20"}, "Not a UTC time"),
+        ({"bundles": [str(BUNDLE)], "expires": "2026-11-20T00:00:00+01:00"}, "Not a UTC time"),
+        ({}, "must name a bundle or an object"),
+        ({"bundles": ["not an id"]}, "must look like"),
+        ({"bundles": [f"{BUNDLE}/AES256-CBC/abcd"]}, "key is 32 bytes"),
+        ({"objects": ["sha256/XYZ"]}, "64 hexadecimal"),
+    ],
+)
+def test_an_archive_that_is_not_usable_is_refused(value: object, message: str) -> None:
+    with raises(InvalidRequestError, match=message):
+        ArchiveRequest.from_value(value)
+
+
+def test_a_key_given_is_never_shown_in_a_refusal() -> None:
+    malformed = f"{BUNDLE}/AES256-CBC/{KEY.hex()}00"
+
+    with raises(InvalidRequestError) as raised:
+        ArchiveRequest.from_value({"bundles": [malformed]})
+
+    assert KEY.hex() not in str(raised.value)
+
+
+def test_an_archive_naming_a_hash_algorithm_not_known_is_refused_with_a_warning(
+    caplog: LogCaptureFixture,
+) -> None:
+    with caplog.at_level(WARNING), raises(InvalidRequestError, match="'sha999'"):
+        ArchiveRequest.from_value({"bundles": ["sha999/abcd"]})
+
+    (record,) = caplog.records
+    assert "Refusing to keep an archive" in record.getMessage()
+
+
+@mark.parametrize(
+    "expires",
+    [
+        datetime(2026, 11, 20, 0, 0, 0, 500, tzinfo=UTC),
+        datetime(2026, 11, 20, tzinfo=timezone(timedelta(hours=1))),
+    ],
+)
+def test_an_archive_expires_only_at_a_utc_time_to_the_second(expires: datetime) -> None:
+    with raises(ValueError, match="UTC time to the second"):
+        ArchiveRequest((PartPath(BUNDLE),), (), expires)
