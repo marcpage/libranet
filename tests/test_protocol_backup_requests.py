@@ -1,4 +1,4 @@
-"""Tests for what the ``/config`` backup and build endpoints, ``/data/imports``, and ``/data/archives`` accept."""
+"""Tests for what the ``/config`` backup and build endpoints, and ``/data`` imports and archives, accept."""
 
 from __future__ import annotations
 from datetime import UTC, datetime, timedelta, timezone

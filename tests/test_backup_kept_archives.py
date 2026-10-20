@@ -135,7 +135,7 @@ def test_content_lacked_is_asked_for_and_waited_on_until_it_all_arrives(
     assert task.is_due(REQUESTED_AT + 3)
 
     assert task.attempt(source, kept_dir, REQUESTED_AT + 3) == ()
-    assert task.status is TaskStatus.DONE
+    assert task.report()["status"] == "done"
     assert held_in(kept_dir / f"{task.archive_id}.zip") == everything(bundle)
 
 

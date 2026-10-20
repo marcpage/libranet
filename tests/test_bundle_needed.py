@@ -50,9 +50,7 @@ def test_a_bundle_stored_encrypted_is_read_with_the_key_it_is_named_with(store: 
     film = store_object(b"a film", store)
     top = writer.store(
         encode_bundle(
-            DirectoryBundle(
-                {"film.mp4": FileBundle((str(film),))}, extensions=(str(extension),)
-            )
+            DirectoryBundle({"film.mp4": FileBundle((str(film),))}, extensions=(str(extension),))
         )
     )
 

@@ -293,6 +293,8 @@ when trusted. `self.origin === "null"` tells a page it is sandboxed.
 | `/data/{id}` | `DELETE` | Local | A trusted application's | Delete and block content the node will no longer hold (§6.11) |
 | `/data/nodes`, `/data/seek` | `GET` | Any | Any, or none | The peers the node knows, and what it seeks (§6.8) |
 | `/data/peers` | `GET` | Local | A trusted application's | What the node knows of each peer, and whether it is connected (§6.8) |
+| `/data/archives` | `GET`, `POST` | Local | A trusted application's | Keep content offline, and follow the archives kept (§6.19) |
+| `/data/archives/{archive_id}` | `DELETE` | Local | A trusted application's | Stop keeping an archive (§6.19) |
 
 ### 5.3 Waiting for Content
 
@@ -1365,6 +1367,51 @@ nodes, and those of the user directory (§6.12) are people. A trust list may
 name either (§6.17), so show an id it names by its id alone, unless you
 found it in one of those too. Read a node at `node:{id}`, never at
 `user:{id}`, and do not read a public key to tell the two apart.
+
+### 6.19 Keeping Content Offline
+
+A node lets go of content it has not been asked for in a while, to make room
+for more. To keep content held, to play offline say, ask the node to keep it
+in an archive of its own, until a time you give:
+
+```js
+const kept = await fetch("/data/archives", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    bundles: [collection],              // each with all it needs; a key too
+    objects: [version, block, person],  // each as it is
+    expires: "2026-11-20T00:00:00Z",    // or leave it out: kept until removed
+  }),
+});
+const { archive_id } = await kept.json();    // answered 202 at once
+```
+
+Each bundle is kept with everything it needs, its extensions and the parts
+of every file it holds, and each object as it is. Keep what a page reads
+before it can show the bundle: a version at a drop that lists it (§6.9), say.
+A person's versions are read only by whoever is signed in, so keep what
+signing in reads too: the `block` the session names (§6.10), and the
+person's `id`, their public key, which their signed versions are checked
+against (§6.13). The node fetches whatever it lacks before it writes the
+archive, so follow it at `GET /data/archives`, as an import (§6.4):
+
+```json
+{"archives": {"<archive_id>": {"bundles": ["sha256/…"], "status": "waiting",
+                               "expires": "2026-11-20T00:00:00Z",
+                               "needed": 412, "missing": 37,
+                               "written": 0, "size": null}}}
+```
+
+`status` is `waiting` while content is fetched, `running` while the archive
+is written, `done` once it is, or `failed`, with `error`. `bundles` names
+each bundle by its id alone, without its key, so match the archive to what
+you kept by that. The archive is read as soon as it is written, with no
+restart, and is never let go of. Asking again with the same content keeps it
+until the new time without writing it again. `DELETE
+/data/archives/{archive_id}` stops keeping it, as passing `expires` does.
+An archive keeps the node's disk as long as it is kept, so give a time
+unless the person asks to keep it for good.
 
 ## 7. Patterns From the Movie Library
 

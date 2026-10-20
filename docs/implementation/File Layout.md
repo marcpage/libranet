@@ -64,7 +64,8 @@ A node on macOS with every default, after its first run, looks like this:
 │   ├── backup_jobs/                each job's last bundle, kept expanded
 │   ├── connecting.json             which nodes to connect to
 │   ├── store/                      each application's store
-│   └── archives/                   content archives kept offline
+│   ├── archives/                   content archives kept offline
+│   └── kept_archives.json          when each kept archive expires
 ├── Caches/libranet/                storage.cache_dir
 │   ├── lists/                      the lists stats derives (§4.1)
 │   └── search/                     cached search responses
@@ -131,8 +132,9 @@ something is written to it.
 ├── connecting.json
 ├── store/
 │   └── {SHA-256 of a name}.json         an application's store
-└── archives/
-    └── {archive id}.zip                 a content archive kept offline
+├── archives/
+│   └── {archive id}.zip                 a content archive kept offline
+└── kept_archives.json                   each kept archive, and until when
 ```
 
 | Path | Written by | Read by |
@@ -150,6 +152,7 @@ something is written to it.
 | `connecting.json` | Web server | Web server |
 | `store/` | Web server | Web server |
 | `archives/` | Backup module (`/data/archives`, Step 115) | Every module that reads content |
+| `kept_archives.json` | Backup module | Backup module |
 
 ### 3.1 The Source of Truth: `cas/data`
 
@@ -447,6 +450,30 @@ What an archive here holds, as any archive's, is never evicted, and not
 counted against the storage limits. Deleting a file here, even while the
 node runs, stops keeping what it holds; whatever the store still holds of it
 stays, and is evicted as any content is.
+
+The backup module writes each archive here as a local client asks
+(HttpApi §12.4; `src/libranet/backup/kept_archives.py`), once it holds
+everything the archive needs, and records it in `kept_archives.json`:
+
+```json
+{
+  "archives": [
+    {"archive_id": "0123456789abcdef", "bundles": ["sha256/…"],
+     "objects": ["sha256/…"], "requested_at": 1791892800.25,
+     "finished_at": 1791892861.5, "object_count": 4100,
+     "size_bytes": 4294967296, "expires": "2026-11-20T00:00:00Z"}
+  ]
+}
+```
+
+A record names each bundle by its id alone, never with the key it may be
+stored encrypted under. The module removes an archive, and its record, once
+`expires` has passed, or as it starts if it passed while the node was down,
+and when a local client asks. A record whose archive is gone is forgotten as
+the module starts, and an archive here with no record, as an operator may
+leave, or a crash between writing one and recording it, is read but never
+expires, and is not listed. A file that cannot be read stops the backup
+module, as `backup_jobs.json` does (§3.7), rather than being saved over.
 
 ## 4. The Cache Directory
 

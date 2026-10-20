@@ -80,9 +80,8 @@ person (§11.5), opening an encrypted block (§11.6), the trust of whoever is
 signed in (§11.7), reading into a bundle (§12.1), the folders and imports
 (§12.2), making bundles (§12.3), keeping content offline (§12.4), an
 application's store (§13.3), and the list of applications (§13.4). Each but
-reading into a bundle requires a
-`Referer` naming a page of the node (§2.5). A few serve only clients on the
-node's own machine (§2.4).
+reading into a bundle requires a `Referer` naming a page of the node (§2.5).
+A few serve only clients on the node's own machine (§2.4).
 
 ### 2.2 Web Applications
 
@@ -345,9 +344,9 @@ keeping content offline (§12.4), and changing an application's store
 a username and password (§11.6).
 A request to one of them from any other client MUST be refused with
 `403 Forbidden`. Blocking, the peers, the identities, fallbacks, session,
-signed drops, encrypted blocks, trust, folders, imports, and bundles are
-served only from a page of a trusted application, and an application's
-store is changed only from a page of its own (§2.5).
+signed drops, encrypted blocks, trust, folders, imports, bundles, and
+archives are served only from a page of a trusted application, and an
+application's store is changed only from a page of its own (§2.5).
 
 A local source does not show that the person at the machine made the
 request. Any site's page that a browser on the machine has open can send
