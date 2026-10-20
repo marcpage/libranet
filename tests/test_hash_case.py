@@ -128,7 +128,7 @@ def data_router(storage: StorageConfig, truth: CasStore, queues: ModuleQueues) -
         storage.search_cache_dir, storage.search_cache_ttl_seconds, storage.hash_prefix_length
     )
     router = Router()
-    router.add("GET", SEARCH_PATTERN, SearchHandler(LocalSearch(truth, 10), cache, publish))
+    router.add("GET", SEARCH_PATTERN, SearchHandler(LocalSearch(truth), cache, publish))
     router.add("GET", DATA_PATTERN, DataReadHandler(truth, publish, RETRY_AFTER_SECONDS))
     router.add("PUT", DATA_PATTERN, DataWriteHandler(storage, truth, authenticator, publish))
     router.add("POST", NODES_PATH, NodeListHandler(MAX_BYTES, MAX_BYTES, publish))
@@ -435,7 +435,7 @@ def test_stats_rows_hold_what_any_spelling_named(stats: StatsModule, spell: Spel
     node_stats = database.node_stats(PEER_ID)
     assert data_stats is not None and data_stats.external_requests == 1
     assert node_stats is not None and node_stats.successful_connections == 1
-    assert database.content_ids_near(CONTENT_ID.hash, 1) == [CONTENT_ID]
+    assert database.content_ids_near(CONTENT_ID.hash, 24) == [CONTENT_ID]
     assert database.candidate_endpoints() == [(str(PEER_ID), [PEER_ENDPOINT])]
     assert database.seek_values(SeekKind.DATA) == [str(CONTENT_ID)]
     assert database.seek_values(SeekKind.SEARCH) == [PREFIX]

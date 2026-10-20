@@ -57,8 +57,7 @@ content request the peer answered, and whether it sent the content;
 ``data.put_completed`` is content it did send, for the validator.
 ``data.stored`` is the peer's public key, stored, as the validator announces
 content it stores (Phase 2 Step 28). ``data.search_answered`` is what the
-peer answered a search with, no more of it than this node answers a search
-with, for the stats module to know.
+peer answered a search with, for the stats module to know.
 
 A received node list loses its entries naming this node. A ``localhost``
 endpoint, or a loopback one from a peer on another machine, is resolved to
@@ -380,8 +379,7 @@ class PeerExchange:
         """Ask the peer what it knows nearest a normalized ``prefix``, and publish its answer.
 
         Returns:
-            What it answered, best first, no more of it than this node
-            answers a search with; nothing if it sent no usable answer.
+            What it answered, best first; nothing if it sent no usable answer.
 
         Raises:
             OSError: as :meth:`first_contact`.
@@ -392,7 +390,6 @@ class PeerExchange:
         if not found:
             return []
 
-        found = found[: self._local.search.max_results]
         self._publish(
             EventType.SEARCH_ANSWERED,
             {

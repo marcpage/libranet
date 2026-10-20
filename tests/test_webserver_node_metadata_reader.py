@@ -58,7 +58,7 @@ def truth(storage: StorageConfig, node: NodeIdentity) -> CasStore:
 @fixture
 def reader(storage: StorageConfig, truth: CasStore) -> NodeMetadataReader:
     search = SearchHandler(
-        LocalSearch(truth, storage.search_max_results, min_bits=MINIMUM_BITS),
+        LocalSearch(truth, min_bits=MINIMUM_BITS),
         SearchCache.of(storage),
         Recorder(),
     )

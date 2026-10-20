@@ -186,9 +186,7 @@ class _Running:
                 connected=connected,
                 clock=clock,
             ),
-            SearchEnricher(
-                database, SearchCache.of(storage, clock=clock), storage.search_max_results
-            ),
+            SearchEnricher(database, SearchCache.of(storage, clock=clock), storage.search_min_bits),
         )
 
 

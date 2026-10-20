@@ -91,7 +91,7 @@ def own_metadata(
     Each drop is stored in an object no larger than ``max_object_bytes``.
     """
     search = SearchHandler(
-        LocalSearch(truth, storage.search_max_results, min_bits=MINIMUM_BITS),
+        LocalSearch(truth, min_bits=MINIMUM_BITS),
         SearchCache.of(storage),
         recorder,
     )
@@ -476,7 +476,7 @@ def test_a_negative_retry_after_is_refused(
     recorder: Recorder,
 ) -> None:
     search = SearchHandler(
-        LocalSearch(truth, storage.search_max_results, min_bits=MINIMUM_BITS),
+        LocalSearch(truth, min_bits=MINIMUM_BITS),
         SearchCache.of(storage),
         recorder,
     )

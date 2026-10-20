@@ -392,7 +392,7 @@ def best_and_other(
     """The two fixture peers, the one whose id best matches ``content_id``'s hash first."""
     best, other = (
         next(peer for peer in peers if peer.node_id == node_id)
-        for node_id in nearest(content_id.hash, [peer.node_id for peer in peers], 2)
+        for node_id in nearest(content_id.hash, [peer.node_id for peer in peers])[:2]
     )
     return best, other
 
@@ -400,7 +400,7 @@ def best_and_other(
 def by_match(content_id: ContentId, peers: Sequence[FixturePeer]) -> list[str]:
     """The node ids of ``peers``, the one that best matches ``content_id``'s hash first."""
     node_ids = [peer.node_id for peer in peers]
-    return [str(node_id) for node_id in nearest(content_id.hash, node_ids, len(node_ids))]
+    return [str(node_id) for node_id in nearest(content_id.hash, node_ids)]
 
 
 def asked(bus: Bus, content_id: ContentId) -> list[str]:
@@ -1874,7 +1874,7 @@ def test_a_hand_off_goes_to_the_best_matching_peers(
     module.handle(eviction_notice(HELD_ID, copies=2))
 
     (answer,) = bus.wait_for(EventType.EVICTION_ACKNOWLEDGED)
-    best_first = nearest(HELD_ID.hash, [peer.node_id for peer in peers], 2)
+    best_first = nearest(HELD_ID.hash, [peer.node_id for peer in peers])[:2]
     assert (answer["algorithm"], answer["hash"]) == ("sha256", HELD_ID.hash)
     assert answer["node_ids"] == [str(node_id) for node_id in best_first]
     assert len(bus.events(EventType.DATA_SENT, hash=HELD_ID.hash)) == 2
@@ -1896,7 +1896,7 @@ def test_a_hand_off_stops_once_enough_peers_accept(
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)
     best, other = (
         next(peer for peer in peers if peer.node_id == node_id)
-        for node_id in nearest(HELD_ID.hash, [peer.node_id for peer in peers], 2)
+        for node_id in nearest(HELD_ID.hash, [peer.node_id for peer in peers])[:2]
     )
 
     module.handle(eviction_notice(HELD_ID, copies=1))
@@ -1950,7 +1950,7 @@ def test_a_peer_that_cannot_be_reached_is_passed_over(
     write_lists(config.storage, node_list(identity, *peers))
     module = modules.start(config)
     bus.wait_for(EventType.CONNECTION_OPENED, count=2)
-    best, other = nearest(HELD_ID.hash, [peer.node_id for peer in peers], 2)
+    best, other = nearest(HELD_ID.hash, [peer.node_id for peer in peers])[:2]
     hand_off = module.exchange.hand_off
 
     def failing_for_best(session: PeerSession, content_id: ContentId, body: bytes) -> bool:

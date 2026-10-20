@@ -3,7 +3,9 @@
 :class:`LocalSearch` scans what the node holds, in the source of truth and
 its content archives (Step 34), for the hashes sharing the most leading bits
 with a query, and at least as many as a search must match to return them
-(``storage.search_min_bits``). :class:`SearchCache` keeps each
+(``storage.search_min_bits``). :class:`SearchAnswer` is an answer as it is
+sent, naming as many of them as fit in under 1 MiB, compressed if they would
+not fit otherwise (HttpApi §6.1). :class:`SearchCache` keeps each
 query's JSON response in a file that is reused until it is older than the
 configured TTL; the stats module (Step 8) may later rewrite those files with
 better results it knows about. A search answer is read the same way whether
@@ -12,18 +14,20 @@ seek list's entries as its entries are (:func:`normalized_entries`).
 """
 
 from __future__ import annotations
+from dataclasses import dataclass
 from json import loads
 from logging import DEBUG, WARNING, getLogger
 from pathlib import Path
 from time import time
-from typing import Callable, Final, Iterable, Iterator, Protocol
+from typing import Callable, Final, Iterable, Iterator, Mapping, Protocol, Sequence
+from zlib import compressobj
 
 from libranet.atomic_file import write_atomically
 from libranet.cas.algorithms import DEFAULT_REGISTRY, AlgorithmRegistry, UnsupportedAlgorithms
 from libranet.cas.content_id import BITS_PER_HEX_DIGIT, HEX_DIGITS, ContentId
 from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
 from libranet.cas.prefix import matching_bits, nearest
-from libranet.config.models import StorageConfig
+from libranet.config.models import MIB, StorageConfig
 from libranet.json_format import compact_json
 from libranet.protocol.errors import InvalidListError
 from libranet.protocol.http_syntax import API_PREFIX
@@ -37,6 +41,18 @@ RESULTS_FIELD: Final = "results"
 SEARCH_PATH: Final = API_PREFIX + "/search"
 
 _CACHE_SUFFIX: Final = ".json"
+
+# HttpApi §6.1: a search answer is less than 1 MiB as it is sent, which for
+# one sent zlib-compressed is its compressed size.
+_MAX_ANSWER_BYTES: Final = 1 * MIB
+
+# How many results an answer too large as it is is compressed by at a time.
+_RESULTS_PER_BLOCK: Final = 256
+
+# The zlib level an answer too large as it is is compressed at. Answers are
+# made again whenever they are asked for or the cache is enriched, so a
+# quicker level is worth the little it loses.
+_ANSWER_COMPRESSION_LEVEL: Final = 6
 
 
 def normalize_prefix(text: str, registry: AlgorithmRegistry = DEFAULT_REGISTRY) -> str:
@@ -120,6 +136,92 @@ def normalized_entries(
     return kept
 
 
+@dataclass(frozen=True)
+class SearchAnswer:
+    """A search answer as it is sent, less than 1 MiB (HttpApi §6.1).
+
+    It names as many of the results it was given as fit, best first, and is
+    zlib-compressed only when they would not fit otherwise. A compressed
+    answer says so with ``Content-Encoding: deflate``, so that a browser
+    inflates it before a page reads it.
+    """
+
+    results: list[ContentId]
+    body: bytes
+    compressed: bool = False
+
+    @classmethod
+    def of(cls, found: Sequence[ContentId], **members: str) -> SearchAnswer:
+        """The answer naming the most of ``found``, best first, that fits, after ``members``."""
+        body = cls._json(found, members)
+
+        if len(body) < _MAX_ANSWER_BYTES:
+            return cls(list(found), body)
+
+        return cls._compressed(found, members)
+
+    @property
+    def headers(self) -> dict[str, str]:
+        """What a response carrying :attr:`body` says of it, besides its type."""
+        return {"Content-Encoding": "deflate"} if self.compressed else {}
+
+    @staticmethod
+    def _json(found: Sequence[ContentId], members: Mapping[str, str]) -> bytes:
+        """The answer naming all of ``found``, after ``members``, uncompressed."""
+        return compact_json({**members, RESULTS_FIELD: [str(content_id) for content_id in found]})
+
+    @classmethod
+    def _compressed(cls, found: Sequence[ContentId], members: Mapping[str, str]) -> SearchAnswer:
+        """The answer naming the most of ``found`` that fits once compressed, compressed.
+
+        It is compressed a block of results at a time, each once the answer
+        ending with it is known to fit, so that it is compressed about twice
+        rather than once for each length tried. Of the first block that does
+        not fit, as much as does is found by halving.
+        """
+        entries = [
+            (b"," if index else b"") + compact_json(str(content_id))
+            for index, content_id in enumerate(found)
+        ]
+        compressor = compressobj(_ANSWER_COMPRESSION_LEVEL)
+        # The answer naming none, less the `]}` closing it.
+        written = [compressor.compress(cls._json([], members)[:-2])]
+        written_bytes = len(written[0])
+        named = 0
+
+        def ending(more: Sequence[bytes]) -> bytes:
+            """What ends the answer naming ``more`` too, the compressor left as it is."""
+            copy = compressor.copy()
+            return b"".join([copy.compress(entry) for entry in [*more, b"]}"]] + [copy.flush()])
+
+        while named < len(entries):
+            block = entries[named : named + _RESULTS_PER_BLOCK]
+
+            if written_bytes + len(ending(block)) >= _MAX_ANSWER_BYTES:
+                break
+
+            written.append(b"".join(compressor.compress(entry) for entry in block))
+            written_bytes += len(written[-1])
+            named += len(block)
+
+        # The most of what is left of the block that fits: none of it does,
+        # and all of it does not, if there is any.
+        block = entries[named : named + _RESULTS_PER_BLOCK]
+        fitting, overflowing = 0, len(block)
+
+        while overflowing - fitting > 1:
+            middle = (fitting + overflowing) // 2
+
+            if written_bytes + len(ending(block[:middle])) < _MAX_ANSWER_BYTES:
+                fitting = middle
+
+            else:
+                overflowing = middle
+
+        body = b"".join([*written, ending(block[:fitting])])
+        return cls(list(found[: named + fitting]), body, compressed=True)
+
+
 class PrefixSource(Protocol):
     """Where held identifiers are found by hash prefix, such as the source of truth."""
 
@@ -137,40 +239,31 @@ class LocalSearch:
     """Finds the held identifiers closest to a prefix, across all algorithms.
 
     A match shares at least ``min_bits`` leading bits with the prefix, or the
-    whole prefix if it has fewer (HttpApi §6).
+    whole prefix if it has fewer (HttpApi §6). A search finds as many as its
+    answer names (:class:`SearchAnswer`).
 
     Raises:
-        ValueError: ``max_results`` is under 1, or ``min_bits`` is negative.
+        ValueError: ``min_bits`` is negative.
     """
 
     def __init__(
         self,
         content: PrefixSource,
-        max_results: int,
         registry: AlgorithmRegistry = DEFAULT_REGISTRY,
         *,
         min_bits: int = 0,
     ) -> None:
-        if max_results < 1:
-            raise ValueError(f"max_results must be at least 1, got {max_results}")
-
         if min_bits < 0:
             raise ValueError(f"min_bits must not be negative, got {min_bits}")
 
         self._content = content
-        self._max_results = max_results
         self._registry = registry
         self._min_bits = min_bits
 
     @classmethod
     def of(cls, content: PrefixSource, storage: StorageConfig) -> LocalSearch:
         """A search of ``content``, held to a node's ``storage`` configuration."""
-        return cls(content, storage.search_max_results, min_bits=storage.search_min_bits)
-
-    @property
-    def max_results(self) -> int:
-        """The most matches a search gives."""
-        return self._max_results
+        return cls(content, min_bits=storage.search_min_bits)
 
     @property
     def min_bits(self) -> int:
@@ -187,25 +280,30 @@ class LocalSearch:
         ]
 
     def search(self, prefix: str) -> list[ContentId]:
-        """The best matches for a normalized ``prefix``, best first.
+        """The best matches for a normalized ``prefix``, best first, as many as an answer names.
 
         Starts with the prefix subdirectories the query falls in and widens
-        one hex digit at a time until enough candidates are found, or every
-        hash sharing enough bits to match is among them. Past its first
-        digit, it widens a bit at a time: to the hashes whose first digit
-        shares three leading bits with the query's, then two, one, and none
-        (HttpApi §6). Every hash outside a scan shares fewer leading bits
-        than every hash inside it, so the top results of the last scan are
-        the best held matches, as :mod:`libranet.cas.prefix` ranks them.
+        one hex digit at a time until more candidates are found than an
+        answer can name, or every hash sharing enough bits to match is among
+        them. Past its first digit, it widens a bit at a time: to the hashes
+        whose first digit shares three leading bits with the query's, then
+        two, one, and none (HttpApi §6). Every hash outside a scan shares
+        fewer leading bits than every hash inside it, so the top results of
+        the last scan are the best held matches, as
+        :mod:`libranet.cas.prefix` ranks them.
         """
         least = self._least_bits(prefix)
         candidates: set[ContentId] = set()
+        best: list[ContentId] = []
 
+        # What a scan of more bits than a match must share finds all matches,
+        # so an answer naming fewer than it finds is full.
         for length in range(min(len(prefix), self._content.prefix_length), 0, -1):
             candidates = self._held(prefix[:length])
+            best = self._best(prefix, candidates)
 
-            if len(candidates) >= self._max_results or length * BITS_PER_HEX_DIGIT <= least:
-                return self._best(prefix, candidates)
+            if len(best) < len(candidates) or length * BITS_PER_HEX_DIGIT <= least:
+                return best
 
         first = int(prefix[0], 16)
 
@@ -216,18 +314,20 @@ class LocalSearch:
             for difference in range(1 << (differing_bits - 1), 1 << differing_bits):
                 candidates |= self._held(f"{first ^ difference:x}")
 
-            if len(candidates) >= self._max_results:
+            best = self._best(prefix, candidates)
+
+            if len(best) < len(candidates):
                 break
 
-        return self._best(prefix, candidates)
+        return best
 
     def _least_bits(self, prefix: str) -> int:
         """The fewest leading bits a match shares with ``prefix``: ``min_bits``, or all of it."""
         return min(self._min_bits, len(prefix) * BITS_PER_HEX_DIGIT)
 
     def _best(self, prefix: str, candidates: Iterable[ContentId]) -> list[ContentId]:
-        """The best of ``candidates`` for ``prefix``, best first, less those not matching it."""
-        return self.matching(prefix, nearest(prefix, candidates, self._max_results))
+        """The best of ``candidates`` an answer names, less those not matching ``prefix``."""
+        return SearchAnswer.of(self.matching(prefix, nearest(prefix, candidates))).results
 
     def _held(self, prefix: str) -> set[ContentId]:
         """Every identifier held, under any algorithm, whose hash starts with ``prefix``."""
@@ -333,5 +433,8 @@ class SearchCache:
 
     @staticmethod
     def body(results: Iterable[ContentId]) -> bytes:
-        """The response to a search finding ``results``, best first (HttpApi §6.1)."""
+        """The response to a search finding ``results``, best first, as cached (HttpApi §6.1).
+
+        It is never compressed, and names all of them.
+        """
         return compact_json({RESULTS_FIELD: [str(content_id) for content_id in results]})

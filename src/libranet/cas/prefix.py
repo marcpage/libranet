@@ -7,9 +7,8 @@ since two differing hex digits can still agree on their top bits (``8`` and
 
 Both searchers rank with :func:`nearest`: the web server over what this node
 stores (Step 5), and the stats database over every identifier it has heard
-of (Step 8). Sharing it is what makes their results mergeable — a limit
-means the same thing to each, and equally-matching identifiers always fall
-in the same order.
+of (Step 8). Sharing it is what makes their results mergeable — equally
+matching identifiers always fall in the same order.
 """
 
 from __future__ import annotations
@@ -33,18 +32,13 @@ def matching_bits(left: str, right: str) -> int:
     return bits
 
 
-def nearest(prefix: str, candidates: Iterable[ContentId], limit: int) -> list[ContentId]:
-    """The ``limit`` candidates whose hash best matches ``prefix``, best first.
+def nearest(prefix: str, candidates: Iterable[ContentId]) -> list[ContentId]:
+    """``candidates``, those whose hash best matches ``prefix`` first.
 
     Ties break on the identifier itself, so the same candidates always rank
-    the same way whoever ranks them. ``limit`` is a count of results, not a
-    reach into the candidates.
+    the same way whoever ranks them.
     """
-    if limit < 1:
-        raise ValueError(f"limit must be at least 1, got {limit}")
-
-    ranked = sorted(
+    return sorted(
         candidates,
         key=lambda content_id: (-matching_bits(prefix, content_id.hash), str(content_id)),
     )
-    return ranked[:limit]

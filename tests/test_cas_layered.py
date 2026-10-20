@@ -119,7 +119,7 @@ def test_search_finds_archive_content(tmp_path: Path) -> None:
 
     with LayeredSource.open(storage, tmp_path / "none") as content:
         assert content.prefix_length == storage.hash_prefix_length
-        assert LocalSearch(content, max_results=2).search("abc") == [
+        assert LocalSearch(content, min_bits=11).search("abc") == [
             with_hash("abc"),
             with_hash("abd"),
         ]

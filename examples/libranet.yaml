@@ -227,8 +227,6 @@ storage:
 
   # Provisional: how long a cached /data/search result stays valid.
   search_cache_ttl_seconds: 300.0
-  # Most hashes a single /data/search response lists (HTTP API §6).
-  search_max_results: 32
   # How many leading bits a hash must share with a prefix searched for, at
   # least, for a search to return it; or the whole prefix, if it is shorter
   # (HTTP API §6). It holds every search this node answers, or makes, as to
