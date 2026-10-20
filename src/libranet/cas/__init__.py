@@ -4,7 +4,7 @@ Path construction for the source of truth and each sending node's store,
 hash-prefix subdirectory splitting, the hash-algorithm registry, ranking
 identifiers against a prefix, and checking content against its identifier
 (Step 7). Content archives, and reading them after the source of truth
-(Step 34). Placing content at a drop (Phase 4 Step 89). The content the
+(Step 34), those the node keeps for itself too (Step 115). Placing content at a drop (Phase 4 Step 89). The content the
 node has blocked (Phase 4 Step 30). Pure library code: no network, no
 messaging.
 
@@ -23,6 +23,7 @@ from libranet.cas.algorithms import (
     UnsupportedAlgorithms,
 )
 from libranet.cas.archive import ARCHIVE_SUFFIX, ArchiveSink, ArchiveSource
+from libranet.cas.archive_folder import ArchiveFolder
 from libranet.cas.blocked import BlockedContent
 from libranet.cas.compression import CHUNK_BYTES, decompressed, decompressed_chunks
 from libranet.cas.content_id import (
@@ -79,6 +80,7 @@ __all__ = [
     "TRIES_PER_CLOCK_READ",
     "AlgorithmRegistry",
     "ArchiveError",
+    "ArchiveFolder",
     "ArchiveSink",
     "ArchiveSource",
     "BlockedContent",
