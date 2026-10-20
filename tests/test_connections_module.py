@@ -128,7 +128,11 @@ class FixturePeer:
 
     def __init__(self, root: Path, identity: NodeIdentity | None = None) -> None:
         self.identity = identity or NodeIdentity.from_private_key(generate_private_key(), "sha256")
-        self.storage = StorageConfig(data_dir=root / "data", cache_dir=root / "cache")
+        # Answering a search with whatever it holds nearest, however far, so
+        # that every peer asked answers something.
+        self.storage = StorageConfig(
+            data_dir=root / "data", cache_dir=root / "cache", search_min_bits=0
+        )
         self.store = CasStore.source_of_truth(self.storage)
         self.identity.publish_public_key(self.store)
         queues = ModuleQueues(inbox=Queue(), outbox=Queue())

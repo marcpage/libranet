@@ -55,11 +55,12 @@ never hashes one itself.
 Anyone may place anything at any target
 ([HTTP API §9.5](HttpApi.md#95-malicious-drop-bombing)), and a search of a
 drop answers whatever lies nearest the target hash, whether it was placed
-there or not. So a reader of each drop below passes over what it does not
-expect. Where the section gives a number of bits, it passes over each result
-that shares fewer leading bits than that with the target hash. It passes
-over content that is not shaped, signed, or encrypted as the section says.
-Each section then says how a reader chooses among what is left.
+there or not, so long as it shares as many leading bits with the target hash
+as the node's search returns, 24 by default
+([HTTP API §6](HttpApi.md#6-content-search)). So a reader of each drop below
+passes over what it does not expect: content that is not shaped, signed, or
+encrypted as the section says. Each section then says how a reader chooses
+among what is left.
 
 Each drop is placed with a nonce, searched for so that the drop's id shares
 leading bits with the target hash
@@ -102,7 +103,7 @@ username: each finds only the blocks their own passwords open.
   bundle.
 - **Bits:** as many as the request asks for, within the node's limits, the
   time asked for being shared among the drops the request places. The
-  `/config` page and the directory application ask for 16 bits and 10
+  `/config` page and the directory application ask for 24 bits and 10
   seconds.
 - **Reading:** when a person signs in, the node searches the drop and tries
   each block found with the key that the username and password derive. A
@@ -137,12 +138,11 @@ of its own id.
   and any application may.
 - **Signed** by the person, or, for a version saying they are compromised,
   by their fallback. **Not encrypted**: anyone may read it.
-- **Bits:** placed matching at least 16, searched for 10 seconds by the
+- **Bits:** placed matching at least 24, searched for 10 seconds by the
   directory application. The node places the first version with the bits
   asked for in making the identity, sharing the time asked for with the
   identity blocks (§3.1).
-- **Reading:** a reader passes over each result that shares fewer than 16
-  bits with the target hash. It counts only what the person signed, and a
+- **Reading:** a reader counts only what the person signed, and a
   version their fallback signed saying they are compromised. The newest
   version is the one numbered highest. Of two numbered as high, the newest
   is the one whose drop's id comes first. No version is ever blocked.
@@ -169,7 +169,7 @@ of the directory: only applications keep it.
 - **Placed by** the directory application, with `POST /data/drop`. The mail
   application reads it.
 - **Not signed, and not encrypted.**
-- **Bits:** placed matching at least 16, searched for 10 seconds.
+- **Bits:** placed matching at least 24, searched for 10 seconds.
 - **Reading:** a reader passes over everything that is not a directory
   bundle listing only people, rather than by bits. Everyone listed in any
   copy is in the directory. The newest copy lists the most people. Of two
@@ -203,10 +203,9 @@ their scores to reach through it.
   person's scores (Steps 99 and 100), and the directory application reads
   a person's to show it on their page (Step 105).
 - **Signed** by the list's owner. **Not encrypted.**
-- **Bits:** placed matching at least 16, with no search for a nonce past
-  that.
-- **Reading:** a reader passes over each result that shares fewer than 16
-  bits with the target hash. It counts only the versions that the owner
+- **Bits:** placed matching at least as many as the node's search returns,
+  24 by default, with no search for a nonce past that.
+- **Reading:** a reader counts only the versions that the owner
   signed. The newest version is the one numbered highest. Of two numbered as
   high, the newest is the one whose drop's id comes first. A node blocks
   every version it reads that is older than the newest, and every version
@@ -235,10 +234,9 @@ fallback instead.
 - **Signed** by the sender, then **encrypted** for the reader. The copy
   names its reader, so that a reader can pass over a copy encrypted again
   for them by someone else.
-- **Bits:** placed matching at least 16, searched for 1 second, since a
+- **Bits:** placed matching at least 24, searched for 1 second, since a
   message to many people places many copies.
-- **Reading:** a reader passes over each result that shares fewer than 16
-  bits with the target hash, and each copy that does not open, is not
+- **Reading:** a reader passes over each copy that does not open, is not
   signed, or does not name them. Every copy left is mail. What the reader
   has read and hidden is kept apart (§3.8).
 - **Defined in:**
@@ -258,7 +256,7 @@ included.
 - **Placed by** the mail application, with `POST /data/signed`, as it
   places each reader's copy (§3.5).
 - **Signed** by the sender, then **encrypted** for the sender.
-- **Bits:** placed matching at least 16, searched for 1 second.
+- **Bits:** placed matching at least 24, searched for 1 second.
 - **Reading:** as for mail received (§3.5), except that a copy counts only
   if the person reading it signed it.
 - **Defined in:**
@@ -275,9 +273,8 @@ replaces. A removal is kept as a change, so that a merge does not undo it.
 - **Placed by** the mail application, with `POST /data/signed`, whenever
   something in the address book changes.
 - **Signed** by the person, then **encrypted** for the person.
-- **Bits:** placed matching at least 16, searched for 1 second.
-- **Reading:** a reader passes over each result that shares fewer than 16
-  bits with the target hash, and every version that the person did not
+- **Bits:** placed matching at least 24, searched for 1 second.
+- **Reading:** a reader passes over every version that the person did not
   sign. It merges every version left: of the changes to one name, the
   latest wins. A version that no other version names is a head. When more
   than one head is found, a reader places a new version naming every head.
@@ -297,7 +294,7 @@ drop id of each copy to whether the person has read it and hidden it.
 - **Placed by** the mail application, with `POST /data/signed`, whenever
   the person reads or hides a message.
 - **Signed** by the person, then **encrypted** for the person.
-- **Bits:** placed matching at least 16, searched for 1 second.
+- **Bits:** placed matching at least 24, searched for 1 second.
 - **Reading:** as for address books (§3.7). Versions are merged by the drop
   id of each copy, rather than by name.
 - **Defined in:**
@@ -318,10 +315,9 @@ over or tapped.
   only what it places itself.
 - **Signed** by the node, with its own key. **Not encrypted**: anyone may
   read it.
-- **Bits:** placed matching at least 16, with no search for a nonce past
-  that.
-- **Reading:** a reader passes over each result that shares fewer than 16
-  bits with the target hash. It counts only the versions that the node
+- **Bits:** placed matching at least as many as the node's search returns,
+  24 by default, with no search for a nonce past that.
+- **Reading:** a reader counts only the versions that the node
   signed. The newest version is the one numbered highest. Of two numbered as
   high, the newest is the one whose drop's id comes first. Whenever its
   operator saves, the node blocks every version it reads but the newest,

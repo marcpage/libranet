@@ -26,13 +26,13 @@ The node reads the newest version of the person's list from what it holds
 (:class:`~libranet.webserver.trust_lists.TrustLists`), makes the next with
 the change (:meth:`~libranet.identity.trust.HeldTrustList.next_version`),
 signs it with the key the session holds, storing the person's public key
-again, and makes it a drop at ``trust:{id}``, matching
-:data:`~libranet.identity.trust.MIN_TRUST_LIST_BITS`, blocking what it
-replaces (Trust Network §3.3, §3.4), as what a node says of itself is changed
+again, and makes it a drop at ``trust:{id}``, matching as many bits as a
+search returns (``storage.search_min_bits``), blocking what it replaces
+(Trust Network §3.3, §3.4), as what a node says of itself is changed
 (:mod:`libranet.webserver.version_edits`). It answers ``201``, with a
 ``Location`` naming the drop::
 
-    {"id": "sha256/…", "target": "<hex>", "matching_bits": 16,
+    {"id": "sha256/…", "target": "<hex>", "matching_bits": 24,
      "signer": "sha256/…", "version": 3}
 
 A change that changes nothing places nothing, and is ``204``. While a version

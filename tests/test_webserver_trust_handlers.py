@@ -14,7 +14,7 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
 from libranet.identity.people import NewIdentity, PersonKey, Username
-from libranet.identity.trust import MIN_TRUST_LIST_BITS, TrustLimits, TrustList
+from libranet.identity.trust import TrustLimits, TrustList
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.problems import (
@@ -44,6 +44,8 @@ DAVE = ContentId.for_data(b"Dave's public key", "sha256")
 MAX_BYTES = 64 * 1024
 MAX_SECONDS = 1.0
 MAX_MINIMUM_BITS = 20
+# The fewest bits the search returns, fewer than a node's, to be quick to match.
+MINIMUM_BITS = 16
 RETRY_AFTER_SECONDS = 3
 
 
@@ -100,7 +102,9 @@ def trust_lists(
 ) -> TrustLists:
     """The trust lists held in ``truth``, read as the web server reads them."""
     search = SearchHandler(
-        LocalSearch(truth, storage.search_max_results), SearchCache.of(storage), recorder
+        LocalSearch(truth, storage.search_max_results, min_bits=MINIMUM_BITS),
+        SearchCache.of(storage),
+        recorder,
     )
     return TrustLists(search, uploads)
 
@@ -226,7 +230,7 @@ def stored(truth: CasStore, uploads: OwnUploads, response: Response) -> ContentI
 def held_version(truth: CasStore, person: PersonKey, trust_list: TrustList) -> ContentId:
     """``trust_list``, signed by ``person``, stored in ``truth`` as a drop at their list's."""
     drop = TrustList.drop_target(person.person_id).placed(
-        person.signed(dumps(trust_list.value())).encoded(), 0, minimum_bits=MIN_TRUST_LIST_BITS
+        person.signed(dumps(trust_list.value())).encoded(), 0, minimum_bits=MINIMUM_BITS
     )
     content_id = ContentId.for_data(drop.data, "sha256")
     truth.write(content_id, drop.data)
@@ -314,7 +318,7 @@ def test_trusting_places_the_first_version_signed_by_who_is_signed_in(
         "signer": str(person.person_id),
         "version": 1,
     }
-    assert answer["matching_bits"] >= MIN_TRUST_LIST_BITS
+    assert answer["matching_bits"] >= MINIMUM_BITS
     assert response.headers["Location"] == f"/data/{drop_id}"
     assert response.headers["Cache-Control"] == "no-store"
     assert version_in(uploads, response, person) == TrustList({BOB: True}, 1)
@@ -564,7 +568,9 @@ def test_a_negative_retry_after_is_refused(
     recorder: Recorder,
 ) -> None:
     search = SearchHandler(
-        LocalSearch(truth, storage.search_max_results), SearchCache.of(storage), recorder
+        LocalSearch(truth, storage.search_max_results, min_bits=MINIMUM_BITS),
+        SearchCache.of(storage),
+        recorder,
     )
 
     with raises(ValueError, match="retry_after_seconds"):

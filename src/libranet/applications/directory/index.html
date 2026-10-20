@@ -266,10 +266,11 @@ const COORDINATES = { latitude: 90, longitude: 180 };
 // How many people's details are read at once.
 const DETAILS_AT_ONCE = 8;
 
-// What each directory made asks the node to search for its nonce. No one
-// using the directory decides how hard the node searches.
+// What each directory made asks the node to search for its nonce, matching
+// as many bits as a node's search returns by default, so that it is found. No
+// one using the directory decides how hard the node searches.
 const DROP_SECONDS = 10;
-const DROP_MINIMUM_BITS = 16;
+const DROP_MINIMUM_BITS = 24;
 
 // What a 503 waits when it does not say, and how many are waited out. A
 // search lists what the node has only heard of too, which is often no
@@ -296,9 +297,6 @@ const PUBLIC_KEY_PEM = "-----BEGIN PUBLIC KEY-----";
 const OPEN_BRACE = 0x7b;
 const NULL_BYTE = 0x00;
 
-// Where the hex of a hash begins in a content id, after "sha256/".
-const HASH_START = "sha256/".length;
-
 // What marks each person's trust (#322), by the scores of whoever is signed in
 // (HttpApi 11.7): a score above 0, of 0, and below 0; and where there are no
 // scores to show.
@@ -311,10 +309,8 @@ const UNKNOWN = "\u{26AA}";
 const SCORES_AGAIN_SECONDS = 2;
 
 // Whom each person trusts and distrusts is kept at the drop "trust:{id}", each
-// version signed by them, and placed by the node matching at least this many
-// bits (Trust Network 3.2).
+// version signed by them, and placed by the node (Trust Network 3.2).
 const TRUST_PREFIX = "trust:";
-const TRUST_LIST_MINIMUM_BITS = 16;
 
 // An id a trust list names, in any case (HttpApi 5.4), which the node reads
 // lower-cased (Trust Network 3.1).
@@ -385,23 +381,6 @@ function isObject(value) {
 
 function plural(count, one, many) {
   return `${count} ${count === 1 ? one : many}`;
-}
-
-// How many leading bits two hashes in hex share.
-function matchingBits(hex, other) {
-  let bits = 0;
-
-  for (let i = 0; i < hex.length && i < other.length; i += 1) {
-    const differ = Number.parseInt(hex[i], 16) ^ Number.parseInt(other[i], 16);
-
-    if (differ !== 0) {
-      return bits + Math.clz32(differ) - 28;
-    }
-
-    bits += 4;
-  }
-
-  return bits;
 }
 
 // Run `work` over `items`, no more than `limit` at once.
@@ -1611,11 +1590,10 @@ function judged(person, versions) {
   return { newest: newestOf([...own, ...notices]), fallback, compromised, first: firsts.length > 0 };
 }
 
-// The ids a search of the drop `target` finds (HttpApi 9.7) that share at
-// least `bits` leading bits with its hash, as each version placed there does.
-// Whatever else is nearest is something else, and is not read. `what` names
-// what is searched for, should the search fail.
-async function dropResults(target, bits, what) {
+// The ids a search of the drop `target` finds (HttpApi 9.7). The node finds
+// only what shares enough leading bits with its hash to have been placed
+// there. `what` names what is searched for, should the search fail.
+async function dropResults(target, what) {
   const search = await call("GET", dropPath(target));
   const answered =
     search.ok &&
@@ -1627,10 +1605,7 @@ async function dropResults(target, bits, what) {
     throw new Error(`${what} could not be searched for: ${refusal(search)}`);
   }
 
-  const hash = search.value.target;
-  return search.value.results.filter(
-    (id) => CONTENT_ID.test(id) && matchingBits(id.slice(HASH_START), hash) >= bits,
-  );
+  return search.value.results.filter((id) => CONTENT_ID.test(id));
 }
 
 // What `person` says of themselves, read back through each version's history
@@ -1638,7 +1613,7 @@ async function dropResults(target, bits, what) {
 // they are compromised, whether every version named was read back to a first,
 // and how many found at their drop are not held yet.
 async function readDetails(person) {
-  const ids = await dropResults(DETAILS_PREFIX + person, DROP_MINIMUM_BITS, `What ${person} says`);
+  const ids = await dropResults(DETAILS_PREFIX + person, `What ${person} says`);
   const found = new Set(ids);
   // Each id read: its version, or null if it is not held or is none.
   const read = new Map();
@@ -1736,7 +1711,7 @@ function trustedBy(entries, owner) {
 // how many found at its drop are not held yet. The node blocks the versions
 // the newest replaces, so there is no history to read back.
 async function readTrustList(person) {
-  const ids = await dropResults(TRUST_PREFIX + person, TRUST_LIST_MINIMUM_BITS, `The trust list of ${person}`);
+  const ids = await dropResults(TRUST_PREFIX + person, `The trust list of ${person}`);
   const results = await Promise.all(ids.map(checked));
   const versions = [];
   let missing = 0;

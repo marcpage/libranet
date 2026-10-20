@@ -21,13 +21,13 @@ nothing of itself.
 
 A change makes the next version, saying the fields it gives
 (:meth:`~libranet.identity.node_metadata.HeldNodeMetadata.next_version`), has
-the node sign it, and makes it a drop at ``node:{id}``, matching
-:data:`~libranet.identity.node_metadata.MIN_NODE_METADATA_BITS`, blocking
-what it replaces, as a trust list's change does
+the node sign it, and makes it a drop at ``node:{id}``, matching as many
+bits as a search returns (``storage.search_min_bits``), blocking what it
+replaces, as a trust list's change does
 (:mod:`libranet.webserver.version_edits`). It answers ``201``, with no
 ``Location``, since this port serves nothing beneath ``/data``::
 
-    {"id": "sha256/…", "target": "<hex>", "matching_bits": 16,
+    {"id": "sha256/…", "target": "<hex>", "matching_bits": 24,
      "signer": "sha256/…", "version": 3}
 
 A change that changes nothing places nothing, and is ``204``. While a version

@@ -11,12 +11,7 @@ from libranet.cas.prefix import matching_bits
 from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
 from libranet.identity.node_identity import NodeIdentity
-from libranet.identity.node_metadata import (
-    MIN_NODE_METADATA_BITS,
-    HeldNodeMetadata,
-    MetadataVersion,
-    NodeMetadata,
-)
+from libranet.identity.node_metadata import HeldNodeMetadata, MetadataVersion, NodeMetadata
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.problems import CONTENT_TOO_LARGE, CONTENT_UNAVAILABLE
@@ -34,6 +29,8 @@ from tests.helpers import new_identity, problem_type
 MAX_BYTES = 64 * 1024
 MAX_SECONDS = 1.0
 MAX_MINIMUM_BITS = 20
+# The fewest bits the search returns, fewer than a node's, to be quick to match.
+MINIMUM_BITS = 16
 RETRY_AFTER_SECONDS = 3
 DETAIL = "A version found is not stored here yet."
 FIRST = ContentId("sha256", "1" * 64)
@@ -77,7 +74,9 @@ def versions(
 ) -> SignedVersions[NodeMetadata]:
     truth = CasStore.source_of_truth(storage)
     search = SearchHandler(
-        LocalSearch(truth, storage.search_max_results), SearchCache.of(storage), recorder
+        LocalSearch(truth, storage.search_max_results, min_bits=MINIMUM_BITS),
+        SearchCache.of(storage),
+        recorder,
     )
     return NodeMetadataReader(search, uploads).versions
 
@@ -188,7 +187,7 @@ def test_a_version_placed_is_a_drop_at_its_owners_and_the_newest_is_blocked(
     assert isinstance(stored, StoredDrop)
     target = NodeMetadata.drop_target(node.node_id)
     assert stored.target == target
-    assert stored.matching_bits >= MIN_NODE_METADATA_BITS
+    assert stored.matching_bits >= MINIMUM_BITS
     assert matching_bits(target.hex, stored.content_id.hash) == stored.matching_bits
     assert uploads.exists(stored.content_id)
     assert ids(recorder.payloads(EventType.DATA_BLOCKED)) == [FIRST]

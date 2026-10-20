@@ -25,7 +25,7 @@ person's change does, the node signing the version
 ``201``, with no ``Location``, since this port serves nothing beneath
 ``/data``::
 
-    {"id": "sha256/…", "target": "<hex>", "matching_bits": 16,
+    {"id": "sha256/…", "target": "<hex>", "matching_bits": 24,
      "signer": "sha256/…", "version": 3}
 
 A change that changes nothing places nothing, and is ``204``. A change naming

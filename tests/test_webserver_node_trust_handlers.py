@@ -14,13 +14,7 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
 from libranet.identity.node_identity import NodeIdentity
-from libranet.identity.trust import (
-    MIN_TRUST_LIST_BITS,
-    HeldTrustList,
-    TrustLimits,
-    TrustList,
-    TrustScore,
-)
+from libranet.identity.trust import HeldTrustList, TrustLimits, TrustList, TrustScore
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.problems import CONTENT_UNAVAILABLE, INVALID_CONTENT_ADDRESS, INVALID_REQUEST
@@ -43,6 +37,8 @@ DAVE = ContentId.for_data(b"Dave's node's public key", "sha256")
 MAX_BYTES = 64 * 1024
 MAX_SECONDS = 1.0
 MAX_MINIMUM_BITS = 20
+# The fewest bits the search returns, fewer than a node's, to be quick to match.
+MINIMUM_BITS = 16
 RETRY_AFTER_SECONDS = 3
 
 
@@ -85,7 +81,9 @@ def uploads(
 @fixture
 def search(storage: StorageConfig, truth: CasStore, recorder: Recorder) -> SearchHandler:
     return SearchHandler(
-        LocalSearch(truth, storage.search_max_results), SearchCache.of(storage), recorder
+        LocalSearch(truth, storage.search_max_results, min_bits=MINIMUM_BITS),
+        SearchCache.of(storage),
+        recorder,
     )
 
 
@@ -148,7 +146,7 @@ def stored(truth: CasStore, uploads: OwnUploads, response: Response) -> ContentI
 def held_version(truth: CasStore, node: NodeIdentity, trust_list: TrustList) -> ContentId:
     """``trust_list``, signed by ``node``, stored in ``truth`` as a drop at its list's."""
     drop = TrustList.drop_target(node.node_id).placed(
-        node.signed(dumps(trust_list.value())).encoded(), 0, minimum_bits=MIN_TRUST_LIST_BITS
+        node.signed(dumps(trust_list.value())).encoded(), 0, minimum_bits=MINIMUM_BITS
     )
     content_id = ContentId.for_data(drop.data, "sha256")
     truth.write(content_id, drop.data)
@@ -191,7 +189,7 @@ def test_trusting_places_the_first_version_signed_by_the_node(
         "signer": str(node.node_id),
         "version": 1,
     }
-    assert answer["matching_bits"] >= MIN_TRUST_LIST_BITS
+    assert answer["matching_bits"] >= MINIMUM_BITS
     # This port serves nothing beneath /data for one to name.
     assert "Location" not in response.headers
     assert version_in(uploads, response, node) == TrustList({BOB: True}, 1)

@@ -11,12 +11,7 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
 from libranet.identity.node_identity import NodeIdentity
-from libranet.identity.node_metadata import (
-    MIN_NODE_METADATA_BITS,
-    HeldNodeMetadata,
-    MetadataVersion,
-    NodeMetadata,
-)
+from libranet.identity.node_metadata import HeldNodeMetadata, MetadataVersion, NodeMetadata
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.protocol.search import LocalSearch, SearchCache
@@ -27,6 +22,8 @@ from tests.helpers import new_identity
 
 ATTIC = {"name": "Attic", "city": "Springfield"}
 SIGNED_VERSIONS_LOGGER = "libranet.webserver.signed_versions"
+# The fewest bits the search returns, fewer than a node's, to be quick to match.
+MINIMUM_BITS = 16
 
 
 class Recorder:
@@ -61,7 +58,9 @@ def truth(storage: StorageConfig, node: NodeIdentity) -> CasStore:
 @fixture
 def reader(storage: StorageConfig, truth: CasStore) -> NodeMetadataReader:
     search = SearchHandler(
-        LocalSearch(truth, storage.search_max_results), SearchCache.of(storage), Recorder()
+        LocalSearch(truth, storage.search_max_results, min_bits=MINIMUM_BITS),
+        SearchCache.of(storage),
+        Recorder(),
     )
     return NodeMetadataReader(search, truth)
 
@@ -69,9 +68,7 @@ def reader(storage: StorageConfig, truth: CasStore) -> NodeMetadataReader:
 def placed(truth: CasStore, owner: NodeIdentity, signer: NodeIdentity, value: object) -> ContentId:
     """``value``, signed by ``signer``, stored in ``truth`` as a drop at ``owner``'s metadata."""
     data = signer.signed(dumps(value)).encoded()
-    drop = NodeMetadata.drop_target(owner.node_id).placed(
-        data, 0, minimum_bits=MIN_NODE_METADATA_BITS
-    )
+    drop = NodeMetadata.drop_target(owner.node_id).placed(data, 0, minimum_bits=MINIMUM_BITS)
     content_id = ContentId.for_data(drop.data, "sha256")
     truth.write(content_id, drop.data)
     return content_id
@@ -95,14 +92,14 @@ def test_what_a_node_says_is_read_from_the_versions_held_at_its_drop(
     assert held.fields == ATTIC
 
 
-def test_versions_are_read_at_the_nodes_drop_by_the_bits_each_is_placed_at(
+def test_versions_are_read_at_the_nodes_drop_placed_at_the_bits_its_search_returns(
     reader: NodeMetadataReader,
 ) -> None:
     versions = reader.versions
 
     assert versions.kind == NODE_METADATA_KIND
     assert versions.target is NodeMetadata.drop_target
-    assert versions.minimum_bits == MIN_NODE_METADATA_BITS
+    assert versions.minimum_bits == MINIMUM_BITS
 
 
 def test_a_version_another_node_signed_is_passed_over_at_debug(

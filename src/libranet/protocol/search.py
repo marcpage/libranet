@@ -2,7 +2,8 @@
 
 :class:`LocalSearch` scans what the node holds, in the source of truth and
 its content archives (Step 34), for the hashes sharing the most leading bits
-with a query. :class:`SearchCache` keeps each
+with a query, and at least as many as a search must match to return them
+(``storage.search_min_bits``). :class:`SearchCache` keeps each
 query's JSON response in a file that is reused until it is older than the
 configured TTL; the stats module (Step 8) may later rewrite those files with
 better results it knows about. A search answer is read the same way whether
@@ -21,7 +22,7 @@ from libranet.atomic_file import write_atomically
 from libranet.cas.algorithms import DEFAULT_REGISTRY, AlgorithmRegistry, UnsupportedAlgorithms
 from libranet.cas.content_id import BITS_PER_HEX_DIGIT, HEX_DIGITS, ContentId
 from libranet.cas.errors import InvalidContentIdError, UnknownAlgorithmError
-from libranet.cas.prefix import nearest
+from libranet.cas.prefix import matching_bits, nearest
 from libranet.config.models import StorageConfig
 from libranet.json_format import compact_json
 from libranet.protocol.errors import InvalidListError
@@ -133,57 +134,100 @@ class PrefixSource(Protocol):
 
 
 class LocalSearch:
-    """Finds the held identifiers closest to a prefix, across all algorithms."""
+    """Finds the held identifiers closest to a prefix, across all algorithms.
+
+    A match shares at least ``min_bits`` leading bits with the prefix, or the
+    whole prefix if it has fewer (HttpApi §6).
+
+    Raises:
+        ValueError: ``max_results`` is under 1, or ``min_bits`` is negative.
+    """
 
     def __init__(
         self,
         content: PrefixSource,
         max_results: int,
         registry: AlgorithmRegistry = DEFAULT_REGISTRY,
+        *,
+        min_bits: int = 0,
     ) -> None:
         if max_results < 1:
             raise ValueError(f"max_results must be at least 1, got {max_results}")
 
+        if min_bits < 0:
+            raise ValueError(f"min_bits must not be negative, got {min_bits}")
+
         self._content = content
         self._max_results = max_results
         self._registry = registry
+        self._min_bits = min_bits
+
+    @classmethod
+    def of(cls, content: PrefixSource, storage: StorageConfig) -> LocalSearch:
+        """A search of ``content``, held to a node's ``storage`` configuration."""
+        return cls(content, storage.search_max_results, min_bits=storage.search_min_bits)
 
     @property
     def max_results(self) -> int:
         """The most matches a search gives."""
         return self._max_results
 
+    @property
+    def min_bits(self) -> int:
+        """The fewest leading bits a match shares with a prefix having as many."""
+        return self._min_bits
+
+    def matching(self, prefix: str, content_ids: Iterable[ContentId]) -> list[ContentId]:
+        """``content_ids``, in their order, less those sharing too few bits to match ``prefix``."""
+        least = self._least_bits(prefix)
+        return [
+            content_id
+            for content_id in content_ids
+            if matching_bits(prefix, content_id.hash) >= least
+        ]
+
     def search(self, prefix: str) -> list[ContentId]:
         """The best matches for a normalized ``prefix``, best first.
 
         Starts with the prefix subdirectories the query falls in and widens
-        one hex digit at a time until enough candidates are found. Past its
-        first digit, it widens a bit at a time: to the hashes whose first
-        digit shares three leading bits with the query's, then two, one, and
-        none (HttpApi §6). Every hash outside a scan shares fewer leading bits
+        one hex digit at a time until enough candidates are found, or every
+        hash sharing enough bits to match is among them. Past its first
+        digit, it widens a bit at a time: to the hashes whose first digit
+        shares three leading bits with the query's, then two, one, and none
+        (HttpApi §6). Every hash outside a scan shares fewer leading bits
         than every hash inside it, so the top results of the last scan are
         the best held matches, as :mod:`libranet.cas.prefix` ranks them.
         """
+        least = self._least_bits(prefix)
         candidates: set[ContentId] = set()
 
         for length in range(min(len(prefix), self._content.prefix_length), 0, -1):
             candidates = self._held(prefix[:length])
 
-            if len(candidates) >= self._max_results:
-                return nearest(prefix, candidates, self._max_results)
+            if len(candidates) >= self._max_results or length * BITS_PER_HEX_DIGIT <= least:
+                return self._best(prefix, candidates)
 
         first = int(prefix[0], 16)
 
         # Each round adds the first digits differing from the query's first in
-        # one more low bit, so sharing one fewer leading bit with it.
-        for differing_bits in range(1, BITS_PER_HEX_DIGIT + 1):
+        # one more low bit, so sharing one fewer leading bit with it, until
+        # they share too few to match.
+        for differing_bits in range(1, BITS_PER_HEX_DIGIT - least + 1):
             for difference in range(1 << (differing_bits - 1), 1 << differing_bits):
                 candidates |= self._held(f"{first ^ difference:x}")
 
             if len(candidates) >= self._max_results:
                 break
 
-        return nearest(prefix, candidates, self._max_results)
+        return self._best(prefix, candidates)
+
+    def _least_bits(self, prefix: str) -> int:
+        """The fewest leading bits a match shares with ``prefix``: ``min_bits``, or all of it."""
+        return min(self._min_bits, len(prefix) * BITS_PER_HEX_DIGIT)
+
+    def _best(self, prefix: str, candidates: Iterable[ContentId]) -> list[ContentId]:
+        """The best of ``candidates`` for ``prefix``, best first, less those not matching it."""
+        return self.matching(prefix, nearest(prefix, candidates, self._max_results))
 
     def _held(self, prefix: str) -> set[ContentId]:
         """Every identifier held, under any algorithm, whose hash starts with ``prefix``."""

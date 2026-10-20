@@ -12,7 +12,9 @@ node, as by a page::
     data.search_requested  {"prefix": "<hex>", "node_id": "sha256/<hex>"}
 
 Content this node has blocked is left out of every answer (HttpApi §5.5,
-Phase 4 Step 30), even one cached before it was blocked.
+Phase 4 Step 30), even one cached before it was blocked, and so is whatever
+shares too few leading bits with the prefix for the search to return it
+(``storage.search_min_bits``), even what the stats module adds.
 
 Signing in searches a drop as a page would, but scans the store every time
 (:meth:`SearchHandler.fresh_results`), so that a block stored since the last
@@ -74,7 +76,8 @@ DROP_SEARCH_PATTERN: Final = rf"{DROP_PATH}/(?P<target>[^/]+)"
 class SearchHandler:
     """Answers prefix searches from the cache or a local scan, less what ``blocked`` names.
 
-    Without ``blocked``, nothing is left out.
+    Whatever ``search`` would not match is left out too. Without ``blocked``,
+    nothing more is.
     """
 
     search: LocalSearch
@@ -100,7 +103,7 @@ class SearchHandler:
             self.cache.save_results(prefix, found)
 
         self._announce(prefix, _asker(request))
-        return bytes_response(SearchCache.body(self._unblocked(found)), JSON_CONTENT_TYPE)
+        return bytes_response(SearchCache.body(self._returned(prefix, found)), JSON_CONTENT_TYPE)
 
     def at_drop(self, request: Request) -> Response:
         """``GET /data/drop/{target}``: what a search of the drop ``target`` names finds.
@@ -135,7 +138,7 @@ class SearchHandler:
         cached = self.cache.load_results(prefix) or []
         found = nearest(
             prefix,
-            self._unblocked({*self.search.search(prefix), *cached}),
+            self._returned(prefix, {*self.search.search(prefix), *cached}),
             self.search.max_results,
         )
         self.cache.save_results(prefix, found)
@@ -151,12 +154,14 @@ class SearchHandler:
 
         self.publish(EventType.SEARCH_REQUESTED, payload)
 
-    def _unblocked(self, content_ids: Iterable[ContentId]) -> list[ContentId]:
-        """``content_ids``, in their order, less those this node has blocked."""
-        if self.blocked is None:
-            return list(content_ids)
+    def _returned(self, prefix: str, content_ids: Iterable[ContentId]) -> list[ContentId]:
+        """``content_ids``, in their order, less those not matching ``prefix`` and those blocked."""
+        matching = self.search.matching(prefix, content_ids)
 
-        return self.blocked.unblocked(content_ids)
+        if self.blocked is None:
+            return matching
+
+        return self.blocked.unblocked(matching)
 
 
 def _asker(request: Request) -> ContentId | None:

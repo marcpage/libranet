@@ -1598,11 +1598,11 @@ onSubmit(byId("application-form"), async () => {
 // ---- Users ----
 
 // How long the node searches for where to keep a new identity, and how many
-// bits it must match there, so that it is found near the top however many
-// blocks others place at the username (HttpApi 11.3), as the App Developer
-// Guide's example asks. Held to the node's own limits once it says them.
+// bits it must match there: as many as a node's search returns by default, so
+// that it is found (HttpApi 11.3), as the App Developer Guide's example asks.
+// Held to the node's own limits once it says them.
 let userSeconds = 10;
-let userMinimumBits = 16;
+let userMinimumBits = 24;
 
 // Offers the key sizes this node makes, the middle one first, and holds the
 // search to the node's limits, as the node says them (loadNode). Until then,

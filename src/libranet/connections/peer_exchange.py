@@ -66,11 +66,10 @@ the peer's IP address, as this node's socket saw it (HttpApi §10.2), and
 dropped if that is not known. The peer's own entries
 are kept as addresses to try, and ``sources`` says which were observed and
 which advertised (Phase 2 Step 23). For each ``search`` entry of the peer's
-seek list, this node pushes the content it holds whose hash shares at least
-``peers.search_push_min_bits`` leading bits with the prefix, or the whole
-prefix if it is shorter, among what a search of its own for the prefix
-finds. It answers each entry once while the list names it
-(HttpApi §10.7.2, Phase 4 Step 93).
+seek list, this node pushes the content it holds that a search of its own for
+the prefix finds, sharing at least ``storage.search_min_bits`` leading bits
+with it, or the whole prefix if it is shorter. It answers each entry once
+while the list names it (HttpApi §10.7.2, Phase 4 Step 93).
 """
 
 from __future__ import annotations
@@ -82,10 +81,9 @@ from time import time
 from typing import Callable, Final, Iterator, Mapping, Sequence, TypeVar
 
 from libranet.cas.blocked import BlockedContent
-from libranet.cas.content_id import BITS_PER_HEX_DIGIT, ContentId
+from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError
 from libranet.cas.layered import LayeredSource
-from libranet.cas.prefix import matching_bits
 from libranet.cas.store import CasStore
 from libranet.cas.verification import content_matches
 from libranet.config.models import LibranetConfig, StorageConfig
@@ -174,7 +172,7 @@ class _LocalContent:
             CasStore.source_of_truth(storage),
             content,
             BlockedContent.of(storage),
-            LocalSearch(content, storage.search_max_results),
+            LocalSearch.of(content, storage),
         )
 
 
@@ -542,19 +540,10 @@ class PeerExchange:
         matching = [
             content_id
             for prefix in session.answering(searches)
-            for content_id in self._matching(prefix)
+            for content_id in self._local.search.search(prefix)
         ]
         # Each once, though a search may match what the list names too.
         return list(dict.fromkeys([ContentId.parse(text) for text in data] + matching))
-
-    def _matching(self, prefix: str) -> list[ContentId]:
-        """What this node holds matching ``prefix`` closely enough to push for it, best first."""
-        enough_bits = min(self._peers.search_push_min_bits, len(prefix) * BITS_PER_HEX_DIGIT)
-        return [
-            content_id
-            for content_id in self._local.search.search(prefix)
-            if matching_bits(prefix, content_id.hash) >= enough_bits
-        ]
 
     def _read_list(
         self,

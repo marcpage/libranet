@@ -323,11 +323,12 @@ const FIRST_ROW = [
 ];
 const HANDLE = "handle";
 
-// What each drop placed asks the node to search for its nonce. Sending to
-// many people places a copy for each, one after another, so it is kept short.
-// No one sending mail decides how hard the node searches.
+// What each drop placed asks the node to search for its nonce, matching as
+// many bits as a node's search returns by default, so that it is found.
+// Sending to many people places a copy for each, one after another, so it is
+// kept short. No one sending mail decides how hard the node searches.
 const DROP_SECONDS = 1;
-const DROP_MINIMUM_BITS = 16;
+const DROP_MINIMUM_BITS = 24;
 
 // What a 503 waits when it does not say, and how many are waited out reading
 // and while the node fetches the key of whoever a copy is for.
@@ -469,23 +470,6 @@ function plural(count, one, many) {
 
 function byText(one, other) {
   return one.localeCompare(other, undefined, { sensitivity: "base" });
-}
-
-// How many leading bits two hashes in hex share.
-function matchingBits(hex, other) {
-  let bits = 0;
-
-  for (let i = 0; i < hex.length && i < other.length; i += 1) {
-    const differ = Number.parseInt(hex[i], 16) ^ Number.parseInt(other[i], 16);
-
-    if (differ !== 0) {
-      return bits + Math.clz32(differ) - 28;
-    }
-
-    bits += 4;
-  }
-
-  return bits;
 }
 
 // Run `work` over `items`, no more than `limit` at once.
@@ -718,9 +702,8 @@ async function isLocal() {
   return result.ok && isObject(result.value) && result.value.local === true;
 }
 
-// The ids a search of the drop `target` finds sharing at least
-// DROP_MINIMUM_BITS with its hash. Whatever else is nearest is something
-// else, and is not read.
+// The ids a search of the drop `target` finds. The node finds only what
+// shares enough leading bits with its hash to have been placed there.
 async function foundAt(target) {
   const search = await call("GET", dropPath(target));
   const answered =
@@ -737,10 +720,7 @@ async function foundAt(target) {
     throw new Error(`${target} could not be searched for: ${refusal(search)}`);
   }
 
-  const hash = search.value.target;
-  return search.value.results.filter(
-    (id) => CONTENT_ID.test(id) && matchingBits(id.slice(HASH_START), hash) >= DROP_MINIMUM_BITS,
-  );
+  return search.value.results.filter((id) => CONTENT_ID.test(id));
 }
 
 // What the node made of the drop `id` names, opened with the key of whoever

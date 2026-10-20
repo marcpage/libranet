@@ -38,8 +38,7 @@ from libranet.cas.layered import LayeredSource
 from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
-from libranet.identity.node_metadata import MIN_NODE_METADATA_BITS
-from libranet.identity.trust import MIN_TRUST_LIST_BITS, TrustList
+from libranet.identity.trust import TrustList
 from libranet.messaging.events import AddressSource, EventType
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
@@ -416,7 +415,6 @@ def test_the_root_page_reads_what_its_node_says_where_the_node_keeps_it(
     assert fullmatch(SIGNED_PATTERN, f"/data/signed/{some_id}")
     assert "encodeURIComponent(target)" in page
     assert 'const NODE_METADATA_PREFIX = "node:";' in page
-    assert f"const METADATA_MINIMUM_BITS = {MIN_NODE_METADATA_BITS};" in page
 
 
 @mark.parametrize("page_fixture", ["root_page", "config_page", "nodes_page"])
@@ -429,6 +427,34 @@ def test_each_page_showing_a_node_offers_the_details_the_issue_names(
 
     assert tuple(findall(r'"([^"]+)"', fields)) == NODE_FIELDS
     assert 'const NAME = "name";' in text
+
+
+@mark.parametrize(
+    "page_fixture", ["root_page", "nodes_page", "directory_page", "mail_page", "movie_page"]
+)
+def test_each_page_reading_drops_reads_whatever_the_node_finds_there(
+    request: FixtureRequest, page_fixture: str
+) -> None:
+    page = request.getfixturevalue(page_fixture)
+    text = page.decode("ascii") if isinstance(page, bytes) else page
+
+    # The node's search finds only what matches enough bits (HttpApi 6).
+    assert "matchingBits" not in text
+
+
+@mark.parametrize("page_fixture", ["config_page", "directory_page", "mail_page", "movie_page"])
+def test_each_page_placing_drops_places_them_where_a_nodes_search_finds_them(
+    request: FixtureRequest, page_fixture: str
+) -> None:
+    [minimum_bits] = findall(
+        r"(?:const DROP_MINIMUM_BITS|let userMinimumBits) = (\d+);",
+        request.getfixturevalue(page_fixture),
+    )
+
+    # Unless its operator raises the bits a search must match, or lowers the
+    # most a drop may ask for.
+    assert StorageConfig().search_min_bits <= int(minimum_bits)
+    assert int(minimum_bits) <= NetworkConfig().drop_max_minimum_bits
 
 
 def test_the_root_page_links_to_config_and_the_documentation(root_page: bytes) -> None:
@@ -636,7 +662,6 @@ def test_the_directory_page_reads_a_trust_list_where_the_node_keeps_it(
     [prefix] = findall(r'const TRUST_PREFIX = "([^"]*)";', directory_page)
 
     assert DropTarget.of(prefix + str(some_id)) == TrustList.drop_target(some_id)
-    assert f"const TRUST_LIST_MINIMUM_BITS = {MIN_TRUST_LIST_BITS};" in directory_page
     # The page names the drop by its target string, one segment, and hashes nothing.
     assert fullmatch(DROP_SEARCH_PATTERN, f"/data/drop/{quote(prefix + str(some_id), safe='')}")
 
@@ -746,7 +771,6 @@ def test_the_nodes_page_reads_what_each_node_says_where_the_node_keeps_it(
     nodes_page: str,
 ) -> None:
     assert 'const NODE_METADATA_PREFIX = "node:";' in nodes_page
-    assert f"const METADATA_MINIMUM_BITS = {MIN_NODE_METADATA_BITS};" in nodes_page
 
 
 def test_the_nodes_page_shows_everything_the_node_says_of_each_peer(nodes_page: str) -> None:

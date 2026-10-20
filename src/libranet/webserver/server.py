@@ -299,7 +299,7 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
         app_outcomes,
     )
     search = SearchHandler(
-        search=LocalSearch(content, storage.search_max_results),
+        search=LocalSearch.of(content, storage),
         cache=SearchCache.of(storage),
         publish=publish,
         blocked=blocked,
@@ -631,7 +631,7 @@ def _config_identities(
     return Identities(
         uploads,
         SearchHandler(
-            LocalSearch(content, storage.search_max_results),
+            LocalSearch.of(content, storage),
             SearchCache.of(storage),
             publish,
             blocked=BlockedContent.of(storage),

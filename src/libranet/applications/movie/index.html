@@ -488,10 +488,10 @@ const PLAYLISTS = "playlists";
 // 11.6), never in the store, which any client reads and only this node keeps.
 const COLLECTIONS_PREFIX = "movie collections:";
 
-// What each version placed asks the node to search for its nonce, and how
-// many leading bits a drop found must share with the target's hash to be read.
+// What each version placed asks the node to search for its nonce, matching as
+// many bits as a node's search returns by default, so that it is found.
 const DROP_SECONDS = 1;
-const DROP_MINIMUM_BITS = 16;
+const DROP_MINIMUM_BITS = 24;
 
 // Where this browser remembers the last playlist chosen.
 const REMEMBERED = "movie.playlist";
@@ -825,26 +825,8 @@ function isEntry(entry) {
   return isObject(entry) && isText(entry.name) && isText(entry.bundle);
 }
 
-// How many leading bits the hex hashes `hex` and `other` share.
-function matchingBits(hex, other) {
-  let bits = 0;
-
-  for (let i = 0; i < hex.length && i < other.length; i += 1) {
-    const differ = Number.parseInt(hex[i], 16) ^ Number.parseInt(other[i], 16);
-
-    if (differ !== 0) {
-      return bits + Math.clz32(differ) - 28;
-    }
-
-    bits += 4;
-  }
-
-  return bits;
-}
-
-// The ids a search of the drop `target` finds (HttpApi 9.7) sharing at least
-// DROP_MINIMUM_BITS with its hash. Whatever else is nearest is something
-// else, and is not read.
+// The ids a search of the drop `target` finds (HttpApi 9.7). The node finds
+// only what shares enough leading bits with its hash to have been placed there.
 async function foundAt(target) {
   const search = await call("GET", `${DROPS}/${encodeURIComponent(target)}`);
   const answered = search.ok && isObject(search.value) && isText(search.value.target) &&
@@ -854,10 +836,7 @@ async function foundAt(target) {
     throw new Refusal(search);
   }
 
-  const hash = search.value.target;
-  return search.value.results.filter(
-    (id) => isText(id) && CONTENT_ID.test(id) && matchingBits(id.split("/")[1], hash) >= DROP_MINIMUM_BITS,
-  );
+  return search.value.results.filter((id) => isText(id) && CONTENT_ID.test(id));
 }
 
 // The session ended while the page was open (HttpApi 11.4).
