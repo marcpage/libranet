@@ -392,6 +392,8 @@ class KeptArchive(Task):
                 found = NeededObjects.of(bundle, source, self._settings.max_bundle_bytes)
 
             except MissingContentError as error:
+                # Not logged: what is lacked is asked for, and the backup
+                # module logs it.
                 lacked.extend(error.content_ids)
                 continue
 
