@@ -127,31 +127,33 @@ class ArchiveSource:
         """The bytes the archive holds for ``content_id``.
 
         Raises:
-            ContentNotFoundError: the archive does not hold it.
+            ContentNotFoundError: the archive does not hold it, or is closed.
             ArchiveError: the member is damaged.
         """
-        info = self._members.get(content_id)
+        with self._lock:
+            info = self._members.get(content_id)
 
-        if info is None:
-            raise ContentNotFoundError(f"Content not found: {content_id}")
+            if info is None:
+                raise ContentNotFoundError(f"Content not found: {content_id}")
 
-        try:
-            with self._lock:
+            try:
                 return self._archive.read(info)
 
-        except (BadZipFile, EOFError, ZlibError) as error:
-            raise ArchiveError(f"Cannot read {content_id} from {self._name}: {error}") from None
+            except (BadZipFile, EOFError, ZlibError) as error:
+                raise ArchiveError(f"Cannot read {content_id} from {self._name}: {error}") from None
 
     def iter_prefix(self, algorithm: str, hash_prefix: str) -> Iterator[ContentId]:
         """Held identifiers under ``algorithm`` whose hash starts with ``hash_prefix``, in order.
 
         ``hash_prefix`` must already be lower-case hex.
         """
+        # Held as it is now, should the archive close as it is scanned.
+        held = self._sorted
         # The prefix itself, as a hash, sorts just before every hash it starts.
-        first = bisect_left(self._sorted, ContentId(algorithm, hash_prefix))
+        first = bisect_left(held, ContentId(algorithm, hash_prefix))
 
-        for index in range(first, len(self._sorted)):
-            content_id = self._sorted[index]
+        for index in range(first, len(held)):
+            content_id = held[index]
 
             if content_id.algorithm != algorithm or not content_id.hash.startswith(hash_prefix):
                 return
@@ -159,9 +161,16 @@ class ArchiveSource:
             yield content_id
 
     def close(self) -> None:
-        """Close the archive and its file."""
-        self._archive.close()
-        self._file.close()
+        """Close the archive and its file, once any read under way is done.
+
+        It holds nothing from then on, so that a read in another thread that
+        comes after finds nothing, as though the archive were never there.
+        """
+        with self._lock:
+            self._members = {}
+            self._sorted = []
+            self._archive.close()
+            self._file.close()
 
     def __enter__(self) -> ArchiveSource:
         return self

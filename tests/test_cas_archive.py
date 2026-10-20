@@ -256,6 +256,24 @@ def test_closing_the_source_closes_its_file(tmp_path: Path) -> None:
     assert file.closed
 
 
+def test_a_source_closed_holds_nothing_from_then_on(tmp_path: Path) -> None:
+    path = write_archive(tmp_path / "a.zip", {id_of(FIRST): FIRST, id_of(SECOND): SECOND})
+    source = ArchiveSource.open(path)
+    scan = source.iter_prefix("sha256", "")
+    scanned = [next(scan)]
+
+    source.close()
+
+    assert not source.exists(id_of(FIRST))
+    assert list(source.iter_prefix("sha256", "")) == []
+
+    with raises(ContentNotFoundError):
+        source.read(id_of(FIRST))
+
+    # A scan begun before is not cut off.
+    assert scanned + list(scan) == sorted([id_of(FIRST), id_of(SECOND)])
+
+
 def test_member_times_and_permissions_are_fixed(tmp_path: Path) -> None:
     path = write_archive(tmp_path / "a.zip", {id_of(FIRST): FIRST})
 

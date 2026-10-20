@@ -10,6 +10,7 @@ from pytest import LogCaptureFixture, mark, raises
 from libranet.cas.archive import ArchiveSink
 from libranet.cas.archive_folder import ArchiveFolder
 from libranet.cas.content_id import ContentId
+from libranet.cas.errors import ContentNotFoundError
 
 FIRST = b"kept in the first archive"
 SECOND = b"kept in the second archive"
@@ -132,7 +133,7 @@ def test_an_archive_refused_is_read_once_it_has_changed(tmp_path: Path) -> None:
     folder.close()
 
 
-def test_an_archive_removed_is_left_out_but_stays_readable_until_closed(tmp_path: Path) -> None:
+def test_an_archive_removed_is_closed_and_left_out(tmp_path: Path) -> None:
     archive = write_archive(tmp_path / "a.zip", FIRST)
     folder = settled(tmp_path)
     folder.refresh()
@@ -141,12 +142,10 @@ def test_an_archive_removed_is_left_out_but_stays_readable_until_closed(tmp_path
 
     assert folder.refresh() is True
     assert folder.archives == ()
-    # A read under way in another thread is not cut off.
-    assert opened.read(id_of(FIRST)) == FIRST
+    # A read in another thread that comes after finds nothing.
+    assert not opened.exists(id_of(FIRST))
 
-    folder.close()
-
-    with raises(ValueError):
+    with raises(ContentNotFoundError):
         opened.read(id_of(FIRST))
 
 
@@ -160,7 +159,7 @@ def test_closing_closes_every_archive_opened(tmp_path: Path) -> None:
 
     assert folder.archives == ()
 
-    with raises(ValueError):
+    with raises(ContentNotFoundError):
         opened.read(id_of(FIRST))
 
 

@@ -443,8 +443,9 @@ restart, from the moment the store no longer answers for its content.
 A name starting with `.`, as a file being written here has (§8), is not
 read. An archive that cannot be opened, or that holds anything but objects,
 is logged as an error and left out, without stopping the node, and tried
-again once it has changed. An archive left out stays open, so that a read
-under way is not cut off, until its process stops.
+again once it has changed. An archive no longer here is closed at once, once
+any read of it under way is done, so the space it took is freed, and a read
+of it that comes after finds nothing.
 
 What an archive here holds, as any archive's, is never evicted, and not
 counted against the storage limits. Deleting a file here, even while the

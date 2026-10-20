@@ -20,7 +20,7 @@ last, from a folder of its own that they come and go from as it runs
 (:class:`~libranet.cas.archive_folder.ArchiveFolder`, Step 115). The folder
 is looked at again whenever a lookup finds nothing in any other layer, and
 before each prefix scan, so an archive just written answers as soon as the
-store no longer does.
+store no longer does, and one removed answers no more.
 
 The applications the node ships (Step 37) are read last, and this is the one
 place that knows how they were shipped. A wheel carries them built: the
@@ -147,24 +147,21 @@ class LayeredSource:
         return self._store.prefix_length
 
     def exists(self, content_id: ContentId) -> bool:
-        """Whether any layer holds ``content_id``, looking at the kept archives again if not."""
-        if any(layer.exists(content_id) for layer in (*self._layers, *self._kept_archives())):
-            return True
-
-        return self._kept_changed() and any(
-            archive.exists(content_id) for archive in self._kept_archives()
+        """Whether any layer holds ``content_id``, looking at the kept archives again if need be."""
+        return any(layer.exists(content_id) for layer in self._layers) or any(
+            archive.exists(content_id) for archive in self._kept_now()
         )
 
     def read(self, content_id: ContentId) -> bytes:
         """The bytes the first layer holding ``content_id`` holds for it.
 
-        The kept archives are looked at again if no layer holds it.
+        The kept archives are looked at again if no other layer holds it.
 
         Raises:
             ContentNotFoundError: no layer holds it.
             ArchiveError: the archive holding it is damaged.
         """
-        for layer in (*self._layers, *self._kept_archives()):
+        for layer in self._layers:
             try:
                 return layer.read(content_id)
 
@@ -172,14 +169,13 @@ class LayeredSource:
                 # Not logged: the next layer may hold it.
                 continue
 
-        if self._kept_changed():
-            for archive in self._kept_archives():
-                try:
-                    return archive.read(content_id)
+        for archive in self._kept_now():
+            try:
+                return archive.read(content_id)
 
-                except ContentNotFoundError:
-                    # Not logged: the next archive may hold it.
-                    continue
+            except ContentNotFoundError:
+                # Not logged: the next archive may hold it.
+                continue
 
         raise ContentNotFoundError(f"Content not found: {content_id}")
 
@@ -190,9 +186,8 @@ class LayeredSource:
         must already be lower-case hex.
         """
         seen: set[ContentId] = set()
-        self._kept_changed()
 
-        for layer in (*self._layers, *self._kept_archives()):
+        for layer in (*self._layers, *self._kept_now()):
             for content_id in layer.iter_prefix(algorithm, hash_prefix):
                 if content_id not in seen:
                     seen.add(content_id)
@@ -221,9 +216,13 @@ class LayeredSource:
         """The archives kept, as last looked at; none without a folder of them."""
         return () if self._kept is None else self._kept.archives
 
-    def _kept_changed(self) -> bool:
-        """Look at the kept archives again, and say whether they changed."""
-        return self._kept is not None and self._kept.refresh()
+    def _kept_now(self) -> tuple[ArchiveSource, ...]:
+        """The archives kept, the folder looked at again first; none without a folder of them."""
+        if self._kept is None:
+            return ()
+
+        self._kept.refresh()
+        return self._kept.archives
 
 
 def _shipped_applications(packaged: Traversable, sources: Path) -> PackagedApplications:

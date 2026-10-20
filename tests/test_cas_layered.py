@@ -249,19 +249,20 @@ def test_a_kept_archive_that_cannot_be_opened_is_left_out(tmp_path: Path) -> Non
         ]
 
 
-def test_a_kept_archive_removed_is_left_out_once_a_lookup_misses(tmp_path: Path) -> None:
+def test_a_kept_archive_removed_answers_no_more_from_the_next_lookup(tmp_path: Path) -> None:
     storage = storage_for(tmp_path)
     storage.kept_archives_dir.mkdir(parents=True)
     kept = write_archive(storage.kept_archives_dir / "kept.zip", {id_of(FIRST): FIRST})
 
     with LayeredSource.open(storage, tmp_path / "none") as content:
+        assert content.read(id_of(FIRST)) == FIRST
         kept.unlink()
-
-        assert not content.exists(id_of(SECOND))
-        assert not content.exists(id_of(FIRST))
 
         with raises(ContentNotFoundError):
             content.read(id_of(FIRST))
+
+        assert not content.exists(id_of(FIRST))
+        assert list(content.iter_prefix("sha256", id_of(FIRST).hash[:4])) == []
 
 
 def test_closing_closes_the_kept_archives(tmp_path: Path) -> None:
@@ -273,7 +274,7 @@ def test_closing_closes_the_kept_archives(tmp_path: Path) -> None:
 
     content.close()
 
-    with raises(ValueError):
+    with raises(ContentNotFoundError):
         kept.read(id_of(FIRST))
 
 

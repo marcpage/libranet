@@ -17,9 +17,10 @@ out, rather than stopping the node, since the node put it there itself; it is
 tried again once it has changed, as a file copied in by hand does while it is
 copied, and the folder is next looked at.
 
-An archive no longer there is left out of every lookup from then on, but
-closed only as the folder is, so that a read under way in another thread is
-not cut off. A file removed stays readable while it is open.
+An archive no longer there is closed, once any read of it under way is done,
+and so left out of every lookup from then on, and the space its file took is
+freed. A read of it in another thread that comes after finds nothing, as
+though it were never there.
 """
 
 from __future__ import annotations
@@ -72,7 +73,6 @@ class ArchiveFolder:  # pylint: disable=too-many-instance-attributes
         # Each archive that could not be opened, by name, with the
         # modification time and size it had then.
         self._refused: dict[str, tuple[int, int]] = {}
-        self._retired: list[ArchiveSource] = []
         self._archives: tuple[ArchiveSource, ...] = ()
 
     @property
@@ -111,13 +111,12 @@ class ArchiveFolder:  # pylint: disable=too-many-instance-attributes
             return self._open_only(listed)
 
     def close(self) -> None:
-        """Close every archive opened, those no longer there too."""
+        """Close every archive open."""
         with self._lock:
-            for archive in (*self._open.values(), *self._retired):
+            for archive in self._open.values():
                 archive.close()
 
             self._open.clear()
-            self._retired.clear()
             self._archives = ()
 
     def _listed(self) -> dict[str, tuple[int, int]] | None:
@@ -163,7 +162,7 @@ class ArchiveFolder:  # pylint: disable=too-many-instance-attributes
         before = self._archives
 
         for name in sorted(set(self._open) - set(listed)):
-            self._retired.append(self._open.pop(name))
+            self._open.pop(name).close()
             _LOGGER.info("No longer reading the kept archive %s", name)
 
         for name in set(self._refused) - set(listed):
