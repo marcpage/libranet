@@ -393,11 +393,11 @@ def test_a_bundle_holding_an_entry_of_a_kind_not_known_is_logged_and_not_exporte
     shown = store_object(b"a file", store)
     bundle = store_bundle(DirectoryBundle({"file": FileBundle((str(shown),))}), store)
     entries: dict[str, Any] = {"file": FileBundle((str(shown),)), "odd": Unknown()}
-    monkeypatch.setattr("libranet.backup.exports.resolve_directory", lambda *_: entries)
+    monkeypatch.setattr("libranet.bundle.needed.resolve_directory", lambda *_: entries)
     task = exporting(bundle, archive)
 
     with (
-        caplog.at_level(ERROR, logger="libranet.backup.exports"),
+        caplog.at_level(ERROR, logger="libranet.bundle.needed"),
         raises(UnsupportedBundleError, match="Unknown"),
     ):
         task.run(source, IgnoredPaths(), lambda: FINISHED_AT)

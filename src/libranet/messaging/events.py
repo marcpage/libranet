@@ -12,12 +12,13 @@ from enum import StrEnum
 from typing import Final
 
 #: Payload members of a ``backup.state`` message, each listing what every job,
-#: restore, build, export, or import is doing.
+#: restore, build, export, import, or kept archive is doing.
 JOBS_FIELD: Final = "jobs"
 RESTORES_FIELD: Final = "restores"
 BUILDS_FIELD: Final = "builds"
 EXPORTS_FIELD: Final = "exports"
 IMPORTS_FIELD: Final = "imports"
+ARCHIVES_FIELD: Final = "archives"
 
 
 class EventType(StrEnum):
@@ -71,7 +72,8 @@ class EventType(StrEnum):
     APP_PATH_RESOLVED = "app.path_resolved"  # unbundler → webserver
 
     # `/config` administration surface and the backup module (Steps 18-20, 38),
-    # and importing a local file (Phase 3 Step 69).
+    # importing a local file (Phase 3 Step 69), and keeping content offline
+    # (Step 115).
     BACKUP_JOB_CONFIGURED = "backup.job_configured"  # webserver → backup
     BACKUP_JOB_REMOVED = "backup.job_removed"  # webserver → backup
     BACKUP_RUN_REQUESTED = "backup.run_requested"  # webserver → backup
@@ -79,6 +81,8 @@ class EventType(StrEnum):
     BUILD_REQUESTED = "backup.build_requested"  # webserver → backup
     EXPORT_REQUESTED = "backup.export_requested"  # webserver → backup
     IMPORT_REQUESTED = "backup.import_requested"  # webserver → backup
+    ARCHIVE_REQUESTED = "backup.archive_requested"  # webserver → backup
+    ARCHIVE_REMOVED = "backup.archive_removed"  # webserver → backup
     BACKUP_STATE = "backup.state"  # backup → webserver
 
     # Eviction hand-off (Step 15).
