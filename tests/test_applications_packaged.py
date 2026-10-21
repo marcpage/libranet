@@ -703,8 +703,8 @@ def test_the_mail_page_calls_only_endpoints_the_node_serves(mail_page: str) -> N
         f"{ENCRYPTED_PATH}/",
         "/data/",
     }
-    # Mail is found by the target string of an hour, one segment.
-    target = f"mail:{some_id}:2026/10/12/09"
+    # Mail is found by the target string of a day, one segment.
+    target = f"mail:{some_id}:2026/10/12"
     assert fullmatch(DROP_SEARCH_PATTERN, f"/data/drop/{quote(target, safe='')}")
     assert fullmatch(ENCRYPTED_PATTERN, f"{ENCRYPTED_PATH}/{some_id}")
     assert "encodeURIComponent(target)" in mail_page
