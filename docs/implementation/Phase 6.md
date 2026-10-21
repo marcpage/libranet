@@ -138,6 +138,19 @@ own answer or my recommended option:
   It is sent when a validation block is chosen for the latest generation.
   Between a head told and the weight its transaction block states, a node
   sees quickly whether there may be a competing chain to look for.
+- **A node keeps its head's genealogy, and changes heads by it.** It
+  persists the winning validation id of every generation back to the root.
+  For a head that may be heavier, it walks that head's generations back to
+  the first one in its genealogy. If the new head is heavier, it collects
+  the transactions of its own branch from its head back to that common
+  ancestor. As it checks the new branch up to the new head, it strikes
+  those already accounted for. It adds the rest to the transaction block it
+  is building.
+- **Transactions that exceed the sender's balance are carried forward**,
+  until a fixed number of generations, TBD, after the generation their hash
+  is first witnessed in a validation block. Nodes then stop carrying them,
+  but they stay valid, with no expiry: anyone may put one up again. Making
+  them invalid after the count was turned down.
 - **Nothing is blocked for being on a lighter chain.** A node cut off from
   most of the network, which has gone on far beyond, must be able to come
   back to it. A rule blocking dead forks, after a lead in work and a time
@@ -254,6 +267,20 @@ My calls, not yet reviewed:
   `invalid-request`.
 - A head told is followed only once the chain it names is fetched and
   checked heavier.
+- Walking back checks each transaction block's `weight` against the one
+  before, so a false weight is caught where it first fails, before the
+  rest of the walk.
+- Payouts are not carried over, since each chain works out its own. A
+  carried transaction the new chain's balances do not cover is pending,
+  and carried forward like any other.
+- The count for a pending transaction starts at its witnessed generation,
+  that of the first winning validation block on the chain listing its
+  hash. A node carrying one lists it among the witnesses of each
+  validation block it builds, so that the count starts.
+- A new branch with a block that does not check is not followed, and that
+  block's builder is distrusted. Whether to follow the part before it, if
+  that part is heavier, is left open.
+- The genealogy is kept across restarts, one id per generation.
 - Both root drops match at least 24 bits, the node's search floor.
 
 **Open questions:**
