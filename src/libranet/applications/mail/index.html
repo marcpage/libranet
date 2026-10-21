@@ -120,6 +120,27 @@
   }
 
   .mail .who, .mail .open > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* The postage a message received paid, in a green circle at the far right
+     of its row: how many leading bits its id shares with its drop's. */
+  .mail .open.paid { grid-template-columns: minmax(0, 1fr) max-content max-content; }
+
+  .mail .open > .postage {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    align-self: center;
+    min-width: 1.85em;
+    height: 1.85em;
+    padding: 0 0.3em;
+    border-radius: 999px;
+    background: var(--good);
+    color: var(--surface);
+    font-size: 0.8rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
   .mail .unread .who, .mail .unread .open { font-weight: 600; }
   .mail .shown { display: flex; align-items: center; gap: 0.5rem; }
   .mail .shown .row { flex: 1; }
@@ -292,7 +313,10 @@
     placed with the postage chosen, its id sharing at least 24 leading bits
     with the drop's for bulk, 28 for first class, and 32 for priority: the
     more it shares, the nearer the top of a search of the drop it is, and each
-    4 bits more takes the node 16 times as long to place, on average. Your
+    4 bits more takes the node 16 times as long to place, on average. In the
+    inbox, the number in a green circle at the right of each conversation is
+    the postage its newest message received paid: how many leading bits its
+    id shares with the drop's. Your
     address book, and what you have read and hidden, are kept the same way,
     encrypted for you, at <code>mail address book:</code> and your id, and at
     <code>mail state:</code>, your id, and each month of mail. Mail is read and
@@ -384,6 +408,10 @@ const MAX_NAME_LENGTH = 64;
 // A person's id: the only hash the node knows, in lower-case hex (HttpApi 5).
 const CONTENT_ID = /^sha256\/[0-9a-f]{64}$/;
 
+// A drop's target hash, in lower-case hex, as a search of the drop names it
+// (HttpApi 9.7).
+const TARGET_HASH = /^[0-9a-f]{64}$/;
+
 // A bundle's id, or one carrying its key, as an encrypted bundle's does
 // (HttpApi 12.1), with its IV if it names one.
 const BUNDLE_ID = /^sha256\/[0-9a-f]{64}(\/AES256-CBC(-IV:[0-9a-f]{32})?\/[0-9a-f]{64})?$/;
@@ -407,6 +435,7 @@ const NULL_BYTE = 0x00;
 // much of it a person's id is shortened to.
 const HASH_START = "sha256/".length;
 const SHORT_HASH = 12;
+const BITS_PER_HEX_DIGIT = 4;
 
 // The two places mail is read from.
 const INBOX = "inbox";
@@ -721,14 +750,16 @@ async function isLocal() {
   return result.ok && isObject(result.value) && result.value.local === true;
 }
 
-// The ids a search of the drop `target` finds. The node finds only what
-// shares enough leading bits with its hash to have been placed there.
+// The ids a search of the drop `target` finds, and the hash of `target`, as
+// the search names it. The node finds only what shares enough leading bits
+// with its hash to have been placed there.
 async function foundAt(target) {
   const search = await call("GET", dropPath(target));
   const answered =
     search.ok &&
     isObject(search.value) &&
     typeof search.value.target === "string" &&
+    TARGET_HASH.test(search.value.target) &&
     Array.isArray(search.value.results);
 
   if (search.status === 401) {
@@ -739,7 +770,23 @@ async function foundAt(target) {
     throw new Error(`${target} could not be searched for: ${refusal(search)}`);
   }
 
-  return search.value.results.filter((id) => CONTENT_ID.test(id));
+  return { hash: search.value.target, ids: search.value.results.filter((id) => CONTENT_ID.test(id)) };
+}
+
+// How many leading bits the hash the content id `id` names shares with the
+// target hash `hash`: the postage a drop found there paid.
+function matchingBits(id, hash) {
+  const digits = id.slice(HASH_START);
+
+  for (let index = 0; index < hash.length; index += 1) {
+    const difference = Number.parseInt(digits[index], 16) ^ Number.parseInt(hash[index], 16);
+
+    if (difference !== 0) {
+      return (index + 1) * BITS_PER_HEX_DIGIT - difference.toString(2).length;
+    }
+  }
+
+  return hash.length * BITS_PER_HEX_DIGIT;
 }
 
 // What the node made of the drop `id` names, opened with the key of whoever
@@ -916,7 +963,7 @@ class Kept {
   // that none replaces, write one naming them all. Versions another replaces
   // are blocked, so that they do not push the newest out of a search.
   async load() {
-    const ids = await foundAt(this.target);
+    const { ids } = await foundAt(this.target);
     const results = new Map();
     await eachAtMost(ids, OPENS_AT_ONCE, async (id) => results.set(id, await opened(id)));
 
@@ -1432,7 +1479,7 @@ function judged(person, versions) {
 // as far as this node holds it: the newest version, their fallback, whether
 // they are compromised, and how many found at their drop are not held yet.
 async function readDetails(person) {
-  const ids = await foundAt(DETAILS_PREFIX + person);
+  const { ids } = await foundAt(DETAILS_PREFIX + person);
   const found = new Set(ids);
   // Each id read: its version, or null if it is not held or is none.
   const read = new Map();
@@ -1587,9 +1634,10 @@ async function current(person) {
 }
 
 // The message a copy opened as `signed`, at the drop `drop` of the day
-// starting at `day` where `kind` is read; null if it is not one for whoever is
-// signed in, or, sent, not one of theirs.
-function messageOf(drop, signed, kind, day) {
+// starting at `day` where `kind` is read, its id sharing `bits` leading bits
+// with the drop's; null if it is not one for whoever is signed in, or, sent,
+// not one of theirs.
+function messageOf(drop, signed, kind, day, bits) {
   let value;
 
   try {
@@ -1622,6 +1670,7 @@ function messageOf(drop, signed, kind, day) {
     drop,
     kind,
     month: monthOf(day),
+    bits,
     signer: signed.signer,
     to: value.to,
     cc: value.cc,
@@ -1636,17 +1685,17 @@ function messageOf(drop, signed, kind, day) {
 }
 
 // Open the copy found at `drop`, in the day starting at `day` where `kind` is
-// read.
-async function readCopy(drop, kind, day) {
+// read, its id sharing `bits` leading bits with the drop's.
+async function readCopy(drop, kind, day, bits) {
   const result = await opened(drop);
 
   if (result.missing) {
-    mail.unheld.set(drop, { kind, day });
+    mail.unheld.set(drop, { kind, day, bits });
     return;
   }
 
   mail.unheld.delete(drop);
-  const message = result.signed ? messageOf(drop, result.signed, kind, day) : null;
+  const message = result.signed ? messageOf(drop, result.signed, kind, day, bits) : null;
 
   if (message === null) {
     mail.passed.add(drop);
@@ -1663,9 +1712,9 @@ async function readDays(kind, days) {
   const prefix = kind === INBOX ? MAIL_PREFIX : SENT_PREFIX;
   const marks = loadMonths(days.map(monthOf));
   await eachAtMost(days, SEARCHES_AT_ONCE, async (day) => {
-    const ids = await foundAt(dayTarget(prefix, mail.you, day));
+    const { hash, ids } = await foundAt(dayTarget(prefix, mail.you, day));
     const fresh = ids.filter((id) => !mail.messages.has(id) && !mail.passed.has(id));
-    await eachAtMost(fresh, OPENS_AT_ONCE, (id) => readCopy(id, kind, day));
+    await eachAtMost(fresh, OPENS_AT_ONCE, (id) => readCopy(id, kind, day, matchingBits(id, hash)));
   });
   await marks;
 }
@@ -1720,7 +1769,7 @@ async function refresh(kind) {
   period.now = now;
   period.to = Math.max(period.to, now + DAY_MS);
   const unheld = [...mail.unheld].filter(([, found]) => found.kind === kind);
-  await eachAtMost(unheld, OPENS_AT_ONCE, ([drop, found]) => readCopy(drop, found.kind, found.day));
+  await eachAtMost(unheld, OPENS_AT_ONCE, ([drop, found]) => readCopy(drop, found.kind, found.day, found.bits));
   await readDays(kind, days);
   sayRead(kind);
   render();
@@ -1976,6 +2025,17 @@ function rowOf(thread, kind) {
   }
 
   opener.append(subject, make("span", when(newest.sent), "when"));
+
+  // In the inbox, the postage the newest message received in it paid, at the
+  // far right.
+  if (kind === INBOX) {
+    const paid = thread.shown.filter((message) => message.kind === INBOX).at(-1).bits;
+    const postage = make("span", String(paid), "postage");
+    postage.title = `Postage paid: ${paid} matching bits`;
+    opener.classList.add("paid");
+    opener.append(postage);
+  }
+
   const place = `row ${thread.key}`;
   item.append(lineOf(people, kind === SENT ? "To " : "", place, open, opener), ...saidOf(people, place));
   return item;
