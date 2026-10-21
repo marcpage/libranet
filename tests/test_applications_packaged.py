@@ -439,8 +439,10 @@ def test_each_page_reading_drops_reads_whatever_the_node_finds_there(
     page = request.getfixturevalue(page_fixture)
     text = page.decode("ascii") if isinstance(page, bytes) else page
 
-    # The node's search finds only what matches enough bits (HttpApi 6).
-    assert "matchingBits" not in text
+    # The node's search finds only what matches enough bits (HttpApi 6), so a
+    # page passes over nothing for matching too few. The mail page counts them
+    # only to show the postage a message paid.
+    assert findall(r"matchingBits\(.*?\)\s*[<>]", text) == []
 
 
 @mark.parametrize("page_fixture", ["config_page", "directory_page", "mail_page", "movie_page"])
