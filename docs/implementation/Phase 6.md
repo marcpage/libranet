@@ -166,10 +166,15 @@ own answer or my recommended option:
 - **Blocks are put up small and combined.** A transaction is put up as a
   block of its own, and builders combine blocks for better scores.
 - **A block is blocked only when its data is kept elsewhere.** A
-  transaction or validation block may be blocked only if all its data is
-  in another block that is larger, or the same size and matching more
-  bits. The data must be preserved and not lost. Limiting blocking to
-  blocks never full was turned down.
+  transaction block may be blocked only if all its data is in another
+  block that is larger, or the same size and matching more bits. The data
+  must be preserved and not lost.
+- **No chain loses a block it runs through.** A validation block is never
+  blocked, since any one may lead to another chain. Nor is a transaction
+  block that a validation block names. Validation blocks are made only on
+  near-full transaction blocks, so in practice a transaction block near
+  1 MiB is not blocked either. This replaces a first form of the ruling,
+  which let validation blocks and full transaction blocks be blocked.
 - **A transaction block is scored** by, in order, its bits, its reach,
   how near equal its free and paid transactions are, and how old its
   transactions are, with no weights. A block with anything incorrect
@@ -208,10 +213,12 @@ My calls, not yet reviewed:
   default strategy, measured as the reference zlib compresses.
 - `weight` is a string of decimal digits, as amounts are, since one drop
   may add 2^256.
-- A transaction block's data is its transactions, and a validation
-  block's its stakes and witnesses. A runner-up is a choice, not data.
-  A node blocks a superseded block only while it holds the one keeping its
-  data, and only for one of the same generation.
+- A transaction block's data is its transactions. A node blocks a
+  superseded block only while it holds the one keeping its data, and only
+  for one of the same generation.
+- "Near 1 MiB" is written as full, or near enough to full that a
+  validation block not yet seen may name it. It is a SHOULD NOT, beside the
+  MUST NOTs for validation blocks and for transaction blocks they name.
 - A head is posted to every node a node holds an outgoing connection to,
   as node lists are. It is `null` while a node follows no chain. A `POST`
   is answered `202` without waiting to check it, and a bad body
