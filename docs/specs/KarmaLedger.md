@@ -98,6 +98,10 @@ The **heaviest chain** is the one of greatest weight, and of two as heavy,
 the one whose latest winning validation block's id sorts first. Every node
 follows the heaviest chain it knows.
 
+Each transaction block states the weight of the chain before it (§5.1), and
+a reader checks it against the block before. So a reader sees how heavy a
+chain claims to be from a single block, before it fetches the rest.
+
 A chain is never final. A block becomes harder to replace as weight is
 built after it, and a rival holding more work from any point back replaces
 everything after that point. Rival roots are settled the same way (§7.5).
@@ -111,25 +115,52 @@ targets of every rival validation block g into blocks at the winning
 target. A transaction is signed apart from any block or target (§4.1), so
 it is carried over unchanged, and its sender does not put it up again.
 
-### 3.5 Dead Forks
+### 3.5 Heads
 
-A lighter fork is **dead** once both of these hold:
+A node's **head** is the validation block whose id names the target that
+new transactions are put up at (§3.1): the winning validation block of the
+latest generation it has chosen one for. A head's weight is the `weight` of
+the transaction block it validates, plus 2^b for that block's drop and for
+the head's own.
 
-- since the generation it leaves the heaviest chain, the heaviest chain
-  leads it by at least k generations' worth of work, a generation's worth
-  being the heaviest chain's average weight per generation since that
-  point; and
-- its latest generation has not grown while the heaviest chain advanced m
-  generations.
+A node tells its peers its head each time it chooses a validation block for
+the latest generation, and asks a peer for its head
+([HTTP API §10.9](HttpApi.md#109-karma-heads)). A head it is told of is only
+a pointer. When a peer tells of a head the node does not follow, the node
+reads that head and the transaction block it validates, whose `weight` says
+how heavy the chain behind it claims to be. If that is heavier than the
+node's own head, the node fetches the chain back to where it meets its own,
+and checks it, `weight` and all. If the chain is heavier, the node follows
+it.
 
-k and m are TBD (§9). A count of generations alone is no measure, since one
-generation may weigh a thousand times another.
+### 3.6 Weak Chains
 
-Before blocking a dead fork, a node carries its transactions that are still
-valid on the heaviest chain into the heaviest chain's targets, as for false
-starts (§3.4). It then MAY block the fork's blocks, to cut traffic and
-reinforce the heavier chain. A node that blocks a fork no longer sees it
-(§8).
+A node never blocks a transaction block or a validation block for being on
+a lighter chain. A chain may be lighter only as far as the node can see. A
+node cut off from most of the network, which has gone on far beyond, would
+otherwise block the chain it has to come back to. Once it is connected
+again, the heads its peers tell it of (§3.5) bring it back.
+
+Blocks on a lighter chain go as any content does, by eviction. Their
+transactions that are still valid on the heaviest chain may be carried into
+its targets, as for false starts (§3.4).
+
+### 3.7 Blocking What Is Superseded
+
+A node MUST NOT block a validation block, since any one may lead to another
+chain. It MUST NOT block a transaction block that a validation block names.
+Validation blocks are made only on full transaction blocks, so a node SHOULD
+NOT block a transaction block near 1 MiB either: one full, or near enough to
+full that a validation block the node has not seen yet may name it (§5.4).
+
+A node MAY block any other transaction block, such as one put up small or
+one still being combined, whose data is all held in another transaction
+block of the same generation. This means searches carry less of the same
+data. It blocks one only if the other block holds more data, or holds the
+same data and shares more bits with its target hash. A transaction block's
+data is its transactions. The data is not lost: it is kept in the other
+block, and a node blocks a block only while it holds the block that keeps
+it.
 
 ## 4. Transactions
 
@@ -232,6 +263,7 @@ Transaction block g is a drop at the transaction target of generation g
 ```json
 {"generation": 42,
  "previous": "sha256/…",
+ "weight": "1288490188800",
  "reach": 3,
  "transactions": [],
  "balances": {"sha256/0a1b…": {"kismet": "1250000", "last_won": 40}}}
@@ -242,6 +274,13 @@ Transaction block g is a drop at the transaction target of generation g
 - **`previous`** is the id of the winning validation block g − 1, the one
   the block's target is named for, so that a block read on its own says
   what it builds on. It is `null` only in the root.
+- **`weight`** is the weight (§3.3) of the chain before this block: 2^b
+  over both drops of each of generations 0 through g − 1. It leaves out the
+  block's own drop, whose bits are mined only once its content is fixed. It
+  is a string of decimal digits, as an amount is (§4.1), since one drop
+  alone may add 2^256, and it is `"0"` in the root. A block's `weight` is
+  that of transaction block g − 1, plus 2^b for that block's drop and for
+  validation block g − 1's.
 - **`reach`** is how many blocks back a reader goes to find every balance
   (§5.3).
 - **`transactions`** are the block's transactions, as objects, sorted by
@@ -337,7 +376,7 @@ The payout counts in neither (c) nor (d).
 A block with anything incorrect about it scores zero, below every correct
 block. A correct block is full, is shaped and placed as §5.1 to §5.3 say,
 holds only valid transactions (§4.4), and states its payout, its balances,
-and its `reach` as they are.
+its `weight`, and its `reach` as they are.
 
 ### 5.6 Building and Combining
 
@@ -349,20 +388,9 @@ among them (§3.4), into larger ones, for a better score.
 A block that is not full, or that scores zero, is never validated, but it
 is still read: a builder takes its valid transactions into correct blocks.
 This is how a paid transaction put up alone, which breaks the half-free
-rule, is taken in.
-
-### 5.7 Blocking What Is Superseded
-
-A node MAY block a transaction block all of whose transactions are in
-another block of the same generation holding as many or more, so that
-searches carry less of the same data. Of two blocks holding the same
-transactions, and differing only in how many bits they share with their
-target hash, the one sharing fewer is blocked.
-
-A block is blocked only for one that scores above zero and is at the
-winning target of its generation. So a block that is incorrect, or is on a
-losing fork, never takes a block at the winning target off the network,
-and a false start's block goes once the winner holds its transactions.
+rule, is taken in. A block whose transactions are all in a larger block, or
+in one as large sharing more bits, may then be blocked, unless it is near
+1 MiB or a validation block names it (§3.7).
 
 ## 6. Validation Blocks
 
@@ -392,7 +420,7 @@ Validation block g is a drop at the validation target of generation g
 The block is not signed. It is a collection of stakes, each signed by its
 staker, so anyone may build one from others' stakes (Karma §21). It fits in
 1 MiB compressed as §5.4 compresses, and its stakes and witnesses share
-that room.
+that room. A validation block is never blocked (§3.7).
 
 ### 6.2 Stakes
 
@@ -482,10 +510,11 @@ creator, its `to` is `{creator: "0"}`, its `fee_kismet` is `"0"`, and its
 ### 7.2 Transaction Block 0
 
 Transaction block 0 is placed at `karma transaction:0`. Its `previous` is
-`null`, its `reach` is 0, and it holds no payout. Its `transactions` is the
-root transaction alone. Its `balances` states the creator, who both sent and
-received it: `{creator: {"kismet": "0", "last_won": null}}`. It need not be
-full (§5.4).
+`null`, its `weight` is `"0"`, its `reach` is 0, and it holds no payout.
+Its `transactions` is the root transaction alone. Its `balances` states the
+creator, who both sent and received it:
+`{creator: {"kismet": "0", "last_won": null}}`. It need not be full
+(§5.4).
 
 ### 7.3 Validation Block 0
 
@@ -520,16 +549,25 @@ established one only by outweighing the whole chain built on it.
 - **Catching up.** A rival doing a fraction q of the work, behind by z
   generations' worth, catches up with a probability of about
   (q / (1 − q))^z: about 2 in a million for q = 0.1 and z = 6, and about
-  0.6% for q = 0.3. k (§3.5) is to be chosen with this in mind.
-- **Blocking lasts.** A node's block list is permanent
-  ([HTTP API §5.5](HttpApi.md#55-blocked-content)). A node cut off from
-  part of the network may judge the real chain the lighter and block it,
-  and then it stays apart from the network. That a fork has stopped growing
-  (§3.5) is no proof against one mined in private.
-- **Blocking makes history final in practice.** Once most nodes have
-  blocked a fork, a heavier rewrite from before that point is relayed by no
-  one. That defends against a rival who out-mines old history, and it sets
-  how deep history can in practice be rewritten.
+  0.6% for q = 0.3. That is how far a lead must grow before it is, in
+  practice, safe to rely on.
+- **Nothing is blocked for being light.** A node cut off from most of the
+  network follows the heaviest chain it can see, and comes back to the
+  network's once it is connected again (§3.6). The cost is that no history
+  is final: a rival who out-mines the chain from any point back replaces
+  it.
+- **Only what no chain can use is blocked.** A node's block list is
+  permanent ([HTTP API §5.5](HttpApi.md#55-blocked-content)), and a node
+  cannot check a chain that runs through a block it has blocked. So it never
+  blocks a validation block, a transaction block one names, or one near
+  1 MiB (§3.7). A smaller transaction block can never be validated, so no
+  correct chain runs through it, as long as nodes measure fullness alike
+  (§5.4).
+- **A head is a pointer, not proof.** A peer may tell of a head that does
+  not exist, or one whose chain does not weigh what its `weight` claims. A
+  node reads the claimed weight from one block before it fetches more, and
+  follows only a chain it has checked (§3.5), so a false head costs it a
+  fetch.
 - **Compression must agree.** Whether a block is full decides which blocks
   are validated, so a node that compresses differently from the reference
   zlib disagrees with the rest (§5.4).
@@ -550,7 +588,6 @@ Parameters, TBD:
 - The fixed target string a transaction's proof of work is measured
   against, and the minimum bits (§4.3).
 - How near 1 MiB a block must be to count as full (§5.4).
-- k and m, for dead forks (§3.5).
 - The weight curve after a win (Karma §23), and how shares are rounded to
   whole Kismet (§6.6).
 
@@ -561,10 +598,9 @@ Not yet specified:
 - Whether a runner-up must stake on the same transaction block, and keeping
   a runner-up from being blocked while a payout is worked out from it.
 - Witness spam, and whether a hash already included may be witnessed.
-- Merging validation blocks, and blocking those a merge supersedes.
 - The Kismet suggested for common transactions.
-- Whether effective stake breaks ties between chains, counts in their
-  weight, or is a third test of a dead fork.
+- Whether effective stake breaks ties between chains, or counts in their
+  weight.
 - How far back transaction hashes are kept for the check for duplicates
   (§4.4), since a transaction never expires, and what a node does with a
   transaction older than any block it holds.

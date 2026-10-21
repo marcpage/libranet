@@ -359,12 +359,15 @@ larger ones.
   root's matches at least 24.
 - **Reading:** a reader follows the heaviest chain, scores each full block
   at the winning target, and takes valid transactions from any block,
-  false starts and blocks that score zero among them. A block whose
-  transactions are all in a better block at the winning target may be
-  blocked, and so may the blocks of a fork proven dead.
+  false starts and blocks that score zero among them. A block's `weight`
+  says how heavy the chain before it claims to be. A block whose
+  transactions are all in a larger block, or in one as large sharing more
+  bits, may be blocked, unless it is near 1 MiB or a validation block names
+  it. No block is blocked for being on a lighter chain.
 - **Defined in:**
-  [Karma Ledger §3](KarmaLedger.md#3-generations) for the targets and the
-  heaviest chain, [§4](KarmaLedger.md#4-transactions) for transactions,
+  [Karma Ledger §3](KarmaLedger.md#3-generations) for the targets, the
+  heaviest chain, heads, and blocking,
+  [§4](KarmaLedger.md#4-transactions) for transactions,
   [§5](KarmaLedger.md#5-transaction-blocks) for the block, and
   [§7](KarmaLedger.md#7-the-root) for the root.
 - **See also:** [Karma](Karma.md) for the economics.
@@ -390,7 +393,10 @@ the one the heaviest chain goes through wins.
 - **Reading:** a reader passes over a block that is not correct, ranks the
   rest by bits and then by effective stake, and builds the next generation
   on the best. The winner's stakers share the generation's reward, and the
-  runner-up's stakers lose their stakes in it.
+  runner-up's stakers lose their stakes in it. A validation block is never
+  blocked, since any one may lead to another chain. A node's
+  head, the winner whose id names the target for new transactions, is told
+  to its peers with `POST /data/karma/head`.
 - **Defined in:**
   [Karma Ledger §6](KarmaLedger.md#6-validation-blocks) for the block, and
   [§7.3](KarmaLedger.md#73-validation-block-0) for the root's.

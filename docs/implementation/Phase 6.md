@@ -129,9 +129,19 @@ own answer or my recommended option:
   of every generation.
 - **False starts are scraped.** Nodes may take transactions from the
   targets of every rival validation block into blocks at the winner's.
-- **Dead forks are blocked**, once the heaviest chain leads by k
-  generations' worth of work and the fork has not grown for m
-  generations, after their still-valid transactions are carried over.
+- **Each transaction block states the chain's `weight` before it**,
+  leaving out its own drop, and a reader checks it. A chain's weight can
+  then be read from one block.
+- **Nodes tell each other their heads**, with `GET` and
+  `POST /data/karma/head` (HttpApi §10.9). A head is the id of the
+  validation block that names the target new transactions are put up at.
+  It is sent when a validation block is chosen for the latest generation.
+  Between a head told and the weight its transaction block states, a node
+  sees quickly whether there may be a competing chain to look for.
+- **Nothing is blocked for being on a lighter chain.** A node cut off from
+  most of the network, which has gone on far beyond, must be able to come
+  back to it. A rule blocking dead forks, after a lead in work and a time
+  without growth, was ruled first, and replaced.
 - **A transaction names the generation it was created in**, and may be
   included then or in any later block, with no expiry. It is checked for
   duplicates in every block back to that generation. An expiry window was
@@ -154,9 +164,17 @@ own answer or my recommended option:
   bits first. A transaction moving 0 Kismet is invalid, except the
   root's.
 - **Blocks are put up small and combined.** A transaction is put up as a
-  block of its own, and builders combine blocks for better scores. A
-  block whose transactions are all in a larger or same-size block may be
-  blocked, and of two holding the same transactions, the poorer match is.
+  block of its own, and builders combine blocks for better scores.
+- **A block is blocked only when its data is kept elsewhere.** A
+  transaction block may be blocked only if all its data is in another
+  block that is larger, or the same size and matching more bits. The data
+  must be preserved and not lost.
+- **No chain loses a block it runs through.** A validation block is never
+  blocked, since any one may lead to another chain. Nor is a transaction
+  block that a validation block names. Validation blocks are made only on
+  near-full transaction blocks, so in practice a transaction block near
+  1 MiB is not blocked either. This replaces a first form of the ruling,
+  which let validation blocks and full transaction blocks be blocked.
 - **A transaction block is scored** by, in order, its bits, its reach,
   how near equal its free and paid transactions are, and how old its
   transactions are, with no weights. A block with anything incorrect
@@ -193,12 +211,20 @@ My calls, not yet reviewed:
   heavy, the one whose latest winning validation block's id sorts first.
 - zlib is fixed at level 9, a 15-bit window, memory level 8, and the
   default strategy, measured as the reference zlib compresses.
-- A block is blocked as superseded only for one that scores above zero at
-  the winning target, so that neither an incorrect block nor a losing
-  fork takes a winning block off the network.
-- A generation's worth of work is the heaviest chain's average since the
-  fork, since generations vary too widely for a count of them to mean
-  anything.
+- `weight` is a string of decimal digits, as amounts are, since one drop
+  may add 2^256.
+- A transaction block's data is its transactions. A node blocks a
+  superseded block only while it holds the one keeping its data, and only
+  for one of the same generation.
+- "Near 1 MiB" is written as full, or near enough to full that a
+  validation block not yet seen may name it. It is a SHOULD NOT, beside the
+  MUST NOTs for validation blocks and for transaction blocks they name.
+- A head is posted to every node a node holds an outgoing connection to,
+  as node lists are. It is `null` while a node follows no chain. A `POST`
+  is answered `202` without waiting to check it, and a bad body
+  `invalid-request`.
+- A head told is followed only once the chain it names is fetched and
+  checked heavier.
 - Both root drops match at least 24 bits, the node's search floor.
 
 **Open questions:**
