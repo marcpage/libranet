@@ -1517,6 +1517,51 @@ have, answers `503 Service Unavailable` with `Retry-After`. The list serves
 only local clients, from a page of a trusted application (§2.4, §2.5),
 since it says whom the node talks to and how much.
 
+### 10.9 Karma Heads
+
+Nodes tell each other which head of the Karma ledger each follows, so that
+a competing chain is found quickly
+([Karma Ledger §3.5](KarmaLedger.md#35-heads)). A node's **head** is the id
+of the validation block whose id names the target new transactions are put
+up at: the winning validation block of the latest generation the node has
+chosen one for. Both endpoints carry it as the JSON object
+
+```json
+{"head": "sha256/…"}
+```
+
+whose `head` is `null` while the node follows no chain.
+
+#### Publish a Head
+
+Each time a node chooses a validation block for the latest generation, it
+tells every node it holds an outgoing connection to, as it publishes its
+node list (§10.5):
+
+```http
+POST /data/karma/head HTTP/1.1
+Content-Type: application/json
+```
+
+The request is signed (HandshakeProtocol §2.1). A node answers a head it
+takes `202 Accepted`, without waiting to check it, and a body that is not
+well-formed `400 Bad Request`, with the problem type `invalid-request`
+(§17.2).
+
+#### Request a Head
+
+To ask a node which head it follows, a node sends:
+
+```http
+GET /data/karma/head HTTP/1.1
+```
+
+The response body is the JSON object above.
+
+A head told either way is only a pointer. A node follows it only once it
+has fetched the chain the head names and checked that it is heavier than
+its own (Karma Ledger §3.5).
+
 ---
 
 ## 11. Node Identity
@@ -3071,7 +3116,7 @@ These are defined so far, each named by its last segment beneath
 | `invalid-signature` | `401` | A signature that fails verification; the connection is closed (HandshakeProtocol §5.3) |
 | `invalid-list` | `400` | A node list or seek list that is not well-formed (§10.6, §10.7.1) |
 | `credential-required` | `401` | A `/config` request without the credential the node holds (§2.3.1) |
-| `invalid-request` | `400` | A JSON body an endpoint cannot act on: one beneath `/config/api` (§2.3), or of making a drop (§9.6), making an identity, signing in, making a signed drop, opening an encrypted block, or changing a trust list (§11.3–§11.7), the folders and imports (§12.2), making bundles (§12.3), or an application's store (§13.3) |
+| `invalid-request` | `400` | A JSON body an endpoint cannot act on: one beneath `/config/api` (§2.3), or of making a drop (§9.6), telling a Karma head (§10.9), making an identity, signing in, making a signed drop, opening an encrypted block, or changing a trust list (§11.3–§11.7), the folders and imports (§12.2), making bundles (§12.3), or an application's store (§13.3) |
 | `unusable-bundle` | `400` or `500` | Content that is not a bundle, or a bundle the node cannot read: `400` when a request named it (§11.5, §11.6, §12.1, §12.3), and `500` when it is an application's (§13) |
 | `bundle-authentication-required` | `401` | A password-protected application, asking for its password (§13.1) |
 | `session-required` | `401` | A request to sign as a person, to open what is encrypted for one, or to read or change their trust, from a browser no one is signed in on (§11.5–§11.7) |
@@ -3482,6 +3527,7 @@ The following table summarizes the currently proposed HTTP API.
 | `/data/nodes`                        | `GET`/`POST` | Retrieve/publish peer information                          | Defined |
 | `/data/seek`                         | `GET`/`POST` | Retrieve/publish outstanding requests                      | Defined |
 | `/data/peers`                        | `GET`        | What the node knows of its peers, locally (§10.8)          | Defined |
+| `/data/karma/head`                   | `GET`/`POST` | Ask for, or tell, the Karma head a node follows (§10.9)    | Defined |
 | `/data/{algorithm}/{hash}/{path}`    | `GET`/`HEAD` | Read into a bundle (§12.1)                                 | Defined |
 | `/data/client`                       | `GET`        | Whether the client is local (§2.4)                         | Defined |
 | `/data/drop`                         | `POST`       | Make a drop, from a page of the node (§9.6)                | Defined |
