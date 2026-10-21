@@ -181,7 +181,7 @@ own answer or my recommended option:
   scores zero, but its transactions are still read.
 - **Age is witnessed.** A claimed generation proves nothing, so age is
   counted from the first winning validation block that lists a
-  transaction's hash, in an unsigned list its builder keeps. Ranking by a
+  transaction's hash, in a list its builder keeps. Ranking by a
   transaction's own work, capping the claim, and accepting the claim were
   turned down.
 - **The next block pays out.** One payout with no signer credits the
@@ -189,6 +189,23 @@ own answer or my recommended option:
   the runner-up's stakes) and debits the runner-up's stakers.
 - **Stakes are covered per validation block**: a staker's stakes in one
   may not together exceed their balance.
+- **Every block is signed by its builder.** A transaction block or
+  validation block found to state something basic falsely, such as a stake
+  over the staker's balance, a wrong generation, or a wrong weight, has its
+  builder distrusted by the node checking it, in the node's own trust list.
+  An unsigned block is blocked. Recording distrust in a list that only
+  Karma reads was turned down.
+- **No builder knowingly builds on the distrusted.** A builder puts no
+  distrusted identity's stake in a validation block, and builds no
+  validation block on a transaction block a distrusted identity signed.
+  Their blocks may still be on the chain, since others may not distrust
+  them.
+- **A staker is distrusted too** for a stake that alone exceeds their
+  balance at the transaction block it names. A transaction's sender is
+  never distrusted for an overspend.
+- **A small block is held to all it states.** A transaction put up on its
+  own carries a true weight, payout, and balances. Only fullness and the
+  half-free rule are relaxed for it.
 
 My calls, not yet reviewed:
 
@@ -201,8 +218,20 @@ My calls, not yet reviewed:
   payment.
 - A stake is `{transaction_block, kismet, nonce}`, signed. A validation
   block is `{generation, transaction_block, runner_up, stakes,
-  witnessed}`, unsigned, and the best has the most bits, then the most
-  effective stake.
+  witnessed}`, signed by its builder, and the best has the most bits, then
+  the most effective stake.
+- A block's nonce lies outside its signature: the drop is the signed
+  bundle's JSON, a null byte, and the nonce, so a builder signs once and
+  then searches.
+- What counts as false is listed in KarmaLedger §3.8, with what never
+  does: fullness judgments, the half-free rule in a small block, choosing
+  a block that is not the best or not on the checker's chain, the
+  runner-up, witnesses, and duplicates older than the checker's history.
+- A bad signature on a block distrusts no one, since anyone can write
+  another's id into `signer`. The block is blocked as unsigned.
+- A false block distrusts its builder in the node's list, which since
+  Phase 5 Step 113 also stops the node connecting to a builder that is a
+  node. KarmaLedger §8 says so.
 - The payout is applied before any other transaction in its block, so
   that the root's creator can spend the first 20 Karma in block 1. It
   counts as neither free nor paid.

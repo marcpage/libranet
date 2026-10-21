@@ -25,8 +25,8 @@ is placed at its target, and links to the documents that define it.
 | [`mail address book:{id}`](#37-address-books) | The versions of a person's address book | The mail application | The person | For the person | In use |
 | [`mail state:{id}:{year}/{month}`](#38-read-and-hidden-marks) | The versions of what a person read and hid of a month's mail | The mail application | The person | For the person | In use |
 | [`node:{id}`](#39-what-a-node-says-of-itself) | The versions of what a node says of itself | The node | The node | No | In use |
-| [`karma transaction:{validation}`](#310-karma-transaction-blocks) | Karma's transaction blocks, and transactions put up for them | Anyone | Each transaction by its sender | No | Specified |
-| [`karma validation:{validation}`](#311-karma-validation-blocks) | Karma's validation blocks | Anyone | Each stake by its staker | No | Specified |
+| [`karma transaction:{validation}`](#310-karma-transaction-blocks) | Karma's transaction blocks, and transactions put up for them | Anyone | Its builder; each transaction by its sender | No | Specified |
+| [`karma validation:{validation}`](#311-karma-validation-blocks) | Karma's validation blocks | Anyone | Its builder; each stake by its staker | No | Specified |
 
 A drop **in use** is placed by the node or a shipped application today. A
 **specified** drop is defined by a specification, but nothing places it yet.
@@ -350,10 +350,10 @@ its own at its generation's target, and the blocks there are combined into
 larger ones.
 
 - **Status:** specified. Nothing places one yet.
-- **Placed by** anyone, since a block is not signed: whoever puts up a
-  transaction, and whoever builds a block from others.
-- **Signed:** each transaction by its sender. The block, and the payout it
-  holds, are signed by no one. **Not encrypted.**
+- **Placed by** anyone: whoever puts up a transaction, and whoever builds
+  a block from others.
+- **Signed** by its builder, and each transaction in it by its sender. The
+  payout it holds has no signature of its own. **Not encrypted.**
 - **Bits:** as many as its builder mines, since the bits are the block's
   proof of work, its first score, and part of the chain's weight. The
   root's matches at least 24.
@@ -363,10 +363,12 @@ larger ones.
   says how heavy the chain before it claims to be. A block whose
   transactions are all in a larger block, or in one as large sharing more
   bits, may be blocked, unless it is near 1 MiB or a validation block names
-  it. No block is blocked for being on a lighter chain.
+  it. No block is blocked for being on a lighter chain. An unsigned block is
+  blocked, and the builder of a block found to state something false is
+  distrusted in the node's own trust list.
 - **Defined in:**
   [Karma Ledger §3](KarmaLedger.md#3-generations) for the targets, the
-  heaviest chain, heads, and blocking,
+  heaviest chain, heads, blocking, and distrusted builders,
   [§4](KarmaLedger.md#4-transactions) for transactions,
   [§5](KarmaLedger.md#5-transaction-blocks) for the block, and
   [§7](KarmaLedger.md#7-the-root) for the root.
@@ -383,18 +385,19 @@ transactions its builder has seen. Many are placed for each generation, and
 the one the heaviest chain goes through wins.
 
 - **Status:** specified. Nothing places one yet.
-- **Placed by** anyone, since a block is not signed, and may be built from
-  others' stakes.
-- **Signed:** each stake by its staker. The block, and its list of
-  witnesses, are signed by no one. **Not encrypted.**
+- **Placed by** anyone, and may be built from others' stakes.
+- **Signed** by its builder, its list of witnesses with it, and each stake
+  in it by its staker. **Not encrypted.**
 - **Bits:** as many as its builder mines. The best block of a generation
   matches the most bits, and the bits are part of the chain's weight. The
   root's matches at least 24.
 - **Reading:** a reader passes over a block that is not correct, ranks the
   rest by bits and then by effective stake, and builds the next generation
   on the best. The winner's stakers share the generation's reward, and the
-  runner-up's stakers lose their stakes in it. A validation block is never
-  blocked, since any one may lead to another chain. A node's
+  runner-up's stakers lose their stakes in it. A signed validation block is
+  never blocked, since any one may lead to another chain, and an unsigned
+  one always is. A builder found to state something false is distrusted,
+  and no builder puts a distrusted identity's stake in a block. A node's
   head, the winner whose id names the target for new transactions, is told
   to its peers with `POST /data/karma/head`.
 - **Defined in:**

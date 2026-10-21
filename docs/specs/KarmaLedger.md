@@ -38,16 +38,23 @@ This version specifies the root (§7), transactions (§4), transaction blocks
   9,999,999,999,999, the last that issues any. In all, the generations
   issue 100,000,000,000,010 Karma, the "approximately 100 trillion" of
   Karma §8.
-- **Every block is a drop**
-  ([HTTP API §9](HttpApi.md#9-drops)): its JSON, a null byte, and a nonce,
-  placed at a target string. The number of leading bits a block's id shares
-  with its target hash is its proof of work, the binary match of Karma §18.
-- **Every transaction and every stake is a signed bundle**
+- **Every block, transaction, and stake is a signed bundle**
   ([Bundle Specification §5](BundleSpecification.md#5-signed-bundle)) whose
-  `contents` is JSON this document defines. Its signer may be any identity a
-  signed bundle accepts, a person's or a node's
+  `contents` is JSON this document defines. A block is signed by its
+  builder, a transaction by its sender, and a stake by its staker. Each may
+  be any identity a signed bundle accepts, a person's or a node's
   ([HTTP API §11.2](HttpApi.md#112-keys-and-signature-parameters),
   [§11.3](HttpApi.md#113-a-persons-identity)).
+- **Every block is a drop**
+  ([HTTP API §9](HttpApi.md#9-drops)): its signed bundle's JSON, a null
+  byte, and a nonce, placed at a target string. The nonce lies outside the
+  signature, so a builder signs once and then searches for a nonce. The
+  number of leading bits a block's id shares with its target hash is its
+  proof of work, the binary match of Karma §18.
+- **A builder found to state something false is distrusted** in the
+  verifying node's own trust list
+  ([Trust Network Specification §4.5](TrustNetwork.md#45-a-nodes-own-scores)),
+  as §3.8 says.
 - **The targets** are cataloged in [Known Drops](KnownDrops.md) §3.10 and
   §3.11.
 - **Blocking** is a node's own block list
@@ -147,11 +154,13 @@ its targets, as for false starts (§3.4).
 
 ### 3.7 Blocking What Is Superseded
 
-A node MUST NOT block a validation block, since any one may lead to another
-chain. It MUST NOT block a transaction block that a validation block names.
-Validation blocks are made only on full transaction blocks, so a node SHOULD
-NOT block a transaction block near 1 MiB either: one full, or near enough to
-full that a validation block the node has not seen yet may name it (§5.4).
+A block that is not signed, or whose signature fails, is no block of the
+ledger, and a node SHOULD block it (§3.8). Otherwise, a node MUST NOT block
+a validation block, since any one may lead to another chain. It MUST NOT
+block a transaction block that a validation block names. Validation blocks
+are made only on full transaction blocks, so a node SHOULD NOT block a
+transaction block near 1 MiB either: one full, or near enough to full that
+a validation block the node has not seen yet may name it (§5.4).
 
 A node MAY block any other transaction block, such as one put up small or
 one still being combined, whose data is all held in another transaction
@@ -161,6 +170,71 @@ same data and shares more bits with its target hash. A transaction block's
 data is its transactions. The data is not lost: it is kept in the other
 block, and a node blocks a block only while it holds the block that keeps
 it.
+
+### 3.8 Distrusted Builders
+
+A block that is not signed, or whose signature fails, can be attributed to
+no one: anyone can write another's id into `signer`. A node SHOULD block
+it, and distrusts no one for it.
+
+A node that checks a signed block and finds that it states something false
+**distrusts its builder**: it marks the builder's id distrusted in its own
+trust list ([Trust Network Specification §3](TrustNetwork.md#3-trust-lists),
+§4.5). Something false is a statement the block makes that the block
+itself, and the chain its `previous` names, prove wrong:
+
+- **In the block alone:** it is not well-formed (§5.1, §6.1), with a field
+  missing, a field of the wrong type, or an amount that is not a decimal
+  string; its transactions, stakes, or witnesses are out of order or
+  repeated; it holds a transaction or a stake whose signature fails, a
+  transaction whose `from` is not its signer, whose proof of work is under
+  the minimum, that moves 0 Kismet outside the root, or whose `generation`
+  is later than the block's; or its payout is signed, missing, or more than
+  one.
+- **Against its target:** its `generation` is not one more than that of the
+  validation block its target is named for; its `previous` does not name
+  that validation block; a validation block's `transaction_block` is not at
+  the same target, a stake names another transaction block, or its
+  `runner_up` names itself or a block at another target; or a block at a
+  `:0` target does not have the root's shape (§7).
+- **Against the chain:** its `weight`, payout, `reach`, or a stated balance
+  is wrong, or a sender or recipient is left unstated; a transaction
+  overspends its sender, or is already in the chain within the history the
+  node holds; a staker's stakes exceed their balance (§6.3); or a
+  validation block names a transaction block that is itself incorrect.
+
+A node also distrusts the staker of a stake that, alone, exceeds the
+staker's balance at the transaction block it names, since that balance
+never changes. It never distrusts a transaction's sender for an overspend,
+since a sender's balance can change after they sign, as when another of
+their transactions is taken first.
+
+A small block, such as one transaction put up on its own (§5.6), is held to
+everything it states, its `weight`, its payout, and its balances among them.
+It may be short of full, and may break the half-free rule, without either
+counting against its builder.
+
+None of these makes a builder distrusted, since an honest builder can meet
+each one:
+
+- a block judged full or not full, or near 1 MiB or not (§5.4), since zlib
+  implementations may measure alike bytes differently;
+- the half-free rule broken in a block that is not full and that no
+  validation block names (§5.6);
+- a block built on, or chosen, that is not the best the node has seen, or
+  that is not on the node's own chain (§3.2, §3.6), since the builder may
+  have seen less, or another part of the network;
+- the runner-up chosen (§6.1), and the witnesses listed (§6.4);
+- a duplicate older than the history the node holds (§4.4);
+- a block on a chain the node has not fetched and checked, which it judges
+  only once it has.
+
+A block whose builder is distrusted may still be on the chain, since other
+nodes may not distrust its builder, and a node follows the heaviest chain
+whatever it distrusts (§3.6). But no builder knowingly builds on one. A
+node builds no validation block on a transaction block a distrusted
+identity signed, and puts no stake of a distrusted identity in a validation
+block it builds.
 
 ## 4. Transactions
 
@@ -257,8 +331,9 @@ since the hash commits to its contents.
 
 ### 5.1 Contents
 
-Transaction block g is a drop at the transaction target of generation g
-(§3.1), whose content is the JSON object
+Transaction block g is a signed bundle, signed by its builder, made a drop
+at the transaction target of generation g (§3.1). Its `contents` is the
+JSON object
 
 ```json
 {"generation": 42,
@@ -289,8 +364,9 @@ Transaction block g is a drop at the transaction target of generation g
   §13).
 - **`balances`** maps ids to balances (§5.3).
 
-The block is not signed. It is a container of transactions, each signed by
-its sender, so anyone may build one, and may combine others (§5.6).
+Anyone may build a block, from transactions others signed, and may combine
+others' blocks (§5.6). Whoever builds a block signs it, and answers for
+everything it states (§3.8).
 
 ### 5.2 The Payout
 
@@ -374,16 +450,19 @@ Each compares only where every one before it ties. There are no weights.
 The payout counts in neither (c) nor (d).
 
 A block with anything incorrect about it scores zero, below every correct
-block. A correct block is full, is shaped and placed as §5.1 to §5.3 say,
+block. A correct block is signed, is full, is shaped and placed as §5.1 to
+§5.3 say,
 holds only valid transactions (§4.4), and states its payout, its balances,
 its `weight`, and its `reach` as they are.
 
 ### 5.6 Building and Combining
 
 A transaction is put up for a generation as a transaction block of its own,
-holding little more than that transaction, at the generation's transaction
-target. Builders combine the blocks at a generation's targets, false starts
-among them (§3.4), into larger ones, for a better score.
+at the generation's transaction target, signed by whoever puts it up. It
+holds that transaction and the payout, and states its `weight`, its
+balances, and its `reach` truly (§3.8). Builders combine the blocks at a
+generation's targets, false starts among them (§3.4), into larger ones, for
+a better score.
 
 A block that is not full, or that scores zero, is never validated, but it
 is still read: a builder takes its valid transactions into correct blocks.
@@ -396,8 +475,9 @@ in one as large sharing more bits, may then be blocked, unless it is near
 
 ### 6.1 Contents
 
-Validation block g is a drop at the validation target of generation g
-(§3.1), whose content is the JSON object
+Validation block g is a signed bundle, signed by its builder, made a drop
+at the validation target of generation g (§3.1). Its `contents` is the JSON
+object
 
 ```json
 {"generation": 42,
@@ -417,8 +497,11 @@ Validation block g is a drop at the validation target of generation g
 - **`witnessed`** lists the hashes of transactions its builder has seen
   (§6.4), sorted, none twice.
 
-The block is not signed. It is a collection of stakes, each signed by its
-staker, so anyone may build one from others' stakes (Karma §21). It fits in
+A validation block is a collection of stakes, each signed by its staker, so
+anyone may build one from others' stakes (Karma §21), and signs it as its
+builder. A builder leaves out the stakes of every identity it distrusts, and
+builds on no transaction block a distrusted identity signed (§3.8). It fits
+in
 1 MiB compressed as §5.4 compresses, and its stakes and witnesses share
 that room. A validation block is never blocked (§3.7).
 
@@ -451,7 +534,7 @@ own.
 
 ### 6.4 Witnesses
 
-`witnessed` is its builder's list, and is not signed. Each entry is a
+`witnessed` is its builder's list, signed with the block. Each entry is a
 transaction's `hash`, which commits to the transaction's contents, so a
 hash listed is proof that the transaction existed by the generation listing
 it, whoever lists it. The list sets the age of transactions (§4.5), and
@@ -462,6 +545,7 @@ in a validation block that does not win, or on a fork, does not.
 
 A validation block is correct when:
 
+- it is signed by its builder;
 - it is at the validation target of its generation, and its `generation`
   is that generation;
 - its `transaction_block` is at the transaction target of the same
@@ -509,7 +593,8 @@ creator, its `to` is `{creator: "0"}`, its `fee_kismet` is `"0"`, and its
 
 ### 7.2 Transaction Block 0
 
-Transaction block 0 is placed at `karma transaction:0`. Its `previous` is
+Transaction block 0 is signed by the root's creator and placed at
+`karma transaction:0`. Its `previous` is
 `null`, its `weight` is `"0"`, its `reach` is 0, and it holds no payout.
 Its `transactions` is the root transaction alone. Its `balances` states the
 creator, who both sent and received it:
@@ -518,11 +603,12 @@ creator, who both sent and received it:
 
 ### 7.3 Validation Block 0
 
-Validation block 0 is placed at `karma validation:0`. It names transaction
-block 0, its `runner_up` is `null`, it has no witnesses, and it has one
-stake, of `"0"`, signed by the root's creator. A reader passes over a
-validation block at `karma validation:0` shaped otherwise, or whose stake is
-not the root creator's.
+Validation block 0 is signed by the root's creator and placed at
+`karma validation:0`. It names transaction block 0, its `runner_up` is
+`null`, it has no witnesses, and it has one stake, of `"0"`, signed by the
+root's creator. A reader passes over a validation block at
+`karma validation:0` shaped otherwise, or signed by anyone else, or whose
+stake is not the root creator's.
 
 Both drops of the root share at least 24 bits with their target hashes, as
 many as a node's search returns
@@ -563,6 +649,14 @@ established one only by outweighing the whole chain built on it.
   1 MiB (§3.7). A smaller transaction block can never be validated, so no
   correct chain runs through it, as long as nodes measure fullness alike
   (§5.4).
+- **Distrust has reach beyond Karma.** A builder distrusted for a false
+  block is distrusted in the node's own trust list (§3.8). If the builder
+  is a node, this node then neither connects to it nor serves it (Trust
+  Network Specification §4.5). The distrust also counts, at the next
+  step's weight, in the scores of every node that trusts this one. Only
+  what is provably false counts (§3.8), so that an honest builder, or one
+  on another part of the network, is never distrusted for it. A node's
+  operator can clear an entry from `/config`.
 - **A head is a pointer, not proof.** A peer may tell of a head that does
   not exist, or one whose chain does not weigh what its `weight` claims. A
   node reads the claimed weight from one block before it fetches more, and
@@ -611,5 +705,8 @@ Not yet specified:
   checks what a peer claims.
 - Whether Karma's blocks are evicted as any other content is, or held
   longer.
-- How Karma and the trust network
-  ([Trust Network Specification](TrustNetwork.md)) bear on each other.
+- How else Karma and the trust network
+  ([Trust Network Specification](TrustNetwork.md)) bear on each other,
+  beyond the distrust of builders (§3.8).
+- Whether a node builds the next transaction block on a validation block a
+  distrusted identity signed, when that block is on the heaviest chain.
