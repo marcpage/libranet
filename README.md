@@ -321,6 +321,7 @@ you say so on `/config`.
 | [Known Drops](docs/specs/KnownDrops.md) | Every target string the node and the shipped applications place drops at |
 | [RFC References](docs/specs/RfcReferences.md) | Every RFC the project uses, and where and how it is used |
 | [Karma and Kismet](docs/specs/Karma.md) | The reputation and contribution system |
+| [Karma Ledger Specification](docs/specs/KarmaLedger.md) | How Karma's transactions and blocks are kept in the store, found, and checked |
 | [Phase 1 Plan](docs/implementation/Phase%201.md) | Implementation steps 1–15, 17–20, and 33–40, all built |
 | [Phase 2 Plan](docs/implementation/Phase%202.md) | Implementation steps 21–23, 25–29, 31–32, 41–49, 51–55, and 58–63, all built |
 | [Phase 3 Plan](docs/implementation/Phase%203.md) | Video playback: steps 64–77, all built |
