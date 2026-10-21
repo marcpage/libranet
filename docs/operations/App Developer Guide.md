@@ -1112,17 +1112,19 @@ sends mail follows the same rules, so that each reads what the others
 write. All of it needs someone signed in, so only a local client reads or
 sends mail.
 
-Each target names a person's id whole, and a time in UTC, two digits for
-each part but the year, such as `mail:sha256/…:2026/10/12/09`:
+Each target names a person's id whole, and a date in UTC, two digits for
+each part but the year, such as `mail:sha256/…:2026/10/12`:
 
 | Drop | What is placed there |
 | --- | --- |
-| `mail:{id}:{year}/{month}/{day}/{hour}` | A copy of each message sent to the person in that hour |
-| `mail sent:{id}:{year}/{month}/{day}/{hour}` | The sender's own copy of each message they sent in it |
+| `mail:{id}:{year}/{month}/{day}` | A copy of each message sent to the person on that day |
+| `mail sent:{id}:{year}/{month}/{day}` | The sender's own copy of each message they sent on it |
 | `mail address book:{id}` | The versions of the person's address book |
-| `mail state:{id}:{year}/{month}` | The versions of what they read and hid of the mail found in that month's hours |
+| `mail state:{id}:{year}/{month}` | The versions of what they read and hid of the mail found in that month's days |
 
-Mail is kept by the hour, not the day. Each copy's `contents` is:
+Mail is kept by the day, since a search answers with as many results as
+fit in 1 MiB (HTTP API §6.1), tens of thousands. Each copy's `contents`
+is:
 
 ```json
 {"bcc": ["sha256/…"],
@@ -1153,7 +1155,7 @@ Mail is kept by the hour, not the day. Each copy's `contents` is:
 - There is no `from`: whoever signed a copy sent it.
 
 **Send** a copy for each reader with `POST /data/signed`, given `encrypt:
-{for: reader}`, at their drop for the hour it is sent, matching at least the
+{for: reader}`, at their drop for the day it is sent, matching at least the
 bits its postage asks for, and one for yourself at `mail sent:`, matching at
 least 24. The mail application offers three: bulk, 24 bits; first class,
 28; and priority, 32. The more bits a copy matches, the nearer the top of a
@@ -1162,7 +1164,7 @@ each 4 bits more takes the node 16 times as long to place, on average.
 Mail a compromised reader at their fallback instead, and at its fallback
 while that is compromised too (§6.14), and say so before sending.
 
-**Read** a period by searching each of its hours (§6.9). Open each result
+**Read** a period by searching each of its days (§6.9). Open each result
 with `GET /data/encrypted/{id}`, and pass over anything that does not open, is
 not signed, or is not shaped as above with `for` naming whoever is signed
 in. A copy at `mail sent:` counts only if you signed it. Ask again later for
@@ -1180,7 +1182,7 @@ kept alike, in versions they sign and encrypt for themselves:
 ```
 
 A month's marks have `marks` in place of `entries`, mapping the drop id of
-each copy found in that month's hours to `{"changed", "hidden", "read"}`.
+each copy found in that month's days to `{"changed", "hidden", "read"}`.
 
 - **Read every version** at the drop that the person signed, and merge
   them: of the changes to one key, the latest `changed` wins, and of two in

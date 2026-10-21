@@ -20,8 +20,8 @@ is placed at its target, and links to the documents that define it.
 | [`user:{id}`](#32-what-a-person-says-of-themselves) | The versions of what a person says of themselves | The node, then the directory application | The person, or their fallback | No | In use |
 | [`user directory`](#33-the-user-directory) | Copies of the user directory | The directory application | No one | No | In use |
 | [`trust:{id}`](#34-trust-lists) | The versions of a trust list | The node | The list's owner | No | In use |
-| [`mail:{id}:{year}/{month}/{day}/{hour}`](#35-mail-received) | A copy of each message sent to a person in that hour | The mail application | The sender | For the reader | In use |
-| [`mail sent:{id}:{year}/{month}/{day}/{hour}`](#36-mail-sent) | The sender's own copy of each message they sent in that hour | The mail application | The sender | For the sender | In use |
+| [`mail:{id}:{year}/{month}/{day}`](#35-mail-received) | A copy of each message sent to a person on that day | The mail application | The sender | For the reader | In use |
+| [`mail sent:{id}:{year}/{month}/{day}`](#36-mail-sent) | The sender's own copy of each message they sent on that day | The mail application | The sender | For the sender | In use |
 | [`mail address book:{id}`](#37-address-books) | The versions of a person's address book | The mail application | The person | For the person | In use |
 | [`mail state:{id}:{year}/{month}`](#38-read-and-hidden-marks) | The versions of what a person read and hid of a month's mail | The mail application | The person | For the person | In use |
 | [`node:{id}`](#39-what-a-node-says-of-itself) | The versions of what a node says of itself | The node | The node | No | In use |
@@ -41,8 +41,8 @@ A target string is written with its variable parts in braces:
   name one drop.
 - **`{id}`** is an identity's id, whole: the content identifier of its
   public key, such as `sha256/0a1b…`, in lower-case hex.
-- **`{year}/{month}/{day}/{hour}`** is a time in UTC, with two digits for
-  each part but the year, such as `2026/10/12/09`.
+- **`{year}/{month}/{day}`** is a date in UTC, with two digits for each
+  part but the year, such as `2026/10/12`.
 
 The node hashes a target string's UTF-8 bytes, as they are, with SHA-256
 ([HTTP API §9.6](HttpApi.md#96-making-a-drop-from-a-page)). A page searches
@@ -220,13 +220,15 @@ their scores to reach through it.
 
 ### 3.5 Mail Received
 
-**Target:** `mail:{id}:{year}/{month}/{day}/{hour}`
+**Target:** `mail:{id}:{year}/{month}/{day}`
 
 Each message is sent as a copy for each of its readers. The copy for a
-reader is placed at the reader's drop for the hour, in UTC, that the
-message is sent in. A reader reads a period by searching each hour of it.
-Mail is kept by the hour, not the day. A reader who is compromised is
-mailed at their fallback instead.
+reader is placed at the reader's drop for the day, in UTC, that the
+message is sent on. A reader reads a period by searching each day of it.
+Mail is kept by the day, since a search answers with as many results as
+fit in 1 MiB, tens of thousands
+([HTTP API §6.1](HttpApi.md#61-search-response)). A reader who is
+compromised is mailed at their fallback instead.
 
 - **Placed by** the mail application, with `POST /data/signed`, given
   `encrypt: {for: reader}`.
@@ -248,10 +250,10 @@ mailed at their fallback instead.
 
 ### 3.6 Mail Sent
 
-**Target:** `mail sent:{id}:{year}/{month}/{day}/{hour}`
+**Target:** `mail sent:{id}:{year}/{month}/{day}`
 
 The sender keeps a copy of each message they send, at their own drop for
-the hour they sent it in. Their copy names every reader, BCC readers
+the day they sent it on. Their copy names every reader, BCC readers
 included.
 
 - **Placed by** the mail application, with `POST /data/signed`, as it

@@ -285,10 +285,10 @@
   <footer>
     Each message is a copy for each person it is sent to, signed by its
     sender and encrypted for that person alone, at the drop
-    <code>mail:</code> and their id, followed by the hour it was sent in UTC,
-    such as <code>2026/10/12/09</code>. A person reads a period by searching
-    each hour of it. The sender keeps a copy of their own at
-    <code>mail sent:</code>, their id, and the hour. Each person's copy is
+    <code>mail:</code> and their id, followed by the day it was sent in UTC,
+    such as <code>2026/10/12</code>. A person reads a period by searching
+    each day of it. The sender keeps a copy of their own at
+    <code>mail sent:</code>, their id, and the day. Each person's copy is
     placed with the postage chosen, its id sharing at least 24 leading bits
     with the drop's for bulk, 28 for first class, and 32 for priority: the
     more it shares, the nearer the top of a search of the drop it is, and each
@@ -308,9 +308,11 @@
 "use strict";
 
 // Where mail for a person is kept: a copy of each message, at the drop
-// "mail:{id}:{year}/{month}/{day}/{hour}" of the hour it was sent in UTC, so
-// that a person reads a period by searching its hours (Phase 4 Step 82). The
-// sender keeps a copy of their own at "mail sent:{id}:…" alike.
+// "mail:{id}:{year}/{month}/{day}" of the day it was sent in UTC, so that a
+// person reads a period by searching its days (Phase 4 Step 82). A search
+// answers with as many results as fit in 1 MiB, tens of thousands, so a day's
+// mail fits in one. The sender keeps a copy of their own at "mail sent:{id}:…"
+// alike.
 const MAIL_PREFIX = "mail:";
 const SENT_PREFIX = "mail sent:";
 
@@ -360,11 +362,12 @@ const MAX_EXTENSIONS = 1024;
 const MAX_HISTORY = 1024;
 const MAX_FALLBACKS = 16;
 
-// The hours read as the page opens, besides the coming hour, for a sender
-// whose clock runs ahead, and how many more each "Older" reads.
-const HOURS_FIRST_READ = 24;
-const HOURS_OLDER = 24;
-const HOUR_MS = 60 * 60 * 1000;
+// The days read as the page opens, today and yesterday, besides the coming
+// day, for a sender whose clock runs ahead, and how many more each "Older"
+// reads.
+const DAYS_FIRST_READ = 2;
+const DAYS_OLDER = 1;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 // How many searches, openings, and people's details are asked at once.
 const SEARCHES_AT_ONCE = 4;
@@ -667,33 +670,32 @@ function twoDigits(number) {
   return String(number).padStart(2, "0");
 }
 
-// The start of the hour `ms` falls in.
-function hourOf(ms) {
-  return Math.floor(ms / HOUR_MS) * HOUR_MS;
+// The start of the day, in UTC, `ms` falls in.
+function dayOf(ms) {
+  return Math.floor(ms / DAY_MS) * DAY_MS;
 }
 
-// Each hour from the one starting at `from` to the one starting at `to`.
-function hoursBetween(from, to) {
-  const hours = [];
+// Each day from the one starting at `from` to the one starting at `to`.
+function daysBetween(from, to) {
+  const days = [];
 
-  for (let hour = from; hour <= to; hour += HOUR_MS) {
-    hours.push(hour);
+  for (let day = from; day <= to; day += DAY_MS) {
+    days.push(day);
   }
 
-  return hours;
+  return days;
 }
 
-// The drop of the hour starting at `hour` that `prefix` and `person` name,
-// such as "mail:sha256/…:2026/10/12/09".
-function hourTarget(prefix, person, hour) {
-  const date = new Date(hour);
-  const day = `${date.getUTCFullYear()}/${twoDigits(date.getUTCMonth() + 1)}/${twoDigits(date.getUTCDate())}`;
-  return `${prefix}${person}:${day}/${twoDigits(date.getUTCHours())}`;
+// The drop of the day starting at `day` that `prefix` and `person` name,
+// such as "mail:sha256/…:2026/10/12".
+function dayTarget(prefix, person, day) {
+  const date = new Date(day);
+  return `${prefix}${person}:${date.getUTCFullYear()}/${twoDigits(date.getUTCMonth() + 1)}/${twoDigits(date.getUTCDate())}`;
 }
 
-// The month the hour starting at `hour` falls in, as "2026/10".
-function monthOf(hour) {
-  const date = new Date(hour);
+// The month the day starting at `day` falls in, as "2026/10".
+function monthOf(day) {
+  const date = new Date(day);
   return `${date.getUTCFullYear()}/${twoDigits(date.getUTCMonth() + 1)}`;
 }
 
@@ -848,11 +850,11 @@ const mail = {
   messages: new Map(),
   // The ids of what was found at a drop of yours but is no mail for you.
   passed: new Set(),
-  // What was found but is not held yet, by id: where, and in which hour.
+  // What was found but is not held yet, by id: where, and in which day.
   unheld: new Map(),
   // How many passed over were last said.
   passedSaid: 0,
-  // The hours read of each place: from, to, and the hour it was last read up to.
+  // The days read of each place: from, to, and the day it was last read up to.
   periods: new Map(),
 };
 
@@ -1584,10 +1586,10 @@ async function current(person) {
   }
 }
 
-// The message a copy opened as `signed`, at the drop `drop` of the hour
-// starting at `hour` where `kind` is read; null if it is not one for whoever is
+// The message a copy opened as `signed`, at the drop `drop` of the day
+// starting at `day` where `kind` is read; null if it is not one for whoever is
 // signed in, or, sent, not one of theirs.
-function messageOf(drop, signed, kind, hour) {
+function messageOf(drop, signed, kind, day) {
   let value;
 
   try {
@@ -1619,7 +1621,7 @@ function messageOf(drop, signed, kind, hour) {
   return {
     drop,
     kind,
-    month: monthOf(hour),
+    month: monthOf(day),
     signer: signed.signer,
     to: value.to,
     cc: value.cc,
@@ -1633,18 +1635,18 @@ function messageOf(drop, signed, kind, hour) {
   };
 }
 
-// Open the copy found at `drop`, in the hour starting at `hour` where `kind` is
+// Open the copy found at `drop`, in the day starting at `day` where `kind` is
 // read.
-async function readCopy(drop, kind, hour) {
+async function readCopy(drop, kind, day) {
   const result = await opened(drop);
 
   if (result.missing) {
-    mail.unheld.set(drop, { kind, hour });
+    mail.unheld.set(drop, { kind, day });
     return;
   }
 
   mail.unheld.delete(drop);
-  const message = result.signed ? messageOf(drop, result.signed, kind, hour) : null;
+  const message = result.signed ? messageOf(drop, result.signed, kind, day) : null;
 
   if (message === null) {
     mail.passed.add(drop);
@@ -1655,15 +1657,15 @@ async function readCopy(drop, kind, hour) {
   renderSoon();
 }
 
-// Read each of `hours` where `kind` is read, opening what is new, and the
+// Read each of `days` where `kind` is read, opening what is new, and the
 // marks of their months.
-async function readHours(kind, hours) {
+async function readDays(kind, days) {
   const prefix = kind === INBOX ? MAIL_PREFIX : SENT_PREFIX;
-  const marks = loadMonths(hours.map(monthOf));
-  await eachAtMost(hours, SEARCHES_AT_ONCE, async (hour) => {
-    const ids = await foundAt(hourTarget(prefix, mail.you, hour));
+  const marks = loadMonths(days.map(monthOf));
+  await eachAtMost(days, SEARCHES_AT_ONCE, async (day) => {
+    const ids = await foundAt(dayTarget(prefix, mail.you, day));
     const fresh = ids.filter((id) => !mail.messages.has(id) && !mail.passed.has(id));
-    await eachAtMost(fresh, OPENS_AT_ONCE, (id) => readCopy(id, kind, hour));
+    await eachAtMost(fresh, OPENS_AT_ONCE, (id) => readCopy(id, kind, day));
   });
   await marks;
 }
@@ -1672,7 +1674,7 @@ async function readHours(kind, hours) {
 function sayRead(kind) {
   const where = kind === INBOX ? "your mail" : "what you sent";
   const read = [...mail.messages.values()].filter((message) => message.kind === kind).length;
-  status.say(`${kind === INBOX ? "Received" : "Sent"}: ${plural(read, "message", "messages")} in the hours read.`);
+  status.say(`${kind === INBOX ? "Received" : "Sent"}: ${plural(read, "message", "messages")} in the days read.`);
   const unheld = [...mail.unheld.values()].filter((found) => found.kind === kind).length;
 
   if (unheld > 0) {
@@ -1685,41 +1687,41 @@ function sayRead(kind) {
   }
 }
 
-// Read the last HOURS_FIRST_READ hours where `kind` is read, and the coming one.
+// Read the last DAYS_FIRST_READ days where `kind` is read, and the coming one.
 async function openPeriod(kind) {
-  const now = hourOf(Date.now());
-  const period = { from: now - (HOURS_FIRST_READ - 1) * HOUR_MS, to: now + HOUR_MS, now, read: false };
+  const now = dayOf(Date.now());
+  const period = { from: now - (DAYS_FIRST_READ - 1) * DAY_MS, to: now + DAY_MS, now, read: false };
   mail.periods.set(kind, period);
   status.say(kind === INBOX ? "Reading your mail of the last day…" : "Reading what you sent in the last day…");
-  await readHours(kind, hoursBetween(period.from, period.to));
+  await readDays(kind, daysBetween(period.from, period.to));
   period.read = true;
   sayRead(kind);
   render();
 }
 
-// Read HOURS_OLDER hours more, before the oldest read.
+// Read DAYS_OLDER days more, before the oldest read.
 async function readOlder(kind) {
   const period = mail.periods.get(kind);
-  const from = period.from - HOURS_OLDER * HOUR_MS;
-  const hours = hoursBetween(from, period.from - HOUR_MS);
+  const from = period.from - DAYS_OLDER * DAY_MS;
+  const days = daysBetween(from, period.from - DAY_MS);
   period.from = from;
   render();
-  await readHours(kind, hours);
+  await readDays(kind, days);
   sayRead(kind);
   render();
 }
 
-// Read again from the hour before the last read up to the coming one, and
+// Read again from the day before the last read up to the coming one, and
 // open what was found but not held before.
 async function refresh(kind) {
   const period = mail.periods.get(kind);
-  const now = hourOf(Date.now());
-  const hours = hoursBetween(Math.min(period.now, now) - HOUR_MS, now + HOUR_MS);
+  const now = dayOf(Date.now());
+  const days = daysBetween(Math.min(period.now, now) - DAY_MS, now + DAY_MS);
   period.now = now;
-  period.to = Math.max(period.to, now + HOUR_MS);
+  period.to = Math.max(period.to, now + DAY_MS);
   const unheld = [...mail.unheld].filter(([, found]) => found.kind === kind);
-  await eachAtMost(unheld, OPENS_AT_ONCE, ([drop, found]) => readCopy(drop, found.kind, found.hour));
-  await readHours(kind, hours);
+  await eachAtMost(unheld, OPENS_AT_ONCE, ([drop, found]) => readCopy(drop, found.kind, found.day));
+  await readDays(kind, days);
   sayRead(kind);
   render();
 }
@@ -2589,12 +2591,12 @@ async function send(event) {
   }
 }
 
-// Place a copy of the message for each reader, at the drop of the hour it is
+// Place a copy of the message for each reader, at the drop of the day it is
 // sent, with the postage `minimumBits` asks for, and one for the sender, then
 // add anyone mailed from a link or by an id to the address book.
 async function delivered({ to, cc, bcc, subject, text, bundle, isBundle, minimumBits }) {
   const now = new Date();
-  const hour = hourOf(now.getTime());
+  const day = dayOf(now.getTime());
   const message = { to, cc, bcc, subject, sent: utcSecond(now), message: newMessageId() };
   message[isBundle ? "bundle" : "text"] = isBundle ? bundle : text;
 
@@ -2607,7 +2609,7 @@ async function delivered({ to, cc, bcc, subject, text, bundle, isBundle, minimum
 
   for (const [index, reader] of readers.entries()) {
     sayCompose(`Sending to ${nameOf(reader)}, ${index + 1} of ${readers.length}…`);
-    const made = await placed(hourTarget(MAIL_PREFIX, reader, hour), copyFor(reader, message, mail.you), reader, minimumBits);
+    const made = await placed(dayTarget(MAIL_PREFIX, reader, day), copyFor(reader, message, mail.you), reader, minimumBits);
 
     if (made.tooLarge) {
       sayCompose("The message does not fit in a drop. Send it as a bundle instead.", "error");
@@ -2624,7 +2626,7 @@ async function delivered({ to, cc, bcc, subject, text, bundle, isBundle, minimum
     return;
   }
 
-  const kept = await placed(hourTarget(SENT_PREFIX, mail.you, hour), copyFor(mail.you, message, mail.you), mail.you);
+  const kept = await placed(dayTarget(SENT_PREFIX, mail.you, day), copyFor(mail.you, message, mail.you), mail.you);
   const added = [compose.to, compose.cc, compose.bcc].flatMap((field) => field.people).filter((person) => person.how !== "book");
   await Promise.all(added.map((person) => addToBook(person.id)));
   closeCompose();
@@ -2634,7 +2636,7 @@ async function delivered({ to, cc, bcc, subject, text, bundle, isBundle, minimum
   status.say(kept.id ? sent : `${sent} Your own copy was not kept: ${kept.error || "it does not fit in a drop."}`, failed.length === 0 && kept.id ? "note" : "error");
 
   if (mail.periods.has(SENT)) {
-    await readHours(SENT, [hour]);
+    await readDays(SENT, [day]);
     render();
   }
 }
