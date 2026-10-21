@@ -130,15 +130,52 @@ latest generation it has chosen one for. A head's weight is the `weight` of
 the transaction block it validates, plus 2^b for that block's drop and for
 the head's own.
 
+#### 3.5.1 Genealogy
+
+A node keeps the **genealogy** of its head: the id of the winning
+validation block of every generation, from its head back to the root's. It
+keeps it across restarts. That is one id per generation, and it is all a
+node needs to find where another chain leaves its own, even once it has let
+go of the blocks themselves (§5.3).
+
+#### 3.5.2 Telling and Asking
+
 A node tells its peers its head each time it chooses a validation block for
 the latest generation, and asks a peer for its head
 ([HTTP API §10.9](HttpApi.md#109-karma-heads)). A head it is told of is only
-a pointer. When a peer tells of a head the node does not follow, the node
-reads that head and the transaction block it validates, whose `weight` says
-how heavy the chain behind it claims to be. If that is heavier than the
-node's own head, the node fetches the chain back to where it meets its own,
-and checks it, `weight` and all. If the chain is heavier, the node follows
-it.
+a pointer, until the node has checked the chain it names.
+
+#### 3.5.3 Changing Heads
+
+When a node learns of a head it does not follow, from a peer or at a
+target, it goes through these steps in order:
+
+1. **Read the claim.** It reads that head and the transaction block it
+   validates, whose `weight` says how heavy the chain behind it claims to
+   be. If that is not heavier than its own head, the node stops.
+2. **Walk back.** It walks the new head's generations back, from each
+   validation block to the transaction block it names, and from that
+   block's `previous` to the validation block before. It stops at the first
+   validation block in its genealogy, the **common ancestor**. At each step
+   it checks that the transaction block's `weight` is the one before's plus
+   2^b for the two drops between, so that a false weight is caught where it
+   first fails.
+3. **Collect the old branch.** It collects every transaction, payouts left
+   out, in its own chain's transaction blocks after the common ancestor,
+   through its own head.
+4. **Check the new branch.** It checks the new chain's blocks, from the
+   common ancestor forward to the new head (§5.5, §6.5), fetching any block
+   it no longer holds. Each collected transaction it meets in the new chain
+   is already accounted for, and it strikes that transaction from what it
+   collected.
+5. **Follow.** If every block checks, and the new head is heavier, the node
+   follows it. Its genealogy after the common ancestor becomes the new
+   chain's, and it tells its peers its new head (§3.5.2). A block that does
+   not check distrusts its builder (§3.8), and the node keeps its own head.
+6. **Carry the rest over.** It puts each collected transaction into the
+   transaction block it builds at the new head's target. One whose sender's
+   balance the new chain does not cover, as when the new chain has spent
+   it, it carries forward as a pending transaction (§4.4).
 
 ### 3.6 Weak Chains
 
@@ -148,9 +185,9 @@ node cut off from most of the network, which has gone on far beyond, would
 otherwise block the chain it has to come back to. Once it is connected
 again, the heads its peers tell it of (§3.5) bring it back.
 
-Blocks on a lighter chain go as any content does, by eviction. Their
-transactions that are still valid on the heaviest chain may be carried into
-its targets, as for false starts (§3.4).
+Blocks on a lighter chain go as any content does, by eviction. A node that
+leaves a chain for a heavier one carries over its transactions that the
+heavier one lacks (§3.5.3).
 
 ### 3.7 Blocking What Is Superseded
 
@@ -308,6 +345,15 @@ A transaction's balance is checked in the block that includes it, not in
 the one it was created in. The check for duplicates reaches back to the
 transaction's `generation`, however far that is (§9).
 
+A transaction that fails only because its sender's balance does not cover
+it is **pending**, not dropped. Builders carry it forward, trying it in each
+later block, since the sender may yet receive enough. They stop carrying it
+a fixed number of generations, TBD (§9), after the generation it was
+witnessed in (§4.5). It stays valid, never expiring: anyone holding it may
+put it up again, and it is included if the sender's balance covers it then.
+A node that carries a pending transaction lists its hash among the
+witnesses of each validation block it builds, so that its count starts.
+
 A transaction's validity is its own. A transaction that is valid stays
 valid whatever block it arrives in, so a builder may take it from a block
 that is not (§5.6).
@@ -451,9 +497,8 @@ The payout counts in neither (c) nor (d).
 
 A block with anything incorrect about it scores zero, below every correct
 block. A correct block is signed, is full, is shaped and placed as §5.1 to
-§5.3 say,
-holds only valid transactions (§4.4), and states its payout, its balances,
-its `weight`, and its `reach` as they are.
+§5.3 say, holds only valid transactions (§4.4), and states its payout, its
+balances, its `weight`, and its `reach` as they are.
 
 ### 5.6 Building and Combining
 
@@ -500,10 +545,9 @@ object
 A validation block is a collection of stakes, each signed by its staker, so
 anyone may build one from others' stakes (Karma §21), and signs it as its
 builder. A builder leaves out the stakes of every identity it distrusts, and
-builds on no transaction block a distrusted identity signed (§3.8). It fits
-in
-1 MiB compressed as §5.4 compresses, and its stakes and witnesses share
-that room. A validation block is never blocked (§3.7).
+builds on no transaction block a distrusted identity signed (§3.8). It
+fits in 1 MiB compressed as §5.4 compresses, and its stakes and witnesses
+share that room. A validation block is never blocked (§3.7).
 
 ### 6.2 Stakes
 
@@ -594,12 +638,11 @@ creator, its `to` is `{creator: "0"}`, its `fee_kismet` is `"0"`, and its
 ### 7.2 Transaction Block 0
 
 Transaction block 0 is signed by the root's creator and placed at
-`karma transaction:0`. Its `previous` is
-`null`, its `weight` is `"0"`, its `reach` is 0, and it holds no payout.
-Its `transactions` is the root transaction alone. Its `balances` states the
-creator, who both sent and received it:
-`{creator: {"kismet": "0", "last_won": null}}`. It need not be full
-(§5.4).
+`karma transaction:0`. Its `previous` is `null`, its `weight` is `"0"`, its
+`reach` is 0, and it holds no payout. Its `transactions` is the root
+transaction alone. Its `balances` states the creator, who both sent and
+received it: `{creator: {"kismet": "0", "last_won": null}}`. It need not be
+full (§5.4).
 
 ### 7.3 Validation Block 0
 
@@ -659,9 +702,10 @@ established one only by outweighing the whole chain built on it.
   operator can clear an entry from `/config`.
 - **A head is a pointer, not proof.** A peer may tell of a head that does
   not exist, or one whose chain does not weigh what its `weight` claims. A
-  node reads the claimed weight from one block before it fetches more, and
-  follows only a chain it has checked (§3.5), so a false head costs it a
-  fetch.
+  node reads the claimed weight from one block before it fetches more. As
+  it walks back, it checks each `weight` against the one before (§3.5.3),
+  and it follows only a chain it has checked. So a false weight costs it
+  fetches only as far back as the lie.
 - **Compression must agree.** Whether a block is full decides which blocks
   are validated, so a node that compresses differently from the reference
   zlib disagrees with the rest (§5.4).
@@ -682,6 +726,8 @@ Parameters, TBD:
 - The fixed target string a transaction's proof of work is measured
   against, and the minimum bits (§4.3).
 - How near 1 MiB a block must be to count as full (§5.4).
+- How many generations after it was witnessed a pending transaction is
+  carried forward (§4.4).
 - The weight curve after a win (Karma §23), and how shares are rounded to
   whole Kismet (§6.6).
 
@@ -710,3 +756,5 @@ Not yet specified:
   beyond the distrust of builders (§3.8).
 - Whether a node builds the next transaction block on a validation block a
   distrusted identity signed, when that block is on the heaviest chain.
+- Whether a node follows the part of a heavier chain that checks, when a
+  later block in it does not (§3.5.3).
