@@ -147,17 +147,20 @@ its targets, as for false starts (§3.4).
 
 ### 3.7 Blocking What Is Superseded
 
-A node MAY block a transaction block or a validation block whose data is all
-held in another block of the same kind and generation, so that searches
-carry less of the same data. It blocks it only if the other block holds more
-data, or holds the same data and shares more bits with its target hash. The
-data is not lost: it is kept in the other block. A node blocks a block only
-while it holds the block that keeps its data.
+A node MUST NOT block a validation block, since any one may lead to another
+chain. It MUST NOT block a transaction block that a validation block names.
+Validation blocks are made only on full transaction blocks, so a node SHOULD
+NOT block a transaction block near 1 MiB either: one full, or near enough to
+full that a validation block the node has not seen yet may name it (§5.4).
 
-A transaction block's data is its transactions. A validation block's data
-is its stakes and its witnesses. Its runner-up is its builder's choice, not
-data, so two validation blocks with the same stakes and witnesses hold the
-same data, whichever runner-up each names.
+A node MAY block any other transaction block, such as one put up small or
+one still being combined, whose data is all held in another transaction
+block of the same generation. This means searches carry less of the same
+data. It blocks one only if the other block holds more data, or holds the
+same data and shares more bits with its target hash. A transaction block's
+data is its transactions. The data is not lost: it is kept in the other
+block, and a node blocks a block only while it holds the block that keeps
+it.
 
 ## 4. Transactions
 
@@ -386,7 +389,8 @@ A block that is not full, or that scores zero, is never validated, but it
 is still read: a builder takes its valid transactions into correct blocks.
 This is how a paid transaction put up alone, which breaks the half-free
 rule, is taken in. A block whose transactions are all in a larger block, or
-in one as large sharing more bits, may then be blocked (§3.7).
+in one as large sharing more bits, may then be blocked, unless it is near
+1 MiB or a validation block names it (§3.7).
 
 ## 6. Validation Blocks
 
@@ -416,8 +420,7 @@ Validation block g is a drop at the validation target of generation g
 The block is not signed. It is a collection of stakes, each signed by its
 staker, so anyone may build one from others' stakes (Karma §21). It fits in
 1 MiB compressed as §5.4 compresses, and its stakes and witnesses share
-that room. A validation block whose stakes and witnesses are all in another
-may be blocked as §3.7 says.
+that room. A validation block is never blocked (§3.7).
 
 ### 6.2 Stakes
 
@@ -553,11 +556,13 @@ established one only by outweighing the whole chain built on it.
   network's once it is connected again (§3.6). The cost is that no history
   is final: a rival who out-mines the chain from any point back replaces
   it.
-- **A blocked block cannot be followed.** A node's block list is permanent
-  ([HTTP API §5.5](HttpApi.md#55-blocked-content)). A node that blocked a
-  superseded block (§3.7) keeps its data in the block that superseded it,
-  but cannot check a chain, seen later, that runs through the blocked block
-  itself.
+- **Only what no chain can use is blocked.** A node's block list is
+  permanent ([HTTP API §5.5](HttpApi.md#55-blocked-content)), and a node
+  cannot check a chain that runs through a block it has blocked. So it never
+  blocks a validation block, a transaction block one names, or one near
+  1 MiB (§3.7). A smaller transaction block can never be validated, so no
+  correct chain runs through it, as long as nodes measure fullness alike
+  (§5.4).
 - **A head is a pointer, not proof.** A peer may tell of a head that does
   not exist, or one whose chain does not weigh what its `weight` claims. A
   node reads the claimed weight from one block before it fetches more, and
