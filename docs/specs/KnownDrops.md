@@ -25,6 +25,8 @@ is placed at its target, and links to the documents that define it.
 | [`mail address book:{id}`](#37-address-books) | The versions of a person's address book | The mail application | The person | For the person | In use |
 | [`mail state:{id}:{year}/{month}`](#38-read-and-hidden-marks) | The versions of what a person read and hid of a month's mail | The mail application | The person | For the person | In use |
 | [`node:{id}`](#39-what-a-node-says-of-itself) | The versions of what a node says of itself | The node | The node | No | In use |
+| [`karma transaction:{validation}`](#310-karma-transaction-blocks) | Karma's transaction blocks, and transactions put up for them | Anyone | Each transaction by its sender | No | Specified |
+| [`karma validation:{validation}`](#311-karma-validation-blocks) | Karma's validation blocks | Anyone | Each stake by its staker | No | Specified |
 
 A drop **in use** is placed by the node or a shipped application today. A
 **specified** drop is defined by a specification, but nothing places it yet.
@@ -41,6 +43,9 @@ A target string is written with its variable parts in braces:
   name one drop.
 - **`{id}`** is an identity's id, whole: the content identifier of its
   public key, such as `sha256/0a1b…`, in lower-case hex.
+- **`{validation}`** is `0` for Karma's root, or else the id of the winning
+  validation block of the generation before, whole, such as `sha256/0a1b…`
+  ([Karma Ledger §3.1](KarmaLedger.md#31-targets)).
 - **`{year}/{month}/{day}`** is a date in UTC, with two digits for each
   part but the year, such as `2026/10/12`.
 
@@ -332,3 +337,61 @@ over or tapped.
   [App Developer Guide §6.18](../operations/App%20Developer%20Guide.md#618-what-nodes-say-of-themselves)
   for reading them from a page and showing a node by its name;
   [Operator Guide §4.5](../operations/Operator%20Guide.md#45-what-this-node-says-of-itself).
+
+### 3.10 Karma Transaction Blocks
+
+**Target:** `karma transaction:{validation}`
+
+Each generation of the Karma ledger has a transaction block: the
+transactions of that generation, and the balances they leave. The root's is
+at `karma transaction:0`, and each generation after is at the id of the
+winning validation block before it. A transaction is put up as a block of
+its own at its generation's target, and the blocks there are combined into
+larger ones.
+
+- **Status:** specified. Nothing places one yet.
+- **Placed by** anyone, since a block is not signed: whoever puts up a
+  transaction, and whoever builds a block from others.
+- **Signed:** each transaction by its sender. The block, and the payout it
+  holds, are signed by no one. **Not encrypted.**
+- **Bits:** as many as its builder mines, since the bits are the block's
+  proof of work, its first score, and part of the chain's weight. The
+  root's matches at least 24.
+- **Reading:** a reader follows the heaviest chain, scores each full block
+  at the winning target, and takes valid transactions from any block,
+  false starts and blocks that score zero among them. A block whose
+  transactions are all in a better block at the winning target may be
+  blocked, and so may the blocks of a fork proven dead.
+- **Defined in:**
+  [Karma Ledger §3](KarmaLedger.md#3-generations) for the targets and the
+  heaviest chain, [§4](KarmaLedger.md#4-transactions) for transactions,
+  [§5](KarmaLedger.md#5-transaction-blocks) for the block, and
+  [§7](KarmaLedger.md#7-the-root) for the root.
+- **See also:** [Karma](Karma.md) for the economics.
+
+### 3.11 Karma Validation Blocks
+
+**Target:** `karma validation:{validation}`
+
+Each generation's validation block is a collection of signed stakes on one
+of its full transaction blocks, at the same `{validation}` as that
+transaction block. It names a runner-up, and lists the hashes of
+transactions its builder has seen. Many are placed for each generation, and
+the one the heaviest chain goes through wins.
+
+- **Status:** specified. Nothing places one yet.
+- **Placed by** anyone, since a block is not signed, and may be built from
+  others' stakes.
+- **Signed:** each stake by its staker. The block, and its list of
+  witnesses, are signed by no one. **Not encrypted.**
+- **Bits:** as many as its builder mines. The best block of a generation
+  matches the most bits, and the bits are part of the chain's weight. The
+  root's matches at least 24.
+- **Reading:** a reader passes over a block that is not correct, ranks the
+  rest by bits and then by effective stake, and builds the next generation
+  on the best. The winner's stakers share the generation's reward, and the
+  runner-up's stakers lose their stakes in it.
+- **Defined in:**
+  [Karma Ledger §6](KarmaLedger.md#6-validation-blocks) for the block, and
+  [§7.3](KarmaLedger.md#73-validation-block-0) for the root's.
+- **See also:** [Karma](Karma.md) §17 to §33 for the economics.

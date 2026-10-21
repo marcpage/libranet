@@ -106,15 +106,103 @@ What the node already has, for the mechanics to be written in terms of:
   eviction by a score of use, size, and match (§4.5).
 - A private block list (Phase 4 Step 30), for blocks a merge supersedes.
 
+Begun 2026-10-20 as the
+[Karma Ledger Specification](../specs/KarmaLedger.md), which holds the
+root, transactions, transaction blocks, and validation blocks. Its §9
+lists what is left. Ruled in an interview (2026-10-20), each the user's
+own answer or my recommended option:
+
+- **A companion specification**, the Karma Ledger, beside Karma, as the
+  Bundle and Backup specifications are beside the HTTP API.
+- **The root is a drop anyone may place.** Transaction block 0, at
+  `karma transaction:0`, holds one transaction of 0 Kismet from its
+  creator to itself. One validation at `karma validation:0` names it. Its
+  creator, any identity a signed bundle accepts, gets the whole of
+  generation 0's reward, 20 Karma. A root fixed by the specification, or
+  signed by a founding key, was turned down, as was a starting
+  allocation.
+- **Targets follow the winner.** Generation g + 1 is placed at
+  `karma transaction:{id}` and `karma validation:{id}`, where `{id}` is
+  the id of the winning validation block g.
+- **The heaviest chain wins**, among rival roots and among rival
+  validation blocks alike. A chain's weight counts the work of both drops
+  of every generation.
+- **False starts are scraped.** Nodes may take transactions from the
+  targets of every rival validation block into blocks at the winner's.
+- **Dead forks are blocked**, once the heaviest chain leads by k
+  generations' worth of work and the fork has not grown for m
+  generations, after their still-valid transactions are carried over.
+- **A transaction names the generation it was created in**, and may be
+  included then or in any later block, with no expiry. It is checked for
+  duplicates in every block back to that generation. An expiry window was
+  ruled first, and replaced.
+- **`to` is a map of recipients to amounts**, so that a node pays many
+  small rewards in one transaction.
+- **A transaction block holds** `generation`, `previous`, `reach`,
+  `transactions`, and `balances`. Transactions are sorted by hash, and at
+  least half are free.
+- **Balances** state every sender and recipient as of the end of the
+  block, each with the generation it last won, and may state others to
+  shorten the reach. `reach` is how many blocks back a reader goes to
+  find every balance. A rule that balances number as many as the free
+  transactions, oldest first, was ruled first, and replaced.
+- **Full** is a compressed size as near 1 MiB as can be without going
+  over, with zlib's settings fixed so that every node measures alike.
+  Only full blocks are validated, except the root.
+- **The base cost of a transaction is work, not Karma.** A transaction
+  under a minimum of bits is invalid, and the free half is filled by most
+  bits first. A transaction moving 0 Kismet is invalid, except the
+  root's.
+- **Blocks are put up small and combined.** A transaction is put up as a
+  block of its own, and builders combine blocks for better scores. A
+  block whose transactions are all in a larger or same-size block may be
+  blocked, and of two holding the same transactions, the poorer match is.
+- **A transaction block is scored** by, in order, its bits, its reach,
+  how near equal its free and paid transactions are, and how old its
+  transactions are, with no weights. A block with anything incorrect
+  scores zero, but its transactions are still read.
+- **Age is witnessed.** A claimed generation proves nothing, so age is
+  counted from the first winning validation block that lists a
+  transaction's hash, in an unsigned list its builder keeps. Ranking by a
+  transaction's own work, capping the claim, and accepting the claim were
+  turned down.
+- **The next block pays out.** One payout with no signer credits the
+  validation block's stakers with the whole reward (new Karma, fees, and
+  the runner-up's stakes) and debits the runner-up's stakers.
+- **Stakes are covered per validation block**: a staker's stakes in one
+  may not together exceed their balance.
+
+My calls, not yet reviewed:
+
+- Generations are numbered from 0, so generation g is Karma's g + 1.
+- Amounts are strings of decimal digits, since ten octillion Kismet fits
+  neither a 64-bit integer nor a JavaScript number.
+- A transaction is `{from, to, fee_kismet, generation, nonce}`, signed
+  as a signed bundle, and known by its `hash`, not its bundle's id, so
+  that signing it again with a randomized RSA signature is not a second
+  payment.
+- A stake is `{transaction_block, kismet, nonce}`, signed. A validation
+  block is `{generation, transaction_block, runner_up, stakes,
+  witnessed}`, unsigned, and the best has the most bits, then the most
+  effective stake.
+- The payout is applied before any other transaction in its block, so
+  that the root's creator can spend the first 20 Karma in block 1. It
+  counts as neither free nor paid.
+- `previous` stays in a transaction block, though its target implies it.
+- A chain's weight is the sum of 2^bits over its drops, and of two as
+  heavy, the one whose latest winning validation block's id sorts first.
+- zlib is fixed at level 9, a 15-bit window, memory level 8, and the
+  default strategy, measured as the reference zlib compresses.
+- A block is blocked as superseded only for one that scores above zero at
+  the winning target, so that neither an incorrect block nor a losing
+  fork takes a winning block off the network.
+- A generation's worth of work is the heaviest chain's average since the
+  fork, since generations vary too widely for a count of them to mean
+  anything.
+- Both root drops match at least 24 bits, the node's search floor.
+
 **Open questions:**
 
-- Where it is written: sections added to Karma, or a companion
-  specification beside it, as the Bundle and Backup specifications are
-  beside the HTTP API. Karma is an economic design, and formats and rules
-  read differently.
-- How a node finds the newest block. Content is named by its hash, so a
-  block cannot be named before it exists, and the only names that follow
-  the newest version of anything are node-local (HighLevelDesign §5.2).
 - Whether Karma's blocks are ordinary content, evicted by the same score
   as any other, or held longer. A node that checks a transaction against
   the chain needs the chain, and eviction knows nothing of chains.

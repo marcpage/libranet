@@ -821,6 +821,9 @@ stream, whose compressed data is RFC 1951 DEFLATE.
   identically.
 - **The shipped applications** decompress blocks in the browser with
   `DecompressionStream("deflate")`, which reads the zlib format.
+- **Karma's blocks** are measured compressed, at level 9 with a 15-bit
+  window, memory level 8, and the default strategy, to decide whether a
+  block is full. This is specified, not yet built.
 
 A stream is read as exactly one complete stream, never all at once without a
 cap, so a small stream cannot expand without bound.
@@ -831,7 +834,8 @@ cap, so a small stream cannot expand without bound.
   [§11.2](HttpApi.md#112-keys-and-signature-parameters);
   [Bundle Specification §6.1](BundleSpecification.md#61-encoding-write-path),
   [§7.3](BundleSpecification.md#73-compression), and
-  [§8.1](BundleSpecification.md#81-encoding-write-path).
+  [§8.1](BundleSpecification.md#81-encoding-write-path);
+  [Karma Ledger §5.4](KarmaLedger.md#54-full).
 - Implementation:
   [`cas/compression.py`](../../src/libranet/cas/compression.py),
   [`cas/verification.py`](../../src/libranet/cas/verification.py),

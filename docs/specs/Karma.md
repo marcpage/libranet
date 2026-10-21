@@ -41,6 +41,11 @@ The result is intended to be a system in which contribution creates reputation,
 reputation enables participation, and participation creates further
 opportunities to contribute.
 
+How Karma is kept in the content-addressed store, its transactions, its
+transaction and validation blocks, and the chain they form, is specified in
+the [Karma Ledger Specification](KarmaLedger.md), which numbers generations
+from 0.
+
 ---
 
 ## 1. Introduction
