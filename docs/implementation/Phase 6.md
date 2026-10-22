@@ -113,8 +113,9 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
   sets, at 211, 424, and 222, and Step 114, at 160. A step estimated at
   more than 400 says where it splits, should it come to more than 500 as
   built.
-- **None of Steps 116 to 142 has an issue of its own yet.** Each is
-  planned under #87, and takes an issue as it is taken up.
+- **Each of Steps 116 to 142 takes an issue of its own as it is taken
+  up.** Each is planned under #87. Step 116 is #434, and none after it
+  has one yet.
 - **The ledger's tests use small blocks.** Whether a block is full is
   measured against bounds the library takes, the specification's
   (KarmaLedger §5.4) unless a test gives others, so that a test fills a
@@ -400,7 +401,9 @@ My calls, not yet reviewed:
   block's builder is distrusted. Whether to follow the part before it, if
   that part is heavier, is left open.
 - The genealogy is kept across restarts, one id per generation.
-- Both root drops match at least 24 bits, the node's search floor.
+- Every block's drop, the root's among them, matches at least the node's
+  search floor, `storage.search_min_bits` (24 by default). A floor for the
+  root's drops alone, of 24, was ruled first, and replaced.
 
 **Open questions:**
 
@@ -419,7 +422,7 @@ My calls, not yet reviewed:
 
 ## Step 116 — Kismet, Targets, and Weight
 
-**Kind:** infrastructure. **Issue:** none yet; planned under #87.
+**Kind:** infrastructure. **Issue:** #434, under #87.
 **Depends on:** Step 56.
 
 The first of the `karma` package (`src/libranet/karma/`, new), which
@@ -443,8 +446,7 @@ Work this implies:
   `GenerationTargets.after(validation_id)`, at the id of the winning
   validation block before (§3.1), each a `DropTarget`. Beside them, the
   fixed target of a transaction's work, the SHA-256 of `transaction`
-  (§4.3), and `MIN_TRANSACTION_BITS` and `MIN_ROOT_BITS`, both 24 (§4.3,
-  §7.3).
+  (§4.3), and `MIN_TRANSACTION_BITS`, 24 (§4.3).
 - **A chain's weight** (`karma/weight.py`): `ChainWeight`, the sum of 2^b
   over drops of b bits (§3.3), read and written as a string of decimal
   digits (§5.1), and compared. A drop's bits are counted against its
@@ -456,6 +458,55 @@ Karma at generation 0, at 1, at the last that issues any, and at the one
 after, and the whole issue, 100,000,000,000,010 Karma, by its formula; the
 root's targets and a later generation's, as strings and as hashes; weights
 summed, written, and read back, a drop of 256 bits among them.
+
+Built in one change set: 296 added lines of non-test Python, and 291 of
+tests. That is over §5's estimate of about 200: 122 of the lines are code,
+and the rest docstrings, comments, and blank lines.
+
+- **`Kismet`** (`karma/amounts.py`) holds a `count`, from 0 to
+  `MAX_KISMET` (10^28), and is ordered by it. `from_value` reads it,
+  naming what it read in a refusal, `value()` writes it, and `+` and `-`
+  add and take, refusing a result outside that range.
+  `decimal_count` reads the digits, for a weight as well as an amount.
+- **`new_kismet(generation)`** (`karma/generations.py`) is R_g, from
+  `FIRST_NEW_KISMET`, `NEW_KISMET_DECREASE`, and
+  `LAST_ISSUING_GENERATION`. **`GenerationTargets`** holds a generation's
+  `transaction` and `validation` targets. **`TRANSACTION_WORK_TARGET`**
+  is the target of a transaction's work.
+- **`ChainWeight`** (`karma/weight.py`) holds its `work`, and is ordered
+  by it. `+` and `-` add and take one weight from another, refusing a
+  result below 0. `ChainWeight.of_bits(bits)` is a drop of so many bits,
+  and `ChainWeight.of_drop(drop, target)` counts them with
+  `matching_bits`.
+
+Ruled in review (2026-10-22):
+
+- **Kismet and weights are added and taken with `+` and `-`**,
+  overloaded on `Kismet` and `ChainWeight`. I had built them as methods,
+  `plus` and `minus`, since nothing else in `src/` overloads an operator.
+  A weight is added to a weight, so a drop's weight is made first, by
+  `of_bits` or `of_drop`, where it was added by `plus(bits)` and
+  `plus_drop(drop, target)`.
+- **No floor of the root's own.** `MIN_ROOT_BITS` was built, and removed.
+  The root's drops, like every block's, are placed matching at least
+  `storage.search_min_bits`, the floor every drop a node places for itself
+  is held to (HttpApi §6). KarmaLedger §2 now says so of every block, and
+  §7.3 points to it, as do Known Drops §3.10 and §3.11. Steps 125, 131,
+  134, and 136 place their drops with it. `MIN_TRANSACTION_BITS` stays,
+  since it is a rule of validity every node holds alike, against a target
+  no drop is placed at.
+
+My calls, not yet reviewed:
+
+- **R_g is a function, `new_kismet`**, not a method, since it is a
+  generation's, and a generation is a number, not a type of its own.
+- **The cap of 10^28 is kept, as the issue states**, though the whole
+  issue is 10 Karma more (10^28 + 10^15 Kismet). No one amount nears either
+  number, so the gap is the specification's wording, not a limit any chain
+  meets. KarmaLedger §4.1 calls ten octillion "the most there can be."
+- **The target of a transaction's work is a `DropTarget`**, though it is
+  no drop's, since a target hash is what a search for a nonce and
+  `matching_bits` both take.
 
 ---
 
@@ -839,7 +890,8 @@ Work this implies:
 - **The Karma module makes the root**, as the node: the root transaction,
   mined to at least 24 bits (Step 118), transaction block 0, a stake of
   `"0"`, and validation block 0, each signed by the node, and each drop
-  searched for until it shares at least 24 bits with its target (§7.3).
+  searched for until it shares at least `storage.search_min_bits` with its
+  target (§2, §7.3).
   Each object is stored as the backup module stores what it makes, and
   announced with `data.stored`, so that it is pushed as any new content
   is. The node then follows it: its history is generation 0.
@@ -847,7 +899,7 @@ Work this implies:
   System §3.3 names the Karma module among those adding to `cas/data`.
 
 **Testable in isolation:** the root checked correct by Steps 121 and 122,
-at both targets, each drop of at least 24 bits; the history and head
+at both targets, each drop of at least the search floor; the history and head
 written; `202`, and `409` while following; two requests making one root.
 
 My calls, not yet reviewed:
@@ -1077,8 +1129,9 @@ Work this implies:
 - **A block of its own**: at the head's transaction target, the
   transaction and the payout, its `weight`, `balances`, and `reach` stated
   truly (§3.8), signed by the node, its drop's nonce searched for for
-  `karma.block_seconds` (10), and stored and announced. It may be short of
-  full, and break the half-free rule (§5.6).
+  `karma.block_seconds` (10), and after that until it shares
+  `storage.search_min_bits` (§2), and stored and announced. It may be short
+  of full, and break the half-free rule (§5.6).
 - **Pending transactions carried** (§4.4, Step 129's `carried.json`): put
   up again in each generation until covered and reached, or until
   `karma.carry_generations` after the generation each was witnessed in.
@@ -1180,7 +1233,8 @@ Work this implies:
   leave it full, measured as it stores it. It states its payout, its
   balances, adding those that shorten its reach within the cap (§5.3), its
   reach, and its weight. It signs the block, searches for its nonce for
-  `karma.block_seconds`, and stores and announces it.
+  `karma.block_seconds`, and after that until it shares
+  `storage.search_min_bits` (§2), and stores and announces it.
 - **No transaction before its generation** (§4.4). A block a distrusted
   identity signed is read like any: its transactions are valid on their
   own (§3.8, §4.4).
@@ -1248,8 +1302,10 @@ Work this implies:
   (§6.3, §6.5); and witnesses, the hashes of what it carries first, then
   of transactions seen and not yet witnessed (§6.4), as room allows within
   1 MiB. It is signed by the node, its nonce searched for for
-  `karma.block_seconds`, and it is stored and announced, and built again
-  every `karma.build_interval_seconds` while stakes come that it lacks.
+  `karma.block_seconds`, and after that until it shares
+  `storage.search_min_bits` (§2), and it is stored and announced, and
+  built again every `karma.build_interval_seconds` while stakes come that
+  it lacks.
   Step 126 takes the best as the head as it goes on, Step 129 a better
   one found later, and Step 130 tells the peers.
 
@@ -1437,6 +1493,7 @@ it went.
 | --- | --- | --- |
 | #86 | Documenting how Karma works with the CAS | 56 |
 | #87 | A Karma implementation plan | None: this document. Steps 116–142, which build Karma, are planned under it, each to take an issue of its own |
+| #434 | Kismet, targets, and a chain's weight | 116 |
 
 Issue #71, the shunned data list, left the milestone unbuilt for
 **Phase 4 - User Accounts**, and Step 30 went with it to
@@ -1451,7 +1508,7 @@ built (§3). In all, about 7,900.
 | Order | Step | Kind | Estimate | Why here |
 | --- | --- | --- | --- | --- |
 | 1 | 56 (#86) | Infrastructure (a specification) | None | Every step that builds Karma is written from it. Its §9 parameters are ruled with Step 120. |
-| 2 | 116 | Infrastructure | About 200 | The numbers, targets, and weight every later step counts with. |
+| 2 | 116 (#434) | Infrastructure | About 200 | The numbers, targets, and weight every later step counts with. |
 | 3 | 117 | Infrastructure | About 400 | What blocks are made of. Needs 116's amounts. |
 | 4 | 118 | Infrastructure | About 150 | Needs 117's text of a transaction. Needed before anything mines one. |
 | 5 | 119 | Infrastructure | About 450 | Needs 117. Every check reads blocks this way. |
