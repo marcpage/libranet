@@ -210,7 +210,7 @@ network holds.
 | Make a drop, encrypted for a person or not (§6.9, §6.15) | No | Yes |
 | Make identities, sign people in and out, sign as them, and open what is encrypted for them or by a password (§6.10, §6.13, §6.15) | No | From a local client |
 | Read the trust scores of whoever is signed in, and change their trust list (§6.17) | No | From a local client |
-| Block content the node will no longer hold (§6.11) | No | From a local client |
+| Shun content the node will no longer hold (§6.11) | No | From a local client |
 | Read what the node knows of each peer, and whether it is connected (§6.8) | No | From a local client |
 
 An untrusted application is served with:
@@ -290,7 +290,7 @@ when trusted. `self.origin === "null"` tells a page it is sandboxed.
 | `/data/encrypted/{id}` | `GET`, `POST` | Local | A trusted application's | Open a drop encrypted for whoever is signed in, or by a password (§6.15) |
 | `/data/trust` | `GET` | Local | A trusted application's | The trust scores of whoever is signed in (§6.17) |
 | `/data/trust/{id}` | `GET`, `PUT`, `DELETE` | Local | A trusted application's | One identity's score; trust, distrust, or clear it on the trust list of whoever is signed in (§6.17) |
-| `/data/{id}` | `DELETE` | Local | A trusted application's | Delete and block content the node will no longer hold (§6.11) |
+| `/data/{id}` | `DELETE` | Local | A trusted application's | Delete and shun content the node will no longer hold (§6.11) |
 | `/data/nodes`, `/data/seek` | `GET` | Any | Any, or none | The peers the node knows, and what it seeks (§6.8) |
 | `/data/peers` | `GET` | Local | A trusted application's | What the node knows of each peer, and whether it is connected (§6.8) |
 | `/data/archives` | `GET`, `POST` | Local | A trusted application's | Keep content offline, and follow the archives kept (§6.19) |
@@ -809,7 +809,7 @@ node stops. Each of these is for a local client only, from a trusted
 application's page, since a password sent from elsewhere would cross the
 network as it was typed.
 
-### 6.11 Blocking Content
+### 6.11 Shunning Content
 
 When a page replaces content entirely, as a newer version of a list that
 holds everything the older one did, the older one need not be kept. Ask the
@@ -819,19 +819,19 @@ node to delete it, and stop holding it, with:
 await fetch(`/data/${id}`, { method: "DELETE" });
 ```
 
-The node answers `204`, whether or not it held the content or had blocked it
+The node answers `204`, whether or not it held the content or had shunned it
 before. It deletes its copy at once, and from then on answers a `GET` of it
 with `404`, leaves it out of searches, never asks a peer for it, and
 discards it when a peer pushes it (HTTP API §5.5). Only this node deletes
 it: other nodes keep their copies until they each delete it too. As each
-node that learns the content is replaced blocks it, the content leaves the
+node that learns the content is replaced shuns it, the content leaves the
 network.
 
-A block is the node's, not the person's: once one page blocks content, no
-application on the node can have it again. There is no unblocking, and no
-list of what is blocked. So block only content your application made, and
+A shunning is the node's, not the person's: once one page shuns content, no
+application on the node can have it again. There is no undoing it, and no
+list of what is shunned. So shun only content your application made, and
 only once something holds all it did. An id that is not valid is `400`.
-Blocking is for a local client only, from a trusted application's page.
+Shunning is for a local client only, from a trusted application's page.
 
 ### 6.12 The User Directory
 
@@ -874,9 +874,9 @@ rules, so that copies made by different pages and nodes come together:
   over the extensions it names, with `POST /data/bundles` (§6.5), and make
   the copy again holding only the people that extension does not list, and
   naming only it.
-- **Block what is replaced** (§6.11). Once a new copy is stored, block every
+- **Shun what is replaced** (§6.11). Once a new copy is stored, shun every
   copy it was made from; when none is needed, every copy but the newest.
-  Never block an extension: it is not at the drop, and later copies name it.
+  Never shun an extension: it is not at the drop, and later copies name it.
 
 To have someone added who is not signed in, link to
 `/directory/?add={id}`, as the `/config` page does for a user it creates.
@@ -1027,7 +1027,7 @@ To read what someone says, and follow the same rules as other pages do:
   numbered one more than the newest and naming it in `versions`, and naming
   the fallback the session gives. Hold off while a version found there is
   not held yet, since it may be newer than the newest read, and once the
-  identity is compromised. Never block a version (§6.11): every reader
+  identity is compromised. Never shun a version (§6.11): every reader
   reads the history back to the first.
 - **Say an identity is compromised** from its fallback, once it has taken
   over (§6.10): ask for the fallback password and a new one, twice, have the
@@ -1193,7 +1193,7 @@ each copy found in that month's days to `{"changed", "hidden", "read"}`.
   version when something changes, and when more than one head is found,
   numbered one more than the highest read and naming every head. Hold off
   while a version found there is not held yet.
-- **Block what is replaced** (§6.11): every version a new one replaces,
+- **Shun what is replaced** (§6.11): every version a new one replaces,
   and every version that another replaces, so that old versions do not
   crowd the newest out of a search.
 
@@ -1235,7 +1235,7 @@ list, makes the next with the change, has the person sign it, and places
 it. It answers `201 Created`, as a signed drop is answered (§6.13), with the
 new version's number in `version`. There is no `seconds` or `minimum_bits`
 to give: the node places each version matching as many bits as its search
-returns, and blocks the versions it replaces (§6.11), so that they do not
+returns, and shuns the versions it replaces (§6.11), so that they do not
 crowd the newest out of a search. A change that changes nothing, such as trusting someone already
 trusted, places nothing, and is `204`.
 Make one change per request. The node makes one person's changes one at a
@@ -1337,7 +1337,7 @@ follow the same rules as other pages do:
   does not make the version any less the node's.
 - **The newest is numbered highest**, and of two numbered as high, the one
   whose drop's id comes first. Only the node signs a version, so no one else
-  can make one newer. There is no history to read back: the node blocks the
+  can make one newer. There is no history to read back: the node shuns the
   versions it replaces.
 
 **Show a node by its name.** Wherever a page shows a node, show it by the

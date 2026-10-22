@@ -73,7 +73,7 @@ The programmatic API includes endpoints such as:
 These endpoints are intended for nodes and software clients.
 
 Some are meant only for the browser applications a node serves (§13), and
-never for another node: whether the client is local (§2.4), blocking
+never for another node: whether the client is local (§2.4), shunning
 content (§5.5), making a drop (§9.6), what the node knows of its peers
 (§10.8), making an identity and signing in (§11.3, §11.4), signing as a
 person (§11.5), opening an encrypted block (§11.6), the trust of whoever is
@@ -333,7 +333,7 @@ edit it for a local one. The answer is a convenience and not a
 protection, since every endpoint that serves only local clients checks
 for itself.
 
-These endpoints serve only local clients: blocking content (§5.5), what the
+These endpoints serve only local clients: shunning content (§5.5), what the
 node knows of its peers (§10.8), making an identity, a fallback taking over,
 and the session (§11.3, §11.4), making a signed drop (§11.5),
 opening an encrypted block (§11.6), reading trust scores and changing a trust
@@ -343,7 +343,7 @@ keeping content offline (§12.4), and changing an application's store
 (§13.3). So does making a drop encrypted by
 a username and password (§11.6).
 A request to one of them from any other client MUST be refused with
-`403 Forbidden`. Blocking, the peers, the identities, fallbacks, session,
+`403 Forbidden`. Shunning, the peers, the identities, fallbacks, session,
 signed drops, encrypted blocks, trust, folders, imports, bundles, and
 archives are served only from a page of a trusted application, and an
 application's store is changed only from a page of its own (§2.5).
@@ -384,7 +384,7 @@ applications they would trust with those folders.
 Some endpoints are meant only for the pages a node serves, and never for
 another node:
 
-- on the main port: whether the client is local (§2.4), blocking content
+- on the main port: whether the client is local (§2.4), shunning content
   (§5.5), making a drop (§9.6), what the node knows of its peers (§10.8),
   making an identity, a fallback taking over, and the session (§11.3,
   §11.4), making a signed drop (§11.5), opening an encrypted block (§11.6),
@@ -415,7 +415,7 @@ Some endpoints ask more of the page:
 
 - **An application's store** is read and changed only from a page of the
   application whose store it is (§13.3).
-- **Blocking content, the peers, making an identity, a fallback taking
+- **Shunning content, the peers, making an identity, a fallback taking
   over, the session, making a signed drop, opening an encrypted block,
   making a drop encrypted by a password, trust, the folders, imports, and
   making bundles** are served only from a page of a trusted application
@@ -648,29 +648,29 @@ Hashes MUST be stored as hexadecimal.
 
 ---
 
-### 5.5 Blocked Content
+### 5.5 Shunned Content
 
 A node MAY keep a private list of content it will not hold
 (HighLevelDesign §4.11). It MUST NOT publish the list, and answers for
-blocked content as it would for content it does not hold:
+shunned content as it would for content it does not hold:
 
-- A `GET` of blocked content is answered `404 Not Found` (§5.3), and the
-  node does not try to retrieve it. So is reading into a blocked bundle
-  (§12.1), or an application whose bundle is blocked (§13). A file whose
-  part is blocked, or a bundle with a blocked extension, cannot be served.
-- A `PUT` of blocked content is answered `202 Accepted`, as an upload
+- A `GET` of shunned content is answered `404 Not Found` (§5.3), and the
+  node does not try to retrieve it. So is reading into a shunned bundle
+  (§12.1), or an application whose bundle is shunned (§13). A file whose
+  part is shunned, or a bundle with a shunned extension, cannot be served.
+- A `PUT` of shunned content is answered `202 Accepted`, as an upload
   validated later is (§7.2), and the content is discarded unstored. A
   request that is refused for any other reason, such as a signature, is
   refused as any upload is.
-- A search (§6) leaves blocked content out of its results, and the node's
+- A search (§6) leaves shunned content out of its results, and the node's
   outstanding requests (§10.7) never name it. The node never pushes it to
   a peer that seeks it (§10.7.2).
 
-A block outlives the content it names, and is never lifted. A node blocks
+A shunning outlives the content it names, and is never lifted. A node shuns
 some content of itself, too: each version of a trust list older than the
 newest it reads (Trust Network §3.3).
 
-A page of a trusted application asks the node to delete content, and block
+A page of a trusted application asks the node to delete content, and shun
 it, with:
 
 ```http
@@ -678,16 +678,16 @@ DELETE /data/{hash-algorithm}/{hash}
 ```
 
 The request has no body. The node deletes any copy it holds, without
-pushing it to a peer first, and blocks the content, so that the identifier
+pushing it to a peer first, and shuns the content, so that the identifier
 names nothing the node will serve or keep again. It asks only this node: no
 other node is told. It is answered `204 No Content`, whether or not the node
-held the content, and whether or not it was blocked before. An identifier
-that is not valid is `400 Bad Request` (§5.4). No endpoint lifts a block,
+held the content, and whether or not it was shunned before. An identifier
+that is not valid is `400 Bad Request` (§5.4). No endpoint lifts a shunning,
 and none reads the list.
 
-Only a local client may block content (§2.4), from a page of a trusted
+Only a local client may shun content (§2.4), from a page of a trusted
 application (§2.5). The list is the node's, and not a person's: what one
-page blocks, the node gives no client again.
+page shuns, the node gives no client again.
 
 ---
 
@@ -716,7 +716,7 @@ The node returns the best matching content hashes known to it, as many as its
 answer can name (§6.1). The list MUST contain the hashes that match the most
 number of leading bits in the hash known to the node. The node MAY return
 hashes it is aware of but may not actually have locally. It leaves out content
-it has blocked (§5.5).
+it has shunned (§5.5).
 
 The node SHOULD have a configurable minimum number of leading bits a hash must
 share with the one searched for to be returned, or all of a shorter one: what
@@ -808,7 +808,7 @@ collision variants are kept and a random variant is returned.
 If the hash already exists and the content is the same as an existing content
 for that hash, it can be safely discarded.
 
-Content the node has blocked is accepted and discarded (§5.5).
+Content the node has shunned is accepted and discarded (§5.5).
 
 ### 7.2 Content Storage
 
@@ -1989,7 +1989,7 @@ of the person or node that signed it. The answer does not say which, since a
 page knows from where it found the drop whose signer it expects. An object,
 or a signer's public key, that the node does not hold is asked for, as for
 any miss, and is `503 Service Unavailable` with `Retry-After` (§5.2). Either
-one that the node has blocked is `404 Not Found` (§5.5). Content that is not
+one that the node has shunned is `404 Not Found` (§5.5). Content that is not
 a signed bundle is `400 Bad Request` with the problem type
 `unusable-bundle`, and one whose `hash` or `signature` does not check, or
 whose `signer` names neither an RSA public key of at least 2048 bits nor an
@@ -2017,7 +2017,7 @@ A page has the node encrypt what it places at a drop (§9.6), or what it signs
   ([Bundle Specification §8](BundleSpecification.md#8-encryption-for-a-person)).
   The node reads the key as it reads any content (§5.1). A key it does not
   hold is asked for, as for any miss, and the request is
-  `503 Service Unavailable` with `Retry-After` (§5.2); one it has blocked is
+  `503 Service Unavailable` with `Retry-After` (§5.2); one it has shunned is
   `404 Not Found` (§5.5). An `id` that names no RSA public key of at least
   2048 bits is `400 Bad Request`.
 - **`{"username": u, "password": p}`** encrypts it by the key the username
@@ -2073,7 +2073,7 @@ a page never takes what is signed on trust.
 
 An object, or a signer's public key, that the node does not hold is asked
 for, and is `503 Service Unavailable` with `Retry-After` (§5.2), and either
-one blocked is `404 Not Found` (§5.5). A `GET` from a browser no one is
+one shunned is `404 Not Found` (§5.5). A `GET` from a browser no one is
 signed in on is `401 Unauthorized`, with the problem type `session-required`.
 A block the session's key, or the username and password, does not open is
 `403 Forbidden`, with the problem type `wrong-key` (§17.2). A block that is
@@ -2155,7 +2155,7 @@ version with the change, and has it signed by the person and made a drop at
 `trust:{id}`, as making a signed drop does (§11.5), matching at least as
 many bits as a search returns (§6), with its nonce searched for no longer than
 that takes (§9.6). It then
-blocks every version of the list it read (§5.5), since the new one replaces
+shuns every version of the list it read (§5.5), since the new one replaces
 them (Trust Network §3.4). It answers `201 Created`, with a `Location`
 naming the drop:
 
@@ -2262,7 +2262,7 @@ version among the results that checks as signed by the node the drop names
 (§11.5) and is shaped as above. The newest is the one
 numbered highest, and of two numbered as high, the one whose drop's id
 comes first. Only the node signs a version, so no one else can make one
-newer, and no reader needs the versions it replaces: the node blocks them
+newer, and no reader needs the versions it replaces: the node shuns them
 (§5.5), so that they do not crowd the newest out of a search. So a reader
 passes over a name in `versions` that is not a content identifier, as a
 trust list's reader does (Trust Network §3.1), and counts the rest of the
@@ -2298,7 +2298,7 @@ node reads the newest version as a reader does, makes the next, saying
 `fields`, signs it with its own key, and makes it a drop at `node:{id}`, as
 making a signed drop does (§11.5), matching at least as many bits as a search
 returns (§6), with its nonce searched for no longer than that takes (§9.6). It
-then blocks every version it read, since the new one replaces them. It answers
+then shuns every version it read, since the new one replaces them. It answers
 `201 Created`, with no `Location`, since `/config`'s port serves nothing
 beneath `/data`:
 
@@ -2950,7 +2950,7 @@ opens is sandboxed as it is.
 A trusted application is served without these headers, on the main
 port's origin. A page of one, open in a local client, may list and import
 from the folders offered (§12.2), make bundles (§12.3), change its own
-application's store (§13.3), block content (§5.5), read what the node
+application's store (§13.3), shun content (§5.5), read what the node
 knows of its peers (§10.8), make identities and sign people in (§11.3,
 §11.4), make signed drops (§11.5), open encrypted blocks and encrypt by a
 username and password (§11.6), and read the trust scores of whoever is
@@ -3526,7 +3526,7 @@ The following table summarizes the currently proposed HTTP API.
 | `/data/{algorithm}/{hash}`           | `GET`        | Retrieve CAS content                                       | Defined |
 | `/data/{algorithm}/{hash}`           | `PUT`        | Upload CAS content                                         | Defined |
 | `/data/{algorithm}/{hash}`           | `HEAD`       | Retrieve CAS metadata                                      | TBD     |
-| `/data/{algorithm}/{hash}`           | `DELETE`     | Delete and block content, locally (§5.5)                   | Defined |
+| `/data/{algorithm}/{hash}`           | `DELETE`     | Delete and shun content, locally (§5.5)                    | Defined |
 | `/data/search/{hash}`                | `GET`        | Search for matching hashes                                 | Defined |
 | `/data/nodes`                        | `GET`/`POST` | Retrieve/publish peer information                          | Defined |
 | `/data/seek`                         | `GET`/`POST` | Retrieve/publish outstanding requests                      | Defined |

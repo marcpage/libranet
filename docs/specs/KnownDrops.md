@@ -150,7 +150,7 @@ of its own id.
 - **Reading:** a reader counts only what the person signed, and a
   version their fallback signed saying they are compromised. The newest
   version is the one numbered highest. Of two numbered as high, the newest
-  is the one whose drop's id comes first. No version is ever blocked.
+  is the one whose drop's id comes first. No version is ever shunned.
 - **Defined in:**
   [App Developer Guide §6.14](../operations/App%20Developer%20Guide.md#614-what-people-say-of-themselves)
   for the versions and their reading;
@@ -180,12 +180,12 @@ of the directory: only applications keep it.
   copy is in the directory. The newest copy lists the most people. Of two
   that list as many, the newest is the one whose id comes first. When the
   newest copy does not list everyone, a reader makes a new copy that does,
-  and blocks the copies it was made from.
+  and shuns the copies it was made from.
 - **Defined in:**
   [App Developer Guide §6.12](../operations/App%20Developer%20Guide.md#612-the-user-directory).
 - **See also:**
-  [App Developer Guide §6.11](../operations/App%20Developer%20Guide.md#611-blocking-content)
-  for blocking what is replaced.
+  [App Developer Guide §6.11](../operations/App%20Developer%20Guide.md#611-shunning-content)
+  for shunning what is replaced.
 
 ### 3.4 Trust Lists
 
@@ -212,7 +212,7 @@ their scores to reach through it.
   24 by default, with no search for a nonce past that.
 - **Reading:** a reader counts only the versions that the owner
   signed. The newest version is the one numbered highest. Of two numbered as
-  high, the newest is the one whose drop's id comes first. A node blocks
+  high, the newest is the one whose drop's id comes first. A node shuns
   every version it reads that is older than the newest, and every version
   a version it places replaces.
 - **Defined in:**
@@ -221,7 +221,7 @@ their scores to reach through it.
   changing it (§3.4);
   [HTTP API §11.7](HttpApi.md#117-trust) for the endpoints that change it.
 - **See also:**
-  [HTTP API §5.5](HttpApi.md#55-blocked-content) for blocking.
+  [HTTP API §5.5](HttpApi.md#55-shunned-content) for shunning.
 
 ### 3.5 Mail Received
 
@@ -286,7 +286,7 @@ replaces. A removal is kept as a change, so that a merge does not undo it.
   sign. It merges every version left: of the changes to one name, the
   latest wins. A version that no other version names is a head. When more
   than one head is found, a reader places a new version naming every head.
-  Versions that are replaced are blocked, so that they do not crowd the
+  Versions that are replaced are shunned, so that they do not crowd the
   newest out of a search.
 - **Defined in:**
   [App Developer Guide §6.16](../operations/App%20Developer%20Guide.md#616-mail).
@@ -328,7 +328,7 @@ over or tapped.
 - **Reading:** a reader counts only the versions that the node
   signed. The newest version is the one numbered highest. Of two numbered as
   high, the newest is the one whose drop's id comes first. Whenever its
-  operator saves, the node blocks every version it reads but the newest,
+  operator saves, the node shuns every version it reads but the newest,
   and the newest too once it places a version over it.
 - **Defined in:**
   [HTTP API §11.8](HttpApi.md#118-what-a-node-says-of-itself) for the
@@ -362,13 +362,13 @@ larger ones.
   false starts and blocks that score zero among them. A block's `weight`
   says how heavy the chain before it claims to be. A block whose
   transactions are all in a larger block, or in one as large sharing more
-  bits, may be blocked, unless it is near 1 MiB or a validation block names
-  it. No block is blocked for being on a lighter chain. An unsigned block is
-  blocked, and the builder of a block found to state something false is
+  bits, may be shunned, unless it is near 1 MiB or a validation block names
+  it. No block is shunned for being on a lighter chain. An unsigned block is
+  shunned, and the builder of a block found to state something false is
   distrusted in the node's own trust list.
 - **Defined in:**
   [Karma Ledger §3](KarmaLedger.md#3-generations) for the targets, the
-  heaviest chain, heads, blocking, and distrusted builders,
+  heaviest chain, heads, shunning, and distrusted builders,
   [§4](KarmaLedger.md#4-transactions) for transactions,
   [§5](KarmaLedger.md#5-transaction-blocks) for the block, and
   [§7](KarmaLedger.md#7-the-root) for the root.
@@ -396,7 +396,7 @@ each generation, and the one the heaviest chain goes through wins.
   rest by bits, then by effective stake, then by id, and builds the next
   generation on the best. The winner's stakers share the generation's
   reward, and the runner-up's stakers lose their stakes in it, unless they
-  also staked in the winner. A signed validation block is never blocked,
+  also staked in the winner. A signed validation block is never shunned,
   since any one may lead to another chain, and an unsigned one always is.
   A builder found to state something false is distrusted, and no builder
   puts a distrusted identity's stake in a block. A node's head, the winner

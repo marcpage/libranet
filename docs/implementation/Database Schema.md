@@ -202,7 +202,7 @@ content archive may have no `data_stats` row. No statement joins two tables.
 
 What the node knows about one content id, whether or not it holds the
 content. A row is made the first time the id is requested, pushed, stored,
-deleted, or blocked, or a peer answers a search with it, and is never
+deleted, or shunned, or a peer answers a search with it, and is never
 deleted.
 
 | Column | Type | Null | Default | Meaning |
@@ -217,7 +217,7 @@ deleted.
 | `last_acquired` | REAL | yes | — | When it was last added to the source of truth; kept after a deletion |
 | `stored_seconds` | REAL | no | 0 | How long copies were held before each deletion, added up |
 | `size` | INTEGER | yes | — | Its size in bytes as stored, while the node holds it; `NULL` otherwise |
-| `blocked_at` | REAL | yes | — | When this node blocked it (Phase 4 Step 30); `NULL` if it has not |
+| `blocked_at` | REAL | yes | — | When this node shunned it (Phase 4 Step 30); `NULL` if it has not |
 
 - **`size` is what says content is held.** `data.stored` sets it, and
   `data.deleted` clears it. Stats never walks the store, so content stored
@@ -243,11 +243,11 @@ deleted.
 - **This node's own public key** is written at startup without an
   announcement, so it has no `size`, and eviction's ranking leaves it out by
   name as well.
-- **`blocked_at` says content is blocked**: content this node will not hold,
+- **`blocked_at` says content is shunned**: content this node will not hold,
   and refuses (HighLevelDesign §4.11). `data.blocked` sets it, if it is not
   set already, and nothing clears it. The content is deleted at once, since
   the eviction module hears the same `data.blocked`, and `size` is cleared
-  as for any content deleted, but the block stays, since the row does, so
+  as for any content deleted, but the shunning stays, since the row does, so
   the node never takes the content back from a peer that pushes it.
   Deleting the database is the only way to lift one (§9.1). The list derived
   from it (§7.2) is what the web server, the validator, and the fetcher
@@ -421,7 +421,7 @@ Index: the primary key only.
 | `sqlite_autoindex_data_stats_1` | `data_stats (algorithm, hash)` | Primary key | Every upsert of one content id |
 | `data_stats_by_hash` | `data_stats (hash)` | Schema | Search: the known hashes sharing a prefix's leading bits, across every algorithm |
 | `data_stats_held` | `data_stats (hash) WHERE size IS NOT NULL` | Schema | Eviction: the held hashes either side of the node id's |
-| `data_stats_blocked` | `data_stats (hash) WHERE blocked_at IS NOT NULL` | Schema | The blocked list: every blocked row, however many others there are |
+| `data_stats_blocked` | `data_stats (hash) WHERE blocked_at IS NOT NULL` | Schema | The shunned list: every shunned row, however many others there are |
 | `sqlite_autoindex_node_stats_1` | `node_stats (node_id)` | Primary key | Every upsert of one node |
 | `sqlite_autoindex_node_addresses_1` | `node_addresses (node_id, endpoint)` | Primary key | Every upsert of one address; a node's addresses |
 | `sqlite_autoindex_node_trust_1` | `node_trust (node_id)` | Primary key | Every insert of one identity's state |
@@ -435,7 +435,7 @@ the index, out of order, measured four times slower at 500,000 objects
 (Phase 2 Step 28).
 
 Nothing indexes a time. Every query that filters or sorts on one scans its
-table (§7), but for the blocked list, which reads only the rows
+table (§7), but for the shunned list, which reads only the rows
 `data_stats_blocked` holds.
 
 ## 6. What Writes Each Row
@@ -448,7 +448,7 @@ event happened.
 | Event | From | Writes |
 | --- | --- | --- |
 | `data.requested` | Web server | `data_stats`: `external_requests` or `internal_requests` + 1; `last_requested` = now |
-| `data.not_found` | Web server, unbundler, backup | `seek_entries`: this node's `data` entry added or refreshed, unless the content is blocked |
+| `data.not_found` | Web server, unbundler, backup | `seek_entries`: this node's `data` entry added or refreshed, unless the content is shunned |
 | `data.search_requested` | Web server | `seek_entries`: this node's `search` entry added or refreshed |
 | `data.search_answered` | Connection manager | `data_stats`: a row for each id in `results` that has none |
 | `data.stored` | Validator, backup, web server, connection manager | `data_stats`: `pushes` + 1, then `last_acquired` = now and `size` set. `seek_entries`: this node's `data` entry for it deleted. `node_stats`: `bytes_received` + size, for the node it came from |
@@ -479,7 +479,7 @@ stats first deletes the seek entries and addresses that are past keeping
 | Query (`StatsDatabase`) | Run when | Reads | How |
 | --- | --- | --- | --- |
 | `eviction_order` | `eviction.candidates_requested` | `data_stats` | Two scans of the whole table, and two seeks in `data_stats_held` |
-| `content_ids_near` | `data.search_requested`, `data.search_answered` | `data_stats` | One range scan of `data_stats_by_hash`: every row not blocked whose hash shares `storage.search_min_bits` leading bits with the prefix, or all of a shorter one |
+| `content_ids_near` | `data.search_requested`, `data.search_answered` | `data_stats` | One range scan of `data_stats_by_hash`: every row not shunned whose hash shares `storage.search_min_bits` leading bits with the prefix, or all of a shorter one |
 | `is_sought` | `data.search_requested`, to tell a new search | `seek_entries` | Primary key |
 | `last_good_endpoints` | Each derivation | `node_addresses` | Whole table, with a window function |
 | `candidate_endpoints` | Each derivation | `node_addresses` | Whole table, with two window functions |
@@ -490,7 +490,7 @@ stats first deletes the seek entries and addresses that are past keeping
 | `apps_accessed_since` | `resolved.reclaim_requested` | `app_bundles` | Whole table |
 | `node_stats` | `node.unreached`, to read the new count | `node_stats` | Primary key |
 | `is_blocked` | `data.not_found` | `data_stats` | Primary key |
-| `blocked_ids` | Each derivation, and each new block | `data_stats` | Every row of `data_stats_blocked`, sorted |
+| `blocked_ids` | Each derivation, and each new shunning | `data_stats` | Every row of `data_stats_blocked`, sorted |
 | `trust_states` | `node.trust_requested`, as the web server starts | `node_trust` | Whole table |
 
 `data_stats` and `node_addresses`, which return one content id's row and one
@@ -529,7 +529,7 @@ list leaves out this node's own id.
 The lists are derived when stats starts, then once
 `stats.derive_interval_seconds` (60) has passed and the module is idle, and
 at once when a node is given up on. `blocked.json` is also written at once
-when content is first blocked, and `seek.json` when a search names a prefix
+when content is first shunned, and `seek.json` when a search names a prefix
 this node's seek list does not, so that the peers connected to it read the
 prefix on their next refresh and push what matches (Phase 4 Step 93).
 `peers.json` says when it was derived, so it is written at every derivation,
@@ -553,7 +553,7 @@ to a cached search response (`src/libranet/stats/enrichment.py`).
 | `node_stats` | Never | Every node ever dialed, or content exchanged with |
 | `node_addresses` | At each derivation, by the two rules below | The nodes known, up to `stats.max_addresses_per_node` each |
 | `app_bundles` | Never | Every bundle ever served |
-| `seek_entries` | When its content is stored or blocked, for this node's `data` entries; and at each derivation, once older than `stats.seek_entry_ttl_seconds` (3600) | The requests of the last hour |
+| `seek_entries` | When its content is stored or shunned, for this node's `data` entries; and at each derivation, once older than `stats.seek_entry_ttl_seconds` (3600) | The requests of the last hour |
 | `node_trust` | Whenever the web server says whom the node trusts, all of them, before the new rows go in | The identities the node's scores trust or distrust, up to every identity they reach |
 
 An address is deleted, each time the lists are derived, when:
@@ -611,7 +611,7 @@ Deleting the database, with the node stopped, loses:
   asked for;
 - this node's outstanding requests, which are recorded again when asked for
   again;
-- every block, so content blocked before is kept and served again when it
+- every shunning, so content shunned before is kept and served again when it
   next arrives;
 - whom the node trusted, so that, until it builds its scores again, it may
   connect to a node it distrusted before (Phase 5 Step 113).

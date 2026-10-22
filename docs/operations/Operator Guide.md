@@ -258,7 +258,7 @@ It is public. The node signs each version with its own key and keeps it in
 the network, at the drop `node:{id}`
 ([Known Drops §3.9](../specs/KnownDrops.md#39-what-a-node-says-of-itself)),
 where anyone can read it, so give only what you would have anyone know.
-Saving replaces what the node said before, and the node blocks the version
+Saving replaces what the node said before, and the node shuns the version
 it replaces, but a copy a peer already holds can still be read there.
 
 A script gives every detail the node is to say, and any it leaves out are
@@ -335,7 +335,7 @@ node.
 It is public. The node signs each version with its own key and keeps it in
 the network, at the drop `trust:{id}`
 ([Known Drops §3.4](../specs/KnownDrops.md#34-trust-lists)), where anyone
-can read it. The node blocks the version each change replaces, but a copy a
+can read it. The node shuns the version each change replaces, but a copy a
 peer already holds can still be read there. A person signed in reads a
 change at their next sign-in.
 

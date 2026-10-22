@@ -104,7 +104,7 @@ What the node already has, for the mechanics to be written in terms of:
   node wants (§4.8).
 - New content pushed toward the node that best matches it (§4.10), and
   eviction by a score of use, size, and match (§4.5).
-- A private block list (Phase 4 Step 30), for blocks a merge supersedes.
+- A private shun list (Phase 4 Step 30), for blocks a merge supersedes.
 
 Begun 2026-10-20 as the
 [Karma Ledger Specification](../specs/KarmaLedger.md), which holds the
@@ -152,9 +152,9 @@ since, each the user's own answer or my recommended option:
   configuration, 3 by default. Nodes then stop carrying them,
   but they stay valid, with no expiry: anyone may put one up again. Making
   them invalid after the count was turned down.
-- **Nothing is blocked for being on a lighter chain.** A node cut off from
+- **Nothing is shunned for being on a lighter chain.** A node cut off from
   most of the network, which has gone on far beyond, must be able to come
-  back to it. A rule blocking dead forks, after a lead in work and a time
+  back to it. A rule shunning dead forks, after a lead in work and a time
   without growth, was ruled first, and replaced.
 - **A transaction names the generation it was created in**, and may be
   included then or in any later block, with no expiry. It is checked for
@@ -203,16 +203,16 @@ since, each the user's own answer or my recommended option:
   Kismet is invalid, except the root's.
 - **Blocks are put up small and combined.** A transaction is put up as a
   block of its own, and builders combine blocks for better scores.
-- **A block is blocked only when its data is kept elsewhere.** A
-  transaction block may be blocked only if all its data is in another
+- **A block is shunned only when its data is kept elsewhere.** A
+  transaction block may be shunned only if all its data is in another
   block that is larger, or the same size and matching more bits. The data
   must be preserved and not lost.
 - **No chain loses a block it runs through.** A validation block is never
-  blocked, since any one may lead to another chain. Nor is a transaction
+  shunned, since any one may lead to another chain. Nor is a transaction
   block that a validation block names. Validation blocks are made only on
   near-full transaction blocks, so in practice a transaction block near
-  1 MiB is not blocked either. This replaces a first form of the ruling,
-  which let validation blocks and full transaction blocks be blocked.
+  1 MiB is not shunned either. This replaces a first form of the ruling,
+  which let validation blocks and full transaction blocks be shunned.
 - **A transaction block is scored** by, in order, its bits, its reach,
   and how old its transactions are, with no weights. A block with
   anything incorrect scores zero, but its transactions are still read.
@@ -257,7 +257,7 @@ since, each the user's own answer or my recommended option:
   validation block found to state something basic falsely, such as a stake
   over the staker's balance, a wrong generation, or a wrong weight, has its
   builder distrusted by the node checking it, in the node's own trust list.
-  An unsigned block is blocked. Recording distrust in a list that only
+  An unsigned block is shunned. Recording distrust in a list that only
   Karma reads was turned down.
 - **No builder builds with the distrusted.** A builder puts no
   distrusted identity's stake in a validation block, and builds no
@@ -308,7 +308,7 @@ My calls, not yet reviewed:
   the checker's history, and a transaction included before the generation
   it names.
 - A bad signature on a block distrusts no one, since anyone can write
-  another's id into `signer`. The block is blocked as unsigned.
+  another's id into `signer`. The block is shunned as unsigned.
 - A false block distrusts its builder in the node's list, which since
   Phase 5 Step 113 also stops the node connecting to a builder that is a
   node. KarmaLedger §8 says so.
@@ -320,7 +320,7 @@ My calls, not yet reviewed:
   heavy, the one whose latest winning validation block's id sorts first.
 - `weight` is a string of decimal digits, as amounts are, since one drop
   may add 2^256.
-- A transaction block's data is its transactions. A node blocks a
+- A transaction block's data is its transactions. A node shuns a
   superseded block only while it holds the one keeping its data, and only
   for one of the same generation.
 - "Near 1 MiB" is written as full, or near enough to full that a
@@ -373,7 +373,7 @@ it went.
 | #86 | Documenting how Karma works with the CAS | 56 |
 | #87 | A Karma implementation plan | None: this document, finished once Step 56 lets the steps that build Karma be written |
 
-Issue #71, the blocked data list, left the milestone unbuilt for
+Issue #71, the shunned data list, left the milestone unbuilt for
 **Phase 4 - User Accounts**, and Step 30 went with it to
 [Phase 4](Phase%204.md).
 
@@ -383,7 +383,7 @@ Issue #71, the blocked data list, left the milestone unbuilt for
 | --- | --- | --- |
 | A | 56 (#86) | Every step that builds Karma is written from it, and its open questions decide what those steps are. |
 
-The block list the steps that build Karma use to let go of what a merge
+The shun list the steps that build Karma use to let go of what a merge
 supersedes is Phase 4 Step 30, built in that phase.
 
 ## 6. Open Items Not Yet Decided

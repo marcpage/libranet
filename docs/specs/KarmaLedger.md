@@ -57,8 +57,8 @@ This version specifies the root (§7), transactions (§4), transaction blocks
   as §3.8 says.
 - **The targets** are cataloged in [Known Drops](KnownDrops.md) §3.10 and
   §3.11.
-- **Blocking** is a node's own block list
-  ([HTTP API §5.5](HttpApi.md#55-blocked-content)). It is used here to let
+- **Shunning** is a node's own shun list
+  ([HTTP API §5.5](HttpApi.md#55-shunned-content)). It is used here to let
   go of blocks that a larger block or a heavier chain supersedes.
 - **Eviction** treats Karma's blocks as any other content
   ([High-Level Design §4.5](HighLevelDesign.md#45-storage-priority-and-eviction)).
@@ -176,7 +176,7 @@ target, it goes through these steps in order:
    follows it. Its genealogy after the common ancestor becomes the new
    chain's, and it tells its peers its new head (§3.5.2). A block that does
    not validate as correct distrusts its builder (§3.8), and the node keeps its own head.
-   Any invalid blocks are also blocked.
+   Any invalid blocks are also shunned.
 6. **Carry the rest over.** It puts each collected transaction into the
    transaction block it builds at the new head's target. One whose sender's
    balance the new chain does not cover, as when the new chain has spent
@@ -185,41 +185,41 @@ target, it goes through these steps in order:
 
 ### 3.6 Weak Chains
 
-A node never blocks a transaction block or a validation block for being on
+A node never shuns a transaction block or a validation block for being on
 a lighter chain. A chain may be lighter only as far as the node can see. A
 node cut off from most of the network, which has gone on far beyond, would
-otherwise block the chain it has to come back to. Once it is connected
+otherwise shun the chain it has to come back to. Once it is connected
 again, the heads its peers tell it of (§3.5) bring it back.
 
 Blocks on a lighter chain go as any content does, by eviction. A node that
 leaves a chain for a heavier one carries over its transactions that the
 heavier one lacks (§3.5.3).
 
-### 3.7 Blocking What Is Superseded
+### 3.7 Shunning What Is Superseded
 
 A block that is not signed, whose signature fails, or fails validation of
 weight or generation, is no block of the
-ledger, and a node SHOULD block it (§3.8). Otherwise, a node MUST NOT block
+ledger, and a node SHOULD shun it (§3.8). Otherwise, a node MUST NOT shun
 a validation block, since any one may lead to another chain. It MUST NOT
-block a transaction block that a validation block names. Validation blocks
-are made only on full transaction blocks, so a node SHOULD NOT block a
+shun a transaction block that a validation block names. Validation blocks
+are made only on full transaction blocks, so a node SHOULD NOT shun a
 transaction block near 1 MiB either: one full, or near enough to full that
 a validation block the node has not seen yet may name it (§5.4) unless
 it fails basic validation.
 
-A node MAY block any other transaction block, such as one put up small or
+A node MAY shun any other transaction block, such as one put up small or
 one still being combined, whose data is all held in another transaction
 block of the same generation. This means searches carry less of the same
-data. It blocks one only if the other block holds more data, or holds the
+data. It shuns one only if the other block holds more data, or holds the
 same data and shares more bits with its target hash. A transaction block's
 data is its transactions. The data is not lost: it is kept in the other
-block, and a node blocks a block only while it holds the block that keeps
+block, and a node shuns a block only while it holds the block that keeps
 it.
 
 ### 3.8 Distrusted Builders
 
 A block that is not signed, or whose signature fails, can be attributed to
-no one: anyone can write another's id into `signer`. A node SHOULD block
+no one: anyone can write another's id into `signer`. A node SHOULD shun
 it, and distrusts no one for it.
 
 A node that checks a signed block and finds that it states something false
@@ -635,7 +635,7 @@ A block that is not full, or that scores zero, is never validated, but it
 is still read: a builder takes its valid transactions into correct blocks.
 This is how a paid transaction put up alone, which breaks the half-free
 rule, is taken in. A block whose transactions are all in a larger block, or
-in one as large sharing more bits, may then be blocked, unless it is near
+in one as large sharing more bits, may then be shunned, unless it is near
 1 MiB or a validation block names it (§3.7).
 
 ## 6. Validation Blocks
@@ -671,7 +671,7 @@ anyone may build one from others' stakes (Karma §21), and signs it as its
 builder. A builder leaves out the stakes of every identity it distrusts, and
 builds on no transaction block a distrusted identity signed (§3.8). It
 fits in 1 MiB compressed (§5.4), and its stakes and witnesses
-share that room. A validation block is never blocked (§3.7).
+share that room. A validation block is never shunned (§3.7).
 
 ### 6.2 Stakes
 
@@ -845,15 +845,15 @@ established one only by outweighing the whole chain built on it.
   (q / (1 − q))^z: about 2 in a million for q = 0.1 and z = 6, and about
   0.6% for q = 0.3. That is how far a lead must grow before it is, in
   practice, safe to rely on.
-- **Nothing is blocked for being light.** A node cut off from most of the
+- **Nothing is shunned for being light.** A node cut off from most of the
   network follows the heaviest chain it can see, and comes back to the
   network's once it is connected again (§3.6). The cost is that no history
   is final: a rival who out-mines the chain from any point back replaces
   it.
-- **Only what no chain can use is blocked.** A node's block list is
-  permanent ([HTTP API §5.5](HttpApi.md#55-blocked-content)), and a node
-  cannot check a chain that runs through a block it has blocked. So it never
-  blocks a validation block, a transaction block one names, or one near
+- **Only what no chain can use is shunned.** A node's shun list is
+  permanent ([HTTP API §5.5](HttpApi.md#55-shunned-content)), and a node
+  cannot check a chain that runs through a block it has shunned. So it never
+  shuns a validation block, a transaction block one names, or one near
   1 MiB (§3.7). A smaller transaction block can never be validated, so no
   correct chain runs through it, as long as nodes measure fullness alike
   (§5.4).
