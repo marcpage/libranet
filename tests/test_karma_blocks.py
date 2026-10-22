@@ -1,4 +1,4 @@
-"""Tests for transaction blocks and validation blocks (KarmaLedger §5, §6)."""
+"""Tests for transaction blocks and validation blocks, and blocks as drops (KarmaLedger §5, §6)."""
 
 from __future__ import annotations
 from dataclasses import replace
@@ -8,12 +8,23 @@ from typing import Any
 
 from pytest import fixture, mark, raises
 
+from libranet.bundle.errors import MissingContentError
+from libranet.bundle.signing import SignedBundle
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import UnknownAlgorithmError
 from libranet.identity.node_identity import NodeIdentity
+from libranet.json_format import compact_json
 from libranet.karma.amounts import Kismet
-from libranet.karma.blocks import Balance, TransactionBlock, ValidationBlock
-from libranet.karma.generations import new_kismet
+from libranet.karma.blocks import (
+    BLOCK_BOUNDS,
+    Balance,
+    BlockBounds,
+    BlockDrop,
+    BlockFinding,
+    TransactionBlock,
+    ValidationBlock,
+)
+from libranet.karma.generations import GenerationTargets, new_kismet
 from libranet.karma.stakes import SignedStake, Stake
 from libranet.karma.transactions import Payout, SignedTransaction, Transaction
 from libranet.karma.weight import ChainWeight
@@ -27,6 +38,10 @@ RIVAL = ContentId("sha256", "4d" * 32)
 WEIGHT = ChainWeight(1_288_490_188_800)
 NEW_KARMA = new_kismet(0)
 WITNESSES = ("0a" * 32, "9f" * 32)
+NONCE = b"\x0012345"
+
+# Bounds every transaction meets, whatever its work.
+NO_WORK = BlockBounds(transaction_bits=0)
 
 
 def paying(
@@ -84,6 +99,17 @@ def validation_of(*stakes: SignedStake, runner_up: ContentId | None = RIVAL) -> 
     return ValidationBlock(1, runner_up, ordered, WITNESSES)
 
 
+def signed_drop(builder: NodeIdentity, contents: str | dict[str, Any]) -> bytes:
+    """A drop of ``contents``, signed by ``builder``, with a nonce."""
+    text = contents if isinstance(contents, str) else compact_json(contents).decode("utf-8")
+    return builder.signed(text).encoded() + NONCE
+
+
+def keys_of(*identities: NodeIdentity) -> dict[ContentId, bytes]:
+    """The key of each of ``identities``, by their id."""
+    return {identity.node_id: identity.public_key for identity in identities}
+
+
 @fixture(scope="module")
 def alice() -> NodeIdentity:
     return new_identity()
@@ -92,6 +118,16 @@ def alice() -> NodeIdentity:
 @fixture(scope="module")
 def bob() -> NodeIdentity:
     return new_identity()
+
+
+@fixture(scope="module")
+def builder() -> NodeIdentity:
+    return new_identity()
+
+
+@fixture(scope="module")
+def keys(alice: NodeIdentity, bob: NodeIdentity, builder: NodeIdentity) -> dict[ContentId, bytes]:
+    return keys_of(alice, bob, builder)
 
 
 @fixture(scope="module")
@@ -541,3 +577,271 @@ def test_a_stake_whose_staker_is_not_its_signer_is_refused(
 
 def test_a_validation_block_holds_its_stakes_bundles(validation: ValidationBlock) -> None:
     assert validation.bundles() == tuple(stake.bundle for stake in validation.stakes)
+
+
+def test_a_block_as_a_drop_is_decoded_as_it_was_placed(
+    builder: NodeIdentity, block: TransactionBlock, keys: dict[ContentId, bytes]
+) -> None:
+    drop = BlockDrop.of(builder.signed(block.text()), TransactionBlock)
+    placed = GenerationTargets.root().transaction.placed(drop.content(), 0)
+
+    decoded = BlockDrop.decoded(placed.data, TransactionBlock, keys, bounds=NO_WORK)
+
+    assert decoded == drop
+    assert placed.data.startswith(drop.content() + b"\x00")
+    assert drop.builder == builder.node_id
+
+
+def test_a_validation_block_as_a_drop_is_decoded_as_written(
+    builder: NodeIdentity, validation: ValidationBlock, keys: dict[ContentId, bytes]
+) -> None:
+    data = signed_drop(builder, validation.value())
+
+    decoded = BlockDrop.decoded(data, ValidationBlock, keys)
+
+    assert isinstance(decoded, BlockDrop)
+    assert decoded.block == validation
+
+
+def test_a_drops_content_is_its_signed_bundles_json(
+    builder: NodeIdentity, validation: ValidationBlock
+) -> None:
+    bundle = builder.signed(validation.text())
+
+    assert BlockDrop(bundle, validation).content() == bundle.encoded()
+
+
+def test_a_block_of_another_kind_is_false(
+    builder: NodeIdentity, validation: ValidationBlock, keys: dict[ContentId, bytes]
+) -> None:
+    data = signed_drop(builder, validation.value())
+
+    found = BlockDrop.decoded(data, TransactionBlock, keys)
+
+    assert isinstance(found, BlockFinding)
+    assert found.builder == builder.node_id
+    assert '"balances" must be an object' in found.statement
+
+
+@mark.parametrize(
+    "data, statement",
+    [
+        (b'{"signature": ""}', "must hold a null byte"),
+        (b"not a bundle\x00nonce", "must be a signed bundle"),
+        (b'{"generation": 1}\x00nonce', "must be a signed bundle"),
+    ],
+)
+def test_a_drop_holding_no_signed_bundle_is_unsigned(
+    keys: dict[ContentId, bytes], data: bytes, statement: str
+) -> None:
+    found = BlockDrop.decoded(data, TransactionBlock, keys)
+
+    assert isinstance(found, BlockFinding)
+    assert found.builder is None
+    assert statement in found.statement
+
+
+def test_a_block_whose_hash_is_not_its_contents_is_unsigned(
+    builder: NodeIdentity, block: TransactionBlock, keys: dict[ContentId, bytes]
+) -> None:
+    value = {**builder.signed(block.text()).value(), "hash": "00" * 32}
+
+    found = BlockDrop.decoded(compact_json(value) + NONCE, TransactionBlock, keys)
+
+    assert isinstance(found, BlockFinding)
+    assert found.builder is None
+    assert "must be a signed bundle" in found.statement
+
+
+def test_a_block_whose_signature_fails_is_unsigned_distrusting_no_one(
+    alice: NodeIdentity,
+    builder: NodeIdentity,
+    block: TransactionBlock,
+    keys: dict[ContentId, bytes],
+) -> None:
+    signed = builder.signed(block.text())
+    claimed = SignedBundle(alice.node_id, signed.contents, signed.signature)
+
+    found = BlockDrop.decoded(claimed.encoded() + NONCE, TransactionBlock, keys, bounds=NO_WORK)
+
+    assert isinstance(found, BlockFinding)
+    assert found.builder is None
+    assert "A block's signature must check" in found.statement
+
+
+@mark.parametrize(
+    "contents, statement",
+    [
+        ('{"generation":1,"generation":1}', "names 'generation' twice"),
+        ("[]", "A transaction block must be a JSON object"),
+        ("not JSON", "must be JSON"),
+    ],
+)
+def test_a_signed_block_not_well_formed_is_false_naming_its_builder(
+    builder: NodeIdentity, keys: dict[ContentId, bytes], contents: str, statement: str
+) -> None:
+    found = BlockDrop.decoded(signed_drop(builder, contents), TransactionBlock, keys)
+
+    assert isinstance(found, BlockFinding)
+    assert found.builder == builder.node_id
+    assert statement in found.statement
+
+
+def test_a_signed_block_stating_something_false_names_the_statement(
+    builder: NodeIdentity, block: TransactionBlock, keys: dict[ContentId, bytes]
+) -> None:
+    value = {**block.value(), "transactions": block.value()["transactions"][::-1]}
+
+    found = BlockDrop.decoded(signed_drop(builder, value), TransactionBlock, keys)
+
+    assert found == BlockFinding(
+        'A block\'s "transactions" must be sorted, none twice', builder.node_id
+    )
+
+
+def test_a_block_holding_a_transaction_whose_signature_fails_is_false(
+    alice: NodeIdentity, bob: NodeIdentity, builder: NodeIdentity, keys: dict[ContentId, bytes]
+) -> None:
+    honest = paying(alice)
+    forged = {**honest.value(), "signature": paying(bob).value()["signature"]}
+    value = {**block_of(honest, payout_to(alice.node_id)).value()}
+    value["transactions"] = [
+        forged if entry == honest.value() else entry for entry in value["transactions"]
+    ]
+
+    found = BlockDrop.decoded(signed_drop(builder, value), TransactionBlock, keys, bounds=NO_WORK)
+
+    assert isinstance(found, BlockFinding)
+    assert found.builder == builder.node_id
+    assert f"What {alice.node_id} signed in a block must check" in found.statement
+
+
+def test_a_block_holding_a_stake_whose_signature_fails_is_false(
+    alice: NodeIdentity, bob: NodeIdentity, builder: NodeIdentity, keys: dict[ContentId, bytes]
+) -> None:
+    honest = staked(alice)
+    forged = {**honest.value(), "signature": staked(bob).value()["signature"]}
+    value = {**validation_of(honest).value(), "stakes": [forged]}
+
+    found = BlockDrop.decoded(signed_drop(builder, value), ValidationBlock, keys)
+
+    assert isinstance(found, BlockFinding)
+    assert found.builder == builder.node_id
+    assert f"What {alice.node_id} signed in a block must check" in found.statement
+
+
+def test_a_block_holding_a_transaction_under_the_work_asked_is_false(
+    alice: NodeIdentity, builder: NodeIdentity, keys: dict[ContentId, bytes]
+) -> None:
+    signed = paying(alice)
+    data = signed_drop(builder, block_of(signed, payout_to(alice.node_id)).value())
+    asked = BlockBounds(transaction_bits=signed.work_bits + 1)
+
+    found = BlockDrop.decoded(data, TransactionBlock, keys, bounds=asked)
+    enough = BlockDrop.decoded(
+        data, TransactionBlock, keys, bounds=replace(asked, transaction_bits=signed.work_bits)
+    )
+
+    assert found == BlockFinding(
+        f"Transaction {signed.hash} shares {signed.work_bits} bits with the target of its "
+        f"work, under {signed.work_bits + 1}",
+        builder.node_id,
+    )
+    assert isinstance(enough, BlockDrop)
+
+
+def test_the_specifications_bounds_ask_24_bits_of_each_transaction(
+    alice: NodeIdentity, builder: NodeIdentity, keys: dict[ContentId, bytes]
+) -> None:
+    data = signed_drop(builder, block_of(paying(alice), payout_to(alice.node_id)).value())
+
+    found = BlockDrop.decoded(data, TransactionBlock, keys)
+
+    assert isinstance(found, BlockFinding)
+    assert "under 24" in found.statement
+
+
+def test_a_block_whose_builders_key_is_not_given_finds_nothing_and_names_every_key_wanted(
+    alice: NodeIdentity, bob: NodeIdentity, builder: NodeIdentity, block: TransactionBlock
+) -> None:
+    data = signed_drop(builder, block.value())
+
+    with raises(MissingContentError) as raised:
+        BlockDrop.decoded(data, TransactionBlock, keys_of(bob), bounds=NO_WORK)
+
+    assert raised.value.content_ids == (builder.node_id, alice.node_id)
+
+
+def test_a_block_whose_builders_key_is_not_given_is_not_found_false(
+    builder: NodeIdentity,
+) -> None:
+    with raises(MissingContentError) as raised:
+        BlockDrop.decoded(signed_drop(builder, "not JSON"), TransactionBlock, {})
+
+    assert raised.value.content_ids == (builder.node_id,)
+
+
+def test_a_block_whose_signers_key_is_not_given_is_read_again_once_it_is(
+    alice: NodeIdentity, bob: NodeIdentity, builder: NodeIdentity, block: TransactionBlock
+) -> None:
+    data = signed_drop(builder, block.value())
+
+    with raises(MissingContentError) as raised:
+        BlockDrop.decoded(data, TransactionBlock, keys_of(alice, builder), bounds=NO_WORK)
+
+    read = BlockDrop.decoded(data, TransactionBlock, keys_of(alice, bob, builder), bounds=NO_WORK)
+    assert raised.value.content_ids == (bob.node_id,)
+    assert isinstance(read, BlockDrop)
+    assert read.block == block
+
+
+def test_a_block_found_false_without_a_signers_key_is_found_false(
+    builder: NodeIdentity, block: TransactionBlock
+) -> None:
+    data = signed_drop(builder, block.value())
+
+    found = BlockDrop.decoded(data, TransactionBlock, keys_of(builder))
+
+    assert isinstance(found, BlockFinding)
+    assert found.builder == builder.node_id
+    assert "bits with the target of its work, under 24" in found.statement
+
+
+def test_a_block_naming_an_id_this_node_cannot_hash_is_neither_unsigned_nor_false(
+    builder: NodeIdentity, block: TransactionBlock, keys: dict[ContentId, bytes]
+) -> None:
+    value = {**block.value(), "previous": "md5/" + "a" * 32}
+
+    with raises(UnknownAlgorithmError):
+        BlockDrop.decoded(signed_drop(builder, value), TransactionBlock, keys)
+
+
+@mark.parametrize(
+    "compressed_bytes, full",
+    [(89, False), (90, False), (91, True), (99, True), (100, True), (101, False)],
+)
+def test_a_block_is_full_within_its_room_under_the_most_it_may_be(
+    compressed_bytes: int, full: bool
+) -> None:
+    bounds = BlockBounds(most_bytes=100, room_bytes=10)
+
+    assert bounds.is_full(compressed_bytes) is full
+
+
+@mark.parametrize(
+    "compressed_bytes, full",
+    [(917_503, False), (917_504, False), (917_505, True), (1_048_576, True), (1_048_577, False)],
+)
+def test_a_block_is_full_within_128_kib_under_1_mib(compressed_bytes: int, full: bool) -> None:
+    assert BLOCK_BOUNDS.is_full(compressed_bytes) is full
+
+
+@mark.parametrize(
+    "most_bytes, room_bytes, transaction_bits",
+    [(0, 0, 24), (100, -1, 24), (100, 101, 24), (100, 10, -1), (100, 10, 257)],
+)
+def test_bounds_no_block_could_meet_are_refused(
+    most_bytes: int, room_bytes: int, transaction_bits: int
+) -> None:
+    with raises(ValueError):
+        BlockBounds(most_bytes, room_bytes, transaction_bits)

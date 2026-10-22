@@ -115,7 +115,7 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
   built.
 - **Each of Steps 116 to 142 takes an issue of its own as it is taken
   up.** Each is planned under #87. Step 116 is #434, Step 117 is #435,
-  and none after it has one yet.
+  Step 118 is #436, Step 119 is #437, and none after it has one yet.
 - **The ledger's tests use small blocks.** Whether a block is full is
   measured against bounds the library takes, the specification's
   (KarmaLedger §5.4) unless a test gives others, so that a test fills a
@@ -705,7 +705,7 @@ My calls, not yet reviewed:
 
 ## Step 119 — Transaction Blocks and Validation Blocks
 
-**Kind:** infrastructure. **Issue:** none yet; planned under #87.
+**Kind:** infrastructure. **Issue:** #437, under #87.
 **Depends on:** Step 117.
 
 The two kinds of block, as drops, and what a block states falsely by
@@ -752,6 +752,87 @@ it, with small bounds; the half-free rule with the payout and without it.
 
 Estimate about 450: should it come to more than 500, the transaction block
 and the validation block are each a change set.
+
+Built in two change sets, 721 added lines of non-test Python in all, and
+850 of tests. That is over the estimate of about 450, and over 500. It was
+split between the blocks and the drops, not as planned, since the
+transaction block with what reads it as a drop came to about 590 lines
+alone.
+
+- **Set 1, the blocks** (455 lines, and 543 of tests): `Balance`,
+  `TransactionBlock`, and `ValidationBlock`, each read, written, and
+  refusing what it states falsely by itself.
+- **Set 2, blocks as drops** (266 lines, with 9 changed, and 307 of
+  tests): `BlockBounds`, `BlockFinding`, and `BlockDrop`, which checks
+  each signature and each transaction's work.
+
+What was built:
+
+- **`TransactionBlock`** (`karma/blocks.py`) holds its `generation`,
+  `previous`, `weight`, `reach`, `transactions`, each a
+  `SignedTransaction` or the `Payout`, and `balances`, each a `Balance` of
+  `kismet` and `last_won`. It refuses, naming the statement, transactions
+  out of order or repeated, two sharing a key, a payout missing, more than
+  one, in the root, or of another generation, a transaction moving 0
+  Kismet outside the root, and more balances than twice the identities its
+  transactions name. `signed` is its transactions but the payout, `payout`
+  the payout, `named()` the identities its transactions name, and
+  `is_half_free` the half-free rule.
+- **`ValidationBlock`** holds its `generation`, `runner_up`, `stakes`, and
+  `witnessed`, and refuses stakes or witnesses out of order or repeated,
+  and a witness that is no hash.
+- Each is read with `from_value`, passing over members it does not know,
+  written with `value()`, and signed as `text()`. `bundles()` is what each
+  holds that another signed.
+- **`BlockBounds`** holds `most_bytes`, `room_bytes`, and
+  `transaction_bits`, and `BLOCK_BOUNDS` are the specification's: 1 MiB,
+  128 KiB, and 24 bits. `is_full(compressed_bytes)` is §5.4.
+- **`BlockFinding`** is a `statement`, and the `builder` it distrusts,
+  which is `None` for a block that is unsigned or whose signature fails.
+- **`BlockDrop`**, generic in the kind of block, holds the builder's
+  `bundle` and the `block` it signs. `of(bundle, kind)` reads one, and
+  `content()` is what a builder hands to `DropTarget.placed`.
+  `decoded(data, kind, keys, bounds=…)` is the drop held, or its finding,
+  or raises `MissingContentError` naming every key it wants.
+
+My calls, not yet reviewed:
+
+- **The split falls between the blocks and the drops**, rather than
+  between the two kinds of block, as above.
+- **The reader names the kind of block**, from the target it read the
+  drop at, rather than the block being told by its members. A validation
+  block at a transaction target is then false, as not well-formed.
+- **A block is a type that refuses what it states falsely by itself**
+  (Coding Style §6.3), so that no block out of order exists however it was
+  built. What needs a key or a bound is checked by `BlockDrop.decoded`.
+- **The least work of a transaction is one of the bounds**,
+  `transaction_bits`, 24 unless a test gives fewer, since 24 bits takes
+  about 17 million tries a transaction.
+- **Every key wanted is named at once.** A block is read before its
+  builder's signature is checked, so that the builder's key and each
+  signer's are asked for together. A false statement found while a
+  signer's key is missing is a finding all the same, since the key cannot
+  make it true.
+- **`decoded` does not count the bits a block's drop matches**, as
+  planned. The reader holds the drop by its id, and `ChainWeight.of_drop`
+  and `matching_bits` count them from it, without hashing the drop again.
+- **A payout of another generation than its block's is false in the block
+  alone**, though §3.8 lists a wrong payout against the chain, since the
+  block itself shows it.
+- **What a node cannot check is neither finding.** A block, or what it
+  holds, signed or naming an id under an algorithm this node lacks raises
+  `UnsupportedBundleError` or `UnknownAlgorithmError`, so that its reader
+  warns once (Coding Style §9.3).
+- **A drop with no null byte, or no signed bundle before it, is
+  unsigned**, as is a signed bundle whose `hash` is not that of its
+  contents, since the `hash` lies outside the signature.
+
+A gap found, for a ruling before Step 121: §5.3 says a balance of 0 is
+stated only for a sender or a recipient, but §3.8 lists stating one for
+another identity neither as false nor as incorrect. A block stating 0 for
+an identity it does not name, which does hold 0, is not refused here. I
+recommend making it incorrect, as breaking the half-free rule is: it states
+nothing untrue, and only takes room.
 
 ---
 
