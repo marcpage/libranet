@@ -294,6 +294,14 @@ def test_what_signs_no_transaction_is_refused(
         SignedTransaction.of(sender.signed(contents))
 
 
+def test_a_transaction_naming_a_member_twice_is_refused(sender: NodeIdentity) -> None:
+    text = transaction_of(sender.node_id).text()
+    twice = f'{{"from":"{BOB}",{text[1:]}'
+
+    with raises(ValueError, match="names 'from' twice"):
+        SignedTransaction.of(sender.signed(twice))
+
+
 def test_what_is_no_signed_bundle_is_no_signed_transaction(alice: ContentId) -> None:
     with raises(MalformedBundleError):
         SignedTransaction.from_value(transaction_of(alice).value())

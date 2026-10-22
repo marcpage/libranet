@@ -295,7 +295,8 @@ since, each the user's own answer or my recommended option:
 - **A stake is `{transaction_block, kismet, created}`**, signed, its
   `created` a timestamp as a transaction's is, so that a staker can put up
   several stakes of one amount. A nonce for that was ruled first, and
-  replaced.
+  replaced. Step 117's review added `staker`, so that two stakers' stakes
+  differ.
 - **A runner-up validates a losing transaction block**, one of the same
   generation other than the winner's, so no stake is in both. A staker
   with stakes in both loses none of those in the runner-up. Matching the
@@ -536,9 +537,9 @@ Work this implies:
 - **A payout** (§5.2): `Payout`, with no `signer` and no `signature`, its
   `from` keyed by `"null"` for new Karma. One whose `to` does not total
   its `from` is refused.
-- **A stake** (`karma/stakes.py`): `Stake`, its `transaction_block`,
-  `kismet`, and `created` (§6.2), and `SignedStake`, known by its `hash`,
-  whose staker is its signer.
+- **A stake** (`karma/stakes.py`): `Stake`, its `staker`,
+  `transaction_block`, `kismet`, and `created` (§6.2), and `SignedStake`,
+  known by its `hash`, whose `staker` is its signer.
 - **The root's transaction** is told by its shape (§7.1), the only one
   that may move 0 Kismet.
 
@@ -553,7 +554,8 @@ payout that does not total refused; the root's shape.
 Built in two change sets, 733 added lines of non-test Python in all, and
 711 of tests. That is over §5's estimate of about 400, and over 500, so it
 is split where it reads in two. About 330 of the lines are code, and the
-rest docstrings, comments, and blank lines.
+rest docstrings, comments, and blank lines. The review's rulings, below,
+added 63 lines and took out 18, with 78 lines of tests.
 
 - **Set 1, transactions** (409 lines, and 424 of tests): a signed bundle
   read and written as a JSON object, the readers of a transaction's
@@ -583,14 +585,18 @@ What was built:
   and a moment, each refused naming its member, and exported from the
   package, as every public name is. An id under an algorithm this node
   lacks is refused as an `UnknownAlgorithmError`, so that whoever reads a
-  block can warn of it once (Coding Style §9.3).
+  block can warn of it once (Coding Style §9.3). `contents_value` reads
+  JSON, refusing an object in it that names a member twice, which it
+  finds with `json.loads`'s `object_pairs_hook`. Step 119 reads a block's
+  JSON with it too.
 - **`Payout`** holds its `sources`, with `None` for the new Karma, its
   `to`, its `generation`, and the `contents` it is written as, which `of`
   writes and `from_value` keeps as read. It refuses a `to` that does not
   total its `sources`, a generation under 1, and, read, a `signer` or a
   `signature`.
 - **`Stake` and `SignedStake`** (`karma/stakes.py`) are read, written,
-  and signed as a transaction is. A signed stake's `staker` is its signer.
+  and signed as a transaction is. A stake names its `staker`, and a
+  signed stake whose `staker` is not its signer is refused.
 
 My calls, not yet reviewed:
 
@@ -615,18 +621,20 @@ My calls, not yet reviewed:
   test can choose a hash. 24 bits takes about 17 million tries, which
   Step 118's mining reaches.
 
-Found while building, each for a ruling:
+Ruled in review (2026-10-22), each on a gap found while building:
 
-- **Two stakers' equal stakes share a hash.** A stake's contents name no
-  staker (KarmaLedger §6.2), so two stakers who stake one amount on one
-  block in the same second sign the same contents. A validation block
-  holding both repeats a hash, which §3.8 makes a false statement, though
-  its builder is honest. I recommend a stake name its staker, as a
-  transaction names its `from`, checked against its signer.
-- **A member named twice in one object**, such as two `from`s, is read as
-  the last by Python's JSON reader, and as the first by some others, so
-  two nodes could read one transaction two ways. I recommend that
-  KarmaLedger §4.1 have a reader refuse contents naming a member twice.
+- **A stake names its staker**, as `staker`, though its signer names them
+  too. Without it, two stakers who stake one amount on one block in the
+  same second sign the same contents. A validation block holding both
+  would repeat a hash, which §3.8 makes a false statement, though its
+  builder is honest. A stake whose `staker` is not its signer is invalid,
+  and false in a block that holds it (KarmaLedger §3.8, §6.2, §6.5).
+- **JSON naming a member twice in one object is refused**, such as a
+  transaction with two `from`s. Python's JSON reader keeps the last, and
+  some others the first, so two nodes could read one transaction two
+  ways. KarmaLedger §2 says so of a block's JSON and of the contents of a
+  transaction, a payout, and a stake, and §3.8 makes it a false
+  statement.
 
 ---
 
@@ -686,13 +694,14 @@ Work this implies:
 - **What a block states falsely by itself** (§3.8): `BlockFinding`. A
   block is **unsigned** when it has no signature or one that fails, which
   a node shuns, distrusting no one. It is **false**, naming the statement,
-  which distrusts its builder, when a member is missing or of the wrong
-  type, or an amount is not one; when its transactions, stakes, or
-  witnesses are out of order or repeated, or two of its transactions share
-  a key; when it states more balances than §5.3 allows; when a transaction
-  or stake in it has a signature that fails, or a transaction's `from` is
-  not its signer, it has fewer than 24 bits, or it moves 0 Kismet outside
-  the root; and when its payout is signed, missing, or more than one. Each
+  which distrusts its builder, when a member is missing, of the wrong
+  type, or named twice in one object, or an amount is not one; when its
+  transactions, stakes, or witnesses are out of order or repeated, or two
+  of its transactions share a key; when it states more balances than §5.3
+  allows; when a transaction or stake in it has a signature that fails, a
+  transaction's `from` or a stake's `staker` is not its signer, a
+  transaction has fewer than 24 bits, or one moves 0 Kismet outside the
+  root; and when its payout is signed, missing, or more than one. Each
   signature is checked with the keys the caller gives, and one not given
   is neither finding: the caller fetches the key, and reads the block
   again.

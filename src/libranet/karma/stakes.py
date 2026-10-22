@@ -3,13 +3,15 @@
 A stake is a signed bundle (BundleSpecification §5), signed by its staker,
 whose ``contents`` is the JSON object::
 
-    {"transaction_block": "sha256/…", "kismet": "1000000000000000",
-     "created": "2026-10-21T14:03:22Z"}
+    {"staker": "sha256/0a1b…", "transaction_block": "sha256/…",
+     "kismet": "1000000000000000", "created": "2026-10-21T14:03:22Z"}
 
 It stakes ``kismet`` on the transaction block it names, so it cannot be made
 before that block exists. ``created`` lets one staker put up several stakes
-of one amount, and two of one amount made in the same second are one stake.
-A stake is known by its ``hash``, as a transaction is (§4.2).
+of one amount, and two that one staker makes of one amount in the same
+second are one stake. A stake is known by its ``hash``, as a transaction is
+(§4.2). It names its ``staker``, though its signer names them too, so that
+two stakers' stakes of one amount, made in one second, have two hashes.
 
 Nothing here reads the chain: whether a staker's stakes are covered (§6.3)
 is for whoever checks the validation block that holds them.
@@ -33,18 +35,22 @@ from libranet.karma.members import (
 )
 
 # The members of a stake besides when it was made (§6.2).
+_STAKER: Final = "staker"
 _TRANSACTION_BLOCK: Final = "transaction_block"
 _KISMET: Final = "kismet"
 
 
 @dataclass(frozen=True)
 class Stake:
-    """``kismet`` staked on the transaction block ``transaction_block``, at ``created`` (§6.2).
+    """``staker`` staking ``kismet`` on the transaction block ``transaction_block`` (§6.2).
+
+    They staked it at ``created``.
 
     Raises:
         ValueError: ``created`` is not a UTC time to the second.
     """
 
+    staker: ContentId
     transaction_block: ContentId
     kismet: Kismet
     created: datetime
@@ -59,8 +65,8 @@ class Stake:
         Members it does not know are passed over.
 
         Raises:
-            UnknownAlgorithmError: it names a transaction block under a hash
-                algorithm this node lacks.
+            UnknownAlgorithmError: it names its staker or its transaction
+                block under a hash algorithm this node lacks.
             ValueError: ``value``, called ``named``, is not an object, or a
                 member of it is missing or is not what it must be, as the
                 error names.
@@ -69,6 +75,7 @@ class Stake:
             raise ValueError(f"{named} must be a JSON object, got {type(value).__name__}")
 
         return cls(
+            id_member(value.get(_STAKER), named=f'"{_STAKER}"'),
             id_member(value.get(_TRANSACTION_BLOCK), named=f'"{_TRANSACTION_BLOCK}"'),
             Kismet.from_value(value.get(_KISMET), named=f'"{_KISMET}"'),
             moment_member(value.get(CREATED_MEMBER), named=f'"{CREATED_MEMBER}"'),
@@ -77,6 +84,7 @@ class Stake:
     def value(self) -> dict[str, Any]:
         """This stake as JSON (§6.2)."""
         return {
+            _STAKER: str(self.staker),
             _TRANSACTION_BLOCK: str(self.transaction_block),
             _KISMET: self.kismet.value(),
             CREATED_MEMBER: self.created.strftime(MOMENT_FORMAT),
@@ -94,19 +102,30 @@ class SignedStake:
     :meth:`of` and :meth:`from_value` build one, reading ``stake`` from what
     ``bundle`` signs. Its signature is checked only by :meth:`verified`,
     given its staker's key.
+
+    Raises:
+        ValueError: ``stake``'s staker is not ``bundle``'s signer.
     """
 
     bundle: SignedBundle
     stake: Stake
+
+    def __post_init__(self) -> None:
+        if self.stake.staker != self.bundle.signer:
+            raise ValueError(
+                f'A stake\'s "{_STAKER}" must be its signer, {self.bundle.signer}, '
+                f"got {self.stake.staker}"
+            )
 
     @classmethod
     def of(cls, bundle: SignedBundle) -> SignedStake:
         """The stake ``bundle`` signs.
 
         Raises:
-            UnknownAlgorithmError: it names a transaction block under a hash
-                algorithm this node lacks.
-            ValueError: what it signs is no stake (:meth:`Stake.from_value`).
+            UnknownAlgorithmError: it names its staker or its transaction
+                block under a hash algorithm this node lacks.
+            ValueError: what it signs is no stake (:meth:`Stake.from_value`),
+                or its staker is not its signer.
         """
         return cls(bundle, Stake.from_value(contents_value(bundle.contents, named="A stake")))
 
@@ -122,9 +141,10 @@ class SignedStake:
                 node lacks.
             BundleSignatureError: its ``hash`` is not the hash of its
                 ``contents``.
-            UnknownAlgorithmError: what it signs names a transaction block
-                under a hash algorithm this node lacks.
-            ValueError: what it signs is no stake.
+            UnknownAlgorithmError: what it signs names its staker or its
+                transaction block under a hash algorithm this node lacks.
+            ValueError: what it signs is no stake, or its staker is not its
+                signer.
         """
         return cls.of(SignedBundle.from_value(value))
 
@@ -139,7 +159,7 @@ class SignedStake:
 
     @property
     def staker(self) -> ContentId:
-        """Who staked it: its signer (§6.2)."""
+        """Who staked it: its signer, whom it names (§6.2)."""
         return self.bundle.signer
 
     def verified(self, public_key: bytes) -> None:

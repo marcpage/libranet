@@ -6,6 +6,11 @@ and the moment they were made. A member that is not what it must be is
 refused, named, so that whoever reads a block can say which of its
 statements is false (§3.8). A member a reader does not know is passed over,
 so that a later version of the ledger can add one (§4.1).
+
+No object in that JSON names a member twice (§2). JSON readers differ on
+which of the two they keep, so a node that read one would read it otherwise
+than another, and :func:`contents_value` refuses it. A block's JSON is read
+the same way, its transactions and stakes with it.
 """
 
 from __future__ import annotations
@@ -32,13 +37,33 @@ def contents_value(contents: str, *, named: str) -> object:
     """The JSON value ``contents``, what is called ``named`` states, holds.
 
     Raises:
-        ValueError: ``contents`` is not JSON.
+        ValueError: ``contents`` is not JSON, or an object in it names a
+            member twice.
     """
     try:
-        return loads(contents)
+        return loads(contents, object_pairs_hook=_once_each)
 
-    except (ValueError, RecursionError):
-        raise ValueError(f"{named} must be JSON") from None
+    except (ValueError, RecursionError) as error:
+        raise ValueError(
+            f"{named} must be JSON, no object in it naming a member twice: {error}"
+        ) from None
+
+
+def _once_each(members: list[tuple[str, object]]) -> dict[str, object]:
+    """The JSON object whose ``members`` are these, in order, each named once.
+
+    Raises:
+        ValueError: it names a member twice.
+    """
+    value: dict[str, object] = {}
+
+    for name, member in members:
+        if name in value:
+            raise ValueError(f"An object names {name!r} twice")
+
+        value[name] = member
+
+    return value
 
 
 def id_member(value: object, *, named: str) -> ContentId:

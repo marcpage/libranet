@@ -44,7 +44,10 @@ This version specifies the root (§7), transactions (§4), transaction blocks
   builder, a transaction by its sender, and a stake by its staker. Each may
   be any identity a signed bundle accepts, a person's or a node's
   ([HTTP API §11.2](HttpApi.md#112-keys-and-signature-parameters),
-  [§11.3](HttpApi.md#113-a-persons-identity)).
+  [§11.3](HttpApi.md#113-a-persons-identity)). No object in a block's JSON,
+  or in the `contents` of a transaction, a payout, or a stake, names a
+  member twice. JSON readers differ on which of the two they keep, so a
+  reader refuses JSON that does, and every node reads it alike.
 - **Every block is a drop**
   ([HTTP API §9](HttpApi.md#9-drops)): its signed bundle's JSON, a null
   byte, and a nonce, placed at a target string. The nonce lies outside the
@@ -231,13 +234,15 @@ trust list ([Trust Network Specification §3](TrustNetwork.md#3-trust-lists),
 itself, and the chain its `previous` names, prove wrong:
 
 - **In the block alone:** it is not well-formed (§5.1, §6.1), with a field
-  missing, a field of the wrong type, or an amount that is not a decimal
-  string; its transactions, stakes, or witnesses are out of order or
-  repeated, or two of its transactions share a key (§4.2); its `balances`
-  has more entries than §5.3 allows; it holds a transaction or a stake
-  whose signature fails, a transaction whose `from` is not its signer,
-  whose proof of work is under the minimum, or that moves 0 Kismet outside
-  the root; or its payout is signed, missing, or more than one.
+  missing, a field of the wrong type, a member named twice in one object
+  (§2), or an amount that is not a decimal string; its transactions,
+  stakes, or witnesses are out of order or repeated, or two of its
+  transactions share a key (§4.2); its `balances` has more entries than
+  §5.3 allows; it holds a transaction or a stake whose signature fails, a
+  transaction whose `from` is not its signer, whose proof of work is under
+  the minimum, or that moves 0 Kismet outside the root, or a stake whose
+  `staker` is not its signer; or its payout is signed, missing, or more
+  than one.
 - **Against its target:** its `generation` is not one more than that of the
   validation block its target is named for; its `previous` does not name
   that validation block; a validation block has no stake, its stakes name
@@ -334,7 +339,8 @@ not fit a 64-bit integer, and a JavaScript number holds no whole number
 above 2^53 exactly.
 
 A reader ignores any other member of the object, so that a later version of
-this document can add one.
+this document can add one, and refuses an object naming a member twice
+(§2).
 
 ### 4.2 A Transaction's Identity
 
@@ -680,23 +686,28 @@ share that room. A validation block is never shunned (§3.7).
 A stake is a signed bundle whose `contents` is the JSON object
 
 ```json
-{"transaction_block": "sha256/…",
+{"staker": "sha256/0a1b…",
+ "transaction_block": "sha256/…",
  "kismet": "1000000000000000",
  "created": "2026-10-21T14:03:22Z"}
 ```
 
+- **`staker`** is the staker's id. A stake whose `staker` is not its
+  `signer` is invalid. The signer names the staker too, but contents that
+  did not would be the same for two stakers who stake one amount on one
+  block in one second, and the two stakes would share a hash.
 - **`transaction_block`** is the id of the transaction block staked on.
   Every stake in a validation block names the same one, the block it
   validates (§6.1).
 - **`kismet`** is the amount staked.
 - **`created`** is when the staker made the stake, an RFC 3339 moment in
   UTC, to the second, as a transaction's is (§4.1). So one staker can put
-  up several stakes of one amount (Karma §29). Two of one amount made in
-  the same second are one stake.
+  up several stakes of one amount (Karma §29). Two that one staker makes
+  of one amount in the same second are one stake.
 
-The staker is the stake's signer. A stake signs a transaction block's id,
-so it cannot be made before that block exists (Karma §20). A stake is known
-by its `hash`, as a transaction is (§4.2).
+The staker is the stake's signer, whom its `staker` names. A stake signs a
+transaction block's id, so it cannot be made before that block exists (Karma
+§20). A stake is known by its `hash`, as a transaction is (§4.2).
 
 ### 6.3 Covering Stakes
 
@@ -747,7 +758,8 @@ A validation block is correct when:
 - its `runner_up` is another validation block at the same target, whose
   stakes name a transaction block other than its own, and whose stakes it
   would take are covered (§6.3), or is `null`;
-- each stake is signed, and each staker's stakes are covered (§6.3);
+- each stake is signed by the staker it names, and each staker's stakes
+  are covered (§6.3);
 - its stakes and its witnesses are sorted, each only once, and no witness
   is listed by an earlier winning validation block of its chain (§6.4);
   and
