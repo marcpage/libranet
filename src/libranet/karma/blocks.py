@@ -1,4 +1,4 @@
-"""Transaction blocks and validation blocks (KarmaLedger §5, §6).
+"""Transaction blocks and validation blocks, each a drop (KarmaLedger §2, §5, §6).
 
 Each generation has a transaction block, which records transfers of Kismet
 and the balances they leave, and validation blocks, each a collection of
@@ -12,11 +12,16 @@ its builder, whose ``contents`` is JSON (§5.1, §6.1)::
     {"generation": 42, "runner_up": "sha256/…", "stakes": […],
      "witnessed": ["…"]}
 
-A block's builder answers for everything it states (§5.1). One that states
-something false by itself, such as transactions out of order, is refused,
-naming the statement, so that whoever reads it can distrust its builder
-(§3.8). What it states falsely against its target and its chain is for
-whoever checks it there. A block a builder could honestly make, such as one
+It is made a drop: the signed bundle's JSON, a null byte, and a nonce, which
+lies outside the signature, so a builder signs once and then searches for a
+nonce (§2).
+
+A block that is not signed, or whose signature fails, can be attributed to
+no one, and is shunned, distrusting no one. One its builder signed that
+states something false distrusts its builder (§3.8). What a block states
+falsely by itself is found here, before anything of the chain is read: what
+it states falsely against its target and its chain is for whoever checks it
+there. A block a builder could honestly make, such as one not full or one
 breaking the half-free rule, states nothing false, and only scores zero
 (§5.5).
 """
@@ -25,17 +30,33 @@ from __future__ import annotations
 from dataclasses import dataclass
 from itertools import pairwise
 from re import compile as compile_pattern
-from typing import Any, Final, Mapping, Sequence
+from typing import Any, Final, Generic, Mapping, Sequence, TypeVar
 
+from libranet.bundle.errors import (
+    BundleSignatureError,
+    MalformedBundleError,
+    MissingContentError,
+)
 from libranet.bundle.signing import SignedBundle
 from libranet.cas.content_id import ContentId
+from libranet.cas.drops import DROP_SEPARATOR
+from libranet.cas.errors import UnknownAlgorithmError
+from libranet.config.models import KIB, MIB, TARGET_BITS
 from libranet.json_fields import integer_field, is_integer
 from libranet.json_format import compact_json
 from libranet.karma.amounts import Kismet
+from libranet.karma.generations import MIN_TRANSACTION_BITS
 from libranet.karma.members import contents_value, id_member
 from libranet.karma.stakes import SignedStake
 from libranet.karma.transactions import Payout, SignedTransaction, Transaction, TransactionKey
 from libranet.karma.weight import ChainWeight
+
+#: The most a block's drop may be, compressed: 1 MiB (§5.4).
+MAX_BLOCK_BYTES: Final = 1 * MIB
+
+#: How far under :data:`MAX_BLOCK_BYTES` a block's drop, compressed, may be
+#: and still be full: 128 KiB, room for what its builder cannot control (§5.4).
+FULL_BLOCK_ROOM_BYTES: Final = 128 * KIB
 
 # The members of a block (§5.1, §6.1), and of a balance (§5.3).
 _GENERATION: Final = "generation"
@@ -377,6 +398,226 @@ class ValidationBlock:
     def bundles(self) -> tuple[SignedBundle, ...]:
         """The signed bundles it holds: each stake, as its staker signed it."""
         return tuple(stake.bundle for stake in self.stakes)
+
+
+@dataclass(frozen=True)
+class BlockBounds:
+    """What a block is measured against: how large it may be, and how much work it holds.
+
+    A block's drop, compressed, is full when it is no larger than
+    ``most_bytes`` and larger than ``most_bytes`` less ``room_bytes`` (§5.4),
+    and each transaction in a block shares at least ``transaction_bits``
+    with the target of its work (§4.3). :data:`BLOCK_BOUNDS` are the
+    specification's: tests give smaller, so that a few transactions fill a
+    block, and each is mined in moments.
+
+    Raises:
+        ValueError: ``most_bytes`` is under 1, ``room_bytes`` is negative or
+            more than ``most_bytes``, or ``transaction_bits`` is negative or
+            more than a hash has.
+    """
+
+    most_bytes: int = MAX_BLOCK_BYTES
+    room_bytes: int = FULL_BLOCK_ROOM_BYTES
+    transaction_bits: int = MIN_TRANSACTION_BITS
+
+    def __post_init__(self) -> None:
+        if self.most_bytes < 1 or not 0 <= self.room_bytes <= self.most_bytes:
+            raise ValueError(
+                f"A block's bounds must be at least 1 byte, with room from 0 to it, got "
+                f"{self.most_bytes} and {self.room_bytes}"
+            )
+
+        if not 0 <= self.transaction_bits <= TARGET_BITS:
+            raise ValueError(
+                f"transaction_bits must be from 0 to {TARGET_BITS}, got {self.transaction_bits}"
+            )
+
+    def is_full(self, compressed_bytes: int) -> bool:
+        """Whether a block whose drop the node holds compressed in ``compressed_bytes`` is full.
+
+        A node measures the copy it holds, since copies compressed otherwise
+        measure otherwise, and only a full block is validated (§5.4).
+        """
+        return self.most_bytes - self.room_bytes < compressed_bytes <= self.most_bytes
+
+
+#: The bounds the specification sets: full within 128 KiB under 1 MiB, and
+#: 24 bits of work to each transaction (§4.3, §5.4).
+BLOCK_BOUNDS: Final = BlockBounds()
+
+
+@dataclass(frozen=True)
+class BlockFinding:
+    """Why a block is not taken, by itself: it is unsigned, or it states ``statement`` falsely.
+
+    ``builder`` is whoever signed a block found false, whom a node then
+    distrusts. It is ``None`` for a block that is unsigned, or whose
+    signature fails, which can be attributed to no one: a node shuns it, and
+    distrusts no one for it (§3.8).
+    """
+
+    statement: str
+    builder: ContentId | None = None
+
+
+_Block = TypeVar("_Block", TransactionBlock, ValidationBlock)
+
+
+@dataclass(frozen=True)
+class BlockDrop(Generic[_Block]):
+    """``block``, as its builder signed it in ``bundle``: a drop's content, before its nonce (§2).
+
+    :meth:`of` and :meth:`decoded` build one, reading ``block`` from what
+    ``bundle`` signs. A builder signs the block's text once, and hands
+    :meth:`content` to :meth:`~libranet.cas.drops.DropTarget.placed`, which
+    searches for a nonce.
+    """
+
+    bundle: SignedBundle
+    block: _Block
+
+    @classmethod
+    def of(cls, bundle: SignedBundle, kind: type[_Block]) -> BlockDrop[_Block]:
+        """The block of ``kind`` that ``bundle`` signs, its signatures not yet checked.
+
+        Raises:
+            UnsupportedBundleError: what it holds is signed in a way this node
+                cannot check.
+            UnknownAlgorithmError: it names an id under a hash algorithm this
+                node lacks.
+            BundleSignatureError: the ``hash`` of what it holds is not the
+                hash of its ``contents``.
+            ValueError: what it signs is no block of ``kind``, as the error
+                names.
+        """
+        return cls(bundle, kind.from_value(contents_value(bundle.contents, named="A block")))
+
+    @classmethod
+    def decoded(
+        cls,
+        data: bytes,
+        kind: type[_Block],
+        keys: Mapping[ContentId, bytes],
+        *,
+        bounds: BlockBounds = BLOCK_BOUNDS,
+    ) -> BlockDrop[_Block] | BlockFinding:
+        """The block of ``kind`` the drop ``data`` holds, or what it states falsely by itself.
+
+        Each signature in it is checked with the key ``keys`` gives its
+        signer, and each transaction's work against ``bounds``. A signature
+        whose key is not given is neither unsigned nor false: the caller
+        fetches the key, and reads the block again.
+
+        Returns:
+            The block its builder signed, if nothing in it is found false; or
+            a :class:`BlockFinding`, naming no builder if it is unsigned or
+            its signature fails, and its builder if it is signed and states
+            something false.
+
+        Raises:
+            MissingContentError: names the keys, of its builder and of each
+                signer in it, that ``keys`` lacks, when nothing is found false
+                without them.
+            UnsupportedBundleError: it, or what it holds, is signed in a way
+                this node cannot check.
+            UnknownAlgorithmError: it names an id under a hash algorithm this
+                node lacks.
+        """
+        content, separator, _ = data.rpartition(DROP_SEPARATOR)
+
+        if not separator:
+            return BlockFinding("A block's drop must hold a null byte before its nonce")
+
+        try:
+            bundle = SignedBundle.decoded(content)
+
+        except (MalformedBundleError, BundleSignatureError) as error:
+            # Not logged: it is the finding, for the caller to log.
+            return BlockFinding(f"A block's drop must be a signed bundle: {error}")
+
+        signers = [bundle.signer]
+        drop: BlockDrop[_Block] | None = None
+        statement = ""
+
+        # Read before its builder's signature is checked, so that every key
+        # it needs is asked for at once.
+        try:
+            drop = cls.of(bundle, kind)
+            signers.extend(signed.signer for signed in drop.block.bundles())
+
+        except UnknownAlgorithmError:
+            raise
+
+        except (ValueError, BundleSignatureError) as error:
+            # Not logged: it is the finding, once the builder's signature checks.
+            statement = str(error)
+
+        wanted = tuple(dict.fromkeys(signer for signer in signers if signer not in keys))
+
+        if bundle.signer in wanted:
+            raise MissingContentError(wanted)
+
+        try:
+            bundle.verified(keys[bundle.signer])
+
+        except BundleSignatureError as error:
+            # Not logged: it is the finding, for the caller to log.
+            return BlockFinding(f"A block's signature must check: {error}")
+
+        if drop is None:
+            return BlockFinding(statement, bundle.signer)
+
+        statement = cls._false_statement(drop.block, keys, bounds)
+
+        if statement:
+            return BlockFinding(statement, bundle.signer)
+
+        if wanted:
+            raise MissingContentError(wanted)
+
+        return drop
+
+    def content(self) -> bytes:
+        """The drop's content: the signed bundle's JSON, which a null byte and a nonce follow."""
+        return self.bundle.encoded()
+
+    @property
+    def builder(self) -> ContentId:
+        """Who built the block: its signer, who answers for everything it states (§5.1)."""
+        return self.bundle.signer
+
+    @staticmethod
+    def _false_statement(
+        block: TransactionBlock | ValidationBlock,
+        keys: Mapping[ContentId, bytes],
+        bounds: BlockBounds,
+    ) -> str:
+        """What ``block`` states falsely in what it holds, or ``""``, as far as ``keys`` check it.
+
+        A transaction under ``bounds``' work is false (§4.3), and so is a
+        transaction or a stake whose signature fails, under the key ``keys``
+        gives its signer. One whose key is not given is passed over.
+        """
+        # Only a transaction block holds work to count.
+        if isinstance(block, TransactionBlock):
+            for signed in block.signed:
+                if signed.work_bits < bounds.transaction_bits:
+                    return (
+                        f"Transaction {signed.hash} shares {signed.work_bits} bits with the "
+                        f"target of its work, under {bounds.transaction_bits}"
+                    )
+
+        for bundle in block.bundles():
+            if bundle.signer in keys:
+                try:
+                    bundle.verified(keys[bundle.signer])
+
+                except BundleSignatureError as error:
+                    # Not logged: it is the finding, for the caller to log.
+                    return f"What {bundle.signer} signed in a block must check: {error}"
+
+        return ""
 
 
 def _optional_id(value: Mapping[str, object], name: str) -> ContentId | None:
