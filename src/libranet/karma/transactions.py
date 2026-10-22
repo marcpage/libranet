@@ -1,4 +1,4 @@
-"""Transactions: what a transaction block records (KarmaLedger §4).
+"""Transactions and payouts: what a transaction block records (KarmaLedger §4, §5.2).
 
 A transaction is a signed bundle (BundleSpecification §5), signed by its
 sender, whose ``contents`` is the JSON object::
@@ -14,16 +14,29 @@ one hashes what comes before it once (Phase 6 Step 118), and the number of
 leading bits its ``hash`` shares with the SHA-256 of ``transaction`` is its
 proof of work (§4.3).
 
-Nothing here reads the chain: whether a transaction is valid in a block is
-for whoever checks the block.
+The payout of each transaction block after the root moves the reward of the
+generation before (§5.2). No one signs it: it is written as a signed
+transaction is, with ``algorithm``, ``hash``, and ``contents``, but no
+``signer`` and no ``signature``, and its ``from`` names the new Karma, which
+comes from no one, as ``"null"``.
+
+Nothing here reads the chain: whether a transaction is valid in a block, and
+whether a payout is right, are for whoever checks the block.
 """
 
 from __future__ import annotations
-from dataclasses import KW_ONLY, dataclass
+from dataclasses import KW_ONLY, dataclass, field
 from datetime import datetime
+from hashlib import sha256
 from typing import Any, Final, Mapping
 
-from libranet.bundle.signing import SignedBundle
+from libranet.bundle.errors import (
+    BundleSignatureError,
+    MalformedBundleError,
+    UnsupportedBundleError,
+)
+from libranet.bundle.shapes import is_utf8
+from libranet.bundle.signing import SIGNED_HASH_ALGORITHM, SignedBundle
 from libranet.cas.content_id import ContentId
 from libranet.cas.prefix import matching_bits
 from libranet.json_fields import integer_field, string_field
@@ -39,12 +52,22 @@ from libranet.karma.members import (
     moment_member,
 )
 
-# The members of a transaction (§4.1).
+# The members of a transaction (§4.1), and of a payout, which has the first
+# three (§5.2).
 _FROM: Final = "from"
 _TO: Final = "to"
 _GENERATION: Final = "generation"
 _FEE: Final = "fee_kismet"
 _NONCE: Final = "nonce"
+
+# The name a payout's "from" gives the new Karma, which comes from no one
+# (§5.2).
+_NEW_KARMA: Final = "null"
+
+# The members of a payout as a block holds it, each a string, and those a
+# signed transaction has that a payout does not (§5.2).
+_PAYOUT_MEMBERS: Final = ("algorithm", "contents", "hash")
+_SIGNED_ONLY: Final = ("signer", "signature")
 
 
 @dataclass(frozen=True)
@@ -244,3 +267,139 @@ class SignedTransaction:
                 not verify the signature (:meth:`SignedBundle.verified`).
         """
         self.bundle.verified(public_key)
+
+
+@dataclass(frozen=True)
+class Payout:
+    """A transaction block's payout: the pot of the generation before, from ``sources`` to ``to``.
+
+    ``sources`` maps each identity the pot comes from to all it gives, and
+    ``None`` to the new Karma, which comes from no one. ``to`` maps each
+    staker paid to their share. It is in transaction block ``generation``
+    (§5.2). No one signs it: ``contents`` is the JSON text it is written
+    as, known by its :attr:`hash`, which :meth:`of` writes and
+    :meth:`from_value` reads.
+
+    Raises:
+        ValueError: ``generation`` is under 1, since the root holds no
+            payout (§7.2), or ``to`` does not total ``sources``.
+    """
+
+    sources: Mapping[ContentId | None, Kismet]
+    to: Mapping[ContentId, Kismet]
+    generation: int
+    contents: str = field(repr=False)
+
+    def __post_init__(self) -> None:
+        if self.generation < 1:
+            raise ValueError(
+                f'A payout\'s "{_GENERATION}" must be at least 1, since the root has none, '
+                f"got {self.generation}"
+            )
+
+        given = sum(self.sources.values(), Kismet(0))
+        paid = sum(self.to.values(), Kismet(0))
+
+        if paid != given:
+            raise ValueError(
+                f'A payout\'s "{_TO}" must total its "{_FROM}", {given.value()} Kismet, '
+                f"got {paid.value()}"
+            )
+
+    @classmethod
+    def of(
+        cls,
+        sources: Mapping[ContentId | None, Kismet],
+        to: Mapping[ContentId, Kismet],
+        generation: int,
+    ) -> Payout:
+        """The payout of transaction block ``generation``, from ``sources`` to ``to``.
+
+        Its contents are written as compact JSON text, each map sorted.
+
+        Raises:
+            ValueError: it is no payout, as :class:`Payout` says.
+        """
+        given = {
+            _NEW_KARMA if source is None else str(source): amount.value()
+            for source, amount in sources.items()
+        }
+        contents = {
+            _FROM: dict(sorted(given.items())),
+            _TO: {str(identity): amount.value() for identity, amount in sorted(to.items())},
+            _GENERATION: generation,
+        }
+        return cls(sources, to, generation, compact_json(contents).decode("utf-8"))
+
+    @classmethod
+    def from_value(cls, value: object) -> Payout:
+        """The payout ``value``, an object of a block's ``transactions``, is (§5.2).
+
+        Members of its contents it does not know are passed over.
+
+        Raises:
+            MalformedBundleError: ``value`` is not an object whose
+                ``algorithm``, ``contents``, and ``hash`` are strings, or it
+                has a ``signer`` or a ``signature``.
+            UnsupportedBundleError: it is hashed with an algorithm other than
+                SHA-256.
+            BundleSignatureError: its ``hash`` is not the hash of its
+                ``contents``.
+            UnknownAlgorithmError: its contents name an id under a hash
+                algorithm this node lacks.
+            ValueError: its contents are no payout, as the error names.
+        """
+        if not isinstance(value, dict) or any(name in value for name in _SIGNED_ONLY):
+            raise MalformedBundleError('A payout is an object with no "signer" and no "signature"')
+
+        algorithm, contents, stated = (
+            string_field(value, name, error=MalformedBundleError) for name in _PAYOUT_MEMBERS
+        )
+
+        if algorithm != SIGNED_HASH_ALGORITHM:
+            raise UnsupportedBundleError(
+                f"A payout hashed with {algorithm!r} cannot be checked here"
+            )
+
+        if not is_utf8(contents):
+            raise MalformedBundleError("A payout's contents must be UTF-8")
+
+        if stated != _hash(contents):
+            raise BundleSignatureError("The hash of a payout's contents is not its hash")
+
+        terms = contents_value(contents, named="A payout")
+
+        if not isinstance(terms, dict) or not isinstance(terms.get(_FROM), dict):
+            raise ValueError(f'A payout must be a JSON object with a "{_FROM}" object')
+
+        given = terms[_FROM]
+        sources: dict[ContentId | None, Kismet] = dict(
+            amounts_member(
+                {name: amount for name, amount in given.items() if name != _NEW_KARMA},
+                named=f'"{_FROM}"',
+            ).items()
+        )
+
+        if _NEW_KARMA in given:
+            sources[None] = Kismet.from_value(given[_NEW_KARMA], named=f'"{_FROM}" for null')
+
+        return cls(
+            sources,
+            amounts_member(terms.get(_TO), named=f'"{_TO}"'),
+            integer_field(terms, _GENERATION),
+            contents,
+        )
+
+    def value(self) -> dict[str, str]:
+        """This payout as a block's ``transactions`` holds it, unsigned (§5.2)."""
+        return {"algorithm": SIGNED_HASH_ALGORITHM, "contents": self.contents, "hash": self.hash}
+
+    @property
+    def hash(self) -> str:
+        """What it is known by, as a transaction is: the SHA-256 of its contents, in hex."""
+        return _hash(self.contents)
+
+
+def _hash(contents: str) -> str:
+    """The SHA-256 of ``contents``' UTF-8 bytes, in lower-case hex, as a signed bundle hashes."""
+    return sha256(contents.encode("utf-8")).hexdigest()

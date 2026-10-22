@@ -30,6 +30,29 @@ def test_contents_that_are_not_json_are_refused_naming_what_holds_them(contents:
         contents_value(contents, named="A stake")
 
 
+@mark.parametrize(
+    "contents, named_twice",
+    [
+        ('{"kismet":"5","kismet":"6"}', "kismet"),
+        ('{"kismet":"5","created":"x","kismet":"5"}', "kismet"),
+        ('{"to":{"sha256/0a":"1","sha256/0a":"2"}}', "sha256/0a"),
+        ('[{"a":1,"a":1}]', "a"),
+    ],
+)
+def test_contents_naming_a_member_twice_are_refused(contents: str, named_twice: str) -> None:
+    with raises(ValueError, match=f"A stake must be JSON.*names '{named_twice}' twice"):
+        contents_value(contents, named="A stake")
+
+
+def test_one_name_in_two_objects_is_not_named_twice() -> None:
+    contents = '{"a":{"kismet":"1"},"b":{"kismet":"2"}}'
+
+    assert contents_value(contents, named="A block") == {
+        "a": {"kismet": "1"},
+        "b": {"kismet": "2"},
+    }
+
+
 def test_an_id_is_read_as_it_is_written() -> None:
     assert id_member(ALICE, named='"from"') == ContentId.parse(ALICE)
 

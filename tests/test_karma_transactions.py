@@ -1,4 +1,4 @@
-"""Tests for transactions (KarmaLedger §4)."""
+"""Tests for transactions and payouts (KarmaLedger §4, §5.2)."""
 
 from __future__ import annotations
 from dataclasses import replace
@@ -10,18 +10,29 @@ from typing import Any
 
 from pytest import fixture, mark, raises
 
-from libranet.bundle.errors import BundleSignatureError, MalformedBundleError
+from libranet.bundle.errors import (
+    BundleSignatureError,
+    MalformedBundleError,
+    UnsupportedBundleError,
+)
 from libranet.cas.content_id import ContentId
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.people import PersonKey
 from libranet.karma.amounts import MAX_KISMET, Kismet
 from libranet.karma.generations import TRANSACTION_WORK_TARGET
-from libranet.karma.transactions import SignedTransaction, Transaction, TransactionKey
+from libranet.karma.transactions import Payout, SignedTransaction, Transaction, TransactionKey
 from tests.helpers import new_identity
 
 CREATED = datetime(2026, 10, 21, 14, 3, 22, tzinfo=UTC)
 BOB = ContentId("sha256", "9f" * 32)
 CAROL = ContentId("sha256", "7c" * 32)
+
+# Generation 41's pot: its new Karma, and a fee Carol paid in it, shared
+# between Alice and Bob.
+NEW_KARMA = Kismet(1_999_999_999_991_800)
+FEE = Kismet(75)
+ALICES_SHARE = Kismet(1_399_999_999_994_250)
+BOBS_SHARE = Kismet(599_999_999_997_625)
 
 
 def transaction_of(sender: ContentId, **changes: Any) -> Transaction:
@@ -30,6 +41,22 @@ def transaction_of(sender: ContentId, **changes: Any) -> Transaction:
         sender, {BOB: Kismet(250), CAROL: Kismet(75)}, Kismet(5), 41, CREATED, nonce="12345"
     )
     return replace(transaction, **changes)
+
+
+def payout_to(alice: ContentId, **changes: Any) -> dict[str, Any]:
+    """Block 42's payout, from the new Karma and Carol to ``alice`` and Bob, ``changes`` made."""
+    payout = {
+        "from": {"null": NEW_KARMA.value(), str(CAROL): FEE.value()},
+        "to": {str(alice): ALICES_SHARE.value(), str(BOB): BOBS_SHARE.value()},
+        "generation": 42,
+    }
+    return {**payout, **changes}
+
+
+def stated(contents: object) -> dict[str, str]:
+    """A payout as a block holds it, ``contents`` written as JSON text."""
+    text = contents if isinstance(contents, str) else dumps(contents)
+    return {"algorithm": "sha256", "contents": text, "hash": sha256(text.encode()).hexdigest()}
 
 
 def sharing(bits: int, sender: NodeIdentity) -> SignedTransaction:
@@ -267,6 +294,14 @@ def test_what_signs_no_transaction_is_refused(
         SignedTransaction.of(sender.signed(contents))
 
 
+def test_a_transaction_naming_a_member_twice_is_refused(sender: NodeIdentity) -> None:
+    text = transaction_of(sender.node_id).text()
+    twice = f'{{"from":"{BOB}",{text[1:]}'
+
+    with raises(ValueError, match="names 'from' twice"):
+        SignedTransaction.of(sender.signed(twice))
+
+
 def test_what_is_no_signed_bundle_is_no_signed_transaction(alice: ContentId) -> None:
     with raises(MalformedBundleError):
         SignedTransaction.from_value(transaction_of(alice).value())
@@ -277,3 +312,128 @@ def test_a_transactions_work_is_the_bits_its_hash_shares_with_the_target(
     sender: NodeIdentity, bits: int
 ) -> None:
     assert sharing(bits, sender).work_bits == bits
+
+
+def test_a_payout_reads_back_as_written(alice: ContentId) -> None:
+    payout = Payout.of({None: NEW_KARMA, CAROL: FEE}, {alice: ALICES_SHARE, BOB: BOBS_SHARE}, 42)
+
+    read = Payout.from_value(loads(dumps(payout.value())))
+
+    assert read == payout
+    assert read.sources == {None: NEW_KARMA, CAROL: FEE}
+    assert read.to == {alice: ALICES_SHARE, BOB: BOBS_SHARE}
+    assert read.generation == 42
+
+
+def test_a_payout_is_written_as_the_specification_gives_it(alice: ContentId) -> None:
+    payout = Payout.of({CAROL: FEE, None: NEW_KARMA}, {alice: ALICES_SHARE, BOB: BOBS_SHARE}, 42)
+
+    assert payout.value() == {
+        "algorithm": "sha256",
+        "contents": payout.contents,
+        "hash": sha256(payout.contents.encode()).hexdigest(),
+    }
+    assert loads(payout.contents) == payout_to(alice)
+    assert list(loads(payout.contents)) == ["from", "to", "generation"]
+    assert payout.hash == payout.value()["hash"]
+
+
+def test_a_payout_keeps_its_contents_as_written(alice: ContentId) -> None:
+    contents = dumps(payout_to(alice), indent=1, sort_keys=True)
+
+    payout = Payout.from_value(stated(contents))
+
+    assert payout.contents == contents
+    assert payout.hash == sha256(contents.encode()).hexdigest()
+    assert payout.to == {alice: ALICES_SHARE, BOB: BOBS_SHARE}
+
+
+def test_a_payout_of_new_karma_alone_pays_the_root_its_reward(alice: ContentId) -> None:
+    reward = {"null": "2000000000000000"}
+    contents = {"from": reward, "to": {str(alice): "2000000000000000"}, "generation": 1}
+
+    payout = Payout.from_value(stated(contents))
+
+    assert payout.sources == {None: Kismet(2_000_000_000_000_000)}
+
+
+def test_a_payout_with_no_new_karma_names_none(alice: ContentId) -> None:
+    contents = payout_to(
+        alice, **{"from": {str(CAROL): "75"}, "to": {str(alice): "50", str(BOB): "25"}}
+    )
+
+    assert Payout.from_value(stated(contents)).sources == {CAROL: FEE}
+
+
+def test_a_payout_whose_to_does_not_total_its_from_is_refused(alice: ContentId) -> None:
+    short = payout_to(alice, to={str(alice): ALICES_SHARE.value()})
+
+    with raises(ValueError, match='"to" must total its "from", 1999999999991875 Kismet, got 13'):
+        Payout.from_value(stated(short))
+
+    with raises(ValueError, match="must total"):
+        Payout.of({None: NEW_KARMA}, {alice: NEW_KARMA + Kismet(1)}, 42)
+
+
+def test_the_root_has_no_payout(alice: ContentId) -> None:
+    with raises(ValueError, match='"generation" must be at least 1'):
+        Payout.of({None: NEW_KARMA}, {alice: NEW_KARMA}, 0)
+
+
+@mark.parametrize("member", ["signer", "signature"])
+def test_a_signed_payout_is_refused(alice: ContentId, member: str) -> None:
+    with raises(MalformedBundleError, match='no "signer" and no "signature"'):
+        Payout.from_value({**stated(payout_to(alice)), member: "x"})
+
+
+@mark.parametrize("member", ["algorithm", "contents", "hash"])
+def test_a_payout_missing_what_a_block_holds_it_with_is_refused(
+    alice: ContentId, member: str
+) -> None:
+    value = stated(payout_to(alice))
+    del value[member]
+
+    with raises(MalformedBundleError, match=f'"{member}" must be a string'):
+        Payout.from_value(value)
+
+
+def test_a_payout_hashed_with_another_algorithm_is_unsupported(alice: ContentId) -> None:
+    with raises(UnsupportedBundleError, match="'sha512'"):
+        Payout.from_value({**stated(payout_to(alice)), "algorithm": "sha512"})
+
+
+def test_a_payout_whose_hash_is_not_its_contents_is_refused(alice: ContentId) -> None:
+    with raises(BundleSignatureError):
+        Payout.from_value({**stated(payout_to(alice)), "hash": "0" * 64})
+
+
+def test_a_payout_whose_contents_are_not_utf_8_is_refused(alice: ContentId) -> None:
+    with raises(MalformedBundleError, match="UTF-8"):
+        Payout.from_value({**stated(payout_to(alice)), "contents": "\ud800"})
+
+
+@mark.parametrize(
+    "contents, complaint",
+    [
+        ("not json", "must be JSON"),
+        ([], '"from" object'),
+        ({"to": {}, "generation": 42}, '"from" object'),
+        ({"from": [], "to": {}, "generation": 42}, '"from" object'),
+        ({"from": {"null": "-1"}, "to": {}, "generation": 42}, '"from" for null'),
+        ({"from": {"bob": "1"}, "to": {}, "generation": 42}, 'A name in "from"'),
+        ({"from": {}, "to": [], "generation": 42}, '"to" must be an object'),
+        ({"from": {}, "to": {}}, '"generation"'),
+        ({"from": {}, "to": {}, "generation": "42"}, '"generation"'),
+    ],
+)
+def test_a_payout_whose_contents_are_no_payout_is_refused_saying_why(
+    contents: object, complaint: str
+) -> None:
+    with raises(ValueError, match=complaint):
+        Payout.from_value(stated(contents))
+
+
+@mark.parametrize("value", [[], None, "payout"])
+def test_what_is_no_object_is_no_payout(value: object) -> None:
+    with raises(MalformedBundleError):
+        Payout.from_value(value)
