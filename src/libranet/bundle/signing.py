@@ -176,6 +176,24 @@ class SignedBundle:
         except (ValueError, RecursionError):
             raise MalformedBundleError("A signed bundle is JSON") from None
 
+        return cls.from_value(value)
+
+    @classmethod
+    def from_value(cls, value: object) -> SignedBundle:
+        """The signed bundle the JSON ``value`` is, its hash checked, and its signature not yet.
+
+        A Karma block holds its transactions and stakes this way, as objects
+        (KarmaLedger §5.1, §6.1).
+
+        Raises:
+            MalformedBundleError: ``value`` is not an object with a
+                ``"signature"``, or a field of it is not what it must be.
+            UnsupportedBundleError: it is hashed with an algorithm other than
+                SHA-256, or its signer is named under a hash algorithm this
+                node lacks.
+            BundleSignatureError: its ``hash`` is not the hash of its
+                ``contents``.
+        """
         if not isinstance(value, dict) or "signature" not in value:
             raise MalformedBundleError('A signed bundle is an object with a "signature"')
 
@@ -221,14 +239,17 @@ class SignedBundle:
 
     def encoded(self) -> bytes:
         """This signed bundle as compact JSON text, keys sorted, as a bundle is written."""
-        value = {
+        return dumps(self.value(), separators=(",", ":"), sort_keys=True).encode("ascii")
+
+    def value(self) -> dict[str, str]:
+        """This signed bundle as a JSON object, as :meth:`from_value` reads one."""
+        return {
             "algorithm": SIGNED_HASH_ALGORITHM,
             "contents": self.contents,
             "hash": self.hash,
             "signature": b64encode(self.signature).decode("ascii"),
             "signer": str(self.signer),
         }
-        return dumps(value, separators=(",", ":"), sort_keys=True).encode("ascii")
 
     def read_value(self, content_id: ContentId) -> dict[str, str]:
         """What answers a read of this, checked, from ``content_id`` (HttpApi §11.5)."""
