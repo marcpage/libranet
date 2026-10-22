@@ -39,7 +39,7 @@ from libranet.webserver.server import build_router
 
 from tests.stubs import StubModule
 
-from tests.helpers import blocked_list, published
+from tests.helpers import published, shunned_list
 
 INDEX = b"<html>home</html>"
 FIRST_HALF = b"first half, " * 1000
@@ -460,39 +460,39 @@ def test_an_extension_not_held_is_fetched(
 
 
 @mark.parametrize("held", [False, True])
-def test_a_blocked_extension_makes_its_bundle_unusable_and_is_neither_read_nor_asked_for(
+def test_a_shunned_extension_makes_its_bundle_unusable_and_is_neither_read_nor_asked_for(
     unbundler: UnbundlerModule,
     queues: ModuleQueues,
     store: CasStore,
     storage: StorageConfig,
     held: bool,
 ) -> None:
-    blocked = id_of(bundle_bytes(extension()))
-    bundle = put(store, bundle_bytes({"contents": {}, "extensions": [str(blocked)]}))
+    shunned = id_of(bundle_bytes(extension()))
+    bundle = put(store, bundle_bytes({"contents": {}, "extensions": [str(shunned)]}))
 
     if held:
         put(store, bundle_bytes(extension()))
 
-    blocked_list(storage.blocked_list_path, blocked)
+    shunned_list(storage.shunned_list_path, shunned)
 
     unbundler.handle(request(bundle, "about.html"))
     unbundler.handle(request(bundle, "index.html"))
 
     assert resolved(queues) == [
-        {"path": path, "outcome": "unusable", "detail": f"{blocked} is blocked here"}
+        {"path": path, "outcome": "unusable", "detail": f"{shunned} is shunned here"}
         for path in ("about.html", "index.html")
     ]
 
 
-def test_a_blocked_bundle_is_unusable_though_it_is_held(
+def test_a_shunned_bundle_is_unusable_though_it_is_held(
     unbundler: UnbundlerModule, queues: ModuleQueues, storage: StorageConfig, app_id: ContentId
 ) -> None:
-    blocked_list(storage.blocked_list_path, app_id)
+    shunned_list(storage.shunned_list_path, app_id)
 
     unbundler.handle(request(app_id, "index.html"))
 
     assert resolved(queues) == [
-        {"path": "index.html", "outcome": "unusable", "detail": f"{app_id} is blocked here"}
+        {"path": "index.html", "outcome": "unusable", "detail": f"{app_id} is shunned here"}
     ]
     assert written(storage, app_id, "index.html") is None
 

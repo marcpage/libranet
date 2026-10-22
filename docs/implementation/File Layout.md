@@ -484,7 +484,7 @@ module, as `backup_jobs.json` does (§3.7), rather than being saved over.
 │   ├── nodes.json            body of GET /data/nodes
 │   ├── seek.json             body of GET /data/seek
 │   ├── candidates.json       every known address of every peer
-│   ├── blocked.json          the content this node has shunned
+│   ├── shunned.json          the content this node has shunned
 │   └── peers.json            body of GET /data/peers
 └── search/
     └── {prefix[:4]}/         storage.hash_prefix_length characters
@@ -507,10 +507,10 @@ since none of them may open SQLite.
 | `nodes.json` | Web server (`GET /data/nodes`); connection manager (the list it sends peers, and the nodes it newly names) | `stats.max_list_bytes` |
 | `seek.json` | Web server (`GET /data/seek`); connection manager | `stats.max_list_bytes`, `stats.seek_entry_ttl_seconds` |
 | `candidates.json` | Connection manager, choosing whom to dial | `stats.max_addresses_per_node` |
-| `blocked.json` | Web server, validator, and fetcher, refusing shunned content (`src/libranet/cas/blocked.py`) | Nothing: every shunning the database holds |
+| `shunned.json` | Web server, validator, and fetcher, refusing shunned content (`src/libranet/cas/shunned.py`) | Nothing: every shunning the database holds |
 | `peers.json` | Web server (`GET /data/peers`, for local clients' pages) | `stats.max_peers_listed` |
 
-`blocked.json` is also written at once when content is first shunned
+`shunned.json` is also written at once when content is first shunned
 (Phase 4 Step 30), and each reader reads it again only once it is replaced.
 Until it is derived, nothing is shunned. `seek.json` is also written at once
 when a search names a prefix it does not list, so that peers read the prefix

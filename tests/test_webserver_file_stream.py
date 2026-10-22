@@ -11,21 +11,21 @@ from typing import Any, Mapping
 from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
 
 from libranet.bundle.errors import (
-    BlockedContentError,
     BundleVerificationError,
     MalformedBundleError,
+    ShunnedContentError,
     UnsupportedBundleError,
 )
 from libranet.bundle.parts import PartWriter
 from libranet.bundle.shapes import FileBundle, Metadata
-from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
+from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.webserver.errors import ResponseCutShortError
 from libranet.webserver.file_stream import ContentWait, FileStream, PartReader
-from tests.helpers import blocked_list
+from tests.helpers import shunned_list
 
 PARTS = (b"aaaa", b"bbbb", b"cc")
 CONTENT = b"".join(PARTS)
@@ -84,7 +84,7 @@ def reader_for(
     wait_seconds: float = 0.0,
     read_ahead_parts: int = 8,
     ask_again_seconds: float = ASK_AGAIN_SECONDS,
-    blocked: BlockedContent | None = None,
+    shunned: ShunnedContent | None = None,
 ) -> PartReader:
     return PartReader(
         store,
@@ -93,7 +93,7 @@ def reader_for(
         ask_again_seconds,
         read_ahead_parts=read_ahead_parts,
         poll_interval_seconds=0.01,
-        blocked=blocked,
+        shunned=shunned,
     )
 
 
@@ -444,23 +444,23 @@ def test_a_later_part_of_the_wrong_size_cuts_the_response_short(
     )
 
 
-def test_a_blocked_first_part_fails_before_the_response_begins_though_it_is_held(
+def test_a_shunned_first_part_fails_before_the_response_begins_though_it_is_held(
     store: CasStore, published: Recorder, tmp_path: Path
 ) -> None:
     hold(store, *PARTS)
-    blocked = blocked_list(tmp_path / "blocked.json", id_of(b"aaaa"))
-    stream = reader_for(store, published, blocked=blocked).stream(entry_of(*PARTS))
+    shunned = shunned_list(tmp_path / "shunned.json", id_of(b"aaaa"))
+    stream = reader_for(store, published, shunned=shunned).stream(entry_of(*PARTS))
 
-    with raises(BlockedContentError, match=f"{id_of(b'aaaa')} is blocked here"):
+    with raises(ShunnedContentError, match=f"{id_of(b'aaaa')} is shunned here"):
         stream.begin(monotonic())
 
 
-def test_a_blocked_part_is_not_asked_for(
+def test_a_shunned_part_is_not_asked_for(
     store: CasStore, published: Recorder, tmp_path: Path
 ) -> None:
     hold(store, b"aaaa")
-    blocked = blocked_list(tmp_path / "blocked.json", id_of(b"bbbb"))
-    stream = reader_for(store, published, blocked=blocked).stream(entry_of(*PARTS))
+    shunned = shunned_list(tmp_path / "shunned.json", id_of(b"bbbb"))
+    stream = reader_for(store, published, shunned=shunned).stream(entry_of(*PARTS))
 
     begun = stream.begin(monotonic())
 
@@ -468,18 +468,18 @@ def test_a_blocked_part_is_not_asked_for(
     assert published.ids(EventType.DATA_NOT_FOUND) == [id_of(b"cc")]
 
 
-def test_a_later_blocked_part_cuts_the_response_short_without_waiting_for_it(
+def test_a_later_shunned_part_cuts_the_response_short_without_waiting_for_it(
     store: CasStore, published: Recorder, clock: FakeClock, tmp_path: Path
 ) -> None:
     hold(store, b"aaaa", b"cc")
-    blocked = blocked_list(tmp_path / "blocked.json", id_of(b"bbbb"))
-    reader = reader_for(store, published, wait_seconds=60.0, blocked=blocked)
+    shunned = shunned_list(tmp_path / "shunned.json", id_of(b"bbbb"))
+    reader = reader_for(store, published, wait_seconds=60.0, shunned=shunned)
     chunks = reader.stream(entry_of(*PARTS)).chunks()
     started = clock.now
 
     assert next(chunks) == b"aaaa"
 
-    with raises(ResponseCutShortError, match="is blocked here"):
+    with raises(ResponseCutShortError, match="is shunned here"):
         next(chunks)
 
     assert clock.now == started

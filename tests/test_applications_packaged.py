@@ -534,7 +534,7 @@ def test_the_movie_page_calls_only_endpoints_the_node_serves(movie_page: str) ->
     assert fullmatch(DIRECTORY_PATTERN, "/data/directory/Movies/Holidays")
     assert fullmatch(STORE_KEY_PATTERN, f"{STORE_PATH}/{MOVIE_APPLICATION}/playlists")
     # A person's collections: searched at their drop, each version opened, and
-    # those replaced blocked.
+    # those replaced shunned.
     target = quote(f"movie collections:sha256/{hex_digits}", safe="")
     assert fullmatch(DROP_SEARCH_PATTERN, f"{DROP_PATH}/{target}")
     # Those kept offline: searched at their drop of their own, and each archive

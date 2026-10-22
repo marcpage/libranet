@@ -43,7 +43,6 @@ from libranet.bundle.encryption import (
     Aes256Cbc,
 )
 from libranet.bundle.errors import (
-    BlockedContentError,
     BundleError,
     BundleSignatureError,
     BundleTooLargeError,
@@ -53,6 +52,7 @@ from libranet.bundle.errors import (
     MalformedBundleError,
     MissingContentError,
     PasswordProtectedBundleError,
+    ShunnedContentError,
     UnsupportedBundleError,
 )
 from libranet.bundle.extensions import resolve_directory
@@ -138,7 +138,6 @@ __all__ = [
     "SIGNED_HASH_ALGORITHM",
     "STORAGE_COMPRESSION_LEVEL",
     "Aes256Cbc",
-    "BlockedContentError",
     "Bundle",
     "BundleError",
     "BundleSignatureError",
@@ -168,6 +167,7 @@ __all__ = [
     "PasswordKey",
     "PasswordProtectedBundleError",
     "PathEnd",
+    "ShunnedContentError",
     "SignedBundle",
     "StoredDirectory",
     "StoredObject",

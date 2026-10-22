@@ -716,9 +716,9 @@ async function extendedDirectory(merge, everyone, local) {
   return madeDirectory(merge.extended(everyone, result.value.bundle));
 }
 
-// Have the node block `ids`, directories replaced (HttpApi 5.5), which only
-// a local client may ask. How many were blocked.
-async function blocked(ids, local) {
+// Have the node shun `ids`, directories replaced (HttpApi 5.5), which only
+// a local client may ask. How many were shunned.
+async function shunned(ids, local) {
   if (!local) {
     return 0;
   }
@@ -731,14 +731,14 @@ async function blocked(ids, local) {
     if (result.status === 204) {
       count += 1;
     } else {
-      console.warn(`The replaced directory ${id} was not blocked: ${refusal(result)}`);
+      console.warn(`The replaced directory ${id} was not shunned: ${refusal(result)}`);
     }
   }
 
   return count;
 }
 
-// Make a directory listing everyone, if the newest does not, and block
+// Make a directory listing everyone, if the newest does not, and shun
 // those it replaces. Whether a directory listing everyone is at the drop now.
 async function reconcile(merge, everyone, local) {
   const newest = merge.newest;
@@ -764,10 +764,10 @@ async function reconcile(merge, everyone, local) {
     }
   }
 
-  const count = await blocked(replaced, local);
+  const count = await shunned(replaced, local);
 
   if (count > 0) {
-    status.say(`Blocked ${plural(count, "directory", "directories")} that another lists everyone in.`);
+    status.say(`Shunned ${plural(count, "directory", "directories")} that another lists everyone in.`);
   }
 
   return listed;
@@ -1382,7 +1382,7 @@ async function load(you, local, extra) {
 }
 
 // Everyone the directory lists, read as load reads it, but making and
-// blocking nothing: a page showing one person changes no directory.
+// shunning nothing: a page showing one person changes no directory.
 async function directoryPeople() {
   const read = new Map();
   await searched(read);
@@ -1708,7 +1708,7 @@ function trustedBy(entries, owner) {
 
 // The newest version of the trust list of `person` this node holds (Trust
 // Network 3.3): whom it trusts and distrusts, or null if none is found; and
-// how many found at its drop are not held yet. The node blocks the versions
+// how many found at its drop are not held yet. The node shuns the versions
 // the newest replaces, so there is no history to read back.
 async function readTrustList(person) {
   const ids = await dropResults(TRUST_PREFIX + person, `The trust list of ${person}`);

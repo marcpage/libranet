@@ -847,9 +847,9 @@ async function placed(target, contents, reader, minimumBits = DROP_MINIMUM_BITS)
   }
 }
 
-// Have the node block `ids`, versions replaced (HttpApi 5.5), which only a
-// local client may ask. How many were blocked.
-async function blocked(ids) {
+// Have the node shun `ids`, versions replaced (HttpApi 5.5), which only a
+// local client may ask. How many were shunned.
+async function shunned(ids) {
   let count = 0;
 
   for (const id of ids) {
@@ -858,7 +858,7 @@ async function blocked(ids) {
     if (result.status === 204) {
       count += 1;
     } else {
-      console.warn(`The replaced version ${id} was not blocked: ${refusal(result)}`);
+      console.warn(`The replaced version ${id} was not shunned: ${refusal(result)}`);
     }
   }
 
@@ -961,7 +961,7 @@ class Kept {
 
   // Read every version found at the drop, merge them, and, with more than one
   // that none replaces, write one naming them all. Versions another replaces
-  // are blocked, so that they do not push the newest out of a search.
+  // are shunned, so that they do not push the newest out of a search.
   async load() {
     const { ids } = await foundAt(this.target);
     const results = new Map();
@@ -994,10 +994,10 @@ class Kept {
       return;
     }
 
-    const count = await blocked(this.replaced());
+    const count = await shunned(this.replaced());
 
     if (count > 0) {
-      console.info(`Blocked ${plural(count, "version", "versions")} at ${this.target} that another replaces.`);
+      console.info(`Shunned ${plural(count, "version", "versions")} at ${this.target} that another replaces.`);
     }
 
     // Changed while it was read, so written now it has been.
@@ -1106,7 +1106,7 @@ class Kept {
     return heads.length > 0 ? { [this.field]: items, version, versions: heads } : { [this.field]: items, version };
   }
 
-  // Write a version over every version read, and block those it replaces.
+  // Write a version over every version read, and shun those it replaces.
   async write() {
     if (this.writing) {
       return;
@@ -1124,7 +1124,7 @@ class Kept {
         written = true;
         const replaced = [...this.versions.keys()];
         this.versions = new Map([[made.id, { version: contents.version, versions: contents.versions || [] }]]);
-        await blocked(replaced);
+        await shunned(replaced);
       } else {
         this.dirty = true;
         status.say(`${this.what} could not be saved: ${made.tooLarge ? "it no longer fits in a drop." : made.error}`, "error");

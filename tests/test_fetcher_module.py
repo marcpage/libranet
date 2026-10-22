@@ -8,9 +8,9 @@ from pytest import LogCaptureFixture, fixture, raises
 
 from libranet.atomic_file import write_atomically
 from libranet.cas.archive import ArchiveSink
-from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import InvalidContentIdError
+from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
 from libranet.fetcher.module import FetcherModule
@@ -251,10 +251,10 @@ def test_a_miss_for_archive_content_asks_for_nothing(
     assert asked_for(queues) == [OTHER_ID]
 
 
-def test_a_miss_for_blocked_content_asks_for_nothing(
+def test_a_miss_for_shunned_content_asks_for_nothing(
     fetcher: FetcherModule, queues: ModuleQueues, storage: StorageConfig
 ) -> None:
-    write_atomically(storage.blocked_list_path, BlockedContent.body([CONTENT_ID]))
+    write_atomically(storage.shunned_list_path, ShunnedContent.body([CONTENT_ID]))
 
     fetcher.handle(miss(100.0))
     fetcher.handle(miss(100.0, OTHER_ID))

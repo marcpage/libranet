@@ -52,9 +52,9 @@ from urllib.parse import urlsplit
 
 from libranet import __version__
 from libranet.bundle.parts import PartPath
-from libranet.cas.blocked import BlockedContent
 from libranet.cas.layered import LayeredSource
 from libranet.cas.resolved_files import ResolvedFiles
+from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.config.models import (
     ANY_ADDRESS,
@@ -92,7 +92,7 @@ from libranet.webserver.app_store import (
 )
 from libranet.webserver.app_use import ApplicationUse
 from libranet.webserver.backup_state import BackupState
-from libranet.webserver.block_handler import BlockHandler
+from libranet.webserver.shun_handler import ShunHandler
 from libranet.webserver.bundle_edits import (
     BUNDLES_PATH,
     BundleEditHandler,
@@ -257,16 +257,16 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
     derived, one at a time, in the turns of ``costly_work``, which
     ``/config``'s port shares; in turns of their own if none is given. A
     ``DELETE`` of
-    ``/data/{algorithm}/{hash}`` deletes and blocks content for local
+    ``/data/{algorithm}/{hash}`` deletes and shuns content for local
     clients alone, which ``/data`` then neither serves, reads into, stores,
-    nor finds in a search, and no application is served from, as the blocked
+    nor finds in a search, and no application is served from, as the shunned
     list in ``storage``'s cache directory names it (Phase 4 Step 30).
 
     Each of those but reading into a bundle and checking signed content is
     served only to this node's own pages, as a request's ``Referer`` names
     them: an application's store to its own, and the folders, imports,
     bundles, identities, session, signing, opening what is encrypted,
-    encrypting by a password, trust, blocking, and the peer list to those of
+    encrypting by a password, trust, shunning, and the peer list to those of
     applications the operator trusts. An application the operator has not
     trusted is served in a sandbox (Phase 3 Step 74).
     """
@@ -291,7 +291,7 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
     pages = OwnPages(registry)
     state = BackupState() if backup_state is None else backup_state
     app_store = ApplicationStore.of(storage)
-    blocked = BlockedContent.of(storage)
+    shunned = ShunnedContent.of(storage)
     paths = _bundle_paths(
         storage,
         PartReader(
@@ -300,7 +300,7 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
             app_wait_seconds,
             retry_after_seconds,
             read_ahead_parts=read_ahead_parts,
-            blocked=blocked,
+            shunned=shunned,
         ),
         retry_after_seconds,
         app_outcomes,
@@ -309,7 +309,7 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
         search=LocalSearch.of(content, storage),
         cache=SearchCache.of(storage),
         publish=publish,
-        blocked=blocked,
+        shunned=shunned,
     )
     router.add("GET", CLIENT_PATH, OwnPageOnly(client_handler, pages))
     # The directory, import, archive, store, bundle, and search routes must
@@ -374,7 +374,7 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
                 SiteChecks(config_hosts, "Encrypting by a password"),
                 retry_after_seconds=retry_after_seconds,
                 derivations=work.derivations,
-                blocked=blocked,
+                shunned=shunned,
             ),
         )
         router.add("POST", DROP_PATH, OwnSiteOnly(OwnPageOnly(drops, pages), checks))
@@ -404,7 +404,7 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
             sessions,
             publish,
             retry_after_seconds=retry_after_seconds,
-            blocked=blocked,
+            shunned=shunned,
         )
         encrypted = EncryptedDrops(signed, derivations=work.derivations)
         trust = TrustEdits.of(
@@ -448,17 +448,17 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
     router.add(
         "GET",
         DATA_PATTERN,
-        DataReadHandler(content, publish, retry_after_seconds, blocked=blocked),
+        DataReadHandler(content, publish, retry_after_seconds, shunned=shunned),
     )
     router.add(
         "PUT",
         DATA_PATTERN,
-        DataWriteHandler(storage, store, authenticator, publish, blocked=blocked),
+        DataWriteHandler(storage, store, authenticator, publish, shunned=shunned),
     )
     router.add(
         "DELETE",
         DATA_PATTERN,
-        LocalOnly(OwnPageOnly(BlockHandler(publish), pages, trusted=True), checks),
+        LocalOnly(OwnPageOnly(ShunHandler(publish), pages, trusted=True), checks),
     )
     # A posted list is held to the same cap as every other request body as
     # sent, and to its own once decompressed.
@@ -612,7 +612,7 @@ def build_config_router(  # pylint: disable=too-many-locals
                 app_wait_seconds,
                 retry_after_seconds,
                 read_ahead_parts=read_ahead_parts,
-                blocked=BlockedContent.of(storage),
+                shunned=ShunnedContent.of(storage),
             ),
             retry_after_seconds,
             app_outcomes,
@@ -653,7 +653,7 @@ def _config_identities(
             LocalSearch.of(content, storage),
             SearchCache.of(storage),
             publish,
-            blocked=BlockedContent.of(storage),
+            shunned=ShunnedContent.of(storage),
         ),
         DropHandler(
             uploads,

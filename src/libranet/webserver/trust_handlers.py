@@ -27,7 +27,7 @@ The node reads the newest version of the person's list from what it holds
 the change (:meth:`~libranet.identity.trust.HeldTrustList.next_version`),
 signs it with the key the session holds, storing the person's public key
 again, and makes it a drop at ``trust:{id}``, matching as many bits as a
-search returns (``storage.search_min_bits``), blocking what it replaces
+search returns (``storage.search_min_bits``), shunning what it replaces
 (Trust Network §3.3, §3.4), as what a node says of itself is changed
 (:mod:`libranet.webserver.version_edits`). It answers ``201``, with a
 ``Location`` naming the drop::
@@ -229,7 +229,7 @@ class TrustListChanges:
 
         What was found at a list's drop and is not held is asked for with
         ``publish``, a client told to ask again after ``retry_after_seconds``,
-        and what a newer version replaces is blocked with it
+        and what a newer version replaces is shunned with it
         (:class:`~libranet.webserver.version_edits.VersionEdits`).
 
         Raises:
@@ -273,7 +273,7 @@ class TrustListChanges:
             return self.missing_response(request, held)
 
         # The newest replaces them, whether or not a version is placed over it.
-        self.edits.block_replaced(held)
+        self.edits.shun_replaced(held)
 
         if changed is None:
             _LOGGER.debug("%s's trust list already says that of %s", owner, entry.identity)
@@ -323,7 +323,7 @@ class TrustEdits:
 
         What was found at a list's drop and is not held is asked for with
         ``publish``, a client told to ask again after ``retry_after_seconds``,
-        and what a newer version replaces is blocked with it
+        and what a newer version replaces is shunned with it
         (:class:`~libranet.webserver.version_edits.VersionEdits`).
 
         Raises:

@@ -162,23 +162,23 @@ new, gives how a node answers for shunned content and
 Built in one change set: 482 added lines of non-test Python, 46 of them in
 place of removed ones and many of them docstrings, and 523 of tests.
 
-- **`BlockedContent`** (`cas/blocked.py`, new), the list of shunned content
+- **`ShunnedContent`** (`cas/shunned.py`, new), the list of shunned content
   ids as the stats module derives it, which the web server, the validator,
   and the fetcher check.
-- **`data_stats.blocked_at`** (`stats/schema.py`), with the partial index
-  `data_stats_blocked`, and `StatsDatabase.record_blocked`, `is_blocked`,
-  and `blocked_ids`. `content_ids_near` leaves shunned content out.
-- **`lists/blocked.json`** (`StorageConfig.blocked_list_path`), written by
-  `ListDeriver.write_blocked_list` at each derivation and at once when a
+- **`data_stats.shunned_at`** (`stats/schema.py`), with the partial index
+  `data_stats_shunned`, and `StatsDatabase.record_shunned`, `is_shunned`,
+  and `shunned_ids`. `content_ids_near` leaves shunned content out.
+- **`lists/shunned.json`** (`StorageConfig.shunned_list_path`), written by
+  `ListDeriver.write_shunned_list` at each derivation and at once when a
   shunning is added.
-- **`data.blocked`** `{"algorithm", "hash"}`, from the web server to stats,
+- **`data.shunned`** `{"algorithm", "hash"}`, from the web server to stats,
   which records it and stops seeking the content, and to eviction, which
   deletes any copy held.
-- **`DELETE /data/{algorithm}/{hash}`** (`webserver/block_handler.py`,
+- **`DELETE /data/{algorithm}/{hash}`** (`webserver/shun_handler.py`,
   new), behind `LocalOnly` and `OwnPageOnly(trusted=True)`.
 - **`DataReadHandler`** answers shunned content `404`, **`DataWriteHandler`**
   accepts it `202` unwritten, and **`SearchHandler`** leaves it out of
-  every answer, each given the router's one `BlockedContent` as an optional
+  every answer, each given the router's one `ShunnedContent` as an optional
   keyword. The validator discards a shunned upload, and the fetcher asks
   for no shunned content.
 - The Database Schema, File Layout, and Module System documents, and the
@@ -204,7 +204,7 @@ My calls, not yet reviewed:
   shunned content and stats never seeks it, so a request that needs it,
   such as reading into a shunned bundle (HttpApi §12.1) or an application's
   part, waits as for content no peer has, and is `503`.
-- **The list file names every shunned id**, `{"blocked": [...]}`, uncapped. Each
+- **The list file names every shunned id**, `{"shunned": [...]}`, uncapped. Each
   reader keeps what it read, and reads it again only once it is replaced,
   so a check is one `stat` of the file. Stats writes it at once when a shunning
   is added, so that a shunning holds within moments rather than at the next
@@ -233,7 +233,7 @@ Ruled after building:
   the same URI is `404`, as a `DELETE` leads a client to expect, and no name
   beneath `/data` is reserved for it. HttpApi §4 now lists content among
   what `DELETE` removes.
-- **A shunning is a column of `data_stats`**, `blocked_at`, when the content
+- **A shunning is a column of `data_stats`**, `shunned_at`, when the content
   was shunned, or `NULL`, in place of the table `blocked_content` first
   built. A shunning is something known of one content id, and a row of
   `data_stats` is never deleted, so it outlives the content as a table's
@@ -252,9 +252,9 @@ My calls on these, not yet reviewed:
 - **A path into a bundle is not deleted**: a `DELETE` of
   `/data/{algorithm}/{hash}/{path}` is `405`, as any method that route does
   not take is.
-- **`blocked_at` keeps the first time** content was shunned. Shunning it
+- **`shunned_at` keeps the first time** content was shunned. Shunning it
   again changes nothing.
-- **A partial index, `data_stats_blocked`**, as `data_stats_held` is, so
+- **A partial index, `data_stats_shunned`**, as `data_stats_held` is, so
   that deriving the shunned list each minute reads only the rows shunned,
   not every id the node has heard of.
 
@@ -263,10 +263,10 @@ A live run of one node from the scratchpad, after both rulings: a drop of
 target. A `DELETE` of it with no `Referer` was `403`, one of a path into it
 `405`, and one from the movie application's page `204`. Within 3
 milliseconds eviction had deleted it and stats had recorded it, its
-`data_stats` row with `blocked_at` set and `size` cleared, a `GET` was
+`data_stats` row with `shunned_at` set and `size` cleared, a `GET` was
 `404`, and the search left it out. The same drop made again was `201`, and
 the validator discarded the upload, so a `GET` was still `404`. With the
-node stopped and `lists/blocked.json` deleted, the restarted node wrote it
+node stopped and `lists/shunned.json` deleted, the restarted node wrote it
 again from the database, and the content was still `404`. No warning was
 logged. The run before the ruling, with `PUT /data/blocked/...`, went the
 same way.

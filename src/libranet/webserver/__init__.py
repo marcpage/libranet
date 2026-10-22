@@ -25,7 +25,7 @@ node's own pages there, such as the listing of the folders it offers them
 bundle, or a new version of one, from the bundles a request names, stored as
 uploads from this node (Phase 3 Step 72), making a person's identity,
 and signing them in and out (Phase 4 Step 79), opening what is encrypted for
-them or by a password (Phase 4 Step 78), blocking content (Phase 4
+them or by a password (Phase 4 Step 78), shunning content (Phase 4
 Step 30), and changing the trust list of whoever is signed in (Phase 5 Step
 97). Signing in starts building the person's trust scores, behind the
 sign-in (Phase 5 Step 99), which their pages read, and which a change to
@@ -73,7 +73,6 @@ from libranet.webserver.app_store import (
 )
 from libranet.webserver.app_use import ApplicationUse
 from libranet.webserver.backup_state import BackupReport, BackupState
-from libranet.webserver.block_handler import BlockHandler
 from libranet.webserver.bundle_edits import (
     BUNDLES_PATH,
     BundleEdit,
@@ -251,7 +250,6 @@ from libranet.webserver.own_pages import (
 from libranet.webserver.peer_trust import ConnectingRule, PeerTrust
 from libranet.webserver.request_refusals import (
     MAX_JSON_BODY_BYTES,
-    blocked_response,
     body_or_refusal,
     content_id_or_refusal,
     content_too_large_response,
@@ -262,6 +260,7 @@ from libranet.webserver.request_refusals import (
     json_or_refusal,
     parsed_or_refusal,
     peer_not_allowed_response,
+    shunned_response,
     signature_required_response,
     unreadable_body_response,
     unreadable_registry_response,
@@ -284,6 +283,7 @@ from libranet.webserver.sessions import (
     SessionListener,
     Sessions,
 )
+from libranet.webserver.shun_handler import ShunHandler
 from libranet.webserver.signature_guard import SignatureGuard
 from libranet.webserver.signed_handlers import (
     SIGNED_PATH,
@@ -418,7 +418,6 @@ __all__ = [
     "BackupRequest",
     "BackupRequestHandler",
     "BackupState",
-    "BlockHandler",
     "BundleEdit",
     "BundleEditError",
     "BundleEditHandler",
@@ -489,6 +488,7 @@ __all__ = [
     "Session",
     "SessionListener",
     "Sessions",
+    "ShunHandler",
     "SignatureGuard",
     "SignedDrops",
     "SignedVersions",
@@ -519,7 +519,6 @@ __all__ = [
     "VersionParser",
     "WebServerModule",
     "basic_credentials",
-    "blocked_response",
     "body_or_refusal",
     "build_config_router",
     "build_router",
@@ -548,6 +547,7 @@ __all__ = [
     "percent_decoded",
     "problem_response",
     "redirect_response",
+    "shunned_response",
     "signature_required_response",
     "status_response",
     "typed_response",

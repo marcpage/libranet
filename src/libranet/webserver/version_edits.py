@@ -13,13 +13,13 @@ The next version, signed, is made a drop at the document's own, as ``POST
 for until the drop matches the bits a version must, and no longer, so that a
 change is answered at once.
 
-Every version read but the newest is blocked, and the newest too once a
+Every version read but the newest is shunned, and the newest too once a
 version is placed over it, so that what is replaced does not crowd the
 newest out of a search of the drop (Trust Network §3.3, §3.4). The web server
-cannot block, so it asks the stats module, as ``DELETE
+cannot shun, so it asks the stats module, as ``DELETE
 /data/{algorithm}/{hash}`` does::
 
-    data.blocked  {"algorithm": "sha256", "hash": "<hex>"}
+    data.shunned  {"algorithm": "sha256", "hash": "<hex>"}
 
 What this node uploads is found by a search only once the validator has
 stored it, so the version each owner's last change placed is remembered
@@ -56,17 +56,17 @@ _Held = TypeVar("_Held", bound=HeldVersions[Any])
 
 @dataclass(frozen=True)
 class ReplacedVersions:
-    """Blocks the versions of a ``kind`` of document that newer ones replace, asking ``publish``."""
+    """Shuns the versions of a ``kind`` of document that newer ones replace, asking ``publish``."""
 
     publish: Publish
     kind: str
 
-    def block(self, owner: ContentId, replaced: Iterable[ContentId]) -> None:
-        """Have this node block each version of ``owner``'s document that ``replaced`` names."""
+    def shun(self, owner: ContentId, replaced: Iterable[ContentId]) -> None:
+        """Have this node shun each version of ``owner``'s document that ``replaced`` names."""
         for content_id in replaced:
-            self.publish(EventType.DATA_BLOCKED, content_id.fields())
+            self.publish(EventType.DATA_SHUNNED, content_id.fields())
             _LOGGER.debug(
-                "Asked for %s, a version of %s's %s replaced, to be blocked",
+                "Asked for %s, a version of %s's %s replaced, to be shunned",
                 content_id,
                 owner,
                 self.kind,
@@ -80,7 +80,7 @@ class VersionEdits(Generic[_Version]):
     for its owner, matching the bits it reads them by. What was found there
     and is not held is asked for with ``publish``, a client told to ask again
     after ``retry_after_seconds``, and what a newer version replaces is
-    blocked with it. The caller makes one change at a time.
+    shunned with it. The caller makes one change at a time.
 
     Raises:
         ValueError: ``retry_after_seconds`` is negative.
@@ -144,14 +144,14 @@ class VersionEdits(Generic[_Version]):
 
         return content_unavailable_response(request, detail, self._retry_after_seconds)
 
-    def block_replaced(self, held: _Held) -> None:
-        """Have this node block every version ``held`` read but the newest, which replaces them."""
-        self._replaced.block(held.owner, held.replaced)
+    def shun_replaced(self, held: _Held) -> None:
+        """Have this node shun every version ``held`` read but the newest, which replaces them."""
+        self._replaced.shun(held.owner, held.replaced)
 
     def place(self, request: Request, held: _Held, signed: SignedBundle) -> StoredDrop | Response:
         """``signed``, the version after ``held``'s newest, made a drop; or the refusal of it.
 
-        The newest is blocked once the version is placed over it.
+        The newest is shunned once the version is placed over it.
         """
         stored = self._drops.placed(
             request,
@@ -169,7 +169,7 @@ class VersionEdits(Generic[_Version]):
         newest = held.newest
 
         if newest is not None:
-            self._replaced.block(held.owner, (newest.content_id,))
+            self._replaced.shun(held.owner, (newest.content_id,))
 
         return stored
 

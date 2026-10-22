@@ -153,9 +153,9 @@ def held_version(truth: CasStore, node: NodeIdentity, trust_list: TrustList) -> 
     return content_id
 
 
-def blocked(recorder: Recorder) -> list[dict[str, Any]]:
-    """What this node was asked to block."""
-    return recorder.payloads(EventType.DATA_BLOCKED)
+def shunned(recorder: Recorder) -> list[dict[str, Any]]:
+    """What this node was asked to shun."""
+    return recorder.payloads(EventType.DATA_SHUNNED)
 
 
 def drops_placed(recorder: Recorder, node: NodeIdentity) -> list[dict[str, Any]]:
@@ -319,7 +319,7 @@ def test_while_a_version_found_is_not_held_both_are_503_and_it_is_asked_for(
     assert response.headers["Retry-After"] == str(RETRY_AFTER_SECONDS)
     assert recorder.payloads(EventType.DATA_NOT_FOUND) == [elsewhere.fields()]
     assert not drops_placed(recorder, node)
-    assert not blocked(recorder)
+    assert not shunned(recorder)
 
 
 def test_the_nodes_own_key_is_held_again_should_it_have_been_evicted(
@@ -334,13 +334,13 @@ def test_the_nodes_own_key_is_held_again_should_it_have_been_evicted(
     assert b"".join(content_chunks(uploads, node.node_id)) == node.public_key
 
 
-def test_a_version_placed_over_another_has_it_blocked(trust: OwnTrust, recorder: Recorder) -> None:
+def test_a_version_placed_over_another_has_it_shunned(trust: OwnTrust, recorder: Recorder) -> None:
     first = trust.trust(changing(BOB))
-    assert not blocked(recorder)
+    assert not shunned(recorder)
 
     trust.trust(changing(DAVE, False))
 
-    assert blocked(recorder) == [ContentId.parse(loads(first.body)["id"]).fields()]
+    assert shunned(recorder) == [ContentId.parse(loads(first.body)["id"]).fields()]
 
 
 def test_reading_blocks_nothing(
@@ -351,7 +351,7 @@ def test_reading_blocks_nothing(
 
     trust.read(reading())
 
-    assert not blocked(recorder)
+    assert not shunned(recorder)
 
 
 def test_changes_are_made_one_at_a_time(

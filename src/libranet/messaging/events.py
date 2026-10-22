@@ -102,7 +102,7 @@ class EventType(StrEnum):
     RESOLVED_RECLAIMED = "resolved.reclaimed"  # unbundler → eviction
 
     # Content this node will not hold (Phase 4 Step 30).
-    DATA_BLOCKED = "data.blocked"  # webserver → stats, eviction
+    DATA_SHUNNED = "data.shunned"  # webserver → stats, eviction
 
     # The peers connected, whose public keys are never evicted (Phase 2
     # Step 53), and which the peer list names (Phase 5 Step 107).

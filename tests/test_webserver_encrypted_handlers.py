@@ -15,9 +15,9 @@ from libranet.bundle.person_encryption import EncryptedForPerson
 from libranet.bundle.protection import PasswordKey
 from libranet.bundle.signing import SignedBundle
 from libranet.bundle.storing import store_object
-from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
+from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.config.models import DEFAULT_CONFIG_HOSTS, StorageConfig
 from libranet.identity.people import NewIdentity, PersonKey, Username
@@ -122,7 +122,7 @@ def signed(
         OwnPages(ApplicationRegistry(tmp_path / "applications.json", applications)),
         SiteChecks(DEFAULT_CONFIG_HOSTS, "This endpoint"),
         retry_after_seconds=RETRY_AFTER_SECONDS,
-        blocked=BlockedContent.of(storage),
+        shunned=ShunnedContent.of(storage),
     )
     return SignedDrops(
         uploads,
@@ -130,7 +130,7 @@ def signed(
         sessions,
         recorder,
         retry_after_seconds=RETRY_AFTER_SECONDS,
-        blocked=BlockedContent.of(storage),
+        shunned=ShunnedContent.of(storage),
     )
 
 
@@ -333,7 +333,7 @@ def test_a_block_not_held_is_asked_for_and_503(
     assert recorder.payloads(EventType.DATA_NOT_FOUND) == [content_id.fields()]
 
 
-def test_a_blocked_block_is_404_and_not_asked_for(
+def test_a_shunned_block_is_404_and_not_asked_for(
     storage: StorageConfig,
     signed: SignedDrops,
     uploads: OwnUploads,
@@ -342,19 +342,19 @@ def test_a_blocked_block_is_404_and_not_asked_for(
     recorder: Recorder,
 ) -> None:
     content_id = held_drop(uploads, for_person(alice, TEXT.encode()))
-    write_atomically(storage.blocked_list_path, BlockedContent.body([content_id]))
-    blocking = EncryptedDrops(
+    write_atomically(storage.shunned_list_path, ShunnedContent.body([content_id]))
+    shunning = EncryptedDrops(
         SignedDrops(
             uploads,
             signed.drops,
             sessions,
             recorder,
             retry_after_seconds=RETRY_AFTER_SECONDS,
-            blocked=BlockedContent.of(storage),
+            shunned=ShunnedContent.of(storage),
         )
     )
 
-    response = blocking.read(opening(content_id, cookie(sessions, alice, "alice")))
+    response = shunning.read(opening(content_id, cookie(sessions, alice, "alice")))
 
     assert response.status == 404
     assert not recorder.payloads(EventType.DATA_NOT_FOUND)

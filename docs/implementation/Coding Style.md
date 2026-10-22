@@ -714,7 +714,7 @@ Paths are relative to `src/libranet/`, except those that start with `tests/`.
 | 82 public callables in 42 files, listed in §12.1 | An optional parameter a call may pass by position (§6.4) |
 | 69 public constants and type aliases in 29 files, listed in §12.2; `stats/lists.py` `_NODE_LIST_BASE_BYTES`, `_SEEK_LIST_BASE_BYTES` | A public name's comment starts `#` rather than `#:`, and a private one's `#:` rather than `#` (§7) |
 | `cas/archive.py`, `config/models.py` (eleven lines), `connections/request_encoding.py`, `messaging/events.py` (two), `stats/database.py` (four), `stats/lists.py` (two), `stats/schema.py`, `supervisor.py`, `webserver/app_handler.py`, `webserver/app_registry.py` (two), `webserver/server.py` | A comment marks a literal with Markdown's single backticks rather than reStructuredText's double ones (§8.2) |
-| `backup/imports.py`, `backup/tasks.py`, `connections/peer_session.py`, `messaging/queues.py`, `stats/records.py`, `stats/schema.py`, `webserver/block_handler.py`, `webserver/data_handler.py`, `webserver/search_handler.py`, `webserver/signed_versions.py`, `webserver/site_checks.py` | No test file of its own: each is tested through the code that uses it (§11) |
+| `backup/imports.py`, `backup/tasks.py`, `connections/peer_session.py`, `messaging/queues.py`, `stats/records.py`, `stats/schema.py`, `webserver/data_handler.py`, `webserver/search_handler.py`, `webserver/shun_handler.py`, `webserver/signed_versions.py`, `webserver/site_checks.py` | No test file of its own: each is tested through the code that uses it (§11) |
 
 ### 12.1 Optional Parameters Taken Positionally
 

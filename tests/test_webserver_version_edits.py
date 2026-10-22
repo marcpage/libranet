@@ -113,10 +113,10 @@ def test_retry_after_seconds_must_not_be_negative(
         VersionEdits(versions, drops, recorder, retry_after_seconds=-1)
 
 
-def test_replaced_versions_are_each_asked_to_be_blocked(recorder: Recorder) -> None:
-    ReplacedVersions(recorder, "metadata").block(FIRST, (SECOND, THIRD))
+def test_replaced_versions_are_each_asked_to_be_shunned(recorder: Recorder) -> None:
+    ReplacedVersions(recorder, "metadata").shun(FIRST, (SECOND, THIRD))
 
-    assert ids(recorder.payloads(EventType.DATA_BLOCKED)) == [SECOND, THIRD]
+    assert ids(recorder.payloads(EventType.DATA_SHUNNED)) == [SECOND, THIRD]
 
 
 def test_a_version_remembered_is_read_until_a_search_finds_it(
@@ -154,7 +154,7 @@ def test_what_is_missing_is_asked_for_and_the_change_held_off(
     assert ids(recorder.payloads(EventType.DATA_NOT_FOUND)) == [FIRST, SECOND]
 
 
-def test_every_version_but_the_newest_is_blocked(
+def test_every_version_but_the_newest_is_shunned(
     edits: VersionEdits[NodeMetadata], node: NodeIdentity, recorder: Recorder
 ) -> None:
     held = HeldNodeMetadata(
@@ -166,12 +166,12 @@ def test_every_version_but_the_newest_is_blocked(
         ),
     )
 
-    edits.block_replaced(held)
+    edits.shun_replaced(held)
 
-    assert ids(recorder.payloads(EventType.DATA_BLOCKED)) == [FIRST, SECOND]
+    assert ids(recorder.payloads(EventType.DATA_SHUNNED)) == [FIRST, SECOND]
 
 
-def test_a_version_placed_is_a_drop_at_its_owners_and_the_newest_is_blocked(
+def test_a_version_placed_is_a_drop_at_its_owners_and_the_newest_is_shunned(
     edits: VersionEdits[NodeMetadata],
     uploads: OwnUploads,
     node: NodeIdentity,
@@ -190,7 +190,7 @@ def test_a_version_placed_is_a_drop_at_its_owners_and_the_newest_is_blocked(
     assert stored.matching_bits >= MINIMUM_BITS
     assert matching_bits(target.hex, stored.content_id.hash) == stored.matching_bits
     assert uploads.exists(stored.content_id)
-    assert ids(recorder.payloads(EventType.DATA_BLOCKED)) == [FIRST]
+    assert ids(recorder.payloads(EventType.DATA_SHUNNED)) == [FIRST]
 
 
 def test_the_first_version_placed_blocks_nothing(
@@ -201,7 +201,7 @@ def test_the_first_version_placed_blocks_nothing(
     stored = edits.place(REQUEST, HeldNodeMetadata(node.node_id), signed)
 
     assert isinstance(stored, StoredDrop)
-    assert recorder.payloads(EventType.DATA_BLOCKED) == []
+    assert recorder.payloads(EventType.DATA_SHUNNED) == []
 
 
 def test_a_version_refused_blocks_nothing(
@@ -220,4 +220,4 @@ def test_a_version_refused_blocks_nothing(
 
     assert isinstance(refused, Response)
     assert problem_type(refused) == CONTENT_TOO_LARGE
-    assert recorder.payloads(EventType.DATA_BLOCKED) == []
+    assert recorder.payloads(EventType.DATA_SHUNNED) == []

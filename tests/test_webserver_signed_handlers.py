@@ -18,9 +18,9 @@ from libranet.bundle.content import content_chunks
 from libranet.bundle.protection import strip_targeting
 from libranet.bundle.signing import SignedBundle
 from libranet.bundle.storing import store_object
-from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
+from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
 from libranet.identity.node_identity import NodeIdentity
@@ -103,7 +103,7 @@ def signed(
         sessions,
         recorder,
         retry_after_seconds=RETRY_AFTER_SECONDS,
-        blocked=BlockedContent.of(storage),
+        shunned=ShunnedContent.of(storage),
     )
 
 
@@ -365,25 +365,25 @@ def test_a_signers_key_not_held_is_asked_for_and_503(
     assert recorder.payloads(EventType.DATA_NOT_FOUND) == [person.person_id.fields()]
 
 
-@mark.parametrize("blocking", ["drop", "signer"])
-def test_a_blocked_drop_or_signers_key_is_404_and_not_asked_for(
+@mark.parametrize("shunning", ["drop", "signer"])
+def test_a_shunned_drop_or_signers_key_is_404_and_not_asked_for(
     storage: StorageConfig,
     uploads: OwnUploads,
     recorder: Recorder,
     sessions: Sessions,
     person: PersonKey,
-    blocking: str,
+    shunning: str,
 ) -> None:
     content_id = held(uploads, dropped(person.signed(TEXT)))
-    blocked = content_id if blocking == "drop" else person.person_id
-    write_atomically(storage.blocked_list_path, BlockedContent.body([blocked]))
+    shunned = content_id if shunning == "drop" else person.person_id
+    write_atomically(storage.shunned_list_path, ShunnedContent.body([shunned]))
     signed = SignedDrops(
         uploads,
         DropHandler(uploads, MAX_BYTES, MAX_SECONDS, MAX_MINIMUM_BITS),
         sessions,
         recorder,
         retry_after_seconds=RETRY_AFTER_SECONDS,
-        blocked=BlockedContent.of(storage),
+        shunned=ShunnedContent.of(storage),
     )
 
     response = signed.read(reading(content_id))

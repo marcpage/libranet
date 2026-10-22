@@ -31,7 +31,7 @@ The payloads it consumes, by event:
 ``eviction.candidates_requested`` ``{"bytes", "exclude"}`` (Phase 2 Step 28)
 ``app.accessed``       ``{"bundle"}`` (Phase 2 Step 29)
 ``resolved.reclaim_requested`` ``{}`` (Phase 2 Step 29)
-``data.blocked``       ``{"algorithm", "hash"}`` (Phase 4 Step 30)
+``data.shunned``       ``{"algorithm", "hash"}`` (Phase 4 Step 30)
 ``peers.connected``    ``{"direction", "node_ids": [...]}`` (Phase 5 Step 107)
 ``node.trust``         ``{"trusted": [...], "untrusted": [...], "only_trusted"}``
                        (Phase 5 Step 113)
@@ -52,11 +52,11 @@ it (``data.search_answered``), are known from then on, held or not, and
 added to the cached answer to that search, so that the next search lists
 them (HttpApi §6).
 
-``data.blocked`` names content this node will not hold, for good (Phase 4
-Step 30). It is recorded, and no longer sought, and the blocked list
-(:mod:`libranet.cas.blocked`) is written again at once, rather than at the
-next derivation, for the modules that refuse blocked content. A miss for
-blocked content is not sought, and a search is never given it.
+``data.shunned`` names content this node will not hold, for good (Phase 4
+Step 30). It is recorded, and no longer sought, and the shunned list
+(:mod:`libranet.cas.shunned`) is written again at once, rather than at the
+next derivation, for the modules that refuse shunned content. A miss for
+shunned content is not sought, and a search is never given it.
 
 What the node holds is what ``data.stored`` announced, with its size, less
 what ``data.deleted`` reported gone. Asked by the eviction module for
@@ -214,7 +214,7 @@ class StatsModule(ModuleBase):
             EventType.EVICTION_CANDIDATES_REQUESTED,
             EventType.APP_ACCESSED,
             EventType.RESOLVED_RECLAIM_REQUESTED,
-            EventType.DATA_BLOCKED,
+            EventType.DATA_SHUNNED,
             EventType.PEERS_CONNECTED,
             EventType.NODE_TRUST,
             EventType.NODE_TRUST_REQUESTED,
@@ -265,7 +265,7 @@ class StatsModule(ModuleBase):
                 EventType.EVICTION_CANDIDATES_REQUESTED: self._on_candidates_requested,
                 EventType.APP_ACCESSED: self._on_app_accessed,
                 EventType.RESOLVED_RECLAIM_REQUESTED: self._on_reclaim_requested,
-                EventType.DATA_BLOCKED: self._on_data_blocked,
+                EventType.DATA_SHUNNED: self._on_data_shunned,
                 EventType.PEERS_CONNECTED: self._on_peers_connected,
                 EventType.NODE_TRUST: self._on_node_trust,
                 EventType.NODE_TRUST_REQUESTED: self._on_node_trust_requested,
@@ -337,7 +337,7 @@ class StatsModule(ModuleBase):
     def _on_data_not_found(self, message: Message) -> None:
         """Seek what was missed, unless it is held by now, as when its ``data.stored`` came first.
 
-        Messages from two modules arrive in no set order. Blocked content is
+        Messages from two modules arrive in no set order. Shunned content is
         never sought.
         """
         content_id = ContentId.from_fields(message)
@@ -346,8 +346,8 @@ class StatsModule(ModuleBase):
             self.logger.debug("%s is held, so is not sought", content_id)
             return
 
-        if self.database.is_blocked(content_id):
-            self.logger.debug("%s is blocked, so is not sought", content_id)
+        if self.database.is_shunned(content_id):
+            self.logger.debug("%s is shunned, so is not sought", content_id)
             return
 
         self.database.record_seek(SeekKind.DATA, [str(content_id)])
@@ -488,17 +488,17 @@ class StatsModule(ModuleBase):
     def _on_app_accessed(self, message: Message) -> None:
         self.database.record_app_access(ContentId.parse(message["bundle"]))
 
-    def _on_data_blocked(self, message: Message) -> None:
-        """Block the content, stop seeking it, and list it for the modules refusing it."""
+    def _on_data_shunned(self, message: Message) -> None:
+        """Shun the content, stop seeking it, and list it for the modules refusing it."""
         content_id = ContentId.from_fields(message)
 
-        if not self.database.record_blocked(content_id):
-            self.logger.debug("%s was blocked already", content_id)
+        if not self.database.record_shunned(content_id):
+            self.logger.debug("%s was shunned already", content_id)
             return
 
         self.database.clear_seek(SeekKind.DATA, str(content_id))
-        self.deriver.write_blocked_list()
-        self.logger.info("Blocked %s", content_id)
+        self.deriver.write_shunned_list()
+        self.logger.info("Shunned %s", content_id)
 
     def _on_peers_connected(self, message: Message) -> None:
         """Keep the peers now connected one way, in place of those named before."""

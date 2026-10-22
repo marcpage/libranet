@@ -11,8 +11,8 @@ node, as by a page::
 
     data.search_requested  {"prefix": "<hex>", "node_id": "sha256/<hex>"}
 
-Content this node has blocked is left out of every answer (HttpApi §5.5,
-Phase 4 Step 30), even one cached before it was blocked, and so is whatever
+Content this node has shunned is left out of every answer (HttpApi §5.5,
+Phase 4 Step 30), even one cached before it was shunned, and so is whatever
 shares too few leading bits with the prefix for the search to return it
 (``storage.search_min_bits``), even what the stats module adds. Each answer
 names as many of the best matches as fit in under 1 MiB, zlib-compressed if
@@ -39,11 +39,11 @@ from http import HTTPStatus
 from logging import getLogger
 from typing import Final, Iterable
 
-from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
 from libranet.cas.errors import InvalidContentIdError
 from libranet.cas.prefix import nearest
+from libranet.cas.shunned import ShunnedContent
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.problems import INVALID_SEARCH_PREFIX
@@ -75,9 +75,9 @@ DROP_SEARCH_PATTERN: Final = rf"{DROP_PATH}/(?P<target>[^/]+)"
 
 @dataclass(frozen=True)
 class SearchHandler:
-    """Answers prefix searches from the cache or a local scan, less what ``blocked`` names.
+    """Answers prefix searches from the cache or a local scan, less what ``shunned`` names.
 
-    Whatever ``search`` would not match is left out too. Without ``blocked``,
+    Whatever ``search`` would not match is left out too. Without ``shunned``,
     nothing more is.
     """
 
@@ -85,7 +85,7 @@ class SearchHandler:
     cache: SearchCache
     publish: Publish
     _: KW_ONLY
-    blocked: BlockedContent | None = None
+    shunned: ShunnedContent | None = None
 
     def __call__(self, request: Request) -> Response:
         try:
@@ -155,13 +155,13 @@ class SearchHandler:
         self.publish(EventType.SEARCH_REQUESTED, payload)
 
     def _returned(self, prefix: str, content_ids: Iterable[ContentId]) -> list[ContentId]:
-        """``content_ids``, in their order, less those not matching ``prefix`` and those blocked."""
+        """``content_ids``, in their order, less those not matching ``prefix`` and those shunned."""
         matching = self.search.matching(prefix, content_ids)
 
-        if self.blocked is None:
+        if self.shunned is None:
             return matching
 
-        return self.blocked.unblocked(matching)
+        return self.shunned.unshunned(matching)
 
 
 def _asker(request: Request) -> ContentId | None:

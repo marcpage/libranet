@@ -144,7 +144,7 @@ erDiagram
         REAL last_acquired "nullable"
         REAL stored_seconds
         INTEGER size "nullable"
-        REAL blocked_at "nullable"
+        REAL shunned_at "nullable"
     }
     app_bundles {
         TEXT algorithm PK
@@ -217,7 +217,7 @@ deleted.
 | `last_acquired` | REAL | yes | — | When it was last added to the source of truth; kept after a deletion |
 | `stored_seconds` | REAL | no | 0 | How long copies were held before each deletion, added up |
 | `size` | INTEGER | yes | — | Its size in bytes as stored, while the node holds it; `NULL` otherwise |
-| `blocked_at` | REAL | yes | — | When this node shunned it (Phase 4 Step 30); `NULL` if it has not |
+| `shunned_at` | REAL | yes | — | When this node shunned it (Phase 4 Step 30); `NULL` if it has not |
 
 - **`size` is what says content is held.** `data.stored` sets it, and
   `data.deleted` clears it. Stats never walks the store, so content stored
@@ -243,10 +243,10 @@ deleted.
 - **This node's own public key** is written at startup without an
   announcement, so it has no `size`, and eviction's ranking leaves it out by
   name as well.
-- **`blocked_at` says content is shunned**: content this node will not hold,
-  and refuses (HighLevelDesign §4.11). `data.blocked` sets it, if it is not
+- **`shunned_at` says content is shunned**: content this node will not hold,
+  and refuses (HighLevelDesign §4.11). `data.shunned` sets it, if it is not
   set already, and nothing clears it. The content is deleted at once, since
-  the eviction module hears the same `data.blocked`, and `size` is cleared
+  the eviction module hears the same `data.shunned`, and `size` is cleared
   as for any content deleted, but the shunning stays, since the row does, so
   the node never takes the content back from a peer that pushes it.
   Deleting the database is the only way to lift one (§9.1). The list derived
@@ -254,7 +254,7 @@ deleted.
   check, since none of them may open the file.
 
 Indexes: the primary key, `data_stats_by_hash`, `data_stats_held`, and
-`data_stats_blocked` (§5).
+`data_stats_shunned` (§5).
 
 ### 4.2 `node_stats`
 
@@ -421,7 +421,7 @@ Index: the primary key only.
 | `sqlite_autoindex_data_stats_1` | `data_stats (algorithm, hash)` | Primary key | Every upsert of one content id |
 | `data_stats_by_hash` | `data_stats (hash)` | Schema | Search: the known hashes sharing a prefix's leading bits, across every algorithm |
 | `data_stats_held` | `data_stats (hash) WHERE size IS NOT NULL` | Schema | Eviction: the held hashes either side of the node id's |
-| `data_stats_blocked` | `data_stats (hash) WHERE blocked_at IS NOT NULL` | Schema | The shunned list: every shunned row, however many others there are |
+| `data_stats_shunned` | `data_stats (hash) WHERE shunned_at IS NOT NULL` | Schema | The shunned list: every shunned row, however many others there are |
 | `sqlite_autoindex_node_stats_1` | `node_stats (node_id)` | Primary key | Every upsert of one node |
 | `sqlite_autoindex_node_addresses_1` | `node_addresses (node_id, endpoint)` | Primary key | Every upsert of one address; a node's addresses |
 | `sqlite_autoindex_node_trust_1` | `node_trust (node_id)` | Primary key | Every insert of one identity's state |
@@ -436,7 +436,7 @@ the index, out of order, measured four times slower at 500,000 objects
 
 Nothing indexes a time. Every query that filters or sorts on one scans its
 table (§7), but for the shunned list, which reads only the rows
-`data_stats_blocked` holds.
+`data_stats_shunned` holds.
 
 ## 6. What Writes Each Row
 
@@ -465,7 +465,7 @@ event happened.
 | `fetch.attempted` | Connection manager | `node_stats`: `data_found` or `data_not_found` + 1 |
 | `app.accessed` | Web server | `app_bundles`: `last_accessed` = now |
 | `eviction.candidates_requested` | Eviction | `data_stats`: as `data.deleted`, for any object it would list that is gone from the store |
-| `data.blocked` | Web server | `data_stats`: `blocked_at` = now, unless it is set already. `seek_entries`: this node's `data` entry for it deleted |
+| `data.shunned` | Web server | `data_stats`: `shunned_at` = now, unless it is set already. `seek_entries`: this node's `data` entry for it deleted |
 | `node.trust` | Web server | `node_trust`: every row deleted, and one inserted for each identity trusted or untrusted, in one transaction |
 
 Two more writes come from no event. Each time the lists are derived (§7.2),
@@ -489,8 +489,8 @@ stats first deletes the seek entries and addresses that are past keeping
 | `seek_values` | Each derivation, and each new search, once for each kind | `seek_entries` | Primary key prefix, then sorted |
 | `apps_accessed_since` | `resolved.reclaim_requested` | `app_bundles` | Whole table |
 | `node_stats` | `node.unreached`, to read the new count | `node_stats` | Primary key |
-| `is_blocked` | `data.not_found` | `data_stats` | Primary key |
-| `blocked_ids` | Each derivation, and each new shunning | `data_stats` | Every row of `data_stats_blocked`, sorted |
+| `is_shunned` | `data.not_found` | `data_stats` | Primary key |
+| `shunned_ids` | Each derivation, and each new shunning | `data_stats` | Every row of `data_stats_shunned`, sorted |
 | `trust_states` | `node.trust_requested`, as the web server starts | `node_trust` | Whole table |
 
 `data_stats` and `node_addresses`, which return one content id's row and one
@@ -518,7 +518,7 @@ its contents change.
 | `nodes.json` | This node's own endpoints, then `last_good_endpoints` | Each node's last reached address, if it has not failed since; most recently reached first |
 | `candidates.json` | `candidate_endpoints`, less `given_up_nodes` | Nodes that have been reached first, most recently first, then the rest, most recently learned first |
 | `seek.json` | `seek_values` for this node, of each kind | Most recently asked for first |
-| `blocked.json` | `blocked_ids` | By hash |
+| `shunned.json` | `shunned_ids` | By hash |
 | `peers.json` | `all_node_stats` and `all_node_addresses`, with the peers connected now | Those connected first, then the most recently connected, then the most recently learned of; up to `stats.max_peers_listed` (1000) |
 
 A node is given up on while its `consecutive_failures` is at least
@@ -528,7 +528,7 @@ list leaves out this node's own id.
 
 The lists are derived when stats starts, then once
 `stats.derive_interval_seconds` (60) has passed and the module is idle, and
-at once when a node is given up on. `blocked.json` is also written at once
+at once when a node is given up on. `shunned.json` is also written at once
 when content is first shunned, and `seek.json` when a search names a prefix
 this node's seek list does not, so that the peers connected to it read the
 prefix on their next refresh and push what matches (Phase 4 Step 93).
@@ -583,20 +583,21 @@ Because every statement is `IF NOT EXISTS`:
 
 - **A new table or index** appears in an existing database the next time
   the node starts.
-- **A new column** on an existing table does not. The table is left as it
-  was, and the first statement naming the column fails with `no such
-  column`.
+- **A new or renamed column** on an existing table does not. The table is
+  left as it was, and the first statement naming the column fails with `no
+  such column`.
 - **A changed declaration** of an existing column does not either. The
   table keeps the one it was made with.
 
-So far each step that added a column has required the database to be
-deleted, on the grounds that nothing has shipped, and no node needs to be
-kept before version 1.0. A database made by Phase 4 Step 30 or later works
-with the current code. An older one does not: applying the schema fails on
-`data_stats_blocked` with `no such column: blocked_at`, or on
-`data_stats_held` with `no such column: size` before Phase 2 Step 28, the
-stats module fails on start, and the supervisor keeps restarting it (Module
-System §4.3) until the file is deleted.
+So far each step that added or renamed a column has required the database
+to be deleted, on the grounds that nothing has shipped, and no node needs
+to be kept before version 1.0. A database made since `blocked_at` was
+renamed `shunned_at` works with the current code. An older one does not:
+applying the schema fails on `data_stats_shunned` with
+`no such column: shunned_at`, or on `data_stats_held` with
+`no such column: size` before Phase 2 Step 28, the stats module fails on
+start, and the supervisor keeps restarting it (Module System §4.3) until
+the file is deleted.
 
 Deleting the database, with the node stopped, loses:
 
@@ -628,6 +629,7 @@ Deleting the database, with the node stopped, loses:
 | #173 | `node_stats.node_id` is declared `NOT NULL` | Keeps the old declaration, which allows a null; nothing writes one, so it works as it is |
 | Phase 4 Step 30 (#71) | `data_stats` gains `blocked_at`; the index `data_stats_blocked` | Must be deleted |
 | Phase 5 Step 113 (#383) | `node_trust` | Gains the new table |
+| Renaming block to shun | `data_stats.blocked_at` is renamed `shunned_at`, and the index `data_stats_blocked` `data_stats_shunned` | Must be deleted |
 
 ### 9.3 What a Change Touches
 

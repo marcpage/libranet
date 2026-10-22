@@ -250,7 +250,7 @@ manager, validator, and fetcher read as plain files, and publishes
 connected each way in memory, as `peers.connected` names them, for the peer
 list (Phase 5 Step 107), and asks for them as it starts. It keeps the
 content the node has shunned
-(`data.blocked`, Phase 4 Step 30), and writes the shunned list at once when
+(`data.shunned`, Phase 4 Step 30), and writes the shunned list at once when
 that grows, and the seek list when a search names a prefix it does not list
 (Phase 4 Step 93). It keeps whom the node trusts and distrusts, as the web
 server says it (`node.trust`), and says what it kept when the web server asks
@@ -284,7 +284,7 @@ the backup module, once it has found it in a folder offered (Step 69). It
 also keeps count of the peers connected to it, whose keys the eviction
 module keeps, and which the stats module lists. A page that deletes content
 (`DELETE /data/{algorithm}/{hash}`, Phase 4 Step 30) has it publish
-`data.blocked`, and it answers for shunned content, as `lists/blocked.json`
+`data.shunned`, and it answers for shunned content, as `lists/shunned.json`
 names it, as for content it does not hold. An address the operator asks to
 connect to on `/config` it hands the connection manager, and waits for what
 came of it, `address.dialed`, to answer (Phase 5 Step 109). It builds the
@@ -304,7 +304,7 @@ either way, publishing `data.stored` or `data.rejected`. It is the only way
 content from a peer enters `cas/data`, with one exception: a peer's own
 public key, which the web server and connection manager check and store
 themselves. An upload of content the node has shunned, as
-`lists/blocked.json` names it, is deleted unchecked, and announced by
+`lists/shunned.json` names it, is deleted unchecked, and announced by
 neither.
 
 #### 3.2.4 Connection Manager
@@ -338,7 +338,7 @@ for the eviction and stats modules whenever they change (`peers.connected`).
 Small and single-threaded. Each `data.not_found` for content the node does
 not hold becomes one `fetch.requested`, at most once per content id every
 `network.retry_after_seconds`, so a burst of misses for one object asks the
-peers once. Content the node has shunned, as `lists/blocked.json` names it,
+peers once. Content the node has shunned, as `lists/shunned.json` names it,
 is never asked for. It opens no connections and writes no content, and only
 logs `fetch.succeeded` and `fetch.failed`.
 
@@ -371,7 +371,7 @@ so a restart of the module it asked cannot stall it. It says whether
 storage is full, in `storage.full`, so that a backup, build, or import waits
 rather than take the node past a limit, and it starts a batch of hand-offs short
 of each limit, so that what waits is not slowed to one hand-off at a time.
-Content the node shuns (`data.blocked`) it deletes at once, handing it off
+Content the node shuns (`data.shunned`) it deletes at once, handing it off
 to no peer, but for a key it keeps.
 
 #### 3.2.8 Backup
@@ -928,7 +928,7 @@ to end its loop.
 | `storage.full_requested` | | | | | | | S | P |
 | `storage.full` | | | | | | | P | S |
 | *Shunned content* | | | | | | | | |
-| `data.blocked` | P | | | S | | | S | |
+| `data.shunned` | P | | | S | | | S | |
 | *Lifecycle* | | | | | | | | |
 | `shutdown` | S | S | S | S | S | S | S | S |
 | **Publishes / subscribes** | 21 / 5 | 16 / 9 | 2 / 1 | 5 / 23 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 |
@@ -994,7 +994,7 @@ A content id is an `algorithm` and a lower-case hex `hash`, or, in
 | `peers.connected` | `direction`: `outbound` or `inbound`; `node_ids` | Every peer connected that way, replacing the last list for that direction |
 | `storage.full_requested` | — | Say whether storage is full now |
 | `storage.full` | `full` | Whether one more object of `storage.max_object_bytes` would take storage past a limit, so that content this node creates waits |
-| `data.blocked` | `algorithm`, `hash` | This node will not hold this content, for good |
+| `data.shunned` | `algorithm`, `hash` | This node will not hold this content, for good |
 | `shutdown` | — | Leave the receive loop |
 
 ### 7.3 Who Talks to Whom
@@ -1040,7 +1040,7 @@ flowchart TB
     missing --> fetch
     fetch <-->|"fetch.requested<br/>fetch.succeeded, fetch.failed"| conn
     evict <-->|"eviction.notice, peers.connected_requested<br/>eviction.acknowledged, peers.connected"| conn
-    evict <-->|"peers.connected_requested<br/>peers.connected, data.blocked"| web
+    evict <-->|"peers.connected_requested<br/>peers.connected, data.shunned"| web
     evict <-->|"storage.full<br/>storage.full_requested"| backup
     evict <-->|"eviction.candidates_requested, eviction.candidates<br/>resolved.reclaim_requested"| stats
     stats -->|"resolved.reclaim"| unb
@@ -1262,7 +1262,7 @@ data moves through files, and a message tells the reader where to look.
 | `lists/candidates.json` | Stats | Connection manager | `nodes.updated` |
 | `lists/nodes.json` | Stats | Web server; connection manager | `nodes.updated`, for the connection manager; the web server reads it when needed |
 | `lists/seek.json` | Stats | Web server; connection manager | Nothing; read when needed |
-| `lists/blocked.json` | Stats | Web server; validator; fetcher | Nothing; read again once replaced |
+| `lists/shunned.json` | Stats | Web server; validator; fetcher | Nothing; read again once replaced |
 | `lists/peers.json` | Stats | Web server | Nothing; read when needed |
 | `search/` | Web server; stats, adding identifiers | Web server | `data.search_requested`, which names the prefix |
 | `libranet.sqlite3` | Stats | Stats | — |

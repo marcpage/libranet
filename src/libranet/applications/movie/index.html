@@ -530,7 +530,7 @@ const COLLECTIONS_PREFIX = "movie collections:";
 
 // Where the collections a person keeps offline are listed, "movie
 // offline:{id}": a version for each, signed by them and encrypted for them,
-// which a change to their collections never blocks, as it blocks those it
+// which a change to their collections never shuns, as it shuns those it
 // replaces. Each is kept in an archive of the node's own (HttpApi 12.4),
 // beside the version, the identity block they signed in with, and their
 // public key, so that signing in and reading the version work offline.
@@ -992,10 +992,10 @@ class Kept {
     await placeVersion(Kept.target(), collections);
 
     for (const id of this.versions) {
-      const blocked = await call("DELETE", `${DATA}${id}`);
+      const shunned = await call("DELETE", `${DATA}${id}`);
 
-      if (!blocked.ok) {
-        console.warn(`The replaced version ${id} was not blocked: ${new Refusal(blocked).message}`);
+      if (!shunned.ok) {
+        console.warn(`The replaced version ${id} was not shunned: ${new Refusal(shunned).message}`);
       }
     }
 
@@ -1095,7 +1095,7 @@ class Offline {
   }
 
   // Each collection kept offline. One whose archive the node no longer keeps,
-  // as once it expires, is forgotten, and its version blocked.
+  // as once it expires, is forgotten, and its version shunned.
   static async read() {
     const ids = await foundAt(Offline.target());
     const lists = await Promise.all(ids.map((id) => Kept.version(id)));
@@ -1162,12 +1162,12 @@ class Offline {
     return new Offline(entry, version, null).archiveUntil(expires);
   }
 
-  // Blocks the version `id`, which lists a collection no longer kept offline.
+  // Shuns the version `id`, which lists a collection no longer kept offline.
   static async forget(id) {
-    const blocked = await call("DELETE", `${DATA}${id}`);
+    const shunned = await call("DELETE", `${DATA}${id}`);
 
-    if (!blocked.ok) {
-      console.warn(`The version ${id} no longer kept offline was not blocked: ${new Refusal(blocked).message}`);
+    if (!shunned.ok) {
+      console.warn(`The version ${id} no longer kept offline was not shunned: ${new Refusal(shunned).message}`);
     }
   }
 

@@ -33,7 +33,7 @@ step 7.
 
 What this node holds, which step 6 pushes and step 7 does not ask for, is
 what it holds in the source of truth or its content archives (Step 34). Step
-6 pushes nothing this node has blocked, even from an archive (HttpApi §5.5,
+6 pushes nothing this node has shunned, even from an archive (HttpApi §5.5,
 Phase 4 Step 30).
 
 The peer's public key goes straight into the source of truth, as sent, once
@@ -79,10 +79,10 @@ from logging import Logger
 from time import time
 from typing import Callable, Final, Iterator, Mapping, Sequence, TypeVar
 
-from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError
 from libranet.cas.layered import LayeredSource
+from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.cas.verification import content_matches
 from libranet.config.models import LibranetConfig, StorageConfig
@@ -154,13 +154,13 @@ class _LocalContent:
     """What this node holds, and what it will not.
 
     Content from peers is written to ``source_of_truth``, ``content`` is
-    read from to push, ``blocked`` names what is never pushed, and
+    read from to push, ``shunned`` names what is never pushed, and
     ``search`` answers searches from ``content``.
     """
 
     source_of_truth: CasStore
     content: LayeredSource
-    blocked: BlockedContent
+    shunned: ShunnedContent
     search: LocalSearch
 
     @classmethod
@@ -170,7 +170,7 @@ class _LocalContent:
         return cls(
             CasStore.source_of_truth(storage),
             content,
-            BlockedContent.of(storage),
+            ShunnedContent.of(storage),
             LocalSearch.of(content, storage),
         )
 
@@ -590,12 +590,12 @@ class PeerExchange:
         return accepted
 
     def _held(self, content_ids: Sequence[ContentId]) -> list[tuple[ContentId, bytes]]:
-        """Those of ``content_ids`` this node holds, with their stored bytes, but none blocked."""
+        """Those of ``content_ids`` this node holds, with their stored bytes, but none shunned."""
         held: list[tuple[ContentId, bytes]] = []
 
         for content_id in content_ids:
-            if self._local.blocked.blocks(content_id):
-                self._logger.debug("Not pushing %s, which this node has blocked", content_id)
+            if self._local.shunned.shuns(content_id):
+                self._logger.debug("Not pushing %s, which this node has shunned", content_id)
                 continue
 
             try:
