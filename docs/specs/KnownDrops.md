@@ -355,8 +355,9 @@ larger ones.
 - **Signed** by its builder, and each transaction in it by its sender. The
   payout it holds has no signature of its own. **Not encrypted.**
 - **Bits:** as many as its builder mines, since the bits are the block's
-  proof of work, its first score, and part of the chain's weight. The
-  root's matches at least 24.
+  proof of work, its first score, and part of the chain's weight. Each,
+  the root's among them, is placed matching at least as many as the node's
+  search returns, 24 by default.
 - **Reading:** a reader follows the heaviest chain, scores each full block
   at the winning target, and takes valid transactions from any block,
   false starts and blocks that score zero among them. A block's `weight`
@@ -390,8 +391,9 @@ each generation, and the one the heaviest chain goes through wins.
 - **Signed** by its builder, its list of witnesses with it, and each stake
   in it by its staker. **Not encrypted.**
 - **Bits:** as many as its builder mines. The best block of a generation
-  matches the most bits, and the bits are part of the chain's weight. The
-  root's matches at least 24.
+  matches the most bits, and the bits are part of the chain's weight.
+  Each, the root's among them, is placed matching at least as many as the
+  node's search returns, 24 by default.
 - **Reading:** a reader passes over a block that is not correct, ranks the
   rest by bits, then by effective stake, then by id, and builds the next
   generation on the best. The winner's stakers share the generation's

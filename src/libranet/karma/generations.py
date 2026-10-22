@@ -35,10 +35,6 @@ LAST_ISSUING_GENERATION: Final = 9_999_999_999_999
 #: :data:`TRANSACTION_WORK_TARGET` (§4.3).
 MIN_TRANSACTION_BITS: Final = 24
 
-#: The fewest leading bits each of the root's drops may share with its
-#: target hash, as many as a node's search returns (§7.3).
-MIN_ROOT_BITS: Final = 24
-
 #: What a transaction's work is measured against: the SHA-256 of
 #: ``transaction``, which is no block's target (§4.3).
 TRANSACTION_WORK_TARGET: Final = DropTarget.of("transaction")

@@ -50,7 +50,9 @@ This version specifies the root (§7), transactions (§4), transaction blocks
   byte, and a nonce, placed at a target string. The nonce lies outside the
   signature, so a builder signs once and then searches for a nonce. The
   number of leading bits a block's id shares with its target hash is its
-  proof of work, the binary match of Karma §18.
+  proof of work, the binary match of Karma §18. Each block is placed
+  sharing at least as many bits as a node's search returns, 24 by default
+  ([HTTP API §6](HttpApi.md#6-content-search)), so that a search finds it.
 - **A builder found to state something false is distrusted** in the
   verifying node's own trust list
   ([Trust Network Specification §4.5](TrustNetwork.md#45-a-nodes-own-scores)),
@@ -817,9 +819,8 @@ has no witnesses. A reader passes over a validation block at
 `karma validation:0` shaped otherwise, or signed by anyone else, or whose
 stake is not the root creator's.
 
-Both drops of the root share at least 24 bits with their target hashes, as
-many as a node's search returns
-([HTTP API §6](HttpApi.md#6-content-search)), so that a search finds them.
+Both drops of the root share at least as many bits with their target
+hashes as a node's search returns, as every block does (§2).
 
 ### 7.4 The Root's Reward
 

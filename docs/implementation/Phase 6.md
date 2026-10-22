@@ -401,7 +401,9 @@ My calls, not yet reviewed:
   block's builder is distrusted. Whether to follow the part before it, if
   that part is heavier, is left open.
 - The genealogy is kept across restarts, one id per generation.
-- Both root drops match at least 24 bits, the node's search floor.
+- Every block's drop, the root's among them, matches at least the node's
+  search floor, `storage.search_min_bits` (24 by default). A floor for the
+  root's drops alone, of 24, was ruled first, and replaced.
 
 **Open questions:**
 
@@ -444,8 +446,7 @@ Work this implies:
   `GenerationTargets.after(validation_id)`, at the id of the winning
   validation block before (§3.1), each a `DropTarget`. Beside them, the
   fixed target of a transaction's work, the SHA-256 of `transaction`
-  (§4.3), and `MIN_TRANSACTION_BITS` and `MIN_ROOT_BITS`, both 24 (§4.3,
-  §7.3).
+  (§4.3), and `MIN_TRANSACTION_BITS`, 24 (§4.3).
 - **A chain's weight** (`karma/weight.py`): `ChainWeight`, the sum of 2^b
   over drops of b bits (§3.3), read and written as a string of decimal
   digits (§5.1), and compared. A drop's bits are counted against its
@@ -458,8 +459,8 @@ after, and the whole issue, 100,000,000,000,010 Karma, by its formula; the
 root's targets and a later generation's, as strings and as hashes; weights
 summed, written, and read back, a drop of 256 bits among them.
 
-Built in one change set: 287 added lines of non-test Python, and 274 of
-tests. That is over §5's estimate of about 200: 119 of the lines are code,
+Built in one change set: 281 added lines of non-test Python, and 272 of
+tests. That is over §5's estimate of about 200: 116 of the lines are code,
 and the rest docstrings, comments, and blank lines.
 
 - **`Kismet`** (`karma/amounts.py`) holds a `count`, from 0 to
@@ -481,6 +482,14 @@ Ruled in review (2026-10-22):
 - **Kismet are added and taken with `+` and `-`**, overloaded on
   `Kismet`. I had built them as methods, `plus` and `minus`, since nothing
   else in `src/` overloads an operator.
+- **No floor of the root's own.** `MIN_ROOT_BITS` was built, and removed.
+  The root's drops, like every block's, are placed matching at least
+  `storage.search_min_bits`, the floor every drop a node places for itself
+  is held to (HttpApi §6). KarmaLedger §2 now says so of every block, and
+  §7.3 points to it, as do Known Drops §3.10 and §3.11. Steps 125, 131,
+  134, and 136 place their drops with it. `MIN_TRANSACTION_BITS` stays,
+  since it is a rule of validity every node holds alike, against a target
+  no drop is placed at.
 
 My calls, not yet reviewed:
 
@@ -876,7 +885,8 @@ Work this implies:
 - **The Karma module makes the root**, as the node: the root transaction,
   mined to at least 24 bits (Step 118), transaction block 0, a stake of
   `"0"`, and validation block 0, each signed by the node, and each drop
-  searched for until it shares at least 24 bits with its target (§7.3).
+  searched for until it shares at least `storage.search_min_bits` with its
+  target (§2, §7.3).
   Each object is stored as the backup module stores what it makes, and
   announced with `data.stored`, so that it is pushed as any new content
   is. The node then follows it: its history is generation 0.
@@ -884,7 +894,7 @@ Work this implies:
   System §3.3 names the Karma module among those adding to `cas/data`.
 
 **Testable in isolation:** the root checked correct by Steps 121 and 122,
-at both targets, each drop of at least 24 bits; the history and head
+at both targets, each drop of at least the search floor; the history and head
 written; `202`, and `409` while following; two requests making one root.
 
 My calls, not yet reviewed:
@@ -1114,8 +1124,9 @@ Work this implies:
 - **A block of its own**: at the head's transaction target, the
   transaction and the payout, its `weight`, `balances`, and `reach` stated
   truly (§3.8), signed by the node, its drop's nonce searched for for
-  `karma.block_seconds` (10), and stored and announced. It may be short of
-  full, and break the half-free rule (§5.6).
+  `karma.block_seconds` (10), and after that until it shares
+  `storage.search_min_bits` (§2), and stored and announced. It may be short
+  of full, and break the half-free rule (§5.6).
 - **Pending transactions carried** (§4.4, Step 129's `carried.json`): put
   up again in each generation until covered and reached, or until
   `karma.carry_generations` after the generation each was witnessed in.
@@ -1217,7 +1228,8 @@ Work this implies:
   leave it full, measured as it stores it. It states its payout, its
   balances, adding those that shorten its reach within the cap (§5.3), its
   reach, and its weight. It signs the block, searches for its nonce for
-  `karma.block_seconds`, and stores and announces it.
+  `karma.block_seconds`, and after that until it shares
+  `storage.search_min_bits` (§2), and stores and announces it.
 - **No transaction before its generation** (§4.4). A block a distrusted
   identity signed is read like any: its transactions are valid on their
   own (§3.8, §4.4).
@@ -1285,8 +1297,10 @@ Work this implies:
   (§6.3, §6.5); and witnesses, the hashes of what it carries first, then
   of transactions seen and not yet witnessed (§6.4), as room allows within
   1 MiB. It is signed by the node, its nonce searched for for
-  `karma.block_seconds`, and it is stored and announced, and built again
-  every `karma.build_interval_seconds` while stakes come that it lacks.
+  `karma.block_seconds`, and after that until it shares
+  `storage.search_min_bits` (§2), and it is stored and announced, and
+  built again every `karma.build_interval_seconds` while stakes come that
+  it lacks.
   Step 126 takes the best as the head as it goes on, Step 129 a better
   one found later, and Step 130 tells the peers.
 

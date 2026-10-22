@@ -9,7 +9,6 @@ from libranet.karma.amounts import KISMET_PER_KARMA, MAX_KISMET, Kismet, decimal
 from libranet.karma.generations import (
     FIRST_NEW_KISMET,
     LAST_ISSUING_GENERATION,
-    MIN_ROOT_BITS,
     MIN_TRANSACTION_BITS,
     NEW_KISMET_DECREASE,
     TRANSACTION_WORK_TARGET,
@@ -23,7 +22,6 @@ __all__ = [
     "KISMET_PER_KARMA",
     "LAST_ISSUING_GENERATION",
     "MAX_KISMET",
-    "MIN_ROOT_BITS",
     "MIN_TRANSACTION_BITS",
     "NEW_KISMET_DECREASE",
     "TRANSACTION_WORK_TARGET",

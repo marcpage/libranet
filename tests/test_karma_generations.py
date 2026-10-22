@@ -10,7 +10,6 @@ from libranet.cas.drops import DropTarget
 from libranet.karma.amounts import KISMET_PER_KARMA, Kismet
 from libranet.karma.generations import (
     LAST_ISSUING_GENERATION,
-    MIN_ROOT_BITS,
     MIN_TRANSACTION_BITS,
     TRANSACTION_WORK_TARGET,
     GenerationTargets,
@@ -93,6 +92,5 @@ def test_a_transactions_work_is_measured_against_no_blocks_target() -> None:
     assert TRANSACTION_WORK_TARGET not in (root.transaction, root.validation)
 
 
-def test_transactions_and_the_root_each_need_twenty_four_bits() -> None:
+def test_a_transaction_needs_twenty_four_bits() -> None:
     assert MIN_TRANSACTION_BITS == 24
-    assert MIN_ROOT_BITS == 24
