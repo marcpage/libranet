@@ -890,12 +890,17 @@ out of its §9, for review with the step:
   payout's `to`, and its `last_won` is unchanged, so that `to` names no
   one it pays nothing.
 
+**Ruled** (2026-10-22), on review: a share is rounded down, as
+recommended, but the Kismet left over go to the winning validation block's
+builder, its signer, rather than to the largest remainders, so that there
+is no tie to break. KarmaLedger §5.2, §5.3, and §6.6 say so.
+
 **Testable in isolation:** balances after a block, for senders,
 recipients, and the payout's, with a fee left in its sender's balance until
 the next block; the payout spent in its own block; what must be stated,
 and the most that may; reach, 0 when every holder is stated; the pot with
 and without a runner-up, and with a staker in both; shares totalling
-exactly, ties to the id first, a total of zero, and the root's reward;
+exactly, the rest to the builder, a total of zero, and the root's reward;
 each weight, from just after a win to never.
 
 Built as one change set: 368 added lines of non-test Python, with 3
@@ -919,14 +924,21 @@ What was built:
   `of(balance, generation)` is a staker's, and
   `effective_stakes(validation, balances)` each staker's effective stake,
   which Step 122's best compares.
-- **`Reward(validation, block, balances, runner_up)`**: `pot()` is the
-  payout's `from`, `shares()` its `to`, and `payout()` transaction block
-  g + 1's.
+- **`Reward(validation, builder, block, balances, runner_up)`**: `pot()`
+  is the payout's `from`, `shares()` its `to`, the Kismet left over paid
+  to `builder`, and `payout()` transaction block g + 1's. The caller gives
+  `builder` from the drop it read (`BlockDrop.builder`).
 - **`NO_BALANCE`** is what an identity stated nowhere holds.
 
 My calls, not yet reviewed:
 
-- **The four rulings were taken as recommended**, as above.
+- **The other three rulings were taken as recommended**, as above.
+- **A builder paid what is left over has won**: it has `last_won` g − 1,
+  as a staker paid a share has, so that a balance is still checked against
+  the payout alone (§5.3). A builder that staked nothing then weighs a
+  tenth if it stakes the next generation. Counting only stakers' shares as
+  a win would have the balance check read validation block g − 1's
+  stakers too.
 - **`from` names no one for 0** either: a sender whose transactions are all
   free, a runner-up staker whose stakes taken are `"0"`, and the new Karma
   once a generation issues none. A payout is known by its hash, so every

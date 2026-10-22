@@ -30,6 +30,7 @@ ERIN = ContentId("sha256", "e0" * 32)
 PREVIOUS = ContentId("sha256", "5e" * 32)
 STAKED_ON = ContentId("sha256", "3c" * 32)
 RIVAL = ContentId("sha256", "4d" * 32)
+BUILDER = ContentId("sha256", "b0" * 32)
 GENERATION = 42
 
 # A generation that issues no new Karma, so that a test sets the whole pot
@@ -359,7 +360,9 @@ def test_the_pot_is_the_new_karma_and_the_fees_without_a_runner_up(
         payout_of({}, {}, GENERATION),
     )
 
-    pot = Reward(validation_of(staked(bob, 1), generation=GENERATION), block, {}).pot()
+    validation = validation_of(staked(bob, 1), generation=GENERATION)
+
+    pot = Reward(validation, BUILDER, block, {}).pot()
 
     assert pot == {None: new_kismet(GENERATION), alice.node_id: Kismet(75)}
 
@@ -370,33 +373,44 @@ def test_the_pot_takes_the_runner_ups_stakes_less_those_of_every_winning_staker(
     validation = validation_of(staked(alice, 1), runner_up=RIVAL)
     runner_up = validation_of(staked(alice, 500), staked(bob, 300), staked(carol, 200))
 
-    pot = Reward(validation, fees_of(bob, 10), {}, runner_up).pot()
+    pot = Reward(validation, BUILDER, fees_of(bob, 10), {}, runner_up).pot()
 
     assert pot == {bob.node_id: Kismet(310), carol.node_id: Kismet(200)}
 
 
-def test_shares_are_rounded_down_and_the_rest_goes_to_the_largest_remainders(
+def test_shares_are_rounded_down_and_the_rest_goes_to_the_builder(
     alice: NodeIdentity, bob: NodeIdentity, carol: NodeIdentity
 ) -> None:
     validation = validation_of(staked(alice, 1), staked(bob, 2), staked(carol, 4))
 
-    shares = Reward(validation, fees_of(alice, 10), {}).shares()
+    shares = Reward(validation, bob.node_id, fees_of(alice, 10), {}).shares()
 
-    assert shares == {alice.node_id: Kismet(1), bob.node_id: Kismet(3), carol.node_id: Kismet(6)}
+    assert shares == {alice.node_id: Kismet(1), bob.node_id: Kismet(4), carol.node_id: Kismet(5)}
 
 
-def test_a_remainder_tied_goes_to_the_id_that_sorts_first(
+def test_a_builder_staking_nothing_is_paid_what_is_left_over(
     alice: NodeIdentity, bob: NodeIdentity, carol: NodeIdentity
 ) -> None:
-    validation = validation_of(staked(alice, 5), staked(bob, 5), staked(carol, 5))
-    first = min(alice.node_id, bob.node_id, carol.node_id)
+    validation = validation_of(staked(alice, 1), staked(bob, 2), staked(carol, 4))
 
-    shares = Reward(validation, fees_of(alice, 10), {}).shares()
+    shares = Reward(validation, BUILDER, fees_of(alice, 10), {}).shares()
 
     assert shares == {
-        identity: Kismet(4 if identity == first else 3)
-        for identity in (alice.node_id, bob.node_id, carol.node_id)
+        alice.node_id: Kismet(1),
+        bob.node_id: Kismet(2),
+        carol.node_id: Kismet(5),
+        BUILDER: Kismet(2),
     }
+
+
+def test_a_builder_is_paid_nothing_when_nothing_is_left_over(
+    alice: NodeIdentity, bob: NodeIdentity
+) -> None:
+    validation = validation_of(staked(alice, 1), staked(bob, 4))
+
+    shares = Reward(validation, BUILDER, fees_of(alice, 10), {}).shares()
+
+    assert shares == {alice.node_id: Kismet(2), bob.node_id: Kismet(8)}
 
 
 def test_a_staker_whose_share_rounds_to_0_is_left_out(
@@ -404,9 +418,22 @@ def test_a_staker_whose_share_rounds_to_0_is_left_out(
 ) -> None:
     validation = validation_of(staked(alice, 1), staked(bob, 3))
 
-    shares = Reward(validation, fees_of(alice, 1), {}).shares()
+    shares = Reward(validation, BUILDER, fees_of(alice, 1), {}).shares()
 
-    assert shares == {bob.node_id: Kismet(1)}
+    assert shares == {BUILDER: Kismet(1)}
+
+
+def test_a_builder_paid_what_is_left_over_has_won_the_generation(
+    alice: NodeIdentity, bob: NodeIdentity
+) -> None:
+    validation = validation_of(staked(alice, 1), staked(bob, 2))
+    payout = Reward(validation, BUILDER, fees_of(alice, 10), {}).payout()
+
+    after = BalanceSheet.of(
+        block_of(payout, generation=QUIET + 1), {alice.node_id: Balance(Kismet(10))}
+    ).after
+
+    assert after[BUILDER] == Balance(Kismet(1), QUIET)
 
 
 def test_a_staker_that_won_recently_shares_by_its_weight(
@@ -415,7 +442,7 @@ def test_a_staker_that_won_recently_shares_by_its_weight(
     validation = validation_of(staked(alice, 100), staked(bob, 10))
     balances = {alice.node_id: Balance(Kismet(100), QUIET - 1)}
 
-    shares = Reward(validation, fees_of(bob, 10), balances).shares()
+    shares = Reward(validation, BUILDER, fees_of(bob, 10), balances).shares()
 
     assert shares == {alice.node_id: Kismet(5), bob.node_id: Kismet(5)}
 
@@ -423,10 +450,9 @@ def test_a_staker_that_won_recently_shares_by_its_weight(
 def test_a_pot_staked_nothing_on_is_shared_equally(alice: NodeIdentity, bob: NodeIdentity) -> None:
     validation = validation_of(staked(alice, 0), staked(bob, 0))
 
-    shares = Reward(validation, fees_of(alice, 11), {}).shares()
+    shares = Reward(validation, alice.node_id, fees_of(alice, 11), {}).shares()
 
-    assert sorted(shares.values()) == [Kismet(5), Kismet(6)]
-    assert shares[min(alice.node_id, bob.node_id)] == Kismet(6)
+    assert shares == {alice.node_id: Kismet(6), bob.node_id: Kismet(5)}
 
 
 def test_the_roots_reward_pays_its_creator_the_whole_of_generation_0s_new_karma(
@@ -434,7 +460,7 @@ def test_the_roots_reward_pays_its_creator_the_whole_of_generation_0s_new_karma(
 ) -> None:
     root = block_of(paying(alice, {alice.node_id: 0}), generation=0)
     validation = validation_of(staked(alice, 0), generation=0)
-    reward = Reward(validation, root, {alice.node_id: Balance(Kismet(0))})
+    reward = Reward(validation, alice.node_id, root, {alice.node_id: Balance(Kismet(0))})
 
     payout = reward.payout()
     after = BalanceSheet.of(block_of(payout, generation=1), {alice.node_id: Balance(Kismet(0))})
@@ -446,7 +472,8 @@ def test_the_roots_reward_pays_its_creator_the_whole_of_generation_0s_new_karma(
 def test_a_rewards_payout_is_the_next_blocks_from_its_pot_to_its_shares(
     alice: NodeIdentity, bob: NodeIdentity
 ) -> None:
-    reward = Reward(validation_of(staked(alice, 1), staked(bob, 1)), fees_of(alice, 10), {})
+    validation = validation_of(staked(alice, 1), staked(bob, 1))
+    reward = Reward(validation, BUILDER, fees_of(alice, 10), {})
 
     payout = reward.payout()
 
@@ -455,7 +482,7 @@ def test_a_rewards_payout_is_the_next_blocks_from_its_pot_to_its_shares(
 
 def test_a_reward_of_a_validation_block_with_no_stake_is_refused(alice: NodeIdentity) -> None:
     with raises(ValueError, match="its validation block has none"):
-        Reward(validation_of(), fees_of(alice, 10), {})
+        Reward(validation_of(), BUILDER, fees_of(alice, 10), {})
 
 
 @mark.parametrize(
@@ -468,7 +495,7 @@ def test_a_reward_of_blocks_of_two_generations_is_refused(
     runner_up = validation_of(staked(alice, 2), generation=runner_up_generation)
 
     with raises(ValueError, match=f"must be of generation {QUIET}, got {GENERATION}"):
-        Reward(validation, fees_of(alice, 10, block_generation), {}, runner_up)
+        Reward(validation, BUILDER, fees_of(alice, 10, block_generation), {}, runner_up)
 
 
 @mark.parametrize("named", [True, False])
@@ -479,4 +506,4 @@ def test_a_runner_up_is_given_exactly_when_the_validation_block_names_one(
     runner_up = None if named else validation_of(staked(alice, 2))
 
     with raises(ValueError, match="runner-up must be given when its validation block names one"):
-        Reward(validation, fees_of(alice, 10), {}, runner_up)
+        Reward(validation, BUILDER, fees_of(alice, 10), {}, runner_up)

@@ -12,8 +12,8 @@ The pot is shared among the winning block's stakers by effective stake:
 each stake's Kismet times its staker's weight, a tenth for each generation
 since the staker last won, up to the whole. Every node divides a pot alike,
 to the Kismet, since a payout is known by the hash of what it states: each
-share is rounded down, and the Kismet left over go one each to the largest
-remainders, ties to the id that sorts first (§6.6).
+share is rounded down, and the Kismet left over go to the block's builder
+(§6.6).
 """
 
 from __future__ import annotations
@@ -130,8 +130,9 @@ class BalanceSheet:
         """The balances ``block`` is checked against and leaves, from ``before``.
 
         Its payout is applied first: each identity its ``from`` names gives
-        what it names, and each its ``to`` names is paid its share, and has
-        ``last_won`` g − 1. Then each transaction is: its sender less all it
+        what it names, and each its ``to`` names, the builder of validation
+        block g − 1 among them, is paid what it names, and has ``last_won``
+        g − 1. Then each transaction is: its sender less all it
         pays, its fee aside, which the next block's payout takes, and each
         recipient plus what it is paid.
 
@@ -226,10 +227,10 @@ class BalanceSheet:
 class Reward:
     """The reward of ``validation``, a generation's winning validation block, as shared (§6.6).
 
-    ``block`` is the transaction block it validates, and ``balances`` each
-    staker's latest balance stated through it, as ``block`` leaves them.
-    ``runner_up`` is the validation block it names as its runner-up, if it
-    names one.
+    ``builder`` signed it. ``block`` is the transaction block it validates,
+    and ``balances`` each staker's latest balance stated through it, as
+    ``block`` leaves them. ``runner_up`` is the validation block it names as
+    its runner-up, if it names one.
 
     Raises:
         ValueError: ``validation`` holds no stake, ``block`` or
@@ -238,6 +239,7 @@ class Reward:
     """
 
     validation: ValidationBlock
+    builder: ContentId
     block: TransactionBlock
     balances: Mapping[ContentId, Balance]
     runner_up: ValidationBlock | None = None
@@ -288,14 +290,13 @@ class Reward:
         return {source: Kismet(count) for source, count in given.items() if count > 0}
 
     def shares(self) -> dict[ContentId, Kismet]:
-        """Each staker's share of the pot, as the payout's ``to`` states it (§5.2, §6.6).
+        """What the pot pays each staker, and ``builder``, as the payout's ``to`` states it (§6.6).
 
         The pot is divided by effective stake, or equally among the stakers
         when that totals 0, as the root's one stake of ``"0"`` does (§7.4).
-        Each share is rounded down, and the Kismet left over go one each to
-        the stakers of the largest remainders, ties to the id that sorts
-        first, so that the shares total the pot. A staker whose share is 0
-        is left out.
+        Each share is rounded down, and the Kismet left over, fewer than
+        there are stakers, go to ``builder``, whether it stakes or not, so
+        that the shares total the pot. One paid 0 is left out.
 
         Raises:
             ValueError: a staker's balance last won ``validation``'s
@@ -310,12 +311,8 @@ class Reward:
 
         pot = sum(amount.count for amount in self.pot().values())
         counts = {staker: pot * stake // total for staker, stake in stakes.items()}
-        largest = sorted(stakes, key=lambda staker: (-(pot * stakes[staker] % total), staker))
-
-        for staker in largest[: pot - sum(counts.values())]:
-            counts[staker] += 1
-
-        return {staker: Kismet(count) for staker, count in sorted(counts.items()) if count > 0}
+        counts[self.builder] = counts.get(self.builder, 0) + pot - sum(counts.values())
+        return {identity: Kismet(count) for identity, count in sorted(counts.items()) if count > 0}
 
     def payout(self) -> Payout:
         """The payout of the next transaction block, which pays this reward (§5.2)."""

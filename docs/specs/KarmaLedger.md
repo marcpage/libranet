@@ -526,8 +526,9 @@ is the JSON object
   from no one, is under the key `"null"`. One that gives nothing is left
   out (§6.6).
 - **`to`** maps each staker of the winning validation block g − 1 to their
-  share of the pot, in proportion to their effective stake, and rounded as
-  §6.6 says. A staker whose share is 0 is left out.
+  share of the pot, in proportion to their effective stake and rounded
+  down, and that block's builder to what rounding leaves over, as §6.6
+  says, summed by identity. One paid 0 is left out.
 - **`generation`** is g.
 
 The amounts in `to` total those in `from`. Each identity's amount in
@@ -545,7 +546,7 @@ the age a block is scored by (§5.5).
 
 A **balance** is the JSON object `{"kismet": amount, "last_won":
 generation}`: the Kismet an identity holds, and the generation of the last
-validation block it won a share of (§6.6), or `null` if it has won none.
+validation block whose reward paid it (§6.6), or `null` if none has.
 
 A block's `balances` states, as of the end of the block, the balance of
 every sender and every recipient of its transactions, the payout's among
@@ -572,9 +573,9 @@ identity's balance before the block, the latest stated before it or else
   identity, the payout's among them, less all the payout's `from` takes
   from it (§5.2), and less all it sends as a sender, its fees aside, which
   the next block's payout takes; and
-- its `last_won` is g − 1 if the payout pays the identity a share of the
-  reward of validation block g − 1 (§6.6), and otherwise is the `last_won`
-  it had before the block.
+- its `last_won` is g − 1 if the payout pays the identity any of the reward
+  of validation block g − 1 (§6.6), as a staker or as its builder, and
+  otherwise is the `last_won` it had before the block.
 
 A `last_won` weighs an identity's stakes (§6.6), so one stated wrongly
 shifts the pot as surely as a wrong `kismet` shifts Kismet.
@@ -805,21 +806,24 @@ tenths of a Kismet, with no fraction to round.
 
 Each staker's **share** is the pot times their effective stake, over the
 total of the block's effective stakes, rounded down to whole Kismet. The
-Kismet left over go one each to the stakers of the largest remainders, ties
-to the staker whose id sorts first, so that the shares total the pot
-exactly, and every node divides it alike. When the block's effective stakes
-total 0, the pot is divided equally among its stakers, what is left over
-going as above. The root's reward (§7.4), whose one stake is `"0"`, is
-shared by this rule rather than as an exception to it.
+Kismet left over, fewer than the block has stakers, go to the block's
+builder, its signer, whether or not it is a staker, so that the payout's
+`to` totals the pot exactly, and every node divides it alike. When the
+block's effective stakes total 0, the pot is divided equally among its
+stakers, what is left over going to the builder too. The root's reward
+(§7.4), whose one stake is `"0"`, is shared by this rule rather than as an
+exception to it.
 
 The payout's `from` takes the pot from those it comes from, each sender's
 fees and each runner-up staker's stakes taken summed by identity, and its
-`to` pays each staker their share (§5.2). Neither names anyone for 0. A
-staker whose share is 0 is not in `to`, and keeps the `last_won` it had.
-`from` leaves out a sender whose transactions are all free, a runner-up
-staker whose stakes taken are `"0"`, and the new Karma of a generation that
-issues none (§2). Each staker paid a share has `last_won` g in block
-g + 1's balances.
+`to` pays each staker their share, and the builder what is left over
+(§5.2). Neither names anyone for 0. A staker whose share is 0, and that is
+not paid what is left over, is not in `to`, and keeps the `last_won` it
+had. `from` leaves out a sender whose transactions are all free, a
+runner-up staker whose stakes taken are `"0"`, and the new Karma of a
+generation that issues none (§2). Each identity `to` pays, the builder
+among them, has `last_won` g in block g + 1's balances, since each has won
+generation g.
 
 ## 7. The Root
 
