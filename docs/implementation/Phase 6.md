@@ -458,14 +458,14 @@ after, and the whole issue, 100,000,000,000,010 Karma, by its formula; the
 root's targets and a later generation's, as strings and as hashes; weights
 summed, written, and read back, a drop of 256 bits among them.
 
-Built in one change set: 287 added lines of non-test Python, and 270 of
+Built in one change set: 287 added lines of non-test Python, and 274 of
 tests. That is over §5's estimate of about 200: 119 of the lines are code,
 and the rest docstrings, comments, and blank lines.
 
 - **`Kismet`** (`karma/amounts.py`) holds a `count`, from 0 to
   `MAX_KISMET` (10^28), and is ordered by it. `from_value` reads it,
-  naming what it read in a refusal, `value()` writes it, and `plus` and
-  `minus` add and take, refusing a result outside that range.
+  naming what it read in a refusal, `value()` writes it, and `+` and `-`
+  add and take, refusing a result outside that range.
   `decimal_count` reads the digits, for a weight as well as an amount.
 - **`new_kismet(generation)`** (`karma/generations.py`) is R_g, from
   `FIRST_NEW_KISMET`, `NEW_KISMET_DECREASE`, and
@@ -476,13 +476,16 @@ and the rest docstrings, comments, and blank lines.
   by it. `plus(bits)` adds a drop of so many bits, and
   `plus_drop(drop, target)` counts them with `matching_bits`.
 
+Ruled in review (2026-10-22):
+
+- **Kismet are added and taken with `+` and `-`**, overloaded on
+  `Kismet`. I had built them as methods, `plus` and `minus`, since nothing
+  else in `src/` overloads an operator.
+
 My calls, not yet reviewed:
 
 - **R_g is a function, `new_kismet`**, not a method, since it is a
   generation's, and a generation is a number, not a type of its own.
-- **Adding and taking are methods, `plus` and `minus`**, not `+` and `-`.
-  Nothing in `src/` overloads an operator, and a name says that the
-  result may be refused.
 - **The cap of 10^28 is kept, as the issue states**, though the whole
   issue is 10 Karma more (10^28 + 10^15 Kismet). No one amount nears either
   number, so the gap is the specification's wording, not a limit any chain

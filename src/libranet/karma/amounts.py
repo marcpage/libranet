@@ -73,7 +73,7 @@ class Kismet:
         """This amount as a block or transaction states it: decimal digits (§4.1)."""
         return str(self.count)
 
-    def plus(self, other: Kismet) -> Kismet:
+    def __add__(self, other: Kismet) -> Kismet:
         """This amount and ``other`` together.
 
         Raises:
@@ -81,7 +81,7 @@ class Kismet:
         """
         return Kismet(self.count + other.count)
 
-    def minus(self, other: Kismet) -> Kismet:
+    def __sub__(self, other: Kismet) -> Kismet:
         """This amount, with ``other`` taken from it.
 
         Raises:

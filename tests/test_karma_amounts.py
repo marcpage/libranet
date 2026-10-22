@@ -65,23 +65,27 @@ def test_an_amount_out_of_range_is_refused(count: int) -> None:
 
 
 def test_amounts_are_added() -> None:
-    assert Kismet(250).plus(Kismet(75)) == Kismet(325)
-    assert Kismet(MAX_KISMET - 1).plus(Kismet(1)) == Kismet(MAX_KISMET)
+    assert Kismet(250) + Kismet(75) == Kismet(325)
+    assert Kismet(MAX_KISMET - 1) + Kismet(1) == Kismet(MAX_KISMET)
+
+
+def test_amounts_are_summed_from_zero() -> None:
+    assert sum([Kismet(250), Kismet(75), Kismet(5)], Kismet(0)) == Kismet(330)
 
 
 def test_amounts_are_not_added_past_the_most_there_can_be() -> None:
     with raises(ValueError):
-        Kismet(MAX_KISMET).plus(Kismet(1))
+        Kismet(MAX_KISMET) + Kismet(1)  # pylint: disable=expression-not-assigned
 
 
 def test_amounts_are_taken_down_to_zero() -> None:
-    assert Kismet(325).minus(Kismet(75)) == Kismet(250)
-    assert Kismet(75).minus(Kismet(75)) == Kismet(0)
+    assert Kismet(325) - Kismet(75) == Kismet(250)
+    assert Kismet(75) - Kismet(75) == Kismet(0)
 
 
 def test_an_amount_is_never_taken_below_zero() -> None:
     with raises(ValueError):
-        Kismet(74).minus(Kismet(75))
+        Kismet(74) - Kismet(75)  # pylint: disable=expression-not-assigned
 
 
 def test_amounts_are_compared() -> None:
