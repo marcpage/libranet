@@ -60,6 +60,9 @@ This version specifies the root (§7), transactions (§4), transaction blocks
 - **Blocking** is a node's own block list
   ([HTTP API §5.5](HttpApi.md#55-blocked-content)). It is used here to let
   go of blocks that a larger block or a heavier chain supersedes.
+- **Eviction** treats Karma's blocks as any other content
+  ([High-Level Design §4.5](HighLevelDesign.md#45-storage-priority-and-eviction)).
+  A node that needs a block it no longer holds fetches it again.
 
 ## 3. Generations
 
@@ -154,7 +157,7 @@ target, it goes through these steps in order:
    validates, whose `weight` says how heavy the chain behind it claims to
    be. If that is not heavier than its own head, the node stops.
 2. **Walk back.** It walks the new head's generations back, from each
-   validation block to the transaction block it names, and from that
+   validation block to the transaction block its stakes name, and from that
    block's `previous` to the validation block before. It stops at the first
    validation block in its genealogy, the **common ancestor**. At each step
    it checks that the transaction block's `weight` is the one before's plus
@@ -165,9 +168,9 @@ target, it goes through these steps in order:
    through its own head.
 4. **Check the new branch.** It checks the new chain's blocks, from the
    common ancestor forward to the new head (§5.5, §6.5), fetching any block
-   it no longer holds. Each collected transaction it meets in the new chain
-   is already accounted for, and it strikes that transaction from what it
-   collected.
+   it no longer holds. Each collected transaction whose key (§4.2) it meets
+   in the new chain is already accounted for, and it strikes that
+   transaction from what it collected.
 5. **Follow.** If every block checks, and the new head is heavier, the node
    follows it. Its genealogy after the common ancestor becomes the new
    chain's, and it tells its peers its new head (§3.5.2). A block that does
@@ -175,7 +178,8 @@ target, it goes through these steps in order:
 6. **Carry the rest over.** It puts each collected transaction into the
    transaction block it builds at the new head's target. One whose sender's
    balance the new chain does not cover, as when the new chain has spent
-   it, it carries forward as a pending transaction (§4.4).
+   it, or whose `generation` the new chain has not reached, it carries
+   forward as a pending transaction (§4.4).
 
 ### 3.6 Weak Chains
 
@@ -223,26 +227,31 @@ itself, and the chain its `previous` names, prove wrong:
 - **In the block alone:** it is not well-formed (§5.1, §6.1), with a field
   missing, a field of the wrong type, or an amount that is not a decimal
   string; its transactions, stakes, or witnesses are out of order or
-  repeated; it holds a transaction or a stake whose signature fails, a
-  transaction whose `from` is not its signer, whose proof of work is under
-  the minimum, that moves 0 Kismet outside the root, or whose `generation`
-  is later than the block's; or its payout is signed, missing, or more than
-  one.
+  repeated, or two of its transactions share a key (§4.2); its `balances`
+  has more entries than §5.3 allows; it holds a transaction or a stake
+  whose signature fails, a transaction whose `from` is not its signer,
+  whose proof of work is under the minimum, or that moves 0 Kismet outside
+  the root; or its payout is signed, missing, or more than one.
 - **Against its target:** its `generation` is not one more than that of the
   validation block its target is named for; its `previous` does not name
-  that validation block; a validation block's `transaction_block` is not at
-  the same target, a stake names another transaction block, or its
-  `runner_up` names itself or a block at another target; or a block at a
-  `:0` target does not have the root's shape (§7).
-- **Against the chain:** its `weight`, payout, `reach`, or a stated balance
-  is wrong, or a sender or recipient is left unstated; a transaction
-  overspends its sender, or is already in the chain within the history the
-  node holds; a staker's stakes exceed their balance (§6.3); or a
-  validation block names a transaction block that is itself incorrect.
+  that validation block; a validation block has no stake, its stakes name
+  more than one transaction block or one at another target, or its
+  `runner_up` names itself, a block at another target, or one validating
+  the same transaction block; or a block at a `:0` target does not have the
+  root's shape (§7).
+- **Against the chain:** its `weight`, payout, or `reach` is wrong, or a
+  stated balance's `kismet` or `last_won` is wrong (§5.3), or a sender or
+  recipient is left unstated; a transaction overspends its sender, or its
+  key is already in the chain within the history the node holds; a
+  validation block lists a witness that an earlier winning validation block
+  of its chain lists, within the history the node holds (§6.4); a staker's
+  stakes, or the runner-up's stakes the block would take from them, exceed
+  what covers them (§6.3); or a validation block names a transaction block
+  that is itself incorrect.
 
-A node also distrusts the staker of a stake that, alone, exceeds the
-staker's balance at the transaction block it names, since that balance
-never changes. It never distrusts a transaction's sender for an overspend,
+A node also distrusts the staker of a stake that, alone, exceeds what
+covers it at the transaction block it names (§6.3), since that never
+changes. It never distrusts a transaction's sender for an overspend,
 since a sender's balance can change after they sign, as when another of
 their transactions is taken first.
 
@@ -254,24 +263,31 @@ counting against its builder.
 None of these makes a builder distrusted, since an honest builder can meet
 each one:
 
-- a block judged full or not full, or near 1 MiB or not (§5.4), since zlib
-  implementations may measure alike bytes differently;
+- a block judged full or not full, or near 1 MiB or not (§5.4), since
+  copies of a block compressed otherwise measure otherwise;
 - the half-free rule broken in a block that is not full and that no
   validation block names (§5.6);
 - a block built on, or chosen, that is not the best the node has seen, or
   that is not on the node's own chain (§3.2, §3.6), since the builder may
   have seen less, or another part of the network;
-- the runner-up chosen (§6.1), and the witnesses listed (§6.4);
-- a duplicate older than the history the node holds (§4.4);
+- which runner-up is chosen, of those §6.5 allows (§6.1), and the
+  witnesses listed (§6.4);
+- a duplicate, or a witness listed again, older than the history the node
+  holds (§4.4, §6.4);
+- a transaction included before the generation it names, which makes the
+  block incorrect (§5.5) but is no false statement, since a transaction
+  may name a generation ahead of the chain (§4.4);
 - a block on a chain the node has not fetched and checked, which it judges
   only once it has.
 
 A block whose builder is distrusted may still be on the chain, since other
 nodes may not distrust its builder, and a node follows the heaviest chain
-whatever it distrusts (§3.6). But no builder knowingly builds on one. A
-node builds no validation block on a transaction block a distrusted
-identity signed, and puts no stake of a distrusted identity in a validation
-block it builds.
+whatever it distrusts (§3.6). Distrust keeps a node from building blocks
+with what it distrusts, not from using them. A node builds no validation
+block on a transaction block a distrusted identity signed, and puts no
+stake of a distrusted identity in a validation block it builds. But it
+builds the next transaction block on the heaviest chain's winning
+validation block, whoever signed it.
 
 ## 4. Transactions
 
@@ -284,6 +300,7 @@ A transaction is a signed bundle whose `contents` is the JSON object
  "to": {"sha256/9f8e…": "250", "sha256/7c6d…": "75"},
  "fee_kismet": "0",
  "generation": 41,
+ "created": "2026-10-21T14:03:22Z",
  "nonce": "…"}
 ```
 
@@ -293,10 +310,17 @@ A transaction is a signed bundle whose `contents` is the JSON object
   transaction pays any number of recipients, so a node pays many small
   rewards in one transaction, not one each.
 - **`fee_kismet`** is the fee, paid to the validators (§6.6). A transaction
-  whose fee is `"0"` is **free**, and any other is **paid**.
+  whose fee is `"0"` is **free**, and any other is **paid**. The fee leaves
+  the sender's balance in the next block's payout (§5.2), not in the block
+  that includes the transaction.
 - **`generation`** is the generation the transaction was created in.
+- **`created`** is when the sender decided to pay: an RFC 3339 moment in
+  UTC, to the second
+  ([RFC References §2.2](RfcReferences.md#22-rfc-3339-timestamps)). Like
+  `generation`, it is the sender's word, and is checked against no clock.
+  With `from`, it is the transaction's key (§4.2).
 - **`nonce`** is any string, searched for to give the transaction its proof
-  of work (§4.3).
+  of work (§4.3). It is not part of the transaction's key (§4.2).
 
 An amount is a string of decimal digits, with no sign, and with no leading
 zero unless it is `"0"`. Ten octillion Kismet, the most there can be, does
@@ -312,14 +336,32 @@ A transaction is known by its `hash`, the hash of its `contents` (Bundle
 Specification §5), not by the id of its bundle. Signing the same contents
 again with a person's RSA key gives another signature and another bundle,
 since RSASSA-PSS is randomized, but the same `hash`, and so the same
-transaction. A sender who means to pay the same recipients the same
-amounts twice signs two transactions with different nonces.
+transaction.
+
+A transaction's **key** is its `from` and its `created`. Two transactions
+with the same key are one payment, whatever else they hold, and the chain
+includes only one of them (§4.4). Mining a transaction again gives it
+another `nonce` and another `hash` (§4.3), but the same key. A sender's
+software stamps `created` once, when the sender decides to pay, and reuses
+it whenever it puts the payment up again, signs it again, or mines it
+again, so that a retry is never taken as a second payment. A sender who
+means to pay the same recipients the same amounts twice signs two
+transactions with different `created`. Two transactions a sender signs in
+the same second share a key, and only one is included; one transaction
+already pays any number of recipients (§4.1).
 
 ### 4.3 Proof of Work
 
 A transaction's proof of work is the number of leading bits its `hash`
-shares with the SHA-256 of a fixed target string, TBD (§9). A transaction
-sharing fewer than a minimum number of bits, TBD, is invalid.
+shares with the SHA-256 of the fixed target string `transaction`. A
+transaction is not a drop: its `nonce` is in its `contents`, so the sender
+searches for it before signing, and what it changes is the transaction's
+own `hash`, not the id of the block that carries it. The string is the
+same for every transaction, and is no block's target (§3.1), so that a
+transaction's proof of work holds in whichever generation's block it is
+carried to (§3.4). A transaction sharing fewer than 24 bits with it is
+invalid. Finding a nonce for 24 bits takes about 2^24, some 17 million,
+tries.
 
 The work is the cost of every transaction, free or paid. A free transaction
 costs no Kismet, but spam costs compute, and a sender who wants a free
@@ -335,24 +377,35 @@ transaction block g when:
 - its `generation` is no later than g;
 - it moves more than 0 Kismet in all, its `to` and its fee together, unless
   it is the root's (§7.1);
-- it shares at least the minimum bits (§4.3);
+- its `hash` shares at least 24 leading bits with the SHA-256 of
+  `transaction` (§4.3);
 - its sender's balance, as block g's transactions are checked against
-  (§5.3), covers all it sends and its fee; and
-- its `hash` is in no transaction block of the chain from its `generation`
-  through g − 1, and only once in block g.
+  (§5.3), covers all it sends and its fee, together with all the sender's
+  other transactions in block g send and their fees; and
+- its key (§4.2) is that of no transaction in a transaction block of the
+  chain from its `generation` through g − 1, nor of any other transaction
+  in block g.
 
 A transaction's balance is checked in the block that includes it, not in
 the one it was created in. The check for duplicates reaches back to the
 transaction's `generation`, however far that is (§9).
 
 A transaction that fails only because its sender's balance does not cover
-it is **pending**, not dropped. Builders carry it forward, trying it in each
-later block, since the sender may yet receive enough. They stop carrying it
-a fixed number of generations, TBD (§9), after the generation it was
-witnessed in (§4.5). It stays valid, never expiring: anyone holding it may
-put it up again, and it is included if the sender's balance covers it then.
+it, or because its `generation` is later than g, is **pending**, not
+dropped, and is no error. A `generation` ahead of the chain is to be
+expected: a transaction made on another chain that had gone further is
+carried over to a shorter one (§3.5.3). Builders carry a pending
+transaction forward, trying it in each later block, since the sender may
+yet receive enough, and the chain will reach its generation. It is not
+included before then, since the check for duplicates starts at its
+`generation`, and one included earlier could be included again. Builders
+stop carrying it a number of generations after the generation it was
+witnessed in (§4.5), which each node sets in its configuration, 3 by
+default. It stays valid, never expiring: anyone holding it may put it up
+again, and it is included if it is valid then.
 A node that carries a pending transaction lists its hash among the
-witnesses of each validation block it builds, so that its count starts.
+witnesses of the validation blocks it builds until its chain has witnessed
+it (§6.4), so that its count starts.
 
 A transaction's validity is its own. A transaction that is valid stays
 valid whatever block it arrives in, so a builder may take it from a block
@@ -362,16 +415,38 @@ that is not (§5.6).
 
 The `generation` a transaction claims is its sender's word, and cannot be
 checked: every old block's id is public, so a transaction can name any
-generation. The claim sets where the check for duplicates starts (§4.4),
-and nothing else.
+generation. The claim sets the earliest block that may include the
+transaction, and where the check for duplicates starts (§4.4), and nothing
+else.
 
 A transaction's age is what the chain witnessed of it. A transaction is
-**witnessed** in the generation of the first winning validation block on
-the chain that lists its `hash` (§6.4). A transaction that no winning
-validation block lists is witnessed in the generation of the transaction
-block that includes it, the youngest it can be. A hash listed before its
-transaction was put up is still proof that the transaction existed then,
-since the hash commits to its contents.
+**witnessed** in the generation of the winning validation block on the
+chain that lists its `hash`, of which there is at most one (§6.4), or else
+in the generation of the transaction block that includes it, the youngest
+it can be, if that is earlier. A hash listed before its transaction was put
+up is still proof that the transaction existed then, since the hash commits
+to its contents.
+
+### 4.6 A Node's Payments
+
+A node pays other nodes for what they do for it (Karma §11). For most
+common payments, it pays 0.01% of its balance, rounded down to whole
+Kismet, so that what it gives keeps in step with what it holds. A node
+holding under 10,000 Kismet pays nothing, since its payment rounds to 0.
+
+A node does not put each payment up as it makes it. It queues them, and
+puts them up together as one transaction, whose `to` pays every recipient
+(§4.1), once 100 are queued or an hour has passed since its last
+transaction, whichever is first. Both are in its configuration. So a
+node's many small payments cost the work of one transaction (§4.3), and do
+not flood the network.
+
+At times in its configuration, hourly by default, a node rates the servers
+it is connected to as a client
+([Handshake Protocol §3](HandshakeProtocol.md#3-first-contact-exchange)),
+over the time since it last rated them: by the data it received from each,
+and by the number of its requests each fulfilled. It pays the server rated
+highest by each, 0.01% of its balance, queued as any payment is.
 
 ## 5. Transaction Blocks
 
@@ -405,10 +480,11 @@ JSON object
 - **`reach`** is how many blocks back a reader goes to find every balance
   (§5.3).
 - **`transactions`** are the block's transactions, as objects, sorted by
-  `hash`, the payout (§5.2) among them. No transaction is in a block twice.
+  `hash`, the payout (§5.2) among them. No two of them share a key (§4.2).
   At least half of the transactions other than the payout are free (Karma
   §13).
-- **`balances`** maps ids to balances (§5.3).
+- **`balances`** maps ids to balances (§5.3), each the balance after every
+  transaction in the block, the payout among them, has been applied.
 
 Anyone may build a block, from transactions others signed, and may combine
 others' blocks (§5.6). Whoever builds a block signs it, and answers for
@@ -423,21 +499,33 @@ signs it, so it is written as a signed transaction is, with `algorithm`,
 is the JSON object
 
 ```json
-{"from": {"sha256/5e4f…": "100000000000000"},
- "to": {"sha256/0a1b…": "2000000000000250"},
+{"from": {"null": "1999999999991800",
+          "sha256/5e4f…": "100000000000250",
+          "sha256/7c6d…": "75"},
+ "to": {"sha256/0a1b…": "1399999999994750",
+        "sha256/9f8e…": "699999999997375"},
  "generation": 42}
 ```
 
-- **`from`** maps each runner-up staker whose stakes are taken to the
-  Kismet taken (§6.6). It is `{}` when nothing is taken.
-- **`to`** maps each recipient to the Kismet they receive.
+- **`from`** maps each identity the pot of generation g − 1 (§6.6) comes
+  from to all it gives: the fees of its transactions in transaction block
+  g − 1, and, if it is a runner-up staker whose stakes are taken, the
+  Kismet taken, summed. Generation g − 1's new Karma (§2), which comes
+  from no one, is under the key `"null"`.
+- **`to`** maps each staker of the winning validation block g − 1 to their
+  share of the pot, in proportion to their effective stake (§6.6).
 - **`generation`** is g.
 
-A reader works out the payout from validation block g − 1, and passes over
-a block whose payout differs from it. The payout is applied before any other
-transaction in the block, so Karma received in it may be spent in the same
-block. It counts as neither free nor paid, in the half-free rule or in the
-score (§5.5).
+The amounts in `to` total those in `from`. Each identity's amount in
+`from` leaves its balance in block g (§5.3), so a reader checks a balance
+against the payout without looking up any transaction of block g − 1.
+
+A reader works out the payout from validation block g − 1 and the
+transaction block it validates, and passes over a block whose payout
+differs from it. The payout is applied before any other transaction in the
+block, so Karma received in it may be spent in the same block. It counts
+as neither free nor paid in the half-free rule (§5.1), and is left out of
+the age a block is scored by (§5.5).
 
 ### 5.3 Balances and Reach
 
@@ -447,8 +535,12 @@ validation block it won a share of (§6.6), or `null` if it has won none.
 
 A block's `balances` states, as of the end of the block, the balance of
 every sender and every recipient of its transactions, the payout's among
-them. It MAY state any other balance too, to shorten its reach. A balance
-of 0 is stated only for a sender or a recipient, and an identity stated
+them. It MAY state other balances too, to shorten its reach, but no more of
+them than it must state: its `balances` has at most twice as many entries
+as there are identities its transactions name as sender or recipient, the
+payout's among them. This keeps a block from being filled to full (§5.4)
+with balances anyone can work out, in place of transactions. A balance of
+0 is stated only for a sender or a recipient, and an identity stated
 nowhere holds nothing.
 
 An identity's balance is the one stated in the latest block that states it,
@@ -456,26 +548,51 @@ since every block states each balance it changes. The balances block g's
 transactions are checked against are those transaction block g − 1 leaves,
 with block g's payout applied.
 
+A reader checks every balance a block states, both its `kismet` and its
+`last_won`, whether the block must state it or states it only to shorten
+its reach. A block that states one wrongly is incorrect. Each is the
+identity's balance before the block, the latest stated before it or else
+`{"kismet": "0", "last_won": null}`, with the block's transactions applied:
+
+- its `kismet` is that Kismet, plus all the block's transactions pay the
+  identity, the payout's among them, less all the payout's `from` takes
+  from it (§5.2), and less all it sends as a sender, its fees aside, which
+  the next block's payout takes; and
+- its `last_won` is g − 1 if the payout pays the identity a share of the
+  reward of validation block g − 1 (§6.6), and otherwise is the `last_won`
+  it had before the block.
+
+A `last_won` weighs an identity's stakes (§6.6), so one stated wrongly
+shifts the pot as surely as a wrong `kismet` shifts Kismet.
+
 A block's **`reach`** is the least r such that every identity holding more
 than 0 Kismet is stated in one of blocks g − r through g. A block that
 states every holder has reach 0. A reader checks `reach`, and a block whose
-`reach` is wrong is incorrect. A node keeps whole transaction blocks back
-as far as the reach of the heaviest chain's latest, and needs no older one
-to know any balance.
+`reach` is wrong is incorrect. A node needs whole transaction blocks back
+only as far as the reach of the heaviest chain's latest to know any
+balance.
 
 ### 5.4 Full
 
 A block is **full** when its drop, compressed as zlib
-([RFC 1950](https://www.rfc-editor.org/rfc/rfc1950.html)) at level 9, with
-a window of 15 bits, a memory level of 8, and the default strategy, is as
-near 1 MiB as it can be without being larger. How near counts as full, so
-that a reader can check it, is TBD (§9). Only a full block is validated
+([RFC 1950](https://www.rfc-editor.org/rfc/rfc1950.html)), is no larger
+than 1 MiB (1,048,576 bytes) and larger than 1 MiB less 128 KiB (917,504
+bytes). A node measures the copy it holds. Only a full block is validated
 (§6), except the root.
 
-The compression is fixed so that every node measures alike. The bytes
-measured are those the reference zlib makes at these settings. Other
-implementations, such as zlib-ng, may compress the same bytes differently
-(§8).
+The 128 KiB is room for what a builder cannot control. A block grows a
+transaction at a time, by about 350 to 850 bytes compressed for a
+transaction to one recipient, and the same transaction compresses to sizes
+as much as 100 bytes apart, depending on where in the block it sorts. More
+than that, a block's size depends on what compressed it. Its builder
+compresses it with whatever zlib and settings it chooses, and any node may
+compress it again, better, as long as it still fits in 1 MiB
+([HTTP API §8](HttpApi.md#8-optional-compressed-storage)). The strongest
+zlib encoders, such as libdeflate and zopfli, make a block about 8%
+smaller than the reference zlib at level 9, and zlib-ng about 1.5% larger.
+So a block its builder fills near 1 MiB is full in every copy, however it
+is compressed after. A lower floor costs nothing, since fees draw builders
+to fit in as many transactions as they can.
 
 A builder fills the free half of a block with the free transactions of most
 bits first (§4.3).
@@ -487,18 +604,19 @@ by, in order:
 
 - **(a)** the bits its drop shares with its target hash, more being better;
 - **(b)** its `reach`, shorter being better;
-- **(c)** how near equal its free and paid transactions are in number,
-  nearer being better;
-- **(d)** the average generation its transactions were witnessed in (§4.5),
+- **(c)** the average generation its transactions were witnessed in (§4.5),
   lower being better.
 
 Each compares only where every one before it ties. There are no weights.
-The payout counts in neither (c) nor (d).
+The payout does not count in (c). The mix of free and paid transactions is
+not scored: the half-free rule caps the paid ones (§5.1), and their fees
+draw builders to as many as it allows (§6.6).
 
 A block with anything incorrect about it scores zero, below every correct
 block. A correct block is signed, is full, is shaped and placed as §5.1 to
 §5.3 say, holds only valid transactions (§4.4), and states its payout, its
-balances, its `weight`, and its `reach` as they are.
+balances (`kismet` and `last_won` alike), its `weight`, and its `reach` as
+they are.
 
 ### 5.6 Building and Combining
 
@@ -526,27 +644,29 @@ object
 
 ```json
 {"generation": 42,
- "transaction_block": "sha256/…",
  "runner_up": "sha256/…",
  "stakes": [],
  "witnessed": ["…"]}
 ```
 
 - **`generation`** is g.
-- **`transaction_block`** is the id of the transaction block g it
-  validates.
 - **`runner_up`** is the id of a rival validation block at the same target,
-  chosen by whoever builds this one (Karma §25), or `null`.
+  chosen by whoever builds this one (Karma §25), or `null`. Its stakes name
+  a transaction block of generation g other than this one's: a runner-up
+  validates a block that loses.
 - **`stakes`** are signed stakes (§6.2), as objects, sorted by `hash`, none
-  twice.
+  twice, and at least one. Every stake names the same transaction block g,
+  and that is the block the validation block validates, so it is not named
+  again beside them.
 - **`witnessed`** lists the hashes of transactions its builder has seen
-  (§6.4), sorted, none twice.
+  (§6.4), sorted, none twice, and none that an earlier winning validation
+  block of its chain lists.
 
 A validation block is a collection of stakes, each signed by its staker, so
 anyone may build one from others' stakes (Karma §21), and signs it as its
 builder. A builder leaves out the stakes of every identity it distrusts, and
 builds on no transaction block a distrusted identity signed (§3.8). It
-fits in 1 MiB compressed as §5.4 compresses, and its stakes and witnesses
+fits in 1 MiB compressed (§5.4), and its stakes and witnesses
 share that room. A validation block is never blocked (§3.7).
 
 ### 6.2 Stakes
@@ -556,14 +676,17 @@ A stake is a signed bundle whose `contents` is the JSON object
 ```json
 {"transaction_block": "sha256/…",
  "kismet": "1000000000000000",
- "nonce": "…"}
+ "created": "2026-10-21T14:03:22Z"}
 ```
 
-- **`transaction_block`** is the id of the transaction block staked on,
-  which must be the validation block's own.
+- **`transaction_block`** is the id of the transaction block staked on.
+  Every stake in a validation block names the same one, the block it
+  validates (§6.1).
 - **`kismet`** is the amount staked.
-- **`nonce`** is any string, so that one staker can put up several stakes
-  of one amount (Karma §29).
+- **`created`** is when the staker made the stake, an RFC 3339 moment in
+  UTC, to the second, as a transaction's is (§4.1). So one staker can put
+  up several stakes of one amount (Karma §29). Two of one amount made in
+  the same second are one stake.
 
 The staker is the stake's signer. A stake signs a transaction block's id,
 so it cannot be made before that block exists (Karma §20). A stake is known
@@ -572,9 +695,18 @@ by its `hash`, as a transaction is (§4.2).
 ### 6.3 Covering Stakes
 
 A staker's stakes in one validation block, together, may not exceed the
-staker's balance as transaction block g leaves it (§5.3). A staker may
-stake in any number of validation blocks (Karma §29), each covered on its
-own.
+staker's balance as transaction block g leaves it (§5.3), less the fees of
+the staker's transactions in that block, since block g + 1's payout takes
+those fees and any stakes taken together (§5.2). A staker may stake in any
+number of validation blocks (Karma §29), each covered on its own.
+
+A validation block also answers for its runner-up, since the runner-up's
+stakes are taken by the payout of the chain it builds (§6.6). Each staker
+whose stakes in the runner-up would be taken must be covered for them in
+the same way, by the balances the validation block's own transaction block
+leaves, less the fees of the staker's transactions there. The runner-up's
+own transaction block may leave a staker more, and covering its stakes
+there is not enough.
 
 ### 6.4 Witnesses
 
@@ -585,6 +717,17 @@ it, whoever lists it. The list sets the age of transactions (§4.5), and
 nothing else. Only the chain's winning validation blocks count: a witness
 in a validation block that does not win, or on a fork, does not.
 
+A hash is witnessed once in a chain. A validation block lists no hash that
+an earlier winning validation block of its chain, back to the root, lists
+(§3.5.1), so its room goes to transactions not yet witnessed.
+
+Witness spam limits itself. Witnesses share a validation block's room with
+its stakes (§6.1), so a builder who fills it with hashes, of real
+transactions or not, leaves out stakes, and its block loses to one holding
+more effective stake (§6.5). A hash may be listed after its transaction is
+included, but changes nothing, since the transaction is witnessed by then
+(§4.5).
+
 ### 6.5 Correct, and Best
 
 A validation block is correct when:
@@ -592,19 +735,29 @@ A validation block is correct when:
 - it is signed by its builder;
 - it is at the validation target of its generation, and its `generation`
   is that generation;
-- its `transaction_block` is at the transaction target of the same
-  generation, is full, and scores above zero (§5.5);
-- its `runner_up` is another validation block at the same target, or is
-  `null`;
-- each stake is signed and names the block's `transaction_block`, and each
-  staker's stakes are covered (§6.3);
-- its stakes and its witnesses are sorted, each only once; and
+- it has at least one stake, and its stakes all name one transaction block,
+  which is at the transaction target of the same generation, is full, and
+  scores above zero (§5.5);
+- its `runner_up` is another validation block at the same target, whose
+  stakes name a transaction block other than its own, and whose stakes it
+  would take are covered (§6.3), or is `null`;
+- each stake is signed, and each staker's stakes are covered (§6.3);
+- its stakes and its witnesses are sorted, each only once, and no witness
+  is listed by an earlier winning validation block of its chain (§6.4);
+  and
 - it fits in 1 MiB compressed (§5.4).
 
-Of a generation's correct validation blocks, the best shares the most bits
-with its target hash, and of those, holds the most effective stake (§6.6)
-(Karma §19). A builder builds the next generation on the best it has seen
-(§3.2).
+Of a generation's correct validation blocks, the best is, in order (Karma
+§19):
+
+- the one sharing the most bits with its target hash;
+- of those, the one holding the greatest total effective stake: the sum,
+  over its stakes, of each stake's Kismet times its staker's weight
+  (§6.6); and
+- of those, the one whose id sorts first, as of two chains as heavy
+  (§3.3).
+
+A builder builds the next generation on the best it has seen (§3.2).
 
 ### 6.6 The Reward
 
@@ -613,17 +766,24 @@ transaction block g + 1 (§5.2). The reward, its **pot**, is:
 
 - R_g, generation g's new Karma (§2);
 - the fees of transaction block g; and
-- the runner-up's stakes that are not also in the winning block, matched by
-  `hash` (Karma §26).
+- the stakes in the runner-up, less those of every staker who also has a
+  stake in the winning block (Karma §26). The two validate different
+  transaction blocks, so no stake is in both, but a staker may have staked
+  on both; such a staker is on the winning side, and its stakes in the
+  runner-up are not taken.
 
 The pot is shared among the winning block's stakers by **effective stake**:
-each stake times a weight that grows with the generations since its
-staker's `last_won` (Karma §23). All of one staker's stakes in a generation
-weigh alike. The weight curve is TBD (§9).
+each stake's Kismet times its staker's weight. The weight grows with
+g − `last_won`, the generations since the staker last won, taking
+`last_won` from the balances transaction block g leaves (§5.3), and a
+staker whose `last_won` is `null` has the full weight (Karma §23). All of
+one staker's stakes in a generation weigh alike. The weight curve is TBD
+(§9).
 
-The payout's `to` pays each staker their share, and its `from` takes from
-each runner-up staker their stakes counted in the pot. Each staker paid a
-share has `last_won` g in block g + 1's balances.
+The payout's `from` takes the pot from those it comes from, each sender's
+fees and each runner-up staker's stakes taken summed by identity, and its
+`to` pays each staker their share (§5.2). Each
+staker paid a share has `last_won` g in block g + 1's balances.
 
 ## 7. The Root
 
@@ -631,9 +791,9 @@ share has `last_won` g in block g + 1's balances.
 
 The root's one transaction is signed by its creator, who may be any
 identity a signed bundle accepts (§2), and sends nothing: its `from` is the
-creator, its `to` is `{creator: "0"}`, its `fee_kismet` is `"0"`, and its
-`generation` is 0. It is the only transaction that may move 0 Kismet
-(§4.4).
+creator, its `to` is `{creator: "0"}`, its `fee_kismet` is `"0"`, its
+`generation` is 0, and its `created` is when its creator made it. It is the
+only transaction that may move 0 Kismet (§4.4).
 
 ### 7.2 Transaction Block 0
 
@@ -647,9 +807,9 @@ full (§5.4).
 ### 7.3 Validation Block 0
 
 Validation block 0 is signed by the root's creator and placed at
-`karma validation:0`. It names transaction block 0, its `runner_up` is
-`null`, it has no witnesses, and it has one stake, of `"0"`, signed by the
-root's creator. A reader passes over a validation block at
+`karma validation:0`. It has one stake, of `"0"`, signed by the root's
+creator and naming transaction block 0, its `runner_up` is `null`, and it
+has no witnesses. A reader passes over a validation block at
 `karma validation:0` shaped otherwise, or signed by anyone else, or whose
 stake is not the root creator's.
 
@@ -660,7 +820,8 @@ many as a node's search returns
 ### 7.4 The Root's Reward
 
 The root's creator receives the whole of generation 0's reward, 20 Karma,
-in transaction block 1's payout, and block 1 states them with `last_won` 0.
+in transaction block 1's payout, whose `from` is
+`{"null": "2000000000000000"}`, and block 1 states them with `last_won` 0.
 The payout is applied first in block 1 (§5.2), so the creator may spend it
 there, and may stake it in validation block 1.
 
@@ -706,55 +867,52 @@ established one only by outweighing the whole chain built on it.
   it walks back, it checks each `weight` against the one before (§3.5.3),
   and it follows only a chain it has checked. So a false weight costs it
   fetches only as far back as the lie.
-- **Compression must agree.** Whether a block is full decides which blocks
-  are validated, so a node that compresses differently from the reference
-  zlib disagrees with the rest (§5.4).
+- **Compression varies.** Whether a block is full decides which blocks are
+  validated, the same bytes compress to sizes some 9% apart by which zlib
+  and level compress them, and any node may compress a block again (HTTP
+  API §8). The 128 KiB below 1 MiB that counts as full is wider than that,
+  so a block its builder fills near 1 MiB is full in every copy (§5.4).
+  One built with weak compression just over the floor may be full in one
+  copy and not in another. That is accepted: builders aim for the top.
 - **Free transactions cost work.** Half of every block is kept for free
   transactions (Karma §13). Filling that half with junk is limited by the
   bits each must share (§4.3), and builders take the free transactions of
   most bits first.
 - **A claimed generation proves nothing.** Only the chain's witnesses set a
   transaction's age (§4.5), so naming an old generation buys no priority.
+- **A retry is not a second payment.** Two transactions with the same
+  sender and `created` are one payment (§4.2), so a sender's software that
+  mines or signs a transaction again cannot pay twice by accident. A
+  collision fails safe: a second payment stamped in the same second is left
+  out as a duplicate, not paid twice.
 - **Runner-up stakes are at risk.** A staker in the block chosen as
-  runner-up loses the stakes in it that are not also in the winner (§6.6),
-  whatever their weight, as Karma §24 intends.
+  runner-up loses its stakes in it, unless it also has a stake in the
+  winner (§6.6), whatever their weight, as Karma §24 intends.
 
 ## 9. Open Items
 
 Parameters, TBD:
 
-- The fixed target string a transaction's proof of work is measured
-  against, and the minimum bits (§4.3).
-- How near 1 MiB a block must be to count as full (§5.4).
-- How many generations after it was witnessed a pending transaction is
-  carried forward (§4.4).
 - The weight curve after a win (Karma §23), and how shares are rounded to
-  whole Kismet (§6.6).
+  whole Kismet so that the payout's `to` totals its `from` (§5.2, §6.6).
 
 Not yet specified:
 
 - How the pot is shared after the root when the winning block's effective
   stake totals zero.
-- Whether a runner-up must stake on the same transaction block, and keeping
-  a runner-up from being blocked while a payout is worked out from it.
-- Witness spam, and whether a hash already included may be witnessed.
-- The Kismet suggested for common transactions.
 - Whether effective stake breaks ties between chains, or counts in their
   weight.
-- How far back transaction hashes are kept for the check for duplicates
-  (§4.4), since a transaction never expires, and what a node does with a
-  transaction older than any block it holds.
+- How far back transaction keys are kept for the check for duplicates
+  (§4.4), and witnessed hashes for the check of witnesses (§6.4), since a
+  transaction never expires, and what a node does with a transaction older
+  than any block it holds.
 - Early blocks that fill slowly while few identities hold Karma.
 - What the specifications that already use Karma read a node's Karma from
   ([Handshake Protocol §5](HandshakeProtocol.md#5-karma-and-connection-management),
   [HTTP API §10.6](HttpApi.md#106-peer-list-json-schema)), and how a node
   checks what a peer claims.
-- Whether Karma's blocks are evicted as any other content is, or held
-  longer.
 - How else Karma and the trust network
   ([Trust Network Specification](TrustNetwork.md)) bear on each other,
   beyond the distrust of builders (§3.8).
-- Whether a node builds the next transaction block on a validation block a
-  distrusted identity signed, when that block is on the heaviest chain.
 - Whether a node follows the part of a heavier chain that checks, when a
   later block in it does not (§3.5.3).

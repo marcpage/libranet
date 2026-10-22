@@ -840,6 +840,9 @@ Every validation block also identifies a runner-up validation block.
 The constructor of the winning validation block selects which candidate serves
 as the runner-up.
 
+The runner-up is a candidate for a different transaction block of the same
+generation: one that loses.
+
 The combined stake of the selected runner-up may become part of the reward
 distributed by the winning block.
 
@@ -859,11 +862,14 @@ outcome.
 
 A stake is uniquely constructed and signed by its author.
 
-If the exact same stake appears in both the winning and runner-up blocks, it is
-not counted as part of the earnings.
+The winning and runner-up blocks validate different transaction blocks, so no
+single stake appears in both.
 
-This prevents a stake from effectively being counted twice through its
-appearance in both candidate blocks.
+A participant may still have stakes in both. If so, its stakes in the
+runner-up are not counted as part of the earnings.
+
+A participant who staked on the winning block is on the winning side, and is
+not also punished as a runner-up staker.
 
 The uniqueness of signed stakes also provides an unambiguous relationship
 between:
