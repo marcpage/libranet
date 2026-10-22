@@ -15,7 +15,7 @@ for the stats module (Step 8) as::
 ``external`` is false when the request came from this machine, which is how
 a peer's interest in content is counted apart from this node's own.
 
-Content this node has blocked is answered ``404``, as content the node will
+Content this node has shunned is answered ``404``, as content the node will
 not try to retrieve (HttpApi §5.3, §5.5; Phase 4 Step 30), and is not asked
 for, whether or not a content archive holds it.
 
@@ -29,9 +29,9 @@ from logging import getLogger
 from typing import Final
 
 from libranet.bundle.content import ContentSource
-from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError
+from libranet.cas.shunned import ShunnedContent
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.protocol.http_syntax import API_PREFIX
@@ -42,9 +42,9 @@ from libranet.webserver.http_types import (
     bytes_response,
 )
 from libranet.webserver.request_refusals import (
-    blocked_response,
     content_id_or_refusal,
     content_unavailable_response,
+    shunned_response,
 )
 
 _LOGGER = getLogger(__name__)
@@ -78,9 +78,9 @@ DATA_PATTERN: Final = (
 
 
 class DataReadHandler:
-    """Serves the CAS content ``content`` holds, reporting misses, but none ``blocked`` names.
+    """Serves the CAS content ``content`` holds, reporting misses, but none ``shunned`` names.
 
-    Without ``blocked``, nothing is refused.
+    Without ``shunned``, nothing is refused.
     """
 
     def __init__(
@@ -89,7 +89,7 @@ class DataReadHandler:
         publish: Publish,
         retry_after_seconds: int,
         *,
-        blocked: BlockedContent | None = None,
+        shunned: ShunnedContent | None = None,
     ) -> None:
         if retry_after_seconds < 0:
             raise ValueError(f"retry_after_seconds must not be negative, got {retry_after_seconds}")
@@ -97,7 +97,7 @@ class DataReadHandler:
         self._content = content
         self._publish = publish
         self._retry_after_seconds = retry_after_seconds
-        self._blocked = blocked
+        self._shunned = shunned
 
     def __call__(self, request: Request) -> Response:
         content_id = content_id_or_refusal(request, _LOGGER)
@@ -110,9 +110,9 @@ class DataReadHandler:
             {**content_id.fields(), "external": not request.from_local_client()},
         )
 
-        if self._blocked is not None and self._blocked.blocks(content_id):
-            _LOGGER.debug("%s is blocked, so it is neither served nor asked for", content_id)
-            return blocked_response(request)
+        if self._shunned is not None and self._shunned.shuns(content_id):
+            _LOGGER.debug("%s is shunned, so it is neither served nor asked for", content_id)
+            return shunned_response(request)
 
         try:
             body = self._content.read(content_id)

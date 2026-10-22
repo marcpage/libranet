@@ -22,7 +22,7 @@ nothing of itself.
 A change makes the next version, saying the fields it gives
 (:meth:`~libranet.identity.node_metadata.HeldNodeMetadata.next_version`), has
 the node sign it, and makes it a drop at ``node:{id}``, matching as many
-bits as a search returns (``storage.search_min_bits``), blocking what it
+bits as a search returns (``storage.search_min_bits``), shunning what it
 replaces, as a trust list's change does
 (:mod:`libranet.webserver.version_edits`). It answers ``201``, with no
 ``Location``, since this port serves nothing beneath ``/data``::
@@ -103,7 +103,7 @@ class OwnMetadata:
         Each version is made a drop by ``drops``. What was found at the drop
         and is not held is asked for with ``publish``, a client told to ask
         again after ``retry_after_seconds``, and what a newer version
-        replaces is blocked with it
+        replaces is shunned with it
         (:class:`~libranet.webserver.version_edits.VersionEdits`).
 
         Raises:
@@ -148,7 +148,7 @@ class OwnMetadata:
             return self.edits.missing_response(request, held, _MISSING_DETAIL)
 
         # The newest replaces them, whether or not a version is placed over it.
-        self.edits.block_replaced(held)
+        self.edits.shun_replaced(held)
         changed = held.next_version(fields)
 
         if changed is None:

@@ -12,10 +12,10 @@ from pytest import LogCaptureFixture, fixture, mark, raises
 
 from libranet.atomic_file import write_atomically
 from libranet.bundle.signing import SignedBundle
-from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
 from libranet.cas.prefix import matching_bits
+from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.config.models import StorageConfig
 from libranet.identity.people import NewIdentity, PersonKey, Username
@@ -682,21 +682,21 @@ def test_an_identity_stored_since_a_search_was_cached_is_found_at_once(
     assert loads(response.body)["id"] == person_id
 
 
-def test_a_search_of_a_drop_leaves_out_what_this_node_has_blocked(
+def test_a_search_of_a_drop_leaves_out_what_this_node_has_shunned(
     storage: StorageConfig, recorder: Recorder
 ) -> None:
     truth = CasStore.source_of_truth(storage)
-    kept, blocked = (ContentId.for_data(data, "sha256") for data in (b"kept", b"blocked"))
+    kept, shunned = (ContentId.for_data(data, "sha256") for data in (b"kept", b"shunned"))
     truth.write(kept, b"kept")
-    truth.write(blocked, b"blocked")
-    write_atomically(storage.blocked_list_path, BlockedContent.body([blocked]))
+    truth.write(shunned, b"shunned")
+    write_atomically(storage.shunned_list_path, ShunnedContent.body([shunned]))
     cache = SearchCache.of(storage)
-    search = SearchHandler(LocalSearch(truth), cache, recorder, blocked=BlockedContent.of(storage))
+    search = SearchHandler(LocalSearch(truth), cache, recorder, shunned=ShunnedContent.of(storage))
 
-    found = search.fresh_results(blocked.hash)
+    found = search.fresh_results(shunned.hash)
 
     assert found == [kept]
-    assert cache.load_results(blocked.hash) == [kept]
+    assert cache.load_results(shunned.hash) == [kept]
 
 
 def test_the_same_username_and_password_make_no_second_identity(

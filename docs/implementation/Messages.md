@@ -110,7 +110,7 @@ other modules sent.
 | `resolved.reclaim_requested` | Eviction | Stats | Reclaim resolved application files |
 | `resolved.reclaim` | Stats | Unbundler | Delete resolved files but these bundles' |
 | `resolved.reclaimed` | Unbundler | Eviction | What reclaiming freed |
-| `data.blocked` | Web server | Stats, Eviction | This node will not hold this content |
+| `data.shunned` | Web server | Stats, Eviction | This node will not hold this content |
 | `peers.connected_requested` | Eviction, Stats | Connections, Web server | Name the peers connected now |
 | `peers.connected` | Connections, Web server | Eviction, Stats | The peers connected one way |
 | `storage.full_requested` | Backup | Eviction | Say whether storage is full |
@@ -541,14 +541,14 @@ or reported, nor is the key a kept archive's bundle may carry.
 
 ### 4.10 Shunned Content
 
-#### `data.blocked`
+#### `data.shunned`
 
 - **Payload:** `algorithm`, `hash`.
 - **Sent by:** Web server, when content is shunned on `/config`
-  (`block_handler.py`) or by a version edit (`version_edits.py`).
+  (`shun_handler.py`) or by a version edit (`version_edits.py`).
 - **Received by:**
   - Stats, which records the shunning, stops seeking the content, and writes the
-    shunned list (`cas/blocked`) at once for the modules that refuse shunned
+    shunned list (`cas/shunned`) at once for the modules that refuse shunned
     content.
   - Eviction, which deletes the content at once, handing it off to no one.
 - **Purpose:** never hold the content again.
@@ -602,13 +602,13 @@ or reported, nor is the key a kept archive's bundle may carry.
 
 | Module | Sends | Receives |
 | --- | --- | --- |
-| Web server | `data.requested`, `data.not_found`, `data.search_requested`, `data.put_completed`, `data.stored`, `nodes.received`, `seek.received`, `address.dial_requested`, `app.path_not_found`, `app.accessed`, `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.blocked`, `peers.connected`, `node.trust`, `node.trust_requested` | `app.path_resolved`, `backup.state`, `peers.connected_requested`, `address.dialed`, `node.trust_stored` |
+| Web server | `data.requested`, `data.not_found`, `data.search_requested`, `data.put_completed`, `data.stored`, `nodes.received`, `seek.received`, `address.dial_requested`, `app.path_not_found`, `app.accessed`, `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.shunned`, `peers.connected`, `node.trust`, `node.trust_requested` | `app.path_resolved`, `backup.state`, `peers.connected_requested`, `address.dialed`, `node.trust_stored` |
 | Connections | `data.search_answered`, `data.put_completed`, `data.stored`, `nodes.received`, `address.verified`, `address.dialed`, `connection.opened`, `connection.closed`, `connection.failed`, `node.unreached`, `data.sent`, `fetch.attempted`, `fetch.succeeded`, `fetch.failed`, `eviction.acknowledged`, `peers.connected` | `nodes.updated`, `nodes.received`, `fetch.requested`, `data.search_requested`, `eviction.notice`, `data.stored`, `peers.connected_requested`, `address.dial_requested`, `node.trust` |
 | Validator | `data.stored`, `data.rejected` | `data.put_completed` |
-| Stats | `nodes.updated`, `eviction.candidates`, `resolved.reclaim`, `peers.connected_requested`, `node.trust_stored` | `data.requested`, `data.not_found`, `data.search_requested`, `data.search_answered`, `data.stored`, `data.rejected`, `nodes.received`, `seek.received`, `connection.opened`, `connection.closed`, `connection.failed`, `node.unreached`, `address.verified`, `data.sent`, `fetch.attempted`, `data.deleted`, `eviction.candidates_requested`, `app.accessed`, `resolved.reclaim_requested`, `data.blocked`, `peers.connected`, `node.trust`, `node.trust_requested` |
+| Stats | `nodes.updated`, `eviction.candidates`, `resolved.reclaim`, `peers.connected_requested`, `node.trust_stored` | `data.requested`, `data.not_found`, `data.search_requested`, `data.search_answered`, `data.stored`, `data.rejected`, `nodes.received`, `seek.received`, `connection.opened`, `connection.closed`, `connection.failed`, `node.unreached`, `address.verified`, `data.sent`, `fetch.attempted`, `data.deleted`, `eviction.candidates_requested`, `app.accessed`, `resolved.reclaim_requested`, `data.shunned`, `peers.connected`, `node.trust`, `node.trust_requested` |
 | Fetcher | `fetch.requested` | `data.not_found`, `fetch.succeeded`, `fetch.failed` |
 | Unbundler | `data.not_found`, `app.path_resolved`, `resolved.reclaimed` | `app.path_not_found`, `data.stored`, `resolved.reclaim` |
-| Eviction | `eviction.notice`, `data.deleted`, `eviction.candidates_requested`, `resolved.reclaim_requested`, `peers.connected_requested`, `storage.full` | `data.stored`, `eviction.acknowledged`, `eviction.candidates`, `resolved.reclaimed`, `peers.connected`, `storage.full_requested`, `data.blocked` |
+| Eviction | `eviction.notice`, `data.deleted`, `eviction.candidates_requested`, `resolved.reclaim_requested`, `peers.connected_requested`, `storage.full` | `data.stored`, `eviction.acknowledged`, `eviction.candidates`, `resolved.reclaimed`, `peers.connected`, `storage.full_requested`, `data.shunned` |
 | Backup | `data.not_found`, `data.stored`, `backup.state`, `storage.full_requested` | `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.stored`, `storage.full` |
 
 Every module also receives `shutdown`.

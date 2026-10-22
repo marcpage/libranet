@@ -3,7 +3,7 @@
 Those refusing a body or a signature are shared by everything that reads
 request bodies or checks signatures. The ``503`` is for content that is on
 its way, whether from peers or out of a bundle, or for what the backup module
-has not reported yet. The ``404`` for blocked content is for everything that
+has not reported yet. The ``404`` for shunned content is for everything that
 serves content a path names, whole or read into. The ``500`` for a registry
 that cannot be read does not say why, which would name its file, since any
 client may ask. The ``400`` for content that is not a usable bundle is for
@@ -159,8 +159,8 @@ def content_unavailable_response(
     )
 
 
-def blocked_response(request: Request) -> Response:
-    """The ``404`` for blocked content, which is neither served nor fetched (HttpApi §5.5)."""
+def shunned_response(request: Request) -> Response:
+    """The ``404`` for shunned content, which is neither served nor fetched (HttpApi §5.5)."""
     return status_response(
         request,
         HTTPStatus.NOT_FOUND,

@@ -115,7 +115,7 @@ class OwnTrust:
         again in ``drops.uploads``, which ``content`` reads too, and handed
         to ``builds``, if given. What was found at the drop and is not held
         is asked for with ``publish``, a client told to ask again after
-        ``retry_after_seconds``, and what a newer version replaces is blocked
+        ``retry_after_seconds``, and what a newer version replaces is shunned
         with it.
 
         Raises:

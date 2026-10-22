@@ -241,7 +241,7 @@ class StatsDatabase:  # pylint: disable=too-many-public-methods
         return None if row is None else DataStats.from_row(row)
 
     def content_ids_near(self, prefix: str, min_bits: int) -> list[ContentId]:
-        """The known identifiers sharing ``min_bits`` leading bits with ``prefix``, none blocked.
+        """The known identifiers sharing ``min_bits`` leading bits with ``prefix``, none shunned.
 
         Or all of ``prefix``, if it has fewer. They are ranked best first.
         Every hash sharing as many lies in one range, which is all that is
@@ -250,7 +250,7 @@ class StatsDatabase:  # pylint: disable=too-many-public-methods
         low, high = _hash_range(prefix, min(min_bits, len(prefix) * BITS_PER_HEX_DIGIT))
         rows = self._query(
             "SELECT algorithm, hash FROM data_stats WHERE hash >= :low AND hash < :high "
-            "AND blocked_at IS NULL",
+            "AND shunned_at IS NULL",
             {"low": low, "high": high},
         )
         return nearest(prefix, (ContentId(row["algorithm"], row["hash"]) for row in rows))
@@ -616,35 +616,35 @@ class StatsDatabase:  # pylint: disable=too-many-public-methods
         )
         return cursor.rowcount
 
-    # -- Blocked content (Phase 4 Step 30) -------------------------------
+    # -- Shunned content (Phase 4 Step 30) -------------------------------
 
-    def record_blocked(self, content_id: ContentId) -> bool:
-        """Block ``content_id``, for good, noting when, unless it was blocked already.
+    def record_shunned(self, content_id: ContentId) -> bool:
+        """Shun ``content_id``, for good, noting when, unless it was shunned already.
 
         Returns:
-            Whether it was not blocked before.
+            Whether it was not shunned before.
         """
         cursor = self._execute(
-            "INSERT INTO data_stats (algorithm, hash, blocked_at) VALUES (:algorithm, :hash, :now) "
-            "ON CONFLICT (algorithm, hash) DO UPDATE SET blocked_at = :now "
-            "WHERE blocked_at IS NULL",
+            "INSERT INTO data_stats (algorithm, hash, shunned_at) VALUES (:algorithm, :hash, :now) "
+            "ON CONFLICT (algorithm, hash) DO UPDATE SET shunned_at = :now "
+            "WHERE shunned_at IS NULL",
             {"algorithm": content_id.algorithm, "hash": content_id.hash, "now": self._clock()},
         )
         return cursor.rowcount > 0
 
-    def is_blocked(self, content_id: ContentId) -> bool:
-        """Whether ``content_id`` is blocked."""
+    def is_shunned(self, content_id: ContentId) -> bool:
+        """Whether ``content_id`` is shunned."""
         row = self._query_one(
             "SELECT 1 FROM data_stats "
-            "WHERE algorithm = :algorithm AND hash = :hash AND blocked_at IS NOT NULL",
+            "WHERE algorithm = :algorithm AND hash = :hash AND shunned_at IS NOT NULL",
             {"algorithm": content_id.algorithm, "hash": content_id.hash},
         )
         return row is not None
 
-    def blocked_ids(self) -> list[ContentId]:
-        """Every content id blocked, by hash."""
+    def shunned_ids(self) -> list[ContentId]:
+        """Every content id shunned, by hash."""
         rows = self._query(
-            "SELECT algorithm, hash FROM data_stats WHERE blocked_at IS NOT NULL "
+            "SELECT algorithm, hash FROM data_stats WHERE shunned_at IS NOT NULL "
             "ORDER BY hash, algorithm",
             {},
         )

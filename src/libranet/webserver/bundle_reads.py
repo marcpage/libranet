@@ -38,9 +38,9 @@ for it:
 - **A path the bundle does not hold** is ``404``. Content that is not a
   bundle, or a bundle this node cannot read, is ``400``, and a
   password-protected bundle (BundleSpecification §6) is ``403``.
-- **A bundle this node has blocked** is ``404``, as reading it is, and is
+- **A bundle this node has shunned** is ``404``, as reading it is, and is
   neither read into nor asked for (HttpApi §5.5, Phase 4 Step 30), whatever
-  was resolved from it before. A file with a part blocked cannot be served
+  was resolved from it before. A file with a part shunned cannot be served
   from its parts, and is ``400``.
 
 Every response carries ``Content-Security-Policy: sandbox`` and
@@ -90,9 +90,9 @@ from libranet.webserver.http_types import (
     typed_response,
 )
 from libranet.webserver.request_refusals import (
-    blocked_response,
     content_id_or_refusal,
     invalid_address_response,
+    shunned_response,
 )
 
 _LOGGER = getLogger(__name__)
@@ -128,11 +128,11 @@ class BundleReadHandler:
 
         bundle, rest = named
 
-        if self.paths.parts.blocks(bundle.content_id):
+        if self.paths.parts.shuns(bundle.content_id):
             _LOGGER.debug(
-                "%s is blocked, so it is neither read into nor asked for", bundle.content_id
+                "%s is shunned, so it is neither read into nor asked for", bundle.content_id
             )
-            return blocked_response(request)
+            return shunned_response(request)
 
         self.paths.use.used(bundle.content_id)
         entry_path = rest.removesuffix("/")

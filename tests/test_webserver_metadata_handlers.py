@@ -158,9 +158,9 @@ def held_version(truth: CasStore, node: NodeIdentity, said: NodeMetadata) -> Con
     return content_id
 
 
-def blocked(recorder: Recorder) -> list[dict[str, Any]]:
-    """What this node was asked to block."""
-    return recorder.payloads(EventType.DATA_BLOCKED)
+def shunned(recorder: Recorder) -> list[dict[str, Any]]:
+    """What this node was asked to shun."""
+    return recorder.payloads(EventType.DATA_SHUNNED)
 
 
 def drops_placed(recorder: Recorder, node: NodeIdentity) -> list[dict[str, Any]]:
@@ -392,7 +392,7 @@ def test_while_a_version_found_is_not_held_both_are_503_and_it_is_asked_for(
     assert response.headers["Retry-After"] == str(RETRY_AFTER_SECONDS)
     assert recorder.payloads(EventType.DATA_NOT_FOUND) == [elsewhere.fields()]
     assert not drops_placed(recorder, node)
-    assert not blocked(recorder)
+    assert not shunned(recorder)
 
 
 def test_the_nodes_own_key_is_held_again_should_it_have_been_evicted(
@@ -407,18 +407,18 @@ def test_the_nodes_own_key_is_held_again_should_it_have_been_evicted(
     assert b"".join(content_chunks(uploads, node.node_id)) == node.public_key
 
 
-def test_a_version_placed_over_another_has_it_blocked(
+def test_a_version_placed_over_another_has_it_shunned(
     metadata: OwnMetadata, recorder: Recorder
 ) -> None:
     first = metadata.change(changing({"name": "Old"}))
-    assert not blocked(recorder)
+    assert not shunned(recorder)
 
     metadata.change(changing(ATTIC))
 
-    assert blocked(recorder) == [ContentId.parse(loads(first.body)["id"]).fields()]
+    assert shunned(recorder) == [ContentId.parse(loads(first.body)["id"]).fields()]
 
 
-def test_every_version_read_is_blocked_once_a_newer_is_placed(
+def test_every_version_read_is_shunned_once_a_newer_is_placed(
     metadata: OwnMetadata, truth: CasStore, node: NodeIdentity, recorder: Recorder
 ) -> None:
     first_id = held_version(truth, node, NodeMetadata({"name": "Old"}, 1))
@@ -427,7 +427,7 @@ def test_every_version_read_is_blocked_once_a_newer_is_placed(
     response = metadata.change(changing(ATTIC))
 
     assert loads(response.body)["version"] == 3
-    assert blocked(recorder) == [first_id.fields(), second_id.fields()]
+    assert shunned(recorder) == [first_id.fields(), second_id.fields()]
 
 
 def test_a_change_that_changes_nothing_blocks_what_the_newest_replaces(
@@ -439,7 +439,7 @@ def test_a_change_that_changes_nothing_blocks_what_the_newest_replaces(
     response = metadata.change(changing(ATTIC))
 
     assert response.status == 204
-    assert blocked(recorder) == [first_id.fields()]
+    assert shunned(recorder) == [first_id.fields()]
 
 
 def test_reading_blocks_nothing(
@@ -450,7 +450,7 @@ def test_reading_blocks_nothing(
 
     metadata.read(reading())
 
-    assert not blocked(recorder)
+    assert not shunned(recorder)
 
 
 def test_metadata_that_does_not_fit_in_an_object_is_413(

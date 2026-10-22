@@ -14,8 +14,8 @@ content for the connection manager to push on, with these payloads::
 
 An upload of content the source of truth already holds is discarded without
 either message (HttpApi §7.1), and so is one of content this node has
-blocked (HttpApi §5.5, Phase 4 Step 30), as the stats module lists it
-(:mod:`libranet.cas.blocked`). A message whose upload is already gone (a
+shunned (HttpApi §5.5, Phase 4 Step 30), as the stats module lists it
+(:mod:`libranet.cas.shunned`). A message whose upload is already gone (a
 duplicate handled earlier) is ignored.
 """
 
@@ -24,9 +24,9 @@ from logging import Logger
 from time import time
 from typing import Callable, ClassVar
 
-from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import ContentNotFoundError
+from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.cas.verification import content_matches
 from libranet.config.models import LibranetConfig
@@ -57,7 +57,7 @@ class ValidatorModule(ModuleBase):
         )
         self._storage = config.storage
         self._source_of_truth = CasStore.source_of_truth(config.storage)
-        self._blocked = BlockedContent.of(config.storage)
+        self._shunned = ShunnedContent.of(config.storage)
         self._route({EventType.PUT_COMPLETED: self._on_put_completed})
 
     @classmethod
@@ -80,8 +80,8 @@ class ValidatorModule(ModuleBase):
 
         payload = {**content_id.fields(), "node_id": str(node_id)}
 
-        if self._blocked.blocks(content_id):
-            self.logger.debug("Discarding the upload of blocked %s from %s", content_id, node_id)
+        if self._shunned.shuns(content_id):
+            self.logger.debug("Discarding the upload of shunned %s from %s", content_id, node_id)
 
         elif self._source_of_truth.exists(content_id):
             self.logger.debug("Discarding duplicate upload of %s from %s", content_id, node_id)

@@ -7,8 +7,8 @@ from zlib import compress
 from pytest import LogCaptureFixture, fixture
 
 from libranet.atomic_file import write_atomically
-from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
+from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig, StorageConfig
 from libranet.messaging.envelope import Message, make_message
@@ -127,14 +127,14 @@ def test_upload_of_content_already_held_is_discarded_quietly(
     assert published(queues) == []
 
 
-def test_upload_of_blocked_content_is_discarded_quietly(
+def test_upload_of_shunned_content_is_discarded_quietly(
     validator: ValidatorModule,
     storage: StorageConfig,
     truth: CasStore,
     queues: ModuleQueues,
     caplog: LogCaptureFixture,
 ) -> None:
-    write_atomically(storage.blocked_list_path, BlockedContent.body([CONTENT_ID]))
+    write_atomically(storage.shunned_list_path, ShunnedContent.body([CONTENT_ID]))
 
     with caplog.at_level(DEBUG, logger=validator.logger.name):
         validator.handle(upload(storage, CONTENT))
@@ -142,7 +142,7 @@ def test_upload_of_blocked_content_is_discarded_quietly(
     assert not truth.exists(CONTENT_ID)
     assert not CasStore.for_node(storage, NODE_ID).exists(CONTENT_ID)
     assert published(queues) == []
-    assert f"Discarding the upload of blocked {CONTENT_ID}" in caplog.text
+    assert f"Discarding the upload of shunned {CONTENT_ID}" in caplog.text
 
 
 def test_announcement_of_a_missing_upload_is_ignored(

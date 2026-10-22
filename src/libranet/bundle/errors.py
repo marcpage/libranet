@@ -65,15 +65,15 @@ class MissingContentError(BundleError):
         self.content_ids = content_ids
 
 
-class BlockedContentError(BundleError):
-    """Content that is needed is blocked here, so it is neither read nor asked for.
+class ShunnedContentError(BundleError):
+    """Content that is needed is shunned here, so it is neither read nor asked for.
 
-    A node never holds or fetches what it has blocked (HighLevelDesign
+    A node never holds or fetches what it has shunned (HighLevelDesign
     §4.11), so it never arrives, unlike content that is merely missing.
     """
 
     def __init__(self, content_id: ContentId) -> None:
-        super().__init__(f"{content_id} is blocked here")
+        super().__init__(f"{content_id} is shunned here")
         self.content_id = content_id
 
 

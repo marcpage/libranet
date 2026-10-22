@@ -427,7 +427,7 @@ place of it, which adds 70 lines and removes 103.
 - **`HeldTrustList`** gains `replaced`, every version read but the newest,
   and `with_version`. Each edit shuns what `replaced` names, and, once it
   places a version, the newest it read, asking the stats module as
-  `DELETE /data/{id}` does (`data.blocked`).
+  `DELETE /data/{id}` does (`data.shunned`).
 - **`Sessions.signer_or_refusal`** holds the `401` and the `403` for a
   fallback that has not taken over, which `POST /data/signed` had inline
   and now uses too.

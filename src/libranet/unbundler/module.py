@@ -68,9 +68,9 @@ since, whenever a path names a directory.
 A bundle found unusable is remembered only in memory, not saved, since a
 later version of this node may be able to serve it.
 
-A bundle or extension this node has blocked is neither read, even from a
+A bundle or extension this node has shunned is neither read, even from a
 content archive, nor asked for, since it never comes (HttpApi §5.5, Phase 4
-Step 30), as the stats module lists it (:mod:`libranet.cas.blocked`). The
+Step 30), as the stats module lists it (:mod:`libranet.cas.shunned`). The
 bundle is unusable for every path instead.
 
 When free space runs short, the stats module names the bundles of the
@@ -96,20 +96,20 @@ from time import time
 from typing import Any, Callable, ClassVar, Final, Iterable, TypeAlias
 
 from libranet.bundle.errors import (
-    BlockedContentError,
     BundleError,
     MissingContentError,
     PasswordProtectedBundleError,
+    ShunnedContentError,
 )
 from libranet.bundle.extensions import resolve_directory
 from libranet.bundle.loading import load_bundle
 from libranet.bundle.parts import PartPath
 from libranet.bundle.saved import save_bundle, saved_bundle
 from libranet.bundle.shapes import Bundle, DirectoryBundle, FileBundle
-from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
 from libranet.cas.resolved_files import ResolvedFiles
+from libranet.cas.shunned import ShunnedContent
 from libranet.config.models import LibranetConfig
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType, PathOutcome
@@ -238,7 +238,7 @@ class UnbundlerModule(ModuleBase):
             name, queues, logger=logger, clock=clock, poll_interval_seconds=poll_interval_seconds
         )
         self._source = LayeredSource.open(config.storage)
-        self._blocked = BlockedContent.of(config.storage)
+        self._shunned = ShunnedContent.of(config.storage)
         self._files = ResolvedFiles.of(config.storage)
         self._max_cached_bundles = max_cached_bundles
         self._max_bundle_bytes = config.storage.max_decompressed_bundle_bytes
@@ -395,7 +395,7 @@ class UnbundlerModule(ModuleBase):
         except MissingContentError:
             raise
 
-        except BlockedContentError as error:
+        except ShunnedContentError as error:
             self.logger.debug("Bundle %s cannot be served: %s", bundle.content_id, error)
             return _Unusable(str(error))
 
@@ -440,15 +440,15 @@ class UnbundlerModule(ModuleBase):
         return self._files.directory_for(bundle.content_id, decrypted_with=bundle.key)
 
     def _load_bundle(self, path: PartPath) -> Bundle:
-        """The bundle ``path`` names, read from this node's content, unless it is blocked.
+        """The bundle ``path`` names, read from this node's content, unless it is shunned.
 
         Raises:
-            BlockedContentError: this node has blocked it.
+            ShunnedContentError: this node has shunned it.
             MissingContentError: it is not held.
             BundleError: it cannot be read.
         """
-        if self._blocked.blocks(path.content_id):
-            raise BlockedContentError(path.content_id)
+        if self._shunned.shuns(path.content_id):
+            raise ShunnedContentError(path.content_id)
 
         return load_bundle(path, self._source, self._max_bundle_bytes)
 

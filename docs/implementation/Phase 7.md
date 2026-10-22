@@ -254,8 +254,8 @@ bracketed. Config tests cover the listen default and its fallback.
 
 Phase 4 Step 30 ruled that **a shunning is permanent**: it never expires,
 nothing lifts it, and only deleting the database resets it. Every shunning
-is a `data_stats` row with `blocked_at` set, and every one is written to
-`lists/blocked.json`, uncapped, which the web server, the validator, and
+is a `data_stats` row with `shunned_at` set, and every one is written to
+`lists/shunned.json`, uncapped, which the web server, the validator, and
 the fetcher each read. A node that shuns each directory bundle a newer
 one replaces (Phase 4 Step 92), and later each block Karma's merges
 supersede ([Phase 6](Phase%206.md) Step 56), adds to it for as long as it
@@ -273,10 +273,10 @@ Work this implies:
   and HttpApi §5.5, which say what a node does with shunned content, say
   so too.
 - **Stats needs to know when a shunned id was last seen.** `data_stats`
-  has `last_requested` and `blocked_at`, but no time a shunned id was
+  has `last_requested` and `shunned_at`, but no time a shunned id was
   last pushed or named in a peer's search answer: the validator discards
   a shunned push unannounced, and the fetcher never asks for one.
-- **The derivation drops what has aged out** of `lists/blocked.json`, as
+- **The derivation drops what has aged out** of `lists/shunned.json`, as
   it already derives the list each minute, and the readers pick the
   change up as they do any rewrite of the file.
 
@@ -284,7 +284,7 @@ Work this implies:
 
 - What "seen" is: a request for the id, a push of it, a peer's search
   answer naming it, or each of these.
-- Whether an aged-out id is unshunned, its `blocked_at` cleared, or kept
+- Whether an aged-out id is unshunned, its `shunned_at` cleared, or kept
   in the database and left out of the list file only, so that a node
   that meets it again can shun it again without being told.
 - How long the period is, whether it is a setting, and whether it counts

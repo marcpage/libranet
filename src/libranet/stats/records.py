@@ -35,7 +35,7 @@ class DataStats:  # pylint: disable=too-many-instance-attributes
     last_acquired: float | None = None
     stored_seconds: float = 0.0
     size_bytes: int | None = None
-    blocked_at: float | None = None
+    shunned_at: float | None = None
 
     @classmethod
     def from_row(cls, row: Row) -> DataStats:
@@ -50,7 +50,7 @@ class DataStats:  # pylint: disable=too-many-instance-attributes
             last_acquired=row["last_acquired"],
             stored_seconds=row["stored_seconds"],
             size_bytes=row["size"],
-            blocked_at=row["blocked_at"],
+            shunned_at=row["shunned_at"],
         )
 
     @property

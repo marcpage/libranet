@@ -18,10 +18,10 @@ from libranet.bundle.errors import IncorrectKeyError, IncorrectPasswordError
 from libranet.bundle.person_encryption import EncryptedForPerson
 from libranet.bundle.protection import PasswordKey, strip_targeting
 from libranet.bundle.storing import store_object
-from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DROP_SEPARATOR, DropTarget
 from libranet.cas.prefix import matching_bits
+from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.config.models import DEFAULT_CONFIG_HOSTS, StorageConfig
 from libranet.identity.people import PersonKey
@@ -104,7 +104,7 @@ def encryption(
         OwnPages(ApplicationRegistry(tmp_path / "applications.json", applications)),
         SiteChecks(DEFAULT_CONFIG_HOSTS, "This endpoint"),
         retry_after_seconds=RETRY_AFTER_SECONDS,
-        blocked=BlockedContent.of(storage),
+        shunned=ShunnedContent.of(storage),
     )
 
 
@@ -310,23 +310,23 @@ def test_a_persons_key_not_held_is_asked_for_and_503_before_any_drop(
     assert not recorder.payloads(EventType.PUT_COMPLETED)
 
 
-def test_a_blocked_persons_key_is_404_and_not_asked_for(
+def test_a_shunned_persons_key_is_404_and_not_asked_for(
     uploads: OwnUploads,
     storage: StorageConfig,
     recorder: Recorder,
     encryption: DropEncryption,
     person: PersonKey,
 ) -> None:
-    write_atomically(storage.blocked_list_path, BlockedContent.body([person.person_id]))
-    blocking = DropEncryption(
+    write_atomically(storage.shunned_list_path, ShunnedContent.body([person.person_id]))
+    shunning = DropEncryption(
         encryption.content,
         encryption.publish,
         encryption.pages,
         encryption.checks,
         retry_after_seconds=RETRY_AFTER_SECONDS,
-        blocked=BlockedContent.of(storage),
+        shunned=ShunnedContent.of(storage),
     )
-    handler = DropHandler(uploads, MAX_BYTES, MAX_SECONDS, MAX_MINIMUM_BITS, encryption=blocking)
+    handler = DropHandler(uploads, MAX_BYTES, MAX_SECONDS, MAX_MINIMUM_BITS, encryption=shunning)
 
     response = handler(drop_request(encrypted(b"x", {"for": str(person.person_id)})))
 

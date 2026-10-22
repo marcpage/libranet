@@ -10,8 +10,8 @@ from typing import Any, Iterator, Mapping
 
 from pytest import LogCaptureFixture, fixture, mark, raises
 
-from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
+from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.config.models import (
     IdentityConfig,
@@ -114,9 +114,9 @@ def not_found(content_id: ContentId = CONTENT_ID) -> Message:
     )
 
 
-def blocked(content_id: ContentId = CONTENT_ID) -> Message:
+def shunned(content_id: ContentId = CONTENT_ID) -> Message:
     return broadcast(
-        EventType.DATA_BLOCKED,
+        EventType.DATA_SHUNNED,
         {"algorithm": content_id.algorithm, "hash": content_id.hash},
         ModuleName.WEBSERVER,
     )
@@ -148,7 +148,7 @@ def test_starting_opens_the_database_and_writes_every_list(
     assert node_list(config) == {SELF_ENDPOINT: str(identity.node_id)}
     assert seek_list(config) == {"data": [], "search": []}
     assert candidates(config) == {}
-    assert loads(config.storage.blocked_list_path.read_bytes()) == {"blocked": []}
+    assert loads(config.storage.shunned_list_path.read_bytes()) == {"shunned": []}
     assert loads(config.storage.peer_list_path.read_bytes())["peers"] == []
     # It asks who is connected after deriving, so the answers wait for the next.
     assert [message["event"] for message in published(queues)] == [
@@ -300,39 +300,39 @@ def test_a_search_request_enriches_its_cached_response(
     assert loads(cache_path.read_bytes())["results"] == [str(nearer)]
 
 
-def test_blocked_content_is_listed_at_once_and_no_longer_sought(
+def test_shunned_content_is_listed_at_once_and_no_longer_sought(
     module: StatsModule, config: LibranetConfig, caplog: LogCaptureFixture
 ) -> None:
     module.handle(not_found())
 
     with caplog.at_level(INFO, logger=module.logger.name):
-        module.handle(blocked())
+        module.handle(shunned())
 
     # Listed before any derivation, for the modules refusing it.
-    listed = BlockedContent.of(config.storage).blocks(CONTENT_ID)
+    listed = ShunnedContent.of(config.storage).shuns(CONTENT_ID)
     module.derive()
 
-    assert module.database.is_blocked(CONTENT_ID)
+    assert module.database.is_shunned(CONTENT_ID)
     assert listed
     assert seek_list(config)["data"] == []
-    assert f"Blocked {CONTENT_ID}" in caplog.text
+    assert f"Shunned {CONTENT_ID}" in caplog.text
 
 
-def test_content_blocked_again_is_not_listed_again(
+def test_content_shunned_again_is_not_listed_again(
     module: StatsModule, config: LibranetConfig
 ) -> None:
-    module.handle(blocked())
-    written_at = config.storage.blocked_list_path.stat().st_mtime_ns
+    module.handle(shunned())
+    written_at = config.storage.shunned_list_path.stat().st_mtime_ns
 
-    module.handle(blocked())
+    module.handle(shunned())
 
-    assert config.storage.blocked_list_path.stat().st_mtime_ns == written_at
+    assert config.storage.shunned_list_path.stat().st_mtime_ns == written_at
 
 
-def test_a_miss_for_blocked_content_is_not_sought(
+def test_a_miss_for_shunned_content_is_not_sought(
     module: StatsModule, config: LibranetConfig
 ) -> None:
-    module.handle(blocked())
+    module.handle(shunned())
 
     module.handle(not_found())
     module.derive()
@@ -340,13 +340,13 @@ def test_a_miss_for_blocked_content_is_not_sought(
     assert seek_list(config)["data"] == []
 
 
-def test_a_search_request_never_adds_blocked_content(
+def test_a_search_request_never_adds_shunned_content(
     module: StatsModule, config: LibranetConfig
 ) -> None:
     prefix = "8" + "0" * 63
     nearer = ContentId("sha256", "8" + "0" * 62 + "1")
     module.database.record_request(nearer, external=True)
-    module.handle(blocked(nearer))
+    module.handle(shunned(nearer))
     cache_path = config.storage.search_cache_dir / prefix[:4] / f"{prefix}.json"
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     cache_path.write_bytes(dumps({"results": []}).encode("utf-8"))
@@ -1071,7 +1071,7 @@ def test_the_module_subscribes_to_what_it_records() -> None:
     assert EventType.EVICTION_CANDIDATES_REQUESTED in StatsModule.subscriptions
     assert EventType.APP_ACCESSED in StatsModule.subscriptions
     assert EventType.RESOLVED_RECLAIM_REQUESTED in StatsModule.subscriptions
-    assert EventType.DATA_BLOCKED in StatsModule.subscriptions
+    assert EventType.DATA_SHUNNED in StatsModule.subscriptions
     assert EventType.SEARCH_ANSWERED in StatsModule.subscriptions
     assert EventType.PEERS_CONNECTED in StatsModule.subscriptions
     assert EventType.NODE_TRUST in StatsModule.subscriptions

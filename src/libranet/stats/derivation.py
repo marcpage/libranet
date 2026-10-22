@@ -16,9 +16,9 @@ recently learned of first; each node's addresses follow the same rule::
 
     {"nodes": [{"node_id": "sha256/<hex>", "endpoints": ["http://203.0.113.9:4300", ...]}]}
 
-The blocked list names the content this node will not hold, for the modules
+The shunned list names the content this node will not hold, for the modules
 that refuse it (Phase 4 Step 30), in the shape
-:class:`~libranet.cas.blocked.BlockedContent` reads.
+:class:`~libranet.cas.shunned.ShunnedContent` reads.
 
 The peer list is what this node knows of each peer, for its local clients'
 pages (Phase 5 Step 107), in the shape :mod:`libranet.stats.peers` documents.
@@ -33,8 +33,8 @@ from time import time
 from typing import Callable, Sequence
 
 from libranet.atomic_file import write_atomically
-from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
+from libranet.cas.shunned import ShunnedContent
 from libranet.config.models import StatsConfig, StorageConfig
 from libranet.messaging.connected_peers import ConnectedPeers
 from libranet.stats.database import StatsDatabase
@@ -53,7 +53,7 @@ class DerivedLists:
     new candidate list is the connection manager's cue to reconsider its peer
     mix (Step 11), and a new node list its cue to pass on the nodes it names
     anew (Phase 5 Step 114). Nothing is published about the others — a peer
-    reads them from the file when it asks, and a module refusing blocked
+    reads them from the file when it asks, and a module refusing shunned
     content when it looks — so whether they were rewritten is this module's
     business alone.
     """
@@ -61,7 +61,7 @@ class DerivedLists:
     node_list: Path
     seek_list: Path
     candidate_list: Path
-    blocked_list: Path
+    shunned_list: Path
     peer_list: Path
     node_list_changed: bool
     candidate_list_changed: bool
@@ -114,13 +114,13 @@ class ListDeriver:
         candidate_list_changed = _write_if_changed(
             self._storage.candidate_list_path, render_candidate_list(self._candidates())
         )
-        self.write_blocked_list()
+        self.write_shunned_list()
         write_atomically(self._storage.peer_list_path, self._peer_list().body())
         return DerivedLists(
             node_list=self._storage.node_list_path,
             seek_list=self._storage.seek_list_path,
             candidate_list=self._storage.candidate_list_path,
-            blocked_list=self._storage.blocked_list_path,
+            shunned_list=self._storage.shunned_list_path,
             peer_list=self._storage.peer_list_path,
             node_list_changed=node_list_changed,
             candidate_list_changed=candidate_list_changed,
@@ -134,14 +134,14 @@ class ListDeriver:
         """
         return _write_if_changed(self._storage.seek_list_path, self._seek_list_body())
 
-    def write_blocked_list(self) -> bool:
-        """Rewrite the blocked list, unless it names what the database does already.
+    def write_shunned_list(self) -> bool:
+        """Rewrite the shunned list, unless it names what the database does already.
 
         Returns:
             Whether it was rewritten.
         """
         return _write_if_changed(
-            self._storage.blocked_list_path, BlockedContent.body(self._database.blocked_ids())
+            self._storage.shunned_list_path, ShunnedContent.body(self._database.shunned_ids())
         )
 
     def _node_list_body(self) -> bytes:

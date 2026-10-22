@@ -15,7 +15,7 @@ Developer Guide §6.14), it says nothing of when the id was made, nor of a
 fallback, since a node has neither.
 
 Of the versions read that the node signed, the newest is the one numbered
-highest, ties going to the drop whose id sorts first, and the node blocks the
+highest, ties going to the drop whose id sorts first, and the node shuns the
 rest when it places the next. Only a node signs its own, so the node reads
 and places its versions for ``/config`` (Phase 5 Step 104). A name in
 ``versions`` that is no id is passed over, as a trust list's is, and the

@@ -238,9 +238,9 @@ def held_version(truth: CasStore, person: PersonKey, trust_list: TrustList) -> C
     return content_id
 
 
-def blocked(recorder: Recorder) -> list[dict[str, Any]]:
-    """What this node was asked to block."""
-    return recorder.payloads(EventType.DATA_BLOCKED)
+def shunned(recorder: Recorder) -> list[dict[str, Any]]:
+    """What this node was asked to shun."""
+    return recorder.payloads(EventType.DATA_SHUNNED)
 
 
 def reading(
@@ -491,7 +491,7 @@ def test_while_a_version_found_is_not_held_a_change_is_503_and_it_is_asked_for(
     assert response.headers["Cache-Control"] == "no-store"
     assert recorder.payloads(EventType.DATA_NOT_FOUND) == [elsewhere.fields()]
     assert not drops_placed(recorder, person)
-    assert not blocked(recorder)
+    assert not shunned(recorder)
 
 
 def test_the_first_version_blocks_nothing(
@@ -499,20 +499,20 @@ def test_the_first_version_blocks_nothing(
 ) -> None:
     edits.trust(changing(BOB, cookie))
 
-    assert not blocked(recorder)
+    assert not shunned(recorder)
 
 
-def test_a_version_placed_over_another_has_it_blocked(
+def test_a_version_placed_over_another_has_it_shunned(
     edits: TrustEdits, cookie: Mapping[str, str], recorder: Recorder
 ) -> None:
     first = edits.trust(changing(BOB, cookie))
 
     edits.trust(changing(DAVE, cookie, False))
 
-    assert blocked(recorder) == [ContentId.parse(loads(first.body)["id"]).fields()]
+    assert shunned(recorder) == [ContentId.parse(loads(first.body)["id"]).fields()]
 
 
-def test_every_version_read_is_blocked_once_a_newer_is_placed(
+def test_every_version_read_is_shunned_once_a_newer_is_placed(
     edits: TrustEdits,
     truth: CasStore,
     person: PersonKey,
@@ -525,7 +525,7 @@ def test_every_version_read_is_blocked_once_a_newer_is_placed(
     response = edits.trust(changing(DAVE, cookie, False))
 
     assert loads(response.body)["version"] == 3
-    assert blocked(recorder) == [first_id.fields(), second_id.fields()]
+    assert shunned(recorder) == [first_id.fields(), second_id.fields()]
 
 
 def test_a_change_that_changes_nothing_blocks_what_the_newest_replaces(
@@ -541,7 +541,7 @@ def test_a_change_that_changes_nothing_blocks_what_the_newest_replaces(
     response = edits.trust(changing(CAROL, cookie))
 
     assert response.status == 204
-    assert blocked(recorder) == [first_id.fields()]
+    assert shunned(recorder) == [first_id.fields()]
 
 
 def test_a_list_that_does_not_fit_in_an_object_is_413(

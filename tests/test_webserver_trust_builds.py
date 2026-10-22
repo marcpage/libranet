@@ -302,7 +302,7 @@ def test_a_list_held_in_part_when_the_time_is_up_is_read_from_what_is_held(
     assert built(builds, ALICE).scores[CAROL] == TrustScore(1, 2)
 
 
-def test_every_version_older_than_the_newest_read_is_blocked(
+def test_every_version_older_than_the_newest_read_is_shunned(
     builds: TrustBuilds, reader: Reader, background: Background, recorder: Recorder
 ) -> None:
     reader.held[ALICE] = held(ALICE, {BOB: True})
@@ -318,7 +318,7 @@ def test_every_version_older_than_the_newest_read_is_blocked(
     builds.session_started(ALICE)
     background.run()
 
-    assert recorder.payloads(EventType.DATA_BLOCKED) == [version_id(BOB, 1).fields()]
+    assert recorder.payloads(EventType.DATA_SHUNNED) == [version_id(BOB, 1).fields()]
     assert built(builds, ALICE).scores[DAVE] == TrustScore(1, 2)
 
 

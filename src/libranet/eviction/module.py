@@ -82,11 +82,11 @@ So that what waits does not slow to one hand-off at a time, eviction aims
 within the headroom of a limit, with nothing left to let go of, is only
 logged at debug, since no limit is passed.
 
-Content this node has blocked is deleted at once, and handed off to no
+Content this node has shunned is deleted at once, and handed off to no
 peer, whether or not storage is short, since the node will not hold it
 (HighLevelDesign §4.11, Phase 4 Step 30)::
 
-    data.blocked           {"algorithm", "hash"}
+    data.shunned           {"algorithm", "hash"}
 
 Its deletion is reported as any other is. It is no longer handed off,
 though a hand-off under way may still be answered.
@@ -102,7 +102,7 @@ asked, as this module asks when it starts::
 
 Their keys are left out of what stats is asked for and are not handed off,
 and one whose peer connects while it is being handed off is not deleted.
-One that is blocked is kept all the same. A peer's key may go once it is
+One that is shunned is kept all the same. A peer's key may go once it is
 connected neither way, since the next handshake brings it back.
 
 The application files the unbundler resolves are not content, nor counted
@@ -308,7 +308,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
             EventType.RESOLVED_RECLAIMED,
             EventType.PEERS_CONNECTED,
             EventType.STORAGE_FULL_REQUESTED,
-            EventType.DATA_BLOCKED,
+            EventType.DATA_SHUNNED,
         }
     )
 
@@ -382,7 +382,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
                 EventType.RESOLVED_RECLAIMED: self._on_resolved_reclaimed,
                 EventType.PEERS_CONNECTED: self._on_peers_connected,
                 EventType.STORAGE_FULL_REQUESTED: self._on_storage_full_requested,
-                EventType.DATA_BLOCKED: self._on_data_blocked,
+                EventType.DATA_SHUNNED: self._on_data_shunned,
             }
         )
 
@@ -554,7 +554,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
                 "Nothing left to let go of, %d bytes short of the room eviction keeps", excess
             )
 
-    def _on_data_blocked(self, message: Message) -> None:
+    def _on_data_shunned(self, message: Message) -> None:
         """Delete the content, which this node will not hold, without handing it off.
 
         A public key that signatures are checked against now is kept all the
@@ -564,7 +564,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
 
         if self._kept(content_id):
             self.logger.info(
-                "%s is blocked, but signatures are checked against it, so it is kept", content_id
+                "%s is shunned, but signatures are checked against it, so it is kept", content_id
             )
             return
 
@@ -572,7 +572,7 @@ class EvictionModule(ModuleBase):  # pylint: disable=too-many-instance-attribute
         self._candidates = deque(held for held in self._candidates if held.content_id != content_id)
 
         if self._delete(content_id):
-            self.logger.info("Deleted %s, which this node has blocked", content_id)
+            self.logger.info("Deleted %s, which this node has shunned", content_id)
             self._evict()
 
     def _on_storage_full_requested(self, _message: Message) -> None:

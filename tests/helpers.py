@@ -16,8 +16,8 @@ from libranet.atomic_file import write_atomically
 from libranet.bundle.encryption import Aes256Cbc
 from libranet.bundle.parts import PartPath
 from libranet.bundle.shapes import Entry, FileBundle
-from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
+from libranet.cas.shunned import ShunnedContent
 from libranet.config.models import LibranetConfig
 from libranet.identity.keys import generate_private_key
 from libranet.identity.node_identity import NodeIdentity
@@ -71,10 +71,10 @@ def without_part_sizes(entries: dict[str, Entry]) -> dict[str, Entry]:
     }
 
 
-def blocked_list(path: Path, *content_ids: ContentId) -> BlockedContent:
-    """The blocked list at ``path``, naming ``content_ids``, as the stats module writes it."""
-    write_atomically(path, BlockedContent.body(content_ids))
-    return BlockedContent(path)
+def shunned_list(path: Path, *content_ids: ContentId) -> ShunnedContent:
+    """The shunned list at ``path``, naming ``content_ids``, as the stats module writes it."""
+    write_atomically(path, ShunnedContent.body(content_ids))
+    return ShunnedContent(path)
 
 
 def problem_type(response: Response) -> str:

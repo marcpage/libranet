@@ -24,11 +24,11 @@ a part (:class:`~libranet.webserver.file_stream.ContentWait`)::
 
     data.not_found  {"algorithm": "sha256", "hash": "<hex>"}
 
-Every version read that is older than the newest is blocked, as a change to
-the list blocks it (Phase 5 Step 97), so that a list's history does not
+Every version read that is older than the newest is shunned, as a change to
+the list shuns it (Phase 5 Step 97), so that a list's history does not
 crowd its newest version out of a search of its drop (Trust Network §3.3)::
 
-    data.blocked  {"algorithm": "sha256", "hash": "<hex>"}
+    data.shunned  {"algorithm": "sha256", "hash": "<hex>"}
 
 The scores are worked out from the lists read so far each time they are
 asked for, so that they say what the build has read, and whether it is
@@ -143,7 +143,7 @@ class TrustBuilds:  # pylint: disable=too-many-instance-attributes
     reach, looking for each for up to ``wait_seconds`` by ``clock``, and
     again every ``poll_interval_seconds``. What is not held is asked for with
     ``publish``, and asked for again once ``ask_again_seconds`` have passed,
-    and what a newer version replaces is blocked with it. Each build is a job
+    and what a newer version replaces is shunned with it. Each build is a job
     handed to ``in_background``, which runs it on a thread of its own unless
     it is given, and so is reading what a change to the person's list newly
     reaches, once the build is done. It is told as each person signs in, and
@@ -329,7 +329,7 @@ class TrustBuilds:  # pylint: disable=too-many-instance-attributes
 
         It is ready once a version is found and every version found is held,
         and at ``deadline``, as ``clock`` tells it, whatever is held. What is
-        not held is asked for, and what the newest version replaces blocked.
+        not held is asked for, and what the newest version replaces shunned.
         """
         held = self._lists.read(owner)
 
@@ -343,7 +343,7 @@ class TrustBuilds:  # pylint: disable=too-many-instance-attributes
         with self._builds.lock:
             build.lists.setdefault(owner, held.entries)
 
-        self._replaced.block(owner, held.replaced)
+        self._replaced.shun(owner, held.replaced)
         newest = held.newest
 
         if newest is None:

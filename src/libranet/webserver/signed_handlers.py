@@ -26,7 +26,7 @@ a node's (Phase 5 Step 103), and answers with what it signs::
     {"id": "sha256/…", "signer": "sha256/…", "contents": "{\\"version\\":1}"}
 
 A drop, or a signer's key, not held is asked for, and is ``503``. Either one
-blocked is ``404``. What is not a signed bundle is ``400``
+shunned is ``404``. What is not a signed bundle is ``400``
 ``unusable-bundle``, and one that does not check is ``400``
 ``invalid-bundle-signature``. A check that passes never changes for an
 identifier, and is cached as content is. Each check is announced as a read
@@ -42,19 +42,19 @@ from typing import Final
 
 from libranet.bundle.content import ContentSource, content_chunks
 from libranet.bundle.errors import (
-    BlockedContentError,
     BundleError,
     BundleSignatureError,
     BundleVerificationError,
     MalformedBundleError,
     MissingContentError,
+    ShunnedContentError,
     UnsupportedBundleError,
 )
 from libranet.bundle.protection import strip_targeting
 from libranet.bundle.signing import SignedBundle
 from libranet.bundle.storing import store_object
-from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
+from libranet.cas.shunned import ShunnedContent
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.problems import INVALID_BUNDLE_SIGNATURE
@@ -92,7 +92,7 @@ class SignedDrops:
 
     ``drops`` makes the drops, as ``/data/drop`` does, and the signer's
     public key is stored in ``drops.uploads``. What is checked is read from
-    ``content``, but none of what ``blocked`` names. Each check is announced
+    ``content``, but none of what ``shunned`` names. Each check is announced
     with ``publish``, and what is not held asked for, a client told to ask
     again after ``retry_after_seconds``.
 
@@ -106,7 +106,7 @@ class SignedDrops:
     publish: Publish
     _: KW_ONLY
     retry_after_seconds: int
-    blocked: BlockedContent | None = None
+    shunned: ShunnedContent | None = None
 
     def __post_init__(self) -> None:
         if self.retry_after_seconds < 0:
@@ -199,7 +199,7 @@ class SignedDrops:
 
         Content not held, its own or its signer's key, is asked for.
         """
-        if isinstance(error, BlockedContentError):
+        if isinstance(error, ShunnedContentError):
             _LOGGER.debug("Not checking %s: %s, so it is not asked for", content_id, error)
             return status_response(
                 request,
@@ -254,11 +254,11 @@ class SignedDrops:
         """What is held for ``content_id``, decompressed and checked against it.
 
         Raises:
-            BlockedContentError: this node has blocked it.
+            ShunnedContentError: this node has shunned it.
             MissingContentError: it is not held.
             BundleVerificationError: what is held is not it.
         """
-        if self.blocked is not None and self.blocked.blocks(content_id):
-            raise BlockedContentError(content_id)
+        if self.shunned is not None and self.shunned.shuns(content_id):
+            raise ShunnedContentError(content_id)
 
         return b"".join(content_chunks(self.content, content_id))

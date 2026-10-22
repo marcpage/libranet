@@ -23,9 +23,9 @@ from libranet.bundle.shapes import (
     Metadata,
     Symlink,
 )
-from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.resolved_files import ResolvedFiles
+from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.config.models import HOUR_SECONDS
 from libranet.messaging.envelope import Message
@@ -39,7 +39,7 @@ from libranet.webserver.bundle_reads import BUNDLE_METHODS, BUNDLE_PATTERN, Bund
 from libranet.webserver.file_stream import PartReader
 from libranet.webserver.http_types import IMMUTABLE_CACHE_CONTROL, Request, Response
 from libranet.webserver.router import Router
-from tests.helpers import blocked_list
+from tests.helpers import shunned_list
 
 BUNDLE = PartPath(ContentId.for_data(b"a bundle read into", "sha256"))
 KEY = sha256(b"what the encrypted bundle decrypts to").digest()
@@ -100,7 +100,7 @@ def router_for(
     asked: Recorder,
     uses: Recorder | None = None,
     wait_seconds: float = 0.0,
-    blocked: BlockedContent | None = None,
+    shunned: ShunnedContent | None = None,
 ) -> Router:
     """Routes reading into bundles, which wait ``wait_seconds`` for what they lack."""
     handler = BundleReadHandler(
@@ -116,7 +116,7 @@ def router_for(
                 wait_seconds,
                 RETRY_AFTER_SECONDS,
                 poll_interval_seconds=0.01,
-                blocked=blocked,
+                shunned=shunned,
             ),
         )
     )
@@ -411,7 +411,7 @@ def test_a_file_whose_parts_name_an_algorithm_this_node_lacks_is_400_and_a_warni
 
 @mark.parametrize("bundle", [BUNDLE, ENCRYPTED])
 @mark.parametrize("path", ["film.mp4", "", "not/resolved/"])
-def test_a_blocked_bundle_is_404_whatever_was_resolved_from_it_and_neither_asked_for_nor_used(
+def test_a_shunned_bundle_is_404_whatever_was_resolved_from_it_and_neither_asked_for_nor_used(
     files: ResolvedFiles,
     store: CasStore,
     outcomes: ApplicationOutcomes,
@@ -423,8 +423,8 @@ def test_a_blocked_bundle_is_404_whatever_was_resolved_from_it_and_neither_asked
 ) -> None:
     resolve(files, store, bundle, "film.mp4", *FILM_PARTS)
     save_directory(files, bundle, library())
-    blocked = blocked_list(tmp_path / "blocked.json", bundle.content_id)
-    router = router_for(files, store, outcomes, asked, uses, blocked=blocked)
+    shunned = shunned_list(tmp_path / "shunned.json", bundle.content_id)
+    router = router_for(files, store, outcomes, asked, uses, shunned=shunned)
 
     response = read(router, f"/data/{bundle}/{path}")
 
@@ -436,7 +436,7 @@ def test_a_blocked_bundle_is_404_whatever_was_resolved_from_it_and_neither_asked
     assert uses.messages == []
 
 
-def test_a_file_with_a_part_blocked_is_400(
+def test_a_file_with_a_part_shunned_is_400(
     files: ResolvedFiles,
     store: CasStore,
     outcomes: ApplicationOutcomes,
@@ -447,7 +447,7 @@ def test_a_file_with_a_part_blocked_is_400(
     resolve(files, store, BUNDLE, "film.mp4", *FILM_PARTS)
     part = ContentId.for_data(FILM_PARTS[1], "sha256")
     router = router_for(
-        files, store, outcomes, asked, blocked=blocked_list(tmp_path / "blocked.json", part)
+        files, store, outcomes, asked, shunned=shunned_list(tmp_path / "shunned.json", part)
     )
 
     with caplog.at_level(DEBUG):
@@ -455,9 +455,9 @@ def test_a_file_with_a_part_blocked_is_400(
 
     assert response.status == 400
     assert loads(response.body)["type"] == UNUSABLE_BUNDLE
-    assert loads(response.body)["detail"] == f"{part} is blocked here"
+    assert loads(response.body)["detail"] == f"{part} is shunned here"
     assert [
-        record.levelno for record in caplog.records if "is blocked here" in record.getMessage()
+        record.levelno for record in caplog.records if "is shunned here" in record.getMessage()
     ] == [DEBUG]
 
 

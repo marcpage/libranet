@@ -19,9 +19,9 @@ from libranet.atomic_file import write_atomically
 from libranet.bundle.parts import PartPath
 from libranet.bundle.serialization import encode_bundle
 from libranet.bundle.shapes import FileBundle, Metadata
-from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.resolved_files import ResolvedFiles
+from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.config.models import HOUR_SECONDS
 from libranet.messaging.envelope import Message
@@ -42,7 +42,7 @@ from libranet.webserver.bundle_paths import BundlePaths
 from libranet.webserver.errors import RegistryFileError
 from libranet.webserver.file_stream import PartReader
 from libranet.webserver.http_types import Request, Response
-from tests.helpers import blocked_list
+from tests.helpers import shunned_list
 
 ROOT_BUNDLE = ContentId.for_data(b"the root application's bundle", "sha256")
 WIKI_BUNDLE = ContentId.for_data(b"the wiki's bundle", "sha256")
@@ -113,7 +113,7 @@ def handler_for(
     uses: Recorder | None = None,
     reads: Recorder | None = None,
     wait_seconds: float = 0.0,
-    blocked: BlockedContent | None = None,
+    shunned: ShunnedContent | None = None,
 ) -> AppHandler:
     """A handler serving ``applications``, once they are registered in ``registry``.
 
@@ -136,7 +136,7 @@ def handler_for(
                 wait_seconds,
                 RETRY_AFTER_SECONDS,
                 poll_interval_seconds=0.01,
-                blocked=blocked,
+                shunned=shunned,
             ),
         ),
     )
@@ -387,7 +387,7 @@ def test_an_unusable_bundle_is_a_500_saying_why(
 
 
 @mark.parametrize("path", ["/wiki/page.html", "/wiki/not-resolved.html", "/wiki"])
-def test_an_application_whose_bundle_is_blocked_is_404_and_neither_asked_for_nor_used(
+def test_an_application_whose_bundle_is_shunned_is_404_and_neither_asked_for_nor_used(
     registry: ApplicationRegistry,
     files: ResolvedFiles,
     store: CasStore,
@@ -398,9 +398,9 @@ def test_an_application_whose_bundle_is_blocked_is_404_and_neither_asked_for_nor
     path: str,
 ) -> None:
     resolve(files, store, WIKI_BUNDLE, "page.html", b"a page")
-    blocked = blocked_list(tmp_path / "blocked.json", WIKI_BUNDLE)
+    shunned = shunned_list(tmp_path / "shunned.json", WIKI_BUNDLE)
     handler = handler_for(
-        {"wiki": WIKI_BUNDLE}, registry, files, store, outcomes, published, uses, blocked=blocked
+        {"wiki": WIKI_BUNDLE}, registry, files, store, outcomes, published, uses, shunned=shunned
     )
 
     response = get(handler, path)
@@ -411,7 +411,7 @@ def test_an_application_whose_bundle_is_blocked_is_404_and_neither_asked_for_nor
     assert uses.messages == []
 
 
-def test_a_file_with_a_part_blocked_is_a_500_saying_so(
+def test_a_file_with_a_part_shunned_is_a_500_saying_so(
     registry: ApplicationRegistry,
     files: ResolvedFiles,
     store: CasStore,
@@ -421,9 +421,9 @@ def test_a_file_with_a_part_blocked_is_a_500_saying_so(
 ) -> None:
     resolve(files, store, WIKI_BUNDLE, "page.html", b"a page")
     part = ContentId.for_data(b"a page", "sha256")
-    blocked = blocked_list(tmp_path / "blocked.json", part)
+    shunned = shunned_list(tmp_path / "shunned.json", part)
     handler = handler_for(
-        {"wiki": WIKI_BUNDLE}, registry, files, store, outcomes, published, blocked=blocked
+        {"wiki": WIKI_BUNDLE}, registry, files, store, outcomes, published, shunned=shunned
     )
 
     response = get(handler, "/wiki/page.html")
@@ -431,7 +431,7 @@ def test_a_file_with_a_part_blocked_is_a_500_saying_so(
     assert response.status == 500
     problem = loads(response.body)
     assert problem["type"] == UNUSABLE_BUNDLE
-    assert problem["detail"] == f"{part} is blocked here"
+    assert problem["detail"] == f"{part} is shunned here"
 
 
 def test_a_resolved_file_is_served_whatever_outcome_was_known(

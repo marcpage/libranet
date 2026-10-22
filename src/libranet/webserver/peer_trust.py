@@ -47,9 +47,9 @@ from time import monotonic
 from typing import Callable
 
 from libranet.atomic_file import write_atomically
-from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.layered import LayeredSource
+from libranet.cas.shunned import ShunnedContent
 from libranet.config.models import StorageConfig
 from libranet.identity.trust import TrustLimits, TrustState
 from libranet.json_format import pretty_json
@@ -167,7 +167,7 @@ class PeerTrust:  # pylint: disable=too-many-instance-attributes
             LocalSearch.of(content, storage),
             SearchCache.of(storage),
             publish,
-            blocked=BlockedContent.of(storage),
+            shunned=ShunnedContent.of(storage),
         )
         builds = TrustBuilds(
             TrustLists(search, OwnUploads.of(storage, content, node_id, publish)),

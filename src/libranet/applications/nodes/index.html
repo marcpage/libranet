@@ -1237,7 +1237,7 @@ async function dropResults(target, what) {
 
 // What `nodeId` says of itself (App Developer Guide 6.18): the fields of the
 // newest version it signed at its drop, or null if none is held; and how many
-// found there are not held yet. The node blocks the versions the newest
+// found there are not held yet. The node shuns the versions the newest
 // replaces, so there is no history to read back.
 async function readMetadata(nodeId) {
   const ids = await dropResults(NODE_METADATA_PREFIX + nodeId, `What ${nodeId} says`);

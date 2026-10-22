@@ -46,7 +46,7 @@ from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.webserver.server import LibranetHTTPServer, build_router
 
-from tests.helpers import blocked_list, new_identity, with_node_key
+from tests.helpers import new_identity, shunned_list, with_node_key
 from tests.stubs import StubModule
 
 LOGGER = getLogger("test.connections")
@@ -873,7 +873,7 @@ def test_archive_content_is_pushed_and_never_asked_for(
     ]
 
 
-def test_content_this_node_has_blocked_is_not_pushed_even_from_an_archive(
+def test_content_this_node_has_shunned_is_not_pushed_even_from_an_archive(
     peer: FixturePeer,
     config: LibranetConfig,
     identity: NodeIdentity,
@@ -886,7 +886,7 @@ def test_content_this_node_has_blocked_is_not_pushed_even_from_an_archive(
         sink.write(HELD_ID, HELD)
 
     storage = config.storage.model_copy(update={"archives": (archive,)})
-    blocked_list(storage.blocked_list_path, HELD_ID)
+    shunned_list(storage.shunned_list_path, HELD_ID)
     exchange = PeerExchange(
         identity,
         config.model_copy(update={"storage": storage}),

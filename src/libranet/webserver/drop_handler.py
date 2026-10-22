@@ -55,9 +55,9 @@ from libranet.bundle.errors import BundleTooLargeError, BundleVerificationError,
 from libranet.bundle.person_encryption import EncryptedForPerson
 from libranet.bundle.signing import person_public_key
 from libranet.bundle.storing import STORAGE_COMPRESSION_LEVEL, ContentSink, store_object
-from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DROP_SEPARATOR, DropTarget
+from libranet.cas.shunned import ShunnedContent
 from libranet.config.models import MIB, TARGET_BITS
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
@@ -112,7 +112,7 @@ class StoredDrop:
 class DropEncryption:
     """Encrypts the content of drops as their requests ask: for a person, or by a password.
 
-    A person's public key is read from ``content``, but none ``blocked``
+    A person's public key is read from ``content``, but none ``shunned``
     names, and one not held is asked for with ``publish``, a client told to
     ask again after ``retry_after_seconds``. A key is derived from a username
     and password one at a time, in ``derivations``, and only for a local
@@ -130,7 +130,7 @@ class DropEncryption:
     _: KW_ONLY
     retry_after_seconds: int
     derivations: Turns = field(default_factory=Turns)
-    blocked: BlockedContent | None = None
+    shunned: ShunnedContent | None = None
 
     def __post_init__(self) -> None:
         if self.retry_after_seconds < 0:
@@ -197,8 +197,8 @@ class DropEncryption:
 
         A key not held is asked for.
         """
-        if self.blocked is not None and self.blocked.blocks(person_id):
-            _LOGGER.debug("Not encrypting for %s, whose key is blocked", person_id)
+        if self.shunned is not None and self.shunned.shuns(person_id):
+            _LOGGER.debug("Not encrypting for %s, whose key is shunned", person_id)
             return status_response(
                 request,
                 HTTPStatus.NOT_FOUND,

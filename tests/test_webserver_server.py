@@ -28,12 +28,12 @@ from pytest import LogCaptureFixture, MonkeyPatch, fixture, mark, raises
 from libranet.atomic_file import write_atomically
 from libranet.bundle.serialization import encode_bundle
 from libranet.bundle.shapes import FileBundle, Metadata
-from libranet.cas.blocked import BlockedContent
 from libranet.cas.archive import ArchiveSink, ArchiveSource
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
 from libranet.cas.layered import LayeredSource
 from libranet.cas.resolved_files import ResolvedFiles
+from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig, NetworkConfig, StorageConfig
 from libranet.identity.authentication import RequestAuthenticator
@@ -2587,7 +2587,7 @@ def test_a_person_key_is_made_only_at_the_sizes_the_router_is_given(
     assert loads(response.body)["detail"] == '"key_bits" must be one of 4096 here, got 2048'
 
 
-# -- Blocked content (Phase 4 Step 30) -----------------------------------------
+# -- Shunned content (Phase 4 Step 30) -----------------------------------------
 
 
 def test_a_local_client_deletes_and_blocks_content_from_a_trusted_page(
@@ -2600,11 +2600,11 @@ def test_a_local_client_deletes_and_blocks_content_from_a_trusted_page(
 
     assert response.status == 204
     assert body == b""
-    # The node cannot say whether it was blocked before, so both are alike.
+    # The node cannot say whether it was shunned before, so both are alike.
     assert again.status == 204
     assert [
         (message["event"], message["algorithm"], message["hash"]) for message in _published(queues)
-    ] == [(EventType.DATA_BLOCKED, "sha256", MISSING_ID.hash)] * 2
+    ] == [(EventType.DATA_SHUNNED, "sha256", MISSING_ID.hash)] * 2
 
 
 @mark.parametrize(
@@ -2617,7 +2617,7 @@ def test_a_local_client_deletes_and_blocks_content_from_a_trusted_page(
         ("127.0.0.1", {**MOVIE_PAGE, "Sec-Fetch-Site": "cross-site"}),
     ],
 )
-def test_content_is_blocked_only_for_a_local_client_on_a_trusted_page(
+def test_content_is_shunned_only_for_a_local_client_on_a_trusted_page(
     local_server: LibranetHTTPServer,
     storage: StorageConfig,
     queues: ModuleQueues,
@@ -2658,10 +2658,10 @@ def test_a_path_into_a_bundle_is_not_deleted(
     assert _published(queues) == []
 
 
-def test_blocked_content_is_not_found_and_not_asked_for(
+def test_shunned_content_is_not_found_and_not_asked_for(
     connection: HTTPConnection, queues: ModuleQueues, storage: StorageConfig
 ) -> None:
-    write_atomically(storage.blocked_list_path, BlockedContent.body([CONTENT_ID, MISSING_ID]))
+    write_atomically(storage.shunned_list_path, ShunnedContent.body([CONTENT_ID, MISSING_ID]))
 
     held, _ = _get(connection, f"/data/{CONTENT_ID}")
     missing, _ = _get(connection, f"/data/{MISSING_ID}")
@@ -2674,16 +2674,16 @@ def test_blocked_content_is_not_found_and_not_asked_for(
     ]
 
 
-def test_an_upload_of_blocked_content_is_accepted_and_discarded(
+def test_an_upload_of_shunned_content_is_accepted_and_discarded(
     connection: HTTPConnection, queues: ModuleQueues, storage: StorageConfig
 ) -> None:
-    write_atomically(storage.blocked_list_path, BlockedContent.body([MISSING_ID]))
+    write_atomically(storage.shunned_list_path, ShunnedContent.body([MISSING_ID]))
     identity = _new_identity()
 
     response, reply = _put(connection, MISSING_ID, b"not stored", identity)
     unsigned, _ = _put(connection, MISSING_ID, b"not stored", None)
 
-    # As an upload validated later is, so the sender learns nothing of the block.
+    # As an upload validated later is, so the sender learns nothing of the shunning.
     assert response.status == 202
     assert reply == b""
     assert not CasStore.for_node(storage, identity.node_id).exists(MISSING_ID)
@@ -2692,7 +2692,7 @@ def test_an_upload_of_blocked_content_is_accepted_and_discarded(
     assert unsigned.status == 401
 
 
-def test_a_search_leaves_blocked_content_out_even_when_cached(
+def test_a_search_leaves_shunned_content_out_even_when_cached(
     connection: HTTPConnection, storage: StorageConfig
 ) -> None:
     cached = ContentId("sha256", "abcdef" + "0" * 58)
@@ -2700,7 +2700,7 @@ def test_a_search_leaves_blocked_content_out_even_when_cached(
     cache_file = storage.search_cache_dir / "abcd" / "abcdef.json"
     cache_file.parent.mkdir(parents=True)
     cache_file.write_bytes(dumps({"results": [str(cached), str(other)]}).encode())
-    write_atomically(storage.blocked_list_path, BlockedContent.body([cached, CONTENT_ID]))
+    write_atomically(storage.shunned_list_path, ShunnedContent.body([cached, CONTENT_ID]))
 
     from_cache, cache_body = _get(connection, "/data/search/abcdef")
     scanned, scan_body = _get(connection, f"/data/search/{CONTENT_ID.hash}")

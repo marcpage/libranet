@@ -28,7 +28,7 @@ is asked for again. A part waited for is looked for every
 ``poll_interval_seconds``, since the web server takes in no ``data.stored``,
 every one of which would fill its inbox (Phase 2 Step 61). One that does not
 come within ``wait_seconds`` ends the response: with ``503`` if it has not
-begun, and short if it has. A part this node has blocked is neither read, even
+begun, and short if it has. A part this node has shunned is neither read, even
 from a content archive, nor asked for, since it never comes (HttpApi §5.5,
 Phase 4 Step 30): it ends the response at once, as a part that fails its
 checks does.
@@ -54,12 +54,12 @@ from time import monotonic, sleep
 from typing import Final, Iterator, Sequence
 
 from libranet.bundle.content import ContentSource
-from libranet.bundle.errors import BlockedContentError, BundleError, MissingContentError
+from libranet.bundle.errors import BundleError, MissingContentError, ShunnedContentError
 from libranet.bundle.parts import PartPath
 from libranet.bundle.reassembly import WholeFileCheck
 from libranet.bundle.shapes import FileBundle
-from libranet.cas.blocked import BlockedContent
 from libranet.cas.content_id import ContentId
+from libranet.cas.shunned import ShunnedContent
 from libranet.config.models import DEFAULT_READ_AHEAD_PARTS
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
@@ -201,8 +201,8 @@ class PartReader:
     and asks for those it lacks. A part not held is waited for up to
     ``wait_seconds``, looked for every ``poll_interval_seconds``, and asked
     for again every ``ask_again_seconds``, along with as many as
-    ``read_ahead_parts`` after it. A part ``blocked`` names is neither read
-    nor asked for; without ``blocked``, none is refused.
+    ``read_ahead_parts`` after it. A part ``shunned`` names is neither read
+    nor asked for; without ``shunned``, none is refused.
 
     Raises:
         ValueError: ``wait_seconds``, ``ask_again_seconds``, or
@@ -217,7 +217,7 @@ class PartReader:
     _: KW_ONLY
     read_ahead_parts: int = DEFAULT_READ_AHEAD_PARTS
     poll_interval_seconds: float = DEFAULT_PART_POLL_INTERVAL_SECONDS
-    blocked: BlockedContent | None = None
+    shunned: ShunnedContent | None = None
 
     def __post_init__(self) -> None:
         if self.wait_seconds < 0:
@@ -249,9 +249,9 @@ class PartReader:
         """
         return FileStream(self, entry, start_bytes=start_bytes, stop_bytes=stop_bytes)
 
-    def blocks(self, content_id: ContentId) -> bool:
-        """Whether ``content_id`` is blocked here, so that it is neither read nor asked for."""
-        return self.blocked is not None and self.blocked.blocks(content_id)
+    def shuns(self, content_id: ContentId) -> bool:
+        """Whether ``content_id`` is shunned here, so that it is neither read nor asked for."""
+        return self.shunned is not None and self.shunned.shuns(content_id)
 
 
 class FileStream:
@@ -316,7 +316,7 @@ class FileStream:
                 match its address, size, or whole-file hash.
             UnsupportedBundleError: the part is encrypted, and larger than
                 any node could have stored.
-            BlockedContentError: this node has blocked the part.
+            ShunnedContentError: this node has shunned the part.
         """
         if self._begun is not None or self._position >= len(self._span.pieces):
             return True
@@ -336,7 +336,7 @@ class FileStream:
 
         Raises:
             ResponseCutShortError: a part did not come in time, or is
-                blocked, or it, or the whole file, failed its checks; why is
+                shunned, or it, or the whole file, failed its checks; why is
                 logged.
         """
         if self._begun is not None:
@@ -375,8 +375,8 @@ class FileStream:
         """
         piece = self._span.pieces[self._position]
 
-        if self._reader.blocks(piece.path.content_id):
-            raise BlockedContentError(piece.path.content_id)
+        if self._reader.shuns(piece.path.content_id):
+            raise ShunnedContentError(piece.path.content_id)
 
         while True:
             self._ask_ahead()
@@ -404,7 +404,7 @@ class FileStream:
         """Ask for the parts from the next piece's on, as many as are read ahead.
 
         Each is reported as requested the first time it is among them, and
-        asked of the network if it is not held, unless it is blocked. A part
+        asked of the network if it is not held, unless it is shunned. A part
         asked for less than ``ask_again_seconds`` ago is not asked for again.
         """
         end = min(self._position + self._reader.read_ahead_parts + 1, len(self._span.pieces))
@@ -417,7 +417,7 @@ class FileStream:
                     EventType.DATA_REQUESTED, {**content_id.fields(), "external": False}
                 )
 
-            if not (self._reader.content.exists(content_id) or self._reader.blocks(content_id)):
+            if not (self._reader.content.exists(content_id) or self._reader.shuns(content_id)):
                 self._wait.ask(content_id)
 
         self._requested_through = max(self._requested_through, end)

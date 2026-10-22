@@ -16,7 +16,7 @@ Nothing here tells a person's list from a node's.
 A reader passes over an entry that is not an id trusted or distrusted, and
 counts the rest of the list (§3.1). Of the versions read that the owner
 signed, the newest is the one numbered highest, ties going to the drop whose
-id sorts first, and the rest are blocked, so that they do not crowd it out of
+id sorts first, and the rest are shunned, so that they do not crowd it out of
 a search (§3.3). The next version is made over the newest (§3.4). The web
 server reads them from what the node holds (Phase 5 Step 96).
 

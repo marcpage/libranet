@@ -553,9 +553,9 @@ class StorageConfig(_Section):
         return self.derived_dir / "candidates.json"
 
     @property
-    def blocked_list_path(self) -> Path:
-        """The content this node has blocked, for the modules refusing it (Phase 4 Step 30)."""
-        return self.derived_dir / "blocked.json"
+    def shunned_list_path(self) -> Path:
+        """The content this node has shunned, for the modules refusing it (Phase 4 Step 30)."""
+        return self.derived_dir / "shunned.json"
 
     @property
     def peer_list_path(self) -> Path:
