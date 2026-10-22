@@ -640,7 +640,7 @@ Ruled in review (2026-10-22), each on a gap found while building:
 
 ## Step 118 — Mining a Transaction
 
-**Kind:** infrastructure. **Issue:** none yet; planned under #87.
+**Kind:** infrastructure. **Issue:** #436, under #87.
 **Depends on:** Step 117; Phase 4 Step 89's search for a nonce.
 
 A drop's nonce follows the content it places (HttpApi §9), but a
@@ -666,6 +666,40 @@ nearest for the prefix, the nonce, and the suffix, as hashing each shows; a
 search with none finding what it found before, the tests of drops
 unchanged; a mined transaction sharing at least the bits asked; a round
 carrying a suffix read back by the searching process.
+
+Built in one change set: 131 added lines of non-test Python, with 47 taken
+out, and 126 of tests. That is near §5's estimate of about 150.
+
+- **`NonceSearch(prefix, target, suffix=…)`** (`cas/nonce_search.py`)
+  hashes `suffix` after each nonce, and a drop's search has none. A search
+  is sent as its target, the length of its suffix in 4 bytes, the suffix,
+  and then the prefix, which is still the rest.
+- **`NonceSearchers.found(search, seconds, …)`** (`cas/drops.py`) is the
+  whole search: the empty nonce, then rounds until the time is spent and
+  the minimum is matched. It was the body of `DropTarget.placed`, which
+  now calls it, as `Transaction.mined` does.
+- **`Transaction.mined(seconds, …)`** (`karma/transactions.py`) is the
+  transaction with the nonce found. Its text is written with an empty
+  nonce, and split before the `"}` that closes it: what comes before is
+  the prefix, and `"}` the suffix.
+
+My calls, not yet reviewed:
+
+- **`mined` takes a `minimum_bits`**, keyword-only, which is 24 unless
+  given. A transaction mined to fewer is invalid (§4.3), but tests mine to
+  8 and 14 bits, since 24 takes about 17 million tries. A sender who wants
+  more bits than 24 gives `seconds`, as §5.4 has them do.
+- **The search loop moved to `NonceSearchers.found`**, rather than being
+  copied into `mined`. A drop's search reads the clock as often, and tries
+  the same nonces, so the tests of drops pass unchanged.
+- **The suffix goes before the prefix in a search as sent**, so that the
+  prefix stays the rest of it, as it was. A drop's search is sent with 4
+  bytes of zero more than before.
+- **A try formats its nonce and the suffix together**, from `b"%d"` and
+  the suffix with each `%` doubled. That costs a drop's search nothing per
+  try, where adding the suffix to each nonce cost about 3.5%.
+- **`mined` drops the nonce the transaction had**, and the empty nonce is
+  tried first, as for a drop.
 
 ---
 

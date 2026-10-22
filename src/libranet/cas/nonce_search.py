@@ -13,15 +13,21 @@ closes the pipe, or exits, however it exits. A round is a header
 (:data:`ROUND`), followed, when it starts a search, by the search
 (:meth:`NonceSearch.encoded`)::
 
-    start    8 bytes, big-endian   the first count to try
-    stop     8 bytes, big-endian   the count after the last
-    length   4 bytes, big-endian   how many bytes follow, or 0 to keep the
-                                   search the last round brought
-    target   32 bytes              the target hash
-    prefix   the rest              the content, and its null byte
+    start           8 bytes, big-endian   the first count to try
+    stop            8 bytes, big-endian   the count after the last
+    length          4 bytes, big-endian   how many bytes follow, or 0 to keep
+                                          the search the last round brought
+    target          32 bytes              the target hash
+    suffix length   4 bytes, big-endian   how many bytes the suffix has
+    suffix          so many bytes         what is hashed after each nonce:
+                                          none for a drop, and the end of a
+                                          transaction's text for one
+                                          (Phase 6 Step 118)
+    prefix          the rest              what is hashed before each nonce:
+                                          a drop's content, and its null byte
 
-The answer (:data:`NEAREST`) is the count, of those tried, whose nonce puts
-the prefix's hash nearest the target's.
+The answer (:data:`NEAREST`) is the count, of those tried, whose nonce,
+between the prefix and the suffix, hashes nearest the target.
 """
 
 from __future__ import annotations
@@ -45,26 +51,39 @@ SEARCHER_COMMAND: Final = (executable, "-I", __file__)
 # A target is a SHA-256 hash (HttpApi §9.3), and leads a search as sent.
 _TARGET_BYTES: Final = sha256().digest_size
 
+# How many bytes of suffix follow the target, in a search as sent.
+_SUFFIX_LENGTH: Final = Struct(">I")
+
 
 class NonceSearch:
-    """Nonces hashed after ``prefix``, and how near each puts it to ``target``.
+    """Nonces hashed between ``prefix`` and ``suffix``, and how near each puts them to ``target``.
 
     A nonce is a count, in decimal (:meth:`nonce`). Its distance is the
     exclusive or of the two hashes, read as numbers, which ranks first by
     leading bits matched. The prefix is hashed once, and each nonce hashes
-    only itself on top of that.
+    only itself, and the suffix, on top of that. A drop's search has no
+    suffix.
     """
 
-    def __init__(self, prefix: bytes, target: bytes) -> None:
+    def __init__(self, prefix: bytes, target: bytes, *, suffix: bytes = b"") -> None:
         self._prefix = prefix
         self._target = target
+        self._suffix = suffix
         self._hashed = sha256(prefix)
         self._target_number = int.from_bytes(target)
+        # Formatted with a count, it gives the nonce and the suffix at once,
+        # which costs a try no more than the nonce alone does.
+        self._pattern = b"%d" + suffix.replace(b"%", b"%%")
 
     @classmethod
     def decoded(cls, data: bytes) -> NonceSearch:
         """The search ``data`` holds, as :meth:`encoded` gave it."""
-        return cls(data[_TARGET_BYTES:], data[:_TARGET_BYTES])
+        (suffix_bytes,) = _SUFFIX_LENGTH.unpack_from(data, _TARGET_BYTES)
+        suffix_start = _TARGET_BYTES + _SUFFIX_LENGTH.size
+        prefix_start = suffix_start + suffix_bytes
+        return cls(
+            data[prefix_start:], data[:_TARGET_BYTES], suffix=data[suffix_start:prefix_start]
+        )
 
     @staticmethod
     def nonce(count: int) -> bytes:
@@ -72,13 +91,13 @@ class NonceSearch:
         return b"%d" % count
 
     def encoded(self) -> bytes:
-        """The target hash, then the prefix, as a round brings them."""
-        return self._target + self._prefix
+        """The target hash, the suffix, and then the prefix, as a round brings them."""
+        return self._target + _SUFFIX_LENGTH.pack(len(self._suffix)) + self._suffix + self._prefix
 
     def distance(self, nonce: bytes) -> int:
-        """How far from the target the prefix hashes with ``nonce`` after it."""
+        """How far from the target the prefix hashes with ``nonce``, and the suffix, after it."""
         attempt = self._hashed.copy()
-        attempt.update(nonce)
+        attempt.update(nonce + self._suffix)
         return int.from_bytes(attempt.digest()) ^ self._target_number
 
     def nearest(self, start: int, stop: int) -> int:
@@ -91,6 +110,7 @@ class NonceSearch:
             raise ValueError(f"stop must be after start {start}, got {stop}")
 
         target = self._target_number
+        pattern = self._pattern
         best_count = start
         best_distance = self.distance(self.nonce(start))
 
@@ -98,7 +118,7 @@ class NonceSearch:
         # try a tenth as much again.
         for count in range(start + 1, stop):
             attempt = self._hashed.copy()
-            attempt.update(b"%d" % count)
+            attempt.update(pattern % count)
             distance = int.from_bytes(attempt.digest()) ^ target
 
             if distance < best_distance:

@@ -10,9 +10,9 @@ It is known by its ``hash``, the hash of its ``contents``, so the same
 contents signed again are the same transaction (§4.2). Its key is its
 ``from`` and its ``created``: two transactions with one key are one payment,
 whatever else they hold. Its ``nonce`` is written last, so that a search for
-one hashes what comes before it once (Phase 6 Step 118), and the number of
-leading bits its ``hash`` shares with the SHA-256 of ``transaction`` is its
-proof of work (§4.3).
+one hashes what comes before it once (:meth:`Transaction.mined`), and the
+number of leading bits its ``hash`` shares with the SHA-256 of
+``transaction`` is its proof of work (§4.3).
 
 The payout of each transaction block after the root moves the reward of the
 generation before (§5.2). No one signs it: it is written as a signed
@@ -25,10 +25,11 @@ whether a payout is right, are for whoever checks the block.
 """
 
 from __future__ import annotations
-from dataclasses import KW_ONLY, dataclass, field
+from dataclasses import KW_ONLY, dataclass, field, replace
 from datetime import datetime
 from hashlib import sha256
-from typing import Any, Final, Mapping
+from time import monotonic
+from typing import Any, Callable, Final, Mapping
 
 from libranet.bundle.errors import (
     BundleSignatureError,
@@ -38,11 +39,13 @@ from libranet.bundle.errors import (
 from libranet.bundle.shapes import is_utf8
 from libranet.bundle.signing import SIGNED_HASH_ALGORITHM, SignedBundle
 from libranet.cas.content_id import ContentId
+from libranet.cas.drops import NONCE_SEARCHERS, NonceSearchers
+from libranet.cas.nonce_search import NonceSearch
 from libranet.cas.prefix import matching_bits
 from libranet.json_fields import integer_field, string_field
 from libranet.json_format import MOMENT_FORMAT, compact_json
 from libranet.karma.amounts import MAX_KISMET, Kismet
-from libranet.karma.generations import TRANSACTION_WORK_TARGET
+from libranet.karma.generations import MIN_TRANSACTION_BITS, TRANSACTION_WORK_TARGET
 from libranet.karma.members import (
     CREATED_MEMBER,
     amounts_member,
@@ -59,6 +62,10 @@ _TO: Final = "to"
 _GENERATION: Final = "generation"
 _FEE: Final = "fee_kismet"
 _NONCE: Final = "nonce"
+
+# What follows a transaction's nonce in its text: the quote that ends the
+# string, and the brace that ends the object.
+_AFTER_NONCE: Final = b'"}'
 
 # The name a payout's "from" gives the new Karma, which comes from no one
 # (§5.2).
@@ -158,10 +165,43 @@ class Transaction:
         """This transaction as compact JSON text, as its sender signs it.
 
         It ends with the nonce and the two characters that close it, ``"}``,
-        so that a search for a nonce hashes all before it once (Phase 6 Step
-        118).
+        so that a search for a nonce hashes all before it once
+        (:meth:`mined`).
         """
         return compact_json(self.value()).decode("utf-8")
+
+    def mined(
+        self,
+        seconds: float,
+        *,
+        minimum_bits: int = MIN_TRANSACTION_BITS,
+        clock: Callable[[], float] = monotonic,
+        searchers: NonceSearchers = NONCE_SEARCHERS,
+    ) -> Transaction:
+        """This transaction, with the nonce, of those tried, that gives it the most work (§4.3).
+
+        Its work is the leading bits its hash, that of its :meth:`text`,
+        shares with :data:`~libranet.karma.generations.TRANSACTION_WORK_TARGET`.
+        Nonces are tried for ``seconds``, by ``clock``, and after that until
+        the best gives at least ``minimum_bits``: by default
+        :data:`~libranet.karma.generations.MIN_TRANSACTION_BITS`, the fewest
+        a valid transaction has. ``searchers`` try them, as they do a drop's
+        (:meth:`~libranet.cas.drops.NonceSearchers.found`), hashing the text
+        before the nonce once, and the ``"}`` after it with each. The nonce
+        it had is not kept.
+
+        Raises:
+            ValueError: ``seconds`` is negative, or ``minimum_bits`` is
+                negative or more than a hash has.
+            OSError: a searching process could not be started, or exited
+                during the search.
+        """
+        text = replace(self, nonce="").text().encode("utf-8")
+        search = NonceSearch(
+            text[: -len(_AFTER_NONCE)], TRANSACTION_WORK_TARGET.digest, suffix=_AFTER_NONCE
+        )
+        nonce = searchers.found(search, seconds, minimum_bits=minimum_bits, clock=clock)
+        return replace(self, nonce=nonce.decode("ascii"))
 
     @property
     def key(self) -> TransactionKey:

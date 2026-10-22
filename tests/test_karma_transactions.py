@@ -16,6 +16,7 @@ from libranet.bundle.errors import (
     UnsupportedBundleError,
 )
 from libranet.cas.content_id import ContentId
+from libranet.cas.drops import TRIES_PER_CLOCK_READ, NonceSearchers
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.people import PersonKey
 from libranet.karma.amounts import MAX_KISMET, Kismet
@@ -312,6 +313,56 @@ def test_a_transactions_work_is_the_bits_its_hash_shares_with_the_target(
     sender: NodeIdentity, bits: int
 ) -> None:
     assert sharing(bits, sender).work_bits == bits
+
+
+@mark.parametrize("bits", [8, 14])
+def test_a_mined_transaction_shares_at_least_the_bits_asked(
+    sender: NodeIdentity, alice: ContentId, bits: int
+) -> None:
+    transaction = transaction_of(alice)
+
+    mined = transaction.mined(0, minimum_bits=bits, clock=lambda: 0.0)
+
+    assert SignedTransaction.of(sender.signed(mined.text())).work_bits >= bits
+    assert replace(mined, nonce=transaction.nonce) == transaction
+
+
+def test_a_mined_transaction_is_the_nearest_of_every_nonce_tried(alice: ContentId) -> None:
+    searchers = NonceSearchers(2)
+    target = int(TRANSACTION_WORK_TARGET.hex, 16)
+
+    def work(nonce: str) -> int:
+        text = transaction_of(alice, nonce=nonce).text()
+        return int(sha256(text.encode()).hexdigest(), 16) ^ target
+
+    try:
+        # The deadline is read once, then passed at the second check, after
+        # one round, of a share for each process.
+        mined = transaction_of(alice).mined(
+            1, minimum_bits=0, clock=iter((10.0, 10.5, 11.0)).__next__, searchers=searchers
+        )
+
+    finally:
+        searchers.close()
+
+    tried = ["", *(str(number) for number in range(2 * TRIES_PER_CLOCK_READ))]
+    assert mined.nonce == min(tried, key=work)
+
+
+def test_mining_with_no_time_and_no_minimum_tries_the_empty_nonce_alone(
+    alice: ContentId,
+) -> None:
+    mined = transaction_of(alice).mined(0, minimum_bits=0, clock=lambda: 5.0)
+
+    assert mined == transaction_of(alice, nonce="")
+
+
+@mark.parametrize("seconds, minimum_bits", [(-0.1, 0), (0, -1), (0, 257)])
+def test_mining_asking_the_impossible_is_refused(
+    alice: ContentId, seconds: float, minimum_bits: int
+) -> None:
+    with raises(ValueError):
+        transaction_of(alice).mined(seconds, minimum_bits=minimum_bits)
 
 
 def test_a_payout_reads_back_as_written(alice: ContentId) -> None:
