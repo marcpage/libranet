@@ -122,6 +122,22 @@ def test_a_signed_bundle_reads_back_as_it_was_written(
     decoded.verified(public_key)
 
 
+def test_a_signed_bundle_reads_back_from_its_json_object(
+    bundle: SignedBundle, public_key: bytes
+) -> None:
+    read = SignedBundle.from_value(bundle.value())
+
+    assert read == bundle
+    assert bundle.value() == loads(bundle.encoded())
+    read.verified(public_key)
+
+
+@mark.parametrize("value", [[], "{}", None, {"contents": "{}"}])
+def test_a_value_that_is_no_signed_bundle_is_refused(value: object) -> None:
+    with raises(MalformedBundleError, match='object with a "signature"'):
+        SignedBundle.from_value(value)
+
+
 def test_contents_beyond_ascii_are_signed_and_read_back_exactly(
     private_key: RSAPrivateKey, public_key: bytes
 ) -> None:
