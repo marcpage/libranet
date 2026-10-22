@@ -459,8 +459,8 @@ after, and the whole issue, 100,000,000,000,010 Karma, by its formula; the
 root's targets and a later generation's, as strings and as hashes; weights
 summed, written, and read back, a drop of 256 bits among them.
 
-Built in one change set: 281 added lines of non-test Python, and 272 of
-tests. That is over §5's estimate of about 200: 116 of the lines are code,
+Built in one change set: 296 added lines of non-test Python, and 291 of
+tests. That is over §5's estimate of about 200: 122 of the lines are code,
 and the rest docstrings, comments, and blank lines.
 
 - **`Kismet`** (`karma/amounts.py`) holds a `count`, from 0 to
@@ -474,14 +474,19 @@ and the rest docstrings, comments, and blank lines.
   `transaction` and `validation` targets. **`TRANSACTION_WORK_TARGET`**
   is the target of a transaction's work.
 - **`ChainWeight`** (`karma/weight.py`) holds its `work`, and is ordered
-  by it. `plus(bits)` adds a drop of so many bits, and
-  `plus_drop(drop, target)` counts them with `matching_bits`.
+  by it. `+` and `-` add and take one weight from another, refusing a
+  result below 0. `ChainWeight.of_bits(bits)` is a drop of so many bits,
+  and `ChainWeight.of_drop(drop, target)` counts them with
+  `matching_bits`.
 
 Ruled in review (2026-10-22):
 
-- **Kismet are added and taken with `+` and `-`**, overloaded on
-  `Kismet`. I had built them as methods, `plus` and `minus`, since nothing
-  else in `src/` overloads an operator.
+- **Kismet and weights are added and taken with `+` and `-`**,
+  overloaded on `Kismet` and `ChainWeight`. I had built them as methods,
+  `plus` and `minus`, since nothing else in `src/` overloads an operator.
+  A weight is added to a weight, so a drop's weight is made first, by
+  `of_bits` or `of_drop`, where it was added by `plus(bits)` and
+  `plus_drop(drop, target)`.
 - **No floor of the root's own.** `MIN_ROOT_BITS` was built, and removed.
   The root's drops, like every block's, are placed matching at least
   `storage.search_min_bits`, the floor every drop a node places for itself

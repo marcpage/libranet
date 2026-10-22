@@ -33,6 +33,27 @@ class ChainWeight:
             raise ValueError(f"A chain's weight must not be negative, got {self.work}")
 
     @classmethod
+    def of_bits(cls, bits: int) -> ChainWeight:
+        """The weight of a drop matching ``bits`` leading bits: 2^``bits``.
+
+        Raises:
+            ValueError: ``bits`` is negative, or more than a hash has.
+        """
+        if not 0 <= bits <= TARGET_BITS:
+            raise ValueError(f"bits must be from 0 to {TARGET_BITS}, got {bits}")
+
+        return cls(2**bits)
+
+    @classmethod
+    def of_drop(cls, drop: ContentId, target: DropTarget) -> ChainWeight:
+        """The weight of the drop ``drop``, placed at ``target``.
+
+        Its bits are those its hash shares with the target hash, counted as
+        a search counts them (:mod:`libranet.cas.prefix`).
+        """
+        return cls.of_bits(matching_bits(target.hex, drop.hash))
+
+    @classmethod
     def from_value(cls, value: object, *, named: str = "A chain's weight") -> ChainWeight:
         """The weight ``value``, a string of decimal digits, writes (§5.1).
 
@@ -47,21 +68,15 @@ class ChainWeight:
         """This weight as a transaction block states it: decimal digits (§5.1)."""
         return str(self.work)
 
-    def plus(self, bits: int) -> ChainWeight:
-        """This weight, with a drop matching ``bits`` leading bits added: 2^``bits`` more.
+    def __add__(self, other: ChainWeight) -> ChainWeight:
+        """This weight and ``other`` together."""
+        return ChainWeight(self.work + other.work)
+
+    def __sub__(self, other: ChainWeight) -> ChainWeight:
+        """This weight, with ``other`` taken from it.
 
         Raises:
-            ValueError: ``bits`` is negative, or more than a hash has.
+            ValueError: ``other`` is more than this weight, since no weight
+                is negative.
         """
-        if not 0 <= bits <= TARGET_BITS:
-            raise ValueError(f"bits must be from 0 to {TARGET_BITS}, got {bits}")
-
-        return ChainWeight(self.work + 2**bits)
-
-    def plus_drop(self, drop: ContentId, target: DropTarget) -> ChainWeight:
-        """This weight, with the drop ``drop``, placed at ``target``, added.
-
-        Its bits are those its hash shares with the target hash, counted as
-        a search counts them (:mod:`libranet.cas.prefix`).
-        """
-        return self.plus(matching_bits(target.hex, drop.hash))
+        return ChainWeight(self.work - other.work)
