@@ -267,7 +267,7 @@ applications, and running test networks and super nodes.
 | Phase 3 — video playback, steps 64–77 | Implemented |
 | Phase 4 — user accounts, steps 30, 78–82, and 89–93 | Implemented |
 | Phase 5 — the trust network, steps 94 and 96–114 | Implemented |
-| Phase 6 — Karma, step 56 | Planned |
+| Phase 6 — Karma, steps 56 and 116–142 | Planned |
 | Phase 7 — enhancements, steps 16, 50, 57, and 95 | Planned |
 | Phase 8 — a seed node, step 84 | Planned |
 | Improving the movie application, steps 83 and 85–88 | Planned |
@@ -327,7 +327,7 @@ you say so on `/config`.
 | [Phase 3 Plan](docs/implementation/Phase%203.md) | Video playback: steps 64–77, all built |
 | [Phase 4 Plan](docs/implementation/Phase%204.md) | User accounts: steps 30, 78–82, and 89–93, all built |
 | [Phase 5 Plan](docs/implementation/Phase%205.md) | The trust network: steps 94 and 96–114, all built |
-| [Phase 6 Plan](docs/implementation/Phase%206.md) | Karma: step 56 so far, planned |
+| [Phase 6 Plan](docs/implementation/Phase%206.md) | Karma: steps 56 and 116–142, planned |
 | [Phase 7 Plan](docs/implementation/Phase%207.md) | Enhancements: steps 16, 50, 57, and 95, planned |
 | [Phase 8 Plan](docs/implementation/Phase%208.md) | A seed node: step 84, planned |
 | [Movie App Plan](docs/implementation/Improve%20Movie%20Web%20App.md) | Improving the movie application: steps 83 and 85–88, planned |
