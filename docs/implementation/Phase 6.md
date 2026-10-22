@@ -903,8 +903,8 @@ and without a runner-up, and with a staker in both; shares totalling
 exactly, the rest to the builder, a total of zero, and the root's reward;
 each weight, from just after a win to never.
 
-Built as one change set: 368 added lines of non-test Python, with 3
-changed, and 488 of tests.
+Built as one change set: 365 added lines of non-test Python, with 3
+changed, and 515 of tests.
 
 What was built:
 
