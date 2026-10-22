@@ -21,7 +21,7 @@ Do not be extreme in this, but when it makes sense, use methods over functions.
 Do not directly interact with GitHub. Just inform me what needs to be done and I
 will do it.
 
-Never commit changes. I will review changes and commit them myself.
+Never commit changes unless I explicitly ask you to. I will review changes and commit them myself.
 
 If the changes proposed will be more than 500 new lines (including changed
 lines) of Python (not counting tests), then propose logical steps that can be
