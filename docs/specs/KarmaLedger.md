@@ -152,14 +152,15 @@ target, it goes through these steps in order:
 
 1. **Read the claim.** It reads that head and the transaction block it
    validates, whose `weight` says how heavy the chain behind it claims to
-   be. If that is not heavier than its own head, the node stops.
+   be. If that is not heavier than its own head, the node stops evaluating
+   the new head.
 2. **Walk back.** It walks the new head's generations back, from each
    validation block to the transaction block it names, and from that
    block's `previous` to the validation block before. It stops at the first
    validation block in its genealogy, the **common ancestor**. At each step
    it checks that the transaction block's `weight` is the one before's plus
    2^b for the two drops between, so that a false weight is caught where it
-   first fails.
+   first fails. It also validates the generation.
 3. **Collect the old branch.** It collects every transaction, payouts left
    out, in its own chain's transaction blocks after the common ancestor,
    through its own head.
@@ -168,10 +169,11 @@ target, it goes through these steps in order:
    it no longer holds. Each collected transaction it meets in the new chain
    is already accounted for, and it strikes that transaction from what it
    collected.
-5. **Follow.** If every block checks, and the new head is heavier, the node
+5. **Follow.** If every block validates as correct, and the new head is heavier, the node
    follows it. Its genealogy after the common ancestor becomes the new
    chain's, and it tells its peers its new head (§3.5.2). A block that does
-   not check distrusts its builder (§3.8), and the node keeps its own head.
+   not validate as correct distrusts its builder (§3.8), and the node keeps its own head.
+   Any invalid blocks are also blocked.
 6. **Carry the rest over.** It puts each collected transaction into the
    transaction block it builds at the new head's target. One whose sender's
    balance the new chain does not cover, as when the new chain has spent
@@ -191,13 +193,15 @@ heavier one lacks (§3.5.3).
 
 ### 3.7 Blocking What Is Superseded
 
-A block that is not signed, or whose signature fails, is no block of the
+A block that is not signed, whose signature fails, or fails validation of
+weight or generation, is no block of the
 ledger, and a node SHOULD block it (§3.8). Otherwise, a node MUST NOT block
 a validation block, since any one may lead to another chain. It MUST NOT
 block a transaction block that a validation block names. Validation blocks
 are made only on full transaction blocks, so a node SHOULD NOT block a
 transaction block near 1 MiB either: one full, or near enough to full that
-a validation block the node has not seen yet may name it (§5.4).
+a validation block the node has not seen yet may name it (§5.4) unless
+it fails basic validation.
 
 A node MAY block any other transaction block, such as one put up small or
 one still being combined, whose data is all held in another transaction
@@ -346,7 +350,7 @@ the one it was created in. The check for duplicates reaches back to the
 transaction's `generation`, however far that is (§9).
 
 A transaction that fails only because its sender's balance does not cover
-it is **pending**, not dropped. Builders carry it forward, trying it in each
+it is **pending**, is not dropped. Builders carry it forward, trying it in each
 later block, since the sender may yet receive enough. They stop carrying it
 a fixed number of generations, TBD (§9), after the generation it was
 witnessed in (§4.5). It stays valid, never expiring: anyone holding it may
