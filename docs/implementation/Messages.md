@@ -157,7 +157,7 @@ it and what each does with it.
   - Backup, for content a restore or an export lacks.
 - **Received by:**
   - Fetcher, which turns the miss into a `fetch.requested`, unless the
-    content is held, blocked, or was asked for within
+    content is held, shunned, or was asked for within
     `network.retry_after_seconds`.
   - Stats, which adds the content to this node's seek list, so peers that
     connect later push it.
@@ -508,7 +508,7 @@ or reported, nor is the key a kept archive's bundle may carry.
 #### `data.deleted`
 
 - **Payload:** `algorithm`, `hash`, `size`.
-- **Sent by:** Eviction, for each object it deletes, handed off or blocked.
+- **Sent by:** Eviction, for each object it deletes, handed off or shunned.
 - **Received by:** Stats, which records the content as no longer held.
 - **Purpose:** keep stats' view of held content true.
 
@@ -539,16 +539,16 @@ or reported, nor is the key a kept archive's bundle may carry.
   still short.
 - **Purpose:** let eviction carry on.
 
-### 4.10 Blocked Content
+### 4.10 Shunned Content
 
 #### `data.blocked`
 
 - **Payload:** `algorithm`, `hash`.
-- **Sent by:** Web server, when content is blocked on `/config`
+- **Sent by:** Web server, when content is shunned on `/config`
   (`block_handler.py`) or by a version edit (`version_edits.py`).
 - **Received by:**
-  - Stats, which records the block, stops seeking the content, and writes the
-    blocked list (`cas/blocked`) at once for the modules that refuse blocked
+  - Stats, which records the shunning, stops seeking the content, and writes the
+    shunned list (`cas/blocked`) at once for the modules that refuse shunned
     content.
   - Eviction, which deletes the content at once, handing it off to no one.
 - **Purpose:** never hold the content again.

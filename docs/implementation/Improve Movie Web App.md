@@ -81,7 +81,7 @@ from node to node:
   as they are read: each collection at the version that changed it last,
   and of two changed in the same second, the one whose drop's id comes
   first. A version not held yet is passed over, and merged once it is.
-- Each change places a version holding the merged list, and blocks the
+- Each change places a version holding the merged list, and shuns the
   versions read, which it replaces, so that they do not push the newest
   out of a search, as mail does its address book (Phase 4 Step 82).
 - A client that is not signed in, and every client that is not local,
@@ -252,8 +252,8 @@ What playing offline needs is reached from what the page holds:
   every object those movies need.
 - **A version listing it**, signed by the person and encrypted for them, at
   a drop of its own, `movie offline:{id}`. Not at `movie collections:{id}`,
-  since each change there blocks the versions it replaces, and a node's
-  search leaves out what it has blocked, archived or not.
+  since each change there shuns the versions it replaces, and a node's
+  search leaves out what it has shunned, archived or not.
 - **What signing in reads**: the person's identity block, which the session
   now names, and their public key, which every version read is checked
   against.

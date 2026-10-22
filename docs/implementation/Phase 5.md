@@ -368,8 +368,8 @@ My calls, not yet reviewed:
 - **What is not held is named, not asked for**: the reader publishes no
   `data.not_found`, since Step 97 asks as it answers `503`, and Step 99
   asks through `ContentWait`.
-- **The reader consults no blocked list**: the search already leaves out
-  versions the node has blocked, and a blocked key still held is only read
+- **The reader consults no shunned list**: the search already leaves out
+  versions the node has shunned, and a shunned key still held is only read
   to check a signature, never served. `SignedDrops` refuses one.
 
 ---
@@ -405,27 +405,27 @@ are both kept; and each refusal.
 
 Ruled by the user (2026-10-14):
 
-- **Older versions are blocked**, so that they do not crowd the newest out
+- **Older versions are shunned**, so that they do not crowd the newest out
   of a search. Asked how long the node searches for each version's nonce,
   the user first ruled that a version match one bit more while more than
   10 found at the drop match as many, and that was built and committed.
   Shown that the bits then grow with every edit, by about one for every
   five or six, past the default 26-bit limit by about 60 edits, the user
-  ruled blocking older versions instead. Written into Trust Network §3.3
+  ruled shunning older versions instead. Written into Trust Network §3.3
   and §3.4, HttpApi §5.5 and §11.7, Known Drops, and the App Developer
-  Guide, replacing the bits rule, and the "no version is ever blocked" that
+  Guide, replacing the bits rule, and the "no version is ever shunned" that
   Step 94 wrote.
 
 Built in two change sets, together 388 added lines of non-test Python, 33
 of them replacing removed ones, and 617 of tests, against §5's estimate of
-about 300: the endpoints with the bits rule, committed, and blocking in
+about 300: the endpoints with the bits rule, committed, and shunning in
 place of it, which adds 70 lines and removes 103.
 
 - **`TrustEdits`** (`webserver/trust_handlers.py`, new) serves `PUT` and
   `DELETE /data/trust/{algorithm}/{hash}`, and **`TrustRequest`**
   (`protocol/trust_requests.py`, new) reads `{"trust": true|false}`.
 - **`HeldTrustList`** gains `replaced`, every version read but the newest,
-  and `with_version`. Each edit blocks what `replaced` names, and, once it
+  and `with_version`. Each edit shuns what `replaced` names, and, once it
   places a version, the newest it read, asking the stats module as
   `DELETE /data/{id}` does (`data.blocked`).
 - **`Sessions.signer_or_refusal`** holds the `401` and the `403` for a
@@ -436,15 +436,15 @@ place of it, which adds 70 lines and removes 103.
 
 My calls, not yet reviewed:
 
-- **Every node that reads a list blocks what the newest replaces**, not
-  only the node that places it, as mail's pages block every version
+- **Every node that reads a list shuns what the newest replaces**, not
+  only the node that places it, as mail's pages shun every version
   another replaces. Copies of older versions are pushed to peers, and a
   reader elsewhere would be crowded by them otherwise. Written into Trust
-  Network §3.3, so Step 99's builds block too.
-- **An edit that changes nothing still blocks what the newest replaces**,
-  as any reading does, and an edit refused (`503`) blocks nothing.
+  Network §3.3, so Step 99's builds shun too.
+- **An edit that changes nothing still shuns what the newest replaces**,
+  as any reading does, and an edit refused (`503`) shuns nothing.
 - **Each version matches 16 bits, with no search for a nonce past them**
-  (`seconds` of 0), since blocking keeps the drop clear, and a change is
+  (`seconds` of 0), since shunning keeps the drop clear, and a change is
   answered at once.
 - **A node whose limit on a drop's bits is under 16 refuses every change**
   with the drop's own `400`, as it refuses a page asking for more bits than
@@ -579,7 +579,7 @@ Work this implies:
 - **The build reads the lists the scoring rule asks for**, as Step 96
   reads one, asking the peers for what the node does not hold
   (`ContentWait`, as a file stream waits for parts), and gives up on a list
-  once it has looked for it as long as the node sets. It blocks every
+  once it has looked for it as long as the node sets. It shuns every
   version older than the newest it reads (Trust Network §3.3,
   `HeldTrustList.replaced`), as Step 97's edits do.
 - **Settings for the limits and the wait**, so that an operator can widen
@@ -654,9 +654,9 @@ My calls, not yet reviewed:
 - **A build that fails is logged, with its traceback, and stays as far as it
   read**, not complete, until the next sign-in.
 - **The levels**: a build starting, each list read or left out, and each
-  version blocked at debug; a build complete at info, with how many
+  version shunned at debug; a build complete at info, with how many
   identities it scored and lists it read.
-- **Blocking repeats the three lines `TrustEdits` and `OwnMetadata` use**,
+- **Shunning repeats the three lines `TrustEdits` and `OwnMetadata` use**,
   rather than sharing them. Shared since: #356 moved them into
   `ReplacedVersions`, in `webserver/version_edits.py`, which the builds and
   both kinds of change use.
@@ -1020,7 +1020,7 @@ Ruled (2026-10-15), each my recommended option:
 - **A node's metadata does not say when its id was made.** The node keeps
   no record of it: the key file's times change when it is copied or
   restored, and nothing could check what was said.
-- **The versions a newer one replaces are blocked**, as a trust list's are,
+- **The versions a newer one replaces are shunned**, as a trust list's are,
   placed matching 16 bits with no search for a nonce past that. Keeping
   them, as a person's are kept, was turned down, since no reader of a
   node's metadata reads its history back.
@@ -1054,7 +1054,7 @@ two change sets, each green alone:
   its drop, and `{"id": null, "fields": {}, "version": null}` while the
   node has said nothing. **`PUT /config/api/metadata`** takes
   `{"fields": {…}}`, makes the next version over the newest, signs it with
-  `NodeIdentity.signed` (Step 103), places it at `node:{id}`, and blocks
+  `NodeIdentity.signed` (Step 103), places it at `node:{id}`, and shuns
   what it replaces. Both are `503` while a version found at the drop is not
   held.
 - **`SignedVersions`** reads one kind of document an identity signs at its
@@ -1072,7 +1072,7 @@ name, description, city, latitude, and an added detail placed version 1,
 and the "Identity" row showed the name with the rest on hover and on a
 click; a latitude of 123 was refused by the page; saving the same again
 answered "Nothing changed"; changing the city placed version 2, and the
-node blocked and deleted version 1; reloading `/config` read back every
+node shunned and deleted version 1; reloading `/config` read back every
 detail; and the root page, without the credential, showed the node by its
 name, with the new city on hover and on a click.
 
@@ -1097,7 +1097,7 @@ My calls, not yet reviewed:
 - **The node stores its public key again before each read**, as a trust
   list's edit stores the person's, so that its versions can be checked
   after an eviction.
-- **A change that changes nothing still blocks what the newest replaces**,
+- **A change that changes nothing still shuns what the newest replaces**,
   as a trust list's does.
 - **No `Location` and no `Cache-Control: no-store`.** `/config`'s port
   serves nothing beneath `/data`, and its other reads carry no
@@ -1209,7 +1209,7 @@ shows everyone. No page for one person wrote a directory.
 
 My calls, not yet reviewed:
 
-- **The page reads the directory, and writes and blocks nothing there**: it
+- **The page reads the directory, and writes and shuns nothing there**: it
   reads it only to know which of those the list names are people. Opening a
   person's page never makes a copy, even for someone signed in whom the
   directory does not list yet.

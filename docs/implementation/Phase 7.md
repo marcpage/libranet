@@ -38,8 +38,8 @@ So far, four steps, each independent of the others:
   Step 50.
 - **IPv6.** A node listens, dials, and advertises over IPv6 as well as
   IPv4. Step 57.
-- **Blocks that age out.** A blocked content id that has not been seen
-  for a while leaves the blocked list, so that the list does not grow
+- **Shunnings that age out.** A shunned content id that has not been seen
+  for a while leaves the shunned list, so that the list does not grow
   without end. Step 95.
 
 ## 3. How to Read the Steps Below
@@ -248,34 +248,34 @@ bracketed. Config tests cover the listen default and its fallback.
 
 ---
 
-## Step 95 — Aging Out Blocked Data
+## Step 95 — Aging Out Shunned Data
 
 **Issue:** #279. **Depends on:** Phase 4 Step 30.
 
-Phase 4 Step 30 ruled that **a block is permanent**: it never expires,
-nothing lifts it, and only deleting the database resets it. Every block
+Phase 4 Step 30 ruled that **a shunning is permanent**: it never expires,
+nothing lifts it, and only deleting the database resets it. Every shunning
 is a `data_stats` row with `blocked_at` set, and every one is written to
 `lists/blocked.json`, uncapped, which the web server, the validator, and
-the fetcher each read. A node that blocks each directory bundle a newer
+the fetcher each read. A node that shuns each directory bundle a newer
 one replaces (Phase 4 Step 92), and later each block Karma's merges
 supersede ([Phase 6](Phase%206.md) Step 56), adds to it for as long as it
 runs.
 
 Settled in the issue, tentatively ("maybe"):
 
-- A blocked id that has not been seen for a period of time can be removed
+- A shunned id that has not been seen for a period of time can be removed
   from the list.
 
 Work this implies:
 
-- **It reverses a ruling.** Step 30's "a block is permanent" becomes "a
-  block lasts while its content is still seen", and HighLevelDesign §4.11
-  and HttpApi §5.5, which say what a node does with blocked content, say
+- **It reverses a ruling.** Step 30's "a shunning is permanent" becomes "a
+  shunning lasts while its content is still seen", and HighLevelDesign §4.11
+  and HttpApi §5.5, which say what a node does with shunned content, say
   so too.
-- **Stats needs to know when a blocked id was last seen.** `data_stats`
-  has `last_requested` and `blocked_at`, but no time a blocked id was
+- **Stats needs to know when a shunned id was last seen.** `data_stats`
+  has `last_requested` and `blocked_at`, but no time a shunned id was
   last pushed or named in a peer's search answer: the validator discards
-  a blocked push unannounced, and the fetcher never asks for one.
+  a shunned push unannounced, and the fetcher never asks for one.
 - **The derivation drops what has aged out** of `lists/blocked.json`, as
   it already derives the list each minute, and the readers pick the
   change up as they do any rewrite of the file.
@@ -284,17 +284,17 @@ Work this implies:
 
 - What "seen" is: a request for the id, a push of it, a peer's search
   answer naming it, or each of these.
-- Whether an aged-out id is unblocked, its `blocked_at` cleared, or kept
+- Whether an aged-out id is unshunned, its `blocked_at` cleared, or kept
   in the database and left out of the list file only, so that a node
-  that meets it again can block it again without being told.
+  that meets it again can shun it again without being told.
 - How long the period is, whether it is a setting, and whether it counts
-  from the block or from the last time the id was seen.
-- What a node does with an aged-out id that comes back. Unblocked, it is
+  from the shunning or from the last time the id was seen.
+- What a node does with an aged-out id that comes back. Unshunned, it is
   fetched, kept, and served again, and the content a merge superseded
-  returns to the network, unless whatever blocked it blocks it again.
+  returns to the network, unless whatever shunned it shuns it again.
 
 **Testable in isolation:** stats tests over a temp database with a fake
-clock, asserting a blocked id seen within the period stays in the list,
+clock, asserting a shunned id seen within the period stays in the list,
 and one not seen ages out of it at the next derivation.
 
 ---
@@ -313,7 +313,7 @@ where it went.
 | #159 | Windows support | None yet: not planned |
 | #160 | Releasing on PyPI | None yet: not planned |
 | #181 | HTTPS | None yet: not planned |
-| #279 | Aging out blocked data | 95 |
+| #279 | Aging out shunned data | 95 |
 
 [Phase 8](Phase%208.md), the seed node, depends on #149: its milestone
 asks for content to be kept in AWS S3.

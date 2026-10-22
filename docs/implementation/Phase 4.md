@@ -55,7 +55,7 @@ So far, eleven steps, in the order they are built (§5):
   from the Karma plan, now Phase 6.
 - **A directory of people.** A shipped application listing every
   person's id, from a directory bundle kept at a drop and rewritten whole
-  as people are added. The bundles a newer one replaces are blocked (Step
+  as people are added. The bundles a newer one replaces are shunned (Step
   30). Step 92.
 - **Encrypting a block.** A block a page stores can be encrypted for a
   person, or by a username and password. Step 78.
@@ -104,7 +104,7 @@ The conventions of [Phase 2](Phase%202.md) §3 and
 
 ---
 
-## Step 30 — Blocked Data List
+## Step 30 — Shunned Data List
 
 **Issue:** #71. **Depends on:** Phase 1 Steps 5, 7, 8, 15; Phase 2 Step
 28.
@@ -112,19 +112,19 @@ The conventions of [Phase 2](Phase%202.md) §3 and
 Planned in Phase 2, and moved unbuilt to the Karma plan, now Phase 6,
 with #71, since the use the issue names is Karma's. It came here with
 #71, unbuilt again, since the user directory (Step 92) needs it first:
-the directory's page blocks each directory bundle that adds no one to the
+the directory's page shuns each directory bundle that adds no one to the
 newest, so that the drop holds fewer stale copies.
 Karma's merges (Phase 6 Step 56) come later, and use it the same way.
 
 Settled in the issue:
 
-- Stats can mark a content id **do-not-keep**. Blocked content held
-  locally can be deleted; blocked content pushed to this node can be
-  deleted rather than kept; blocked content does not appear in search
+- Stats can mark a content id **do-not-keep**. Shunned content held
+  locally can be deleted; shunned content pushed to this node can be
+  deleted rather than kept; shunned content does not appear in search
   results.
 - The motivating use is supersession: when a new block replaces an old
   one entirely, as when Karma merges transactions into larger blocks,
-  the block replaced is blocked, so the network stops carrying what
+  the block replaced is shunned, so the network stops carrying what
   nothing needs.
 - **The list is private.** Each node keeps its own, and never publishes
   or advertises it: the node simply becomes a black hole for that
@@ -134,128 +134,128 @@ Settled in the issue:
 
 Ruled before building:
 
-- **Only a local client may block**, from a page of a trusted application,
+- **Only a local client may shun**, from a page of a trusted application,
   as making an identity is (Step 79). The list is the node's, so what one
-  page blocks, no client of the node is given again. A page served to a
+  page shuns, no client of the node is given again. A page served to a
   client elsewhere, such as the directory's (Step 92), still merges, but
-  does not block.
-- **A push of blocked content is accepted and discarded**: the black hole
+  does not shun.
+- **A push of shunned content is accepted and discarded**: the black hole
   the issue describes, answered as any upload accepted is. An eviction
   hand-off is a push like any other, so the node handing it off takes the
   acceptance as a copy kept, and deletes its own. With the single hand-off
-  copy of Phase 2 Step 46, one node's block can so take the last copy off
+  copy of Phase 2 Step 46, one node's shunning can so take the last copy off
   the network, which HighLevelDesign §4.11 and §6 now say.
-- **A block is permanent.** It never expires, nothing lifts it, and there
+- **A shunning is permanent.** It never expires, nothing lifts it, and there
   is no `/config` endpoint for it. Deleting the database is the only reset,
   as for everything stats keeps. Karma's merges (Phase 6 Step 56) will send
-  stats the message the endpoint sends. Letting a block no one sees any
+  stats the message the endpoint sends. Letting a shunning no one sees any
   more age out (#279) is planned as [Phase 7](Phase%207.md) Step 95.
-- **Held content that becomes blocked is deleted at once**, whether or not
+- **Held content that becomes shunned is deleted at once**, whether or not
   storage is short, and handed off to no peer.
 
 The specification change is written: HighLevelDesign §4.11, new, says what
-a node does with blocked content, and §4.5 and §6 name it. HttpApi §5.5,
-new, gives how a node answers for blocked content and
+a node does with shunned content, and §4.5 and §6 name it. HttpApi §5.5,
+new, gives how a node answers for shunned content and
 `DELETE /data/{hash-algorithm}/{hash}`, and §2.1, §2.4, §2.5, §4, §6,
 §7.1, and §25 name them.
 
 Built in one change set: 482 added lines of non-test Python, 46 of them in
 place of removed ones and many of them docstrings, and 523 of tests.
 
-- **`BlockedContent`** (`cas/blocked.py`, new), the list of blocked content
+- **`BlockedContent`** (`cas/blocked.py`, new), the list of shunned content
   ids as the stats module derives it, which the web server, the validator,
   and the fetcher check.
 - **`data_stats.blocked_at`** (`stats/schema.py`), with the partial index
   `data_stats_blocked`, and `StatsDatabase.record_blocked`, `is_blocked`,
-  and `blocked_ids`. `content_ids_near` leaves blocked content out.
+  and `blocked_ids`. `content_ids_near` leaves shunned content out.
 - **`lists/blocked.json`** (`StorageConfig.blocked_list_path`), written by
   `ListDeriver.write_blocked_list` at each derivation and at once when a
-  block is added.
+  shunning is added.
 - **`data.blocked`** `{"algorithm", "hash"}`, from the web server to stats,
   which records it and stops seeking the content, and to eviction, which
   deletes any copy held.
 - **`DELETE /data/{algorithm}/{hash}`** (`webserver/block_handler.py`,
   new), behind `LocalOnly` and `OwnPageOnly(trusted=True)`.
-- **`DataReadHandler`** answers blocked content `404`, **`DataWriteHandler`**
+- **`DataReadHandler`** answers shunned content `404`, **`DataWriteHandler`**
   accepts it `202` unwritten, and **`SearchHandler`** leaves it out of
   every answer, each given the router's one `BlockedContent` as an optional
-  keyword. The validator discards a blocked upload, and the fetcher asks
-  for no blocked content.
+  keyword. The validator discards a shunned upload, and the fetcher asks
+  for no shunned content.
 - The Database Schema, File Layout, and Module System documents, and the
   App Developer Guide §4, §5.2, and §6.11 (new).
 
 My calls, not yet reviewed:
 
-- **Any content id may be blocked**, not only one a page can show is
+- **Any content id may be shunned**, not only one a page can show is
   superseded, since the node cannot tell what replaces what. That only a
-  trusted application's page on a local client may block is the guard.
-- **A `GET` of blocked content is `404`**, as content the node will not
+  trusted application's page on a local client may shun is the guard.
+- **A `GET` of shunned content is `404`**, as content the node will not
   try to retrieve (HttpApi §5.3), even one a content archive holds. It is
   still counted as a request. A `404` differs from the `503` the node
   gives other content it lacks, so a client can tell the node will not
   fetch it, though not why.
-- **A blocked push is answered `202`** once its signature passes, as an
+- **A shunned push is answered `202`** once its signature passes, as an
   upload validated later is, and nothing is written. One unsigned, or
   badly signed, is refused as any upload is.
-- **The validator discards blocked uploads too**, unannounced, for content
+- **The validator discards shunned uploads too**, unannounced, for content
   that reaches it by another way: fetched, made by a page as a drop or a
-  bundle, or uploaded before the block.
+  bundle, or uploaded before the shunning.
 - **Only `GET /data/{id}` answers `404`.** Elsewhere the fetcher asks for no
-  blocked content and stats never seeks it, so a request that needs it,
-  such as reading into a blocked bundle (HttpApi §12.1) or an application's
+  shunned content and stats never seeks it, so a request that needs it,
+  such as reading into a shunned bundle (HttpApi §12.1) or an application's
   part, waits as for content no peer has, and is `503`.
-- **The list file names every block**, `{"blocked": [...]}`, uncapped. Each
+- **The list file names every shunned id**, `{"blocked": [...]}`, uncapped. Each
   reader keeps what it read, and reads it again only once it is replaced,
-  so a check is one `stat` of the file. Stats writes it at once when a block
-  is added, so that a block holds within moments rather than at the next
+  so a check is one `stat` of the file. Stats writes it at once when a shunning
+  is added, so that a shunning holds within moments rather than at the next
   derivation, up to a minute later. Until it is first written, nothing is
-  blocked.
+  shunned.
 - **One message goes to stats and eviction both**, rather than stats telling
   eviction to delete. Eviction drops the content from the list stats last
-  sent, so it is not handed off afterwards. Content blocked while a hand-off
+  sent, so it is not handed off afterwards. Content shunned while a hand-off
   of it is under way may still be answered, and that answer is acted on as
   any is.
-- **A key that signatures are checked against is kept**, though blocked:
+- **A key that signatures are checked against is kept**, though shunned:
   this node's own, and a connected peer's (Phase 2 Step 53). It is held,
   but not served or found. Nothing deletes it once its peer goes, until
   stats lists it to let go of, when it is handed off as any content is.
-  Nothing else sweeps the store for blocked content either.
+  Nothing else sweeps the store for shunned content either.
 - **Every search answer is read and filtered** before it is sent, rather
-  than a cached one sent as it was stored, so that a block holds for answers
+  than a cached one sent as it was stored, so that a shunning holds for answers
   cached before it. A cached entry that is not a content id is now dropped,
   with a warning, which one test had relied on.
 
 Ruled after building:
 
-- **Blocking is `DELETE /data/{algorithm}/{hash}`**, HTTP's own method for
+- **Shunning is `DELETE /data/{algorithm}/{hash}`**, HTTP's own method for
   removing what a URI names, in place of the
   `PUT /data/blocked/{algorithm}/{hash}` first built. Afterwards a `GET` of
   the same URI is `404`, as a `DELETE` leads a client to expect, and no name
   beneath `/data` is reserved for it. HttpApi §4 now lists content among
   what `DELETE` removes.
-- **A block is a column of `data_stats`**, `blocked_at`, when the content
-  was blocked, or `NULL`, in place of the table `blocked_content` first
-  built. A block is something known of one content id, and a row of
+- **A shunning is a column of `data_stats`**, `blocked_at`, when the content
+  was shunned, or `NULL`, in place of the table `blocked_content` first
+  built. A shunning is something known of one content id, and a row of
   `data_stats` is never deleted, so it outlives the content as a table's
   row would. The search reads one table again. An existing database must
   be deleted (Database Schema §9.2), as no node is kept before version 1.0.
 
 My calls on these, not yet reviewed:
 
-- **A `DELETE` always blocks.** There is no `DELETE` that only frees the
-  disk, since content deleted and not blocked would be fetched again by the
+- **A `DELETE` always shuns.** There is no `DELETE` that only frees the
+  disk, since content deleted and not shunned would be fetched again by the
   next request for it, or pushed back by the next peer.
 - **It deletes from this node alone**, and tells no peer, as HttpApi §5.5
   says, since the method alone does not.
 - **It has no body, and is `204`** whether or not the content was held or
-  blocked before, since the web server cannot say.
+  shunned before, since the web server cannot say.
 - **A path into a bundle is not deleted**: a `DELETE` of
   `/data/{algorithm}/{hash}/{path}` is `405`, as any method that route does
   not take is.
-- **`blocked_at` keeps the first time** content was blocked. Blocking it
+- **`blocked_at` keeps the first time** content was shunned. Shunning it
   again changes nothing.
 - **A partial index, `data_stats_blocked`**, as `data_stats_held` is, so
-  that deriving the blocked list each minute reads only the rows blocked,
+  that deriving the shunned list each minute reads only the rows shunned,
   not every id the node has heard of.
 
 A live run of one node from the scratchpad, after both rulings: a drop of
@@ -277,10 +277,10 @@ clocks or synchronous queues, and none waits on another thread.
 
 **Testable in isolation:** stats tests over a temp database for the
 marking and the derived list; validator and web server tests with a
-written list asserting a blocked push is accepted and discarded, a blocked
+written list asserting a shunned push is accepted and discarded, a shunned
 id is `404`, and absent from search results; an eviction test asserting
-blocked content is deleted at once, and handed off to no peer; web server
-tests asserting the endpoint blocks for the clients it serves and refuses
+shunned content is deleted at once, and handed off to no peer; web server
+tests asserting the endpoint shuns for the clients it serves and refuses
 the rest.
 
 ---
@@ -394,7 +394,7 @@ My calls, not yet reviewed:
   problem type, for a person's key and a password alike. A block not
   encrypted as the request opens one is `400` `unusable-bundle`, and no one
   signed in is `401` `session-required`. A person's key not held is asked for
-  and `503`, one blocked `404`, and an id naming no person's key `400`.
+  and `503`, one shunned `404`, and an id naming no person's key `400`.
 - **No answer of opening is kept by a cache**, `Cache-Control: no-store`,
   refusals too.
 - **A block opens to at most 4 MiB** (`MAX_OPENED_BYTES`), the largest body
@@ -694,7 +694,7 @@ My calls on it, not yet reviewed:
   joins the names beneath `/data` that are no hash algorithm.
 - **It is answered as a search is, with the target hash**, so that a page
   tells how many bits each result shares with it without hashing. It
-  serves any client, is announced, and leaves out what is blocked, as a
+  serves any client, is announced, and leaves out what is shunned, as a
   search does.
 - **It scans what the node holds every time**, as signing in does
   (`fresh_results`), keeping what the cached answer adds of what the node
@@ -753,7 +753,7 @@ My calls while building, not yet reviewed:
   in does, so that a reader can check the signature.
 - **A check is announced as a read of the drop is** (`data.requested`), so
   that metadata pages read is counted as wanted, as `GET /data/{id}`
-  counts it. A blocked drop or signer's key is `404`, as blocked content
+  counts it. A shunned drop or signer's key is `404`, as shunned content
   is.
 - **A signature that does not check, or a signer under a hash algorithm the
   node lacks, is logged as a warning**; content that is not signed, at
@@ -850,11 +850,11 @@ Work this implies:
   read as compromised. They change to name one. An identity made before
   this step is made again, since there is no upgrade path before 1.0
   (Phase 3 §3).
-- **A person's metadata is never blocked** (Step 30), though each version
+- **A person's metadata is never shunned** (Step 30), though each version
   is replaced by the next, since every load reads the versions before
-  it. Only the directory's bundles are blocked once replaced (Step 92).
-  Nothing is built for it: the directory page blocks only directories,
-  and the App Developer Guide §6.14 says never to block a version.
+  it. Only the directory's bundles are shunned once replaced (Step 92).
+  Nothing is built for it: the directory page shuns only directories,
+  and the App Developer Guide §6.14 says never to shun a version.
 
 My calls before building, not yet reviewed, each answering an open
 question the plan listed (no one was asked first):
@@ -1176,7 +1176,7 @@ said:
   signed by its owner, encrypted for them, numbered, and names in
   `versions` the versions it replaces. A version no other names is a head,
   and when there is more than one, the page merges them into a new version
-  naming them all. Once a version is stored, the page blocks every version
+  naming them all. Once a version is stored, the page shuns every version
   it replaces (§6.11), as the directory does (Step 92), so that old
   versions do not push the newest out of a search.
 - **In a merge, each name's latest change wins.** An entry records when it
@@ -1185,11 +1185,11 @@ said:
   editors' clocks.
 - **Read and hidden marks are kept in the network**, as the address book
   is (the user), so that they follow the person to any node: signed,
-  encrypted for the owner, merged by latest change, and blocked once
+  encrypted for the owner, merged by latest change, and shunned once
   replaced. **They are kept by month**, at `mail state:{id}:{year}/{month}`,
   the month of the message's target, so that each stays small, and the
   inbox reads only the months it shows.
-- **Hiding is a mark, never a block**, since a block is the node's, not
+- **Hiding is a mark, never a shunning**, since a shunning is the node's, not
   the person's (App Developer Guide §6.11).
 - **A body bundle is an id pasted in** (the user). Nothing is imported.
   It is shown in an `iframe` of its `index.html`, whose scripts never run,
@@ -1707,7 +1707,7 @@ Settled in the issue:
   1 MiB compressed.
 - **Loading it merges what is there.** The application finds the newest
   bundle at the drop and takes its ids, then reads the others for ids the
-  newest lacks. A bundle with none is added to the blocked data list
+  newest lacks. A bundle with none is added to the shunned data list
   (Step 30). If any are found, the application uses them, and makes a new
   bundle holding every id known, so that one bundle holds them all again.
 - **The application shows the list of ids**, and no more. Step 80 adds
@@ -1721,14 +1721,14 @@ Ruled before building:
 - **The application adds whoever is signed in** when the directory does
   not list them. The node was to add each person whose identity it made
   as well, which was reversed after building (below).
-- **What is blocked is a bundle, not a person.** The content id of each
-  top-level directory bundle that adds no one to the newest is blocked.
+- **What is shunned is a bundle, not a person.** The content id of each
+  top-level directory bundle that adds no one to the newest is shunned.
   The people it lists stay in the directory, in the newest bundle.
-- **Directory bundles have no `versions`.** A bundle replaced is blocked,
+- **Directory bundles have no `versions`.** A bundle replaced is shunned,
   not named by the bundle that replaces it.
-- **Blocking keeps the drop clean.** Fewer copies at the drop make the
+- **Shunning keeps the drop clean.** Fewer copies at the drop make the
   newest directory easier to find, and no node needs a directory that
-  another holds all of. As each node blocks the directories it has seen
+  another holds all of. As each node shuns the directories it has seen
   replaced, they leave the network.
 - **The newest is the directory listing the most people.** The others are
   still read for anyone the newest lacks, and when any is found, a newer
@@ -1736,10 +1736,10 @@ Ruled before building:
   no clock is trusted.
 - **An id is checked by its shape alone.** An entry counts only if its
   path is a content id and its only part is that id. A bundle with any
-  other entry is passed over whole, neither merged nor blocked. No key is
+  other entry is passed over whole, neither merged nor shunned. No key is
   fetched, so a made-up id can be carried forward.
 - **Extensions are built now, and are never at the drop.** Only the
-  top-level directory is a drop, so that only it is ever blocked. The first
+  top-level directory is a drop, so that only it is ever shunned. The first
   time a directory would not fit in a drop, an extension is made from
   scratch, stored at its own id, and the top-level directory names it.
   Directories after it name the same extension without making it again.
@@ -1754,10 +1754,10 @@ Ruled before building:
 Ruled after building:
 
 - **The directory is the application's alone.** Every rule of it, from
-  reading and merging to extending and blocking, is in the page's script,
+  reading and merging to extending and shunning, is in the page's script,
   and the node knows nothing of it. The node is the building blocks the
   page builds on: search, reading an object, making a drop, storing a
-  bundle, blocking, and the session. So the node no longer adds a person
+  bundle, shunning, and the session. So the node no longer adds a person
   when it makes their identity, at `POST /data/users` or
   `POST /config/api/users`. A person is listed once they open the
   directory signed in, or another page adds them. The node's directory
@@ -1798,7 +1798,7 @@ My calls, not yet reviewed:
 
 - **A directory is a drop.** Content found at the drop is judged only if
   it holds a null byte, so an extension, or an application's bundle, that
-  a search lists as the nearest held is never merged or blocked. That a
+  a search lists as the nearest held is never merged or shunned. That a
   drop was aimed at `user directory`, and not at another target near it,
   is not checked.
 - **An entry's path is written as the id always is**, `sha256/` and 64
@@ -1808,10 +1808,10 @@ My calls, not yet reviewed:
   directory.
 - **Only directories read in full are judged**, each with every extension
   it reaches, up to 1,024. One not held, or with an extension not held, is
-  neither merged nor blocked; the node asks its peers for it, as for any
+  neither merged nor shunned; the node asks its peers for it, as for any
   object it lacks.
 - **Once a new directory is stored, every directory it was made from is
-  blocked**, since each lists no one it does not, the old newest among
+  shunned**, since each lists no one it does not, the old newest among
   them. When no new one is needed, every directory but the newest is.
   When none can be stored, only those listing no one the newest lacks are.
 - **What a new extension holds** is the newest's own entries, over the
@@ -1835,7 +1835,7 @@ My calls, not yet reviewed:
   its cache for five minutes, and the stats module adds what is stored
   since only as a search asks for it, so the first search after a
   directory is stored lacks it. Without the second, a page reloaded after
-  writing a directory found only the ones it had blocked, and wrote
+  writing a directory found only the ones it had shunned, and wrote
   another.
 - **The page asks for 10 seconds and 16 bits** for each directory it
   makes, as Step 91's page does, since no one using the directory decides
@@ -1845,7 +1845,7 @@ My calls, not yet reviewed:
   content the node has only heard of too, which is seldom a directory.
   What is still not held is counted, and merged when the page is opened
   again.
-- **A page elsewhere** reads, merges, and makes a directory, but blocks
+- **A page elsewhere** reads, merges, and makes a directory, but shuns
   nothing, as it asks `/data/client` first, and cannot extend: it says
   that only a browser on the node's machine can.
 - **The link opens the directory in a new tab**, so the operator stays
@@ -1865,14 +1865,14 @@ of 16 KiB so that a few hundred people outgrow a drop, and headless Chrome
 
 - Making Alice's and Bob's identities with `curl` put nothing at the drop.
   The page, signed in as Alice, wrote a directory listing her, and marked
-  her "you". Signed in as Bob, it wrote one listing both, and blocked the
+  her "you". Signed in as Bob, it wrote one listing both, and shunned the
   first.
 - With two drops made to disagree, one listing a made-up id and one only
-  Alice, the page wrote a directory of three, and blocked the three it
+  Alice, the page wrote a directory of three, and shunned the three it
   replaced.
 - With two drops of 250 made-up people each, the page's drop of 503 was
   `413`. It stored the newest's 250 as an extension with
-  `POST /data/bundles`, dropped a directory of 253 naming it, and blocked
+  `POST /data/bundles`, dropped a directory of 253 naming it, and shunned
   the three replaced. With a drop of 150 more, it did the same again: a
   second extension of those 253, extending the first, and a directory of
   150 naming it. Loaded once more, it read 653 people from that one
@@ -2054,7 +2054,7 @@ where it went.
 
 | Issue | Asks for | Step |
 | --- | --- | --- |
-| #71 | Blocked data list | 30, moved from the Karma plan, now Phase 6 |
+| #71 | Shunned data list | 30, moved from the Karma plan, now Phase 6 |
 | #256 | Creating user ids | 79, 90 |
 | #257 | Adding a data block directly | 78, 89, 90 |
 | #282 | Encrypting a data block for a person, or by a username and password | 78 |
@@ -2077,7 +2077,7 @@ Issue #261, movie playlists per user, left the milestone unbuilt for
 | 2 | 90 (#256, #257) | Needed before any identity is made, so that no private key is kept under the weaker derivation. |
 | 3 | 79 (#256) | Needs 89 to keep the private key, and 90 to encrypt it. |
 | 4 | 91 (#274) | Needs 79's identities. Until a page the node ships makes one, no one has an identity to sign in with. |
-| 5 | 30 (#71) | Needed by 92 to block the bundles a newer one replaces. Independent of the identity steps; Phase 2 Step 28, which it reaches into, is built. |
+| 5 | 30 (#71) | Needed by 92 to shun the bundles a newer one replaces. Independent of the identity steps; Phase 2 Step 28, which it reaches into, is built. |
 | 6 | 92 (#276) | Needs 30, 89's drops, and 79's ids. The directory is the application's, built on the node's endpoints. |
 | 7 | 78 (#257, #282) | Needs 79's public keys to encrypt for a person, and 90 to encrypt by a password. Its encryption questions are settled first, in the Bundle Specification. |
 | 8 | 80 (#259) | Needs 79's identity to sign it, and 92's directory to show it. |
@@ -2099,13 +2099,13 @@ ones that cut across more than one step:
   Step 80: the version numbered highest, which only the person signs.
   For the address book and the read and hidden marks, ruled in Step 82:
   every head is merged, each name's latest change winning, and what a
-  merge replaces is blocked.
-- **Who may block** (Steps 30 and 92) — ruled in Step 30: only a local
-  client, from a page of a trusted application, since a node's block list
+  merge replaces is shunned.
+- **Who may shun** (Steps 30 and 92) — ruled in Step 30: only a local
+  client, from a page of a trusted application, since a node's shun list
   is its own, not a person's.
-- **What a blocking node answers a hand-off** (Step 30, and Phase 2 Step
+- **What a shunning node answers a hand-off** (Step 30, and Phase 2 Step
   46) — ruled in Step 30: it accepts the content and discards it, as it
-  does any push of it, so with a single hand-off copy one node's block can
+  does any push of it, so with a single hand-off copy one node's shunning can
   take the last copy off the network (HighLevelDesign §4.11).
 - **Encrypting for a person** (Steps 78, 79, and 82) — built in Step 78: a
   block is encrypted by a random key, and that key by the person's public

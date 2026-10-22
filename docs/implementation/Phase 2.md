@@ -1654,7 +1654,7 @@ next best; and a worker told to stop while taking a batch still stops. A
 - Content a node receives is pushed on to its own best connection since
   #119, so content handed to one peer keeps moving toward the best match
   rather than stopping there.
-- What a node that blocks content answers a hand-off of it is Step 30's
+- What a node that shuns content answers a hand-off of it is Step 30's
   question, and one copy makes it matter more ([Phase 4](Phase%204.md)
   §6).
 
@@ -3418,7 +3418,7 @@ changes them:
 - HTTP Range requests for `<video>` streaming from bundle applications,
   which are [Phase 3](Phase%203.md), with a video application.
 - Karma/Kismet incentive integration, which is [Phase 6](Phase%206.md).
-  The blocked data list (Step 30) it needs to let go of superseded blocks
+  The shunned data list (Step 30) it needs to let go of superseded blocks
   is [Phase 4](Phase%204.md)'s.
 - Local discovery (Step 16), filesystem notifications for backup (Step
   50), IPv6, and HTTPS/TLS, which are [Phase 7](Phase%207.md).
@@ -3473,9 +3473,9 @@ either step is built:
   backup's parts (Step 59), and BundleSpecification §6 and §7 for encrypting the
   parts of any bundle protected with a password (Step 60). Step 16's change to
   HighLevelDesign §4.9.1 is made too, and went with it to Phase 7.
-- **What a blocking node answers a hand-off** (Steps 30 and 46) — now
+- **What a shunning node answers a hand-off** (Steps 30 and 46) — now
   Phase 4's to decide, with Step 30. Step 46 does not wait for it: until
-  Step 30 is built, no node blocks anything.
+  Step 30 is built, no node shuns anything.
 - **One local record of the last bundle** (Steps 48, 49, and 31, and
   Phase 7's Step 50) — settled by Step 48: a job's is a file of its own
   in `backup_jobs/`, encrypted with the backup secret, and a build's or

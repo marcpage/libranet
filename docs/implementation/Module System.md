@@ -222,7 +222,7 @@ through the dispatcher.
 | --- | --- | --- | --- | --- |
 | — | Supervisor | `supervisor` | `ProcessSupervisor` | Starts, restarts, and stops every other process |
 | 1 | Dispatcher | `dispatcher` | `Dispatcher` | Puts each published message into the inbox of every module that subscribes to it |
-| 2 | Stats | `stats` | `StatsModule` | Records what the node sees; derives the node, seek, candidate, blocked, and peer lists; ranks content for eviction |
+| 2 | Stats | `stats` | `StatsModule` | Records what the node sees; derives the node, seek, candidate, shunned, and peer lists; ranks content for eviction |
 | 3 | Web server | `webserver` | `WebServerModule` | Serves the HTTP API, applications, and `/config`, and reports what it was asked |
 | 4 | Validator | `validator` | `ValidatorModule` | Checks uploads against their content ids and promotes them into `cas/data` |
 | 5 | Connection manager | `connections` | `ConnectionsModule` | Keeps the peer mix; fetches from, pushes to, and hands content off to peers |
@@ -244,13 +244,13 @@ The node's memory, and the only process that opens `libranet.sqlite3`. It
 subscribes to 23 of the 49 events, nearly everything the other modules
 report, and records each in one small statement. Every
 `stats.derive_interval_seconds` it rewrites the node, seek, candidate,
-blocked, and peer lists into `lists/`, which the web server, connection
+shunned, and peer lists into `lists/`, which the web server, connection
 manager, validator, and fetcher read as plain files, and publishes
 `nodes.updated` when the candidate list or node list changed. It keeps the peers
 connected each way in memory, as `peers.connected` names them, for the peer
 list (Phase 5 Step 107), and asks for them as it starts. It keeps the
-content the node has blocked
-(`data.blocked`, Phase 4 Step 30), and writes the blocked list at once when
+content the node has shunned
+(`data.blocked`, Phase 4 Step 30), and writes the shunned list at once when
 that grows, and the seek list when a search names a prefix it does not list
 (Phase 4 Step 93). It keeps whom the node trusts and distrusts, as the web
 server says it (`node.trust`), and says what it kept when the web server asks
@@ -284,7 +284,7 @@ the backup module, once it has found it in a folder offered (Step 69). It
 also keeps count of the peers connected to it, whose keys the eviction
 module keeps, and which the stats module lists. A page that deletes content
 (`DELETE /data/{algorithm}/{hash}`, Phase 4 Step 30) has it publish
-`data.blocked`, and it answers for blocked content, as `lists/blocked.json`
+`data.blocked`, and it answers for shunned content, as `lists/blocked.json`
 names it, as for content it does not hold. An address the operator asks to
 connect to on `/config` it hands the connection manager, and waits for what
 came of it, `address.dialed`, to answer (Phase 5 Step 109). It builds the
@@ -303,7 +303,7 @@ content id, writes it into `cas/data` if it matches, and deletes the upload
 either way, publishing `data.stored` or `data.rejected`. It is the only way
 content from a peer enters `cas/data`, with one exception: a peer's own
 public key, which the web server and connection manager check and store
-themselves. An upload of content the node has blocked, as
+themselves. An upload of content the node has shunned, as
 `lists/blocked.json` names it, is deleted unchecked, and announced by
 neither.
 
@@ -338,7 +338,7 @@ for the eviction and stats modules whenever they change (`peers.connected`).
 Small and single-threaded. Each `data.not_found` for content the node does
 not hold becomes one `fetch.requested`, at most once per content id every
 `network.retry_after_seconds`, so a burst of misses for one object asks the
-peers once. Content the node has blocked, as `lists/blocked.json` names it,
+peers once. Content the node has shunned, as `lists/blocked.json` names it,
 is never asked for. It opens no connections and writes no content, and only
 logs `fetch.succeeded` and `fetch.failed`.
 
@@ -371,7 +371,7 @@ so a restart of the module it asked cannot stall it. It says whether
 storage is full, in `storage.full`, so that a backup, build, or import waits
 rather than take the node past a limit, and it starts a batch of hand-offs short
 of each limit, so that what waits is not slowed to one hand-off at a time.
-Content the node blocks (`data.blocked`) it deletes at once, handing it off
+Content the node shuns (`data.blocked`) it deletes at once, handing it off
 to no peer, but for a key it keeps.
 
 #### 3.2.8 Backup
@@ -927,7 +927,7 @@ to end its loop.
 | *Storage full* | | | | | | | | |
 | `storage.full_requested` | | | | | | | S | P |
 | `storage.full` | | | | | | | P | S |
-| *Blocked content* | | | | | | | | |
+| *Shunned content* | | | | | | | | |
 | `data.blocked` | P | | | S | | | S | |
 | *Lifecycle* | | | | | | | | |
 | `shutdown` | S | S | S | S | S | S | S | S |

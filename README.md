@@ -281,7 +281,7 @@ directory bundles served as applications, files served from their parts with
 range requests, eviction under space pressure, the local `/config` surface,
 encrypted backup and restore, the endpoints applications use (reading into
 bundles, making bundles and drops, importing local files, a store for each
-application, blocking content), people's identities (signing in on any node,
+application, shunning content), people's identities (signing in on any node,
 a fallback identity, signing and encrypting for a person), the trust
 network (each person's trust list, and scores built from it at sign-in,
 and the node's own, which say which nodes it connects to),
