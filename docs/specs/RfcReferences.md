@@ -108,7 +108,8 @@ date-time ([§5.6](https://www.rfc-editor.org/rfc/rfc3339.html#section-5.6)) in
 UTC, ending `Z`. There are two precisions:
 
 - **To the second**, such as `2026-10-10T14:03:22Z`, for a moment in JSON: when
-  an identity was made, and what a node knows of its peers.
+  an identity was made, what a node knows of its peers, and when a Karma
+  transaction or stake was made.
 - **To the microsecond**, when the platform gives one, for when a file or
   directory in a bundle was created and last modified. A restore reads it back
   to set the file's modification time.
@@ -119,6 +120,9 @@ UTC, ending `Z`. There are two precisions:
   [HTTP API §10.8](HttpApi.md#108-what-a-node-knows-of-its-peers) (each
   moment in the peer list) and
   [§11.3](HttpApi.md#113-a-persons-identity) (an identity block's `created`);
+  [Karma Ledger §4.1](KarmaLedger.md#41-contents) and
+  [§6.2](KarmaLedger.md#62-stakes) (a transaction's and a stake's
+  `created`);
   [Bundle Specification §2](BundleSpecification.md#2-raw-file-bundle) and
   [§3](BundleSpecification.md#3-raw-directory-bundle) show `created` and
   `modified` in this form.
@@ -821,9 +825,10 @@ stream, whose compressed data is RFC 1951 DEFLATE.
   identically.
 - **The shipped applications** decompress blocks in the browser with
   `DecompressionStream("deflate")`, which reads the zlib format.
-- **Karma's blocks** are measured compressed, at level 9 with a 15-bit
-  window, memory level 8, and the default strategy, to decide whether a
-  block is full. This is specified, not yet built.
+- **Karma's blocks** are measured compressed, as the copy a node holds is
+  compressed, to decide whether a block is full. The 128 KiB below 1 MiB
+  that counts as full allows for how much zlibs and levels differ. This is
+  specified, not yet built.
 
 A stream is read as exactly one complete stream, never all at once without a
 cap, so a small stream cannot expand without bound.

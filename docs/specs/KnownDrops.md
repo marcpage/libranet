@@ -380,9 +380,10 @@ larger ones.
 
 Each generation's validation block is a collection of signed stakes on one
 of its full transaction blocks, at the same `{validation}` as that
-transaction block. It names a runner-up, and lists the hashes of
-transactions its builder has seen. Many are placed for each generation, and
-the one the heaviest chain goes through wins.
+transaction block. It names a runner-up, a rival on another of the
+generation's transaction blocks, and lists the hashes of transactions its
+builder has seen that its chain has not yet witnessed. Many are placed for
+each generation, and the one the heaviest chain goes through wins.
 
 - **Status:** specified. Nothing places one yet.
 - **Placed by** anyone, and may be built from others' stakes.
@@ -392,14 +393,15 @@ the one the heaviest chain goes through wins.
   matches the most bits, and the bits are part of the chain's weight. The
   root's matches at least 24.
 - **Reading:** a reader passes over a block that is not correct, ranks the
-  rest by bits and then by effective stake, and builds the next generation
-  on the best. The winner's stakers share the generation's reward, and the
-  runner-up's stakers lose their stakes in it. A signed validation block is
-  never blocked, since any one may lead to another chain, and an unsigned
-  one always is. A builder found to state something false is distrusted,
-  and no builder puts a distrusted identity's stake in a block. A node's
-  head, the winner whose id names the target for new transactions, is told
-  to its peers with `POST /data/karma/head`.
+  rest by bits, then by effective stake, then by id, and builds the next
+  generation on the best. The winner's stakers share the generation's
+  reward, and the runner-up's stakers lose their stakes in it, unless they
+  also staked in the winner. A signed validation block is never blocked,
+  since any one may lead to another chain, and an unsigned one always is.
+  A builder found to state something false is distrusted, and no builder
+  puts a distrusted identity's stake in a block. A node's head, the winner
+  whose id names the target for new transactions, is told to its peers
+  with `POST /data/karma/head`.
 - **Defined in:**
   [Karma Ledger §6](KarmaLedger.md#6-validation-blocks) for the block, and
   [§7.3](KarmaLedger.md#73-validation-block-0) for the root's.

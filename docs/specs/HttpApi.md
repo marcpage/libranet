@@ -886,7 +886,11 @@ the hash of the uncompressed content does not match the hash, the content is
 considered invalid and should be discarded.
 
 The zlib compression level is at the discretion of the author.
-The zlib compression level MAY be changed by any node.
+The zlib compression level MAY be changed by any node, and content MAY be
+compressed again with another zlib, as long as the result stays within the
+1 MiB limit. A Karma block may then measure smaller than its builder made
+it, which its definition of full allows for
+([Karma Ledger §5.4](KarmaLedger.md#54-full)).
 
 The 1 MiB limit applies to content as stored and as transferred, not to its size
 once decompressed (HighLevelDesign §4.3). Content larger than 1 MiB uncompressed
