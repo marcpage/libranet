@@ -114,8 +114,8 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
   more than 400 says where it splits, should it come to more than 500 as
   built.
 - **Each of Steps 116 to 142 takes an issue of its own as it is taken
-  up.** Each is planned under #87. Step 116 is #434, and none after it
-  has one yet.
+  up.** Each is planned under #87. Step 116 is #434, Step 117 is #435,
+  and none after it has one yet.
 - **The ledger's tests use small blocks.** Whether a block is full is
   measured against bounds the library takes, the specification's
   (KarmaLedger §5.4) unless a test gives others, so that a test fills a
@@ -512,7 +512,7 @@ My calls, not yet reviewed:
 
 ## Step 117 — Transactions, Payouts, and Stakes
 
-**Kind:** infrastructure. **Issue:** none yet; planned under #87.
+**Kind:** infrastructure. **Issue:** #435, under #87.
 **Depends on:** Step 116; Phase 5 Step 103's signing.
 
 What blocks are made of, each read and written on its own, and each
@@ -549,6 +549,84 @@ sharing a key, and two differing only in their signatures sharing a
 `hash`; a signed transaction refused whose `from` is not its signer, or
 whose hash or signature fails; work bits counted at 0, 24, and 256; a
 payout that does not total refused; the root's shape.
+
+Built in two change sets, 733 added lines of non-test Python in all, and
+711 of tests. That is over §5's estimate of about 400, and over 500, so it
+is split where it reads in two. About 330 of the lines are code, and the
+rest docstrings, comments, and blank lines.
+
+- **Set 1, transactions** (409 lines, and 424 of tests): a signed bundle
+  read and written as a JSON object, the readers of a transaction's
+  members, and `Transaction`, `TransactionKey`, and `SignedTransaction`.
+- **Set 2, payouts and stakes** (324 lines, and 287 of tests): `Payout`,
+  `Stake`, and `SignedStake`, each read with Set 1's readers.
+
+What was built:
+
+- **`Transaction`** (`karma/transactions.py`) holds its `sender`, `to`,
+  `fee`, `generation`, `created`, and `nonce`, which is keyword-only and
+  `""` until the transaction is mined. It refuses a negative generation, a
+  `created` that is not UTC to the second, and sending more than there can
+  be. `from_value` reads one, `value()` writes it, its `to` sorted, and
+  `text()` is the compact JSON its sender signs, ending in its nonce.
+  `key` is a `TransactionKey`, `sends()` is its fee and all it pays, and
+  `is_root` says whether it has the root's shape.
+- **`SignedTransaction`** holds a `bundle` and its `transaction`, built by
+  `of(bundle)` or `from_value`, and refuses one whose `from` is not its
+  signer. `value()` is the bundle as an object, `hash` is the bundle's,
+  `work_bits` counts it against `TRANSACTION_WORK_TARGET`, and
+  `verified(public_key)` checks the signature.
+- **`SignedBundle.from_value` and `value()`** (`bundle/signing.py`) read
+  and write a signed bundle as a JSON object, as a block holds its
+  transactions and stakes. `decoded` and `encoded` go through them.
+- **The members** (`karma/members.py`): an id, the amounts paid each id,
+  and a moment, each refused naming its member, and exported from the
+  package, as every public name is. An id under an algorithm this node
+  lacks is refused as an `UnknownAlgorithmError`, so that whoever reads a
+  block can warn of it once (Coding Style §9.3).
+- **`Payout`** holds its `sources`, with `None` for the new Karma, its
+  `to`, its `generation`, and the `contents` it is written as, which `of`
+  writes and `from_value` keeps as read. It refuses a `to` that does not
+  total its `sources`, a generation under 1, and, read, a `signer` or a
+  `signature`.
+- **`Stake` and `SignedStake`** (`karma/stakes.py`) are read, written,
+  and signed as a transaction is. A signed stake's `staker` is its signer.
+
+My calls, not yet reviewed:
+
+- **A moment is read only as `MOMENT_FORMAT` writes it**, as
+  `2026-10-21T14:03:22Z`: no lower-case `t` or `z`, no offset, and no
+  fraction, though RFC 3339 allows each. RfcReferences §2.2 writes a
+  moment in JSON this way, and a node that read more forms than another
+  would hold valid a transaction the other refuses. The digits are matched
+  first, since `strptime` takes a month or an hour of one digit.
+- **A payout keeps its contents as read.** Nothing makes two builders
+  write a payout alike, and a block sorts its transactions by hash, the
+  payout's among them, so its hash must be that of the text the block
+  holds. Two payouts are equal only when their contents are, so Step 121
+  compares what a payout moves, not the payouts.
+- **A `to` naming one id twice, in two cases, is refused**, where a trust
+  list passes over such an entry (Trust Network §3.1), since an amount
+  passed over would change what the transaction sends.
+- **A transaction may pay no one**, moving only its fee, since §4.4 counts
+  the fee in what it moves. A payout may also pay no one, should its pot
+  be 0.
+- **Work is tested at 0, 1, and 12 bits**, not at 24 and 256, since no
+  test can choose a hash. 24 bits takes about 17 million tries, which
+  Step 118's mining reaches.
+
+Found while building, each for a ruling:
+
+- **Two stakers' equal stakes share a hash.** A stake's contents name no
+  staker (KarmaLedger §6.2), so two stakers who stake one amount on one
+  block in the same second sign the same contents. A validation block
+  holding both repeats a hash, which §3.8 makes a false statement, though
+  its builder is honest. I recommend a stake name its staker, as a
+  transaction names its `from`, checked against its signer.
+- **A member named twice in one object**, such as two `from`s, is read as
+  the last by Python's JSON reader, and as the first by some others, so
+  two nodes could read one transaction two ways. I recommend that
+  KarmaLedger §4.1 have a reader refuse contents naming a member twice.
 
 ---
 
@@ -1509,7 +1587,7 @@ built (§3). In all, about 7,900.
 | --- | --- | --- | --- | --- |
 | 1 | 56 (#86) | Infrastructure (a specification) | None | Every step that builds Karma is written from it. Its §9 parameters are ruled with Step 120. |
 | 2 | 116 (#434) | Infrastructure | About 200 | The numbers, targets, and weight every later step counts with. |
-| 3 | 117 | Infrastructure | About 400 | What blocks are made of. Needs 116's amounts. |
+| 3 | 117 (#435) | Infrastructure | About 400 | What blocks are made of. Needs 116's amounts. |
 | 4 | 118 | Infrastructure | About 150 | Needs 117's text of a transaction. Needed before anything mines one. |
 | 5 | 119 | Infrastructure | About 450 | Needs 117. Every check reads blocks this way. |
 | 6 | 120 | Infrastructure | About 350 | Needs 119, and KarmaLedger §9's parameters ruled. |
