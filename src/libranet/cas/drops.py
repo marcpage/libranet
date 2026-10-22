@@ -197,6 +197,49 @@ class NonceSearchers:
 
         return min((NonceSearch.nonce(count) for count in counts), key=search.distance)
 
+    def found(
+        self,
+        search: NonceSearch,
+        seconds: float,
+        *,
+        minimum_bits: int = 0,
+        clock: Callable[[], float] = monotonic,
+    ) -> bytes:
+        """The nonce, of those tried, that ``search`` finds nearest its target.
+
+        Nonces are tried for ``seconds``, by ``clock``, and after that until
+        the nearest matches at least ``minimum_bits`` leading bits. The empty
+        nonce is tried first, then each count from 0 up, in decimal, in
+        rounds of :data:`TRIES_PER_CLOCK_READ` for each process.
+
+        Raises:
+            ValueError: ``seconds`` is negative, or ``minimum_bits`` is
+                negative or more than a hash has.
+            OSError: a process could not be started, or exited during the
+                search.
+        """
+        if seconds < 0:
+            raise ValueError(f"seconds must not be negative, got {seconds}")
+
+        if not 0 <= minimum_bits <= TARGET_BITS:
+            raise ValueError(f"minimum_bits must be from 0 to {TARGET_BITS}, got {minimum_bits}")
+
+        best_nonce = b""
+        best_distance = search.distance(best_nonce)
+        tried = 0
+        deadline = clock() + seconds
+
+        while clock() < deadline or _matching_bits(best_distance) < minimum_bits:
+            nonce = self.nearest(search, tried, TRIES_PER_CLOCK_READ)
+            distance = search.distance(nonce)
+
+            if distance < best_distance:
+                best_nonce, best_distance = nonce, distance
+
+            tried += self._processes * TRIES_PER_CLOCK_READ
+
+        return best_nonce
+
     def close(self) -> None:
         """Stop every process; a round after starts them again."""
         with self._lock:
@@ -282,28 +325,9 @@ class DropTarget:
             OSError: a searching process could not be started, or exited
                 during the search.
         """
-        if seconds < 0:
-            raise ValueError(f"seconds must not be negative, got {seconds}")
-
-        if not 0 <= minimum_bits <= TARGET_BITS:
-            raise ValueError(f"minimum_bits must be from 0 to {TARGET_BITS}, got {minimum_bits}")
-
         search = NonceSearch(content + DROP_SEPARATOR, self.digest)
-        best_nonce = b""
-        best_distance = search.distance(best_nonce)
-        tried = 0
-        deadline = clock() + seconds
-
-        while clock() < deadline or _matching_bits(best_distance) < minimum_bits:
-            nonce = searchers.nearest(search, tried, TRIES_PER_CLOCK_READ)
-            distance = search.distance(nonce)
-
-            if distance < best_distance:
-                best_nonce, best_distance = nonce, distance
-
-            tried += searchers.processes * TRIES_PER_CLOCK_READ
-
-        return Drop(content + DROP_SEPARATOR + best_nonce, _matching_bits(best_distance))
+        nonce = searchers.found(search, seconds, minimum_bits=minimum_bits, clock=clock)
+        return Drop(content + DROP_SEPARATOR + nonce, _matching_bits(search.distance(nonce)))
 
 
 def _matching_bits(distance: int) -> int:

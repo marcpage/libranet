@@ -168,6 +168,18 @@ def test_a_new_search_replaces_the_one_the_processes_hold(searchers: NonceSearch
     assert nonce == min(counted(0, 600), key=other.distance)
 
 
+def test_a_round_brings_the_processes_a_searchs_suffix(searchers: NonceSearchers) -> None:
+    suffixed = NonceSearch(CONTENT, TARGET.digest, suffix=b'"}')
+    target = int.from_bytes(TARGET.digest)
+
+    nonce = searchers.nearest(suffixed, 0, 300)
+
+    assert nonce == min(
+        counted(0, 600),
+        key=lambda tried: int.from_bytes(sha256(CONTENT + tried + b'"}').digest()) ^ target,
+    )
+
+
 def test_a_round_needs_a_try_from_each_process(searchers: NonceSearchers) -> None:
     with raises(ValueError, match="tries_each must be at least 1"):
         searchers.nearest(SEARCH, 0, 0)

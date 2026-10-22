@@ -10,16 +10,22 @@ from libranet.cas.nonce_search import NEAREST, ROUND, NonceSearch, serve
 
 PREFIX = b"a private key, encrypted\x00"
 OTHER_PREFIX = b"other content\x00"
+SUFFIX = b'"}'
 TARGET = sha256(b"user:alice").digest()
 
 
-def distance(prefix: bytes, nonce: bytes) -> int:
-    return int.from_bytes(sha256(prefix + nonce).digest()) ^ int.from_bytes(TARGET)
+def distance(prefix: bytes, nonce: bytes, suffix: bytes = b"") -> int:
+    return int.from_bytes(sha256(prefix + nonce + suffix).digest()) ^ int.from_bytes(TARGET)
 
 
-def nearest(prefix: bytes, start: int, stop: int) -> int:
+def nearest(prefix: bytes, start: int, stop: int, suffix: bytes = b"") -> int:
     """Of the counts from ``start`` up to ``stop``, the one putting ``prefix`` nearest."""
-    return min(range(start, stop), key=lambda number: distance(prefix, b"%d" % number))
+    return min(range(start, stop), key=lambda number: distance(prefix, b"%d" % number, suffix))
+
+
+def encoded(prefix: bytes, suffix: bytes) -> bytes:
+    """A search for :data:`TARGET` of ``prefix`` and ``suffix``, as a round brings it."""
+    return TARGET + len(suffix).to_bytes(4) + suffix + prefix
 
 
 def rounds(*asked: tuple[int, int, bytes]) -> bytes:
@@ -44,9 +50,23 @@ def test_a_distance_is_the_exclusive_or_of_the_two_hashes(nonce: bytes) -> None:
     assert NonceSearch(PREFIX, TARGET).distance(nonce) == distance(PREFIX, nonce)
 
 
+@mark.parametrize("nonce", [b"", b"17", b"anything at all"])
+def test_a_suffix_is_hashed_after_each_nonce(nonce: bytes) -> None:
+    search = NonceSearch(PREFIX, TARGET, suffix=SUFFIX)
+
+    assert search.distance(nonce) == distance(PREFIX, nonce, SUFFIX)
+
+
 @mark.parametrize("start, stop", [(0, 1), (100, 1100)])
 def test_the_nearest_of_the_counts_tried_is_found(start: int, stop: int) -> None:
     assert NonceSearch(PREFIX, TARGET).nearest(start, stop) == nearest(PREFIX, start, stop)
+
+
+@mark.parametrize("suffix", [SUFFIX, b"100%d%%", b"\x00"])
+def test_the_nearest_with_a_suffix_is_found(suffix: bytes) -> None:
+    search = NonceSearch(PREFIX, TARGET, suffix=suffix)
+
+    assert search.nearest(0, 1000) == nearest(PREFIX, 0, 1000, suffix)
 
 
 @mark.parametrize("stop", [5, 4])
@@ -60,17 +80,25 @@ def test_a_search_decodes_as_it_was_encoded() -> None:
 
     decoded = NonceSearch.decoded(encoded)
 
-    assert encoded == TARGET + PREFIX
+    assert encoded == TARGET + bytes(4) + PREFIX
     assert decoded.encoded() == encoded
     assert decoded.nearest(0, 500) == nearest(PREFIX, 0, 500)
+
+
+def test_a_search_with_a_suffix_decodes_as_it_was_encoded() -> None:
+    search = NonceSearch.decoded(encoded(PREFIX, SUFFIX))
+
+    assert NonceSearch(PREFIX, TARGET, suffix=SUFFIX).encoded() == encoded(PREFIX, SUFFIX)
+    assert search.encoded() == encoded(PREFIX, SUFFIX)
+    assert search.nearest(0, 500) == nearest(PREFIX, 0, 500, SUFFIX)
 
 
 def test_each_round_is_answered_with_the_search_it_or_one_before_brought() -> None:
     requests = BytesIO(
         rounds(
-            (0, 300, TARGET + PREFIX),
+            (0, 300, encoded(PREFIX, b"")),
             (300, 600, b""),
-            (0, 300, TARGET + OTHER_PREFIX),
+            (0, 300, encoded(OTHER_PREFIX, b"")),
         )
     )
     written = BytesIO()
@@ -84,8 +112,27 @@ def test_each_round_is_answered_with_the_search_it_or_one_before_brought() -> No
     ]
 
 
+def test_a_round_carrying_a_suffix_is_answered_with_it() -> None:
+    requests = BytesIO(
+        rounds(
+            (0, 300, encoded(PREFIX, SUFFIX)),
+            (300, 600, b""),
+            (0, 300, encoded(PREFIX, b"")),
+        )
+    )
+    written = BytesIO()
+
+    serve(requests, written)
+
+    assert answers(written) == [
+        nearest(PREFIX, 0, 300, SUFFIX),
+        nearest(PREFIX, 300, 600, SUFFIX),
+        nearest(PREFIX, 0, 300),
+    ]
+
+
 def test_a_header_cut_short_ends_the_rounds() -> None:
-    requests = BytesIO(rounds((0, 300, TARGET + PREFIX)) + ROUND.pack(300, 600, 0)[:5])
+    requests = BytesIO(rounds((0, 300, encoded(PREFIX, b""))) + ROUND.pack(300, 600, 0)[:5])
     written = BytesIO()
 
     serve(requests, written)
