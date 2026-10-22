@@ -523,9 +523,12 @@ is the JSON object
   from to all it gives: the fees of its transactions in transaction block
   g − 1, and, if it is a runner-up staker whose stakes are taken, the
   Kismet taken, summed. Generation g − 1's new Karma (§2), which comes
-  from no one, is under the key `"null"`.
+  from no one, is under the key `"null"`. One that gives nothing is left
+  out (§6.6).
 - **`to`** maps each staker of the winning validation block g − 1 to their
-  share of the pot, in proportion to their effective stake (§6.6).
+  share of the pot, in proportion to their effective stake and rounded
+  down, and that block's builder to what rounding leaves over, as §6.6
+  says, summed by identity. One paid 0 is left out.
 - **`generation`** is g.
 
 The amounts in `to` total those in `from`. Each identity's amount in
@@ -543,7 +546,7 @@ the age a block is scored by (§5.5).
 
 A **balance** is the JSON object `{"kismet": amount, "last_won":
 generation}`: the Kismet an identity holds, and the generation of the last
-validation block it won a share of (§6.6), or `null` if it has won none.
+validation block whose reward paid it (§6.6), or `null` if none has.
 
 A block's `balances` states, as of the end of the block, the balance of
 every sender and every recipient of its transactions, the payout's among
@@ -570,9 +573,9 @@ identity's balance before the block, the latest stated before it or else
   identity, the payout's among them, less all the payout's `from` takes
   from it (§5.2), and less all it sends as a sender, its fees aside, which
   the next block's payout takes; and
-- its `last_won` is g − 1 if the payout pays the identity a share of the
-  reward of validation block g − 1 (§6.6), and otherwise is the `last_won`
-  it had before the block.
+- its `last_won` is g − 1 if the payout pays the identity any of the reward
+  of validation block g − 1 (§6.6), as a staker or as its builder, and
+  otherwise is the `last_won` it had before the block.
 
 A `last_won` weighs an identity's stakes (§6.6), so one stated wrongly
 shifts the pot as surely as a wrong `kismet` shifts Kismet.
@@ -791,17 +794,36 @@ transaction block g + 1 (§5.2). The reward, its **pot**, is:
   runner-up are not taken.
 
 The pot is shared among the winning block's stakers by **effective stake**:
-each stake's Kismet times its staker's weight. The weight grows with
-g − `last_won`, the generations since the staker last won, taking
-`last_won` from the balances transaction block g leaves (§5.3), and a
-staker whose `last_won` is `null` has the full weight (Karma §23). All of
-one staker's stakes in a generation weigh alike. The weight curve is TBD
-(§9).
+each stake's Kismet times its staker's weight. The weight is a tenth for
+each generation since the staker last won, up to the whole,
+min(g − `last_won`, 10) / 10, taking `last_won` from the balances
+transaction block g leaves (§5.3), and a staker whose `last_won` is `null`
+has the whole (Karma §23). So a staker that won generation g − 1 weighs a
+tenth, one that won g − 2 two tenths, and one that last won ten or more
+generations back as much as one that never has. All of one staker's stakes
+in a generation weigh alike, and an effective stake is a whole number of
+tenths of a Kismet, with no fraction to round.
+
+Each staker's **share** is the pot times their effective stake, over the
+total of the block's effective stakes, rounded down to whole Kismet. The
+Kismet left over, fewer than the block has stakers, go to the block's
+builder, its signer, whether or not it is a staker, so that the payout's
+`to` totals the pot exactly, and every node divides it alike. When the
+block's effective stakes total 0, the pot is divided equally among its
+stakers, what is left over going to the builder too. The root's reward
+(§7.4), whose one stake is `"0"`, is shared by this rule rather than as an
+exception to it.
 
 The payout's `from` takes the pot from those it comes from, each sender's
 fees and each runner-up staker's stakes taken summed by identity, and its
-`to` pays each staker their share (§5.2). Each
-staker paid a share has `last_won` g in block g + 1's balances.
+`to` pays each staker their share, and the builder what is left over
+(§5.2). Neither names anyone for 0. A staker whose share is 0, and that is
+not paid what is left over, is not in `to`, and keeps the `last_won` it
+had. `from` leaves out a sender whose transactions are all free, a
+runner-up staker whose stakes taken are `"0"`, and the new Karma of a
+generation that issues none (§2). Each identity `to` pays, the builder
+among them, has `last_won` g in block g + 1's balances, since each has won
+generation g.
 
 ## 7. The Root
 
@@ -839,8 +861,10 @@ hashes as a node's search returns, as every block does (§2).
 The root's creator receives the whole of generation 0's reward, 20 Karma,
 in transaction block 1's payout, whose `from` is
 `{"null": "2000000000000000"}`, and block 1 states them with `last_won` 0.
-The payout is applied first in block 1 (§5.2), so the creator may spend it
-there, and may stake it in validation block 1.
+Validation block 0's one stake is `"0"`, so its effective stake totals 0,
+and the pot is divided equally among its stakers (§6.6), of whom the
+creator is the only one. The payout is applied first in block 1 (§5.2), so
+the creator may spend it there, and may stake it in validation block 1.
 
 ### 7.5 Rival Roots
 
@@ -908,15 +932,8 @@ established one only by outweighing the whole chain built on it.
 
 ## 9. Open Items
 
-Parameters, TBD:
-
-- The weight curve after a win (Karma §23), and how shares are rounded to
-  whole Kismet so that the payout's `to` totals its `from` (§5.2, §6.6).
-
 Not yet specified:
 
-- How the pot is shared after the root when the winning block's effective
-  stake totals zero.
 - Whether effective stake breaks ties between chains, or counts in their
   weight.
 - How far back transaction keys are kept for the check for duplicates

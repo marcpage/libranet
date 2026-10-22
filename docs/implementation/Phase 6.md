@@ -115,7 +115,8 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
   built.
 - **Each of Steps 116 to 142 takes an issue of its own as it is taken
   up.** Each is planned under #87. Step 116 is #434, Step 117 is #435,
-  Step 118 is #436, Step 119 is #437, and none after it has one yet.
+  Step 118 is #436, Step 119 is #437, Step 120 is #438, and none after it
+  has one yet.
 - **The ledger's tests use small blocks.** Whether a block is full is
   measured against bounds the library takes, the specification's
   (KarmaLedger §5.4) unless a test gives others, so that a test fills a
@@ -838,7 +839,7 @@ nothing untrue, and only takes room.
 
 ## Step 120 — Balances, the Pot, and Shares
 
-**Kind:** infrastructure. **Issue:** none yet; planned under #87.
+**Kind:** infrastructure. **Issue:** #438, under #87.
 **Depends on:** Step 119, and the parameters below, ruled and written into
 KarmaLedger §6.6 and §9.
 
@@ -866,7 +867,9 @@ Work this implies:
   them, written as the payout's `to`, as ruled below.
 
 **To be ruled before it is built** (KarmaLedger §9), each with the option
-I recommend:
+I recommend. None had been ruled when the step was built, so each was taken
+as recommended, written into KarmaLedger §5.2, §6.6, and §7.4, and taken
+out of its §9, for review with the step:
 
 - **The weight after a win** (Karma §23): a tenth for each generation
   since the staker last won, `min(g − last_won, 10) / 10`, and the whole
@@ -887,13 +890,77 @@ I recommend:
   payout's `to`, and its `last_won` is unchanged, so that `to` names no
   one it pays nothing.
 
+**Ruled** (2026-10-22), on review: a share is rounded down, as
+recommended, but the Kismet left over go to the winning validation block's
+builder, its signer, rather than to the largest remainders, so that there
+is no tie to break. KarmaLedger §5.2, §5.3, and §6.6 say so.
+
 **Testable in isolation:** balances after a block, for senders,
 recipients, and the payout's, with a fee left in its sender's balance until
 the next block; the payout spent in its own block; what must be stated,
 and the most that may; reach, 0 when every holder is stated; the pot with
 and without a runner-up, and with a staker in both; shares totalling
-exactly, ties to the id first, a total of zero, and the root's reward;
+exactly, the rest to the builder, a total of zero, and the root's reward;
 each weight, from just after a win to never.
+
+Built as one change set: 365 added lines of non-test Python, with 3
+changed, and 515 of tests.
+
+What was built:
+
+- **`BalanceSheet.of(block, before)`** (`karma/ledger.py`) works out
+  `checked`, the balance of each identity the block names with its payout
+  applied, which its transactions are checked against; `overspent`, the
+  senders those do not cover for all they send in the block, fees among
+  it; and `after`, each named identity's balance after the block.
+  `balance(identity)` is any identity's after the block, `unstated()` the
+  identities named and not stated, and `misstated()` those stated wrongly,
+  in `kismet` or `last_won`.
+- **`TransactionBlock.most_balances`** (`karma/blocks.py`): two for each
+  identity its transactions name, which the block's own check now reads.
+- **`reach_of(stated)`**: block g's reach, from the balances blocks g,
+  g − 1, and so on back state, as far back as block g − 1's reach.
+- **`StakeWeight`**, from 1 to `WEIGHT_GENERATIONS` (10) `tenths`:
+  `of(balance, generation)` is a staker's, and
+  `effective_stakes(validation, balances)` each staker's effective stake,
+  which Step 122's best compares.
+- **`Reward(validation, builder, block, balances, runner_up)`**: `pot()`
+  is the payout's `from`, `shares()` its `to`, the Kismet left over paid
+  to `builder`, and `payout()` transaction block g + 1's. The caller gives
+  `builder` from the drop it read (`BlockDrop.builder`).
+- **`NO_BALANCE`** is what an identity stated nowhere holds.
+
+My calls, not yet reviewed:
+
+- **The other three rulings were taken as recommended**, as above.
+- **A builder paid what is left over has won**: it has `last_won` g − 1,
+  as a staker paid a share has, so that a balance is still checked against
+  the payout alone (§5.3). A builder that staked nothing then weighs a
+  tenth if it stakes the next generation. Counting only stakers' shares as
+  a win would have the balance check read validation block g − 1's
+  stakers too.
+- **`from` names no one for 0** either: a sender whose transactions are all
+  free, a runner-up staker whose stakes taken are `"0"`, and the new Karma
+  once a generation issues none. A payout is known by its hash, so every
+  node must write the same one, and the specification had to say which.
+  KarmaLedger §5.2 and §6.6 now say so.
+- **An overspending sender's transactions are left out of `after`**, rather
+  than refused: they are pending in that block (§4.4), and Step 121 finds
+  the block false from `overspent`. A payout taking more from an identity
+  than it holds is refused, since no correct chain makes one (§6.3).
+- **Reach is a function**, since it reads what several blocks state, and
+  belongs to none of them (Coding Style §6.1). It is given balances rather
+  than identities, since whether an identity holds anything is read from
+  the latest balance stated of it.
+- **Effective stakes are whole tenths of a Kismet**, so that shares are
+  divided with no fractions. A weight is refused for a `last_won` of its
+  own generation or later, which no balance transaction block g leaves
+  holds.
+- **A `Reward` is given its runner-up exactly when its validation block
+  names one**, and refuses a validation block with no stake, whose pot
+  would be paid to no one.
+- **`most_balances` went on the block**, which already counted it, rather
+  than on the sheet.
 
 ---
 
@@ -1750,10 +1817,10 @@ ones that cut across more than one step:
   step changes a specification, the change is agreed and written before
   the step is built. For Karma, the whole of the mechanics is that
   change. KarmaLedger §9's open items fall to the steps that need them:
-  the weight curve, rounding, and a total of zero to Step 120; how far
-  back keys and witnesses are kept to Step 123; what a node's Karma is
-  read from to Step 128; and following part of a heavier chain to Step
-  129.
+  the weight curve, rounding, and a total of zero to Step 120, which
+  settled them; how far back keys and witnesses are kept to Step 123; what
+  a node's Karma is read from to Step 128; and following part of a heavier
+  chain to Step 129.
 - **Step 56's open questions** — what a node's Karma is read from is
   Step 128's ruling. Whether a person holds Karma is settled: any identity
   a signed bundle accepts may (KarmaLedger §2), and Step 137 lets a person

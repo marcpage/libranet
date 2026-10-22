@@ -182,7 +182,7 @@ class TransactionBlock:
 
             keys.add(transaction.key)
 
-        most = _BALANCES_PER_IDENTITY * len(self.named())
+        most = self.most_balances
 
         if len(self.balances) > most:
             raise ValueError(
@@ -284,6 +284,11 @@ class TransactionBlock:
             identities.update(self.payout.to)
 
         return identities
+
+    @property
+    def most_balances(self) -> int:
+        """The most balances it may state: two for each identity its transactions name (§5.3)."""
+        return _BALANCES_PER_IDENTITY * len(self.named())
 
     def bundles(self) -> tuple[SignedBundle, ...]:
         """The signed bundles it holds: each transaction but the payout, as its sender signed it."""

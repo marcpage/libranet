@@ -400,6 +400,12 @@ def test_a_block_may_state_balances_of_twice_the_identities_its_transactions_nam
     assert block.balances == stated
 
 
+def test_a_block_may_state_two_balances_for_each_identity_its_transactions_name(
+    block: TransactionBlock,
+) -> None:
+    assert block.most_balances == 6
+
+
 def test_a_block_stating_more_balances_than_that_is_refused(
     alice: NodeIdentity, bob: NodeIdentity
 ) -> None:
