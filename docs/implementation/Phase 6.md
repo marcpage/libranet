@@ -113,8 +113,9 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
   sets, at 211, 424, and 222, and Step 114, at 160. A step estimated at
   more than 400 says where it splits, should it come to more than 500 as
   built.
-- **None of Steps 116 to 142 has an issue of its own yet.** Each is
-  planned under #87, and takes an issue as it is taken up.
+- **Each of Steps 116 to 142 takes an issue of its own as it is taken
+  up.** Each is planned under #87. Step 116 is #434, and none after it
+  has one yet.
 - **The ledger's tests use small blocks.** Whether a block is full is
   measured against bounds the library takes, the specification's
   (KarmaLedger §5.4) unless a test gives others, so that a test fills a
@@ -419,7 +420,7 @@ My calls, not yet reviewed:
 
 ## Step 116 — Kismet, Targets, and Weight
 
-**Kind:** infrastructure. **Issue:** none yet; planned under #87.
+**Kind:** infrastructure. **Issue:** #434, under #87.
 **Depends on:** Step 56.
 
 The first of the `karma` package (`src/libranet/karma/`, new), which
@@ -456,6 +457,39 @@ Karma at generation 0, at 1, at the last that issues any, and at the one
 after, and the whole issue, 100,000,000,000,010 Karma, by its formula; the
 root's targets and a later generation's, as strings and as hashes; weights
 summed, written, and read back, a drop of 256 bits among them.
+
+Built in one change set: 287 added lines of non-test Python, and 270 of
+tests. That is over §5's estimate of about 200: 119 of the lines are code,
+and the rest docstrings, comments, and blank lines.
+
+- **`Kismet`** (`karma/amounts.py`) holds a `count`, from 0 to
+  `MAX_KISMET` (10^28), and is ordered by it. `from_value` reads it,
+  naming what it read in a refusal, `value()` writes it, and `plus` and
+  `minus` add and take, refusing a result outside that range.
+  `decimal_count` reads the digits, for a weight as well as an amount.
+- **`new_kismet(generation)`** (`karma/generations.py`) is R_g, from
+  `FIRST_NEW_KISMET`, `NEW_KISMET_DECREASE`, and
+  `LAST_ISSUING_GENERATION`. **`GenerationTargets`** holds a generation's
+  `transaction` and `validation` targets. **`TRANSACTION_WORK_TARGET`**
+  is the target of a transaction's work.
+- **`ChainWeight`** (`karma/weight.py`) holds its `work`, and is ordered
+  by it. `plus(bits)` adds a drop of so many bits, and
+  `plus_drop(drop, target)` counts them with `matching_bits`.
+
+My calls, not yet reviewed:
+
+- **R_g is a function, `new_kismet`**, not a method, since it is a
+  generation's, and a generation is a number, not a type of its own.
+- **Adding and taking are methods, `plus` and `minus`**, not `+` and `-`.
+  Nothing in `src/` overloads an operator, and a name says that the
+  result may be refused.
+- **The cap of 10^28 is kept, as the issue states**, though the whole
+  issue is 10 Karma more (10^28 + 10^15 Kismet). No one amount nears either
+  number, so the gap is the specification's wording, not a limit any chain
+  meets. KarmaLedger §4.1 calls ten octillion "the most there can be."
+- **The target of a transaction's work is a `DropTarget`**, though it is
+  no drop's, since a target hash is what a search for a nonce and
+  `matching_bits` both take.
 
 ---
 
@@ -1437,6 +1471,7 @@ it went.
 | --- | --- | --- |
 | #86 | Documenting how Karma works with the CAS | 56 |
 | #87 | A Karma implementation plan | None: this document. Steps 116–142, which build Karma, are planned under it, each to take an issue of its own |
+| #434 | Kismet, targets, and a chain's weight | 116 |
 
 Issue #71, the shunned data list, left the milestone unbuilt for
 **Phase 4 - User Accounts**, and Step 30 went with it to
@@ -1451,7 +1486,7 @@ built (§3). In all, about 7,900.
 | Order | Step | Kind | Estimate | Why here |
 | --- | --- | --- | --- | --- |
 | 1 | 56 (#86) | Infrastructure (a specification) | None | Every step that builds Karma is written from it. Its §9 parameters are ruled with Step 120. |
-| 2 | 116 | Infrastructure | About 200 | The numbers, targets, and weight every later step counts with. |
+| 2 | 116 (#434) | Infrastructure | About 200 | The numbers, targets, and weight every later step counts with. |
 | 3 | 117 | Infrastructure | About 400 | What blocks are made of. Needs 116's amounts. |
 | 4 | 118 | Infrastructure | About 150 | Needs 117's text of a transaction. Needed before anything mines one. |
 | 5 | 119 | Infrastructure | About 450 | Needs 117. Every check reads blocks this way. |
