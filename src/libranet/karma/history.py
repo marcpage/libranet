@@ -48,20 +48,21 @@ from libranet.karma.blocks import TransactionBlock, ValidationBlock
 from libranet.karma.members import id_member
 from libranet.karma.transactions import TransactionKey
 from libranet.karma.weight import ChainWeight
-from libranet.protocol.karma_head import GENERATION_FIELD, HEAD_FIELD, KARMA_HEAD_FILE
+from libranet.protocol.karma_head import (
+    KARMA_HEAD_FILE,
+    TRANSACTION_FIELD,
+    VALIDATION_FIELD,
+    WEIGHT_FIELD,
+    KarmaGeneration,
+    KarmaHead,
+)
 
 _LOGGER = getLogger(__name__)
 
-# The files of a history, in its directory, but the head's, which the web
-# server reads too.
+# The file of a history, in its directory, the web server does not read.
 _GENEALOGY: Final = "genealogy"
-_GENERATIONS: Final = "generations"
 
-# The members of a generation's file, and of the head's but those the web
-# server reads.
-_VALIDATION: Final = "validation"
-_TRANSACTION: Final = "transaction"
-_WEIGHT: Final = "weight"
+# The members of a generation's file the web server does not read.
 _KEYS: Final = "keys"
 _WITNESSED: Final = "witnessed"
 
@@ -136,9 +137,11 @@ class ChainGeneration:
 
         return cls(
             generation,
-            id_member(value.get(_VALIDATION), named=f'A generation\'s "{_VALIDATION}"'),
-            id_member(value.get(_TRANSACTION), named=f'A generation\'s "{_TRANSACTION}"'),
-            ChainWeight.from_value(value.get(_WEIGHT), named=f'A generation\'s "{_WEIGHT}"'),
+            id_member(value.get(VALIDATION_FIELD), named=f'A generation\'s "{VALIDATION_FIELD}"'),
+            id_member(value.get(TRANSACTION_FIELD), named=f'A generation\'s "{TRANSACTION_FIELD}"'),
+            ChainWeight.from_value(
+                value.get(WEIGHT_FIELD), named=f'A generation\'s "{WEIGHT_FIELD}"'
+            ),
             tuple(TransactionKey.from_value(key) for key in keys),
             tuple(witnessed),
         )
@@ -157,25 +160,26 @@ class ChainGeneration:
     @staticmethod
     def path(directory: Path, generation: int) -> Path:
         """Where the history in ``directory`` keeps generation ``generation``."""
-        return directory / _GENERATIONS / f"{generation}.json"
+        return KarmaGeneration.path(directory, generation)
+
+    @property
+    def karma_head(self) -> KarmaHead:
+        """This generation's validation block as the head."""
+        return KarmaHead(self.validation, self.generation, self.weight.work)
 
     def value(self) -> dict[str, Any]:
         """This generation as its file keeps it."""
         return {
-            _VALIDATION: str(self.validation),
-            _TRANSACTION: str(self.transaction),
-            _WEIGHT: self.weight.value(),
+            VALIDATION_FIELD: str(self.validation),
+            TRANSACTION_FIELD: str(self.transaction),
+            WEIGHT_FIELD: self.weight.value(),
             _KEYS: [key.value() for key in self.keys],
             _WITNESSED: list(self.witnessed),
         }
 
     def head_value(self) -> dict[str, Any]:
         """``head.json``, with this generation's validation block as the head."""
-        return {
-            HEAD_FIELD: str(self.validation),
-            GENERATION_FIELD: self.generation,
-            _WEIGHT: self.weight.value(),
-        }
+        return self.karma_head.value()
 
     def write(self, directory: Path) -> None:
         """Write this generation's file into the history in ``directory``.
@@ -380,12 +384,8 @@ class ChainHistory:
         Raises:
             OSError: it could not be written, which leaves the one before.
         """
-        value = (
-            {HEAD_FIELD: None, GENERATION_FIELD: None, _WEIGHT: None}
-            if head is None
-            else head.head_value()
-        )
-        write_atomically(self._directory / KARMA_HEAD_FILE, compact_json(value))
+        value = KarmaHead() if head is None else head.karma_head
+        write_atomically(self._directory / KARMA_HEAD_FILE, compact_json(value.value()))
 
     def _extend(self, generations: Sequence[ChainGeneration]) -> None:
         """Hold ``generations`` after the head, and know their keys and witnesses."""

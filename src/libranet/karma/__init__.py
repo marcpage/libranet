@@ -15,7 +15,7 @@ placed at a target, and the chain the module follows as a check reads it
 the chain, a generation at a time (Phase 6 Step 126).
 """
 
-from libranet.karma.amounts import KISMET_PER_KARMA, MAX_KISMET, Kismet, decimal_count
+from libranet.karma.amounts import KISMET_PER_KARMA, MAX_KISMET, Kismet
 from libranet.karma.blocks import (
     BLOCK_BOUNDS,
     FULL_BLOCK_ROOM_BYTES,
@@ -119,7 +119,6 @@ __all__ = [
     "amounts_member",
     "check_moment",
     "contents_value",
-    "decimal_count",
     "id_member",
     "moment_member",
     "new_kismet",

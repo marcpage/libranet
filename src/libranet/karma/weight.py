@@ -15,7 +15,7 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
 from libranet.cas.prefix import matching_bits
 from libranet.config.models import TARGET_BITS
-from libranet.karma.amounts import decimal_count
+from libranet.json_fields import decimal_count
 
 
 @dataclass(frozen=True, order=True)

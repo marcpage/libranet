@@ -9,34 +9,15 @@ number above 2^53 exactly. A chain's weight is written the same way
 
 from __future__ import annotations
 from dataclasses import dataclass
-from re import compile as compile_pattern
 from typing import Final
+
+from libranet.json_fields import decimal_count
 
 #: How many Kismet make a Karma (Karma §4), for what is logged.
 KISMET_PER_KARMA: Final = 10**14
 
 #: The most Kismet there can be: 100 trillion Karma (Karma §4).
 MAX_KISMET: Final = 10**28
-
-# How a count is written: decimal digits, with no sign, and no leading zero
-# unless it is 0 (§4.1).
-_DIGITS: Final = compile_pattern(r"0|[1-9][0-9]*")
-
-
-def decimal_count(value: object, *, named: str) -> int:
-    """The whole number ``value`` writes in decimal digits, as an amount is written (§4.1).
-
-    Raises:
-        ValueError: ``value``, called ``named``, is not a string of decimal
-            digits, with no sign and no leading zero unless it is ``"0"``.
-    """
-    if not isinstance(value, str) or _DIGITS.fullmatch(value) is None:
-        raise ValueError(
-            f"{named} must be a string of decimal digits, with no sign and no leading zero, "
-            f"got {value!r}"
-        )
-
-    return int(value)
 
 
 @dataclass(frozen=True, order=True)

@@ -8,7 +8,8 @@ clients ask the web server to make, the drops pages ask it to make, signed,
 encrypted, or neither, the identities and sign-ins local clients ask for,
 the changes to a trust list they ask for, the addresses an operator asks
 the node to connect to, and the head of the Karma chain the node follows,
-as the Karma module writes it, are each defined once, here.
+its generations, and every holder's balance, as the Karma module writes
+them, are each defined once, here.
 No module package imports another; what two modules share is here, in
 :mod:`libranet.messaging`, or in a library package below them both.
 """
@@ -64,10 +65,21 @@ from libranet.protocol.identity_requests import (
     IdentityRequest,
     SignInRequest,
 )
+from libranet.protocol.karma_balances import (
+    BALANCES_FIELD,
+    KARMA_BALANCES_FILE,
+    KarmaBalance,
+    KarmaBalances,
+)
 from libranet.protocol.karma_head import (
     GENERATION_FIELD,
+    GENERATIONS_DIR,
     HEAD_FIELD,
     KARMA_HEAD_FILE,
+    TRANSACTION_FIELD,
+    VALIDATION_FIELD,
+    WEIGHT_FIELD,
+    KarmaGeneration,
     KarmaHead,
 )
 from libranet.protocol.lists import (
@@ -97,13 +109,16 @@ from libranet.protocol.trust_requests import TrustRequest
 __all__ = [
     "ADDRESS_FIELD",
     "API_PREFIX",
+    "BALANCES_FIELD",
     "BODILESS_STATUSES",
     "CRLF",
     "DEFAULT_PORTS",
     "GENERATION_FIELD",
+    "GENERATIONS_DIR",
     "HEAD_FIELD",
     "IDENTIFIER_LENGTH",
     "JSON_CONTENT_TYPE",
+    "KARMA_BALANCES_FILE",
     "KARMA_HEAD_FILE",
     "LOCALHOST",
     "MIN_PASSWORD_CHARACTERS",
@@ -115,6 +130,9 @@ __all__ = [
     "SEARCH_PATH",
     "SEEK_PATH",
     "TOKEN",
+    "TRANSACTION_FIELD",
+    "VALIDATION_FIELD",
+    "WEIGHT_FIELD",
     "ArchiveRequest",
     "BackupJobRequest",
     "BuildRequest",
@@ -133,6 +151,9 @@ __all__ = [
     "ImportRequest",
     "InvalidListError",
     "InvalidRequestError",
+    "KarmaBalance",
+    "KarmaBalances",
+    "KarmaGeneration",
     "KarmaHead",
     "LocalSearch",
     "NodeListSender",
