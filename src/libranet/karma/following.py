@@ -297,7 +297,7 @@ class ChainFollower:
         """What ``found`` keeps of block ``held``, checked by ``check`` unless it was before.
 
         What is found of a block checked now is kept, and said
-        (:meth:`_say`). One of another target, or that cannot be checked
+        (:func:`say_found`). One of another target, or that cannot be checked
         here, is passed over, as ``None``, and logged.
 
         Raises:
@@ -326,36 +326,8 @@ class ChainFollower:
             checked = None
 
         found[block_id] = checked
-        self._say(block_id, checked)
+        say_found(self._publish, block_id, checked)
         return checked
-
-    def _say(self, block_id: ContentId, found: object) -> None:
-        """Say ``found``, what block ``block_id`` was found, if it is unsigned or false (§3.8)."""
-        if not isinstance(found, BlockFinding):
-            return
-
-        if found.builder is None:
-            _LOGGER.warning(
-                "Shunning Karma block %s, which is unsigned: %s", block_id, found.statement
-            )
-            self._publish(EventType.DATA_SHUNNED, block_id.fields())
-            return
-
-        _LOGGER.warning(
-            "Karma block %s, built by %s, states something false: %s",
-            block_id,
-            found.builder,
-            found.statement,
-        )
-        self._publish(
-            EventType.KARMA_FALSE_BLOCK,
-            {
-                "block": str(block_id),
-                "builder": str(found.builder),
-                "staker": None if found.staker is None else str(found.staker),
-                "statement": found.statement,
-            },
-        )
 
     def _generation(self, check: ValidationBlockCheck) -> ChainGeneration | None:
         """The generation in which ``check``'s validation block, correct, is the winner.
@@ -378,3 +350,34 @@ class ChainFollower:
         return ChainGeneration.of(
             check.block_id, check.drop.block, validated_id, validated.drop.block
         )
+
+
+def say_found(publish: Publish, block_id: ContentId, found: object) -> None:
+    """Say with ``publish`` what block ``block_id`` was ``found``, if unsigned or false (§3.8).
+
+    One unsigned is shunned, and one false said, for its builder to be
+    distrusted; each is logged as a warning.
+    """
+    if not isinstance(found, BlockFinding):
+        return
+
+    if found.builder is None:
+        _LOGGER.warning("Shunning Karma block %s, which is unsigned: %s", block_id, found.statement)
+        publish(EventType.DATA_SHUNNED, block_id.fields())
+        return
+
+    _LOGGER.warning(
+        "Karma block %s, built by %s, states something false: %s",
+        block_id,
+        found.builder,
+        found.statement,
+    )
+    publish(
+        EventType.KARMA_FALSE_BLOCK,
+        {
+            "block": str(block_id),
+            "builder": str(found.builder),
+            "staker": None if found.staker is None else str(found.staker),
+            "statement": found.statement,
+        },
+    )
