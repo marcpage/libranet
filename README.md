@@ -88,7 +88,7 @@ see [Project Status](#project-status).
   [add more to the network than they take](docs/specs/Karma.md) (designed,
   not yet built).
 
-[Vote for the next feature](https://github.com/marcpage/libranet/issues?q=is%3Aissue+state%3Aopen+sort%3Areactions-%2B1)
+[Vote for the next feature](https://github.com/marcpage/libranet/issues?q=is%3Aissue+state%3Aopen+sort%3Areactions-%2B1+label%3Aenhancement)
 by giving a Thumbs Up to the description of your favorite issues.
 
 ### Hasn't this already been done?
