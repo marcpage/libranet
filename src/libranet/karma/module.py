@@ -1,4 +1,4 @@
-"""The Karma module process (Phase 6 Steps 123 to 128).
+"""The Karma module process (Phase 6 Steps 123 to 129).
 
 Every step that has the node act on the Karma ledger (KarmaLedger.md) runs
 here: reading what is placed at a target, following the chain, and
@@ -28,6 +28,14 @@ false, it says::
 
     data.shunned       {"algorithm", "hash"}
     karma.false_block  {"block", "builder", "staker", "statement"}
+
+As it looks, it also weighs each other validation block at the target its
+head was chosen from, and follows the chain through one that is heavier
+(:class:`~libranet.karma.changing.HeadChanges`, Phase 6 Step 129), carrying
+over the transactions of the chain it leaves that the heavier one does not
+hold, for ``karma.carry_generations``, in ``carried.json``. What such a
+chain lacks it asks for, and it gives up on the chain with what has not
+come.
 
 Each time its head changes, it writes every balance the chain states there
 to ``balances.json`` in ``storage.karma_dir``, for the web server to read
@@ -71,6 +79,8 @@ from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.trust import TrustState
 from libranet.karma.balances import HeadBalances
 from libranet.karma.blocks import BLOCK_BOUNDS, BlockBounds
+from libranet.karma.carried import CarriedTransactions
+from libranet.karma.changing import HeadChanges
 from libranet.karma.following import ChainFollower
 from libranet.karma.history import ChainHistory
 from libranet.karma.reading import HeldChain, TargetReader
@@ -119,6 +129,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._bounds = bounds
         self._history: ChainHistory | None = None
         self._follower: ChainFollower | None = None
+        self._changes: HeadChanges | None = None
         self._balances: HeadBalances | None = None
         # Whether to look at the head's targets as the module next idles,
         # and when to look, whether it idles or not.
@@ -180,6 +191,13 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._follower = ChainFollower(
             self._history, self._reader, self.publish, bounds=self._bounds
         )
+        self._changes = HeadChanges(
+            self._history,
+            self._reader,
+            self.publish,
+            CarriedTransactions(karma_dir, self._config.karma.carry_generations),
+            bounds=self._bounds,
+        )
         self._balances = HeadBalances(
             self._history, HeldChain(self._history, self._reader), karma_dir
         )
@@ -210,9 +228,14 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
     def on_idle(self) -> None:
         """Give up on what has been waited for long enough, and look at the head's targets.
 
-        It looks if it is time to, or if what it waited for has come.
+        A head being weighed that waits for what is given up on is given up
+        on too. It looks if it is time to, or if what it waited for has come.
         """
-        self._reader.given_up()
+        given_up = self._reader.given_up()
+
+        if self._changes is not None:
+            self._changes.given_up(given_up)
+
         self._look(idle=True)
 
     def on_stop(self) -> None:
@@ -300,20 +323,30 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
     def _look(self, *, idle: bool) -> None:
         """Follow the chain on, if it is time to look, or, as the module ``idle``s, to look again.
 
-        The balances stated at the head are then written, if it changed. A
-        history that cannot be written is logged, and written at the next
-        look.
+        It then weighs the heads it does not follow, and once it follows a
+        heavier chain, follows that on. The balances stated at the head are
+        then written, if it changed. A history that cannot be written is
+        logged, and written at the next look.
         """
         now = self._clock()
+        follower = self._follower
+        changes = self._changes
 
-        if self._follower is None or (now < self._next_look_at and not (idle and self._look_again)):
+        if (
+            follower is None
+            or changes is None
+            or (now < self._next_look_at and not (idle and self._look_again))
+        ):
             return
 
         self._look_again = False
         self._next_look_at = now + self._config.karma.look_seconds
 
         try:
-            self._follower.look()
+            follower.look()
+
+            if changes.look():
+                follower.look()
 
         except OSError as error:
             self.logger.error("Cannot write the history of the Karma chain followed: %s", error)

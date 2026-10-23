@@ -8,8 +8,9 @@ validation block's id sorts first (§3.3, §7.5). From then on it reads the
 targets named for its head (§3.1), and follows the best correct validation
 block there (§6.5), adding its generation to the history, and goes on at
 once to the targets named for that block, until it finds none to follow. A
-better validation block of a generation already followed is not looked for:
-it is a head the node does not follow, for Phase 6 Step 129 to weigh.
+better validation block of a generation already followed is not looked for
+here: it is a head the node does not follow, which
+:class:`~libranet.karma.changing.HeadChanges` weighs (Phase 6 Step 129).
 
 A block whose check needs what the node lacks, a signer's key or a block of
 the chain, is checked again once that has come: the reader asks for it

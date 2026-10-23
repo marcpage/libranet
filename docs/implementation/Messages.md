@@ -568,7 +568,10 @@ or reported, nor is the key a kept archive's bundle may carry.
   - Web server, when content is shunned on `/config`
     (`shun_handler.py`) or by a version edit (`version_edits.py`).
   - Karma, for a block it finds unsigned, or whose signature fails, at a
-    target it reads as it follows the chain (`karma/following.py`).
+    target it reads as it follows the chain (`karma/following.py`), or on a
+    heavier chain it weighs, and for a block of such a chain stating its
+    `generation` or `weight` falsely, which is no block of the ledger
+    (`karma/changing.py`, Phase 6 Step 129).
 - **Received by:**
   - Stats, which records the shunning, stops seeking the content, and writes the
     shunned list (`cas/shunned`) at once for the modules that refuse shunned
@@ -641,7 +644,9 @@ or reported, nor is the key a kept archive's bundle may carry.
 - **Sent by:** Karma, once for each block it finds stating something false
   at a target it reads as it follows the chain, naming the block, the
   identity that signed it, the staker of such a stake, and what it states
-  falsely (`karma/following.py`). It logs it as a warning too.
+  falsely (`karma/following.py`); and so for a block of a heavier chain it
+  weighs (`karma/changing.py`, Phase 6 Step 129). It logs it as a warning
+  too.
 - **Received by:** Web server, which has the node distrust the builder, and
   the staker, in its own trust list, placing the next version as `/config`
   does, in turn with the operator's changes, unless it distrusts them
