@@ -27,6 +27,17 @@ The protocol is organized into four layers:
 4. **Applications** - defines directory bundles, application registration, and
    the human-facing web interface.
 
+```mermaid
+flowchart TB
+    apps["4. Applications<br/>directory bundles, registration, browser access"]
+    storage["3. Distributed Storage<br/>content addressing, drops, search, routing, eviction"]
+    transport["2. Transport<br/>HTTP/HTTPS, first-contact exchange"]
+    identity["1. Identity<br/>node keys, signed requests and responses"]
+    apps -->|"built on"| storage
+    storage -->|"built on"| transport
+    transport -->|"built on"| identity
+```
+
 ---
 
 ## 2. Identity Layer
@@ -180,6 +191,17 @@ value, and if not, fall back to zlib decompression before re-checking the hash.
 If neither the raw bytes nor the decompressed bytes match `{full-hash}`, the
 response is invalid and should be discarded.
 
+```mermaid
+flowchart TD
+    get["GET /data/{algo}/{full-hash}"] --> raw{"Do the body's bytes<br/>hash to {full-hash}?"}
+    raw -->|yes| ok["Valid: the body is the content"]
+    raw -->|no| inflate["zlib-decompress the body"]
+    inflate --> again{"Do the decompressed bytes<br/>hash to {full-hash}?"}
+    inflate -->|"not zlib"| bad
+    again -->|yes| okz["Valid: the decompressed bytes are the content"]
+    again -->|no| bad["Invalid: discard the response"]
+```
+
 This allows serving nodes to reduce bandwidth for compressible content without
 requiring a separate content-addressing scheme for compressed variants.
 
@@ -241,6 +263,19 @@ proceeds as follows:
 4. Publish the resulting blob under its full content hash via the normal
    `/data/...` path.
 
+```mermaid
+flowchart TB
+    name["Drop name<br/>e.g. John"] --> target["Target hash<br/>SHA-256 of the name"]
+    payload["Payload"] --> blob["Payload + 0x00 + random suffix"]
+    blob --> hash["Content hash of the blob"]
+    hash --> match{"Enough leading bits<br/>match the target hash?"}
+    target -.-> match
+    match -->|no| adjust["Change the random suffix"]
+    adjust --> blob
+    match -->|yes| publish["PUT /data/{algo}/{hash}"]
+    publish --> found["Recipients find it by searching<br/>a prefix of the target hash"]
+```
+
 A recipient interested in the drop `"John"` issues a search against a suitable
 prefix of the target hash.
 
@@ -289,6 +324,21 @@ When storage pressure requires eviction:
   binary prefix with the object’s hash. A peer that does not accept it is
   passed over for the next best.
 - Only after a peer has accepted the object may it be deleted locally.
+
+```mermaid
+flowchart TD
+    pressure["Storage pressure"] --> pick["Pick the lowest-priority object"]
+    pick --> exempt{"Exempt from<br/>eviction?"}
+    exempt -->|yes| next["Pass over it: the node's own<br/>public key, a connected peer's key,<br/>or one stored only a short time before"]
+    next --> pick
+    exempt -->|no| best["Offer it to the best outgoing connection:<br/>the peer whose id shares the longest<br/>binary prefix with its hash"]
+    best --> accepted{"Peer accepts it?"}
+    accepted -->|yes| delete["Delete the local copy"]
+    accepted -->|no| more{"Another peer left?"}
+    more -->|yes| nextpeer["Offer it to the next best peer"]
+    nextpeer --> accepted
+    more -->|no| keep["Keep it"]
+```
 
 Content the node has shunned (§4.11) is not evicted, since the node does not
 keep it: it is deleted at once, and pushed to no peer.
@@ -344,6 +394,21 @@ to (§4.6), in two passes or more:
    peer that answered with a temporary "not available" status is not queried
    again until the `Retry-After` it gave has passed (HTTP API §5.2).
 4. After the last pass, stop.
+
+```mermaid
+flowchart TD
+    miss["Request for an object not held"] --> reply["Reply with a temporary<br/>not-available status"]
+    miss --> sort["Sort outgoing peers by common prefix<br/>with the hash, best first"]
+    sort --> query["Query the next peer in order"]
+    query --> got{"Returned the data?"}
+    got -->|yes| done["Finish"]
+    got -->|no| more{"Peers left in this pass?"}
+    more -->|yes| query
+    more -->|no| last{"Was this the last pass?"}
+    last -->|no| pass["Start the next pass, holding off each peer<br/>until the Retry-After it gave has passed"]
+    pass --> query
+    last -->|yes| pause["Stop, and start no new search<br/>for the object for a while"]
+```
 
 A large network may need more than two passes, since a peer's own search takes
 longer to reach the data there, but each pass adds a query of every peer.
@@ -500,6 +565,21 @@ object's hash.
 - A node need not push data back to the node it came from, and does not push
   on data it already held. Either ends the chain.
 
+```mermaid
+flowchart TB
+    obj(["New object<br/>hash 1011 0110…"])
+    a["Node A<br/>id 0100…<br/>0 bits match"]
+    b["Node B<br/>id 1001…<br/>2 bits match"]
+    c["Node C<br/>id 1011 1…<br/>4 bits match"]
+    d["Node D<br/>id 1011 01…<br/>6 bits match"]
+    stop["Chain ends: the next peer already<br/>holds it, or it would go back"]
+    obj -.->|"created or received"| a
+    a -->|"push to best<br/>outgoing connection"| b
+    b -->|push| c
+    c -->|push| d
+    d -->|push| stop
+```
+
 Pushing toward the best match carries data to the nodes that prioritize
 retaining it (§4.5) and that request routing asks first (§4.7).
 
@@ -587,6 +667,14 @@ The node's operator chooses which applications to trust. One that is not
 trusted is served in a browser sandbox, with an origin of its own, so that it
 can show what the network holds but cannot use the endpoints that reach the
 node's own machine (HTTP API §13.5).
+
+```mermaid
+flowchart TD
+    req["GET /{app-name}/…"] --> lookup["Resolve the name to its registered<br/>directory bundle's content hash"]
+    lookup --> trusted{"Trusted by the operator?"}
+    trusted -->|yes| own["Serve the bundle's files on the node's origin:<br/>may use the endpoints that reach the node's machine"]
+    trusted -->|no| sandbox["Serve the bundle's files in a browser sandbox:<br/>can show what the network holds, but cannot<br/>reach the node's machine"]
+```
 
 The default application is accessed through:
 

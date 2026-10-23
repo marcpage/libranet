@@ -90,6 +90,27 @@ is ([HTTP API §9.3](HttpApi.md#93-drop-target)). A generation's targets
 cannot be known before the generation before it has a validation block, so
 no block of it can be built in advance (Karma §20).
 
+```mermaid
+flowchart BT
+    subgraph g0["Generation 0: the root"]
+        t0["Transaction block 0<br/>at karma transaction:0"]
+        v0["Validation block 0<br/>at karma validation:0"]
+    end
+    subgraph g1["Generation 1"]
+        t1["Transaction block 1<br/>at karma transaction:<br/>{id of validation block 0}"]
+        v1["Validation block 1<br/>at karma validation:<br/>{id of validation block 0}"]
+    end
+    subgraph g2["Generation 2"]
+        t2["Transaction block 2<br/>at karma transaction:<br/>{id of validation block 1}"]
+        v2["Validation block 2<br/>at karma validation:<br/>{id of validation block 1}"]
+    end
+    v0 -->|"stakes name"| t0
+    v1 -->|"stakes name"| t1
+    v2 -->|"stakes name"| t2
+    t1 -->|previous| v0
+    t2 -->|previous| v1
+```
+
 ### 3.2 Choosing the Winner
 
 Many validation blocks may be placed for one generation (§6). A builder
@@ -112,6 +133,17 @@ much as one 30-bit drop, which took 32,768 times the work of either.
 The **heaviest chain** is the one of greatest weight, and of two as heavy,
 the one whose latest winning validation block's id sorts first. Every node
 follows the heaviest chain it knows.
+
+```mermaid
+flowchart RL
+    root["Root"]
+    g1["Generation 1"] --> root
+    a2["Generation 2<br/>two 30-bit drops"] --> g1
+    a3["Generation 3<br/>two 30-bit drops<br/>heavier: 4 × 2³⁰ after generation 1,<br/>so every node follows this chain"] --> a2
+    b2["Generation 2′<br/>two 24-bit drops"] --> g1
+    b3["Generation 3′<br/>two 24-bit drops"] --> b2
+    b4["Generation 4′<br/>two 24-bit drops<br/>longer, but lighter:<br/>6 × 2²⁴ after generation 1"] --> b3
+```
 
 Each transaction block states the weight of the chain before it (§5.1), and
 a reader checks it against the block before. So a reader sees how heavy a
@@ -187,6 +219,20 @@ target, it goes through these steps in order:
    balance the new chain does not cover, as when the new chain has spent
    it, or whose `generation` the new chain has not reached, it carries
    forward as a pending transaction (§4.4).
+
+```mermaid
+flowchart TD
+    learn["A head not followed,<br/>from a peer or at a target"] --> claim{"1. Claimed<br/>weight heavier?"}
+    claim -->|no| keep["Keep the node's own head"]
+    claim -->|yes| walk["2. Walk back to the common ancestor,<br/>checking each weight and generation"]
+    walk -->|"a check fails"| reject
+    walk --> collect["3. Collect the node's own transactions<br/>after the common ancestor"]
+    collect --> check["4. Check the new branch forward,<br/>striking collected transactions it holds"]
+    check --> valid{"All correct,<br/>and heavier?"}
+    valid -->|no| reject["Keep the node's own head: distrust the<br/>builder of an incorrect block, and shun it"]
+    valid -->|yes| follow["5. Follow the new head,<br/>and tell peers"]
+    follow --> carry["6. Carry the rest over to the new head's<br/>target, or forward as pending"]
+```
 
 ### 3.6 Weak Chains
 
@@ -407,6 +453,19 @@ transaction block g when:
 A transaction's balance is checked in the block that includes it, not in
 the one it was created in. The check for duplicates reaches back to the
 transaction's `generation`, however far that is (§9).
+
+```mermaid
+flowchart TD
+    tx["A transaction considered for block g"] --> basic{"Signed by from,<br/>24 bits of work,<br/>moves over 0?"}
+    basic -->|no| invalid["Not valid"]
+    basic -->|yes| gen{"generation<br/>later than g?"}
+    gen -->|yes| pending["Pending: carried forward"]
+    gen -->|no| dup{"Key already<br/>in the chain?"}
+    dup -->|yes| invalid
+    dup -->|no| bal{"Sender's<br/>balance covers it?"}
+    bal -->|no| pending
+    bal -->|yes| valid["Valid in block g"]
+```
 
 A transaction that fails only because its sender's balance does not cover
 it, or because its `generation` is later than g, is **pending**, is not
@@ -836,6 +895,20 @@ runner-up staker whose stakes taken are `"0"`, and the new Karma of a
 generation that issues none (§2). Each identity `to` pays, the builder
 among them, has `last_won` g in block g + 1's balances, since each has won
 generation g.
+
+```mermaid
+flowchart TD
+    subgraph pot["The pot of winning validation block g"]
+        rg["R_g, generation g's new Karma"]
+        fees["Fees of transaction block g"]
+        ru["Runner-up stakes, less those of<br/>stakers who also staked in the winner"]
+    end
+    pot -->|"paid by the payout of<br/>transaction block g + 1"| split{"Shared by effective stake:<br/>Kismet × min(g − last_won, 10) / 10"}
+    split -->|"each share rounded down"| stakers["Each staker of the<br/>winning block"]
+    split -->|"what rounding leaves"| builder["The winning block's builder"]
+    stakers --> won["last_won becomes g"]
+    builder --> won
+```
 
 ## 7. The Root
 

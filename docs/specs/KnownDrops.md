@@ -31,6 +31,31 @@ is placed at its target, and links to the documents that define it.
 A drop **in use** is placed by the node or a shipped application today. A
 **specified** drop is defined by a specification, but nothing places it yet.
 
+```mermaid
+flowchart TB
+    subgraph person["A person"]
+        direction LR
+        username["username"] --> blocks["user:{username}<br/>identity blocks"]
+        blocks -->|"open to"| pid["their id"]
+        directory["user directory"] -.->|lists| pid
+        pid --> says["user:{id}<br/>what they say of themselves"]
+        pid --> ptrust["trust:{id}<br/>trust list"]
+        pid --> mail["mail:{id}:…<br/>mail sent:{id}:…<br/>mail address book:{id}<br/>mail state:{id}:…<br/>their mail (§3.5 to §3.8)"]
+    end
+    subgraph node["A node"]
+        direction LR
+        nid["its id"] --> nsays["node:{id}<br/>what it says of itself"]
+        nid --> ntrust["trust:{id}<br/>trust list"]
+    end
+    subgraph karma["The Karma ledger"]
+        direction LR
+        validation["0, then each winning<br/>validation block's id"] --> kt["karma transaction:{validation}"]
+        validation --> kv["karma validation:{validation}"]
+    end
+    person ~~~ node
+    node ~~~ karma
+```
+
 ## 2. Reading the Catalog
 
 ### 2.1 Target Strings
@@ -73,6 +98,19 @@ leading bits with the target hash
 it shares, the nearer the top of a search it is, however much else is
 placed there. A node limits what a page may ask for, by default to 60
 seconds and 32 bits.
+
+```mermaid
+flowchart TD
+    target["Target string"] -->|"SHA-256 of its UTF-8 bytes"| th["Target hash"]
+    content["Content"] --> place["Append 0x00 and a nonce, searched for<br/>until the drop's id shares enough<br/>leading bits with the target hash"]
+    th --> place
+    place --> stored["Drop stored and pushed"]
+    stored --> search["A search of the target string: results<br/>sharing at least 24 bits, nearest first"]
+    th --> search
+    search --> expected{"As its section<br/>says it is?"}
+    expected -->|no| pass["Pass over it: not shaped, signed,<br/>or encrypted as expected"]
+    expected -->|yes| choose["Choose among what is left,<br/>as the drop's section says"]
+```
 
 ### 2.3 Adding a Drop
 
