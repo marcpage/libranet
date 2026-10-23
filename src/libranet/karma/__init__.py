@@ -10,7 +10,8 @@ checking a transaction block against its target and its chain (Phase 6
 Step 121); checking a validation block, and choosing a generation's best
 (Phase 6 Step 122); the history of the chain the Karma module follows,
 which runs in a process of its own (Phase 6 Step 123); and reading what is
-placed at a target (Phase 6 Step 124).
+placed at a target, and the chain the module follows as a check reads it
+(Phase 6 Step 124).
 """
 
 from libranet.karma.amounts import KISMET_PER_KARMA, MAX_KISMET, Kismet, decimal_count
@@ -58,7 +59,7 @@ from libranet.karma.members import (
     moment_member,
 )
 from libranet.karma.module import KarmaModule
-from libranet.karma.reading import HeldBlock, TargetReader
+from libranet.karma.reading import HeldBlock, HeldChain, TargetReader
 from libranet.karma.stakes import SignedStake, Stake
 from libranet.karma.transactions import Payout, SignedTransaction, Transaction, TransactionKey
 from libranet.karma.validating import ValidationBlockCheck, ValidationScore
@@ -90,6 +91,7 @@ __all__ = [
     "ChainWeight",
     "GenerationTargets",
     "HeldBlock",
+    "HeldChain",
     "KarmaModule",
     "Kismet",
     "Payout",

@@ -517,6 +517,32 @@ class BlockDrop(Generic[_Block]):
         return cls(bundle, kind.from_value(contents_value(bundle.contents, named="A block")))
 
     @classmethod
+    def parsed(cls, data: bytes, kind: type[_Block]) -> BlockDrop[_Block]:
+        """The block of ``kind`` the drop ``data`` holds, its signatures not checked.
+
+        A block already checked, as one of the chain a node follows is, is
+        read again so.
+
+        Raises:
+            MalformedBundleError: ``data`` holds no null byte before its
+                nonce, or what is before it is not a signed bundle's JSON.
+            UnsupportedBundleError: it, or what it holds, is signed in a way
+                this node cannot check.
+            UnknownAlgorithmError: it names an id under a hash algorithm this
+                node lacks.
+            BundleSignatureError: the ``hash`` of what it holds is not the
+                hash of its ``contents``.
+            ValueError: what it signs is no block of ``kind``, as the error
+                names.
+        """
+        content, separator, _ = data.rpartition(DROP_SEPARATOR)
+
+        if not separator:
+            raise MalformedBundleError("A block's drop must hold a null byte before its nonce")
+
+        return cls.of(SignedBundle.decoded(content), kind)
+
+    @classmethod
     def decoded(
         cls,
         data: bytes,

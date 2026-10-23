@@ -8,7 +8,7 @@ from typing import Any
 
 from pytest import fixture, mark, raises
 
-from libranet.bundle.errors import MissingContentError
+from libranet.bundle.errors import MalformedBundleError, MissingContentError
 from libranet.bundle.signing import SignedBundle
 from libranet.cas.content_id import ContentId
 from libranet.cas.errors import UnknownAlgorithmError
@@ -607,6 +607,37 @@ def test_a_validation_block_as_a_drop_is_decoded_as_written(
 
     assert isinstance(decoded, BlockDrop)
     assert decoded.block == validation
+
+
+def test_a_block_checked_already_is_parsed_again_without_its_signatures(
+    alice: NodeIdentity, builder: NodeIdentity, validation: ValidationBlock
+) -> None:
+    signed = builder.signed(validation.text())
+    claimed = SignedBundle(alice.node_id, signed.contents, signed.signature)
+
+    assert BlockDrop.parsed(signed.encoded() + NONCE, ValidationBlock) == BlockDrop(
+        signed, validation
+    )
+    assert BlockDrop.parsed(claimed.encoded() + NONCE, ValidationBlock).builder == alice.node_id
+
+
+@mark.parametrize(
+    "data, error",
+    [
+        (b'{"signature": ""}', "must hold a null byte"),
+        (b"not a bundle\x00nonce", "A signed bundle is JSON"),
+    ],
+)
+def test_a_drop_holding_no_signed_bundle_is_not_parsed(data: bytes, error: str) -> None:
+    with raises(MalformedBundleError, match=error):
+        BlockDrop.parsed(data, ValidationBlock)
+
+
+def test_a_drop_holding_a_block_of_another_kind_is_not_parsed(
+    builder: NodeIdentity, validation: ValidationBlock
+) -> None:
+    with raises(ValueError, match='"balances" must be an object'):
+        BlockDrop.parsed(signed_drop(builder, validation.value()), TransactionBlock)
 
 
 def test_a_drops_content_is_its_signed_bundles_json(

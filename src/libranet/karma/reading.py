@@ -1,4 +1,4 @@
-"""Reading what is placed at a target (KarmaLedger §2, Phase 6 Step 124).
+"""Reading what is at a target, and the chain it is built on (KarmaLedger §2, Phase 6 Step 124).
 
 Every block is a drop, placed at a target (§2, §3.1), so what is at a target
 is found as a search of the target's hash finds it (HttpApi §6): what the
@@ -28,13 +28,20 @@ and measured compressed, as whether it is full is (§5.4): the copy held, if
 that is compressed, and otherwise the drop compressed as the node compresses
 what it stores. It is read with the keys the node holds of everyone who
 signed what it holds, for its check to decode it (Phase 6 Steps 121 and 122).
+
+:class:`HeldChain` is the chain such a check reads
+(:class:`~libranet.karma.checking.ChainView`): the chain the Karma module
+follows, from its history (:class:`~libranet.karma.history.ChainHistory`)
+and the blocks held. A balance is read back through the transaction blocks
+of the genealogy, as far as the reach of the latest it is read through
+(§5.3).
 """
 
 from __future__ import annotations
 from dataclasses import dataclass, field
 from logging import getLogger
 from time import time
-from typing import Callable, Iterable, Mapping, TypeVar
+from typing import Callable, Collection, Iterable, Mapping, TypeVar
 from zlib import compress
 
 from libranet.bundle.content import ContentSource
@@ -54,7 +61,10 @@ from libranet.cas.layered import LayeredSource
 from libranet.cas.prefix import nearest
 from libranet.cas.shunned import ShunnedContent
 from libranet.config.models import LibranetConfig
-from libranet.karma.blocks import BlockDrop, TransactionBlock, ValidationBlock
+from libranet.karma.blocks import Balance, BlockDrop, TransactionBlock, ValidationBlock
+from libranet.karma.history import ChainHistory
+from libranet.karma.ledger import NO_BALANCE
+from libranet.karma.transactions import TransactionKey
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.protocol.search import LocalSearch, SearchCache
@@ -335,3 +345,118 @@ class TargetReader:  # pylint: disable=too-many-instance-attributes
 
         signers = [bundle.signer, *(signed.signer for signed in drop.block.bundles())]
         return list(dict.fromkeys(signers))
+
+
+class HeldChain:
+    """The chain the Karma module follows, as a check reads it (Phase 6 Step 121's ``ChainView``).
+
+    Its generations are those of ``history``, and its blocks are read from
+    what ``reader`` holds, each as its builder signed it, its signatures not
+    checked again: each was checked as it was read at its target. A block not
+    held, as one evicted, is asked for again (§2), and named as lacking, so
+    that the check waits for it.
+
+    It is the chain through the history's head, and so through each
+    validation block in it: a check reads it of a block at the targets named
+    for one of them.
+    """
+
+    def __init__(self, history: ChainHistory, reader: TargetReader) -> None:
+        self._history = history
+        self._reader = reader
+
+    def validation(self, block_id: ContentId) -> BlockDrop[ValidationBlock]:
+        """Validation block ``block_id``, as its builder signed it.
+
+        Raises:
+            MissingContentError: it is not held, and is asked for.
+            ShunnedContentError: the node shuns it.
+            BundleError: what is held is not it, or holds no signed bundle,
+                as :meth:`TargetReader.held` and
+                :meth:`~libranet.karma.blocks.BlockDrop.parsed` say.
+            ValueError: what it signs is no validation block, as the error
+                names.
+        """
+        return BlockDrop.parsed(self._reader.held(block_id), ValidationBlock)
+
+    def transaction(self, block_id: ContentId) -> BlockDrop[TransactionBlock]:
+        """Transaction block ``block_id``, as its builder signed it.
+
+        Raises:
+            MissingContentError: it is not held, and is asked for.
+            ShunnedContentError: the node shuns it.
+            BundleError: what is held is not it, or holds no signed bundle,
+                as :meth:`TargetReader.held` and
+                :meth:`~libranet.karma.blocks.BlockDrop.parsed` say.
+            ValueError: what it signs is no transaction block, as the error
+                names.
+        """
+        return BlockDrop.parsed(self._reader.held(block_id), TransactionBlock)
+
+    def stated(self, generation: int) -> Mapping[ContentId, Balance]:
+        """The balances the chain's transaction block ``generation`` states.
+
+        Raises:
+            IndexError: the history holds no such generation.
+            MissingContentError: names that block, which is not held, and is
+                asked for.
+        """
+        return self._transaction_block(generation).balances
+
+    def balances(
+        self, identities: Collection[ContentId], generation: int
+    ) -> Mapping[ContentId, Balance]:
+        """Each of ``identities``' balance, as the chain's transaction block ``generation`` left it.
+
+        That is the latest stated of it in that block, or in those before it
+        as far back as its ``reach``, which state every identity holding any
+        Kismet, or else :data:`~libranet.karma.ledger.NO_BALANCE` (§5.3).
+
+        Raises:
+            IndexError: the history holds no such generation.
+            MissingContentError: names that block, if it is not held, or else
+                every block within its reach that is not held, each asked for.
+        """
+        latest = self._transaction_block(generation)
+        stated = [latest.balances]
+        lacking: list[ContentId] = []
+
+        for back in range(generation - 1, max(generation - latest.reach, 0) - 1, -1):
+            try:
+                stated.append(self.stated(back))
+
+            except MissingContentError as error:
+                # Not logged: every block lacking is named at once, below.
+                lacking.extend(error.content_ids)
+
+        if lacking:
+            raise MissingContentError(tuple(lacking))
+
+        return {
+            identity: next((each[identity] for each in stated if identity in each), NO_BALANCE)
+            for identity in identities
+        }
+
+    def has_key(self, key: TransactionKey, first: int, last: int) -> bool:
+        """Whether a transaction in the chain's blocks ``first`` to ``last`` has ``key`` (§4.4).
+
+        Those are its transaction blocks, ``first`` and ``last`` among them,
+        as its history keeps their keys.
+        """
+        return self._history.has_key(key, first, last)
+
+    def witnessed(self, transaction_hash: str) -> int | None:
+        """The generation of the chain's winning validation block listing ``transaction_hash``.
+
+        It is ``None`` when none lists it (§4.5, §6.4).
+        """
+        return self._history.witnessed(transaction_hash)
+
+    def _transaction_block(self, generation: int) -> TransactionBlock:
+        """The chain's transaction block ``generation``.
+
+        Raises:
+            IndexError: the history holds no such generation.
+            MissingContentError: it is not held, and is asked for.
+        """
+        return self.transaction(self._history.generation(generation).transaction).block

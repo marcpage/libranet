@@ -564,10 +564,13 @@ with balances anyone can work out, in place of transactions. A balance of
 0 is stated only for a sender or a recipient, and an identity stated
 nowhere holds nothing.
 
-An identity's balance is the one stated in the latest block that states it,
-since every block states each balance it changes. The balances block g's
-transactions are checked against are those transaction block g − 1 leaves,
-with block g's payout applied.
+An identity's balance as block g leaves it is the one stated in the latest
+of blocks g − r through g that states it, r being block g's `reach` (below),
+since every block states each balance it changes. One stated in none of them
+holds `{"kismet": "0", "last_won": null}`, even if an earlier block states it
+holding 0 with a `last_won`, so that no reader looks further back than the
+reach. The balances block g's transactions are checked against are those
+transaction block g − 1 leaves, with block g's payout applied.
 
 A reader checks every balance a block states, both its `kismet` and its
 `last_won`, whether the block must state it or states it only to shorten

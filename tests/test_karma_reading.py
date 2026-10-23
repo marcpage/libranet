@@ -1,7 +1,8 @@
-"""Tests for reading what is placed at a target (KarmaLedger §2)."""
+"""Tests for reading what is placed at a target, and the chain it is built on (KarmaLedger §2)."""
 
 from __future__ import annotations
 from datetime import UTC, datetime
+from fractions import Fraction
 from hashlib import sha256
 from logging import DEBUG, WARNING
 from typing import Any, Mapping
@@ -21,10 +22,23 @@ from libranet.cas.store import CasStore
 from libranet.config.models import MIB, KarmaConfig, LibranetConfig, StorageConfig
 from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.amounts import Kismet
-from libranet.karma.blocks import BlockDrop, BlockFinding, ValidationBlock
+from libranet.karma.blocks import (
+    Balance,
+    BlockBounds,
+    BlockDrop,
+    BlockFinding,
+    TransactionBlock,
+    ValidationBlock,
+)
+from libranet.karma.checking import BlockScore, ChainView, TransactionBlockCheck
 from libranet.karma.generations import GenerationTargets
-from libranet.karma.reading import HeldBlock, TargetReader
+from libranet.karma.history import ChainGeneration, ChainHistory
+from libranet.karma.ledger import NO_BALANCE
+from libranet.karma.reading import HeldBlock, HeldChain, TargetReader
 from libranet.karma.stakes import SignedStake, Stake
+from libranet.karma.transactions import Payout, SignedTransaction, Transaction, TransactionKey
+from libranet.karma.validating import ValidationBlockCheck, ValidationScore
+from libranet.karma.weight import ChainWeight
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.protocol.search import LocalSearch, SearchCache
@@ -32,12 +46,19 @@ from tests.helpers import new_identity
 
 CREATED = datetime(2026, 10, 21, 14, 3, 22, tzinfo=UTC)
 CAROL = ContentId("sha256", "c0" * 32)
+DAVE = ContentId("sha256", "d0" * 32)
+PREVIOUS = ContentId("sha256", "5e" * 32)
+WITNESS = "ab" * 32
 WAIT_SECONDS = 30.0
 
 # The fewest bits a search returns, fewer than a node's, so that a drop is
 # placed in moments.
 MINIMUM_BITS = 8
 
+# Bounds every transaction meets, whatever its work.
+NO_WORK = BlockBounds(transaction_bits=0)
+
+ROOT = GenerationTargets.root()
 FIRST = GenerationTargets.after(ContentId("sha256", "f0" * 32))
 
 
@@ -111,6 +132,21 @@ def staked(staker: NodeIdentity, on: ContentId, kismet: int) -> SignedStake:
     """A stake ``staker`` signs, of ``kismet``, on the transaction block ``on``."""
     stake = Stake(staker.node_id, on, Kismet(kismet), CREATED)
     return SignedStake.of(staker.signed(stake.text()))
+
+
+def root_of(creator: NodeIdentity) -> TransactionBlock:
+    """The root's transaction block, holding ``creator``'s transaction sending themselves 0."""
+    transaction = Transaction(creator.node_id, {creator.node_id: Kismet(0)}, Kismet(0), 0, CREATED)
+    created = SignedTransaction.of(creator.signed(transaction.text()))
+    return TransactionBlock(0, None, ChainWeight(0), 0, (created,), {creator.node_id: NO_BALANCE})
+
+
+def stating(generation: int, reach: int, balances: Mapping[ContentId, Balance]) -> TransactionBlock:
+    """Transaction block ``generation``, of ``reach``, stating ``balances``, and paying each."""
+    payout = Payout.of(
+        {None: Kismet(len(balances))}, {identity: Kismet(1) for identity in balances}, generation
+    )
+    return TransactionBlock(generation, PREVIOUS, ChainWeight(0), reach, (payout,), balances)
 
 
 @fixture(scope="module")
@@ -388,3 +424,182 @@ def test_a_reader_must_wait_and_read_something(
             wait_seconds=wait_seconds,
             max_bytes=max_bytes,
         )
+
+
+@fixture
+def history(storage: StorageConfig, truth: CasStore, alice: NodeIdentity) -> ChainHistory:
+    """Four generations, from Alice's root, each transaction block held and stating balances.
+
+    Block 1 states Carol holding nothing, having won in generation 0, and
+    block 2 has a reach of 0, and block 3 one of 3. Alice's key is in block
+    1, and a hash is witnessed in generation 2.
+    """
+    blocks = [
+        root_of(alice),
+        stating(1, 1, {alice.node_id: Balance(Kismet(2)), CAROL: Balance(Kismet(0), 0)}),
+        stating(2, 0, {alice.node_id: Balance(Kismet(9)), DAVE: Balance(Kismet(7))}),
+        stating(3, 3, {alice.node_id: Balance(Kismet(1))}),
+    ]
+    history = ChainHistory.open(storage.karma_dir)
+
+    for generation, block in enumerate(blocks):
+        history.add(
+            ChainGeneration(
+                generation,
+                ContentId("sha256", f"{generation + 1:02x}" * 32),
+                hold(truth, alice.signed(block.text()).encoded() + b"\x007"),
+                ChainWeight(generation),
+                (TransactionKey(alice.node_id, CREATED),) if generation == 1 else (),
+                (WITNESS,) if generation == 2 else (),
+            )
+        )
+
+    return history
+
+
+@fixture
+def chain(history: ChainHistory, reader: TargetReader) -> HeldChain:
+    return HeldChain(history, reader)
+
+
+def transaction_id(history: ChainHistory, generation: int) -> ContentId:
+    """The id of transaction block ``generation`` of ``history``."""
+    return history.generation(generation).transaction
+
+
+def test_the_chain_reads_each_block_as_its_builder_signed_it(
+    chain: HeldChain, truth: CasStore, alice: NodeIdentity, bob: NodeIdentity
+) -> None:
+    validation = ValidationBlock(1, None, (staked(bob, CAROL, 5),), ())
+    validation_id = hold(truth, alice.signed(validation.text()).encoded() + b"\x007")
+
+    assert chain.validation(validation_id).block == validation
+    assert chain.validation(validation_id).builder == alice.node_id
+    assert chain.stated(1) == {
+        alice.node_id: Balance(Kismet(2)),
+        CAROL: Balance(Kismet(0), 0),
+    }
+
+
+def test_a_block_evicted_is_asked_for_again_and_read_once_stored(
+    chain: HeldChain,
+    reader: TargetReader,
+    truth: CasStore,
+    recorder: Recorder,
+    history: ChainHistory,
+) -> None:
+    evicted = transaction_id(history, 1)
+    data = truth.read(evicted)
+    truth.delete(evicted)
+
+    with raises(MissingContentError) as raised:
+        chain.transaction(evicted)
+
+    assert raised.value.content_ids == (evicted,)
+    assert recorder.asked_for() == [evicted]
+
+    truth.write(evicted, data)
+
+    assert reader.stored(evicted)
+    assert chain.transaction(evicted).block.generation == 1
+
+
+def test_a_balance_is_read_through_a_reach_of_0(
+    chain: HeldChain, history: ChainHistory, truth: CasStore, recorder: Recorder
+) -> None:
+    truth.delete(transaction_id(history, 1))
+
+    balances = chain.balances({CAROL, DAVE}, 2)
+
+    # Carol is stated in block 1, before block 2's reach.
+    assert balances == {CAROL: NO_BALANCE, DAVE: Balance(Kismet(7))}
+    assert recorder.asked_for() == []
+
+
+def test_a_balance_is_read_through_a_reach_of_3(chain: HeldChain, alice: NodeIdentity) -> None:
+    unstated = ContentId("sha256", "e0" * 32)
+
+    assert chain.balances({alice.node_id, CAROL, DAVE, unstated}, 3) == {
+        alice.node_id: Balance(Kismet(1)),
+        CAROL: Balance(Kismet(0), 0),
+        DAVE: Balance(Kismet(7)),
+        unstated: NO_BALANCE,
+    }
+
+
+def test_every_block_lacking_within_a_reach_is_named_at_once_and_asked_for(
+    chain: HeldChain, history: ChainHistory, truth: CasStore, recorder: Recorder
+) -> None:
+    lacking = [transaction_id(history, 2), transaction_id(history, 1)]
+
+    for content_id in lacking:
+        truth.delete(content_id)
+
+    with raises(MissingContentError) as raised:
+        chain.balances({CAROL}, 3)
+
+    assert list(raised.value.content_ids) == lacking
+    assert recorder.asked_for() == lacking
+
+
+def test_the_latest_block_lacking_is_named_alone(
+    chain: HeldChain, history: ChainHistory, truth: CasStore
+) -> None:
+    truth.delete(transaction_id(history, 3))
+    truth.delete(transaction_id(history, 2))
+
+    with raises(MissingContentError) as raised:
+        chain.balances({CAROL}, 3)
+
+    assert raised.value.content_ids == (transaction_id(history, 3),)
+
+
+def test_keys_and_witnesses_are_read_from_the_history(
+    chain: HeldChain, alice: NodeIdentity
+) -> None:
+    key = TransactionKey(alice.node_id, CREATED)
+
+    assert chain.has_key(key, 0, 3)
+    assert not chain.has_key(key, 2, 3)
+    assert chain.witnessed(WITNESS) == 2
+    assert chain.witnessed("cd" * 32) is None
+
+
+def test_the_roots_blocks_read_at_their_targets_are_checked_against_the_chain_held(
+    storage: StorageConfig, reader: TargetReader, truth: CasStore, alice: NodeIdentity
+) -> None:
+    root_id = hold(truth, placed(ROOT.transaction, alice.signed(root_of(alice).text()).encoded()))
+    validation = ValidationBlock(0, None, (staked(alice, root_id, 0),), ())
+    validation_id = hold(truth, placed(ROOT.validation, alice.signed(validation.text()).encoded()))
+    hold_keys(truth, alice)
+    chain: ChainView = HeldChain(ChainHistory.open(storage.karma_dir), reader)
+
+    [held] = reader.read(ROOT.transaction, TransactionBlock)
+    transaction = TransactionBlockCheck.of(
+        held.block_id,
+        held.data,
+        None,
+        chain,
+        held.keys,
+        compressed_bytes=held.compressed_bytes,
+        bounds=NO_WORK,
+    )
+    [held] = reader.read(ROOT.validation, ValidationBlock)
+    validated = ValidationBlockCheck.of(
+        held.block_id,
+        held.data,
+        None,
+        chain,
+        held.keys,
+        transactions={root_id: transaction},
+        compressed_bytes=held.compressed_bytes,
+        bounds=NO_WORK,
+    )
+
+    root_bits = matching_bits(ROOT.transaction.hex, root_id.hash)
+    assert isinstance(transaction, TransactionBlockCheck)
+    assert transaction.score == BlockScore(root_bits, 0, Fraction(0))
+    assert isinstance(validated, ValidationBlockCheck)
+    assert validated.score == ValidationScore(
+        matching_bits(ROOT.validation.hex, validation_id.hash), 0
+    )
