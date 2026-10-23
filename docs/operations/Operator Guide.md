@@ -140,7 +140,8 @@ The settings an operator is most likely to change:
 | `karma.mining_processes` | `1` | How many processes Karma searches for nonces with, and so how many of the machine's cores it may take |
 | `karma.fetch_wait_seconds` | `30.0` | How long Karma waits for a block or a key it asks the network for before going on without it |
 | `karma.look_seconds` | `60.0` | How often Karma looks for the next generation of the chain it follows, or for a root while it follows none (§4.8) |
-| `karma.carry_generations` | `10` | How many generations after it was witnessed a transaction of a chain the node leaves is carried over into the heavier one (§4.8) |
+| `karma.carry_generations` | `10` | How many generations after it was witnessed a transaction of a chain the node leaves is carried over into the heavier one, or one the node puts up waits for its sender to cover it (§4.8) |
+| `karma.block_seconds` | `10.0` | How long Karma searches for the nonce of a block it places, as one it puts up for a transaction alone, before taking the best found (§4.8) |
 | `local.folders` | Your desktop, documents, downloads, music, pictures, and videos folders | The folders offered to trusted applications (§6.3) |
 | `logging.level` | `INFO` | What is logged (§7.2) |
 
@@ -446,6 +447,15 @@ hold it keeps in `karma/carried.json`, to put into the blocks it builds, for
 `karma.carry_generations` after each was witnessed. A chain with a false block
 in it is not followed: the block's builder is distrusted, as above, and one
 stating its weight or generation falsely is shunned too.
+
+Each transaction the node is given to put up, as its own payments, and those
+a person makes through it, will be, it checks against the chain it follows.
+One that is invalid `libranet-karma.log` warns of, and the node passes it
+over. Any other it keeps in `karma/carried.json`, and puts up at each head it
+is valid at, until the chain holds it: a block of its own, signed by the
+node, whose nonce it searches for `karma.block_seconds` first, which holds
+up its other Karma work. One its sender cannot pay for yet waits there until
+the sender can, or until `karma.carry_generations` after it was witnessed.
 
 What the chain says, any client may read (HTTP API §10.10): the head the
 node follows, and the Karma the chain states the node holds, at

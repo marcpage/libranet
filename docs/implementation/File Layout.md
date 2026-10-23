@@ -142,7 +142,7 @@ something is written to it.
     │   └── {g}.json                     what a check reads of generation g
     ├── head.json                        the head followed
     ├── balances.json                    every balance stated at the head
-    └── carried.json                     transactions of a chain left
+    └── carried.json                     transactions carried, and put up
 ```
 
 | Path | Written by | Read by |
@@ -548,24 +548,31 @@ until then (`HeadBalances` in `src/libranet/karma/balances.py`, Phase 6 Step
 
 `carried.json` is each transaction of a chain the module left for a heavier
 one that the heavier one does not hold, which it carries over into the
-blocks it builds (KarmaLedger §3.5.3, §4.4), each with the generation it was
-witnessed in (§4.5), or `null` if it has not been:
+blocks it builds (KarmaLedger §3.5.3, §4.4), and each transaction it was
+given to put up itself, as a block of its own (§5.6), that is valid or
+pending (Phase 6 Step 131). Each has the generation it was witnessed in
+(§4.5), or `null` if it has not been, and whether the module puts it up
+itself (`put_up`), as it does each it was given, rather than only building
+it into blocks:
 
 ```json
 {"transactions": [{"transaction": {"algorithm": "sha256", "contents": "…",
-  "hash": "…", "signature": "…", "signer": "sha256/0a1b…"}, "witnessed": 1}]}
+  "hash": "…", "signature": "…", "signer": "sha256/0a1b…"}, "witnessed": 1,
+  "put_up": false}]}
 ```
 
 Each `transaction` is a signed transaction as a transaction block holds it
-(KarmaLedger §5.1).
+(KarmaLedger §5.1). An entry with no `put_up` is not put up.
 
 One is carried into the blocks of the generations up to
 `karma.carry_generations` after the one it was witnessed in, and one not
-witnessed until it is; one whose key the chain holds is carried no more. The
-module writes the file whole each time its head changes, leaving those out,
-and once it has carried something, and the file is not there before then
-(`CarriedTransactions` in `src/libranet/karma/carried.py`, Phase 6 Step
-129). A file it cannot read it logs, and writes again without what it held.
+witnessed until it is; one whose key the chain holds is carried no more. One
+the module puts up itself it tries at each head, and puts up there if it is
+valid. The module writes the file whole each time its head changes, leaving
+those out, and once it has carried something, and the file is not there
+before then (`CarriedTransactions` in `src/libranet/karma/carried.py`, Phase
+6 Steps 129 and 131). A file it cannot read it logs, and writes again without
+what it held.
 
 A generation's file is written before the genealogy, and the head last, each
 replaced whole (§8), so that a write cut short leaves the genealogy as it was.

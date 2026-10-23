@@ -378,6 +378,12 @@ karma:
   # The sender may put up one carried no more again.
   carry_generations: 10
 
+  # How long, in seconds, the Karma module searches for the nonce of a block
+  # it places, as one it puts up for a transaction alone, before it takes the
+  # best found, once that shares storage.search_min_bits with its target. The
+  # search holds up the module's other work.
+  block_seconds: 10.0
+
 local:
   # The folders on this machine that a browser on it may list, and import
   # files from, through /data/directory (HTTP API §12.2). Nothing outside

@@ -221,12 +221,14 @@ class Chain:
         *,
         bits: int | None = None,
         generation: int | None = None,
+        witnessed: tuple[str, ...] = (),
     ) -> Chain:
         """This chain and the next generation: ``block``, or the next as it truly is.
 
         ``builder`` builds the transaction block, and ``staker`` the
         validation block of ``generation``, the block's unless given, staking
-        5 on it, each drop sharing ``bits`` with its target.
+        5 on it, and listing the hashes ``witnessed``, each drop sharing
+        ``bits`` with its target.
         """
         built = self.block_after() if block is None else block
         transaction = signed_at(self.targets.transaction, builder, built, bits)
@@ -234,7 +236,7 @@ class Chain:
             built.generation if generation is None else generation,
             None,
             (staked(staker, id_of(transaction), 5),),
-            (),
+            witnessed,
         )
         drops = Generation(
             transaction, signed_at(self.targets.validation, staker, validation, bits)

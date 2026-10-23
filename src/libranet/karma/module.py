@@ -1,4 +1,4 @@
-"""The Karma module process (Phase 6 Steps 123 to 130).
+"""The Karma module process (Phase 6 Steps 123 to 131).
 
 Every step that has the node act on the Karma ledger (KarmaLedger.md) runs
 here: reading what is placed at a target, following the chain, and
@@ -69,10 +69,22 @@ that what it builds leaves out the identities the node distrusts (§3.8,
 Phase 6 Step 127)::
 
     node.trust  {"trusted": [...], "untrusted": [...], "only_trusted": false}
+
+It puts up each signed transaction it is given, as the web server will give
+one a person signs through the node (Phase 6 Step 137), as a block of its
+own at the head's transaction target, signed by the node, searching for its
+nonce for ``karma.block_seconds``, and stores and announces it as it does a
+root (:class:`~libranet.karma.putting.TransactionsPutUp`, Phase 6 Step
+131). One that is invalid it logs, and passes over; any other it carries,
+in ``carried.json``, and tries at each head as it looks, putting it up where
+it is valid, until the chain holds it::
+
+    karma.transaction  {"transaction": {"contents": "…", …}}
 """
 
 from __future__ import annotations
 from datetime import UTC, datetime
+from functools import partial
 from logging import Logger
 from time import time
 from typing import Callable, ClassVar
@@ -92,8 +104,10 @@ from libranet.karma.carried import CarriedTransactions
 from libranet.karma.changing import HeadChanges
 from libranet.karma.following import ChainFollower
 from libranet.karma.history import ChainHistory
+from libranet.karma.putting import TransactionsPutUp
 from libranet.karma.reading import HeldChain, TargetReader
 from libranet.karma.root import ChainRoot
+from libranet.karma.transactions import SignedTransaction
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
@@ -118,6 +132,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             EventType.KARMA_ROOT_REQUESTED,
             EventType.NODE_TRUST,
             EventType.KARMA_HEAD_TOLD,
+            EventType.KARMA_TRANSACTION,
         }
     )
 
@@ -141,6 +156,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._follower: ChainFollower | None = None
         self._changes: HeadChanges | None = None
         self._balances: HeadBalances | None = None
+        self._putting: TransactionsPutUp | None = None
         # Whether to look at the head's targets as the module next idles,
         # and when to look, whether it idles or not.
         self._look_again = False
@@ -160,6 +176,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
                 EventType.KARMA_ROOT_REQUESTED: self._on_root_requested,
                 EventType.NODE_TRUST: self._on_node_trust,
                 EventType.KARMA_HEAD_TOLD: self._on_head_told,
+                EventType.KARMA_TRANSACTION: self._on_transaction,
             }
         )
 
@@ -200,15 +217,23 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         head, as it first idles.
         """
         karma_dir = self._config.storage.karma_dir
+        carried = CarriedTransactions(karma_dir, self._config.karma.carry_generations)
         self._history = ChainHistory.open(karma_dir)
         self._follower = ChainFollower(
             self._history, self._reader, self.publish, bounds=self._bounds
         )
         self._changes = HeadChanges(
+            self._history, self._reader, self.publish, carried, bounds=self._bounds
+        )
+        self._putting = TransactionsPutUp(
             self._history,
             self._reader,
-            self.publish,
-            CarriedTransactions(karma_dir, self._config.karma.carry_generations),
+            carried,
+            partial(NodeIdentity.load, self._config),
+            self._stored,
+            block_seconds=self._config.karma.block_seconds,
+            drop_bits=self._config.storage.search_min_bits,
+            searchers=self._searchers,
             bounds=self._bounds,
         )
         self._balances = HeadBalances(
@@ -291,6 +316,29 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self.logger.debug("%s follows the Karma head %s", node_id, head)
         self._look_again = True
 
+    def _on_transaction(self, message: Message) -> None:
+        """Take the signed transaction the web server gives, to put up as a block of its own.
+
+        One that is no signed transaction is logged, and passed over.
+
+        Raises:
+            RuntimeError: the module has not started.
+            KeyError: the message lacks the transaction.
+        """
+        if self._putting is None:
+            raise RuntimeError("The Karma module is not running")
+
+        value = message["transaction"]
+
+        try:
+            signed = SignedTransaction.from_value(value)
+
+        except (BundleError, ValueError) as error:
+            self.logger.warning("Passing over a Karma transaction that is none: %s", error)
+            return
+
+        self._putting.take(signed)
+
     def _on_node_trust(self, message: Message) -> None:
         """Keep whom the node trusts and distrusts, in place of what was kept before.
 
@@ -358,16 +406,19 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
 
         It then weighs the heads it does not follow, and once it follows a
         heavier chain, follows that on. The head is then said, and the
-        balances stated there written, if it changed. A history that cannot
-        be written is logged, and written at the next look.
+        balances stated there written, if it changed, and the transactions
+        carried to put up are put up there. A history that cannot be written
+        is logged, and written at the next look.
         """
         now = self._clock()
         follower = self._follower
         changes = self._changes
+        putting = self._putting
 
         if (
             follower is None
             or changes is None
+            or putting is None
             or (now < self._next_look_at and not (idle and self._look_again))
         ):
             return
@@ -386,6 +437,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
 
         self._say_head()
         self._write_balances()
+        putting.put_up()
 
     def _say_head(self) -> None:
         """Say the head followed, for the connection manager to tell the peers, if it is new."""

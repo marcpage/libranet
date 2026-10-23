@@ -1,12 +1,16 @@
-"""The transactions the Karma module carries over (KarmaLedger §3.5.3, §4.4, Phase 6 Step 129).
+"""The transactions the Karma module carries (KarmaLedger §3.5.3, §4.4, Phase 6 Steps 129, 131).
 
 A node that leaves a chain for a heavier one carries over each transaction
 of the chain it left that the heavier one does not hold, to put into the
-blocks it builds (Phase 6 Step 134). It keeps them in ``carried.json`` in
+blocks it builds (Phase 6 Step 134). It carries too each transaction it is
+given to put up itself, as a block of its own (Phase 6 Step 131): one
+pending, until it is valid, and one put up, to put up again at each head
+until the chain holds it. It keeps them in ``carried.json`` in
 ``storage.karma_dir``, each with the generation it was witnessed in (§4.5),
-or ``null`` if it has not been::
+or ``null`` if it has not been, and whether the node puts it up itself::
 
-    {"transactions": [{"transaction": {"contents": "…", …}, "witnessed": 41}]}
+    {"transactions": [{"transaction": {"contents": "…", …}, "witnessed": 41,
+                       "put_up": false}]}
 
 One is carried into the blocks of the generations up to
 ``karma.carry_generations`` after the one it was witnessed in, and one not
@@ -39,11 +43,15 @@ CARRIED_FILE: Final = "carried.json"
 _TRANSACTIONS: Final = "transactions"
 _TRANSACTION: Final = "transaction"
 _WITNESSED: Final = "witnessed"
+_PUT_UP: Final = "put_up"
 
 
 @dataclass(frozen=True)
 class CarriedTransaction:
-    """``signed``, carried over, witnessed in generation ``witnessed``, or ``None`` (§4.5).
+    """``signed``, carried, witnessed in generation ``witnessed``, or ``None`` (§4.5).
+
+    It is ``put_up`` when the node puts it up itself, as a block of its own
+    (Phase 6 Step 131), and otherwise only put into the blocks it builds.
 
     Raises:
         ValueError: ``witnessed`` is negative.
@@ -51,6 +59,7 @@ class CarriedTransaction:
 
     signed: SignedTransaction
     witnessed: int | None = None
+    put_up: bool = False
 
     def __post_init__(self) -> None:
         if self.witnessed is not None and self.witnessed < 0:
@@ -65,22 +74,30 @@ class CarriedTransaction:
                 :meth:`~libranet.karma.transactions.SignedTransaction.from_value`
                 says.
             ValueError: ``value`` is not an object, its ``transaction`` is no
-                transaction, or its ``witnessed`` is neither a generation nor
-                ``null``.
+                transaction, its ``witnessed`` is neither a generation nor
+                ``null``, or its ``put_up`` is not ``true`` or ``false``.
         """
         if not isinstance(value, dict):
             raise ValueError(f"A transaction carried must be an object, got {type(value).__name__}")
 
         witnessed = value.get(_WITNESSED)
+        put_up = value.get(_PUT_UP, False)
 
         if witnessed is not None and not is_integer(witnessed):
             raise ValueError(f'"{_WITNESSED}" must be a generation or null, got {witnessed!r}')
 
-        return cls(SignedTransaction.from_value(value.get(_TRANSACTION)), witnessed)
+        if not isinstance(put_up, bool):
+            raise ValueError(f'"{_PUT_UP}" must be true or false, got {put_up!r}')
+
+        return cls(SignedTransaction.from_value(value.get(_TRANSACTION)), witnessed, put_up)
 
     def value(self) -> dict[str, Any]:
         """This transaction carried, as ``carried.json`` holds it."""
-        return {_TRANSACTION: self.signed.value(), _WITNESSED: self.witnessed}
+        return {
+            _TRANSACTION: self.signed.value(),
+            _WITNESSED: self.witnessed,
+            _PUT_UP: self.put_up,
+        }
 
     def on(self, history: ChainHistory, carry_generations: int) -> CarriedTransaction | None:
         """This transaction as it is carried at the head of ``history``, or ``None`` if it is not.
@@ -145,6 +162,25 @@ class CarriedTransactions:
             raise ValueError(f'"{_TRANSACTIONS}" must be a list, got {entries!r}')
 
         return [CarriedTransaction.from_value(entry) for entry in entries]
+
+    def to_put_up(self, history: ChainHistory) -> list[CarriedTransaction]:
+        """Those carried that the node puts up itself, each as carried at the head of ``history``.
+
+        One carried no more there is left out, and the file is not written:
+        it is, as the head next changes.
+
+        Raises:
+            OSError: the file could not be read, other than for there being
+                none.
+            BundleError: a transaction in it is not a signed transaction.
+            ValueError: it is not JSON, or not what it must be, as the error
+                names.
+        """
+        return [
+            now
+            for each in self.read()
+            if each.put_up and (now := each.on(history, self._carry_generations)) is not None
+        ]
 
     def carry(
         self, collected: Iterable[CarriedTransaction], history: ChainHistory

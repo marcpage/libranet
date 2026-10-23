@@ -231,7 +231,7 @@ through the dispatcher.
 | 7 | Unbundler | `unbundler` | `UnbundlerModule` | Resolves application files' entries from their bundles on demand, and deletes unused ones |
 | 8 | Eviction | `eviction` | `EvictionModule` | Keeps storage within its limits |
 | 9 | Backup | `backup` | `BackupModule` | Backs directories up as bundles; restores, builds, and exports bundles |
-| 10 | Karma | `karma` | `KarmaModule` | Follows the Karma ledger; for now, follows the chain, keeping its history, and makes a root when asked |
+| 10 | Karma | `karma` | `KarmaModule` | Follows the Karma ledger; for now, follows the chain, keeping its history, makes a root when asked, and puts up the transactions it is given |
 
 The supervisor launches them in this order, taken from `SPAWNED_MODULES`,
 but waits only for the dispatcher to be ready. No module waits for another
@@ -455,7 +455,15 @@ root. Each time its head changes, and as it first looks, it writes every
 balance the chain states at the head to `balances.json`, for the web server's
 `/data/karma` (`HeadBalances`, `karma/balances.py`, Phase 6 Step 128); a
 transaction block those are read from that it lacks it asks for, and writes
-them once it comes.
+them once it comes. Each signed transaction it is given to put up
+(`karma.transaction`, which the web server will publish from Phase 6 Step
+137) it checks against the chain (`TransactionsPutUp`, `karma/putting.py`,
+Phase 6 Step 131): one that is invalid it logs and passes over, and any other
+it carries in `carried.json`, marked as one it puts up itself. As it looks,
+it puts each it carries so up as a block of its own at the head's
+transaction target, where it is valid, and not put up there already: the
+transaction and the payout, signed by the node, its nonce searched for for
+`karma.block_seconds`, stored and announced as a root is.
 
 ### 3.3 What Each Module Owns
 
@@ -709,7 +717,7 @@ What each module does in them:
 | Unbundler | — | — | — |
 | Eviction | Read the node id; count storage; ask which peers are connected; say whether storage is full; evict if over | Say whether storage is full, if that changed; time out hand-offs and questions; resume after a pause | — |
 | Backup | Read the node id; ask whether storage is full; read the jobs; report state | Carry on the next restore, build, export, import, or backup due | — |
-| Karma | Read the history; write its head | Give up on content waited for too long; follow the chain on, if it is time to look, or what it waited for came, or a peer told of a head it does not follow, and say the head and write the balances there if it changed | Stop the processes searching for nonces |
+| Karma | Read the history; write its head | Give up on content waited for too long; follow the chain on, if it is time to look, or what it waited for came, or a peer told of a head it does not follow, and say the head and write the balances there if it changed; put up the transactions carried that are valid at the head | Stop the processes searching for nonces |
 
 ### 5.3 Writing a Module
 
@@ -1002,17 +1010,19 @@ to end its loop.
 | `karma.false_block` | S | | | | | | | | P |
 | `karma.head` | | S | | | | | | | P |
 | `karma.head_told` | P | P | | | | | | | S |
+| `karma.transaction` | | | | | | | | | S |
 | *Lifecycle* | | | | | | | | | |
 | `shutdown` | S | S | S | S | S | S | S | S | S |
-| **Publishes / subscribes** | 25 / 6 | 17 / 10 | 2 / 1 | 5 / 23 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 | 6 / 5 |
+| **Publishes / subscribes** | 25 / 6 | 17 / 10 | 2 / 1 | 5 / 23 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 | 6 / 6 |
 
 The `shutdown` row and its subscriptions are implicit: every module
 receives it without listing it, and nothing publishes it (§6.4). The totals
 leave it out. The Karma module publishes searches and misses as it reads a
 target (Phase 6 Step 124), `data.stored` only for a root it makes (Phase 6
-Step 125), and `data.shunned` and `karma.false_block` for blocks it finds
-unsigned or false as it follows the chain (Phase 6 Step 126), or weighs a
-heavier one (Phase 6 Step 129). The web server
+Step 125) and a block it puts up for a transaction (Phase 6 Step 131), and
+`data.shunned` and `karma.false_block` for blocks it finds unsigned or false
+as it follows the chain (Phase 6 Step 126), or weighs a heavier one (Phase 6
+Step 129). The web server
 takes `karma.false_block` to distrust a false block's builder, and the Karma
 module `node.trust` to leave out whom the node distrusts (Phase 6 Step 127).
 The Karma module says its head, `karma.head`, for the connection manager to

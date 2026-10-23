@@ -120,6 +120,7 @@ class EventType(StrEnum):
     KARMA_FALSE_BLOCK = "karma.false_block"  # karma (Step 126) → webserver (Step 127)
     KARMA_HEAD = "karma.head"  # karma → connections (Step 130)
     KARMA_HEAD_TOLD = "karma.head_told"  # webserver, connections → karma (Step 130)
+    KARMA_TRANSACTION = "karma.transaction"  # webserver (Step 137) → karma (Step 131)
 
 
 class AddressSource(StrEnum):

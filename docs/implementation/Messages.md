@@ -60,9 +60,9 @@ other modules sent.
 | Backup | `backup` | Backup |
 | Karma | `karma` | Karma |
 
-The Karma module (Phase 6 Steps 123 to 125) sends a search and a miss only
-as it reads a target, which nothing it does yet calls for, and `data.stored`
-only for a root it makes.
+The Karma module (Phase 6 Steps 123 to 131) sends a search and a miss only
+as it reads a target, or lacks a block or a key, and `data.stored` only for
+a root it makes, and a block it puts up for a transaction.
 
 ## 3. Summary
 
@@ -124,6 +124,7 @@ only for a root it makes.
 | `karma.false_block` | Karma | Web server | A Karma block states something false |
 | `karma.head` | Karma | Connections | The Karma head followed changed |
 | `karma.head_told` | Web server, Connections | Karma | A peer follows this Karma head |
+| `karma.transaction` | None yet | Karma | Put this signed transaction up |
 
 ## 4. The Messages
 
@@ -223,7 +224,9 @@ it and what each does with it.
 - **Sent by:**
   - Validator, for each upload it promotes.
   - Backup, for each object a backup, build, or import stores.
-  - Karma, for each block of a root it makes (`karma/module.py`).
+  - Karma, for each block of a root it makes (`karma/module.py`), and each
+    block it puts up for a transaction (`karma/putting.py`, Phase 6 Step
+    131).
   - Web server, for a peer's own public key uploaded under its node id,
     which goes straight to the source of truth (`data_write_handler.py`).
   - Connections, for a peer's public key fetched during the handshake
@@ -683,6 +686,20 @@ or reported, nor is the key a kept archive's bundle may carry.
   is the one it follows (`karma/changing.py`, Phase 6 Steps 129 and 130).
 - **Purpose:** learn of chains that may be heavier (KarmaLedger §3.5).
 
+#### `karma.transaction`
+
+- **Payload:** `transaction`, a signed transaction as a transaction block
+  holds it (KarmaLedger §5.1).
+- **Sent by:** none yet. The web server will, for each payment a person
+  signed in makes through the node (Phase 6 Step 137).
+- **Received by:** Karma, which logs and passes over one that is no signed
+  transaction, or is invalid, or whose sender's key it does not hold, which
+  it asks for. Any other it carries, in `karma/carried.json`, and puts up at
+  each head it is valid at, until the chain holds it: a transaction block of
+  its own, signed by the node, stored and announced with `data.stored`
+  (`karma/putting.py`, Phase 6 Step 131).
+- **Purpose:** have a transaction taken into the chain (KarmaLedger §5.6).
+
 ## 5. Messages per Module
 
 | Module | Sends | Receives |
@@ -695,6 +712,6 @@ or reported, nor is the key a kept archive's bundle may carry.
 | Unbundler | `data.not_found`, `app.path_resolved`, `resolved.reclaimed` | `app.path_not_found`, `data.stored`, `resolved.reclaim` |
 | Eviction | `eviction.notice`, `data.deleted`, `eviction.candidates_requested`, `resolved.reclaim_requested`, `peers.connected_requested`, `storage.full` | `data.stored`, `eviction.acknowledged`, `eviction.candidates`, `resolved.reclaimed`, `peers.connected`, `storage.full_requested`, `data.shunned` |
 | Backup | `data.not_found`, `data.stored`, `backup.state`, `storage.full_requested` | `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.stored`, `storage.full` |
-| Karma | `data.search_requested`, `data.not_found`, `data.stored`, `data.shunned`, `karma.false_block`, `karma.head` | `data.search_answered`, `data.stored`, `karma.root_requested`, `node.trust`, `karma.head_told` |
+| Karma | `data.search_requested`, `data.not_found`, `data.stored`, `data.shunned`, `karma.false_block`, `karma.head` | `data.search_answered`, `data.stored`, `karma.root_requested`, `node.trust`, `karma.head_told`, `karma.transaction` |
 
 Every module also receives `shutdown`.
