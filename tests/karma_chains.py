@@ -10,7 +10,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from itertools import count
-from typing import Any, Mapping
+from typing import Any, Collection, Mapping
 
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
@@ -62,6 +62,21 @@ class Recorder:
     def asked_for(self) -> list[ContentId]:
         """The content asked for, in the order it was."""
         return [ContentId.from_fields(payload) for payload in self.said(EventType.DATA_NOT_FOUND)]
+
+    def shunned(self, unplaced: Collection[ContentId]) -> list[ContentId]:
+        """The content said to be shunned, in the order it was, but ``unplaced``.
+
+        Those are the ids of what a test holds that is placed at no target,
+        as a public key is. The follower reads one the node holds as an
+        unsigned block, and shuns it, when its id shares the few bits these
+        tests search for with a target's hash, as one now and then does by
+        chance.
+        """
+        return [
+            content_id
+            for content_id in map(ContentId.from_fields, self.said(EventType.DATA_SHUNNED))
+            if content_id not in unplaced
+        ]
 
 
 def placed(target: DropTarget, content: bytes, bits: int | None = None) -> bytes:

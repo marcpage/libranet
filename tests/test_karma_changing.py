@@ -39,20 +39,6 @@ from tests.karma_chains import (
 PEER = ContentId("sha256", "9e" * 32)
 
 
-def shunned(recorder: Recorder, keys: set[ContentId]) -> list[ContentId]:
-    """What ``recorder`` says was shunned, but ``keys``, the ids of public keys.
-
-    The follower reads a key the node holds as an unsigned block, and shuns
-    it, when the key's id shares the few bits these tests search for with a
-    target's hash, as one now and then does by chance.
-    """
-    return [
-        content_id
-        for content_id in map(ContentId.from_fields, recorder.said(EventType.DATA_SHUNNED))
-        if content_id not in keys
-    ]
-
-
 @fixture(scope="module")
 def alice() -> NodeIdentity:
     return new_identity()
@@ -203,7 +189,7 @@ def test_a_false_weight_is_caught_where_it_is_first_stated_nothing_before_it_ask
     assert recorder.said(EventType.KARMA_FALSE_BLOCK) == [
         {"block": str(false), "builder": str(carol.node_id), "staker": None, "statement": statement}
     ]
-    assert shunned(recorder, keys) == [false]
+    assert recorder.shunned(keys) == [false]
     assert recorder.asked_for() == []
     assert len(history) == 1
     assert f"Not following the Karma chain through {lying.head}: {false} is not taken" in (
@@ -366,7 +352,7 @@ def test_a_block_that_does_not_check_says_its_builder_false_and_the_head_is_kept
         str(id_of(false.generations[3].transaction)),
         str(carol.node_id),
     )
-    assert shunned(recorder, keys) == []
+    assert recorder.shunned(keys) == []
     assert history.head is not None and history.head.validation == followed.head
 
 
@@ -474,7 +460,7 @@ def test_a_block_whose_signature_fails_is_shunned_and_no_one_said_false(
     changes.told(PEER, id_of(validation))
 
     assert not changes.look()
-    assert shunned(recorder, keys) == [id_of(transaction)]
+    assert recorder.shunned(keys) == [id_of(transaction)]
     assert recorder.said(EventType.KARMA_FALSE_BLOCK) == []
 
 
@@ -504,7 +490,7 @@ def test_a_false_generation_is_caught_as_the_walk_reads_it(
         f'A validation block\'s "generation" must be 3, one more than that of {two.head}, '
         f"got 5",
     )
-    assert shunned(recorder, keys) == [lying.head]
+    assert recorder.shunned(keys) == [lying.head]
     assert len(history) == 1
 
 
@@ -530,7 +516,7 @@ def test_a_head_holding_no_stake_is_said_false_and_not_shunned(
         str(carol.node_id),
         "A validation block must hold a stake",
     )
-    assert shunned(recorder, keys) == []
+    assert recorder.shunned(keys) == []
 
 
 def test_a_head_that_is_no_block_is_passed_over_and_logged(
@@ -556,7 +542,7 @@ def test_a_head_that_is_no_block_is_passed_over_and_logged(
         in caplog.text
     )
     assert recorder.said(EventType.KARMA_FALSE_BLOCK) == []
-    assert shunned(recorder, keys) == []
+    assert recorder.shunned(keys) == []
     assert len(history) == 1
 
 
