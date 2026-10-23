@@ -2,11 +2,15 @@
 
 A transaction block that is unsigned, or states something false by itself,
 is found so as it is read (:meth:`~libranet.karma.blocks.BlockDrop.decoded`).
-What it states against its target and the chain its ``previous`` names is
-checked here: its ``generation`` and ``previous``, against the validation
-block its target is named for; and its ``weight``, payout, balances, and
-``reach``, and each transaction's key, against the chain before it. A block
-stating any of these falsely distrusts its builder (§3.8).
+One whose ``previous`` names another validation block than the one its
+target is named for, as one that is a validation block, is of another
+target, where anyone may have placed it, and is passed over
+(:class:`~libranet.karma.blocks.MisplacedBlockError`). What any other states
+against its target and the chain its ``previous`` names is checked here: its
+``generation``, against the validation block its target is named for; and
+its ``weight``, payout, balances, and ``reach``, and each transaction's key,
+against the chain before it. A block stating any of these falsely distrusts
+its builder (§3.8).
 
 A block stating nothing false may still be incorrect, and score zero
 (§5.5): one not full, one breaking the half-free rule, or one including a
@@ -39,6 +43,7 @@ from libranet.karma.blocks import (
     BlockBounds,
     BlockDrop,
     BlockFinding,
+    MisplacedBlockError,
     TransactionBlock,
     ValidationBlock,
 )
@@ -88,20 +93,14 @@ class _ChainBefore:
     def false_basis(self, block: TransactionBlock) -> str:
         """What ``block``, read at the target named for it, states falsely of it, or ``""``.
 
-        ``block``'s ``generation`` must be one more than its validation
-        block's, its ``previous`` must name that block, and its ``weight``
-        must be the chain's through it (§3.8, §5.1).
+        ``block``, whose ``previous`` names its validation block, must be one
+        generation after it, and its ``weight`` must be the chain's through
+        it (§3.8, §5.1).
         """
         if block.generation != self.generation:
             return (
                 f'A transaction block\'s "generation" must be {self.generation}, one more than '
                 f"that of {self.validation_id}, its target's, got {block.generation}"
-            )
-
-        if block.previous != self.validation_id:
-            return (
-                f"A transaction block's \"previous\" must be {self.validation_id}, its target's, "
-                f"got {block.previous}"
             )
 
         weight = self.validated.weight_through(self.validated_id, self.validation_id)
@@ -365,6 +364,9 @@ class TransactionBlockCheck:
             correct and scored, or incorrect.
 
         Raises:
+            MisplacedBlockError: it is a validation block, or built on
+                another validation block than ``named_for``, and so of
+                another target, where it is passed over.
             MissingContentError: names the keys ``keys`` lacks, or the blocks
                 ``chain`` lacks, which the check waits for.
             UnsupportedBundleError: it, or what it holds, is signed in a way
@@ -376,6 +378,12 @@ class TransactionBlockCheck:
 
         if isinstance(found, BlockFinding):
             return found
+
+        if found.block.previous != named_for:
+            raise MisplacedBlockError(
+                f"It is built on {found.block.previous}, where a block at its target is built "
+                f"on {named_for}"
+            )
 
         target = GenerationTargets.built_on(named_for).transaction
         bits = matching_bits(target.hex, block_id.hash)

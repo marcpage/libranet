@@ -18,6 +18,7 @@ from libranet.karma.blocks import (
     BlockBounds,
     BlockDrop,
     BlockFinding,
+    MisplacedBlockError,
     TransactionBlock,
     ValidationBlock,
 )
@@ -398,7 +399,6 @@ def test_what_a_block_states_falsely_by_itself_is_found_naming_its_builder(
 @mark.parametrize(
     "changed, statement",
     [
-        (lambda block: replace(block, previous=NOWHERE), '"previous" must be'),
         (lambda block: replace(block, weight=ChainWeight(119)), '"weight" must be 120, got 119'),
         (lambda block: replace(block, reach=2), '"reach" must be 1, got 2'),
     ],
@@ -645,7 +645,6 @@ def test_the_roots_block_is_correct_by_its_shape_though_not_full(
 @mark.parametrize(
     "changed",
     [
-        lambda root: replace(root, previous=NOWHERE),
         lambda root: replace(root, weight=ChainWeight(1)),
         lambda root: replace(root, reach=1),
         lambda root: replace(
@@ -677,14 +676,27 @@ def test_a_root_built_by_another_than_its_creator_is_false(
     assert "the root's target must be generation 0" in found.statement
 
 
-def test_a_later_block_at_the_roots_target_is_false(
-    alice: NodeIdentity, chain: ChainInMemory, keys: dict[ContentId, bytes], block: TransactionBlock
+@mark.parametrize("named_for", [FIRST_VALIDATION_ID, None])
+def test_a_block_built_on_another_than_its_targets_is_of_another_target(
+    alice: NodeIdentity,
+    chain: ChainInMemory,
+    keys: dict[ContentId, bytes],
+    block: TransactionBlock,
+    named_for: ContentId | None,
 ) -> None:
-    found = checked(block, alice, chain, keys, named_for=None)
+    # Placed at transaction block 2's target, or the root's, as anyone may
+    # place a copy, since a drop's nonce is not signed.
+    elsewhere = replace(block, previous=NOWHERE)
 
-    assert isinstance(found, BlockFinding)
-    assert found.builder == alice.node_id
-    assert "the root's target must be generation 0" in found.statement
+    with raises(MisplacedBlockError, match=f"It is built on {NOWHERE}, where a block"):
+        checked(elsewhere, alice, chain, keys, named_for=named_for)
+
+
+def test_the_root_at_a_later_target_is_of_another_target(
+    alice: NodeIdentity, chain: ChainInMemory, keys: dict[ContentId, bytes], root: TransactionBlock
+) -> None:
+    with raises(MisplacedBlockError, match="It is built on None"):
+        checked(root, alice, chain, keys)
 
 
 def test_a_transaction_covered_and_of_a_generation_reached_is_valid(

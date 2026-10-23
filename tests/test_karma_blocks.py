@@ -21,6 +21,7 @@ from libranet.karma.blocks import (
     BlockBounds,
     BlockDrop,
     BlockFinding,
+    MisplacedBlockError,
     TransactionBlock,
     ValidationBlock,
 )
@@ -648,10 +649,24 @@ def test_a_drops_content_is_its_signed_bundles_json(
     assert BlockDrop(bundle, validation).content() == bundle.encoded()
 
 
-def test_a_block_of_another_kind_is_false(
+def test_a_block_of_the_other_kind_is_of_another_target_and_needs_no_key(
+    builder: NodeIdentity, block: TransactionBlock, validation: ValidationBlock
+) -> None:
+    validating = signed_drop(builder, validation.value())
+    transacting = signed_drop(builder, block.value())
+
+    # Placed where the other kind is read, as anyone may place a copy.
+    with raises(MisplacedBlockError, match="It is a ValidationBlock, not a TransactionBlock"):
+        BlockDrop.decoded(validating, TransactionBlock, {})
+
+    with raises(MisplacedBlockError, match="It is a TransactionBlock, not a ValidationBlock"):
+        BlockDrop.decoded(transacting, ValidationBlock, {})
+
+
+def test_a_block_of_neither_kind_is_false(
     builder: NodeIdentity, validation: ValidationBlock, keys: dict[ContentId, bytes]
 ) -> None:
-    data = signed_drop(builder, validation.value())
+    data = signed_drop(builder, {**validation.value(), "stakes": "none"})
 
     found = BlockDrop.decoded(data, TransactionBlock, keys)
 

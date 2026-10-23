@@ -244,12 +244,12 @@ itself, and the chain its `previous` names, prove wrong:
   `staker` is not its signer; or its payout is signed, missing, or more
   than one.
 - **Against its target:** its `generation` is not one more than that of the
-  validation block its target is named for; its `previous` does not name
-  that validation block; a validation block has no stake, its stakes name
-  more than one transaction block or one at another target, or its
-  `runner_up` names itself, a block at another target, or one validating
-  the same transaction block; or a transaction block at the root's target
-  does not have the root's shape (§7.2).
+  validation block its target is named for; a validation block has no stake,
+  its stakes name more than one transaction block, or one built on that
+  validation block that is not at the transaction target, or its `runner_up`
+  names itself, a block at another target, or one validating the same
+  transaction block; or a transaction block at the root's target does not
+  have the root's shape (§7.2).
 - **Against the chain:** its `weight`, payout, or `reach` is wrong, or a
   stated balance's `kismet` or `last_won` is wrong (§5.3), or a sender or
   recipient is left unstated; a transaction overspends its sender, or its
@@ -259,6 +259,11 @@ itself, and the chain its `previous` names, prove wrong:
   stakes, or the runner-up's stakes the block would take from them, exceed
   what covers them (§6.3); or a validation block names a transaction block
   that is itself incorrect.
+
+A block is held to what it states against a target only where its own
+contents place it: a transaction block at the targets named for the
+validation block its `previous` names, and a validation block at those named
+for the one the transaction block its stakes name is built on.
 
 A node also distrusts the staker of a stake that, alone, exceeds what
 covers it at the transaction block it names (§6.3), since that never
@@ -294,6 +299,13 @@ each one:
   but states nothing untrue;
 - a validation block at `karma validation:0` that is not the root's, which
   a reader passes over (§7.3), since anyone may place a root (§7.5);
+- a block read at a target its own contents do not place it at: one of the
+  other kind, a transaction block whose `previous` names another validation
+  block than the one the target is named for, or a validation block whose
+  stakes name a transaction block built on another. A drop's nonce lies
+  outside the signature (§2), so anyone may place a copy of a signed block
+  at any target, and a drop may share a target's bits by chance. A reader
+  passes it over, and judges it only at its own target;
 - a block on a chain the node has not fetched and checked, which it judges
   only once it has.
 
@@ -912,8 +924,10 @@ established one only by outweighing the whole chain built on it.
   Network Specification §4.5). The distrust also counts, at the next
   step's weight, in the scores of every node that trusts this one. Only
   what is provably false counts (§3.8), so that an honest builder, or one
-  on another part of the network, is never distrusted for it. A node's
-  operator can clear an entry from `/config`.
+  on another part of the network, is never distrusted for it. A copy of a
+  signed block that anyone places at another target is passed over there,
+  so that no one can have a builder distrusted for where a block is found.
+  A node's operator can clear an entry from `/config`.
 - **A head is a pointer, not proof.** A peer may tell of a head that does
   not exist, or one whose chain does not weigh what its `weight` claims. A
   node reads the claimed weight from one block before it fetches more. As

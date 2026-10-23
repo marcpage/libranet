@@ -2,11 +2,15 @@
 
 A validation block that is unsigned, or states something false by itself,
 is found so as it is read (:meth:`~libranet.karma.blocks.BlockDrop.decoded`).
-What it states against its target and its chain is checked here: its
-``generation``, against the validation block its target is named for; that
-its stakes name one transaction block, at the transaction target of its
-generation, which is correct; that its ``runner_up`` is another validation
-block there, validating another transaction block; that every stake, each
+One whose stakes name a transaction block built on another validation block
+than the one its target is named for, as one that is a transaction block, is
+of another target, where anyone may have placed it, and is passed over
+(:class:`~libranet.karma.blocks.MisplacedBlockError`). What any other states
+against its target and its chain is checked here: that its stakes name one
+transaction block, at the transaction target of its generation, which is
+correct; its ``generation``, against the validation block its target is
+named for; that its ``runner_up`` is another validation block there,
+validating another transaction block; that every stake, each
 staker's together, and the runner-up's stakes its reward would take are
 covered (§6.3); and that it lists no witness an earlier winning validation
 block of its chain lists. A block stating any of these falsely distrusts
@@ -41,6 +45,7 @@ from libranet.karma.blocks import (
     BlockBounds,
     BlockDrop,
     BlockFinding,
+    MisplacedBlockError,
     TransactionBlock,
     ValidationBlock,
 )
@@ -101,21 +106,13 @@ class _Validating:
         return None
 
     def false_basis(self) -> str:
-        """What it states falsely of its target by itself, or ``""`` (§3.8, §6.1).
+        """What it states falsely by itself of what it stakes on, or ``""`` (§3.8, §6.1).
 
-        Its ``generation`` must be one more than that of the validation block
-        its target is named for, it must hold a stake, its stakes must all
-        name one transaction block, and its ``runner_up`` must not name
-        itself.
+        It must hold a stake, its stakes must all name one transaction block,
+        and its ``runner_up`` must not name itself.
         """
         block = self.drop.block
         named = {stake.stake.transaction_block for stake in block.stakes}
-
-        if block.generation != self.generation:
-            return (
-                f'A validation block\'s "generation" must be {self.generation}, one more than '
-                f"that of {self.named_for}, its target's, got {block.generation}"
-            )
 
         if len(named) != 1:
             return (
@@ -125,6 +122,40 @@ class _Validating:
 
         if block.runner_up == self.block_id:
             return "A validation block's runner_up must name another validation block, not itself"
+
+        return ""
+
+    def check_placed(self, validated_id: ContentId) -> None:
+        """Raise unless transaction block ``validated_id``, which it stakes on, is of its target.
+
+        That is one built on the validation block its target is named for.
+
+        Raises:
+            MisplacedBlockError: it is built on another, so that this block
+                is of that one's target, and is passed over at this.
+            MissingContentError: names it, which ``chain`` lacks.
+        """
+        previous = self.chain.transaction(validated_id).block.previous
+
+        if previous != self.named_for:
+            raise MisplacedBlockError(
+                f"Its stakes name {validated_id}, built on {previous}, where a block at its "
+                f"target stakes on one built on {self.named_for}"
+            )
+
+    def false_generation(self) -> str:
+        """What it states falsely of its generation, or ``""`` (§3.8, §6.1).
+
+        It must be one more than that of the validation block its target is
+        named for.
+        """
+        generation = self.drop.block.generation
+
+        if generation != self.generation:
+            return (
+                f'A validation block\'s "generation" must be {self.generation}, one more than '
+                f"that of {self.named_for}, its target's, got {generation}"
+            )
 
         return ""
 
@@ -323,6 +354,10 @@ class ValidationBlockCheck:
             correct and scored, or not correct.
 
         Raises:
+            MisplacedBlockError: it is a transaction block, or its stakes
+                name a transaction block built on another validation block
+                than ``named_for``, and so it is of another target, where it
+                is passed over.
             MissingContentError: names the keys ``keys`` lacks, or the blocks
                 ``chain`` lacks, which the check waits for.
             UnsupportedBundleError: it, or what it holds, is signed in a way
@@ -414,6 +449,8 @@ class ValidationBlockCheck:
         """``checking``'s block checked against its target, and the transaction block it names.
 
         Raises:
+            MisplacedBlockError: its stakes name a transaction block of
+                another target.
             MissingContentError: names the blocks ``checking``'s chain lacks.
         """
         builder = checking.drop.builder
@@ -426,11 +463,17 @@ class ValidationBlockCheck:
         validated = checking.at_target(validated_id)
 
         if validated is None:
+            checking.check_placed(validated_id)
             return BlockFinding(
                 f"A validation block's stakes must name a transaction block at its target, "
                 f"got {validated_id}",
                 builder,
             )
+
+        statement = checking.false_generation()
+
+        if statement:
+            return BlockFinding(statement, builder)
 
         reason = validated.statement if isinstance(validated, BlockFinding) else validated.incorrect
 

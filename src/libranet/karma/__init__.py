@@ -24,6 +24,7 @@ from libranet.karma.blocks import (
     BlockBounds,
     BlockDrop,
     BlockFinding,
+    MisplacedBlockError,
     TransactionBlock,
     ValidationBlock,
 )
@@ -78,6 +79,7 @@ __all__ = [
     "MAX_BLOCK_BYTES",
     "MAX_KISMET",
     "MIN_TRANSACTION_BITS",
+    "MisplacedBlockError",
     "NEW_KISMET_DECREASE",
     "NO_BALANCE",
     "TRANSACTION_WORK_TARGET",

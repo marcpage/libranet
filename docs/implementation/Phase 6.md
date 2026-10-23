@@ -1722,20 +1722,30 @@ My calls, not yet reviewed:
   the connection manager. Steps 134 and 136 may need to ask for it, or wait
   for it.
 
-Open, to be ruled before this step is merged:
+Ruled after building (2026-10-23):
 
-- **A block found at a target not its own.** A drop's nonce, and so the
-  target it shares bits with, is not signed, so anyone can place a copy of an
-  honest builder's signed block at another target, and one can share a
-  target's bits by chance. Step 126 finds such a block false, against its
-  target (KarmaLedger §3.8), or not well-formed, when it is of the other
-  kind, and this step then distrusts its honest builder. A run of Step 126's
-  tests found the root's transaction block, at the 8 bits the tests search
-  to, at generation 1's validation target, and said it false: `"witnessed"
-  must be a list`. Recommended: a block whose contents name another target,
-  by its `previous`, or the transaction block its stakes name, or that reads
-  as the other kind, is passed over, not found false, and §3.8's statements
-  against a target count only for a block whose contents name that target.
+- **A block found at a target not its own is passed over, not found
+  false.** A drop's nonce, and so the target it shares bits with, is not
+  signed, so anyone can place a copy of an honest builder's signed block at
+  another target, and one can share a target's bits by chance. Step 126
+  found such a block false, against its target (KarmaLedger §3.8), or not
+  well-formed, when it was of the other kind, and this step then distrusted
+  its honest builder. A run of Step 126's tests found the root's
+  transaction block, at the 8 bits the tests search to, at generation 1's
+  validation target, and said it false: `"witnessed" must be a list`. Now a
+  block of the other kind, a transaction block whose `previous` names
+  another validation block than the one its target is named for, and a
+  validation block whose stakes name a transaction block built on another,
+  are each passed over, and logged at `INFO`. §3.8 says so: a block is held
+  to what it states against a target only where its own contents place it.
+  A validation block staking on a transaction block built for its target,
+  but not found there, is still false. Built as a second change set on this
+  branch: `MisplacedBlockError` (`karma/blocks.py`), raised by
+  `BlockDrop.decoded`, `TransactionBlockCheck.of`, and
+  `ValidationBlockCheck.of` (whose generation is now checked once its
+  stakes are found to name a block of its target), and passed over by
+  `ChainFollower`; KarmaLedger §3.8 and §8. It came to 136 added lines of
+  non-test Python, with 35 changed or removed, and 127 lines of tests.
 
 ---
 

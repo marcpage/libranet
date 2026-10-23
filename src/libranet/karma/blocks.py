@@ -21,7 +21,10 @@ no one, and is shunned, distrusting no one. One its builder signed that
 states something false distrusts its builder (§3.8). What a block states
 falsely by itself is found here, before anything of the chain is read: what
 it states falsely against its target and its chain is for whoever checks it
-there. A block a builder could honestly make, such as one not full or one
+there. Since a drop's nonce is not signed, anyone may place a copy of a
+signed block at any target, so one read at a target not its own, as one of
+the other kind is, states nothing false there, and is passed over
+(:class:`MisplacedBlockError`). A block a builder could honestly make, such as one not full or one
 breaking the half-free rule, states nothing false, and only scores zero
 (§5.5).
 """
@@ -33,6 +36,7 @@ from re import compile as compile_pattern
 from typing import Any, Final, Generic, Mapping, Sequence, TypeVar
 
 from libranet.bundle.errors import (
+    BundleError,
     BundleSignatureError,
     MalformedBundleError,
     MissingContentError,
@@ -466,6 +470,16 @@ class BlockBounds:
 BLOCK_BOUNDS: Final = BlockBounds()
 
 
+class MisplacedBlockError(ValueError):
+    """A block was read at a target its own contents do not place it at (§3.8).
+
+    It is of the other kind than the target's, or built on another block
+    than the one the target is named for. A drop's nonce is not signed, so
+    anyone may place a copy of a signed block at any target: such a block is
+    passed over, and states nothing false of the target it is read at.
+    """
+
+
 @dataclass(frozen=True)
 class BlockFinding:
     """Why a block is not taken, by itself: it is unsigned, or it states ``statement`` falsely.
@@ -565,6 +579,8 @@ class BlockDrop(Generic[_Block]):
             something false.
 
         Raises:
+            MisplacedBlockError: it is no block of ``kind``, but one of the
+                other kind, placed at another's target.
             MissingContentError: names the keys, of its builder and of each
                 signer in it, that ``keys`` lacks, when nothing is found false
                 without them.
@@ -599,6 +615,11 @@ class BlockDrop(Generic[_Block]):
             raise
 
         except (ValueError, BundleSignatureError) as error:
+            other = cls._other_kind(bundle, kind)
+
+            if other:
+                raise MisplacedBlockError(f"It is a {other}, not a {kind.__name__}") from error
+
             # Not logged: it is the finding, once the builder's signature checks.
             statement = str(error)
 
@@ -635,6 +656,22 @@ class BlockDrop(Generic[_Block]):
     def builder(self) -> ContentId:
         """Who built the block: its signer, who answers for everything it states (§5.1)."""
         return self.bundle.signer
+
+    @staticmethod
+    def _other_kind(bundle: SignedBundle, kind: type[_Block]) -> str:
+        """The name of the kind of block ``bundle`` signs, other than ``kind``, or ``""``."""
+        other: type[TransactionBlock] | type[ValidationBlock] = (
+            ValidationBlock if kind is TransactionBlock else TransactionBlock
+        )
+
+        try:
+            other.from_value(contents_value(bundle.contents, named="A block"))
+
+        except (BundleError, ValueError):
+            # Not logged: it is no block of either kind, which its reader finds false.
+            return ""
+
+        return other.__name__
 
     @staticmethod
     def _false_statement(
