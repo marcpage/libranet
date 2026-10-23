@@ -966,7 +966,7 @@ My calls, not yet reviewed:
 
 ## Step 121 — Checking a Transaction Block
 
-**Kind:** infrastructure. **Issue:** none yet; planned under #87.
+**Kind:** infrastructure. **Issue:** #439, under #87.
 **Depends on:** Step 120.
 
 Whether a transaction block is correct, and, if not, whether it states
@@ -1008,6 +1008,77 @@ which waits; the root.
 
 Estimate about 450: should it come to more than 500, a transaction's
 verdict and the block's are each a change set.
+
+It came to 581 added lines of non-test Python, with 2 changed, so it was
+built as those two change sets, each green on its own: a transaction's
+verdict, with the chain view (136 added lines, 2 changed), and the block's
+verdict (459 added, 14 changed, most of them the first set's module
+docstring and imports). The tests are 738 lines, with 5 more for the
+targets.
+
+What was built:
+
+- **`ChainView`** (`karma/checking.py`), a protocol: `validation(id)` and
+  `transaction(id)`, a block as its builder signed it; `stated(g)`, the
+  balances transaction block g states; `balances(identities, g)`, each
+  identity's as block g leaves it; `has_key(key, first, last)`, searching
+  the history it holds; and `witnessed(hash)`, a generation or `None`. A
+  block it lacks it raises `MissingContentError` for, naming it.
+- **`TransactionVerdict.of(signed, sheet, chain)`**: `INVALID` when its
+  key is in the chain from its `generation` through g − 1; otherwise
+  `PENDING` when its `generation` is after g, or `sheet.overspent` names
+  its sender; otherwise `VALID`. `sheet` is the `BalanceSheet` of the
+  block it is in, block g.
+- **`TransactionBlockCheck.of(block_id, data, named_for, chain, keys,
+  compressed_bytes=…, bounds=…)`**: a `BlockFinding`, as
+  `BlockDrop.decoded` finds one, or against the target and the chain; or
+  else the block checked, with a `score` if it is correct, and with
+  `None` and `incorrect`, saying why, if it is not. `is_correct` says
+  which. `named_for` is `None` at the root's target, where the block is
+  checked by its shape.
+- **`BlockScore(bits, reach, age)`**, ranked by bits, then reach, then
+  age, and `BlockScore.of(block, bits, chain)`.
+- **`GenerationTargets.built_on(previous)`** (`karma/generations.py`):
+  the targets of the generation built on `previous`, or the root's.
+
+My calls, not yet reviewed:
+
+- **The view raises `MissingContentError`** for a block it lacks, as
+  `BlockDrop.decoded` does for a key, so that the check waits rather than
+  judging. A block lacking both is waited on for its keys first, since
+  they are read first.
+- **A key older than the history held is simply not in it**: `has_key`
+  searches what it holds, so a duplicate older than that is passed
+  (§3.8), with no third answer for "not known".
+- **A transaction's verdict is what the chain decides of it.** Its
+  signature, its work, that it moves something, and that no other in its
+  block shares its key are found as its block is read (Step 119), and
+  are not checked again. Step 131, which checks a transaction put up on
+  its own, will need them too.
+- **The verdict reads a `BalanceSheet`**, of the block the transaction is
+  in, rather than a balance, since all its sender sends in that block
+  counts (§4.4), and the sheet already sums it.
+- **Invalid is found before pending**: a duplicate that also overspends is
+  invalid, since a transaction is pending only when it fails for nothing
+  else (§4.4).
+- **The first false statement found is the one named**, in this order:
+  `generation`, `previous`, and `weight`; the payout; an overspend; a key
+  in the chain; a balance unstated, then one misstated; and `reach`.
+- **The weight is worked out from the ids** of generation g − 1's two
+  drops, at the targets of what transaction block g − 1 is built on, and
+  that block's own `weight`, so that the view need not keep weights.
+- **A block holding only its payout is as young as its own generation**,
+  having no transactions to average, so that it never outranks one that
+  holds some by age. The age is a `Fraction`, so that every node ranks
+  two blocks alike, with no rounding.
+- **The gap found in Step 119 was taken as recommended**: a balance of 0
+  stated for an identity that holds 0 and that the block's transactions
+  do not name makes the block incorrect, not false. KarmaLedger §3.8 now
+  lists it among what distrusts no builder. A balance stated wrongly for
+  such an identity is false, as any misstated balance is.
+- **The caller gives `compressed_bytes`**, the size of the copy it holds,
+  compressed (§5.4), since Step 124 reads it from the store, stored
+  compressed or not.
 
 ---
 

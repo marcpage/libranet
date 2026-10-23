@@ -288,6 +288,9 @@ each one:
 - a transaction included before the generation it names, which makes the
   block incorrect (§5.5) but is no false statement, since a transaction
   may name a generation ahead of the chain (§4.4);
+- a balance of 0 stated for an identity that holds 0 and that the block's
+  transactions do not name, which makes the block incorrect (§5.3, §5.5)
+  but states nothing untrue;
 - a block on a chain the node has not fetched and checked, which it judges
   only once it has.
 

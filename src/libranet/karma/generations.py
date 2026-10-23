@@ -83,6 +83,15 @@ class GenerationTargets:
         return cls._named(str(validation_id))
 
     @classmethod
+    def built_on(cls, previous: ContentId | None) -> GenerationTargets:
+        """The targets of the generation built on validation block ``previous``.
+
+        They are the root's when ``previous`` is ``None``, as a transaction
+        block's ``previous`` is only in the root (§5.1).
+        """
+        return cls.root() if previous is None else cls.after(previous)
+
+    @classmethod
     def _named(cls, name: str) -> GenerationTargets:
         """The targets whose strings end with ``name``."""
         return cls(
