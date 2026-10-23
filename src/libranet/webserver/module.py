@@ -31,7 +31,10 @@ which wakes the request waiting on it (Phase 5 Step 109).
 It builds the node's own trust scores, and says whom they trust, and so which
 peers the node connects to and serves (:mod:`libranet.webserver.peer_trust`,
 Phase 5 Step 113). As it starts, it asks the stats module what it kept of
-them, and takes in ``node.trust_stored``, until its build is complete.
+them, and takes in ``node.trust_stored``, until its build is complete. It
+takes what the Karma module finds of a block that states something false,
+``karma.false_block``, and has the node distrust whoever built it in its own
+trust list (:mod:`libranet.webserver.false_builders`, Phase 6 Step 127).
 
 The ``/config`` credential is loaded from disk like the node key, rather
 than being carried across the process boundary.
@@ -61,10 +64,16 @@ from libranet.webserver.config_credential import ConfigCredential
 from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.costly_work import CostlyWork
 from libranet.webserver.dial_outcomes import DIAL_REPORT_SECONDS, DialOutcomes, DialReport
+from libranet.webserver.false_builders import FalseBuilders
 from libranet.webserver.inbound_peers import InboundPeers
 from libranet.webserver.local_folders import LocalFolders
 from libranet.webserver.peer_trust import PeerTrust
-from libranet.webserver.server import LibranetHTTPServer, build_config_router, build_router
+from libranet.webserver.server import (
+    LibranetHTTPServer,
+    build_config_router,
+    build_own_trust,
+    build_router,
+)
 
 
 class WebServerModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
@@ -77,6 +86,7 @@ class WebServerModule(ModuleBase):  # pylint: disable=too-many-instance-attribut
             EventType.PEERS_CONNECTED_REQUESTED,
             EventType.ADDRESS_DIALED,
             EventType.NODE_TRUST_STORED,
+            EventType.KARMA_FALSE_BLOCK,
         }
     )
 
@@ -99,6 +109,7 @@ class WebServerModule(ModuleBase):  # pylint: disable=too-many-instance-attribut
         self._dial_outcomes = DialOutcomes()
         self._inbound_peers = InboundPeers(self.publish)
         self._peers: PeerTrust | None = None
+        self._false_builders: FalseBuilders | None = None
         self._server: LibranetHTTPServer | None = None
         self._config_server: LibranetHTTPServer | None = None
         self._threads: tuple[Thread, ...] = ()
@@ -109,6 +120,7 @@ class WebServerModule(ModuleBase):  # pylint: disable=too-many-instance-attribut
                 EventType.PEERS_CONNECTED_REQUESTED: self._on_peers_connected_requested,
                 EventType.ADDRESS_DIALED: self._on_address_dialed,
                 EventType.NODE_TRUST_STORED: self._on_node_trust_stored,
+                EventType.KARMA_FALSE_BLOCK: self._on_karma_false_block,
             }
         )
 
@@ -167,6 +179,18 @@ class WebServerModule(ModuleBase):  # pylint: disable=too-many-instance-attribut
             retry_after_seconds=network.retry_after_seconds,
             rebuild_seconds=identity_config.node_trust_rebuild_seconds,
         )
+        # Shared with /config's port, so that the node's own distrust of a
+        # false block's builder takes its turn with the operator's changes.
+        trust = build_own_trust(
+            storage,
+            content,
+            described,
+            node,
+            self.publish,
+            retry_after_seconds=network.retry_after_seconds,
+            costly_work=costly_work,
+            builds=peers.builds,
+        )
         config_server = LibranetHTTPServer.first_free(
             CONFIG_LISTEN_ADDRESS,
             network.config_ports(),
@@ -186,6 +210,7 @@ class WebServerModule(ModuleBase):  # pylint: disable=too-many-instance-attribut
                 dial_outcomes=self._dial_outcomes,
                 dial_wait_seconds=self._config.peers.longest_dial_seconds() + DIAL_REPORT_SECONDS,
                 peers=peers,
+                trust=trust,
             ),
             self.logger,
             signer,
@@ -225,6 +250,7 @@ class WebServerModule(ModuleBase):  # pylint: disable=too-many-instance-attribut
         self._server = server
         self._config_server = config_server
         self._peers = peers
+        self._false_builders = FalseBuilders(trust, retry_seconds=network.retry_after_seconds)
         peers.start()
         self._threads = (
             Thread(target=server.serve_forever, name=f"{self.name}-http", daemon=True),
@@ -243,9 +269,16 @@ class WebServerModule(ModuleBase):  # pylint: disable=too-many-instance-attribut
         )
 
     def on_idle(self) -> None:
-        """Build the node's own trust scores again when it is time, and say what they say."""
+        """Build the node's own trust scores again when it is time, and say what they say.
+
+        And try again to distrust the builders of false blocks waiting for the
+        node's list, if it is time.
+        """
         if self._peers is not None:
             self._peers.check()
+
+        if self._false_builders is not None:
+            self._false_builders.check()
 
     def on_stop(self) -> None:
         """Stop accepting requests, release the listening sockets, and stop building scores."""
@@ -294,6 +327,11 @@ class WebServerModule(ModuleBase):  # pylint: disable=too-many-instance-attribut
         """Take what the stats module kept of whom the node trusts, until its scores are built."""
         if self._peers is not None:
             self._peers.stored(message)
+
+    def _on_karma_false_block(self, message: Message) -> None:
+        """Have the node distrust whoever built the block the Karma module found false."""
+        if self._false_builders is not None:
+            self._false_builders.found(message)
 
 
 def _address(server: LibranetHTTPServer | None) -> tuple[str, int] | None:

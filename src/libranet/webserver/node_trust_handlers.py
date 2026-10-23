@@ -37,7 +37,9 @@ newer than the newest held.
 Reads and changes are made one at a time, in the order they come, each change
 over the version the one before it placed. Each version placed is handed to
 the build of the node's own scores, which score again, as a person's change is
-handed to theirs (Phase 5 Step 113).
+handed to theirs (Phase 5 Step 113). The node's own distrust of whoever built
+a false Karma block is placed in the same turns, as a change from ``/config``
+is (:mod:`libranet.webserver.false_builders`, Phase 6 Step 127).
 
 Whether the node connects only to the nodes it trusts is read and changed as
 well (:class:`Connecting`)::
@@ -57,12 +59,12 @@ from typing import Final
 
 from libranet.bundle.content import ContentSource
 from libranet.identity.node_identity import NodeIdentity
-from libranet.identity.trust import ENTRIES_FIELD
+from libranet.identity.trust import ENTRIES_FIELD, TrustList
 from libranet.identity.versions import VERSION_FIELD
 from libranet.messaging.publishing import Publish
 from libranet.protocol.connecting_requests import ConnectingRequest
 from libranet.webserver.costly_work import Turns
-from libranet.webserver.drop_handler import DropHandler
+from libranet.webserver.drop_handler import DropHandler, StoredDrop
 from libranet.webserver.http_types import Request, Response, json_response, status_response
 from libranet.webserver.peer_trust import PeerTrust
 from libranet.webserver.request_refusals import parsed_or_refusal
@@ -153,6 +155,24 @@ class OwnTrust:
         """``DELETE /config/api/trust/{algorithm}/{hash}``: neither trust nor distrust it."""
         return self._changed(request, clears=True)
 
+    def placed(
+        self, request: Request, entry: TrustEntry
+    ) -> tuple[StoredDrop, TrustList] | Response:
+        """The version of the node's list ``entry`` makes, placed in its turn, and its drop.
+
+        Or what refuses it, or the ``204`` for a change that changes nothing.
+        The version is handed to the build of the node's own scores, if there
+        is one. ``request`` is what asks for it, as the refusal names it.
+        """
+        with self.turns.turn():
+            placed = self.changes.change(request, self.node.node_id, self.node, entry)
+
+            # In its turn, so that the build is handed each version in order.
+            if self.builds is not None and not isinstance(placed, Response):
+                self.builds.changed(self.node.node_id, placed[1].entries)
+
+        return placed
+
     def _changed(self, request: Request, *, clears: bool) -> Response:
         """What changing the entry ``request`` names answers.
 
@@ -163,18 +183,12 @@ class OwnTrust:
         if isinstance(entry, Response):
             return entry
 
-        with self.turns.turn():
-            placed = self.changes.change(request, self.node.node_id, self.node, entry)
+        placed = self.placed(request, entry)
 
-            if isinstance(placed, Response):
-                return placed
+        if isinstance(placed, Response):
+            return placed
 
-            stored, changed = placed
-
-            # In its turn, so that the build is handed each version in order.
-            if self.builds is not None:
-                self.builds.changed(self.node.node_id, changed.entries)
-
+        stored, changed = placed
         return json_response(
             {**stored.value(), "signer": str(self.node.node_id), "version": changed.version},
             HTTPStatus.CREATED,

@@ -516,6 +516,7 @@ def build_config_router(  # pylint: disable=too-many-locals
     dial_outcomes: DialOutcomes | None = None,
     dial_wait_seconds: float = 0.0,
     peers: PeerTrust | None = None,
+    trust: OwnTrust | None = None,
 ) -> Router:
     """``/config``'s port's routes: its endpoints and its application, and nothing else.
 
@@ -536,9 +537,10 @@ def build_config_router(  # pylint: disable=too-many-locals
     with ``identity``'s key, as drops are made and stored there (Phase 5 Step
     104), and ``/config/api/trust`` reads and changes the node's own trust
     list, signed so too (Phase 5 Step 110), handing each version to the build
-    of the node's own scores ``peers`` holds, if given, and
-    ``/config/api/connecting`` reads and changes whether it connects only to
-    the nodes it trusts (Phase 5 Step 113). ``/config/api/connections`` has an
+    of the node's own scores ``peers`` holds, if given; or ``trust`` does, if
+    given, as :func:`build_own_trust` makes it; and ``/config/api/connecting``
+    reads and changes whether it connects only to the nodes it trusts (Phase 5
+    Step 113). ``/config/api/connections`` has an
     address dialed, and waits for what came of it in ``dial_outcomes`` for up
     to ``dial_wait_seconds`` (Phase 5 Step 109). ``retry_after_seconds``,
     ``app_outcomes``, ``app_wait_seconds``, and ``read_ahead_parts`` are as for
@@ -586,8 +588,8 @@ def build_config_router(  # pylint: disable=too-many-locals
             publish, DialOutcomes() if dial_outcomes is None else dial_outcomes, dial_wait_seconds
         ),
         trust=(
-            None
-            if identity is None
+            trust
+            if trust is not None or identity is None
             else OwnTrust.of(
                 identity,
                 identities.search,
@@ -625,6 +627,43 @@ def build_config_router(  # pylint: disable=too-many-locals
         router.add(method, CONFIG_APP_PATTERN, applications)
 
     return router
+
+
+def build_own_trust(
+    storage: StorageConfig,
+    content: LayeredSource,
+    node: NodeDescription,
+    identity: NodeIdentity,
+    publish: Publish,
+    *,
+    retry_after_seconds: int,
+    costly_work: CostlyWork,
+    builds: TrustBuilds | None = None,
+) -> OwnTrust:
+    """What reads and changes ``identity``'s own trust list, as ``/config``'s port makes it.
+
+    The web server makes it to share with ``/config``'s port, as
+    :func:`build_config_router`'s ``trust``, and to distrust whoever built a
+    false Karma block (Phase 6 Step 127). Each version placed is handed to the
+    build of the node's own scores ``builds``, if given.
+    """
+    identities = _config_identities(
+        storage,
+        content,
+        node,
+        publish,
+        retry_after_seconds=retry_after_seconds,
+        costly_work=costly_work,
+    )
+    return OwnTrust.of(
+        identity,
+        identities.search,
+        identities.drops,
+        publish,
+        content=identities.uploads,
+        retry_after_seconds=retry_after_seconds,
+        builds=builds,
+    )
 
 
 def _registry(storage: StorageConfig, content: LayeredSource) -> ApplicationRegistry:

@@ -20,6 +20,7 @@ from libranet.cas.prefix import matching_bits
 from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig, StorageConfig
 from libranet.identity.node_identity import NodeIdentity
+from libranet.identity.trust import TrustState
 from libranet.karma.blocks import (
     BlockBounds,
     BlockDrop,
@@ -36,6 +37,7 @@ from libranet.karma.validating import ValidationBlockCheck
 from libranet.karma.weight import ChainWeight
 from libranet.messaging.envelope import Message, event_of, make_message
 from libranet.messaging.events import EventType
+from libranet.messaging.node_trust import NodeTrust
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import SPAWNED_MODULES, ModuleName
 from libranet.supervision.registry import default_module_specs
@@ -89,6 +91,19 @@ def rooting_module(
     )
     module.on_start()
     return module
+
+
+def trusting(*, trusted: list[ContentId], untrusted: list[ContentId]) -> Message:
+    """What the web server says of whom the node trusts and distrusts."""
+    return make_message(
+        EventType.NODE_TRUST,
+        ModuleName.WEBSERVER,
+        {
+            "trusted": [str(id) for id in trusted],
+            "untrusted": [str(id) for id in untrusted],
+            "only_trusted": False,
+        },
+    )
 
 
 def root_requested() -> Message:
@@ -193,7 +208,12 @@ def test_the_supervisor_runs_the_karma_module_last(
         ModuleName.KARMA,
         KarmaModule.of,
         frozenset(
-            {EventType.SEARCH_ANSWERED, EventType.DATA_STORED, EventType.KARMA_ROOT_REQUESTED}
+            {
+                EventType.SEARCH_ANSWERED,
+                EventType.DATA_STORED,
+                EventType.KARMA_ROOT_REQUESTED,
+                EventType.NODE_TRUST,
+            }
         ),
     )
 
@@ -202,6 +222,39 @@ def test_the_supervisor_runs_the_karma_module_last(
     assert isinstance(
         KarmaModule.of(ModuleName.KARMA, LibranetConfig(storage=storage), queues), KarmaModule
     )
+
+
+def test_the_module_keeps_whom_the_node_distrusts_as_the_web_server_says_it(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    module = rooting_module(storage, queues)
+    node_id = NodeIdentity.load(LibranetConfig(storage=storage)).node_id
+
+    module.handle(trusting(trusted=[BLOCK], untrusted=[PEER, node_id]))
+
+    assert module.trust is not None
+    assert module.trust.of(PEER) == TrustState.UNTRUSTED
+    # The node itself is never distrusted, whatever is said of it.
+    assert module.trust.of(node_id) == TrustState.TRUSTED
+
+    module.handle(trusting(trusted=[PEER], untrusted=[BLOCK]))
+
+    # In place of what was said before.
+    assert module.trust == NodeTrust(
+        node_id, {PEER: TrustState.TRUSTED, BLOCK: TrustState.UNTRUSTED}
+    )
+    assert published(queues) == []
+
+
+def test_until_the_web_server_says_whom_the_node_trusts_no_one_is_known(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    module = rooting_module(storage, queues)
+
+    with raises(KeyError):
+        module.handle(make_message(EventType.NODE_TRUST, ModuleName.WEBSERVER, {"trusted": []}))
+
+    assert module.trust is None
 
 
 def test_what_a_peer_names_at_a_target_being_read_is_asked_for_at_once(
