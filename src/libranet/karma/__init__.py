@@ -4,8 +4,10 @@ Kismet, the unit an amount is counted in, the new Karma each generation
 issues, where each generation's blocks are placed, and what a chain weighs
 (Phase 6 Step 116); the transactions, payouts, and stakes blocks are made
 of (Phase 6 Step 117); the two kinds of block, as drops, and what a block
-states falsely by itself (Phase 6 Step 119); and the arithmetic of a
-generation: balances, reach, the pot, and shares (Phase 6 Step 120).
+states falsely by itself (Phase 6 Step 119); the arithmetic of a
+generation: balances, reach, the pot, and shares (Phase 6 Step 120); and
+checking a transaction block against its target and its chain (Phase 6
+Step 121).
 """
 
 from libranet.karma.amounts import KISMET_PER_KARMA, MAX_KISMET, Kismet, decimal_count
@@ -19,6 +21,12 @@ from libranet.karma.blocks import (
     BlockFinding,
     TransactionBlock,
     ValidationBlock,
+)
+from libranet.karma.checking import (
+    BlockScore,
+    ChainView,
+    TransactionBlockCheck,
+    TransactionVerdict,
 )
 from libranet.karma.generations import (
     FIRST_NEW_KISMET,
@@ -68,6 +76,8 @@ __all__ = [
     "BlockBounds",
     "BlockDrop",
     "BlockFinding",
+    "BlockScore",
+    "ChainView",
     "ChainWeight",
     "GenerationTargets",
     "Kismet",
@@ -79,7 +89,9 @@ __all__ = [
     "StakeWeight",
     "Transaction",
     "TransactionBlock",
+    "TransactionBlockCheck",
     "TransactionKey",
+    "TransactionVerdict",
     "ValidationBlock",
     "amounts_member",
     "check_moment",

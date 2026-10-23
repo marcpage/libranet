@@ -85,6 +85,11 @@ def test_each_validation_block_names_targets_of_its_own() -> None:
     assert GenerationTargets.after(VALIDATION) != GenerationTargets.root()
 
 
+def test_a_generation_built_on_nothing_is_the_roots() -> None:
+    assert GenerationTargets.built_on(None) == GenerationTargets.root()
+    assert GenerationTargets.built_on(VALIDATION) == GenerationTargets.after(VALIDATION)
+
+
 def test_a_transactions_work_is_measured_against_no_blocks_target() -> None:
     root = GenerationTargets.root()
 
