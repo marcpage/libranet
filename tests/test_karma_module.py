@@ -135,6 +135,22 @@ def stored(content_id: ContentId) -> Message:
     )
 
 
+def head_told(head: ContentId) -> Message:
+    """A peer's telling of ``head``, the head it follows, as the web server publishes it."""
+    return make_message(
+        EventType.KARMA_HEAD_TOLD, ModuleName.WEBSERVER, {"head": str(head), "node_id": str(PEER)}
+    )
+
+
+def heads_said(queues: ModuleQueues) -> list[dict[str, object]]:
+    """The heads the module has said since anything published was last asked for."""
+    return [
+        {name: message[name] for name in ("head", "generation", "weight")}
+        for message in published(queues)
+        if event_of(message) is EventType.KARMA_HEAD
+    ]
+
+
 def searched(queues: ModuleQueues) -> list[str]:
     """The prefixes the module has searched for since anything published was last asked for."""
     return [
@@ -213,6 +229,7 @@ def test_the_supervisor_runs_the_karma_module_last(
                 EventType.DATA_STORED,
                 EventType.KARMA_ROOT_REQUESTED,
                 EventType.NODE_TRUST,
+                EventType.KARMA_HEAD_TOLD,
             }
         ),
     )
@@ -616,3 +633,94 @@ def test_a_module_following_a_chain_reads_the_target_its_head_was_chosen_from_to
     assert head is not None
     after = GenerationTargets.after(head.validation)
     assert searched(queues) == [after.transaction.hex, after.validation.hex, ROOT.validation.hex]
+
+
+def test_the_head_followed_is_said_as_the_module_first_looks_and_not_again_while_the_same(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    clock = Clock()
+    ChainHistory.open(storage.karma_dir).add(
+        ChainGeneration(0, HEAD, BLOCK, ChainWeight(40), (), ())
+    )
+    module = module_over(storage, queues, clock)
+    module.on_start()
+
+    assert heads_said(queues) == []
+
+    module.on_idle()
+
+    assert heads_said(queues) == [{"head": str(HEAD), "generation": 0, "weight": "40"}]
+
+    clock.now += LibranetConfig().karma.look_seconds
+    module.on_idle()
+
+    assert heads_said(queues) == []
+
+
+def test_a_module_following_no_chain_says_no_head(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    module = module_over(storage, queues)
+    module.on_start()
+
+    module.on_idle()
+
+    assert heads_said(queues) == []
+
+
+def test_the_root_made_is_said_as_the_head(storage: StorageConfig, queues: ModuleQueues) -> None:
+    module = rooting_module(storage, queues)
+
+    module.handle(root_requested())
+
+    head = module.history.head
+    assert head is not None
+    assert heads_said(queues) == [head.head_value()]
+
+
+def test_a_head_a_peer_tells_of_is_weighed_as_the_module_next_idles(
+    storage: StorageConfig, queues: ModuleQueues, caplog: LogCaptureFixture
+) -> None:
+    ChainHistory.open(storage.karma_dir).add(
+        ChainGeneration(0, HEAD, BLOCK, ChainWeight(40), (), ())
+    )
+    module = module_over(storage, queues)
+    module.on_start()
+    module.on_idle()
+    published(queues)
+    # At no target the module reads, so only weighing it asks for it.
+    told = ContentId("sha256", "d1" * 32)
+
+    with caplog.at_level(DEBUG):
+        module.handle(head_told(told))
+
+    assert asked_for(queues) == []
+    assert f"{PEER} follows the Karma head {told}" in caplog.text
+
+    module.on_idle()
+
+    assert told in asked_for(queues)
+
+
+def test_a_head_a_peer_tells_of_that_is_followed_is_not_weighed(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    ChainHistory.open(storage.karma_dir).add(
+        ChainGeneration(0, HEAD, BLOCK, ChainWeight(40), (), ())
+    )
+    module = module_over(storage, queues)
+    module.on_start()
+    module.on_idle()
+    published(queues)
+
+    module.handle(head_told(HEAD))
+    module.on_idle()
+
+    assert published(queues) == []
+
+
+def test_a_head_told_is_weighed_only_once_the_module_has_started(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    with raises(RuntimeError, match="not running"):
+        module_over(storage, queues).handle(head_told(HEAD))

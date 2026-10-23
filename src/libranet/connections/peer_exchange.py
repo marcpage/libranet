@@ -27,9 +27,11 @@ content (§4.10), in batches (Phase 2 Step 45).
 :meth:`PeerExchange.newly_listed` finds the nodes this node's node list has
 come to name since it was last read, and :meth:`PeerExchange.pass_on` posts
 them to a peer, which first contact told of the list only as it was then
-(§3.3, Phase 5 Step 114). Steps 1 and 2 wait for their responses. Steps 3 to
-5 are sent together, pipelined, and so are the requests of step 6 and of
-step 7.
+(§3.3, Phase 5 Step 114). :meth:`PeerExchange.ask_head` asks the peer which
+Karma head it follows, after first contact, and :meth:`PeerExchange.tell_head`
+tells it this node's, as it changes (§3.3, HttpApi §10.9, Phase 6 Step 130).
+Steps 1 and 2 wait for their responses. Steps 3 to 5 are sent together,
+pipelined, and so are the requests of step 6 and of step 7.
 
 What this node holds, which step 6 pushes and step 7 does not ask for, is
 what it holds in the source of truth or its content archives (Step 34). Step
@@ -51,6 +53,7 @@ What the exchange learns is published::
     data.put_completed  {"algorithm", "hash", "node_id"}
     data.stored         {"algorithm", "hash", "node_id", "size"}
     data.search_answered {"prefix": "<hex>", "node_id", "results": ["sha256/<hex>", ...]}
+    karma.head_told     {"head": "sha256/<hex>", "node_id": "sha256/<hex>"}
 
 ``data.sent`` is content the peer accepted; ``fetch.attempted`` is each
 content request the peer answered, and whether it sent the content;
@@ -58,6 +61,8 @@ content request the peer answered, and whether it sent the content;
 ``data.stored`` is the peer's public key, stored, as the validator announces
 content it stores (Phase 2 Step 28). ``data.search_answered`` is what the
 peer answered a search with, for the stats module to know.
+``karma.head_told`` is the Karma head the peer follows, for the Karma module
+to weigh; a peer that follows none, or serves no Karma, tells of none.
 
 A received node list loses its entries naming this node. A ``localhost``
 endpoint, or a loopback one from a peer on another machine, is resolved to
@@ -95,10 +100,12 @@ from libranet.identity.errors import KeyFileError, SignatureError, UnknownKeyErr
 from libranet.identity.keys import published_public_key
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.signatures import MessageSigner, MessageVerifier
+from libranet.json_format import compact_json
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
 from libranet.protocol.errors import InvalidListError
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE, OCTET_STREAM, data_path
+from libranet.protocol.karma_head import KARMA_HEAD_PATH, ToldHead
 from libranet.protocol.lists import (
     NODES_PATH,
     SEEK_PATH,
@@ -359,6 +366,49 @@ class PeerExchange:
         if others:
             body = node_list_body({**self._node_list.own_entries(), **others})
             session.exchange([PeerRequest("POST", NODES_PATH, body, _JSON_HEADERS)])
+
+    def ask_head(self, session: PeerSession) -> None:
+        """Ask the peer which Karma head it follows, and publish it, if it follows one.
+
+        A peer that serves no Karma yet answers ``404``, and one whose Karma
+        module has not started ``503``; either tells of no head, as does an
+        answer that is not a head, which is logged, as a list that is not
+        one is.
+
+        Raises:
+            OSError: as :meth:`first_contact`.
+        """
+        (response,) = session.exchange([PeerRequest("GET", KARMA_HEAD_PATH)])
+
+        if response.status != HTTPStatus.OK:
+            self._logger.debug(
+                "%s told no Karma head (status %s)", session.endpoint, response.status
+            )
+            return
+
+        try:
+            told = ToldHead.from_json(response.body)
+
+        except ValueError as error:
+            self._logger.debug("Ignoring a Karma head from %s: %s", session.endpoint, error)
+            return
+
+        if told.head is None:
+            self._logger.debug("%s follows no Karma chain", session.endpoint)
+            return
+
+        self._publish(
+            EventType.KARMA_HEAD_TOLD, {"head": str(told.head), "node_id": str(session.node_id)}
+        )
+
+    def tell_head(self, session: PeerSession, head: ContentId) -> None:
+        """Post ``head``, the Karma head this node follows, to the peer (HttpApi §10.9).
+
+        Raises:
+            OSError: as :meth:`first_contact`.
+        """
+        body = compact_json(ToldHead(head).value())
+        session.exchange([PeerRequest("POST", KARMA_HEAD_PATH, body, _JSON_HEADERS)])
 
     def retrieve(self, session: PeerSession, content_id: ContentId) -> Retrieval:
         """Ask the peer for ``content_id``; whether it sent it, and if not, when to ask again.

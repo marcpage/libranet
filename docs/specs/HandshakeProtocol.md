@@ -207,6 +207,16 @@ two nodes is no longer a distinct "handshake" — it is ordinary traffic:
   after their first contact. A server is not sent its own entry. A server
   the client connects to later learns of them in step 3 of its own
   first-contact exchange.
+- Once the first-contact exchange is over, the client asks the server which
+  Karma head it follows (`GET /data/karma/head`, HTTP API §10.9), once while
+  the connection lasts. A server that serves no Karma yet answers `404`,
+  which is no error.
+- Whenever the client comes to follow a new Karma head, it publishes it to
+  every server it is connected to (`POST /data/karma/head`), as it publishes
+  new entries of its node list, so that a heavier chain is found soon
+  ([Karma Ledger §3.5](KarmaLedger.md#35-heads)). A server the client
+  connects to later is not told of the head followed then; it learns of it
+  by asking, over a connection of its own to the client.
 
 ```mermaid
 sequenceDiagram
@@ -219,6 +229,13 @@ sequenceDiagram
     end
     opt Client's node list newly names a node at an address
         C->>S: POST /data/nodes (the new entries, with its own)
+    end
+    opt Once, after first contact
+        C->>S: GET /data/karma/head
+        S-->>C: the head the server follows
+    end
+    opt Client comes to follow a new Karma head
+        C->>S: POST /data/karma/head (the new head)
     end
 ```
 

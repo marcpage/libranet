@@ -71,6 +71,7 @@ from libranet.identity.signatures import MessageSigner
 from libranet.messaging.publishing import Publish
 from libranet.problems import Problem
 from libranet.protocol.http_syntax import BODILESS_STATUSES, REQUEST_PATH_HEADER
+from libranet.protocol.karma_head import KARMA_HEAD_PATH
 from libranet.protocol.lists import NODES_PATH, SEEK_PATH
 from libranet.protocol.search import LocalSearch, SearchCache
 from libranet.webserver.app_handler import (
@@ -142,6 +143,7 @@ from libranet.webserver.karma_handlers import (
     KARMA_BALANCE_PATTERN,
     KARMA_GENERATIONS_PATH,
     KARMA_PATH,
+    KarmaHeadTold,
     KarmaReads,
 )
 from libranet.webserver.list_handlers import (
@@ -271,7 +273,9 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
     ``node``, ``/data/karma`` says, for any client, the head of the Karma
     chain the node follows, and the balance the chain states of the node, or
     of any identity, and lists the chain's generations, as the Karma module
-    writes them in ``storage``'s data directory (Phase 6 Step 128).
+    writes them in ``storage``'s data directory (Phase 6 Step 128), and
+    ``/data/karma/head`` says the head alone, for another node, and
+    publishes a head a peer tells of (Phase 6 Step 130).
 
     Each of those but reading into a bundle and checking signed content is
     served only to this node's own pages, as a request's ``Referer`` names
@@ -452,6 +456,8 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
         router.add("GET", KARMA_PATH, karma.karma)
         router.add("GET", KARMA_BALANCE_PATTERN, karma.balance)
         router.add("GET", KARMA_GENERATIONS_PATH, karma.generations)
+        router.add("GET", KARMA_HEAD_PATH, karma.head)
+        router.add("POST", KARMA_HEAD_PATH, KarmaHeadTold(publish))
 
     router.add("GET", SEARCH_PATTERN, search)
     router.add("GET", DROP_SEARCH_PATTERN, search.at_drop)

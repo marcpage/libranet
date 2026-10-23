@@ -3049,6 +3049,7 @@ def test_a_local_client_keeps_a_value_in_an_applications_store(
         ("PUT", "/data/karma/x", None),
         ("POST", "/data/karma", "GET"),
         ("PUT", "/data/karma/generations", "GET"),
+        ("PUT", "/data/karma/head", "GET, POST"),
     ],
 )
 def test_a_path_beneath_another_data_endpoint_is_never_taken_for_content(
@@ -3102,6 +3103,32 @@ def test_any_client_reads_what_the_karma_chain_followed_states(
     assert loads(balance_body) == {"kismet": "0", "last_won": None}
     assert generations.status == 200
     assert [each["generation"] for each in loads(generations_body)["generations"]] == [0]
+
+
+def test_a_peer_tells_the_karma_head_it_follows_and_asks_for_the_nodes(
+    local_connection: HTTPConnection, storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    peer = _new_identity()
+    told = ContentId("sha256", "d1" * 32)
+    body = dumps({"head": str(told)}).encode("utf-8")
+    signed = MessageSigner(peer).sign_request(
+        "POST", "/data/karma/head", {"Content-Type": JSON_CONTENT_TYPE}, body
+    )
+    local_connection.request("POST", "/data/karma/head", body=body, headers=signed)
+    posted = local_connection.getresponse()
+    posted.read()
+    unwritten, _ = _get(local_connection, "/data/karma/head")
+    head = KarmaHead(ContentId("sha256", "c1" * 32), 1, 96)
+    storage.karma_dir.mkdir(parents=True)
+    (storage.karma_dir / "head.json").write_text(dumps(head.value()), encoding="utf-8")
+    asked, asked_body = _get(local_connection, "/data/karma/head")
+
+    assert posted.status == 202
+    (message,) = _published(queues)
+    assert message["event"] == EventType.KARMA_HEAD_TOLD
+    assert (message["head"], message["node_id"]) == (str(told), str(peer.node_id))
+    assert unwritten.status == 503
+    assert (asked.status, loads(asked_body)) == (200, {"head": str(head.head)})
 
 
 def test_a_remote_client_is_told_it_is_not_local(local_server: LibranetHTTPServer) -> None:

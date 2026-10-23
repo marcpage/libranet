@@ -733,6 +733,62 @@ def test_an_unusable_list_is_ignored(
     assert published(queues, EventType.NODES_RECEIVED) == []
 
 
+def test_a_peer_that_serves_no_karma_tells_of_no_head(
+    exchange: PeerExchange, session: PeerSession, queues: ModuleQueues, caplog: LogCaptureFixture
+) -> None:
+    caplog.set_level(DEBUG)
+
+    exchange.ask_head(session)
+
+    assert published(queues, EventType.KARMA_HEAD_TOLD) == []
+    assert f"{session.endpoint} told no Karma head (status 404)" in caplog.text
+
+
+def asked_head(exchange: PeerExchange, queues: ModuleQueues, answer: bytes) -> list[Message]:
+    """What asking a peer that answers ``answer`` for its Karma head publishes."""
+    answering = new_identity()
+    peer = RawPeer(
+        [
+            signed(answering, 201),  # this node's key
+            signed(answering, 200, answering.public_key),  # its key
+            signed(answering, 200, answer),
+        ]
+    )
+    session = exchange.open(peer.endpoint)
+    drain(queues, [])
+
+    try:
+        exchange.ask_head(session)
+
+    finally:
+        session.close()
+        peer.join()
+
+    return [payload(message) for message in published(queues, EventType.KARMA_HEAD_TOLD)]
+
+
+def test_the_head_a_peer_follows_is_published(exchange: PeerExchange, queues: ModuleQueues) -> None:
+    (told,) = asked_head(exchange, queues, dumps({"head": str(OTHER_ID)}).encode())
+
+    assert told["head"] == str(OTHER_ID)
+    assert told["node_id"] != str(OTHER_ID)
+
+
+def test_a_peer_following_no_chain_tells_of_no_head(
+    exchange: PeerExchange, queues: ModuleQueues
+) -> None:
+    assert asked_head(exchange, queues, b'{"head": null}') == []
+
+
+def test_a_head_that_is_not_one_is_ignored(
+    exchange: PeerExchange, queues: ModuleQueues, caplog: LogCaptureFixture
+) -> None:
+    caplog.set_level(DEBUG)
+
+    assert asked_head(exchange, queues, b'{"head": "not an id"}') == []
+    assert "Ignoring a Karma head from" in caplog.text
+
+
 def test_first_contact_pushes_what_the_peer_seeks(
     exchange: PeerExchange,
     session: PeerSession,

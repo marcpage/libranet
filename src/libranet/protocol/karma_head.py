@@ -14,19 +14,33 @@ witnesses only a check reads::
 
 The web server loads none of the Karma module's code (Module System §2), so
 the files are named, and read, here.
+
+Nodes tell each other the heads they follow, and ask for them, at
+``/data/karma/head`` (HttpApi §10.9, Phase 6 Step 130), each head carried as
+the head alone (:class:`ToldHead`)::
+
+    {"head": "sha256/…"}
 """
 
 from __future__ import annotations
 from dataclasses import dataclass
 from json import loads
+from logging import getLogger
 from pathlib import Path
 from typing import Any, Final
 
 from libranet.cas.content_id import ContentId
+from libranet.cas.errors import UnknownAlgorithmError
 from libranet.json_fields import decimal_count, integer_field, string_field
+from libranet.protocol.http_syntax import API_PREFIX
+
+_LOGGER = getLogger(__name__)
 
 #: The file of the Karma module's history naming its head.
 KARMA_HEAD_FILE: Final = "head.json"
+
+#: Where a node asks another for the Karma head it follows, and tells its own (HttpApi §10.9).
+KARMA_HEAD_PATH: Final = API_PREFIX + "/karma/head"
 
 #: The directory of the Karma module's history holding a file for each generation.
 GENERATIONS_DIR: Final = "generations"
@@ -104,12 +118,24 @@ class KarmaHead:
             ValueError: it is not JSON, or names no head, as
                 :meth:`from_value` says.
         """
+        written = cls.written(karma_dir)
+        # A node whose Karma module has not started follows no chain.
+        return cls() if written is None else written
+
+    @classmethod
+    def written(cls, karma_dir: Path) -> KarmaHead | None:
+        """The head ``head.json`` in ``karma_dir`` names; ``None`` until the module writes it.
+
+        Raises:
+            OSError: it could not be read, other than for there being none.
+            ValueError: as :meth:`read`.
+        """
         try:
             data = (karma_dir / KARMA_HEAD_FILE).read_bytes()
 
         except FileNotFoundError:
-            # Not logged: a node whose Karma module has not started follows no chain.
-            return cls()
+            # Not logged: there is none until the Karma module first starts.
+            return None
 
         return cls.from_value(loads(data))
 
@@ -125,6 +151,60 @@ class KarmaHead:
             GENERATION_FIELD: self.generation,
             WEIGHT_FIELD: None if self.weight is None else str(self.weight),
         }
+
+
+@dataclass(frozen=True)
+class ToldHead:
+    """The Karma head a node says it follows, ``None`` while it follows none (HttpApi §10.9).
+
+    It is only what the node says: whether the chain through it is heavier
+    is found by fetching that chain (KarmaLedger §3.5.3).
+    """
+
+    head: ContentId | None = None
+
+    @classmethod
+    def from_value(cls, value: object) -> ToldHead:
+        """The head ``value``, the JSON a node sent, names.
+
+        Members it does not know are passed over. A head under an algorithm
+        this node does not support is logged as a warning, since this node
+        may need a newer version.
+
+        Raises:
+            ValueError: ``value`` is not an object, or its ``head`` is
+                missing, or neither an id nor ``null``.
+        """
+        if not isinstance(value, dict):
+            raise ValueError(f"A Karma head must be a JSON object, got {type(value).__name__}")
+
+        if HEAD_FIELD not in value:
+            raise ValueError(f'A Karma head must name its "{HEAD_FIELD}", or null')
+
+        if value[HEAD_FIELD] is None:
+            return cls()
+
+        text = string_field(value, HEAD_FIELD)
+
+        try:
+            return cls(ContentId.parse(text))
+
+        except UnknownAlgorithmError as error:
+            _LOGGER.warning("Passing over the Karma head %r: %s", text, error)
+            raise
+
+    @classmethod
+    def from_json(cls, data: bytes) -> ToldHead:
+        """The head ``data``, the JSON a node sent, names, as :meth:`from_value` reads it.
+
+        Raises:
+            ValueError: ``data`` is not JSON, or as :meth:`from_value` says.
+        """
+        return cls.from_value(loads(data))
+
+    def value(self) -> dict[str, Any]:
+        """This head as ``/data/karma/head`` carries it."""
+        return {HEAD_FIELD: None if self.head is None else str(self.head)}
 
 
 @dataclass(frozen=True)

@@ -1702,7 +1702,11 @@ To ask a node which head it follows, a node sends:
 GET /data/karma/head HTTP/1.1
 ```
 
-The response body is the JSON object above.
+The response body is the JSON object above. A node asks each node it
+connects to once, after first contact (HandshakeProtocol §3.3). A node that
+has not read its Karma history yet, as one just started may not have,
+answers `503 Service Unavailable` with `Retry-After`. The answer is not to
+be cached (`Cache-Control: no-store`), since it changes as the head does.
 
 A head told either way is only a pointer. A node follows it only once it
 has fetched the chain the head names and checked that it is heavier than
