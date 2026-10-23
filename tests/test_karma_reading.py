@@ -266,6 +266,39 @@ def test_shunned_content_is_neither_read_nor_asked_for(
         reader.held(block_id)
 
 
+def test_one_block_is_read_by_its_id_as_it_is_read_at_its_target(
+    reader: TargetReader,
+    truth: CasStore,
+    recorder: Recorder,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    staking: bytes,
+) -> None:
+    block_id = hold(truth, staking)
+    hold_keys(truth, alice)
+
+    held = reader.block(block_id, ValidationBlock)
+
+    compressed_bytes = len(compress(staking, STORAGE_COMPRESSION_LEVEL))
+    assert held == HeldBlock(block_id, staking, compressed_bytes, {alice.node_id: alice.public_key})
+    assert recorder.asked_for() == [bob.node_id]
+
+
+def test_one_block_not_held_is_asked_for_and_one_shunned_is_not(
+    storage: StorageConfig, reader: TargetReader, recorder: Recorder, staking: bytes
+) -> None:
+    with raises(MissingContentError):
+        reader.block(id_of(staking), ValidationBlock)
+
+    assert recorder.asked_for() == [id_of(staking)]
+
+    shunned = matching(FIRST.validation, 20)
+    write_atomically(storage.shunned_list_path, ShunnedContent.body([shunned]))
+
+    with raises(ShunnedContentError):
+        reader.block(shunned, ValidationBlock)
+
+
 def test_a_block_a_peer_names_is_asked_for_at_once_and_read_once_stored(
     reader: TargetReader,
     truth: CasStore,

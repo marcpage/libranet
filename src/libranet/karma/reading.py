@@ -50,7 +50,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from logging import getLogger
 from time import time
-from typing import Callable, Collection, Iterable, Mapping, TypeVar
+from typing import Callable, Collection, Iterable, Mapping, Protocol, TypeVar
 from zlib import compress
 
 from libranet.bundle.content import ContentSource
@@ -71,7 +71,7 @@ from libranet.cas.prefix import nearest
 from libranet.cas.shunned import ShunnedContent
 from libranet.config.models import LibranetConfig
 from libranet.karma.blocks import Balance, BlockDrop, TransactionBlock, ValidationBlock
-from libranet.karma.history import ChainHistory
+from libranet.karma.history import ChainGeneration
 from libranet.karma.ledger import NO_BALANCE, WEIGHT_GENERATIONS
 from libranet.karma.transactions import TransactionKey
 from libranet.messaging.events import EventType
@@ -214,11 +214,7 @@ class TargetReader:  # pylint: disable=too-many-instance-attributes
                 _LOGGER.warning("Passing over %s at Karma target %s: %s", block_id, prefix, error)
                 continue
 
-            compressed_bytes = (
-                len(compress(data, STORAGE_COMPRESSION_LEVEL)) if held_bytes is None else held_bytes
-            )
-            keys = self._keys(block_id, data, kind)
-            blocks.append(HeldBlock(block_id, data, compressed_bytes, keys))
+            blocks.append(self._block(block_id, data, held_bytes, kind))
 
         self.fetch(lacking)
         return blocks
@@ -257,15 +253,23 @@ class TargetReader:  # pylint: disable=too-many-instance-attributes
             BundleVerificationError: what is held is neither it nor one zlib
                 stream of it, decompressing to at most ``max_bytes``.
         """
-        if self._shunned.shuns(content_id):
-            raise ShunnedContentError(content_id)
+        return self._held(content_id)[0]
 
-        try:
-            return self._read(content_id)[0]
+    def block(self, block_id: ContentId, kind: type[_Block]) -> HeldBlock:
+        """Block ``block_id``, of ``kind``, as the node holds it, for a check to read.
 
-        except MissingContentError:
-            self.fetch((content_id,))
-            raise
+        What it does not hold is asked for, as :meth:`held` asks, and so is
+        the key of each signer it names that is not held, as :meth:`read`
+        asks.
+
+        Raises:
+            ShunnedContentError: the node shuns it.
+            MissingContentError: it is not held.
+            BundleVerificationError: what is held is not it, as :meth:`held`
+                says.
+        """
+        data, held_bytes = self._held(block_id)
+        return self._block(block_id, data, held_bytes, kind)
 
     def fetch(self, content_ids: Iterable[ContentId]) -> None:
         """Ask for each of ``content_ids`` the node lacks, and wait for it (HttpApi §5.2).
@@ -328,6 +332,38 @@ class TargetReader:  # pylint: disable=too-many-instance-attributes
         answers = self._answers.setdefault(prefix, _Answers(now))
         answers.read_at = now
         return answers
+
+    def _held(self, content_id: ContentId) -> tuple[bytes, int | None]:
+        """What is held of ``content_id``, as :meth:`_read` says, asked for if it is not held.
+
+        Raises:
+            ShunnedContentError: the node shuns it, so it is neither read nor
+                asked for.
+            MissingContentError: it is not held.
+            BundleVerificationError: what is held is neither it nor one zlib
+                stream of it, decompressing to at most ``max_bytes``.
+        """
+        if self._shunned.shuns(content_id):
+            raise ShunnedContentError(content_id)
+
+        try:
+            return self._read(content_id)
+
+        except MissingContentError:
+            self.fetch((content_id,))
+            raise
+
+    def _block(
+        self, block_id: ContentId, data: bytes, held_bytes: int | None, kind: type[_Block]
+    ) -> HeldBlock:
+        """Block ``block_id``, the drop ``data``, held as is, or as a zlib stream of ``held_bytes``.
+
+        The keys of its signers not held are asked for (:meth:`_keys`).
+        """
+        compressed_bytes = (
+            len(compress(data, STORAGE_COMPRESSION_LEVEL)) if held_bytes is None else held_bytes
+        )
+        return HeldBlock(block_id, data, compressed_bytes, self._keys(block_id, data, kind))
 
     def _read(self, content_id: ContentId) -> tuple[bytes, int | None]:
         """What is held of ``content_id``, and the size of the zlib stream it is held as, if it is.
@@ -408,6 +444,26 @@ class TargetReader:  # pylint: disable=too-many-instance-attributes
         return list(dict.fromkeys(signers))
 
 
+class ChainGenerations(Protocol):
+    """The generations of a chain, as :class:`HeldChain` reads them: a history, or one like it."""
+
+    def generation(self, generation: int) -> ChainGeneration:
+        """Generation ``generation``.
+
+        Raises:
+            IndexError: it holds no such generation.
+        """
+        ...
+
+    def has_key(self, key: TransactionKey, first: int, last: int) -> bool:
+        """Whether a transaction in its transaction blocks ``first`` to ``last`` has ``key``."""
+        ...
+
+    def witnessed(self, transaction_hash: str) -> int | None:
+        """The generation whose validation block lists ``transaction_hash``, or ``None``."""
+        ...
+
+
 class HeldChain:
     """The chain the Karma module follows, as a check reads it (Phase 6 Step 121's ``ChainView``).
 
@@ -419,10 +475,12 @@ class HeldChain:
 
     It is the chain through the history's head, and so through each
     validation block in it: a check reads it of a block at the targets named
-    for one of them.
+    for one of them. The history is the module's own
+    (:class:`~libranet.karma.history.ChainHistory`), or a chain it weighs
+    (Phase 6 Step 129).
     """
 
-    def __init__(self, history: ChainHistory, reader: TargetReader) -> None:
+    def __init__(self, history: ChainGenerations, reader: TargetReader) -> None:
         self._history = history
         self._reader = reader
 
