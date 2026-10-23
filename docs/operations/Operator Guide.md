@@ -142,6 +142,7 @@ The settings an operator is most likely to change:
 | `karma.look_seconds` | `60.0` | How often Karma looks for the next generation of the chain it follows, or for a root while it follows none (§4.8) |
 | `karma.carry_generations` | `10` | How many generations after it was witnessed a transaction of a chain the node leaves is carried over into the heavier one, or one the node puts up waits for its sender to cover it (§4.8) |
 | `karma.block_seconds` | `10.0` | How long Karma searches for the nonce of a block it places, as one it puts up for a transaction alone, before taking the best found (§4.8) |
+| `karma.payment_percent` | `0.01` | What share of the Karma the node holds each of its payments is, in percent, rounded down to whole Kismet (§4.8) |
 | `karma.payment_batch` | `100` | How many of the node's payments Karma queues before it puts them up together, as one transaction (§4.8) |
 | `karma.payment_interval_seconds` | `3600.0` | How long after the node's last transaction Karma puts up the payments it has queued, however few (§4.8) |
 | `karma.transaction_seconds` | `10.0` | How long Karma mines a transaction of the node's payments before taking the best nonce found (§4.8) |
@@ -460,9 +461,10 @@ node, whose nonce it searches for `karma.block_seconds` first, which holds
 up its other Karma work. One its sender cannot pay for yet waits there until
 the sender can, or until `karma.carry_generations` after it was witnessed.
 
-The node will pay other nodes for what they do for it, each payment 0.01% of
-the Karma the chain states it holds, rounded down, and so nothing while it
-holds under 10,000 Kismet. It queues its payments in `karma/payments.json`,
+The node will pay other nodes for what they do for it, each payment
+`karma.payment_percent` of the Karma the chain states it holds, rounded
+down, and so nothing while that rounds to 0: under 10,000 Kismet at the
+default, 0.01%. It queues its payments in `karma/payments.json`,
 and puts them up together, as one transaction, once `karma.payment_batch`
 are queued, or `karma.payment_interval_seconds` have passed since its last
 transaction, mining it for `karma.transaction_seconds` first, which holds up

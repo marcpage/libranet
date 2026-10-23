@@ -329,10 +329,11 @@ since, each the user's own answer or my recommended option:
 - **Karma's blocks are ordinary content**, evicted by the same score as
   any other. A node that needs one it no longer holds fetches it again.
   Holding them longer was turned down.
-- **A node pays 0.01% of its balance** for most common payments, rounded
-  down to whole Kismet. It queues its payments and puts them up as one
-  transaction once 100 are queued or an hour has passed since its last,
-  both in its configuration, so that payments do not flood the network.
+- **A node pays 0.01% of its balance** by default for most common
+  payments, rounded down to whole Kismet. It queues its payments and puts
+  them up as one transaction once 100 are queued or an hour has passed
+  since its last, each of the three in its configuration, so that payments
+  do not flood the network.
   Hourly by default, it rates the servers it is connected to as a client
   by data received and by requests fulfilled, and pays the highest rated
   by each 0.01% of its balance.
@@ -2226,16 +2227,17 @@ My calls, not yet reviewed:
 **Kind:** improvement in behavior. **Issue:** #450, under #87.
 **Depends on:** Step 131.
 
-For most common payments, a node pays 0.01% of its balance, rounded down
-to whole Kismet, and puts its payments up together, so that they do not
+For most common payments, a node pays `karma.payment_percent` (0.01%) of
+its balance, rounded down to whole Kismet, and puts its payments up together, so that they do not
 flood the network (KarmaLedger §4.6).
 
 Work this implies:
 
 - **A queue of payments** (`karma/payments.py`), kept in
-  `karma/payments.json`: each payment a recipient and an amount, 0.01% of
-  the node's balance as its chain states it when the payment is queued,
-  and nothing queued while that rounds to 0, under 10,000 Kismet.
+  `karma/payments.json`: each payment a recipient and an amount,
+  `karma.payment_percent` of the node's balance as its chain states it
+  when the payment is queued, and nothing queued while that rounds to 0,
+  under 10,000 Kismet at 0.01%.
 - **One transaction for many payments**: once `karma.payment_batch` (100)
   are queued, or `karma.payment_interval_seconds` (3600) have passed since
   the node's last transaction, the queue becomes one transaction. Its `to`
@@ -2264,11 +2266,11 @@ What was built:
   the head's generation, at the time, or a second after the node's last
   transaction, if that is not earlier, so that no two of the node's share a
   key.
-- **`NodePayments`** (`karma/payments.py`): `pay(recipient)` queues 0.01% of
-  the node's balance at the head (`HeldChain.balances`), rounded down, and
-  nothing while that is 0, or while no chain is followed; a balance read
-  from blocks not held is logged, and the payment not made, as is one that
-  cannot be queued. `put_up()`, as the module looks, makes the queue a
+- **`NodePayments`** (`karma/payments.py`): `pay(recipient)` queues
+  `karma.payment_percent` of the node's balance at the head
+  (`HeldChain.balances`), rounded down, and nothing while that is 0, or
+  while no chain is followed; a balance read from blocks not held is
+  logged, and the payment not made, as is one that cannot be queued. `put_up()`, as the module looks, makes the queue a
   transaction when it is due, keeps it in the file in place of the queue,
   mines it for `karma.transaction_seconds`, signs it as the node, and gives
   it to Step 131's `TransactionsPutUp.take`, keeping it no more once that is
@@ -2279,8 +2281,9 @@ What was built:
   when the sender's key is asked for, or `carried.json` cannot be written,
   and the node's payments then give it again, with the same `created`, as
   the module next looks.
-- **`karma.payment_batch`** (100), **`karma.payment_interval_seconds`**
-  (3600), and **`karma.transaction_seconds`** (10) (`KarmaConfig`).
+- **`karma.payment_percent`** (0.01), **`karma.payment_batch`** (100),
+  **`karma.payment_interval_seconds`** (3600), and
+  **`karma.transaction_seconds`** (10) (`KarmaConfig`).
 - **`KarmaModule`** puts up the node's payments, when they are due, as it
   looks, before the transactions it carries. Nothing queues a payment yet:
   Step 133 will.
@@ -2289,6 +2292,11 @@ What was built:
 
 My calls, not yet reviewed:
 
+- **The share is a percent, read as the decimal it is written as**
+  (`karma.payment_percent`, from `0` exclusive to `100`), so that `0.01`
+  is exactly a hundredth of a percent of any balance, as binary floating
+  point is not: on the most Kismet there can be, the two differ by
+  millions.
 - **A node that has made no transaction makes its first payments one at
   once**, as it next looks: there is no last transaction for the interval to
   count from (KarmaLedger §4.6). Each after waits for the count, or for the

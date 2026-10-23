@@ -526,9 +526,10 @@ to its contents.
 ### 4.6 A Node's Payments
 
 A node pays other nodes for what they do for it (Karma §11). For most
-common payments, it pays 0.01% of its balance, rounded down to whole
-Kismet, so that what it gives keeps in step with what it holds. A node
-holding under 10,000 Kismet pays nothing, since its payment rounds to 0.
+common payments, it pays a share of its balance, 0.01% unless its
+configuration says otherwise, rounded down to whole Kismet, so that what it
+gives keeps in step with what it holds. At 0.01%, a node holding under
+10,000 Kismet pays nothing, since its payment rounds to 0.
 
 A node does not put each payment up as it makes it. It queues them, and
 puts them up together as one transaction, whose `to` pays every recipient
@@ -542,7 +543,7 @@ it is connected to as a client
 ([Handshake Protocol §3](HandshakeProtocol.md#3-first-contact-exchange)),
 over the time since it last rated them: by the data it received from each,
 and by the number of its requests each fulfilled. It pays the server rated
-highest by each, 0.01% of its balance, queued as any payment is.
+highest by each that share of its balance, queued as any payment is.
 
 ## 5. Transaction Blocks
 

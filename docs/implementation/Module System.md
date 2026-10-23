@@ -465,8 +465,8 @@ transaction target, where it is valid, and not put up there already: the
 transaction and the payout, signed by the node, its nonce searched for for
 `karma.block_seconds`, stored and announced as a root is. The node's own
 payments it queues in `payments.json` (`NodePayments`, `karma/payments.py`,
-Phase 6 Step 132), each 0.01% of the node's balance at the head, and, as it
-looks, once `karma.payment_batch` are queued, or
+Phase 6 Step 132), each `karma.payment_percent` of the node's balance at the
+head, and, as it looks, once `karma.payment_batch` are queued, or
 `karma.payment_interval_seconds` have passed since the node's last
 transaction, makes them one transaction, mines it for
 `karma.transaction_seconds`, signs it as the node, and puts it up as one it
