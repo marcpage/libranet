@@ -118,7 +118,7 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
   Step 118 is #436, Step 119 is #437, Step 120 is #438, Step 121 is #439,
   Step 122 is #440, Step 123 is #441, Step 124 is #442, Step 125 is #443,
   Step 126 is #444, Step 127 is #445, Step 128 is #446, Step 129 is #447,
-  and none after it has one yet.
+  Step 130 is #448, and none after it has one yet.
 - **The ledger's tests use small blocks.** Whether a block is full is
   measured against bounds the library takes, the specification's
   (KarmaLedger §5.4) unless a test gives others, so that a test fills a
@@ -1874,7 +1874,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 129 — Changing Heads
+## Step 129 — Changing Heads ✅
 
 **Kind:** improvement in behavior. **Issue:** #447, under #87.
 **Depends on:** Steps 126 and 127.
@@ -2027,7 +2027,7 @@ My calls, not yet reviewed:
 
 ## Step 130 — Telling and Asking Heads
 
-**Kind:** improvement in web API. **Issue:** none yet; planned under #87.
+**Kind:** improvement in web API. **Issue:** #448, under #87.
 **Depends on:** Steps 123 and 129.
 
 Nodes tell each other the heads they follow (HttpApi §10.9), so that a
@@ -2063,6 +2063,65 @@ contact, and passing over a `404`.
 My call, not yet reviewed: **a peer's head is asked for once**, at first
 contact. A head is told at each change, so a peer still connected tells of
 each new one itself.
+
+It came to 327 added lines of non-test Python, with 30 changed or removed,
+against an estimate of 300, and 502 lines of tests, so it was built as one
+change set.
+
+What was built:
+
+- **`GET` and `POST /data/karma/head`** (`webserver/karma_handlers.py`),
+  served beside `/data/karma`. `KarmaReads.head` answers `{"head": …}` from
+  `head.json`, `null` while no chain is followed, and `503` with
+  `Retry-After` until the Karma module first writes it, never to be stored.
+  `KarmaHeadTold` takes the head a peer posts: `202`, published as
+  `karma.head_told`; `401` unsigned; and `400` with `invalid-request` for a
+  body that is not a head, or a head under an algorithm the node does not
+  support, which is logged as a warning.
+- **`ToldHead` and `KARMA_HEAD_PATH`** (`protocol/karma_head.py`): the head
+  alone, as both endpoints carry it, read and written alike by the web
+  server and the connection manager. `KarmaHead.written` tells a head not
+  written yet from none followed.
+- **`karma.head`** `{"head", "generation", "weight"}`: the Karma module says
+  its head as it first looks, and each time it changes after, whether by
+  following on, changing chains, or making a root.
+- **`karma.head_told`** `{"head", "node_id"}`: the Karma module hands the
+  head to `HeadChanges.told`, and looks again as it next idles, unless it is
+  the head followed.
+- **The connection manager** posts each `karma.head` to every peer
+  connected, each on a thread of its own, as it posts new nodes, the two
+  now sharing one way of telling each peer, and of logging what fails. It
+  asks each peer it connects to for its head once first contact is over
+  (`PeerExchange.ask_head`), publishing it as `karma.head_told`. A `404` or
+  a `503` is logged at debug, as is an answer that is not a head, as a list
+  that is not one is.
+- HandshakeProtocol §3.3, HttpApi §10.9, the Module System, Messages §3,
+  §4.13, and §5, and the Operator Guide's §4.8.
+
+My calls, not yet reviewed:
+
+- **A head of `null` is answered `202`, and not published,** since there is
+  nothing to weigh; and so for a peer that answers `null` when asked. The
+  plan had a `null` published.
+- **The plan's call leaves a gap.** A node tells its head only over its own
+  connections, as the plan says, so a peer that connects to this node,
+  where this node does not connect to it, asks for this node's head once,
+  at first contact, and is told of none after. A connection each way, which
+  the peer mix often makes, tells each of the other's new heads. Asking
+  again at each seek-list refresh (`peers.seek_refresh_seconds`) would close
+  the gap, at one more request each time; built as planned.
+- **The head is said as the module first looks,** as well as each time it
+  changes, so that the peers connected as a node restarts hear of it. A
+  module that follows no chain says none.
+- **A head told that is the one followed has the module look no sooner,**
+  since nearly every head told is that one once the peers agree.
+- **The log lines for passing new nodes on changed** to the wording the
+  head shares: "Could not tell {endpoint} of new nodes", and "Telling
+  {endpoint} of new nodes failed".
+- **A posted head must say it is JSON** (`Content-Type:
+  application/json`), as every JSON body the node takes must (HttpApi
+  §2.3.3), though a peer's signature already shows it is no page's form.
+  The connection manager sends it so.
 
 ---
 

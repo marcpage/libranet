@@ -434,15 +434,18 @@ block it finds stating something false, or unsigned. An unsigned block is
 shunned, so the node never holds it again. Whoever signed a false one the
 node distrusts (§4.7).
 
-A node always follows the heaviest chain it has checked. When another
-validation block is placed beside its head that makes a heavier chain, it
-checks that chain back to where it leaves its own, and follows it if every
-block is correct; `libranet-karma.log` says so, naming the generation the
-two chains share. The transactions of the chain it leaves that the new one
-does not hold it keeps in `karma/carried.json`, to put into the blocks it
-builds, for `karma.carry_generations` after each was witnessed. A chain with
-a false block in it is not followed: the block's builder is distrusted, as
-above, and one stating its weight or generation falsely is shunned too.
+A node always follows the heaviest chain it has checked. When another validation
+block is placed beside its head that makes a heavier chain, or a peer tells it
+of a head that may be heavier, it checks that chain back to where it leaves its
+own, and follows it if every block is correct; `libranet-karma.log` says so,
+naming the generation the two chains share. Nodes tell the peers they connect to
+of each new head they follow, and ask each for its own as they connect, so a
+node that has been apart from the rest finds the heavier chain soon after it
+reconnects. The transactions of the chain it leaves that the new one does not
+hold it keeps in `karma/carried.json`, to put into the blocks it builds, for
+`karma.carry_generations` after each was witnessed. A chain with a false block
+in it is not followed: the block's builder is distrusted, as above, and one
+stating its weight or generation falsely is shunned too.
 
 What the chain says, any client may read (HTTP API §10.10): the head the
 node follows, and the Karma the chain states the node holds, at

@@ -57,6 +57,15 @@ thread of its own (HandshakeProtocol §3.3, Phase 5 Step 114). A peer is told
 only of the nodes other than itself, and nothing if there are none. A peer
 connected later is told of them by first contact.
 
+Each new head the Karma module follows (``karma.head`` ``{"head",
+"generation", "weight"}``) is posted to every peer connected, as new nodes
+are, and each peer is asked for the head it follows once first contact is
+over (HttpApi §10.9, Phase 6 Step 130). What a peer answers is published for
+the Karma module to weigh, as
+:meth:`~libranet.connections.peer_exchange.PeerExchange.ask_head` says. A
+peer connected later is not told of the head followed; it asks for it
+itself, if it connects to this node.
+
 An endpoint that answers as a node other than the one expected did not reach
 the node expected there, and did reach the node that answered. That node is
 taken into the mix if it is not connected yet. If it is, the new connection
@@ -504,6 +513,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
             EventType.PEERS_CONNECTED_REQUESTED,
             EventType.DIAL_REQUESTED,
             EventType.NODE_TRUST,
+            EventType.KARMA_HEAD,
         }
     )
 
@@ -547,6 +557,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
                 EventType.PEERS_CONNECTED_REQUESTED: self._on_peers_connected_requested,
                 EventType.DIAL_REQUESTED: self._on_dial_requested,
                 EventType.NODE_TRUST: self._on_node_trust,
+                EventType.KARMA_HEAD: self._on_karma_head,
             }
         )
 
@@ -675,31 +686,46 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
     def _on_node_list_updated(self, _message: Message) -> None:
         self._reload_candidates()
         self._maintain()
-        self._pass_on(self.exchange.newly_listed())
+        nodes = self.exchange.newly_listed()
 
-    def _pass_on(self, nodes: Mapping[str, ContentId]) -> None:
-        """Post ``nodes``, newly listed, to every peer connected, each on a thread of its own."""
-        if not nodes:
-            return
+        if nodes:
+            told = self._tell_each(
+                "pass-on", "new nodes", partial(self.exchange.pass_on, nodes=nodes)
+            )
+            self.logger.debug("Passing %d newly listed nodes on to %d peers", len(nodes), told)
 
+    def _on_karma_head(self, message: Message) -> None:
+        """Tell every peer connected of the head the Karma module now follows."""
+        head = ContentId.parse(message["head"])
+        told = self._tell_each(
+            "tell-head", "the Karma head", partial(self.exchange.tell_head, head=head)
+        )
+        self.logger.debug("Telling %d peers of the Karma head %s", told, head)
+
+    def _tell_each(self, purpose: str, what: str, tell: Callable[[PeerSession], None]) -> int:
+        """Run ``tell`` with every peer connected, each on a thread of its own, for ``purpose``.
+
+        Returns:
+            How many peers it is run with.
+        """
         with self._lock:
             sessions = [peer.session for peer in self._peers.values()]
 
-        self.logger.debug("Passing %d newly listed nodes on to %d peers", len(nodes), len(sessions))
-
         for session in sessions:
-            self._start("pass-on", partial(self._pass_on_to, session, nodes))
+            self._start(purpose, partial(self._tell, session, what, tell))
 
-    def _pass_on_to(self, session: PeerSession, nodes: Mapping[str, ContentId]) -> None:
-        """Pass-on thread: post ``nodes`` to ``session``'s peer."""
+        return len(sessions)
+
+    def _tell(self, session: PeerSession, what: str, tell: Callable[[PeerSession], None]) -> None:
+        """Telling thread: tell ``session``'s peer ``what``, as ``tell`` does."""
         try:
-            self.exchange.pass_on(session, nodes)
+            tell(session)
 
         except OSError as error:
-            self.logger.debug("Could not pass new nodes on to %s: %s", session.endpoint, error)
+            self.logger.debug("Could not tell %s of %s: %s", session.endpoint, what, error)
 
         except Exception:  # pylint: disable=broad-exception-caught
-            self.logger.exception("Passing new nodes on to %s failed", session.endpoint)
+            self.logger.exception("Telling %s of %s failed", session.endpoint, what)
 
     def _on_node_trust(self, message: Message) -> None:
         """Take whom this node trusts, close the peers it no longer allows, and tend the mix."""
@@ -765,7 +791,7 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
         if peer is not None:
             self._publish_dialed(dial_id, DialOutcome.CONNECTED, node_id)
             self._push_unpushed()
-            self._talk(peer, self.exchange.first_contact)
+            self._talk(peer, self._greet)
 
         elif node_id == self.exchange.node_id:
             self._publish_dialed(dial_id, DialOutcome.THIS_NODE, node_id)
@@ -1015,7 +1041,17 @@ class ConnectionsModule(ModuleBase):  # pylint: disable=too-many-instance-attrib
 
         if peer is not None:
             self._push_unpushed()
-            self._talk(peer, self.exchange.first_contact)
+            self._talk(peer, self._greet)
+
+    def _greet(self, session: PeerSession) -> None:
+        """First contact with ``session``'s peer, then ask it for the Karma head it follows.
+
+        Raises:
+            OSError: the connection failed, or a response did not come from
+                the peer.
+        """
+        self.exchange.first_contact(session)
+        self.exchange.ask_head(session)
 
     def _walk(self, candidate: Candidate) -> _Peer | None:
         """Dial ``candidate``'s endpoints in turn until one reaches a peer taken into the mix.

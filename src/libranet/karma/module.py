@@ -1,4 +1,4 @@
-"""The Karma module process (Phase 6 Steps 123 to 129).
+"""The Karma module process (Phase 6 Steps 123 to 130).
 
 Every step that has the node act on the Karma ledger (KarmaLedger.md) runs
 here: reading what is placed at a target, following the chain, and
@@ -35,7 +35,16 @@ head was chosen from, and follows the chain through one that is heavier
 over the transactions of the chain it leaves that the heavier one does not
 hold, for ``karma.carry_generations``, in ``carried.json``. What such a
 chain lacks it asks for, and it gives up on the chain with what has not
-come.
+come. It weighs too the latest head each peer tells of, as the web server
+hears it told, or the connection manager asks for it, looking again as it
+next idles for one it does not follow (Phase 6 Step 130)::
+
+    karma.head_told  {"head", "node_id"}
+
+The head it follows it says as it first looks, and each time it changes,
+for the connection manager to tell the peers::
+
+    karma.head  {"head", "generation", "weight"}
 
 Each time its head changes, it writes every balance the chain states there
 to ``balances.json`` in ``storage.karma_dir``, for the web server to read
@@ -108,6 +117,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             EventType.DATA_STORED,
             EventType.KARMA_ROOT_REQUESTED,
             EventType.NODE_TRUST,
+            EventType.KARMA_HEAD_TOLD,
         }
     )
 
@@ -135,6 +145,8 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         # and when to look, whether it idles or not.
         self._look_again = False
         self._next_look_at = 0.0
+        # The head last said, for the connection manager to tell the peers.
+        self._head_said: ContentId | None = None
         self._trust: NodeTrust | None = None
         self._store = CasStore.source_of_truth(config.storage)
         self._searchers = NonceSearchers(config.karma.mining_processes)
@@ -147,6 +159,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
                 EventType.DATA_STORED: self._on_data_stored,
                 EventType.KARMA_ROOT_REQUESTED: self._on_root_requested,
                 EventType.NODE_TRUST: self._on_node_trust,
+                EventType.KARMA_HEAD_TOLD: self._on_head_told,
             }
         )
 
@@ -259,6 +272,25 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             self.logger.debug("%s, which was waited for, is stored", content_id)
             self._look_again = True
 
+    def _on_head_told(self, message: Message) -> None:
+        """Weigh the head a peer told of, looking again as the module next idles, unless followed.
+
+        Raises:
+            RuntimeError: the module has not started.
+            KeyError: the message lacks the head or the peer.
+            ValueError: either is no id.
+        """
+        head = ContentId.parse(message["head"])
+        node_id = ContentId.parse(message["node_id"])
+        followed = self.history.head
+
+        if self._changes is None or (followed is not None and followed.validation == head):
+            return
+
+        self._changes.told(node_id, head)
+        self.logger.debug("%s follows the Karma head %s", node_id, head)
+        self._look_again = True
+
     def _on_node_trust(self, message: Message) -> None:
         """Keep whom the node trusts and distrusts, in place of what was kept before.
 
@@ -318,15 +350,16 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             root.generation.validation,
             root.validation.matching_bits,
         )
+        self._say_head()
         self._write_balances()
 
     def _look(self, *, idle: bool) -> None:
         """Follow the chain on, if it is time to look, or, as the module ``idle``s, to look again.
 
         It then weighs the heads it does not follow, and once it follows a
-        heavier chain, follows that on. The balances stated at the head are
-        then written, if it changed. A history that cannot be written is
-        logged, and written at the next look.
+        heavier chain, follows that on. The head is then said, and the
+        balances stated there written, if it changed. A history that cannot
+        be written is logged, and written at the next look.
         """
         now = self._clock()
         follower = self._follower
@@ -351,7 +384,18 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         except OSError as error:
             self.logger.error("Cannot write the history of the Karma chain followed: %s", error)
 
+        self._say_head()
         self._write_balances()
+
+    def _say_head(self) -> None:
+        """Say the head followed, for the connection manager to tell the peers, if it is new."""
+        head = self.history.head
+
+        if head is None or head.validation == self._head_said:
+            return
+
+        self._head_said = head.validation
+        self.publish(EventType.KARMA_HEAD, head.karma_head.value())
 
     def _write_balances(self) -> None:
         """Write the balances stated at the head, if they were not written at that head.

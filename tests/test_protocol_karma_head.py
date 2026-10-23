@@ -7,7 +7,7 @@ from pathlib import Path
 from pytest import mark, raises
 
 from libranet.cas.content_id import ContentId
-from libranet.protocol.karma_head import KarmaGeneration, KarmaHead
+from libranet.protocol.karma_head import KarmaGeneration, KarmaHead, ToldHead
 
 HEAD = ContentId("sha256", "c1" * 32)
 BLOCK = ContentId("sha256", "b1" * 32)
@@ -34,6 +34,39 @@ def test_no_head_is_read_before_one_is_followed(tmp_path: Path, written: object)
     assert head == KarmaHead()
     assert not head.follows
     assert head.value() == {"head": None, "generation": None, "weight": None}
+
+
+def test_a_head_is_written_only_once_the_karma_module_writes_one(tmp_path: Path) -> None:
+    assert KarmaHead.written(tmp_path) is None
+
+    (tmp_path / "head.json").write_text(
+        dumps({"head": None, "generation": None, "weight": None}), encoding="utf-8"
+    )
+
+    assert KarmaHead.written(tmp_path) == KarmaHead()
+
+
+@mark.parametrize("head", [HEAD, None])
+def test_a_head_told_is_read_as_it_is_sent(head: ContentId | None) -> None:
+    sent = ToldHead(head).value()
+
+    assert sent == {"head": None if head is None else str(HEAD)}
+    assert ToldHead.from_json(dumps({**sent, "generation": 4}).encode()) == ToldHead(head)
+
+
+@mark.parametrize(
+    ("data", "message"),
+    [
+        (b"[]", "must be a JSON object"),
+        (b"{}", 'must name its "head"'),
+        (b'{"head": 1}', '"head" must be a string'),
+        (b'{"head": "c1"}', "algorithm/hash"),
+        (b"\xff", "codec"),
+    ],
+)
+def test_a_head_told_that_is_not_one_is_refused(data: bytes, message: str) -> None:
+    with raises(ValueError, match=message):
+        ToldHead.from_json(data)
 
 
 @mark.parametrize(

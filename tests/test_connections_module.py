@@ -30,6 +30,7 @@ from libranet.cas.store import CasStore
 from libranet.config.models import (
     IdentityConfig,
     LibranetConfig,
+    NetworkConfig,
     PeerConfig,
     StatsConfig,
     StorageConfig,
@@ -46,7 +47,9 @@ from libranet.messaging.envelope import Message, make_message
 from libranet.messaging.events import ConnectionDirection, DialOutcome, EventType
 from libranet.messaging.queues import MessageQueue, ModuleQueues
 from libranet.modules import ModuleName
+from libranet.protocol.karma_head import KarmaHead
 from libranet.stats.module import StatsModule
+from libranet.webserver.config_handlers import NodeDescription
 from libranet.webserver.router import Router
 from libranet.webserver.server import LibranetHTTPServer, RequestHandler, build_router
 
@@ -124,9 +127,15 @@ class DroppableServer(LibranetHTTPServer):
 
 
 class FixturePeer:
-    """This node's web server on a free local port, with an identity of its own."""
+    """This node's web server on a free local port, with an identity of its own.
 
-    def __init__(self, root: Path, identity: NodeIdentity | None = None) -> None:
+    It serves the endpoints only a node's own identity is needed for, the
+    Karma head among them, only if it is ``serving_karma``.
+    """
+
+    def __init__(
+        self, root: Path, identity: NodeIdentity | None = None, *, serving_karma: bool = False
+    ) -> None:
         self.identity = identity or NodeIdentity.from_private_key(generate_private_key(), "sha256")
         # Answering a search with whatever it holds nearest, however far, so
         # that every peer asked answers something.
@@ -146,6 +155,11 @@ class FixturePeer:
                 RequestAuthenticator.of(LibranetConfig(storage=self.storage)),
                 allow_unsigned_api_reads=True,
                 config_port=8180,
+                node=(
+                    NodeDescription(self.identity.node_id, NetworkConfig())
+                    if serving_karma
+                    else None
+                ),
             ),
             getLogger("test.webserver"),
             MessageSigner(self.identity),
@@ -158,6 +172,11 @@ class FixturePeer:
     @property
     def node_id(self) -> ContentId:
         return self.identity.node_id
+
+    def follow(self, head: KarmaHead) -> None:
+        """Have the peer follow ``head``, as its Karma module would write it."""
+        self.storage.karma_dir.mkdir(parents=True, exist_ok=True)
+        (self.storage.karma_dir / "head.json").write_text(dumps(head.value()), encoding="utf-8")
 
     @property
     def endpoint(self) -> str:
@@ -202,6 +221,20 @@ def write_lists(
 @fixture
 def peers(tmp_path: Path) -> Iterator[list[FixturePeer]]:
     peers = [FixturePeer(tmp_path / f"peer-{index}") for index in range(2)]
+    yield peers
+
+    for peer in peers:
+        peer.stop()
+
+
+@fixture
+def karma_peers(tmp_path: Path) -> Iterator[list[FixturePeer]]:
+    """Two peers that serve Karma, following no chain."""
+    peers = [FixturePeer(tmp_path / f"karma-{index}", serving_karma=True) for index in range(2)]
+
+    for peer in peers:
+        peer.follow(KarmaHead())
+
     yield peers
 
     for peer in peers:
@@ -583,8 +616,8 @@ def test_nodes_newly_listed_are_passed_on_to_every_peer_connected_but_the_one_na
 @mark.parametrize(
     ("error", "logged"),
     [
-        (ConnectionResetError("gone"), "Could not pass new nodes on to"),
-        (RuntimeError("broken"), "Passing new nodes on to"),
+        (ConnectionResetError("gone"), "Could not tell"),
+        (RuntimeError("broken"), "Telling"),
     ],
 )
 def test_passing_nodes_on_that_fails_is_logged(
@@ -613,7 +646,122 @@ def test_passing_nodes_on_that_fails_is_logged(
     )
     module.handle(node_list_updated(config))
 
-    wait_until(lambda: f"{logged} {peers[0].endpoint}" in caplog.text, "the failure to be logged")
+    wait_until(
+        lambda: f"{logged} {peers[0].endpoint} of new nodes" in caplog.text,
+        "the failure to be logged",
+    )
+
+
+# -- Karma heads (Phase 6 Step 130) ----------------------------------------
+
+HEAD = ContentId("sha256", "c1" * 32)
+
+
+def karma_head(head: ContentId) -> Message:
+    """A new head the Karma module follows, as it says it."""
+    return make_message(
+        EventType.KARMA_HEAD,
+        ModuleName.KARMA,
+        {"head": str(head), "generation": 4, "weight": "96"},
+    )
+
+
+def test_each_new_karma_head_is_posted_to_every_peer_connected(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    karma_peers: list[FixturePeer],
+    bus: Bus,
+) -> None:
+    write_lists(config.storage, node_list(identity, *karma_peers))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED, count=2)
+
+    module.handle(karma_head(HEAD))
+
+    for peer in karma_peers:
+        peer.bus.wait_for(EventType.KARMA_HEAD_TOLD, head=str(HEAD), node_id=str(identity.node_id))
+
+
+def test_each_peer_is_asked_for_its_karma_head_after_first_contact(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    karma_peers: list[FixturePeer],
+    bus: Bus,
+    caplog: LogCaptureFixture,
+) -> None:
+    caplog.set_level(DEBUG, logger="libranet")
+    following, following_none = karma_peers
+    following.follow(KarmaHead(HEAD, 4, 96))
+    write_lists(config.storage, node_list(identity, *karma_peers))
+
+    modules.start(config)
+
+    bus.wait_for(EventType.KARMA_HEAD_TOLD, head=str(HEAD), node_id=str(following.node_id))
+    # Its node list was posted first.
+    assert following.bus.events(EventType.NODES_RECEIVED) != []
+    wait_until(
+        lambda: f"{following_none.endpoint} follows no Karma chain" in caplog.text,
+        "the peer following none to be asked",
+    )
+    assert len(bus.events(EventType.KARMA_HEAD_TOLD)) == 1
+
+
+def test_a_peer_that_serves_no_karma_is_asked_for_its_head_without_error(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    caplog: LogCaptureFixture,
+) -> None:
+    caplog.set_level(DEBUG, logger="libranet")
+    write_lists(config.storage, node_list(identity, peers[0]))
+
+    modules.start(config)
+
+    wait_until(
+        lambda: f"{peers[0].endpoint} told no Karma head (status 404)" in caplog.text,
+        "the head to be asked for",
+    )
+    assert bus.events(EventType.KARMA_HEAD_TOLD) == []
+    assert "Exchange with" not in caplog.text
+
+
+@mark.parametrize(
+    ("error", "logged"),
+    [
+        (ConnectionResetError("gone"), "Could not tell"),
+        (RuntimeError("broken"), "Telling"),
+    ],
+)
+def test_telling_a_head_that_fails_is_logged(
+    modules: Modules,
+    config: LibranetConfig,
+    identity: NodeIdentity,
+    peers: list[FixturePeer],
+    bus: Bus,
+    monkeypatch: MonkeyPatch,
+    caplog: LogCaptureFixture,
+    error: Exception,
+    logged: str,
+) -> None:
+    caplog.set_level(DEBUG, logger="libranet")
+    write_lists(config.storage, node_list(identity, peers[0]))
+    module = modules.start(config)
+    bus.wait_for(EventType.CONNECTION_OPENED)
+
+    def broken(session: PeerSession, head: ContentId) -> None:
+        raise error
+
+    monkeypatch.setattr(module.exchange, "tell_head", broken)
+    module.handle(karma_head(HEAD))
+
+    wait_until(
+        lambda: f"{logged} {peers[0].endpoint} of the Karma head" in caplog.text,
+        "the failure to be logged",
+    )
 
 
 def test_seeds_are_used_while_no_peer_is_known(
@@ -2656,6 +2804,7 @@ def test_the_module_subscribes_to_node_lists_fetches_searches_hand_offs_and_new_
         EventType.PEERS_CONNECTED_REQUESTED,
         EventType.DIAL_REQUESTED,
         EventType.NODE_TRUST,
+        EventType.KARMA_HEAD,
     }
 
 

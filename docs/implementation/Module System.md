@@ -299,9 +299,12 @@ on a thread of its own (`FalseBuilders`, `webserver/false_builders.py`, Phase
 6 Step 127). It serves what the chain the Karma module follows states, the
 head, each identity's balance, and the generations, from what that module
 writes in `karma/` (`KarmaReads`, `webserver/karma_handlers.py`, Phase 6 Step
-128). It subscribes to only six events, `app.path_resolved`,
-`backup.state`, `peers.connected_requested`, `address.dialed`,
-`node.trust_stored`, and `karma.false_block`, and publishes twenty-four.
+128). A peer asks it for that head, and tells it the head the peer follows,
+which it publishes for the Karma module to weigh (`karma.head_told`,
+`KarmaHeadTold`, Phase 6 Step 130). It subscribes to only six events,
+`app.path_resolved`, `backup.state`, `peers.connected_requested`,
+`address.dialed`, `node.trust_stored`, and `karma.false_block`, and publishes
+twenty-five.
 
 #### 3.2.3 Validator
 
@@ -321,7 +324,10 @@ Owns every outgoing connection. It keeps up the peer mix (HighLevelDesign
 §4.6), dialing again whenever the candidate list changes (`nodes.updated`)
 or a connection opens, fails, or closes. When the node list comes to name a
 node at a new address, it posts those entries to every peer connected
-(Phase 5 Step 114). An address the operator asks to
+(Phase 5 Step 114), and so it posts each new head the Karma module follows
+(`karma.head`). It asks each peer it connects to for the head that peer
+follows, once first contact is over, and publishes the answer for the Karma
+module (`karma.head_told`, Phase 6 Step 130). An address the operator asks to
 connect to on `/config` (`address.dial_requested`) it dials at once, outside
 the mix, and says what came of it (`address.dialed`, Phase 5 Step 109). It
 dials nothing until the web server says whom the node trusts (`node.trust`),
@@ -434,7 +440,11 @@ forward, and follows the chain if every block is correct, replacing its
 history after that point. The transactions of the chain it leaves that the
 new one lacks it carries over, for `karma.carry_generations`, in
 `carried.json`. A block it finds unsigned, or false in its weight or
-generation, it shuns, and one false it says, as it does those it follows.
+generation, it shuns, and one false it says, as it does those it follows. It
+weighs too the latest head each peer tells of (`karma.head_told`), looking
+again as it next idles for one it does not follow, and it says the head it
+follows as it first looks, and each time that changes (`karma.head`), for
+the connection manager to tell the peers (Phase 6 Step 130).
 While it follows no chain,
 `karma.root_requested`, which `/config` publishes, has it make a root, as the
 node (`ChainRoot`, `karma/root.py`, Phase 6 Step 125): it mines the root
@@ -699,7 +709,7 @@ What each module does in them:
 | Unbundler | — | — | — |
 | Eviction | Read the node id; count storage; ask which peers are connected; say whether storage is full; evict if over | Say whether storage is full, if that changed; time out hand-offs and questions; resume after a pause | — |
 | Backup | Read the node id; ask whether storage is full; read the jobs; report state | Carry on the next restore, build, export, import, or backup due | — |
-| Karma | Read the history; write its head | Give up on content waited for too long; follow the chain on, if it is time to look, or what it waited for came, and write the balances at the head if it changed | Stop the processes searching for nonces |
+| Karma | Read the history; write its head | Give up on content waited for too long; follow the chain on, if it is time to look, or what it waited for came, or a peer told of a head it does not follow, and say the head and write the balances there if it changed | Stop the processes searching for nonces |
 
 ### 5.3 Writing a Module
 
@@ -990,9 +1000,11 @@ to end its loop.
 | *Karma* | | | | | | | | | |
 | `karma.root_requested` | P | | | | | | | | S |
 | `karma.false_block` | S | | | | | | | | P |
+| `karma.head` | | S | | | | | | | P |
+| `karma.head_told` | P | P | | | | | | | S |
 | *Lifecycle* | | | | | | | | | |
 | `shutdown` | S | S | S | S | S | S | S | S | S |
-| **Publishes / subscribes** | 24 / 6 | 16 / 9 | 2 / 1 | 5 / 23 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 | 5 / 4 |
+| **Publishes / subscribes** | 25 / 6 | 17 / 10 | 2 / 1 | 5 / 23 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 | 6 / 5 |
 
 The `shutdown` row and its subscriptions are implicit: every module
 receives it without listing it, and nothing publishes it (§6.4). The totals
@@ -1003,6 +1015,10 @@ unsigned or false as it follows the chain (Phase 6 Step 126), or weighs a
 heavier one (Phase 6 Step 129). The web server
 takes `karma.false_block` to distrust a false block's builder, and the Karma
 module `node.trust` to leave out whom the node distrusts (Phase 6 Step 127).
+The Karma module says its head, `karma.head`, for the connection manager to
+post to the peers, and weighs the heads peers tell of, `karma.head_told`,
+whether a peer posted it to the web server or the connection manager asked
+for it (Phase 6 Step 130).
 
 ### 7.2 Payloads
 
@@ -1064,6 +1080,8 @@ A content id is an `algorithm` and a lower-case hex `hash`, or, in
 | `data.shunned` | `algorithm`, `hash` | This node will not hold this content, for good |
 | `karma.root_requested` | — | The operator asked on `/config` for a Karma root; make one, as the node, and follow it, unless a chain is followed already |
 | `karma.false_block` | `block`, `builder`, `staker`, `statement` | A Karma block, signed by `builder`, states `statement` falsely; `staker`, unless `null`, signed a stake in it that alone exceeds what covers it |
+| `karma.head` | `head`, `generation`, `weight` | The Karma module follows a new head, the winning validation block of `generation`, through which the chain weighs `weight` (decimal digits); tell the peers |
+| `karma.head_told` | `head`, `node_id` | The peer `node_id` follows the Karma head `head`; weigh it |
 | `shutdown` | — | Leave the receive loop |
 
 ### 7.3 Who Talks to Whom
@@ -1097,8 +1115,8 @@ flowchart TB
     web -->|"data.put_completed"| val
     web <-->|"data.search_requested, address.dial_requested, node.trust<br/>address.dialed"| conn
     web <-->|"node.trust_requested<br/>node.trust_stored"| stats
-    web <-->|"karma.root_requested, node.trust<br/>karma.false_block"| karma
-    karma <-->|"data.search_requested<br/>data.search_answered"| conn
+    web <-->|"karma.root_requested, node.trust, karma.head_told<br/>karma.false_block"| karma
+    karma <-->|"data.search_requested, karma.head<br/>data.search_answered, karma.head_told"| conn
     karma -->|"data.shunned"| evict
     conn -->|"data.put_completed"| val
     val --> stored

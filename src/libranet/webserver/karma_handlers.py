@@ -1,4 +1,4 @@
-"""``/data/karma``: what the Karma chain the node follows states (HttpApi §10.10).
+"""``/data/karma``: what the Karma chain the node follows states (HttpApi §10.9, §10.10).
 
 An identity's Karma, to a node, is its balance as the chain the node follows
 states it (KarmaLedger §5.3, Phase 6 Step 128). Any client may read these,
@@ -29,6 +29,21 @@ last the head and generations of its history
 while the node follows no chain, and the first two also until the balances
 at the head are first written. One the files cannot be read for is ``500``,
 logged as an error, and does not say why, since any client may ask.
+
+Nodes tell each other the heads they follow, and ask for them (Phase 6 Step
+130), each carried as ``{"head": "sha256/…"}``, its ``head`` ``null`` while
+the node follows no chain:
+
+- ``GET /data/karma/head``: the head ``head.json`` names, ``503`` with
+  ``Retry-After`` until the Karma module first writes it, and ``500`` as
+  above.
+- ``POST /data/karma/head``: a peer telling the head it follows, signed by
+  it (HandshakeProtocol §2.1), answered ``202`` without checking the head,
+  which is published for the Karma module to weigh, unless it is ``null``::
+
+      karma.head_told  {"head": "sha256/…", "node_id": "sha256/…"}
+
+  An unsigned one is ``401``, and a body that is not such a head ``400``.
 """
 
 from __future__ import annotations
@@ -40,9 +55,11 @@ from typing import Final
 
 from libranet.cas.content_id import ContentId
 from libranet.json_fields import decimal_count
+from libranet.messaging.events import EventType
+from libranet.messaging.publishing import Publish
 from libranet.protocol.http_syntax import API_PREFIX
 from libranet.protocol.karma_balances import KarmaBalances
-from libranet.protocol.karma_head import KarmaGeneration, KarmaHead
+from libranet.protocol.karma_head import KarmaGeneration, KarmaHead, ToldHead
 from libranet.webserver.http_types import (
     NOT_STORED,
     Request,
@@ -50,7 +67,12 @@ from libranet.webserver.http_types import (
     json_response,
     status_response,
 )
-from libranet.webserver.request_refusals import content_id_or_refusal, invalid_request_response
+from libranet.webserver.request_refusals import (
+    content_id_or_refusal,
+    invalid_request_response,
+    parsed_or_refusal,
+    signature_required_response,
+)
 
 _LOGGER = getLogger(__name__)
 
@@ -151,6 +173,28 @@ class KarmaReads:
 
         return json_response({"generations": listed}).with_headers(NOT_STORED)
 
+    def head(self, request: Request) -> Response:
+        """``GET /data/karma/head``: the head followed, or ``null``, once the module writes it."""
+        try:
+            head = KarmaHead.written(self.karma_dir)
+
+        except (OSError, ValueError) as error:
+            # Not logged: _unreadable logs it.
+            return self._unreadable(request, error)
+
+        if head is None:
+            _LOGGER.debug(
+                "Answering %s %s: no Karma head is written yet", request.method, request.path
+            )
+            return status_response(
+                request,
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                "This node has not read its Karma history yet.",
+                headers={"Retry-After": str(self.retry_after_seconds), **NOT_STORED},
+            )
+
+        return json_response(ToldHead(head.head).value()).with_headers(NOT_STORED)
+
     def _balances(self, request: Request) -> KarmaBalances | Response:
         """The balances stated at the head, or the response refusing to read them."""
         try:
@@ -189,3 +233,31 @@ class KarmaReads:
             HTTPStatus.INTERNAL_SERVER_ERROR,
             "What the Karma chain states cannot be read here.",
         )
+
+
+@dataclass(frozen=True)
+class KarmaHeadTold:
+    """``POST /data/karma/head``: publishes the head a peer tells of, for the Karma module."""
+
+    publish: Publish
+
+    def __call__(self, request: Request) -> Response:
+        told = parsed_or_refusal(request, ToldHead.from_value)
+
+        if isinstance(told, Response):
+            return told
+
+        signer = None if request.authentication is None else request.authentication.node_id
+
+        if signer is None:
+            return signature_required_response(request)
+
+        if told.head is None:
+            _LOGGER.debug("%s follows no Karma chain", signer)
+
+        else:
+            self.publish(
+                EventType.KARMA_HEAD_TOLD, {"head": str(told.head), "node_id": str(signer)}
+            )
+
+        return Response(HTTPStatus.ACCEPTED)

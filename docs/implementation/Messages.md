@@ -122,6 +122,8 @@ only for a root it makes.
 | `storage.full` | Eviction | Backup | Whether storage is full |
 | `karma.root_requested` | Web server | Karma | Make a Karma root, and follow it |
 | `karma.false_block` | Karma | Web server | A Karma block states something false |
+| `karma.head` | Karma | Connections | The Karma head followed changed |
+| `karma.head_told` | Web server, Connections | Karma | A peer follows this Karma head |
 
 ## 4. The Messages
 
@@ -656,18 +658,43 @@ or reported, nor is the key a kept archive's bundle may carry.
   (`false_builders.py`, Phase 6 Step 127).
 - **Purpose:** distrust whoever signs a false block (KarmaLedger §3.8).
 
+#### `karma.head`
+
+- **Payload:** `head`, `generation`, `weight` (decimal digits).
+- **Sent by:** Karma, as it first looks, and each time the head it follows
+  changes after, whether by following the chain on, by changing to a
+  heavier one, or by making a root (`karma/module.py`, Phase 6 Step 130).
+- **Received by:** Connections, which posts the head to every peer
+  connected, each on a thread of its own (`POST /data/karma/head`,
+  `peer_exchange.py`), and logs one it cannot tell.
+- **Purpose:** have the peers find a heavier chain soon (HttpApi §10.9).
+
+#### `karma.head_told`
+
+- **Payload:** `head`, `node_id`.
+- **Sent by:**
+  - Web server, for a head a peer posts, signed (`karma_handlers.py`).
+  - Connections, for the head a peer answers with when asked, once first
+    contact is over (`peer_exchange.py`).
+
+  Neither sends one for a peer that follows no chain.
+- **Received by:** Karma, which keeps the latest head each peer told of, to
+  weigh as it next looks, and looks again as it next idles, unless the head
+  is the one it follows (`karma/changing.py`, Phase 6 Steps 129 and 130).
+- **Purpose:** learn of chains that may be heavier (KarmaLedger §3.5).
+
 ## 5. Messages per Module
 
 | Module | Sends | Receives |
 | --- | --- | --- |
-| Web server | `data.requested`, `data.not_found`, `data.search_requested`, `data.put_completed`, `data.stored`, `nodes.received`, `seek.received`, `address.dial_requested`, `app.path_not_found`, `app.accessed`, `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.shunned`, `peers.connected`, `node.trust`, `node.trust_requested`, `karma.root_requested` | `app.path_resolved`, `backup.state`, `peers.connected_requested`, `address.dialed`, `node.trust_stored`, `karma.false_block` |
-| Connections | `data.search_answered`, `data.put_completed`, `data.stored`, `nodes.received`, `address.verified`, `address.dialed`, `connection.opened`, `connection.closed`, `connection.failed`, `node.unreached`, `data.sent`, `fetch.attempted`, `fetch.succeeded`, `fetch.failed`, `eviction.acknowledged`, `peers.connected` | `nodes.updated`, `nodes.received`, `fetch.requested`, `data.search_requested`, `eviction.notice`, `data.stored`, `peers.connected_requested`, `address.dial_requested`, `node.trust` |
+| Web server | `data.requested`, `data.not_found`, `data.search_requested`, `data.put_completed`, `data.stored`, `nodes.received`, `seek.received`, `address.dial_requested`, `app.path_not_found`, `app.accessed`, `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.shunned`, `peers.connected`, `node.trust`, `node.trust_requested`, `karma.root_requested`, `karma.head_told` | `app.path_resolved`, `backup.state`, `peers.connected_requested`, `address.dialed`, `node.trust_stored`, `karma.false_block` |
+| Connections | `data.search_answered`, `data.put_completed`, `data.stored`, `nodes.received`, `address.verified`, `address.dialed`, `connection.opened`, `connection.closed`, `connection.failed`, `node.unreached`, `data.sent`, `fetch.attempted`, `fetch.succeeded`, `fetch.failed`, `eviction.acknowledged`, `peers.connected`, `karma.head_told` | `nodes.updated`, `nodes.received`, `fetch.requested`, `data.search_requested`, `eviction.notice`, `data.stored`, `peers.connected_requested`, `address.dial_requested`, `node.trust`, `karma.head` |
 | Validator | `data.stored`, `data.rejected` | `data.put_completed` |
 | Stats | `nodes.updated`, `eviction.candidates`, `resolved.reclaim`, `peers.connected_requested`, `node.trust_stored` | `data.requested`, `data.not_found`, `data.search_requested`, `data.search_answered`, `data.stored`, `data.rejected`, `nodes.received`, `seek.received`, `connection.opened`, `connection.closed`, `connection.failed`, `node.unreached`, `address.verified`, `data.sent`, `fetch.attempted`, `data.deleted`, `eviction.candidates_requested`, `app.accessed`, `resolved.reclaim_requested`, `data.shunned`, `peers.connected`, `node.trust`, `node.trust_requested` |
 | Fetcher | `fetch.requested` | `data.not_found`, `fetch.succeeded`, `fetch.failed` |
 | Unbundler | `data.not_found`, `app.path_resolved`, `resolved.reclaimed` | `app.path_not_found`, `data.stored`, `resolved.reclaim` |
 | Eviction | `eviction.notice`, `data.deleted`, `eviction.candidates_requested`, `resolved.reclaim_requested`, `peers.connected_requested`, `storage.full` | `data.stored`, `eviction.acknowledged`, `eviction.candidates`, `resolved.reclaimed`, `peers.connected`, `storage.full_requested`, `data.shunned` |
 | Backup | `data.not_found`, `data.stored`, `backup.state`, `storage.full_requested` | `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.stored`, `storage.full` |
-| Karma | `data.search_requested`, `data.not_found`, `data.stored`, `data.shunned`, `karma.false_block` | `data.search_answered`, `data.stored`, `karma.root_requested`, `node.trust` |
+| Karma | `data.search_requested`, `data.not_found`, `data.stored`, `data.shunned`, `karma.false_block`, `karma.head` | `data.search_answered`, `data.stored`, `karma.root_requested`, `node.trust`, `karma.head_told` |
 
 Every module also receives `shutdown`.

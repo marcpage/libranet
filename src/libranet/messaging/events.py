@@ -118,6 +118,8 @@ class EventType(StrEnum):
     # The Karma ledger (Phase 6).
     KARMA_ROOT_REQUESTED = "karma.root_requested"  # webserver → karma (Step 125)
     KARMA_FALSE_BLOCK = "karma.false_block"  # karma (Step 126) → webserver (Step 127)
+    KARMA_HEAD = "karma.head"  # karma → connections (Step 130)
+    KARMA_HEAD_TOLD = "karma.head_told"  # webserver, connections → karma (Step 130)
 
 
 class AddressSource(StrEnum):

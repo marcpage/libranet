@@ -20,7 +20,8 @@ Step 110), and whether it connects only to the nodes it trusts (Phase 5 Step
 connects to and serves, and distrusts whoever built a false Karma block (Phase
 6 Step 127). Any client may read what the Karma chain the node follows
 states: its head, any identity's balance, and its generations (Phase 6 Step
-128).
+128). Peers tell the node the Karma heads they follow, and ask for its own
+(Phase 6 Step 130).
 
 A few `/data` endpoints serve only clients on this machine, and only this
 node's own pages there, such as the listing of the folders it offers them
@@ -226,6 +227,7 @@ from libranet.webserver.karma_handlers import (
     KARMA_GENERATIONS_PATH,
     KARMA_PATH,
     MAX_GENERATIONS_LISTED,
+    KarmaHeadTold,
     KarmaReads,
 )
 from libranet.webserver.list_handlers import (
@@ -475,6 +477,7 @@ __all__ = [
     "InboundPeers",
     "IncompleteBodyError",
     "InvalidBackupReportError",
+    "KarmaHeadTold",
     "KarmaReads",
     "KarmaRootHandler",
     "KnownOutcome",
