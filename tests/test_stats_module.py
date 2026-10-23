@@ -942,6 +942,88 @@ def test_the_peers_connected_each_way_are_listed_at_the_next_derivation(
     assert peers(config) == {str(PEER_ID): ["outbound"]}
 
 
+def stored_from(node_id: ContentId, size: int) -> Message:
+    """Content of ``size`` bytes from ``node_id``, as it is announced once stored."""
+    return broadcast(
+        EventType.DATA_STORED,
+        {**CONTENT_ID.fields(), "node_id": str(node_id), "size": size},
+        ModuleName.VALIDATOR,
+    )
+
+
+def fetched_from(node_id: ContentId, *, found: bool) -> Message:
+    """A fetch of content from ``node_id``, which ``found`` it or not."""
+    return broadcast(
+        EventType.FETCH_ATTEMPTED,
+        {**CONTENT_ID.fields(), "node_id": str(node_id), "found": found},
+        ModuleName.CONNECTIONS,
+    )
+
+
+def rated(module: StatsModule, queues: ModuleQueues) -> list[dict[str, Any]]:
+    """The servers the module rates, as the Karma module asks it to."""
+    published(queues)
+    module.handle(broadcast(EventType.KARMA_RATINGS_REQUESTED, {}, ModuleName.KARMA))
+    (said,) = published(queues)
+    assert said["event"] == EventType.KARMA_RATINGS
+    servers: list[dict[str, Any]] = said["servers"]
+    return servers
+
+
+def test_the_servers_connected_to_outbound_are_rated_by_what_came_since_the_last_answer(
+    module: StatsModule, queues: ModuleQueues
+) -> None:
+    module.handle(connected("outbound", PEER_ID))
+    module.handle(connected("inbound", OTHER_PEER_ID))
+    module.handle(stored_from(PEER_ID, 100))
+    module.handle(stored_from(OTHER_PEER_ID, 500))
+
+    for found in (True, True, False):
+        module.handle(fetched_from(PEER_ID, found=found))
+
+    assert rated(module, queues) == [
+        {"node_id": str(PEER_ID), "bytes_received": 100, "requests_fulfilled": 2}
+    ]
+
+    module.handle(stored_from(PEER_ID, 30))
+
+    assert rated(module, queues) == [
+        {"node_id": str(PEER_ID), "bytes_received": 30, "requests_fulfilled": 0}
+    ]
+
+
+def test_a_server_connected_to_since_the_last_answer_is_rated_though_connected_no_longer(
+    module: StatsModule, queues: ModuleQueues
+) -> None:
+    module.handle(connected("outbound", PEER_ID))
+    module.handle(connected("outbound", OTHER_PEER_ID))
+
+    assert [server["node_id"] for server in rated(module, queues)] == sorted(
+        [str(PEER_ID), str(OTHER_PEER_ID)]
+    )
+    assert [server["node_id"] for server in rated(module, queues)] == [str(OTHER_PEER_ID)]
+
+
+def test_after_a_restart_the_servers_are_rated_by_what_came_since_it_started(
+    config: LibranetConfig, queues: ModuleQueues, module: StatsModule
+) -> None:
+    module.handle(stored_from(PEER_ID, 100))
+    module.on_stop()
+    restarted = StatsModule(ModuleName.STATS, queues, config)
+    restarted.on_start()
+
+    try:
+        restarted.handle(connected("outbound", PEER_ID))
+        restarted.handle(stored_from(PEER_ID, 7))
+
+        assert rated(restarted, queues) == [
+            {"node_id": str(PEER_ID), "bytes_received": 7, "requests_fulfilled": 0}
+        ]
+
+    finally:
+        restarted.on_stop()
+
+
 def test_a_candidate_list_that_changed_is_announced_once(
     module: StatsModule, queues: ModuleQueues
 ) -> None:

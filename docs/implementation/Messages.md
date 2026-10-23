@@ -125,6 +125,8 @@ a root it makes, and a block it puts up for a transaction.
 | `karma.head` | Karma | Connections | The Karma head followed changed |
 | `karma.head_told` | Web server, Connections | Karma | A peer follows this Karma head |
 | `karma.transaction` | None yet | Karma | Put this signed transaction up |
+| `karma.ratings_requested` | Karma | Stats | Rate the servers this node is a client of |
+| `karma.ratings` | Stats | Karma | How each server served this node |
 
 ## 4. The Messages
 
@@ -606,7 +608,8 @@ or reported, nor is the key a kept archive's bundle may carry.
     changes, and when asked (`inbound_peers.py`).
 - **Received by:**
   - Eviction, which never lets go of the public keys of connected peers.
-  - Stats, which keeps them for the peer list it derives.
+  - Stats, which keeps them for the peer list it derives, and those
+    `outbound` to rate at the next `karma.ratings`.
 - **Purpose:** protect connected peers' keys and publish the peer list.
   Each message replaces the last list for its direction.
 
@@ -700,6 +703,31 @@ or reported, nor is the key a kept archive's bundle may carry.
   (`karma/putting.py`, Phase 6 Step 131).
 - **Purpose:** have a transaction taken into the chain (KarmaLedger §5.6).
 
+#### `karma.ratings_requested`
+
+- **Payload:** none.
+- **Sent by:** Karma, every `karma.rating_interval_seconds` after it starts
+  (`karma/module.py`, Phase 6 Step 133).
+- **Received by:** Stats, which answers with `karma.ratings`.
+- **Purpose:** rate the servers this node is a client of (KarmaLedger §4.6).
+
+#### `karma.ratings`
+
+- **Payload:** `servers`, each a `node_id`, `bytes_received`, and
+  `requests_fulfilled` (`ServerRatings`, `messaging/server_ratings.py`).
+- **Sent by:** Stats, when asked, naming each node it has known connected
+  `outbound` since it last answered, with the bytes of content stored from
+  it, and its fetches that found content, since then, as `node_stats`
+  counts them. It keeps the counts as of each answer in memory, so that
+  after it starts again it counts from then (`stats/ratings.py`).
+- **Received by:** Karma, which queues a payment, as the node's payments
+  are queued (`karma/payments.py`), to the server rated highest by bytes
+  received, and to the one rated highest by requests fulfilled, a tie to
+  the id that sorts first, and once if they are one. A measure by which no
+  server served the node pays no one.
+- **Purpose:** pay the servers that served this node best (KarmaLedger
+  §4.6).
+
 ## 5. Messages per Module
 
 | Module | Sends | Receives |
@@ -707,11 +735,11 @@ or reported, nor is the key a kept archive's bundle may carry.
 | Web server | `data.requested`, `data.not_found`, `data.search_requested`, `data.put_completed`, `data.stored`, `nodes.received`, `seek.received`, `address.dial_requested`, `app.path_not_found`, `app.accessed`, `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.shunned`, `peers.connected`, `node.trust`, `node.trust_requested`, `karma.root_requested`, `karma.head_told` | `app.path_resolved`, `backup.state`, `peers.connected_requested`, `address.dialed`, `node.trust_stored`, `karma.false_block` |
 | Connections | `data.search_answered`, `data.put_completed`, `data.stored`, `nodes.received`, `address.verified`, `address.dialed`, `connection.opened`, `connection.closed`, `connection.failed`, `node.unreached`, `data.sent`, `fetch.attempted`, `fetch.succeeded`, `fetch.failed`, `eviction.acknowledged`, `peers.connected`, `karma.head_told` | `nodes.updated`, `nodes.received`, `fetch.requested`, `data.search_requested`, `eviction.notice`, `data.stored`, `peers.connected_requested`, `address.dial_requested`, `node.trust`, `karma.head` |
 | Validator | `data.stored`, `data.rejected` | `data.put_completed` |
-| Stats | `nodes.updated`, `eviction.candidates`, `resolved.reclaim`, `peers.connected_requested`, `node.trust_stored` | `data.requested`, `data.not_found`, `data.search_requested`, `data.search_answered`, `data.stored`, `data.rejected`, `nodes.received`, `seek.received`, `connection.opened`, `connection.closed`, `connection.failed`, `node.unreached`, `address.verified`, `data.sent`, `fetch.attempted`, `data.deleted`, `eviction.candidates_requested`, `app.accessed`, `resolved.reclaim_requested`, `data.shunned`, `peers.connected`, `node.trust`, `node.trust_requested` |
+| Stats | `nodes.updated`, `eviction.candidates`, `resolved.reclaim`, `peers.connected_requested`, `node.trust_stored`, `karma.ratings` | `data.requested`, `data.not_found`, `data.search_requested`, `data.search_answered`, `data.stored`, `data.rejected`, `nodes.received`, `seek.received`, `connection.opened`, `connection.closed`, `connection.failed`, `node.unreached`, `address.verified`, `data.sent`, `fetch.attempted`, `data.deleted`, `eviction.candidates_requested`, `app.accessed`, `resolved.reclaim_requested`, `data.shunned`, `peers.connected`, `node.trust`, `node.trust_requested`, `karma.ratings_requested` |
 | Fetcher | `fetch.requested` | `data.not_found`, `fetch.succeeded`, `fetch.failed` |
 | Unbundler | `data.not_found`, `app.path_resolved`, `resolved.reclaimed` | `app.path_not_found`, `data.stored`, `resolved.reclaim` |
 | Eviction | `eviction.notice`, `data.deleted`, `eviction.candidates_requested`, `resolved.reclaim_requested`, `peers.connected_requested`, `storage.full` | `data.stored`, `eviction.acknowledged`, `eviction.candidates`, `resolved.reclaimed`, `peers.connected`, `storage.full_requested`, `data.shunned` |
 | Backup | `data.not_found`, `data.stored`, `backup.state`, `storage.full_requested` | `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.stored`, `storage.full` |
-| Karma | `data.search_requested`, `data.not_found`, `data.stored`, `data.shunned`, `karma.false_block`, `karma.head` | `data.search_answered`, `data.stored`, `karma.root_requested`, `node.trust`, `karma.head_told`, `karma.transaction` |
+| Karma | `data.search_requested`, `data.not_found`, `data.stored`, `data.shunned`, `karma.false_block`, `karma.head`, `karma.ratings_requested` | `data.search_answered`, `data.stored`, `karma.root_requested`, `node.trust`, `karma.head_told`, `karma.transaction`, `karma.ratings` |
 
 Every module also receives `shutdown`.

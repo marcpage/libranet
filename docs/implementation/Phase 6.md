@@ -2222,7 +2222,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 132 — The Node's Payments
+## Step 132 — The Node's Payments ✅
 
 **Kind:** improvement in behavior. **Issue:** #450, under #87.
 **Depends on:** Step 131.
@@ -2316,8 +2316,8 @@ My calls, not yet reviewed:
 
 ## Step 133 — Paying the Servers It Rates
 
-**Kind:** improvement in behavior. **Issue:** none yet; planned under
-#87. **Depends on:** Step 132; Phase 5 Step 107's statistics of each peer.
+**Kind:** improvement in behavior. **Issue:** #451, under #87.
+**Depends on:** Step 132; Phase 5 Step 107's statistics of each peer.
 
 Hourly by default, a node rates the servers it is connected to as a
 client, by data received and by requests fulfilled, and pays the best by
@@ -2347,6 +2347,49 @@ for one node; nothing when no server served.
 My call, not yet reviewed: **stats keeps the counts as of each answer in
 memory**, rather than in a table, so that after it restarts it counts from
 when it started.
+
+It came to 289 added lines of non-test Python, with 14 changed or removed,
+against an estimate of 250, and 340 lines of tests, so it was built as one
+change set.
+
+What was built:
+
+- **`ServerRating`** and **`ServerRatings`** (`messaging/server_ratings.py`,
+  new): the `karma.ratings` payload, which both modules read and write, and
+  `best()`, the server rated highest by bytes received, and the one by
+  requests fulfilled, each a tie to the id that sorts first, once if they
+  are one, and none by a measure no server served by.
+- **`RatingCounts`** (`stats/ratings.py`, new): what `node_stats` counted of
+  each node as of the last answer, `bytes_received` and `data_found`, and
+  the nodes `peers.connected` named `outbound` since. `answer` rates each of
+  those by what was counted since, in the order their ids sort, and starts
+  the next answer from the counts now, and the nodes connected outbound now.
+  The stats module counts from what the database holds as it starts.
+- **`karma.ratings_requested`** and **`karma.ratings`** (`EventType`): the
+  stats module answers the one with the other; the Karma module asks every
+  `karma.rating_interval_seconds` (`KarmaConfig`, 3600 by default), the
+  first that long after it starts, as it idles or handles a message, and
+  pays each server `best()` names with `NodePayments.pay` (Step 132). A
+  payload that is not one raises, and the module's loop logs it.
+- **`ConnectedPeers.node_ids`** takes a direction, to name the peers
+  connected that way alone.
+- Messages §3, §4.11, §4.13, and §5, the Module System, whose count of the
+  events stats subscribes to had fallen behind, File Layout §3.11, the
+  Operator Guide's §3 and §4.8, and the example configuration.
+
+My calls, not yet reviewed:
+
+- **The counts are the stats database's own**, read whole at each answer,
+  and the differences since the last taken, rather than counted again as
+  each `data.stored` and `fetch.attempted` comes: so `bytes_received` is
+  every byte of content stored from the node, as the peer list counts it,
+  whether it came as this node fetched it or as the node pushed it.
+- **A node is rated if it was connected outbound at any time since the last
+  answer**, whether it is still or not, and by all it did since then, not
+  only while connected.
+- **The first ratings are asked for `karma.rating_interval_seconds` after
+  the Karma module starts**, not as it starts, so that a module that
+  restarts often does not pay more often than hourly.
 
 ---
 

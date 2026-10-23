@@ -1,7 +1,7 @@
 """Tests for the Karma module process, which keeps the history of the chain it follows.
 
-And makes a root, from ``/config``, follows the chain, and puts transactions
-up.
+And makes a root, from ``/config``, follows the chain, puts transactions up,
+and pays the servers it rates highest.
 """
 
 from __future__ import annotations
@@ -43,14 +43,18 @@ from libranet.messaging.envelope import Message, event_of, make_message
 from libranet.messaging.events import EventType
 from libranet.messaging.node_trust import NodeTrust
 from libranet.messaging.queues import ModuleQueues
+from libranet.messaging.server_ratings import ServerRating, ServerRatings
 from libranet.modules import SPAWNED_MODULES, ModuleName
 from libranet.supervision.registry import default_module_specs
 from libranet.supervision.specs import ModuleSpec
 from tests.helpers import new_identity, published, with_node_key
+from tests.karma_chains import BOUNDS as CHAIN_BOUNDS
+from tests.karma_chains import MINIMUM_BITS, Chain, hold
 
 HEAD = ContentId("sha256", "c1" * 32)
 BLOCK = ContentId("sha256", "b1" * 32)
 PEER = ContentId("sha256", "9e" * 32)
+OTHER_PEER = ContentId("sha256", "ae" * 32)
 TARGET = GenerationTargets.after(HEAD).validation
 ROOT = GenerationTargets.root()
 
@@ -168,6 +172,50 @@ def paid_by_node(storage: StorageConfig) -> SignedTransaction:
     return SignedTransaction.of(node.signed(mined.text()))
 
 
+def paying_module(
+    storage: StorageConfig, queues: ModuleQueues, clock: Callable[[], float]
+) -> KarmaModule:
+    """The Karma module of a node, started, following its own root and a generation on it.
+
+    The node holds the root's reward, 20 Karma, so pays 0.01% of it,
+    200,000,000,000 Kismet, a payment.
+    """
+    config = with_node_key(
+        LibranetConfig(storage=storage.model_copy(update={"search_min_bits": MINIMUM_BITS}))
+    )
+    node = NodeIdentity.load(config)
+    truth = CasStore.source_of_truth(storage)
+    truth.write(node.node_id, node.public_key)
+    chain = Chain.root(node, 9).then(node, node, bits=9)
+    hold(truth, *chain.drops(0, 1))
+    module = KarmaModule(
+        ModuleName.KARMA,
+        queues,
+        config,
+        clock=clock,
+        poll_interval_seconds=0.01,
+        bounds=CHAIN_BOUNDS,
+    )
+    module.on_start()
+    module.on_idle()
+
+    assert module.history.head is not None and module.history.head.validation == chain.head
+    return module
+
+
+def rated(*servers: tuple[ContentId, int, int]) -> Message:
+    """Each of ``servers``, an id, its bytes received, and requests fulfilled, as stats rates it."""
+    ratings = ServerRatings(tuple(ServerRating(*server) for server in servers))
+    return make_message(EventType.KARMA_RATINGS, ModuleName.STATS, ratings.payload())
+
+
+def ratings_asked(queues: ModuleQueues) -> int:
+    """How often the module has asked for the servers to be rated since anything published was."""
+    return sum(
+        event_of(message) is EventType.KARMA_RATINGS_REQUESTED for message in published(queues)
+    )
+
+
 def stored_ids(queues: ModuleQueues) -> list[ContentId]:
     """The content the module has announced since anything published was last asked for."""
     return [
@@ -266,6 +314,7 @@ def test_the_supervisor_runs_the_karma_module_last(
                 EventType.NODE_TRUST,
                 EventType.KARMA_HEAD_TOLD,
                 EventType.KARMA_TRANSACTION,
+                EventType.KARMA_RATINGS,
             }
         ),
     )
@@ -866,3 +915,75 @@ def test_the_nodes_payments_queued_are_made_one_transaction_and_put_up_as_the_mo
     assert signed.work_bits >= BOUNDS.transaction_bits
     assert PaymentQueue.read(storage.karma_dir) == PaymentQueue((), signed.transaction.created)
     assert "Making 2 Karma payments of the node's into one transaction" in caplog.text
+
+
+def test_the_module_asks_for_the_servers_to_be_rated_every_rating_interval(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    clock = Clock()
+    interval = LibranetConfig().karma.rating_interval_seconds
+    module = module_over(storage, queues, clock)
+    module.on_start()
+    module.on_idle()
+
+    assert ratings_asked(queues) == 0
+
+    clock.now += interval
+    module.on_idle()
+    module.on_idle()
+
+    assert ratings_asked(queues) == 1
+
+    # Kept from idling, it asks as it handles what it hears of.
+    clock.now += interval
+    module.handle(stored(BLOCK))
+
+    assert ratings_asked(queues) == 1
+
+
+def test_the_server_rated_highest_by_each_measure_is_paid(
+    storage: StorageConfig, queues: ModuleQueues, caplog: LogCaptureFixture
+) -> None:
+    module = paying_module(storage, queues, Clock())
+
+    with caplog.at_level(INFO):
+        module.handle(rated((PEER, 4_096, 1), (OTHER_PEER, 512, 3), (BLOCK, 0, 0)))
+
+    payment = Kismet(200_000_000_000)
+    assert PaymentQueue.read(storage.karma_dir).payments == (
+        Payment(PEER, payment),
+        Payment(OTHER_PEER, payment),
+    )
+    assert f"Rated {OTHER_PEER} highest of the servers the node is a client of" in caplog.text
+
+
+def test_a_server_rated_highest_by_both_measures_is_paid_once(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    module = paying_module(storage, queues, Clock())
+
+    module.handle(rated((PEER, 4_096, 1), (OTHER_PEER, 512, 3), (BLOCK, 8_192, 4)))
+
+    assert PaymentQueue.read(storage.karma_dir).payments == (
+        Payment(BLOCK, Kismet(200_000_000_000)),
+    )
+
+
+def test_no_server_is_paid_when_none_served_the_node(
+    storage: StorageConfig, queues: ModuleQueues, caplog: LogCaptureFixture
+) -> None:
+    module = paying_module(storage, queues, Clock())
+
+    with caplog.at_level(DEBUG):
+        module.handle(rated((PEER, 0, 0)))
+        module.handle(rated())
+
+    assert PaymentQueue.read(storage.karma_dir) == PaymentQueue()
+    assert caplog.text.count("No server the node is a client of served it since last rated") == 2
+
+
+def test_ratings_are_taken_only_once_the_module_has_started(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    with raises(RuntimeError, match="not running"):
+        module_over(storage, queues).handle(rated((PEER, 1, 1)))

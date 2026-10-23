@@ -146,6 +146,7 @@ The settings an operator is most likely to change:
 | `karma.payment_batch` | `100` | How many of the node's payments Karma queues before it puts them up together, as one transaction (§4.8) |
 | `karma.payment_interval_seconds` | `3600.0` | How long after the node's last transaction Karma puts up the payments it has queued, however few (§4.8) |
 | `karma.transaction_seconds` | `10.0` | How long Karma mines a transaction of the node's payments before taking the best nonce found (§4.8) |
+| `karma.rating_interval_seconds` | `3600.0` | How often Karma rates the servers the node is a client of, and pays the best (§4.8) |
 | `local.folders` | Your desktop, documents, downloads, music, pictures, and videos folders | The folders offered to trusted applications (§6.3) |
 | `logging.level` | `INFO` | What is logged (§7.2) |
 
@@ -471,6 +472,15 @@ transaction, mining it for `karma.transaction_seconds` first, which holds up
 its other Karma work. A transaction it has made, and not yet put up, it
 keeps there, so that a node stopped and started again puts it up as the
 same payment, never paying twice.
+
+Every `karma.rating_interval_seconds`, hourly by default, the node rates the
+servers it is connected to as a client, those it dialed, by what each has
+done for it since it last rated them: the bytes of content it received from
+each, and the requests for content each fulfilled. It pays the server rated
+highest by each, and the one server once if it is highest by both, and no
+one by a measure no server served it by. `libranet-karma.log` names each
+server it rates highest. What it counts it keeps in memory, so a node
+started again rates its servers by what they have done since it started.
 
 What the chain says, any client may read (HTTP API §10.10): the head the
 node follows, and the Karma the chain states the node holds, at

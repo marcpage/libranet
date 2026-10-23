@@ -202,6 +202,7 @@ The modules communicate in three ways:
 | `src/libranet/supervision/registry.py` | Which factory builds each module, and which events it subscribes to |
 | `src/libranet/messaging/events.py` | `EventType`: every event on the bus, each noting its publishers and subscribers |
 | `src/libranet/messaging/connected_peers.py` | `ConnectedPeers`: the peers connected each way, as the `peers.connected` it builds and reads names them |
+| `src/libranet/messaging/server_ratings.py` | `ServerRatings`: how the servers this node is a client of served it, as `karma.ratings` says, and the best by each measure |
 | `src/libranet/messaging/envelope.py` | Building and validating message dicts |
 | `src/libranet/messaging/queues.py` | `ModuleQueues`, a module's inbox, outbox, and subscriptions, and the `MessageQueue` protocol |
 | `src/libranet/messaging/module.py` | `ModuleBase`: publishing, filtering, and the receive loop |
@@ -231,7 +232,7 @@ through the dispatcher.
 | 7 | Unbundler | `unbundler` | `UnbundlerModule` | Resolves application files' entries from their bundles on demand, and deletes unused ones |
 | 8 | Eviction | `eviction` | `EvictionModule` | Keeps storage within its limits |
 | 9 | Backup | `backup` | `BackupModule` | Backs directories up as bundles; restores, builds, and exports bundles |
-| 10 | Karma | `karma` | `KarmaModule` | Follows the Karma ledger; for now, follows the chain, keeping its history, makes a root when asked, puts up the transactions it is given, and puts up the node's payments together |
+| 10 | Karma | `karma` | `KarmaModule` | Follows the Karma ledger; for now, follows the chain, keeping its history, makes a root when asked, puts up the transactions it is given, pays the servers it rates highest, and puts up the node's payments together |
 
 The supervisor launches them in this order, taken from `SPAWNED_MODULES`,
 but waits only for the dispatcher to be ready. No module waits for another
@@ -243,7 +244,7 @@ that subscriber's inbox.
 #### 3.2.1 Stats
 
 The node's memory, and the only process that opens `libranet.sqlite3`. It
-subscribes to 23 of the 49 events, nearly everything the other modules
+subscribes to 24 of the 58 events, nearly everything the other modules
 report, and records each in one small statement. Every
 `stats.derive_interval_seconds` it rewrites the node, seek, candidate,
 shunned, and peer lists into `lists/`, which the web server, connection
@@ -257,6 +258,11 @@ that grows, and the seek list when a search names a prefix it does not list
 (Phase 4 Step 93). It keeps whom the node trusts and distrusts, as the web
 server says it (`node.trust`), and says what it kept when the web server asks
 as it starts (`node.trust_stored`, Phase 5 Step 113).
+Asked by the Karma module (`karma.ratings_requested`), it says how each node
+it has known connected outbound since it last answered served the node since
+then, the bytes of content stored from it, and its fetches that found
+content, keeping the counts as of each answer in memory (`karma.ratings`,
+`RatingCounts`, `stats/ratings.py`, Phase 6 Step 133).
 It answers two questions from the eviction module: which content to let go
 of first (`eviction.candidates`), and which bundles' resolved files to keep
 (`resolved.reclaim`). It also adds identifiers it knows of to cached search
@@ -470,7 +476,11 @@ head, and, as it looks, once `karma.payment_batch` are queued, or
 `karma.payment_interval_seconds` have passed since the node's last
 transaction, makes them one transaction, mines it for
 `karma.transaction_seconds`, signs it as the node, and puts it up as one it
-is given. Nothing queues a payment yet: Phase 6 Step 133 will.
+is given. Every `karma.rating_interval_seconds` it asks the stats module to
+rate the servers the node is a client of (`karma.ratings_requested`), and
+queues a payment to the server rated highest by bytes received, and to the
+one rated highest by requests fulfilled, once if they are one
+(`karma.ratings`, `ServerRatings`, Phase 6 Step 133).
 
 ### 3.3 What Each Module Owns
 
@@ -724,7 +734,7 @@ What each module does in them:
 | Unbundler | — | — | — |
 | Eviction | Read the node id; count storage; ask which peers are connected; say whether storage is full; evict if over | Say whether storage is full, if that changed; time out hand-offs and questions; resume after a pause | — |
 | Backup | Read the node id; ask whether storage is full; read the jobs; report state | Carry on the next restore, build, export, import, or backup due | — |
-| Karma | Read the history; write its head | Give up on content waited for too long; follow the chain on, if it is time to look, or what it waited for came, or a peer told of a head it does not follow, and say the head and write the balances there if it changed; make the node's payments one transaction, if they are due; put up the transactions carried that are valid at the head | Stop the processes searching for nonces |
+| Karma | Read the history; write its head | Give up on content waited for too long; follow the chain on, if it is time to look, or what it waited for came, or a peer told of a head it does not follow, and say the head and write the balances there if it changed; make the node's payments one transaction, if they are due; put up the transactions carried that are valid at the head; ask for the servers to be rated, every `karma.rating_interval_seconds` | Stop the processes searching for nonces |
 
 ### 5.3 Writing a Module
 
@@ -1018,9 +1028,11 @@ to end its loop.
 | `karma.head` | | S | | | | | | | P |
 | `karma.head_told` | P | P | | | | | | | S |
 | `karma.transaction` | | | | | | | | | S |
+| `karma.ratings_requested` | | | | S | | | | | P |
+| `karma.ratings` | | | | P | | | | | S |
 | *Lifecycle* | | | | | | | | | |
 | `shutdown` | S | S | S | S | S | S | S | S | S |
-| **Publishes / subscribes** | 25 / 6 | 17 / 10 | 2 / 1 | 5 / 23 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 | 6 / 6 |
+| **Publishes / subscribes** | 25 / 6 | 17 / 10 | 2 / 1 | 6 / 24 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 | 7 / 7 |
 
 The `shutdown` row and its subscriptions are implicit: every module
 receives it without listing it, and nothing publishes it (§6.4). The totals
@@ -1035,7 +1047,9 @@ module `node.trust` to leave out whom the node distrusts (Phase 6 Step 127).
 The Karma module says its head, `karma.head`, for the connection manager to
 post to the peers, and weighs the heads peers tell of, `karma.head_told`,
 whether a peer posted it to the web server or the connection manager asked
-for it (Phase 6 Step 130).
+for it (Phase 6 Step 130). It asks the stats module to rate the servers the
+node is a client of, `karma.ratings_requested`, and pays the best of those
+`karma.ratings` names (Phase 6 Step 133).
 
 ### 7.2 Payloads
 
