@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from itertools import count
 from logging import INFO, WARNING
-from typing import Any, Mapping
 
 from pytest import LogCaptureFixture, fixture
 
@@ -27,10 +26,10 @@ from libranet.karma.reading import TargetReader
 from libranet.karma.stakes import SignedStake, Stake
 from libranet.karma.transactions import SignedTransaction, Transaction
 from libranet.karma.weight import ChainWeight
-from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.protocol.search import LocalSearch
 from tests.helpers import new_identity
+from tests.karma_chains import Recorder
 
 CREATED = datetime(2026, 10, 23, 9, 0, 0, tzinfo=UTC)
 ROOT = GenerationTargets.root()
@@ -44,35 +43,24 @@ MINIMUM_BITS = 8
 BOUNDS = BlockBounds(most_bytes=4_000, room_bytes=3_900, transaction_bits=0)
 
 
-class Recorder:
-    """Stands in for the Karma module's ``publish``, keeping what was published."""
-
-    def __init__(self) -> None:
-        self.messages: list[tuple[EventType, dict[str, Any]]] = []
-
-    def __call__(self, event: EventType, payload: Mapping[str, Any] | None = None) -> Message:
-        self.messages.append((event, dict(payload or {})))
-        return {}
-
-    def said(self, event: EventType) -> list[dict[str, Any]]:
-        """What was published as ``event``, in the order it was."""
-        return [payload for published, payload in self.messages if published is event]
-
-    def asked_for(self) -> list[ContentId]:
-        """The content asked for, in the order it was."""
-        return [ContentId.from_fields(payload) for payload in self.said(EventType.DATA_NOT_FOUND)]
-
-
 def placed(target: DropTarget, content: bytes, bits: int | None = None) -> bytes:
     """``content`` as a drop at ``target``, sharing exactly ``bits`` with it.
 
-    Without ``bits``, it shares at least :data:`MINIMUM_BITS`.
+    Without ``bits``, it shares at least :data:`MINIMUM_BITS`. It shares
+    fewer than that with each root target but ``target``, so that a node
+    following no chain does not find it there by chance: as a root of its
+    own, or as an unsigned block it shuns as it reads the root's targets,
+    and again as it reads generation 1's.
     """
+    others = [root for root in (ROOT.transaction, ROOT.validation) if root != target]
+
     for nonce in count():
         data = content + b"\x00" + str(nonce).encode("ascii")
-        shared = matching_bits(target.hex, sha256(data).hexdigest())
+        digest = sha256(data).hexdigest()
+        shared = matching_bits(target.hex, digest)
+        apart = all(matching_bits(other.hex, digest) < MINIMUM_BITS for other in others)
 
-        if shared == bits or (bits is None and shared >= MINIMUM_BITS):
+        if apart and (shared == bits or (bits is None and shared >= MINIMUM_BITS)):
             return data
 
     raise AssertionError("Every nonce was tried")
@@ -174,6 +162,12 @@ def alice() -> NodeIdentity:
 @fixture(scope="module")
 def bob() -> NodeIdentity:
     return new_identity()
+
+
+@fixture(scope="module")
+def keys(alice: NodeIdentity, bob: NodeIdentity) -> set[ContentId]:
+    """The ids of the public keys of Alice and Bob."""
+    return {alice.node_id, bob.node_id}
 
 
 @fixture(scope="module")
@@ -334,6 +328,7 @@ def test_the_best_of_several_is_followed_and_nothing_lighter_shunned(
     history: ChainHistory,
     truth: CasStore,
     recorder: Recorder,
+    keys: set[ContentId],
     alice: NodeIdentity,
     bob: NodeIdentity,
     root: Root,
@@ -347,7 +342,7 @@ def test_the_best_of_several_is_followed_and_nothing_lighter_shunned(
     follower.look()
 
     assert history.generation(1).validation == id_of(better_validation)
-    assert recorder.said(EventType.DATA_SHUNNED) == []
+    assert recorder.shunned(keys) == []
     assert recorder.said(EventType.KARMA_FALSE_BLOCK) == []
 
 
@@ -376,6 +371,7 @@ def test_copies_of_blocks_at_targets_not_their_own_are_passed_over_and_none_is_f
     history: ChainHistory,
     truth: CasStore,
     recorder: Recorder,
+    keys: set[ContentId],
     alice: NodeIdentity,
     bob: NodeIdentity,
     root: Root,
@@ -401,7 +397,7 @@ def test_copies_of_blocks_at_targets_not_their_own_are_passed_over_and_none_is_f
     assert [generation.generation for generation in followed] == [0, 1]
     assert history.generation(1).validation == id_of(first_validation)
     assert recorder.said(EventType.KARMA_FALSE_BLOCK) == []
-    assert recorder.said(EventType.DATA_SHUNNED) == []
+    assert recorder.shunned(keys) == []
 
     for copy in copies:
         assert f"Passing over Karma block {id_of(copy)}, of another target" in caplog.text
@@ -411,6 +407,7 @@ def test_an_unsigned_block_is_shunned_once(
     follower: ChainFollower,
     truth: CasStore,
     recorder: Recorder,
+    keys: set[ContentId],
     alice: NodeIdentity,
     root: Root,
     caplog: LogCaptureFixture,
@@ -423,7 +420,7 @@ def test_an_unsigned_block_is_shunned_once(
         follower.look()
         follower.look()
 
-    assert recorder.said(EventType.DATA_SHUNNED) == [id_of(unsigned).fields()]
+    assert recorder.shunned(keys) == [id_of(unsigned)]
     assert f"Shunning Karma block {id_of(unsigned)}, which is unsigned" in caplog.text
 
 
@@ -431,6 +428,7 @@ def test_a_false_block_is_said_once_naming_its_builder_and_not_shunned(
     follower: ChainFollower,
     truth: CasStore,
     recorder: Recorder,
+    keys: set[ContentId],
     alice: NodeIdentity,
     bob: NodeIdentity,
     root: Root,
@@ -455,7 +453,7 @@ def test_a_false_block_is_said_once_naming_its_builder_and_not_shunned(
             "statement": statement,
         }
     ]
-    assert recorder.said(EventType.DATA_SHUNNED) == []
+    assert recorder.shunned(keys) == []
     assert (
         f"Karma block {id_of(false)}, built by {bob.node_id}, states something false: "
         f"{statement}"
@@ -539,6 +537,7 @@ def test_a_block_naming_what_is_no_block_is_passed_over_and_logged(
     follower: ChainFollower,
     truth: CasStore,
     recorder: Recorder,
+    keys: set[ContentId],
     alice: NodeIdentity,
     bob: NodeIdentity,
     root: Root,
@@ -557,7 +556,7 @@ def test_a_block_naming_what_is_no_block_is_passed_over_and_logged(
 
     assert caplog.text.count(f"Passing over Karma block {id_of(naming)}, which cannot be") == 1
     assert recorder.said(EventType.KARMA_FALSE_BLOCK) == []
-    assert recorder.said(EventType.DATA_SHUNNED) == []
+    assert recorder.shunned({*keys, id_of(junk)}) == []
 
 
 def test_a_block_validating_one_passed_over_is_passed_over_too(

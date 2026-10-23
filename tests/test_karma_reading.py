@@ -3,7 +3,6 @@
 from __future__ import annotations
 from datetime import UTC, datetime
 from fractions import Fraction
-from hashlib import sha256
 from logging import DEBUG, WARNING
 from typing import Any, Mapping
 from zlib import compress
@@ -62,6 +61,10 @@ NO_WORK = BlockBounds(transaction_bits=0)
 ROOT = GenerationTargets.root()
 FIRST = GenerationTargets.after(ContentId("sha256", "f0" * 32))
 
+# Every target these tests read. Nothing they hold is found at one by
+# chance: each drop is found at its own alone, and no key at any.
+TARGETS = (ROOT.transaction, ROOT.validation, FIRST.transaction, FIRST.validation)
+
 
 class Recorder:
     """Stands in for the Karma module's ``publish``, keeping what was published."""
@@ -92,17 +95,43 @@ class Clock:
         return self.now
 
 
+def found_at(target: DropTarget, content_id: ContentId) -> bool:
+    """Whether a search of ``target`` finds ``content_id``: they share :data:`MINIMUM_BITS`."""
+    return matching_bits(target.hex, content_id.hash) >= MINIMUM_BITS
+
+
 def placed(target: DropTarget, content: bytes) -> bytes:
-    """``content`` as a drop at ``target``, sharing at least :data:`MINIMUM_BITS` with it."""
+    """``content`` as a drop at ``target``, sharing at least :data:`MINIMUM_BITS` with it.
+
+    It shares fewer with every other of :data:`TARGETS`, so that a search of
+    one does not find it there by chance.
+    """
     nonce = 0
 
     while True:
         data = content + b"\x00" + str(nonce).encode("ascii")
+        drop_id = id_of(data)
 
-        if matching_bits(target.hex, sha256(data).hexdigest()) >= MINIMUM_BITS:
+        if found_at(target, drop_id) and not any(
+            found_at(other, drop_id) for other in TARGETS if other != target
+        ):
             return data
 
         nonce += 1
+
+
+def off_target_identity() -> NodeIdentity:
+    """A new identity, whose key's id a search of none of :data:`TARGETS` finds.
+
+    A key held whose id shares the few bits these tests search for with a
+    target's hash, as one now and then does by chance, is read there as a
+    block.
+    """
+    while True:
+        identity = new_identity()
+
+        if not any(found_at(target, identity.node_id) for target in TARGETS):
+            return identity
 
 
 def id_of(data: bytes) -> ContentId:
@@ -152,12 +181,12 @@ def stating(generation: int, reach: int, balances: Mapping[ContentId, Balance]) 
 
 @fixture(scope="module")
 def alice() -> NodeIdentity:
-    return new_identity()
+    return off_target_identity()
 
 
 @fixture(scope="module")
 def bob() -> NodeIdentity:
-    return new_identity()
+    return off_target_identity()
 
 
 @fixture(scope="module")
