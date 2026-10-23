@@ -117,8 +117,8 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
   up.** Each is planned under #87. Step 116 is #434, Step 117 is #435,
   Step 118 is #436, Step 119 is #437, Step 120 is #438, Step 121 is #439,
   Step 122 is #440, Step 123 is #441, Step 124 is #442, Step 125 is #443,
-  Step 126 is #444, Step 127 is #445, Step 128 is #446, and none after it
-  has one yet.
+  Step 126 is #444, Step 127 is #445, Step 128 is #446, Step 129 is #447,
+  and none after it has one yet.
 - **The ledger's tests use small blocks.** Whether a block is full is
   measured against bounds the library takes, the specification's
   (KarmaLedger §5.4) unless a test gives others, so that a test fills a
@@ -1750,7 +1750,7 @@ Ruled after building (2026-10-23):
 
 ---
 
-## Step 128 — Reading Karma
+## Step 128 — Reading Karma ✅
 
 **Kind:** improvement in web API. **Issue:** #446, under #87.
 **Depends on:** Step 126, and the ruling below.
@@ -1876,8 +1876,8 @@ My calls, not yet reviewed:
 
 ## Step 129 — Changing Heads
 
-**Kind:** improvement in behavior. **Issue:** none yet; planned under
-#87. **Depends on:** Steps 126 and 127.
+**Kind:** improvement in behavior. **Issue:** #447, under #87.
+**Depends on:** Steps 126 and 127.
 
 A head the node does not follow, found at a target or told by a peer
 (Step 130), is weighed, and followed if it is heavier (KarmaLedger
@@ -1912,6 +1912,115 @@ heavier chain.
 **Open question** (KarmaLedger §9): whether the node follows the part of a
 heavier chain before a block that does not check. Recommended: not yet,
 as §3.5.3 says now. The next head told past that block is weighed again.
+
+The question had not been ruled when it was built, so it was built as
+recommended: a chain holding a block that does not check is not followed,
+not even the part before that block, and KarmaLedger §9 keeps the item.
+
+It came to 1,190 added lines of non-test Python, with 64 changed or
+removed, against an estimate of 400, so it was built as three change sets,
+each one commit on this step's branch. The first, what it builds on, came to
+310 added lines, with 50 changed, and 187 lines of tests. The second,
+reading and checking the chain a head claims, came to 432, with 1 changed,
+and 586 lines of tests, among them a builder of chains of real blocks that
+the third's tests share. The third, weighing heads and following one, came
+to 448, with 13 changed, and 647 lines of tests. Most of the growth is
+checking a claimed chain forward against a chain that is neither the
+history nor held in it, and what a step lacks: each waits, and goes on from
+where it stopped once what it lacks comes.
+
+What was built:
+
+- **`HeadChanges`** (`karma/changing.py`, new): `look()` weighs the heads
+  the node does not follow, one at a time: first each other validation
+  block at the target its head was chosen from, read at each look, then the
+  latest each peer told (`told(node_id, head)`, for Step 130). One that
+  claims no more weight than the chain followed is read, and nothing more.
+  A heavier one is walked back and checked forward, and followed if every
+  block is correct and it is still heavier: `ChainHistory.replace` puts its
+  generations in place of those after the common ancestor, and the history
+  is kept across a restart as any is. It is logged, naming the generation
+  the two chains share.
+- **`HeadClaim`, `ClaimedGeneration`, `ClaimedChain`, and
+  `FalseStatement`** (`karma/claims.py`, new): the chain a head claims, as
+  far as it is read. `walk()` checks each transaction block's `generation`
+  and `weight`, and each validation block's `generation`, against the
+  validation block before, as read, back to the ancestor or a root, so that
+  a false one is found where it is first stated, and nothing before it is
+  read or asked for. `check()` checks it forward from the ancestor, each
+  block as Steps 121 and 122 check one at its target, against
+  `ClaimedChain`: the history through the ancestor, and the claim's
+  generations after it, with their keys and witnesses.
+- **What is found false**: a block found unsigned is shunned; one stating
+  its `weight` or `generation` falsely is said false
+  (`karma.false_block`) and shunned (`data.shunned`), as no block of the
+  ledger (§3.7); one false otherwise is said false. Either way, and for one
+  not correct, the head followed is kept. Each is said once while the head
+  is the same.
+- **`CarriedTransactions`** (`karma/carried.py`, new): `karma/carried.json`.
+  Each transaction of the chain left after the ancestor, payouts aside,
+  whose key the new chain does not hold, is carried, witnessed in the
+  generation of the block that held it, or of a winning validation block of
+  the chain left listing it, if earlier. Each time the head changes, by
+  following on or by changing, one whose key the chain holds from its own
+  `generation` on, or that the chain has gone `karma.carry_generations` past,
+  is left out.
+- **`karma.carry_generations`** (`KarmaConfig`), 3 by default.
+- **`TargetReader.block(id, kind)`** (`karma/reading.py`): one block by its
+  id, as `read` reads one at a target. **`ChainGenerations`**: what
+  `HeldChain` reads of a chain's generations, the history's or a claimed
+  chain's. **`say_found`** (`karma/following.py`): what a block was found
+  said alike by both.
+- **`KarmaModule`** weighs heads after each look, and follows the chain on
+  at once from a head it changes to. A head waiting for what the reader
+  gives up on is given up on too.
+- Messages §4.10 and §4.13, the Module System, File Layout, the Operator
+  Guide's §3 and §4.8, and the example configuration.
+
+My calls, not yet reviewed:
+
+- **One only as heavy is not followed.** §3.3 breaks a tie between chains
+  by the id of the latest winning validation block, but §3.5.3 follows a
+  head only if it is heavier, and the follower chose its head as the best
+  of its generation, by stake (§6.5). A tie broken by id would have a node
+  leave the best of a generation for one with less stake as soon as it is
+  placed. The node keeps its head, and §9's question of whether stake
+  breaks ties between chains stays open.
+- **The heads found at a target are those at the target the head was chosen
+  from.** A heavier chain that leaves the node's further back is found as
+  a peer tells of it (Step 130). A root is weighed so too, at the root's
+  target, while the root is the head.
+- **Of two blocks whose weights or generations disagree, the walk finds
+  the later false,** as it reads back from the head first. It checks each
+  against the block before as that block states itself, as the forward
+  checks do, and a builder who checks the chain before building on it
+  builds on no false block.
+- **A false weight or generation is said once its builder's signature
+  checks,** its other signatures not checked, so that what proves the lie
+  costs the builder's key alone. One whose signature fails is unsigned, and
+  shunned only.
+- **A validation block holding no stake** is found as the walk reads it,
+  and said false, but not shunned, as §3.7 shuns a validation block only
+  for its signature, weight, or generation.
+- **A runner-up's transaction blocks are at the target their own `previous`
+  places them at,** rather than at a target read, since the forward check
+  reads none (§3.8).
+- **A transaction collected is witnessed as the chain left witnessed it,**
+  so each is carried until `karma.carry_generations` after the chain left
+  included it, into the blocks of the generations up to that one. One the
+  new chain's head is already past is not carried at all. One not
+  witnessed, as Step 131's pending ones may be, is carried until it is.
+- **Of two carried sharing a key, the first is kept,** as a chain holds
+  only one of them.
+- **A block of the chain left that is not held has none of its transactions
+  carried,** logged as a warning, rather than holding the heavier chain up
+  while it is fetched.
+- **A head waits for what it lacks for `karma.fetch_wait_seconds`,** as the
+  reader does, and is then weighed again only once the head followed
+  changes, so that a chain whose blocks never come holds up the heads after
+  it no longer than that.
+- **What is found, and the heads weighed, are kept while the head is the
+  same,** and in memory, as Step 126 keeps its checks.
 
 ---
 
@@ -2396,7 +2505,8 @@ ones that cut across more than one step:
   the weight curve, rounding, and a total of zero to Step 120, which
   settled them; how far back keys and witnesses are kept to Step 123; what
   a node's Karma is read from to Step 128, which built it as recommended,
-  not yet ruled; and following part of a heavier chain to Step 129.
+  not yet ruled; and following part of a heavier chain to Step 129, which
+  built it as recommended too, not yet ruled.
 - **Step 56's open questions** — what a node's Karma is read from is Step
   128's ruling, built as recommended and awaiting review. Whether a person
   holds Karma is settled: any identity a signed bundle accepts may

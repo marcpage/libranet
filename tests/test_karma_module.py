@@ -601,3 +601,18 @@ def test_a_history_that_cannot_be_written_is_logged_and_written_at_the_next_look
     module.on_idle()
 
     assert made is not None and module.history.head == made
+
+
+def test_a_module_following_a_chain_reads_the_target_its_head_was_chosen_from_too(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    module = rooting_module(storage, queues)
+    module.handle(root_requested())
+    head = module.history.head
+    published(queues)
+
+    module.on_idle()
+
+    assert head is not None
+    after = GenerationTargets.after(head.validation)
+    assert searched(queues) == [after.transaction.hex, after.validation.hex, ROOT.validation.hex]

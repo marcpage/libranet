@@ -141,7 +141,8 @@ something is written to it.
     ├── generations/
     │   └── {g}.json                     what a check reads of generation g
     ├── head.json                        the head followed
-    └── balances.json                    every balance stated at the head
+    ├── balances.json                    every balance stated at the head
+    └── carried.json                     transactions of a chain left
 ```
 
 | Path | Written by | Read by |
@@ -545,6 +546,27 @@ until then (`HeadBalances` in `src/libranet/karma/balances.py`, Phase 6 Step
 `src/libranet/protocol/karma_balances.py`) for `GET /data/karma` and
 `GET /data/karma/balances/{algorithm}/{hash}`.
 
+`carried.json` is each transaction of a chain the module left for a heavier
+one that the heavier one does not hold, which it carries over into the
+blocks it builds (KarmaLedger §3.5.3, §4.4), each with the generation it was
+witnessed in (§4.5), or `null` if it has not been:
+
+```json
+{"transactions": [{"transaction": {"algorithm": "sha256", "contents": "…",
+  "hash": "…", "signature": "…", "signer": "sha256/0a1b…"}, "witnessed": 1}]}
+```
+
+Each `transaction` is a signed transaction as a transaction block holds it
+(KarmaLedger §5.1).
+
+One is carried into the blocks of the generations up to
+`karma.carry_generations` after the one it was witnessed in, and one not
+witnessed until it is; one whose key the chain holds is carried no more. The
+module writes the file whole each time its head changes, leaving those out,
+and once it has carried something, and the file is not there before then
+(`CarriedTransactions` in `src/libranet/karma/carried.py`, Phase 6 Step
+129). A file it cannot read it logs, and writes again without what it held.
+
 A generation's file is written before the genealogy, and the head last, each
 replaced whole (§8), so that a write cut short leaves the genealogy as it was.
 The head is written again each time the module starts. The history read is
@@ -820,6 +842,7 @@ optional; `examples/libranet.yaml` shows them all with their defaults.
 | `backup.restore_stall_seconds` | `86400.0` | — | How long a restore waits with none of the content it lacks arriving before it gives up |
 | `backup.storage_stall_seconds` | `3600.0` | — | How long a backup or build waits for eviction to make room before it gives up |
 | `backup.excluded_xattrs` | macOS local-copy attributes; Linux `security.*`, `system.*`, `trusted.*` | — | Extended attributes a backup or build leaves out of its bundle, and a restore does not set |
+| `karma.carry_generations` | `3` | — | How many generations after it was witnessed a transaction stays in `karma/carried.json` |
 | `local.folders` | The user's desktop, documents, downloads, music, pictures, and videos folders | — | The folders local clients may list and import files from (§7) |
 | `local.hidden` | `[".*"]` | — | Names within those folders never listed or imported |
 | `logging.directory` | Platform log directory | `--log-dir` | Root of §5 |

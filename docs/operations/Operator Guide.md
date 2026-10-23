@@ -140,6 +140,7 @@ The settings an operator is most likely to change:
 | `karma.mining_processes` | `1` | How many processes Karma searches for nonces with, and so how many of the machine's cores it may take |
 | `karma.fetch_wait_seconds` | `30.0` | How long Karma waits for a block or a key it asks the network for before going on without it |
 | `karma.look_seconds` | `60.0` | How often Karma looks for the next generation of the chain it follows, or for a root while it follows none (§4.8) |
+| `karma.carry_generations` | `3` | How many generations after it was witnessed a transaction of a chain the node leaves is carried over into the heavier one (§4.8) |
 | `local.folders` | Your desktop, documents, downloads, music, pictures, and videos folders | The folders offered to trusted applications (§6.3) |
 | `logging.level` | `INFO` | What is logged (§7.2) |
 
@@ -432,6 +433,16 @@ It then follows the chain on, a generation at a time, as each is placed.
 block it finds stating something false, or unsigned. An unsigned block is
 shunned, so the node never holds it again. Whoever signed a false one the
 node distrusts (§4.7).
+
+A node always follows the heaviest chain it has checked. When another
+validation block is placed beside its head that makes a heavier chain, it
+checks that chain back to where it leaves its own, and follows it if every
+block is correct; `libranet-karma.log` says so, naming the generation the
+two chains share. The transactions of the chain it leaves that the new one
+does not hold it keeps in `karma/carried.json`, to put into the blocks it
+builds, for `karma.carry_generations` after each was witnessed. A chain with
+a false block in it is not followed: the block's builder is distrusted, as
+above, and one stating its weight or generation falsely is shunned too.
 
 What the chain says, any client may read (HTTP API §10.10): the head the
 node follows, and the Karma the chain states the node holds, at

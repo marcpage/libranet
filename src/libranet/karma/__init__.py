@@ -13,8 +13,8 @@ which runs in a process of its own (Phase 6 Step 123); reading what is
 placed at a target, and the chain the module follows as a check reads it
 (Phase 6 Step 124); making a chain's root (Phase 6 Step 125); following
 the chain, a generation at a time (Phase 6 Step 126); writing every balance
-stated at its head (Phase 6 Step 128); and the transactions carried over
-from a chain left, and the chain a head claims (Phase 6 Step 129).
+stated at its head (Phase 6 Step 128); and changing to a heavier chain, and
+carrying over the transactions of the chain left (Phase 6 Step 129).
 """
 
 from libranet.karma.amounts import KISMET_PER_KARMA, MAX_KISMET, Kismet
@@ -32,6 +32,7 @@ from libranet.karma.blocks import (
     ValidationBlock,
 )
 from libranet.karma.carried import CARRIED_FILE, CarriedTransaction, CarriedTransactions
+from libranet.karma.changing import HeadChanges
 from libranet.karma.checking import (
     BlockScore,
     ChainView,
@@ -110,6 +111,7 @@ __all__ = [
     "FalseStatement",
     "GenerationTargets",
     "HeadBalances",
+    "HeadChanges",
     "HeadClaim",
     "HeldBlock",
     "HeldChain",
