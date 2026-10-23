@@ -1338,8 +1338,9 @@ It came to 501 added lines of non-test Python, with 2 changed, so it was
 built as two change sets, each green on its own: what is at a target, with
 its setting (348 added lines, 2 changed); and the chain view, with reading a
 block again from its drop (153 added, 5 changed, all of them the first
-set's). The ruling below added 5 lines to the second, and changed 6. The
-tests are 619 lines, with 40 more for the blocks and the setting.
+set's). The two rulings below came after it: the first added 5 lines, and
+changed 6; the second added 112, and changed 38. The tests are 664
+lines, with 147 more for the blocks, the setting, and the module.
 
 What was built:
 
@@ -1347,10 +1348,11 @@ What was built:
   blocks of `kind` held at a target, nearest first, the search announced,
   and what was found but is not held asked for; `held(id)`, what is held,
   decompressed, asked for if it is not; `fetch(ids)`, asking for what is
-  not held, and waiting for it; `stored(id)`, whether what has arrived was
-  waited for; `given_up()`, what has been waited for
-  `karma.fetch_wait_seconds`, no longer waited for; and `waiting`.
-  `TargetReader.of(config, content, publish)` is a node's.
+  not held, and waiting for it; `answered(prefix, named)`, keeping what a
+  peer named at a target being read, and asking for it; `stored(id)`,
+  whether what has arrived was waited for; `given_up()`, what has been
+  waited for `karma.fetch_wait_seconds`, no longer waited for; and
+  `waiting`. `TargetReader.of(config, content, publish)` is a node's.
 - **`HeldBlock(block_id, data, compressed_bytes, keys)`**: what the checks
   of Steps 121 and 122 take of a block, with the keys held of everyone who
   signed what it holds.
@@ -1359,20 +1361,25 @@ What was built:
 - **`BlockDrop.parsed(data, kind)`** (`karma/blocks.py`): a block read from
   its drop, its signatures not checked.
 - **`karma.fetch_wait_seconds`** (`KarmaConfig`), 30 by default.
+- **`KarmaModule`** holds a reader, subscribes to `data.search_answered` and
+  `data.stored`, and gives up on what has not come as it idles.
 
 My calls, not yet reviewed:
 
-- **The module reads the search cache, and writes none of it.** The cache
-  is the web server's, and stats rewrites it, so the module only reads it,
-  as it reads `lists/shunned.json`. Stats adds what peers answer only to an
-  answer cached already, so what they answer of a target is read only while
-  a search of it by a page or a peer is cached. What they push, as the
-  search puts the target in the node's seek list (Phase 4 Step 93), is
-  found once it is stored.
-- **Nothing runs the reader yet.** The module neither subscribes to
-  `data.stored` nor publishes until Step 126 has it read its head's
-  targets. It is to tell the reader of each `data.stored`, ask it what it
-  has given up on as it idles, and read again when either ends a wait.
+- **Nothing reads a target yet.** The module tells its reader of each
+  `data.search_answered` and `data.stored`, and to give up as it idles,
+  but reads no target until Step 126 has it read its head's, so it keeps no
+  answer and asks for nothing. Step 126 is to read a target again whenever
+  `answered` or `stored` says something new has come.
+- **What peers name at a target is kept until the target has not been read
+  for `storage.search_cache_ttl_seconds`** (300), as long as a cached
+  search answer lasts, rather than for a setting of its own. Step 126 reads
+  its head's targets every minute, so what is named there is kept while the
+  module follows them, and forgotten five minutes after the head moves on.
+  An answer for a target not being read is passed over.
+- **`answered` asks at once for what it lacks**, and says whether anything
+  was named that was not before, so that the target is read again for what
+  is held, while the rest is waited for.
 - **Waiting is kept, not slept.** The module handles a message at a time,
   so the reader never blocks: it notes what it asked for, and until when it
   waits. What is waited for is asked for once; once given up on, it is
@@ -1420,6 +1427,16 @@ Ruled after building:
   needs blocks back as far as the reach, or ten blocks if that is further.
   `HeldChain.balances` reads back to the greater of the reach and
   `WEIGHT_GENERATIONS`, or to the root.
+- **Peers' answers are taken from `data.search_answered`, not from the
+  search cache**, in place of reading the cache first built. Stats adds
+  what peers answer only to an answer cached already, and only the web
+  server caches one, as it answers a search made of it. So what peers
+  answered the Karma module's own searches reached it only while a page or
+  a peer had searched this node for the target within five minutes. The
+  module now subscribes to `data.search_answered`, keeps what peers name at
+  each target it reads, and asks at once for what it lacks. What they push,
+  as the search puts the target in the node's seek list (Phase 4 Step 93),
+  is found as before, once it is stored.
 
 ---
 

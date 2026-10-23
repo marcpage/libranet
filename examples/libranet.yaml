@@ -225,7 +225,9 @@ storage:
   max_application_store_bytes: 1048576
   max_application_value_bytes: 65536
 
-  # Provisional: how long a cached /data/search result stays valid.
+  # Provisional: how long a cached /data/search result stays valid, and how
+  # long the Karma module keeps what peers name at a target once it stops
+  # reading it.
   search_cache_ttl_seconds: 300.0
   # How many leading bits a hash must share with a prefix searched for, at
   # least, for a search to return it; or the whole prefix, if it is shorter

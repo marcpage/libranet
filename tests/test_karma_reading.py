@@ -41,7 +41,7 @@ from libranet.karma.validating import ValidationBlockCheck, ValidationScore
 from libranet.karma.weight import ChainWeight
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
-from libranet.protocol.search import LocalSearch, SearchCache
+from libranet.protocol.search import LocalSearch
 from tests.helpers import new_identity
 
 CREATED = datetime(2026, 10, 21, 14, 3, 22, tzinfo=UTC)
@@ -50,6 +50,7 @@ DAVE = ContentId("sha256", "d0" * 32)
 PREVIOUS = ContentId("sha256", "5e" * 32)
 WITNESS = "ab" * 32
 WAIT_SECONDS = 30.0
+ANSWER_SECONDS = 300.0
 
 # The fewest bits a search returns, fewer than a node's, so that a drop is
 # placed in moments.
@@ -182,22 +183,16 @@ def clock() -> Clock:
 
 
 @fixture
-def cache(storage: StorageConfig) -> SearchCache:
-    """The cached answers to searches, as the web server and the stats module write them."""
-    return SearchCache.of(storage)
-
-
-@fixture
 def reader(
     storage: StorageConfig, truth: CasStore, recorder: Recorder, clock: Clock
 ) -> TargetReader:
     return TargetReader(
         truth,
         LocalSearch(truth, min_bits=MINIMUM_BITS),
-        SearchCache.of(storage),
         ShunnedContent.of(storage),
         recorder,
         wait_seconds=WAIT_SECONDS,
+        answer_seconds=ANSWER_SECONDS,
         max_bytes=MIB,
         clock=clock,
     )
@@ -253,18 +248,17 @@ def test_shunned_content_is_neither_read_nor_asked_for(
     storage: StorageConfig,
     reader: TargetReader,
     truth: CasStore,
-    cache: SearchCache,
     recorder: Recorder,
     staking: bytes,
 ) -> None:
     block_id = hold(truth, staking)
-    heard = matching(FIRST.validation, 20)
-    cache.save_results(FIRST.validation.hex, [heard])
-    write_atomically(storage.shunned_list_path, ShunnedContent.body([block_id, heard]))
+    named = matching(FIRST.validation, 20)
+    write_atomically(storage.shunned_list_path, ShunnedContent.body([block_id, named]))
 
     assert reader.read(FIRST.validation, ValidationBlock) == []
+    assert not reader.answered(FIRST.validation.hex, [named])
 
-    reader.fetch([heard])
+    reader.fetch([named])
 
     assert recorder.asked_for() == []
 
@@ -272,20 +266,19 @@ def test_shunned_content_is_neither_read_nor_asked_for(
         reader.held(block_id)
 
 
-def test_a_block_heard_of_and_not_held_is_asked_for_and_read_once_stored(
+def test_a_block_a_peer_names_is_asked_for_at_once_and_read_once_stored(
     reader: TargetReader,
     truth: CasStore,
-    cache: SearchCache,
     recorder: Recorder,
     alice: NodeIdentity,
     bob: NodeIdentity,
     staking: bytes,
 ) -> None:
     block_id = id_of(staking)
-    cache.save_results(FIRST.validation.hex, [block_id])
     hold_keys(truth, alice, bob)
 
     assert reader.read(FIRST.validation, ValidationBlock) == []
+    assert reader.answered(FIRST.validation.hex, [block_id])
     assert recorder.asked_for() == [block_id]
     assert reader.waiting == {block_id}
 
@@ -299,15 +292,54 @@ def test_a_block_heard_of_and_not_held_is_asked_for_and_read_once_stored(
 
 
 def test_what_is_waited_for_is_asked_for_once(
-    reader: TargetReader, cache: SearchCache, recorder: Recorder, staking: bytes
+    reader: TargetReader, recorder: Recorder, staking: bytes
 ) -> None:
     block_id = id_of(staking)
-    cache.save_results(FIRST.validation.hex, [block_id])
 
     reader.read(FIRST.validation, ValidationBlock)
+
+    assert reader.answered(FIRST.validation.hex, [block_id])
+    # Named again, it is nothing new.
+    assert not reader.answered(FIRST.validation.hex, [block_id])
+
     reader.read(FIRST.validation, ValidationBlock)
     reader.fetch([block_id])
 
+    assert recorder.asked_for() == [block_id]
+
+
+def test_what_peers_name_at_a_target_is_kept_while_it_is_read(
+    reader: TargetReader, recorder: Recorder, clock: Clock, staking: bytes
+) -> None:
+    block_id = id_of(staking)
+    reader.read(FIRST.validation, ValidationBlock)
+    reader.answered(FIRST.validation.hex, [block_id])
+    clock.now += WAIT_SECONDS
+    reader.given_up()
+
+    reader.read(FIRST.validation, ValidationBlock)
+
+    assert recorder.asked_for() == [block_id, block_id]
+
+
+def test_an_answer_for_a_target_not_being_read_is_passed_over(
+    reader: TargetReader, recorder: Recorder, clock: Clock, staking: bytes
+) -> None:
+    block_id = id_of(staking)
+    other = matching(FIRST.validation, 20)
+
+    assert not reader.answered(FIRST.validation.hex, [block_id])
+
+    reader.read(FIRST.validation, ValidationBlock)
+    reader.answered(FIRST.validation.hex, [block_id])
+    clock.now += ANSWER_SECONDS
+
+    assert not reader.answered(FIRST.validation.hex, [other])
+
+    reader.given_up()
+    reader.read(FIRST.validation, ValidationBlock)
+
+    # What was named before is forgotten, as the target was not read.
     assert recorder.asked_for() == [block_id]
 
 
@@ -390,10 +422,11 @@ def test_a_drop_holding_no_block_is_read_with_its_builders_key_or_none(
 
 
 def test_what_shares_too_few_bits_with_the_target_is_neither_read_nor_asked_for(
-    reader: TargetReader, cache: SearchCache, recorder: Recorder
+    reader: TargetReader, recorder: Recorder
 ) -> None:
-    cache.save_results(FIRST.validation.hex, [matching(FIRST.validation, MINIMUM_BITS - 1)])
+    reader.read(FIRST.validation, ValidationBlock)
 
+    assert not reader.answered(FIRST.validation.hex, [matching(FIRST.validation, MINIMUM_BITS - 1)])
     assert reader.read(FIRST.validation, ValidationBlock) == []
     assert recorder.asked_for() == []
 
@@ -405,23 +438,35 @@ def test_a_reader_waits_as_long_as_its_node_is_configured_to(
     reader = TargetReader.of(config, LayeredSource(truth), recorder, clock=clock)
 
     reader.fetch([CAROL])
+    reader.read(FIRST.validation, ValidationBlock)
     clock.now += 5
 
     assert reader.given_up() == [CAROL]
 
+    clock.now += storage.search_cache_ttl_seconds - 5
 
-@mark.parametrize("wait_seconds, max_bytes", [(0, MIB), (WAIT_SECONDS, 0)])
-def test_a_reader_must_wait_and_read_something(
-    storage: StorageConfig, truth: CasStore, wait_seconds: float, max_bytes: int
+    assert not reader.answered(FIRST.validation.hex, [matching(FIRST.validation, 30)])
+
+
+@mark.parametrize(
+    "wait_seconds, answer_seconds, max_bytes",
+    [(0, ANSWER_SECONDS, MIB), (WAIT_SECONDS, 0, MIB), (WAIT_SECONDS, ANSWER_SECONDS, 0)],
+)
+def test_a_reader_must_wait_keep_answers_and_read_something(
+    storage: StorageConfig,
+    truth: CasStore,
+    wait_seconds: float,
+    answer_seconds: float,
+    max_bytes: int,
 ) -> None:
     with raises(ValueError, match="must be positive"):
         TargetReader(
             truth,
             LocalSearch(truth),
-            SearchCache.of(storage),
             ShunnedContent.of(storage),
             Recorder(),
             wait_seconds=wait_seconds,
+            answer_seconds=answer_seconds,
             max_bytes=max_bytes,
         )
 

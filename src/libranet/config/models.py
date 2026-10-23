@@ -486,7 +486,10 @@ class StorageConfig(_Section):
     max_application_store_bytes: int = Field(default=DEFAULT_MAX_APPLICATION_STORE_BYTES, ge=1)
     max_application_value_bytes: int = Field(default=DEFAULT_MAX_APPLICATION_VALUE_BYTES, ge=1)
 
-    # Provisional default — see "Open Items" in the implementation plan.
+    # How long a cached search answer is reused, and how long the Karma
+    # module keeps what peers name at a target once it stops reading it
+    # (Phase 6 Step 124). Provisional default — see "Open Items" in the
+    # implementation plan.
     search_cache_ttl_seconds: float = Field(default=300.0, gt=0)
 
     # How many leading bits a hash must share with a prefix searched for, at

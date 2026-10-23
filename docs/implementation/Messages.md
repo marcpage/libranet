@@ -60,8 +60,8 @@ other modules sent.
 | Backup | `backup` | Backup |
 | Karma | `karma` | Karma |
 
-The Karma module (Phase 6 Step 123) sends and receives no message yet but
-`shutdown`, so it appears only in §5.
+The Karma module (Phase 6 Steps 123 and 124) sends a search and a miss only
+as it reads a target, which nothing it does yet calls for.
 
 ## 3. Summary
 
@@ -69,11 +69,11 @@ The Karma module (Phase 6 Step 123) sends and receives no message yet but
 | --- | --- | --- | --- |
 | `shutdown` | (none in a running node) | every module, dispatcher | Leave the receive loop |
 | `data.requested` | Web server | Stats | Count a request for content |
-| `data.not_found` | Web server, Unbundler, Backup | Fetcher, Stats | Content is needed that is not held |
-| `data.search_requested` | Web server | Stats, Connections | A prefix search was asked of this node |
-| `data.search_answered` | Connections | Stats | What a peer answered a prefix search with |
+| `data.not_found` | Web server, Unbundler, Backup, Karma | Fetcher, Stats | Content is needed that is not held |
+| `data.search_requested` | Web server, Karma | Stats, Connections | A prefix search was asked of this node |
+| `data.search_answered` | Connections | Stats, Karma | What a peer answered a prefix search with |
 | `data.put_completed` | Web server, Connections | Validator | Unchecked bytes wait to be validated |
-| `data.stored` | Validator, Backup, Web server, Connections | Stats, Eviction, Connections, Unbundler, Backup | New content is in the source of truth |
+| `data.stored` | Validator, Backup, Web server, Connections | Stats, Eviction, Connections, Unbundler, Backup, Karma | New content is in the source of truth |
 | `data.rejected` | Validator | Stats | An upload did not match its content id |
 | `nodes.received` | Web server, Connections | Stats, Connections | Peer addresses learned |
 | `seek.received` | Web server | Stats | A peer's seek list |
@@ -159,6 +159,8 @@ it and what each does with it.
     `identity_handlers.py`, `drop_handler.py`, `version_edits.py`).
   - Unbundler, for each missing bundle or extension a path needs.
   - Backup, for content a restore or an export lacks.
+  - Karma, for a block found or named at a target it reads, a signer's key,
+    or a block of the chain it follows, that it lacks (`karma/reading.py`).
 - **Received by:**
   - Fetcher, which turns the miss into a `fetch.requested`, unless the
     content is held, shunned, or was asked for within
@@ -170,8 +172,11 @@ it and what each does with it.
 #### `data.search_requested`
 
 - **Payload:** `prefix`, and `node_id` when a peer asked.
-- **Sent by:** Web server, after answering a `GET /data/search/{prefix}`
-  from its cache (`search_handler.py`).
+- **Sent by:**
+  - Web server, after answering a `GET /data/search/{prefix}` from its cache
+    (`search_handler.py`).
+  - Karma, as it reads a target, its hash as the prefix
+    (`karma/reading.py`).
 - **Received by:**
   - Stats, which adds the search to the seek list, written again at once
     so connected peers push matches on their next refresh.
@@ -184,8 +189,11 @@ it and what each does with it.
 - **Payload:** `prefix`, `node_id`, `results` (content ids).
 - **Sent by:** Connections, for each peer it asked during a search
   (`peer_exchange.py`).
-- **Received by:** Stats, which records the hashes as known and adds them to
-  the cached answer for the prefix.
+- **Received by:**
+  - Stats, which records the hashes as known and adds them to the cached
+    answer for the prefix, if one is cached.
+  - Karma, which keeps those at a target it is reading, and asks at once for
+    those it lacks.
 - **Purpose:** let the next search list what peers hold.
 
 ### 4.3 Writing Content and Validation
@@ -225,6 +233,7 @@ it and what each does with it.
     connected peer whose node id best matches it, unless that peer sent it.
   - Unbundler, which resolves again any path waiting on the content.
   - Backup, which carries on any restore waiting on the content.
+  - Karma, which stops waiting for content it asked for.
 - **Purpose:** announce new content to everything that tracks, moves, or
   waits on content.
 
@@ -614,6 +623,6 @@ or reported, nor is the key a kept archive's bundle may carry.
 | Unbundler | `data.not_found`, `app.path_resolved`, `resolved.reclaimed` | `app.path_not_found`, `data.stored`, `resolved.reclaim` |
 | Eviction | `eviction.notice`, `data.deleted`, `eviction.candidates_requested`, `resolved.reclaim_requested`, `peers.connected_requested`, `storage.full` | `data.stored`, `eviction.acknowledged`, `eviction.candidates`, `resolved.reclaimed`, `peers.connected`, `storage.full_requested`, `data.shunned` |
 | Backup | `data.not_found`, `data.stored`, `backup.state`, `storage.full_requested` | `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.stored`, `storage.full` |
-| Karma | — | — |
+| Karma | `data.search_requested`, `data.not_found` | `data.search_answered`, `data.stored` |
 
 Every module also receives `shutdown`.

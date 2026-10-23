@@ -404,8 +404,14 @@ rather than on the web server's threads, and a restart of either leaves the
 other running (Phase 6 Step 123). For now it only keeps the history of the
 chain it follows, in `karma/` in the data directory, which it reads as it
 starts (`ChainHistory`, `karma/history.py`): the genealogy, a file for each
-generation, and the head, for the web server to read. It subscribes to no
-event and publishes none.
+generation, and the head, for the web server to read. It reads what is
+placed at a target through `TargetReader` (`karma/reading.py`, Phase 6 Step
+124), which nothing it does yet calls for. Reading a target publishes
+`data.search_requested`, and each miss `data.not_found`. The reader keeps
+what peers name, in `data.search_answered`, at a target it reads, and asks
+at once for what it lacks; it stops waiting for content as `data.stored`
+names it, and gives up on what has not come within
+`karma.fetch_wait_seconds` as the module idles.
 
 ### 3.3 What Each Module Owns
 
@@ -658,7 +664,7 @@ What each module does in them:
 | Unbundler | — | — | — |
 | Eviction | Read the node id; count storage; ask which peers are connected; say whether storage is full; evict if over | Say whether storage is full, if that changed; time out hand-offs and questions; resume after a pause | — |
 | Backup | Read the node id; ask whether storage is full; read the jobs; report state | Carry on the next restore, build, export, import, or backup due | — |
-| Karma | Read the history; write its head | — | — |
+| Karma | Read the history; write its head | Give up on content waited for too long | — |
 
 ### 5.3 Writing a Module
 
@@ -882,78 +888,78 @@ to end its loop.
 **P** publishes the event and **S** subscribes to it. Rows are grouped as
 `EventType` groups them.
 
-| Event | Web server | Connections | Validator | Stats | Fetcher | Unbundler | Eviction | Backup |
-| --- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
-| *Reading* | | | | | | | | |
-| `data.requested` | P | | | S | | | | |
-| `data.not_found` | P | | | S | S | P | | P |
-| `data.search_requested` | P | S | | S | | | | |
-| `data.search_answered` | | P | | S | | | | |
-| *Writing and validation* | | | | | | | | |
-| `data.put_completed` | P | P | S | | | | | |
-| `data.stored` | P | P S | P | S | | S | S | P S |
-| `data.rejected` | | | P | S | | | | |
-| *Peers and their lists* | | | | | | | | |
-| `nodes.received` | P | P S | | S | | | | |
-| `seek.received` | P | | | S | | | | |
-| `nodes.updated` | | S | | P | | | | |
-| `address.verified` | | P | | S | | | | |
-| `address.dial_requested` | P | S | | | | | | |
-| `address.dialed` | S | P | | | | | | |
-| `node.trust` | P | S | | S | | | | |
-| `node.trust_requested` | P | | | S | | | | |
-| `node.trust_stored` | S | | | P | | | | |
-| *Connections and fetching* | | | | | | | | |
-| `connection.opened` | | P | | S | | | | |
-| `connection.closed` | | P | | S | | | | |
-| `connection.failed` | | P | | S | | | | |
-| `node.unreached` | | P | | S | | | | |
-| `data.sent` | | P | | S | | | | |
-| `fetch.requested` | | S | | | P | | | |
-| `fetch.attempted` | | P | | S | | | | |
-| `fetch.succeeded` | | P | | | S | | | |
-| `fetch.failed` | | P | | | S | | | |
-| *Applications* | | | | | | | | |
-| `app.path_not_found` | P | | | | | S | | |
-| `app.path_resolved` | S | | | | | P | | |
-| *`/config` and backup* | | | | | | | | |
-| `backup.job_configured` | P | | | | | | | S |
-| `backup.job_removed` | P | | | | | | | S |
-| `backup.run_requested` | P | | | | | | | S |
-| `backup.restore_requested` | P | | | | | | | S |
-| `backup.build_requested` | P | | | | | | | S |
-| `backup.export_requested` | P | | | | | | | S |
-| `backup.import_requested` | P | | | | | | | S |
-| `backup.archive_requested` | P | | | | | | | S |
-| `backup.archive_removed` | P | | | | | | | S |
-| `backup.state` | S | | | | | | | P |
-| *Eviction* | | | | | | | | |
-| `eviction.notice` | | S | | | | | P | |
-| `eviction.acknowledged` | | P | | | | | S | |
-| `data.deleted` | | | | S | | | P | |
-| `eviction.candidates_requested` | | | | S | | | P | |
-| `eviction.candidates` | | | | P | | | S | |
-| *Reclaiming resolved files* | | | | | | | | |
-| `app.accessed` | P | | | S | | | | |
-| `resolved.reclaim_requested` | | | | S | | | P | |
-| `resolved.reclaim` | | | | P | | S | | |
-| `resolved.reclaimed` | | | | | | P | S | |
-| *Connected peers* | | | | | | | | |
-| `peers.connected_requested` | S | S | | P | | | P | |
-| `peers.connected` | P | P | | S | | | S | |
-| *Storage full* | | | | | | | | |
-| `storage.full_requested` | | | | | | | S | P |
-| `storage.full` | | | | | | | P | S |
-| *Shunned content* | | | | | | | | |
-| `data.shunned` | P | | | S | | | S | |
-| *Lifecycle* | | | | | | | | |
-| `shutdown` | S | S | S | S | S | S | S | S |
-| **Publishes / subscribes** | 21 / 5 | 16 / 9 | 2 / 1 | 5 / 23 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 |
+| Event | Web server | Connections | Validator | Stats | Fetcher | Unbundler | Eviction | Backup | Karma |
+| --- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
+| *Reading* | | | | | | | | | |
+| `data.requested` | P | | | S | | | | | |
+| `data.not_found` | P | | | S | S | P | | P | P |
+| `data.search_requested` | P | S | | S | | | | | P |
+| `data.search_answered` | | P | | S | | | | | S |
+| *Writing and validation* | | | | | | | | | |
+| `data.put_completed` | P | P | S | | | | | | |
+| `data.stored` | P | P S | P | S | | S | S | P S | S |
+| `data.rejected` | | | P | S | | | | | |
+| *Peers and their lists* | | | | | | | | | |
+| `nodes.received` | P | P S | | S | | | | | |
+| `seek.received` | P | | | S | | | | | |
+| `nodes.updated` | | S | | P | | | | | |
+| `address.verified` | | P | | S | | | | | |
+| `address.dial_requested` | P | S | | | | | | | |
+| `address.dialed` | S | P | | | | | | | |
+| `node.trust` | P | S | | S | | | | | |
+| `node.trust_requested` | P | | | S | | | | | |
+| `node.trust_stored` | S | | | P | | | | | |
+| *Connections and fetching* | | | | | | | | | |
+| `connection.opened` | | P | | S | | | | | |
+| `connection.closed` | | P | | S | | | | | |
+| `connection.failed` | | P | | S | | | | | |
+| `node.unreached` | | P | | S | | | | | |
+| `data.sent` | | P | | S | | | | | |
+| `fetch.requested` | | S | | | P | | | | |
+| `fetch.attempted` | | P | | S | | | | | |
+| `fetch.succeeded` | | P | | | S | | | | |
+| `fetch.failed` | | P | | | S | | | | |
+| *Applications* | | | | | | | | | |
+| `app.path_not_found` | P | | | | | S | | | |
+| `app.path_resolved` | S | | | | | P | | | |
+| *`/config` and backup* | | | | | | | | | |
+| `backup.job_configured` | P | | | | | | | S | |
+| `backup.job_removed` | P | | | | | | | S | |
+| `backup.run_requested` | P | | | | | | | S | |
+| `backup.restore_requested` | P | | | | | | | S | |
+| `backup.build_requested` | P | | | | | | | S | |
+| `backup.export_requested` | P | | | | | | | S | |
+| `backup.import_requested` | P | | | | | | | S | |
+| `backup.archive_requested` | P | | | | | | | S | |
+| `backup.archive_removed` | P | | | | | | | S | |
+| `backup.state` | S | | | | | | | P | |
+| *Eviction* | | | | | | | | | |
+| `eviction.notice` | | S | | | | | P | | |
+| `eviction.acknowledged` | | P | | | | | S | | |
+| `data.deleted` | | | | S | | | P | | |
+| `eviction.candidates_requested` | | | | S | | | P | | |
+| `eviction.candidates` | | | | P | | | S | | |
+| *Reclaiming resolved files* | | | | | | | | | |
+| `app.accessed` | P | | | S | | | | | |
+| `resolved.reclaim_requested` | | | | S | | | P | | |
+| `resolved.reclaim` | | | | P | | S | | | |
+| `resolved.reclaimed` | | | | | | P | S | | |
+| *Connected peers* | | | | | | | | | |
+| `peers.connected_requested` | S | S | | P | | | P | | |
+| `peers.connected` | P | P | | S | | | S | | |
+| *Storage full* | | | | | | | | | |
+| `storage.full_requested` | | | | | | | S | P | |
+| `storage.full` | | | | | | | P | S | |
+| *Shunned content* | | | | | | | | | |
+| `data.shunned` | P | | | S | | | S | | |
+| *Lifecycle* | | | | | | | | | |
+| `shutdown` | S | S | S | S | S | S | S | S | S |
+| **Publishes / subscribes** | 21 / 5 | 16 / 9 | 2 / 1 | 5 / 23 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 | 2 / 2 |
 
 The `shutdown` row and its subscriptions are implicit: every module
 receives it without listing it, and nothing publishes it (§6.4). The totals
-leave it out. The Karma module has no column: it publishes and subscribes to
-no event yet (Phase 6 Step 123), and receives only `shutdown`.
+leave it out. The Karma module publishes only as it reads a target, which
+nothing it does yet calls for (Phase 6 Step 124).
 
 ### 7.2 Payloads
 
@@ -964,7 +970,7 @@ A content id is an `algorithm` and a lower-case hex `hash`, or, in
 | --- | --- | --- |
 | `data.requested` | `algorithm`, `hash`, `external` | `GET /data` asked for this content, held or not, or a file served from its parts asked for this part; `external` is false for a request from this machine, and for a part |
 | `data.not_found` | `algorithm`, `hash` | Content was needed that this node does not hold |
-| `data.search_requested` | `prefix`, and `node_id` if a peer asked | A search was answered, and its result cached in `search/`; search the connected peers for it too |
+| `data.search_requested` | `prefix`, and `node_id` if a peer asked | A search was answered, and its result cached in `search/`, or the Karma module reads a target; search the connected peers for it too |
 | `data.search_answered` | `prefix`, `node_id`, `results` | What the peer `node_id` answered a search of the prefix with |
 | `data.put_completed` | `algorithm`, `hash`, `node_id` | Unchecked bytes wait in `node_id`'s store in `incoming/` |
 | `data.stored` | `algorithm`, `hash`, `node_id`, `size` | New content is in `cas/data`; `node_id` is where it came from, this node for its own |
@@ -1390,7 +1396,7 @@ side recovers:
 | Unbundler | Directories held in memory; paths waiting on content; a reclaim in progress | Directories are read back from each bundle's saved `directory.jzon`; a request waiting on a path forgotten is answered `503`, and its retry asks again; eviction times out the reclaim |
 | Eviction | Hand-offs under way; its list of candidates; which peers are connected | It counts storage again at start, says whether storage is full, asks which peers are connected, and asks stats again |
 | Backup | Restores, builds, exports, and imports; messages set aside while it stored content | They must be asked for again; jobs are read back from `backup_jobs.json`; it asks whether storage is full |
-| Karma | Nothing: what it keeps is on disk | The history is read back from `karma/`, and its head written again |
+| Karma | Content it waited for; what peers named at the targets it read | The history is read back from `karma/`, and its head written again; what it lacks is asked for again as it next reads |
 | Dispatcher | Messages it had read but not yet delivered, and those it held for a full inbox | Nothing recovers them; no module is started until it is back |
 
 ## 11. Testing Modules

@@ -3,16 +3,24 @@
 Every block is a drop, placed at a target (§2, §3.1), so what is at a target
 is found as a search of the target's hash finds it (HttpApi §6): what the
 node holds, scanned as :class:`~libranet.protocol.search.LocalSearch` scans
-it, and what the cached answer to a search of it lists, to which the stats
-module adds what the node has heard of. :class:`TargetReader` only reads that
-cache, which the web server writes and the stats module rewrites. Each read
-is announced as a search made on this node, so that the connection manager
-asks the peers, and the stats module seeks the target (Phase 4 Step 93)::
+it, and what peers name in answer to a search of it. Each read is announced
+as a search made on this node, so that the connection manager asks the
+peers, and the stats module seeks the target (Phase 4 Step 93)::
 
     data.search_requested  {"prefix": "<hex>"}
 
-What is found but not held is asked for, as a miss is, so that the fetcher
-retrieves it::
+Each peer's answer is taken as it arrives (:meth:`TargetReader.answered`)::
+
+    data.search_answered  {"prefix": "<hex>", "node_id", "results": [...]}
+
+What it names at a target being read is kept for that target, until the
+target has not been read for ``storage.search_cache_ttl_seconds``, as long
+as a search's answer is cached. The search cache itself is not read: the
+stats module adds peers' answers only to an answer cached already, and only
+a search made of the web server caches one.
+
+What is found or named but not held is asked for, as a miss is, so that the
+fetcher retrieves it::
 
     data.not_found  {"algorithm", "hash"}
 
@@ -68,11 +76,19 @@ from libranet.karma.ledger import NO_BALANCE, WEIGHT_GENERATIONS
 from libranet.karma.transactions import TransactionKey
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
-from libranet.protocol.search import LocalSearch, SearchCache
+from libranet.protocol.search import LocalSearch
 
 _LOGGER = getLogger(__name__)
 
 _Block = TypeVar("_Block", TransactionBlock, ValidationBlock)
+
+
+@dataclass
+class _Answers:
+    """What peers have named at a target being read, and when it was last read."""
+
+    read_at: float
+    named: set[ContentId] = field(default_factory=set)
 
 
 @dataclass(frozen=True)
@@ -95,43 +111,47 @@ class HeldBlock:
 class TargetReader:  # pylint: disable=too-many-instance-attributes
     """Reads what is placed at a target from ``content``, and asks the network for what it lacks.
 
-    ``search`` scans ``content``, ``cache`` holds the answers to searches,
-    and what ``shunned`` names is left out. Each search, and each miss, is
-    said with ``publish``. What is asked for is waited for ``wait_seconds``,
-    by ``clock``, and what is held compressed is read decompressed to at
-    most ``max_bytes``.
+    ``search`` scans ``content``, and what ``shunned`` names is left out.
+    Each search, and each miss, is said with ``publish``. What is asked for
+    is waited for ``wait_seconds``, by ``clock``, what peers name at a
+    target is kept until it has not been read for ``answer_seconds``, and
+    what is held compressed is read decompressed to at most ``max_bytes``.
 
     Raises:
-        ValueError: ``wait_seconds`` or ``max_bytes`` is not positive.
+        ValueError: ``wait_seconds``, ``answer_seconds``, or ``max_bytes`` is
+            not positive.
     """
 
     def __init__(
         self,
         content: ContentSource,
         search: LocalSearch,
-        cache: SearchCache,
         shunned: ShunnedContent,
         publish: Publish,
         *,
         wait_seconds: float,
+        answer_seconds: float,
         max_bytes: int,
         clock: Callable[[], float] = time,
     ) -> None:
-        if wait_seconds <= 0 or max_bytes <= 0:
+        if min(wait_seconds, answer_seconds, max_bytes) <= 0:
             raise ValueError(
-                f"wait_seconds and max_bytes must be positive, got {wait_seconds} and {max_bytes}"
+                f"wait_seconds, answer_seconds, and max_bytes must be positive, got "
+                f"{wait_seconds}, {answer_seconds}, and {max_bytes}"
             )
 
         self._content = content
         self._search = search
-        self._cache = cache
         self._shunned = shunned
         self._publish = publish
         self._wait_seconds = wait_seconds
+        self._answer_seconds = answer_seconds
         self._max_bytes = max_bytes
         self._clock = clock
         # When each piece of content asked for and not yet stored is given up on.
         self._waiting: dict[ContentId, float] = {}
+        # What peers have named at each target being read, by its hash.
+        self._answers: dict[str, _Answers] = {}
 
     @classmethod
     def of(
@@ -147,10 +167,10 @@ class TargetReader:  # pylint: disable=too-many-instance-attributes
         return cls(
             content,
             LocalSearch.of(content, storage),
-            SearchCache.of(storage, clock=clock),
             ShunnedContent.of(storage),
             publish,
             wait_seconds=config.karma.fetch_wait_seconds,
+            answer_seconds=storage.search_cache_ttl_seconds,
             max_bytes=storage.max_decompressed_bundle_bytes,
             clock=clock,
         )
@@ -163,19 +183,20 @@ class TargetReader:  # pylint: disable=too-many-instance-attributes
     def read(self, target: DropTarget, kind: type[_Block]) -> list[HeldBlock]:
         """The blocks of ``kind`` the node holds at ``target``, those placed nearest first.
 
-        They are what it holds nearest the target's hash, and what the
-        cached answer to a search of it lists, of those a search returns,
-        less those it shuns. The search is announced, so that the peers are
-        asked. What is found but not held is asked for, as is the key of each
-        signer a block held names that is not held, and each is waited for.
-        Anything held that is not what it is held as is passed over, and
-        logged.
+        They are what it holds nearest the target's hash, and what peers
+        have named there (:meth:`answered`), of those a search returns, less
+        those it shuns. The search is announced, so that the peers are asked,
+        and the target is read from now until ``answer_seconds`` pass without
+        a read of it. What is found but not held is asked for, as is the key
+        of each signer a block held names that is not held, and each is
+        waited for. Anything held that is not what it is held as is passed
+        over, and logged.
         """
         prefix: str = target.hex
+        answers: _Answers = self._reading(prefix)
         self._publish(EventType.SEARCH_REQUESTED, {"prefix": prefix})
-        heard: list[ContentId] = self._cache.load_results(prefix) or []
         found = self._search.matching(
-            prefix, nearest(prefix, {*self._search.search(prefix), *heard})
+            prefix, nearest(prefix, {*self._search.search(prefix), *answers.named})
         )
         blocks: list[HeldBlock] = []
         lacking: list[ContentId] = []
@@ -201,6 +222,28 @@ class TargetReader:  # pylint: disable=too-many-instance-attributes
 
         self.fetch(lacking)
         return blocks
+
+    def answered(self, prefix: str, named: Iterable[ContentId]) -> bool:
+        """Keep what a peer ``named`` in answer to a search of ``prefix``, a target's hash.
+
+        Only an answer for a target being read is kept, and of it only what
+        a search of the target returns, and the node does not shun. Each not
+        held is asked for at once (:meth:`fetch`).
+
+        Returns:
+            Whether it names anything not named there before, so that the
+            target is read again.
+        """
+        answers = self._answers.get(prefix)
+
+        if answers is None or self._clock() - answers.read_at >= self._answer_seconds:
+            return False
+
+        matching = self._shunned.unshunned(self._search.matching(prefix, named))
+        new = [content_id for content_id in matching if content_id not in answers.named]
+        answers.named.update(new)
+        self.fetch(new)
+        return bool(new)
 
     def held(self, content_id: ContentId) -> bytes:
         """What the node holds of ``content_id``, decompressed if it is held compressed.
@@ -268,6 +311,23 @@ class TargetReader:  # pylint: disable=too-many-instance-attributes
             )
 
         return late
+
+    def _reading(self, prefix: str) -> _Answers:
+        """What peers have named at the target whose hash is ``prefix``, which is read now.
+
+        Targets not read for ``answer_seconds`` are no longer read, and what
+        was named at them is forgotten.
+        """
+        now = self._clock()
+
+        for stale in [
+            key for key, kept in self._answers.items() if now - kept.read_at >= self._answer_seconds
+        ]:
+            del self._answers[stale]
+
+        answers = self._answers.setdefault(prefix, _Answers(now))
+        answers.read_at = now
+        return answers
 
     def _read(self, content_id: ContentId) -> tuple[bytes, int | None]:
         """What is held of ``content_id``, and the size of the zlib stream it is held as, if it is.
