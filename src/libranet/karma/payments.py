@@ -1,8 +1,9 @@
 """The node's payments, queued and put up together (KarmaLedger §4.6, Phase 6 Step 132).
 
-For most common payments, a node pays 0.01% of its balance, as the chain it
-follows states it at the head, rounded down to whole Kismet: nothing while
-it holds under 10,000 Kismet. It queues each in ``payments.json`` in
+For most common payments, a node pays ``karma.payment_percent`` of its
+balance, 0.01% by default, as the chain it follows states it at the head,
+rounded down to whole Kismet: nothing while that rounds to 0, as it does
+under 10,000 Kismet at 0.01%. It queues each in ``payments.json`` in
 ``storage.karma_dir``, and puts them up together, as one transaction paying
 each recipient all it is queued to be paid, so that they cost the work of
 one transaction (§4.3), and do not flood the network::
@@ -24,6 +25,7 @@ pays twice (§4.2).
 from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
+from fractions import Fraction
 from json import loads
 from logging import getLogger
 from pathlib import Path
@@ -47,9 +49,6 @@ _LOGGER = getLogger(__name__)
 
 #: The file of the Karma module's history holding the node's payments.
 PAYMENTS_FILE: Final = "payments.json"
-
-#: What a node's balance is divided by for a payment: it pays 0.01% (§4.6).
-PAYMENT_DIVISOR: Final = 10_000
 
 # The members of the file, and of each payment queued.
 _PAYMENTS: Final = "payments"
@@ -76,13 +75,14 @@ class Payment:
             raise ValueError(f"A payment queued must be of more than 0 Kismet, to {self.recipient}")
 
     @classmethod
-    def of(cls, recipient: ContentId, balance: Kismet) -> Payment | None:
-        """The payment to ``recipient`` of a node holding ``balance``, or ``None`` if it is 0.
+    def of(cls, recipient: ContentId, balance: Kismet, percent: float) -> Payment | None:
+        """The payment to ``recipient`` of ``percent`` of ``balance``, or ``None`` if it is 0.
 
-        It is 0.01% of ``balance``, rounded down to whole Kismet, and so 0
-        under 10,000 Kismet.
+        It is rounded down to whole Kismet, ``percent`` read as the decimal
+        it is written as, so that it is exact: 0.01% is 0 under 10,000
+        Kismet.
         """
-        amount = Kismet(balance.count // PAYMENT_DIVISOR)
+        amount = Kismet(balance.count * Fraction(str(percent)) // 100)
         return None if amount == Kismet(0) else cls(recipient, amount)
 
     @classmethod
@@ -245,7 +245,8 @@ class NodePayments:  # pylint: disable=too-many-instance-attributes
 
     The node's balance is read at the head of the chain ``history`` keeps,
     its blocks read from what ``reader`` holds, and the time from
-    ``clock``, in seconds since the epoch. The queue is made a transaction
+    ``clock``, in seconds since the epoch, and each payment is ``percent``
+    of it. The queue is made a transaction
     once ``batch`` payments are queued, or ``interval_seconds`` have passed
     since the node's last, created in the head's generation, its nonce
     searched for by ``searchers`` for ``transaction_seconds``, and after that
@@ -262,6 +263,7 @@ class NodePayments:  # pylint: disable=too-many-instance-attributes
         putting: TransactionsPutUp,
         *,
         clock: Callable[[], float],
+        percent: float,
         batch: int,
         interval_seconds: float,
         transaction_seconds: float,
@@ -274,6 +276,7 @@ class NodePayments:  # pylint: disable=too-many-instance-attributes
         self._identity = identity
         self._putting = putting
         self._clock = clock
+        self._percent = percent
         self._batch = batch
         self._interval_seconds = interval_seconds
         self._transaction_seconds = transaction_seconds
@@ -281,10 +284,10 @@ class NodePayments:  # pylint: disable=too-many-instance-attributes
         self._bounds = bounds
 
     def pay(self, recipient: ContentId) -> Payment | None:
-        """Queue a payment to ``recipient`` of 0.01% of the node's balance at the head.
+        """Queue a payment to ``recipient`` of the node's percent of its balance at the head.
 
-        None is queued while that rounds to 0, under 10,000 Kismet, or
-        while no chain is followed. One whose balance is read from blocks
+        None is queued while that rounds to 0, or while no chain is
+        followed. One whose balance is read from blocks
         not held, which are asked for, or that cannot be read or queued, is
         logged, and not made.
 
@@ -320,14 +323,14 @@ class NodePayments:  # pylint: disable=too-many-instance-attributes
             )
             return None
 
-        payment = Payment.of(recipient, balance)
+        payment = Payment.of(recipient, balance, self._percent)
 
         if payment is None:
             _LOGGER.debug(
-                "Not paying %s: the node holds %s Kismet, under %d",
+                "Not paying %s: %s%% of the %s Kismet the node holds rounds to 0",
                 recipient,
+                self._percent,
                 balance.value(),
-                PAYMENT_DIVISOR,
             )
             return None
 

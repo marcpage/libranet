@@ -11,7 +11,7 @@ from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.config.models import MIB, StorageConfig
 from libranet.identity.node_identity import NodeIdentity
-from libranet.karma.amounts import Kismet
+from libranet.karma.amounts import MAX_KISMET, Kismet
 from libranet.karma.blocks import BlockDrop, TransactionBlock
 from libranet.karma.carried import CarriedTransactions
 from libranet.karma.following import ChainFollower
@@ -186,6 +186,7 @@ def paying_as(
     placed: Placed,
     clock: Clock,
     *,
+    percent: float = 0.01,
     batch: int = 100,
 ) -> NodePayments:
     """The payments of ``node``, which puts up each transaction, and its block, in moments."""
@@ -206,6 +207,7 @@ def paying_as(
         lambda: node,
         putting,
         clock=clock,
+        percent=percent,
         batch=batch,
         interval_seconds=INTERVAL_SECONDS,
         transaction_seconds=0.0,
@@ -213,7 +215,10 @@ def paying_as(
     )
 
 
-def test_a_payment_is_queued_at_a_ten_thousandth_of_the_nodes_balance_rounded_down(
+@mark.parametrize(("percent", "kismet"), [(0.01, 1), (0.5, 99), (2.5, 499)])
+def test_a_payment_is_queued_at_the_percent_of_the_nodes_balance_rounded_down(
+    percent: float,
+    kismet: int,
     storage: StorageConfig,
     history: ChainHistory,
     reader: TargetReader,
@@ -225,11 +230,23 @@ def test_a_payment_is_queued_at_a_ten_thousandth_of_the_nodes_balance_rounded_do
     carol: NodeIdentity,
 ) -> None:
     following(history, reader, truth, second)
+    payments = paying_as(carol, storage, history, reader, placed, clock, percent=percent)
 
-    payment = paying_as(carol, storage, history, reader, placed, clock).pay(bob.node_id)
+    payment = payments.pay(bob.node_id)
 
-    assert payment == Payment(bob.node_id, Kismet(1))
+    # Carol holds 19,999 Kismet.
+    assert payment == Payment(bob.node_id, Kismet(kismet))
     assert PaymentQueue.read(storage.karma_dir) == PaymentQueue((payment,))
+
+
+def test_a_percent_is_read_as_the_decimal_it_is_written_as(bob: NodeIdentity) -> None:
+    # As binary floating point, each is a little more than the decimal, which
+    # a share of the most there can be would show.
+    assert Payment.of(bob.node_id, Kismet(MAX_KISMET), 0.01) == Payment(bob.node_id, Kismet(10**24))
+    assert Payment.of(bob.node_id, Kismet(MAX_KISMET), 0.0123) == Payment(
+        bob.node_id, Kismet(123 * 10**22)
+    )
+    assert Payment.of(bob.node_id, Kismet(9_999), 0.01) is None
 
 
 def test_a_payment_is_queued_as_the_chain_states_the_balance_at_the_head(

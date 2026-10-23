@@ -72,13 +72,7 @@ from libranet.karma.members import (
     moment_member,
 )
 from libranet.karma.module import KarmaModule
-from libranet.karma.payments import (
-    PAYMENT_DIVISOR,
-    PAYMENTS_FILE,
-    NodePayments,
-    Payment,
-    PaymentQueue,
-)
+from libranet.karma.payments import PAYMENTS_FILE, NodePayments, Payment, PaymentQueue
 from libranet.karma.putting import OwnBlock, TransactionsPutUp
 from libranet.karma.reading import ChainGenerations, HeldBlock, HeldChain, TargetReader
 from libranet.karma.root import ChainRoot
@@ -102,7 +96,6 @@ __all__ = [
     "NEW_KISMET_DECREASE",
     "NO_BALANCE",
     "PAYMENTS_FILE",
-    "PAYMENT_DIVISOR",
     "TRANSACTION_WORK_TARGET",
     "WEIGHT_GENERATIONS",
     "Balance",

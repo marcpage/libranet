@@ -82,8 +82,8 @@ it is valid, until the chain holds it::
     karma.transaction  {"transaction": {"contents": "…", …}}
 
 The node's own payments it queues in ``payments.json``, in
-``storage.karma_dir``, each 0.01% of the node's balance at the head, and, as
-it looks, once ``karma.payment_batch`` are queued, or
+``storage.karma_dir``, each ``karma.payment_percent`` of the node's balance
+at the head, and, as it looks, once ``karma.payment_batch`` are queued, or
 ``karma.payment_interval_seconds`` have passed since the node's last
 transaction, makes them one transaction, mines it for
 ``karma.transaction_seconds``, signs it as the node, and puts it up as it
@@ -254,6 +254,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             partial(NodeIdentity.load, self._config),
             self._putting,
             clock=self._clock,
+            percent=self._config.karma.payment_percent,
             batch=self._config.karma.payment_batch,
             interval_seconds=self._config.karma.payment_interval_seconds,
             transaction_seconds=self._config.karma.transaction_seconds,
