@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 from dataclasses import replace
-from logging import INFO, WARNING
+from logging import ERROR, INFO, WARNING
 
 from pytest import LogCaptureFixture, fixture, mark
 
@@ -14,7 +14,7 @@ from libranet.config.models import MIB, StorageConfig
 from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.amounts import Kismet
 from libranet.karma.blocks import BlockBounds, BlockDrop, TransactionBlock
-from libranet.karma.carried import CarriedTransaction, CarriedTransactions
+from libranet.karma.carried import CARRIED_FILE, CarriedTransaction, CarriedTransactions
 from libranet.karma.checking import TransactionBlockCheck, TransactionVerdict
 from libranet.karma.following import ChainFollower
 from libranet.karma.history import ChainHistory
@@ -243,7 +243,7 @@ def test_a_block_of_its_own_is_put_up_at_the_head_and_checked_correct_but_for_no
     signed = paying(alice, bob, 1)
 
     with caplog.at_level(INFO):
-        putting.take(signed)
+        assert putting.take(signed)
 
     (data,) = placed.drops
     block_id = id_of(data)
@@ -530,8 +530,9 @@ def test_a_transaction_whose_key_the_chain_holds_is_passed_over(
     following(follower, truth, first.then(bob, alice, first.block_after(held), bits=9))
 
     with caplog.at_level(WARNING):
-        putting.take(held)
+        done_with = putting.take(held)
 
+    assert done_with
     assert (placed.drops, carried.read()) == ([], [])
     assert (
         f"Passing over Karma transaction {held.hash}, which is invalid: one of its key is in "
@@ -551,11 +552,31 @@ def test_a_transaction_whose_senders_key_is_not_held_is_passed_over_and_the_key_
     signed = paying(dave, bob, 1)
 
     with caplog.at_level(WARNING):
-        putting.take(signed)
+        done_with = putting.take(signed)
 
+    assert not done_with
     assert (placed.drops, carried.read()) == ([], [])
     assert recorder.asked_for() == [dave.node_id]
     assert (
         f"Passing over Karma transaction {signed.hash}: the key of its sender, {dave.node_id}, "
         "is not held, and is asked for"
     ) in caplog.text
+
+
+def test_a_transaction_that_cannot_be_carried_is_logged_to_be_given_again(
+    putting: TransactionsPutUp,
+    placed: Placed,
+    storage: StorageConfig,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    caplog: LogCaptureFixture,
+) -> None:
+    (storage.karma_dir / CARRIED_FILE).mkdir(parents=True)
+    signed = paying(alice, bob, 1)
+
+    with caplog.at_level(ERROR):
+        done_with = putting.take(signed)
+
+    assert not done_with
+    assert placed.drops == []
+    assert f"Cannot carry Karma transaction {signed.hash}" in caplog.text

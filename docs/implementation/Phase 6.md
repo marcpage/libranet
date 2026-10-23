@@ -118,7 +118,8 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
   Step 118 is #436, Step 119 is #437, Step 120 is #438, Step 121 is #439,
   Step 122 is #440, Step 123 is #441, Step 124 is #442, Step 125 is #443,
   Step 126 is #444, Step 127 is #445, Step 128 is #446, Step 129 is #447,
-  Step 130 is #448, Step 131 is #449, and none after it has one yet.
+  Step 130 is #448, Step 131 is #449, Step 132 is #450, and none after it
+  has one yet.
 - **The ledger's tests use small blocks.** Whether a block is full is
   measured against bounds the library takes, the specification's
   (KarmaLedger §5.4) unless a test gives others, so that a test fills a
@@ -328,10 +329,11 @@ since, each the user's own answer or my recommended option:
 - **Karma's blocks are ordinary content**, evicted by the same score as
   any other. A node that needs one it no longer holds fetches it again.
   Holding them longer was turned down.
-- **A node pays 0.01% of its balance** for most common payments, rounded
-  down to whole Kismet. It queues its payments and puts them up as one
-  transaction once 100 are queued or an hour has passed since its last,
-  both in its configuration, so that payments do not flood the network.
+- **A node pays 0.01% of its balance** by default for most common
+  payments, rounded down to whole Kismet. It queues its payments and puts
+  them up as one transaction once 100 are queued or an hour has passed
+  since its last, each of the three in its configuration, so that payments
+  do not flood the network.
   Hourly by default, it rates the servers it is connected to as a client
   by data received and by requests fulfilled, and pays the highest rated
   by each 0.01% of its balance.
@@ -2125,7 +2127,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 131 — Putting Up a Transaction
+## Step 131 — Putting Up a Transaction ✅
 
 **Kind:** improvement in behavior. **Issue:** #449, under #87.
 **Depends on:** Steps 118, 120, and 129.
@@ -2222,19 +2224,20 @@ My calls, not yet reviewed:
 
 ## Step 132 — The Node's Payments
 
-**Kind:** improvement in behavior. **Issue:** none yet; planned under
-#87. **Depends on:** Step 131.
+**Kind:** improvement in behavior. **Issue:** #450, under #87.
+**Depends on:** Step 131.
 
-For most common payments, a node pays 0.01% of its balance, rounded down
-to whole Kismet, and puts its payments up together, so that they do not
+For most common payments, a node pays `karma.payment_percent` (0.01%) of
+its balance, rounded down to whole Kismet, and puts its payments up together, so that they do not
 flood the network (KarmaLedger §4.6).
 
 Work this implies:
 
 - **A queue of payments** (`karma/payments.py`), kept in
-  `karma/payments.json`: each payment a recipient and an amount, 0.01% of
-  the node's balance as its chain states it when the payment is queued,
-  and nothing queued while that rounds to 0, under 10,000 Kismet.
+  `karma/payments.json`: each payment a recipient and an amount,
+  `karma.payment_percent` of the node's balance as its chain states it
+  when the payment is queued, and nothing queued while that rounds to 0,
+  under 10,000 Kismet at 0.01%.
 - **One transaction for many payments**: once `karma.payment_batch` (100)
   are queued, or `karma.payment_interval_seconds` (3600) have passed since
   the node's last transaction, the queue becomes one transaction. Its `to`
@@ -2247,6 +2250,67 @@ Work this implies:
 under 10,000 Kismet; a transaction made at the count, and at the interval;
 recipients summed; the queue, and a transaction made from it, kept across
 a restart, with its `created`.
+
+It came to 499 added lines of non-test Python, with 18 changed or removed,
+against an estimate of 300, and 673 lines of tests, so it was built as one
+change set.
+
+What was built:
+
+- **`Payment`** and **`PaymentQueue`** (`karma/payments.py`, new): a
+  payment, a recipient and an amount of more than 0, and the queue kept in
+  `payments.json`, with the `created` of the node's last transaction, and
+  the transaction made of the queue, unmined, until it is put up.
+  `PaymentQueue.due` says whether the queue is to be made a transaction,
+  and `made` makes it: `to` summed by recipient, a fee of `"0"`, created in
+  the head's generation, at the time, or a second after the node's last
+  transaction, if that is not earlier, so that no two of the node's share a
+  key.
+- **`NodePayments`** (`karma/payments.py`): `pay(recipient)` queues
+  `karma.payment_percent` of the node's balance at the head
+  (`HeldChain.balances`), rounded down, and nothing while that is 0, or
+  while no chain is followed; a balance read from blocks not held is
+  logged, and the payment not made, as is one that cannot be queued. `put_up()`, as the module looks, makes the queue a
+  transaction when it is due, keeps it in the file in place of the queue,
+  mines it for `karma.transaction_seconds`, signs it as the node, and gives
+  it to Step 131's `TransactionsPutUp.take`, keeping it no more once that is
+  done with it. A file that cannot be read is logged, and written again
+  empty.
+- **`TransactionsPutUp.take`** (`karma/putting.py`) now says whether it is
+  done with a transaction: carried, or passed over for good. It is not
+  when the sender's key is asked for, or `carried.json` cannot be written,
+  and the node's payments then give it again, with the same `created`, as
+  the module next looks.
+- **`karma.payment_percent`** (0.01), **`karma.payment_batch`** (100),
+  **`karma.payment_interval_seconds`** (3600), and
+  **`karma.transaction_seconds`** (10) (`KarmaConfig`).
+- **`KarmaModule`** puts up the node's payments, when they are due, as it
+  looks, before the transactions it carries. Nothing queues a payment yet:
+  Step 133 will.
+- File Layout §3 and §3.11, the Module System, the Operator Guide's §3 and
+  §4.8, and the example configuration.
+
+My calls, not yet reviewed:
+
+- **The share is a percent, read as the decimal it is written as**
+  (`karma.payment_percent`, from `0` exclusive to `100`), so that `0.01`
+  is exactly a hundredth of a percent of any balance, as binary floating
+  point is not: on the most Kismet there can be, the two differ by
+  millions.
+- **A node that has made no transaction makes its first payments one at
+  once**, as it next looks: there is no last transaction for the interval to
+  count from (KarmaLedger §4.6). Each after waits for the count, or for the
+  interval since the one before.
+- **The transaction made is mined again**, with the same `created`, each
+  time it is given and not taken, rather than kept mined: a node that stops
+  while mining, or before the transaction is carried, so never pays twice,
+  but one whose key is not held, or whose `carried.json` cannot be written,
+  mines it for `karma.transaction_seconds` each time it looks.
+- **A transaction is created a second after the node's last**, if it would
+  be made in the same second, rather than waiting for the next second.
+- **A payment whose balance is read from blocks not held is not made**,
+  rather than queued once they come: the blocks are asked for, and the next
+  payment is made at the balance then.
 
 ---
 

@@ -342,6 +342,15 @@ def test_karma_waits_thirty_seconds_for_what_it_asks_for_and_always_some() -> No
         KarmaConfig(fetch_wait_seconds=0)
 
 
+def test_karma_pays_a_hundredth_of_a_percent_by_default_and_more_than_none_up_to_all() -> None:
+    assert KarmaConfig().payment_percent == 0.01
+    assert KarmaConfig(payment_percent=100).payment_percent == 100
+
+    for wrong in (0, 100.5):
+        with raises(ValidationError):
+            KarmaConfig(payment_percent=wrong)
+
+
 def test_the_karma_history_is_kept_in_the_data_directory(tmp_path: Path) -> None:
     assert StorageConfig(data_dir=tmp_path).karma_dir == tmp_path / "karma"
 
@@ -866,6 +875,7 @@ def test_the_example_config_states_the_default_limits_waits_and_hidden_names() -
     assert stated["backup"]["restore_resume_seconds"] == BackupConfig().restore_resume_seconds
     assert stated["karma"]["mining_processes"] == KarmaConfig().mining_processes
     assert stated["karma"]["fetch_wait_seconds"] == KarmaConfig().fetch_wait_seconds
+    assert stated["karma"]["payment_percent"] == KarmaConfig().payment_percent
     assert tuple(stated["local"]["hidden"]) == LocalConfig().hidden
 
 

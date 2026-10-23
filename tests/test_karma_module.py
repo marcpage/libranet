@@ -34,6 +34,7 @@ from libranet.karma.checking import TransactionBlockCheck
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainGeneration, ChainHistory
 from libranet.karma.module import KarmaModule
+from libranet.karma.payments import Payment, PaymentQueue
 from libranet.karma.reading import HeldChain
 from libranet.karma.transactions import SignedTransaction, Transaction
 from libranet.karma.validating import ValidationBlockCheck
@@ -88,12 +89,12 @@ def rooting_module(
 ) -> KarmaModule:
     """The Karma module of a node over ``storage``, started, which makes a root in moments.
 
-    And puts up a block of its own in moments.
+    And puts up a block of its own, and mines a transaction of its payments, in moments.
     """
     config = with_node_key(
         LibranetConfig(
             storage=storage.model_copy(update={"search_min_bits": SEARCH_MIN_BITS}),
-            karma=KarmaConfig(block_seconds=0.0),
+            karma=KarmaConfig(block_seconds=0.0, transaction_seconds=0.0),
         )
     )
     module = KarmaModule(
@@ -838,3 +839,30 @@ def test_a_transaction_is_put_up_only_once_the_module_has_started(
 
     with raises(RuntimeError, match="not running"):
         module_over(storage, queues).handle(given(SignedTransaction.of(sender.signed(sent.text()))))
+
+
+def test_the_nodes_payments_queued_are_made_one_transaction_and_put_up_as_the_module_looks(
+    storage: StorageConfig, queues: ModuleQueues, caplog: LogCaptureFixture
+) -> None:
+    clock = Clock()
+    module = rooting_module(storage, queues, clock)
+    module.handle(root_requested())
+    PaymentQueue((Payment(PEER, Kismet(5)), Payment(PEER, Kismet(2)))).write(storage.karma_dir)
+    published(queues)
+    clock.now += LibranetConfig().karma.look_seconds
+
+    with caplog.at_level(INFO):
+        module.on_idle()
+
+    (block_id,) = stored_ids(queues)
+    block = BlockDrop.parsed(module.reader.held(block_id), TransactionBlock).block
+    (signed,) = block.signed
+    node = NodeIdentity.load(LibranetConfig(storage=storage))
+    assert isinstance(signed, SignedTransaction)
+    assert (signed.transaction.sender, dict(signed.transaction.to)) == (
+        node.node_id,
+        {PEER: Kismet(7)},
+    )
+    assert signed.work_bits >= BOUNDS.transaction_bits
+    assert PaymentQueue.read(storage.karma_dir) == PaymentQueue((), signed.transaction.created)
+    assert "Making 2 Karma payments of the node's into one transaction" in caplog.text

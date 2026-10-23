@@ -142,7 +142,8 @@ something is written to it.
     │   └── {g}.json                     what a check reads of generation g
     ├── head.json                        the head followed
     ├── balances.json                    every balance stated at the head
-    └── carried.json                     transactions carried, and put up
+    ├── carried.json                     transactions carried, and put up
+    └── payments.json                    the node's payments queued
 ```
 
 | Path | Written by | Read by |
@@ -574,6 +575,28 @@ before then (`CarriedTransactions` in `src/libranet/karma/carried.py`, Phase
 6 Steps 129 and 131). A file it cannot read it logs, and writes again without
 what it held.
 
+`payments.json` is the node's own payments, queued to be put up together as
+one transaction (KarmaLedger §4.6, Phase 6 Step 132): each a recipient and
+an amount, `karma.payment_percent` of the node's balance at the head when it
+was queued; the
+`created` of the node's last transaction, or `null` before it has made one;
+and the transaction made of the queue, as its sender writes it, its nonce
+not yet searched for, until it is put up, or `null`:
+
+```json
+{"payments": [{"to": "sha256/9f8e…", "kismet": "200000000000"}],
+ "last_created": "2026-10-23T09:00:00Z", "transaction": null}
+```
+
+The module makes the queue a transaction once `karma.payment_batch` are
+queued, or `karma.payment_interval_seconds` have passed since `last_created`,
+and writes it in the queue's place, so that a node that stops before it is
+put up mines it again with the same `created`, and never pays twice (§4.2).
+Once it is carried (`carried.json`), or passed over for good, the module
+writes the file again without it (`NodePayments` in
+`src/libranet/karma/payments.py`). The file is not there before the first
+payment is queued. A file it cannot read it logs, and writes again empty.
+
 A generation's file is written before the genealogy, and the head last, each
 replaced whole (§8), so that a write cut short leaves the genealogy as it was.
 The head is written again each time the module starts. The history read is
@@ -850,6 +873,8 @@ optional; `examples/libranet.yaml` shows them all with their defaults.
 | `backup.storage_stall_seconds` | `3600.0` | — | How long a backup or build waits for eviction to make room before it gives up |
 | `backup.excluded_xattrs` | macOS local-copy attributes; Linux `security.*`, `system.*`, `trusted.*` | — | Extended attributes a backup or build leaves out of its bundle, and a restore does not set |
 | `karma.carry_generations` | `10` | — | How many generations after it was witnessed a transaction stays in `karma/carried.json` |
+| `karma.payment_batch` | `100` | — | How many payments `karma/payments.json` queues before they are made one transaction |
+| `karma.payment_interval_seconds` | `3600.0` | — | How long after the node's last transaction the payments in `karma/payments.json` are made one, however few |
 | `local.folders` | The user's desktop, documents, downloads, music, pictures, and videos folders | — | The folders local clients may list and import files from (§7) |
 | `local.hidden` | `[".*"]` | — | Names within those folders never listed or imported |
 | `logging.directory` | Platform log directory | `--log-dir` | Root of §5 |

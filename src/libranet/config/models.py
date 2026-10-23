@@ -824,6 +824,28 @@ class KarmaConfig(_Section):
     # §2, Phase 6 Step 131). The search holds up the module's other work.
     block_seconds: float = Field(default=10.0, ge=0)
 
+    # What share of the Karma the chain states the node holds each of its
+    # payments is, in percent, rounded down to whole Kismet (KarmaLedger
+    # §4.6, Phase 6 Step 132). It is read as the decimal it is written as, so
+    # that every payment is exact to the Kismet.
+    payment_percent: float = Field(default=0.01, gt=0, le=100)
+
+    # How many of the node's payments the Karma module queues before it puts
+    # them up together, as one transaction (KarmaLedger §4.6, Phase 6 Step
+    # 132).
+    payment_batch: int = Field(default=100, ge=1)
+
+    # How long after the node's last transaction the Karma module puts up the
+    # payments it has queued, however few (KarmaLedger §4.6, Phase 6 Step
+    # 132).
+    payment_interval_seconds: float = Field(default=3600.0, gt=0)
+
+    # How long the Karma module searches for the nonce of a transaction it
+    # makes of the node's payments, before taking the best found, once that
+    # gives it the work of a valid transaction (KarmaLedger §4.3, Phase 6 Step
+    # 132). The search holds up the module's other work.
+    transaction_seconds: float = Field(default=10.0, ge=0)
+
 
 class LocalConfig(_Section):
     """What clients on this machine may reach of it (HttpApi §2.4, Phase 3 Step 68)."""

@@ -231,7 +231,7 @@ through the dispatcher.
 | 7 | Unbundler | `unbundler` | `UnbundlerModule` | Resolves application files' entries from their bundles on demand, and deletes unused ones |
 | 8 | Eviction | `eviction` | `EvictionModule` | Keeps storage within its limits |
 | 9 | Backup | `backup` | `BackupModule` | Backs directories up as bundles; restores, builds, and exports bundles |
-| 10 | Karma | `karma` | `KarmaModule` | Follows the Karma ledger; for now, follows the chain, keeping its history, makes a root when asked, and puts up the transactions it is given |
+| 10 | Karma | `karma` | `KarmaModule` | Follows the Karma ledger; for now, follows the chain, keeping its history, makes a root when asked, puts up the transactions it is given, and puts up the node's payments together |
 
 The supervisor launches them in this order, taken from `SPAWNED_MODULES`,
 but waits only for the dispatcher to be ready. No module waits for another
@@ -463,7 +463,14 @@ it carries in `carried.json`, marked as one it puts up itself. As it looks,
 it puts each it carries so up as a block of its own at the head's
 transaction target, where it is valid, and not put up there already: the
 transaction and the payout, signed by the node, its nonce searched for for
-`karma.block_seconds`, stored and announced as a root is.
+`karma.block_seconds`, stored and announced as a root is. The node's own
+payments it queues in `payments.json` (`NodePayments`, `karma/payments.py`,
+Phase 6 Step 132), each `karma.payment_percent` of the node's balance at the
+head, and, as it looks, once `karma.payment_batch` are queued, or
+`karma.payment_interval_seconds` have passed since the node's last
+transaction, makes them one transaction, mines it for
+`karma.transaction_seconds`, signs it as the node, and puts it up as one it
+is given. Nothing queues a payment yet: Phase 6 Step 133 will.
 
 ### 3.3 What Each Module Owns
 
@@ -717,7 +724,7 @@ What each module does in them:
 | Unbundler | — | — | — |
 | Eviction | Read the node id; count storage; ask which peers are connected; say whether storage is full; evict if over | Say whether storage is full, if that changed; time out hand-offs and questions; resume after a pause | — |
 | Backup | Read the node id; ask whether storage is full; read the jobs; report state | Carry on the next restore, build, export, import, or backup due | — |
-| Karma | Read the history; write its head | Give up on content waited for too long; follow the chain on, if it is time to look, or what it waited for came, or a peer told of a head it does not follow, and say the head and write the balances there if it changed; put up the transactions carried that are valid at the head | Stop the processes searching for nonces |
+| Karma | Read the history; write its head | Give up on content waited for too long; follow the chain on, if it is time to look, or what it waited for came, or a peer told of a head it does not follow, and say the head and write the balances there if it changed; make the node's payments one transaction, if they are due; put up the transactions carried that are valid at the head | Stop the processes searching for nonces |
 
 ### 5.3 Writing a Module
 
