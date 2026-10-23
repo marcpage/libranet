@@ -2241,7 +2241,11 @@ is the node's id. A change naming the node's own id is `400 Bad Request`,
 and while a version found at the node's drop is not held yet, a read and a
 change are each `503 Service Unavailable` with `Retry-After`. The other
 answers are a person's. The node reads and changes its list one at a time,
-each change over the version the one before it placed. Both endpoints are
+each change over the version the one before it placed. It places versions
+itself too, in turn with these changes, distrusting whoever signed a Karma
+block that states something false
+([Karma Ledger §3.8](KarmaLedger.md#38-distrusted-builders)), so a read may
+show an entry no change here made. Both endpoints are
 served as every endpoint beneath `/config/api` is (§2.3), and their answers
 carry no `Cache-Control`, as the list is public. The scores of a person who
 trusts the node reach through its list, and read a change to it at their

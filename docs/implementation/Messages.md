@@ -82,7 +82,7 @@ only for a root it makes.
 | `address.verified` | Connections | Stats | An address reached a node already connected |
 | `address.dial_requested` | Web server | Connections | The operator asked to dial an address |
 | `address.dialed` | Connections | Web server | What came of that dial |
-| `node.trust` | Web server | Connections, Stats | Whom the node trusts and distrusts |
+| `node.trust` | Web server | Connections, Stats, Karma | Whom the node trusts and distrusts |
 | `node.trust_requested` | Web server | Stats | Say whom the node trusted when it last said so |
 | `node.trust_stored` | Stats | Web server | Whom the node trusted, as stats kept it |
 | `connection.opened` | Connections | Stats | A peer proved its node id |
@@ -121,7 +121,7 @@ only for a root it makes.
 | `storage.full_requested` | Backup | Eviction | Say whether storage is full |
 | `storage.full` | Eviction | Backup | Whether storage is full |
 | `karma.root_requested` | Web server | Karma | Make a Karma root, and follow it |
-| `karma.false_block` | Karma | None yet | A Karma block states something false |
+| `karma.false_block` | Karma | Web server | A Karma block states something false |
 
 ## 4. The Messages
 
@@ -329,8 +329,11 @@ it and what each does with it.
     longer allows.
   - Stats, which keeps each identity's state in `node_trust`, in place of
     what it kept before.
-- **Purpose:** connect only to the nodes the node allows, and keep whom it
-  trusts across a restart.
+  - Karma, which keeps it, in place of what it kept before, so that what it
+    builds leaves out whom the node distrusts (`karma/module.py`, Phase 6
+    Step 127).
+- **Purpose:** connect only to the nodes the node allows, keep whom it
+  trusts across a restart, and build no Karma block with those it distrusts.
 
 #### `node.trust_requested`
 
@@ -639,15 +642,20 @@ or reported, nor is the key a kept archive's bundle may carry.
   at a target it reads as it follows the chain, naming the block, the
   identity that signed it, the staker of such a stake, and what it states
   falsely (`karma/following.py`). It logs it as a warning too.
-- **Received by:** none yet. The web server is to distrust the builder, and
-  the staker, in the node's own trust list (Phase 6 Step 127).
+- **Received by:** Web server, which has the node distrust the builder, and
+  the staker, in its own trust list, placing the next version as `/config`
+  does, in turn with the operator's changes, unless it distrusts them
+  already, or either is the node itself, and logs it as a warning. While a
+  version found at the list's drop is not held, it asks for it, and the
+  distrust waits, tried again every `network.retry_after_seconds`
+  (`false_builders.py`, Phase 6 Step 127).
 - **Purpose:** distrust whoever signs a false block (KarmaLedger §3.8).
 
 ## 5. Messages per Module
 
 | Module | Sends | Receives |
 | --- | --- | --- |
-| Web server | `data.requested`, `data.not_found`, `data.search_requested`, `data.put_completed`, `data.stored`, `nodes.received`, `seek.received`, `address.dial_requested`, `app.path_not_found`, `app.accessed`, `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.shunned`, `peers.connected`, `node.trust`, `node.trust_requested`, `karma.root_requested` | `app.path_resolved`, `backup.state`, `peers.connected_requested`, `address.dialed`, `node.trust_stored` |
+| Web server | `data.requested`, `data.not_found`, `data.search_requested`, `data.put_completed`, `data.stored`, `nodes.received`, `seek.received`, `address.dial_requested`, `app.path_not_found`, `app.accessed`, `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.shunned`, `peers.connected`, `node.trust`, `node.trust_requested`, `karma.root_requested` | `app.path_resolved`, `backup.state`, `peers.connected_requested`, `address.dialed`, `node.trust_stored`, `karma.false_block` |
 | Connections | `data.search_answered`, `data.put_completed`, `data.stored`, `nodes.received`, `address.verified`, `address.dialed`, `connection.opened`, `connection.closed`, `connection.failed`, `node.unreached`, `data.sent`, `fetch.attempted`, `fetch.succeeded`, `fetch.failed`, `eviction.acknowledged`, `peers.connected` | `nodes.updated`, `nodes.received`, `fetch.requested`, `data.search_requested`, `eviction.notice`, `data.stored`, `peers.connected_requested`, `address.dial_requested`, `node.trust` |
 | Validator | `data.stored`, `data.rejected` | `data.put_completed` |
 | Stats | `nodes.updated`, `eviction.candidates`, `resolved.reclaim`, `peers.connected_requested`, `node.trust_stored` | `data.requested`, `data.not_found`, `data.search_requested`, `data.search_answered`, `data.stored`, `data.rejected`, `nodes.received`, `seek.received`, `connection.opened`, `connection.closed`, `connection.failed`, `node.unreached`, `address.verified`, `data.sent`, `fetch.attempted`, `data.deleted`, `eviction.candidates_requested`, `app.accessed`, `resolved.reclaim_requested`, `data.shunned`, `peers.connected`, `node.trust`, `node.trust_requested` |
@@ -655,6 +663,6 @@ or reported, nor is the key a kept archive's bundle may carry.
 | Unbundler | `data.not_found`, `app.path_resolved`, `resolved.reclaimed` | `app.path_not_found`, `data.stored`, `resolved.reclaim` |
 | Eviction | `eviction.notice`, `data.deleted`, `eviction.candidates_requested`, `resolved.reclaim_requested`, `peers.connected_requested`, `storage.full` | `data.stored`, `eviction.acknowledged`, `eviction.candidates`, `resolved.reclaimed`, `peers.connected`, `storage.full_requested`, `data.shunned` |
 | Backup | `data.not_found`, `data.stored`, `backup.state`, `storage.full_requested` | `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.stored`, `storage.full` |
-| Karma | `data.search_requested`, `data.not_found`, `data.stored`, `data.shunned`, `karma.false_block` | `data.search_answered`, `data.stored`, `karma.root_requested` |
+| Karma | `data.search_requested`, `data.not_found`, `data.stored`, `data.shunned`, `karma.false_block` | `data.search_answered`, `data.stored`, `karma.root_requested`, `node.trust` |
 
 Every module also receives `shutdown`.

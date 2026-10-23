@@ -88,6 +88,14 @@ def signed_at(
     return placed(target, builder.signed(block.text()).encoded(), bits)
 
 
+def copied_to(target: DropTarget, data: bytes) -> bytes:
+    """A copy of the block the drop ``data`` holds, placed at ``target``, as anyone may place one.
+
+    A drop's nonce is not signed, so the copy is as its builder signed it.
+    """
+    return placed(target, data.rpartition(b"\x00")[0])
+
+
 def id_of(data: bytes) -> ContentId:
     """The id of ``data``."""
     return ContentId.for_data(data, "sha256")
@@ -361,6 +369,42 @@ def test_a_better_block_found_after_its_generation_is_followed_is_passed_over(
 
     assert follower.look() == []
     assert history.generation(1).validation == id_of(first_validation)
+
+
+def test_copies_of_blocks_at_targets_not_their_own_are_passed_over_and_none_is_false(
+    follower: ChainFollower,
+    history: ChainHistory,
+    truth: CasStore,
+    recorder: Recorder,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    root: Root,
+    first: bytes,
+    first_validation: bytes,
+    caplog: LogCaptureFixture,
+) -> None:
+    copies = [
+        # The other kind, as a run of these tests once found by chance.
+        copied_to(root.next.validation, root.transaction),
+        copied_to(root.next.transaction, first_validation),
+        # Built on none, rather than on the root's validation block.
+        copied_to(root.next.transaction, root.transaction),
+        # Staking on the root's transaction block, not on transaction block 1.
+        copied_to(root.next.validation, root.validation),
+    ]
+    hold(truth, root.transaction, root.validation, first, first_validation, *copies)
+    hold_keys(truth, alice, bob)
+
+    with caplog.at_level(INFO):
+        followed = follower.look()
+
+    assert [generation.generation for generation in followed] == [0, 1]
+    assert history.generation(1).validation == id_of(first_validation)
+    assert recorder.said(EventType.KARMA_FALSE_BLOCK) == []
+    assert recorder.said(EventType.DATA_SHUNNED) == []
+
+    for copy in copies:
+        assert f"Passing over Karma block {id_of(copy)}, of another target" in caplog.text
 
 
 def test_an_unsigned_block_is_shunned_once(

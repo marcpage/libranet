@@ -17,7 +17,8 @@ them. The one at `/config` drives all of them, and has the node read and
 change what it says of itself (Phase 5 Step 104), and whom it trusts (Phase 5
 Step 110), and whether it connects only to the nodes it trusts (Phase 5 Step
 113). It builds the node's own trust scores, which say which peers the node
-connects to and serves.
+connects to and serves, and distrusts whoever built a false Karma block (Phase
+6 Step 127).
 
 A few `/data` endpoints serve only clients on this machine, and only this
 node's own pages there, such as the listing of the folders it offers them
@@ -154,6 +155,7 @@ from libranet.webserver.config_handlers import (
 )
 from libranet.webserver.costly_work import CostlyWork, Turns
 from libranet.webserver.dial_outcomes import DIAL_REPORT_SECONDS, DialOutcomes, DialReport
+from libranet.webserver.false_builders import FalseBlock, FalseBuilders
 from libranet.webserver.data_handler import (
     DATA_ENDPOINT_NAMES,
     DATA_PATTERN,
@@ -276,6 +278,7 @@ from libranet.webserver.server import (
     LibranetHTTPServer,
     RequestHandler,
     build_config_router,
+    build_own_trust,
     build_router,
 )
 from libranet.webserver.sessions import (
@@ -445,6 +448,8 @@ __all__ = [
     "DropEncryption",
     "DropHandler",
     "EncryptedDrops",
+    "FalseBlock",
+    "FalseBuilders",
     "FileStream",
     "FoundVersions",
     "Guard",
@@ -525,6 +530,7 @@ __all__ = [
     "basic_credentials",
     "body_or_refusal",
     "build_config_router",
+    "build_own_trust",
     "build_router",
     "bytes_response",
     "client_handler",

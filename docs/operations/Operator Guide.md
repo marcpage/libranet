@@ -373,6 +373,18 @@ it starts and again every `identity.node_trust_rebuild_seconds` (§6.6), and
 scores a change made here at once. Until they are built, it goes by what
 they said before, kept across a restart.
 
+The node also distrusts on its own. A Karma block (§4.8) that states
+something false has it distrust whoever signed the block, and whoever signed
+a stake in it that alone exceeds what covers it, in this list, as **Distrust**
+here would, and `libranet-webserver.log` (§7.2) warns of each, naming the
+block and what it states. So a node, or a person, can show here as distrusted
+though no one distrusted it on this page. Only a statement the chain proves
+false counts, never one an honest node could make. Clear the entry here as any
+other, with **Trust** or **Remove**, if you know better. The node never
+distrusts itself, and leaves alone an entry that distrusts already. Should
+the node restart before its chain moves past that block, it finds the block
+false again, and distrusts its signer again.
+
 By default it connects to the nodes it trusts and to those of unknown trust.
 In **Which nodes this node connects to**, choose **Only the nodes it trusts**
 and **Save** to have it connect to, and serve, no other; it closes its
@@ -418,7 +430,8 @@ checks, so a node joining a network that has a ledger needs nothing done.
 It then follows the chain on, a generation at a time, as each is placed.
 `libranet-karma.log` says each generation it follows, and warns of each
 block it finds stating something false, or unsigned. An unsigned block is
-shunned, so the node never holds it again.
+shunned, so the node never holds it again. Whoever signed a false one the
+node distrusts (§4.7).
 
 ## 5. Backing Up and Restoring
 

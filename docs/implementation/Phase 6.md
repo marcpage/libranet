@@ -117,7 +117,7 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
   up.** Each is planned under #87. Step 116 is #434, Step 117 is #435,
   Step 118 is #436, Step 119 is #437, Step 120 is #438, Step 121 is #439,
   Step 122 is #440, Step 123 is #441, Step 124 is #442, Step 125 is #443,
-  Step 126 is #444, and none after it has one yet.
+  Step 126 is #444, Step 127 is #445, and none after it has one yet.
 - **The ledger's tests use small blocks.** Whether a block is full is
   measured against bounds the library takes, the specification's
   (KarmaLedger §5.4) unless a test gives others, so that a test fills a
@@ -1529,7 +1529,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 126 — Following the Chain
+## Step 126 — Following the Chain ✅
 
 **Kind:** improvement in behavior. **Issue:** #444, under #87.
 **Depends on:** Steps 122 and 124, and Step 125 for a root to follow on a
@@ -1637,8 +1637,8 @@ My calls, not yet reviewed:
 
 ## Step 127 — Distrusting False Builders
 
-**Kind:** improvement in behavior. **Issue:** none yet; planned under
-#87. **Depends on:** Step 126; Phase 5 Steps 110 and 113.
+**Kind:** improvement in behavior. **Issue:** #445, under #87.
+**Depends on:** Step 126; Phase 5 Steps 110 and 113.
 
 A builder whose block states something false is distrusted in the node's
 own trust list (KarmaLedger §3.8), and so, if it is a node, is neither
@@ -1663,6 +1663,89 @@ Work this implies:
 **Testable in isolation:** a false block distrusting its builder once; the
 node itself never; one distrusted already placing nothing; a list not held
 waiting; the module keeping whom `node.trust` distrusts.
+
+It came to 378 added lines of non-test Python, with 24 changed, against an
+estimate of 200, so it was built as one change set. The tests are 470 lines,
+with 104 more in tests already there.
+
+What was built:
+
+- **`FalseBuilders`** (`webserver/false_builders.py`, new): `found(message)`
+  takes `karma.false_block`, as a `FalseBlock`, and has the node distrust
+  its builder, and its staker, if named, in order, each through `OwnTrust`
+  as `PUT /config/api/trust/{algorithm}/{hash}` with `{"trust": false}`
+  would. `check()`, as the web server idles, tries again those waiting for
+  the list, every `network.retry_after_seconds`. Each distrust placed is
+  logged as a warning, naming the block and what it states.
+- **`OwnTrust.placed(request, entry)`** (`webserver/node_trust_handlers.py`):
+  a change placed in its turn and handed to the node's own build, which the
+  endpoints now call, and `FalseBuilders` too.
+- **`build_own_trust`** (`webserver/server.py`) makes the `OwnTrust` the
+  web server shares with `/config`'s port, which `build_config_router` now
+  takes as `trust`, so that both place versions in the same turns, and each
+  reads what the other placed before the validator stores it.
+- **`WebServerModule`** subscribes to `karma.false_block`.
+- **`KarmaModule`** subscribes to `node.trust`, and keeps it as `trust`, a
+  `NodeTrust`, `None` until the web server first says it.
+- Messages §4.4 and §4.13, the Module System, the Operator Guide's §4.7 and
+  §4.8, HttpApi §11.7, and Trust Network §4.5.
+
+My calls, not yet reviewed:
+
+- **On a thread of its own.** A version's drop is searched for until it
+  shares `storage.search_min_bits` with its target: 24 bits by default,
+  between half a second and fifteen on this machine. That would hold up the
+  web server's loop, and the unbundler's reports request threads wait on, so
+  one job at a time places the distrusts on a thread of its own, as a trust
+  build reads lists. A job that fails is logged, and tried again as one
+  waiting for the list is.
+- **The staker too**, as Step 126's call has the message name it (§3.8).
+  Each is a version of its own, as a change from `/config` is.
+- **What the operator trusted is distrusted over.** A false block's
+  builder is distrusted though the operator's list trusts it, since §3.8
+  makes no exception, and the operator can trust it again on `/config`.
+- **The node itself is passed over**, and logged as a warning, as a block it
+  signed that is false would be a fault of its own.
+- **A refusal other than the list's not being held**, as when the drop's
+  bits are more than the node allows, or the list has outgrown an object, is
+  logged as an error, and not tried again, as `/config` would refuse it too.
+- **Distrusts waiting are kept in memory**, so a web server restarted while
+  one waits for the list loses it, until the Karma module says the block
+  again, as it does only when it restarts. And a distrust the operator clears
+  is placed again if the Karma module restarts before its head moves past
+  the block, since it checks the blocks at its head's targets again. The
+  Operator Guide says so.
+- **The Karma module reads the node's id as `node.trust` comes**, loading
+  the node's key, rather than as it starts, which Step 125's call keeps for
+  making a root. A Karma module restarted alone knows whom the node trusts
+  only once the web server next says it, which is when that changes, as for
+  the connection manager. Steps 134 and 136 may need to ask for it, or wait
+  for it.
+
+Ruled after building (2026-10-23):
+
+- **A block found at a target not its own is passed over, not found
+  false.** A drop's nonce, and so the target it shares bits with, is not
+  signed, so anyone can place a copy of an honest builder's signed block at
+  another target, and one can share a target's bits by chance. Step 126
+  found such a block false, against its target (KarmaLedger §3.8), or not
+  well-formed, when it was of the other kind, and this step then distrusted
+  its honest builder. A run of Step 126's tests found the root's
+  transaction block, at the 8 bits the tests search to, at generation 1's
+  validation target, and said it false: `"witnessed" must be a list`. Now a
+  block of the other kind, a transaction block whose `previous` names
+  another validation block than the one its target is named for, and a
+  validation block whose stakes name a transaction block built on another,
+  are each passed over, and logged at `INFO`. §3.8 says so: a block is held
+  to what it states against a target only where its own contents place it.
+  A validation block staking on a transaction block built for its target,
+  but not found there, is still false. Built as a second change set on this
+  branch: `MisplacedBlockError` (`karma/blocks.py`), raised by
+  `BlockDrop.decoded`, `TransactionBlockCheck.of`, and
+  `ValidationBlockCheck.of` (whose generation is now checked once its
+  stakes are found to name a block of its target), and passed over by
+  `ChainFollower`; KarmaLedger §3.8 and §8. It came to 136 added lines of
+  non-test Python, with 35 changed or removed, and 127 lines of tests.
 
 ---
 

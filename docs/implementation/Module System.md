@@ -292,10 +292,13 @@ connect to on `/config` it hands the connection manager, and waits for what
 came of it, `address.dialed`, to answer (Phase 5 Step 109). It builds the
 node's own trust scores, from its list outward, starting from what stats kept
 of them (`node.trust_stored`), says whom they trust (`node.trust`), and
-refuses a request a node it does not allow signs (Phase 5 Step 113).
-It subscribes to only five events, `app.path_resolved`, `backup.state`,
-`peers.connected_requested`, `address.dialed`, and `node.trust_stored`, and
-publishes twenty-one.
+refuses a request a node it does not allow signs (Phase 5 Step 113). A block
+the Karma module finds false (`karma.false_block`) has it distrust whoever
+built it in the node's own list, placing the next version as `/config` does,
+on a thread of its own (`FalseBuilders`, `webserver/false_builders.py`, Phase
+6 Step 127). It subscribes to only six events, `app.path_resolved`,
+`backup.state`, `peers.connected_requested`, `address.dialed`,
+`node.trust_stored`, and `karma.false_block`, and publishes twenty-four.
 
 #### 3.2.3 Validator
 
@@ -417,7 +420,10 @@ generation at a time, the best correct validation block at its head's targets.
 It looks as it first idles, every `karma.look_seconds` after, idle or not, and
 again, as it next idles, once what it waited for comes. A block it finds
 unsigned it shuns (`data.shunned`), and one stating something false it logs
-and says (`karma.false_block`). While it follows no chain,
+and says (`karma.false_block`), for the web server to distrust its builder. It
+keeps whom the node trusts and distrusts, as the web server says it
+(`node.trust`), so that what it builds leaves out whom the node distrusts
+(Phase 6 Step 127). While it follows no chain,
 `karma.root_requested`, which `/config` publishes, has it make a root, as the
 node (`ChainRoot`, `karma/root.py`, Phase 6 Step 125): it mines the root
 transaction, searches for each drop's nonce with `karma.mining_processes`
@@ -919,7 +925,7 @@ to end its loop.
 | `address.verified` | | P | | S | | | | | |
 | `address.dial_requested` | P | S | | | | | | | |
 | `address.dialed` | S | P | | | | | | | |
-| `node.trust` | P | S | | S | | | | | |
+| `node.trust` | P | S | | S | | | | | S |
 | `node.trust_requested` | P | | | S | | | | | |
 | `node.trust_stored` | S | | | P | | | | | |
 | *Connections and fetching* | | | | | | | | | |
@@ -967,18 +973,19 @@ to end its loop.
 | `data.shunned` | P | | | S | | | S | | P |
 | *Karma* | | | | | | | | | |
 | `karma.root_requested` | P | | | | | | | | S |
-| `karma.false_block` | | | | | | | | | P |
+| `karma.false_block` | S | | | | | | | | P |
 | *Lifecycle* | | | | | | | | | |
 | `shutdown` | S | S | S | S | S | S | S | S | S |
-| **Publishes / subscribes** | 22 / 5 | 16 / 9 | 2 / 1 | 5 / 23 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 | 5 / 3 |
+| **Publishes / subscribes** | 24 / 6 | 16 / 9 | 2 / 1 | 5 / 23 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 | 5 / 4 |
 
 The `shutdown` row and its subscriptions are implicit: every module
 receives it without listing it, and nothing publishes it (§6.4). The totals
 leave it out. The Karma module publishes searches and misses as it reads a
 target (Phase 6 Step 124), `data.stored` only for a root it makes (Phase 6
 Step 125), and `data.shunned` and `karma.false_block` for blocks it finds
-unsigned or false as it follows the chain (Phase 6 Step 126). Nothing
-subscribes to `karma.false_block` until Phase 6 Step 127.
+unsigned or false as it follows the chain (Phase 6 Step 126). The web server
+takes `karma.false_block` to distrust a false block's builder, and the Karma
+module `node.trust` to leave out whom the node distrusts (Phase 6 Step 127).
 
 ### 7.2 Payloads
 
@@ -1073,7 +1080,7 @@ flowchart TB
     web -->|"data.put_completed"| val
     web <-->|"data.search_requested, address.dial_requested, node.trust<br/>address.dialed"| conn
     web <-->|"node.trust_requested<br/>node.trust_stored"| stats
-    web -->|"karma.root_requested"| karma
+    web <-->|"karma.root_requested, node.trust<br/>karma.false_block"| karma
     karma <-->|"data.search_requested<br/>data.search_answered"| conn
     karma -->|"data.shunned"| evict
     conn -->|"data.put_completed"| val
@@ -1417,14 +1424,14 @@ side recovers:
 | Module restarted | What is lost | How the node recovers |
 | --- | --- | --- |
 | Stats | An answer it owed the eviction module | The database is kept, and the lists are derived again at start; eviction times out and asks again |
-| Web server | Remembered outcomes; the last `backup.state`; requests in progress; its connections; every session, and the trust builds of those signed in | Paths are asked of the unbundler again. The `/config/api` backup endpoints, and `GET /data/imports`, answer `503` until the backup module next reports, which it does only when something changes. It names no peers connected as it starts, and peers that dial again are named anew. No one is signed in: each person signs in again, which builds their trust scores afresh |
+| Web server | Remembered outcomes; the last `backup.state`; requests in progress; its connections; every session, and the trust builds of those signed in; distrusts of false blocks' builders waiting for the node's list | Paths are asked of the unbundler again. The `/config/api` backup endpoints, and `GET /data/imports`, answer `503` until the backup module next reports, which it does only when something changes. It names no peers connected as it starts, and peers that dial again are named anew. No one is signed in: each person signs in again, which builds their trust scores afresh. A distrust that waited is placed only once the Karma module says the block again, as it does when it restarts |
 | Validator | The upload it was checking, if it died mid-message | The upload stays in `incoming/` until the same content arrives from the same node again |
 | Connection manager | Connections, searches, searches of the peers and their holds, hand-offs, content not yet pushed | It dials from the candidate list again, naming no peers connected until one is; eviction times out a hand-off after 1,200 s by default; a fetch is asked for again at the next miss after the fetcher's interval; the next search of a prefix searches the peers again |
 | Fetcher | Which content it asked for lately | The next miss is asked for at once |
 | Unbundler | Directories held in memory; paths waiting on content; a reclaim in progress | Directories are read back from each bundle's saved `directory.jzon`; a request waiting on a path forgotten is answered `503`, and its retry asks again; eviction times out the reclaim |
 | Eviction | Hand-offs under way; its list of candidates; which peers are connected | It counts storage again at start, says whether storage is full, asks which peers are connected, and asks stats again |
 | Backup | Restores, builds, exports, and imports; messages set aside while it stored content | They must be asked for again; jobs are read back from `backup_jobs.json`; it asks whether storage is full |
-| Karma | Content it waited for; what peers named at the targets it read; what it found of the blocks at its head's targets; a root it was making | The history is read back from `karma/`, and its head written again; what it lacks is asked for again as it next reads; the blocks at its head's targets are checked again as it first looks, and what was said of them is said again; a root is asked for again on `/config`, as the node follows none |
+| Karma | Content it waited for; what peers named at the targets it read; what it found of the blocks at its head's targets; a root it was making; whom the node trusts | The history is read back from `karma/`, and its head written again; what it lacks is asked for again as it next reads; the blocks at its head's targets are checked again as it first looks, and what was said of them is said again; a root is asked for again on `/config`, as the node follows none; whom the node trusts is known again only once the web server next says it, which it does when that changes |
 | Dispatcher | Messages it had read but not yet delivered, and those it held for a full inbox | Nothing recovers them; no module is started until it is back |
 
 ## 11. Testing Modules

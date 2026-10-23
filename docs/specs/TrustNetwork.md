@@ -255,7 +255,8 @@ trusted.
 - **When it builds them.** It builds its scores as it starts, and again
   from time to time, reading every list afresh, so that it reads what has
   changed in the lists of others. It scores a change its operator makes to
-  its own list at once, as §4.4 scores a person's. The reference node builds
+  its own list, or it makes itself (§3.2), at once, as §4.4 scores a
+  person's. The reference node builds
   them again every hour, by default.
 - **What it goes by meanwhile.** Until a build is complete, the node goes by
   what the last complete build said, with what the build under way has read

@@ -17,6 +17,7 @@ from libranet.karma.blocks import (
     BlockBounds,
     BlockDrop,
     BlockFinding,
+    MisplacedBlockError,
     TransactionBlock,
     ValidationBlock,
 )
@@ -428,20 +429,60 @@ def test_a_block_holding_no_stake_or_stakes_on_two_blocks_is_false(
     assert found.statement.endswith(counted)
 
 
-def test_a_block_staking_on_a_block_at_another_target_is_false(
+@mark.parametrize("generation", [1, 2])
+def test_a_block_staking_on_a_block_of_another_target_is_of_another_target(
     alice: NodeIdentity,
     bob: NodeIdentity,
     chain: ChainInMemory,
     keys: dict[ContentId, bytes],
     transactions: dict[ContentId, TransactionBlockCheck | BlockFinding],
+    generation: int,
 ) -> None:
-    # Transaction block 1 is held, and is not at transaction block 2's target.
-    elsewhere = validation_of(staked(alice, FIRST_ID, 1_000))
+    # Transaction block 1, built on the root's validation block, is held. A
+    # block staking on it, placed at validation block 2's target, as anyone
+    # may place a copy, since a drop's nonce is not signed.
+    elsewhere = validation_of(staked(alice, FIRST_ID, 1_000), generation=generation)
 
-    found = checked(elsewhere, bob, chain, keys, transactions)
+    with raises(MisplacedBlockError, match=f"Its stakes name {FIRST_ID}, built on"):
+        checked(elsewhere, bob, chain, keys, transactions)
+
+
+def test_a_block_staking_on_one_built_for_its_target_but_not_at_it_is_false(
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    chain: ChainInMemory,
+    keys: dict[ContentId, bytes],
+    transactions: dict[ContentId, TransactionBlockCheck | BlockFinding],
+    block: TransactionBlock,
+) -> None:
+    # Built on validation block 1, as transaction block 2 is, but not read
+    # at its target.
+    held = replace(chain, transactions={**chain.transactions, OTHER_ID: drop_of(alice, block)})
+
+    found = checked(validation_of(staked(alice, OTHER_ID, 1_000)), bob, held, keys, transactions)
 
     assert isinstance(found, BlockFinding)
-    assert found.statement.endswith(f"at its target, got {FIRST_ID}")
+    assert found.builder == bob.node_id
+    assert found.statement.endswith(f"at its target, got {OTHER_ID}")
+
+
+def test_a_transaction_block_is_of_another_target(
+    alice: NodeIdentity,
+    chain: ChainInMemory,
+    keys: dict[ContentId, bytes],
+    transactions: dict[ContentId, TransactionBlockCheck | BlockFinding],
+    block: TransactionBlock,
+) -> None:
+    with raises(MisplacedBlockError, match="It is a TransactionBlock"):
+        ValidationBlockCheck.of(
+            VALIDATION_ID,
+            data_of(alice, block),
+            FIRST_VALIDATION_ID,
+            chain,
+            keys,
+            transactions=transactions,
+            compressed_bytes=FULL_BYTES,
+        )
 
 
 def test_a_block_waits_for_the_transaction_block_its_stakes_name(

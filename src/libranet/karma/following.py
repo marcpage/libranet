@@ -25,8 +25,13 @@ alone exceeds what covers it, to be distrusted (Phase 6 Step 127)::
 
 A block this node cannot check, as one signed in a way it cannot check, or
 naming an id under a hash algorithm it lacks, or one naming a block it
-shuns, is passed over, and logged as a warning. Nothing else is shunned:
-not a block for being on a lighter chain, nor for not being chosen (§3.6).
+shuns, is passed over, and logged as a warning. A block of another target,
+which anyone may place a copy of at this one, since a drop's nonce is not
+signed, is passed over too, and logged: one of the other kind, or one built
+on, or staking on one built on, another validation block than the one the
+target is named for (:class:`~libranet.karma.blocks.MisplacedBlockError`).
+Nothing else is shunned: not a block for being on a lighter chain, nor for
+not being chosen (§3.6).
 """
 
 from __future__ import annotations
@@ -42,6 +47,7 @@ from libranet.karma.blocks import (
     BLOCK_BOUNDS,
     BlockBounds,
     BlockFinding,
+    MisplacedBlockError,
     TransactionBlock,
     ValidationBlock,
 )
@@ -239,6 +245,7 @@ class ChainFollower:
         """Transaction block ``held`` checked, read at the target named for ``named_for``.
 
         Raises:
+            MisplacedBlockError: it is of another target.
             MissingContentError: names what its check lacks.
             BundleError: it cannot be checked here, or a block of the chain
                 cannot be read.
@@ -264,6 +271,7 @@ class ChainFollower:
         transaction target of the same generation.
 
         Raises:
+            MisplacedBlockError: it is of another target.
             MissingContentError: names what its check lacks.
             BundleError: it, or a block it names, cannot be checked here.
             ValueError: it names an id under a hash algorithm this node
@@ -289,8 +297,8 @@ class ChainFollower:
         """What ``found`` keeps of block ``held``, checked by ``check`` unless it was before.
 
         What is found of a block checked now is kept, and said
-        (:meth:`_say`). One that cannot be checked here is passed over, as
-        ``None``, and logged.
+        (:meth:`_say`). One of another target, or that cannot be checked
+        here, is passed over, as ``None``, and logged.
 
         Raises:
             MissingContentError: names what ``check`` lacks, which is asked
@@ -306,6 +314,10 @@ class ChainFollower:
 
         except MissingContentError:
             raise
+
+        except MisplacedBlockError as error:
+            _LOGGER.info("Passing over Karma block %s, of another target: %s", block_id, error)
+            checked = None
 
         except (BundleError, ValueError) as error:
             _LOGGER.warning(

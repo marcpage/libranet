@@ -1,4 +1,4 @@
-"""The Karma module process (Phase 6 Steps 123 to 126).
+"""The Karma module process (Phase 6 Steps 123 to 127).
 
 Every step that has the node act on the Karma ledger (KarmaLedger.md) runs
 here: reading what is placed at a target, following the chain, and
@@ -40,6 +40,12 @@ its drops as the backup module stores what it makes, and announces each with
 ``data.stored``, so that it is pushed as any new content is. It then follows
 the root: its history is generation 0. Asked while it follows a chain, it
 makes none.
+
+It keeps whom the node trusts and distrusts, as the web server says it, so
+that what it builds leaves out the identities the node distrusts (§3.8,
+Phase 6 Step 127)::
+
+    node.trust  {"trusted": [...], "untrusted": [...], "only_trusted": false}
 """
 
 from __future__ import annotations
@@ -55,6 +61,7 @@ from libranet.cas.layered import LayeredSource
 from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig
 from libranet.identity.node_identity import NodeIdentity
+from libranet.identity.trust import TrustState
 from libranet.karma.blocks import BLOCK_BOUNDS, BlockBounds
 from libranet.karma.following import ChainFollower
 from libranet.karma.history import ChainHistory
@@ -63,6 +70,7 @@ from libranet.karma.root import ChainRoot
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
 from libranet.messaging.module import DEFAULT_POLL_INTERVAL_SECONDS, ModuleBase
+from libranet.messaging.node_trust import NodeTrust
 from libranet.messaging.queues import ModuleQueues
 from libranet.modules import ModuleName
 from libranet.protocol.search import normalize_prefix
@@ -77,7 +85,12 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
     """
 
     subscriptions: ClassVar[frozenset[EventType]] = frozenset(
-        {EventType.SEARCH_ANSWERED, EventType.DATA_STORED, EventType.KARMA_ROOT_REQUESTED}
+        {
+            EventType.SEARCH_ANSWERED,
+            EventType.DATA_STORED,
+            EventType.KARMA_ROOT_REQUESTED,
+            EventType.NODE_TRUST,
+        }
     )
 
     def __init__(
@@ -102,6 +115,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         # and when to look, whether it idles or not.
         self._look_again = False
         self._next_look_at = 0.0
+        self._trust: NodeTrust | None = None
         self._store = CasStore.source_of_truth(config.storage)
         self._searchers = NonceSearchers(config.karma.mining_processes)
         self._reader = TargetReader.of(
@@ -112,6 +126,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
                 EventType.SEARCH_ANSWERED: self._on_search_answered,
                 EventType.DATA_STORED: self._on_data_stored,
                 EventType.KARMA_ROOT_REQUESTED: self._on_root_requested,
+                EventType.NODE_TRUST: self._on_node_trust,
             }
         )
 
@@ -131,6 +146,14 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             raise RuntimeError("The Karma module is not running")
 
         return self._history
+
+    @property
+    def trust(self) -> NodeTrust | None:
+        """Whom the node trusts and distrusts, as the web server last said; ``None`` until it says.
+
+        What the module builds leaves out whom the node distrusts (§3.8).
+        """
+        return self._trust
 
     @property
     def reader(self) -> TargetReader:
@@ -198,6 +221,21 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         if self._reader.stored(content_id):
             self.logger.debug("%s, which was waited for, is stored", content_id)
             self._look_again = True
+
+    def _on_node_trust(self, message: Message) -> None:
+        """Keep whom the node trusts and distrusts, in place of what was kept before.
+
+        Raises:
+            FileNotFoundError: the node has no key yet.
+            KeyFileError: the node's private key cannot be loaded.
+            KeyError: the message lacks whom the node trusts or distrusts.
+            ValueError: it names an id that is none.
+        """
+        self._trust = NodeTrust.from_payload(NodeIdentity.load(self._config).node_id, message)
+        self.logger.debug(
+            "The node distrusts %d identities",
+            sum(state == TrustState.UNTRUSTED for state in self._trust.states.values()),
+        )
 
     def _on_root_requested(self, _message: Message) -> None:
         """Make a root, as the node, and follow it, unless a chain is followed already (§7).

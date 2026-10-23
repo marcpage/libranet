@@ -683,7 +683,57 @@ def test_module_subscribes_to_what_other_modules_report() -> None:
         EventType.PEERS_CONNECTED_REQUESTED,
         EventType.ADDRESS_DIALED,
         EventType.NODE_TRUST_STORED,
+        EventType.KARMA_FALSE_BLOCK,
     }
+
+
+def test_a_false_karma_block_has_the_node_distrust_its_builder(tmp_path: Path) -> None:
+    queues = _queues()
+    config = _config(tmp_path, _free_port())
+    # Few enough bits that the version distrusting the builder is placed in moments.
+    config = config.model_copy(
+        update={"storage": config.storage.model_copy(update={"search_min_bits": 12})}
+    )
+    module = WebServerModule(ModuleName.WEBSERVER, queues, config, poll_interval_seconds=0.01)
+    stop = Event()
+    thread = Thread(target=module.run, args=(stop,), daemon=True)
+    thread.start()
+    builder = ContentId.for_data(b"the public key of a false block's builder", "sha256")
+    said: list[dict[str, Any]] = []
+
+    try:
+        host, _ = _serving(module, queues)
+        queues.inbox.put(
+            make_message(
+                EventType.KARMA_FALSE_BLOCK,
+                ModuleName.KARMA,
+                {
+                    "block": str(ContentId("sha256", "b1" * 32)),
+                    "builder": str(builder),
+                    "staker": None,
+                    "statement": "its weight is 7, not 8",
+                },
+            )
+        )
+        deadline = monotonic() + 5
+
+        # The node's own scores, built again from the version placed.
+        while not said and monotonic() < deadline:
+            message = queues.outbox.get(timeout=5)
+
+            if message["event"] == EventType.NODE_TRUST:
+                said.append(message)
+
+        status, body = _authorized(host, _config_port(module), "/config/api/trust")
+
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+    ((trust,),) = (said,)
+    assert (trust["trusted"], trust["untrusted"]) == ([], [str(builder)])
+    assert status == 200
+    assert loads(body)["entries"] == {str(builder): False}
 
 
 def test_an_event_it_does_not_handle_is_not_taken_for_a_resolved_path(tmp_path: Path) -> None:
