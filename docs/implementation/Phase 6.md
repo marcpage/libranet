@@ -116,7 +116,8 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
 - **Each of Steps 116 to 142 takes an issue of its own as it is taken
   up.** Each is planned under #87. Step 116 is #434, Step 117 is #435,
   Step 118 is #436, Step 119 is #437, Step 120 is #438, Step 121 is #439,
-  Step 122 is #440, Step 123 is #441, and none after it has one yet.
+  Step 122 is #440, Step 123 is #441, Step 124 is #442, and none after it
+  has one yet.
 - **The ledger's tests use small blocks.** Whether a block is full is
   measured against bounds the library takes, the specification's
   (KarmaLedger §5.4) unless a test gives others, so that a test fills a
@@ -1191,7 +1192,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 123 — The Karma Module and Its History
+## Step 123 — The Karma Module and Its History ✅
 
 **Kind:** infrastructure. **Issue:** #441, under #87.
 **Depends on:** Step 116. It may be built beside Steps 117 to 122.
@@ -1300,7 +1301,7 @@ My calls, not yet reviewed:
 
 ## Step 124 — Reading Blocks at a Target
 
-**Kind:** infrastructure. **Issue:** none yet; planned under #87.
+**Kind:** infrastructure. **Issue:** #442, under #87.
 **Depends on:** Steps 119, 121, and 123; Phase 4 Step 93's search of the
 peers.
 
@@ -1333,9 +1334,109 @@ out; what is not held asked for, read once stored, and given up on after
 the wait; a search announced; a balance read through a reach of 0, and of
 3; a block evicted, and fetched again.
 
-My call, not yet reviewed: **the module reads the search cache, and
-writes none of it.** The cache is the web server's, and stats rewrites it,
-so the module only reads it, as it reads `lists/shunned.json`.
+It came to 501 added lines of non-test Python, with 2 changed, so it was
+built as two change sets, each green on its own: what is at a target, with
+its setting (348 added lines, 2 changed); and the chain view, with reading a
+block again from its drop (153 added, 5 changed, all of them the first
+set's). The two rulings below came after it: the first added 5 lines, and
+changed 6; the second added 112, and changed 38. The tests are 664
+lines, with 147 more for the blocks, the setting, and the module.
+
+What was built:
+
+- **`TargetReader`** (`karma/reading.py`): `read(target, kind)`, the
+  blocks of `kind` held at a target, nearest first, the search announced,
+  and what was found but is not held asked for; `held(id)`, what is held,
+  decompressed, asked for if it is not; `fetch(ids)`, asking for what is
+  not held, and waiting for it; `answered(prefix, named)`, keeping what a
+  peer named at a target being read, and asking for it; `stored(id)`,
+  whether what has arrived was waited for; `given_up()`, what has been
+  waited for `karma.fetch_wait_seconds`, no longer waited for; and
+  `waiting`. `TargetReader.of(config, content, publish)` is a node's.
+- **`HeldBlock(block_id, data, compressed_bytes, keys)`**: what the checks
+  of Steps 121 and 122 take of a block, with the keys held of everyone who
+  signed what it holds.
+- **`HeldChain(history, reader)`**: Step 121's `ChainView` over the
+  history and the blocks held.
+- **`BlockDrop.parsed(data, kind)`** (`karma/blocks.py`): a block read from
+  its drop, its signatures not checked.
+- **`karma.fetch_wait_seconds`** (`KarmaConfig`), 30 by default.
+- **`KarmaModule`** holds a reader, subscribes to `data.search_answered` and
+  `data.stored`, and gives up on what has not come as it idles.
+
+My calls, not yet reviewed:
+
+- **Nothing reads a target yet.** The module tells its reader of each
+  `data.search_answered` and `data.stored`, and to give up as it idles,
+  but reads no target until Step 126 has it read its head's, so it keeps no
+  answer and asks for nothing. Step 126 is to read a target again whenever
+  `answered` or `stored` says something new has come.
+- **What peers name at a target is kept until the target has not been read
+  for `storage.search_cache_ttl_seconds`** (300), as long as a cached
+  search answer lasts, rather than for a setting of its own. Step 126 reads
+  its head's targets every minute, so what is named there is kept while the
+  module follows them, and forgotten five minutes after the head moves on.
+  An answer for a target not being read is passed over.
+- **`answered` asks at once for what it lacks**, and says whether anything
+  was named that was not before, so that the target is read again for what
+  is held, while the rest is waited for.
+- **Waiting is kept, not slept.** The module handles a message at a time,
+  so the reader never blocks: it notes what it asked for, and until when it
+  waits. What is waited for is asked for once; once given up on, it is
+  asked for again the next time it is needed.
+- **A block held as it is is measured compressed as the node compresses
+  what it stores**, zlib level 9; one held compressed is measured as held
+  (§5.4).
+- **A block's keys are read with it**: its builder's, and each sender's or
+  staker's, found by reading the drop without checking a signature (Step
+  119's `BlockDrop.of`). A key not held is asked for, and the block is read
+  without it, so that its check finds it false without the key where it
+  can, and otherwise names the key as lacking. A drop that is no signed
+  bundle names no signer, and one signing no block of the kind its builder
+  alone.
+- **A block is decompressed to at most
+  `storage.max_decompressed_bundle_bytes`** (16 MiB), since a block is a
+  signed bundle's JSON, held whole. Anything
+  held at a target that is not what it is held as is passed over, and
+  logged as a warning.
+- **The chain view does not check signatures again.** A block of the
+  history was checked as it was followed, and a runner-up, or a
+  transaction block a stake names, is at a target the module reads and
+  checks itself. A block the view reads that is no block of its kind raises
+  what parsing it raises, so Step 126 must catch that from Step 122's
+  check of a validation block naming such a runner-up, which finds it
+  neither correct nor false. A block shunned raises `ShunnedContentError`,
+  not `MissingContentError`, since it is never fetched.
+- **Every block lacking that far back is named at once**, so that all are
+  fetched together. When the latest is lacking, its reach is not known, and
+  it alone is named.
+
+Ruled after building:
+
+- **A balance is read back as far as the reach of the block it is read
+  through, or ten blocks, whichever is further**, in place of the reach
+  alone first built, as this step had said. KarmaLedger §5.3 said a balance
+  is the latest stated, however far back, and also that a node needs
+  blocks back only as far as the reach. The two differ for an identity
+  holding 0, stated only before the reach with a `last_won`, which its next
+  balance carries, and which weighs its next stake for ten generations
+  after its win (§6.6). Ten blocks take in every such `last_won`: one
+  stated only before them is more than ten generations old, and weighs a
+  stake as `null` does. §5.3 now says that an identity stated in none of
+  those blocks holds `{"kismet": "0", "last_won": null}`, and that a node
+  needs blocks back as far as the reach, or ten blocks if that is further.
+  `HeldChain.balances` reads back to the greater of the reach and
+  `WEIGHT_GENERATIONS`, or to the root.
+- **Peers' answers are taken from `data.search_answered`, not from the
+  search cache**, in place of reading the cache first built. Stats adds
+  what peers answer only to an answer cached already, and only the web
+  server caches one, as it answers a search made of it. So what peers
+  answered the Karma module's own searches reached it only while a page or
+  a peer had searched this node for the target within five minutes. The
+  module now subscribes to `data.search_answered`, keeps what peers name at
+  each target it reads, and asks at once for what it lacks. What they push,
+  as the search puts the target in the node's seek list (Phase 4 Step 93),
+  is found as before, once it is stored.
 
 ---
 

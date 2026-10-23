@@ -225,7 +225,9 @@ storage:
   max_application_store_bytes: 1048576
   max_application_value_bytes: 65536
 
-  # Provisional: how long a cached /data/search result stays valid.
+  # Provisional: how long a cached /data/search result stays valid, and how
+  # long the Karma module keeps what peers name at a target once it stops
+  # reading it.
   search_cache_ttl_seconds: 300.0
   # How many leading bits a hash must share with a prefix searched for, at
   # least, for a search to return it; or the whole prefix, if it is shorter
@@ -360,6 +362,11 @@ karma:
   # mines a transaction or places a block. One takes one core of the
   # machine's; more finish sooner, and leave less to the rest of the node.
   mining_processes: 1
+
+  # How long, in seconds, the Karma module waits for a block or a signer's
+  # key it asks the network for before it goes on without it. It asks again
+  # the next time it needs it.
+  fetch_wait_seconds: 30.0
 
 local:
   # The folders on this machine that a browser on it may list, and import

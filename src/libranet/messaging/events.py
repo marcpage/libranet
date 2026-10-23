@@ -31,14 +31,14 @@ class EventType(StrEnum):
 
     # Web server read path (Step 5).
     DATA_REQUESTED = "data.requested"  # webserver → stats
-    DATA_NOT_FOUND = "data.not_found"  # webserver, unbundler, backup → fetcher, stats
-    SEARCH_REQUESTED = "data.search_requested"  # webserver → stats, connections
-    SEARCH_ANSWERED = "data.search_answered"  # connections → stats (Phase 4 Step 93)
+    DATA_NOT_FOUND = "data.not_found"  # webserver, unbundler, backup, karma → fetcher, stats
+    SEARCH_REQUESTED = "data.search_requested"  # webserver, karma → stats, connections
+    SEARCH_ANSWERED = "data.search_answered"  # connections → stats, karma (Phase 4 Step 93)
 
     # Web server write path and validation (Step 7).
     PUT_COMPLETED = "data.put_completed"  # webserver, connections → validator
     # validator, backup, webserver, connections
-    #   → eviction, stats, backup, connections, unbundler
+    #   → eviction, stats, backup, connections, unbundler, karma
     DATA_STORED = "data.stored"
     DATA_REJECTED = "data.rejected"  # validator → stats
 

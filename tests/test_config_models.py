@@ -335,6 +335,13 @@ def test_karma_mines_with_one_process_by_default_and_never_none() -> None:
         KarmaConfig(mining_processes=0)
 
 
+def test_karma_waits_thirty_seconds_for_what_it_asks_for_and_always_some() -> None:
+    assert KarmaConfig().fetch_wait_seconds == 30.0
+
+    with raises(ValidationError):
+        KarmaConfig(fetch_wait_seconds=0)
+
+
 def test_the_karma_history_is_kept_in_the_data_directory(tmp_path: Path) -> None:
     assert StorageConfig(data_dir=tmp_path).karma_dir == tmp_path / "karma"
 
@@ -858,6 +865,7 @@ def test_the_example_config_states_the_default_limits_waits_and_hidden_names() -
     )
     assert stated["backup"]["restore_resume_seconds"] == BackupConfig().restore_resume_seconds
     assert stated["karma"]["mining_processes"] == KarmaConfig().mining_processes
+    assert stated["karma"]["fetch_wait_seconds"] == KarmaConfig().fetch_wait_seconds
     assert tuple(stated["local"]["hidden"]) == LocalConfig().hidden
 
 
