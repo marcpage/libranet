@@ -145,7 +145,7 @@ something is written to it.
 
 | Path | Written by | Read by |
 | --- | --- | --- |
-| `cas/data/` | Validator; web server (a peer's own public key); supervisor (this node's public key); backup module | Most modules; deleted from only by eviction |
+| `cas/data/` | Validator; web server (a peer's own public key); supervisor (this node's public key); backup module; Karma module (the blocks it makes) | Most modules; deleted from only by eviction |
 | `cas/resolved/` | Unbundler; the web server deletes an entry it cannot read | Web server, unbundler |
 | `incoming/` | Web server (`PUT /data`, and `POST /data/bundles` as this node); connection manager (content fetched from peers) | Validator, which deletes each upload it checks |
 | `keys/node_private_key.pem` | Supervisor, on first start | Every module that signs or needs the node id |
@@ -159,7 +159,7 @@ something is written to it.
 | `store/` | Web server | Web server |
 | `archives/` | Backup module (`/data/archives`, Step 115) | Every module that reads content |
 | `kept_archives.json` | Backup module | Backup module |
-| `karma/` | Karma module | Karma module |
+| `karma/` | Karma module | Karma module; web server (`head.json`) |
 
 ### 3.1 The Source of Truth: `cas/data`
 
@@ -516,6 +516,10 @@ chain's weight through it, each `null` while it follows none:
 ```json
 {"head": "sha256/9f8e…", "generation": 1, "weight": "1208"}
 ```
+
+The web server reads it (`KarmaHead` in
+`src/libranet/protocol/karma_head.py`), and refuses to have a root made while
+it names a head (Phase 6 Step 125).
 
 A generation's file is written before the genealogy, and the head last, each
 replaced whole (§8), so that a write cut short leaves the genealogy as it was.

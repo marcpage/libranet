@@ -2934,6 +2934,35 @@ def test_the_config_port_takes_its_turns_in_the_costly_work_it_is_given(
     assert (searches.asked, derivations.asked) == (3, 2)
 
 
+def test_the_config_port_starts_a_karma_ledger_only_while_no_chain_is_followed(
+    storage: StorageConfig, queues: ModuleQueues, credential: ConfigCredential
+) -> None:
+    router = build_config_router(
+        storage,
+        RETRY_AFTER_SECONDS,
+        StubModule(ModuleName.WEBSERVER, queues).publish,
+        config_credential=credential,
+        node=SERVER_NODE,
+    )
+
+    def asked() -> int:
+        return router.dispatch(
+            Request(
+                "POST",
+                "/config/api/karma/root",
+                headers={**_credentials(), **CONFIG_PAGE},
+                client_address="127.0.0.1",
+            )
+        ).status
+
+    assert asked() == 202
+    storage.karma_dir.mkdir(parents=True)
+    head = {"head": str(SERVER_IDENTITY.node_id), "generation": 0, "weight": "80"}
+    (storage.karma_dir / "head.json").write_text(dumps(head), encoding="utf-8")
+    assert asked() == 409
+    assert [message["event"] for message in _published(queues)] == [EventType.KARMA_ROOT_REQUESTED]
+
+
 def test_bundles_are_made_only_by_a_node_that_knows_its_id(
     storage: StorageConfig, queues: ModuleQueues
 ) -> None:

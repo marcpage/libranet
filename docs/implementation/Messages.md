@@ -60,8 +60,9 @@ other modules sent.
 | Backup | `backup` | Backup |
 | Karma | `karma` | Karma |
 
-The Karma module (Phase 6 Steps 123 and 124) sends a search and a miss only
-as it reads a target, which nothing it does yet calls for.
+The Karma module (Phase 6 Steps 123 to 125) sends a search and a miss only
+as it reads a target, which nothing it does yet calls for, and `data.stored`
+only for a root it makes.
 
 ## 3. Summary
 
@@ -73,7 +74,7 @@ as it reads a target, which nothing it does yet calls for.
 | `data.search_requested` | Web server, Karma | Stats, Connections | A prefix search was asked of this node |
 | `data.search_answered` | Connections | Stats, Karma | What a peer answered a prefix search with |
 | `data.put_completed` | Web server, Connections | Validator | Unchecked bytes wait to be validated |
-| `data.stored` | Validator, Backup, Web server, Connections | Stats, Eviction, Connections, Unbundler, Backup, Karma | New content is in the source of truth |
+| `data.stored` | Validator, Backup, Karma, Web server, Connections | Stats, Eviction, Connections, Unbundler, Backup, Karma | New content is in the source of truth |
 | `data.rejected` | Validator | Stats | An upload did not match its content id |
 | `nodes.received` | Web server, Connections | Stats, Connections | Peer addresses learned |
 | `seek.received` | Web server | Stats | A peer's seek list |
@@ -119,6 +120,7 @@ as it reads a target, which nothing it does yet calls for.
 | `peers.connected` | Connections, Web server | Eviction, Stats | The peers connected one way |
 | `storage.full_requested` | Backup | Eviction | Say whether storage is full |
 | `storage.full` | Eviction | Backup | Whether storage is full |
+| `karma.root_requested` | Web server | Karma | Make a Karma root, and follow it |
 
 ## 4. The Messages
 
@@ -218,6 +220,7 @@ it and what each does with it.
 - **Sent by:**
   - Validator, for each upload it promotes.
   - Backup, for each object a backup, build, or import stores.
+  - Karma, for each block of a root it makes (`karma/module.py`).
   - Web server, for a peer's own public key uploaded under its node id,
     which goes straight to the source of truth (`data_write_handler.py`).
   - Connections, for a peer's public key fetched during the handshake
@@ -611,11 +614,24 @@ or reported, nor is the key a kept archive's bundle may carry.
   it is full, failing them after `backup.storage_stall_seconds`.
 - **Purpose:** keep content this node creates from overfilling storage.
 
+### 4.13 The Karma Ledger
+
+#### `karma.root_requested`
+
+- **Payload:** none.
+- **Sent by:** Web server, when the operator asks on `/config` to start a
+  Karma ledger, while `karma/head.json` names no head (`config_handlers.py`).
+- **Received by:** Karma, which, unless it follows a chain already, makes a
+  root as the node, mining its transaction and searching for each drop's
+  nonce, stores and announces both drops, and follows it (`karma/root.py`).
+- **Purpose:** let the operator start a ledger on a network that has none
+  (KarmaLedger §7).
+
 ## 5. Messages per Module
 
 | Module | Sends | Receives |
 | --- | --- | --- |
-| Web server | `data.requested`, `data.not_found`, `data.search_requested`, `data.put_completed`, `data.stored`, `nodes.received`, `seek.received`, `address.dial_requested`, `app.path_not_found`, `app.accessed`, `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.shunned`, `peers.connected`, `node.trust`, `node.trust_requested` | `app.path_resolved`, `backup.state`, `peers.connected_requested`, `address.dialed`, `node.trust_stored` |
+| Web server | `data.requested`, `data.not_found`, `data.search_requested`, `data.put_completed`, `data.stored`, `nodes.received`, `seek.received`, `address.dial_requested`, `app.path_not_found`, `app.accessed`, `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.shunned`, `peers.connected`, `node.trust`, `node.trust_requested`, `karma.root_requested` | `app.path_resolved`, `backup.state`, `peers.connected_requested`, `address.dialed`, `node.trust_stored` |
 | Connections | `data.search_answered`, `data.put_completed`, `data.stored`, `nodes.received`, `address.verified`, `address.dialed`, `connection.opened`, `connection.closed`, `connection.failed`, `node.unreached`, `data.sent`, `fetch.attempted`, `fetch.succeeded`, `fetch.failed`, `eviction.acknowledged`, `peers.connected` | `nodes.updated`, `nodes.received`, `fetch.requested`, `data.search_requested`, `eviction.notice`, `data.stored`, `peers.connected_requested`, `address.dial_requested`, `node.trust` |
 | Validator | `data.stored`, `data.rejected` | `data.put_completed` |
 | Stats | `nodes.updated`, `eviction.candidates`, `resolved.reclaim`, `peers.connected_requested`, `node.trust_stored` | `data.requested`, `data.not_found`, `data.search_requested`, `data.search_answered`, `data.stored`, `data.rejected`, `nodes.received`, `seek.received`, `connection.opened`, `connection.closed`, `connection.failed`, `node.unreached`, `address.verified`, `data.sent`, `fetch.attempted`, `data.deleted`, `eviction.candidates_requested`, `app.accessed`, `resolved.reclaim_requested`, `data.shunned`, `peers.connected`, `node.trust`, `node.trust_requested` |
@@ -623,6 +639,6 @@ or reported, nor is the key a kept archive's bundle may carry.
 | Unbundler | `data.not_found`, `app.path_resolved`, `resolved.reclaimed` | `app.path_not_found`, `data.stored`, `resolved.reclaim` |
 | Eviction | `eviction.notice`, `data.deleted`, `eviction.candidates_requested`, `resolved.reclaim_requested`, `peers.connected_requested`, `storage.full` | `data.stored`, `eviction.acknowledged`, `eviction.candidates`, `resolved.reclaimed`, `peers.connected`, `storage.full_requested`, `data.shunned` |
 | Backup | `data.not_found`, `data.stored`, `backup.state`, `storage.full_requested` | `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.stored`, `storage.full` |
-| Karma | `data.search_requested`, `data.not_found` | `data.search_answered`, `data.stored` |
+| Karma | `data.search_requested`, `data.not_found`, `data.stored` | `data.search_answered`, `data.stored`, `karma.root_requested` |
 
 Every module also receives `shutdown`.

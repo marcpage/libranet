@@ -4,8 +4,12 @@ Every backup endpoint answers at once and leaves the work to the backup
 module, so what each one publishes is what these assert. The application
 endpoints change the registry themselves, and publish nothing. Connecting to
 a node waits for what the connection manager reports, which these report as
-it is asked for. Authentication is a router guard and is tested separately.
+it is asked for. Starting a Karma ledger reads the head the Karma module
+writes, which these write. Authentication is a router guard and is tested
+separately.
 """
+
+# pylint: disable=too-many-lines
 
 from __future__ import annotations
 from http import HTTPStatus
@@ -48,11 +52,13 @@ from libranet.webserver.config_handlers import (
     CONFIG_USERS_PATH,
     CONNECTIONS_PATH,
     EXPORTS_PATH,
+    KARMA_ROOT_PATH,
     METADATA_PATH,
     NODE_PATH,
     RESTORES_PATH,
     BackupReportHandler,
     ConnectHandler,
+    KarmaRootHandler,
     NodeDescription,
     config_routes,
 )
@@ -182,6 +188,7 @@ def test_the_index_names_every_endpoint(router: Router) -> None:
         ("DELETE", "/config/api/trust/{algorithm}/{hash}"),
         ("GET", "/config/api/connecting"),
         ("PUT", "/config/api/connecting"),
+        ("POST", "/config/api/karma/root"),
     }
 
 
@@ -973,3 +980,118 @@ def test_without_its_handler_no_route_connects_to_a_node(router: Router) -> None
 def test_a_report_handler_refuses_a_negative_retry_after(state: BackupState) -> None:
     with raises(ValueError, match="retry_after_seconds"):
         BackupReportHandler(state, JOBS_FIELD, -1)
+
+
+@fixture
+def karma_dir(tmp_path: Path) -> Path:
+    """Where the Karma module keeps its history, and writes its head."""
+    directory = tmp_path / "karma"
+    directory.mkdir()
+    return directory
+
+
+@fixture
+def rooting(
+    queues: ModuleQueues, state: BackupState, registry: ApplicationRegistry, karma_dir: Path
+) -> Router:
+    """``/config/api``, starting a Karma ledger as the head in ``karma_dir`` allows."""
+    publish = StubModule(ModuleName.WEBSERVER, queues).publish
+    router = Router()
+
+    for method, pattern, handler in config_routes(
+        publish,
+        state,
+        registry,
+        NodeDescription(NODE_ID, NETWORK),
+        RETRY_AFTER_SECONDS,
+        karma_root=KarmaRootHandler(publish, karma_dir),
+    ):
+        router.add(method, pattern, handler)
+
+    return router
+
+
+@mark.parametrize(
+    "head", [None, b'{"head":null,"generation":null,"weight":null}'], ids=["none", "nulls"]
+)
+def test_a_karma_root_is_asked_for_while_no_chain_is_followed(
+    rooting: Router, queues: ModuleQueues, karma_dir: Path, head: bytes | None
+) -> None:
+    if head is not None:
+        (karma_dir / "head.json").write_bytes(head)
+
+    response = rooting.dispatch(request("POST", KARMA_ROOT_PATH))
+
+    assert response.status == 202
+    (message,) = published(queues)
+    assert message["event"] == EventType.KARMA_ROOT_REQUESTED
+    assert message["source"] == ModuleName.WEBSERVER
+    assert set(message) == {"event", "source", "timestamp"}
+
+
+def test_no_karma_root_is_asked_for_while_a_chain_is_followed(
+    rooting: Router, queues: ModuleQueues, karma_dir: Path
+) -> None:
+    (karma_dir / "head.json").write_bytes(
+        dumps({"head": str(BUNDLE), "generation": 41, "weight": "96"}).encode("utf-8")
+    )
+
+    response = rooting.dispatch(request("POST", KARMA_ROOT_PATH))
+
+    assert response.status == 409
+    assert problem_type(response) == "about:blank"
+    assert loads(response.body)["detail"] == (
+        f"This node follows the Karma chain through generation 41, head {BUNDLE}, so it makes "
+        "no root."
+    )
+    assert published(queues) == []
+
+
+@mark.parametrize(
+    "head",
+    [
+        b"not JSON",
+        b"[]",
+        b'{"head":"sha256/0a","generation":0}',
+        b'{"head":null,"generation":3}',
+        b'{"head":"' + str(BUNDLE).encode("utf-8") + b'","generation":-1}',
+    ],
+)
+def test_a_karma_head_that_cannot_be_read_leaves_the_karma_module_to_tell(
+    rooting: Router,
+    queues: ModuleQueues,
+    karma_dir: Path,
+    caplog: LogCaptureFixture,
+    head: bytes,
+) -> None:
+    (karma_dir / "head.json").write_bytes(head)
+
+    with caplog.at_level(WARNING):
+        response = rooting.dispatch(request("POST", KARMA_ROOT_PATH))
+
+    assert response.status == 202
+    assert [message["event"] for message in published(queues)] == [EventType.KARMA_ROOT_REQUESTED]
+    (record,) = handler_records(caplog)
+    assert record.levelno == WARNING
+    assert record.getMessage().startswith(
+        "The Karma head could not be read, so the Karma module is left to tell whether it "
+        "follows a chain: "
+    )
+
+
+def test_asking_for_a_karma_root_reads_and_ignores_a_body(
+    rooting: Router, queues: ModuleQueues
+) -> None:
+    sent = request("POST", KARMA_ROOT_PATH, {"generation": 3})
+
+    assert rooting.dispatch(sent).status == 202
+    assert sent.body.consumed
+    assert len(published(queues)) == 1
+
+
+def test_without_its_handler_no_route_starts_a_karma_ledger(
+    router: Router, queues: ModuleQueues
+) -> None:
+    # Starting one is tested where /config's port is built, and above.
+    assert router.dispatch(request("POST", KARMA_ROOT_PATH)).status == 404
+    assert published(queues) == []
