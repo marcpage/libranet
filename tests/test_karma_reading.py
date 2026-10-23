@@ -586,6 +586,38 @@ def test_a_balance_near_the_root_is_read_back_to_it(chain: HeldChain) -> None:
     assert chain.balances({DAVE}, 3) == {DAVE: Balance(Kismet(7))}
 
 
+def test_every_balance_stated_back_through_the_reach_is_read_the_latest_of_each(
+    chain: HeldChain, alice: NodeIdentity
+) -> None:
+    assert chain.every_balance(13) == {
+        alice.node_id: Balance(Kismet(13)),
+        CAROL: Balance(Kismet(0), 1),
+        DAVE: Balance(Kismet(7)),
+    }
+
+
+def test_every_balance_is_read_back_ten_blocks_past_a_reach_of_0(
+    chain: HeldChain, alice: NodeIdentity
+) -> None:
+    # Dave, stated in block 1 alone, is too far back.
+    assert chain.every_balance(12) == {
+        alice.node_id: Balance(Kismet(12)),
+        CAROL: Balance(Kismet(0), 1),
+    }
+
+
+def test_every_balance_waits_for_each_block_it_is_read_from(
+    chain: HeldChain, history: ChainHistory, truth: CasStore, recorder: Recorder
+) -> None:
+    truth.delete(transaction_id(history, 1))
+
+    with raises(MissingContentError) as raised:
+        chain.every_balance(13)
+
+    assert raised.value.content_ids == (transaction_id(history, 1),)
+    assert recorder.asked_for() == [transaction_id(history, 1)]
+
+
 def test_every_block_lacking_that_far_back_is_named_at_once_and_asked_for(
     chain: HeldChain, history: ChainHistory, truth: CasStore, recorder: Recorder
 ) -> None:

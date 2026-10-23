@@ -296,7 +296,10 @@ refuses a request a node it does not allow signs (Phase 5 Step 113). A block
 the Karma module finds false (`karma.false_block`) has it distrust whoever
 built it in the node's own list, placing the next version as `/config` does,
 on a thread of its own (`FalseBuilders`, `webserver/false_builders.py`, Phase
-6 Step 127). It subscribes to only six events, `app.path_resolved`,
+6 Step 127). It serves what the chain the Karma module follows states, the
+head, each identity's balance, and the generations, from what that module
+writes in `karma/` (`KarmaReads`, `webserver/karma_handlers.py`, Phase 6 Step
+128). It subscribes to only six events, `app.path_resolved`,
 `backup.state`, `peers.connected_requested`, `address.dialed`,
 `node.trust_stored`, and `karma.false_block`, and publishes twenty-four.
 
@@ -429,7 +432,11 @@ node (`ChainRoot`, `karma/root.py`, Phase 6 Step 125): it mines the root
 transaction, searches for each drop's nonce with `karma.mining_processes`
 processes, stores both drops straight into `cas/data`, as the backup module
 stores what it makes, announces each with `data.stored`, and then follows the
-root.
+root. Each time its head changes, and as it first looks, it writes every
+balance the chain states at the head to `balances.json`, for the web server's
+`/data/karma` (`HeadBalances`, `karma/balances.py`, Phase 6 Step 128); a
+transaction block those are read from that it lacks it asks for, and writes
+them once it comes.
 
 ### 3.3 What Each Module Owns
 
@@ -445,7 +452,7 @@ root.
 | The application registry | Web server | — |
 | Applications' stores in `store/` | Web server | — |
 | Backup jobs and the backup secret | Backup | The web server publishes `backup.*` requests |
-| The Karma history in `karma/` | Karma | The web server reads its head, `head.json`; `/config` publishes `karma.root_requested` |
+| The Karma history in `karma/` | Karma | The web server reads its head, `head.json`, its generations, and the balances stated at the head, `balances.json`; `/config` publishes `karma.root_requested` |
 | The search cache in `search/` | Web server | Stats rewrites a cached result to add identifiers |
 
 Adding to `cas/data` is shared more widely than promoting into it: the
@@ -683,7 +690,7 @@ What each module does in them:
 | Unbundler | — | — | — |
 | Eviction | Read the node id; count storage; ask which peers are connected; say whether storage is full; evict if over | Say whether storage is full, if that changed; time out hand-offs and questions; resume after a pause | — |
 | Backup | Read the node id; ask whether storage is full; read the jobs; report state | Carry on the next restore, build, export, import, or backup due | — |
-| Karma | Read the history; write its head | Give up on content waited for too long; follow the chain on, if it is time to look, or what it waited for came | Stop the processes searching for nonces |
+| Karma | Read the history; write its head | Give up on content waited for too long; follow the chain on, if it is time to look, or what it waited for came, and write the balances at the head if it changed | Stop the processes searching for nonces |
 
 ### 5.3 Writing a Module
 
@@ -1329,7 +1336,7 @@ data moves through files, and a message tells the reader where to look.
 | `store/` | Web server | Web server | — |
 | `backup_jobs.json` | Backup | Backup | — |
 | `backup_jobs/` | Backup | Backup | — |
-| `karma/` | Karma | Karma; web server, `head.json` | Nothing; read when needed |
+| `karma/` | Karma | Karma; web server, `head.json`, `generations/`, `balances.json` | Nothing; read when needed |
 | `keys/` | Supervisor; backup; web server | Modules that need them, in `on_start`; Karma, as it makes a root | — |
 | The folders `local.folders` offers | — | Web server, listing them and finding a file to import; backup, reading that file | `backup.import_requested`, which names the file |
 

@@ -58,6 +58,8 @@ from libranet.problems import (
     SIGNATURE_REQUIRED,
 )
 from libranet.protocol.http_syntax import JSON_CONTENT_TYPE, REQUEST_PATH_HEADER
+from libranet.protocol.karma_balances import KarmaBalance, KarmaBalances
+from libranet.protocol.karma_head import KarmaGeneration, KarmaHead
 from libranet.stats.module import StatsModule
 from libranet.validator.module import ValidatorModule
 from libranet.webserver.app_handler import CONFIG_APP_POLICY
@@ -3044,6 +3046,9 @@ def test_a_local_client_keeps_a_value_in_an_applications_store(
         ("GET", "/data/session/x", None),
         ("GET", "/data/peers/x", None),
         ("POST", "/data/peers", "GET"),
+        ("PUT", "/data/karma/x", None),
+        ("POST", "/data/karma", "GET"),
+        ("PUT", "/data/karma/generations", "GET"),
     ],
 )
 def test_a_path_beneath_another_data_endpoint_is_never_taken_for_content(
@@ -3067,6 +3072,36 @@ def test_a_path_beneath_another_data_endpoint_is_never_taken_for_content(
     assert response.status == (404 if allowed is None else 405)
     assert response.headers.get("Allow") == allowed
     assert caplog.text == ""
+
+
+def test_any_client_reads_what_the_karma_chain_followed_states(
+    local_connection: HTTPConnection, storage: StorageConfig
+) -> None:
+    unfollowed, _ = _get(local_connection, "/data/karma")
+    head = KarmaHead(ContentId("sha256", "c1" * 32), 1, 96)
+    KarmaBalances(head, {SERVER_IDENTITY.node_id: KarmaBalance(250, 0)}).write(storage.karma_dir)
+    (storage.karma_dir / "head.json").write_text(dumps(head.value()), encoding="utf-8")
+
+    for generation in (0, 1):
+        path = KarmaGeneration.path(storage.karma_dir, generation)
+        path.parent.mkdir(exist_ok=True)
+        path.write_text(
+            dumps({"validation": str(head.head), "transaction": str(CONTENT_ID), "weight": "96"}),
+            encoding="utf-8",
+        )
+
+    karma, karma_body = _get(local_connection, "/data/karma")
+    balance, balance_body = _get(local_connection, f"/data/karma/balances/{CONTENT_ID}")
+    generations, generations_body = _get(local_connection, "/data/karma/generations?before=1")
+
+    assert unfollowed.status == 503
+    assert unfollowed.getheader("Retry-After") == str(RETRY_AFTER_SECONDS)
+    assert karma.status == 200
+    assert loads(karma_body)["balance"] == {"kismet": "250", "last_won": 0}
+    assert balance.status == 200
+    assert loads(balance_body) == {"kismet": "0", "last_won": None}
+    assert generations.status == 200
+    assert [each["generation"] for each in loads(generations_body)["generations"]] == [0]
 
 
 def test_a_remote_client_is_told_it_is_not_local(local_server: LibranetHTTPServer) -> None:

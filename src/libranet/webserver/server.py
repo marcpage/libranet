@@ -48,7 +48,7 @@ from socket import AF_INET, AF_INET6, IPPROTO_IPV6, IPV6_V6ONLY, create_connecti
 from socketserver import TCPServer
 from sys import exc_info
 from typing import Any, Final, Iterable
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
 from libranet import __version__
 from libranet.bundle.parts import PartPath
@@ -138,6 +138,12 @@ from libranet.webserver.identity_handlers import (
     Identities,
 )
 from libranet.webserver.inbound_peers import InboundConnection, InboundPeers
+from libranet.webserver.karma_handlers import (
+    KARMA_BALANCE_PATTERN,
+    KARMA_GENERATIONS_PATH,
+    KARMA_PATH,
+    KarmaReads,
+)
 from libranet.webserver.list_handlers import (
     PEERS_PATH,
     ListFileHandler,
@@ -261,7 +267,11 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
     ``/data/{algorithm}/{hash}`` deletes and shuns content for local
     clients alone, which ``/data`` then neither serves, reads into, stores,
     nor finds in a search, and no application is served from, as the shunned
-    list in ``storage``'s cache directory names it (Phase 4 Step 30).
+    list in ``storage``'s cache directory names it (Phase 4 Step 30). Given
+    ``node``, ``/data/karma`` says, for any client, the head of the Karma
+    chain the node follows, and the balance the chain states of the node, or
+    of any identity, and lists the chain's generations, as the Karma module
+    writes them in ``storage``'s data directory (Phase 6 Step 128).
 
     Each of those but reading into a bundle and checking signed content is
     served only to this node's own pages, as a request's ``Referer`` names
@@ -438,6 +448,10 @@ def build_router(  # pylint: disable=too-many-locals,too-many-statements
 
         # Before the bundle route, whose pattern it also fits.
         router.add("GET", SIGNED_PATTERN, signed.read)
+        karma = KarmaReads(storage.karma_dir, node.node_id, retry_after_seconds)
+        router.add("GET", KARMA_PATH, karma.karma)
+        router.add("GET", KARMA_BALANCE_PATTERN, karma.balance)
+        router.add("GET", KARMA_GENERATIONS_PATH, karma.generations)
 
     router.add("GET", SEARCH_PATTERN, search)
     router.add("GET", DROP_SEARCH_PATTERN, search.at_drop)
@@ -878,7 +892,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self.inbound.close()
 
     def _handle(self) -> None:
-        path = urlsplit(self.path).path
+        target = urlsplit(self.path)
+        path = target.path
         body = self._request_body()
 
         if body is None:
@@ -896,6 +911,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             server_address=str(self.connection.getsockname()[0]),
             body=body,
             connection=self.inbound,
+            query=dict(parse_qsl(target.query)),
         )
 
         try:

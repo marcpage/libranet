@@ -295,6 +295,7 @@ when trusted. `self.origin === "null"` tells a page it is sandboxed.
 | `/data/peers` | `GET` | Local | A trusted application's | What the node knows of each peer, and whether it is connected (§6.8) |
 | `/data/archives` | `GET`, `POST` | Local | A trusted application's | Keep content offline, and follow the archives kept (§6.19) |
 | `/data/archives/{archive_id}` | `DELETE` | Local | A trusted application's | Stop keeping an archive (§6.19) |
+| `/data/karma`, `/data/karma/balances/{id}`, `/data/karma/generations` | `GET` | Any | Any, or none | The Karma chain the node follows, and the Karma it states of the node, or of anyone (§6.20) |
 
 ### 5.3 Waiting for Content
 
@@ -1416,6 +1417,33 @@ until the new time without writing it again. `DELETE
 /data/archives/{archive_id}` stops keeping it, as passing `expires` does.
 An archive keeps the node's disk as long as it is kept, so give a time
 unless the person asks to keep it for good.
+
+### 6.20 Karma
+
+An identity's Karma, to a node, is its balance as the Karma chain the node
+follows states it, the same on every node following that chain (HTTP API
+§10.10). Any client may read it. `GET /data/karma` gives the head the node
+follows, and its own balance there:
+
+```json
+{"head": "sha256/…", "generation": 41, "weight": "1208",
+ "node_id": "sha256/…", "balance": {"kismet": "250", "last_won": 40}}
+```
+
+`kismet` is how many Kismet it holds, 10^14 to a Karma, written as decimal
+digits, since a JavaScript number holds no whole number above 2^53 exactly:
+read it with `BigInt`. `last_won` is the generation whose reward last paid
+it, or `null`. `GET /data/karma/balances/{id}` gives anyone's balance, as the
+chain states it at the same head, `{"kismet": "0", "last_won": null}` for
+someone it does not name. `GET /data/karma/generations` lists the newest 100
+generations followed, the newest first, each with its validation block, its
+transaction block, and the chain's weight through them; ask again with
+`?before=` the oldest listed for those before it.
+
+Each answers `503` while the node follows no chain, which is usual on a new
+network, so show that rather than waiting. What the chain states changes
+with each generation the node follows, so read it again rather than keeping
+it.
 
 ## 7. Patterns From the Movie Library
 

@@ -610,7 +610,7 @@ This allows multiple hash algorithms to coexist.
 The names of the other endpoints beneath `/data` are never hash algorithms:
 `search`, `nodes`, `seek`, `client`, `directory`, `imports`, `bundles`,
 `store`, `applications`, `signed`, `drop`, `encrypted`, `users`, `fallback`,
-`session`, `peers`, `trust`, and `archives`.
+`session`, `peers`, `trust`, `archives`, and `karma`.
 
 A path that goes on past `{hash}` does not retrieve an object. It reads into
 the bundle the identifier names (§12.1). That includes an identifier written
@@ -1707,6 +1707,65 @@ The response body is the JSON object above.
 A head told either way is only a pointer. A node follows it only once it
 has fetched the chain the head names and checked that it is heavier than
 its own (Karma Ledger §3.5).
+
+### 10.10 Reading Karma
+
+A node's Karma, and any identity's, is its balance as the chain the node
+follows states it
+([Karma Ledger §5.3](KarmaLedger.md#53-balances-and-reach)): the latest
+stated of it in the head's transaction block, or in those before it as far
+back as that block's reach, or ten blocks, whichever is further. A node
+reads no peer's claim of its own Karma, so there is none to check. Any
+client may read what the chain states, another node as well as a page,
+since a chain is public:
+
+```http
+GET /data/karma
+```
+
+```json
+{"head": "sha256/…", "generation": 41, "weight": "1208",
+ "node_id": "sha256/…", "balance": {"kismet": "250", "last_won": 40}}
+```
+
+`head` is the head the node follows (§10.9), `generation` its generation,
+and `weight` the chain's weight through it, in decimal digits (Karma Ledger
+§3.3). `balance` is the balance of the node, `node_id`, as the chain states
+it at that head: `kismet` is the Kismet it holds, in decimal digits, and
+`last_won` the generation whose reward last paid it, or `null` if none has.
+
+```http
+GET /data/karma/balances/{algorithm}/{hash}
+```
+
+answers the balance of the identity named, as the chain states it at the
+same head, as the JSON object `balance` is above. One the chain does not
+state holds nothing: `{"kismet": "0", "last_won": null}`.
+
+```http
+GET /data/karma/generations?before={g}
+```
+
+lists up to 100 generations of the chain, the newest first: those before
+generation `g`, or, without `before`, the head's and those before it.
+
+```json
+{"generations": [{"generation": 41, "validation": "sha256/…",
+                  "transaction": "sha256/…", "weight": "1208"}, …]}
+```
+
+Each names its winning validation block, the transaction block that
+validates, and the chain's weight through the two. A client reads the whole
+chain by asking again, with the oldest generation listed as `before`, until
+none is listed. A `before` that is not decimal digits is `400 Bad Request`,
+with the problem type `invalid-request` (§17.2).
+
+Each is `503 Service Unavailable` with `Retry-After` while the node follows
+no chain. The first two are also until the node has read the balances at
+its head, which waits for any transaction block they are read from that it
+does not hold, and may name the head before the one `/data/karma/head`
+names until then. None of them is to be cached (`Cache-Control: no-store`),
+since each changes as the head does.
 
 ---
 
@@ -3334,7 +3393,7 @@ These are defined so far, each named by its last segment beneath
 | `invalid-signature` | `401` | A signature that fails verification; the connection is closed (HandshakeProtocol §5.3) |
 | `invalid-list` | `400` | A node list or seek list that is not well-formed (§10.6, §10.7.1) |
 | `credential-required` | `401` | A `/config` request without the credential the node holds (§2.3.1) |
-| `invalid-request` | `400` | A JSON body an endpoint cannot act on: one beneath `/config/api` (§2.3), or of making a drop (§9.6), telling a Karma head (§10.9), making an identity, signing in, making a signed drop, opening an encrypted block, or changing a trust list (§11.3–§11.7), the folders and imports (§12.2), making bundles (§12.3), or an application's store (§13.3) |
+| `invalid-request` | `400` | A JSON body an endpoint cannot act on: one beneath `/config/api` (§2.3), or of making a drop (§9.6), telling a Karma head (§10.9), making an identity, signing in, making a signed drop, opening an encrypted block, or changing a trust list (§11.3–§11.7), the folders and imports (§12.2), making bundles (§12.3), or an application's store (§13.3); or a query an endpoint cannot act on, as a generation to list Karma's before (§10.10) |
 | `unusable-bundle` | `400` or `500` | Content that is not a bundle, or a bundle the node cannot read: `400` when a request named it (§11.5, §11.6, §12.1, §12.3), and `500` when it is an application's (§13) |
 | `bundle-authentication-required` | `401` | A password-protected application, asking for its password (§13.1) |
 | `session-required` | `401` | A request to sign as a person, to open what is encrypted for one, or to read or change their trust, from a browser no one is signed in on (§11.5–§11.7) |
@@ -3746,6 +3805,9 @@ The following table summarizes the currently proposed HTTP API.
 | `/data/seek`                         | `GET`/`POST` | Retrieve/publish outstanding requests                      | Defined |
 | `/data/peers`                        | `GET`        | What the node knows of its peers, locally (§10.8)          | Defined |
 | `/data/karma/head`                   | `GET`/`POST` | Ask for, or tell, the Karma head a node follows (§10.9)    | Defined |
+| `/data/karma`                        | `GET`        | The head followed, and the node's own Karma (§10.10)       | Defined |
+| `/data/karma/balances/{alg}/{hash}`  | `GET`        | An identity's Karma, as the chain followed states (§10.10) | Defined |
+| `/data/karma/generations`            | `GET`        | The generations of the chain followed (§10.10)             | Defined |
 | `/data/{algorithm}/{hash}/{path}`    | `GET`/`HEAD` | Read into a bundle (§12.1)                                 | Defined |
 | `/data/client`                       | `GET`        | Whether the client is local (§2.4)                         | Defined |
 | `/data/drop`                         | `POST`       | Make a drop, from a page of the node (§9.6)                | Defined |

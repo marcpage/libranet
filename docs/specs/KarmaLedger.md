@@ -68,6 +68,13 @@ This version specifies the root (§7), transactions (§4), transaction blocks
 - **Eviction** treats Karma's blocks as any other content
   ([High-Level Design §4.5](HighLevelDesign.md#45-storage-priority-and-eviction)).
   A node that needs a block it no longer holds fetches it again.
+- **What the specifications that use Karma read** as a node's Karma, or
+  any identity's
+  ([Handshake Protocol §5](HandshakeProtocol.md#5-karma-and-connection-management),
+  [HTTP API §10.6](HttpApi.md#106-peer-list-json-schema)), is its balance as
+  the chain this node follows states it (§5.3), which
+  [HTTP API §10.10](HttpApi.md#1010-reading-karma) serves. A node reads no
+  peer's claim of its own Karma, so there is none to check.
 
 ## 3. Generations
 
@@ -1040,10 +1047,6 @@ Not yet specified:
   transaction never expires, and what a node does with a transaction older
   than any block it holds.
 - Early blocks that fill slowly while few identities hold Karma.
-- What the specifications that already use Karma read a node's Karma from
-  ([Handshake Protocol §5](HandshakeProtocol.md#5-karma-and-connection-management),
-  [HTTP API §10.6](HttpApi.md#106-peer-list-json-schema)), and how a node
-  checks what a peer claims.
 - How else Karma and the trust network
   ([Trust Network Specification](TrustNetwork.md)) bear on each other,
   beyond the distrust of builders (§3.8).

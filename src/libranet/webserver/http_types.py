@@ -129,7 +129,8 @@ class Request:  # pylint: disable=too-many-instance-attributes
     the client's connection reached. ``authentication`` is the outcome of
     checking the request's signature, once something has checked it.
     ``connection`` is the connection it arrived on, if the server keeps track
-    of them.
+    of them. ``query`` holds the parameters of the query string, each by its
+    name, the last given of one named more than once.
     """
 
     method: str
@@ -141,6 +142,7 @@ class Request:  # pylint: disable=too-many-instance-attributes
     body: RequestBody = field(default_factory=lambda: RequestBody(0))
     authentication: AuthenticationResult | None = None
     connection: InboundConnection | None = None
+    query: Mapping[str, str] = field(default_factory=dict)
 
     def header(self, name: str) -> str | None:
         """The value of the header ``name``, however it is capitalized, or ``None`` if not sent."""

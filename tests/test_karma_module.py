@@ -497,6 +497,88 @@ def test_a_module_following_no_chain_follows_the_root_it_finds(
     assert made is not None and module.history.head == made
 
 
+def test_a_module_following_no_chain_says_so_in_the_balances_as_it_first_idles(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    module = module_over(storage, queues)
+    module.on_start()
+
+    assert not (storage.karma_dir / "balances.json").exists()
+
+    module.on_idle()
+
+    assert loads((storage.karma_dir / "balances.json").read_bytes()) == {
+        "head": None,
+        "generation": None,
+        "weight": None,
+        "balances": {},
+    }
+
+
+def test_the_balances_the_root_made_states_are_written_with_it(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    module = rooting_module(storage, queues)
+
+    module.handle(root_requested())
+
+    node = NodeIdentity.load(LibranetConfig(storage=storage)).node_id
+    head = module.history.head
+    assert head is not None
+    assert loads((storage.karma_dir / "balances.json").read_bytes()) == {
+        **head.head_value(),
+        "balances": {str(node): {"kismet": "0", "last_won": None}},
+    }
+
+
+def test_balances_whose_block_is_not_held_are_asked_for_and_written_once_it_comes(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    rooting_module(storage, queues).handle(root_requested())
+    made = ChainHistory.open(storage.karma_dir).head
+    assert made is not None
+    (storage.karma_dir / "balances.json").unlink()
+    store = CasStore.source_of_truth(storage)
+    data = store.read(made.transaction)
+    store.delete(made.transaction)
+    published(queues)
+    module = module_over(storage, queues)
+    module.on_start()
+
+    module.on_idle()
+
+    assert made.transaction in asked_for(queues)
+    assert not (storage.karma_dir / "balances.json").exists()
+
+    store.write(made.transaction, data)
+    module.handle(stored(made.transaction))
+    module.on_idle()
+
+    assert loads((storage.karma_dir / "balances.json").read_bytes())["head"] == str(made.validation)
+
+
+def test_balances_that_cannot_be_written_are_logged_and_written_at_the_next_look(
+    storage: StorageConfig, queues: ModuleQueues, caplog: LogCaptureFixture
+) -> None:
+    clock = Clock()
+    module = rooting_module(storage, queues, clock)
+    in_the_way = storage.karma_dir / "balances.json"
+    in_the_way.mkdir()
+
+    with caplog.at_level(ERROR):
+        module.handle(root_requested())
+
+    assert "Cannot write the Karma balances stated at the head" in caplog.text
+
+    in_the_way.rmdir()
+    clock.now += LibranetConfig().karma.look_seconds
+    module.on_idle()
+
+    head = module.history.head
+    assert head is not None
+    assert loads(in_the_way.read_bytes())["head"] == str(head.validation)
+
+
 def test_a_history_that_cannot_be_written_is_logged_and_written_at_the_next_look(
     storage: StorageConfig, queues: ModuleQueues, caplog: LogCaptureFixture
 ) -> None:

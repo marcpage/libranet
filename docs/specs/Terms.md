@@ -1343,10 +1343,12 @@ Libranet's decentralized reputation and contribution accounting system: a token
 measuring a participant's demonstrated contribution to the network, rather than
 money. About 100 trillion Karma are ever issued, each divisible into 10^14
 Kismet. Karma informs how nodes treat one another, but never gates the
-protocol.
+protocol. An identity's Karma, to a node, is its balance as the chain that node
+follows states it.
 
 - **Sources:** [Karma](Karma.md),
-  [Handshake Protocol §5](HandshakeProtocol.md#5-karma-and-connection-management).
+  [Handshake Protocol §5](HandshakeProtocol.md#5-karma-and-connection-management),
+  [HTTP API §10.10](HttpApi.md#1010-reading-karma).
 - **See also:** [Contribution](#contribution),
   [Incentive Layer](#incentive-layer), [Issuance](#issuance),
   [Karma Ledger](#karma-ledger), [Kismet](#kismet), [Reputation](#reputation).

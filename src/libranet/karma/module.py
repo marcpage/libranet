@@ -1,4 +1,4 @@
-"""The Karma module process (Phase 6 Steps 123 to 127).
+"""The Karma module process (Phase 6 Steps 123 to 128).
 
 Every step that has the node act on the Karma ledger (KarmaLedger.md) runs
 here: reading what is placed at a target, following the chain, and
@@ -29,6 +29,12 @@ false, it says::
     data.shunned       {"algorithm", "hash"}
     karma.false_block  {"block", "builder", "staker", "statement"}
 
+Each time its head changes, it writes every balance the chain states there
+to ``balances.json`` in ``storage.karma_dir``, for the web server to read
+(:class:`~libranet.karma.balances.HeadBalances`, Phase 6 Step 128). A block
+those are read from that is not held is asked for, and they are written as
+it next looks once that comes.
+
 While it follows no chain, its operator may have it make a root, from
 ``/config`` (KarmaLedger §7)::
 
@@ -54,6 +60,7 @@ from logging import Logger
 from time import time
 from typing import Callable, ClassVar
 
+from libranet.bundle.errors import BundleError, MissingContentError
 from libranet.bundle.storing import HASH_ALGORITHM, store_object
 from libranet.cas.content_id import ContentId
 from libranet.cas.drops import NonceSearchers
@@ -62,10 +69,11 @@ from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.trust import TrustState
+from libranet.karma.balances import HeadBalances
 from libranet.karma.blocks import BLOCK_BOUNDS, BlockBounds
 from libranet.karma.following import ChainFollower
 from libranet.karma.history import ChainHistory
-from libranet.karma.reading import TargetReader
+from libranet.karma.reading import HeldChain, TargetReader
 from libranet.karma.root import ChainRoot
 from libranet.messaging.envelope import Message
 from libranet.messaging.events import EventType
@@ -111,6 +119,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._bounds = bounds
         self._history: ChainHistory | None = None
         self._follower: ChainFollower | None = None
+        self._balances: HeadBalances | None = None
         # Whether to look at the head's targets as the module next idles,
         # and when to look, whether it idles or not.
         self._look_again = False
@@ -163,11 +172,16 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
     def on_start(self) -> None:
         """Read the history of the chain followed, and write its head.
 
-        It looks at the head's targets as it first idles.
+        It looks at the head's targets, and writes the balances stated at the
+        head, as it first idles.
         """
-        self._history = ChainHistory.open(self._config.storage.karma_dir)
+        karma_dir = self._config.storage.karma_dir
+        self._history = ChainHistory.open(karma_dir)
         self._follower = ChainFollower(
             self._history, self._reader, self.publish, bounds=self._bounds
+        )
+        self._balances = HeadBalances(
+            self._history, HeldChain(self._history, self._reader), karma_dir
         )
         self._look_again = True
         self._next_look_at = self._clock() + self._config.karma.look_seconds
@@ -281,11 +295,13 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             root.generation.validation,
             root.validation.matching_bits,
         )
+        self._write_balances()
 
     def _look(self, *, idle: bool) -> None:
         """Follow the chain on, if it is time to look, or, as the module ``idle``s, to look again.
 
-        A history that cannot be written is logged, and written at the next
+        The balances stated at the head are then written, if it changed. A
+        history that cannot be written is logged, and written at the next
         look.
         """
         now = self._clock()
@@ -301,6 +317,32 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
 
         except OSError as error:
             self.logger.error("Cannot write the history of the Karma chain followed: %s", error)
+
+        self._write_balances()
+
+    def _write_balances(self) -> None:
+        """Write the balances stated at the head, if they were not written at that head.
+
+        A block they are read from that is not held is asked for, and they
+        are written as the module next looks once it comes. Balances that
+        cannot be read or written are logged, and written at the next look.
+        """
+        if self._balances is None:
+            return
+
+        try:
+            if self._balances.write():
+                self.logger.debug("Wrote the Karma balances stated at the head")
+
+        except MissingContentError:
+            # Not logged: what they are read from is asked for, and they are written once it comes.
+            return
+
+        except (BundleError, ValueError) as error:
+            self.logger.error("Cannot read the Karma balances stated at the head: %s", error)
+
+        except OSError as error:
+            self.logger.error("Cannot write the Karma balances stated at the head: %s", error)
 
     def _stored(self, data: bytes, node_id: ContentId) -> None:
         """Store ``data``, made by the node ``node_id``, and announce it unless it was held.
