@@ -2,12 +2,16 @@
 
 A validation block that is unsigned, or states something false by itself,
 is found so as it is read (:meth:`~libranet.karma.blocks.BlockDrop.decoded`).
-What it states against its target is checked here: its ``generation``,
-against the validation block its target is named for; that its stakes name
-one transaction block, at the transaction target of its generation, which
-is correct; and that its ``runner_up`` is another validation block there,
-validating another transaction block. A block stating any of these falsely
-distrusts its builder (§3.8).
+What it states against its target and its chain is checked here: its
+``generation``, against the validation block its target is named for; that
+its stakes name one transaction block, at the transaction target of its
+generation, which is correct; that its ``runner_up`` is another validation
+block there, validating another transaction block; that every stake, each
+staker's together, and the runner-up's stakes its reward would take are
+covered (§6.3); and that it lists no witness an earlier winning validation
+block of its chain lists. A block stating any of these falsely distrusts
+its builder, and a stake that alone exceeds what covers it distrusts its
+staker too (§3.8).
 
 A block stating nothing false may still not be correct: one validating a
 transaction block not full, or one larger than a block may be, each as the
@@ -42,7 +46,7 @@ from libranet.karma.blocks import (
 )
 from libranet.karma.checking import ChainView, TransactionBlockCheck
 from libranet.karma.generations import GenerationTargets
-from libranet.karma.ledger import StakeWeight
+from libranet.karma.ledger import Reward, StakeWeight
 
 
 @dataclass(frozen=True, order=True)
@@ -191,6 +195,73 @@ class _Validating:
             **{identity: validated.balances[identity] for identity in stated},
         }
 
+    def false_cover(self, reward: Reward) -> BlockFinding | None:
+        """What it states falsely of what covers its stakes and its runner-up's, or ``None`` (§6.3).
+
+        What covers an identity is its Kismet as the block it validates
+        leaves it, less what ``reward``'s payout takes from it: the fees of
+        its transactions there, and, if it stakes only in the runner-up, its
+        stakes there too. Each stake must be covered alone, each staker's
+        stakes together, and what is taken of the runner-up's stakers by
+        their balances. A stake that alone is not names its staker too, since
+        that never changes.
+        """
+        builder = self.drop.builder
+        pot = reward.pot()
+        left = {
+            identity: balance.kismet.count - pot.get(identity, Kismet(0)).count
+            for identity, balance in reward.balances.items()
+        }
+        staked: dict[ContentId, int] = {}
+
+        for signed in self.drop.block.stakes:
+            count = signed.stake.kismet.count
+            staker = signed.staker
+
+            if count > left[staker]:
+                return BlockFinding(
+                    f"Stake {signed.hash} is of {count} Kismet, more than the {left[staker]} "
+                    f"that cover {staker}",
+                    builder,
+                    staker,
+                )
+
+            staked[staker] = staked.get(staker, 0) + count
+
+        for staker, count in sorted(staked.items()):
+            if count > left[staker]:
+                return BlockFinding(
+                    f"The stakes of {staker} in a validation block are {count} Kismet, more than "
+                    f"the {left[staker]} that cover them",
+                    builder,
+                )
+
+        short = sorted(identity for identity, count in left.items() if count < 0)
+
+        if short:
+            return BlockFinding(
+                f"A validation block's runner_up holds stakes of {short[0]} that the reward "
+                f"would take, more than its balance covers",
+                builder,
+            )
+
+        return None
+
+    def false_witness(self) -> str:
+        """What it states falsely of its witnesses, or ``""`` (§6.4).
+
+        No witness may be one an earlier winning validation block of its
+        chain lists, of those ``chain`` holds.
+        """
+        for witness in self.drop.block.witnessed:
+            if (generation := self.chain.witnessed(witness)) is not None:
+                return (
+                    f"Transaction {witness} is witnessed already, in generation {generation} "
+                    f"of the chain"
+                )
+
+        return ""
+
 
 @dataclass(frozen=True)
 class ValidationBlockCheck:
@@ -247,7 +318,8 @@ class ValidationBlockCheck:
 
         Returns:
             A :class:`BlockFinding` naming no builder if it is unsigned, and
-            its builder if it states something false; or else the block,
+            its builder if it states something false, with the staker of a
+            stake that alone exceeds what covers it; or else the block,
             correct and scored, or not correct.
 
         Raises:
@@ -407,6 +479,17 @@ class ValidationBlockCheck:
             return BlockFinding(statement, drop.builder)
 
         balances = checking.balances(validated.drop.block, runner_up)
+        reward = Reward(drop.block, drop.builder, validated.drop.block, balances, runner_up)
+        finding = checking.false_cover(reward)
+
+        if finding is not None:
+            return finding
+
+        statement = checking.false_witness()
+
+        if statement:
+            return BlockFinding(statement, drop.builder)
+
         incorrect = cls._incorrect(validated_id, validated, compressed_bytes, bounds)
 
         if incorrect:

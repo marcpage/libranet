@@ -248,8 +248,8 @@ itself, and the chain its `previous` names, prove wrong:
   that validation block; a validation block has no stake, its stakes name
   more than one transaction block or one at another target, or its
   `runner_up` names itself, a block at another target, or one validating
-  the same transaction block; or a block at a `:0` target does not have the
-  root's shape (§7).
+  the same transaction block; or a transaction block at the root's target
+  does not have the root's shape (§7.2).
 - **Against the chain:** its `weight`, payout, or `reach` is wrong, or a
   stated balance's `kismet` or `last_won` is wrong (§5.3), or a sender or
   recipient is left unstated; a transaction overspends its sender, or its
@@ -274,7 +274,8 @@ counting against its builder.
 None of these makes a builder distrusted, since an honest builder can meet
 each one:
 
-- a block judged full or not full, or near 1 MiB or not (§5.4), since
+- a block judged full or not full, or near 1 MiB or not (§5.4), or a
+  validation block naming a transaction block judged not full, since
   copies of a block compressed otherwise measure otherwise;
 - the half-free rule broken in a block that is not full and that no
   validation block names (§5.6);
@@ -291,6 +292,8 @@ each one:
 - a balance of 0 stated for an identity that holds 0 and that the block's
   transactions do not name, which makes the block incorrect (§5.3, §5.5)
   but states nothing untrue;
+- a validation block at `karma validation:0` that is not the root's, which
+  a reader passes over (§7.3), since anyone may place a root (§7.5);
 - a block on a chain the node has not fetched and checked, which it judges
   only once it has.
 

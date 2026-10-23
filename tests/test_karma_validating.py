@@ -398,6 +398,7 @@ def test_a_block_of_another_generation_than_its_target_is_false(
 
     assert isinstance(found, BlockFinding)
     assert found.builder == bob.node_id
+    assert found.staker is None
     assert '"generation" must be 2' in found.statement
 
 
@@ -540,6 +541,133 @@ def test_a_block_larger_than_a_block_may_be_is_not_correct(
     assert check.incorrect == "A validation block must be at most 1000 bytes compressed, got 1001"
 
 
+def test_a_stake_alone_exceeding_what_covers_it_names_its_staker(
+    bob: NodeIdentity,
+    carol: NodeIdentity,
+    chain: ChainInMemory,
+    keys: dict[ContentId, bytes],
+    transactions: dict[ContentId, TransactionBlockCheck | BlockFinding],
+) -> None:
+    # Bob holds the 300 Kismet Alice paid him.
+    too_much = staked(bob, SECOND_ID, 301)
+
+    found = checked(validation_of(too_much), carol, chain, keys, transactions)
+
+    assert isinstance(found, BlockFinding)
+    assert found.builder == carol.node_id
+    assert found.staker == bob.node_id
+    assert found.statement == (
+        f"Stake {too_much.hash} is of 301 Kismet, more than the 300 that cover {bob.node_id}"
+    )
+
+
+def test_a_stakers_stakes_exceeding_what_covers_them_together_name_no_staker(
+    bob: NodeIdentity,
+    carol: NodeIdentity,
+    chain: ChainInMemory,
+    keys: dict[ContentId, bytes],
+    transactions: dict[ContentId, TransactionBlockCheck | BlockFinding],
+) -> None:
+    stakes = (staked(bob, SECOND_ID, 200), staked(bob, SECOND_ID, 200, created=moment(1)))
+
+    found = checked(validation_of(*stakes), carol, chain, keys, transactions)
+
+    assert isinstance(found, BlockFinding)
+    assert found.builder == carol.node_id
+    assert found.staker is None
+    assert found.statement.startswith(f"The stakes of {bob.node_id} in a validation block are 400")
+
+
+@mark.parametrize("over, correct", [(0, True), (1, False)])
+def test_a_stakers_fees_in_the_block_it_stakes_on_do_not_cover_its_stakes(
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    chain: ChainInMemory,
+    keys: dict[ContentId, bytes],
+    sent: SignedTransaction,
+    over: int,
+    correct: bool,
+) -> None:
+    paid = paying(alice, {DAVE: 5}, fee=7, created=moment(3))
+    block = block_on(chain, sent, paid)
+    covered = block.balances[alice.node_id].kismet.count - 7
+    staking = validation_of(staked(alice, SECOND_ID, covered + over))
+    at_target = {SECOND_ID: transaction_check(block, alice, chain, keys)}
+
+    check = checked(staking, bob, chain, keys, at_target)
+
+    if correct:
+        assert isinstance(check, ValidationBlockCheck)
+        assert check.is_correct
+
+    else:
+        assert isinstance(check, BlockFinding)
+        assert check.staker == alice.node_id
+
+
+@mark.parametrize(
+    "paid_there, taken, correct",
+    [
+        # Covered by Bob's 300 in this block's transaction block, though not
+        # by the 100 the runner-up's gives him.
+        (100, 200, True),
+        # Covered by the 500 the runner-up's gives him, though not by the 300
+        # of this block's.
+        (500, 400, False),
+    ],
+)
+def test_a_runner_ups_stakes_taken_are_covered_by_this_blocks_transaction_block(
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    carol: NodeIdentity,
+    chain: ChainInMemory,
+    keys: dict[ContentId, bytes],
+    transactions: dict[ContentId, TransactionBlockCheck | BlockFinding],
+    paid_there: int,
+    taken: int,
+    correct: bool,
+) -> None:
+    other = block_on(chain, paying(alice, {bob.node_id: paid_there}, created=moment(4)))
+    at_target = {
+        **transactions,
+        OTHER_ID: transaction_check(other, alice, chain, keys, block_id=OTHER_ID),
+    }
+    rival = holding(chain, carol, validation_of(staked(bob, OTHER_ID, taken)))
+    naming = validation_of(staked(alice, SECOND_ID, 1_000), runner_up=RUNNER_UP_ID)
+
+    check = checked(naming, alice, rival, keys, at_target)
+
+    if correct:
+        assert isinstance(check, ValidationBlockCheck)
+        assert check.score == ValidationScore(6, 1_000)
+
+    else:
+        assert isinstance(check, BlockFinding)
+        assert check.builder == alice.node_id
+        assert check.staker is None
+        assert f"runner_up holds stakes of {bob.node_id}" in check.statement
+
+
+def test_a_runner_up_staker_with_a_stake_in_this_block_loses_nothing(
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    carol: NodeIdentity,
+    chain: ChainInMemory,
+    keys: dict[ContentId, bytes],
+    transactions: dict[ContentId, TransactionBlockCheck | BlockFinding],
+    validation: ValidationBlock,
+) -> None:
+    # A runner-up need not be correct.
+    at_target = {**transactions, OTHER_ID: BlockFinding("It is false", alice.node_id)}
+    rival = holding(chain, carol, validation_of(staked(bob, OTHER_ID, 1_000_000)))
+    naming = replace(validation, runner_up=RUNNER_UP_ID)
+
+    check = checked(naming, alice, rival, keys, at_target)
+
+    assert isinstance(check, ValidationBlockCheck)
+    assert check.is_correct
+
+
 def test_a_block_naming_a_rival_at_its_target_as_its_runner_up_is_correct(
     alice: NodeIdentity,
     bob: NodeIdentity,
@@ -605,6 +733,35 @@ def test_a_block_waits_for_its_runner_up(
         checked(naming, alice, chain, keys, transactions)
 
     assert raised.value.content_ids == (RIVAL,)
+
+
+@mark.parametrize("listed", [True, False])
+def test_a_witness_an_earlier_winning_block_of_its_chain_lists_is_false(
+    bob: NodeIdentity,
+    chain: ChainInMemory,
+    keys: dict[ContentId, bytes],
+    sent: SignedTransaction,
+    transactions: dict[ContentId, TransactionBlockCheck | BlockFinding],
+    validation: ValidationBlock,
+    listed: bool,
+) -> None:
+    # Unlisted, it is as on another fork, whose validation block 1 lists it:
+    # that fork is not this chain.
+    witnesses = {sent.hash: 1} if listed else {}
+    listing = replace(validation, witnessed=(sent.hash,))
+
+    check = checked(listing, bob, replace(chain, witnesses=witnesses), keys, transactions)
+
+    if listed:
+        assert isinstance(check, BlockFinding)
+        assert check.builder == bob.node_id
+        assert check.statement == (
+            f"Transaction {sent.hash} is witnessed already, in generation 1 of the chain"
+        )
+
+    else:
+        assert isinstance(check, ValidationBlockCheck)
+        assert check.is_correct
 
 
 @fixture(scope="module")
