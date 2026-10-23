@@ -398,8 +398,15 @@ def test_the_root_made_is_correct_at_both_its_targets(
     module = rooting_module(storage, queues)
     module.handle(root_requested())
     chain = HeldChain(module.history, module.reader)
+    root = module.history.generation(0)
 
-    (transaction,) = module.reader.read(ROOT.transaction, TransactionBlock)
+    # The node's key, or the root's other drop, shares as many bits with a
+    # target by chance about once in 2 ** SEARCH_MIN_BITS, and is read there too.
+    (transaction,) = [
+        held
+        for held in module.reader.read(ROOT.transaction, TransactionBlock)
+        if held.block_id == root.transaction
+    ]
     checked = TransactionBlockCheck.of(
         transaction.block_id,
         transaction.data,
@@ -409,7 +416,11 @@ def test_the_root_made_is_correct_at_both_its_targets(
         compressed_bytes=transaction.compressed_bytes,
         bounds=BOUNDS,
     )
-    (validation,) = module.reader.read(ROOT.validation, ValidationBlock)
+    (validation,) = [
+        held
+        for held in module.reader.read(ROOT.validation, ValidationBlock)
+        if held.block_id == root.validation
+    ]
     validated = ValidationBlockCheck.of(
         validation.block_id,
         validation.data,
@@ -423,10 +434,6 @@ def test_the_root_made_is_correct_at_both_its_targets(
 
     assert isinstance(checked, TransactionBlockCheck) and checked.is_correct
     assert not isinstance(validated, BlockFinding) and validated.is_correct
-    assert (transaction.block_id, validation.block_id) == (
-        module.history.generation(0).transaction,
-        module.history.generation(0).validation,
-    )
 
     for held, target in ((transaction, ROOT.transaction), (validation, ROOT.validation)):
         assert matching_bits(target.hex, held.block_id.hash) >= SEARCH_MIN_BITS
