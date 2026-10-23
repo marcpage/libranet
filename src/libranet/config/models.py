@@ -827,8 +827,7 @@ class KarmaConfig(_Section):
     # What share of the Karma the chain states the node holds each of its
     # payments is, in percent, rounded down to whole Kismet (KarmaLedger
     # §4.6, Phase 6 Step 132). It is read as the decimal it is written as, so
-    # that every payment is exact to the Kismet. At 0.01%, a node holding
-    # under 10,000 Kismet pays nothing.
+    # that every payment is exact to the Kismet.
     payment_percent: float = Field(default=0.01, gt=0, le=100)
 
     # How many of the node's payments the Karma module queues before it puts

@@ -79,8 +79,7 @@ class Payment:
         """The payment to ``recipient`` of ``percent`` of ``balance``, or ``None`` if it is 0.
 
         It is rounded down to whole Kismet, ``percent`` read as the decimal
-        it is written as, so that it is exact: 0.01% is 0 under 10,000
-        Kismet.
+        it is written as, so that it is exact.
         """
         amount = Kismet(balance.count * Fraction(str(percent)) // 100)
         return None if amount == Kismet(0) else cls(recipient, amount)
@@ -341,9 +340,7 @@ class NodePayments:  # pylint: disable=too-many-instance-attributes
             _LOGGER.error("Cannot queue the node's Karma payment to %s: %s", recipient, error)
             return None
 
-        _LOGGER.debug(
-            "Queued the node's Karma payment of %s Kismet to %s", payment.amount.value(), recipient
-        )
+        _LOGGER.debug("Queued paying %s %s Kismet", recipient, payment.amount.value())
         return payment
 
     def put_up(self) -> None:

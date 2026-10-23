@@ -2252,7 +2252,7 @@ recipients summed; the queue, and a transaction made from it, kept across
 a restart, with its `created`.
 
 It came to 499 added lines of non-test Python, with 18 changed or removed,
-against an estimate of 300, and 646 lines of tests, so it was built as one
+against an estimate of 300, and 673 lines of tests, so it was built as one
 change set.
 
 What was built:
