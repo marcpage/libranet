@@ -231,7 +231,7 @@ through the dispatcher.
 | 7 | Unbundler | `unbundler` | `UnbundlerModule` | Resolves application files' entries from their bundles on demand, and deletes unused ones |
 | 8 | Eviction | `eviction` | `EvictionModule` | Keeps storage within its limits |
 | 9 | Backup | `backup` | `BackupModule` | Backs directories up as bundles; restores, builds, and exports bundles |
-| 10 | Karma | `karma` | `KarmaModule` | Follows the Karma ledger; for now, keeps the history of the chain it follows |
+| 10 | Karma | `karma` | `KarmaModule` | Follows the Karma ledger; for now, keeps the history of the chain it follows, and makes a root when asked |
 
 The supervisor launches them in this order, taken from `SPAWNED_MODULES`,
 but waits only for the dispatcher to be ready. No module waits for another
@@ -396,22 +396,27 @@ archives under way are kept in memory only.
 
 #### 3.2.9 Karma
 
-Where the node acts on the Karma ledger (KarmaLedger.md): reading what is
-placed at a target, following the chain, and mining, building, and checking
-blocks, each a step of Phase 6 to come. That is hours of hashing and
-thousands of signatures a generation, so it runs in a process of its own,
-rather than on the web server's threads, and a restart of either leaves the
-other running (Phase 6 Step 123). For now it only keeps the history of the
-chain it follows, in `karma/` in the data directory, which it reads as it
-starts (`ChainHistory`, `karma/history.py`): the genealogy, a file for each
-generation, and the head, for the web server to read. It reads what is
-placed at a target through `TargetReader` (`karma/reading.py`, Phase 6 Step
-124), which nothing it does yet calls for. Reading a target publishes
-`data.search_requested`, and each miss `data.not_found`. The reader keeps
-what peers name, in `data.search_answered`, at a target it reads, and asks
-at once for what it lacks; it stops waiting for content as `data.stored`
-names it, and gives up on what has not come within
-`karma.fetch_wait_seconds` as the module idles.
+Where the node acts on the Karma ledger (KarmaLedger.md): reading what is placed
+at a target, following the chain, and mining, building, and checking blocks,
+each a step of Phase 6 to come. That is hours of hashing and thousands of
+signatures a generation, so it runs in a process of its own, rather than on the
+web server's threads, and a restart of either leaves the other running (Phase 6
+Step 123). For now it keeps the history of the chain it follows, in `karma/` in
+the data directory, which it reads as it starts (`ChainHistory`,
+`karma/history.py`): the genealogy, a file for each generation, and the head,
+which the web server reads (`KarmaHead`, `protocol/karma_head.py`). It reads
+what is placed at a target through `TargetReader` (`karma/reading.py`, Phase 6
+Step 124), which nothing it does yet calls for. Reading a target publishes
+`data.search_requested`, and each miss `data.not_found`. The reader keeps what
+peers name, in `data.search_answered`, at a target it reads, and asks at once
+for what it lacks; it stops waiting for content as `data.stored` names it, and
+gives up on what has not come within `karma.fetch_wait_seconds` as the module
+idles. While it follows no chain, `karma.root_requested`, which `/config`
+publishes, has it make a root, as the node (`ChainRoot`, `karma/root.py`, Phase
+6 Step 125): it mines the root transaction, searches for each drop's nonce with
+`karma.mining_processes` processes, stores both drops straight into `cas/data`,
+as the backup module stores what it makes, announces each with `data.stored`,
+and then follows the root.
 
 ### 3.3 What Each Module Owns
 
@@ -427,13 +432,14 @@ names it, and gives up on what has not come within
 | The application registry | Web server | — |
 | Applications' stores in `store/` | Web server | — |
 | Backup jobs and the backup secret | Backup | The web server publishes `backup.*` requests |
-| The Karma history in `karma/` | Karma | — |
+| The Karma history in `karma/` | Karma | The web server reads its head, `head.json`; `/config` publishes `karma.root_requested` |
 | The search cache in `search/` | Web server | Stats rewrites a cached result to add identifiers |
 
 Adding to `cas/data` is shared more widely than promoting into it: the
-validator, the backup module, the web server and connection manager (for
-peers' public keys only), and the supervisor (for this node's own public
-key) all write there. Every module reads from it.
+validator, the backup module, the Karma module (for the blocks it makes),
+the web server and connection manager (for peers' public keys only), and
+the supervisor (for this node's own public key) all write there. Every
+module reads from it.
 
 ## 4. Process Lifecycle
 
@@ -664,7 +670,7 @@ What each module does in them:
 | Unbundler | — | — | — |
 | Eviction | Read the node id; count storage; ask which peers are connected; say whether storage is full; evict if over | Say whether storage is full, if that changed; time out hand-offs and questions; resume after a pause | — |
 | Backup | Read the node id; ask whether storage is full; read the jobs; report state | Carry on the next restore, build, export, import, or backup due | — |
-| Karma | Read the history; write its head | Give up on content waited for too long | — |
+| Karma | Read the history; write its head | Give up on content waited for too long | Stop the processes searching for nonces |
 
 ### 5.3 Writing a Module
 
@@ -897,7 +903,7 @@ to end its loop.
 | `data.search_answered` | | P | | S | | | | | S |
 | *Writing and validation* | | | | | | | | | |
 | `data.put_completed` | P | P | S | | | | | | |
-| `data.stored` | P | P S | P | S | | S | S | P S | S |
+| `data.stored` | P | P S | P | S | | S | S | P S | P S |
 | `data.rejected` | | | P | S | | | | | |
 | *Peers and their lists* | | | | | | | | | |
 | `nodes.received` | P | P S | | S | | | | | |
@@ -952,14 +958,17 @@ to end its loop.
 | `storage.full` | | | | | | | P | S | |
 | *Shunned content* | | | | | | | | | |
 | `data.shunned` | P | | | S | | | S | | |
+| *Karma* | | | | | | | | | |
+| `karma.root_requested` | P | | | | | | | | S |
 | *Lifecycle* | | | | | | | | | |
 | `shutdown` | S | S | S | S | S | S | S | S | S |
-| **Publishes / subscribes** | 21 / 5 | 16 / 9 | 2 / 1 | 5 / 23 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 | 2 / 2 |
+| **Publishes / subscribes** | 22 / 5 | 16 / 9 | 2 / 1 | 5 / 23 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 | 3 / 3 |
 
 The `shutdown` row and its subscriptions are implicit: every module
 receives it without listing it, and nothing publishes it (§6.4). The totals
-leave it out. The Karma module publishes only as it reads a target, which
-nothing it does yet calls for (Phase 6 Step 124).
+leave it out. The Karma module publishes searches and misses only as it
+reads a target, which nothing it does yet calls for (Phase 6 Step 124), and
+`data.stored` only for a root it makes (Phase 6 Step 125).
 
 ### 7.2 Payloads
 
@@ -1019,6 +1028,7 @@ A content id is an `algorithm` and a lower-case hex `hash`, or, in
 | `storage.full_requested` | — | Say whether storage is full now |
 | `storage.full` | `full` | Whether one more object of `storage.max_object_bytes` would take storage past a limit, so that content this node creates waits |
 | `data.shunned` | `algorithm`, `hash` | This node will not hold this content, for good |
+| `karma.root_requested` | — | The operator asked on `/config` for a Karma root; make one, as the node, and follow it, unless a chain is followed already |
 | `shutdown` | — | Leave the receive loop |
 
 ### 7.3 Who Talks to Whom
@@ -1038,6 +1048,7 @@ flowchart TB
     web["Web server"]
     unb["Unbundler"]
     backup["Backup"]
+    karma["Karma"]
     val["Validator"]
     fetch["Fetcher"]
     conn["Connection manager"]
@@ -1051,16 +1062,21 @@ flowchart TB
     web -->|"data.put_completed"| val
     web <-->|"data.search_requested, address.dial_requested, node.trust<br/>address.dialed"| conn
     web <-->|"node.trust_requested<br/>node.trust_stored"| stats
+    web -->|"karma.root_requested"| karma
+    karma <-->|"data.search_requested<br/>data.search_answered"| conn
     conn -->|"data.put_completed"| val
     val --> stored
     backup --> stored
+    karma --> stored
     stored --> conn
     stored --> evict
     stored --> backup
     stored --> unb
+    stored --> karma
     web --> missing
     unb --> missing
     backup --> missing
+    karma --> missing
     missing --> fetch
     fetch <-->|"fetch.requested<br/>fetch.succeeded, fetch.failed"| conn
     evict <-->|"eviction.notice, peers.connected_requested<br/>eviction.acknowledged, peers.connected"| conn
@@ -1280,7 +1296,7 @@ data moves through files, and a message tells the reader where to look.
 | File or directory | Written by | Read by | Announced by |
 | --- | --- | --- | --- |
 | `incoming/{algorithm}-{node}/` | Web server, for uploads, and for the bundles local clients make, as this node's; connection manager, for fetched content | Validator, which deletes each | `data.put_completed` |
-| `cas/data/` | Validator; backup; web server and connection manager, peers' keys only; supervisor, this node's key | Every module | `data.stored` |
+| `cas/data/` | Validator; backup; Karma, the blocks it makes; web server and connection manager, peers' keys only; supervisor, this node's key | Every module | `data.stored` |
 | `cas/data/`, deletions | Eviction | — | `data.deleted` |
 | `cas/resolved/` | Unbundler; the web server deletes an entry it cannot read | Web server | `app.path_resolved`, `resolved.reclaimed` |
 | `lists/candidates.json` | Stats | Connection manager | `nodes.updated` |
@@ -1294,8 +1310,8 @@ data moves through files, and a message tells the reader where to look.
 | `store/` | Web server | Web server | — |
 | `backup_jobs.json` | Backup | Backup | — |
 | `backup_jobs/` | Backup | Backup | — |
-| `karma/` | Karma | Karma | — |
-| `keys/` | Supervisor; backup; web server | Modules that need them, in `on_start` | — |
+| `karma/` | Karma | Karma; web server, `head.json` | Nothing; read when needed |
+| `keys/` | Supervisor; backup; web server | Modules that need them, in `on_start`; Karma, as it makes a root | — |
 | The folders `local.folders` offers | — | Web server, listing them and finding a file to import; backup, reading that file | `backup.import_requested`, which names the file |
 
 Two things make sharing these safe without locks. Every file is replaced
@@ -1396,7 +1412,7 @@ side recovers:
 | Unbundler | Directories held in memory; paths waiting on content; a reclaim in progress | Directories are read back from each bundle's saved `directory.jzon`; a request waiting on a path forgotten is answered `503`, and its retry asks again; eviction times out the reclaim |
 | Eviction | Hand-offs under way; its list of candidates; which peers are connected | It counts storage again at start, says whether storage is full, asks which peers are connected, and asks stats again |
 | Backup | Restores, builds, exports, and imports; messages set aside while it stored content | They must be asked for again; jobs are read back from `backup_jobs.json`; it asks whether storage is full |
-| Karma | Content it waited for; what peers named at the targets it read | The history is read back from `karma/`, and its head written again; what it lacks is asked for again as it next reads |
+| Karma | Content it waited for; what peers named at the targets it read; a root it was making | The history is read back from `karma/`, and its head written again; what it lacks is asked for again as it next reads; a root is asked for again on `/config`, as the node follows none |
 | Dispatcher | Messages it had read but not yet delivered, and those it held for a full inbox | Nothing recovers them; no module is started until it is back |
 
 ## 11. Testing Modules

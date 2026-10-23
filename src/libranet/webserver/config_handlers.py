@@ -88,6 +88,13 @@ this node does not connect to was reached ``403``, and one where no node was
 reached ``502``, each saying why (Phase 5 Step 113). No answer in time is ``504``: the dial
 may still reach the node, which the nodes application then shows.
 
+``POST /config/api/karma/root``, with no body, has the Karma module make a
+root, and follow it (KarmaLedger §7, Phase 6 Step 125), as the backup
+endpoints have the backup module work: it publishes ``karma.root_requested``
+and answers ``202`` at once, as mining the root takes a minute or more. While
+the node follows a chain, as the head the Karma module writes says
+(:mod:`libranet.protocol.karma_head`), it is ``409``, and publishes nothing.
+
 ``GET /config/api`` names the endpoints, so a client has somewhere to start.
 A browser has the ``/config`` application instead, served like any other
 (see :mod:`libranet.webserver.app_handler`).
@@ -104,6 +111,7 @@ from __future__ import annotations
 from dataclasses import KW_ONLY, dataclass
 from http import HTTPStatus
 from logging import getLogger
+from pathlib import Path
 from re import escape
 from typing import Any, Callable, Final, Protocol
 
@@ -134,6 +142,7 @@ from libranet.protocol.backup_requests import (
 )
 from libranet.protocol.dial_requests import DialRequest
 from libranet.protocol.http_syntax import API_PREFIX
+from libranet.protocol.karma_head import KarmaHead
 from libranet.webserver.app_registry import CONFIG_APPLICATION, Application, ApplicationRegistry
 from libranet.webserver.backup_state import BackupState
 from libranet.webserver.dial_outcomes import DialOutcomes, DialReport
@@ -171,6 +180,7 @@ METADATA_PATH: Final = CONFIG_API_PATH + "/metadata"
 CONNECTIONS_PATH: Final = CONFIG_API_PATH + "/connections"
 CONFIG_TRUST_PATH: Final = CONFIG_API_PATH + "/trust"
 CONNECTING_PATH: Final = CONFIG_API_PATH + "/connecting"
+KARMA_ROOT_PATH: Final = CONFIG_API_PATH + "/karma/root"
 BACKUP_JOB_PATTERN: Final = BACKUPS_PATH + rf"/(?P<job_id>[0-9a-fA-F]{{{IDENTIFIER_LENGTH}}})"
 BACKUP_RUN_PATTERN: Final = BACKUP_JOB_PATTERN + "/run"
 APPLICATION_PATTERN: Final = APPLICATIONS_PATH + "/(?P<name>[^/]+)"
@@ -239,6 +249,11 @@ ENDPOINTS: Final = (
         "method": "PUT",
         "path": CONNECTING_PATH,
         "description": "Connect only to the nodes this node trusts, or not",
+    },
+    {
+        "method": "POST",
+        "path": KARMA_ROOT_PATH,
+        "description": "Start a Karma ledger, making its root",
     },
 )
 
@@ -578,6 +593,48 @@ class ConnectHandler:
         )
 
 
+@dataclass(frozen=True)
+class KarmaRootHandler:
+    """``POST /config/api/karma/root``: have the Karma module make a root, and follow it.
+
+    It is ``409`` while the node follows a chain, as the head the Karma
+    module writes in ``karma_dir`` says (KarmaLedger §7.5). A head that
+    cannot be read is logged, and the module, which makes no root while it
+    follows a chain, left to tell.
+    """
+
+    publish: Publish
+    karma_dir: Path
+
+    def __call__(self, request: Request) -> Response:
+        body = body_or_refusal(request)
+
+        if isinstance(body, Response):
+            return body
+
+        try:
+            head = KarmaHead.read(self.karma_dir)
+
+        except (OSError, ValueError) as error:
+            _LOGGER.warning(
+                "The Karma head could not be read, so the Karma module is left to tell whether "
+                "it follows a chain: %s",
+                error,
+            )
+            head = KarmaHead()
+
+        if head.follows:
+            return status_response(
+                request,
+                HTTPStatus.CONFLICT,
+                f"This node follows the Karma chain through generation {head.generation}, head "
+                f"{head.head}, so it makes no root.",
+            )
+
+        self.publish(EventType.KARMA_ROOT_REQUESTED, {})
+        return Response(HTTPStatus.ACCEPTED)
+
+
 def _not_registered_response(request: Request) -> Response:
     """The ``404`` for a path naming no registered application."""
     return status_response(
@@ -602,14 +659,15 @@ def config_routes(  # pylint: disable=too-many-locals
     connect: Handler | None = None,
     trust: OwnTrust | None = None,
     connecting: Connecting | None = None,
+    karma_root: Handler | None = None,
 ) -> tuple[tuple[str, str, Handler], ...]:
     """Every ``/config/api`` route, as ``(method, pattern, handler)`` in route order.
 
     ``users`` makes a person's identity, ``metadata`` reads and changes what
     this node says of itself, ``connect`` connects to a node at an address,
-    ``trust`` reads and changes this node's trust list, and ``connecting``
-    whether it connects only to the nodes it trusts. Without one of them, no
-    route does what it does.
+    ``trust`` reads and changes this node's trust list, ``connecting``
+    whether it connects only to the nodes it trusts, and ``karma_root``
+    starts a Karma ledger. Without one of them, no route does what it does.
     """
     configure = BackupRequestHandler(
         publish, BackupJobRequest.from_value, EventType.BACKUP_JOB_CONFIGURED, "job_id"
@@ -666,6 +724,7 @@ def config_routes(  # pylint: disable=too-many-locals
                 ("PUT", CONNECTING_PATH, connecting.change),
             )
         ),
+        *(() if karma_root is None else (("POST", KARMA_ROOT_PATH, karma_root),)),
     )
     return tuple(
         (method, _CONFIG_SEGMENT + pattern.removeprefix(f"/{CONFIG_APPLICATION}"), handler)

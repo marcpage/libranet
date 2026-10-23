@@ -240,6 +240,7 @@ curl -u admin:secret -e http://127.0.0.1:8180/config/ \
 | `GET` | `/config/api/trust` | Whom this node trusts (§4.7) |
 | `PUT`, `DELETE` | `/config/api/trust/{algorithm}/{hash}` | Trust or distrust an identity as this node, or neither (§4.7) |
 | `GET`, `PUT` | `/config/api/connecting` | Whether this node connects only to the nodes it trusts (§4.7) |
+| `POST` | `/config/api/karma/root` | Start a Karma ledger (§4.8) |
 
 A backup, restore, build, or export is answered `202` at once, with the id
 it is known by, and its `GET` says how it is doing. Restores, builds, and
@@ -387,6 +388,28 @@ curl -u admin:secret -e http://127.0.0.1:8180/config/ \
 
 Each is answered with what the node does now, `{"only_trusted": true}`. The
 choice is kept in `connecting.json` in the data directory (§2.3).
+
+### 4.8 Starting a Karma Ledger
+
+The nodes of a network keep a ledger of Karma together, which begins with a
+root. A new network has none until one node places it, and every node then
+follows the chain built on it. Place one on one node of a new network only,
+and only if no node of it has: a node that places a second root follows
+that, apart from the rest, until one chain outweighs the other. There is no
+button for it on the page yet. From a script:
+
+```bash
+curl -u admin:secret -e http://127.0.0.1:8180/config/ \
+  -X POST http://127.0.0.1:8180/config/api/karma/root
+```
+
+It is answered `202` at once. The node then mines the root, which takes
+about half a minute on one core, as `karma.mining_processes` gives it (§3),
+though it may take several times that. It places the root's two blocks, and
+follows the chain on it, as `libranet-karma.log` (§7.2) says once it is done.
+`karma/head.json` in the data directory (§2.3) then names the root's
+validation block as the head, in generation 0. It is `409`, and places no
+root, while the node follows a chain.
 
 ## 5. Backing Up and Restoring
 
@@ -720,7 +743,7 @@ without taking the node down.
 | Unbundler | Resolves a directory bundle's files on demand for application paths |
 | Eviction | Watches free space and hands off low-priority content before deleting it |
 | Backup | Turns local directories into encrypted bundles, and restores them; builds and exports bundles, and imports files |
-| Karma | Follows the Karma ledger; for now, keeps the history of the chain it follows |
+| Karma | Follows the Karma ledger; for now, keeps the history of the chain it follows, and starts one when asked (§4.8) |
 
 Keeping the web server minimal is deliberate: the process exposed to the
 network does not validate uploads, fetch, evict, or resolve applications'

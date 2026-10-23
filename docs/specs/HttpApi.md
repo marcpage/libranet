@@ -306,6 +306,27 @@ which also has the application's pages load what they use only from
 `/config`'s own origin, inline scripts and styles aside, and send their
 forms only to it.
 
+#### 2.3.4 Starting a Karma Ledger
+
+A Karma ledger begins with a root, which anyone may place
+([Karma Ledger §7](KarmaLedger.md#7-the-root)). On a network that has none,
+a node's operator has the node place one:
+
+```http
+POST /config/api/karma/root
+```
+
+with no body. The node makes the root as itself, signing its transaction,
+its stake, and both its blocks with its own key, and places each block's
+drop sharing at least as many bits with its target as its search returns
+(§6), then follows the chain on it. Mining the root takes a while, so the
+node answers `202 Accepted` at once, with no body, and makes it after.
+While it follows a chain, it answers `409 Conflict`, and places none: a
+rival root is no error (Karma Ledger §7.5), but a node following a chain
+has no reason to place one. A node places a root only when its operator
+asks, since were each node of a new network to place its own, all but one
+would be outweighed.
+
 ### 2.4 Local Clients
 
 A local client is one whose connecting (source) address is a loopback

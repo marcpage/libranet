@@ -6,8 +6,9 @@ is resolved, search prefixes and the cached search responses, the
 request bodies the backup module acts on, the bundles local
 clients ask the web server to make, the drops pages ask it to make, signed,
 encrypted, or neither, the identities and sign-ins local clients ask for,
-the changes to a trust list they ask for, and the addresses an operator asks
-the node to connect to are each defined once, here.
+the changes to a trust list they ask for, the addresses an operator asks
+the node to connect to, and the head of the Karma chain the node follows,
+as the Karma module writes it, are each defined once, here.
 No module package imports another; what two modules share is here, in
 :mod:`libranet.messaging`, or in a library package below them both.
 """
@@ -63,6 +64,12 @@ from libranet.protocol.identity_requests import (
     IdentityRequest,
     SignInRequest,
 )
+from libranet.protocol.karma_head import (
+    GENERATION_FIELD,
+    HEAD_FIELD,
+    KARMA_HEAD_FILE,
+    KarmaHead,
+)
 from libranet.protocol.lists import (
     NODES_PATH,
     SEEK_PATH,
@@ -93,8 +100,11 @@ __all__ = [
     "BODILESS_STATUSES",
     "CRLF",
     "DEFAULT_PORTS",
+    "GENERATION_FIELD",
+    "HEAD_FIELD",
     "IDENTIFIER_LENGTH",
     "JSON_CONTENT_TYPE",
+    "KARMA_HEAD_FILE",
     "LOCALHOST",
     "MIN_PASSWORD_CHARACTERS",
     "NODES_PATH",
@@ -123,6 +133,7 @@ __all__ = [
     "ImportRequest",
     "InvalidListError",
     "InvalidRequestError",
+    "KarmaHead",
     "LocalSearch",
     "NodeListSender",
     "NodeMetadataRequest",

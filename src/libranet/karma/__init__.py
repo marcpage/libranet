@@ -9,9 +9,9 @@ generation: balances, reach, the pot, and shares (Phase 6 Step 120);
 checking a transaction block against its target and its chain (Phase 6
 Step 121); checking a validation block, and choosing a generation's best
 (Phase 6 Step 122); the history of the chain the Karma module follows,
-which runs in a process of its own (Phase 6 Step 123); and reading what is
+which runs in a process of its own (Phase 6 Step 123); reading what is
 placed at a target, and the chain the module follows as a check reads it
-(Phase 6 Step 124).
+(Phase 6 Step 124); and making a chain's root (Phase 6 Step 125).
 """
 
 from libranet.karma.amounts import KISMET_PER_KARMA, MAX_KISMET, Kismet, decimal_count
@@ -60,6 +60,7 @@ from libranet.karma.members import (
 )
 from libranet.karma.module import KarmaModule
 from libranet.karma.reading import HeldBlock, HeldChain, TargetReader
+from libranet.karma.root import ChainRoot
 from libranet.karma.stakes import SignedStake, Stake
 from libranet.karma.transactions import Payout, SignedTransaction, Transaction, TransactionKey
 from libranet.karma.validating import ValidationBlockCheck, ValidationScore
@@ -87,6 +88,7 @@ __all__ = [
     "BlockScore",
     "ChainGeneration",
     "ChainHistory",
+    "ChainRoot",
     "ChainView",
     "ChainWeight",
     "GenerationTargets",

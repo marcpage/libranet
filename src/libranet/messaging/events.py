@@ -115,6 +115,9 @@ class EventType(StrEnum):
     STORAGE_FULL_REQUESTED = "storage.full_requested"  # backup → eviction
     STORAGE_FULL = "storage.full"  # eviction → backup
 
+    # The Karma ledger (Phase 6).
+    KARMA_ROOT_REQUESTED = "karma.root_requested"  # webserver → karma (Step 125)
+
 
 class AddressSource(StrEnum):
     """How this node learned an address of a peer (Phase 2 Step 23).

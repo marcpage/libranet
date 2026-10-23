@@ -112,6 +112,7 @@ from libranet.webserver.config_handlers import (
     DATA_APPLICATIONS_PATH,
     ApplicationListHandler,
     ConnectHandler,
+    KarmaRootHandler,
     NodeDescription,
     config_routes,
 )
@@ -598,6 +599,7 @@ def build_config_router(  # pylint: disable=too-many-locals
             )
         ),
         connecting=None if peers is None else Connecting(peers),
+        karma_root=KarmaRootHandler(publish, storage.karma_dir),
     ):
         router.add(method, pattern, handler)
 

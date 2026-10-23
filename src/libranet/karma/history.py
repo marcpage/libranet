@@ -48,22 +48,22 @@ from libranet.karma.blocks import TransactionBlock, ValidationBlock
 from libranet.karma.members import id_member
 from libranet.karma.transactions import TransactionKey
 from libranet.karma.weight import ChainWeight
+from libranet.protocol.karma_head import GENERATION_FIELD, HEAD_FIELD, KARMA_HEAD_FILE
 
 _LOGGER = getLogger(__name__)
 
-# The files of a history, in its directory.
+# The files of a history, in its directory, but the head's, which the web
+# server reads too.
 _GENEALOGY: Final = "genealogy"
 _GENERATIONS: Final = "generations"
-_HEAD_FILE: Final = "head.json"
 
-# The members of a generation's file, and of the head's.
+# The members of a generation's file, and of the head's but those the web
+# server reads.
 _VALIDATION: Final = "validation"
 _TRANSACTION: Final = "transaction"
 _WEIGHT: Final = "weight"
 _KEYS: Final = "keys"
 _WITNESSED: Final = "witnessed"
-_HEAD: Final = "head"
-_GENERATION: Final = "generation"
 
 
 @dataclass(frozen=True)
@@ -172,8 +172,8 @@ class ChainGeneration:
     def head_value(self) -> dict[str, Any]:
         """``head.json``, with this generation's validation block as the head."""
         return {
-            _HEAD: str(self.validation),
-            _GENERATION: self.generation,
+            HEAD_FIELD: str(self.validation),
+            GENERATION_FIELD: self.generation,
             _WEIGHT: self.weight.value(),
         }
 
@@ -381,9 +381,11 @@ class ChainHistory:
             OSError: it could not be written, which leaves the one before.
         """
         value = (
-            {_HEAD: None, _GENERATION: None, _WEIGHT: None} if head is None else head.head_value()
+            {HEAD_FIELD: None, GENERATION_FIELD: None, _WEIGHT: None}
+            if head is None
+            else head.head_value()
         )
-        write_atomically(self._directory / _HEAD_FILE, compact_json(value))
+        write_atomically(self._directory / KARMA_HEAD_FILE, compact_json(value))
 
     def _extend(self, generations: Sequence[ChainGeneration]) -> None:
         """Hold ``generations`` after the head, and know their keys and witnesses."""

@@ -116,8 +116,8 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
 - **Each of Steps 116 to 142 takes an issue of its own as it is taken
   up.** Each is planned under #87. Step 116 is #434, Step 117 is #435,
   Step 118 is #436, Step 119 is #437, Step 120 is #438, Step 121 is #439,
-  Step 122 is #440, Step 123 is #441, Step 124 is #442, and none after it
-  has one yet.
+  Step 122 is #440, Step 123 is #441, Step 124 is #442, Step 125 is #443,
+  and none after it has one yet.
 - **The ledger's tests use small blocks.** Whether a block is full is
   measured against bounds the library takes, the specification's
   (KarmaLedger §5.4) unless a test gives others, so that a test fills a
@@ -1299,7 +1299,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 124 — Reading Blocks at a Target
+## Step 124 — Reading Blocks at a Target ✅
 
 **Kind:** infrastructure. **Issue:** #442, under #87.
 **Depends on:** Steps 119, 121, and 123; Phase 4 Step 93's search of the
@@ -1442,7 +1442,7 @@ Ruled after building:
 
 ## Step 125 — Making the Root
 
-**Kind:** improvement in web API. **Issue:** none yet; planned under #87.
+**Kind:** improvement in web API. **Issue:** #443, under #87.
 **Depends on:** Steps 118, 122, and 124.
 
 A ledger begins with a root, which anyone may place (KarmaLedger §7). On a
@@ -1469,6 +1469,30 @@ Work this implies:
 at both targets, each drop of at least the search floor; the history and head
 written; `202`, and `409` while following; two requests making one root.
 
+It came to 418 added lines of non-test Python, with 19 changed, against an
+estimate of 250, so it was built as one change set. The tests are 115 lines,
+with 313 more in tests already there.
+
+What was built:
+
+- **`ChainRoot`** (`karma/root.py`): `made(creator, created, *, drop_bits,
+  transaction_bits, searchers)`, the root's two drops, and `generation`,
+  generation 0 of the chain on it, which `ChainHistory.add` follows.
+- **`KarmaModule`** subscribes to `karma.root_requested`. Unless it follows
+  a chain, it reads the node's key, makes the root, stores both drops
+  straight into `cas/data`, compressed where that is smaller, announces each
+  with `data.stored`, and adds the root to its history. It searches for
+  nonces with `karma.mining_processes` processes, which it stops as it stops,
+  and mines the root transaction to the work of the `bounds` it is given,
+  the specification's unless a test gives less.
+- **`KarmaHead`** (`protocol/karma_head.py`): the head `karma/head.json`
+  names, read by the web server, with the file's name and the two members
+  it reads, which `karma/history.py` now writes them by.
+- **`KarmaRootHandler`** (`webserver/config_handlers.py`) at `POST
+  /config/api/karma/root`, and `EventType.KARMA_ROOT_REQUESTED`.
+- HttpApi §2.3.4, the Operator Guide's §4.8, Messages §4.13, the Module
+  System, and File Layout.
+
 My calls, not yet reviewed:
 
 - **From `/config` alone.** Only a node's operator decides to start a
@@ -1477,6 +1501,31 @@ My calls, not yet reviewed:
 - **`409` while it follows a chain.** A rival root is no error of the
   specification's (§7.5), but a node that follows one has no reason to
   place another.
+- **Only the two drops are stored.** The root transaction and the stake are
+  each held in a block, and nothing reads either alone: a transaction is
+  put up as a block of its own (Step 56), not as content.
+- **Each search stops at its floor**, the transaction's at 24 bits and each
+  drop's at `storage.search_min_bits`, searching no longer to weigh more,
+  as this step says. About half a minute on one core, on average.
+- **The root is made while the module handles the message**, so it handles
+  nothing else until the root is placed: what is asked of it waits in its
+  inbox. Nothing it does yet cannot wait that long. Steps 131 and 136, which
+  search for nonces as the chain goes on, may need the search moved off the
+  module's loop.
+- **Two requests make one root** because the module makes none while it
+  follows a chain, which it does once the first is made. The web server's
+  `409` is a courtesy to the operator, read from `head.json`.
+- **A head that cannot be read is no refusal.** The web server logs it as a
+  warning, publishes the request, and answers `202`, leaving the module,
+  which reads its own history, to make the root or not.
+- **`202` has no body**, as there is only one root to name. What came of it
+  is in the Karma module's log, and in `head.json`.
+- **The node's key is read as a root is asked for**, not as the module
+  starts, since nothing else the module does yet signs.
+- **No wait for room.** Unlike the backup module, the Karma module stores
+  the root without asking whether storage is full: two small objects.
+- **`created`** is the module's clock, to the second, for both the
+  transaction and the stake.
 
 ---
 
