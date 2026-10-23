@@ -58,6 +58,10 @@ other modules sent.
 | Unbundler | `unbundler` | Unbundler |
 | Eviction | `eviction` | Eviction |
 | Backup | `backup` | Backup |
+| Karma | `karma` | Karma |
+
+The Karma module (Phase 6 Step 123) sends and receives no message yet but
+`shutdown`, so it appears only in §5.
 
 ## 3. Summary
 
@@ -610,5 +614,6 @@ or reported, nor is the key a kept archive's bundle may carry.
 | Unbundler | `data.not_found`, `app.path_resolved`, `resolved.reclaimed` | `app.path_not_found`, `data.stored`, `resolved.reclaim` |
 | Eviction | `eviction.notice`, `data.deleted`, `eviction.candidates_requested`, `resolved.reclaim_requested`, `peers.connected_requested`, `storage.full` | `data.stored`, `eviction.acknowledged`, `eviction.candidates`, `resolved.reclaimed`, `peers.connected`, `storage.full_requested`, `data.shunned` |
 | Backup | `data.not_found`, `data.stored`, `backup.state`, `storage.full_requested` | `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.stored`, `storage.full` |
+| Karma | — | — |
 
 Every module also receives `shutdown`.

@@ -85,7 +85,7 @@ Unless the configuration moves them:
 
 The data directory holds the node's content, its database, its registered
 applications, its backup jobs, whether it connects only to the nodes it
-trusts (§4.7), and, in `keys`, its secrets: its private key,
+trusts (§4.7), the Karma chain it follows, and, in `keys`, its secrets: its private key,
 its backup secret (§5.2), and its `/config` credential (§8). `uv run
 libranet --help` prints the defaults for the machine it runs on, and
 [File Layout](../implementation/File%20Layout.md) describes every file.
@@ -100,8 +100,8 @@ rather than silently ignored.
 [`examples/libranet.yaml`](../../examples/libranet.yaml) documents every
 setting at its default value: the listener and advertised address, the peer
 mix's size and timeouts, storage limits and eviction thresholds, identity
-and signature policy, backups, the folders offered to applications, and
-logging. Copy it and edit what you need. Applications are not configured
+and signature policy, backups, Karma, the folders offered to applications,
+and logging. Copy it and edit what you need. Applications are not configured
 there: they are registered through `/config` while the node runs (§6).
 
 ```bash
@@ -137,6 +137,7 @@ The settings an operator is most likely to change:
 | `storage.min_free_bytes` | `1073741824` | The free space the node keeps on its disk |
 | `storage.search_min_bits` | `24` | How many leading bits a hash must share with what is searched for to be found; a drop placed matching fewer is not found. No more than `network.drop_max_minimum_bits` |
 | `backup.interval_seconds` | `3600.0` | How often each backed-up directory is looked at (§5.1) |
+| `karma.mining_processes` | `1` | How many processes Karma searches for nonces with, and so how many of the machine's cores it may take |
 | `local.folders` | Your desktop, documents, downloads, music, pictures, and videos folders | The folders offered to trusted applications (§6.3) |
 | `logging.level` | `INFO` | What is logged (§7.2) |
 
@@ -703,7 +704,7 @@ out until the person signs in again.
 ### 7.1 Its Processes
 
 A node is a **supervisor process** that spawns a central **dispatcher** and
-eight module processes. Modules never call each other: they publish messages
+nine module processes. Modules never call each other: they publish messages
 to the dispatcher, which delivers each message to the queue of every module
 that subscribes to it. A module that dies is restarted by the supervisor
 without taking the node down.
@@ -718,6 +719,7 @@ without taking the node down.
 | Unbundler | Resolves a directory bundle's files on demand for application paths |
 | Eviction | Watches free space and hands off low-priority content before deleting it |
 | Backup | Turns local directories into encrypted bundles, and restores them; builds and exports bundles, and imports files |
+| Karma | Follows the Karma ledger; for now, keeps the history of the chain it follows |
 
 Keeping the web server minimal is deliberate: the process exposed to the
 network does not validate uploads, fetch, evict, or resolve applications'
@@ -729,8 +731,8 @@ processes and the messages they exchange.
 
 Each process keeps its own log, `libranet-{module}.log` in the log directory
 (§2.3), such as `libranet-webserver.log` and `libranet-backup.log`. Each
-rotates at 10 MiB, with five old files kept, so a node's ten processes can
-hold up to 600 MiB of logs. Every process also logs to the terminal, unless
+rotates at 10 MiB, with five old files kept, so a node's eleven processes
+can hold up to 660 MiB of logs. Every process also logs to the terminal, unless
 `--no-console-log` is given. The supervisor's log says where the data
 directory is, as `Data directory: ...`.
 

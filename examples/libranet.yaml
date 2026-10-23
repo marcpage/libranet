@@ -355,6 +355,12 @@ backup:
     - "system.*"
     - "trusted.*"
 
+karma:
+  # How many processes the Karma module searches for nonces with, as it
+  # mines a transaction or places a block. One takes one core of the
+  # machine's; more finish sooner, and leave less to the rest of the node.
+  mining_processes: 1
+
 local:
   # The folders on this machine that a browser on it may list, and import
   # files from, through /data/directory (HTTP API §12.2). Nothing outside

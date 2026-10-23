@@ -8,8 +8,8 @@ states falsely by itself (Phase 6 Step 119); the arithmetic of a
 generation: balances, reach, the pot, and shares (Phase 6 Step 120);
 checking a transaction block against its target and its chain (Phase 6
 Step 121); checking a validation block, and choosing a generation's best
-(Phase 6 Step 122); and the history of the chain the Karma module follows
-(Phase 6 Step 123).
+(Phase 6 Step 122); and the history of the chain the Karma module follows,
+which runs in a process of its own (Phase 6 Step 123).
 """
 
 from libranet.karma.amounts import KISMET_PER_KARMA, MAX_KISMET, Kismet, decimal_count
@@ -56,6 +56,7 @@ from libranet.karma.members import (
     id_member,
     moment_member,
 )
+from libranet.karma.module import KarmaModule
 from libranet.karma.stakes import SignedStake, Stake
 from libranet.karma.transactions import Payout, SignedTransaction, Transaction, TransactionKey
 from libranet.karma.validating import ValidationBlockCheck, ValidationScore
@@ -86,6 +87,7 @@ __all__ = [
     "ChainView",
     "ChainWeight",
     "GenerationTargets",
+    "KarmaModule",
     "Kismet",
     "Payout",
     "Reward",

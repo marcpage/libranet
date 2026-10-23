@@ -65,7 +65,8 @@ A node on macOS with every default, after its first run, looks like this:
 │   ├── connecting.json             which nodes to connect to
 │   ├── store/                      each application's store
 │   ├── archives/                   content archives kept offline
-│   └── kept_archives.json          when each kept archive expires
+│   ├── kept_archives.json          when each kept archive expires
+│   └── karma/                      the Karma chain followed
 ├── Caches/libranet/                storage.cache_dir
 │   ├── lists/                      the lists stats derives (§4.1)
 │   └── search/                     cached search responses
@@ -134,7 +135,12 @@ something is written to it.
 │   └── {SHA-256 of a name}.json         an application's store
 ├── archives/
 │   └── {archive id}.zip                 a content archive kept offline
-└── kept_archives.json                   each kept archive, and until when
+├── kept_archives.json                   each kept archive, and until when
+└── karma/                               the Karma chain followed
+    ├── genealogy                        each generation's winner, one a line
+    ├── generations/
+    │   └── {g}.json                     what a check reads of generation g
+    └── head.json                        the head followed
 ```
 
 | Path | Written by | Read by |
@@ -153,6 +159,7 @@ something is written to it.
 | `store/` | Web server | Web server |
 | `archives/` | Backup module (`/data/archives`, Step 115) | Every module that reads content |
 | `kept_archives.json` | Backup module | Backup module |
+| `karma/` | Karma module | Karma module |
 
 ### 3.1 The Source of Truth: `cas/data`
 
@@ -476,6 +483,51 @@ leave, or a crash between writing one and recording it, is read but never
 expires, and is not listed. A file that cannot be read stops the backup
 module, as `backup_jobs.json` does (§3.7), rather than being saved over.
 
+### 3.11 The Karma History: `karma/`
+
+The history of the chain the Karma module follows (KarmaLedger §3.5, Phase 6
+Step 123; `ChainHistory` in `src/libranet/karma/history.py`). Only the Karma
+module writes it, and it reads all of it into memory as it starts.
+
+`genealogy` is the id of the winning validation block of each generation,
+one a line, line g for generation g, from the root's (KarmaLedger §3.5.1):
+
+```text
+sha256/0a1b…
+sha256/9f8e…
+```
+
+`generations/{g}.json` is what a check of a later block reads of generation
+g: its validation block, the transaction block that validates, the chain's
+weight through the two, as decimal digits, the key of each of that block's
+transactions, its payout aside (KarmaLedger §4.2), and the hashes its
+validation block witnesses (§6.4). Every key and witness is kept, back to the
+root, since a transaction never expires (§4.4):
+
+```json
+{"validation": "sha256/9f8e…", "transaction": "sha256/4c2d…", "weight": "1208",
+ "keys": [{"from": "sha256/0a1b…", "created": "2026-10-21T14:03:22Z"}],
+ "witnessed": ["7d3f…"]}
+```
+
+`head.json` is the head the node follows (§3.5), its generation, and the
+chain's weight through it, each `null` while it follows none:
+
+```json
+{"head": "sha256/9f8e…", "generation": 1, "weight": "1208"}
+```
+
+A generation's file is written before the genealogy, and the head last, each
+replaced whole (§8), so that a write cut short leaves the genealogy as it was.
+The head is written again each time the module starts. The history read is
+the generations from the root on, up to the first that does not agree: a line
+of the genealogy naming no id, as a last line torn by a crash may not, or a
+generation whose file is missing, unreadable, or names another validation
+block, as one a replacement of later generations cut short has written does.
+What is left out is logged as a warning, and the genealogy written without
+it. Deleting the directory leaves the node following no chain, as a new one
+does.
+
 ## 4. The Cache Directory
 
 ```text
@@ -693,8 +745,8 @@ them.
   target (`src/libranet/atomic_file.py`), so a reader sees the old file or
   the new one, never part of one. This covers CAS objects, resolved entries,
   derived lists, search results, the registry, the jobs file, each job's
-  last bundle, the applications' stores, build records, and export
-  archives. A `.partial` file left
+  last bundle, the applications' stores, build records, export
+  archives, and the Karma history. A `.partial` file left
   by a crash is not cleaned up, but every scan skips it.
 - **Owner-only by accident of the method.** A file replaced this way gets
   mode `0600`, because the temporary file is created with it. The database

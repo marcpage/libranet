@@ -291,8 +291,9 @@ movie library, user directory, mail, and nodes applications.
 Deliberately deferred, and specified but not yet built:
 
 - HTTPS/TLS — v1 is HTTP only
-- The [Karma/Kismet](docs/specs/Karma.md) incentive layer; node-list ordering
-  uses a simpler proxy for now
+- The [Karma/Kismet](docs/specs/Karma.md) incentive layer, begun as the
+  ledger's library and a process of its own, which so far keeps the history
+  of the chain it follows; node-list ordering uses a simpler proxy for now
 - mDNS/DNS-SD discovery on the local network
 - Reading into a signed bundle as a bundle (Bundle Specification §5), and
   password-protected applications (HTTP API §13.1)
