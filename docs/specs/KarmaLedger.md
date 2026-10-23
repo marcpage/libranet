@@ -495,8 +495,8 @@ JSON object
   alone may add 2^256, and it is `"0"` in the root. A block's `weight` is
   that of transaction block g − 1, plus 2^b for that block's drop and for
   validation block g − 1's.
-- **`reach`** is how many blocks back a reader goes to find every balance
-  (§5.3).
+- **`reach`** is how many blocks back a reader goes to find every identity
+  holding Kismet (§5.3).
 - **`transactions`** are the block's transactions, as objects, sorted by
   `hash`, the payout (§5.2) among them. No two of them share a key (§4.2).
   At least half of the transactions other than the payout are free (Karma
@@ -565,12 +565,15 @@ with balances anyone can work out, in place of transactions. A balance of
 nowhere holds nothing.
 
 An identity's balance as block g leaves it is the one stated in the latest
-of blocks g − r through g that states it, r being block g's `reach` (below),
-since every block states each balance it changes. One stated in none of them
-holds `{"kismet": "0", "last_won": null}`, even if an earlier block states it
-holding 0 with a `last_won`, so that no reader looks further back than the
-reach. The balances block g's transactions are checked against are those
-transaction block g − 1 leaves, with block g's payout applied.
+of blocks g − n through g that states it, n being the greater of block g's
+`reach` (below) and 10, since every block states each balance it changes.
+The reach takes in every identity holding Kismet, and ten blocks every
+`last_won` that still lowers a stake's weight (§6.6). One stated in none of
+them holds `{"kismet": "0", "last_won": null}`, even if an earlier block
+states it holding 0 with a `last_won`: that `last_won` is more than ten
+generations old, and weighs a stake as `null` does, so no reader looks
+further back. The balances block g's transactions are checked against are
+those transaction block g − 1 leaves, with block g's payout applied.
 
 A reader checks every balance a block states, both its `kismet` and its
 `last_won`, whether the block must state it or states it only to shorten
@@ -593,8 +596,8 @@ A block's **`reach`** is the least r such that every identity holding more
 than 0 Kismet is stated in one of blocks g − r through g. A block that
 states every holder has reach 0. A reader checks `reach`, and a block whose
 `reach` is wrong is incorrect. A node needs whole transaction blocks back
-only as far as the reach of the heaviest chain's latest to know any
-balance.
+only as far as the reach of the heaviest chain's latest, or ten blocks if
+that is further, to know any balance.
 
 ### 5.4 Full
 

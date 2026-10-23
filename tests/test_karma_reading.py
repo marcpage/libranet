@@ -428,17 +428,22 @@ def test_a_reader_must_wait_and_read_something(
 
 @fixture
 def history(storage: StorageConfig, truth: CasStore, alice: NodeIdentity) -> ChainHistory:
-    """Four generations, from Alice's root, each transaction block held and stating balances.
+    """Fourteen generations, from Alice's root, each transaction block held and stating Alice's.
 
-    Block 1 states Carol holding nothing, having won in generation 0, and
-    block 2 has a reach of 0, and block 3 one of 3. Alice's key is in block
-    1, and a hash is witnessed in generation 2.
+    Block 1 states Dave holding 7 Kismet, and block 2 Carol holding nothing,
+    having won in generation 1. Blocks 2 to 12 have a reach of 0, and block
+    13 one of 12. Alice's key is in block 1, and a hash is witnessed in
+    generation 2.
     """
     blocks = [
         root_of(alice),
-        stating(1, 1, {alice.node_id: Balance(Kismet(2)), CAROL: Balance(Kismet(0), 0)}),
-        stating(2, 0, {alice.node_id: Balance(Kismet(9)), DAVE: Balance(Kismet(7))}),
-        stating(3, 3, {alice.node_id: Balance(Kismet(1))}),
+        stating(1, 1, {alice.node_id: Balance(Kismet(2)), DAVE: Balance(Kismet(7))}),
+        stating(2, 0, {alice.node_id: Balance(Kismet(9)), CAROL: Balance(Kismet(0), 1)}),
+        *(
+            stating(generation, 0, {alice.node_id: Balance(Kismet(generation))})
+            for generation in range(3, 13)
+        ),
+        stating(13, 12, {alice.node_id: Balance(Kismet(13))}),
     ]
     history = ChainHistory.open(storage.karma_dir)
 
@@ -475,10 +480,7 @@ def test_the_chain_reads_each_block_as_its_builder_signed_it(
 
     assert chain.validation(validation_id).block == validation
     assert chain.validation(validation_id).builder == alice.node_id
-    assert chain.stated(1) == {
-        alice.node_id: Balance(Kismet(2)),
-        CAROL: Balance(Kismet(0), 0),
-    }
+    assert chain.stated(1) == {alice.node_id: Balance(Kismet(2)), DAVE: Balance(Kismet(7))}
 
 
 def test_a_block_evicted_is_asked_for_again_and_read_once_stored(
@@ -504,39 +506,51 @@ def test_a_block_evicted_is_asked_for_again_and_read_once_stored(
     assert chain.transaction(evicted).block.generation == 1
 
 
-def test_a_balance_is_read_through_a_reach_of_0(
-    chain: HeldChain, history: ChainHistory, truth: CasStore, recorder: Recorder
+def test_a_balance_is_read_back_ten_blocks_past_a_reach_of_0(
+    chain: HeldChain,
+    history: ChainHistory,
+    truth: CasStore,
+    recorder: Recorder,
+    alice: NodeIdentity,
 ) -> None:
     truth.delete(transaction_id(history, 1))
 
-    balances = chain.balances({CAROL, DAVE}, 2)
-
-    # Carol is stated in block 1, before block 2's reach.
-    assert balances == {CAROL: NO_BALANCE, DAVE: Balance(Kismet(7))}
+    # Carol's last win, in block 2, is read; Dave, in block 1, is too far back.
+    assert chain.balances({alice.node_id, CAROL, DAVE}, 12) == {
+        alice.node_id: Balance(Kismet(12)),
+        CAROL: Balance(Kismet(0), 1),
+        DAVE: NO_BALANCE,
+    }
     assert recorder.asked_for() == []
 
 
-def test_a_balance_is_read_through_a_reach_of_3(chain: HeldChain, alice: NodeIdentity) -> None:
+def test_a_balance_is_read_back_through_a_reach_past_ten_blocks(
+    chain: HeldChain, alice: NodeIdentity
+) -> None:
     unstated = ContentId("sha256", "e0" * 32)
 
-    assert chain.balances({alice.node_id, CAROL, DAVE, unstated}, 3) == {
-        alice.node_id: Balance(Kismet(1)),
-        CAROL: Balance(Kismet(0), 0),
+    assert chain.balances({alice.node_id, CAROL, DAVE, unstated}, 13) == {
+        alice.node_id: Balance(Kismet(13)),
+        CAROL: Balance(Kismet(0), 1),
         DAVE: Balance(Kismet(7)),
         unstated: NO_BALANCE,
     }
 
 
-def test_every_block_lacking_within_a_reach_is_named_at_once_and_asked_for(
+def test_a_balance_near_the_root_is_read_back_to_it(chain: HeldChain) -> None:
+    assert chain.balances({DAVE}, 3) == {DAVE: Balance(Kismet(7))}
+
+
+def test_every_block_lacking_that_far_back_is_named_at_once_and_asked_for(
     chain: HeldChain, history: ChainHistory, truth: CasStore, recorder: Recorder
 ) -> None:
-    lacking = [transaction_id(history, 2), transaction_id(history, 1)]
+    lacking = [transaction_id(history, 3), transaction_id(history, 2)]
 
     for content_id in lacking:
         truth.delete(content_id)
 
     with raises(MissingContentError) as raised:
-        chain.balances({CAROL}, 3)
+        chain.balances({CAROL}, 12)
 
     assert list(raised.value.content_ids) == lacking
     assert recorder.asked_for() == lacking
@@ -545,13 +559,13 @@ def test_every_block_lacking_within_a_reach_is_named_at_once_and_asked_for(
 def test_the_latest_block_lacking_is_named_alone(
     chain: HeldChain, history: ChainHistory, truth: CasStore
 ) -> None:
-    truth.delete(transaction_id(history, 3))
-    truth.delete(transaction_id(history, 2))
+    truth.delete(transaction_id(history, 12))
+    truth.delete(transaction_id(history, 11))
 
     with raises(MissingContentError) as raised:
-        chain.balances({CAROL}, 3)
+        chain.balances({CAROL}, 12)
 
-    assert raised.value.content_ids == (transaction_id(history, 3),)
+    assert raised.value.content_ids == (transaction_id(history, 12),)
 
 
 def test_keys_and_witnesses_are_read_from_the_history(

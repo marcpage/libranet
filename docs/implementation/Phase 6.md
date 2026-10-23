@@ -1338,8 +1338,8 @@ It came to 501 added lines of non-test Python, with 2 changed, so it was
 built as two change sets, each green on its own: what is at a target, with
 its setting (348 added lines, 2 changed); and the chain view, with reading a
 block again from its drop (153 added, 5 changed, all of them the first
-set's). The tests are 605 lines, with 40 more for the blocks and the
-setting.
+set's). The ruling below added 5 lines to the second, and changed 6. The
+tests are 619 lines, with 40 more for the blocks and the setting.
 
 What was built:
 
@@ -1400,19 +1400,26 @@ My calls, not yet reviewed:
   check of a validation block naming such a runner-up, which finds it
   neither correct nor false. A block shunned raises `ShunnedContentError`,
   not `MissingContentError`, since it is never fetched.
-- **A balance is read back through the reach of the block it is read
-  through**, as this step said, not to the root. KarmaLedger §5.3 said a
-  balance is the latest stated, however far back, and also that a node
-  needs blocks back only as far as the reach. The two differ for an
-  identity holding 0, stated before the reach with a `last_won`, which its
-  next balance carries, and which weighs its next stake (§6.6). §5.3 now
-  says such an identity holds `{"kismet": "0", "last_won": null}`, so that
-  the reach is enough, as it said. That lets an identity that empties its
-  balance stake at full weight once every reach has passed it, sooner than
-  ten generations, as a second identity of its owner already may at once.
-- **Every block lacking within a reach is named at once**, so that all are
+- **Every block lacking that far back is named at once**, so that all are
   fetched together. When the latest is lacking, its reach is not known, and
   it alone is named.
+
+Ruled after building:
+
+- **A balance is read back as far as the reach of the block it is read
+  through, or ten blocks, whichever is further**, in place of the reach
+  alone first built, as this step had said. KarmaLedger §5.3 said a balance
+  is the latest stated, however far back, and also that a node needs
+  blocks back only as far as the reach. The two differ for an identity
+  holding 0, stated only before the reach with a `last_won`, which its next
+  balance carries, and which weighs its next stake for ten generations
+  after its win (§6.6). Ten blocks take in every such `last_won`: one
+  stated only before them is more than ten generations old, and weighs a
+  stake as `null` does. §5.3 now says that an identity stated in none of
+  those blocks holds `{"kismet": "0", "last_won": null}`, and that a node
+  needs blocks back as far as the reach, or ten blocks if that is further.
+  `HeldChain.balances` reads back to the greater of the reach and
+  `WEIGHT_GENERATIONS`, or to the root.
 
 ---
 

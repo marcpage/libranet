@@ -33,8 +33,9 @@ signed what it holds, for its check to decode it (Phase 6 Steps 121 and 122).
 (:class:`~libranet.karma.checking.ChainView`): the chain the Karma module
 follows, from its history (:class:`~libranet.karma.history.ChainHistory`)
 and the blocks held. A balance is read back through the transaction blocks
-of the genealogy, as far as the reach of the latest it is read through
-(§5.3).
+of the genealogy, as far as the reach of the latest it is read through, or
+ten blocks, whichever is further, so that every ``last_won`` that still
+weighs a stake is read (§5.3, §6.6).
 """
 
 from __future__ import annotations
@@ -63,7 +64,7 @@ from libranet.cas.shunned import ShunnedContent
 from libranet.config.models import LibranetConfig
 from libranet.karma.blocks import Balance, BlockDrop, TransactionBlock, ValidationBlock
 from libranet.karma.history import ChainHistory
-from libranet.karma.ledger import NO_BALANCE
+from libranet.karma.ledger import NO_BALANCE, WEIGHT_GENERATIONS
 from libranet.karma.transactions import TransactionKey
 from libranet.messaging.events import EventType
 from libranet.messaging.publishing import Publish
@@ -410,18 +411,22 @@ class HeldChain:
 
         That is the latest stated of it in that block, or in those before it
         as far back as its ``reach``, which state every identity holding any
-        Kismet, or else :data:`~libranet.karma.ledger.NO_BALANCE` (§5.3).
+        Kismet, or :data:`~libranet.karma.ledger.WEIGHT_GENERATIONS` blocks,
+        whichever is further, which state every ``last_won`` that lowers a
+        stake's weight; or else :data:`~libranet.karma.ledger.NO_BALANCE`
+        (§5.3, §6.6).
 
         Raises:
             IndexError: the history holds no such generation.
             MissingContentError: names that block, if it is not held, or else
-                every block within its reach that is not held, each asked for.
+                every block that far back that is not held, each asked for.
         """
         latest = self._transaction_block(generation)
+        oldest = max(generation - max(latest.reach, WEIGHT_GENERATIONS), 0)
         stated = [latest.balances]
         lacking: list[ContentId] = []
 
-        for back in range(generation - 1, max(generation - latest.reach, 0) - 1, -1):
+        for back in range(generation - 1, oldest - 1, -1):
             try:
                 stated.append(self.stated(back))
 
