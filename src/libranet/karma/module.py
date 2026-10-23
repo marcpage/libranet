@@ -1,4 +1,4 @@
-"""The Karma module process (Phase 6 Steps 123 to 125).
+"""The Karma module process (Phase 6 Steps 123 to 126).
 
 Every step that has the node act on the Karma ledger (KarmaLedger.md) runs
 here: reading what is placed at a target, following the chain, and
@@ -18,8 +18,16 @@ what has not come::
     data.search_answered  {"prefix", "node_id", "results"}
     data.stored           {"algorithm", "hash", "node_id", "size"}
 
-Nothing it does yet reads a target, so it keeps no answer, and asks for
-nothing.
+It follows the chain (:class:`~libranet.karma.following.ChainFollower`):
+from the heaviest root it finds correct, while it follows none, and then a
+generation at a time, as the blocks at its head's targets choose. It looks
+at them as it first idles, every ``karma.look_seconds`` after, and again,
+as it next idles, once content it waited for comes, or a peer names
+something new at a target it reads. What it finds of a block, unsigned or
+false, it says::
+
+    data.shunned       {"algorithm", "hash"}
+    karma.false_block  {"block", "builder", "staker", "statement"}
 
 While it follows no chain, its operator may have it make a root, from
 ``/config`` (KarmaLedger §7)::
@@ -48,6 +56,7 @@ from libranet.cas.store import CasStore
 from libranet.config.models import LibranetConfig
 from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.blocks import BLOCK_BOUNDS, BlockBounds
+from libranet.karma.following import ChainFollower
 from libranet.karma.history import ChainHistory
 from libranet.karma.reading import TargetReader
 from libranet.karma.root import ChainRoot
@@ -59,10 +68,11 @@ from libranet.modules import ModuleName
 from libranet.protocol.search import normalize_prefix
 
 
-class KarmaModule(ModuleBase):
+class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
     """Follows the Karma ledger, keeping the history of the chain it follows.
 
-    The transaction of a root it makes is mined to ``bounds``' work: the
+    The blocks it follows are checked against ``bounds``, and the
+    transaction of a root it makes is mined to their work: the
     specification's, unless a test gives less.
     """
 
@@ -87,6 +97,11 @@ class KarmaModule(ModuleBase):
         self._config = config
         self._bounds = bounds
         self._history: ChainHistory | None = None
+        self._follower: ChainFollower | None = None
+        # Whether to look at the head's targets as the module next idles,
+        # and when to look, whether it idles or not.
+        self._look_again = False
+        self._next_look_at = 0.0
         self._store = CasStore.source_of_truth(config.storage)
         self._searchers = NonceSearchers(config.karma.mining_processes)
         self._reader = TargetReader.of(
@@ -123,8 +138,16 @@ class KarmaModule(ModuleBase):
         return self._reader
 
     def on_start(self) -> None:
-        """Read the history of the chain followed, and write its head."""
+        """Read the history of the chain followed, and write its head.
+
+        It looks at the head's targets as it first idles.
+        """
         self._history = ChainHistory.open(self._config.storage.karma_dir)
+        self._follower = ChainFollower(
+            self._history, self._reader, self.publish, bounds=self._bounds
+        )
+        self._look_again = True
+        self._next_look_at = self._clock() + self._config.karma.look_seconds
         head = self._history.head
 
         if head is None:
@@ -137,9 +160,23 @@ class KarmaModule(ModuleBase):
                 head.validation,
             )
 
+    def handle(self, message: Message) -> None:
+        """React to one subscribed broadcast, then look at the head's targets if it is time to.
+
+        It looks here as well as when it idles, since content stored, which
+        it hears of, may keep it from idling. A malformed message raises,
+        and :meth:`run` logs it.
+        """
+        super().handle(message)
+        self._look(idle=False)
+
     def on_idle(self) -> None:
-        """Give up on what has been waited for long enough."""
+        """Give up on what has been waited for long enough, and look at the head's targets.
+
+        It looks if it is time to, or if what it waited for has come.
+        """
         self._reader.given_up()
+        self._look(idle=True)
 
     def on_stop(self) -> None:
         """Stop the processes that search for nonces."""
@@ -152,6 +189,7 @@ class KarmaModule(ModuleBase):
 
         if self._reader.answered(prefix, named):
             self.logger.debug("%s named new blocks at Karma target %s", message["node_id"], prefix)
+            self._look_again = True
 
     def _on_data_stored(self, message: Message) -> None:
         """End any wait for the content stored."""
@@ -159,6 +197,7 @@ class KarmaModule(ModuleBase):
 
         if self._reader.stored(content_id):
             self.logger.debug("%s, which was waited for, is stored", content_id)
+            self._look_again = True
 
     def _on_root_requested(self, _message: Message) -> None:
         """Make a root, as the node, and follow it, unless a chain is followed already (§7).
@@ -204,6 +243,26 @@ class KarmaModule(ModuleBase):
             root.generation.validation,
             root.validation.matching_bits,
         )
+
+    def _look(self, *, idle: bool) -> None:
+        """Follow the chain on, if it is time to look, or, as the module ``idle``s, to look again.
+
+        A history that cannot be written is logged, and written at the next
+        look.
+        """
+        now = self._clock()
+
+        if self._follower is None or (now < self._next_look_at and not (idle and self._look_again)):
+            return
+
+        self._look_again = False
+        self._next_look_at = now + self._config.karma.look_seconds
+
+        try:
+            self._follower.look()
+
+        except OSError as error:
+            self.logger.error("Cannot write the history of the Karma chain followed: %s", error)
 
     def _stored(self, data: bytes, node_id: ContentId) -> None:
         """Store ``data``, made by the node ``node_id``, and announce it unless it was held.

@@ -115,12 +115,13 @@ only for a root it makes.
 | `resolved.reclaim_requested` | Eviction | Stats | Reclaim resolved application files |
 | `resolved.reclaim` | Stats | Unbundler | Delete resolved files but these bundles' |
 | `resolved.reclaimed` | Unbundler | Eviction | What reclaiming freed |
-| `data.shunned` | Web server | Stats, Eviction | This node will not hold this content |
+| `data.shunned` | Web server, Karma | Stats, Eviction | This node will not hold this content |
 | `peers.connected_requested` | Eviction, Stats | Connections, Web server | Name the peers connected now |
 | `peers.connected` | Connections, Web server | Eviction, Stats | The peers connected one way |
 | `storage.full_requested` | Backup | Eviction | Say whether storage is full |
 | `storage.full` | Eviction | Backup | Whether storage is full |
 | `karma.root_requested` | Web server | Karma | Make a Karma root, and follow it |
+| `karma.false_block` | Karma | None yet | A Karma block states something false |
 
 ## 4. The Messages
 
@@ -560,8 +561,11 @@ or reported, nor is the key a kept archive's bundle may carry.
 #### `data.shunned`
 
 - **Payload:** `algorithm`, `hash`.
-- **Sent by:** Web server, when content is shunned on `/config`
-  (`shun_handler.py`) or by a version edit (`version_edits.py`).
+- **Sent by:**
+  - Web server, when content is shunned on `/config`
+    (`shun_handler.py`) or by a version edit (`version_edits.py`).
+  - Karma, for a block it finds unsigned, or whose signature fails, at a
+    target it reads as it follows the chain (`karma/following.py`).
 - **Received by:**
   - Stats, which records the shunning, stops seeking the content, and writes the
     shunned list (`cas/shunned`) at once for the modules that refuse shunned
@@ -627,6 +631,18 @@ or reported, nor is the key a kept archive's bundle may carry.
 - **Purpose:** let the operator start a ledger on a network that has none
   (KarmaLedger §7).
 
+#### `karma.false_block`
+
+- **Payload:** `block`, `builder`, `staker` (`null` unless a stake that
+  alone exceeds what covers it is found), `statement`.
+- **Sent by:** Karma, once for each block it finds stating something false
+  at a target it reads as it follows the chain, naming the block, the
+  identity that signed it, the staker of such a stake, and what it states
+  falsely (`karma/following.py`). It logs it as a warning too.
+- **Received by:** none yet. The web server is to distrust the builder, and
+  the staker, in the node's own trust list (Phase 6 Step 127).
+- **Purpose:** distrust whoever signs a false block (KarmaLedger §3.8).
+
 ## 5. Messages per Module
 
 | Module | Sends | Receives |
@@ -639,6 +655,6 @@ or reported, nor is the key a kept archive's bundle may carry.
 | Unbundler | `data.not_found`, `app.path_resolved`, `resolved.reclaimed` | `app.path_not_found`, `data.stored`, `resolved.reclaim` |
 | Eviction | `eviction.notice`, `data.deleted`, `eviction.candidates_requested`, `resolved.reclaim_requested`, `peers.connected_requested`, `storage.full` | `data.stored`, `eviction.acknowledged`, `eviction.candidates`, `resolved.reclaimed`, `peers.connected`, `storage.full_requested`, `data.shunned` |
 | Backup | `data.not_found`, `data.stored`, `backup.state`, `storage.full_requested` | `backup.job_configured`, `backup.job_removed`, `backup.run_requested`, `backup.restore_requested`, `backup.build_requested`, `backup.export_requested`, `backup.import_requested`, `backup.archive_requested`, `backup.archive_removed`, `data.stored`, `storage.full` |
-| Karma | `data.search_requested`, `data.not_found`, `data.stored` | `data.search_answered`, `data.stored`, `karma.root_requested` |
+| Karma | `data.search_requested`, `data.not_found`, `data.stored`, `data.shunned`, `karma.false_block` | `data.search_answered`, `data.stored`, `karma.root_requested` |
 
 Every module also receives `shutdown`.

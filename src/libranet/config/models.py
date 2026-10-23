@@ -808,6 +808,11 @@ class KarmaConfig(_Section):
     # 124). It asks again the next time it needs it.
     fetch_wait_seconds: float = Field(default=30.0, gt=0)
 
+    # How often the Karma module reads what is placed at its head's targets,
+    # to follow the chain on (Phase 6 Step 126). It reads them sooner once
+    # content it waited for comes.
+    look_seconds: float = Field(default=60.0, gt=0)
+
 
 class LocalConfig(_Section):
     """What clients on this machine may reach of it (HttpApi §2.4, Phase 3 Step 68)."""

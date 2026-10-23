@@ -487,7 +487,8 @@ module, as `backup_jobs.json` does (§3.7), rather than being saved over.
 
 The history of the chain the Karma module follows (KarmaLedger §3.5, Phase 6
 Step 123; `ChainHistory` in `src/libranet/karma/history.py`). Only the Karma
-module writes it, and it reads all of it into memory as it starts.
+module writes it, and it reads all of it into memory as it starts. It adds a
+generation each time it follows the chain on (Phase 6 Step 126).
 
 `genealogy` is the id of the winning validation block of each generation,
 one a line, line g for generation g, from the root's (KarmaLedger §3.5.1):

@@ -117,7 +117,7 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
   up.** Each is planned under #87. Step 116 is #434, Step 117 is #435,
   Step 118 is #436, Step 119 is #437, Step 120 is #438, Step 121 is #439,
   Step 122 is #440, Step 123 is #441, Step 124 is #442, Step 125 is #443,
-  and none after it has one yet.
+  Step 126 is #444, and none after it has one yet.
 - **The ledger's tests use small blocks.** Whether a block is full is
   measured against bounds the library takes, the specification's
   (KarmaLedger §5.4) unless a test gives others, so that a test fills a
@@ -1440,7 +1440,7 @@ Ruled after building:
 
 ---
 
-## Step 125 — Making the Root
+## Step 125 — Making the Root ✅
 
 **Kind:** improvement in web API. **Issue:** #443, under #87.
 **Depends on:** Steps 118, 122, and 124.
@@ -1531,9 +1531,9 @@ My calls, not yet reviewed:
 
 ## Step 126 — Following the Chain
 
-**Kind:** improvement in behavior. **Issue:** none yet; planned under
-#87. **Depends on:** Steps 122 and 124, and Step 125 for a root to follow
-on a live network.
+**Kind:** improvement in behavior. **Issue:** #444, under #87.
+**Depends on:** Steps 122 and 124, and Step 125 for a root to follow on a
+live network.
 
 The node follows a chain: from its root, if it follows none, and then a
 generation at a time, as validation blocks are placed at its head's
@@ -1567,6 +1567,71 @@ followed once its validation block is stored; the best of several taken; a
 better one found later passed over; an unsigned block shunned, a false one
 said, and nothing lighter shunned; a block not held asked for, and the
 generation taken once it comes.
+
+It came to 445 added lines of non-test Python, with 9 changed, against an
+estimate of 400, so it was built as one change set. The tests are 546 lines,
+with 124 more in tests already there.
+
+What was built:
+
+- **`ChainFollower`** (`karma/following.py`): `look()` follows each
+  generation the blocks held at the head's targets choose, one after
+  another, adding each to the history, and returns them. Of the roots, it
+  takes the heaviest, by the 2^b of its two drops (§3.3), and of two as
+  heavy, the one whose validation block's id sorts first; after the root,
+  Step 122's best. What it finds of a block is kept while the head is the
+  same, so that each is checked once, and what is found said once.
+- **`KarmaModule`** makes a follower as it starts, and looks as it first
+  idles, every `karma.look_seconds` after, whether it idles or handles a
+  message, and again as it next idles once `data.stored` names what it
+  waited for, or `data.search_answered` names something new. A history that
+  cannot be written is logged, and written at the next look.
+- **`karma.look_seconds`** (`KarmaConfig`), 60 by default, and
+  `EventType.KARMA_FALSE_BLOCK`.
+- Messages §4.10 and §4.13, the Module System, File Layout, the Operator
+  Guide's §3 and §4.8, and the example configuration.
+
+My calls, not yet reviewed:
+
+- **The heaviest root, by its own weight.** §7.5 has a node follow the root
+  the heaviest chain is built on. A node that follows none weighs the roots
+  alone, not the chains on them, which it has not read; "a root it can check
+  forward from" is taken as one whose two blocks check correct. A heavier
+  chain on another root is a head the node does not follow, for Step 129.
+- **Catching up in one look.** Once it follows a generation, it reads the
+  next one's targets at once, rather than a minute later, so that a node
+  behind follows on as fast as the blocks come.
+- **The best checked when it looks**, not the best once every block at the
+  target is checked: a block whose check waits for a key that never comes
+  would otherwise hold the chain up. One checked too late is passed over,
+  as a better one found later is.
+- **A validation block waits with the transaction block it validates.** One
+  at the target whose check waits for a key or a block is still at the
+  target, so a validation block staking on it waits too, rather than being
+  found false for naming a block at another target. One staking on a block
+  passed over is passed over too.
+- **A block that cannot be checked is passed over**, and logged as a warning
+  once: one signed in a way this node cannot check, naming an id under a
+  hash algorithm it lacks, or naming what it cannot read as a block, as a
+  junk runner-up does (Step 124's flag), or a block it shuns. It is neither
+  shunned nor said false, and is not checked again while the head is the
+  same, even should what it names be held rightly later.
+- **Checks are kept only while the head is the same**, and in memory, so a
+  restart checks the blocks at the head's targets again, and says each
+  false one again. Step 127 places a distrust once.
+- **Only unsigned blocks are shunned**, as planned, though §3.7 says a node
+  SHOULD shun one failing validation of weight or generation too. Such a
+  block is said false. Step 129, which shuns what is invalid (§3.5.3), may
+  take that up.
+- **`karma.false_block` names the staker too**, as `staker`, `null` unless a
+  stake alone exceeds what covers it, since §3.8 distrusts that staker as
+  well. The plan named the builder alone, so Step 127 has both to distrust.
+- **Looking again on what comes waits for the module to idle**, so that keys
+  or blocks coming together are read once. The regular look is also made
+  after a message, so that a busy node, kept from idling by `data.stored`,
+  still follows the chain on.
+- **A root asked for is made without first looking** for one already placed,
+  which the next look would follow.
 
 ---
 
