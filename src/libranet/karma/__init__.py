@@ -14,7 +14,7 @@ placed at a target, and the chain the module follows as a check reads it
 (Phase 6 Step 124); making a chain's root (Phase 6 Step 125); following
 the chain, a generation at a time (Phase 6 Step 126); writing every balance
 stated at its head (Phase 6 Step 128); and the transactions carried over
-from a chain left (Phase 6 Step 129).
+from a chain left, and the chain a head claims (Phase 6 Step 129).
 """
 
 from libranet.karma.amounts import KISMET_PER_KARMA, MAX_KISMET, Kismet
@@ -38,6 +38,7 @@ from libranet.karma.checking import (
     TransactionBlockCheck,
     TransactionVerdict,
 )
+from libranet.karma.claims import ClaimedChain, ClaimedGeneration, FalseStatement, HeadClaim
 from libranet.karma.following import ChainFollower, say_found
 from libranet.karma.generations import (
     FIRST_NEW_KISMET,
@@ -104,8 +105,12 @@ __all__ = [
     "ChainRoot",
     "ChainView",
     "ChainWeight",
+    "ClaimedChain",
+    "ClaimedGeneration",
+    "FalseStatement",
     "GenerationTargets",
     "HeadBalances",
+    "HeadClaim",
     "HeldBlock",
     "HeldChain",
     "KarmaModule",
