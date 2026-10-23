@@ -231,7 +231,7 @@ through the dispatcher.
 | 7 | Unbundler | `unbundler` | `UnbundlerModule` | Resolves application files' entries from their bundles on demand, and deletes unused ones |
 | 8 | Eviction | `eviction` | `EvictionModule` | Keeps storage within its limits |
 | 9 | Backup | `backup` | `BackupModule` | Backs directories up as bundles; restores, builds, and exports bundles |
-| 10 | Karma | `karma` | `KarmaModule` | Follows the Karma ledger; for now, keeps the history of the chain it follows, and makes a root when asked |
+| 10 | Karma | `karma` | `KarmaModule` | Follows the Karma ledger; for now, follows the chain, keeping its history, and makes a root when asked |
 
 The supervisor launches them in this order, taken from `SPAWNED_MODULES`,
 but waits only for the dispatcher to be ready. No module waits for another
@@ -406,17 +406,24 @@ the data directory, which it reads as it starts (`ChainHistory`,
 `karma/history.py`): the genealogy, a file for each generation, and the head,
 which the web server reads (`KarmaHead`, `protocol/karma_head.py`). It reads
 what is placed at a target through `TargetReader` (`karma/reading.py`, Phase 6
-Step 124), which nothing it does yet calls for. Reading a target publishes
-`data.search_requested`, and each miss `data.not_found`. The reader keeps what
-peers name, in `data.search_answered`, at a target it reads, and asks at once
-for what it lacks; it stops waiting for content as `data.stored` names it, and
-gives up on what has not come within `karma.fetch_wait_seconds` as the module
-idles. While it follows no chain, `karma.root_requested`, which `/config`
-publishes, has it make a root, as the node (`ChainRoot`, `karma/root.py`, Phase
-6 Step 125): it mines the root transaction, searches for each drop's nonce with
-`karma.mining_processes` processes, stores both drops straight into `cas/data`,
-as the backup module stores what it makes, announces each with `data.stored`,
-and then follows the root.
+Step 124). Reading a target publishes `data.search_requested`, and each miss
+`data.not_found`. The reader keeps what peers name, in `data.search_answered`,
+at a target it reads, and asks at once for what it lacks; it stops waiting for
+content as `data.stored` names it, and gives up on what has not come within
+`karma.fetch_wait_seconds` as the module idles. It follows the chain
+(`ChainFollower`, `karma/following.py`, Phase 6 Step 126): from the heaviest
+correct root at the root's targets, while it follows none, and then a
+generation at a time, the best correct validation block at its head's targets.
+It looks as it first idles, every `karma.look_seconds` after, idle or not, and
+again, as it next idles, once what it waited for comes. A block it finds
+unsigned it shuns (`data.shunned`), and one stating something false it logs
+and says (`karma.false_block`). While it follows no chain,
+`karma.root_requested`, which `/config` publishes, has it make a root, as the
+node (`ChainRoot`, `karma/root.py`, Phase 6 Step 125): it mines the root
+transaction, searches for each drop's nonce with `karma.mining_processes`
+processes, stores both drops straight into `cas/data`, as the backup module
+stores what it makes, announces each with `data.stored`, and then follows the
+root.
 
 ### 3.3 What Each Module Owns
 
@@ -670,7 +677,7 @@ What each module does in them:
 | Unbundler | — | — | — |
 | Eviction | Read the node id; count storage; ask which peers are connected; say whether storage is full; evict if over | Say whether storage is full, if that changed; time out hand-offs and questions; resume after a pause | — |
 | Backup | Read the node id; ask whether storage is full; read the jobs; report state | Carry on the next restore, build, export, import, or backup due | — |
-| Karma | Read the history; write its head | Give up on content waited for too long | Stop the processes searching for nonces |
+| Karma | Read the history; write its head | Give up on content waited for too long; follow the chain on, if it is time to look, or what it waited for came | Stop the processes searching for nonces |
 
 ### 5.3 Writing a Module
 
@@ -957,18 +964,21 @@ to end its loop.
 | `storage.full_requested` | | | | | | | S | P | |
 | `storage.full` | | | | | | | P | S | |
 | *Shunned content* | | | | | | | | | |
-| `data.shunned` | P | | | S | | | S | | |
+| `data.shunned` | P | | | S | | | S | | P |
 | *Karma* | | | | | | | | | |
 | `karma.root_requested` | P | | | | | | | | S |
+| `karma.false_block` | | | | | | | | | P |
 | *Lifecycle* | | | | | | | | | |
 | `shutdown` | S | S | S | S | S | S | S | S | S |
-| **Publishes / subscribes** | 22 / 5 | 16 / 9 | 2 / 1 | 5 / 23 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 | 3 / 3 |
+| **Publishes / subscribes** | 22 / 5 | 16 / 9 | 2 / 1 | 5 / 23 | 1 / 3 | 3 / 3 | 6 / 7 | 4 / 9 | 5 / 3 |
 
 The `shutdown` row and its subscriptions are implicit: every module
 receives it without listing it, and nothing publishes it (§6.4). The totals
-leave it out. The Karma module publishes searches and misses only as it
-reads a target, which nothing it does yet calls for (Phase 6 Step 124), and
-`data.stored` only for a root it makes (Phase 6 Step 125).
+leave it out. The Karma module publishes searches and misses as it reads a
+target (Phase 6 Step 124), `data.stored` only for a root it makes (Phase 6
+Step 125), and `data.shunned` and `karma.false_block` for blocks it finds
+unsigned or false as it follows the chain (Phase 6 Step 126). Nothing
+subscribes to `karma.false_block` until Phase 6 Step 127.
 
 ### 7.2 Payloads
 
@@ -1029,6 +1039,7 @@ A content id is an `algorithm` and a lower-case hex `hash`, or, in
 | `storage.full` | `full` | Whether one more object of `storage.max_object_bytes` would take storage past a limit, so that content this node creates waits |
 | `data.shunned` | `algorithm`, `hash` | This node will not hold this content, for good |
 | `karma.root_requested` | — | The operator asked on `/config` for a Karma root; make one, as the node, and follow it, unless a chain is followed already |
+| `karma.false_block` | `block`, `builder`, `staker`, `statement` | A Karma block, signed by `builder`, states `statement` falsely; `staker`, unless `null`, signed a stake in it that alone exceeds what covers it |
 | `shutdown` | — | Leave the receive loop |
 
 ### 7.3 Who Talks to Whom
@@ -1064,6 +1075,7 @@ flowchart TB
     web <-->|"node.trust_requested<br/>node.trust_stored"| stats
     web -->|"karma.root_requested"| karma
     karma <-->|"data.search_requested<br/>data.search_answered"| conn
+    karma -->|"data.shunned"| evict
     conn -->|"data.put_completed"| val
     val --> stored
     backup --> stored
@@ -1412,7 +1424,7 @@ side recovers:
 | Unbundler | Directories held in memory; paths waiting on content; a reclaim in progress | Directories are read back from each bundle's saved `directory.jzon`; a request waiting on a path forgotten is answered `503`, and its retry asks again; eviction times out the reclaim |
 | Eviction | Hand-offs under way; its list of candidates; which peers are connected | It counts storage again at start, says whether storage is full, asks which peers are connected, and asks stats again |
 | Backup | Restores, builds, exports, and imports; messages set aside while it stored content | They must be asked for again; jobs are read back from `backup_jobs.json`; it asks whether storage is full |
-| Karma | Content it waited for; what peers named at the targets it read; a root it was making | The history is read back from `karma/`, and its head written again; what it lacks is asked for again as it next reads; a root is asked for again on `/config`, as the node follows none |
+| Karma | Content it waited for; what peers named at the targets it read; what it found of the blocks at its head's targets; a root it was making | The history is read back from `karma/`, and its head written again; what it lacks is asked for again as it next reads; the blocks at its head's targets are checked again as it first looks, and what was said of them is said again; a root is asked for again on `/config`, as the node follows none |
 | Dispatcher | Messages it had read but not yet delivered, and those it held for a full inbox | Nothing recovers them; no module is started until it is back |
 
 ## 11. Testing Modules

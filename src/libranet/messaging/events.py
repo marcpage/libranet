@@ -102,7 +102,7 @@ class EventType(StrEnum):
     RESOLVED_RECLAIMED = "resolved.reclaimed"  # unbundler → eviction
 
     # Content this node will not hold (Phase 4 Step 30).
-    DATA_SHUNNED = "data.shunned"  # webserver → stats, eviction
+    DATA_SHUNNED = "data.shunned"  # webserver, karma → stats, eviction
 
     # The peers connected, whose public keys are never evicted (Phase 2
     # Step 53), and which the peer list names (Phase 5 Step 107).
@@ -117,6 +117,7 @@ class EventType(StrEnum):
 
     # The Karma ledger (Phase 6).
     KARMA_ROOT_REQUESTED = "karma.root_requested"  # webserver → karma (Step 125)
+    KARMA_FALSE_BLOCK = "karma.false_block"  # karma (Step 126) → webserver (Step 127)
 
 
 class AddressSource(StrEnum):

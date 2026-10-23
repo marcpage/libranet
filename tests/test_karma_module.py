@@ -1,13 +1,14 @@
 """Tests for the Karma module process, which keeps the history of the chain it follows.
 
-And makes a root, from ``/config``.
+And makes a root, from ``/config``, and follows the chain.
 """
 
 from __future__ import annotations
 from datetime import UTC, datetime
 from json import loads
-from logging import DEBUG, INFO
+from logging import DEBUG, ERROR, INFO
 from pathlib import Path
+from shutil import rmtree
 from time import time
 from typing import Callable
 
@@ -101,13 +102,31 @@ def matching(target: DropTarget, bits: int) -> ContentId:
     return ContentId("sha256", differing.to_bytes(32, "big").hex())
 
 
-def answered(*results: ContentId) -> Message:
-    """A peer's answer to a search of :data:`TARGET`, naming ``results``."""
+def answered(*results: ContentId, at: DropTarget = TARGET) -> Message:
+    """A peer's answer to a search of ``at``, naming ``results``."""
     return make_message(
         EventType.SEARCH_ANSWERED,
         ModuleName.CONNECTIONS,
-        {"prefix": TARGET.hex, "node_id": str(PEER), "results": [str(id) for id in results]},
+        {"prefix": at.hex, "node_id": str(PEER), "results": [str(id) for id in results]},
     )
+
+
+def stored(content_id: ContentId) -> Message:
+    """``content_id``, as a peer's content is announced once stored."""
+    return make_message(
+        EventType.DATA_STORED,
+        ModuleName.VALIDATOR,
+        {**content_id.fields(), "node_id": str(PEER), "size": 1},
+    )
+
+
+def searched(queues: ModuleQueues) -> list[str]:
+    """The prefixes the module has searched for since anything published was last asked for."""
+    return [
+        message["prefix"]
+        for message in published(queues)
+        if event_of(message) is EventType.SEARCH_REQUESTED
+    ]
 
 
 def asked_for(queues: ModuleQueues) -> list[ContentId]:
@@ -214,14 +233,9 @@ def test_content_waited_for_is_waited_for_no_more_once_stored(
     module.reader.read(TARGET, ValidationBlock)
     named = matching(TARGET, 30)
     module.handle(answered(named))
-    stored = make_message(
-        EventType.DATA_STORED,
-        ModuleName.VALIDATOR,
-        {**named.fields(), "node_id": str(PEER), "size": 1},
-    )
 
     with caplog.at_level(DEBUG):
-        module.handle(stored)
+        module.handle(stored(named))
 
     assert module.reader.waiting == frozenset()
     assert f"{named}, which was waited for, is stored" in caplog.text
@@ -353,3 +367,102 @@ def test_a_root_is_made_only_once_the_module_has_started(
         module_over(storage, queues).handle(root_requested())
 
     assert published(queues) == []
+
+
+def test_a_module_looks_at_the_targets_as_it_first_idles_and_every_look_seconds_after(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    clock = Clock()
+    module = module_over(storage, queues, clock)
+    module.on_start()
+    roots = [ROOT.transaction.hex, ROOT.validation.hex]
+
+    module.on_idle()
+
+    assert searched(queues) == roots
+
+    module.on_idle()
+    clock.now += LibranetConfig().karma.look_seconds - 1
+    module.on_idle()
+
+    assert searched(queues) == []
+
+    clock.now += 1
+    module.on_idle()
+
+    assert searched(queues) == roots
+
+
+def test_a_module_kept_from_idling_looks_when_it_is_time_to(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    clock = Clock()
+    module = module_over(storage, queues, clock)
+    module.on_start()
+    clock.now += LibranetConfig().karma.look_seconds
+
+    module.handle(answered(matching(TARGET, 30)))
+
+    assert searched(queues) == [ROOT.transaction.hex, ROOT.validation.hex]
+
+
+def test_a_module_looks_again_as_it_idles_once_something_new_is_named_or_comes(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    clock = Clock()
+    module = module_over(storage, queues, clock)
+    module.on_start()
+    module.on_idle()
+    published(queues)
+    named = matching(ROOT.validation, 30)
+    roots = [ROOT.transaction.hex, ROOT.validation.hex]
+
+    module.handle(answered(named, at=ROOT.validation))
+
+    assert searched(queues) == []
+
+    module.on_idle()
+
+    assert searched(queues) == roots
+
+    module.handle(stored(named))
+    module.on_idle()
+
+    assert searched(queues) == roots
+
+
+def test_a_module_following_no_chain_follows_the_root_it_finds(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    rooting_module(storage, queues).handle(root_requested())
+    made = ChainHistory.open(storage.karma_dir).head
+    rmtree(storage.karma_dir)
+    module = rooting_module(storage, queues)
+
+    module.on_idle()
+
+    assert made is not None and module.history.head == made
+
+
+def test_a_history_that_cannot_be_written_is_logged_and_written_at_the_next_look(
+    storage: StorageConfig, queues: ModuleQueues, caplog: LogCaptureFixture
+) -> None:
+    rooting_module(storage, queues).handle(root_requested())
+    made = ChainHistory.open(storage.karma_dir).head
+    rmtree(storage.karma_dir)
+    clock = Clock()
+    module = rooting_module(storage, queues, clock)
+    in_the_way = storage.karma_dir / "generations"
+    in_the_way.write_bytes(b"")
+
+    with caplog.at_level(ERROR):
+        module.on_idle()
+
+    assert module.history.head is None
+    assert "Cannot write the history of the Karma chain followed" in caplog.text
+
+    in_the_way.unlink()
+    clock.now += LibranetConfig().karma.look_seconds
+    module.on_idle()
+
+    assert made is not None and module.history.head == made

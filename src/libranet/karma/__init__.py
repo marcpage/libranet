@@ -11,7 +11,8 @@ Step 121); checking a validation block, and choosing a generation's best
 (Phase 6 Step 122); the history of the chain the Karma module follows,
 which runs in a process of its own (Phase 6 Step 123); reading what is
 placed at a target, and the chain the module follows as a check reads it
-(Phase 6 Step 124); and making a chain's root (Phase 6 Step 125).
+(Phase 6 Step 124); making a chain's root (Phase 6 Step 125); and following
+the chain, a generation at a time (Phase 6 Step 126).
 """
 
 from libranet.karma.amounts import KISMET_PER_KARMA, MAX_KISMET, Kismet, decimal_count
@@ -32,6 +33,7 @@ from libranet.karma.checking import (
     TransactionBlockCheck,
     TransactionVerdict,
 )
+from libranet.karma.following import ChainFollower
 from libranet.karma.generations import (
     FIRST_NEW_KISMET,
     LAST_ISSUING_GENERATION,
@@ -86,6 +88,7 @@ __all__ = [
     "BlockDrop",
     "BlockFinding",
     "BlockScore",
+    "ChainFollower",
     "ChainGeneration",
     "ChainHistory",
     "ChainRoot",

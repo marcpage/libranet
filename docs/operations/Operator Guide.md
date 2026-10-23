@@ -139,6 +139,7 @@ The settings an operator is most likely to change:
 | `backup.interval_seconds` | `3600.0` | How often each backed-up directory is looked at (§5.1) |
 | `karma.mining_processes` | `1` | How many processes Karma searches for nonces with, and so how many of the machine's cores it may take |
 | `karma.fetch_wait_seconds` | `30.0` | How long Karma waits for a block or a key it asks the network for before going on without it |
+| `karma.look_seconds` | `60.0` | How often Karma looks for the next generation of the chain it follows, or for a root while it follows none (§4.8) |
 | `local.folders` | Your desktop, documents, downloads, music, pictures, and videos folders | The folders offered to trusted applications (§6.3) |
 | `logging.level` | `INFO` | What is logged (§7.2) |
 
@@ -410,6 +411,14 @@ follows the chain on it, as `libranet-karma.log` (§7.2) says once it is done.
 `karma/head.json` in the data directory (§2.3) then names the root's
 validation block as the head, in generation 0. It is `409`, and places no
 root, while the node follows a chain.
+
+A node that follows no chain looks for a root as it starts, and every
+`karma.look_seconds` after (§3), and follows the heaviest it finds that
+checks, so a node joining a network that has a ledger needs nothing done.
+It then follows the chain on, a generation at a time, as each is placed.
+`libranet-karma.log` says each generation it follows, and warns of each
+block it finds stating something false, or unsigned. An unsigned block is
+shunned, so the node never holds it again.
 
 ## 5. Backing Up and Restoring
 
