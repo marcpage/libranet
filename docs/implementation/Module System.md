@@ -426,7 +426,16 @@ unsigned it shuns (`data.shunned`), and one stating something false it logs
 and says (`karma.false_block`), for the web server to distrust its builder. It
 keeps whom the node trusts and distrusts, as the web server says it
 (`node.trust`), so that what it builds leaves out whom the node distrusts
-(Phase 6 Step 127). While it follows no chain,
+(Phase 6 Step 127). As it looks, it also weighs each other validation block
+at the target its head was chosen from (`HeadChanges`, `karma/changing.py`,
+Phase 6 Step 129): one claiming a heavier chain it walks back to where that
+chain leaves its own, checking each weight and generation, then checks
+forward, and follows the chain if every block is correct, replacing its
+history after that point. The transactions of the chain it leaves that the
+new one lacks it carries over, for `karma.carry_generations`, in
+`carried.json`. A block it finds unsigned, or false in its weight or
+generation, it shuns, and one false it says, as it does those it follows.
+While it follows no chain,
 `karma.root_requested`, which `/config` publishes, has it make a root, as the
 node (`ChainRoot`, `karma/root.py`, Phase 6 Step 125): it mines the root
 transaction, searches for each drop's nonce with `karma.mining_processes`
@@ -990,7 +999,8 @@ receives it without listing it, and nothing publishes it (§6.4). The totals
 leave it out. The Karma module publishes searches and misses as it reads a
 target (Phase 6 Step 124), `data.stored` only for a root it makes (Phase 6
 Step 125), and `data.shunned` and `karma.false_block` for blocks it finds
-unsigned or false as it follows the chain (Phase 6 Step 126). The web server
+unsigned or false as it follows the chain (Phase 6 Step 126), or weighs a
+heavier one (Phase 6 Step 129). The web server
 takes `karma.false_block` to distrust a false block's builder, and the Karma
 module `node.trust` to leave out whom the node distrusts (Phase 6 Step 127).
 
