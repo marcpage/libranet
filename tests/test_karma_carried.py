@@ -1,11 +1,12 @@
-"""Tests for the transactions the Karma module carries over (KarmaLedger §3.5.3, §4.4)."""
+"""Tests for the transactions the Karma module carries (KarmaLedger §3.5.3, §4.4, §5.6)."""
 
 from __future__ import annotations
 from datetime import UTC, datetime, timedelta
+from json import dumps, loads
 from logging import WARNING
 from pathlib import Path
 
-from pytest import LogCaptureFixture, fixture
+from pytest import LogCaptureFixture, fixture, raises
 
 from libranet.cas.content_id import ContentId
 from libranet.identity.node_identity import NodeIdentity
@@ -61,6 +62,11 @@ def chain_of(
             for generation in range(generations)
         ],
     )
+
+
+def carried_file(directory: Path) -> bytes:
+    """What ``carried.json`` in ``directory`` holds."""
+    return (directory / CARRIED_FILE).read_bytes()
 
 
 @fixture
@@ -152,3 +158,55 @@ def test_a_file_emptied_is_written_empty(
     carried.carry([], chain_of(tmp_path, 10))
 
     assert (tmp_path / CARRIED_FILE).read_bytes() == b'{"transactions":[]}'
+
+
+def test_one_the_node_puts_up_is_carried_as_such_and_read_back(
+    carried: CarriedTransactions, tmp_path: Path, alice: NodeIdentity
+) -> None:
+    collected = [
+        CarriedTransaction(paying(alice, 1), 2),
+        CarriedTransaction(paying(alice, 2), put_up=True),
+    ]
+    carried.carry(collected, chain_of(tmp_path, 3))
+
+    assert carried.read() == collected
+    assert [entry["put_up"] for entry in loads(carried_file(tmp_path))["transactions"]] == [
+        False,
+        True,
+    ]
+
+
+def test_only_those_the_node_puts_up_are_read_to_put_up_each_as_carried_at_the_head(
+    carried: CarriedTransactions, tmp_path: Path, alice: NodeIdentity
+) -> None:
+    met = paying(alice, 3)
+    pending = paying(alice, 2)
+    carried.carry(
+        [
+            CarriedTransaction(paying(alice, 1), 2),
+            CarriedTransaction(pending, put_up=True),
+            CarriedTransaction(met, put_up=True),
+        ],
+        chain_of(tmp_path, 3),
+    )
+    history = chain_of(tmp_path, 4, keys={3: met}, witnessed={3: pending})
+
+    assert carried.to_put_up(history) == [CarriedTransaction(pending, 3, put_up=True)]
+    # Nothing is written: the file is as it was carried.
+    assert len(carried.read()) == 3
+
+
+def test_an_entry_saying_nothing_of_being_put_up_is_not_put_up(
+    carried: CarriedTransactions, tmp_path: Path, alice: NodeIdentity
+) -> None:
+    entry = {"transaction": paying(alice, 1).value(), "witnessed": 2}
+    (tmp_path / CARRIED_FILE).write_text(dumps({"transactions": [entry]}))
+
+    assert carried.read() == [CarriedTransaction(paying(alice, 1), 2)]
+
+
+def test_an_entry_whose_put_up_is_not_true_or_false_is_refused(alice: NodeIdentity) -> None:
+    with raises(ValueError, match='"put_up" must be true or false, got 1'):
+        CarriedTransaction.from_value(
+            {"transaction": paying(alice, 1).value(), "witnessed": None, "put_up": 1}
+        )

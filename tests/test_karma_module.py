@@ -1,12 +1,13 @@
 """Tests for the Karma module process, which keeps the history of the chain it follows.
 
-And makes a root, from ``/config``, and follows the chain.
+And makes a root, from ``/config``, follows the chain, and puts transactions
+up.
 """
 
 from __future__ import annotations
 from datetime import UTC, datetime
 from json import loads
-from logging import DEBUG, ERROR, INFO
+from logging import DEBUG, ERROR, INFO, WARNING
 from pathlib import Path
 from shutil import rmtree
 from time import time
@@ -18,9 +19,10 @@ from libranet.cas.content_id import ContentId
 from libranet.cas.drops import DropTarget
 from libranet.cas.prefix import matching_bits
 from libranet.cas.store import CasStore
-from libranet.config.models import LibranetConfig, StorageConfig
+from libranet.config.models import KarmaConfig, LibranetConfig, StorageConfig
 from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.trust import TrustState
+from libranet.karma.amounts import Kismet
 from libranet.karma.blocks import (
     BlockBounds,
     BlockDrop,
@@ -33,6 +35,7 @@ from libranet.karma.generations import GenerationTargets
 from libranet.karma.history import ChainGeneration, ChainHistory
 from libranet.karma.module import KarmaModule
 from libranet.karma.reading import HeldChain
+from libranet.karma.transactions import SignedTransaction, Transaction
 from libranet.karma.validating import ValidationBlockCheck
 from libranet.karma.weight import ChainWeight
 from libranet.messaging.envelope import Message, event_of, make_message
@@ -42,7 +45,7 @@ from libranet.messaging.queues import ModuleQueues
 from libranet.modules import SPAWNED_MODULES, ModuleName
 from libranet.supervision.registry import default_module_specs
 from libranet.supervision.specs import ModuleSpec
-from tests.helpers import published, with_node_key
+from tests.helpers import new_identity, published, with_node_key
 
 HEAD = ContentId("sha256", "c1" * 32)
 BLOCK = ContentId("sha256", "b1" * 32)
@@ -54,6 +57,7 @@ ROOT = GenerationTargets.root()
 # those of a transaction's work.
 SEARCH_MIN_BITS = 6
 BOUNDS = BlockBounds(transaction_bits=5)
+CREATED = datetime(2026, 10, 23, 9, 0, 0, tzinfo=UTC)
 
 
 class Clock:
@@ -82,9 +86,15 @@ def module_over(
 def rooting_module(
     storage: StorageConfig, queues: ModuleQueues, clock: Callable[[], float] = time
 ) -> KarmaModule:
-    """The Karma module of a node over ``storage``, started, which makes a root in moments."""
+    """The Karma module of a node over ``storage``, started, which makes a root in moments.
+
+    And puts up a block of its own in moments.
+    """
     config = with_node_key(
-        LibranetConfig(storage=storage.model_copy(update={"search_min_bits": SEARCH_MIN_BITS}))
+        LibranetConfig(
+            storage=storage.model_copy(update={"search_min_bits": SEARCH_MIN_BITS}),
+            karma=KarmaConfig(block_seconds=0.0),
+        )
     )
     module = KarmaModule(
         ModuleName.KARMA, queues, config, clock=clock, poll_interval_seconds=0.01, bounds=BOUNDS
@@ -140,6 +150,30 @@ def head_told(head: ContentId) -> Message:
     return make_message(
         EventType.KARMA_HEAD_TOLD, ModuleName.WEBSERVER, {"head": str(head), "node_id": str(PEER)}
     )
+
+
+def given(signed: SignedTransaction) -> Message:
+    """``signed``, as the web server gives it to the module to put up."""
+    return make_message(
+        EventType.KARMA_TRANSACTION, ModuleName.WEBSERVER, {"transaction": signed.value()}
+    )
+
+
+def paid_by_node(storage: StorageConfig) -> SignedTransaction:
+    """The node's transaction paying PEER 5 Kismet, mined to the bounds' work."""
+    node = NodeIdentity.load(LibranetConfig(storage=storage))
+    sent = Transaction(node.node_id, {PEER: Kismet(5)}, Kismet(0), 0, CREATED)
+    mined = sent.mined(0, minimum_bits=BOUNDS.transaction_bits)
+    return SignedTransaction.of(node.signed(mined.text()))
+
+
+def stored_ids(queues: ModuleQueues) -> list[ContentId]:
+    """The content the module has announced since anything published was last asked for."""
+    return [
+        ContentId.from_fields(message)
+        for message in published(queues)
+        if event_of(message) is EventType.DATA_STORED
+    ]
 
 
 def heads_said(queues: ModuleQueues) -> list[dict[str, object]]:
@@ -230,6 +264,7 @@ def test_the_supervisor_runs_the_karma_module_last(
                 EventType.KARMA_ROOT_REQUESTED,
                 EventType.NODE_TRUST,
                 EventType.KARMA_HEAD_TOLD,
+                EventType.KARMA_TRANSACTION,
             }
         ),
     )
@@ -724,3 +759,75 @@ def test_a_head_told_is_weighed_only_once_the_module_has_started(
 ) -> None:
     with raises(RuntimeError, match="not running"):
         module_over(storage, queues).handle(head_told(HEAD))
+
+
+def test_a_transaction_given_is_put_up_at_the_head_as_a_block_of_its_own_stored_and_announced(
+    storage: StorageConfig, queues: ModuleQueues, caplog: LogCaptureFixture
+) -> None:
+    module = rooting_module(storage, queues)
+    module.handle(root_requested())
+    head = module.history.head
+    # The root's reward pays the node, so it covers what it sends.
+    signed = paid_by_node(storage)
+    published(queues)
+
+    with caplog.at_level(INFO):
+        module.handle(given(signed))
+
+    (block_id,) = stored_ids(queues)
+    block = BlockDrop.parsed(module.reader.held(block_id), TransactionBlock).block
+    assert head is not None
+    assert (block.generation, block.previous, block.signed) == (1, head.validation, (signed,))
+    target = GenerationTargets.after(head.validation).transaction
+    assert matching_bits(target.hex, block_id.hash) >= SEARCH_MIN_BITS
+    assert f"Put up Karma transaction {signed.hash} as block {block_id}" in caplog.text
+
+
+def test_a_transaction_given_before_a_chain_is_followed_is_put_up_as_the_module_looks_once_one_is(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    clock = Clock()
+    module = rooting_module(storage, queues, clock)
+    signed = paid_by_node(storage)
+
+    module.handle(given(signed))
+
+    assert stored_ids(queues) == []
+
+    module.handle(root_requested())
+    published(queues)
+    clock.now += LibranetConfig().karma.look_seconds
+    module.on_idle()
+
+    (block_id,) = stored_ids(queues)
+    assert BlockDrop.parsed(module.reader.held(block_id), TransactionBlock).block.signed == (
+        signed,
+    )
+
+
+def test_a_transaction_given_that_is_none_is_logged_and_passed_over(
+    storage: StorageConfig, queues: ModuleQueues, caplog: LogCaptureFixture
+) -> None:
+    module = rooting_module(storage, queues)
+    module.handle(root_requested())
+    published(queues)
+
+    with caplog.at_level(WARNING):
+        module.handle(
+            make_message(
+                EventType.KARMA_TRANSACTION, ModuleName.WEBSERVER, {"transaction": {"hash": "?"}}
+            )
+        )
+
+    assert published(queues) == []
+    assert "Passing over a Karma transaction that is none" in caplog.text
+
+
+def test_a_transaction_is_put_up_only_once_the_module_has_started(
+    storage: StorageConfig, queues: ModuleQueues
+) -> None:
+    sender = new_identity()
+    sent = Transaction(sender.node_id, {PEER: Kismet(5)}, Kismet(0), 0, CREATED)
+
+    with raises(RuntimeError, match="not running"):
+        module_over(storage, queues).handle(given(SignedTransaction.of(sender.signed(sent.text()))))

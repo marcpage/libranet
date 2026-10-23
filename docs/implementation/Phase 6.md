@@ -118,7 +118,7 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
   Step 118 is #436, Step 119 is #437, Step 120 is #438, Step 121 is #439,
   Step 122 is #440, Step 123 is #441, Step 124 is #442, Step 125 is #443,
   Step 126 is #444, Step 127 is #445, Step 128 is #446, Step 129 is #447,
-  Step 130 is #448, and none after it has one yet.
+  Step 130 is #448, Step 131 is #449, and none after it has one yet.
 - **The ledger's tests use small blocks.** Whether a block is full is
   measured against bounds the library takes, the specification's
   (KarmaLedger §5.4) unless a test gives others, so that a test fills a
@@ -2025,7 +2025,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 130 — Telling and Asking Heads
+## Step 130 — Telling and Asking Heads ✅
 
 **Kind:** improvement in web API. **Issue:** #448, under #87.
 **Depends on:** Steps 123 and 129.
@@ -2127,8 +2127,8 @@ My calls, not yet reviewed:
 
 ## Step 131 — Putting Up a Transaction
 
-**Kind:** improvement in behavior. **Issue:** none yet; planned under
-#87. **Depends on:** Steps 118, 120, and 129.
+**Kind:** improvement in behavior. **Issue:** #449, under #87.
+**Depends on:** Steps 118, 120, and 129.
 
 A signed transaction, the node's own or one a person signs through it
 (Step 137), is put up as a block of its own (KarmaLedger §5.6).
@@ -2156,6 +2156,67 @@ Work this implies:
 being full; a pending transaction carried, and put up once covered; one
 carried no longer after the count; an invalid one passed over; a key put
 up once.
+
+It came to 488 added lines of non-test Python, with 39 changed or removed,
+against an estimate of 350, and 738 lines of tests, so it was built as one
+change set.
+
+What was built:
+
+- **`OwnBlock`** (`karma/putting.py`, new): a transaction as a block of its
+  own on a head, with its verdict there (Step 121), and, when it is valid,
+  the block holding it and the payout, its `weight`, balances, and `reach`
+  stated as Step 121 checks them. It is the next block as the tests' chains
+  build one.
+- **`ChainBefore`** (`karma/checking.py`): Step 121's `_ChainBefore`, made
+  public, its `weight`, `payout`, and `reach` taken out of the checks that
+  read them, so that a block of its own states each as a check works it
+  out.
+- **`TransactionsPutUp`** (`karma/putting.py`, new): `take(signed)` checks a
+  transaction given to put up: its work against the bounds, that it moves
+  something, that its key is not in the chain, and its signature, with its
+  sender's key held. One that fails is logged as a warning, and passed over,
+  as is one of a key carried already. Any other is carried, marked as one
+  the node puts up, and `put_up()` then tries each so marked at the head,
+  once a head: one valid there is put up, and one pending is logged and
+  carried on. The block is signed by the node, its nonce searched for for
+  `karma.block_seconds`, and after that until it shares
+  `storage.search_min_bits`, and it is stored and announced as the root is.
+- **`carried.json`** (`karma/carried.py`) marks each transaction the node
+  puts up itself, `"put_up": true`, and `CarriedTransactions.to_put_up`
+  reads those, each as it is carried at the head. An entry with no
+  `put_up`, as Step 129 wrote them, is not put up.
+- **`karma.transaction`** `{"transaction": {…}}`: the Karma module takes
+  each it is given, and logs and passes over one that is no signed
+  transaction. Nothing publishes it yet: Step 137's web server will.
+- **`karma.block_seconds`** (`KarmaConfig`), 10 by default.
+- **`KarmaModule`** puts up what it carries to put up as it looks, after
+  saying the head and writing its balances.
+- File Layout §3 and §3.11, the Module System, Messages §2.3, §3, §4.13,
+  and §5, the Operator Guide's §3 and §4.8, and the example configuration.
+
+My calls, not yet reviewed:
+
+- **A transaction put up is carried on**, until the chain holds its key, and
+  put up again at each head after, so that one the winning block leaves out
+  is not lost: the next generation's builders read only its own targets, and
+  those of its false starts (§3.4). The plan says so of one pending. One
+  never taken in is put up at each head until a winning validation block
+  lists it, and `karma.carry_generations` after that (§4.5), which Step 136
+  does for what the node carries.
+- **Only the transactions the node is given are put up one to a block.**
+  Those carried over from a chain left (Step 129) wait for the blocks Step
+  134 builds, as §3.5.3 says, rather than each holding up the module for
+  `karma.block_seconds`: a chain left may leave hundreds.
+- **The keys tried at a head are kept in memory**, so a node that restarts
+  puts each up once more at the head it was put up at.
+- **A transaction whose sender's key is not held is passed over**, and the
+  key asked for, rather than waited for: the node holds its own key, and
+  those of the people signed in on it, who give it what it puts up.
+- **The search for a nonce holds up the module**, as making a root does,
+  `karma.block_seconds` for each transaction put up.
+- **One given while no chain is followed is carried**, and put up at the
+  first head.
 
 ---
 

@@ -13,8 +13,9 @@ which runs in a process of its own (Phase 6 Step 123); reading what is
 placed at a target, and the chain the module follows as a check reads it
 (Phase 6 Step 124); making a chain's root (Phase 6 Step 125); following
 the chain, a generation at a time (Phase 6 Step 126); writing every balance
-stated at its head (Phase 6 Step 128); and changing to a heavier chain, and
-carrying over the transactions of the chain left (Phase 6 Step 129).
+stated at its head (Phase 6 Step 128); changing to a heavier chain, and
+carrying over the transactions of the chain left (Phase 6 Step 129); and
+putting a transaction up as a block of its own (Phase 6 Step 131).
 """
 
 from libranet.karma.amounts import KISMET_PER_KARMA, MAX_KISMET, Kismet
@@ -35,6 +36,7 @@ from libranet.karma.carried import CARRIED_FILE, CarriedTransaction, CarriedTran
 from libranet.karma.changing import HeadChanges
 from libranet.karma.checking import (
     BlockScore,
+    ChainBefore,
     ChainView,
     TransactionBlockCheck,
     TransactionVerdict,
@@ -68,6 +70,7 @@ from libranet.karma.members import (
     moment_member,
 )
 from libranet.karma.module import KarmaModule
+from libranet.karma.putting import OwnBlock, TransactionsPutUp
 from libranet.karma.reading import ChainGenerations, HeldBlock, HeldChain, TargetReader
 from libranet.karma.root import ChainRoot
 from libranet.karma.stakes import SignedStake, Stake
@@ -99,6 +102,7 @@ __all__ = [
     "BlockScore",
     "CarriedTransaction",
     "CarriedTransactions",
+    "ChainBefore",
     "ChainFollower",
     "ChainGeneration",
     "ChainGenerations",
@@ -117,6 +121,7 @@ __all__ = [
     "HeldChain",
     "KarmaModule",
     "Kismet",
+    "OwnBlock",
     "Payout",
     "Reward",
     "SignedStake",
@@ -129,6 +134,7 @@ __all__ = [
     "TransactionBlockCheck",
     "TransactionKey",
     "TransactionVerdict",
+    "TransactionsPutUp",
     "ValidationBlock",
     "ValidationBlockCheck",
     "ValidationScore",

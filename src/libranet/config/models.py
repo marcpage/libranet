@@ -818,6 +818,12 @@ class KarmaConfig(_Section):
     # the blocks the node builds (KarmaLedger §4.4, Phase 6 Step 129).
     carry_generations: int = Field(default=10, ge=0)
 
+    # How long the Karma module searches for the nonce of a block it places,
+    # as one put up for a transaction alone, before taking the best found,
+    # once that shares storage.search_min_bits with its target (KarmaLedger
+    # §2, Phase 6 Step 131). The search holds up the module's other work.
+    block_seconds: float = Field(default=10.0, ge=0)
+
 
 class LocalConfig(_Section):
     """What clients on this machine may reach of it (HttpApi §2.4, Phase 3 Step 68)."""

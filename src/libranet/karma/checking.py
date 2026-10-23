@@ -49,16 +49,18 @@ from libranet.karma.blocks import (
 )
 from libranet.karma.generations import GenerationTargets
 from libranet.karma.ledger import NO_BALANCE, BalanceSheet, Reward, reach_of
-from libranet.karma.transactions import SignedTransaction, TransactionKey
+from libranet.karma.transactions import Payout, SignedTransaction, TransactionKey
 from libranet.karma.weight import ChainWeight
 
 
 @dataclass(frozen=True)
-class _ChainBefore:
+class ChainBefore:
     """What transaction block g is built on: validation block g − 1, ``validation``, in ``chain``.
 
     Its id is ``validation_id``, and it validates transaction block g − 1,
-    ``validated``, whose id is ``validated_id``.
+    ``validated``, whose id is ``validated_id``. What a block built on it
+    states of it is checked against it here, and a block of its own is
+    built on it as truly (Phase 6 Step 131).
     """
 
     chain: ChainView
@@ -68,7 +70,7 @@ class _ChainBefore:
     validated: TransactionBlock
 
     @classmethod
-    def read(cls, chain: ChainView, validation_id: ContentId) -> _ChainBefore:
+    def read(cls, chain: ChainView, validation_id: ContentId) -> ChainBefore:
         """What ``chain`` holds of validation block ``validation_id``, and the block it validates.
 
         Raises:
@@ -86,9 +88,46 @@ class _ChainBefore:
         """The generation built on it: one more than its validation block's."""
         return self.validation.block.generation + 1
 
+    @property
+    def weight(self) -> ChainWeight:
+        """The chain's weight through it, which a block built on it states (§5.1)."""
+        return self.validated.weight_through(self.validated_id, self.validation_id)
+
     def stakers(self) -> set[ContentId]:
         """The stakers of its validation block, whom its reward pays (§6.6)."""
         return {stake.staker for stake in self.validation.block.stakes}
+
+    def payout(self, balances: Mapping[ContentId, Balance]) -> Payout:
+        """The payout of a block built on it, which pays its validation block's reward (§5.2).
+
+        ``balances`` are each staker's, as the block it validates leaves them.
+
+        Raises:
+            MissingContentError: ``chain`` lacks the runner-up it names.
+        """
+        named = self.validation.block.runner_up
+        runner_up = None if named is None else self.chain.validation(named).block
+        reward = Reward(
+            self.validation.block, self.validation.builder, self.validated, balances, runner_up
+        )
+        return reward.payout()
+
+    def reach(self, block: TransactionBlock) -> int:
+        """The ``reach`` of ``block``, built on it (§5.3).
+
+        It is read from the balances ``block`` states, and those of the
+        blocks before it, as far back as the reach of the one it is built on.
+
+        Raises:
+            MissingContentError: names a block in that reach, which ``chain``
+                lacks.
+        """
+        last = self.generation - 1
+        back = min(self.validated.reach, last)
+        older = [
+            self.chain.stated(generation) for generation in range(last - 1, last - back - 1, -1)
+        ]
+        return reach_of([block.balances, self.validated.balances, *older])
 
     def false_basis(self, block: TransactionBlock) -> str:
         """What ``block``, read at the target named for it, states falsely of it, or ``""``.
@@ -103,7 +142,7 @@ class _ChainBefore:
                 f"that of {self.validation_id}, its target's, got {block.generation}"
             )
 
-        weight = self.validated.weight_through(self.validated_id, self.validation_id)
+        weight = self.weight
 
         if block.weight != weight:
             return (
@@ -123,12 +162,7 @@ class _ChainBefore:
         Raises:
             MissingContentError: ``chain`` lacks the runner-up it names.
         """
-        named = self.validation.block.runner_up
-        runner_up = None if named is None else self.chain.validation(named).block
-        reward = Reward(
-            self.validation.block, self.validation.builder, self.validated, balances, runner_up
-        )
-        payout = reward.payout()
+        payout = self.payout(balances)
         stated = block.payout
 
         if stated is None or (stated.sources, stated.to) != (payout.sources, payout.to):
@@ -140,21 +174,13 @@ class _ChainBefore:
         return ""
 
     def false_reach(self, block: TransactionBlock) -> str:
-        """What ``block`` states falsely of its ``reach``, or ``""`` (§5.3).
-
-        Its reach is read from the balances it states, and those of the
-        blocks before it, as far back as the reach of the one it is built on.
+        """What ``block`` states falsely of its ``reach``, as :meth:`reach` reads it, or ``""``.
 
         Raises:
             MissingContentError: names a block in that reach, which ``chain``
                 lacks.
         """
-        last = self.generation - 1
-        back = min(self.validated.reach, last)
-        older = [
-            self.chain.stated(generation) for generation in range(last - 1, last - back - 1, -1)
-        ]
-        reach = reach_of([block.balances, self.validated.balances, *older])
+        reach = self.reach(block)
 
         if block.reach != reach:
             return f'A transaction block\'s "reach" must be {reach}, got {block.reach}'
@@ -391,7 +417,7 @@ class TransactionBlockCheck:
         if named_for is None:
             return cls._root(found, bits, chain)
 
-        before = _ChainBefore.read(chain, named_for)
+        before = ChainBefore.read(chain, named_for)
         return cls._on_chain(found, bits, before, compressed_bytes=compressed_bytes, bounds=bounds)
 
     @property
@@ -438,7 +464,7 @@ class TransactionBlockCheck:
         cls,
         drop: BlockDrop[TransactionBlock],
         bits: int,
-        before: _ChainBefore,
+        before: ChainBefore,
         *,
         compressed_bytes: int,
         bounds: BlockBounds,
