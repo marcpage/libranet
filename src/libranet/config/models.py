@@ -800,6 +800,11 @@ class KarmaConfig(_Section):
     # takes one core of the node's.
     mining_processes: int = Field(default=1, ge=1)
 
+    # How long the Karma module waits for content it asks the network for,
+    # a block or a signer's key, before it goes on without it (Phase 6 Step
+    # 124). It asks again the next time it needs it.
+    fetch_wait_seconds: float = Field(default=30.0, gt=0)
+
 
 class LocalConfig(_Section):
     """What clients on this machine may reach of it (HttpApi §2.4, Phase 3 Step 68)."""

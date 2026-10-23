@@ -138,6 +138,7 @@ The settings an operator is most likely to change:
 | `storage.search_min_bits` | `24` | How many leading bits a hash must share with what is searched for to be found; a drop placed matching fewer is not found. No more than `network.drop_max_minimum_bits` |
 | `backup.interval_seconds` | `3600.0` | How often each backed-up directory is looked at (§5.1) |
 | `karma.mining_processes` | `1` | How many processes Karma searches for nonces with, and so how many of the machine's cores it may take |
+| `karma.fetch_wait_seconds` | `30.0` | How long Karma waits for a block or a key it asks the network for before going on without it |
 | `local.folders` | Your desktop, documents, downloads, music, pictures, and videos folders | The folders offered to trusted applications (§6.3) |
 | `logging.level` | `INFO` | What is logged (§7.2) |
 
