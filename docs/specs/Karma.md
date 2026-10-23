@@ -515,6 +515,22 @@ The protocol requires at least 50 to be free.
 The validator therefore has only 50 positions that can be selected primarily for
 their fee value.
 
+```mermaid
+flowchart LR
+    subgraph pool["Transaction pool"]
+        free["10,000 free"]
+        high["10,000 high-fee"]
+        low["10,000 low-fee"]
+    end
+    subgraph block["Block with room for 100"]
+        fslots["50 free positions"]
+        pslots["50 paid positions"]
+    end
+    free -->|fill| fslots
+    high -->|"outbid for"| pslots
+    low -.->|"crowded out: delayed"| pslots
+```
+
 If the transaction pool contains:
 
 ```text
@@ -580,28 +596,13 @@ block.
 
 Participants then search for a proof-of-work solution for their candidate.
 
-```text
-------------------------------        ------------------------------
-|                            |        |                            |
-|   Validation Block N + 1   |  ----> |   Transaction Block N + 1  |
-|                            |        |                            |
-------------------------------        ------------------------------
-              |                               |
-              v                               |
-------------------------------                |
-|                            |                |
-|   Runner Up N + 1          |                |
-|                            |                |
-------------------------------                |
-                                              |
-             ----------------------------------
-             |
-             v
---------------------------        --------------------------
-|                        |        |                        |
-|   Validation Block N   |  ----> |   Transaction Block N  |
-|                        |        |                        |
---------------------------        --------------------------
+```mermaid
+flowchart TB
+    vn1["Validation Block N + 1"] -->|validates| tn1["Transaction Block N + 1"]
+    vn1 -->|"names as runner-up"| ru["Runner Up N + 1"]
+    ru -->|validates| rival["Rival Transaction Block N + 1"]
+    tn1 -->|"builds on"| vn["Validation Block N"]
+    vn -->|validates| tn["Transaction Block N"]
 ```
 
 ---
@@ -980,6 +981,17 @@ This creates a dynamic strategy:
 observe -> construct -> stake -> mine -> observe -> reconstruct
 ```
 
+```mermaid
+flowchart TB
+    observe["Observe the candidates"] --> construct["Construct a candidate"]
+    construct --> stake["Publish a stake"]
+    stake --> mine["Mine for a nonce"]
+    mine --> observe
+    observe -->|"a stake looks headed<br/>for the runner-up"| reconstruct["Reconstruct with<br/>a new, larger stake"]
+    reconstruct --> mine
+    mine -->|"transaction block fills"| stop(["Competition ends"])
+```
+
 The protocol therefore becomes a continuously evolving competition rather than a
 single instantaneous auction.
 
@@ -1023,6 +1035,16 @@ Thus:
 
 ```text
 Winning reward = new Karma + fees + applicable runner-up stake
+```
+
+```mermaid
+flowchart LR
+    newk["Newly generated Karma"] --> reward["Winning reward"]
+    fees["Transaction fees"] --> reward
+    ru["Applicable runner-up stake"] --> reward
+    reward -->|"by effective<br/>weighted stake"| s1["Staker 1"]
+    reward -->|"by effective<br/>weighted stake"| s2["Staker 2"]
+    reward -->|"by effective<br/>weighted stake"| sn["Staker n"]
 ```
 
 subject to the protocol's rules concerning duplicate stakes and stake weighting.

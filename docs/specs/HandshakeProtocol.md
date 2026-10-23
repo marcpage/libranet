@@ -82,6 +82,20 @@ machine. A node that refuses unsigned reads within `/data`, as the rule above
 allows, refuses the reads among them as well, so its applications cannot use
 them.
 
+```mermaid
+flowchart LR
+    req["Incoming request"] --> headers{"Identity headers present?"}
+    headers -->|yes| verify{"Signature verifies?"}
+    verify -->|yes| serve["Serve it as from that node"]
+    verify -->|"cannot check yet:<br/>key not held"| grace["Bootstrap grace period (§3.2)"]
+    verify -->|fails| close["Terminate the connection (§5.3)"]
+    headers -->|no| kind{"What is asked?"}
+    kind -->|"GET outside /data"| honor["MUST honor"]
+    kind -->|"GET within /data"| should["SHOULD honor<br/>(MAY refuse as local policy)"]
+    kind -->|"PUT or POST"| reject["MUST reject"]
+    kind -->|"an endpoint meant only<br/>for the node's pages"| pages["Served as HTTP API<br/>§2.4 and §2.5 describe"]
+```
+
 If identity headers are present but the signature fails to verify, the
 connection MUST be terminated (§5.3), subject to the bootstrap grace
 period in §3.2. This is distinct from omitting authentication
@@ -118,6 +132,30 @@ is the convention:
    the corresponding content to the server via `PUT /data/{algo}/{hash}`.
 7. **`GET` requested items** — the client requests the content it is
    itself seeking, checking whether the server can fulfill any of it.
+
+```mermaid
+sequenceDiagram
+    participant C as Client (guest)
+    participant S as Server (host)
+    C->>S: 1. PUT /data/{algo}/{client-id}<br/>the client's public key
+    S-->>C: signed response, naming the server's id
+    opt Client lacks the server's key
+        C->>S: 2. GET /data/{algo}/{server-id}
+        S-->>C: the server's public key
+    end
+    C->>S: 3. POST /data/nodes<br/>the client's node list
+    C->>S: 4. GET /data/seek
+    S-->>C: {"data": [...], "search": [...]}
+    C->>S: 5. GET /data/nodes
+    S-->>C: the server's node list
+    loop Content the client holds that the server seeks
+        C->>S: 6. PUT /data/{algo}/{hash}
+    end
+    loop Content the client seeks
+        C->>S: 7. GET /data/{algo}/{hash}
+        S-->>C: the content, or 503<br/>while the server looks for it
+    end
+```
 
 ### 3.1 Rationale for the Ordering
 
@@ -169,6 +207,20 @@ two nodes is no longer a distinct "handshake" — it is ordinary traffic:
   after their first contact. A server is not sent its own entry. A server
   the client connects to later learns of them in step 3 of its own
   first-contact exchange.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant S as Each connected server
+    loop Periodically
+        C->>S: GET /data/seek
+        S-->>C: outstanding requests
+        C->>S: PUT /data/{algo}/{hash} for each one newly fulfillable
+    end
+    opt Client's node list newly names a node at an address
+        C->>S: POST /data/nodes (the new entries, with its own)
+    end
+```
 
 ## 4. Roles: Guests and Hosts
 

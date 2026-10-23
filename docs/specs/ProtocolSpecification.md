@@ -83,6 +83,14 @@ hashed. It is written `{hash algorithm}/{hash}`, the hash in lower-case
 hexadecimal, such as `sha256/` followed by 64 hex digits. SHA-256 is the
 recommended hash function. HTTP API §11.2 gives the details.
 
+```mermaid
+flowchart TB
+    priv["Ed25519 private key<br/>(kept by the node)"] --> pub["Public key<br/>PEM SubjectPublicKeyInfo bytes"]
+    pub --> h["SHA-256 of those exact bytes"]
+    h --> id["Node ID<br/>sha256/{64 hex digits}"]
+    pub -->|"stored as ordinary content at"| cas["/data/sha256/{the same hash}"]
+```
+
 - A Node ID MUST be derived from a cryptographic hash function with preimage and
   second-preimage resistance.
 - A Node ID MUST be deterministically derivable from the node's public key (or
@@ -141,6 +149,17 @@ recommended hash function. HTTP API §11.2 gives the details.
 - Nodes MAY request the content of other Nodes to fulfill the request.
 - Nodes MUST return an HTTP response of `503 Service Unavailable` if the data is
   not available locally, but is requesting the data from other Nodes.
+
+```mermaid
+flowchart TD
+    req["GET /data/{hash algorithm}/{hash}"] --> proven{"Requester proved<br/>its Node ID?"}
+    proven -->|no| hs["Handled as Handshake Protocol §2.1 says"]
+    proven -->|yes| held{"Held locally?"}
+    held -->|yes| ok["Return the content"]
+    held -->|no| fetching{"Requesting it<br/>from other Nodes?"}
+    fetching -->|yes| unavailable["503 Service Unavailable"]
+    fetching -->|no| nf["404 Not Found (HTTP API §5.3)"]
+```
 
 ### 5.3 Routing
 

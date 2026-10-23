@@ -134,6 +134,27 @@ chose as the node starts. The reference node listens for `/config` at
 none, on the first port free of 100 above its main port, 200 above, and so
 on. It logs the port as it starts.
 
+```mermaid
+flowchart LR
+    peers["Other nodes"] --> data
+    browsers["Browsers"] --> root
+    browsers --> apps
+    browsers --> data
+    local["A client on the node's machine,<br/>holding the /config credential"] --> cfgapp
+    local --> cfgapi
+    subgraph node["A Libranet node"]
+        subgraph main["Main port"]
+            data["/data/…<br/>programmatic API"]
+            root["/ root application"]
+            apps["/{app-name}/…<br/>directory-bundle applications"]
+        end
+        subgraph cfg["/config's port, at a loopback address"]
+            cfgapp["/config/…<br/>administration application"]
+            cfgapi["/config/api/…<br/>administration endpoints"]
+        end
+    end
+```
+
 On its main port, a node MUST NOT challenge for, check, or capture the
 `/config` credential (§2.3.1). A browser that sent the credential there
 would hold it for the main port's origin, and would send it with the
@@ -274,6 +295,28 @@ a `GET` or `HEAD`, so a request without them comes from a script or a
 command-line client, which holds the credential itself. A request to
 `/config/api` must also carry a `Referer` naming a page of the `/config`
 application, whether a browser sends it or not (§2.5).
+
+```mermaid
+flowchart TD
+    req["Request on /config's port"] --> src{"Source address<br/>local?"}
+    src -->|no| deny["403 Forbidden,<br/>and no credential captured"]
+    src -->|yes| host{"Host<br/>allowed?"}
+    host -->|no| deny
+    host -->|yes| sfs{"Sec-Fetch-Site<br/>allowed?"}
+    sfs -->|no| deny
+    sfs -->|yes| origin{"Origin<br/>allowed?"}
+    origin -->|no| deny
+    origin -->|yes| api{"Beneath<br/>/config/api?"}
+    api -->|yes| ref{"Referer a page<br/>of /config?"}
+    ref -->|no| deny
+    ref -->|yes| cred
+    api -->|no| cred{"Credential<br/>captured yet?"}
+    cred -->|no| capture["Capture this request's<br/>Basic credentials (§2.3.1)"]
+    cred -->|yes| match{"Credentials<br/>match?"}
+    match -->|no| challenge["401 Unauthorized<br/>WWW-Authenticate: Basic"]
+    match -->|yes| serve["Serve the request"]
+    capture --> serve
+```
 
 A `/config/api` endpoint MUST read a request body as JSON only if the
 request's `Content-Type` is `application/json`, with or without
@@ -442,6 +485,24 @@ Some endpoints ask more of the page:
   making bundles** are served only from a page of a trusted application
   (§13.5).
 
+```mermaid
+flowchart TD
+    req["Request to an endpoint meant<br/>only for the node's own pages"] --> only{"Local clients<br/>only? (§2.4)"}
+    only -->|yes| local{"Local client,<br/>passing §2.4's<br/>checks?"}
+    local -->|no| deny["403 Forbidden"]
+    local -->|yes| ref
+    only -->|no| ref{"Referer a page<br/>of the node?"}
+    ref -->|no| deny
+    ref -->|yes| asks{"Asks more<br/>of the page?"}
+    asks -->|no| serve["Serve the request"]
+    asks -->|"an application's store"| own{"Page of the store's<br/>application?"}
+    asks -->|"shunning, peers, identities,<br/>session, signing, encryption,<br/>trust, folders, imports, bundles"| trusted{"Page of a trusted<br/>application?"}
+    own -->|yes| serve
+    own -->|no| deny
+    trusted -->|yes| serve
+    trusted -->|no| deny
+```
+
 A browser sends a page's full address as the `Referer` of each request the
 page makes of its own origin, unless the page asks it not to, as with
 `Referrer-Policy: no-referrer`. Such a page cannot use these endpoints. A
@@ -557,6 +618,19 @@ as per-entry encryption writes one
 ([Bundle Specification §7](BundleSpecification.md#7-per-entry-cas-encryption)),
 `{hash-algorithm}/{hash}/{encryption algorithm}/{key}`, which names the
 bundle stored encrypted at `{hash}` and carries the key that decrypts it.
+
+```mermaid
+flowchart TD
+    get["GET /data/{hash-algorithm}/{hash}"] --> valid{"Identifier<br/>valid?"}
+    valid -->|no| bad["400 Bad Request (§5.4)"]
+    valid -->|yes| shunned{"Shunned (§5.5)?"}
+    shunned -->|yes| nf["404 Not Found (§5.3)"]
+    shunned -->|no| held{"Held locally?"}
+    held -->|yes| ok["200 OK: the content,<br/>raw or zlib-compressed (§5.1)"]
+    held -->|no| look{"Will it look<br/>on other nodes?"}
+    look -->|yes| wait["503 Service Unavailable, Retry-After,<br/>while it looks (§5.2)"]
+    look -->|no| nf
+```
 
 ### 5.1 Retrieve Content
 
@@ -755,6 +829,23 @@ it has outgoing connections to for the same prefix, in passes, and knows the
 hashes they answer from then on, so that a later search lists them. The node
 lists the prefix in its seek list (§10.7) too, so that the peers connected to it
 push what they hold that matches (§10.7.2).
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant N as Node
+    participant P as Peers, best match first
+    C->>N: GET /data/search/{hash}
+    N-->>C: the matches it knows now
+    N->>N: list the prefix in its seek list
+    loop Each pass, over each outgoing connection
+        N->>P: GET /data/search/{hash}
+        P-->>N: their matches
+    end
+    Note over N: knows the hashes its peers answered
+    C->>N: GET /data/search/{hash}, later
+    N-->>C: matches, the peers' among them
+```
 
 A node MAY answer a search again from the answer it last gave, rather than
 look through what it holds each time. The reference node keeps each answer,
@@ -1046,6 +1137,21 @@ answered `201 Created`, with a `Location` naming the drop (§5.1):
 `target` is the target hash, in lower-case hex, by which a page searches
 for the drop (§9.4) without hashing anything itself.
 
+```mermaid
+sequenceDiagram
+    participant Pg as Page of the node
+    participant N as Node
+    participant B as Best outgoing connection
+    Pg->>N: POST /data/drop<br/>{"target", "text", "seconds", "minimum_bits"}
+    N->>N: target hash = SHA-256 of the target string
+    loop For seconds, and on until minimum_bits is met
+        N->>N: hash content + 0x00 + nonce,<br/>keep the nonce nearest the target hash
+    end
+    N->>N: store the drop
+    N-->>Pg: 201 Created<br/>{"id", "target", "matching_bits"}
+    N-)B: PUT /data/{hash-algorithm}/{hash}
+```
+
 The node stores the drop as content it uploaded itself, and pushes it as it
 does any new content (§7.4). A drop larger than an object
 (HighLevelDesign §4.3) is stored compressed (§8). One too large even
@@ -1296,6 +1402,21 @@ remain permanent.
 
 A node that cannot accept an independent incoming connection MAY still
 participate in Libranet through outgoing connections.
+
+```mermaid
+sequenceDiagram
+    participant A as Node A, at 192.168.1.50:8080
+    participant G as Gateway, at 203.0.113.42
+    participant B as Node B
+    participant C as Node C
+    A->>G: outgoing connection
+    G->>B: POST /data/nodes<br/>{"http://localhost:4300": "A's id"}
+    Note over B: source address 203.0.113.42,<br/>so B stores http://203.0.113.42:4300
+    C->>B: GET /data/nodes
+    B-->>C: {"http://203.0.113.42:4300": "A's id"}
+    C->>G: connect to 203.0.113.42:4300
+    G->>A: forwarded to 192.168.1.50:8080
+```
 
 ### 10.4 Local Network Operation
 
@@ -1766,6 +1887,21 @@ identity is compromised. How applications read the versions, and say an
 identity is compromised, is theirs. The node makes the first version, and
 signs and checks the rest for a page (§11.5), but judges none.
 
+```mermaid
+flowchart TB
+    subgraph byname["Drop user:{username}"]
+        own["The identity's block<br/>opened by the password<br/>names its fallback"]
+        fbblock["The fallback's block<br/>opened by the fallback password<br/>names fallback_for"]
+    end
+    subgraph byid["Drop user:{id}"]
+        v1["Version 1 of what the person<br/>says of themselves, signed by<br/>the identity, naming its fallback"]
+    end
+    own -->|"holds the private key of"| identity["The identity<br/>RSA key pair, id = content<br/>identifier of its public key"]
+    fbblock -->|"holds the private key of"| fallback["Its fallback<br/>a second RSA key pair"]
+    identity -->|"signs"| v1
+    v1 -->|"names"| fallback
+```
+
 A page of the node makes an identity with:
 
 ```http
@@ -1864,6 +2000,13 @@ A fallback with no fallback of its own signs nothing (§11.5). So a fallback
 that says its identity is compromised has taken over, and has a fallback of
 its own, whenever it says so.
 
+```mermaid
+flowchart LR
+    old["Identity<br/>compromised"] -->|"fallback"| fb["Fallback<br/>takes over: the person's<br/>identity from then on"]
+    fb -->|"fallback"| nf["New fallback<br/>opened by a new<br/>fallback password"]
+    nf -.->|"takes over in turn,<br/>should it be needed"| next["…"]
+```
+
 ### 11.4 Signing In
 
 A person signs in to a node from one of its pages:
@@ -1917,6 +2060,26 @@ has not reached it yet. A person who tries again is likelier to be found, as
 the node knows what its peers answered by then, and may have started another
 search of them. A node stores the person's public key again if it no longer
 holds it.
+
+```mermaid
+sequenceDiagram
+    participant Pg as Page of a trusted application
+    participant N as Node
+    participant P as Peers
+    Pg->>N: POST /data/session<br/>{"username", "password"}
+    N->>N: search the drop user:{username}
+    N-)P: search them too, and ask for blocks not held
+    N->>N: derive the ARGON2ID key, try each block found
+    opt No block opens
+        N->>N: wait its own Retry-After, search again, try again
+    end
+    alt A block opens to an identity
+        N->>N: hold the private key in memory,<br/>start building trust scores
+        N-->>Pg: 200 OK, Set-Cookie: libranet-session=…
+    else Still none opens
+        N-->>Pg: 503 Service Unavailable, Retry-After
+    end
+```
 
 A session is between a browser and its node, and is no part of the protocol
 between nodes (HandshakeProtocol §6). The node holds the person's private key
@@ -2047,6 +2210,19 @@ A page has the node encrypt what it places at a drop (§9.6), or what it signs
   with a random IV, named in its descriptor (Bundle Specification §6.3). The
   username is normalized as §11.3 says, and the password is at least 8
   characters, as a new identity's is.
+
+```mermaid
+flowchart TD
+    text["Content a page gives"] --> signed{"POST<br/>/data/signed?"}
+    signed -->|yes| sign["Signed with the session's key<br/>as a signed bundle (§11.5)"]
+    signed -->|no| enc
+    sign --> enc{"Its encrypt member"}
+    enc -->|"for: id"| pk["Encrypted for that person<br/>(Bundle Specification §8)"]
+    enc -->|"username and password"| pw["Encrypted by the ARGON2ID key,<br/>with a random IV"]
+    enc -->|absent| drop
+    pk --> drop["Made a drop: + 0x00 + nonce,<br/>then stored and pushed"]
+    pw --> drop
+```
 
 The node encrypts the content, then makes a drop of what it encrypted, with
 the nonce after it (§9). A signed drop is signed first, then encrypted, so
@@ -2986,6 +3162,19 @@ whatever another can (§2.4).
 The `/config` application is neither trusted nor untrusted. It is served
 only on its own port (§2.3), where trust gives nothing, and never in a
 sandbox.
+
+```mermaid
+flowchart TD
+    req["Request on the main port"] --> seg{"Its first path segment"}
+    seg -->|data| api["The programmatic API"]
+    seg -->|"web, chaos, or config"| reserved["Reserved: no application<br/>(config MAY redirect to /config's port)"]
+    seg -->|"a registered application's name"| app["That application's bundle"]
+    seg -->|"anything else"| rootapp["The root application's bundle"]
+    app --> trusted{"Trusted by the operator?"}
+    rootapp --> trusted
+    trusted -->|yes| plain["Served on the main port's origin:<br/>may use the endpoints for local<br/>clients, from a local client"]
+    trusted -->|no| sandbox["Served with Content-Security-Policy:<br/>sandbox, at an origin of its own"]
+```
 
 ---
 

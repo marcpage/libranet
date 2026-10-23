@@ -91,6 +91,23 @@ Directory Bundles with no format extensions of their own.
   backups can locate the prior version and so that restore (§5) can
   locate the bundle to restore.
 
+```mermaid
+flowchart TD
+    job["Backup job: a local directory,<br/>configured through /config"] --> watch["Watch the directory<br/>(the reference node polls hourly)"]
+    watch --> changed{"Content, a path,<br/>or a link changed?"}
+    changed -->|"no, or metadata only"| watch
+    changed -->|yes| parts["Split changed files into parts,<br/>encrypting each part (§4.4)"]
+    parts --> build["Build a new directory bundle,<br/>naming the prior one in versions"]
+    build --> layer{"Layer it over<br/>the prior one?"}
+    layer -->|yes| over["Hold only the changed entries,<br/>null for each removed path,<br/>and extend the prior bundle"]
+    layer -->|no| whole["Hold every entry<br/>(the reference node, once 32 layers<br/>lie above the last whole bundle)"]
+    over --> protect["Password-protect the bundle<br/>with the backup secret (§4.4)"]
+    whole --> protect
+    protect --> store["Store it in CAS and push it<br/>like any shared content"]
+    store --> map["Record: directory → current bundle hash"]
+    map --> watch
+```
+
 ## 4. Backup Secret and Encryption
 
 ### 4.1 Purpose
@@ -110,6 +127,18 @@ CAS, in two layers:
   protection mechanism of [BundleSpecification.md
   §6](BundleSpecification.md#6-password-protection), under the backup
   secret.
+
+```mermaid
+flowchart TB
+    secret(["Backup secret<br/>CSPRNG output, never shown"])
+    subgraph protected["Password-protected bundle (BundleSpecification §6)"]
+        bundle["Directory bundle:<br/>every path, every file's metadata,<br/>every part's address and key"]
+    end
+    secret -->|"password for"| protected
+    bundle -->|"address and key"| p1["Part 1<br/>AES256-CBC under<br/>SHA-256 of its plaintext"]
+    bundle -->|"address and key"| p2["Part 2<br/>…"]
+    bundle -->|"address and key"| pn["Part n<br/>…"]
+```
 
 ### 4.2 Backup Secret Generation
 
@@ -189,6 +218,23 @@ CAS, in two layers:
 - If the target directory is non-empty, the exact conflict-resolution
   behavior (overwrite, merge, fail) is implementation-defined and SHOULD
   be surfaced as a choice through `/config`.
+
+```mermaid
+flowchart TD
+    req["Restore through /config:<br/>a bundle hash and a target directory"] --> empty{"Target directory empty?"}
+    empty -->|no| conflict["Implementation-defined:<br/>the reference node refuses by default,<br/>or overwrites if asked"]
+    empty -->|yes| dec
+    conflict -->|refuse| refused["Restore nothing"]
+    conflict -->|overwrite| dec["Decrypt the bundle with the backup secret"]
+    dec --> resolve["Resolve its extensions into one listing"]
+    resolve --> entry["For each entry"]
+    entry --> held{"Its parts held?"}
+    held -->|yes| write["Decrypt each part with the key<br/>its path carries, and write it"]
+    held -->|no| ask["Ask for what is lacked (HTTP API §5.2)"]
+    ask --> arrives{"Arrives?"}
+    arrives -->|yes| write
+    arrives -->|"nothing arrives for a while<br/>(reference node: a day)"| skip["Give up, naming each<br/>entry not restored"]
+```
 
 ## 6. Security Considerations
 

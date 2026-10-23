@@ -25,6 +25,19 @@ encoded**. NFC (composed) normalization is **recommended but not enforced** for
 these strings. Regardless, bundles should be internally consistent, and readers
 perform plain byte comparison without normalizing.
 
+```mermaid
+flowchart TD
+    bytes["Bytes read from CAS,<br/>without any CAS placement data (§6.4)"] --> json{"Valid JSON?"}
+    json -->|no| enc["Password-protected bundle (§6),<br/>or a block encrypted for a person (§8)"]
+    json -->|yes| sig{"Has a signature member?"}
+    sig -->|yes| signed["Signed bundle (§5)"]
+    sig -->|no| contents{"Its contents member"}
+    contents -->|array| file["File bundle (§2)"]
+    contents -->|object| dir["Directory bundle (§3)"]
+    contents -->|string| link["Symlink entry"]
+    contents -->|absent| marker["Metadata-only directory marker"]
+```
+
 ---
 
 ## 2. Raw File Bundle
@@ -116,6 +129,15 @@ that reads only part of a file, as in answering a range request
 ([HTTP API §19](HttpApi.md#19-range-requests)), cannot, and relies instead on
 each part it reads matching its address and its size (§2.1). Either way, a
 part is checked before any of its bytes are used.
+
+```mermaid
+flowchart TB
+    fb["File bundle"] -->|"contents[0]"| p0["sha256/9f86d0…<br/>sizes[0]: 3072 bytes"]
+    fb -->|"contents[1]"| p1["sha1/1b4f0e…<br/>sizes[1]: 1024 bytes"]
+    p0 -->|"checked against its<br/>address and size"| file["Reassembled file<br/>metadata.size: 4096 bytes"]
+    p1 -->|"checked against its<br/>address and size"| file
+    file -->|"a whole read is checked against<br/>metadata.algorithm and metadata.hash"| ok["File"]
+```
 
 ### 2.4 Extended attributes
 
@@ -291,6 +313,17 @@ Resolution: resolve `B` → `{README.md: v1, LICENSE}`. Overlay `A` →
 `{README.md: v2, LICENSE, docs/spec.md}`. Overlay top-level →
 `{README.md: v3, LICENSE, docs/spec.md}`.
 
+```mermaid
+flowchart TB
+    B["B<br/>README.md: v1<br/>LICENSE"]
+    A["A, extending B<br/>README.md: v2<br/>docs/spec.md"]
+    T["Top level, extending A<br/>README.md: v3"]
+    R["Resolved<br/>README.md: v3<br/>LICENSE<br/>docs/spec.md"]
+    B -->|"overlaid by"| A
+    A -->|"overlaid by"| T
+    T -->|"gives"| R
+```
+
 ---
 
 ## 5. Signed Bundle
@@ -392,6 +425,19 @@ Example descriptor strings:
 - `PW-SHA256-AES256-CBC-IV:a1b2c3...` (explicit IV)
 - `PW-ARGON2ID-AES256-CBC` (a costly derivation from a username and
   password, §6.2.1)
+
+```mermaid
+flowchart TB
+    plain["Raw bundle JSON"] --> z["zlib compress<br/>at a fixed level"]
+    z --> pad["PKCS#7 pad"]
+    pad --> aes["Encrypt: AES-256-CBC,<br/>key derived from the password (§6.2),<br/>all-zero IV unless one is named"]
+    aes --> payload
+    subgraph payload["Stored payload"]
+        direction LR
+        ct["ciphertext"] --- n1["0x00"] --- desc["PW-SHA256-AES256-CBC<br/>[-IV:…]"]
+        desc -.- n2["0x00"] -.- nonce["targeting nonce<br/>(optional, §6.4)"]
+    end
+```
 
 Block ciphers such as AES encrypt whole blocks, so the compressed bundle is
 padded with **PKCS#7**
@@ -647,6 +693,18 @@ Here the second part is stored encrypted; its address hash is of the
 ciphertext, and the trailing segments carry everything a holder of the full
 path needs to decrypt it.
 
+```mermaid
+flowchart TB
+    plain["Plaintext part"] --> key["key = SHA-256 of the plaintext"]
+    plain --> zlib["Compress with zlib,<br/>if that is smaller (§7.3)"]
+    zlib --> enc["AES-256-CBC, PKCS#7 padding,<br/>all-zero IV"]
+    key --> enc
+    enc --> ct["Ciphertext, stored in CAS"]
+    ct --> h["Hash of the ciphertext"]
+    h --> path["sha256/{ciphertext hash}/AES256-CBC/{key}"]
+    key --> path
+```
+
 ---
 
 ## 8. Encryption for a Person
@@ -656,6 +714,17 @@ private key reads it. A person's key is RSA (HTTP API §11.3), which encrypts
 only something as small as a key, not a block as large as an object. So the
 block is encrypted with an AES-256 key of its own, chosen at random, and that
 key is encrypted with the person's public key.
+
+```mermaid
+flowchart TB
+    block["The block's bytes"] --> prep["zlib compress,<br/>PKCS#7 pad"]
+    prep --> aes["AES-256-CBC,<br/>all-zero IV"]
+    rnd["Random 32-byte key,<br/>used once"] --> aes
+    rnd --> oaep["RSAES-OAEP with SHA-256,<br/>under the person's public key"]
+    aes --> payload["ciphertext + 0x00 +<br/>PK-RSAOAEP256-AES256-CBC-KEY:{wrapped key}"]
+    oaep -->|"wrapped key, hex"| payload
+    priv["The person's private key"] -.->|"unwraps the key to read it"| payload
+```
 
 What is encrypted need not be a bundle: it may be a bundle's JSON, a signed
 bundle (§5), or any other bytes. A block signed by one person and encrypted

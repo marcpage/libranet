@@ -111,6 +111,17 @@ A reader finds the newest version of the list of an identity `X` this way:
 
 An identity none of whose versions is found has an empty list.
 
+```mermaid
+flowchart TD
+    search["Search the drop trust:X"] --> result["Each result"]
+    result --> mine{"Signed by X,<br/>shaped as §3.1?"}
+    mine -->|no| pass["Pass over it"]
+    mine -->|yes| version["A version of X's list"]
+    version --> newest["Newest: the highest version,<br/>then the drop id that sorts first"]
+    newest --> shun["Shun every older version read"]
+    search -->|"no version of X's found"| empty["X's list is empty"]
+```
+
 A node shuns every version it reads that is older than the newest
 ([HTTP API §5.5](HttpApi.md#55-shunned-content)), since the newest replaces
 it. Every version is placed at the same drop, and a search lists at most 32
@@ -181,6 +192,35 @@ Dave trusts Hank. Alice's scores are:
 | Gina | 2 | −0.1 | Bob distrusts her |
 | Frank | 3 | 0.01 | Erin trusts him |
 | Hank | — | — | Only Dave's list names him, and Dave's is not read |
+
+```mermaid
+flowchart TB
+    subgraph s0["Step 0"]
+        alice["Alice<br/>1"]
+    end
+    subgraph s1["Step 1: weight 1"]
+        bob["Bob<br/>1"]
+        carol["Carol<br/>1"]
+        dave["Dave<br/>−1"]
+    end
+    subgraph s2["Step 2: weight 0.1"]
+        erin["Erin<br/>0.2"]
+        gina["Gina<br/>−0.1"]
+    end
+    subgraph s3["Step 3: weight 0.01"]
+        frank["Frank<br/>0.01"]
+    end
+    hank["Hank<br/>not reached"]
+    alice -->|trusts| bob
+    alice -->|trusts| carol
+    alice --x|distrusts| dave
+    bob -->|trusts| erin
+    carol -->|trusts| erin
+    bob --x|distrusts| gina
+    bob -.->|"trusts: does not count,<br/>Dave is at step 1"| dave
+    erin -->|trusts| frank
+    dave -.->|"trusts: Dave's list<br/>is not read"| hank
+```
 
 ### 4.2 Limits
 
@@ -263,6 +303,16 @@ trusted.
   laid over it, and keeps the state of each identity across a restart, so
   that it connects to no node it distrusted before it stopped while it reads
   the lists again.
+
+```mermaid
+flowchart TD
+    peer["A node to connect to,<br/>or a request it signed"] --> score{"The node's own score for it"}
+    score -->|"above 0: trusted"| allow["Connect, and serve its requests"]
+    score -->|"below 0: untrusted"| refuse["No connection: requests it signs<br/>are refused, and an open<br/>connection is closed"]
+    score -->|"0: unknown trust"| mode{"Operator allows<br/>only trusted nodes?"}
+    mode -->|"no (the default)"| allow
+    mode -->|yes| refuse
+```
 
 **TBD:**
 
