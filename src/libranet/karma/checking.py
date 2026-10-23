@@ -325,7 +325,9 @@ class TransactionBlockCheck:
 
     A correct block is ranked by its ``score``. An incorrect one scores zero,
     below every correct one, and is never validated: its ``score`` is
-    ``None``, and ``incorrect`` says why (§5.5). :meth:`of` checks a block.
+    ``None``, and ``incorrect`` says why (§5.5). ``full`` is ``False`` when
+    it is incorrect for not being full, which its builder's copy, compressed
+    otherwise, may be (§3.8, §5.4). :meth:`of` checks a block.
 
     Raises:
         ValueError: ``score`` and ``incorrect`` are both given, or neither.
@@ -334,6 +336,7 @@ class TransactionBlockCheck:
     drop: BlockDrop[TransactionBlock]
     score: BlockScore | None
     incorrect: str = ""
+    full: bool = True
 
     def __post_init__(self) -> None:
         if (self.score is None) == (not self.incorrect):
@@ -470,7 +473,7 @@ class TransactionBlockCheck:
         incorrect = cls._incorrect(sheet, verdicts, compressed_bytes, bounds)
 
         if incorrect:
-            return cls(drop, None, incorrect)
+            return cls(drop, None, incorrect, bounds.is_full(compressed_bytes))
 
         return cls(drop, BlockScore.of(block, bits, before.chain))
 

@@ -115,8 +115,8 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
   built.
 - **Each of Steps 116 to 142 takes an issue of its own as it is taken
   up.** Each is planned under #87. Step 116 is #434, Step 117 is #435,
-  Step 118 is #436, Step 119 is #437, Step 120 is #438, and none after it
-  has one yet.
+  Step 118 is #436, Step 119 is #437, Step 120 is #438, Step 121 is #439,
+  Step 122 is #440, and none after it has one yet.
 - **The ledger's tests use small blocks.** Whether a block is full is
   measured against bounds the library takes, the specification's
   (KarmaLedger §5.4) unless a test gives others, so that a test fills a
@@ -128,7 +128,7 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
 
 ---
 
-## Step 56 — How Karma Works with the CAS
+## Step 56 — How Karma Works with the CAS ✅
 
 **Kind:** infrastructure, as a specification rather than code.
 **Issue:** #86. **Depends on:** nothing not yet built.
@@ -422,7 +422,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 116 — Kismet, Targets, and Weight
+## Step 116 — Kismet, Targets, and Weight ✅
 
 **Kind:** infrastructure. **Issue:** #434, under #87.
 **Depends on:** Step 56.
@@ -512,7 +512,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 117 — Transactions, Payouts, and Stakes
+## Step 117 — Transactions, Payouts, and Stakes ✅
 
 **Kind:** infrastructure. **Issue:** #435, under #87.
 **Depends on:** Step 116; Phase 5 Step 103's signing.
@@ -639,7 +639,7 @@ Ruled in review (2026-10-22), each on a gap found while building:
 
 ---
 
-## Step 118 — Mining a Transaction
+## Step 118 — Mining a Transaction ✅
 
 **Kind:** infrastructure. **Issue:** #436, under #87.
 **Depends on:** Step 117; Phase 4 Step 89's search for a nonce.
@@ -704,7 +704,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 119 — Transaction Blocks and Validation Blocks
+## Step 119 — Transaction Blocks and Validation Blocks ✅
 
 **Kind:** infrastructure. **Issue:** #437, under #87.
 **Depends on:** Step 117.
@@ -837,7 +837,7 @@ nothing untrue, and only takes room.
 
 ---
 
-## Step 120 — Balances, the Pot, and Shares
+## Step 120 — Balances, the Pot, and Shares ✅
 
 **Kind:** infrastructure. **Issue:** #438, under #87.
 **Depends on:** Step 119, and the parameters below, ruled and written into
@@ -964,7 +964,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 121 — Checking a Transaction Block
+## Step 121 — Checking a Transaction Block ✅
 
 **Kind:** infrastructure. **Issue:** #439, under #87.
 **Depends on:** Step 120.
@@ -1084,7 +1084,7 @@ My calls, not yet reviewed:
 
 ## Step 122 — Checking a Validation Block, and the Best
 
-**Kind:** infrastructure. **Issue:** none yet; planned under #87.
+**Kind:** infrastructure. **Issue:** #440, under #87.
 **Depends on:** Step 121.
 
 Whether a validation block is correct, or false, and which of a
@@ -1114,6 +1114,80 @@ too large alone; a runner-up covered by the block's own transaction block
 and not by the runner-up's; a witness listed twice in one chain, and once
 each on two forks, which is not; the best by each of its three; the root's
 passed over.
+
+It came to 552 added lines of non-test Python, with 13 changed, so it was
+built as two change sets, each green on its own, split as KarmaLedger §3.8
+groups what a block states falsely: a validation block against its target,
+with the root's and the best (456 added lines, 4 changed); and against its
+chain, what covers its stakes and its runner-up's, and its witnesses (96
+added, 9 changed, 8 of them the first set's). The tests are 900 lines,
+with 2 more for the transaction block's check. The check is in
+`karma/validating.py`, not `karma/checking.py`: the two together would
+pass pylint's 1,000 lines a module.
+
+What was built:
+
+- **`ValidationBlockCheck.of(block_id, data, named_for, chain, keys,
+  transactions=…, compressed_bytes=…, bounds=…)`**
+  (`karma/validating.py`): a `BlockFinding`, as `BlockDrop.decoded` finds
+  one, or against the target and the chain; or else the block checked,
+  with a `score` if it is correct, and with `None` and `incorrect`, saying
+  why, if it is not. `transactions` are the checks Step 121 made of the
+  transaction blocks at the same generation's transaction target, by id.
+  `named_for` is `None` at the root's target, where the block is checked
+  by its shape, and passed over, as not correct, unless it is the root's.
+- **`ValidationScore(bits, stake)`**: the bits its drop shares with its
+  target hash, then its total effective stake, in tenths of a Kismet
+  (Step 120's `StakeWeight`). **`ValidationBlockCheck.best(checks)`** is
+  the correct one of the highest score, and of those, the one whose id
+  sorts first, or `None`.
+- **`BlockFinding.staker`** (`karma/blocks.py`): the staker of a stake
+  that alone exceeds what covers it, whom a node distrusts beside the
+  builder.
+- **`TransactionBlockCheck.full`** (`karma/checking.py`): `False` when a
+  transaction block is incorrect for not being full, as held.
+
+My calls, not yet reviewed:
+
+- **A validation block naming a transaction block not full, as held, is
+  not correct, and states nothing false.** KarmaLedger §3.8 lists naming
+  an incorrect transaction block as false, and a block judged full or not
+  full as distrusting no one. A block not full in this node's copy may be
+  full in its builder's, so the second governs, and §3.8 now says so.
+  `TransactionBlockCheck.full` tells the two apart. A block both not full
+  and incorrect otherwise is taken as not full, so that a builder is
+  distrusted only for what is beyond doubt. A validation block larger than
+  1 MiB, as held, is likewise not correct, and not false.
+- **A block is at a target where the caller read it.** A transaction block
+  a stake names is at the validation block's target when it is among
+  `transactions`. One that is not is read from the chain view, so that one
+  the node has not fetched is waited for, and one it holds is at another
+  target. A runner-up is at the same target when it is of the same
+  generation and its stakes name transaction blocks there.
+- **A runner-up need not be correct.** §6.5 asks only that it be another
+  validation block at the same target, validating another transaction
+  block, whose stakes taken are covered. One with no stake validates no
+  block, and so is at no target.
+- **What covers an identity is read from the reward** (Step 120): its
+  balance, as the transaction block validated leaves it, less what the
+  next payout takes from it: its fees there, and, for a runner-up staker
+  not on the winning side, its stakes taken. So one sum checks §6.3 for
+  the block's stakers and the runner-up's alike.
+- **A lone stake too large is found before a staker's stakes together**,
+  and those before the runner-up's, so that a finding names a staker
+  whenever one can be named. Only a stake on the transaction block
+  validated names its staker: a runner-up's stakes are measured against
+  this block's transaction block, not the one they name.
+- **The first false statement found is the one named**, in this order:
+  `generation`; the stakes, and a `runner_up` naming itself; the
+  transaction block the stakes name, at the target and correct; the
+  runner-up; what covers the stakes; and the witnesses.
+- **A block at `karma validation:0` that is not the root's is passed
+  over**, as KarmaLedger §7.3 says, though §3.8 listed a block at a `:0`
+  target without the root's shape as false. §3.8 now says that of a
+  transaction block alone, and lists the validation block among what
+  distrusts no one, since anyone may place a root (§7.5). One found false
+  by itself (Step 119) is still false there.
 
 ---
 

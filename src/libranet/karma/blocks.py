@@ -459,11 +459,15 @@ class BlockFinding:
     ``builder`` is whoever signed a block found false, whom a node then
     distrusts. It is ``None`` for a block that is unsigned, or whose
     signature fails, which can be attributed to no one: a node shuns it, and
-    distrusts no one for it (§3.8).
+    distrusts no one for it (§3.8). ``staker`` is, of a validation block
+    found false for a stake that alone exceeds what covers it, whoever
+    signed that stake, whom a node distrusts too, since that never changes
+    (§6.3).
     """
 
     statement: str
     builder: ContentId | None = None
+    staker: ContentId | None = None
 
 
 _Block = TypeVar("_Block", TransactionBlock, ValidationBlock)

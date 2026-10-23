@@ -5,9 +5,10 @@ issues, where each generation's blocks are placed, and what a chain weighs
 (Phase 6 Step 116); the transactions, payouts, and stakes blocks are made
 of (Phase 6 Step 117); the two kinds of block, as drops, and what a block
 states falsely by itself (Phase 6 Step 119); the arithmetic of a
-generation: balances, reach, the pot, and shares (Phase 6 Step 120); and
+generation: balances, reach, the pot, and shares (Phase 6 Step 120);
 checking a transaction block against its target and its chain (Phase 6
-Step 121).
+Step 121); and checking a validation block, and choosing a generation's
+best (Phase 6 Step 122).
 """
 
 from libranet.karma.amounts import KISMET_PER_KARMA, MAX_KISMET, Kismet, decimal_count
@@ -55,6 +56,7 @@ from libranet.karma.members import (
 )
 from libranet.karma.stakes import SignedStake, Stake
 from libranet.karma.transactions import Payout, SignedTransaction, Transaction, TransactionKey
+from libranet.karma.validating import ValidationBlockCheck, ValidationScore
 from libranet.karma.weight import ChainWeight
 
 __all__ = [
@@ -93,6 +95,8 @@ __all__ = [
     "TransactionKey",
     "TransactionVerdict",
     "ValidationBlock",
+    "ValidationBlockCheck",
+    "ValidationScore",
     "amounts_member",
     "check_moment",
     "contents_value",

@@ -543,6 +543,7 @@ def test_a_block_not_full_is_incorrect(
     assert isinstance(check, TransactionBlockCheck)
     assert not check.is_correct
     assert check.score is None
+    assert not check.full
     assert "must be full" in check.incorrect
 
 
@@ -554,6 +555,7 @@ def test_a_block_breaking_the_half_free_rule_is_incorrect(
     check = checked(block_on(chain, paid), alice, chain, keys)
 
     assert isinstance(check, TransactionBlockCheck)
+    assert check.full
     assert "must be free" in check.incorrect
 
 
