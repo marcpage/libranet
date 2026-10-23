@@ -1,4 +1,4 @@
-"""The Karma module process (Phase 6 Steps 123 to 131).
+"""The Karma module process (Phase 6 Steps 123 to 132).
 
 Every step that has the node act on the Karma ledger (KarmaLedger.md) runs
 here: reading what is placed at a target, following the chain, and
@@ -80,6 +80,15 @@ in ``carried.json``, and tries at each head as it looks, putting it up where
 it is valid, until the chain holds it::
 
     karma.transaction  {"transaction": {"contents": "…", …}}
+
+The node's own payments it queues in ``payments.json``, in
+``storage.karma_dir``, each 0.01% of the node's balance at the head, and, as
+it looks, once ``karma.payment_batch`` are queued, or
+``karma.payment_interval_seconds`` have passed since the node's last
+transaction, makes them one transaction, mines it for
+``karma.transaction_seconds``, signs it as the node, and puts it up as it
+does one it is given (:class:`~libranet.karma.payments.NodePayments`, Phase
+6 Step 132).
 """
 
 from __future__ import annotations
@@ -104,6 +113,7 @@ from libranet.karma.carried import CarriedTransactions
 from libranet.karma.changing import HeadChanges
 from libranet.karma.following import ChainFollower
 from libranet.karma.history import ChainHistory
+from libranet.karma.payments import NodePayments
 from libranet.karma.putting import TransactionsPutUp
 from libranet.karma.reading import HeldChain, TargetReader
 from libranet.karma.root import ChainRoot
@@ -157,6 +167,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._changes: HeadChanges | None = None
         self._balances: HeadBalances | None = None
         self._putting: TransactionsPutUp | None = None
+        self._payments: NodePayments | None = None
         # Whether to look at the head's targets as the module next idles,
         # and when to look, whether it idles or not.
         self._look_again = False
@@ -233,6 +244,19 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             self._stored,
             block_seconds=self._config.karma.block_seconds,
             drop_bits=self._config.storage.search_min_bits,
+            searchers=self._searchers,
+            bounds=self._bounds,
+        )
+        self._payments = NodePayments(
+            karma_dir,
+            self._history,
+            self._reader,
+            partial(NodeIdentity.load, self._config),
+            self._putting,
+            clock=self._clock,
+            batch=self._config.karma.payment_batch,
+            interval_seconds=self._config.karma.payment_interval_seconds,
+            transaction_seconds=self._config.karma.transaction_seconds,
             searchers=self._searchers,
             bounds=self._bounds,
         )
@@ -406,21 +430,21 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
 
         It then weighs the heads it does not follow, and once it follows a
         heavier chain, follows that on. The head is then said, and the
-        balances stated there written, if it changed, and the transactions
-        carried to put up are put up there. A history that cannot be written
-        is logged, and written at the next look.
+        balances stated there written, if it changed, the node's payments
+        made one transaction, if they are due, and the transactions carried
+        to put up are put up there. A history that cannot be written is
+        logged, and written at the next look.
         """
         now = self._clock()
         follower = self._follower
         changes = self._changes
         putting = self._putting
+        payments = self._payments
 
-        if (
-            follower is None
-            or changes is None
-            or putting is None
-            or (now < self._next_look_at and not (idle and self._look_again))
-        ):
+        if follower is None or changes is None or putting is None or payments is None:
+            return
+
+        if now < self._next_look_at and not (idle and self._look_again):
             return
 
         self._look_again = False
@@ -437,6 +461,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
 
         self._say_head()
         self._write_balances()
+        payments.put_up()
         putting.put_up()
 
     def _say_head(self) -> None:

@@ -129,13 +129,18 @@ class TransactionsPutUp:  # pylint: disable=too-many-instance-attributes
         self._head: ContentId | None = None
         self._tried: set[TransactionKey] = set()
 
-    def take(self, signed: SignedTransaction) -> None:
+    def take(self, signed: SignedTransaction) -> bool:
         """Carry ``signed`` to put up, unless it is invalid, and put it up now if it is valid.
 
         One that is invalid, or whose sender's key is not held, is logged and
         passed over, as is one of a key carried already. One that cannot be
         carried, as ``carried.json`` cannot be written, is logged, and passed
         over too.
+
+        Returns:
+            Whether it is done with: carried, or passed over for good. It is
+            not when its sender's key is not held, and is asked for, or it
+            cannot be carried, so that whoever gave it may give it again.
         """
         try:
             invalid = self._invalid(signed)
@@ -147,7 +152,7 @@ class TransactionsPutUp:  # pylint: disable=too-many-instance-attributes
                 signed.hash,
                 signed.transaction.sender,
             )
-            return
+            return False
 
         except BundleError as error:
             _LOGGER.warning(
@@ -155,13 +160,13 @@ class TransactionsPutUp:  # pylint: disable=too-many-instance-attributes
                 signed.hash,
                 error,
             )
-            return
+            return True
 
         if invalid:
             _LOGGER.warning(
                 "Passing over Karma transaction %s, which is invalid: %s", signed.hash, invalid
             )
-            return
+            return True
 
         try:
             carried = self._carried.carry((CarriedTransaction(signed, put_up=True),), self._history)
@@ -170,7 +175,7 @@ class TransactionsPutUp:  # pylint: disable=too-many-instance-attributes
             _LOGGER.error(
                 "Cannot carry Karma transaction %s, which is passed over: %s", signed.hash, error
             )
-            return
+            return False
 
         if all(each.signed.hash != signed.hash for each in carried):
             _LOGGER.info(
@@ -178,12 +183,13 @@ class TransactionsPutUp:  # pylint: disable=too-many-instance-attributes
                 "was witnessed more than karma.carry_generations ago",
                 signed.hash,
             )
-            return
+            return True
 
         _LOGGER.info(
             "Taking Karma transaction %s from %s to put up", signed.hash, signed.transaction.sender
         )
         self.put_up()
+        return True
 
     def put_up(self) -> None:
         """Put up each transaction carried to put up that is valid at the head, and not tried there.
