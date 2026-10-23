@@ -602,6 +602,11 @@ class StorageConfig(_Section):
         """Whether to connect only to trusted nodes, owned by the web server (Phase 5 Step 113)."""
         return self.data_dir / "connecting.json"
 
+    @property
+    def karma_dir(self) -> Path:
+        """The history of the chain the Karma module follows, and its head (Phase 6 Step 123)."""
+        return self.data_dir / "karma"
+
 
 class IdentityConfig(_Section):
     """Node key material and RFC 9421 signature policy (Step 6)."""
@@ -787,6 +792,15 @@ class BackupConfig(_Section):
     )
 
 
+class KarmaConfig(_Section):
+    """Following the Karma ledger, and adding to it (KarmaLedger.md, Phase 6 Step 123)."""
+
+    # How many processes the Karma module searches for nonces with, as it
+    # mines a transaction or places a block. One by default, so that Karma
+    # takes one core of the node's.
+    mining_processes: int = Field(default=1, ge=1)
+
+
 class LocalConfig(_Section):
     """What clients on this machine may reach of it (HttpApi §2.4, Phase 3 Step 68)."""
 
@@ -869,6 +883,7 @@ class LibranetConfig(_Section):
     identity: IdentityConfig = Field(default_factory=IdentityConfig)
     stats: StatsConfig = Field(default_factory=StatsConfig)
     backup: BackupConfig = Field(default_factory=BackupConfig)
+    karma: KarmaConfig = Field(default_factory=KarmaConfig)
     local: LocalConfig = Field(default_factory=LocalConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 

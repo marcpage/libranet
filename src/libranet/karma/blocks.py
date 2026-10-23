@@ -45,7 +45,7 @@ from libranet.config.models import KIB, MIB, TARGET_BITS
 from libranet.json_fields import integer_field, is_integer
 from libranet.json_format import compact_json
 from libranet.karma.amounts import Kismet
-from libranet.karma.generations import MIN_TRANSACTION_BITS
+from libranet.karma.generations import MIN_TRANSACTION_BITS, GenerationTargets
 from libranet.karma.members import contents_value, id_member
 from libranet.karma.stakes import SignedStake
 from libranet.karma.transactions import Payout, SignedTransaction, Transaction, TransactionKey
@@ -293,6 +293,20 @@ class TransactionBlock:
     def bundles(self) -> tuple[SignedBundle, ...]:
         """The signed bundles it holds: each transaction but the payout, as its sender signed it."""
         return tuple(signed.bundle for signed in self.signed)
+
+    def weight_through(self, block_id: ContentId, validation_id: ContentId) -> ChainWeight:
+        """The chain's weight through this block, ``block_id``, and the block validating it.
+
+        That is its ``weight``, the chain's before it, and 2^b for each of
+        the two drops, it and validation block ``validation_id``, each
+        matching b bits of its target hash (§3.5).
+        """
+        targets = GenerationTargets.built_on(self.previous)
+        return (
+            self.weight
+            + ChainWeight.of_drop(block_id, targets.transaction)
+            + ChainWeight.of_drop(validation_id, targets.validation)
+        )
 
     def _check_payout(self) -> None:
         """Raise unless it holds one payout of its generation, or none in the root (§5.2, §7.2).

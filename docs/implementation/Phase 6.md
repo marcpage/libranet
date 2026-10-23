@@ -116,7 +116,7 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
 - **Each of Steps 116 to 142 takes an issue of its own as it is taken
   up.** Each is planned under #87. Step 116 is #434, Step 117 is #435,
   Step 118 is #436, Step 119 is #437, Step 120 is #438, Step 121 is #439,
-  Step 122 is #440, and none after it has one yet.
+  Step 122 is #440, Step 123 is #441, and none after it has one yet.
 - **The ledger's tests use small blocks.** Whether a block is full is
   measured against bounds the library takes, the specification's
   (KarmaLedger §5.4) unless a test gives others, so that a test fills a
@@ -1082,7 +1082,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 122 — Checking a Validation Block, and the Best
+## Step 122 — Checking a Validation Block, and the Best ✅
 
 **Kind:** infrastructure. **Issue:** #440, under #87.
 **Depends on:** Step 121.
@@ -1193,7 +1193,7 @@ My calls, not yet reviewed:
 
 ## Step 123 — The Karma Module and Its History
 
-**Kind:** infrastructure. **Issue:** none yet; planned under #87.
+**Kind:** infrastructure. **Issue:** #441, under #87.
 **Depends on:** Step 116. It may be built beside Steps 117 to 122.
 
 A ninth module, `karma`, in which every later step that has the node act
@@ -1229,6 +1229,37 @@ added; everything after an ancestor replaced; a torn last line passed over,
 and logged; the head `null` in a new data directory, and as kept after a
 restart; the module started and stopped by the supervisor.
 
+It came to 557 added lines of non-test Python, with 11 changed, so it was
+built as two change sets, each green on its own: the history, as a library
+(459 added lines, 11 changed); and the module that keeps it, with its
+setting and the documents (98 added, 2 changed, both the first set's). The
+tests are 415 lines, with 41 more in tests already there.
+
+What was built:
+
+- **`ChainHistory`** (`karma/history.py`): `open(directory)` reads the
+  history as far as it agrees, and writes the head; `add(generation)`
+  follows the generation after the head's; `replace(generations)` follows
+  them in place of every generation from the first of them on, from 0 for
+  a chain from another root (§7.5). `head`, `generation(g)`, and `len`
+  read it; `has_key(key, first, last)` and `witnessed(hash)` answer as
+  Step 121's `ChainView` does, for Step 124's `HeldChain`.
+- **`ChainGeneration`**: a generation, as its file keeps it.
+  `ChainGeneration.of(validation_id, validation, transaction_id,
+  transaction)` makes one from its two blocks.
+- **`KarmaModule`** (`karma/module.py`), as `ModuleName.KARMA`, started
+  after the backup module. It reads the history as it starts, and
+  subscribes to and publishes nothing.
+- **`karma.mining_processes`** (`KarmaConfig`), and
+  `storage.karma_dir`, `karma/` in the data directory.
+- **`TransactionKey.from_value` and `value()`**
+  (`karma/transactions.py`): a key as JSON, its transaction's `from` and
+  `created`.
+- **`TransactionBlock.weight_through(block_id, validation_id)`**
+  (`karma/blocks.py`): the chain's weight through a block and the
+  validation block validating it, which Step 121's check of a `weight` now
+  reads too.
+
 My calls, not yet reviewed:
 
 - **A module of its own**, rather than threads of the web server's, as
@@ -1243,6 +1274,27 @@ My calls, not yet reviewed:
   its generation (§4.4). KarmaLedger §9 asks how far back they are kept.
   This answers "all of it", and leaves an index that outgrows memory for
   later.
+- **A generation keeps the chain's weight through it**, both its drops
+  counted, as a head's weight is (§3.5), so that the weight of
+  `generations/{g}.json` is the head's when g is the head's generation.
+- **A generation's file names its validation block**, so that reading it
+  back tells one a replacement cut short has written from the generation
+  the genealogy names. What does not agree, or cannot be read, ends the
+  history before it, logged as a warning, and the genealogy is written
+  without it. It does not stop the module, as an unreadable
+  `backup_jobs.json` stops the backup module, since what is lost is read
+  again from the network. A replacement cut short so leaves the history
+  through the common ancestor, rather than quite as it was.
+- **The head is written each time the module starts**, from the history,
+  so that a new data directory has a head of `null`s, and one left behind
+  the genealogy by a write cut short is caught up.
+- **`karma` is now a module's package**, so no other module may import
+  from it (`tests/test_module_imports.py`), the ledger's library included.
+  What the web server reads of the Karma module's files, `head.json` first
+  (Steps 125 and 128), will need a reader below the modules, as it reads
+  `lists/` through `libranet/protocol/`.
+- **A generation's file is compact JSON**, since a full block's keys run
+  to some two thousand.
 
 ---
 

@@ -10,6 +10,7 @@ from libranet.backup.module import BackupModule
 from libranet.connections.module import ConnectionsModule
 from libranet.eviction.module import EvictionModule
 from libranet.fetcher.module import FetcherModule
+from libranet.karma.module import KarmaModule
 from libranet.messaging.module import ModuleBase
 from libranet.modules import SPAWNED_MODULES, ModuleName
 from libranet.stats.module import StatsModule
@@ -29,6 +30,7 @@ _MODULES: Final[Mapping[ModuleName, tuple[ModuleFactory, type[ModuleBase]]]] = {
     ModuleName.UNBUNDLER: (UnbundlerModule.of, UnbundlerModule),
     ModuleName.EVICTION: (EvictionModule.of, EvictionModule),
     ModuleName.BACKUP: (BackupModule.of, BackupModule),
+    ModuleName.KARMA: (KarmaModule.of, KarmaModule),
 }
 
 

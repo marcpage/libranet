@@ -25,6 +25,7 @@ class ModuleName(StrEnum):
     UNBUNDLER = "unbundler"
     EVICTION = "eviction"
     BACKUP = "backup"
+    KARMA = "karma"
 
 
 #: Modules the supervisor spawns, in the order it starts them. The dispatcher
@@ -39,4 +40,5 @@ SPAWNED_MODULES: Final[tuple[ModuleName, ...]] = (
     ModuleName.UNBUNDLER,
     ModuleName.EVICTION,
     ModuleName.BACKUP,
+    ModuleName.KARMA,
 )

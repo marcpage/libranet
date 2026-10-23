@@ -199,6 +199,29 @@ def test_a_transaction_created_at_another_moment_has_another_key(alice: ContentI
     assert again.key != transaction_of(alice).key
 
 
+def test_a_key_is_written_as_its_transaction_writes_its_from_and_created(
+    alice: ContentId,
+) -> None:
+    key = transaction_of(alice).key
+    written = transaction_of(alice).value()
+
+    assert key.value() == {"from": written["from"], "created": written["created"]}
+    assert TransactionKey.from_value(loads(dumps(key.value()))) == key
+
+
+@mark.parametrize(
+    ("value", "refused"),
+    [
+        ([], "must be a JSON object"),
+        ({"created": "2026-10-21T14:03:22Z"}, '"from" must be an id'),
+        ({"from": "sha256/" + "a" * 64, "created": "2026-10-21"}, '"created" must be a UTC'),
+    ],
+)
+def test_what_is_no_key_is_refused_naming_its_member(value: object, refused: str) -> None:
+    with raises(ValueError, match=refused):
+        TransactionKey.from_value(value)
+
+
 def test_the_roots_transaction_is_told_by_its_shape(alice: ContentId) -> None:
     root = Transaction(alice, {alice: Kismet(0)}, Kismet(0), 0, CREATED)
 

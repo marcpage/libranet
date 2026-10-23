@@ -132,8 +132,8 @@ class node_app_hosting,node_app_packaging,node_movie_library toneRose
 class node_identity,node_message_bus,node_statistics,node_eviction,node_configuration,node_peer,node_local_files toneIndigo
 ```
 
-A running node is ten operating-system processes: a supervisor, a
-dispatcher, and eight modules. The supervisor starts the others and
+A running node is eleven operating-system processes: a supervisor, a
+dispatcher, and nine modules. The supervisor starts the others and
 restarts any that exit. The dispatcher is the message bus. Each module does
 one job, such as serving HTTP, talking to peers, or checking uploads, and
 knows the other modules only by the messages they publish.
@@ -152,6 +152,7 @@ flowchart TB
         unb["Unbundler"]
         evict["Eviction"]
         backup["Backup"]
+        karma["Karma"]
     end
     sup -.->|"spawns, watches, restarts"| disp
     sup -.->|"spawns, watches, restarts"| modules
@@ -213,8 +214,8 @@ The modules communicate in three ways:
 
 ### 3.1 At a Glance
 
-`ModuleName` names ten processes. The supervisor is the parent of the other
-nine and is not on the bus. The dispatcher is the bus. The other eight are
+`ModuleName` names eleven processes. The supervisor is the parent of the
+other ten and is not on the bus. The dispatcher is the bus. The other nine are
 modules proper: each subclasses `ModuleBase` and talks to the others only
 through the dispatcher.
 
@@ -230,6 +231,7 @@ through the dispatcher.
 | 7 | Unbundler | `unbundler` | `UnbundlerModule` | Resolves application files' entries from their bundles on demand, and deletes unused ones |
 | 8 | Eviction | `eviction` | `EvictionModule` | Keeps storage within its limits |
 | 9 | Backup | `backup` | `BackupModule` | Backs directories up as bundles; restores, builds, and exports bundles |
+| 10 | Karma | `karma` | `KarmaModule` | Follows the Karma ledger; for now, keeps the history of the chain it follows |
 
 The supervisor launches them in this order, taken from `SPAWNED_MODULES`,
 but waits only for the dispatcher to be ready. No module waits for another
@@ -392,6 +394,19 @@ expanded, in `backup_jobs/`, and the archives kept, in `archives/`, are
 recorded in `kept_archives.json`; restores, builds, exports, imports, and
 archives under way are kept in memory only.
 
+#### 3.2.9 Karma
+
+Where the node acts on the Karma ledger (KarmaLedger.md): reading what is
+placed at a target, following the chain, and mining, building, and checking
+blocks, each a step of Phase 6 to come. That is hours of hashing and
+thousands of signatures a generation, so it runs in a process of its own,
+rather than on the web server's threads, and a restart of either leaves the
+other running (Phase 6 Step 123). For now it only keeps the history of the
+chain it follows, in `karma/` in the data directory, which it reads as it
+starts (`ChainHistory`, `karma/history.py`): the genealogy, a file for each
+generation, and the head, for the web server to read. It subscribes to no
+event and publishes none.
+
 ### 3.3 What Each Module Owns
 
 | Resource | Owner | How other modules use it |
@@ -406,6 +421,7 @@ archives under way are kept in memory only.
 | The application registry | Web server | — |
 | Applications' stores in `store/` | Web server | — |
 | Backup jobs and the backup secret | Backup | The web server publishes `backup.*` requests |
+| The Karma history in `karma/` | Karma | — |
 | The search cache in `search/` | Web server | Stats rewrites a cached result to add identifiers |
 
 Adding to `cas/data` is shared more widely than promoting into it: the
@@ -442,7 +458,7 @@ sequenceDiagram
     participant main as supervisor.main()
     participant sup as ProcessSupervisor
     participant disp as Dispatcher process
-    participant mod as Module process, each of 8
+    participant mod as Module process, each of 9
 
     main->>main: load config, create directories
     main->>main: configure logging
@@ -642,6 +658,7 @@ What each module does in them:
 | Unbundler | — | — | — |
 | Eviction | Read the node id; count storage; ask which peers are connected; say whether storage is full; evict if over | Say whether storage is full, if that changed; time out hand-offs and questions; resume after a pause | — |
 | Backup | Read the node id; ask whether storage is full; read the jobs; report state | Carry on the next restore, build, export, import, or backup due | — |
+| Karma | Read the history; write its head | — | — |
 
 ### 5.3 Writing a Module
 
@@ -738,7 +755,7 @@ level objects are stored at may.
 
 ### 5.4 Threads Inside a Module
 
-Six of the eight modules are single-threaded. The other two are not:
+Seven of the nine modules are single-threaded. The other two are not:
 
 | Module | Threads besides the main one | Their shared state is guarded by |
 | --- | --- | --- |
@@ -780,7 +797,7 @@ flowchart LR
         deliver["validate, then put in each subscriber's inbox"]
         reader --> pending --> deliver
     end
-    subgraph subside["Each of the 8 modules"]
+    subgraph subside["Each of the 9 modules"]
         rcv["receive(): validate and filter"]
         hdl["handle(message)"]
         rcv --> hdl
@@ -935,7 +952,8 @@ to end its loop.
 
 The `shutdown` row and its subscriptions are implicit: every module
 receives it without listing it, and nothing publishes it (§6.4). The totals
-leave it out.
+leave it out. The Karma module has no column: it publishes and subscribes to
+no event yet (Phase 6 Step 123), and receives only `shutdown`.
 
 ### 7.2 Payloads
 
@@ -1270,6 +1288,7 @@ data moves through files, and a message tells the reader where to look.
 | `store/` | Web server | Web server | — |
 | `backup_jobs.json` | Backup | Backup | — |
 | `backup_jobs/` | Backup | Backup | — |
+| `karma/` | Karma | Karma | — |
 | `keys/` | Supervisor; backup; web server | Modules that need them, in `on_start` | — |
 | The folders `local.folders` offers | — | Web server, listing them and finding a file to import; backup, reading that file | `backup.import_requested`, which names the file |
 
@@ -1371,6 +1390,7 @@ side recovers:
 | Unbundler | Directories held in memory; paths waiting on content; a reclaim in progress | Directories are read back from each bundle's saved `directory.jzon`; a request waiting on a path forgotten is answered `503`, and its retry asks again; eviction times out the reclaim |
 | Eviction | Hand-offs under way; its list of candidates; which peers are connected | It counts storage again at start, says whether storage is full, asks which peers are connected, and asks stats again |
 | Backup | Restores, builds, exports, and imports; messages set aside while it stored content | They must be asked for again; jobs are read back from `backup_jobs.json`; it asks whether storage is full |
+| Karma | Nothing: what it keeps is on disk | The history is read back from `karma/`, and its head written again |
 | Dispatcher | Messages it had read but not yet delivered, and those it held for a full inbox | Nothing recovers them; no module is started until it is back |
 
 ## 11. Testing Modules

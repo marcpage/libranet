@@ -15,6 +15,7 @@ from libranet.config.models import (
     MIB,
     BackupConfig,
     IdentityConfig,
+    KarmaConfig,
     LibranetConfig,
     LocalConfig,
     NetworkConfig,
@@ -322,6 +323,20 @@ def test_a_restore_carries_on_ten_seconds_after_content_arrives_by_default() -> 
 
     with raises(ValidationError):
         BackupConfig(restore_resume_seconds=-1)
+
+
+def test_karma_mines_with_one_process_by_default_and_never_none() -> None:
+    assert KarmaConfig().mining_processes == 1
+    assert LibranetConfig.model_validate({"karma": {"mining_processes": 4}}).karma == KarmaConfig(
+        mining_processes=4
+    )
+
+    with raises(ValidationError):
+        KarmaConfig(mining_processes=0)
+
+
+def test_the_karma_history_is_kept_in_the_data_directory(tmp_path: Path) -> None:
+    assert StorageConfig(data_dir=tmp_path).karma_dir == tmp_path / "karma"
 
 
 def test_unsigned_api_reads_are_allowed_unless_disabled() -> None:
@@ -842,6 +857,7 @@ def test_the_example_config_states_the_default_limits_waits_and_hidden_names() -
         stated["network"]["max_bundles_request_bytes"] == NetworkConfig().max_bundles_request_bytes
     )
     assert stated["backup"]["restore_resume_seconds"] == BackupConfig().restore_resume_seconds
+    assert stated["karma"]["mining_processes"] == KarmaConfig().mining_processes
     assert tuple(stated["local"]["hidden"]) == LocalConfig().hidden
 
 

@@ -24,6 +24,7 @@ from libranet.config.models import LibranetConfig
 from libranet.connections.module import ConnectionsModule
 from libranet.eviction.module import EvictionModule
 from libranet.fetcher.module import FetcherModule
+from libranet.karma.module import KarmaModule
 from libranet.messaging.module import ModuleBase
 from libranet.messaging.queues import START_METHOD, ModuleQueues
 from libranet.modules import SPAWNED_MODULES, ModuleName
@@ -176,6 +177,7 @@ def test_default_specs_subscribe_to_what_their_modules_do() -> None:
         ModuleName.UNBUNDLER: UnbundlerModule,
         ModuleName.EVICTION: EvictionModule,
         ModuleName.BACKUP: BackupModule,
+        ModuleName.KARMA: KarmaModule,
     }
 
     for spec in default_module_specs():

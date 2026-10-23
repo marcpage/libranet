@@ -88,6 +88,28 @@ class TransactionKey:
     sender: ContentId
     created: datetime
 
+    @classmethod
+    def from_value(cls, value: object, *, named: str = "A transaction's key") -> TransactionKey:
+        """The key ``value`` writes, its ``from`` and ``created`` as a transaction writes them.
+
+        Raises:
+            UnknownAlgorithmError: it names a sender under a hash algorithm
+                this node lacks.
+            ValueError: ``value``, called ``named``, is not an object, or its
+                ``from`` or ``created`` is not what a transaction's must be.
+        """
+        if not isinstance(value, dict):
+            raise ValueError(f"{named} must be a JSON object, got {type(value).__name__}")
+
+        return cls(
+            id_member(value.get(_FROM), named=f'{named}\'s "{_FROM}"'),
+            moment_member(value.get(CREATED_MEMBER), named=f'{named}\'s "{CREATED_MEMBER}"'),
+        )
+
+    def value(self) -> dict[str, str]:
+        """This key as JSON: its ``from`` and ``created``, as its transaction writes them."""
+        return {_FROM: str(self.sender), CREATED_MEMBER: self.created.strftime(MOMENT_FORMAT)}
+
 
 @dataclass(frozen=True)
 class Transaction:
