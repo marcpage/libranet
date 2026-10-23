@@ -104,14 +104,7 @@ class _ChainBefore:
                 f"got {block.previous}"
             )
 
-        # Generation g − 1's drops were placed at the targets of the
-        # generation that the block it validates was built on.
-        targets = GenerationTargets.built_on(self.validated.previous)
-        weight = (
-            self.validated.weight
-            + ChainWeight.of_drop(self.validated_id, targets.transaction)
-            + ChainWeight.of_drop(self.validation_id, targets.validation)
-        )
+        weight = self.validated.weight_through(self.validated_id, self.validation_id)
 
         if block.weight != weight:
             return (

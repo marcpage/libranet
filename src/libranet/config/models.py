@@ -602,6 +602,11 @@ class StorageConfig(_Section):
         """Whether to connect only to trusted nodes, owned by the web server (Phase 5 Step 113)."""
         return self.data_dir / "connecting.json"
 
+    @property
+    def karma_dir(self) -> Path:
+        """The history of the chain the Karma module follows, and its head (Phase 6 Step 123)."""
+        return self.data_dir / "karma"
+
 
 class IdentityConfig(_Section):
     """Node key material and RFC 9421 signature policy (Step 6)."""

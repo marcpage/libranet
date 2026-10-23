@@ -324,6 +324,10 @@ def test_a_restore_carries_on_ten_seconds_after_content_arrives_by_default() -> 
         BackupConfig(restore_resume_seconds=-1)
 
 
+def test_the_karma_history_is_kept_in_the_data_directory(tmp_path: Path) -> None:
+    assert StorageConfig(data_dir=tmp_path).karma_dir == tmp_path / "karma"
+
+
 def test_unsigned_api_reads_are_allowed_unless_disabled() -> None:
     assert LibranetConfig().identity.allow_unsigned_api_reads is True
 
