@@ -376,7 +376,7 @@ karma:
   # How many generations after it was witnessed a transaction of a chain the
   # node leaves for a heavier one is carried over, into the blocks it builds.
   # The sender may put up one carried no more again.
-  carry_generations: 3
+  carry_generations: 10
 
 local:
   # The folders on this machine that a browser on it may list, and import

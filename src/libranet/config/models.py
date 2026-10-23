@@ -816,7 +816,7 @@ class KarmaConfig(_Section):
     # How many generations after it was witnessed a transaction of a chain
     # the Karma module leaves for a heavier one is carried over, to put into
     # the blocks the node builds (KarmaLedger §4.4, Phase 6 Step 129).
-    carry_generations: int = Field(default=3, ge=0)
+    carry_generations: int = Field(default=10, ge=0)
 
 
 class LocalConfig(_Section):
