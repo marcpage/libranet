@@ -12,8 +12,9 @@ Step 121); checking a validation block, and choosing a generation's best
 which runs in a process of its own (Phase 6 Step 123); reading what is
 placed at a target, and the chain the module follows as a check reads it
 (Phase 6 Step 124); making a chain's root (Phase 6 Step 125); following
-the chain, a generation at a time (Phase 6 Step 126); and writing every
-balance stated at its head (Phase 6 Step 128).
+the chain, a generation at a time (Phase 6 Step 126); writing every balance
+stated at its head (Phase 6 Step 128); and the transactions carried over
+from a chain left (Phase 6 Step 129).
 """
 
 from libranet.karma.amounts import KISMET_PER_KARMA, MAX_KISMET, Kismet
@@ -30,13 +31,14 @@ from libranet.karma.blocks import (
     TransactionBlock,
     ValidationBlock,
 )
+from libranet.karma.carried import CARRIED_FILE, CarriedTransaction, CarriedTransactions
 from libranet.karma.checking import (
     BlockScore,
     ChainView,
     TransactionBlockCheck,
     TransactionVerdict,
 )
-from libranet.karma.following import ChainFollower
+from libranet.karma.following import ChainFollower, say_found
 from libranet.karma.generations import (
     FIRST_NEW_KISMET,
     LAST_ISSUING_GENERATION,
@@ -64,7 +66,7 @@ from libranet.karma.members import (
     moment_member,
 )
 from libranet.karma.module import KarmaModule
-from libranet.karma.reading import HeldBlock, HeldChain, TargetReader
+from libranet.karma.reading import ChainGenerations, HeldBlock, HeldChain, TargetReader
 from libranet.karma.root import ChainRoot
 from libranet.karma.stakes import SignedStake, Stake
 from libranet.karma.transactions import Payout, SignedTransaction, Transaction, TransactionKey
@@ -73,6 +75,7 @@ from libranet.karma.weight import ChainWeight
 
 __all__ = [
     "BLOCK_BOUNDS",
+    "CARRIED_FILE",
     "CREATED_MEMBER",
     "FIRST_NEW_KISMET",
     "FULL_BLOCK_ROOM_BYTES",
@@ -92,8 +95,11 @@ __all__ = [
     "BlockDrop",
     "BlockFinding",
     "BlockScore",
+    "CarriedTransaction",
+    "CarriedTransactions",
     "ChainFollower",
     "ChainGeneration",
+    "ChainGenerations",
     "ChainHistory",
     "ChainRoot",
     "ChainView",
@@ -126,4 +132,5 @@ __all__ = [
     "moment_member",
     "new_kismet",
     "reach_of",
+    "say_found",
 ]

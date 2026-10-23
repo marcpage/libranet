@@ -813,6 +813,11 @@ class KarmaConfig(_Section):
     # content it waited for comes.
     look_seconds: float = Field(default=60.0, gt=0)
 
+    # How many generations after it was witnessed a transaction of a chain
+    # the Karma module leaves for a heavier one is carried over, to put into
+    # the blocks the node builds (KarmaLedger §4.4, Phase 6 Step 129).
+    carry_generations: int = Field(default=3, ge=0)
+
 
 class LocalConfig(_Section):
     """What clients on this machine may reach of it (HttpApi §2.4, Phase 3 Step 68)."""
