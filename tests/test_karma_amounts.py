@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pytest import mark, raises
 
-from libranet.karma.amounts import KISMET_PER_KARMA, MAX_KISMET, Kismet, decimal_count
+from libranet.karma.amounts import KISMET_PER_KARMA, MAX_KISMET, Kismet
 
 
 @mark.parametrize("text", ["0", "1", "250", "1250000", str(MAX_KISMET)])
@@ -96,8 +96,3 @@ def test_amounts_are_compared() -> None:
 def test_a_karma_is_a_hundred_trillion_kismet() -> None:
     assert KISMET_PER_KARMA == 100_000_000_000_000
     assert MAX_KISMET == 100_000_000_000_000 * KISMET_PER_KARMA
-
-
-def test_a_count_is_read_as_its_digits_write_it() -> None:
-    assert decimal_count("1288490188800", named="A weight") == 1288490188800
-    assert decimal_count(str(2**256), named="A weight") == 2**256

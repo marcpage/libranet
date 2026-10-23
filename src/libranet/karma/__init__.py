@@ -11,11 +11,13 @@ Step 121); checking a validation block, and choosing a generation's best
 (Phase 6 Step 122); the history of the chain the Karma module follows,
 which runs in a process of its own (Phase 6 Step 123); reading what is
 placed at a target, and the chain the module follows as a check reads it
-(Phase 6 Step 124); making a chain's root (Phase 6 Step 125); and following
-the chain, a generation at a time (Phase 6 Step 126).
+(Phase 6 Step 124); making a chain's root (Phase 6 Step 125); following
+the chain, a generation at a time (Phase 6 Step 126); and writing every
+balance stated at its head (Phase 6 Step 128).
 """
 
-from libranet.karma.amounts import KISMET_PER_KARMA, MAX_KISMET, Kismet, decimal_count
+from libranet.karma.amounts import KISMET_PER_KARMA, MAX_KISMET, Kismet
+from libranet.karma.balances import HeadBalances
 from libranet.karma.blocks import (
     BLOCK_BOUNDS,
     FULL_BLOCK_ROOM_BYTES,
@@ -97,6 +99,7 @@ __all__ = [
     "ChainView",
     "ChainWeight",
     "GenerationTargets",
+    "HeadBalances",
     "HeldBlock",
     "HeldChain",
     "KarmaModule",
@@ -119,7 +122,6 @@ __all__ = [
     "amounts_member",
     "check_moment",
     "contents_value",
-    "decimal_count",
     "id_member",
     "moment_member",
     "new_kismet",

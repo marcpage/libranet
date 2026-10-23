@@ -18,7 +18,9 @@ change what it says of itself (Phase 5 Step 104), and whom it trusts (Phase 5
 Step 110), and whether it connects only to the nodes it trusts (Phase 5 Step
 113). It builds the node's own trust scores, which say which peers the node
 connects to and serves, and distrusts whoever built a false Karma block (Phase
-6 Step 127).
+6 Step 127). Any client may read what the Karma chain the node follows
+states: its head, any identity's balance, and its generations (Phase 6 Step
+128).
 
 A few `/data` endpoints serve only clients on this machine, and only this
 node's own pages there, such as the listing of the folders it offers them
@@ -219,6 +221,13 @@ from libranet.webserver.identity_handlers import (
     Identities,
 )
 from libranet.webserver.inbound_peers import InboundConnection, InboundPeers
+from libranet.webserver.karma_handlers import (
+    KARMA_BALANCE_PATTERN,
+    KARMA_GENERATIONS_PATH,
+    KARMA_PATH,
+    MAX_GENERATIONS_LISTED,
+    KarmaReads,
+)
 from libranet.webserver.list_handlers import (
     PEERS_PATH,
     ListFileHandler,
@@ -367,6 +376,9 @@ __all__ = [
     "HOST_HEADER",
     "IMMUTABLE_CACHE_CONTROL",
     "IMPORTS_PATH",
+    "KARMA_BALANCE_PATTERN",
+    "KARMA_GENERATIONS_PATH",
+    "KARMA_PATH",
     "KARMA_ROOT_PATH",
     "KEY_BYTES",
     "LISTED_DIRECTORY",
@@ -374,6 +386,7 @@ __all__ = [
     "LISTED_SYMLINK",
     "MAX_COST",
     "MAX_DROP_BODY_BYTES",
+    "MAX_GENERATIONS_LISTED",
     "MAX_JSON_BODY_BYTES",
     "MAX_OPENED_BYTES",
     "METADATA_PATH",
@@ -462,6 +475,7 @@ __all__ = [
     "InboundPeers",
     "IncompleteBodyError",
     "InvalidBackupReportError",
+    "KarmaReads",
     "KarmaRootHandler",
     "KnownOutcome",
     "LibranetHTTPServer",

@@ -117,7 +117,8 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
   up.** Each is planned under #87. Step 116 is #434, Step 117 is #435,
   Step 118 is #436, Step 119 is #437, Step 120 is #438, Step 121 is #439,
   Step 122 is #440, Step 123 is #441, Step 124 is #442, Step 125 is #443,
-  Step 126 is #444, Step 127 is #445, and none after it has one yet.
+  Step 126 is #444, Step 127 is #445, Step 128 is #446, and none after it
+  has one yet.
 - **The ledger's tests use small blocks.** Whether a block is full is
   measured against bounds the library takes, the specification's
   (KarmaLedger §5.4) unless a test gives others, so that a test fills a
@@ -1635,7 +1636,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 127 — Distrusting False Builders
+## Step 127 — Distrusting False Builders ✅
 
 **Kind:** improvement in behavior. **Issue:** #445, under #87.
 **Depends on:** Step 126; Phase 5 Steps 110 and 113.
@@ -1751,7 +1752,7 @@ Ruled after building (2026-10-23):
 
 ## Step 128 — Reading Karma
 
-**Kind:** improvement in web API. **Issue:** none yet; planned under #87.
+**Kind:** improvement in web API. **Issue:** #446, under #87.
 **Depends on:** Step 126, and the ruling below.
 
 What a page, and every other module, reads of the ledger: the head, and
@@ -1788,8 +1789,88 @@ Work this implies:
 holder in it; the reader; each endpoint, before a chain and after; an
 identity not stated read as 0.
 
-My call, not yet reviewed: **any client reads them**, not only a local
-one, since what a chain states is public.
+The ruling had not been made when it was built, so it was built as
+recommended, as Step 120 took KarmaLedger §9's parameters: an identity's
+Karma, to a node, is its balance as the chain the node follows states it.
+KarmaLedger §2 says so, and §9 loses the item; HandshakeProtocol §5 gains
+the sentence, and Terms its definition. A different ruling changes what the
+endpoints serve, not that they are there.
+
+It came to 770 added lines of non-test Python, with 93 changed or removed,
+against an estimate of 300, so it was built as two change sets, each one
+commit on this step's branch. The first, the files the web server reads and
+their readers, came to 368 added lines, with 65 changed or removed, and 232
+lines of tests. The second, writing the balances and serving them, came to
+402 added lines, with 28 changed, and 508 lines of tests. Most of the growth
+is the readers: the web server loads none of the Karma module's code, so
+each file it reads has a reader of its own in `protocol/`, as `head.json`
+had in Step 125.
+
+What was built:
+
+- **`KarmaBalances`** (`protocol/karma_balances.py`, new): what
+  `karma/balances.json` states, `{"head", "generation", "weight",
+  "balances": {id: {"kismet", "last_won"}}}`, as `head.json` names the head;
+  `read` (none before it is written), `balance(identity)` (`KarmaBalance()`,
+  0 and `null`, for one not stated), `value()`, and `write`. Its
+  `KarmaBalance` is the reader's own balance, as `kismet` and `last_won`.
+- **`KarmaHead`** (`protocol/karma_head.py`) now reads the chain's `weight`
+  too, and writes itself, `value()`, which `ChainHistory` writes `head.json`
+  with; **`KarmaGeneration`** reads a generation's file, but for the keys and
+  witnesses only a check reads. The names of the history's files and members
+  the web server reads moved there from `karma/history.py`.
+- **`decimal_count`** moved from `karma/amounts.py` to `json_fields.py`, so
+  that the readers in `protocol/` read amounts and weights as the Karma
+  module does.
+- **`HeldChain.every_balance(g)`** (`karma/reading.py`): every balance
+  stated, the latest of each, in transaction block g and those before it as
+  far back as its reach, or ten blocks, whichever is further, as
+  `balances()` reads them (KarmaLedger §5.3).
+- **`HeadBalances`** (`karma/balances.py`, new): `write()` writes the
+  balances stated at the history's head, unless they were written at that
+  head, and says whether it did. The **`KarmaModule`** writes them after each
+  look and each root it makes; while a block they are read from is not held,
+  it asks for it, and writes them as it next looks once it comes. A file
+  that cannot be read from or written is logged as an error, and tried again
+  at the next look.
+- **`KarmaReads`** (`webserver/karma_handlers.py`, new): `GET /data/karma`,
+  `GET /data/karma/balances/{algorithm}/{hash}`, and
+  `GET /data/karma/generations?before={g}`, up to `MAX_GENERATIONS_LISTED`
+  (100), the newest first. Each is `503` with `Retry-After` while no chain
+  is followed, `500` for a file that cannot be read, logged, and sent with
+  `Cache-Control: no-store`. A `before` that is not decimal digits is `400`.
+  `karma` is among `DATA_ENDPOINT_NAMES`.
+- **`Request.query`** (`webserver/http_types.py`): the parameters of the
+  query string, which no endpoint read before.
+- HttpApi §5, §10.10, §17.2, and §25; KarmaLedger §2 and §9;
+  HandshakeProtocol §5; Terms; File Layout; the Module System; the Operator
+  Guide's §4.8; and the App Developer Guide's §5.2 and §6.20.
+
+My calls, not yet reviewed:
+
+- **Any client reads them**, not only a local one, nor only a page of the
+  node, since what a chain states is public.
+- **The balances file names the head it was read at**, with its generation
+  and weight, and `GET /data/karma` takes all three from it, rather than from
+  `head.json`, so that a balance is always given with the head that states
+  it. Until a block it is read from comes, it names the head before, and
+  `GET /data/karma` and `/data/karma/balances` say the head before;
+  `GET /data/karma/generations`, read from the history, says the new one.
+  Before the balances are first written, the two are `503`.
+- **Every balance stated within the reach, or ten blocks**, not within the
+  reach alone, as the plan said, so that each `last_won` that still weighs a
+  stake is in the file, as §5.3 has a reader look that far back.
+- **`last_won` is in the file and the answers**, beside `kismet`, as a
+  balance is stated, since a page showing a staker's weight needs it.
+- **`GET /data/karma/generations` lists the newest first**, so that a page
+  pages back with the oldest it was given as `before`. A `before` past the
+  head lists from the head. A generation whose file cannot be read makes the
+  whole answer `500`, rather than a list cut short.
+- **The file is read whole on each request.** It holds every holder in the
+  reach, which a busy network may make large. Step 140, which shows Karma
+  beside each identity, may need it cached by its modification time.
+- **The weight, and amounts, in decimal digits** in every answer, as a block
+  states them, since neither fits a JavaScript number exactly.
 
 ---
 
@@ -2314,14 +2395,15 @@ ones that cut across more than one step:
   change. KarmaLedger §9's open items fall to the steps that need them:
   the weight curve, rounding, and a total of zero to Step 120, which
   settled them; how far back keys and witnesses are kept to Step 123; what
-  a node's Karma is read from to Step 128; and following part of a heavier
-  chain to Step 129.
-- **Step 56's open questions** — what a node's Karma is read from is
-  Step 128's ruling. Whether a person holds Karma is settled: any identity
-  a signed bundle accepts may (KarmaLedger §2), and Step 137 lets a person
-  pay and stake. How Karma and the trust network bear on each other beyond
-  the distrust of false builders (Step 127) is still open, and nothing in
-  this plan has either read the other otherwise.
+  a node's Karma is read from to Step 128, which built it as recommended,
+  not yet ruled; and following part of a heavier chain to Step 129.
+- **Step 56's open questions** — what a node's Karma is read from is Step
+  128's ruling, built as recommended and awaiting review. Whether a person
+  holds Karma is settled: any identity a signed bundle accepts may
+  (KarmaLedger §2), and Step 137 lets a person pay and stake. How Karma and
+  the trust network bear on each other beyond the distrust of false builders
+  (Step 127) is still open, and nothing in this plan has either read the
+  other otherwise.
 - **Early blocks fill slowly** (KarmaLedger §9) — only a full block is
   validated, and a full block holds some two thousand transactions, while
   on a new network only the root's creator holds Karma to send. Nothing

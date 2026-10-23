@@ -8,10 +8,19 @@ request, a saved file, a bundle, or a message checks it with
 
 A field reader raises the error its caller names, so that each refuses what
 it reads with its own kind of error, saying which field was not of its type.
+
+A count too large for a JSON number to hold exactly, as an amount of Karma
+or a chain's weight is (KarmaLedger §4.1), is written as a string of decimal
+digits, and read with :func:`decimal_count`.
 """
 
 from __future__ import annotations
-from typing import Mapping, TypeGuard
+from re import compile as compile_pattern
+from typing import Final, Mapping, TypeGuard
+
+# How a count is written: decimal digits, with no sign, and no leading zero
+# unless it is 0.
+_DIGITS: Final = compile_pattern(r"0|[1-9][0-9]*")
 
 
 def is_integer(value: object) -> TypeGuard[int]:
@@ -77,3 +86,19 @@ def number_field(
         raise error(f'"{key}" must be a number')
 
     return float(value)
+
+
+def decimal_count(value: object, *, named: str) -> int:
+    """The whole number ``value`` writes in decimal digits, as an amount of Karma is written.
+
+    Raises:
+        ValueError: ``value``, called ``named``, is not a string of decimal
+            digits, with no sign and no leading zero unless it is ``"0"``.
+    """
+    if not isinstance(value, str) or _DIGITS.fullmatch(value) is None:
+        raise ValueError(
+            f"{named} must be a string of decimal digits, with no sign and no leading zero, "
+            f"got {value!r}"
+        )
+
+    return int(value)

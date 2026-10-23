@@ -433,6 +433,21 @@ block it finds stating something false, or unsigned. An unsigned block is
 shunned, so the node never holds it again. Whoever signed a false one the
 node distrusts (§4.7).
 
+What the chain says, any client may read (HTTP API §10.10): the head the
+node follows, and the Karma the chain states the node holds, at
+`/data/karma`; anyone's, by their id, at `/data/karma/balances/{id}`; and the
+generations followed, the newest first, at `/data/karma/generations`. For
+example:
+
+```bash
+curl http://127.0.0.1:8080/data/karma
+```
+
+Each answers `503` while the node follows no chain. The node's Karma is its
+balance as the chain this node follows states it, which
+`karma/balances.json` in the data directory holds, written each time the
+head changes; no node's word of its own Karma is taken.
+
 ## 5. Backing Up and Restoring
 
 ### 5.1 Backing Up a Directory

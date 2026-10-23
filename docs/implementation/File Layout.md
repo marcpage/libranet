@@ -140,7 +140,8 @@ something is written to it.
     ├── genealogy                        each generation's winner, one a line
     ├── generations/
     │   └── {g}.json                     what a check reads of generation g
-    └── head.json                        the head followed
+    ├── head.json                        the head followed
+    └── balances.json                    every balance stated at the head
 ```
 
 | Path | Written by | Read by |
@@ -159,7 +160,7 @@ something is written to it.
 | `store/` | Web server | Web server |
 | `archives/` | Backup module (`/data/archives`, Step 115) | Every module that reads content |
 | `kept_archives.json` | Backup module | Backup module |
-| `karma/` | Karma module | Karma module; web server (`head.json`) |
+| `karma/` | Karma module | Karma module; web server (`head.json`, `balances.json`, `generations/`) |
 
 ### 3.1 The Source of Truth: `cas/data`
 
@@ -520,7 +521,29 @@ chain's weight through it, each `null` while it follows none:
 
 The web server reads it (`KarmaHead` in
 `src/libranet/protocol/karma_head.py`), and refuses to have a root made while
-it names a head (Phase 6 Step 125).
+it names a head (Phase 6 Step 125). It reads the generations' files too
+(`KarmaGeneration`), for `GET /data/karma/generations` (HttpApi §10.10).
+
+`balances.json` is every balance the chain states at the head (KarmaLedger
+§5.3): the latest stated of each identity in the head's transaction block, or
+in those before it as far back as its reach, or ten blocks, whichever is
+further, with the head it was read at, as `head.json` names it. Each of the
+head's members is `null`, and `balances` empty, while the module follows no
+chain:
+
+```json
+{"head": "sha256/9f8e…", "generation": 1, "weight": "1208",
+ "balances": {"sha256/0a1b…": {"kismet": "250", "last_won": 0}}}
+```
+
+An identity it does not name holds nothing. The module writes it each time
+its head changes, after the head, and as it first looks once started; while
+a transaction block it is read from is not held, it asks for it, and writes
+the file once it comes, so the file may name the head before `head.json`'s
+until then (`HeadBalances` in `src/libranet/karma/balances.py`, Phase 6 Step
+128). The web server reads it (`KarmaBalances` in
+`src/libranet/protocol/karma_balances.py`) for `GET /data/karma` and
+`GET /data/karma/balances/{algorithm}/{hash}`.
 
 A generation's file is written before the genealogy, and the head last, each
 replaced whole (§8), so that a write cut short leaves the genealogy as it was.

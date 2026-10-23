@@ -481,6 +481,60 @@ class HeldChain:
             MissingContentError: names that block, if it is not held, or else
                 every block that far back that is not held, each asked for.
         """
+        stated = self._stated_back(generation)
+        return {
+            identity: next((each[identity] for each in stated if identity in each), NO_BALANCE)
+            for identity in identities
+        }
+
+    def every_balance(self, generation: int) -> dict[ContentId, Balance]:
+        """Every balance stated, as the chain's transaction block ``generation`` left it.
+
+        That is the latest stated of each identity in that block, or in those
+        before it as far back as :meth:`balances` reads, which state every
+        identity holding any Kismet, and every ``last_won`` that lowers a
+        stake's weight (§5.3). One stated in none of them holds nothing.
+
+        Raises:
+            IndexError: the history holds no such generation.
+            MissingContentError: names that block, if it is not held, or else
+                every block that far back that is not held, each asked for.
+        """
+        held: dict[ContentId, Balance] = {}
+
+        for stated in self._stated_back(generation):
+            for identity, balance in stated.items():
+                held.setdefault(identity, balance)
+
+        return held
+
+    def has_key(self, key: TransactionKey, first: int, last: int) -> bool:
+        """Whether a transaction in the chain's blocks ``first`` to ``last`` has ``key`` (§4.4).
+
+        Those are its transaction blocks, ``first`` and ``last`` among them,
+        as its history keeps their keys.
+        """
+        return self._history.has_key(key, first, last)
+
+    def witnessed(self, transaction_hash: str) -> int | None:
+        """The generation of the chain's winning validation block listing ``transaction_hash``.
+
+        It is ``None`` when none lists it (§4.5, §6.4).
+        """
+        return self._history.witnessed(transaction_hash)
+
+    def _stated_back(self, generation: int) -> list[Mapping[ContentId, Balance]]:
+        """The balances the chain's transaction block ``generation`` states, and those before it.
+
+        Each block's are in turn, back as far as its ``reach``, or
+        :data:`~libranet.karma.ledger.WEIGHT_GENERATIONS` blocks, whichever is
+        further (§5.3).
+
+        Raises:
+            IndexError: the history holds no such generation.
+            MissingContentError: names that block, if it is not held, or else
+                every block that far back that is not held, each asked for.
+        """
         latest = self._transaction_block(generation)
         oldest = max(generation - max(latest.reach, WEIGHT_GENERATIONS), 0)
         stated = [latest.balances]
@@ -497,25 +551,7 @@ class HeldChain:
         if lacking:
             raise MissingContentError(tuple(lacking))
 
-        return {
-            identity: next((each[identity] for each in stated if identity in each), NO_BALANCE)
-            for identity in identities
-        }
-
-    def has_key(self, key: TransactionKey, first: int, last: int) -> bool:
-        """Whether a transaction in the chain's blocks ``first`` to ``last`` has ``key`` (§4.4).
-
-        Those are its transaction blocks, ``first`` and ``last`` among them,
-        as its history keeps their keys.
-        """
-        return self._history.has_key(key, first, last)
-
-    def witnessed(self, transaction_hash: str) -> int | None:
-        """The generation of the chain's winning validation block listing ``transaction_hash``.
-
-        It is ``None`` when none lists it (§4.5, §6.4).
-        """
-        return self._history.witnessed(transaction_hash)
+        return stated
 
     def _transaction_block(self, generation: int) -> TransactionBlock:
         """The chain's transaction block ``generation``.
