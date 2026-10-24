@@ -852,6 +852,13 @@ class KarmaConfig(_Section):
     # (KarmaLedger §4.6, Phase 6 Step 133).
     rating_interval_seconds: float = Field(default=3600.0, gt=0)
 
+    # How often the Karma module combines the transaction blocks at its
+    # head's targets, and what it carries, into one, as full as it can be,
+    # unless a block it holds there holds them all (KarmaLedger §5.6, Phase 6
+    # Step 134). Placing the block holds up the module's other work for
+    # karma.block_seconds.
+    build_interval_seconds: float = Field(default=60.0, gt=0)
+
 
 class LocalConfig(_Section):
     """What clients on this machine may reach of it (HttpApi §2.4, Phase 3 Step 68)."""

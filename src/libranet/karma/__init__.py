@@ -17,7 +17,7 @@ stated at its head (Phase 6 Step 128); changing to a heavier chain, and
 carrying over the transactions of the chain left (Phase 6 Step 129);
 putting a transaction up as a block of its own (Phase 6 Step 131);
 queuing the node's payments, and putting them up together (Phase 6 Step
-132); and choosing what a block combining others takes, and writing it
+132); and combining transaction blocks into one, as full as it can be
 (Phase 6 Step 134).
 """
 
@@ -35,7 +35,7 @@ from libranet.karma.blocks import (
     TransactionBlock,
     ValidationBlock,
 )
-from libranet.karma.building import CombinedBlock
+from libranet.karma.building import BlockBuilder, CombinedBlock, FilledBlock
 from libranet.karma.carried import CARRIED_FILE, CarriedTransaction, CarriedTransactions
 from libranet.karma.changing import HeadChanges
 from libranet.karma.checking import (
@@ -102,6 +102,7 @@ __all__ = [
     "WEIGHT_GENERATIONS",
     "Balance",
     "BalanceSheet",
+    "BlockBuilder",
     "BlockBounds",
     "BlockDrop",
     "BlockFinding",
@@ -120,6 +121,7 @@ __all__ = [
     "CombinedBlock",
     "ClaimedGeneration",
     "FalseStatement",
+    "FilledBlock",
     "GenerationTargets",
     "HeadBalances",
     "HeadChanges",

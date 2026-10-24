@@ -3,17 +3,21 @@
 from __future__ import annotations
 from dataclasses import replace
 from datetime import timedelta
+from logging import INFO, WARNING
+from zlib import compress
 
-from pytest import fixture
+from pytest import LogCaptureFixture, fixture
 
+from libranet.bundle.signing import SignedBundle
 from libranet.cas.content_id import ContentId
 from libranet.cas.shunned import ShunnedContent
 from libranet.cas.store import CasStore
 from libranet.config.models import KIB, MIB, StorageConfig
 from libranet.identity.node_identity import NodeIdentity
 from libranet.karma.amounts import Kismet
-from libranet.karma.blocks import Balance, BlockBounds, TransactionBlock
-from libranet.karma.building import CombinedBlock
+from libranet.karma.blocks import Balance, BlockBounds, BlockDrop, TransactionBlock
+from libranet.karma.building import BlockBuilder, CombinedBlock, FilledBlock
+from libranet.karma.carried import CarriedTransaction, CarriedTransactions
 from libranet.karma.checking import TransactionBlockCheck
 from libranet.karma.following import ChainFollower
 from libranet.karma.history import ChainHistory
@@ -25,10 +29,13 @@ from tests.karma_chains import (
     CREATED,
     MINIMUM_BITS,
     Chain,
+    Generation,
     Recorder,
     hold,
     id_of,
+    paying,
     signed_at,
+    validating,
 )
 
 # Bounds in which every transaction meets the work, and a block of more than
@@ -37,6 +44,22 @@ ROOMY = BlockBounds(most_bytes=64 * KIB, room_bytes=64 * KIB - 100, transaction_
 
 # Identities paid, whose keys no test holds.
 PAID = tuple(ContentId("sha256", f"{byte:02x}" * 32) for byte in range(0xD1, 0xD5))
+
+
+class Placed:
+    """Stands in for the Karma module's storing, keeping each drop in the node's store."""
+
+    def __init__(self, truth: CasStore) -> None:
+        self.truth = truth
+        self.drops: list[bytes] = []
+
+    def __call__(self, data: bytes, node_id: ContentId) -> None:
+        self.truth.write(id_of(data), data)
+        self.drops.append(data)
+
+    def blocks(self) -> list[TransactionBlock]:
+        """The blocks placed, in the order they were."""
+        return [BlockDrop.parsed(data, TransactionBlock).block for data in self.drops]
 
 
 @fixture(scope="module")
@@ -122,6 +145,48 @@ def chain(history: ChainHistory, reader: TargetReader) -> HeldChain:
     return HeldChain(history, reader)
 
 
+@fixture
+def carried(storage: StorageConfig) -> CarriedTransactions:
+    return CarriedTransactions(storage.karma_dir, 3)
+
+
+@fixture
+def placed(truth: CasStore) -> Placed:
+    return Placed(truth)
+
+
+def building(
+    history: ChainHistory,
+    reader: TargetReader,
+    carried: CarriedTransactions,
+    carol: NodeIdentity,
+    placed: Placed,
+    bounds: BlockBounds = ROOMY,
+) -> BlockBuilder:
+    """What builds blocks as Carol, placing each drop in moments."""
+    return BlockBuilder(
+        history,
+        reader,
+        carried,
+        lambda: carol,
+        placed,
+        block_seconds=0.0,
+        drop_bits=MINIMUM_BITS,
+        bounds=bounds,
+    )
+
+
+@fixture
+def builder(
+    history: ChainHistory,
+    reader: TargetReader,
+    carried: CarriedTransactions,
+    carol: NodeIdentity,
+    placed: Placed,
+) -> BlockBuilder:
+    return building(history, reader, carried, carol, placed)
+
+
 def following(follower: ChainFollower, truth: CasStore, chain: Chain) -> None:
     """Have ``follower`` follow ``chain`` through its head, its blocks then held."""
     hold(truth, *chain.drops(*range(len(chain.generations))))
@@ -171,6 +236,15 @@ def sent(
     )
     mined = transaction.mined(0, minimum_bits=bits) if bits else transaction
     return SignedTransaction.of(sender.signed(mined.text()))
+
+
+def put_up(
+    truth: CasStore, chain: Chain, builder: NodeIdentity, *signed: SignedTransaction
+) -> bytes:
+    """``signed``, put up by ``builder`` as a block of their own on ``chain``, held."""
+    data = signed_at(chain.targets.transaction, builder, chain.block_after(*signed))
+    hold(truth, data)
+    return data
 
 
 def test_free_transactions_are_taken_by_most_bits_and_paid_by_largest_fee_in_turn(
@@ -398,3 +472,252 @@ def test_no_balance_is_stated_to_shorten_the_reach_when_the_cap_leaves_too_littl
     data = signed_at(third.targets.transaction, carol, block)
     hold(truth, data)
     assert checked(reader, history, third.head, data).is_correct
+
+
+def test_a_block_is_filled_with_as_many_transactions_as_leave_it_full(
+    follower: ChainFollower,
+    truth: CasStore,
+    reader: TargetReader,
+    history: ChainHistory,
+    carried: CarriedTransactions,
+    placed: Placed,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    carol: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    offered = [sent(alice, {bob.node_id: 1}, seconds) for seconds in range(1, 5)]
+    put_up(truth, first, alice, *offered)
+    combined = CombinedBlock.of(offered, first.head, HeldChain(history, reader), bounds=ROOMY)
+    # Two fit, with room for what signing again changes, and three do not.
+    bounds = BlockBounds(
+        most_bytes=len(compress(carol.signed(combined.block(2).text()).encoded() + b"\x00", 9))
+        + 32
+        + 100,
+        room_bytes=300,
+        transaction_bits=0,
+    )
+
+    filled = FilledBlock.of(combined, carol, bounds=bounds)
+    building(history, reader, carried, carol, placed, bounds).build()
+
+    assert filled is not None and filled.drop.block == combined.block(2)
+    assert filled.measured_bytes <= bounds.most_bytes
+    (data,) = placed.drops
+    assert BlockDrop.parsed(data, TransactionBlock).block == combined.block(2)
+    assert checked(reader, history, first.head, data, bounds).is_correct
+
+
+def test_no_block_is_filled_when_not_one_transaction_fits(
+    follower: ChainFollower,
+    truth: CasStore,
+    chain: HeldChain,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    carol: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    combined = CombinedBlock.of([sent(alice, {bob.node_id: 1}, 1)], first.head, chain, bounds=ROOMY)
+    bounds = BlockBounds(most_bytes=200, room_bytes=100, transaction_bits=0)
+
+    assert FilledBlock.of(combined, carol, bounds=bounds) is None
+
+
+def test_several_small_blocks_and_a_false_start_are_combined_into_one_correct_block(
+    builder: BlockBuilder,
+    placed: Placed,
+    follower: ChainFollower,
+    truth: CasStore,
+    reader: TargetReader,
+    history: ChainHistory,
+    root: Chain,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    carol: NodeIdentity,
+    dave: NodeIdentity,
+    caplog: LogCaptureFixture,
+) -> None:
+    # pylint: disable=too-many-locals
+    following(follower, truth, first)
+    own = [sent(alice, {bob.node_id: 1}, 1), sent(alice, {dave.node_id: 2}, 2, fee=1)]
+
+    for signed in own:
+        put_up(truth, first, dave, signed)
+
+    # Bob's rival to the head, at the target it was chosen from, which a
+    # transaction is put up after.
+    rival = validating(root.targets.validation, bob, first.generations[1].transaction)
+    started = Chain((root.generations[0], Generation(first.generations[1].transaction, rival)))
+    false_start = sent(alice, {carol.node_id: 3}, 3)
+    hold(truth, rival)
+    put_up(truth, started, dave, false_start)
+
+    with caplog.at_level(INFO):
+        builder.build()
+
+    (data,) = placed.drops
+    block = BlockDrop.parsed(data, TransactionBlock)
+    assert block.builder == carol.node_id
+    assert block.block == first.block_after(*own, false_start)
+    assert checked(reader, history, first.head, data).is_correct
+    assert f"Built Karma transaction block {id_of(data)} of 3 transactions" in caplog.text
+
+
+def test_the_transactions_carried_are_built_in(
+    builder: BlockBuilder,
+    placed: Placed,
+    carried: CarriedTransactions,
+    follower: ChainFollower,
+    truth: CasStore,
+    history: ChainHistory,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    signed = sent(alice, {bob.node_id: 1}, 1)
+    carried.carry((CarriedTransaction(signed, 1),), history)
+
+    builder.build()
+
+    assert [block.signed for block in placed.blocks()] == [(signed,)]
+
+
+def test_nothing_is_built_while_one_block_held_holds_every_transaction(
+    builder: BlockBuilder,
+    placed: Placed,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    signed = sent(alice, {bob.node_id: 1}, 1)
+    put_up(truth, first, dave, signed)
+
+    builder.build()
+
+    assert placed.drops == []
+
+    put_up(truth, first, dave, sent(alice, {bob.node_id: 1}, 2))
+    builder.build()
+    builder.build()
+
+    assert len(placed.drops) == 1
+
+
+def test_a_false_block_holding_every_transaction_keeps_none_from_being_built(
+    builder: BlockBuilder,
+    placed: Placed,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+) -> None:
+    following(follower, truth, first)
+    signed = sent(alice, {bob.node_id: 1}, 1)
+    true = first.block_after(signed)
+    false = replace(true, balances={**true.balances, bob.node_id: Balance(Kismet(7))})
+    hold(truth, signed_at(first.targets.transaction, dave, false))
+
+    builder.build()
+
+    assert [block.signed for block in placed.blocks()] == [(signed,)]
+
+
+def test_a_transaction_whose_signature_fails_is_passed_over_and_logged_once_at_a_head(
+    builder: BlockBuilder,
+    placed: Placed,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+    dave: NodeIdentity,
+    caplog: LogCaptureFixture,
+) -> None:
+    following(follower, truth, first)
+    transaction = Transaction(alice.node_id, {bob.node_id: Kismet(1)}, Kismet(0), 1, CREATED)
+    # Signed as Alice, with Bob's key.
+    forged = SignedTransaction.of(
+        SignedBundle.signed(transaction.text(), bob.private_key, alice.node_id)
+    )
+    put_up(truth, first, dave, forged)
+
+    with caplog.at_level(WARNING):
+        builder.build()
+        builder.build()
+
+    assert placed.drops == []
+    assert caplog.text.count(f"Passing over Karma transaction {forged.hash}") == 1
+
+
+def test_a_transaction_whose_senders_key_is_not_held_is_taken_once_it_is(
+    builder: BlockBuilder,
+    placed: Placed,
+    recorder: Recorder,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    alice: NodeIdentity,
+    bob: NodeIdentity,
+) -> None:
+    erin = new_identity()
+    second = first.then(bob, alice, first.block_after(sent(alice, {erin.node_id: 1}, 1)), bits=9)
+    following(follower, truth, second)
+    unheld = sent(erin, {bob.node_id: 1}, 2)
+    other = sent(alice, {bob.node_id: 1}, 3)
+    put_up(truth, second, bob, unheld)
+    put_up(truth, second, bob, other)
+
+    builder.build()
+
+    # The block of Alice's own holds all that can be taken.
+    assert placed.drops == []
+    assert erin.node_id in recorder.asked_for()
+
+    truth.write(erin.node_id, erin.public_key)
+    builder.build()
+
+    assert [{signed.hash for signed in block.signed} for block in placed.blocks()] == [
+        {unheld.hash, other.hash}
+    ]
+
+
+def test_nothing_is_built_while_no_chain_is_followed(
+    builder: BlockBuilder, placed: Placed, carried: CarriedTransactions, history: ChainHistory
+) -> None:
+    carried.carry((CarriedTransaction(paying(new_identity(), new_identity(), 1)),), history)
+
+    builder.build()
+
+    assert placed.drops == []
+
+
+def test_what_is_no_transaction_block_at_a_target_is_passed_over_and_logged_once_at_a_head(
+    builder: BlockBuilder,
+    placed: Placed,
+    follower: ChainFollower,
+    truth: CasStore,
+    first: Chain,
+    bob: NodeIdentity,
+    caplog: LogCaptureFixture,
+) -> None:
+    following(follower, truth, first)
+    # Bob's validation block, copied to the transaction target.
+    misplaced = validating(first.targets.transaction, bob, first.generations[1].transaction)
+    hold(truth, misplaced)
+
+    with caplog.at_level(WARNING):
+        builder.build()
+        builder.build()
+
+    assert placed.drops == []
+    assert caplog.text.count(f"Taking no Karma transactions from {id_of(misplaced)}") == 1

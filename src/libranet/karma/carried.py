@@ -163,8 +163,8 @@ class CarriedTransactions:
 
         return [CarriedTransaction.from_value(entry) for entry in entries]
 
-    def to_put_up(self, history: ChainHistory) -> list[CarriedTransaction]:
-        """Those carried that the node puts up itself, each as carried at the head of ``history``.
+    def at(self, history: ChainHistory) -> list[CarriedTransaction]:
+        """Those carried, each as carried at the head of ``history``, to build into a block.
 
         One carried no more there is left out, and the file is not written:
         it is, as the head next changes.
@@ -179,8 +179,22 @@ class CarriedTransactions:
         return [
             now
             for each in self.read()
-            if each.put_up and (now := each.on(history, self._carry_generations)) is not None
+            if (now := each.on(history, self._carry_generations)) is not None
         ]
+
+    def to_put_up(self, history: ChainHistory) -> list[CarriedTransaction]:
+        """Those carried that the node puts up itself, each as carried at the head of ``history``.
+
+        One carried no more there is left out, as :meth:`at` leaves it out.
+
+        Raises:
+            OSError: the file could not be read, other than for there being
+                none.
+            BundleError: a transaction in it is not a signed transaction.
+            ValueError: it is not JSON, or not what it must be, as the error
+                names.
+        """
+        return [each for each in self.at(history) if each.put_up]
 
     def carry(
         self, collected: Iterable[CarriedTransaction], history: ChainHistory

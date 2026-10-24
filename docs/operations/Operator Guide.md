@@ -147,6 +147,7 @@ The settings an operator is most likely to change:
 | `karma.payment_interval_seconds` | `3600.0` | How long after the node's last transaction Karma puts up the payments it has queued, however few (§4.8) |
 | `karma.transaction_seconds` | `10.0` | How long Karma mines a transaction of the node's payments before taking the best nonce found (§4.8) |
 | `karma.rating_interval_seconds` | `3600.0` | How often Karma rates the servers the node is a client of, and pays the best (§4.8) |
+| `karma.build_interval_seconds` | `60.0` | How often Karma combines the transactions put up for the next generation into one block, as full as it can be (§4.8) |
 | `local.folders` | Your desktop, documents, downloads, music, pictures, and videos folders | The folders offered to trusted applications (§6.3) |
 | `logging.level` | `INFO` | What is logged (§7.2) |
 
@@ -481,6 +482,17 @@ highest by each, and the one server once if it is highest by both, and no
 one by a measure no server served it by. `libranet-karma.log` names each
 server it rates highest. What it counts it keeps in memory, so a node
 started again rates its servers by what they have done since it started.
+
+Every `karma.build_interval_seconds`, the node combines the transactions put
+up for the next generation, at its head's target and at the targets of the
+head's rivals, with those it carries in `karma/carried.json`, into one
+block, as full as it can be: the free ones with the most work first, and the
+paid ones with the largest fees, at least half of them free, and each only
+while its sender can pay for it. It places the block, searching for its
+nonce for `karma.block_seconds`, which holds up its other Karma work, unless
+a block there already holds every transaction it would take.
+`libranet-karma.log` says each block it builds, how many transactions it
+holds, and whether it is full.
 
 What the chain says, any client may read (HTTP API §10.10): the head the
 node follows, and the Karma the chain states the node holds, at
