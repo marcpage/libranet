@@ -15,9 +15,10 @@ placed at a target, and the chain the module follows as a check reads it
 the chain, a generation at a time (Phase 6 Step 126); writing every balance
 stated at its head (Phase 6 Step 128); changing to a heavier chain, and
 carrying over the transactions of the chain left (Phase 6 Step 129);
-putting a transaction up as a block of its own (Phase 6 Step 131); and
+putting a transaction up as a block of its own (Phase 6 Step 131);
 queuing the node's payments, and putting them up together (Phase 6 Step
-132).
+132); and choosing what a block combining others takes, and writing it
+(Phase 6 Step 134).
 """
 
 from libranet.karma.amounts import KISMET_PER_KARMA, MAX_KISMET, Kismet
@@ -34,6 +35,7 @@ from libranet.karma.blocks import (
     TransactionBlock,
     ValidationBlock,
 )
+from libranet.karma.building import CombinedBlock
 from libranet.karma.carried import CARRIED_FILE, CarriedTransaction, CarriedTransactions
 from libranet.karma.changing import HeadChanges
 from libranet.karma.checking import (
@@ -115,6 +117,7 @@ __all__ = [
     "ChainView",
     "ChainWeight",
     "ClaimedChain",
+    "CombinedBlock",
     "ClaimedGeneration",
     "FalseStatement",
     "GenerationTargets",
