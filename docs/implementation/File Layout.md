@@ -569,11 +569,13 @@ One is carried into the blocks of the generations up to
 `karma.carry_generations` after the one it was witnessed in, and one not
 witnessed until it is; one whose key the chain holds is carried no more. One
 the module puts up itself it tries at each head, and puts up there if it is
-valid. The module writes the file whole each time its head changes, leaving
-those out, and once it has carried something, and the file is not there
-before then (`CarriedTransactions` in `src/libranet/karma/carried.py`, Phase
-6 Steps 129 and 131). A file it cannot read it logs, and writes again without
-what it held.
+valid. Every one it builds into the block it combines at the head, every
+`karma.build_interval_seconds` (Phase 6 Step 134). The module writes the
+file whole each time its head changes, leaving those out, and once it has
+carried something, and the file is not there before then
+(`CarriedTransactions` in `src/libranet/karma/carried.py`, Phase 6 Steps 129
+and 131). A file it cannot read it logs, and writes again without what it
+held.
 
 `payments.json` is the node's own payments, queued to be put up together as
 one transaction (KarmaLedger §4.6, Phase 6 Step 132): each a recipient, as

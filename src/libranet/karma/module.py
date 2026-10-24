@@ -1,4 +1,4 @@
-"""The Karma module process (Phase 6 Steps 123 to 133).
+"""The Karma module process (Phase 6 Steps 123 to 134).
 
 Every step that has the node act on the Karma ledger (KarmaLedger.md) runs
 here: reading what is placed at a target, following the chain, and
@@ -99,6 +99,13 @@ and to the one rated highest by requests fulfilled, once if they are one
 
     karma.ratings_requested  {}
     karma.ratings            {"servers": [{"node_id", "bytes_received", "requests_fulfilled"}]}
+
+Every ``karma.build_interval_seconds``, it combines the transaction blocks at
+its head's transaction target, and at those of the head's false starts, and
+the transactions it carries, into one block, as full as it can be, and
+places it there as it places a block of its own, unless a block it holds
+there holds them all (:class:`~libranet.karma.building.BlockBuilder`, Phase 6
+Step 134).
 """
 
 from __future__ import annotations
@@ -119,6 +126,7 @@ from libranet.identity.node_identity import NodeIdentity
 from libranet.identity.trust import TrustState
 from libranet.karma.balances import HeadBalances
 from libranet.karma.blocks import BLOCK_BOUNDS, BlockBounds
+from libranet.karma.building import BlockBuilder
 from libranet.karma.carried import CarriedTransactions
 from libranet.karma.changing import HeadChanges
 from libranet.karma.following import ChainFollower
@@ -180,12 +188,15 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         self._balances: HeadBalances | None = None
         self._putting: TransactionsPutUp | None = None
         self._payments: NodePayments | None = None
+        self._building: BlockBuilder | None = None
         # Whether to look at the head's targets as the module next idles,
         # and when to look, whether it idles or not.
         self._look_again = False
         self._next_look_at = 0.0
-        # When to ask the stats module to rate the servers next.
+        # When to ask the stats module to rate the servers next, and when to
+        # build a block next.
         self._next_rating_at = 0.0
+        self._next_build_at = 0.0
         # The head last said, for the connection manager to tell the peers.
         self._head_said: ContentId | None = None
         self._trust: NodeTrust | None = None
@@ -240,8 +251,9 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
         """Read the history of the chain followed, and write its head.
 
         It looks at the head's targets, and writes the balances stated at the
-        head, as it first idles, and asks for the servers to be rated once
-        ``karma.rating_interval_seconds`` have passed.
+        head, as it first idles, asks for the servers to be rated once
+        ``karma.rating_interval_seconds`` have passed, and builds a block once
+        ``karma.build_interval_seconds`` have.
         """
         karma_dir = self._config.storage.karma_dir
         carried = CarriedTransactions(karma_dir, self._config.karma.carry_generations)
@@ -277,12 +289,24 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
             searchers=self._searchers,
             bounds=self._bounds,
         )
+        self._building = BlockBuilder(
+            self._history,
+            self._reader,
+            carried,
+            partial(NodeIdentity.load, self._config),
+            self._stored,
+            block_seconds=self._config.karma.block_seconds,
+            drop_bits=self._config.storage.search_min_bits,
+            searchers=self._searchers,
+            bounds=self._bounds,
+        )
         self._balances = HeadBalances(
             self._history, HeldChain(self._history, self._reader), karma_dir
         )
         self._look_again = True
         self._next_look_at = self._clock() + self._config.karma.look_seconds
         self._next_rating_at = self._clock() + self._config.karma.rating_interval_seconds
+        self._next_build_at = self._clock() + self._config.karma.build_interval_seconds
         head = self._history.head
 
         if head is None:
@@ -298,20 +322,23 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
     def handle(self, message: Message) -> None:
         """React to one subscribed broadcast, then look at the head's targets if it is time to.
 
-        It looks, and asks for the servers to be rated, here as well as when
-        it idles, since content stored, which it hears of, may keep it from
-        idling. A malformed message raises, and :meth:`run` logs it.
+        It looks, asks for the servers to be rated, and builds a block, here
+        as well as when it idles, since content stored, which it hears of, may
+        keep it from idling. A malformed message raises, and :meth:`run` logs
+        it.
         """
         super().handle(message)
         self._look(idle=False)
         self._ask_ratings()
+        self._build()
 
     def on_idle(self) -> None:
         """Give up on what has been waited for long enough, and look at the head's targets.
 
         A head being weighed that waits for what is given up on is given up
         on too. It looks if it is time to, or if what it waited for has come,
-        and asks for the servers to be rated if it is time to.
+        and asks for the servers to be rated, and builds a block, if it is
+        time to.
         """
         given_up = self._reader.given_up()
 
@@ -320,6 +347,7 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
 
         self._look(idle=True)
         self._ask_ratings()
+        self._build()
 
     def on_stop(self) -> None:
         """Stop the processes that search for nonces."""
@@ -515,6 +543,16 @@ class KarmaModule(ModuleBase):  # pylint: disable=too-many-instance-attributes
 
         self._next_rating_at = now + self._config.karma.rating_interval_seconds
         self.publish(EventType.KARMA_RATINGS_REQUESTED)
+
+    def _build(self) -> None:
+        """Combine the blocks at the head's targets into one, every build interval."""
+        now = self._clock()
+
+        if self._building is None or now < self._next_build_at:
+            return
+
+        self._next_build_at = now + self._config.karma.build_interval_seconds
+        self._building.build()
 
     def _say_head(self) -> None:
         """Say the head followed, for the connection manager to tell the peers, if it is new."""

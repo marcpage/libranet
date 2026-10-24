@@ -1,11 +1,14 @@
 """Tests for the Karma module process, which keeps the history of the chain it follows.
 
 And makes a root, from ``/config``, follows the chain, puts transactions up,
-and pays the servers it rates highest.
+pays the servers it rates highest, and combines the blocks at its head's
+targets.
 """
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from json import loads
 from logging import DEBUG, ERROR, INFO, WARNING
 from pathlib import Path
@@ -164,10 +167,14 @@ def given(signed: SignedTransaction) -> Message:
     )
 
 
-def paid_by_node(storage: StorageConfig) -> SignedTransaction:
-    """The node's transaction paying PEER 5 Kismet, mined to the bounds' work."""
+def paid_by_node(storage: StorageConfig, seconds: int = 0) -> SignedTransaction:
+    """The node's transaction paying PEER 5 Kismet, mined to the bounds' work.
+
+    It is created ``seconds`` after CREATED.
+    """
     node = NodeIdentity.load(LibranetConfig(storage=storage))
-    sent = Transaction(node.node_id, {PEER: Kismet(5)}, Kismet(0), 0, CREATED)
+    created = CREATED + timedelta(seconds=seconds)
+    sent = Transaction(node.node_id, {PEER: Kismet(5)}, Kismet(0), 0, created)
     mined = sent.mined(0, minimum_bits=BOUNDS.transaction_bits)
     return SignedTransaction.of(node.signed(mined.text()))
 
@@ -915,6 +922,43 @@ def test_the_nodes_payments_queued_are_made_one_transaction_and_put_up_as_the_mo
     assert signed.work_bits >= BOUNDS.transaction_bits
     assert PaymentQueue.read(storage.karma_dir) == PaymentQueue((), signed.transaction.created)
     assert "Making 2 Karma payments of the node's into one transaction" in caplog.text
+
+
+def test_the_module_combines_the_blocks_at_the_heads_target_every_build_interval(
+    storage: StorageConfig, queues: ModuleQueues, caplog: LogCaptureFixture
+) -> None:
+    clock = Clock()
+    interval = LibranetConfig().karma.build_interval_seconds
+    module = rooting_module(storage, queues, clock)
+    module.handle(root_requested())
+    published(queues)
+    signed = [paid_by_node(storage, seconds) for seconds in (1, 2)]
+
+    for each in signed:
+        module.handle(given(each))
+
+    assert len(stored_ids(queues)) == 2
+
+    clock.now += interval - 1
+    module.on_idle()
+
+    assert stored_ids(queues) == []
+
+    clock.now += 1
+
+    with caplog.at_level(INFO):
+        module.on_idle()
+
+    (block_id,) = stored_ids(queues)
+    block = BlockDrop.parsed(module.reader.held(block_id), TransactionBlock).block
+    assert {each.hash for each in block.signed} == {each.hash for each in signed}
+    assert f"Built Karma transaction block {block_id} of 2 transactions" in caplog.text
+
+    # The block built holds them all.
+    clock.now += interval
+    module.on_idle()
+
+    assert stored_ids(queues) == []
 
 
 def test_the_module_asks_for_the_servers_to_be_rated_every_rating_interval(

@@ -226,9 +226,10 @@ it and what each does with it.
 - **Sent by:**
   - Validator, for each upload it promotes.
   - Backup, for each object a backup, build, or import stores.
-  - Karma, for each block of a root it makes (`karma/module.py`), and each
+  - Karma, for each block of a root it makes (`karma/module.py`), each
     block it puts up for a transaction (`karma/putting.py`, Phase 6 Step
-    131).
+    131), and each block it builds of others (`karma/building.py`, Phase 6
+    Step 134).
   - Web server, for a peer's own public key uploaded under its node id,
     which goes straight to the source of truth (`data_write_handler.py`).
   - Connections, for a peer's public key fetched during the handshake

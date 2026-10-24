@@ -118,8 +118,8 @@ The conventions of [Phase 2](Phase%202.md) §3 carry over. In addition:
   Step 118 is #436, Step 119 is #437, Step 120 is #438, Step 121 is #439,
   Step 122 is #440, Step 123 is #441, Step 124 is #442, Step 125 is #443,
   Step 126 is #444, Step 127 is #445, Step 128 is #446, Step 129 is #447,
-  Step 130 is #448, Step 131 is #449, Step 132 is #450, and none after it
-  has one yet.
+  Step 130 is #448, Step 131 is #449, Step 132 is #450, Step 133 is #451,
+  Step 134 is #452, and none after it has one yet.
 - **The ledger's tests use small blocks.** Whether a block is full is
   measured against bounds the library takes, the specification's
   (KarmaLedger §5.4) unless a test gives others, so that a test fills a
@@ -2314,7 +2314,7 @@ My calls, not yet reviewed:
 
 ---
 
-## Step 133 — Paying the Servers It Rates
+## Step 133 — Paying the Servers It Rates ✅
 
 **Kind:** improvement in behavior. **Issue:** #451, under #87.
 **Depends on:** Step 132; Phase 5 Step 107's statistics of each peer.
@@ -2395,8 +2395,8 @@ My calls, not yet reviewed:
 
 ## Step 134 — Combining Transaction Blocks
 
-**Kind:** improvement in behavior. **Issue:** none yet; planned under
-#87. **Depends on:** Steps 129 and 131.
+**Kind:** improvement in behavior. **Issue:** #452, under #87.
+**Depends on:** Steps 129 and 131.
 
 Builders combine the blocks put up at a generation's targets, false starts
 among them, into larger ones, until one is full (KarmaLedger §3.4, §5.4,
@@ -2429,6 +2429,81 @@ block.
 
 Estimate about 450: should it come to more than 500, choosing the
 transactions and writing the block are each a change set.
+
+It came to 683 added lines of non-test Python, with 13 changed or removed,
+against an estimate of 450, and 772 lines of tests, so it was built as two
+change sets: choosing the transactions, and the block they make, at 228
+lines; and filling and placing the block, and the module building it, at
+467.
+
+What was built:
+
+- **`CombinedBlock`** (`karma/building.py`, new): `of(offered, head, chain)`
+  chooses the transactions a block built on `head` takes, in the order it
+  takes them, and `block(count)` is the block of the first `count`, stating
+  its payout, its balances, its `reach`, and its `weight` as Step 121 checks
+  them, and the balances of others holding Kismet, those stated longest ago
+  first, as many as shorten its reach within the cap. A block of any first
+  few keeps the half-free rule, and its senders' balances cover it.
+- **`FilledBlock`** (`karma/building.py`, new): the block of the most
+  transactions that fit the bounds, its drop signed and compressed as the
+  node stores it, with room for the nonce searched for after, found by
+  halves.
+- **`BlockBuilder`** (`karma/building.py`, new): `build()` reads the blocks
+  at the head's transaction target, and at the transaction targets of the
+  other validation blocks at the target the head was chosen from, and what
+  `carried.json` carries, checks each transaction's signature with its
+  sender's key, asking for one not held, and builds and places a block,
+  signed by the node, its nonce searched for for `karma.block_seconds`, and
+  after that until it shares `storage.search_min_bits`, stored and
+  announced as the root is. A block that is no transaction block, and a
+  transaction whose signature fails, is logged once at a head.
+- **`CarriedTransactions.at`** (`karma/carried.py`): every transaction
+  carried, as it is carried at the head, which `to_put_up` now narrows.
+- **`karma.build_interval_seconds`** (`KarmaConfig`), 60 by default.
+- **`KarmaModule`** builds a block every `karma.build_interval_seconds`,
+  the first that long after it starts, as it idles or handles a message,
+  after it looks.
+- Messages §3, the Module System, File Layout §3.11, the Operator Guide's
+  §3 and §4.8, and the example configuration.
+
+My calls, not yet reviewed:
+
+- **What the block would take decides whether to build**, not what the
+  blocks at the head's target hold: nothing is built while one block held
+  there holds every transaction the block would take. So transactions
+  carried, and those of false starts, are built in though no block at the
+  target holds them (§3.5.3), and once more are put up than one block holds,
+  the node does not build the same block again each interval.
+- **A block holding them all keeps the node from building only if it is
+  correct**, but perhaps for being full, as Step 121 checks it: anyone may
+  place a false block holding every transaction, which would otherwise stop
+  each builder that reads it.
+- **Each transaction is read from a block without checking the block**, its
+  own signature checked with its sender's key, its work, and that it moves
+  something. A block that is no transaction block, as one whose
+  transactions share a key, gives none of them.
+- **The rivals read are whatever validation blocks are held at the target
+  the head was chosen from**, unchecked: their transactions are checked on
+  their own.
+- **Free transactions are taken by most bits, then hash, and paid ones by
+  largest fee, then most bits, then hash, a paid one each time more free
+  ones than paid are taken**, so that every first few keep the half-free
+  rule, and the same blocks build the same block whatever order they are
+  read in. One whose sender's balance does not cover it, with what the
+  sender's taken before it send, is left out: not the set that takes the
+  most.
+- **The most that fit are found by halves**, the block signed and
+  compressed at the node's level each time, with 32 bytes of room for the
+  nonce. A drop's size compressed does not grow strictly with each
+  transaction, so it is the most found, not always the most there are.
+- **Balances are added to shorten the reach only a whole generation's at a
+  time**, those last stated in the same block together, since the reach is
+  shortened only once all of them are stated; and only of identities
+  holding more than 0, since a 0 stated for one not named is incorrect.
+- **The first block is built `karma.build_interval_seconds` after the module
+  starts**, as the first ratings are asked for, and building holds up the
+  module for `karma.block_seconds`, as putting up a transaction does.
 
 ---
 

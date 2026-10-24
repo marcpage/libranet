@@ -232,7 +232,7 @@ through the dispatcher.
 | 7 | Unbundler | `unbundler` | `UnbundlerModule` | Resolves application files' entries from their bundles on demand, and deletes unused ones |
 | 8 | Eviction | `eviction` | `EvictionModule` | Keeps storage within its limits |
 | 9 | Backup | `backup` | `BackupModule` | Backs directories up as bundles; restores, builds, and exports bundles |
-| 10 | Karma | `karma` | `KarmaModule` | Follows the Karma ledger; for now, follows the chain, keeping its history, makes a root when asked, puts up the transactions it is given, pays the servers it rates highest, and puts up the node's payments together |
+| 10 | Karma | `karma` | `KarmaModule` | Follows the Karma ledger; for now, follows the chain, keeping its history, makes a root when asked, puts up the transactions it is given, pays the servers it rates highest, puts up the node's payments together, and combines the blocks at its head's targets |
 
 The supervisor launches them in this order, taken from `SPAWNED_MODULES`,
 but waits only for the dispatcher to be ready. No module waits for another
@@ -480,7 +480,13 @@ is given. Every `karma.rating_interval_seconds` it asks the stats module to
 rate the servers the node is a client of (`karma.ratings_requested`), and
 queues a payment to the server rated highest by bytes received, and to the
 one rated highest by requests fulfilled, once if they are one
-(`karma.ratings`, `ServerRatings`, Phase 6 Step 133).
+(`karma.ratings`, `ServerRatings`, Phase 6 Step 133). Every
+`karma.build_interval_seconds` it combines the transaction blocks at its
+head's transaction target, and at the transaction targets of the head's
+rivals, and the transactions it carries, into one block, as full as it can
+be, and places it as it places one of its own, unless a block it holds there
+already holds every transaction it would take (`BlockBuilder`,
+`karma/building.py`, Phase 6 Step 134).
 
 ### 3.3 What Each Module Owns
 
@@ -734,7 +740,7 @@ What each module does in them:
 | Unbundler | — | — | — |
 | Eviction | Read the node id; count storage; ask which peers are connected; say whether storage is full; evict if over | Say whether storage is full, if that changed; time out hand-offs and questions; resume after a pause | — |
 | Backup | Read the node id; ask whether storage is full; read the jobs; report state | Carry on the next restore, build, export, import, or backup due | — |
-| Karma | Read the history; write its head | Give up on content waited for too long; follow the chain on, if it is time to look, or what it waited for came, or a peer told of a head it does not follow, and say the head and write the balances there if it changed; make the node's payments one transaction, if they are due; put up the transactions carried that are valid at the head; ask for the servers to be rated, every `karma.rating_interval_seconds` | Stop the processes searching for nonces |
+| Karma | Read the history; write its head | Give up on content waited for too long; follow the chain on, if it is time to look, or what it waited for came, or a peer told of a head it does not follow, and say the head and write the balances there if it changed; make the node's payments one transaction, if they are due; put up the transactions carried that are valid at the head; ask for the servers to be rated, every `karma.rating_interval_seconds`; combine the blocks at the head's targets into one, every `karma.build_interval_seconds` | Stop the processes searching for nonces |
 
 ### 5.3 Writing a Module
 

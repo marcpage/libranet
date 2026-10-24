@@ -1,0 +1,606 @@
+"""Combining transaction blocks (KarmaLedger §3.4, §5.3, §5.4, §5.6, Phase 6 Step 134).
+
+Builders combine the blocks put up at a generation's targets into larger
+ones, until one is full. Every ``karma.build_interval_seconds``, the Karma
+module reads every transaction block at its head's transaction target, and
+at the transaction targets of the head's rivals, the other validation blocks
+at the target the head was chosen from, whose blocks are false starts
+(§3.4), and builds one block of what they hold, and of what it carries
+(:mod:`libranet.karma.carried`).
+
+Each transaction is taken on its own, whoever built the block it is read
+from, a distrusted identity among them (§3.8, §4.4): one whose signature
+checks, with its sender's key held, whose work meets the bounds, and that
+moves something. One of a generation after the block's, or whose key the
+chain holds, is left out (§4.4), and of those sharing a key, all but the
+one of most bits. Free ones are taken by most bits first, and paid ones by
+the largest fees, a paid one only while as many free ones are taken, so
+that at least half of them are free (§5.1, §5.4), and each only while its
+sender's balance covers it, and all of the sender's taken before it. As
+many are taken as leave the block's drop, compressed as the node stores it,
+with room for its nonce, no larger than a full block may be.
+
+The block states its payout, the balances of everyone it names, its
+``reach``, and its ``weight``, each as it is. It states the balances of
+others holding Kismet too, those stated longest ago first, as many as
+shorten its reach within the cap of twice those it names (§5.3). It is
+signed by the node, its drop's nonce searched for for
+``karma.block_seconds``, and after that until it shares
+``storage.search_min_bits`` with its target (§2), and it is stored and
+announced, as a block put up for a transaction alone is.
+
+Nothing is built while one block held at the head's transaction target,
+correct but perhaps for not being full, holds every transaction that would
+be taken: the same blocks build the same block, so each new transaction
+builds one more.
+"""
+
+from __future__ import annotations
+from collections import deque
+from dataclasses import dataclass, replace
+from logging import getLogger
+from typing import Callable, Final, Iterable, Mapping, Sequence
+from zlib import compress
+
+from libranet.bundle.errors import BundleError, BundleSignatureError, MissingContentError
+from libranet.bundle.storing import HASH_ALGORITHM, STORAGE_COMPRESSION_LEVEL
+from libranet.cas.content_id import ContentId
+from libranet.cas.drops import DROP_SEPARATOR, NONCE_SEARCHERS, NonceSearchers
+from libranet.identity.node_identity import NodeIdentity
+from libranet.karma.amounts import Kismet
+from libranet.karma.blocks import (
+    BLOCK_BOUNDS,
+    Balance,
+    BlockBounds,
+    BlockDrop,
+    TransactionBlock,
+    ValidationBlock,
+)
+from libranet.karma.carried import CarriedTransactions
+from libranet.karma.checking import ChainBefore, ChainView, TransactionBlockCheck
+from libranet.karma.generations import GenerationTargets
+from libranet.karma.history import ChainGeneration, ChainHistory
+from libranet.karma.ledger import BalanceSheet, reach_of
+from libranet.karma.reading import HeldBlock, HeldChain, TargetReader
+from libranet.karma.transactions import Payout, SignedTransaction, TransactionKey
+
+_LOGGER = getLogger(__name__)
+
+# The room left in a block's drop, compressed, for its nonce, which is
+# searched for once the block is filled: a count in decimal, which takes
+# fewer bytes than this, compressed, however long the search.
+_NONCE_ROOM_BYTES: Final = 32
+
+
+def _most_bits_first(signed: SignedTransaction) -> tuple[int, str]:
+    """What orders transactions by most work first, and of as much, by hash (§4.3, §5.4)."""
+    return (-signed.work_bits, signed.hash)
+
+
+@dataclass(frozen=True)
+class CombinedBlock:
+    """The transactions a block built on ``before`` takes, in the order it takes them (§5.4).
+
+    ``payout`` pays the reward of the validation block it is built on.
+    ``balances`` are those of everyone ``payout`` and ``taken`` name, as the
+    block before leaves them, and ``stated`` the balances the blocks before
+    state, from the one before back as far as its reach. The first few of
+    ``taken``, however many, keep the half-free rule, and are covered by
+    their senders' balances, so that :meth:`block` of them is correct, but
+    perhaps for being full. :meth:`of` chooses them.
+    """
+
+    before: ChainBefore
+    payout: Payout
+    taken: tuple[SignedTransaction, ...]
+    balances: Mapping[ContentId, Balance]
+    stated: tuple[Mapping[ContentId, Balance], ...]
+
+    @classmethod
+    def of(
+        cls,
+        offered: Iterable[SignedTransaction],
+        head: ContentId,
+        chain: ChainView,
+        *,
+        bounds: BlockBounds = BLOCK_BOUNDS,
+    ) -> CombinedBlock:
+        """What a block built on validation block ``head`` of ``chain`` takes of ``offered``.
+
+        Each of ``offered`` is signed by its sender, its signature checked.
+        One whose work is under ``bounds``', that moves nothing, of a
+        generation after the block's, or whose key ``chain`` holds already,
+        is left out, and of those sharing a key, all but the one of most
+        bits, and of as many, the one whose hash sorts first (§4.4).
+
+        Raises:
+            MissingContentError: names the blocks ``chain`` lacks.
+            ValueError: the payout takes more from an identity than it holds.
+        """
+        before = ChainBefore.read(chain, head)
+        last = before.generation - 1
+        payout = before.payout(chain.balances(before.stakers(), last))
+        valid = cls._valid(offered, before.generation, chain, bounds)
+        every = cls._holding(before, (payout, *valid))
+        balances = chain.balances(every.named(), last)
+        back = min(before.validated.reach, last)
+        older = [chain.stated(earlier) for earlier in range(last - 1, last - back - 1, -1)]
+        return cls(
+            before,
+            payout,
+            cls._taken(valid, BalanceSheet.of(every, balances).checked),
+            balances,
+            (before.validated.balances, *older),
+        )
+
+    def block(self, count: int) -> TransactionBlock:
+        """The block of the first ``count`` transactions taken, stating everything as it is (§5.3).
+
+        It states the balances of everyone it names, and of those holding
+        Kismet that shorten its reach (:meth:`_shortening`).
+        """
+        block = self._holding(self.before, (self.payout, *self.taken[:count]))
+        balances = dict(BalanceSheet.of(block, self.balances).after)
+        balances.update(self._shortening(balances, block.most_balances - len(balances)))
+        return replace(block, balances=balances, reach=reach_of([balances, *self.stated]))
+
+    @staticmethod
+    def _holding(
+        before: ChainBefore, entries: Iterable[SignedTransaction | Payout]
+    ) -> TransactionBlock:
+        """The block built on ``before`` holding ``entries``, stating no balances, and no reach."""
+        return TransactionBlock(
+            before.generation,
+            before.validation_id,
+            before.weight,
+            0,
+            tuple(sorted(entries, key=lambda entry: entry.hash)),
+            {},
+        )
+
+    @staticmethod
+    def _valid(
+        offered: Iterable[SignedTransaction], generation: int, chain: ChainView, bounds: BlockBounds
+    ) -> list[SignedTransaction]:
+        """Those of ``offered`` that may be valid in block ``generation`` of ``chain``, one a key.
+
+        Each must have the work of ``bounds``, move something, be of no later
+        a generation, and have a key ``chain`` does not hold (§4.4). Of those
+        sharing a key, the one of most bits is kept.
+        """
+        valid: dict[TransactionKey, SignedTransaction] = {}
+
+        for signed in sorted(offered, key=_most_bits_first):
+            transaction = signed.transaction
+
+            if (
+                signed.work_bits >= bounds.transaction_bits
+                and transaction.sends() > Kismet(0)
+                and transaction.generation <= generation
+                and not chain.has_key(transaction.key, transaction.generation, generation - 1)
+            ):
+                valid.setdefault(transaction.key, signed)
+
+        return list(valid.values())
+
+    @staticmethod
+    def _taken(
+        valid: Iterable[SignedTransaction], checked: Mapping[ContentId, Balance]
+    ) -> tuple[SignedTransaction, ...]:
+        """``valid`` in the order a builder takes them, but those their senders cannot cover.
+
+        Free ones are taken by most bits first, and paid ones by the largest
+        fee, then most bits: a paid one each time more free ones than paid
+        are taken before it, so that at least half of any first few are free
+        (§5.1, §5.4). Each is taken only if its sender's balance in
+        ``checked`` covers it, with all the sender's taken before (§4.4).
+        """
+        free = deque(
+            sorted(
+                (signed for signed in valid if signed.transaction.fee == Kismet(0)),
+                key=_most_bits_first,
+            )
+        )
+        paid = deque(
+            sorted(
+                (signed for signed in valid if signed.transaction.fee > Kismet(0)),
+                key=lambda signed: (-signed.transaction.fee.count, -signed.work_bits, signed.hash),
+            )
+        )
+        sending: dict[ContentId, int] = {}
+        taken: list[SignedTransaction] = []
+        free_taken = 0
+
+        while queue := (paid if paid and 2 * free_taken > len(taken) else free):
+            signed = queue.popleft()
+            sender = signed.transaction.sender
+            sent = sending.get(sender, 0) + signed.transaction.sends().count
+
+            if sent > checked[sender].kismet.count:
+                # Pending: its sender's balance does not cover it here (§4.4).
+                continue
+
+            sending[sender] = sent
+            taken.append(signed)
+
+            if queue is free:
+                free_taken += 1
+
+        return tuple(taken)
+
+    def _shortening(
+        self, stated: Mapping[ContentId, Balance], room: int
+    ) -> dict[ContentId, Balance]:
+        """The balances of those holding Kismet ``stated`` lacks that shorten the reach (§5.3).
+
+        Those stated longest ago are added first, and all of those stated
+        as long ago together, while ``room`` holds them: the reach is only
+        shortened once every one of them is stated.
+        """
+        latest: dict[ContentId, tuple[int, Balance]] = {}
+
+        for back, balances in enumerate(self.stated, start=1):
+            for identity, balance in balances.items():
+                latest.setdefault(identity, (back, balance))
+
+        unstated: dict[int, dict[ContentId, Balance]] = {}
+
+        for identity, (back, balance) in latest.items():
+            if identity not in stated and balance.kismet > Kismet(0):
+                unstated.setdefault(back, {})[identity] = balance
+
+        added: dict[ContentId, Balance] = {}
+
+        for back in sorted(unstated, reverse=True):
+            if len(added) + len(unstated[back]) > room:
+                break
+
+            added.update(unstated[back])
+
+        return added
+
+
+@dataclass(frozen=True)
+class FilledBlock:
+    """``drop``, a combined block as its builder signed it, and the bytes it is measured at.
+
+    ``measured_bytes`` is its drop's content compressed as the node stores
+    it, with room for the nonce searched for after (§5.4). :meth:`of` fills
+    one.
+    """
+
+    drop: BlockDrop[TransactionBlock]
+    measured_bytes: int
+
+    @classmethod
+    def of(
+        cls,
+        combined: CombinedBlock,
+        identity: NodeIdentity,
+        *,
+        bounds: BlockBounds = BLOCK_BOUNDS,
+    ) -> FilledBlock | None:
+        """The block of the most transactions ``combined`` takes, in order, that ``bounds`` hold.
+
+        It is signed by ``identity``, and measured as :attr:`measured_bytes`
+        says. The most that fit are searched for by halves, since a block is
+        signed and compressed to be measured.
+
+        Returns:
+            The block, or ``None`` if ``combined`` takes none, or not one
+            fits.
+        """
+        fitting: FilledBlock | None = None
+        low, high = 0, len(combined.taken) + 1
+        count = len(combined.taken)
+
+        while low + 1 < high:
+            filled = cls._signed(combined.block(count), identity)
+
+            if filled.measured_bytes <= bounds.most_bytes:
+                low, fitting = count, filled
+
+            else:
+                high = count
+
+            count = (low + high) // 2
+
+        return fitting
+
+    @classmethod
+    def _signed(cls, block: TransactionBlock, identity: NodeIdentity) -> FilledBlock:
+        """``block``, signed by ``identity``, and measured."""
+        drop = BlockDrop(identity.signed(block.text()), block)
+        compressed = compress(drop.content() + DROP_SEPARATOR, STORAGE_COMPRESSION_LEVEL)
+        return cls(drop, len(compressed) + _NONCE_ROOM_BYTES)
+
+
+class BlockBuilder:  # pylint: disable=too-many-instance-attributes
+    """Combines the blocks at the head's targets, and what is carried, into one (§5.6).
+
+    The chain is the one ``history`` keeps, its blocks read from what
+    ``reader`` holds, and what is carried is in ``carried``. A block is
+    signed as ``identity`` gives the node, its nonce searched for by
+    ``searchers`` for ``block_seconds``, and after that until it shares
+    ``drop_bits`` with its target, and handed to ``store``, with the node's
+    id, to be stored and announced. It is filled within ``bounds``: the
+    specification's, unless a test gives others.
+    """
+
+    def __init__(
+        self,
+        history: ChainHistory,
+        reader: TargetReader,
+        carried: CarriedTransactions,
+        identity: Callable[[], NodeIdentity],
+        store: Callable[[bytes, ContentId], None],
+        *,
+        block_seconds: float,
+        drop_bits: int,
+        searchers: NonceSearchers = NONCE_SEARCHERS,
+        bounds: BlockBounds = BLOCK_BOUNDS,
+    ) -> None:
+        self._history = history
+        self._reader = reader
+        self._carried = carried
+        self._identity = identity
+        self._store = store
+        self._block_seconds = block_seconds
+        self._drop_bits = drop_bits
+        self._searchers = searchers
+        self._bounds = bounds
+        self._chain = HeldChain(history, reader)
+        # The head these were found at: the blocks and transactions passed
+        # over, each logged once, and whether each block held at the head's
+        # transaction target is correct, but perhaps for being full.
+        self._head: ContentId | None = None
+        self._passed_over: set[ContentId | str] = set()
+        self._correct: dict[ContentId, bool] = {}
+
+    def build(self) -> None:
+        """Build a block at the head's transaction target, unless one held there holds it all.
+
+        It is built of the transactions in the blocks held at that target,
+        and at the targets of the head's false starts (§3.4), and those
+        carried. A block of the chain it lacks is asked for, and it is built
+        as this is next called; one that cannot be built for an error of the
+        system, or because what it is built of cannot be read, is logged.
+        """
+        head = self._history.head
+
+        if head is None:
+            return
+
+        if head.validation != self._head:
+            self._head = head.validation
+            self._passed_over.clear()
+            self._correct.clear()
+
+        target = GenerationTargets.after(head.validation).transaction
+        at_target = self._parsed(self._reader.read(target, TransactionBlock))
+        offered = [
+            signed
+            for _, drop in [*at_target, *self._parsed(self._false_starts(head))]
+            for signed in drop.block.signed
+        ]
+        offered.extend(self._carried_now())
+
+        try:
+            combined = CombinedBlock.of(
+                self._verified(offered), head.validation, self._chain, bounds=self._bounds
+            )
+
+            if not combined.taken or self._held(combined.taken, at_target):
+                return
+
+            filled = FilledBlock.of(combined, self._identity(), bounds=self._bounds)
+
+            if filled is None:
+                _LOGGER.warning(
+                    "Building no Karma transaction block at head %s: not one transaction fits "
+                    "in %d bytes",
+                    head.validation,
+                    self._bounds.most_bytes,
+                )
+                return
+
+            if not self._held(filled.drop.block.signed, at_target):
+                self._place(filled, head.validation)
+
+        except MissingContentError:
+            # Not logged: what it lacks is asked for, and it is built once that comes.
+            return
+
+        except OSError as error:
+            _LOGGER.error("Cannot build a Karma transaction block: %s", error)
+
+        except (BundleError, ValueError) as error:
+            _LOGGER.warning("Cannot build a Karma transaction block: %s", error)
+
+    def _false_starts(self, head: ChainGeneration) -> list[HeldBlock]:
+        """The transaction blocks held at the transaction targets of ``head``'s rivals (§3.4).
+
+        Its rivals are the other validation blocks at the target it was
+        chosen from.
+        """
+        named_for = (
+            None
+            if head.generation == 0
+            else self._history.generation(head.generation - 1).validation
+        )
+        target = GenerationTargets.built_on(named_for).validation
+        rivals = self._reader.read(target, ValidationBlock)
+        return [
+            held
+            for rival in rivals
+            if rival.block_id != head.validation
+            for held in self._reader.read(
+                GenerationTargets.after(rival.block_id).transaction, TransactionBlock
+            )
+        ]
+
+    def _carried_now(self) -> list[SignedTransaction]:
+        """The transactions carried at the head; none if they cannot be read, which is logged."""
+        try:
+            return [each.signed for each in self._carried.at(self._history)]
+
+        except OSError as error:
+            _LOGGER.error("Cannot read the Karma transactions carried: %s", error)
+
+        except (BundleError, ValueError) as error:
+            _LOGGER.warning("Cannot read the Karma transactions carried: %s", error)
+
+        return []
+
+    def _parsed(
+        self, held: Iterable[HeldBlock]
+    ) -> list[tuple[HeldBlock, BlockDrop[TransactionBlock]]]:
+        """Each of ``held`` that is a transaction block, read, its signatures not checked.
+
+        Its transactions are each checked on their own. Each other is
+        logged, once at a head, and passed over.
+        """
+        parsed: list[tuple[HeldBlock, BlockDrop[TransactionBlock]]] = []
+
+        for each in held:
+            try:
+                parsed.append((each, BlockDrop.parsed(each.data, TransactionBlock)))
+
+            except (BundleError, ValueError) as error:
+                if each.block_id not in self._passed_over:
+                    self._passed_over.add(each.block_id)
+                    _LOGGER.warning(
+                        "Taking no Karma transactions from %s, which is no transaction block: %s",
+                        each.block_id,
+                        error,
+                    )
+
+        return parsed
+
+    def _verified(self, offered: Iterable[SignedTransaction]) -> list[SignedTransaction]:
+        """Each of ``offered`` whose signature checks with its sender's key, once each (§4.4).
+
+        One whose sender's key is not held is passed over, and the key asked
+        for. One whose signature fails is passed over, and logged once at a
+        head.
+        """
+        keys: dict[ContentId, bytes | None] = {}
+        verified: dict[str, SignedTransaction] = {}
+
+        for signed in offered:
+            sender = signed.transaction.sender
+
+            if signed.hash in verified or signed.hash in self._passed_over:
+                continue
+
+            if sender not in keys:
+                keys[sender] = self._key(sender)
+
+            key = keys[sender]
+
+            if key is None:
+                continue
+
+            try:
+                signed.verified(key)
+
+            except BundleSignatureError as error:
+                self._passed_over.add(signed.hash)
+                _LOGGER.warning(
+                    "Passing over Karma transaction %s, whose signature must check: %s",
+                    signed.hash,
+                    error,
+                )
+                continue
+
+            verified[signed.hash] = signed
+
+        return list(verified.values())
+
+    def _key(self, sender: ContentId) -> bytes | None:
+        """The key of ``sender``, if it is held; it is asked for if it is not."""
+        try:
+            return self._reader.held(sender)
+
+        except MissingContentError:
+            # Not logged: it is asked for, and the sender's transactions are taken once it comes.
+            return None
+
+        except BundleError as error:
+            _LOGGER.warning(
+                "Passing over the Karma transactions of %s, whose key cannot be read: %s",
+                sender,
+                error,
+            )
+            return None
+
+    def _held(
+        self,
+        taken: Sequence[SignedTransaction],
+        at_target: Sequence[tuple[HeldBlock, BlockDrop[TransactionBlock]]],
+    ) -> bool:
+        """Whether a block ``at_target``, correct but perhaps for being full, holds ``taken``."""
+        hashes = {signed.hash for signed in taken}
+        return any(
+            hashes <= {signed.hash for signed in drop.block.signed} and self._is_correct(held)
+            for held, drop in at_target
+        )
+
+    def _is_correct(self, held: HeldBlock) -> bool:
+        """Whether ``held``, at the head's transaction target, is correct, but perhaps for fullness.
+
+        One whose check lacks what is not held is not, until it comes.
+        """
+        if held.block_id in self._correct:
+            return self._correct[held.block_id]
+
+        try:
+            check = TransactionBlockCheck.of(
+                held.block_id,
+                held.data,
+                self._head,
+                self._chain,
+                held.keys,
+                compressed_bytes=held.compressed_bytes,
+                bounds=replace(self._bounds, room_bytes=self._bounds.most_bytes),
+            )
+
+        except MissingContentError:
+            # Not logged: what it lacks is asked for, and it is checked again once that comes.
+            return False
+
+        except (BundleError, ValueError) as error:
+            # Not logged as a warning: the chain followed checks each block at the target.
+            _LOGGER.debug("Karma block %s cannot be checked: %s", held.block_id, error)
+            check = None
+
+        self._correct[held.block_id] = isinstance(check, TransactionBlockCheck) and check.is_correct
+        return self._correct[held.block_id]
+
+    def _place(self, filled: FilledBlock, head: ContentId) -> None:
+        """Place ``filled`` at the transaction target named for ``head``, and store it.
+
+        Raises:
+            BundleError: it is larger than an object may be, even compressed.
+            ValueError: its nonce cannot be searched for as asked.
+            OSError: a searching process could not be started, or exited
+                during the search, or the drop could not be written.
+        """
+        drop = GenerationTargets.after(head).transaction.placed(
+            filled.drop.content(),
+            self._block_seconds,
+            minimum_bits=self._drop_bits,
+            searchers=self._searchers,
+        )
+        self._store(drop.data, filled.drop.builder)
+        compressed_bytes = len(compress(drop.data, STORAGE_COMPRESSION_LEVEL))
+        _LOGGER.info(
+            "Built Karma transaction block %s of %d transactions, %d bytes compressed, %s, "
+            "sharing %d bits with the transaction target of %s",
+            ContentId.for_data(drop.data, HASH_ALGORITHM),
+            len(filled.drop.block.signed),
+            compressed_bytes,
+            "full" if self._bounds.is_full(compressed_bytes) else "not full",
+            drop.matching_bits,
+            head,
+        )
